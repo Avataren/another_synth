@@ -47,11 +47,20 @@ interface WasmExports {
   ) => number;
 }
 
+interface WasmMemoryPointers {
+  audioBufferPtr: number;
+  envelope1Ptr: number;
+  //parametersPtr: Map<string, number>;
+};
+
 interface InitializeMessage {
   type: 'initialize';
   wasmBinary: ArrayBuffer;
   memory: WebAssembly.Memory;
+  memorySegment: WasmMemoryPointers;
 }
+
+
 
 class WasmAudioProcessor extends AudioWorkletProcessor {
   private wasmInstance: WasmExports | null = null;
@@ -109,7 +118,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
 
   private async initializeWasm(data: InitializeMessage): Promise<void> {
     try {
-      const { wasmBinary, memory } = data;
+      const { wasmBinary, memory, memorySegment } = data;
       this.shared_memory = memory;
 
       const importObject = {
@@ -124,11 +133,13 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
       this.wasmInstance = instance.exports as unknown as WasmExports;
 
       // Allocate main audio output buffer
-      this.audioBufferOffset = this.wasmInstance.allocateF32Array(
-        this.bufferSize,
-      );
+      this.audioBufferOffset = memorySegment.audioBufferPtr;
+      // this.audioBufferOffset = this.wasmInstance.allocateF32Array(
+      //   this.bufferSize,
+      // );
       console.log('audioBufferOffset is:', this.audioBufferOffset);
-      this.envPtr = this.wasmInstance.createEnvelopeState(0.1, 0.1, 0.7, 0.2);
+      this.envPtr = memorySegment.envelope1Ptr;
+      //this.wasmInstance.createEnvelopeState(0.1, 0.1, 0.7, 0.2);
       console.log('envPtr is:', this.envPtr);
       // Allocate parameter buffers
 

@@ -32,11 +32,11 @@ export function fillSine(
     const gain = load<f32>(offsets.gain + index);
     const detune = load<f32>(offsets.detune + index);
     const gate = load<f32>(offsets.gate + index);
-    const envValue = processEnvelope(envPtr, sampleRate, gate > 0.5 ? true : false);
+    //const envValue = processEnvelope(envPtr, sampleRate, gate > 0.5 ? true : false);
     const frequency = baseFreq * centsToRatio(detune);
     const phaseStep: f32 = (TWO_PI * frequency) / sampleRate;
 
-    store<f32>(offsets.output + index, Mathf.sin(phase) * gain * envValue);
+    store<f32>(offsets.output + index, Mathf.sin(phase) * gain * gate);
 
     phase += phaseStep;
     while (phase >= TWO_PI) phase -= TWO_PI;

@@ -16,7 +16,7 @@ const max_voices = 8 * 64;
 export interface WasmMemoryPointers {
   audioBufferPtr: number;
   envelope1Ptr: number;
-  parametersPtr: Map<string, number>;
+  //parametersPtr: Map<string, number>;
 };
 export const useAudioSystemStore = defineStore('audioSystem', {
   state: () => ({
@@ -73,6 +73,12 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
     },
 
+    getNextMemorySegment() {
+      const memSegment = this.wasmPointers[this.voices_allocated];
+      this.voices_allocated++;
+      return memSegment;
+    },
+
     async setupAudio() {
       if (this.audioSystem) {
 
@@ -80,18 +86,18 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
         // Log the WASM exports to confirm
         console.log('WASM Exports: ', wasmModule);
-        const parameterBuffers = new Map<string, number>();
+        //const parameterBuffers = new Map<string, number>();
         const bufferSize = 128;
         for (let i = 0; i < max_voices; i++) {
-          for (const param of this.parameterDescriptors) {
-            const offset = wasmModule.allocateF32Array(bufferSize);
-            parameterBuffers.set(param.name, offset);
-          }
+          // for (const param of this.parameterDescriptors) {
+          //   const offset = wasmModule.allocateF32Array(bufferSize);
+          //   parameterBuffers.set(param.name, offset);
+          // }
 
           this.wasmPointers.push({
             audioBufferPtr: wasmModule.allocateF32Array(bufferSize),
             envelope1Ptr: wasmModule.createEnvelopeState(0.1, 0.2, 0.5, 0.2),
-            parametersPtr: parameterBuffers
+            //parametersPtr: parameterBuffers
           })
         }
 
