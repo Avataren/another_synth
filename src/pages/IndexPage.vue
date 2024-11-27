@@ -2,6 +2,7 @@
   <q-page class="row items-center justify-evenly">
     <oscilloscope-component :node="destinationNode" />
     <frequency-analyzer-component :node="destinationNode" />
+    <piano-keyboard-component />
   </q-page>
 </template>
 
@@ -9,5 +10,6 @@
 import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
 import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import PianoKeyboardComponent from 'src/components/PianoKeyboardComponent.vue';
 const { destinationNode } = useAudioSystemStore();
 </script>

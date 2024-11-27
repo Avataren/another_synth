@@ -1,8 +1,11 @@
 import { createAudioWorkletWithWasm } from 'src/audio/audio-processor-loader';
+import { useKeyboardStore } from 'src/stores/keyboard-store';
+import { watch } from 'vue';
 
 export default class AudioSystem {
   audioContext: AudioContext;
   destinationNode: AudioNode;
+  workletNode: AudioWorkletNode | null = null;
   constructor() {
     console.log('creating audio context');
     const audioCtxOptions: AudioContextOptions = {
@@ -13,6 +16,7 @@ export default class AudioSystem {
     this.destinationNode = this.audioContext.createGain();
     this.destinationNode.connect(this.audioContext.destination);
     this.resumeOnUserInteraction();
+    this.setupKeyboardListener();
   }
 
   private resumeOnUserInteraction() {
@@ -46,26 +50,49 @@ export default class AudioSystem {
   public async setupAudio() {
     try {
       // Create the AudioWorklet
-      const workletNode = await createAudioWorkletWithWasm(this.audioContext);
-      const freq = workletNode.parameters.get('frequency');
-      if (freq) {
-        freq.value = 20;
-        freq.linearRampToValueAtTime(1000, this.audioContext.currentTime + 1.0);
-        freq.linearRampToValueAtTime(20, this.audioContext.currentTime + 2.0);
-      }
+      this.workletNode = await createAudioWorkletWithWasm(this.audioContext);
 
-      const gain = workletNode.parameters.get('gain');
+      const gain = this.workletNode.parameters.get('gain');
       if (gain) {
         gain.value = 0.0;
-        gain.linearRampToValueAtTime(0.5, this.audioContext.currentTime + 1.0);
-        gain.linearRampToValueAtTime(0.0, this.audioContext.currentTime + 2.0);
       }
 
       // Connect the worklet to the audio context
-      workletNode.connect(this.destinationNode);
+      this.workletNode.connect(this.destinationNode);
       console.log('Audio setup completed successfully');
     } catch (error) {
       console.error('Failed to set up audio:', error);
     }
+  }
+
+  private setupKeyboardListener() {
+    const keyboardStore = useKeyboardStore();
+
+    watch(
+      () => keyboardStore.noteEvents,
+      (events) => {
+        if (!events.length || !this.workletNode) return;
+
+        const latestEvent = events[events.length - 1];
+        if (!latestEvent) return;
+
+        const frequency = this.midiNoteToFrequency(latestEvent.note);
+        const gain = latestEvent.velocity / 127;
+
+        // Update audio parameters
+        const freqParam = this.workletNode.parameters.get('frequency');
+        const gainParam = this.workletNode.parameters.get('gain');
+
+        if (freqParam && gainParam) {
+          freqParam.setValueAtTime(frequency, this.audioContext.currentTime);
+          gainParam.setValueAtTime(gain, this.audioContext.currentTime);
+        }
+      },
+      { deep: true },
+    );
+  }
+
+  private midiNoteToFrequency(note: number): number {
+    return 440 * Math.pow(2, (note - 69) / 12);
   }
 }
