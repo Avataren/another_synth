@@ -69,12 +69,36 @@ export default defineConfig((/* ctx */) => {
           'vite-plugin-checker',
           {
             vueTsc: true,
-            eslint: {
-              lintCommand: 'eslint "./**/*.{js,ts,mjs,cjs,vue}"',
-            },
+            eslint: { lintCommand: 'eslint "./**/*.{js,ts,mjs,cjs,vue}"' },
           },
           { server: false },
         ],
+        {
+          name: 'audio-worklet',
+          apply: 'build', // Restrict this plugin to the build process
+          transform(code, id) {
+            if (id.endsWith('audio-processor.ts')) {
+              return {
+                code: `/* @vite-ignore */\n${code}`,
+                map: null,
+              };
+            }
+            return null;
+          },
+          resolveId(id) {
+            if (id.endsWith('?worklet')) {
+              return id;
+            }
+            return null;
+          },
+          async load(id) {
+            if (id.endsWith('?worklet')) {
+              const realId = id.slice(0, -8);
+              return `export default new URL('${realId}', import.meta.url).href`;
+            }
+            return null;
+          },
+        },
       ],
       extendViteConf(viteConf) {
         viteConf.assetsInclude = ['**/*.wasm'];
