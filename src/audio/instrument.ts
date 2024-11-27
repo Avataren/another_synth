@@ -3,37 +3,39 @@ import Voice from './voice';
 export default class Instrument {
   readonly num_voices = 8;
   voices: Array<Voice>;
-
-  // Keep track of which notes are assigned to which voices
+  outputNode: AudioNode;
   private activeNotes: Map<number, number> = new Map(); // midi note -> voice index
 
-  constructor(destination: AudioNode, audioContext: AudioContext) {
+  constructor(destination: AudioNode, audioContext: AudioContext, memory: WebAssembly.Memory) {
+    this.outputNode = audioContext.createGain();
+    (this.outputNode as GainNode).gain.value = 0.25;
+    this.outputNode.connect(destination);
     this.voices = Array.from(
       { length: this.num_voices },
-      () => new Voice(destination, audioContext),
+      () => new Voice(this.outputNode, audioContext, memory),
     );
   }
 
   public note_on(midi_note: number, velocity: number) {
-    // If note is already playing, trigger note off first
+    console.log('note_on ', midi_note);
     if (this.activeNotes.has(midi_note)) {
-      this.note_off(midi_note, 0);
+      this.note_off(midi_note);
     }
 
-    // Find a free voice or steal one
     const voiceIndex = this.findFreeVoice();
     if (voiceIndex !== -1) {
+      console.log('voiceIndex ', voiceIndex);
       const voice = this.voices[voiceIndex];
-      // Start the voice
       voice?.start(midi_note, velocity);
-      // Keep track of the note assignment
       this.activeNotes.set(midi_note, voiceIndex);
     }
   }
 
-  public note_off(midi_note: number, _velocity: number) {
+  public note_off(midi_note: number) {
+    console.log('note_off ', midi_note);
     const voiceIndex = this.activeNotes.get(midi_note);
     if (voiceIndex !== undefined) {
+      console.log('ending voiceIndex ', voiceIndex);
       const voice = this.voices[voiceIndex];
       voice?.stop();
       this.activeNotes.delete(midi_note);
@@ -41,26 +43,22 @@ export default class Instrument {
   }
 
   private findFreeVoice(): number {
-    // First try to find an inactive voice
+    // Find voices that aren't assigned to any active notes
+    const usedVoiceIndices = new Set(this.activeNotes.values());
     for (let i = 0; i < this.voices.length; i++) {
-      if (!this.activeNotes.has(i)) {
+      if (!usedVoiceIndices.has(i)) {
         return i;
       }
     }
 
     // If no free voice, steal the oldest one
-    // In this simple implementation, we'll just take the first one
     if (this.activeNotes.size > 0) {
-      const firstNote = this.activeNotes.keys().next().value;
-      if (firstNote) {
-        const voiceIndex = this.activeNotes.get(firstNote)!;
-        this.note_off(firstNote, 0);
-        return voiceIndex;
-      } else {
-        return -1;
-      }
+      const firstNote = this.activeNotes.keys().next().value as number;
+      const voiceIndex = this.activeNotes.get(firstNote)!;
+      this.note_off(firstNote);
+      return voiceIndex;
     }
 
-    return -1; // Should never happen with the above logic
+    return -1;
   }
 }

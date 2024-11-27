@@ -1,14 +1,11 @@
 // src/audio/audioProcessorLoader.ts
 import { loadWasmBinary } from 'src/utils/wasm-loader';
 
-const memory = new WebAssembly.Memory({
-  initial: 256,
-  maximum: 1024,
-  shared: true,
-});
+
 
 export async function createAudioWorkletWithWasm(
   audioContext: AudioContext,
+  wasmMemory: WebAssembly.Memory
 ): Promise<AudioWorkletNode> {
   // Load the AudioWorklet processor
   await audioContext.audioWorklet.addModule('src/audio/processor.ts?worklet');
@@ -20,7 +17,7 @@ export async function createAudioWorkletWithWasm(
   );
 
   // Load the WASM binary as an ArrayBuffer
-  const wasmBinary = await loadWasmBinary('/wasm/release.wasm');
+  const wasmBinary = await loadWasmBinary('wasm/release.wasm');
 
   // Listen for messages from the processor
   workletNode.port.onmessage = (event) => {
@@ -30,7 +27,7 @@ export async function createAudioWorkletWithWasm(
       workletNode.port.postMessage({
         type: 'initialize',
         wasmBinary,
-        memory: memory,
+        memory: wasmMemory,
       });
     }
   };

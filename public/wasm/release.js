@@ -17,9 +17,13 @@ async function instantiate(module, imports = {}) {
   const { exports } = await WebAssembly.instantiate(module, adaptedImports);
   const memory = exports.memory || imports.env.memory;
   const adaptedExports = Object.setPrototypeOf({
-    createBufferOffsets(output, frequency, gain, detune) {
-      // src/assembly/buffer-offsets/createBufferOffsets(usize, usize, usize, usize) => usize
-      return exports.createBufferOffsets(output, frequency, gain, detune) >>> 0;
+    createBufferOffsets(output, frequency, gain, detune, gate) {
+      // src/assembly/buffer-offsets/createBufferOffsets(usize, usize, usize, usize, usize) => usize
+      return exports.createBufferOffsets(output, frequency, gain, detune, gate) >>> 0;
+    },
+    createEnvelopeState(attackTime, decayTime, sustainLevel, releaseTime) {
+      // src/assembly/envelope/createEnvelopeState(f32, f32, f32, f32) => usize
+      return exports.createEnvelopeState(attackTime, decayTime, sustainLevel, releaseTime) >>> 0;
     },
   }, exports);
   function __liftString(pointer) {
@@ -41,7 +45,7 @@ export const {
   fillSine,
   allocateF32Array,
   createBufferOffsets,
-  freeBufferOffsets,
+  createEnvelopeState,
 } = await (async url => instantiate(
   await (async () => {
     const isNodeOrBun = typeof process != "undefined" && process.versions != null && (process.versions.node != null || process.versions.bun != null);

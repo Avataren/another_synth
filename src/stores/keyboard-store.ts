@@ -96,7 +96,7 @@ export const useKeyboardStore = defineStore('keyboard', {
 
     setupGlobalKeyboardListeners() {
       const handleKeyDown = (event: KeyboardEvent) => {
-        console.log('Key pressed:', event.code, event.key);
+        //console.log('Key pressed:', event.code, event.key);
         // Ignore if we're in an input element or keyboard is disabled
         if (!this.isEnabled || this.isInputElement(event.target)) {
           return;

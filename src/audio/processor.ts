@@ -2,7 +2,7 @@
 
 declare const AudioWorkletProcessor: {
   prototype: AudioWorkletProcessor;
-  new (): AudioWorkletProcessor;
+  new(): AudioWorkletProcessor;
 };
 
 declare const registerProcessor: (
@@ -36,8 +36,15 @@ interface WasmExports {
     frequency: number,
     gain: number,
     detune: number,
+    gate: number,
   ) => number;
-  fillSine: (offsetsPtr: number, length: number, sampleRate: number) => void;
+  fillSine: (offsetsPtr: number, envPtr: number, length: number, sampleRate: number) => void;
+  createEnvelopeState: (
+    attackTime: number,
+    decayTime: number,
+    sustainLevel: number,
+    releaseTime: number
+  ) => number;
 }
 
 interface InitializeMessage {
@@ -53,6 +60,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
   private parameterBuffers: Map<string, number> = new Map();
   private audioBufferOffset = 0;
   private offsetsPtr = 0;
+  private envPtr = 0;
   private readonly bufferSize = 128;
 
   static get parameterDescriptors(): AudioParamDescriptor[] {
@@ -78,6 +86,13 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         maxValue: 1200,
         automationRate: 'k-rate',
       },
+      {
+        name: 'gate',
+        defaultValue: 0,
+        minValue: 0,
+        maxValue: 1,
+        automationRate: 'a-rate',
+      }
     ];
   }
 
@@ -112,8 +127,11 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
       this.audioBufferOffset = this.wasmInstance.allocateF32Array(
         this.bufferSize,
       );
-
+      console.log('audioBufferOffset is:', this.audioBufferOffset);
+      this.envPtr = this.wasmInstance.createEnvelopeState(0.1, 0.1, 0.7, 0.2);
+      console.log('envPtr is:', this.envPtr);
       // Allocate parameter buffers
+
       for (const param of WasmAudioProcessor.parameterDescriptors) {
         const offset = this.wasmInstance.allocateF32Array(this.bufferSize);
         this.parameterBuffers.set(param.name, offset);
@@ -123,11 +141,13 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
       const frequencyOffset = this.parameterBuffers.get('frequency');
       const gainOffset = this.parameterBuffers.get('gain');
       const detuneOffset = this.parameterBuffers.get('detune');
+      const gateOffset = this.parameterBuffers.get('gate');
 
       if (
         frequencyOffset === undefined ||
         gainOffset === undefined ||
-        detuneOffset === undefined
+        detuneOffset === undefined ||
+        gateOffset === undefined
       ) {
         throw new Error('Required parameter buffers not allocated');
       }
@@ -137,6 +157,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         frequencyOffset,
         gainOffset,
         detuneOffset,
+        gateOffset
       );
 
       this.isInitialized = true;
@@ -150,6 +171,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  lastGate = -1;
   private copyParameterToWasm(
     paramName: string,
     paramData: Float32Array,
@@ -170,6 +192,13 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         ? new Float32Array(channelLength).fill(fillValue)
         : paramData,
     );
+
+    // if (paramName === 'gate') {
+    //   if (wasmBuffer[0] != this.lastGate) {
+    //     this.lastGate = wasmBuffer[0] as number;
+    //     console.log('this.lastGate', this.lastGate);
+    //   }
+    // }
   }
 
   override process(
@@ -179,7 +208,6 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
   ): boolean {
     if (!this.isInitialized || !this.shared_memory || !this.wasmInstance)
       return true;
-
     const output = outputs[0];
     if (!output) return true;
 
@@ -192,7 +220,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
     }
 
     // Generate audio data using the offsets pointer
-    this.wasmInstance.fillSine(this.offsetsPtr, channel.length, sampleRate);
+    this.wasmInstance.fillSine(this.offsetsPtr, this.envPtr, channel.length, sampleRate);
 
     // Copy the result back
     const wasmMemoryBuffer = new Float32Array(

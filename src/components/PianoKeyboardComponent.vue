@@ -22,15 +22,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted, watch } from 'vue';
 import { useKeyboardStore } from '../stores/keyboard-store';
+import { useAudioSystemStore } from 'src/stores/audio-system-store';
 
 interface PianoKey {
   midiNote: number;
   label: string;
   type: 'white' | 'black';
 }
-
+const { currentInstrument } = useAudioSystemStore();
 const keyboardStore = useKeyboardStore();
 
 // Define two octaves of piano keys
@@ -78,6 +79,37 @@ const keyboardNotes: PianoKey[] = [
 //   );
 // }
 
+const setupKeyboardListener = () => {
+  const keyboardStore = useKeyboardStore();
+
+  watch(
+    () => keyboardStore.noteEvents,
+    (events) => {
+      if (!events.length) return;
+
+      const latestEvent = events[events.length - 1];
+      if (!latestEvent) return;
+      console.log('watch trigger on note event! ', latestEvent.note);
+      if (latestEvent.velocity < 0.0001) {
+        currentInstrument?.note_off(latestEvent.note);
+      } else {
+        //const gain = latestEvent.velocity / 127;
+
+        currentInstrument?.note_on(latestEvent.note, latestEvent.velocity);
+      }
+      // Update audio parameters
+      // const freqParam = this.workletNode.parameters.get('frequency');
+      // const gainParam = this.workletNode.parameters.get('gain');
+
+      // if (freqParam && gainParam) {
+      //   freqParam.setValueAtTime(frequency, this.audioContext.currentTime);
+      //   gainParam.setValueAtTime(gain, this.audioContext.currentTime);
+      // }
+    },
+    { deep: true },
+  );
+};
+
 function handleNoteOn(note: number) {
   keyboardStore.noteOn(note);
 }
@@ -88,6 +120,7 @@ function handleNoteOff(note: number) {
 
 onMounted(() => {
   keyboardStore.setupGlobalKeyboardListeners();
+  setupKeyboardListener();
 });
 
 onUnmounted(() => {

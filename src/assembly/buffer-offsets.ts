@@ -5,7 +5,8 @@ export class BufferOffsets {
     public frequency: usize = 0,
     public gain: usize = 0,
     public detune: usize = 0,
-  ) {}
+    public gate: usize = 0,
+  ) { }
 }
 
 export function allocateF32Array(length: i32): i32 {
@@ -18,11 +19,12 @@ export function createBufferOffsets(
   frequency: usize,
   gain: usize,
   detune: usize,
+  gate: usize,
 ): usize {
-  const offsets = new BufferOffsets(output, frequency, gain, detune);
+  const offsets = new BufferOffsets(output, frequency, gain, detune, gate);
   return changetype<usize>(offsets);
 }
 
-export function freeBufferOffsets(ptr: usize): void {
-  __free(changetype<usize>(ptr));
-}
+// export function freeBufferOffsets(ptr: usize): void {
+//   __free(changetype<usize>(ptr));
+// }
