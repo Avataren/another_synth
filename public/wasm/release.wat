@@ -11,8 +11,8 @@
  (type $9 (func (param i32) (result i32)))
  (import "env" "memory" (memory $0 1 1024 shared))
  (import "env" "abort" (func $~lib/builtins/abort (param i32 i32 i32 i32)))
- (global $assembly/synth/TWO_PI f32 (f32.const 6.2831854820251465))
- (global $assembly/synth/phase (mut f32) (f32.const 0))
+ (global $src/assembly/synth/TWO_PI f32 (f32.const 6.2831854820251465))
+ (global $src/assembly/synth/phase (mut f32) (f32.const 0))
  (global $~lib/rt/itcms/total (mut i32) (i32.const 0))
  (global $~lib/rt/itcms/threshold (mut i32) (i32.const 0))
  (global $~lib/rt/itcms/state (mut i32) (i32.const 0))
@@ -37,9 +37,9 @@
  (data $9 (i32.const 1484) "<\00\00\00\00\00\00\00\00\00\00\00\02\00\00\00\1e\00\00\00~\00l\00i\00b\00/\00r\00t\00/\00t\00l\00s\00f\00.\00t\00s\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00")
  (data $10 (i32.const 1552) ")\15DNn\83\f9\a2\c0\dd4\f5\d1W\'\fcA\90C<\99\95b\dba\c5\bb\de\abcQ\fe")
  (data $11 (i32.const 1584) "\05\00\00\00 \00\00\00 \00\00\00 \00\00\00\00\00\00\00\01\19\00\00")
- (export "TWO_PI" (global $assembly/synth/TWO_PI))
- (export "allocateF32Array" (func $assembly/synth/allocateF32Array))
- (export "fillSine" (func $assembly/synth/fillSine))
+ (export "TWO_PI" (global $src/assembly/synth/TWO_PI))
+ (export "allocateF32Array" (func $src/assembly/synth/allocateF32Array))
+ (export "fillSine" (func $src/assembly/synth/fillSine))
  (export "memory" (memory $0))
  (start $~start)
  (func $~lib/rt/itcms/visitRoots
@@ -2051,7 +2051,7 @@
   f64.add
   f32.demote_f64
  )
- (func $assembly/synth/fillSine (param $0 i32) (param $1 i32) (param $2 i32) (param $3 f32)
+ (func $src/assembly/synth/fillSine (param $0 i32) (param $1 i32) (param $2 i32) (param $3 f32)
   (local $4 i32)
   (local $5 i32)
   (local $6 f32)
@@ -2072,22 +2072,22 @@
     local.get $0
     local.get $4
     i32.add
-    global.get $assembly/synth/phase
+    global.get $src/assembly/synth/phase
     call $~lib/math/NativeMathf.sin
     f32.store
-    global.get $assembly/synth/phase
+    global.get $src/assembly/synth/phase
     local.get $6
     f32.add
-    global.set $assembly/synth/phase
+    global.set $src/assembly/synth/phase
     loop $while-continue|1
-     global.get $assembly/synth/phase
+     global.get $src/assembly/synth/phase
      f32.const 6.2831854820251465
      f32.ge
      if
-      global.get $assembly/synth/phase
+      global.get $src/assembly/synth/phase
       f32.const -6.2831854820251465
       f32.add
-      global.set $assembly/synth/phase
+      global.set $src/assembly/synth/phase
       br $while-continue|1
      end
     end
@@ -2165,7 +2165,7 @@
   i32.const 1456
   global.set $~lib/rt/itcms/fromSpace
  )
- (func $assembly/synth/allocateF32Array (param $0 i32) (result i32)
+ (func $src/assembly/synth/allocateF32Array (param $0 i32) (result i32)
   (local $1 i32)
   (local $2 i32)
   (local $3 i32)

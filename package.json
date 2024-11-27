@@ -13,8 +13,8 @@
     "dev": "quasar dev",
     "build": "quasar build",
     "postinstall": "quasar prepare",
-    "asbuild:debug": "asc assembly/synth.ts --sharedMemory --maximumMemory 1024 --enable threads --importMemory --target debug",
-    "asbuild:release": "asc assembly/synth.ts --sharedMemory --maximumMemory 1024 --enable threads --importMemory --target release",
+    "asbuild:debug": "asc src/assembly/synth.ts --sharedMemory --maximumMemory 1024 --enable threads --importMemory --target debug",
+    "asbuild:release": "asc src/assembly/synth.ts --sharedMemory --maximumMemory 1024 --enable threads --importMemory --target release",
     "asbuild": "npm run asbuild:debug && npm run asbuild:release",
     "start": "npx serve ."
   },
