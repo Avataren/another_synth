@@ -16,6 +16,12 @@ async function instantiate(module, imports = {}) {
   };
   const { exports } = await WebAssembly.instantiate(module, adaptedImports);
   const memory = exports.memory || imports.env.memory;
+  const adaptedExports = Object.setPrototypeOf({
+    createBufferOffsets(output, frequency, gain, detune) {
+      // src/assembly/synth/createBufferOffsets(usize, usize, usize, usize) => usize
+      return exports.createBufferOffsets(output, frequency, gain, detune) >>> 0;
+    },
+  }, exports);
   function __liftString(pointer) {
     if (!pointer) return null;
     const
@@ -27,13 +33,15 @@ async function instantiate(module, imports = {}) {
     while (end - start > 1024) string += String.fromCharCode(...memoryU16.subarray(start, start += 1024));
     return string + String.fromCharCode(...memoryU16.subarray(start, end));
   }
-  return exports;
+  return adaptedExports;
 }
 export const {
   memory,
   TWO_PI,
   allocateF32Array,
+  createBufferOffsets,
   fillSine,
+  freeBufferOffsets,
 } = await (async url => instantiate(
   await (async () => {
     const isNodeOrBun = typeof process != "undefined" && process.versions != null && (process.versions.node != null || process.versions.bun != null);

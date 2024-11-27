@@ -54,6 +54,13 @@ export default class AudioSystem {
         freq.linearRampToValueAtTime(20, this.audioContext.currentTime + 2.0);
       }
 
+      const gain = workletNode.parameters.get('gain');
+      if (gain) {
+        gain.value = 0.0;
+        gain.linearRampToValueAtTime(0.5, this.audioContext.currentTime + 1.0);
+        gain.linearRampToValueAtTime(0.0, this.audioContext.currentTime + 2.0);
+      }
+
       // Connect the worklet to the audio context
       workletNode.connect(this.destinationNode);
       console.log('Audio setup completed successfully');
