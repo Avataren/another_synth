@@ -1,12 +1,5 @@
 <template>
-  <div
-    class="piano-keyboard"
-    @mouseup="handleMouseUp"
-    @mouseleave="handleMouseUp"
-    tabindex="0"
-    @keydown.prevent="handleKeyDown"
-    @keyup.prevent="handleKeyUp"
-  >
+  <div class="piano-keyboard">
     <div class="keys-container">
       <div
         v-for="note in keyboardNotes"
@@ -14,10 +7,11 @@
         :class="[
           'piano-key',
           note.type,
-          { active: isNoteActive(note.midiNote) },
+          { active: keyboardStore.isNoteActive(note.midiNote) },
         ]"
         @mousedown="handleNoteOn(note.midiNote)"
         @mouseup="handleNoteOff(note.midiNote)"
+        @mouseleave="handleNoteOff(note.midiNote)"
         :data-note="note.midiNote"
       >
         <span class="note-label">{{ note.label }}</span>
@@ -30,32 +24,15 @@
 import { onMounted, onUnmounted } from 'vue';
 import { useKeyboardStore } from '../stores/keyboard-store';
 
-const keyboardStore = useKeyboardStore();
-
-// Define piano key mapping (computer keyboard to MIDI notes)
-const keyMap: Record<string, number> = {
-  a: 60, // Middle C
-  w: 61,
-  s: 62,
-  e: 63,
-  d: 64,
-  f: 65,
-  t: 66,
-  g: 67,
-  y: 68,
-  h: 69,
-  u: 70,
-  j: 71,
-  k: 72,
-};
-
 interface PianoKey {
   midiNote: number;
   label: string;
   type: 'white' | 'black';
 }
 
-// Generate one octave of notes (customize as needed)
+const keyboardStore = useKeyboardStore();
+
+// Define piano keyboard layout
 const keyboardNotes: PianoKey[] = [
   { midiNote: 60, label: 'C', type: 'white' },
   { midiNote: 61, label: 'C#', type: 'black' },
@@ -72,8 +49,6 @@ const keyboardNotes: PianoKey[] = [
   { midiNote: 72, label: 'C', type: 'white' },
 ];
 
-const { isNoteActive } = keyboardStore;
-
 function handleNoteOn(note: number) {
   keyboardStore.noteOn(note);
 }
@@ -82,33 +57,12 @@ function handleNoteOff(note: number) {
   keyboardStore.noteOff(note);
 }
 
-function handleKeyDown(event: KeyboardEvent) {
-  const note = keyMap[event.key];
-  if (note !== undefined) {
-    handleNoteOn(note);
-  }
-}
-
-function handleKeyUp(event: KeyboardEvent) {
-  const note = keyMap[event.key];
-  if (note !== undefined) {
-    handleNoteOff(note);
-  }
-}
-
-function handleMouseUp() {
-  keyboardStore.clearAllNotes();
-}
-
 onMounted(() => {
-  // Ensure the component can receive keyboard events
-  const element = document.querySelector('.piano-keyboard') as HTMLElement;
-  if (element) {
-    element.focus();
-  }
+  keyboardStore.setupGlobalKeyboardListeners();
 });
 
 onUnmounted(() => {
+  keyboardStore.cleanup();
   keyboardStore.clearAllNotes();
 });
 </script>
@@ -119,13 +73,18 @@ onUnmounted(() => {
   max-width: 800px;
   height: 200px;
   position: relative;
-  outline: none;
+  margin: 20px auto;
+  user-select: none;
 }
 
 .keys-container {
   display: flex;
   position: relative;
   height: 100%;
+  background: #f0f0f0;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .piano-key {
@@ -136,22 +95,24 @@ onUnmounted(() => {
   padding-bottom: 1rem;
   box-sizing: border-box;
   cursor: pointer;
-  user-select: none;
+  transition: background-color 0.1s;
 }
 
 .white {
   background: white;
   border: 1px solid #ccc;
+  border-radius: 0 0 4px 4px;
   flex: 1;
   z-index: 1;
 }
 
 .black {
-  background: black;
+  background: #333;
   width: 30px;
   height: 60%;
   margin: 0 -15px;
   z-index: 2;
+  border-radius: 0 0 4px 4px;
 }
 
 .white.active {
@@ -159,15 +120,34 @@ onUnmounted(() => {
 }
 
 .black.active {
-  background: #333;
+  background: #666;
 }
 
 .note-label {
   font-size: 12px;
   color: #666;
+  pointer-events: none;
 }
 
 .black .note-label {
   color: white;
+}
+
+/* Add hover effects */
+.white:hover {
+  background: #f5f5f5;
+}
+
+.black:hover {
+  background: #444;
+}
+
+/* Prevent text selection */
+.piano-key,
+.note-label {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 </style>
