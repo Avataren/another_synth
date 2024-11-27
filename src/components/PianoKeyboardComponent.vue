@@ -15,6 +15,7 @@
         :data-note="note.midiNote"
       >
         <span class="note-label">{{ note.label }}</span>
+        <!-- <span class="key-binding">{{ getKeyBinding(note.midiNote) }}</span> -->
       </div>
     </div>
   </div>
@@ -32,22 +33,50 @@ interface PianoKey {
 
 const keyboardStore = useKeyboardStore();
 
-// Define piano keyboard layout
+// Define two octaves of piano keys
 const keyboardNotes: PianoKey[] = [
-  { midiNote: 60, label: 'C', type: 'white' },
-  { midiNote: 61, label: 'C#', type: 'black' },
-  { midiNote: 62, label: 'D', type: 'white' },
-  { midiNote: 63, label: 'D#', type: 'black' },
-  { midiNote: 64, label: 'E', type: 'white' },
-  { midiNote: 65, label: 'F', type: 'white' },
-  { midiNote: 66, label: 'F#', type: 'black' },
-  { midiNote: 67, label: 'G', type: 'white' },
-  { midiNote: 68, label: 'G#', type: 'black' },
-  { midiNote: 69, label: 'A', type: 'white' },
-  { midiNote: 70, label: 'A#', type: 'black' },
-  { midiNote: 71, label: 'B', type: 'white' },
-  { midiNote: 72, label: 'C', type: 'white' },
+  { midiNote: 48, label: 'C3', type: 'white' },
+  { midiNote: 49, label: 'C#3', type: 'black' },
+  { midiNote: 50, label: 'D3', type: 'white' },
+  { midiNote: 51, label: 'D#3', type: 'black' },
+  { midiNote: 52, label: 'E3', type: 'white' },
+  { midiNote: 53, label: 'F3', type: 'white' },
+  { midiNote: 54, label: 'F#3', type: 'black' },
+  { midiNote: 55, label: 'G3', type: 'white' },
+  { midiNote: 56, label: 'G#3', type: 'black' },
+  { midiNote: 57, label: 'A3', type: 'white' },
+  { midiNote: 58, label: 'A#3', type: 'black' },
+  { midiNote: 59, label: 'B3', type: 'white' },
+  { midiNote: 60, label: 'C4', type: 'white' },
+  { midiNote: 61, label: 'C#4', type: 'black' },
+  { midiNote: 62, label: 'D4', type: 'white' },
+  { midiNote: 63, label: 'D#4', type: 'black' },
+  { midiNote: 64, label: 'E4', type: 'white' },
+  { midiNote: 65, label: 'F4', type: 'white' },
+  { midiNote: 66, label: 'F#4', type: 'black' },
+  { midiNote: 67, label: 'G4', type: 'white' },
+  { midiNote: 68, label: 'G#4', type: 'black' },
+  { midiNote: 69, label: 'A4', type: 'white' },
+  { midiNote: 70, label: 'A#4', type: 'black' },
+  { midiNote: 71, label: 'B4', type: 'white' },
+  { midiNote: 72, label: 'C5', type: 'white' },
+  { midiNote: 73, label: 'C#5', type: 'black' },
+  { midiNote: 74, label: 'D5', type: 'white' },
+  { midiNote: 75, label: 'D#5', type: 'black' },
+  { midiNote: 76, label: 'E5', type: 'white' },
+  { midiNote: 77, label: 'F5', type: 'white' },
+  { midiNote: 78, label: 'F#5', type: 'black' },
+  { midiNote: 79, label: 'G5', type: 'white' },
+  { midiNote: 80, label: 'G#5', type: 'black' },
+  { midiNote: 81, label: 'A5', type: 'white' },
 ];
+
+// function getKeyBinding(midiNote: number): string {
+//   const keyMap = keyboardStore.$state.keyMap;
+//   return (
+//     Object.entries(keyMap).find(([_, note]) => note === midiNote)?.[0] || ''
+//   );
+// }
 
 function handleNoteOn(note: number) {
   keyboardStore.noteOn(note);
@@ -70,8 +99,8 @@ onUnmounted(() => {
 <style scoped>
 .piano-keyboard {
   width: 100%;
-  max-width: 800px;
-  height: 200px;
+  max-width: 600px; /* Reduced from 800px */
+  height: 180px; /* Slightly reduced height */
   position: relative;
   margin: 20px auto;
   user-select: none;
@@ -90,9 +119,10 @@ onUnmounted(() => {
 .piano-key {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 1rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 0.5rem;
   box-sizing: border-box;
   cursor: pointer;
   transition: background-color 0.1s;
@@ -108,9 +138,9 @@ onUnmounted(() => {
 
 .black {
   background: #333;
-  width: 30px;
+  width: 24px; /* Reduced from 30px */
   height: 60%;
-  margin: 0 -15px;
+  margin: 0 -12px; /* Adjusted margin to match new width */
   z-index: 2;
   border-radius: 0 0 4px 4px;
 }
@@ -124,16 +154,24 @@ onUnmounted(() => {
 }
 
 .note-label {
-  font-size: 12px;
+  font-size: 10px;
   color: #666;
   pointer-events: none;
+  margin-bottom: 2px;
 }
 
-.black .note-label {
+.key-binding {
+  font-size: 9px;
+  color: #999;
+  pointer-events: none;
+  margin-bottom: 4px;
+}
+
+.black .note-label,
+.black .key-binding {
   color: white;
 }
 
-/* Add hover effects */
 .white:hover {
   background: #f5f5f5;
 }
@@ -142,9 +180,9 @@ onUnmounted(() => {
   background: #444;
 }
 
-/* Prevent text selection */
 .piano-key,
-.note-label {
+.note-label,
+.key-binding {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
