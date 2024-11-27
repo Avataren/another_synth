@@ -18,7 +18,7 @@ async function instantiate(module, imports = {}) {
   const memory = exports.memory || imports.env.memory;
   const adaptedExports = Object.setPrototypeOf({
     createBufferOffsets(output, frequency, gain, detune) {
-      // src/assembly/synth/createBufferOffsets(usize, usize, usize, usize) => usize
+      // src/assembly/buffer-offsets/createBufferOffsets(usize, usize, usize, usize) => usize
       return exports.createBufferOffsets(output, frequency, gain, detune) >>> 0;
     },
   }, exports);
@@ -38,9 +38,9 @@ async function instantiate(module, imports = {}) {
 export const {
   memory,
   TWO_PI,
+  fillSine,
   allocateF32Array,
   createBufferOffsets,
-  fillSine,
   freeBufferOffsets,
 } = await (async url => instantiate(
   await (async () => {
