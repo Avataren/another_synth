@@ -113,7 +113,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           );
           this.wasmPointers.push({
             audioBufferPtr: audioBufPtr,
-            envelope1Ptr: wasmModule.createEnvelopeState(0.1, 0.3, 0.5, 0.5),
+            envelope1Ptr: wasmModule.createEnvelopeState(0.01, 0.2, 0.5, 0.25),
             parameterPtrs: parameterPtrs,
             offsetsPtr: offsetsPtr,
           });

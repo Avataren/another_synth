@@ -32,7 +32,7 @@ export function fillSine(
       sampleRate,
       gate > 0.5 ? true : false,
     );
-    const frequency = baseFreq * centsToRatio(detune);
+    const frequency: f32 = baseFreq * centsToRatio(detune);
     const phaseStep: f32 = (TWO_PI * frequency) / sampleRate;
 
     store<f32>(offsets.output + index, Mathf.sin(phase) * gain * envValue);
