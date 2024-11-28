@@ -1,16 +1,20 @@
 import { BufferOffsets } from './buffer-offsets';
 import { processEnvelope } from './envelope';
+import { Oscillator, OscillatorState } from './oscillator';
 
-export const TWO_PI: f32 = 6.28318530718;
-let phase: f32 = 0;
+const osc1 = new Oscillator();
 
 // Re-export the buffer management functions
-export { allocateF32Array, createBufferOffsets } from './buffer-offsets';
+export {
+  allocateF32Array,
+  createBufferOffsets,
+  createOscillatorState,
+} from './buffer-offsets';
 
 export { createEnvelopeState } from './envelope';
 
-function centsToRatio(cents: f32): f32 {
-  return Mathf.pow(2.0, cents / 1200.0);
+export function getOscillatorState(ptr: usize): OscillatorState {
+  return load<OscillatorState>(ptr);
 }
 
 export function fillSine(
@@ -20,6 +24,8 @@ export function fillSine(
   sampleRate: f32,
 ): void {
   const offsets = changetype<BufferOffsets>(offsetsPtr);
+  const osc1StatePtr = load<usize>(offsets.oscillator1State);
+  const osc1State = changetype<OscillatorState>(osc1StatePtr);
 
   let index = 0;
   for (let i = 0; i < length; i++) {
@@ -32,13 +38,9 @@ export function fillSine(
       sampleRate,
       gate > 0.5 ? true : false,
     );
-    const frequency: f32 = baseFreq * centsToRatio(detune);
-    const phaseStep: f32 = (TWO_PI * frequency) / sampleRate;
 
-    store<f32>(offsets.output + index, Mathf.sin(phase) * gain * envValue);
-
-    phase += phaseStep;
-    while (phase >= TWO_PI) phase -= TWO_PI;
+    const sample = osc1.processSample(osc1State, baseFreq, sampleRate, detune);
+    store<f32>(offsets.output + index, sample * gain * envValue);
     index += 4;
   }
 }

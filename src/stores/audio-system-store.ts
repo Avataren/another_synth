@@ -11,7 +11,7 @@ interface AudioParamDescriptor {
   maxValue?: number;
   automationRate?: 'a-rate' | 'k-rate';
 }
-const max_instruments = 64;
+const max_instruments = 1;
 const max_voices = 8 * max_instruments;
 export interface WasmMemoryPointers {
   audioBufferPtr: number;
@@ -104,12 +104,17 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           };
 
           const audioBufPtr = wasmModule.allocateF32Array(bufferSize);
+          const osc1State = wasmModule.createOscillatorState();
+          console.log('osc1STate:', osc1State);
+          const osc2State = wasmModule.createOscillatorState();
           const offsetsPtr = wasmModule.createBufferOffsets(
             audioBufPtr,
             parameterPtrs.frequency,
             parameterPtrs.gain,
             parameterPtrs.detune,
             parameterPtrs.gate,
+            osc1State,
+            osc2State,
           );
           this.wasmPointers.push({
             audioBufferPtr: audioBufPtr,
