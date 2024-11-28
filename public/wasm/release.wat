@@ -513,110 +513,269 @@
   (local $7 i64)
   (local $8 f32)
   (local $9 f32)
-  (local $10 i32)
-  (local $11 f32)
-  (local $12 f64)
-  i32.const 0
-  local.set $1
+  (local $10 f32)
+  (local $11 i32)
+  (local $12 i32)
+  (local $13 f32)
+  (local $14 f64)
   loop $for-loop|0
    local.get $2
-   local.get $5
+   local.get $6
    i32.gt_s
    if
-    local.get $1
+    local.get $5
+    local.get $0
+    i32.load offset=4
+    i32.add
+    f32.load
+    local.set $9
+    local.get $5
     local.get $0
     i32.load offset=8
     i32.add
     f32.load
     local.set $8
-    local.get $1
+    local.get $5
+    local.get $0
+    i32.load offset=12
+    i32.add
+    f32.load
+    local.set $10
+    local.get $5
     local.get $0
     i32.load offset=16
     i32.add
     f32.load
-    local.set $9
+    f32.const 0.5
+    f32.gt
+    local.tee $11
     local.get $1
-    local.get $0
-    i32.load offset=4
-    i32.add
-    f32.load
-    block $__inlined_func$~lib/math/NativeMathf.pow (result f32)
+    i32.load8_u offset=24
+    i32.const 0
+    i32.ne
+    i32.ne
+    local.set $12
+    local.get $11
+    i32.const 0
+    local.get $12
+    select
+    if
      local.get $1
-     local.get $0
-     i32.load offset=12
-     i32.add
-     f32.load
+     i32.const 1
+     i32.store
+     local.get $1
+     f32.const 0
+     f32.store offset=4
+     local.get $1
+     f32.const 1
+     local.get $1
+     f32.load offset=8
+     local.get $3
+     f32.mul
+     f32.div
+     f32.store offset=28
+    else
+     local.get $11
+     i32.eqz
+     local.get $12
+     i32.and
+     if
+      local.get $1
+      i32.const 4
+      i32.store
+      local.get $1
+      local.get $1
+      f32.load offset=4
+      f32.store offset=32
+      local.get $1
+      f32.const 1
+      local.get $1
+      f32.load offset=20
+      local.get $3
+      f32.mul
+      f32.div
+      f32.store offset=28
+     end
+    end
+    local.get $1
+    local.get $11
+    i32.store8 offset=24
+    block $break|0
+     block $case3|0
+      block $case2|0
+       block $case1|0
+        block $case0|0
+         local.get $1
+         i32.load
+         i32.const 1
+         i32.sub
+         br_table $case0|0 $case1|0 $case2|0 $case3|0 $break|0
+        end
+        local.get $1
+        local.get $1
+        f32.load offset=4
+        local.get $1
+        f32.load offset=28
+        f32.add
+        f32.store offset=4
+        local.get $1
+        f32.load offset=4
+        f32.const 1
+        f32.ge
+        if
+         local.get $1
+         f32.const 1
+         f32.store offset=4
+         local.get $1
+         i32.const 2
+         i32.store
+         local.get $1
+         f32.const 1
+         local.get $1
+         f32.load offset=16
+         f32.sub
+         local.get $1
+         f32.load offset=12
+         local.get $3
+         f32.mul
+         f32.div
+         f32.store offset=28
+        end
+        br $break|0
+       end
+       local.get $1
+       local.get $1
+       f32.load offset=4
+       local.get $1
+       f32.load offset=28
+       f32.sub
+       f32.store offset=4
+       local.get $1
+       f32.load offset=16
+       local.tee $13
+       local.get $1
+       f32.load offset=4
+       f32.ge
+       if
+        local.get $1
+        local.get $13
+        f32.store offset=4
+        local.get $1
+        i32.const 3
+        i32.store
+       end
+       br $break|0
+      end
+      local.get $1
+      local.get $1
+      f32.load offset=16
+      f32.store offset=4
+      br $break|0
+     end
+     local.get $1
+     local.get $1
+     f32.load offset=4
+     local.get $1
+     f32.load offset=32
+     local.get $1
+     f32.load offset=28
+     f32.mul
+     f32.sub
+     f32.store offset=4
+     local.get $1
+     f32.load offset=4
+     f32.const 9.999999747378752e-05
+     f32.lt
+     if
+      local.get $1
+      f32.const 0
+      f32.store offset=4
+      local.get $1
+      i32.const 0
+      i32.store
+     end
+    end
+    local.get $1
+    f32.load offset=4
+    f32.const 1
+    f32.min
+    f32.const 0
+    f32.max
+    local.set $13
+    local.get $9
+    block $__inlined_func$~lib/math/NativeMathf.pow$1 (result f32)
+     local.get $10
      f32.const 1200
      f32.div
-     local.tee $11
+     local.tee $9
      f32.abs
      f32.const 2
      f32.le
      if
       f32.const 4
-      local.get $11
+      local.get $9
       f32.const 2
       f32.eq
-      br_if $__inlined_func$~lib/math/NativeMathf.pow
+      br_if $__inlined_func$~lib/math/NativeMathf.pow$1
       drop
       f32.const 1.4142135381698608
-      local.get $11
+      local.get $9
       f32.const 0.5
       f32.eq
-      br_if $__inlined_func$~lib/math/NativeMathf.pow
+      br_if $__inlined_func$~lib/math/NativeMathf.pow$1
       drop
       f32.const 0.5
-      local.get $11
+      local.get $9
       f32.const -1
       f32.eq
-      br_if $__inlined_func$~lib/math/NativeMathf.pow
+      br_if $__inlined_func$~lib/math/NativeMathf.pow$1
       drop
       f32.const 2
-      local.get $11
+      local.get $9
       f32.const 1
       f32.eq
-      br_if $__inlined_func$~lib/math/NativeMathf.pow
+      br_if $__inlined_func$~lib/math/NativeMathf.pow$1
       drop
       f32.const 1
-      local.get $11
+      local.get $9
       f32.const 0
       f32.eq
-      br_if $__inlined_func$~lib/math/NativeMathf.pow
+      br_if $__inlined_func$~lib/math/NativeMathf.pow$1
       drop
      end
      block $~lib/util/math/powf_lut|inlined.0 (result f32)
-      local.get $11
+      local.get $9
       i32.reinterpret_f32
-      local.tee $10
+      local.tee $11
       i32.const 1
       i32.shl
-      local.tee $6
+      local.tee $12
       i32.const 1
       i32.sub
       i32.const -16777217
       i32.ge_u
       if
        f32.const 1
-       local.get $6
+       local.get $12
        i32.eqz
        br_if $~lib/util/math/powf_lut|inlined.0
        drop
-       local.get $11
+       local.get $9
        f32.const 2
        f32.add
-       local.get $6
+       local.get $12
        i32.const -16777216
        i32.gt_u
        br_if $~lib/util/math/powf_lut|inlined.0
        drop
        f32.const 0
-       local.get $10
+       local.get $11
        i32.const 31
        i32.shr_u
        br_if $~lib/util/math/powf_lut|inlined.0
        drop
-       local.get $11
-       local.get $11
+       local.get $9
+       local.get $9
        f32.mul
        br $~lib/util/math/powf_lut|inlined.0
       end
@@ -627,16 +786,16 @@
       local.tee $4
       local.get $4
       f64.mul
-      local.set $12
-      local.get $11
+      local.set $14
+      local.get $9
       f64.promote_f32
       local.get $4
       f64.const 0.288457581109214
       f64.mul
       f64.const -0.36092606229713164
       f64.add
-      local.get $12
-      local.get $12
+      local.get $14
+      local.get $14
       f64.mul
       f64.mul
       local.get $4
@@ -652,7 +811,7 @@
       f64.mul
       f64.const -0.7213474675006291
       f64.add
-      local.get $12
+      local.get $14
       f64.mul
       f64.add
       f64.add
@@ -682,11 +841,11 @@
       local.get $4
       f64.const 211106232532992
       f64.add
-      local.tee $12
+      local.tee $14
       i64.reinterpret_f64
       local.set $7
       local.get $4
-      local.get $12
+      local.get $14
       f64.const -211106232532992
       f64.add
       f64.sub
@@ -728,8 +887,8 @@
     f32.mul
     local.get $3
     f32.div
-    local.set $11
-    local.get $1
+    local.set $9
+    local.get $5
     local.get $0
     i32.load
     i32.add
@@ -737,11 +896,11 @@
     call $~lib/math/NativeMathf.sin
     local.get $8
     f32.mul
-    local.get $9
+    local.get $13
     f32.mul
     f32.store
     global.get $src/assembly/synth/phase
-    local.get $11
+    local.get $9
     f32.add
     global.set $src/assembly/synth/phase
     loop $while-continue|1
@@ -756,14 +915,14 @@
       br $while-continue|1
      end
     end
-    local.get $1
+    local.get $5
     i32.const 4
     i32.add
-    local.set $1
-    local.get $5
+    local.set $5
+    local.get $6
     i32.const 1
     i32.add
-    local.set $5
+    local.set $6
     br $for-loop|0
    end
   end
@@ -838,7 +997,7 @@
    local.get $1
    global.set $~lib/rt/itcms/iter
   end
-  block $__inlined_func$~lib/rt/itcms/Object#unlink$139
+  block $__inlined_func$~lib/rt/itcms/Object#unlink$179
    local.get $0
    i32.load offset=4
    i32.const -4
@@ -862,7 +1021,7 @@
      call $~lib/builtins/abort
      unreachable
     end
-    br $__inlined_func$~lib/rt/itcms/Object#unlink$139
+    br $__inlined_func$~lib/rt/itcms/Object#unlink$179
    end
    local.get $0
    i32.load offset=8
@@ -2170,7 +2329,7 @@
   global.get $~lib/rt/itcms/threshold
   i32.ge_u
   if
-   block $__inlined_func$~lib/rt/itcms/interrupt$75
+   block $__inlined_func$~lib/rt/itcms/interrupt$114
     i32.const 2048
     local.set $2
     loop $do-loop|0
@@ -2191,7 +2350,7 @@
       i32.const 1024
       i32.add
       global.set $~lib/rt/itcms/threshold
-      br $__inlined_func$~lib/rt/itcms/interrupt$75
+      br $__inlined_func$~lib/rt/itcms/interrupt$114
      end
      local.get $2
      i32.const 0
@@ -2359,7 +2518,7 @@
    call $~lib/rt/tlsf/initialize
   end
   global.get $~lib/rt/tlsf/ROOT
-  i32.const 32
+  i32.const 36
   call $~lib/rt/tlsf/allocateBlock
   i32.const 4
   i32.add
@@ -2387,6 +2546,9 @@
   local.get $4
   f32.const 0
   f32.store offset=28
+  local.get $4
+  f32.const 0
+  f32.store offset=32
   local.get $4
  )
  (func $~lib/rt/__visit_members (param $0 i32)
@@ -2468,7 +2630,7 @@
    i32.const 0
    i32.store
    global.get $~lib/memory/__stack_pointer
-   block $__inlined_func$~lib/typedarray/Float32Array#constructor$3 (result i32)
+   block $__inlined_func$~lib/typedarray/Float32Array#constructor$4 (result i32)
     global.get $~lib/memory/__stack_pointer
     i32.const 8
     i32.sub
@@ -2587,7 +2749,7 @@
      i32.add
      global.set $~lib/memory/__stack_pointer
      local.get $1
-     br $__inlined_func$~lib/typedarray/Float32Array#constructor$3
+     br $__inlined_func$~lib/typedarray/Float32Array#constructor$4
     end
     br $folding-inner1
    end
