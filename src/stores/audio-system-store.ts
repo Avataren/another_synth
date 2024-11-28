@@ -12,12 +12,18 @@ interface AudioParamDescriptor {
   automationRate?: 'a-rate' | 'k-rate';
 }
 
-const max_voices = 8 * 64;
+const max_voices = 8;
 export interface WasmMemoryPointers {
   audioBufferPtr: number;
   envelope1Ptr: number;
-  //parametersPtr: Map<string, number>;
-};
+  parameterPtrs: {
+    frequency: number;
+    gain: number;
+    detune: number;
+    gate: number;
+  };
+  offsetsPtr: number;
+}
 export const useAudioSystemStore = defineStore('audioSystem', {
   state: () => ({
     audioSystem: null as AudioSystem | null,
@@ -29,10 +35,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       initial: 256,
       maximum: 1024,
       shared: true,
-    })
+    }),
   }),
-  getters:
-  {
+  getters: {
     parameterDescriptors(): AudioParamDescriptor[] {
       return [
         {
@@ -62,9 +67,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           minValue: 0,
           maxValue: 1,
           automationRate: 'a-rate',
-        }
-      ]
-    }
+        },
+      ];
+    },
   },
   actions: {
     initializeAudioSystem() {
@@ -81,27 +86,50 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     async setupAudio() {
       if (this.audioSystem) {
-
-        const wasmModule = await loadWasmModule('wasm/release.wasm', this.wasmMemory);
+        const wasmModule = await loadWasmModule(
+          'wasm/release.wasm',
+          this.wasmMemory,
+        );
 
         // Log the WASM exports to confirm
         console.log('WASM Exports: ', wasmModule);
-        //const parameterBuffers = new Map<string, number>();
         const bufferSize = 128;
-        for (let i = 0; i < max_voices; i++) {
-          // for (const param of this.parameterDescriptors) {
-          //   const offset = wasmModule.allocateF32Array(bufferSize);
-          //   parameterBuffers.set(param.name, offset);
-          // }
 
+        for (let i = 0; i < max_voices; i++) {
+          const parameterPtrs = {
+            frequency: wasmModule.allocateF32Array(bufferSize),
+            gain: wasmModule.allocateF32Array(bufferSize),
+            detune: wasmModule.allocateF32Array(bufferSize),
+            gate: wasmModule.allocateF32Array(bufferSize),
+          };
+
+          const audioBufPtr = wasmModule.allocateF32Array(bufferSize);
+          const offsetsPtr = wasmModule.createBufferOffsets(
+            audioBufPtr,
+            parameterPtrs.frequency,
+            parameterPtrs.gain,
+            parameterPtrs.detune,
+            parameterPtrs.gate,
+          );
           this.wasmPointers.push({
-            audioBufferPtr: wasmModule.allocateF32Array(bufferSize),
+            audioBufferPtr: audioBufPtr,
             envelope1Ptr: wasmModule.createEnvelopeState(0.1, 0.2, 0.5, 0.2),
-            //parametersPtr: parameterBuffers
-          })
+            parameterPtrs: parameterPtrs,
+            offsetsPtr: offsetsPtr,
+          });
+          console.log(`Voice ${i} pointers:`, {
+            audio: audioBufPtr,
+            env: this.wasmPointers[i]?.envelope1Ptr,
+            params: parameterPtrs,
+            offsets: offsetsPtr,
+          });
         }
 
-        this.currentInstrument = new Instrument(this.audioSystem.destinationNode, this.audioSystem.audioContext, this.wasmMemory);
+        this.currentInstrument = new Instrument(
+          this.audioSystem.destinationNode,
+          this.audioSystem.audioContext,
+          this.wasmMemory,
+        );
         this.destinationNode = this.audioSystem.destinationNode;
       } else {
         console.error('AudioSystem not initialized');

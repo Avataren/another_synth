@@ -2,11 +2,9 @@
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { loadWasmBinary } from 'src/utils/wasm-loader';
 
-
-
 export async function createAudioWorkletWithWasm(
   audioContext: AudioContext,
-  wasmMemory: WebAssembly.Memory
+  wasmMemory: WebAssembly.Memory,
 ): Promise<AudioWorkletNode> {
   // Load the AudioWorklet processor
   await audioContext.audioWorklet.addModule('src/audio/processor.ts?worklet');
@@ -33,8 +31,13 @@ export async function createAudioWorkletWithWasm(
         memory: wasmMemory,
         memorySegment: {
           audioBufferPtr: memSegment?.audioBufferPtr,
-          envelope1Ptr: memSegment?.envelope1Ptr
-        }
+          envelope1Ptr: memSegment?.envelope1Ptr,
+          frequencyPtr: memSegment?.parameterPtrs.frequency,
+          gainPtr: memSegment?.parameterPtrs.gain,
+          detunePtr: memSegment?.parameterPtrs.detune,
+          gatePtr: memSegment?.parameterPtrs.gate,
+          offsetsPtr: memSegment?.offsetsPtr,
+        },
       });
     }
   };
