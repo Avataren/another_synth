@@ -3,6 +3,7 @@ import { processEnvelope } from './envelope';
 import { Oscillator, OscillatorState } from './oscillator';
 
 const osc1 = new Oscillator();
+const osc2 = new Oscillator();
 
 // Re-export the buffer management functions
 export {
@@ -26,6 +27,8 @@ export function fillSine(
   const offsets = changetype<BufferOffsets>(offsetsPtr);
   const osc1StatePtr = load<usize>(offsets.oscillator1State);
   const osc1State = changetype<OscillatorState>(osc1StatePtr);
+  const osc2StatePtr = load<usize>(offsets.oscillator2State);
+  const osc2State = changetype<OscillatorState>(osc2StatePtr);
 
   let index = 0;
   for (let i = 0; i < length; i++) {
@@ -40,7 +43,13 @@ export function fillSine(
     );
 
     const sample = osc1.processSample(osc1State, baseFreq, sampleRate, detune);
-    store<f32>(offsets.output + index, sample * gain * envValue);
+    const sample2 = osc2.processSample(
+      osc2State,
+      baseFreq * 1.5,
+      sampleRate,
+      detune,
+    );
+    store<f32>(offsets.output + index, (sample + sample2) * gain * envValue);
     index += 4;
   }
 }
