@@ -21,14 +21,14 @@ export default class Instrument {
   }
 
   public note_on(midi_note: number, velocity: number) {
-    console.log('note_on ', midi_note);
+    //console.log('note_on ', midi_note);
     if (this.activeNotes.has(midi_note)) {
       this.note_off(midi_note);
     }
 
     const voiceIndex = this.findFreeVoice();
     if (voiceIndex !== -1) {
-      console.log('voiceIndex ', voiceIndex);
+      //console.log('voiceIndex ', voiceIndex);
       const voice = this.voices[voiceIndex];
       voice?.start(midi_note, velocity);
       this.activeNotes.set(midi_note, voiceIndex);
@@ -36,10 +36,10 @@ export default class Instrument {
   }
 
   public note_off(midi_note: number) {
-    console.log('note_off ', midi_note);
+    //console.log('note_off ', midi_note);
     const voiceIndex = this.activeNotes.get(midi_note);
     if (voiceIndex !== undefined) {
-      console.log('ending voiceIndex ', voiceIndex);
+      //console.log('ending voiceIndex ', voiceIndex);
       const voice = this.voices[voiceIndex];
       voice?.stop();
       this.activeNotes.delete(midi_note);

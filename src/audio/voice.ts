@@ -26,7 +26,7 @@ export default class Voice {
       }
       this.updateEnvelope(0, {
         attack: 0.001,
-        decay: 0.01,
+        decay: 0.015,
         sustain: 0.0,
         release: 0.0,
         attackCurve: 0.0,

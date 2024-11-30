@@ -89,7 +89,7 @@ const setupKeyboardListener = () => {
 
       const latestEvent = events[events.length - 1];
       if (!latestEvent) return;
-      console.log('watch trigger on note event! ', latestEvent.note);
+      //console.log('watch trigger on note event! ', latestEvent.note);
       if (latestEvent.velocity < 0.0001) {
         currentInstrument?.note_off(latestEvent.note);
       } else {

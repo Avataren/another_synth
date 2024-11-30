@@ -1,8 +1,9 @@
 /// <reference lib="webworker" />
 
 import Envelope, { type EnvelopeMessage } from './dsp/envelope';
-import Oscillator from './dsp/oscillator';
 import KarplusStrong from './dsp/karplus-strong';
+import { WaveTableBank } from './wavetable/wavetable-bank';
+import { WaveTableOscillator } from './wavetable/wavetable-oscillator';
 
 declare const AudioWorkletProcessor: {
     prototype: AudioWorkletProcessor;
@@ -34,14 +35,12 @@ interface AudioParamDescriptor {
 }
 
 class WasmAudioProcessor extends AudioWorkletProcessor {
-    private oscillator: Oscillator;
     private envelopes: Map<number, Envelope> = new Map();
     private string: KarplusStrong;
     private lastGate: number = 0;
-    private isPlucking: boolean = false;
-    private pluckDuration: number = 0.05; // 5ms pluck duration
-    private pluckSampleCount: number = 0;
-    private pluckMaxSamples: number;
+
+    private bank = new WaveTableBank();
+    private osc = new WaveTableOscillator(this.bank, 'sine', sampleRate);
 
     static get parameterDescriptors(): AudioParamDescriptor[] {
         return [
@@ -78,10 +77,8 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
 
     constructor() {
         super();
-        this.oscillator = new Oscillator(sampleRate);
         this.envelopes.set(0, new Envelope(sampleRate));
         this.string = new KarplusStrong(sampleRate);
-        this.pluckMaxSamples = Math.floor(sampleRate * this.pluckDuration);
 
         this.port.onmessage = async (event: MessageEvent) => {
             if (event.data.type === 'initialize') {
@@ -99,6 +96,10 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
             }
         };
         this.port.postMessage({ type: 'ready' });
+    }
+
+    private getFrequency(baseFreq: number, detune: number): number {
+        return baseFreq * Math.pow(2, detune / 1200);
     }
 
     override process(
@@ -130,7 +131,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
             const envelopeValue = this.envelopes.get(0)!.process(gateValue);
 
             // Generate oscillator signal with envelope applied
-            const oscillatorSample = this.oscillator.process(freq, detuneValue) * envelopeValue;
+            const oscillatorSample = this.osc.process(this.getFrequency(freq, detuneValue)) * envelopeValue;
 
             // Process through string model
             const sample = this.string.process(oscillatorSample) * gainValue;

@@ -5,7 +5,7 @@ export default class KarplusStrong {
     private readonly sampleRate: number;
     private delayLength: number;
     private readonly maxDelay: number;
-    private readonly feedback = 0.995;
+    private readonly feedback = 0.99;
 
     // Simple one-pole lowpass for feedback path
     private lastSample: number = 0;
