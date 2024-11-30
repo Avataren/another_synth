@@ -14,5 +14,8 @@ import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponen
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import PianoKeyboardComponent from 'src/components/PianoKeyboardComponent.vue';
 import OscillatorComponent from 'src/components/OscillatorComponent.vue';
-const { destinationNode } = useAudioSystemStore();
+import { storeToRefs } from 'pinia';
+
+const store = useAudioSystemStore();
+const { destinationNode } = storeToRefs(store);
 </script>

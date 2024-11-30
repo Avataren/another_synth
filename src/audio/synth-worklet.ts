@@ -2,11 +2,8 @@
 
 import CombFilter from './dsp/comb-filter';
 import Envelope, { type EnvelopeMessage } from './dsp/envelope';
-import KarplusStrong from './dsp/karplus-strong';
-import Oscillator from './dsp/oscillator';
-import SchroederReverb from './dsp/schroeder';
 import { WaveTableBank } from './wavetable/wavetable-bank';
-import { WaveTableOscillator } from './wavetable/wavetable-oscillator';
+import { type OscillatorState, WaveTableOscillator } from './wavetable/wavetable-oscillator';
 
 declare const AudioWorkletProcessor: {
     prototype: AudioWorkletProcessor;
@@ -39,13 +36,10 @@ interface AudioParamDescriptor {
 
 class WasmAudioProcessor extends AudioWorkletProcessor {
     private envelopes: Map<number, Envelope> = new Map();
-    private string: KarplusStrong;
+    private oscillators: Map<number, WaveTableOscillator> = new Map();
     private lastGate: number = 0;
     private combFilter = new CombFilter(sampleRate, 100);
     private bank = new WaveTableBank();
-    private osc = new WaveTableOscillator(this.bank, 'sawtooth', sampleRate);
-    private shcroeder = new SchroederReverb(sampleRate);
-    private sineOsc = new Oscillator(sampleRate);
     static get parameterDescriptors(): AudioParamDescriptor[] {
         return [
             {
@@ -81,8 +75,9 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
 
     constructor() {
         super();
+        this.oscillators.set(0, new WaveTableOscillator(this.bank, 'sawtooth', sampleRate));
+        this.oscillators.set(1, new WaveTableOscillator(this.bank, 'square', sampleRate));
         this.envelopes.set(0, new Envelope(sampleRate));
-        this.string = new KarplusStrong(sampleRate);
 
         this.port.onmessage = async (event: MessageEvent) => {
             if (event.data.type === 'initialize') {
@@ -96,6 +91,15 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
                     envelope.updateConfig(msg.config);
                 } else {
                     this.envelopes.set(msg.id, new Envelope(sampleRate, msg.config));
+                }
+            }
+            else if (event.data.type === 'updateOscillator') {
+                const state = event.data.newState as OscillatorState;
+                const oscillator = this.oscillators.get(state.id);
+                if (oscillator) {
+                    oscillator.updateState(state);
+                } else {
+                    console.error('oscillator doesnt exist: ', state);
                 }
             }
         };
@@ -142,18 +146,19 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
                 this.combFilter.setFrequency(freq);
                 this.combFilter.feedback = 0.999;
                 this.combFilter.dampingFactor = 0.4;
-                this.osc.reset();
-
+                this.oscillators.forEach((oscillator, _id) => {
+                    if (oscillator.hardSync) {
+                        oscillator.reset();
+                    }
+                });
             }
             // Get envelope value
             const envelopeValue = this.envelopes.get(0)!.process(gateValue);
-
-            // Generate oscillator signal with envelope applied
-
-            const oscillatorSample = this.osc.process(this.getFrequency(freq, detuneValue)) * envelopeValue;
-            //const oscillatorSample = this.sineOsc.process(freq, detuneValue) * envelopeValue;
-            // // Process through string model
-            //const sample = this.shcroeder.process(oscillatorSample);
+            let oscillatorSample = 0.0;
+            this.oscillators.forEach((oscillator, _id) => {
+                oscillatorSample += oscillator.process(this.getFrequency(freq, detuneValue));
+            });
+            oscillatorSample *= envelopeValue;
             this.combFilter.setFrequency(freq);
             let sample = this.combFilter.process(oscillatorSample);
             sample = this.softClip(sample);

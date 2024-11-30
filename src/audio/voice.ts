@@ -1,5 +1,6 @@
 import { createStandardAudioWorklet } from './audio-processor-loader';
-import type { EnvelopeConfig } from './dsp/envelope';
+import { type EnvelopeConfig } from './dsp/envelope';
+import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
 export default class Voice {
   private active: boolean = false;
@@ -15,6 +16,14 @@ export default class Voice {
     this.setupAudio(memory);
   }
 
+  public updateOscillatorState(key: number, newState: OscillatorState) {
+    this.workletNode?.port?.postMessage({
+      type: 'updateOscillator',
+      key,
+      newState
+    });
+  }
+
   private async setupAudio(_memory: WebAssembly.Memory) {
     try {
       // Create the AudioWorklet
@@ -24,7 +33,7 @@ export default class Voice {
         attack: 0.00,
         decay: 0.0035,
         sustain: 0.0,
-        release: 0.,
+        release: 0.0,
         attackCurve: 0.0,
         decayCurve: 0.0,
         releaseCurve: 0.0

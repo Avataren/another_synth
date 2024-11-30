@@ -1,14 +1,28 @@
 import { type WaveTable, type WaveformType, WaveTableGenerator } from './wave-utils';
 import { type WaveTableBank } from './wavetable-bank';
 
+//used for ui sync
+export interface OscillatorState {
+    id: number;
+    gain: number;
+    detune_oct: number;
+    detune_semi: number;
+    detune_cents: number;
+    detune: number;
+    hardsync: boolean;
+    waveform: WaveformType
+}
+
 export class WaveTableOscillator {
     private phasor = 0.0;
     private phaseInc = 0.0;
-    private phaseOfs = 0.5;
+    private gain = 0.0;
+    private detune = 0.0;
     private curWaveTable = 0;
     private currentWaveTables: WaveTable[] = [];
     private currentType: WaveformType;
     private sampleRate: number;
+    private hardSyncEnabled = false;
 
     constructor(
         private bank: WaveTableBank,
@@ -18,6 +32,21 @@ export class WaveTableOscillator {
         this.currentType = initialType;
         this.sampleRate = sampleRate;
         this.setWaveform(initialType);
+    }
+
+    public updateState(state: OscillatorState) {
+        this.hardSync = state.hardsync;
+        this.detune = state.detune;
+        this.gain = state.gain;
+        this.setWaveform(state.waveform);
+    }
+
+    public get hardSync() {
+        return this.hardSyncEnabled;
+    }
+
+    public set hardSync(val) {
+        this.hardSyncEnabled = val;
     }
 
     public reset() {
@@ -49,6 +78,10 @@ export class WaveTableOscillator {
         }
     }
 
+    private getFrequency(baseFreq: number, detune: number): number {
+        return baseFreq * Math.pow(2, detune / 1200);
+    }
+
     private updateWaveTableSelector(): void {
         let curWaveTable = 0;
         while (
@@ -61,7 +94,8 @@ export class WaveTableOscillator {
     }
 
     process(frequency: number): number {
-        this.setFrequency(frequency);
+        const tunedFrequency = this.getFrequency(frequency, this.detune);
+        this.setFrequency(tunedFrequency);
         this.phasor += this.phaseInc;
         if (this.phasor >= 1.0) {
             this.phasor -= 1.0;
@@ -74,7 +108,7 @@ export class WaveTableOscillator {
         const samp0 = waveTable!.waveTable[intPart];
         const samp1 = waveTable!.waveTable[intPart + 1];
 
-        return samp0! + (samp1! - samp0!) * fracPart;
+        return (samp0! + (samp1! - samp0!) * fracPart) * this.gain;
     }
 
     getWaveform(): WaveformType {

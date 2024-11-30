@@ -7,7 +7,7 @@
     <q-card-section class="oscillator-container">
       <div class="knob-group">
         <audio-knob-component
-          v-model="gain"
+          v-model="oscillatorState.gain"
           label="Gain"
           :min="0"
           :max="1"
@@ -17,7 +17,7 @@
         />
 
         <audio-knob-component
-          v-model="detune_oct"
+          v-model="oscillatorState.detune_oct"
           label="Octave"
           :min="-5"
           :max="5"
@@ -27,7 +27,7 @@
         />
 
         <audio-knob-component
-          v-model="detune_semi"
+          v-model="oscillatorState.detune_semi"
           label="Semitones"
           :min="-12"
           :max="12"
@@ -37,7 +37,7 @@
         />
 
         <audio-knob-component
-          v-model="detune_cents"
+          v-model="oscillatorState.detune_cents"
           label="Cents"
           :min="-100"
           :max="100"
@@ -55,8 +55,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch, ref } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
+import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
+import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { storeToRefs } from 'pinia';
 
 interface Props {
   node: AudioNode | null;
@@ -64,49 +67,94 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), { node: null, oscIndex: 0 });
-const node = computed(() => props.node);
+//const node = computed(() => props.node);
 
-const gain = ref(1.0);
-const detune_oct = ref(0.0);
-const detune_semi = ref(0.0);
-const detune_cents = ref(0.0);
+const store = useAudioSystemStore();
+const { oscillatorStates } = storeToRefs(store);
 
-onMounted(() => {
-  if (props.node) {
-    // Your initialization logic here
-  }
+// Create a reactive reference to the oscillator state
+const oscillatorState = computed({
+  get: () => {
+    const state = oscillatorStates.value.get(props.oscIndex);
+    if (!state) {
+      console.warn(`No state found for oscillator ${props.oscIndex}`);
+      return {
+        id: props.oscIndex,
+        gain: 1.0,
+        detune_oct: 0,
+        detune_semi: 0,
+        detune_cents: 0,
+        detune: 0,
+        hardsync: false,
+        waveform: 'sine',
+      } as OscillatorState;
+    }
+    return state;
+  },
+  set: (newState: OscillatorState) => {
+    store.oscillatorStates.set(props.oscIndex, { ...newState });
+  },
 });
 
-watch(node, (newNode, _oldNode) => {
-  if (newNode) {
-    // Your node watch logic here
+onMounted(() => {
+  if (!oscillatorStates.value.has(props.oscIndex)) {
+    oscillatorStates.value.set(props.oscIndex, oscillatorState.value);
   }
 });
 
 const totalDetune = computed(() => {
   return (
-    detune_oct.value * 1200 + // 1 octave = 1200 cents
-    detune_semi.value * 100 + // 1 semitone = 100 cents
-    detune_cents.value
+    oscillatorState.value.detune_oct * 1200 +
+    oscillatorState.value.detune_semi * 100 +
+    oscillatorState.value.detune_cents
   );
 });
 
 // Handle gain changes
 const handleGainChange = (newValue: number) => {
-  if (node.value instanceof GainNode) {
-    node.value.gain.setValueAtTime(newValue, node.value.context.currentTime);
-  }
+  // Create a completely new state object
+  const currentState = {
+    ...oscillatorState.value,
+    gain: newValue,
+  };
+  // Update the store with the new object
+  store.oscillatorStates.set(props.oscIndex, currentState);
 };
 
 // Handle any detune changes
 const handleDetuneChange = () => {
-  if (node.value instanceof OscillatorNode) {
-    node.value.detune.setValueAtTime(
-      totalDetune.value,
-      node.value.context.currentTime,
-    );
-  }
+  // Create a new state object with updated detune
+  console.log('totalDetune: ', totalDetune.value);
+  const currentState = {
+    ...oscillatorState.value,
+    detune: totalDetune.value,
+  };
+  store.oscillatorStates.set(props.oscIndex, currentState);
+
+  // if (node.value instanceof OscillatorNode) {
+  //   node.value.detune.setValueAtTime(
+  //     totalDetune.value,
+  //     node.value.context.currentTime,
+  //   );
+  // }
 };
+
+// Watch the oscillator state
+watch(
+  () => ({ ...oscillatorStates.value.get(props.oscIndex) }), // Create new reference
+  (newState, oldState) => {
+    if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
+      if (newState.id === props.oscIndex) {
+        console.log('state changed!');
+        store.currentInstrument?.updateOscillatorState(
+          props.oscIndex,
+          newState as OscillatorState,
+        );
+      }
+    }
+  },
+  { deep: true, immediate: true },
+);
 </script>
 
 <style scoped>

@@ -43,7 +43,7 @@
             hide-bottom-space
           >
             <template v-slot:append v-if="unit">
-              <q-label class="text-grey-7">{{ unit }}</q-label>
+              <span class="label bg-primary ext-grey-7">{{ unit }}</span>
             </template>
           </q-input>
         </div>

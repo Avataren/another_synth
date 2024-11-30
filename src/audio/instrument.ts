@@ -1,4 +1,5 @@
 import Voice from './voice';
+import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
 export default class Instrument {
   readonly num_voices = 4;
@@ -18,6 +19,14 @@ export default class Instrument {
       { length: this.num_voices },
       () => new Voice(this.outputNode, audioContext, memory),
     );
+  }
+
+  public updateOscillatorState(key: number, newState: OscillatorState) {
+    console.log('instrument update oscillatorstate:', newState);
+    //update oscillator state on every voice!
+    this.voices.forEach(voice => {
+      voice.updateOscillatorState(key, newState);
+    });
   }
 
   public note_on(midi_note: number, velocity: number) {

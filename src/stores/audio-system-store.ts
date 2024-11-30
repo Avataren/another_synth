@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import Instrument from 'src/audio/instrument';
+import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
 import { loadWasmModule } from 'src/utils/wasm-loader';
 
 interface AudioParamDescriptor {
@@ -29,6 +30,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     audioSystem: null as AudioSystem | null,
     destinationNode: null as AudioNode | null,
     currentInstrument: null as Instrument | null,
+    oscillatorStates: new Map<number, OscillatorState>(),
     wasmPointers: new Array<WasmMemoryPointers>(),
     voices_allocated: 0,
     wasmMemory: new WebAssembly.Memory({
@@ -75,6 +77,18 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     initializeAudioSystem() {
       if (!this.audioSystem) {
         this.audioSystem = new AudioSystem();
+        for (let i = 0; i <= 4; i++) {
+          this.oscillatorStates.set(i, {
+            id: i,
+            gain: 1.0,
+            detune_oct: 0,
+            detune_semi: 0,
+            detune_cents: 0,
+            detune: 0,
+            hardsync: false,
+            waveform: 'sine'
+          });
+        }
       }
     },
 
