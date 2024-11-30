@@ -45,6 +45,19 @@
           :decimals="0"
           @update:modelValue="handleDetuneChange"
         />
+
+        <audio-knob-component
+          v-model="waveform"
+          label="Waveform"
+          :min="0"
+          :max="3"
+          :step="1"
+          :decimals="0"
+          @update:modelValue="handleWaveformChange"
+        />
+      </div>
+      <div class="knob-group">
+        <q-toggle v-model="oscillatorState.hardsync" label="Hard Sync" />
       </div>
 
       <div class="canvas-wrapper">
@@ -55,11 +68,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
+import { type WaveformType } from 'src/audio/wavetable/wave-utils';
 
 interface Props {
   node: AudioNode | null;
@@ -71,7 +85,7 @@ const props = withDefaults(defineProps<Props>(), { node: null, oscIndex: 0 });
 
 const store = useAudioSystemStore();
 const { oscillatorStates } = storeToRefs(store);
-
+const waveform = ref<number>(0);
 // Create a reactive reference to the oscillator state
 const oscillatorState = computed({
   get: () => {
@@ -100,6 +114,10 @@ onMounted(() => {
   if (!oscillatorStates.value.has(props.oscIndex)) {
     oscillatorStates.value.set(props.oscIndex, oscillatorState.value);
   }
+  store.currentInstrument?.updateOscillatorState(
+    props.oscIndex,
+    oscillatorStates.value!.get(props.oscIndex)!,
+  );
 });
 
 const totalDetune = computed(() => {
@@ -109,6 +127,32 @@ const totalDetune = computed(() => {
     oscillatorState.value.detune_cents
   );
 });
+
+const handleWaveformChange = (newWaveform: number) => {
+  let wf: WaveformType = 'sine';
+  switch (newWaveform) {
+    case 0:
+      wf = 'sine';
+      break;
+    case 1:
+      wf = 'triangle';
+      break;
+    case 2:
+      wf = 'sawtooth';
+      break;
+    case 3:
+      wf = 'square';
+      break;
+    default:
+      break;
+  }
+
+  const currentState = {
+    ...oscillatorState.value,
+    waveform: wf,
+  };
+  store.oscillatorStates.set(props.oscIndex, currentState);
+};
 
 // Handle gain changes
 const handleGainChange = (newValue: number) => {

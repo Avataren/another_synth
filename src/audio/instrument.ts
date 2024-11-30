@@ -2,7 +2,7 @@ import Voice from './voice';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
 export default class Instrument {
-  readonly num_voices = 4;
+  readonly num_voices = 8;
   voices: Array<Voice>;
   outputNode: AudioNode;
   private activeNotes: Map<number, number> = new Map(); // midi note -> voice index
