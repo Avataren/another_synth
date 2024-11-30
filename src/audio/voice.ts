@@ -1,4 +1,5 @@
-import { createAudioWorkletWithWasm } from './audio-processor-loader';
+import { createStandardAudioWorklet } from './audio-processor-loader';
+import type { EnvelopeConfig } from './dsp/envelope';
 
 export default class Voice {
   private active: boolean = false;
@@ -14,15 +15,24 @@ export default class Voice {
     this.setupAudio(memory);
   }
 
-  private async setupAudio(memory: WebAssembly.Memory) {
+  private async setupAudio(_memory: WebAssembly.Memory) {
     try {
       // Create the AudioWorklet
-      this.workletNode = await createAudioWorkletWithWasm(this.audioContext, memory);
+      this.workletNode = await createStandardAudioWorklet(this.audioContext);
 
       const gain = this.workletNode.parameters.get('gain');
       if (gain) {
         gain.value = 0.0;
       }
+      this.updateEnvelope(0, {
+        attack: 0.001,
+        decay: 0.01,
+        sustain: 0.0,
+        release: 0.0,
+        attackCurve: 0.0,
+        decayCurve: 0.0,
+        releaseCurve: 0.0
+      })
 
       // Connect the worklet to the audio context
       this.workletNode.connect(this.destination);
@@ -30,6 +40,14 @@ export default class Voice {
     } catch (error) {
       console.error('Failed to set up audio:', error);
     }
+  }
+
+  public updateEnvelope(id: number, config: EnvelopeConfig) {
+    this.workletNode?.port.postMessage({
+      type: 'updateEnvelope',
+      id,
+      config
+    });
   }
 
   public get output() {
@@ -48,7 +66,7 @@ export default class Voice {
 
     const gainParam = this.workletNode?.parameters.get('gain');
     if (gainParam) {
-      gainParam.value = velocity / 127.0;
+      gainParam.value = velocity / 127.0 * 0.2;
     }
 
     const gateParam = this.workletNode?.parameters.get('gate');
