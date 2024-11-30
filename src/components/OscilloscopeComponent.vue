@@ -1,5 +1,5 @@
 <template>
-  <q-card class="oscilloscope-card">
+  <q-card class="oscillator-card">
     <q-card-section class="bg-primary text-white">
       <div class="text-h6">Oscilloscope</div>
     </q-card-section>
@@ -134,7 +134,7 @@ watch(node, (newNode, _oldNode) => {
     border: none;
   }
 }
-.oscilloscope-card {
+.oscillator-card {
   width: 600px;
   margin: 0 auto;
 }

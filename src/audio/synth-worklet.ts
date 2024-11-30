@@ -150,7 +150,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
 
             // Generate oscillator signal with envelope applied
 
-            const oscillatorSample = this.osc.process(this.getFrequency(freq, detuneValue)) * envelopeValue * 0.35;
+            const oscillatorSample = this.osc.process(this.getFrequency(freq, detuneValue)) * envelopeValue;
             //const oscillatorSample = this.sineOsc.process(freq, detuneValue) * envelopeValue;
             // // Process through string model
             //const sample = this.shcroeder.process(oscillatorSample);
