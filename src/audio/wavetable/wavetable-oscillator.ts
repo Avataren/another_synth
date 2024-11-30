@@ -16,7 +16,7 @@ export interface OscillatorState {
 export class WaveTableOscillator {
     private phasor = 0.0;
     private phaseInc = 0.0;
-    private gain = 0.0;
+    private gain = 1.0;
     private detune = 0.0;
     private curWaveTable = 0;
     private currentWaveTables: WaveTable[] = [];
