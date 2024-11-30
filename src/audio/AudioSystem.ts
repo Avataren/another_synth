@@ -11,6 +11,7 @@ export default class AudioSystem {
         };
         this.audioContext = new AudioContext(audioCtxOptions);
         this.destinationNode = this.audioContext.createGain();
+        (this.destinationNode as GainNode).gain.value = 1.0;
         this.destinationNode.connect(this.audioContext.destination);
         this.resumeOnUserInteraction();
     }

@@ -1,7 +1,7 @@
 import Voice from './voice';
 
 export default class Instrument {
-  readonly num_voices = 8;
+  readonly num_voices = 4;
   voices: Array<Voice>;
   outputNode: AudioNode;
   private activeNotes: Map<number, number> = new Map(); // midi note -> voice index
@@ -12,7 +12,7 @@ export default class Instrument {
     memory: WebAssembly.Memory,
   ) {
     this.outputNode = audioContext.createGain();
-    (this.outputNode as GainNode).gain.value = 0.15;
+    (this.outputNode as GainNode).gain.value = 1.0;
     this.outputNode.connect(destination);
     this.voices = Array.from(
       { length: this.num_voices },

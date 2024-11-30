@@ -1,5 +1,3 @@
-// src/dsp/envelope.ts
-
 export interface EnvelopeMessage {
     type: 'updateEnvelope';
     id: number;  // Envelope identifier
@@ -51,9 +49,8 @@ export default class Envelope {
     }
 
     private getCurvedValue(position: number, curve: number): number {
-        if (Math.abs(curve) < 0.01) return position; // Linear when curve is close to 0
+        if (Math.abs(curve) < 0.001) return position; // Linear when curve is close to 0
 
-        // Transform curve parameter into alpha value for shaping function
         const alpha = Math.exp(Math.abs(curve));
 
         if (curve > 0) {
@@ -68,9 +65,8 @@ export default class Envelope {
     trigger(gate: number) {
         if (gate > 0) {
             if (this.phase === 'idle' || this.phase === 'release') {
-                this.value = 0; // Reset value before starting attack
+                this.reset(); // Reset the envelope state
                 this.phase = 'attack';
-                this.position = 0;
             }
         } else {
             if (this.phase !== 'idle' && this.phase !== 'release') {
@@ -79,19 +75,20 @@ export default class Envelope {
                 this.position = 0;
             }
         }
+        this.lastGateValue = gate;
     }
 
     process(gateValue: number): number {
         if (gateValue !== this.lastGateValue) {
             this.trigger(gateValue);
-            this.lastGateValue = gateValue;
         }
 
         const increment = 1.0 / this.sampleRate;
 
         switch (this.phase) {
             case 'attack': {
-                this.position += increment / this.config.attack;
+                const attackTime = Math.max(this.config.attack, 0.0001);
+                this.position += increment / attackTime;
                 if (this.position >= 1.0) {
                     this.position = 0;
                     this.value = 1.0;
@@ -103,7 +100,8 @@ export default class Envelope {
             }
 
             case 'decay': {
-                this.position += increment / this.config.decay;
+                const decayTime = Math.max(this.config.decay, 0.0001);
+                this.position += increment / decayTime;
                 if (this.position >= 1.0) {
                     this.position = 0;
                     this.value = this.config.sustain;
@@ -121,7 +119,8 @@ export default class Envelope {
             }
 
             case 'release': {
-                this.position += increment / this.config.release;
+                const releaseTime = Math.max(this.config.release, 0.0001);
+                this.position += increment / releaseTime;
                 if (this.position >= 1.0) {
                     this.position = 0;
                     this.value = 0;
@@ -139,6 +138,9 @@ export default class Envelope {
             }
         }
 
+        // Clamp the value to [0, 1]
+        this.value = Math.max(0, Math.min(this.value, 1));
+
         return this.value;
     }
 
@@ -151,5 +153,6 @@ export default class Envelope {
         this.value = 0;
         this.releaseLevel = 0;
         this.position = 0;
+        this.lastGateValue = 0;
     }
 }

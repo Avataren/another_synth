@@ -20,15 +20,11 @@ export default class Voice {
       // Create the AudioWorklet
       this.workletNode = await createStandardAudioWorklet(this.audioContext);
 
-      const gain = this.workletNode.parameters.get('gain');
-      if (gain) {
-        gain.value = 0.0;
-      }
       this.updateEnvelope(0, {
-        attack: 0.001,
-        decay: 0.015,
+        attack: 0.00,
+        decay: 0.0035,
         sustain: 0.0,
-        release: 0.0,
+        release: 0.,
         attackCurve: 0.0,
         decayCurve: 0.0,
         releaseCurve: 0.0
@@ -54,7 +50,7 @@ export default class Voice {
     return null;
   }
 
-  public start(midi_note: number, velocity: number) {
+  public start(midi_note: number, _velocity: number) {
     this.active = true;
     this.currentNote = midi_note;
 
@@ -63,17 +59,10 @@ export default class Voice {
     if (frequencyParam) {
       frequencyParam.value = frequency;
     }
-
-    const gainParam = this.workletNode?.parameters.get('gain');
-    if (gainParam) {
-      gainParam.value = velocity / 127.0 * 0.2;
-    }
-
     const gateParam = this.workletNode?.parameters.get('gate');
     if (gateParam) {
       gateParam.value = 1.0;
     }
-    // todo: actual sound generation code, trigger envelopes etc
   }
 
   public stop() {
@@ -83,11 +72,6 @@ export default class Voice {
       gateParam.value = 0.0;
     }
 
-    //const gain = this.workletNode?.parameters.get('gain');
-    // if (gain) {
-    //   gain.value = 0.0;
-    // }
-    // todo:  handle release logic
   }
 
   public isActive(): boolean {

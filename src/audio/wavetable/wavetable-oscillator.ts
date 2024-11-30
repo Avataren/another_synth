@@ -20,6 +20,10 @@ export class WaveTableOscillator {
         this.setWaveform(initialType);
     }
 
+    public reset() {
+        this.phasor = 0.0;
+    }
+
     setWaveform(type: WaveformType): void {
         this.currentWaveTables = this.bank.getWaveform(type);
         this.currentType = type;
