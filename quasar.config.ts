@@ -77,6 +77,23 @@ export default defineConfig((/* ctx */) => {
           { server: false },
         ],
         {
+          name: 'watch-worklet-reload',
+          enforce: 'pre',
+          apply: 'serve',
+          handleHotUpdate({ file, server }) {
+            const isWorkletFile =
+              file.endsWith('.js') && file.includes('public/worklets');
+
+            if (isWorkletFile) {
+              console.log(`Worklet file changed: ${file}, triggering full page reload`);
+              server.ws.send({
+                type: 'full-reload',
+                path: '*',
+              });
+            }
+          },
+        },
+        {
           name: 'watch-assemblyscript',
           enforce: 'pre',
           apply: 'serve',
