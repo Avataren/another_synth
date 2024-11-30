@@ -7,3 +7,4 @@
 /quasar.config.*.temporary.compiled*
 /public/wasm
 /src/assembly
+/wasmsynth

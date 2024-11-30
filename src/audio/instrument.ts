@@ -9,14 +9,14 @@ export default class Instrument {
   constructor(
     destination: AudioNode,
     audioContext: AudioContext,
-    memory: WebAssembly.Memory,
+    //memory: WebAssembly.Memory,
   ) {
     this.outputNode = audioContext.createGain();
     (this.outputNode as GainNode).gain.value = 0.15;
     this.outputNode.connect(destination);
     this.voices = Array.from(
       { length: this.num_voices },
-      () => new Voice(this.outputNode, audioContext, memory),
+      () => new Voice(this.outputNode, audioContext),
     );
   }
 

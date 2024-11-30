@@ -1,46 +1,19 @@
-// src/audio/audioProcessorLoader.ts
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
-import { loadWasmBinary } from 'src/utils/wasm-loader';
+// Should be default import for init
+import init, { WasmAudio } from 'app/public/wasm/wasm_audio_worklet';
 
 export async function createAudioWorkletWithWasm(
   audioContext: AudioContext,
-  wasmMemory: WebAssembly.Memory,
-): Promise<AudioWorkletNode> {
-  // Load the AudioWorklet processor
-  await audioContext.audioWorklet.addModule('src/audio/processor.ts?worklet');
-  const { getNextMemorySegment } = useAudioSystemStore();
+): Promise<WasmAudio> {
+  try {
+    console.log('createAudioWorkletWithWasm called');
+    // Initialize the WASM module first
+    await init();
 
-  // Create the AudioWorkletNode
-  const workletNode = new AudioWorkletNode(
-    audioContext,
-    'wasm-audio-processor',
-  );
+    // Create and return the WasmAudio instance
+    return await WasmAudio.new(audioContext);
 
-  // Load the WASM binary as an ArrayBuffer
-  const wasmBinary = await loadWasmBinary('wasm/release.wasm');
-
-  // Listen for messages from the processor
-  workletNode.port.onmessage = (event) => {
-    if (event.data.type === 'ready') {
-      console.log('AudioWorkletProcessor is ready, sending WASM and memory');
-      const memSegment = getNextMemorySegment();
-      //console.log('memSegment:', memSegment);
-      workletNode.port.postMessage({
-        type: 'initialize',
-        wasmBinary,
-        memory: wasmMemory,
-        memorySegment: {
-          audioBufferPtr: memSegment?.audioBufferPtr,
-          envelope1Ptr: memSegment?.envelope1Ptr,
-          frequencyPtr: memSegment?.parameterPtrs.frequency,
-          gainPtr: memSegment?.parameterPtrs.gain,
-          detunePtr: memSegment?.parameterPtrs.detune,
-          gatePtr: memSegment?.parameterPtrs.gate,
-          offsetsPtr: memSegment?.offsetsPtr,
-        },
-      });
-    }
-  };
-
-  return workletNode;
+  } catch (error) {
+    console.error('Failed to create audio worklet:', error);
+    throw error;
+  }
 }

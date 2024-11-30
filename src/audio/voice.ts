@@ -1,31 +1,29 @@
+import type { WasmAudio } from 'app/public/wasm/wasm_audio_worklet';
 import { createAudioWorkletWithWasm } from './audio-processor-loader';
 
 export default class Voice {
   private active: boolean = false;
   private currentNote: number = 0;
-  workletNode: AudioWorkletNode | null = null;
+  workletNode: WasmAudio | null = null;
 
   destination: AudioNode;
   audioContext: AudioContext;
 
-  constructor(destination: AudioNode, audioContext: AudioContext, memory: WebAssembly.Memory) {
+  constructor(destination: AudioNode, audioContext: AudioContext) {
+    console.log('voice ctor');
     this.destination = destination;
     this.audioContext = audioContext;
-    this.setupAudio(memory);
+    this.setupAudio();
   }
 
-  private async setupAudio(memory: WebAssembly.Memory) {
+  private async setupAudio() {
     try {
+      console.log('voice::setupAudio');
       // Create the AudioWorklet
-      this.workletNode = await createAudioWorkletWithWasm(this.audioContext, memory);
-
-      const gain = this.workletNode.parameters.get('gain');
-      if (gain) {
-        gain.value = 0.0;
-      }
+      this.workletNode = await createAudioWorkletWithWasm(this.audioContext);
 
       // Connect the worklet to the audio context
-      this.workletNode.connect(this.destination);
+      this.workletNode?.connect(this.destination);
       console.log('Audio setup completed successfully');
     } catch (error) {
       console.error('Failed to set up audio:', error);
@@ -41,17 +39,17 @@ export default class Voice {
     this.currentNote = midi_note;
 
     const frequency = this.midiNoteToFrequency(midi_note);
-    const frequencyParam = this.workletNode?.parameters.get('frequency');
+    const frequencyParam = this.workletNode?.get_node().parameters.get('frequency');
     if (frequencyParam) {
       frequencyParam.value = frequency;
     }
 
-    const gainParam = this.workletNode?.parameters.get('gain');
+    const gainParam = this.workletNode?.get_node().parameters.get('gain');
     if (gainParam) {
       gainParam.value = velocity / 127.0;
     }
 
-    const gateParam = this.workletNode?.parameters.get('gate');
+    const gateParam = this.workletNode?.get_node().parameters.get('gate');
     if (gateParam) {
       gateParam.value = 1.0;
     }
@@ -60,7 +58,7 @@ export default class Voice {
 
   public stop() {
     this.active = false;
-    const gateParam = this.workletNode?.parameters.get('gate');
+    const gateParam = this.workletNode?.get_node().parameters.get('gate');
     if (gateParam) {
       gateParam.value = 0.0;
     }

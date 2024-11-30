@@ -1,0 +1,32 @@
+[package]
+name = "wasm-audio-worklet"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+js-sys = { git = "https://github.com/rustwasm/wasm-bindgen", branch = "main" }
+wasm-bindgen = { git = "https://github.com/rustwasm/wasm-bindgen", branch = "main" }
+wasm-bindgen-futures = { git = "https://github.com/rustwasm/wasm-bindgen", branch = "main" }
+
+[dependencies.web-sys]
+git = "https://github.com/rustwasm/wasm-bindgen"
+branch = "main"
+features = [
+    "AudioContext",
+    "AudioDestinationNode",
+    "AudioWorklet",
+    "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
+    "Blob",
+    "BlobPropertyBag",
+    "Document",
+    "Event",
+    "HtmlInputElement",
+    "HtmlLabelElement",
+    "Url",
+    "Window",
+    "console"  # Added console feature
+]

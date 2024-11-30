@@ -78,7 +78,7 @@ export default defineConfig((/* ctx */) => {
         ],
         {
           name: 'audio-worklet',
-          apply: 'build', // Restrict this plugin to the build process
+          apply: 'build',
           transform(code, id) {
             if (id.endsWith('audio-processor.ts')) {
               return {
@@ -103,57 +103,73 @@ export default defineConfig((/* ctx */) => {
           },
         },
         {
-          name: 'watch-assemblyscript',
+          name: 'watch-rust-wasm',
           enforce: 'pre',
           apply: 'serve',
           handleHotUpdate({ file, server }) {
-            const isAssemblyFile =
-              file.endsWith('.ts') && file.includes('src/assembly');
+            // Watch for changes in Rust files
+            const isRustFile = file.endsWith('.rs') && file.includes('wasmsynth');
 
-            if (isAssemblyFile) {
+            if (isRustFile) {
               console.log(
-                `[AssemblyScript Watcher] Rebuilding WASM for ${file}`,
+                `[Rust/WASM Watcher] Rebuilding WASM for ${file}`,
               );
 
-              exec('npm run asbuild:release', (err, stdout, stderr) => {
-                if (err) {
-                  console.error(
-                    `[AssemblyScript Watcher] Build error:\n${stderr}`,
-                  );
-                  return;
-                }
+              // Set RUSTFLAGS for atomics support
+              const env = {
+                ...process.env,
+                RUSTFLAGS: '-C target-feature=+atomics,+bulk-memory,+mutable-globals'
+              };
 
-                console.log(
-                  `[AssemblyScript Watcher] Build success:\n${stdout}`,
-                );
+              // Execute the build script
+              exec('node build.cjs',
+                {
+                  env,
+                  cwd: path.resolve(__dirname, 'wasmsynth')
+                },
+                (err, stdout, stderr) => {
+                  if (err) {
+                    console.error(
+                      `[Rust/WASM Watcher] Build error:\n${stderr}`,
+                    );
+                    return;
+                  }
 
-                // Path to the generated WASM file
-                const wasmFilePath = path.resolve(
-                  __dirname,
-                  'public/wasm/release.wasm',
-                );
-
-                // Wait for the WASM file to exist before triggering a reload
-                if (fs.existsSync(wasmFilePath)) {
                   console.log(
-                    `[AssemblyScript Watcher] Triggering reload for WASM file: ${wasmFilePath}`,
+                    `[Rust/WASM Watcher] Build success:\n${stdout}`,
                   );
-                  server.ws.send({
-                    type: 'full-reload', // Trigger a full page reload
-                    path: '*',
-                  });
-                } else {
-                  console.error(
-                    `[AssemblyScript Watcher] WASM file not found: ${wasmFilePath}`,
+
+                  // Path to the generated WASM files
+                  const wasmDir = path.resolve(
+                    __dirname,
+                    'public/wasm'
                   );
+
+                  // Wait for the WASM files to exist before triggering a reload
+                  if (fs.existsSync(wasmDir)) {
+                    console.log(
+                      `[Rust/WASM Watcher] Triggering reload for WASM files in: ${wasmDir}`,
+                    );
+                    server.ws.send({
+                      type: 'full-reload',
+                      path: '*',
+                    });
+                  } else {
+                    console.error(
+                      `[Rust/WASM Watcher] WASM directory not found: ${wasmDir}`,
+                    );
+                  }
                 }
-              });
+              );
             }
           },
         },
       ],
       extendViteConf(viteConf) {
         viteConf.assetsInclude = ['**/*.wasm'];
+        // This ensures the WASM files are properly handled in both dev and prod
+        viteConf.build = viteConf.build || {};
+        viteConf.build.copyPublicDir = true;
       },
     },
 
