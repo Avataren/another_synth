@@ -6,4 +6,5 @@
 .eslintrc.cjs
 /quasar.config.*.temporary.compiled*
 /public/wasm
+/public/worklets
 /src/assembly

@@ -22,7 +22,6 @@ export default class Instrument {
   }
 
   public updateOscillatorState(key: number, newState: OscillatorState) {
-    console.log('instrument update oscillatorstate:', newState);
     //update oscillator state on every voice!
     this.voices.forEach(voice => {
       voice.updateOscillatorState(key, newState);

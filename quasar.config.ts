@@ -77,32 +77,6 @@ export default defineConfig((/* ctx */) => {
           { server: false },
         ],
         {
-          name: 'audio-worklet',
-          apply: 'build', // Restrict this plugin to the build process
-          transform(code, id) {
-            if (id.endsWith('audio-processor.ts')) {
-              return {
-                code: `/* @vite-ignore */\n${code}`,
-                map: null,
-              };
-            }
-            return null;
-          },
-          resolveId(id) {
-            if (id.endsWith('?worklet')) {
-              return id;
-            }
-            return null;
-          },
-          async load(id) {
-            if (id.endsWith('?worklet')) {
-              const realId = id.slice(0, -8);
-              return `export default new URL('${realId}', import.meta.url).href`;
-            }
-            return null;
-          },
-        },
-        {
           name: 'watch-assemblyscript',
           enforce: 'pre',
           apply: 'serve',
@@ -152,8 +126,25 @@ export default defineConfig((/* ctx */) => {
           },
         },
       ],
+
       extendViteConf(viteConf) {
         viteConf.assetsInclude = ['**/*.wasm'];
+
+        // Add build configuration for worklets
+        // viteConf.build = viteConf.build || {};
+        // viteConf.build.rollupOptions = {
+        //   output: {
+        //     assetFileNames: (assetInfo) => {
+        //       if (assetInfo.name?.endsWith('.ts') && assetInfo.name.includes('worklet')) {
+        //         return 'worklets/[name].js';
+        //       }
+        //       return 'assets/[name].[hash].[ext]';
+        //     },
+        //   },
+        // };
+
+        // // Ensure worklet files are not inlined
+        // viteConf.build.assetsInlineLimit = 0;
       },
     },
 

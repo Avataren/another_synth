@@ -114,10 +114,10 @@ onMounted(() => {
   if (!oscillatorStates.value.has(props.oscIndex)) {
     oscillatorStates.value.set(props.oscIndex, oscillatorState.value);
   }
-  store.currentInstrument?.updateOscillatorState(
-    props.oscIndex,
-    oscillatorStates.value!.get(props.oscIndex)!,
-  );
+  // store.currentInstrument?.updateOscillatorState(
+  //   props.oscIndex,
+  //   oscillatorStates.value!.get(props.oscIndex)!,
+  // );
 });
 
 const totalDetune = computed(() => {
@@ -168,7 +168,6 @@ const handleGainChange = (newValue: number) => {
 // Handle any detune changes
 const handleDetuneChange = () => {
   // Create a new state object with updated detune
-  console.log('totalDetune: ', totalDetune.value);
   const currentState = {
     ...oscillatorState.value,
     detune: totalDetune.value,
@@ -189,7 +188,7 @@ watch(
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.oscIndex) {
-        console.log('state changed!');
+        // console.log('state changed!');
         store.currentInstrument?.updateOscillatorState(
           props.oscIndex,
           newState as OscillatorState,

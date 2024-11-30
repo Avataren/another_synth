@@ -1,9 +1,9 @@
 /// <reference lib="webworker" />
 
-import CombFilter from './dsp/comb-filter';
-import Envelope, { type EnvelopeMessage } from './dsp/envelope';
-import { WaveTableBank } from './wavetable/wavetable-bank';
-import { type OscillatorState, WaveTableOscillator } from './wavetable/wavetable-oscillator';
+import CombFilter from '../dsp/comb-filter';
+import Envelope, { type EnvelopeMessage } from '../dsp/envelope';
+import { WaveTableBank } from '../wavetable/wavetable-bank';
+import { type OscillatorState, WaveTableOscillator } from '../wavetable/wavetable-oscillator';
 
 declare const AudioWorkletProcessor: {
     prototype: AudioWorkletProcessor;

@@ -17,11 +17,16 @@ export default class Voice {
   }
 
   public updateOscillatorState(key: number, newState: OscillatorState) {
-    this.workletNode?.port?.postMessage({
-      type: 'updateOscillator',
-      key,
-      newState
-    });
+    try {
+      this.workletNode?.port?.postMessage({
+        type: 'updateOscillator',
+        key,
+        newState
+      });
+    }
+    catch (ex) {
+      console.warn(ex);
+    }
   }
 
   private async setupAudio(_memory: WebAssembly.Memory) {

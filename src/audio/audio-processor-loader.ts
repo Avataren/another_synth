@@ -1,12 +1,12 @@
 // src/audio/audioProcessorLoader.ts
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { loadWasmBinary } from 'src/utils/wasm-loader';
-
+//import workletUrl from 'src/audio/synth-worklet.ts?url';
 export async function createStandardAudioWorklet(
   audioContext: AudioContext,
 ): Promise<AudioWorkletNode> {
   // Load the AudioWorklet processor
-  await audioContext.audioWorklet.addModule('src/audio/synth-worklet.ts?worklet');
+  await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}worklets/synth-worklet.js`);
 
   // Create the AudioWorkletNode
   const workletNode = new AudioWorkletNode(
