@@ -1,3 +1,9 @@
+export interface FilterState {
+    id: number,
+    feedback: number;
+    damping: number;
+    is_enabled: boolean;
+}
 
 
 export default class VariableCombFilter {
@@ -11,7 +17,7 @@ export default class VariableCombFilter {
     private _dampingFactor: number = 0.5; // Default damping factor
 
     private lastFeedbackOutput: number = 0;
-
+    private is_enabled = false;
     constructor(sampleRate: number, maxDelayMs: number = 100) {
         this.sampleRate = sampleRate;
         this.bufferSize = Math.floor((maxDelayMs / 1000) * sampleRate);
@@ -29,6 +35,12 @@ export default class VariableCombFilter {
         if (this.delaySamples >= this.bufferSize) {
             this.delaySamples = this.bufferSize - 1;
         }
+    }
+
+    updateState(state: FilterState) {
+        this.feedback = state.feedback;
+        this.dampingFactor = state.damping;
+        this.is_enabled = state.is_enabled;
     }
 
     /**
@@ -67,6 +79,9 @@ export default class VariableCombFilter {
      * @returns The output sample.
      */
     process(input: number): number {
+        if (!this.is_enabled) {
+            return input;
+        }
         const delayInt = Math.floor(this.delaySamples);
         const frac = this.delaySamples - delayInt;
 

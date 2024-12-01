@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import VariableCombFilter from '../dsp/variable-comb-filter';
+import VariableCombFilter, { type FilterState } from '../dsp/variable-comb-filter';
 import Envelope, { type EnvelopeMessage } from '../dsp/envelope';
 import { WaveTableBank } from '../wavetable/wavetable-bank';
 import { type OscillatorState, WaveTableOscillator } from '../wavetable/wavetable-oscillator';
@@ -80,10 +80,10 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         this.envelopes.set(0, new Envelope(sampleRate));
 
         this.port.onmessage = async (event: MessageEvent) => {
+            console.log('msg recieved ', event);
             if (event.data.type === 'initialize') {
             }
-        };
-        this.port.onmessage = (event: MessageEvent) => {
+
             if (event.data.type === 'updateEnvelope') {
                 const msg = event.data as EnvelopeMessage;
                 const envelope = this.envelopes.get(msg.id);
@@ -98,6 +98,15 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
                 const oscillator = this.oscillators.get(state.id);
                 if (oscillator) {
                     oscillator.updateState(state);
+                } else {
+                    console.error('oscillator doesnt exist: ', state);
+                }
+            }
+            else if (event.data.type === 'updateFilter') {
+                const state = event.data.newState as FilterState;
+                //const oscillator = this.oscillators.get(state.id);
+                if (this.combFilter) {
+                    this.combFilter.updateState(state);
                 } else {
                     console.error('oscillator doesnt exist: ', state);
                 }
@@ -144,8 +153,8 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
             if (gateValue > 0 && this.lastGate <= 0) {
                 this.combFilter.clear(); // Clear buffer for new note
                 this.combFilter.setFrequency(freq);
-                this.combFilter.feedback = 0.999;
-                this.combFilter.dampingFactor = 0.4;
+                // this.combFilter.feedback = 0.999;
+                // this.combFilter.dampingFactor = 0.4;
                 this.oscillators.forEach((oscillator, _id) => {
                     if (oscillator.hardSync) {
                         oscillator.reset();

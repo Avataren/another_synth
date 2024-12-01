@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
+import { type FilterState } from 'src/audio/dsp/variable-comb-filter';
 import Instrument from 'src/audio/instrument';
 import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
 import { loadWasmModule } from 'src/utils/wasm-loader';
@@ -33,6 +34,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     currentInstrument: null as Instrument | null,
     oscillatorStates: new Map<number, OscillatorState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
+    filterStates: new Map<number, FilterState>(),
     wasmPointers: new Array<WasmMemoryPointers>(),
     voices_allocated: 0,
     wasmMemory: new WebAssembly.Memory({
@@ -104,6 +106,15 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             decayCurve: 0.0,
             releaseCurve: 0.0
           });
+        }
+
+        for (let i = 0; i <= 2; i++) {
+          this.filterStates.set(i, {
+            id: i,
+            feedback: 0.5,
+            damping: 0.5,
+            is_enabled: false
+          } as FilterState)
         }
       }
     },

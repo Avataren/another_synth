@@ -1,5 +1,6 @@
 import { createEffectsAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
+import { type FilterState } from './dsp/variable-comb-filter';
 import Voice from './voice';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
@@ -53,6 +54,12 @@ export default class Instrument {
   public updateEnvelopeState(key: number, newState: EnvelopeConfig) {
     this.voices?.forEach(voice => {
       voice.updateEnvelopeState(key, newState);
+    });
+  }
+
+  public updateFilterState(key: number, newState: FilterState) {
+    this.voices?.forEach(voice => {
+      voice.updateFilterState(key, newState);
     });
   }
 

@@ -1,5 +1,6 @@
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
+import { type FilterState } from './dsp/variable-comb-filter';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
 export default class Voice {
@@ -47,6 +48,14 @@ export default class Voice {
       type: 'updateEnvelope',
       id,
       config
+    });
+  }
+
+  public updateFilterState(id: number, config: FilterState) {
+    this.workletNode?.port.postMessage({
+      type: 'updateFilter',
+      id,
+      newState: config
     });
   }
 

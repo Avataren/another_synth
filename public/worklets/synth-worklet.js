@@ -15,6 +15,7 @@ var VariableCombFilter = class {
     __publicField(this, "_dampingFactor", 0.5);
     // Default damping factor
     __publicField(this, "lastFeedbackOutput", 0);
+    __publicField(this, "is_enabled", false);
     this.sampleRate = sampleRate2;
     this.bufferSize = Math.floor(maxDelayMs / 1e3 * sampleRate2);
     this.buffer = new Float32Array(this.bufferSize);
@@ -28,6 +29,11 @@ var VariableCombFilter = class {
     if (this.delaySamples >= this.bufferSize) {
       this.delaySamples = this.bufferSize - 1;
     }
+  }
+  updateState(state) {
+    this.feedback = state.feedback;
+    this.dampingFactor = state.damping;
+    this.is_enabled = state.is_enabled;
   }
   /**
    * Sets the feedback coefficient.
@@ -61,6 +67,9 @@ var VariableCombFilter = class {
    * @returns The output sample.
    */
   process(input) {
+    if (!this.is_enabled) {
+      return input;
+    }
     const delayInt = Math.floor(this.delaySamples);
     const frac = this.delaySamples - delayInt;
     const readIndex1 = (this.writeIndex - delayInt + this.bufferSize) % this.bufferSize;
@@ -538,10 +547,9 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     this.oscillators.set(1, new WaveTableOscillator(this.bank, "square", sampleRate));
     this.envelopes.set(0, new Envelope(sampleRate));
     this.port.onmessage = async (event) => {
+      console.log("msg recieved ", event);
       if (event.data.type === "initialize") {
       }
-    };
-    this.port.onmessage = (event) => {
       if (event.data.type === "updateEnvelope") {
         const msg = event.data;
         const envelope = this.envelopes.get(msg.id);
@@ -555,6 +563,13 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
         const oscillator = this.oscillators.get(state.id);
         if (oscillator) {
           oscillator.updateState(state);
+        } else {
+          console.error("oscillator doesnt exist: ", state);
+        }
+      } else if (event.data.type === "updateFilter") {
+        const state = event.data.newState;
+        if (this.combFilter) {
+          this.combFilter.updateState(state);
         } else {
           console.error("oscillator doesnt exist: ", state);
         }
@@ -620,8 +635,6 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
       if (gateValue > 0 && this.lastGate <= 0) {
         this.combFilter.clear();
         this.combFilter.setFrequency(freq);
-        this.combFilter.feedback = 0.999;
-        this.combFilter.dampingFactor = 0.4;
         this.oscillators.forEach((oscillator, _id) => {
           if (oscillator.hardSync) {
             oscillator.reset();
