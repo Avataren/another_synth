@@ -1,3 +1,4 @@
+import { type EnvelopeConfig } from './dsp/envelope';
 import Voice from './voice';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
@@ -27,6 +28,13 @@ export default class Instrument {
       voice.updateOscillatorState(key, newState);
     });
   }
+
+  public updateEnvelopeState(key: number, newState: EnvelopeConfig) {
+    this.voices.forEach(voice => {
+      voice.updateEnvelopeState(key, newState);
+    });
+  }
+
 
   public note_on(midi_note: number, velocity: number) {
     //console.log('note_on ', midi_note);

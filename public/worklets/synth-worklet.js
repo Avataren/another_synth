@@ -88,6 +88,7 @@ var CombFilter = class {
 // src/audio/dsp/envelope.ts
 var Envelope = class {
   constructor(sampleRate2, config = {
+    id: 0,
     attack: 0.01,
     decay: 0.1,
     sustain: 0.5,

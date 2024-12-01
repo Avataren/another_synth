@@ -5,6 +5,7 @@
     <piano-keyboard-component />
     <oscillator-component :node="destinationNode" :oscIndex="0" />
     <oscillator-component :node="destinationNode" :oscIndex="1" />
+    <envelope-component :node="destinationNode" :envIndex="0" />
   </q-page>
 </template>
 
@@ -14,6 +15,7 @@ import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponen
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import PianoKeyboardComponent from 'src/components/PianoKeyboardComponent.vue';
 import OscillatorComponent from 'src/components/OscillatorComponent.vue';
+import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
 import { storeToRefs } from 'pinia';
 
 const store = useAudioSystemStore();

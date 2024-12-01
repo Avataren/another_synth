@@ -34,16 +34,6 @@ export default class Voice {
       // Create the AudioWorklet
       this.workletNode = await createStandardAudioWorklet(this.audioContext);
 
-      this.updateEnvelope(0, {
-        attack: 0.00,
-        decay: 0.0035,
-        sustain: 0.0,
-        release: 0.0,
-        attackCurve: 0.0,
-        decayCurve: 0.0,
-        releaseCurve: 0.0
-      })
-
       // Connect the worklet to the audio context
       this.workletNode.connect(this.destination);
       console.log('Audio setup completed successfully');
@@ -52,7 +42,7 @@ export default class Voice {
     }
   }
 
-  public updateEnvelope(id: number, config: EnvelopeConfig) {
+  public updateEnvelopeState(id: number, config: EnvelopeConfig) {
     this.workletNode?.port.postMessage({
       type: 'updateEnvelope',
       id,

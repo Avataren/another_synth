@@ -1,18 +1,5 @@
-export interface EnvelopeMessage {
-    type: 'updateEnvelope';
-    id: number;  // Envelope identifier
-    config: {
-        attack: number;
-        decay: number;
-        sustain: number;
-        release: number;
-        attackCurve: number;
-        decayCurve: number;
-        releaseCurve: number;
-    }
-}
-
 export interface EnvelopeConfig {
+    id: number;
     attack: number;      // seconds
     decay: number;       // seconds
     sustain: number;     // 0-1
@@ -20,6 +7,12 @@ export interface EnvelopeConfig {
     attackCurve: number; // -10 to 10: negative = logarithmic, 0 = linear, positive = exponential
     decayCurve: number;  // -10 to 10
     releaseCurve: number;// -10 to 10
+}
+
+export interface EnvelopeMessage {
+    type: 'updateEnvelope';
+    id: number;  // Envelope identifier
+    config: EnvelopeConfig
 }
 
 export default class Envelope {
@@ -32,6 +25,7 @@ export default class Envelope {
     private lastGateValue: number = 0;
 
     constructor(sampleRate: number, config: EnvelopeConfig = {
+        id: 0,
         attack: 0.01,
         decay: 0.1,
         sustain: 0.5,
