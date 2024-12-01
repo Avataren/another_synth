@@ -1,10 +1,9 @@
 export interface FilterState {
-    id: number,
-    feedback: number;
-    damping: number;
+    id: number;
+    cut: number;
     is_enabled: boolean;
+    resonance: number;
 }
-
 
 export default class VariableCombFilter {
     private buffer: Float32Array;
@@ -13,15 +12,24 @@ export default class VariableCombFilter {
     private delaySamples: number = 0;
     private sampleRate: number;
 
-    private _feedback: number = 0.7;      // Default feedback coefficient
-    private _dampingFactor: number = 0.5; // Default damping factor
+    private _cut: number = 1000;      // Default cutoff frequency in Hz
+    private _resonance: number = 0.5; // Default resonance value
 
-    private lastFeedbackOutput: number = 0;
     private is_enabled = false;
+
+    // Filter coefficients and state
+    private filterAlpha: number = 0;
+    private filterState: number = 0;
+
     constructor(sampleRate: number, maxDelayMs: number = 100) {
         this.sampleRate = sampleRate;
         this.bufferSize = Math.floor((maxDelayMs / 1000) * sampleRate);
         this.buffer = new Float32Array(this.bufferSize);
+        this.clear();
+        this.delaySamples = Math.floor(this.bufferSize / 2);
+
+        // Initialize filter coefficient
+        this.cut = this._cut;
     }
 
     /**
@@ -38,39 +46,41 @@ export default class VariableCombFilter {
     }
 
     updateState(state: FilterState) {
-        this.feedback = state.feedback;
-        this.dampingFactor = state.damping;
+        this.cut = state.cut;
         this.is_enabled = state.is_enabled;
+        this.resonance = state.resonance;
     }
 
     /**
-     * Sets the feedback coefficient.
-     * @param feedback Value between 0 (no feedback) and less than 1 (full feedback).
+     * Sets the cutoff frequency for the filter in the feedback loop.
+     * @param cut Cutoff frequency in Hz.
      */
-    set feedback(feedback: number) {
-        this._feedback = Math.max(0, Math.min(feedback, 0.99)); // Clamp to [0, 0.99]
+    set cut(cut: number) {
+        this._cut = Math.max(20, Math.min(cut, this.sampleRate / 2));
+        const omega = 2 * Math.PI * this._cut / this.sampleRate;
+        this.filterAlpha = Math.exp(-omega);
     }
 
     /**
-     * Gets the current feedback coefficient.
+     * Gets the current cutoff frequency.
      */
-    get feedback(): number {
-        return this._feedback;
+    get cut(): number {
+        return this._cut;
     }
 
     /**
-     * Sets the damping factor.
-     * @param dampingFactor Value between 0 (no damping) and 1 (full damping).
+     * Sets the resonance parameter.
+     * @param resonance Value between 0 (no resonance) and 1 (maximum resonance).
      */
-    set dampingFactor(dampingFactor: number) {
-        this._dampingFactor = Math.max(0, Math.min(dampingFactor, 1)); // Clamp to [0, 1]
+    set resonance(resonance: number) {
+        this._resonance = Math.max(0, Math.min(resonance, 1)); // Clamp to [0, 1]
     }
 
     /**
-     * Gets the current damping factor.
+     * Gets the current resonance value.
      */
-    get dampingFactor(): number {
-        return this._dampingFactor;
+    get resonance(): number {
+        return this._resonance;
     }
 
     /**
@@ -82,6 +92,7 @@ export default class VariableCombFilter {
         if (!this.is_enabled) {
             return input;
         }
+
         const delayInt = Math.floor(this.delaySamples);
         const frac = this.delaySamples - delayInt;
 
@@ -94,14 +105,18 @@ export default class VariableCombFilter {
         // Linear interpolation for fractional delay
         const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
 
-        // Apply damping (low-pass filter in feedback loop)
-        const dampedFeedback = (1 - this._dampingFactor) * delayedSample + this._dampingFactor * this.lastFeedbackOutput;
-        this.lastFeedbackOutput = dampedFeedback;
+        // Apply the filter in the feedback loop
+        this.filterState = (1 - this.filterAlpha) * delayedSample + this.filterAlpha * this.filterState;
 
-        const output = dampedFeedback + input;
+        // Apply resonance and ensure stability
+        const maxFeedbackGain = 0.999; // Maximum safe feedback gain
+        const feedbackSample = this.filterState * maxFeedbackGain * this._resonance;
 
-        // Write to buffer with feedback
-        this.buffer[this.writeIndex] = input + dampedFeedback * this._feedback;
+        // Compute output
+        const output = input + feedbackSample;
+
+        // Write to buffer
+        this.buffer[this.writeIndex] = output;
 
         // Increment and wrap the write index
         this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
@@ -115,6 +130,6 @@ export default class VariableCombFilter {
     clear(): void {
         this.buffer.fill(0);
         this.writeIndex = 0;
-        this.lastFeedbackOutput = 0;
+        this.filterState = 0;
     }
 }

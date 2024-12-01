@@ -14,39 +14,42 @@
       </div>
       <div class="knob-group">
         <audio-knob-component
-          v-model="filterState.feedback"
-          label="Feedback"
-          :min="0"
-          :max="1"
-          :step="0.001"
-          :decimals="3"
-          @update:modelValue="handleFeedbackChange"
+          v-model="filterState.cut"
+          label="Damping"
+          :min="20"
+          :max="20000"
+          :step="10"
+          :decimals="0"
+          @update:modelValue="handleCutoffChange"
         />
 
         <audio-knob-component
-          v-model="filterState.damping"
-          label="Damping"
+          v-model="filterState.resonance"
+          label="Resonance"
           :min="0"
           :max="1"
           :step="0.001"
           :decimals="3"
-          @update:modelValue="handleDampingChange"
+          @update:modelValue="handleResonanceChange"
         />
       </div>
 
       <div class="canvas-wrapper">
-        <canvas></canvas>
+        <canvas ref="frequencyCanvas" width="565" height="120"></canvas>
       </div>
     </q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
-import { type FilterState } from 'src/audio/dsp/variable-comb-filter';
+import FFT from 'fft.js';
+import VariableCombFilter, {
+  type FilterState,
+} from 'src/audio/dsp/variable-comb-filter';
 
 interface Props {
   node: AudioNode | null;
@@ -54,10 +57,10 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
-//const node = computed(() => props.node);
+const frequencyCanvas = ref<HTMLCanvasElement | null>(null);
 
 const store = useAudioSystemStore();
-const { filterStates } = storeToRefs(store);
+const { filterStates, audioSystem } = storeToRefs(store);
 // Create a reactive reference to the oscillator state
 const filterState = computed({
   get: () => {
@@ -66,8 +69,8 @@ const filterState = computed({
       console.warn(`No state found for oscillator ${props.Index}`);
       return {
         id: props.Index,
-        feedback: 0.5,
-        damping: 0.5,
+        cut: 1000,
+        resonance: 0.5,
         is_enabled: false,
       };
     }
@@ -78,6 +81,14 @@ const filterState = computed({
   },
 });
 
+const handleResonanceChange = (val: number) => {
+  const currentState = {
+    ...filterState.value,
+    resonance: val,
+  };
+  store.filterStates.set(props.Index, currentState);
+};
+
 const handleEnabledChange = (val: boolean) => {
   const currentState = {
     ...filterState.value,
@@ -86,23 +97,17 @@ const handleEnabledChange = (val: boolean) => {
   store.filterStates.set(props.Index, currentState);
 };
 
-const handleFeedbackChange = (val: number) => {
+const handleCutoffChange = (val: number) => {
   const currentState = {
     ...filterState.value,
-    feedback: val,
+    cut: val,
   };
   store.filterStates.set(props.Index, currentState);
 };
 
-const handleDampingChange = (val: number) => {
-  const currentState = {
-    ...filterState.value,
-    damping: val,
-  };
-  store.filterStates.set(props.Index, currentState);
-};
-
-onMounted(() => {});
+onMounted(() => {
+  computeFrequencyResponse();
+});
 
 watch(
   () => ({ ...filterStates.value.get(props.Index) }), // Create new reference
@@ -114,11 +119,198 @@ watch(
           props.Index,
           newState as FilterState,
         );
+        computeFrequencyResponse();
       }
     }
   },
   { deep: true, immediate: true },
 );
+
+function computeFrequencyResponse() {
+  if (!audioSystem.value) {
+    return;
+  }
+  const N = 8192; // Increased for better resolution
+  const sampleRate = 44100; // audioSystem.value.audioContext.sampleRate;
+
+  // Create arrays for computation
+  const fft = new FFT(N);
+  const impulse = new Float32Array(N);
+  const response = new Float32Array(N);
+
+  // Generate impulse for comb filter analysis
+  impulse[0] = 1;
+  for (let i = 1; i < N; i++) {
+    impulse[i] = 0;
+  }
+
+  // Process through filter
+  const filter = new VariableCombFilter(sampleRate);
+  filter.updateState({ ...filterState.value, is_enabled: true });
+  filter.clear();
+
+  // Set a base frequency for the comb spacing
+  filter.setFrequency(440); // Or whatever base frequency you're using
+
+  // Generate response
+  for (let i = 0; i < N; i++) {
+    response[i] = filter.process(impulse[i] || 0);
+  }
+
+  // Subtract mean value to remove DC offset
+  const mean = response.reduce((acc, val) => acc + val, 0) / N;
+  for (let i = 0; i < N; i++) {
+    response[i]! -= mean;
+  }
+
+  // Apply Blackman-Harris window for better frequency resolution
+  const window = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const a0 = 0.35875;
+    const a1 = 0.48829;
+    const a2 = 0.14128;
+    const a3 = 0.01168;
+    window[i] =
+      a0 -
+      a1 * Math.cos((2 * Math.PI * i) / (N - 1)) +
+      a2 * Math.cos((4 * Math.PI * i) / (N - 1)) -
+      a3 * Math.cos((6 * Math.PI * i) / (N - 1));
+    response[i]! *= window[i]!;
+  }
+
+  // Perform FFT
+  const freqDomain = fft.createComplexArray();
+  fft.realTransform(freqDomain, response);
+
+  // Calculate magnitude response
+  const magnitudes = new Array(N / 2);
+  let maxMagnitude = -Infinity;
+  let minMagnitude = Infinity;
+
+  for (let i = 0; i < N / 2; i++) {
+    const real = freqDomain[2 * i]!;
+    const imag = freqDomain[2 * i + 1]!;
+    const magnitude = Math.sqrt(real * real + imag * imag);
+    magnitudes[i] = magnitude;
+    maxMagnitude = Math.max(maxMagnitude, magnitude);
+    minMagnitude = Math.min(minMagnitude, magnitude);
+  }
+
+  // Convert magnitudes to dB scale
+  const magnitudesInDb = new Array(N / 2);
+  for (let i = 0; i < N / 2; i++) {
+    const magnitude = magnitudes[i]!;
+    const db = 20 * Math.log10(magnitude / maxMagnitude);
+    magnitudesInDb[i] = isFinite(db) ? db : -200; // Handle -Infinity
+  }
+
+  // Find the minimum dB value for dynamic scaling
+  const minDb = Math.min(...magnitudesInDb.filter((v) => isFinite(v)));
+
+  // Smooth the response slightly to reduce noise (optional)
+  const smoothedMagnitudes = new Array(N / 2);
+  const smoothingWidth = 3;
+  for (let i = 0; i < N / 2; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let j = -smoothingWidth; j <= smoothingWidth; j++) {
+      if (i + j >= 0 && i + j < N / 2) {
+        sum += magnitudesInDb[i + j]!;
+        count++;
+      }
+    }
+    smoothedMagnitudes[i] = sum / count;
+  }
+
+  // Plot the response
+  plotFrequencyResponse(smoothedMagnitudes, sampleRate, minDb);
+}
+
+function plotFrequencyResponse(
+  magnitudesInDb: number[],
+  sampleRate: number,
+  minDb: number,
+) {
+  const canvas = frequencyCanvas.value;
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // Clear with darker background
+  ctx.fillStyle = 'rgb(32, 45, 66)';
+  ctx.fillRect(0, 0, width, height);
+
+  // Adjust the dB range
+  const maxDisplayDb = 0; // Upper limit at 0 dB
+  const minDisplayDb = Math.min(-120, minDb); // Lower limit extended to cover full range
+
+  // Draw frequency grid
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  ctx.lineWidth = 1;
+
+  // Octave markers
+  const frequencies = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+  frequencies.forEach((freq) => {
+    const x =
+      (width * (Math.log2(freq) - Math.log2(20))) /
+      (Math.log2(20000) - Math.log2(20));
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+
+    // Optional: Add frequency labels
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.font = '10px Arial';
+    ctx.fillText(`${freq} Hz`, x + 2, height - 5);
+  });
+
+  // dB markers every 10 dB
+  for (let db = Math.ceil(minDisplayDb / 10) * 10; db <= 0; db += 10) {
+    const y =
+      height * (1 - (db - minDisplayDb) / (maxDisplayDb - minDisplayDb));
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+
+    // Add dB labels
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.font = '10px Arial';
+    ctx.fillText(`${db} dB`, 5, y - 2);
+  }
+
+  // Draw the frequency response with gradient
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#4CAF50'); // Green at the top
+  gradient.addColorStop(1, '#1B5E20'); // Darker green at the bottom
+
+  ctx.beginPath();
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 2;
+
+  for (let i = 0; i < magnitudesInDb.length; i++) {
+    const freq = (i * sampleRate) / (2 * magnitudesInDb.length);
+    if (freq < 20 || freq > 20000) continue;
+
+    const x =
+      (width * (Math.log2(freq) - Math.log2(20))) /
+      (Math.log2(20000) - Math.log2(20));
+
+    const db = magnitudesInDb[i]!;
+    const clampedDb = Math.max(minDisplayDb, Math.min(maxDisplayDb, db));
+    const y =
+      height * (1 - (clampedDb - minDisplayDb) / (maxDisplayDb - minDisplayDb));
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
 </script>
 
 <style scoped>
@@ -145,8 +337,6 @@ watch(
 }
 
 canvas {
-  width: 100%;
-  height: 100%;
   border: 1px solid #ccc;
   background-color: rgb(200, 200, 200);
   border-radius: 4px;

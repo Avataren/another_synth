@@ -80,7 +80,6 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         this.envelopes.set(0, new Envelope(sampleRate));
 
         this.port.onmessage = async (event: MessageEvent) => {
-            console.log('msg recieved ', event);
             if (event.data.type === 'initialize') {
             }
 

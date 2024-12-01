@@ -10,15 +10,20 @@ var VariableCombFilter = class {
     __publicField(this, "writeIndex", 0);
     __publicField(this, "delaySamples", 0);
     __publicField(this, "sampleRate");
-    __publicField(this, "_feedback", 0.7);
-    // Default feedback coefficient
-    __publicField(this, "_dampingFactor", 0.5);
-    // Default damping factor
-    __publicField(this, "lastFeedbackOutput", 0);
+    __publicField(this, "_cut", 1e3);
+    // Default cutoff frequency in Hz
+    __publicField(this, "_resonance", 0.5);
+    // Default resonance value
     __publicField(this, "is_enabled", false);
+    // Filter coefficients and state
+    __publicField(this, "filterAlpha", 0);
+    __publicField(this, "filterState", 0);
     this.sampleRate = sampleRate2;
     this.bufferSize = Math.floor(maxDelayMs / 1e3 * sampleRate2);
     this.buffer = new Float32Array(this.bufferSize);
+    this.clear();
+    this.delaySamples = Math.floor(this.bufferSize / 2);
+    this.cut = this._cut;
   }
   /**
    * Sets the frequency for keytracking, adjusting the delay length.
@@ -31,35 +36,37 @@ var VariableCombFilter = class {
     }
   }
   updateState(state) {
-    this.feedback = state.feedback;
-    this.dampingFactor = state.damping;
+    this.cut = state.cut;
     this.is_enabled = state.is_enabled;
+    this.resonance = state.resonance;
   }
   /**
-   * Sets the feedback coefficient.
-   * @param feedback Value between 0 (no feedback) and less than 1 (full feedback).
+   * Sets the cutoff frequency for the filter in the feedback loop.
+   * @param cut Cutoff frequency in Hz.
    */
-  set feedback(feedback) {
-    this._feedback = Math.max(0, Math.min(feedback, 0.99));
+  set cut(cut) {
+    this._cut = Math.max(20, Math.min(cut, this.sampleRate / 2));
+    const omega = 2 * Math.PI * this._cut / this.sampleRate;
+    this.filterAlpha = Math.exp(-omega);
   }
   /**
-   * Gets the current feedback coefficient.
+   * Gets the current cutoff frequency.
    */
-  get feedback() {
-    return this._feedback;
+  get cut() {
+    return this._cut;
   }
   /**
-   * Sets the damping factor.
-   * @param dampingFactor Value between 0 (no damping) and 1 (full damping).
+   * Sets the resonance parameter.
+   * @param resonance Value between 0 (no resonance) and 1 (maximum resonance).
    */
-  set dampingFactor(dampingFactor) {
-    this._dampingFactor = Math.max(0, Math.min(dampingFactor, 1));
+  set resonance(resonance) {
+    this._resonance = Math.max(0, Math.min(resonance, 1));
   }
   /**
-   * Gets the current damping factor.
+   * Gets the current resonance value.
    */
-  get dampingFactor() {
-    return this._dampingFactor;
+  get resonance() {
+    return this._resonance;
   }
   /**
    * Processes an input sample through the comb filter.
@@ -77,10 +84,11 @@ var VariableCombFilter = class {
     const delayedSample1 = this.buffer[readIndex1];
     const delayedSample2 = this.buffer[readIndex2];
     const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
-    const dampedFeedback = (1 - this._dampingFactor) * delayedSample + this._dampingFactor * this.lastFeedbackOutput;
-    this.lastFeedbackOutput = dampedFeedback;
-    const output = dampedFeedback + input;
-    this.buffer[this.writeIndex] = input + dampedFeedback * this._feedback;
+    this.filterState = (1 - this.filterAlpha) * delayedSample + this.filterAlpha * this.filterState;
+    const maxFeedbackGain = 0.999;
+    const feedbackSample = this.filterState * maxFeedbackGain * this._resonance;
+    const output = input + feedbackSample;
+    this.buffer[this.writeIndex] = output;
     this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
     return output;
   }
@@ -90,7 +98,7 @@ var VariableCombFilter = class {
   clear() {
     this.buffer.fill(0);
     this.writeIndex = 0;
-    this.lastFeedbackOutput = 0;
+    this.filterState = 0;
   }
 };
 
@@ -547,7 +555,6 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     this.oscillators.set(1, new WaveTableOscillator(this.bank, "square", sampleRate));
     this.envelopes.set(0, new Envelope(sampleRate));
     this.port.onmessage = async (event) => {
-      console.log("msg recieved ", event);
       if (event.data.type === "initialize") {
       }
       if (event.data.type === "updateEnvelope") {

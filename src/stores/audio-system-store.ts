@@ -111,8 +111,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         for (let i = 0; i <= 2; i++) {
           this.filterStates.set(i, {
             id: i,
-            feedback: 0.5,
-            damping: 0.5,
+            cut: 1000,
+            resonance: 0.5,
             is_enabled: false
           } as FilterState)
         }
