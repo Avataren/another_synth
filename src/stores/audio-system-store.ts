@@ -88,7 +88,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             detune_cents: 0,
             detune: 0,
             hardsync: false,
-            waveform: 'sine'
+            waveform: 'sine',
+            is_active: true
           });
         }
 

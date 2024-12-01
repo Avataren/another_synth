@@ -6,6 +6,18 @@
     <q-separator />
     <q-card-section class="oscillator-container">
       <div class="knob-group">
+        <q-toggle
+          v-model="oscillatorState.is_active"
+          label="Active"
+          @update:modelValue="handleActiveChange"
+        />
+        <q-toggle
+          v-model="oscillatorState.hardsync"
+          label="Hard Sync"
+          @update:modelValue="handleHardSyncChange"
+        />
+      </div>
+      <div class="knob-group">
         <audio-knob-component
           v-model="oscillatorState.gain"
           label="Gain"
@@ -56,13 +68,6 @@
           @update:modelValue="handleWaveformChange"
         />
       </div>
-      <div class="knob-group">
-        <q-toggle v-model="oscillatorState.hardsync" label="Hard Sync" />
-      </div>
-
-      <div class="canvas-wrapper">
-        <canvas></canvas>
-      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -101,6 +106,7 @@ const oscillatorState = computed({
         detune: 0,
         hardsync: false,
         waveform: 'sine',
+        is_active: true,
       } as OscillatorState;
     }
     return state;
@@ -150,6 +156,22 @@ const handleWaveformChange = (newWaveform: number) => {
   const currentState = {
     ...oscillatorState.value,
     waveform: wf,
+  };
+  store.oscillatorStates.set(props.oscIndex, currentState);
+};
+
+const handleHardSyncChange = (newValue: boolean) => {
+  const currentState = {
+    ...oscillatorState.value,
+    hardsync: newValue,
+  };
+  store.oscillatorStates.set(props.oscIndex, currentState);
+};
+
+const handleActiveChange = (newValue: boolean) => {
+  const currentState = {
+    ...oscillatorState.value,
+    is_active: newValue,
   };
   store.oscillatorStates.set(props.oscIndex, currentState);
 };

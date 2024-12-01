@@ -10,7 +10,8 @@ export interface OscillatorState {
     detune_cents: number;
     detune: number;
     hardsync: boolean;
-    waveform: WaveformType
+    waveform: WaveformType;
+    is_active: boolean;
 }
 
 export class WaveTableOscillator {
@@ -23,6 +24,7 @@ export class WaveTableOscillator {
     private currentType: WaveformType;
     private sampleRate: number;
     private hardSyncEnabled = false;
+    private is_active = true;
 
     constructor(
         private bank: WaveTableBank,
@@ -39,6 +41,7 @@ export class WaveTableOscillator {
         this.detune = state.detune;
         this.gain = state.gain;
         this.setWaveform(state.waveform);
+        this.is_active = state.is_active;
     }
 
     public get hardSync() {
@@ -94,6 +97,10 @@ export class WaveTableOscillator {
     }
 
     process(frequency: number): number {
+        if (!this.is_active) {
+            return 0;
+        }
+
         const tunedFrequency = this.getFrequency(frequency, this.detune);
         this.setFrequency(tunedFrequency);
         this.phasor += this.phaseInc;

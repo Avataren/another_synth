@@ -448,6 +448,7 @@ var WaveTableOscillator = class {
     __publicField(this, "currentType");
     __publicField(this, "sampleRate");
     __publicField(this, "hardSyncEnabled", false);
+    __publicField(this, "is_active", true);
     this.currentType = initialType;
     this.sampleRate = sampleRate2;
     this.setWaveform(initialType);
@@ -457,6 +458,7 @@ var WaveTableOscillator = class {
     this.detune = state.detune;
     this.gain = state.gain;
     this.setWaveform(state.waveform);
+    this.is_active = state.is_active;
   }
   get hardSync() {
     return this.hardSyncEnabled;
@@ -498,6 +500,9 @@ var WaveTableOscillator = class {
     this.curWaveTable = curWaveTable;
   }
   process(frequency) {
+    if (!this.is_active) {
+      return 0;
+    }
     const tunedFrequency = this.getFrequency(frequency, this.detune);
     this.setFrequency(tunedFrequency);
     this.phasor += this.phaseInc;
