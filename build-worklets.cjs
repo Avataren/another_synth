@@ -1,14 +1,16 @@
-// build-worklets.js
 const esbuild = require('esbuild');
 
 const isWatch = process.argv.includes('--watch');
 
 const buildOptions = {
-  entryPoints: ['src/audio/worklets/synth-worklet.ts'], // Update this path to your worklet file(s)
+  entryPoints: [
+    'src/audio/worklets/synth-worklet.ts',
+    'src/audio/worklets/effects-worklet.ts',
+  ],
   bundle: true,
   format: 'esm',
   target: 'es2020',
-  outfile: 'public/worklets/synth-worklet.js', // Output path
+  outdir: 'public/worklets', // Changed from outfile to outdir
   minify: false,
   platform: 'browser',
   logLevel: 'info',

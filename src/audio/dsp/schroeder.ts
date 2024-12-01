@@ -1,8 +1,8 @@
 import AllPassFilter from './allpass-filter';
-import CombFilter from './comb-filter';
+import VariableCombFilter from './variable-comb-filter';
 
 export default class SchroederReverb {
-    private combFilters: CombFilter[] = [];
+    private combFilters: VariableCombFilter[] = [];
     private allPassFilters: AllPassFilter[] = [];
     private sampleRate: number;
 
@@ -11,10 +11,10 @@ export default class SchroederReverb {
 
         // Initialize comb filters with different delays and feedback coefficients
         this.combFilters = [
-            new CombFilter(this.msToSamples(29.7), 0.805),
-            new CombFilter(this.msToSamples(37.1), 0.827),
-            new CombFilter(this.msToSamples(41.1), 0.783),
-            new CombFilter(this.msToSamples(43.7), 0.764),
+            new VariableCombFilter(this.msToSamples(29.7), 0.805),
+            new VariableCombFilter(this.msToSamples(37.1), 0.827),
+            new VariableCombFilter(this.msToSamples(41.1), 0.783),
+            new VariableCombFilter(this.msToSamples(43.7), 0.764),
         ];
 
         // Initialize all-pass filters

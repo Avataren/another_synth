@@ -2,8 +2,8 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// src/audio/dsp/comb-filter.ts
-var CombFilter = class {
+// src/audio/dsp/variable-comb-filter.ts
+var VariableCombFilter = class {
   constructor(sampleRate2, maxDelayMs = 100) {
     __publicField(this, "buffer");
     __publicField(this, "bufferSize");
@@ -532,7 +532,7 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "envelopes", /* @__PURE__ */ new Map());
     __publicField(this, "oscillators", /* @__PURE__ */ new Map());
     __publicField(this, "lastGate", 0);
-    __publicField(this, "combFilter", new CombFilter(sampleRate, 100));
+    __publicField(this, "combFilter", new VariableCombFilter(sampleRate, 100));
     __publicField(this, "bank", new WaveTableBank());
     this.oscillators.set(0, new WaveTableOscillator(this.bank, "sawtooth", sampleRate));
     this.oscillators.set(1, new WaveTableOscillator(this.bank, "square", sampleRate));

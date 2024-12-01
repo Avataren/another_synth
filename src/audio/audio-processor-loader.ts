@@ -26,6 +26,30 @@ export async function createStandardAudioWorklet(
   return workletNode;
 }
 
+export async function createEffectsAudioWorklet(
+  audioContext: AudioContext,
+): Promise<AudioWorkletNode> {
+  // Load the AudioWorklet processor
+  await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}worklets/effects-worklet.js`);
+
+  // Create the AudioWorkletNode
+  const workletNode = new AudioWorkletNode(
+    audioContext,
+    'effects-audio-processor',
+  );
+
+  // Load the WASM binary as an ArrayBuffer
+
+  // Listen for messages from the processor
+  // workletNode.port.onmessage = (event) => {
+  //   if (event.data.type === 'ready') {
+
+  //   }
+  // };
+
+  return workletNode;
+}
+
 export async function createAudioWorkletWithWasm(
   audioContext: AudioContext,
   wasmMemory: WebAssembly.Memory,

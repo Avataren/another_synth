@@ -1,4 +1,6 @@
-export default class CombFilter {
+
+
+export default class VariableCombFilter {
     private buffer: Float32Array;
     private bufferSize: number;
     private writeIndex: number = 0;

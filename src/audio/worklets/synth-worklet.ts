@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import CombFilter from '../dsp/comb-filter';
+import VariableCombFilter from '../dsp/variable-comb-filter';
 import Envelope, { type EnvelopeMessage } from '../dsp/envelope';
 import { WaveTableBank } from '../wavetable/wavetable-bank';
 import { type OscillatorState, WaveTableOscillator } from '../wavetable/wavetable-oscillator';
@@ -38,7 +38,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
     private envelopes: Map<number, Envelope> = new Map();
     private oscillators: Map<number, WaveTableOscillator> = new Map();
     private lastGate: number = 0;
-    private combFilter = new CombFilter(sampleRate, 100);
+    private combFilter = new VariableCombFilter(sampleRate, 100);
     private bank = new WaveTableBank();
     static get parameterDescriptors(): AudioParamDescriptor[] {
         return [
