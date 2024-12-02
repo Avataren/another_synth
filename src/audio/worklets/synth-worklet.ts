@@ -81,7 +81,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         this.oscillators.set(0, new WaveTableOscillator(this.bank, 'sawtooth', sampleRate));
         this.oscillators.set(1, new WaveTableOscillator(this.bank, 'square', sampleRate));
         this.envelopes.set(0, new Envelope(sampleRate));
-        this.noise.setNoiseType(NoiseType.White);
+        this.noise.setNoiseType(NoiseType.Pink);
         this.port.onmessage = async (event: MessageEvent) => {
             if (event.data.type === 'initialize') {
             }
@@ -172,7 +172,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
                 oscillatorSample += oscillator.process(this.getFrequency(freq, detuneValue));
             });
             //oscillatorSample *= envelopeValue;
-            oscillatorSample = this.noiseBuffer[i]! * envelopeValue;
+            oscillatorSample = this.noiseBuffer[i]! * envelopeValue * 0.25;
             this.combFilter.setFrequency(freq);
             let sample = this.combFilter.process(oscillatorSample);
             sample = this.softClip(sample);
