@@ -12,7 +12,7 @@ export default class VariableCombFilter {
     private delaySamples: number = 0;
     private sampleRate: number;
 
-    private _cut: number = 1000;      // Default cutoff frequency in Hz
+    private _cut: number = 10000;     // Default cutoff frequency in Hz
     private _resonance: number = 0.5; // Default resonance value
 
     private is_enabled = false;

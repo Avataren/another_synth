@@ -10,7 +10,7 @@ var VariableCombFilter = class {
     __publicField(this, "writeIndex", 0);
     __publicField(this, "delaySamples", 0);
     __publicField(this, "sampleRate");
-    __publicField(this, "_cut", 1e3);
+    __publicField(this, "_cut", 1e4);
     // Default cutoff frequency in Hz
     __publicField(this, "_resonance", 0.5);
     // Default resonance value
