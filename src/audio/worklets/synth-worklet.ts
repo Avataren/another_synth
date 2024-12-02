@@ -4,6 +4,7 @@ import VariableCombFilter, { type FilterState } from '../dsp/variable-comb-filte
 import Envelope, { type EnvelopeMessage } from '../dsp/envelope';
 import { WaveTableBank } from '../wavetable/wavetable-bank';
 import { type OscillatorState, WaveTableOscillator } from '../wavetable/wavetable-oscillator';
+import NoiseGenerator, { NoiseType } from '../dsp/noise-generator';
 
 declare const AudioWorkletProcessor: {
     prototype: AudioWorkletProcessor;
@@ -40,6 +41,8 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
     private lastGate: number = 0;
     private combFilter = new VariableCombFilter(sampleRate, 100);
     private bank = new WaveTableBank();
+    private noise = new NoiseGenerator(sampleRate);
+    private noiseBuffer = new Float32Array(128);
     static get parameterDescriptors(): AudioParamDescriptor[] {
         return [
             {
@@ -78,7 +81,7 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         this.oscillators.set(0, new WaveTableOscillator(this.bank, 'sawtooth', sampleRate));
         this.oscillators.set(1, new WaveTableOscillator(this.bank, 'square', sampleRate));
         this.envelopes.set(0, new Envelope(sampleRate));
-
+        this.noise.setNoiseType(NoiseType.White);
         this.port.onmessage = async (event: MessageEvent) => {
             if (event.data.type === 'initialize') {
             }
@@ -144,6 +147,8 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         //const gainValue = gain[0] as number;
         const detuneValue = detune[0] as number;
 
+        this.noise.process(1.0, 1.0, 1.0, this.noiseBuffer);
+
         for (let i = 0; i < bufferSize; ++i) {
             const freq = frequency[i] ?? frequency[0] as number;
             const gateValue = gate[i] ?? gate[0] as number;
@@ -166,7 +171,8 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
             this.oscillators.forEach((oscillator, _id) => {
                 oscillatorSample += oscillator.process(this.getFrequency(freq, detuneValue));
             });
-            oscillatorSample *= envelopeValue;
+            //oscillatorSample *= envelopeValue;
+            oscillatorSample = this.noiseBuffer[i]! * envelopeValue;
             this.combFilter.setFrequency(freq);
             let sample = this.combFilter.process(oscillatorSample);
             sample = this.softClip(sample);

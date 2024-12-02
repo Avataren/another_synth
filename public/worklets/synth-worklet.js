@@ -542,6 +542,129 @@ var WaveTableOscillator = class {
   }
 };
 
+// src/audio/dsp/noise-generator.ts
+var _NoiseGenerator = class _NoiseGenerator {
+  constructor(sampleRate2) {
+    // Random number generator state
+    __publicField(this, "state0", 0);
+    __publicField(this, "state1", 0);
+    __publicField(this, "state2", 0);
+    __publicField(this, "state3", 0);
+    // Noise parameters
+    __publicField(this, "currentNoiseType");
+    __publicField(this, "dcOffset");
+    // Filter parameters
+    __publicField(this, "targetCutoff");
+    __publicField(this, "currentCutoff");
+    __publicField(this, "previousOutput");
+    __publicField(this, "filterCoeff");
+    __publicField(this, "sampleRate");
+    // Pink and Brownian noise state
+    __publicField(this, "pinkNoiseState");
+    __publicField(this, "brownNoiseState");
+    this.sampleRate = sampleRate2;
+    this.currentNoiseType = 0 /* White */;
+    this.setSeed(123);
+    this.targetCutoff = 1;
+    this.currentCutoff = 1;
+    this.previousOutput = 0;
+    this.filterCoeff = 0;
+    this.dcOffset = 0;
+    this.pinkNoiseState = new Float32Array(7);
+    this.brownNoiseState = 0;
+    this.updateFilterCoefficient();
+  }
+  setCutoff(value) {
+    this.targetCutoff = Math.max(0, Math.min(value, 1));
+  }
+  setDCOffset(value) {
+    this.dcOffset = Math.max(-1, Math.min(value, 1));
+  }
+  setSeed(seed) {
+    this.state0 = seed;
+    this.state1 = 362436069;
+    this.state2 = 521288629;
+    this.state3 = 88675123;
+  }
+  setNoiseType(noiseType) {
+    this.currentNoiseType = noiseType;
+  }
+  updateFilterCoefficient(cutoffMod = 1) {
+    this.currentCutoff += (this.targetCutoff * cutoffMod - this.currentCutoff) * _NoiseGenerator.CUTOFF_SMOOTHING;
+    const maxFrequency = this.sampleRate / 2;
+    let cutoffFrequency = _NoiseGenerator.MIN_FREQUENCY * Math.exp(Math.log(maxFrequency / _NoiseGenerator.MIN_FREQUENCY) * this.currentCutoff);
+    cutoffFrequency = Math.max(_NoiseGenerator.MIN_FREQUENCY, Math.min(cutoffFrequency, maxFrequency));
+    const rc = 1 / (2 * Math.PI * cutoffFrequency);
+    const dt = 1 / this.sampleRate;
+    this.filterCoeff = dt / (rc + dt);
+  }
+  generateRandomNumber() {
+    const result = this.rotateLeft(this.state1 * 5, 7) * 9;
+    const t = this.state1 << 9;
+    this.state2 ^= this.state0;
+    this.state3 ^= this.state1;
+    this.state1 ^= this.state2;
+    this.state0 ^= this.state3;
+    this.state2 ^= t;
+    this.state3 = this.rotateLeft(this.state3, 11);
+    return result >>> 0;
+  }
+  rotateLeft(n, d) {
+    return n << d | n >>> 32 - d;
+  }
+  getWhiteNoise() {
+    return this.generateRandomNumber() / 4294967295 * 2 - 1;
+  }
+  getPinkNoise() {
+    const white = this.getWhiteNoise();
+    this.pinkNoiseState[0] = 0.99886 * this.pinkNoiseState[0] + white * 0.0555179;
+    this.pinkNoiseState[1] = 0.99332 * this.pinkNoiseState[1] + white * 0.0750759;
+    this.pinkNoiseState[2] = 0.969 * this.pinkNoiseState[2] + white * 0.153852;
+    this.pinkNoiseState[3] = 0.8665 * this.pinkNoiseState[3] + white * 0.3104856;
+    this.pinkNoiseState[4] = 0.55 * this.pinkNoiseState[4] + white * 0.5329522;
+    this.pinkNoiseState[5] = -0.7616 * this.pinkNoiseState[5] - white * 0.016898;
+    const pink = this.pinkNoiseState[0] + this.pinkNoiseState[1] + this.pinkNoiseState[2] + this.pinkNoiseState[3] + this.pinkNoiseState[4] + this.pinkNoiseState[5] + this.pinkNoiseState[6] + white * 0.5362;
+    this.pinkNoiseState[6] = white * 0.115926;
+    return pink * _NoiseGenerator.PINK_NOISE_SCALE;
+  }
+  getBrownianNoise() {
+    const white = this.getWhiteNoise();
+    this.brownNoiseState = (this.brownNoiseState + 0.02 * white) / 1.02;
+    return this.brownNoiseState * _NoiseGenerator.BROWNIAN_NOISE_SCALE;
+  }
+  applyFilter(inputNoise) {
+    const output = this.filterCoeff * inputNoise + (1 - this.filterCoeff) * this.previousOutput;
+    this.previousOutput = output;
+    return output;
+  }
+  process(amplitude, gainParam, cutoffMod, output) {
+    for (let i = 0; i < output.length; i++) {
+      this.updateFilterCoefficient(cutoffMod);
+      let noiseValue;
+      switch (this.currentNoiseType) {
+        case 0 /* White */:
+          noiseValue = this.getWhiteNoise();
+          break;
+        case 1 /* Pink */:
+          noiseValue = this.getPinkNoise();
+          break;
+        case 2 /* Brownian */:
+          noiseValue = this.getBrownianNoise();
+          break;
+        default:
+          noiseValue = 0;
+      }
+      output[i] = this.applyFilter(noiseValue) * amplitude * gainParam + this.dcOffset;
+    }
+    return output;
+  }
+};
+__publicField(_NoiseGenerator, "PINK_NOISE_SCALE", 0.25);
+__publicField(_NoiseGenerator, "BROWNIAN_NOISE_SCALE", 3.5);
+__publicField(_NoiseGenerator, "CUTOFF_SMOOTHING", 0.1);
+__publicField(_NoiseGenerator, "MIN_FREQUENCY", 20);
+var NoiseGenerator = _NoiseGenerator;
+
 // src/audio/worklets/synth-worklet.ts
 var WasmAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
@@ -551,9 +674,12 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "lastGate", 0);
     __publicField(this, "combFilter", new VariableCombFilter(sampleRate, 100));
     __publicField(this, "bank", new WaveTableBank());
+    __publicField(this, "noise", new NoiseGenerator(sampleRate));
+    __publicField(this, "noiseBuffer", new Float32Array(128));
     this.oscillators.set(0, new WaveTableOscillator(this.bank, "sawtooth", sampleRate));
     this.oscillators.set(1, new WaveTableOscillator(this.bank, "square", sampleRate));
     this.envelopes.set(0, new Envelope(sampleRate));
+    this.noise.setNoiseType(0 /* White */);
     this.port.onmessage = async (event) => {
       if (event.data.type === "initialize") {
       }
@@ -636,6 +762,7 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     const gate = parameters.gate;
     const bufferSize = output[0].length;
     const detuneValue = detune[0];
+    this.noise.process(1, 1, 1, this.noiseBuffer);
     for (let i = 0; i < bufferSize; ++i) {
       const freq = frequency[i] ?? frequency[0];
       const gateValue = gate[i] ?? gate[0];
@@ -653,7 +780,7 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
       this.oscillators.forEach((oscillator, _id) => {
         oscillatorSample += oscillator.process(this.getFrequency(freq, detuneValue));
       });
-      oscillatorSample *= envelopeValue;
+      oscillatorSample = this.noiseBuffer[i] * envelopeValue;
       this.combFilter.setFrequency(freq);
       let sample = this.combFilter.process(oscillatorSample);
       sample = this.softClip(sample);
