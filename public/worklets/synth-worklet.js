@@ -559,10 +559,14 @@ var _NoiseGenerator = class _NoiseGenerator {
     __publicField(this, "previousOutput");
     __publicField(this, "filterCoeff");
     __publicField(this, "sampleRate");
+    __publicField(this, "maxFrequency");
     // Pink and Brownian noise state
     __publicField(this, "pinkNoiseState");
     __publicField(this, "brownNoiseState");
+    // Cached noise function
+    __publicField(this, "currentNoiseFunc");
     this.sampleRate = sampleRate2;
+    this.maxFrequency = sampleRate2 / 2;
     this.currentNoiseType = 0 /* White */;
     this.setSeed(123);
     this.targetCutoff = 1;
@@ -572,6 +576,7 @@ var _NoiseGenerator = class _NoiseGenerator {
     this.dcOffset = 0;
     this.pinkNoiseState = new Float32Array(7);
     this.brownNoiseState = 0;
+    this.currentNoiseFunc = this.getWhiteNoise.bind(this);
     this.updateFilterCoefficient();
   }
   setCutoff(value) {
@@ -588,29 +593,36 @@ var _NoiseGenerator = class _NoiseGenerator {
   }
   setNoiseType(noiseType) {
     this.currentNoiseType = noiseType;
+    switch (noiseType) {
+      case 0 /* White */:
+        this.currentNoiseFunc = this.getWhiteNoise.bind(this);
+        break;
+      case 1 /* Pink */:
+        this.currentNoiseFunc = this.getPinkNoise.bind(this);
+        break;
+      case 2 /* Brownian */:
+        this.currentNoiseFunc = this.getBrownianNoise.bind(this);
+        break;
+    }
   }
   updateFilterCoefficient(cutoffMod = 1) {
     this.currentCutoff += (this.targetCutoff * cutoffMod - this.currentCutoff) * _NoiseGenerator.CUTOFF_SMOOTHING;
-    const maxFrequency = this.sampleRate / 2;
-    let cutoffFrequency = _NoiseGenerator.MIN_FREQUENCY * Math.exp(Math.log(maxFrequency / _NoiseGenerator.MIN_FREQUENCY) * this.currentCutoff);
-    cutoffFrequency = Math.max(_NoiseGenerator.MIN_FREQUENCY, Math.min(cutoffFrequency, maxFrequency));
+    let cutoffFrequency = _NoiseGenerator.MIN_FREQUENCY * Math.exp(Math.log(this.maxFrequency / _NoiseGenerator.MIN_FREQUENCY) * this.currentCutoff);
+    cutoffFrequency = Math.max(_NoiseGenerator.MIN_FREQUENCY, Math.min(cutoffFrequency, this.maxFrequency));
     const rc = 1 / (2 * Math.PI * cutoffFrequency);
     const dt = 1 / this.sampleRate;
     this.filterCoeff = dt / (rc + dt);
   }
   generateRandomNumber() {
-    const result = this.rotateLeft(this.state1 * 5, 7) * 9;
+    const result = (this.state1 * 5 << 7 | this.state1 * 5 >>> 25) * 9;
     const t = this.state1 << 9;
     this.state2 ^= this.state0;
     this.state3 ^= this.state1;
     this.state1 ^= this.state2;
     this.state0 ^= this.state3;
     this.state2 ^= t;
-    this.state3 = this.rotateLeft(this.state3, 11);
+    this.state3 = this.state3 << 11 | this.state3 >>> 21;
     return result >>> 0;
-  }
-  rotateLeft(n, d) {
-    return n << d | n >>> 32 - d;
   }
   getWhiteNoise() {
     return this.generateRandomNumber() / 4294967295 * 2 - 1;
@@ -638,23 +650,10 @@ var _NoiseGenerator = class _NoiseGenerator {
     return output;
   }
   process(amplitude, gainParam, cutoffMod, output) {
+    const gain = amplitude * gainParam;
     for (let i = 0; i < output.length; i++) {
       this.updateFilterCoefficient(cutoffMod);
-      let noiseValue;
-      switch (this.currentNoiseType) {
-        case 0 /* White */:
-          noiseValue = this.getWhiteNoise();
-          break;
-        case 1 /* Pink */:
-          noiseValue = this.getPinkNoise();
-          break;
-        case 2 /* Brownian */:
-          noiseValue = this.getBrownianNoise();
-          break;
-        default:
-          noiseValue = 0;
-      }
-      output[i] = this.applyFilter(noiseValue) * amplitude * gainParam + this.dcOffset;
+      output[i] = this.applyFilter(this.currentNoiseFunc()) * gain + this.dcOffset;
     }
     return output;
   }

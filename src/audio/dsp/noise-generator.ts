@@ -1,4 +1,3 @@
-// Types and enums
 export enum NoiseType {
     White,
     Pink,
@@ -26,14 +25,19 @@ export default class NoiseGenerator {
     private currentCutoff: number;
     private previousOutput: number;
     private filterCoeff: number;
-    private sampleRate: number;
+    private readonly sampleRate: number;
+    private readonly maxFrequency: number;
 
     // Pink and Brownian noise state
-    private pinkNoiseState: Float32Array;
+    private readonly pinkNoiseState: Float32Array;
     private brownNoiseState: number;
+
+    // Cached noise function
+    private currentNoiseFunc: () => number;
 
     constructor(sampleRate: number) {
         this.sampleRate = sampleRate;
+        this.maxFrequency = sampleRate / 2;
         this.currentNoiseType = NoiseType.White;
         this.setSeed(123); // Default seed
         this.targetCutoff = 1;
@@ -43,6 +47,7 @@ export default class NoiseGenerator {
         this.dcOffset = 0;
         this.pinkNoiseState = new Float32Array(7);
         this.brownNoiseState = 0;
+        this.currentNoiseFunc = this.getWhiteNoise.bind(this);
         this.updateFilterCoefficient();
     }
 
@@ -63,17 +68,27 @@ export default class NoiseGenerator {
 
     public setNoiseType(noiseType: NoiseType): void {
         this.currentNoiseType = noiseType;
+        // Update cached noise function
+        switch (noiseType) {
+            case NoiseType.White:
+                this.currentNoiseFunc = this.getWhiteNoise.bind(this);
+                break;
+            case NoiseType.Pink:
+                this.currentNoiseFunc = this.getPinkNoise.bind(this);
+                break;
+            case NoiseType.Brownian:
+                this.currentNoiseFunc = this.getBrownianNoise.bind(this);
+                break;
+        }
     }
 
     private updateFilterCoefficient(cutoffMod: number = 1): void {
         this.currentCutoff += (this.targetCutoff * cutoffMod - this.currentCutoff) * NoiseGenerator.CUTOFF_SMOOTHING;
 
-        const maxFrequency = this.sampleRate / 2;
-
         // Exponential curve for cutoff frequency
         let cutoffFrequency = NoiseGenerator.MIN_FREQUENCY *
-            Math.exp(Math.log(maxFrequency / NoiseGenerator.MIN_FREQUENCY) * this.currentCutoff);
-        cutoffFrequency = Math.max(NoiseGenerator.MIN_FREQUENCY, Math.min(cutoffFrequency, maxFrequency));
+            Math.exp(Math.log(this.maxFrequency / NoiseGenerator.MIN_FREQUENCY) * this.currentCutoff);
+        cutoffFrequency = Math.max(NoiseGenerator.MIN_FREQUENCY, Math.min(cutoffFrequency, this.maxFrequency));
 
         const rc = 1 / (2 * Math.PI * cutoffFrequency);
         const dt = 1 / this.sampleRate;
@@ -81,8 +96,7 @@ export default class NoiseGenerator {
     }
 
     private generateRandomNumber(): number {
-        // xoshiro128** algorithm
-        const result = this.rotateLeft(this.state1 * 5, 7) * 9;
+        const result = ((this.state1 * 5) << 7 | (this.state1 * 5) >>> 25) * 9;
         const t = this.state1 << 9;
 
         this.state2 ^= this.state0;
@@ -90,13 +104,9 @@ export default class NoiseGenerator {
         this.state1 ^= this.state2;
         this.state0 ^= this.state3;
         this.state2 ^= t;
-        this.state3 = this.rotateLeft(this.state3, 11);
+        this.state3 = (this.state3 << 11) | (this.state3 >>> 21);
 
-        return result >>> 0; // Convert to unsigned 32-bit integer
-    }
-
-    private rotateLeft(n: number, d: number): number {
-        return (n << d) | (n >>> (32 - d));
+        return result >>> 0;
     }
 
     private getWhiteNoise(): number {
@@ -135,26 +145,11 @@ export default class NoiseGenerator {
     }
 
     public process(amplitude: number, gainParam: number, cutoffMod: number, output: Float32Array) {
+        const gain = amplitude * gainParam;
 
         for (let i = 0; i < output.length; i++) {
             this.updateFilterCoefficient(cutoffMod);
-
-            let noiseValue: number;
-            switch (this.currentNoiseType) {
-                case NoiseType.White:
-                    noiseValue = this.getWhiteNoise();
-                    break;
-                case NoiseType.Pink:
-                    noiseValue = this.getPinkNoise();
-                    break;
-                case NoiseType.Brownian:
-                    noiseValue = this.getBrownianNoise();
-                    break;
-                default:
-                    noiseValue = 0;
-            }
-
-            output[i] = (this.applyFilter(noiseValue) * amplitude * gainParam) + this.dcOffset;
+            output[i] = this.applyFilter(this.currentNoiseFunc()) * gain + this.dcOffset;
         }
 
         return output;
