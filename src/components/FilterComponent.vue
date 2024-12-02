@@ -15,7 +15,7 @@
       <div class="knob-group">
         <audio-knob-component
           v-model="filterState.cut"
-          label="Damping"
+          label="Cut"
           :min="20"
           :max="20000"
           :step="10"
@@ -130,40 +130,28 @@ function computeFrequencyResponse() {
   if (!audioSystem.value) {
     return;
   }
-  const N = 8192; // Increased for better resolution
-  const sampleRate = 44100; // audioSystem.value.audioContext.sampleRate;
+  const N = 8192;
+  const sampleRate = 44100;
 
-  // Create arrays for computation
   const fft = new FFT(N);
   const impulse = new Float32Array(N);
   const response = new Float32Array(N);
 
   // Generate impulse for comb filter analysis
   impulse[0] = 1;
-  for (let i = 1; i < N; i++) {
-    impulse[i] = 0;
-  }
 
   // Process through filter
   const filter = new VariableCombFilter(sampleRate);
   filter.updateState({ ...filterState.value, is_enabled: true });
   filter.clear();
-
-  // Set a base frequency for the comb spacing
-  filter.setFrequency(440); // Or whatever base frequency you're using
+  filter.setFrequency(440);
 
   // Generate response
   for (let i = 0; i < N; i++) {
     response[i] = filter.process(impulse[i] || 0);
   }
 
-  // Subtract mean value to remove DC offset
-  const mean = response.reduce((acc, val) => acc + val, 0) / N;
-  for (let i = 0; i < N; i++) {
-    response[i]! -= mean;
-  }
-
-  // Apply Blackman-Harris window for better frequency resolution
+  // Apply Blackman-Harris window
   const window = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const a0 = 0.35875;
@@ -182,47 +170,50 @@ function computeFrequencyResponse() {
   const freqDomain = fft.createComplexArray();
   fft.realTransform(freqDomain, response);
 
-  // Calculate magnitude response
+  // Calculate magnitude response with fixed reference level
   const magnitudes = new Array(N / 2);
-  let maxMagnitude = -Infinity;
-  let minMagnitude = Infinity;
+  const referenceLevel = 1.0; // Fixed reference instead of dynamic maxMagnitude
 
   for (let i = 0; i < N / 2; i++) {
     const real = freqDomain[2 * i]!;
     const imag = freqDomain[2 * i + 1]!;
     const magnitude = Math.sqrt(real * real + imag * imag);
     magnitudes[i] = magnitude;
-    maxMagnitude = Math.max(maxMagnitude, magnitude);
-    minMagnitude = Math.min(minMagnitude, magnitude);
   }
 
-  // Convert magnitudes to dB scale
+  // Convert to dB with fixed reference
   const magnitudesInDb = new Array(N / 2);
   for (let i = 0; i < N / 2; i++) {
     const magnitude = magnitudes[i]!;
-    const db = 20 * Math.log10(magnitude / maxMagnitude);
-    magnitudesInDb[i] = isFinite(db) ? db : -200; // Handle -Infinity
+    const db = 20 * Math.log10(magnitude / referenceLevel);
+    magnitudesInDb[i] = isFinite(db) ? Math.max(db, -120) : -120; // Clamp at -120dB
   }
 
-  // Find the minimum dB value for dynamic scaling
-  const minDb = Math.min(...magnitudesInDb.filter((v) => isFinite(v)));
-
-  // Smooth the response slightly to reduce noise (optional)
+  // Frequency-dependent smoothing
   const smoothedMagnitudes = new Array(N / 2);
-  const smoothingWidth = 3;
   for (let i = 0; i < N / 2; i++) {
+    const freq = (i * sampleRate) / (2 * N);
+    // Wider smoothing window at higher frequencies
+    const octaves = Math.log2(freq / 20);
+    const smoothingWidth = Math.max(2, Math.min(12, Math.floor(octaves)));
+
     let sum = 0;
-    let count = 0;
+    let weightSum = 0;
+
     for (let j = -smoothingWidth; j <= smoothingWidth; j++) {
       if (i + j >= 0 && i + j < N / 2) {
-        sum += magnitudesInDb[i + j]!;
-        count++;
+        // Gaussian weighting
+        const weight = Math.exp(
+          -(j * j) / (2 * smoothingWidth * smoothingWidth),
+        );
+        sum += magnitudesInDb[i + j]! * weight;
+        weightSum += weight;
       }
     }
-    smoothedMagnitudes[i] = sum / count;
+    smoothedMagnitudes[i] = sum / weightSum;
   }
 
-  // Plot the response
+  const minDb = -120; // Fixed minimum dB instead of dynamic calculation
   plotFrequencyResponse(smoothedMagnitudes, sampleRate, minDb);
 }
 
