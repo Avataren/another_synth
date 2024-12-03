@@ -579,24 +579,21 @@ var FlangerCombFilter = class {
     __publicField(this, "delaySamples", 0);
     __publicField(this, "sampleRate");
     __publicField(this, "phase", 0);
-    // DC blocker state
-    __publicField(this, "prevInput", 0);
-    __publicField(this, "prevOutput", 0);
-    __publicField(this, "DC_POLE", 0.995);
-    // Pole for DC blocking filter
-    // Hardcoded flanger parameters
+    // Enhanced DC blocker state
+    __publicField(this, "x1", 0);
+    __publicField(this, "x2", 0);
+    __publicField(this, "y1", 0);
+    __publicField(this, "y2", 0);
+    __publicField(this, "R", 0.999);
+    // Pole radius
+    __publicField(this, "SQRT2", Math.sqrt(2));
+    // Original flanger parameters
     __publicField(this, "FLANGER_RATE", 0.2);
-    // LFO rate in Hz
     __publicField(this, "FLANGER_DEPTH", 0.7);
-    // Modulation depth
     __publicField(this, "FLANGER_MIX", 0.5);
-    // Wet/dry mix
     __publicField(this, "_cut", 1e4);
-    // Cutoff frequency in Hz
     __publicField(this, "_resonance", 0.5);
-    // Resonance value
     __publicField(this, "is_enabled", false);
-    // Filter coefficients and state
     __publicField(this, "filterAlpha", 0);
     __publicField(this, "filterState", 0);
     this.sampleRate = sampleRate2;
@@ -605,14 +602,13 @@ var FlangerCombFilter = class {
     this.clear();
     this.cut = this._cut;
   }
-  /**
-   * DC blocking filter implementation
-   */
   removeDC(input) {
-    const output = input - this.prevInput + this.DC_POLE * this.prevOutput;
-    this.prevInput = input;
-    this.prevOutput = output;
-    return output;
+    const output = input - 2 * this.x1 + this.x2 + 2 * this.R * this.y1 - this.R * this.R * this.y2;
+    this.x2 = this.x1;
+    this.x1 = input;
+    this.y2 = this.y1;
+    this.y1 = output;
+    return output / (1 + 2 * this.R + this.R * this.R);
   }
   setFrequency(frequency) {
     const delayTimeSec = 1 / frequency;
@@ -682,8 +678,10 @@ var FlangerCombFilter = class {
     this.writeIndex = 0;
     this.filterState = 0;
     this.phase = 0;
-    this.prevInput = 0;
-    this.prevOutput = 0;
+    this.x1 = 0;
+    this.x2 = 0;
+    this.y1 = 0;
+    this.y2 = 0;
   }
 };
 

@@ -13,21 +13,23 @@ export default class FlangerCombFilter {
     private sampleRate: number;
     private phase: number = 0;
 
-    // DC blocker state
-    private prevInput: number = 0;
-    private prevOutput: number = 0;
-    private readonly DC_POLE = 0.995; // Pole for DC blocking filter
+    // Enhanced DC blocker state
+    private x1: number = 0;
+    private x2: number = 0;
+    private y1: number = 0;
+    private y2: number = 0;
+    private readonly R = 0.999;  // Pole radius
+    private readonly SQRT2 = Math.sqrt(2);
 
-    // Hardcoded flanger parameters
-    private readonly FLANGER_RATE = 0.2;    // LFO rate in Hz
-    private readonly FLANGER_DEPTH = 0.7;   // Modulation depth
-    private readonly FLANGER_MIX = 0.5;     // Wet/dry mix
+    // Original flanger parameters
+    private readonly FLANGER_RATE = 0.2;
+    private readonly FLANGER_DEPTH = 0.7;
+    private readonly FLANGER_MIX = 0.5;
 
-    private _cut: number = 10000;     // Cutoff frequency in Hz
-    private _resonance: number = 0.5; // Resonance value
+    private _cut: number = 10000;
+    private _resonance: number = 0.5;
     private is_enabled = false;
 
-    // Filter coefficients and state
     private filterAlpha: number = 0;
     private filterState: number = 0;
 
@@ -36,29 +38,28 @@ export default class FlangerCombFilter {
         this.bufferSize = Math.floor((maxDelayMs / 1000) * sampleRate);
         this.buffer = new Float32Array(this.bufferSize);
         this.clear();
-
-        // Initialize filter coefficient
         this.cut = this._cut;
     }
 
-    /**
-     * DC blocking filter implementation
-     */
     private removeDC(input: number): number {
-        // First order DC blocking filter: y[n] = x[n] - x[n-1] + R * y[n-1]
-        const output = input - this.prevInput + this.DC_POLE * this.prevOutput;
+        // Second-order DC blocking filter
+        // Transfer function: H(z) = (1 - 2z^-1 + z^-2) / (1 - 2Rz^-1 + R^2z^-2)
+        const output = input - 2 * this.x1 + this.x2 +
+            2 * this.R * this.y1 - this.R * this.R * this.y2;
 
-        this.prevInput = input;
-        this.prevOutput = output;
+        // Update state variables
+        this.x2 = this.x1;
+        this.x1 = input;
+        this.y2 = this.y1;
+        this.y1 = output;
 
-        return output;
+        return output / (1 + 2 * this.R + this.R * this.R); // Normalize gain
     }
 
     setFrequency(frequency: number): void {
         const delayTimeSec = 1 / frequency;
         this.delaySamples = delayTimeSec * this.sampleRate;
 
-        // Ensure the delay doesn't exceed buffer size
         if (this.delaySamples >= this.bufferSize) {
             this.delaySamples = this.bufferSize - 1;
         }
@@ -89,10 +90,7 @@ export default class FlangerCombFilter {
     }
 
     private getModulatedDelay(): number {
-        // Generate LFO value using sine wave
         const lfoValue = Math.sin(this.phase);
-
-        // Calculate modulated delay time
         const modDepth = this.delaySamples * this.FLANGER_DEPTH;
         return this.delaySamples + (lfoValue * modDepth);
     }
@@ -102,13 +100,11 @@ export default class FlangerCombFilter {
             return input;
         }
 
-        // Update LFO phase
         this.phase += (2 * Math.PI * this.FLANGER_RATE) / this.sampleRate;
         if (this.phase >= 2 * Math.PI) {
             this.phase -= 2 * Math.PI;
         }
 
-        // Get base delay sample for self-oscillation
         const delayInt = Math.floor(this.delaySamples);
         const frac = this.delaySamples - delayInt;
 
@@ -118,21 +114,16 @@ export default class FlangerCombFilter {
         const delayedSample1 = this.buffer[readIndex1]!;
         const delayedSample2 = this.buffer[readIndex2]!;
 
-        // Linear interpolation for base delay
         const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
 
-        // Apply the filter in the feedback loop
         this.filterState = (1 - this.filterAlpha) * delayedSample +
             this.filterAlpha * this.filterState;
 
-        // Apply resonance with stability limit
         const maxFeedbackGain = 0.999;
         const feedbackSample = this.filterState * maxFeedbackGain * this._resonance;
 
-        // Compute feedback signal (for self-oscillation)
         const feedbackSignal = input + feedbackSample;
 
-        // Get modulated delay sample for flanging effect
         const modDelay = this.getModulatedDelay();
         const modDelayInt = Math.floor(modDelay);
         const modFrac = modDelay - modDelayInt;
@@ -143,17 +134,13 @@ export default class FlangerCombFilter {
         const modDelayedSample1 = this.buffer[modReadIndex1]!;
         const modDelayedSample2 = this.buffer[modReadIndex2]!;
 
-        // Linear interpolation for modulated delay
         const modDelayedSample = modDelayedSample1 * (1 - modFrac) + modDelayedSample2 * modFrac;
 
-        // Write feedback signal to buffer
         this.buffer[this.writeIndex] = feedbackSignal;
         this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
 
-        // Mix original feedback signal with modulated signal
         const output = feedbackSignal * (1 - this.FLANGER_MIX) + modDelayedSample * this.FLANGER_MIX;
 
-        // Apply DC blocking filter
         return this.removeDC(output);
     }
 
@@ -162,7 +149,9 @@ export default class FlangerCombFilter {
         this.writeIndex = 0;
         this.filterState = 0;
         this.phase = 0;
-        this.prevInput = 0;
-        this.prevOutput = 0;
+        this.x1 = 0;
+        this.x2 = 0;
+        this.y1 = 0;
+        this.y2 = 0;
     }
 }
