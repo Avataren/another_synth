@@ -1,7 +1,7 @@
 export enum NoiseType {
-    White,
-    Pink,
-    Brownian
+    White = 0,
+    Pink = 1,
+    Brownian = 2
 }
 
 export interface NoiseState {

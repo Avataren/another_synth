@@ -50,12 +50,12 @@
       </q-knob>
     </div>
     <div class="knob-label">{{ label }}</div>
-    <div v-if="unit" class="knob-unit">{{ unit }}</div>
+    <div v-if="unitFunc" class="knob-unit">{{ displayUnit }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, computed } from 'vue';
 import { QInput } from 'quasar';
 
 interface Props {
@@ -68,6 +68,7 @@ interface Props {
   unit?: string;
   color?: string;
   trackColor?: string;
+  unitFunc?: (val: number) => string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -79,7 +80,9 @@ const props = withDefaults(defineProps<Props>(), {
   color: 'orange',
   trackColor: 'orange-3',
 });
-
+const displayUnit = computed(() =>
+  props.unitFunc ? props.unitFunc(props.modelValue) : props.unit,
+);
 const emit = defineEmits(['update:modelValue']);
 
 const isEditing = ref(false);

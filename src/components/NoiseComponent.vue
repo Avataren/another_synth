@@ -5,14 +5,25 @@
     </q-card-section>
     <q-separator />
     <q-card-section class="filter-container">
-      <!-- <div class="knob-group">
+      <div class="knob-group">
         <q-toggle
           v-model="filterState.is_enabled"
           label="Enabled"
           @update:modelValue="handleEnabledChange"
         />
-      </div> -->
+      </div>
       <div class="knob-group">
+        <audio-knob-component
+          v-model="noiseState.noiseType"
+          label="Noise type"
+          :min="0"
+          :max="2"
+          :step="1"
+          :decimals="0"
+          :unitFunc="parseNoiseUnit"
+          @update:modelValue="handleNoiseTypeChange"
+        />
+
         <audio-knob-component
           v-model="noiseState.cutoff"
           label="Cut"
@@ -51,12 +62,12 @@ import NoiseGenerator, {
   type NoiseState,
   NoiseType,
 } from 'src/audio/dsp/noise-generator';
-interface Props {
-  node: AudioNode | null;
-  Index: number;
-}
+// interface Props {
+//   node: AudioNode | null;
+//   Index: number;
+// }
 
-const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
+//const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 const frequencyCanvas = ref<HTMLCanvasElement | null>(null);
 
 const store = useAudioSystemStore();
@@ -64,15 +75,27 @@ const { noiseState, audioSystem } = storeToRefs(store);
 const noiseGenerator = new NoiseGenerator(
   audioSystem.value?.audioContext.sampleRate || 44100,
 );
+
+const parseNoiseUnit = (val: number) => {
+  switch (val as NoiseType) {
+    case NoiseType.White:
+      return 'White';
+    case NoiseType.Brownian:
+      return 'Brownian';
+    case NoiseType.Pink:
+      return 'Pink';
+    default:
+      return 'Unknown';
+  }
+};
 // Create a reactive reference to the oscillator state
 const filterState = computed({
   get: () => {
     const state = noiseState.value;
     if (!state) {
-      console.warn(`No state found for oscillator ${props.Index}`);
       return {
         noiseType: NoiseType.White,
-        cut: 1,
+        cutoff: 1,
         is_enabled: false,
       };
     }
@@ -90,6 +113,22 @@ const filterState = computed({
 //   };
 //   store.filterStates.set(props.Index, currentState);
 // };
+
+const handleEnabledChange = (val: boolean) => {
+  const currentState = {
+    ...filterState.value,
+    is_enabled: val,
+  };
+  store.noiseState = currentState;
+};
+
+const handleNoiseTypeChange = (val: number) => {
+  const currentState = {
+    ...filterState.value,
+    noiseType: val as NoiseType,
+  };
+  store.noiseState = currentState;
+};
 
 const handleCutoffChange = (val: number) => {
   const currentState = {
