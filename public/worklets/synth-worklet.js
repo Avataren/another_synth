@@ -675,9 +675,16 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "bank", new WaveTableBank());
     __publicField(this, "noise", new NoiseGenerator(sampleRate));
     __publicField(this, "noiseBuffer", new Float32Array(128));
-    this.oscillators.set(0, new WaveTableOscillator(this.bank, "sawtooth", sampleRate));
-    this.oscillators.set(1, new WaveTableOscillator(this.bank, "square", sampleRate));
+    this.oscillators.set(
+      0,
+      new WaveTableOscillator(this.bank, "sawtooth", sampleRate)
+    );
+    this.oscillators.set(
+      1,
+      new WaveTableOscillator(this.bank, "square", sampleRate)
+    );
     this.envelopes.set(0, new Envelope(sampleRate));
+    this.envelopes.set(1, new Envelope(sampleRate));
     this.noise.setNoiseType(1 /* Pink */);
     this.port.onmessage = async (event) => {
       if (event.data.type === "initialize") {
@@ -774,17 +781,20 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
           }
         });
       }
-      const envelopeValue = this.envelopes.get(0).process(gateValue);
+      const envelope0Value = this.envelopes.get(0).process(gateValue);
+      const envelope1Value = this.envelopes.get(1).process(gateValue);
       let oscillatorSample = 0;
       this.oscillators.forEach((oscillator, _id) => {
-        oscillatorSample += oscillator.process(this.getFrequency(freq, detuneValue));
+        oscillatorSample += oscillator.process(
+          this.getFrequency(freq, detuneValue)
+        );
       });
-      oscillatorSample = this.noiseBuffer[i] * envelopeValue * 0.25;
+      oscillatorSample = this.noiseBuffer[i] * envelope0Value;
       this.combFilter.setFrequency(freq);
       let sample = this.combFilter.process(oscillatorSample);
       sample = this.softClip(sample);
       for (let channel = 0; channel < output.length; ++channel) {
-        output[channel][i] = sample;
+        output[channel][i] = sample * envelope1Value;
       }
       this.lastGate = gateValue;
     }

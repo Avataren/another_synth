@@ -6,6 +6,7 @@
     <oscillator-component :node="destinationNode" :oscIndex="0" />
     <oscillator-component :node="destinationNode" :oscIndex="1" />
     <envelope-component :node="destinationNode" :envIndex="0" />
+    <envelope-component :node="destinationNode" :envIndex="1" />
     <filter-component :node="destinationNode" :Index="0" />
   </q-page>
 </template>
