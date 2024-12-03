@@ -47,10 +47,9 @@ import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
 import FFT from 'fft.js';
-import VariableCombFilter, {
-  type FilterState,
-} from 'src/audio/dsp/variable-comb-filter';
-
+// import VariableCombFilter from 'src/audio/dsp/variable-comb-filter';
+import { type FilterState } from 'src/audio/dsp/filter-state';
+import FlangerCombFilter from 'src/audio/dsp/flanger-comb-filter';
 interface Props {
   node: AudioNode | null;
   Index: number;
@@ -141,7 +140,7 @@ function computeFrequencyResponse() {
   impulse[0] = 1;
 
   // Process through filter
-  const filter = new VariableCombFilter(sampleRate);
+  const filter = new FlangerCombFilter(sampleRate);
   filter.updateState({ ...filterState.value, is_enabled: true });
   filter.clear();
   filter.setFrequency(440);

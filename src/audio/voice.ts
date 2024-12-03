@@ -1,7 +1,8 @@
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
-import { type FilterState } from './dsp/variable-comb-filter';
+import { type FilterState } from 'src/audio/dsp/filter-state';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
+import { type NoiseState } from './dsp/noise-generator';
 
 export default class Voice {
   private active: boolean = false;
@@ -15,6 +16,18 @@ export default class Voice {
     this.destination = destination;
     this.audioContext = audioContext;
     this.setupAudio(memory);
+  }
+
+  public updateNoiseState(newState: NoiseState) {
+    try {
+      this.workletNode?.port?.postMessage({
+        type: 'updateNoise',
+        newState
+      });
+    }
+    catch (ex) {
+      console.warn(ex, newState);
+    }
   }
 
   public updateOscillatorState(key: number, newState: OscillatorState) {

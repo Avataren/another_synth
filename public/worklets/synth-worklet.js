@@ -2,106 +2,6 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// src/audio/dsp/variable-comb-filter.ts
-var VariableCombFilter = class {
-  constructor(sampleRate2, maxDelayMs = 100) {
-    __publicField(this, "buffer");
-    __publicField(this, "bufferSize");
-    __publicField(this, "writeIndex", 0);
-    __publicField(this, "delaySamples", 0);
-    __publicField(this, "sampleRate");
-    __publicField(this, "_cut", 1e4);
-    // Default cutoff frequency in Hz
-    __publicField(this, "_resonance", 0.5);
-    // Default resonance value
-    __publicField(this, "is_enabled", false);
-    // Filter coefficients and state
-    __publicField(this, "filterAlpha", 0);
-    __publicField(this, "filterState", 0);
-    this.sampleRate = sampleRate2;
-    this.bufferSize = Math.floor(maxDelayMs / 1e3 * sampleRate2);
-    this.buffer = new Float32Array(this.bufferSize);
-    this.clear();
-    this.delaySamples = Math.floor(this.bufferSize / 2);
-    this.cut = this._cut;
-  }
-  /**
-   * Sets the frequency for keytracking, adjusting the delay length.
-   */
-  setFrequency(frequency) {
-    const delayTimeSec = 1 / frequency;
-    this.delaySamples = delayTimeSec * this.sampleRate;
-    if (this.delaySamples >= this.bufferSize) {
-      this.delaySamples = this.bufferSize - 1;
-    }
-  }
-  updateState(state) {
-    this.cut = state.cut;
-    this.is_enabled = state.is_enabled;
-    this.resonance = state.resonance;
-  }
-  /**
-   * Sets the cutoff frequency for the filter in the feedback loop.
-   * @param cut Cutoff frequency in Hz.
-   */
-  set cut(cut) {
-    this._cut = Math.max(20, Math.min(cut, this.sampleRate / 2));
-    const omega = 2 * Math.PI * this._cut / this.sampleRate;
-    this.filterAlpha = Math.exp(-omega);
-  }
-  /**
-   * Gets the current cutoff frequency.
-   */
-  get cut() {
-    return this._cut;
-  }
-  /**
-   * Sets the resonance parameter.
-   * @param resonance Value between 0 (no resonance) and 1 (maximum resonance).
-   */
-  set resonance(resonance) {
-    this._resonance = Math.max(0, Math.min(resonance, 1));
-  }
-  /**
-   * Gets the current resonance value.
-   */
-  get resonance() {
-    return this._resonance;
-  }
-  /**
-   * Processes an input sample through the comb filter.
-   * @param input The input sample.
-   * @returns The output sample.
-   */
-  process(input) {
-    if (!this.is_enabled) {
-      return input;
-    }
-    const delayInt = Math.floor(this.delaySamples);
-    const frac = this.delaySamples - delayInt;
-    const readIndex1 = (this.writeIndex - delayInt + this.bufferSize) % this.bufferSize;
-    const readIndex2 = (readIndex1 - 1 + this.bufferSize) % this.bufferSize;
-    const delayedSample1 = this.buffer[readIndex1];
-    const delayedSample2 = this.buffer[readIndex2];
-    const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
-    this.filterState = (1 - this.filterAlpha) * delayedSample + this.filterAlpha * this.filterState;
-    const maxFeedbackGain = 0.999;
-    const feedbackSample = this.filterState * maxFeedbackGain * this._resonance;
-    const output = input + feedbackSample;
-    this.buffer[this.writeIndex] = output;
-    this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
-    return output;
-  }
-  /**
-   * Clears the internal buffer and resets indices.
-   */
-  clear() {
-    this.buffer.fill(0);
-    this.writeIndex = 0;
-    this.filterState = 0;
-  }
-};
-
 // src/audio/dsp/envelope.ts
 var Envelope = class {
   constructor(sampleRate2, config = {
@@ -563,6 +463,7 @@ var _NoiseGenerator = class _NoiseGenerator {
     // Pink and Brownian noise state
     __publicField(this, "pinkNoiseState");
     __publicField(this, "brownNoiseState");
+    __publicField(this, "is_enabled");
     // Cached noise function
     __publicField(this, "currentNoiseFunc");
     this.sampleRate = sampleRate2;
@@ -578,6 +479,11 @@ var _NoiseGenerator = class _NoiseGenerator {
     this.brownNoiseState = 0;
     this.currentNoiseFunc = this.getWhiteNoise.bind(this);
     this.updateFilterCoefficient();
+    this.is_enabled = true;
+  }
+  updateState(state) {
+    this.setNoiseType(state.noiseType);
+    this.setCutoff(state.cutoff);
   }
   setCutoff(value) {
     this.targetCutoff = Math.max(0, Math.min(value, 1));
@@ -664,6 +570,123 @@ __publicField(_NoiseGenerator, "CUTOFF_SMOOTHING", 0.1);
 __publicField(_NoiseGenerator, "MIN_FREQUENCY", 20);
 var NoiseGenerator = _NoiseGenerator;
 
+// src/audio/dsp/flanger-comb-filter.ts
+var FlangerCombFilter = class {
+  constructor(sampleRate2, maxDelayMs = 100) {
+    __publicField(this, "buffer");
+    __publicField(this, "bufferSize");
+    __publicField(this, "writeIndex", 0);
+    __publicField(this, "delaySamples", 0);
+    __publicField(this, "sampleRate");
+    __publicField(this, "phase", 0);
+    // DC blocker state
+    __publicField(this, "prevInput", 0);
+    __publicField(this, "prevOutput", 0);
+    __publicField(this, "DC_POLE", 0.995);
+    // Pole for DC blocking filter
+    // Hardcoded flanger parameters
+    __publicField(this, "FLANGER_RATE", 0.2);
+    // LFO rate in Hz
+    __publicField(this, "FLANGER_DEPTH", 0.7);
+    // Modulation depth
+    __publicField(this, "FLANGER_MIX", 0.5);
+    // Wet/dry mix
+    __publicField(this, "_cut", 1e4);
+    // Cutoff frequency in Hz
+    __publicField(this, "_resonance", 0.5);
+    // Resonance value
+    __publicField(this, "is_enabled", false);
+    // Filter coefficients and state
+    __publicField(this, "filterAlpha", 0);
+    __publicField(this, "filterState", 0);
+    this.sampleRate = sampleRate2;
+    this.bufferSize = Math.floor(maxDelayMs / 1e3 * sampleRate2);
+    this.buffer = new Float32Array(this.bufferSize);
+    this.clear();
+    this.cut = this._cut;
+  }
+  /**
+   * DC blocking filter implementation
+   */
+  removeDC(input) {
+    const output = input - this.prevInput + this.DC_POLE * this.prevOutput;
+    this.prevInput = input;
+    this.prevOutput = output;
+    return output;
+  }
+  setFrequency(frequency) {
+    const delayTimeSec = 1 / frequency;
+    this.delaySamples = delayTimeSec * this.sampleRate;
+    if (this.delaySamples >= this.bufferSize) {
+      this.delaySamples = this.bufferSize - 1;
+    }
+  }
+  updateState(state) {
+    this.cut = state.cut;
+    this.is_enabled = state.is_enabled;
+    this.resonance = state.resonance;
+  }
+  set cut(cut) {
+    this._cut = Math.max(20, Math.min(cut, this.sampleRate / 2));
+    const omega = 2 * Math.PI * this._cut / this.sampleRate;
+    this.filterAlpha = Math.exp(-omega);
+  }
+  get cut() {
+    return this._cut;
+  }
+  set resonance(resonance) {
+    this._resonance = Math.max(0, Math.min(resonance, 1));
+  }
+  get resonance() {
+    return this._resonance;
+  }
+  getModulatedDelay() {
+    const lfoValue = Math.sin(this.phase);
+    const modDepth = this.delaySamples * this.FLANGER_DEPTH;
+    return this.delaySamples + lfoValue * modDepth;
+  }
+  process(input) {
+    if (!this.is_enabled) {
+      return input;
+    }
+    this.phase += 2 * Math.PI * this.FLANGER_RATE / this.sampleRate;
+    if (this.phase >= 2 * Math.PI) {
+      this.phase -= 2 * Math.PI;
+    }
+    const delayInt = Math.floor(this.delaySamples);
+    const frac = this.delaySamples - delayInt;
+    const readIndex1 = (this.writeIndex - delayInt + this.bufferSize) % this.bufferSize;
+    const readIndex2 = (readIndex1 - 1 + this.bufferSize) % this.bufferSize;
+    const delayedSample1 = this.buffer[readIndex1];
+    const delayedSample2 = this.buffer[readIndex2];
+    const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
+    this.filterState = (1 - this.filterAlpha) * delayedSample + this.filterAlpha * this.filterState;
+    const maxFeedbackGain = 0.999;
+    const feedbackSample = this.filterState * maxFeedbackGain * this._resonance;
+    const feedbackSignal = input + feedbackSample;
+    const modDelay = this.getModulatedDelay();
+    const modDelayInt = Math.floor(modDelay);
+    const modFrac = modDelay - modDelayInt;
+    const modReadIndex1 = (this.writeIndex - modDelayInt + this.bufferSize) % this.bufferSize;
+    const modReadIndex2 = (modReadIndex1 - 1 + this.bufferSize) % this.bufferSize;
+    const modDelayedSample1 = this.buffer[modReadIndex1];
+    const modDelayedSample2 = this.buffer[modReadIndex2];
+    const modDelayedSample = modDelayedSample1 * (1 - modFrac) + modDelayedSample2 * modFrac;
+    this.buffer[this.writeIndex] = feedbackSignal;
+    this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
+    const output = feedbackSignal * (1 - this.FLANGER_MIX) + modDelayedSample * this.FLANGER_MIX;
+    return this.removeDC(output);
+  }
+  clear() {
+    this.buffer.fill(0);
+    this.writeIndex = 0;
+    this.filterState = 0;
+    this.phase = 0;
+    this.prevInput = 0;
+    this.prevOutput = 0;
+  }
+};
+
 // src/audio/worklets/synth-worklet.ts
 var WasmAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
@@ -671,7 +694,7 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "envelopes", /* @__PURE__ */ new Map());
     __publicField(this, "oscillators", /* @__PURE__ */ new Map());
     __publicField(this, "lastGate", 0);
-    __publicField(this, "combFilter", new VariableCombFilter(sampleRate, 100));
+    __publicField(this, "combFilter", new FlangerCombFilter(sampleRate, 100));
     __publicField(this, "bank", new WaveTableBank());
     __publicField(this, "noise", new NoiseGenerator(sampleRate));
     __publicField(this, "noiseBuffer", new Float32Array(128));
@@ -685,7 +708,7 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
     );
     this.envelopes.set(0, new Envelope(sampleRate));
     this.envelopes.set(1, new Envelope(sampleRate));
-    this.noise.setNoiseType(1 /* Pink */);
+    this.noise.setNoiseType(2 /* Brownian */);
     this.port.onmessage = async (event) => {
       if (event.data.type === "initialize") {
       }
@@ -697,6 +720,9 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
         } else {
           this.envelopes.set(msg.id, new Envelope(sampleRate, msg.config));
         }
+      } else if (event.data.type === "updateNoise") {
+        const state = event.data.newState;
+        this.noise.updateState(state);
       } else if (event.data.type === "updateOscillator") {
         const state = event.data.newState;
         const oscillator = this.oscillators.get(state.id);

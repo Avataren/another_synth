@@ -4,6 +4,12 @@ export enum NoiseType {
     Brownian
 }
 
+export interface NoiseState {
+    noiseType: NoiseType,
+    cutoff: number,
+    is_enabled: boolean
+}
+
 export default class NoiseGenerator {
     private static readonly PINK_NOISE_SCALE = 0.25;
     private static readonly BROWNIAN_NOISE_SCALE = 3.5;
@@ -31,7 +37,7 @@ export default class NoiseGenerator {
     // Pink and Brownian noise state
     private readonly pinkNoiseState: Float32Array;
     private brownNoiseState: number;
-
+    private is_enabled: boolean;
     // Cached noise function
     private currentNoiseFunc: () => number;
 
@@ -49,6 +55,12 @@ export default class NoiseGenerator {
         this.brownNoiseState = 0;
         this.currentNoiseFunc = this.getWhiteNoise.bind(this);
         this.updateFilterCoefficient();
+        this.is_enabled = true;
+    }
+
+    public updateState(state: NoiseState) {
+        this.setNoiseType(state.noiseType);
+        this.setCutoff(state.cutoff);
     }
 
     public setCutoff(value: number): void {
@@ -146,7 +158,6 @@ export default class NoiseGenerator {
 
     public process(amplitude: number, gainParam: number, cutoffMod: number, output: Float32Array) {
         const gain = amplitude * gainParam;
-
         for (let i = 0; i < output.length; i++) {
             this.updateFilterCoefficient(cutoffMod);
             output[i] = this.applyFilter(this.currentNoiseFunc()) * gain + this.dcOffset;

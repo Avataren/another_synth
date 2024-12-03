@@ -1,9 +1,4 @@
-export interface FilterState {
-    id: number;
-    cut: number;
-    is_enabled: boolean;
-    resonance: number;
-}
+import { type FilterState } from './filter-state';
 
 export default class VariableCombFilter {
     private buffer: Float32Array;

@@ -1,6 +1,7 @@
 import { createEffectsAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
-import { type FilterState } from './dsp/variable-comb-filter';
+import { type FilterState } from './dsp/filter-state';
+import { type NoiseState } from './dsp/noise-generator';
 import Voice from './voice';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
@@ -40,12 +41,16 @@ export default class Instrument {
         console.error('Something went wrong, effects node is not available!');
       }
     })
-
   }
 
 
+  public updateNoiseState(newState: NoiseState) {
+    this.voices?.forEach(voice => {
+      voice.updateNoiseState(newState);
+    });
+  }
+
   public updateOscillatorState(key: number, newState: OscillatorState) {
-    //update oscillator state on every voice!
     this.voices?.forEach(voice => {
       voice.updateOscillatorState(key, newState);
     });

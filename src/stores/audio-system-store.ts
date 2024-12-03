@@ -2,11 +2,11 @@
 import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
-import { type FilterState } from 'src/audio/dsp/variable-comb-filter';
+import { type FilterState } from 'src/audio/dsp/filter-state';
 import Instrument from 'src/audio/instrument';
 import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
 import { loadWasmModule } from 'src/utils/wasm-loader';
-
+import { NoiseType, type NoiseState } from 'src/audio/dsp/noise-generator';
 interface AudioParamDescriptor {
   name: string;
   defaultValue?: number;
@@ -34,6 +34,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     currentInstrument: null as Instrument | null,
     oscillatorStates: new Map<number, OscillatorState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
+    noiseState: { noiseType: NoiseType.White, cutoff: 1.0, is_enabled: false } as NoiseState,
     filterStates: new Map<number, FilterState>(),
     wasmPointers: new Array<WasmMemoryPointers>(),
     voices_allocated: 0,
