@@ -81,13 +81,14 @@ const parseNoiseUnit = (val: number) => {
     case NoiseType.White:
       return 'White';
     case NoiseType.Brownian:
-      return 'Brownian';
+      return 'Brown';
     case NoiseType.Pink:
       return 'Pink';
     default:
       return 'Unknown';
   }
 };
+
 // Create a reactive reference to the oscillator state
 const filterState = computed({
   get: () => {

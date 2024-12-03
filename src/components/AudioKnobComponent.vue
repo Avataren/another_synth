@@ -23,34 +23,36 @@
           @mousedown.stop.prevent="() => {}"
           class="value-display"
         >
-          <template v-if="!isEditing">
-            {{ formatValue(modelValue) }}
-          </template>
-          <q-input
-            v-else
-            v-model.number="editValue"
-            dense
-            type="number"
-            :min="min"
-            :max="max"
-            :step="step"
-            @blur="finishEditing"
-            @keyup.enter="finishEditing"
-            class="edit-input"
-            ref="inputRef"
-            input-class="text-center"
-            :rules="[validateValue]"
-            hide-bottom-space
-          >
-            <template v-slot:append v-if="unit">
-              <span class="label bg-primary ext-grey-7">{{ unit }}</span>
+          <div v-if="unitFunc">{{ displayUnit }}</div>
+          <div v-else>
+            <template v-if="!isEditing">
+              {{ formatValue(modelValue) }}
             </template>
-          </q-input>
+            <q-input
+              v-else
+              v-model.number="editValue"
+              dense
+              type="number"
+              :min="min"
+              :max="max"
+              :step="step"
+              @blur="finishEditing"
+              @keyup.enter="finishEditing"
+              class="edit-input"
+              ref="inputRef"
+              input-class="text-center"
+              :rules="[validateValue]"
+              hide-bottom-space
+            >
+              <!-- <template v-slot:append v-if="unit">
+              <span class="label bg-primary ext-grey-7">{{ unit }}</span>
+            </template> -->
+            </q-input>
+          </div>
         </div>
       </q-knob>
     </div>
     <div class="knob-label">{{ label }}</div>
-    <div v-if="unitFunc" class="knob-unit">{{ displayUnit }}</div>
   </div>
 </template>
 
@@ -154,11 +156,5 @@ const finishEditing = () => {
   font-size: 0.9rem;
   font-weight: 500;
   color: rgba(192, 192, 192, 0.7);
-}
-
-.knob-unit {
-  font-size: 0.8rem;
-  color: rgba(192, 192, 192, 0.5);
-  margin-top: 0.25rem;
 }
 </style>
