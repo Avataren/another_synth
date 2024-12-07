@@ -685,12 +685,359 @@ var FlangerCombFilter = class {
   }
 };
 
+// src/audio/dsp/resonator-bank.ts
+var AllPassFilter = class {
+  constructor(maxDelaySamples, initialDelay, feedback) {
+    __publicField(this, "buffer");
+    __publicField(this, "bufferSize");
+    __publicField(this, "writeIndex", 0);
+    __publicField(this, "feedback");
+    __publicField(this, "delayLength");
+    this.bufferSize = Math.max(1, Math.floor(maxDelaySamples));
+    this.buffer = new Float32Array(this.bufferSize);
+    this.feedback = feedback;
+    this.delayLength = Math.min(this.bufferSize, Math.floor(initialDelay));
+  }
+  setDelayLength(samples) {
+    this.delayLength = Math.min(this.bufferSize, Math.max(1, Math.floor(samples)));
+    this.writeIndex = this.writeIndex % this.delayLength;
+  }
+  setFeedback(value) {
+    this.feedback = Math.max(-0.999, Math.min(0.999, value));
+  }
+  process(input) {
+    const readIndex = (this.writeIndex - this.delayLength + this.bufferSize) % this.bufferSize;
+    const bufSample = this.buffer[readIndex];
+    const output = -input + bufSample;
+    this.buffer[this.writeIndex] = input + bufSample * this.feedback;
+    this.writeIndex = (this.writeIndex + 1) % this.delayLength;
+    return output;
+  }
+  clear() {
+    this.buffer.fill(0);
+    this.writeIndex = 0;
+  }
+};
+var ResonatorBank = class {
+  constructor(sampleRate2, maxDelayMs = 100, blockSize = 128) {
+    __publicField(this, "sampleRate");
+    __publicField(this, "resonators", []);
+    // DC blocker state
+    __publicField(this, "x1", 0);
+    __publicField(this, "x2", 0);
+    __publicField(this, "y1", 0);
+    __publicField(this, "y2", 0);
+    __publicField(this, "R", 0.999);
+    // Pole radius for DC blocking
+    __publicField(this, "_cut", 1e4);
+    __publicField(this, "_resonance", 1);
+    __publicField(this, "is_enabled", true);
+    __publicField(this, "filterAlpha", 0);
+    __publicField(this, "bufferSize");
+    __publicField(this, "MAX_RESONATORS", 3);
+    // Slightly less than 1.0 to prevent runaway feedback
+    __publicField(this, "maxFeedbackGain", 0.999);
+    __publicField(this, "resonatorOutputs");
+    __publicField(this, "outputBuffer");
+    __publicField(this, "blockSize");
+    // We provide a wide variety of presets with different resonances and dispersion.
+    __publicField(this, "presets", [
+      {
+        name: "string",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 2, level: 0.4 },
+          { ratio: 3, level: 0.3 }
+        ],
+        cut: 8e3,
+        resonance: 1,
+        allpassDelay: 50,
+        allpassFeedback: 0.5
+      },
+      {
+        name: "simple-string",
+        resonators: [
+          { ratio: 1, level: 1 }
+        ],
+        cut: 8e3,
+        resonance: 1,
+        allpassDelay: 40,
+        allpassFeedback: 0.4
+      },
+      {
+        name: "piano-like",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 2, level: 0.5 }
+        ],
+        cut: 9e3,
+        resonance: 1,
+        allpassDelay: 60,
+        allpassFeedback: 0.3
+      },
+      {
+        name: "bell",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 2.5, level: 0.7 },
+          { ratio: 5.1, level: 0.3 }
+        ],
+        cut: 1e4,
+        resonance: 1,
+        allpassDelay: 100,
+        allpassFeedback: 0.6
+      },
+      {
+        name: "harp",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 2.04, level: 0.6 },
+          { ratio: 3.1, level: 0.3 }
+        ],
+        cut: 7e3,
+        resonance: 1,
+        allpassDelay: 45,
+        allpassFeedback: 0.45
+      },
+      {
+        name: "guitar",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 2.02, level: 0.5 },
+          { ratio: 3.99, level: 0.2 }
+        ],
+        cut: 8e3,
+        resonance: 1,
+        allpassDelay: 70,
+        allpassFeedback: 0.5
+      },
+      {
+        name: "marimba",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 2.95, level: 0.4 }
+        ],
+        cut: 6e3,
+        resonance: 1,
+        allpassDelay: 30,
+        allpassFeedback: 0.35
+      },
+      {
+        name: "wooden",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 1.58, level: 0.5 },
+          { ratio: 2.46, level: 0.3 }
+        ],
+        cut: 6e3,
+        resonance: 1,
+        allpassDelay: 80,
+        allpassFeedback: 0.55
+      },
+      {
+        name: "glass",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 2.414, level: 0.6 },
+          { ratio: 3.414, level: 0.4 }
+        ],
+        cut: 12e3,
+        resonance: 1,
+        allpassDelay: 90,
+        allpassFeedback: 0.4
+      },
+      {
+        name: "percussion",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 1.33, level: 0.7 }
+        ],
+        cut: 5e3,
+        resonance: 1,
+        allpassDelay: 20,
+        allpassFeedback: 0.5
+      },
+      {
+        name: "drone",
+        resonators: [
+          { ratio: 1, level: 1 },
+          { ratio: 1.2, level: 0.8 },
+          { ratio: 2.5, level: 0.6 }
+        ],
+        cut: 5e3,
+        resonance: 1,
+        allpassDelay: 100,
+        allpassFeedback: 0.5
+      }
+    ]);
+    this.sampleRate = sampleRate2;
+    this.bufferSize = Math.floor(maxDelayMs / 1e3 * sampleRate2);
+    this.blockSize = blockSize;
+    this.outputBuffer = new Float32Array(blockSize);
+    this.resonatorOutputs = Array(this.MAX_RESONATORS).fill(null).map(() => new Float32Array(blockSize));
+    const defaultAllpassDelay = 50;
+    const defaultAllpassFeedback = 0.5;
+    for (let i = 0; i < this.MAX_RESONATORS; i++) {
+      const buffer = new Float32Array(this.bufferSize);
+      const allpass = new AllPassFilter(this.bufferSize, defaultAllpassDelay, defaultAllpassFeedback);
+      this.resonators.push({
+        ratio: i === 0 ? 1 : i + 1,
+        level: i === 0 ? 1 : 0,
+        enabled: i === 0,
+        delaySamples: 0,
+        buffer,
+        writeIndex: 0,
+        filterState: 0,
+        allpass
+      });
+    }
+    this.clear();
+    this.cut = this._cut;
+  }
+  removeDC(input) {
+    const output = input - 2 * this.x1 + this.x2 + 2 * this.R * this.y1 - this.R * this.R * this.y2;
+    this.x2 = this.x1;
+    this.x1 = input;
+    this.y2 = this.y1;
+    this.y1 = output;
+    return output / (1 + 2 * this.R + this.R * this.R);
+  }
+  setFrequency(frequency) {
+    for (let i = 0; i < this.MAX_RESONATORS; i++) {
+      const r = this.resonators[i];
+      if (!r.enabled) continue;
+      const freq = frequency * r.ratio;
+      let delaySamples = this.sampleRate / freq;
+      if (delaySamples >= this.bufferSize) {
+        delaySamples = this.bufferSize - 1;
+      }
+      r.delaySamples = delaySamples;
+    }
+  }
+  updateState(state) {
+    this.cut = state.cut;
+    this.is_enabled = state.is_enabled;
+    this.resonance = state.resonance;
+  }
+  set cut(cut) {
+    this._cut = Math.max(20, Math.min(cut, this.sampleRate / 2));
+    const omega = 2 * Math.PI * this._cut / this.sampleRate;
+    this.filterAlpha = Math.exp(-omega);
+  }
+  get cut() {
+    return this._cut;
+  }
+  set resonance(resonance) {
+    this._resonance = Math.max(0, Math.min(resonance, 1));
+  }
+  get resonance() {
+    return this._resonance;
+  }
+  setResonatorEnabled(index, enabled) {
+    if (index === 0 && !enabled) return;
+    if (index >= 0 && index < this.MAX_RESONATORS) {
+      this.resonators[index].enabled = enabled;
+    }
+  }
+  setResonatorParams(index, ratio, level, enabled) {
+    if (index < 0 || index >= this.MAX_RESONATORS) return;
+    const r = this.resonators[index];
+    r.ratio = ratio;
+    r.level = level;
+    if (enabled !== void 0 && (index !== 0 || enabled)) {
+      r.enabled = enabled;
+    }
+  }
+  setPreset(name) {
+    const preset = this.presets.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (!preset) {
+      console.log("preset " + name + " not found");
+      return;
+    }
+    console.log("set preset:", name);
+    for (let i = 0; i < this.MAX_RESONATORS; i++) {
+      const r = this.resonators[i];
+      r.enabled = false;
+      r.level = 0;
+      r.ratio = i + 1;
+    }
+    const pRes = preset.resonators;
+    for (let i = 0; i < pRes.length && i < this.MAX_RESONATORS; i++) {
+      const pr = pRes[i];
+      const r = this.resonators[i];
+      r.ratio = pr.ratio;
+      r.level = pr.level;
+      r.enabled = pr.enabled !== void 0 ? pr.enabled : i === 0 || pr.level > 0;
+    }
+    if (preset.cut !== void 0) this.cut = preset.cut;
+    if (preset.resonance !== void 0) this.resonance = preset.resonance;
+    const allpassDelay = preset.allpassDelay ?? 50;
+    const allpassFeedback = preset.allpassFeedback ?? 0.5;
+    for (let i = 0; i < this.MAX_RESONATORS; i++) {
+      this.resonators[i].allpass.setDelayLength(allpassDelay);
+      this.resonators[i].allpass.setFeedback(allpassFeedback);
+    }
+  }
+  process(inputBlock) {
+    if (!this.is_enabled) return inputBlock;
+    if (inputBlock.length !== this.blockSize) {
+      throw new Error(`Input block size ${inputBlock.length} does not match configured block size ${this.blockSize}`);
+    }
+    this.outputBuffer.fill(0);
+    this.resonatorOutputs.forEach((buffer) => buffer.fill(0));
+    for (let i = 0; i < this.MAX_RESONATORS; i++) {
+      const r = this.resonators[i];
+      if (!r.enabled || r.level <= 0) continue;
+      const resonatorOutput = this.resonatorOutputs[i];
+      const delaySamples = r.delaySamples;
+      const delayInt = Math.floor(delaySamples);
+      const frac = delaySamples - delayInt;
+      for (let n = 0; n < this.blockSize; n++) {
+        const readIndex1 = (r.writeIndex - delayInt + this.bufferSize) % this.bufferSize;
+        const readIndex2 = (readIndex1 - 1 + this.bufferSize) % this.bufferSize;
+        const delayedSample1 = r.buffer[readIndex1];
+        const delayedSample2 = r.buffer[readIndex2];
+        const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
+        r.filterState = delayedSample + (r.filterState - delayedSample) * this.filterAlpha;
+        const feedbackSample = r.filterState * this.maxFeedbackGain * this._resonance;
+        const feedbackSignal = inputBlock[n] + feedbackSample;
+        const dispersed = r.allpass.process(feedbackSignal);
+        r.buffer[r.writeIndex] = dispersed;
+        r.writeIndex = (r.writeIndex + 1) % this.bufferSize;
+        resonatorOutput[n] = dispersed * r.level;
+      }
+    }
+    for (let n = 0; n < this.blockSize; n++) {
+      let mixedSample = 0;
+      for (let i = 0; i < this.MAX_RESONATORS; i++) {
+        mixedSample += this.resonatorOutputs[i][n];
+      }
+      this.outputBuffer[n] = this.removeDC(mixedSample);
+    }
+    return this.outputBuffer;
+  }
+  clear() {
+    for (let i = 0; i < this.MAX_RESONATORS; i++) {
+      const r = this.resonators[i];
+      r.buffer.fill(0);
+      r.writeIndex = 0;
+      r.filterState = 0;
+      r.allpass.clear();
+    }
+    this.x1 = 0;
+    this.x2 = 0;
+    this.y1 = 0;
+    this.y2 = 0;
+  }
+};
+
 // src/audio/worklets/synth-worklet.ts
 var WasmAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
     super();
     __publicField(this, "envelopes", /* @__PURE__ */ new Map());
     __publicField(this, "oscillators", /* @__PURE__ */ new Map());
+    __publicField(this, "resonatorBank", new ResonatorBank(sampleRate));
     __publicField(this, "lastGate", 0);
     __publicField(this, "combFilter", new FlangerCombFilter(sampleRate, 100));
     __publicField(this, "bank", new WaveTableBank());
@@ -731,13 +1078,13 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
         }
       } else if (event.data.type === "updateFilter") {
         const state = event.data.newState;
-        if (this.combFilter) {
-          this.combFilter.updateState(state);
+        if (this.resonatorBank) {
         } else {
           console.error("oscillator doesnt exist: ", state);
         }
       }
     };
+    this.resonatorBank.setPreset("marimba");
     this.port.postMessage({ type: "ready" });
   }
   static get parameterDescriptors() {
@@ -788,11 +1135,10 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
   process(_inputs, outputs, parameters) {
     const output = outputs[0];
     const frequency = parameters.frequency;
-    const detune = parameters.detune;
     const gate = parameters.gate;
     const bufferSize = output[0].length;
-    const detuneValue = detune[0];
     this.noise.process(1, 1, 1, this.noiseBuffer);
+    this.resonatorBank.setFrequency(frequency[0]);
     for (let i = 0; i < bufferSize; ++i) {
       const freq = frequency[i] ?? frequency[0];
       const gateValue = gate[i] ?? gate[0];
@@ -806,21 +1152,15 @@ var WasmAudioProcessor = class extends AudioWorkletProcessor {
         });
       }
       const envelope0Value = this.envelopes.get(0).process(gateValue);
-      const envelope1Value = this.envelopes.get(1).process(gateValue);
-      let oscillatorSample = 0;
-      this.oscillators.forEach((oscillator, _id) => {
-        oscillatorSample += oscillator.process(
-          this.getFrequency(freq, detuneValue)
-        );
-      });
-      oscillatorSample = this.noiseBuffer[i] * envelope0Value;
-      this.combFilter.setFrequency(freq);
-      let sample = this.combFilter.process(oscillatorSample);
-      sample = this.softClip(sample);
-      for (let channel = 0; channel < output.length; ++channel) {
-        output[channel][i] = sample * envelope1Value;
-      }
+      this.noiseBuffer[i] *= envelope0Value;
       this.lastGate = gateValue;
+    }
+    const outputBuf = this.resonatorBank.process(this.noiseBuffer);
+    for (let i = 0; i < bufferSize; ++i) {
+      outputBuf[i] *= 0.25;
+    }
+    for (let channel = 0; channel < output.length; ++channel) {
+      output[channel].set(outputBuf);
     }
     return true;
   }

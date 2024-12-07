@@ -10,6 +10,7 @@ import {
 } from '../wavetable/wavetable-oscillator';
 import NoiseGenerator, { type NoiseState, NoiseType } from '../dsp/noise-generator';
 import FlangerCombFilter from '../dsp/flanger-comb-filter';
+import ResonatorBank from '../dsp/resonator-bank';
 
 declare const AudioWorkletProcessor: {
     prototype: AudioWorkletProcessor;
@@ -43,6 +44,7 @@ interface AudioParamDescriptor {
 class WasmAudioProcessor extends AudioWorkletProcessor {
     private envelopes: Map<number, Envelope> = new Map();
     private oscillators: Map<number, WaveTableOscillator> = new Map();
+    private resonatorBank = new ResonatorBank(sampleRate);
     private lastGate: number = 0;
     private combFilter = new FlangerCombFilter(sampleRate, 100);
     private bank = new WaveTableBank();
@@ -122,13 +124,14 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
             } else if (event.data.type === 'updateFilter') {
                 const state = event.data.newState as FilterState;
                 //const oscillator = this.oscillators.get(state.id);
-                if (this.combFilter) {
-                    this.combFilter.updateState(state);
+                if (this.resonatorBank) {
+                    //this.resonatorBank.updateState(state);
                 } else {
                     console.error('oscillator doesnt exist: ', state);
                 }
             }
         };
+        this.resonatorBank.setPreset('marimba');
         this.port.postMessage({ type: 'ready' });
     }
 
@@ -163,15 +166,15 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         const output = outputs[0]! as Float32Array[];
         const frequency = parameters.frequency as Float32Array;
         //const gain = parameters.gain as Float32Array;
-        const detune = parameters.detune as Float32Array;
+        //const detune = parameters.detune as Float32Array;
         const gate = parameters.gate as Float32Array;
 
         const bufferSize = output[0]!.length;
         //const gainValue = gain[0] as number;
-        const detuneValue = detune[0] as number;
+        //const detuneValue = detune[0] as number;
 
         this.noise.process(1.0, 1.0, 1.0, this.noiseBuffer);
-
+        this.resonatorBank.setFrequency(frequency[0]!);
         for (let i = 0; i < bufferSize; ++i) {
             const freq = frequency[i] ?? (frequency[0] as number);
             const gateValue = gate[i] ?? (gate[0] as number);
@@ -190,26 +193,38 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
             }
             // Get envelope value
             const envelope0Value = this.envelopes.get(0)!.process(gateValue);
-            const envelope1Value = this.envelopes.get(1)!.process(gateValue);
-            let oscillatorSample = 0.0;
-            this.oscillators.forEach((oscillator, _id) => {
-                oscillatorSample += oscillator.process(
-                    this.getFrequency(freq, detuneValue),
-                );
-            });
+            //const envelope1Value = this.envelopes.get(1)!.process(gateValue);
+            // let oscillatorSample = 0.0;
+            // this.oscillators.forEach((oscillator, _id) => {
+            //     oscillatorSample += oscillator.process(
+            //         this.getFrequency(freq, detuneValue),
+            //     );
+            // });
             //
             //oscillatorSample *= envelope0Value;
-            oscillatorSample = this.noiseBuffer[i]! * envelope0Value;
-            this.combFilter.setFrequency(freq);
-            let sample = this.combFilter.process(oscillatorSample);
-            sample = this.softClip(sample);
+            // oscillatorSample = this.noiseBuffer[i]! * envelope0Value;
+            // this.resonatorBank.setFrequency(freq);
+            // let sample = this.resonatorBank.process(oscillatorSample);
+            // sample = this.softClip(sample);
             // // Copy to all channels
-            for (let channel = 0; channel < output.length; ++channel) {
-                output[channel]![i] = sample * envelope1Value;
-            }
+
+
+            this.noiseBuffer[i]! *= envelope0Value;
+
+            // for (let channel = 0; channel < output.length; ++channel) {
+            //     output[channel]![i] = sample * envelope1Value;
+            // }
 
             this.lastGate = gateValue;
         }
+        const outputBuf = this.resonatorBank.process(this.noiseBuffer);
+        for (let i = 0; i < bufferSize; ++i) {
+            outputBuf[i]! *= 0.25;
+        }
+        for (let channel = 0; channel < output.length; ++channel) {
+            output[channel]!.set(outputBuf);
+        }
+
 
         return true;
     }
