@@ -46,8 +46,8 @@ export default class Voice {
   private async setupAudio(_memory: WebAssembly.Memory) {
     try {
       // Create the AudioWorklet
+      console.log('trying to make synth worklet');
       this.workletNode = await createStandardAudioWorklet(this.audioContext);
-
       // Connect the worklet to the audio context
       this.workletNode.connect(this.destination);
       console.log('Audio setup completed successfully');
@@ -87,7 +87,8 @@ export default class Voice {
     }
     const gateParam = this.workletNode?.parameters.get('gate');
     if (gateParam) {
-      gateParam.value = 1.0;
+      gateParam.setValueAtTime(0.0, this.audioContext.currentTime);
+      gateParam.setValueAtTime(1.0, this.audioContext.currentTime + 0.0001);
     }
   }
 

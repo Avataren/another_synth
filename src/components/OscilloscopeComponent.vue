@@ -35,7 +35,7 @@ const attachOscilloscope = (audioNode: AudioNode) => {
   audioNode.connect(analyser);
 
   if (audioNode.numberOfOutputs > 0) {
-    analyser.connect(audioNode.context.destination);
+    //analyser.connect(audioNode.context.destination);
   }
 
   startVisualization();

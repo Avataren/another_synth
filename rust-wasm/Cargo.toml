@@ -1,0 +1,32 @@
+[package]
+name = "audio_processor"
+description = "Audio processing system for WebAssembly"
+repository = "https://github.com/avataren/"
+license = "MIT"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+simd = []
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2.99"
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[package.metadata]
+rust-version = "nightly"
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = ['--enable-simd']
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ['--enable-simd']
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['--enable-simd']

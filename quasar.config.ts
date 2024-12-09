@@ -4,9 +4,9 @@
 // https://v2.quasar.dev/quasar-cli-vite/quasar-config-js
 
 import { defineConfig } from '#q-app/wrappers';
-import { exec } from 'child_process';
-import path from 'path';
-import fs from 'fs';
+//import { exec } from 'child_process';
+//import path from 'path';
+//import fs from 'fs';
 
 export default defineConfig((/* ctx */) => {
   return {
@@ -94,54 +94,70 @@ export default defineConfig((/* ctx */) => {
           },
         },
         {
-          name: 'watch-assemblyscript',
+          name: 'watch-wasm-reload',
           enforce: 'pre',
           apply: 'serve',
           handleHotUpdate({ file, server }) {
-            const isAssemblyFile =
-              file.endsWith('.ts') && file.includes('src/assembly');
+            const isWasmFile = file.includes('public/wasm');
 
-            if (isAssemblyFile) {
-              console.log(
-                `[AssemblyScript Watcher] Rebuilding WASM for ${file}`,
-              );
-
-              exec('npm run asbuild:release', (err, stdout, stderr) => {
-                if (err) {
-                  console.error(
-                    `[AssemblyScript Watcher] Build error:\n${stderr}`,
-                  );
-                  return;
-                }
-
-                console.log(
-                  `[AssemblyScript Watcher] Build success:\n${stdout}`,
-                );
-
-                // Path to the generated WASM file
-                const wasmFilePath = path.resolve(
-                  __dirname,
-                  'public/wasm/release.wasm',
-                );
-
-                // Wait for the WASM file to exist before triggering a reload
-                if (fs.existsSync(wasmFilePath)) {
-                  console.log(
-                    `[AssemblyScript Watcher] Triggering reload for WASM file: ${wasmFilePath}`,
-                  );
-                  server.ws.send({
-                    type: 'full-reload', // Trigger a full page reload
-                    path: '*',
-                  });
-                } else {
-                  console.error(
-                    `[AssemblyScript Watcher] WASM file not found: ${wasmFilePath}`,
-                  );
-                }
+            if (isWasmFile) {
+              console.log(`WASM file changed: ${file}, triggering full page reload`);
+              server.ws.send({
+                type: 'full-reload',
+                path: '*',
               });
             }
           },
-        },
+        }
+        // {
+        //   name: 'watch-assemblyscript',
+        //   enforce: 'pre',
+        //   apply: 'serve',
+        //   handleHotUpdate({ file, server }) {
+        //     const isAssemblyFile =
+        //       file.endsWith('.ts') && file.includes('src/assembly');
+
+        //     if (isAssemblyFile) {
+        //       console.log(
+        //         `[AssemblyScript Watcher] Rebuilding WASM for ${file}`,
+        //       );
+
+        //       exec('npm run asbuild:release', (err, stdout, stderr) => {
+        //         if (err) {
+        //           console.error(
+        //             `[AssemblyScript Watcher] Build error:\n${stderr}`,
+        //           );
+        //           return;
+        //         }
+
+        //         console.log(
+        //           `[AssemblyScript Watcher] Build success:\n${stdout}`,
+        //         );
+
+        //         // Path to the generated WASM file
+        //         const wasmFilePath = path.resolve(
+        //           __dirname,
+        //           'public/wasm/release.wasm',
+        //         );
+
+        //         // Wait for the WASM file to exist before triggering a reload
+        //         if (fs.existsSync(wasmFilePath)) {
+        //           console.log(
+        //             `[AssemblyScript Watcher] Triggering reload for WASM file: ${wasmFilePath}`,
+        //           );
+        //           server.ws.send({
+        //             type: 'full-reload', // Trigger a full page reload
+        //             path: '*',
+        //           });
+        //         } else {
+        //           console.error(
+        //             `[AssemblyScript Watcher] WASM file not found: ${wasmFilePath}`,
+        //           );
+        //         }
+        //       });
+        //     }
+        //   },
+        // },
       ],
 
       extendViteConf(viteConf) {
