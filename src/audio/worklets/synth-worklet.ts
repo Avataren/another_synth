@@ -71,7 +71,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
                 // Create our own processor instance
                 this.processor = new AudioProcessor();
                 this.processor.init(sampleRate);
-                this.processor.update_envelope(0.1, 0.2, 0.7, 0.3);
+                this.processor.update_gain_envelope(0.01, 0.1, 0.6, 0.4);
                 this.ready = true;
             }
         };

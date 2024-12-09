@@ -20,6 +20,7 @@ pub struct EnvelopeConfig {
     pub attack_curve: f32,
     pub decay_curve: f32,
     pub release_curve: f32,
+    pub attack_smoothing_samples: usize, // New field for controlling smoothing
 }
 
 impl Default for EnvelopeConfig {
@@ -32,6 +33,7 @@ impl Default for EnvelopeConfig {
             attack_curve: 0.0,
             decay_curve: 0.0,
             release_curve: 0.0,
+            attack_smoothing_samples: 16, // Default to 16 samples of smoothing
         }
     }
 }
@@ -44,6 +46,9 @@ pub struct Envelope {
     config: EnvelopeConfig,
     position: f32,
     last_gate_value: f32,
+    previous_values: Vec<f32>, // Buffer for previous values
+    smoothing_counter: usize,  // Counter for smoothing samples
+    pre_attack_value: f32,     // Store the value before attack starts
 }
 
 impl Envelope {
@@ -56,6 +61,9 @@ impl Envelope {
             config,
             position: 0.0,
             last_gate_value: 0.0,
+            previous_values: vec![0.0; 8], // Keep a small buffer of previous values
+            smoothing_counter: 0,
+            pre_attack_value: 0.0,
         }
     }
 
@@ -65,9 +73,11 @@ impl Envelope {
 
     fn trigger(&mut self, gate: f32) {
         if gate > 0.0 && self.last_gate_value <= 0.0 {
-            // Retrigger on any new gate-on, regardless of current phase
+            // Store the current value before transitioning to attack
+            self.pre_attack_value = self.value;
             self.reset();
             self.phase = EnvelopePhase::Attack;
+            self.smoothing_counter = self.config.attack_smoothing_samples;
         } else if gate <= 0.0 && self.last_gate_value > 0.0 {
             self.phase = EnvelopePhase::Release;
             self.release_level = self.value;
@@ -77,7 +87,7 @@ impl Envelope {
     }
 
     fn process_sample(&mut self, increment: f32) -> f32 {
-        match self.phase {
+        let target_value = match self.phase {
             EnvelopePhase::Attack => {
                 let attack_time = self.config.attack.max(0.0001);
                 self.position += increment / attack_time;
@@ -86,8 +96,9 @@ impl Envelope {
                     self.position = 0.0;
                     self.value = 1.0;
                     self.phase = EnvelopePhase::Decay;
+                    1.0
                 } else {
-                    self.value = get_curved_value(self.position, self.config.attack_curve);
+                    get_curved_value(self.position, self.config.attack_curve)
                 }
             }
             EnvelopePhase::Decay => {
@@ -98,14 +109,13 @@ impl Envelope {
                     self.position = 0.0;
                     self.value = self.config.sustain;
                     self.phase = EnvelopePhase::Sustain;
+                    self.config.sustain
                 } else {
                     let decay_pos = get_curved_value(self.position, self.config.decay_curve);
-                    self.value = 1.0 - (decay_pos * (1.0 - self.config.sustain));
+                    1.0 - (decay_pos * (1.0 - self.config.sustain))
                 }
             }
-            EnvelopePhase::Sustain => {
-                self.value = self.config.sustain;
-            }
+            EnvelopePhase::Sustain => self.config.sustain,
             EnvelopePhase::Release => {
                 let release_time = self.config.release.max(0.0001);
                 self.position += increment / release_time;
@@ -114,14 +124,25 @@ impl Envelope {
                     self.position = 0.0;
                     self.value = 0.0;
                     self.phase = EnvelopePhase::Idle;
+                    0.0
                 } else {
                     let release_pos = get_curved_value(self.position, self.config.release_curve);
-                    self.value = self.release_level * (1.0 - release_pos);
+                    self.release_level * (1.0 - release_pos)
                 }
             }
-            EnvelopePhase::Idle => {
-                self.value = 0.0;
-            }
+            EnvelopePhase::Idle => 0.0,
+        };
+
+        // Apply smoothing during attack phase start
+        if self.smoothing_counter > 0 {
+            let smoothing_factor = (self.config.attack_smoothing_samples - self.smoothing_counter)
+                as f32
+                / self.config.attack_smoothing_samples as f32;
+            self.value =
+                self.pre_attack_value * (1.0 - smoothing_factor) + target_value * smoothing_factor;
+            self.smoothing_counter -= 1;
+        } else {
+            self.value = target_value;
         }
 
         self.value.clamp(0.0, 1.0)
@@ -155,6 +176,12 @@ impl AudioNode for Envelope {
 
                 let increment = 1.0 / self.sample_rate;
                 values[i] = self.process_sample(increment);
+
+                // Store the value for potential future smoothing
+                self.previous_values.push(values[i]);
+                if self.previous_values.len() > 8 {
+                    self.previous_values.remove(0);
+                }
             }
 
             let values_simd = f32x4::from_array(values);
@@ -169,6 +196,12 @@ impl AudioNode for Envelope {
 
             let increment = 1.0 / self.sample_rate;
             output[i] = self.process_sample(increment);
+
+            // Store the value for potential future smoothing
+            self.previous_values.push(output[i]);
+            if self.previous_values.len() > 8 {
+                self.previous_values.remove(0);
+            }
         }
     }
 
@@ -178,5 +211,6 @@ impl AudioNode for Envelope {
         self.release_level = 0.0;
         self.position = 0.0;
         self.last_gate_value = 0.0;
+        self.smoothing_counter = 0;
     }
 }

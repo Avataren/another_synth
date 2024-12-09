@@ -71,23 +71,33 @@ var AudioProcessor = class {
    * @param {number} sustain
    * @param {number} release
    */
-  update_envelope(attack, decay, sustain, release) {
-    wasm.audioprocessor_update_envelope(this.__wbg_ptr, attack, decay, sustain, release);
+  update_gain_envelope(attack, decay, sustain, release) {
+    wasm.audioprocessor_update_gain_envelope(this.__wbg_ptr, attack, decay, sustain, release);
+  }
+  /**
+   * @param {number} envelope_index
+   * @param {number} attack
+   * @param {number} decay
+   * @param {number} sustain
+   * @param {number} release
+   */
+  update_mod_envelope(envelope_index, attack, decay, sustain, release) {
+    wasm.audioprocessor_update_mod_envelope(this.__wbg_ptr, envelope_index, attack, decay, sustain, release);
   }
   /**
    * @param {Float32Array} _input_left
    * @param {Float32Array} _input_right
-   * @param {Float32Array} gate_param
+   * @param {Float32Array} gate
    * @param {Float32Array} frequency_param
    * @param {Float32Array} output_left
    * @param {Float32Array} output_right
    */
-  process_audio(_input_left, _input_right, gate_param, frequency_param, output_left, output_right) {
+  process_audio(_input_left, _input_right, gate, frequency_param, output_left, output_right) {
     const ptr0 = passArrayF32ToWasm0(_input_left, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayF32ToWasm0(_input_right, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passArrayF32ToWasm0(gate_param, wasm.__wbindgen_malloc);
+    const ptr2 = passArrayF32ToWasm0(gate, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
     const ptr3 = passArrayF32ToWasm0(frequency_param, wasm.__wbindgen_malloc);
     const len3 = WASM_VECTOR_LEN;
@@ -207,7 +217,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         initSync({ module: bytes });
         this.processor = new AudioProcessor();
         this.processor.init(sampleRate);
-        this.processor.update_envelope(0.1, 0.2, 0.7, 0.3);
+        this.processor.update_gain_envelope(0.01, 0.1, 0.6, 0.4);
         this.ready = true;
       }
     };
