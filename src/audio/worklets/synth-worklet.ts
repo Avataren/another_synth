@@ -95,16 +95,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
         // Set up envelope
         if (this.envelopeId !== null) {
-          // this.processor.update_envelope(NodeId.from_number(this.envelopeId), {
-          //   attack: 0.01,
-          //   decay: 0.1,
-          //   sustain: 0.25,
-          //   release: 0.5,
-          //   attack_curve: 0,
-          //   decay_curve: 0,
-          //   release_curve: 0,
-          //   attack_smoothing_samples: 16,
-          // });
           this.processor.update_envelope(
             NodeId.from_number(this.envelopeId),
             0.0,
