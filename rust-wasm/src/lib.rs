@@ -1,18 +1,19 @@
 // src/lib.rs
 #![feature(portable_simd)]
 
+mod audio;
+mod graph;
 mod nodes;
 mod traits;
 mod utils;
-mod graph;
 
 use graph::{Connection, ConnectionId, NodeId};
 use nodes::EnvelopeConfig;
 // Be more specific with exports to avoid conflicts
-pub use traits::{AudioNode, PortId};
+pub use graph::AudioGraph;
 pub use nodes::{Envelope, ModulatableOscillator};
-pub use utils::*;
-pub use graph::AudioGraph;  // Add this export
+pub use traits::{AudioNode, PortId};
+pub use utils::*; // Add this export
 
 use wasm_bindgen::prelude::*;
 
@@ -65,7 +66,14 @@ impl AudioProcessor {
     }
 
     #[wasm_bindgen]
-    pub fn connect_nodes(&mut self, from_node: NodeId, from_port: PortId, to_node: NodeId, to_port: PortId, amount: f32) -> ConnectionId {
+    pub fn connect_nodes(
+        &mut self,
+        from_node: NodeId,
+        from_port: PortId,
+        to_node: NodeId,
+        to_port: PortId,
+        amount: f32,
+    ) -> ConnectionId {
         let connection = Connection {
             from_node,
             from_port,
@@ -77,22 +85,28 @@ impl AudioProcessor {
     }
 
     #[wasm_bindgen]
-    pub fn update_envelope(&mut self, node_id: NodeId, attack: f32, decay: f32, sustain: f32, release: f32) -> Result<(), String> {
-      if let Some(node) = self.graph.get_node_mut(node_id) {
-          if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
-            let mut config = EnvelopeConfig::default();
-              config.attack = attack;
-              config.decay = decay;
-              config.sustain = sustain;
-              config.release = release;
-              env.update_config(config);
-              Ok(())
-          } else {
-              Err("Node is not an Envelope".to_string())
-          }
-      } else {
-          Err("Node not found".to_string())
-      }
-  }
-
+    pub fn update_envelope(
+        &mut self,
+        node_id: NodeId,
+        attack: f32,
+        decay: f32,
+        sustain: f32,
+        release: f32,
+    ) -> Result<(), String> {
+        if let Some(node) = self.graph.get_node_mut(node_id) {
+            if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
+                let mut config = EnvelopeConfig::default();
+                config.attack = attack;
+                config.decay = decay;
+                config.sustain = sustain;
+                config.release = release;
+                env.update_config(config);
+                Ok(())
+            } else {
+                Err("Node is not an Envelope".to_string())
+            }
+        } else {
+            Err("Node not found".to_string())
+        }
+    }
 }
