@@ -49,25 +49,25 @@ export default class Instrument {
   }
 
   public updateNoiseState(newState: NoiseState) {
-    this.voices?.forEach(voice => {
+    this.voices?.forEach((voice) => {
       voice.updateNoiseState(newState);
     });
   }
 
   public updateOscillatorState(key: number, newState: OscillatorState) {
-    this.voices?.forEach(voice => {
+    this.voices?.forEach((voice) => {
       voice.updateOscillatorState(key, newState);
     });
   }
 
   public updateEnvelopeState(key: number, newState: EnvelopeConfig) {
-    this.voices?.forEach(voice => {
+    this.voices?.forEach((voice) => {
       voice.updateEnvelopeState(key, newState);
     });
   }
 
   public updateFilterState(key: number, newState: FilterState) {
-    this.voices?.forEach(voice => {
+    this.voices?.forEach((voice) => {
       voice.updateFilterState(key, newState);
     });
   }
