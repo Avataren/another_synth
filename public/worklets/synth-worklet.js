@@ -241,14 +241,15 @@ var AudioProcessor = class {
   }
   /**
    * @param {NodeId} node_id
-   * @param {EnvelopeConfig} config
+   * @param {number} attack
+   * @param {number} decay
+   * @param {number} sustain
+   * @param {number} release
    */
-  update_envelope(node_id, config) {
+  update_envelope(node_id, attack, decay, sustain, release) {
     _assertClass(node_id, NodeId);
     var ptr0 = node_id.__destroy_into_raw();
-    _assertClass(config, EnvelopeConfig);
-    var ptr1 = config.__destroy_into_raw();
-    const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, ptr0, ptr1);
+    const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, ptr0, attack, decay, sustain, release);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -292,122 +293,6 @@ var ConnectionId = class _ConnectionId {
 var EnvelopeConfigFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_envelopeconfig_free(ptr >>> 0, 1));
-var EnvelopeConfig = class {
-  __destroy_into_raw() {
-    const ptr = this.__wbg_ptr;
-    this.__wbg_ptr = 0;
-    EnvelopeConfigFinalization.unregister(this);
-    return ptr;
-  }
-  free() {
-    const ptr = this.__destroy_into_raw();
-    wasm.__wbg_envelopeconfig_free(ptr, 0);
-  }
-  /**
-   * @returns {number}
-   */
-  get attack() {
-    const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set attack(arg0) {
-    wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
-  get decay() {
-    const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set decay(arg0) {
-    wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
-  get sustain() {
-    const ret = wasm.__wbg_get_envelopeconfig_sustain(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set sustain(arg0) {
-    wasm.__wbg_set_envelopeconfig_sustain(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
-  get release() {
-    const ret = wasm.__wbg_get_envelopeconfig_release(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set release(arg0) {
-    wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
-  get attack_curve() {
-    const ret = wasm.__wbg_get_envelopeconfig_attack_curve(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set attack_curve(arg0) {
-    wasm.__wbg_set_envelopeconfig_attack_curve(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
-  get decay_curve() {
-    const ret = wasm.__wbg_get_envelopeconfig_decay_curve(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set decay_curve(arg0) {
-    wasm.__wbg_set_envelopeconfig_decay_curve(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
-  get release_curve() {
-    const ret = wasm.__wbg_get_envelopeconfig_release_curve(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set release_curve(arg0) {
-    wasm.__wbg_set_envelopeconfig_release_curve(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
-  get attack_smoothing_samples() {
-    const ret = wasm.__wbg_get_envelopeconfig_attack_smoothing_samples(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set attack_smoothing_samples(arg0) {
-    wasm.__wbg_set_envelopeconfig_attack_smoothing_samples(this.__wbg_ptr, arg0);
-  }
-};
 var NodeIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_nodeid_free(ptr >>> 0, 1));
@@ -589,6 +474,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           1
           // Full amount
         );
+        if (this.envelopeId !== null) {
+          this.processor.update_envelope(
+            NodeId.from_number(this.envelopeId),
+            0,
+            0.85,
+            0.15,
+            0.5
+          );
+        }
         this.ready = true;
       }
     };

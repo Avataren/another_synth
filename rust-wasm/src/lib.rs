@@ -77,9 +77,14 @@ impl AudioProcessor {
     }
 
     #[wasm_bindgen]
-    pub fn update_envelope(&mut self, node_id: NodeId, config: EnvelopeConfig) -> Result<(), String> {
+    pub fn update_envelope(&mut self, node_id: NodeId, attack: f32, decay: f32, sustain: f32, release: f32) -> Result<(), String> {
       if let Some(node) = self.graph.get_node_mut(node_id) {
           if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
+            let mut config = EnvelopeConfig::default();
+              config.attack = attack;
+              config.decay = decay;
+              config.sustain = sustain;
+              config.release = release;
               env.update_config(config);
               Ok(())
           } else {

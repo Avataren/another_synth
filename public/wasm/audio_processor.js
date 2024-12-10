@@ -152,14 +152,15 @@ export class AudioProcessor {
     }
     /**
      * @param {NodeId} node_id
-     * @param {EnvelopeConfig} config
+     * @param {number} attack
+     * @param {number} decay
+     * @param {number} sustain
+     * @param {number} release
      */
-    update_envelope(node_id, config) {
+    update_envelope(node_id, attack, decay, sustain, release) {
         _assertClass(node_id, NodeId);
         var ptr0 = node_id.__destroy_into_raw();
-        _assertClass(config, EnvelopeConfig);
-        var ptr1 = config.__destroy_into_raw();
-        const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, ptr0, ptr1);
+        const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, ptr0, attack, decay, sustain, release);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
