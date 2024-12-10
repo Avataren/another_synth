@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::any::Any;
+use std::collections::HashMap;
 // src/traits/mod.rs
 use wasm_bindgen::prelude::*;
 
@@ -26,20 +26,19 @@ pub enum PortId {
 
 impl PortId {
     pub fn is_audio_input(&self) -> bool {
-        matches!(self,
-            PortId::AudioInput0 |
-            PortId::AudioInput1 |
-            PortId::AudioInput2 |
-            PortId::AudioInput3
+        matches!(
+            self,
+            PortId::AudioInput0 | PortId::AudioInput1 | PortId::AudioInput2 | PortId::AudioInput3
         )
     }
 
     pub fn is_audio_output(&self) -> bool {
-        matches!(self,
-            PortId::AudioOutput0 |
-            PortId::AudioOutput1 |
-            PortId::AudioOutput2 |
-            PortId::AudioOutput3
+        matches!(
+            self,
+            PortId::AudioOutput0
+                | PortId::AudioOutput1
+                | PortId::AudioOutput2
+                | PortId::AudioOutput3
         )
     }
 
@@ -84,18 +83,14 @@ impl PortId {
     }
 }
 
-
 pub trait AudioNode: Any {
-  fn get_ports(&self) -> HashMap<PortId, bool>;
-  fn process(
-      &mut self,
-      inputs: &HashMap<PortId, &[f32]>,
-      outputs: &mut HashMap<PortId, &mut [f32]>,
-      buffer_size: usize,
-  );
-  fn reset(&mut self);
-
-  // Add this method to cast to `Any`
-  fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn get_ports(&self) -> HashMap<PortId, bool>;
+    fn process(
+        &mut self,
+        inputs: &HashMap<PortId, &[f32]>,
+        outputs: &mut HashMap<PortId, &mut [f32]>,
+        buffer_size: usize,
+    );
+    fn reset(&mut self);
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
-
