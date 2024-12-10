@@ -231,3 +231,174 @@ impl AudioProcessor for Envelope {
         self.smoothing_counter = 0;
     }
 }
+
+#[cfg(test)]
+mod envelope_tests {
+    use super::*;
+
+    fn run_envelope_for_samples(env: &mut Envelope, gate: f32, samples: usize) -> Vec<f32> {
+        let increment = 1.0 / env.sample_rate;
+        let mut results = Vec::with_capacity(samples);
+
+        // If gate changes, trigger envelope
+        if gate != env.last_gate_value {
+            env.trigger(gate);
+        }
+
+        for _ in 0..samples {
+            let val = env.process_sample(increment);
+            results.push(val);
+        }
+
+        results
+    }
+
+    #[test]
+    fn test_envelope_idle_to_attack() {
+        let sample_rate = 48000.0;
+        let config = EnvelopeConfig {
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.5,
+            release: 0.3,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+        };
+        let mut env = Envelope::new(sample_rate, config);
+
+        // Initially idle, envelope should be at 0.0
+        assert_eq!(env.value, 0.0);
+        assert_eq!(matches!(env.phase, EnvelopePhase::Idle), true);
+
+        // Trigger the gate (go high)
+        let results = run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.01) as usize); // attack time worth of samples
+                                                                                              // After full attack time, envelope should be at or near 1.0 and be in Decay phase.
+        assert!(
+            results.last().unwrap() >= &0.99,
+            "Envelope should reach near 1.0 after attack"
+        );
+        assert_eq!(matches!(env.phase, EnvelopePhase::Decay), true);
+    }
+
+    #[test]
+    fn test_envelope_decay_to_sustain() {
+        let sample_rate = 48000.0;
+        let config = EnvelopeConfig {
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.5,
+            release: 0.3,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+        };
+        let mut env = Envelope::new(sample_rate, config);
+
+        // Attack phase: run a bit longer than strictly required to ensure we hit 1.0
+        run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.01) as usize + 10);
+        // Decay phase: also run a bit longer to ensure we reach sustain
+        run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.1) as usize + 10);
+
+        assert!(
+            matches!(env.phase, EnvelopePhase::Sustain),
+            "Envelope should be in Sustain phase after decay period"
+        );
+        let val = env.value;
+        assert!(
+            (val - 0.5).abs() < 0.05,
+            "Value should be near the sustain level"
+        );
+    }
+
+    #[test]
+    fn test_envelope_sustain_held() {
+        let sample_rate = 48000.0;
+        let config = EnvelopeConfig {
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.5,
+            release: 0.3,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+        };
+        let mut env = Envelope::new(sample_rate, config);
+
+        // Attack + Decay
+        run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.01) as usize);
+        run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.1) as usize);
+
+        // Now at sustain, hold for a bit
+        let results = run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.05) as usize);
+        // All values during sustain should be near the sustain level
+        let average = results.iter().copied().sum::<f32>() / results.len() as f32;
+        assert!(
+            (average - 0.5).abs() < 0.01,
+            "Average value during sustain should be near 0.5"
+        );
+    }
+
+    #[test]
+    fn test_envelope_release_to_idle() {
+        let sample_rate = 48000.0;
+        let config = EnvelopeConfig {
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.5,
+            release: 0.3,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+        };
+        let mut env = Envelope::new(sample_rate, config);
+
+        // Attack + Decay + Sustain
+        run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.01) as usize + 10);
+        run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.1) as usize + 10);
+        run_envelope_for_samples(&mut env, 1.0, (sample_rate * 0.05) as usize);
+
+        // Now release (gate low)
+        let results = run_envelope_for_samples(&mut env, 0.0, (sample_rate * 0.3) as usize + 10);
+        let final_val = *results.last().unwrap();
+        assert!(
+            final_val < 0.01,
+            "Envelope should return close to 0.0 after release"
+        );
+        assert!(
+            matches!(env.phase, EnvelopePhase::Idle),
+            "Envelope should be in Idle phase after release"
+        );
+    }
+
+    #[test]
+    fn test_envelope_smoothing() {
+        let sample_rate = 48000.0;
+        let config = EnvelopeConfig {
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.5,
+            release: 0.3,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 16,
+        };
+        let mut env = Envelope::new(sample_rate, config);
+
+        // Trigger gate and run a few samples
+        let results = run_envelope_for_samples(&mut env, 1.0, 20);
+
+        // Instead of checking immediately at sample 0, let's check after a few samples
+        // The smoothing should gradually increase the value; by sample 5 or so, we should have some noticeable rise.
+        let avg_first_five = results[0..5].iter().sum::<f32>() / 5.0;
+        assert!(
+            avg_first_five > 0.0,
+            "Should have started rising above 0.0 within the first few samples"
+        );
+    }
+}
