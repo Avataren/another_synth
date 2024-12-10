@@ -2,14 +2,12 @@
 use crate::audio::{AudioInput, AudioOutput};
 use crate::traits::PortId;
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
-use web_sys::console;
 
 pub struct ProcessContext<'a> {
     pub inputs: HashMap<PortId, AudioInput<'a>>,
     pub outputs: HashMap<PortId, AudioOutput<'a>>,
     pub buffer_size: usize,
-    pub sample_rate: f32,
+    // pub sample_rate: f32,
 }
 
 impl<'a> ProcessContext<'a> {
@@ -17,7 +15,6 @@ impl<'a> ProcessContext<'a> {
         inputs: &'a HashMap<PortId, &[f32]>,
         outputs: &'a mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
-        sample_rate: f32,
         default_values: &HashMap<PortId, f32>,
     ) -> Self {
         let inputs: HashMap<_, _> = inputs
@@ -37,7 +34,6 @@ impl<'a> ProcessContext<'a> {
             inputs,
             outputs,
             buffer_size,
-            sample_rate,
         }
     }
 
@@ -56,7 +52,7 @@ impl<'a> ProcessContext<'a> {
 
 pub trait AudioProcessor {
     fn get_default_values(&self) -> HashMap<PortId, f32>;
-    fn prepare(&mut self, sample_rate: f32, buffer_size: usize);
+    // fn prepare(&mut self, sample_rate: f32, buffer_size: usize);
     fn process(&mut self, context: &mut ProcessContext);
     fn reset(&mut self);
 }

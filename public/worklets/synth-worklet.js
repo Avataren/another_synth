@@ -477,7 +477,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         if (this.envelopeId !== null) {
           this.processor.update_envelope(
             NodeId.from_number(this.envelopeId),
-            0,
+            1e-3,
             0.85,
             0.15,
             0.5

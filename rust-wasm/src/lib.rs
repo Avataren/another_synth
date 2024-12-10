@@ -29,7 +29,7 @@ impl AudioProcessor {
     pub fn new() -> Self {
         let sample_rate = 44100.0;
         Self {
-            graph: AudioGraph::new(128, sample_rate),
+            graph: AudioGraph::new(128),
             sample_rate,
         }
     }
@@ -37,7 +37,7 @@ impl AudioProcessor {
     #[wasm_bindgen]
     pub fn init(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
-        self.graph = AudioGraph::new(128, sample_rate);
+        self.graph = AudioGraph::new(128);
     }
 
     #[wasm_bindgen]

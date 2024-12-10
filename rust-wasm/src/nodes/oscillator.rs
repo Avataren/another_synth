@@ -43,13 +43,7 @@ impl AudioNode for ModulatableOscillator {
         buffer_size: usize,
     ) {
         let default_values = self.get_default_values();
-        let mut context = ProcessContext::new(
-            inputs,
-            outputs,
-            buffer_size,
-            self.sample_rate,
-            &default_values,
-        );
+        let mut context = ProcessContext::new(inputs, outputs, buffer_size, &default_values);
         AudioProcessor::process(self, &mut context);
     }
 
@@ -72,9 +66,9 @@ impl AudioProcessor for ModulatableOscillator {
         defaults
     }
 
-    fn prepare(&mut self, sample_rate: f32, _buffer_size: usize) {
-        self.sample_rate = sample_rate;
-    }
+    // fn prepare(&mut self, sample_rate: f32, _buffer_size: usize) {
+    //     self.sample_rate = sample_rate;
+    // }
 
     fn process(&mut self, context: &mut ProcessContext) {
         use std::simd::{f32x4, StdFloat};

@@ -1,46 +1,4 @@
-use std::simd::{f32x4, Simd, StdFloat};
-
-#[derive(Clone)]
-pub struct AudioBuffer {
-    data: Vec<f32>,
-    size: usize,
-}
-
-impl AudioBuffer {
-    pub fn new(size: usize) -> Self {
-        Self {
-            data: vec![0.0; size],
-            size,
-        }
-    }
-
-    pub fn from_value(size: usize, value: f32) -> Self {
-        Self {
-            data: vec![value; size],
-            size,
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.data.fill(0.0);
-    }
-
-    pub fn fill(&mut self, value: f32) {
-        self.data.fill(value);
-    }
-
-    pub fn len(&self) -> usize {
-        self.size
-    }
-
-    pub fn as_slice(&self) -> &[f32] {
-        &self.data
-    }
-
-    pub fn as_mut_slice(&mut self) -> &mut [f32] {
-        &mut self.data
-    }
-}
+use std::simd::f32x4;
 
 pub struct AudioInput<'a> {
     buffer: Option<&'a [f32]>,
@@ -55,12 +13,12 @@ impl<'a> AudioInput<'a> {
         }
     }
 
-    pub fn get(&self, index: usize) -> f32 {
-        self.buffer
-            .and_then(|b| b.get(index))
-            .copied()
-            .unwrap_or(self.default_value)
-    }
+    // pub fn get(&self, index: usize) -> f32 {
+    //     self.buffer
+    //         .and_then(|b| b.get(index))
+    //         .copied()
+    //         .unwrap_or(self.default_value)
+    // }
 
     pub fn get_simd(&self, index: usize) -> f32x4 {
         match self.buffer {

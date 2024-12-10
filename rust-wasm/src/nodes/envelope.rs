@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::simd::{f32x4, StdFloat};
+use std::simd::f32x4;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::processing::{AudioProcessor, ProcessContext};
@@ -52,7 +52,6 @@ pub struct Envelope {
     config: EnvelopeConfig,
     position: f32,
     last_gate_value: f32,
-    previous_values: Vec<f32>,
     smoothing_counter: usize,
     pre_attack_value: f32,
 }
@@ -67,7 +66,6 @@ impl Envelope {
             config,
             position: 0.0,
             last_gate_value: 0.0,
-            previous_values: vec![0.0; 8],
             smoothing_counter: 0,
             pre_attack_value: 0.0,
         }
@@ -167,13 +165,7 @@ impl AudioNode for Envelope {
         buffer_size: usize,
     ) {
         let default_values = self.get_default_values();
-        let mut context = ProcessContext::new(
-            inputs,
-            outputs,
-            buffer_size,
-            self.sample_rate,
-            &default_values,
-        );
+        let mut context = ProcessContext::new(inputs, outputs, buffer_size, &default_values);
         AudioProcessor::process(self, &mut context);
     }
 
@@ -193,9 +185,9 @@ impl AudioProcessor for Envelope {
         defaults
     }
 
-    fn prepare(&mut self, sample_rate: f32, _buffer_size: usize) {
-        self.sample_rate = sample_rate;
-    }
+    // fn prepare(&mut self, sample_rate: f32, _buffer_size: usize) {
+    //     self.sample_rate = sample_rate;
+    // }
 
     fn process(&mut self, context: &mut ProcessContext) {
         context.process_by_chunks(4, |offset, inputs, outputs| {

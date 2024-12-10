@@ -11,7 +11,6 @@ pub struct AudioGraph {
     pub(crate) connections: HashMap<ConnectionId, Connection>,
     pub(crate) processing_order: Vec<NodeId>,
     pub(crate) buffer_size: usize,
-    pub(crate) sample_rate: f32,
     pub(crate) buffer_pool: AudioBufferPool,
     pub(crate) node_buffers: HashMap<(NodeId, PortId), usize>,
     pub(crate) gate_buffer_idx: usize,
@@ -19,7 +18,7 @@ pub struct AudioGraph {
 }
 
 impl AudioGraph {
-    pub fn new(buffer_size: usize, sample_rate: f32) -> Self {
+    pub fn new(buffer_size: usize) -> Self {
         let mut buffer_pool = AudioBufferPool::new(buffer_size, 32); // Pre-allocate 32 buffers
         let gate_buffer_idx = buffer_pool.acquire(buffer_size);
         let freq_buffer_idx = buffer_pool.acquire(buffer_size);
@@ -29,7 +28,6 @@ impl AudioGraph {
             connections: HashMap::new(),
             processing_order: Vec::new(),
             buffer_size,
-            sample_rate,
             buffer_pool,
             node_buffers: HashMap::new(),
             gate_buffer_idx,
@@ -181,7 +179,7 @@ impl AudioGraph {
             }
 
             // Now build the input map after all buffers are collected
-            let mut input_map: HashMap<PortId, &[f32]> = buffer_to_port
+            let input_map: HashMap<PortId, &[f32]> = buffer_to_port
                 .iter()
                 .map(|(buffer_idx, port)| (*port, temp_buffers[*buffer_idx].as_slice()))
                 .collect();
@@ -203,7 +201,7 @@ impl AudioGraph {
             }
 
             // Copy output buffers back to pool
-            for ((port, buffer_idx), buffer) in
+            for ((_port, buffer_idx), buffer) in
                 output_buffer_indices.iter().zip(output_buffers.values())
             {
                 self.buffer_pool.copy_in(*buffer_idx, buffer);
