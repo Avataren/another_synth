@@ -4,9 +4,9 @@
 mod audio;
 mod graph;
 mod nodes;
+mod processing;
 mod traits;
 mod utils;
-
 use graph::{Connection, ConnectionId, NodeId};
 use nodes::EnvelopeConfig;
 // Be more specific with exports to avoid conflicts

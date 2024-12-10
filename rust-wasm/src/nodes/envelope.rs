@@ -1,11 +1,11 @@
 use std::any::Any;
-// src/nodes/envelope.rs
 use std::collections::HashMap;
+use std::simd::{f32x4, StdFloat};
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::utils::curves::get_curved_value;
+use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
-use std::simd::f32x4;
+use crate::utils::curves::get_curved_value;
 
 #[derive(Debug, Clone, Copy)]
 pub enum EnvelopePhase {
@@ -106,41 +106,43 @@ impl Envelope {
                 }
             }
             EnvelopePhase::Decay => {
-              let decay_time = self.config.decay.max(0.0001);
-              self.position += increment / decay_time;
+                let decay_time = self.config.decay.max(0.0001);
+                self.position += increment / decay_time;
 
-              if self.position >= 1.0 {
-                  self.position = 0.0;
-                  self.value = self.config.sustain;
-                  self.phase = EnvelopePhase::Sustain;
-                  self.config.sustain
-              } else {
-                  let decay_pos = get_curved_value(self.position, self.config.decay_curve);
-                  1.0 - (decay_pos * (1.0 - self.config.sustain))
-              }
-          }
-          EnvelopePhase::Sustain => self.config.sustain,
-          EnvelopePhase::Release => {
-              let release_time = self.config.release.max(0.0001);
-              self.position += increment / release_time;
+                if self.position >= 1.0 {
+                    self.position = 0.0;
+                    self.value = self.config.sustain;
+                    self.phase = EnvelopePhase::Sustain;
+                    self.config.sustain
+                } else {
+                    let decay_pos = get_curved_value(self.position, self.config.decay_curve);
+                    1.0 - (decay_pos * (1.0 - self.config.sustain))
+                }
+            }
+            EnvelopePhase::Sustain => self.config.sustain,
+            EnvelopePhase::Release => {
+                let release_time = self.config.release.max(0.0001);
+                self.position += increment / release_time;
 
-              if self.position >= 1.0 {
-                  self.position = 0.0;
-                  self.value = 0.0;
-                  self.phase = EnvelopePhase::Idle;
-                  0.0
-              } else {
-                  let release_pos = get_curved_value(self.position, self.config.release_curve);
-                  self.release_level * (1.0 - release_pos)
-              }
-          }
-          EnvelopePhase::Idle => 0.0,
-      };
+                if self.position >= 1.0 {
+                    self.position = 0.0;
+                    self.value = 0.0;
+                    self.phase = EnvelopePhase::Idle;
+                    0.0
+                } else {
+                    let release_pos = get_curved_value(self.position, self.config.release_curve);
+                    self.release_level * (1.0 - release_pos)
+                }
+            }
+            EnvelopePhase::Idle => 0.0,
+        };
 
         if self.smoothing_counter > 0 {
-            let smoothing_factor = (self.config.attack_smoothing_samples - self.smoothing_counter) as f32
+            let smoothing_factor = (self.config.attack_smoothing_samples - self.smoothing_counter)
+                as f32
                 / self.config.attack_smoothing_samples as f32;
-            self.value = self.pre_attack_value * (1.0 - smoothing_factor) + target_value * smoothing_factor;
+            self.value =
+                self.pre_attack_value * (1.0 - smoothing_factor) + target_value * smoothing_factor;
             self.smoothing_counter -= 1;
         } else {
             self.value = target_value;
@@ -150,61 +152,82 @@ impl Envelope {
     }
 }
 
-
 impl AudioNode for Envelope {
-  fn get_ports(&self) -> HashMap<PortId, bool> {
-    let mut ports = HashMap::new();
-    ports.insert(PortId::Gate, false);        // Input, not required
-    ports.insert(PortId::AudioOutput0, true); // Required output
-    ports
+    fn get_ports(&self) -> HashMap<PortId, bool> {
+        let mut ports = HashMap::new();
+        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::AudioOutput0, true);
+        ports
+    }
+
+    fn process(
+        &mut self,
+        inputs: &HashMap<PortId, &[f32]>,
+        outputs: &mut HashMap<PortId, &mut [f32]>,
+        buffer_size: usize,
+    ) {
+        let default_values = self.get_default_values();
+        let mut context = ProcessContext::new(
+            inputs,
+            outputs,
+            buffer_size,
+            self.sample_rate,
+            &default_values,
+        );
+        AudioProcessor::process(self, &mut context);
+    }
+
+    fn reset(&mut self) {
+        AudioProcessor::reset(self);
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
-  fn process(&mut self, inputs: &HashMap<PortId, &[f32]>, outputs: &mut HashMap<PortId, &mut [f32]>, buffer_size: usize) {
-      let gate_input = inputs.get(&PortId::Gate).unwrap();
-      let output = outputs.get_mut(&PortId::AudioOutput0).unwrap();
+impl AudioProcessor for Envelope {
+    fn get_default_values(&self) -> HashMap<PortId, f32> {
+        let mut defaults = HashMap::new();
+        defaults.insert(PortId::Gate, 0.0);
+        defaults
+    }
 
-      let chunk_size = 4;
-      let chunks = buffer_size / chunk_size;
-      let remainder = buffer_size % chunk_size;
+    fn prepare(&mut self, sample_rate: f32, _buffer_size: usize) {
+        self.sample_rate = sample_rate;
+    }
 
-      for chunk in 0..chunks {
-          let gate_values = f32x4::from_slice(&gate_input[chunk * chunk_size..]);
-          let gate_array = gate_values.to_array();
-          let mut values = [0.0f32; 4];
+    fn process(&mut self, context: &mut ProcessContext) {
+        context.process_by_chunks(4, |offset, inputs, outputs| {
+            // Get gate input
+            let gate_values = inputs[&PortId::Gate].get_simd(offset);
+            let gate_array = gate_values.to_array();
+            let mut values = [0.0f32; 4];
 
-          for i in 0..chunk_size {
-              if gate_array[i] != self.last_gate_value {
-                  self.trigger(gate_array[i]);
-              }
+            // Process each sample in the chunk
+            for i in 0..4 {
+                if gate_array[i] != self.last_gate_value {
+                    self.trigger(gate_array[i]);
+                }
 
-              let increment = 1.0 / self.sample_rate;
-              values[i] = self.process_sample(increment);
-          }
+                let increment = 1.0 / self.sample_rate;
+                values[i] = self.process_sample(increment);
+            }
 
-          let values_simd = f32x4::from_array(values);
-          values_simd.copy_to_slice(&mut output[chunk * chunk_size..(chunk + 1) * chunk_size]);
-      }
+            // Write output
+            if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
+                let values_simd = f32x4::from_array(values);
+                output.write_simd(offset, values_simd);
+            }
+        });
+    }
 
-      for i in (buffer_size - remainder)..buffer_size {
-          if gate_input[i] != self.last_gate_value {
-              self.trigger(gate_input[i]);
-          }
-
-          let increment = 1.0 / self.sample_rate;
-          output[i] = self.process_sample(increment);
-      }
-  }
-
-  fn as_any_mut(&mut self) -> &mut dyn Any {
-    self
-}
-
-  fn reset(&mut self) {
-      self.phase = EnvelopePhase::Idle;
-      self.value = 0.0;
-      self.release_level = 0.0;
-      self.position = 0.0;
-      self.last_gate_value = 0.0;
-      self.smoothing_counter = 0;
-  }
+    fn reset(&mut self) {
+        self.phase = EnvelopePhase::Idle;
+        self.value = 0.0;
+        self.release_level = 0.0;
+        self.position = 0.0;
+        self.last_gate_value = 0.0;
+        self.smoothing_counter = 0;
+    }
 }
