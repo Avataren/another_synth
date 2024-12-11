@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn test_buffer_pool_management() {
         let buffer_size = 128;
-        let mut graph = AudioGraph::new(buffer_size, 44100.0);
+        let mut graph = AudioGraph::new(buffer_size);
 
         // Create a simple node with one input and one output
         let node = Box::new(MockNode::new(
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_node_connections() {
         let buffer_size = 128;
-        let mut graph = AudioGraph::new(buffer_size, 44100.0);
+        let mut graph = AudioGraph::new(buffer_size);
 
         // Create two nodes
         let node1 = Box::new(MockNode::new(0, vec![], vec![PortId::AudioOutput0]));
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_processing_order() {
         let buffer_size = 128;
-        let mut graph = AudioGraph::new(buffer_size, 44100.0);
+        let mut graph = AudioGraph::new(buffer_size);
 
         // Create three nodes in a chain
         let node1 = Box::new(MockNode::new(0, vec![], vec![PortId::AudioOutput0]));
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn test_audio_processing() {
         let buffer_size = 128;
-        let mut graph = AudioGraph::new(buffer_size, 44100.0);
+        let mut graph = AudioGraph::new(buffer_size);
 
         // Create a gate-controlled node
         let node = Box::new(MockNode::new(
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn test_frequency_control() {
         let buffer_size = 128;
-        let mut graph = AudioGraph::new(buffer_size, 44100.0);
+        let mut graph = AudioGraph::new(buffer_size);
 
         // Create a frequency-controlled node
         let node = Box::new(MockNode::new(
