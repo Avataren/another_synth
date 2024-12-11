@@ -7,8 +7,8 @@ mod nodes;
 mod processing;
 mod traits;
 mod utils;
-use graph::{Connection, ConnectionId, NodeId};
-use nodes::EnvelopeConfig;
+pub use graph::{Connection, ConnectionId, NodeId};
+pub use nodes::EnvelopeConfig;
 // Be more specific with exports to avoid conflicts
 pub use graph::AudioGraph;
 pub use nodes::{Envelope, ModulatableOscillator};
