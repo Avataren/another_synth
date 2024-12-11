@@ -1,6 +1,5 @@
-use super::buffer_pool::AudioBufferPool;
 use super::graph::AudioGraph;
-use super::types::{Connection, ConnectionId, NodeId};
+use super::types::Connection;
 use crate::{AudioNode, PortId};
 use std::collections::HashMap;
 
