@@ -1,4 +1,3 @@
-// build-wasm.cjs
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -31,9 +30,10 @@ function buildWasm() {
     );
 
     console.log('✅ WebAssembly build complete!');
+    return true;
   } catch (error) {
     console.error('❌ WebAssembly build failed:', error);
-    process.exit(1);
+    return false;
   }
 }
 
@@ -44,15 +44,32 @@ const watchMode = args.includes('--watch');
 if (watchMode) {
   console.log('👀 Watching Rust files for changes...');
 
+  let buildInProgress = false;
+
   // Watch Rust source files
   chokidar
     .watch(path.join(RUST_DIR, 'src', '**', '*.rs'), {
       ignoreInitial: false,
     })
-    .on('change', (path) => {
+    .on('change', async (path) => {
+      // Prevent multiple simultaneous builds
+      if (buildInProgress) {
+        console.log('⏳ Build already in progress, skipping...');
+        return;
+      }
+
       console.log(`🔄 Rust file changed: ${path}`);
+      buildInProgress = true;
       buildWasm();
+      buildInProgress = false;
+    })
+    .on('error', (error) => {
+      console.error('❌ Watcher error:', error);
+      buildInProgress = false;
     });
 } else {
-  buildWasm();
+  // In non-watch mode, exit with error code if build fails
+  if (!buildWasm()) {
+    process.exit(1);
+  }
 }
