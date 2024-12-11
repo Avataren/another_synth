@@ -7,7 +7,7 @@ use audio_processor::{
 };
 use test::Bencher;
 
-const BUFFER_SIZE: usize = 1024; // Increased from 128
+const BUFFER_SIZE: usize = 128;
 const SAMPLE_RATE: f32 = 44100.0;
 
 struct TestPatch {
@@ -173,6 +173,160 @@ fn bench_complex_modulation(b: &mut Bencher) {
             let freq_mod = freq
                 .iter()
                 .map(|f| f * (1.0 + (i as f32 * 0.1)))
+                .collect::<Vec<_>>();
+            graph.set_frequency(&freq_mod);
+            graph.process_audio(&mut output_left, &mut output_right);
+        }
+    });
+}
+
+// Add this to your existing benchmark file
+
+#[bench]
+fn bench_complex_synth(b: &mut Bencher) {
+    let mut graph = AudioGraph::new(128);
+
+    // Create multiple oscillators (3 per voice, 4 voices)
+    let mut oscillators = Vec::new();
+    let mut envelopes = Vec::new();
+
+    // Create 4 voices, each with 3 oscillators
+    for _ in 0..4 {
+        let mut voice_oscillators = Vec::new();
+
+        // Main envelope
+        let amp_env = graph.add_node(Box::new(Envelope::new(
+            SAMPLE_RATE,
+            EnvelopeConfig {
+                attack: 0.01,
+                decay: 0.3,
+                sustain: 0.7,
+                release: 0.5,
+                ..EnvelopeConfig::default()
+            },
+        )));
+
+        // Filter envelope
+        let filter_env = graph.add_node(Box::new(Envelope::new(
+            SAMPLE_RATE,
+            EnvelopeConfig {
+                attack: 0.05,
+                decay: 0.2,
+                sustain: 0.3,
+                release: 0.4,
+                ..EnvelopeConfig::default()
+            },
+        )));
+
+        // Mod envelope
+        let mod_env = graph.add_node(Box::new(Envelope::new(
+            SAMPLE_RATE,
+            EnvelopeConfig {
+                attack: 0.1,
+                decay: 1.0,
+                sustain: 0.0,
+                release: 0.3,
+                ..EnvelopeConfig::default()
+            },
+        )));
+
+        envelopes.push((amp_env, filter_env, mod_env));
+
+        // Create 3 oscillators per voice
+        for i in 0..3 {
+            let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+            voice_oscillators.push(osc);
+
+            // Connect amp envelope to each oscillator
+            graph.connect(Connection {
+                from_node: amp_env,
+                from_port: PortId::AudioOutput0,
+                to_node: osc,
+                to_port: PortId::GainMod,
+                amount: 0.33, // Mix oscillators equally
+            });
+        }
+        oscillators.push(voice_oscillators);
+    }
+
+    // Create 4 LFO modulators
+    let mut lfos = Vec::new();
+    for _ in 0..4 {
+        let lfo = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+        lfos.push(lfo);
+    }
+
+    // Complex modulation matrix
+    for (voice_idx, voice_oscs) in oscillators.iter().enumerate() {
+        let (amp_env, filter_env, mod_env) = envelopes[voice_idx];
+
+        // LFO to oscillator frequency modulation
+        for (osc_idx, &osc) in voice_oscs.iter().enumerate() {
+            graph.connect(Connection {
+                from_node: lfos[osc_idx % 2], // Alternate between first two LFOs
+                from_port: PortId::AudioOutput0,
+                to_node: osc,
+                to_port: PortId::FrequencyMod,
+                amount: 0.1,
+            });
+
+            // Mod envelope to frequency
+            graph.connect(Connection {
+                from_node: mod_env,
+                from_port: PortId::AudioOutput0,
+                to_node: osc,
+                to_port: PortId::FrequencyMod,
+                amount: 0.2,
+            });
+        }
+
+        // Cross modulation between oscillators
+        graph.connect(Connection {
+            from_node: voice_oscs[0],
+            from_port: PortId::AudioOutput0,
+            to_node: voice_oscs[1],
+            to_port: PortId::PhaseMod,
+            amount: 0.3,
+        });
+
+        graph.connect(Connection {
+            from_node: voice_oscs[1],
+            from_port: PortId::AudioOutput0,
+            to_node: voice_oscs[2],
+            to_port: PortId::FrequencyMod,
+            amount: 0.15,
+        });
+    }
+
+    // LFO modulation of other LFOs
+    graph.connect(Connection {
+        from_node: lfos[0],
+        from_port: PortId::AudioOutput0,
+        to_node: lfos[1],
+        to_port: PortId::FrequencyMod,
+        amount: 0.2,
+    });
+
+    graph.connect(Connection {
+        from_node: lfos[2],
+        from_port: PortId::AudioOutput0,
+        to_node: lfos[3],
+        to_port: PortId::PhaseMod,
+        amount: 0.25,
+    });
+
+    let mut output_left = vec![0.0f32; 128];
+    let mut output_right = vec![0.0f32; 128];
+    let gate = vec![1.0f32; 128];
+    let freq = vec![440.0f32; 128];
+
+    b.iter(|| {
+        for i in 0..10 {
+            graph.set_gate(&gate);
+            // Slight frequency modulation to simulate realistic usage
+            let freq_mod = freq
+                .iter()
+                .map(|f| f * (1.0 + (i as f32 * 0.01)))
                 .collect::<Vec<_>>();
             graph.set_frequency(&freq_mod);
             graph.process_audio(&mut output_left, &mut output_right);
