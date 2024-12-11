@@ -359,7 +359,7 @@ export class NodeId {
      * @returns {number}
      */
     get 0() {
-        const ret = wasm.__wbg_get_nodeid_0(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_connectionid_0(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**

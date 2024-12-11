@@ -113,7 +113,7 @@ mod tests {
 
         // Verify connection
         assert!(graph.connections.contains_key(&conn_id));
-        assert_eq!(graph.processing_order, vec![node1_id, node2_id]);
+        assert_eq!(graph.processing_order, vec![*node1_id, *node2_id]);
     }
 
     #[test]
@@ -156,7 +156,10 @@ mod tests {
         });
 
         // Verify correct processing order
-        assert_eq!(graph.processing_order, vec![node1_id, node2_id, node3_id]);
+        assert_eq!(
+            graph.processing_order,
+            vec![*node1_id, *node2_id, *node3_id]
+        );
     }
 
     #[test]

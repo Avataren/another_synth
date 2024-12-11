@@ -333,3 +333,157 @@ fn bench_complex_synth(b: &mut Bencher) {
         }
     });
 }
+
+// Test just buffer operations
+#[bench]
+fn bench_buffer_operations(b: &mut Bencher) {
+    let mut graph = AudioGraph::new(BUFFER_SIZE);
+    let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+
+    let mut output_left = vec![0.0f32; BUFFER_SIZE];
+    let mut output_right = vec![0.0f32; BUFFER_SIZE];
+    let freq = vec![440.0f32; BUFFER_SIZE];
+
+    b.iter(|| {
+        graph.set_frequency(&freq);
+        graph.process_audio(&mut output_left, &mut output_right);
+    });
+}
+
+// Test single node without modulation
+#[bench]
+fn bench_single_oscillator(b: &mut Bencher) {
+    let mut graph = AudioGraph::new(BUFFER_SIZE);
+    let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+
+    let mut output_left = vec![0.0f32; BUFFER_SIZE];
+    let mut output_right = vec![0.0f32; BUFFER_SIZE];
+    let freq = vec![440.0f32; BUFFER_SIZE];
+
+    // Set up initial state
+    graph.set_frequency(&freq);
+
+    b.iter(|| {
+        graph.process_audio(&mut output_left, &mut output_right);
+    });
+}
+
+// Test connection overhead without modulation
+#[bench]
+fn bench_connection_overhead(b: &mut Bencher) {
+    let mut graph = AudioGraph::new(BUFFER_SIZE);
+
+    // Create a chain of 5 pass-through oscillators
+    let mut nodes = Vec::new();
+    for _ in 0..5 {
+        nodes.push(graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE))));
+    }
+
+    // Connect them in series
+    for i in 0..4 {
+        graph.connect(Connection {
+            from_node: nodes[i],
+            from_port: PortId::AudioOutput0,
+            to_node: nodes[i + 1],
+            to_port: PortId::AudioInput0,
+            amount: 1.0,
+        });
+    }
+
+    let mut output_left = vec![0.0f32; BUFFER_SIZE];
+    let mut output_right = vec![0.0f32; BUFFER_SIZE];
+    let freq = vec![440.0f32; BUFFER_SIZE];
+
+    // Set up initial state
+    graph.set_frequency(&freq);
+
+    b.iter(|| {
+        graph.process_audio(&mut output_left, &mut output_right);
+    });
+}
+
+// Test steady-state envelope processing
+#[bench]
+fn bench_envelope_steady_state(b: &mut Bencher) {
+    let mut graph = AudioGraph::new(BUFFER_SIZE);
+
+    let env = graph.add_node(Box::new(Envelope::new(
+        SAMPLE_RATE,
+        EnvelopeConfig::default(),
+    )));
+
+    let mut output_left = vec![0.0f32; BUFFER_SIZE];
+    let mut output_right = vec![0.0f32; BUFFER_SIZE];
+    let gate = vec![1.0f32; BUFFER_SIZE];
+
+    // Put the envelope into sustain state
+    graph.set_gate(&gate);
+    for _ in 0..100 {
+        graph.process_audio(&mut output_left, &mut output_right);
+    }
+
+    b.iter(|| {
+        graph.process_audio(&mut output_left, &mut output_right);
+    });
+}
+
+// Test parallel processing overhead
+#[bench]
+fn bench_parallel_nodes(b: &mut Bencher) {
+    let mut graph = AudioGraph::new(BUFFER_SIZE);
+
+    // Create 8 parallel oscillators without connections
+    for _ in 0..8 {
+        graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+    }
+
+    let mut output_left = vec![0.0f32; BUFFER_SIZE];
+    let mut output_right = vec![0.0f32; BUFFER_SIZE];
+    let freq = vec![440.0f32; BUFFER_SIZE];
+
+    // Set up initial state
+    graph.set_frequency(&freq);
+
+    b.iter(|| {
+        graph.process_audio(&mut output_left, &mut output_right);
+    });
+}
+
+// Test buffer size impact
+#[bench]
+fn bench_large_buffer(b: &mut Bencher) {
+    const LARGE_BUFFER_SIZE: usize = 1024;
+    let mut graph = AudioGraph::new(LARGE_BUFFER_SIZE);
+    let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+
+    let mut output_left = vec![0.0f32; LARGE_BUFFER_SIZE];
+    let mut output_right = vec![0.0f32; LARGE_BUFFER_SIZE];
+    let freq = vec![440.0f32; LARGE_BUFFER_SIZE];
+
+    // Set up initial state
+    graph.set_frequency(&freq);
+
+    b.iter(|| {
+        graph.process_audio(&mut output_left, &mut output_right);
+    });
+}
+
+// Test HashMap lookup overhead
+#[bench]
+fn bench_node_lookup(b: &mut Bencher) {
+    // Create graph with nodes once, outside the benchmark loop
+    let mut graph = AudioGraph::new(BUFFER_SIZE);
+    let mut nodes = Vec::new();
+
+    for _ in 0..100 {
+        nodes.push(graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE))));
+    }
+
+    let mut output_left = vec![0.0f32; BUFFER_SIZE];
+    let mut output_right = vec![0.0f32; BUFFER_SIZE];
+
+    // Only measure the process_audio call
+    b.iter(|| {
+        graph.process_audio(&mut output_left, &mut output_right);
+    });
+}

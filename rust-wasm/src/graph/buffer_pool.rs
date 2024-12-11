@@ -16,6 +16,10 @@ impl AudioBufferPool {
         Self { buffers, available }
     }
 
+    pub(crate) fn get_buffer_mut(&mut self, index: usize) -> &mut Vec<f32> {
+        &mut self.buffers[index]
+    }
+
     pub fn acquire(&mut self, buffer_size: usize) -> usize {
         if let Some(index) = self.available.pop() {
             index
@@ -46,4 +50,19 @@ impl AudioBufferPool {
     pub fn clear(&mut self, index: usize) {
         self.buffers[index].fill(0.0);
     }
+
+    pub fn get_multiple_buffers_mut<'a>(&'a mut self, indices: &[usize]) -> Vec<(usize, &'a mut [f32])> {
+      // SAFETY: This is safe because we know:
+      // 1. All indices are valid (enforced by the AudioGraph's buffer management)
+      // 2. No indices are duplicated (enforced by the AudioGraph's node buffer allocation)
+      // 3. The returned references won't outlive self
+      let buffers_ptr = self.buffers.as_mut_ptr();
+
+      indices.iter().map(|&idx| {
+          unsafe {
+              let buffer = &mut *buffers_ptr.add(idx);
+              (idx, buffer.as_mut_slice())
+          }
+      }).collect()
+  }
 }
