@@ -102,6 +102,10 @@ impl AudioGraph {
         id
     }
 
+    pub fn get_node(&self, node_id: NodeId) -> Option<&Box<dyn AudioNode>> {
+        self.nodes.get(node_id.0)
+    }
+
     pub fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut Box<dyn AudioNode>> {
         self.nodes.get_mut(node_id.0)
     }
@@ -285,5 +289,15 @@ impl Drop for AudioGraph {
         }
         self.buffer_pool.release(self.gate_buffer_idx);
         self.buffer_pool.release(self.freq_buffer_idx);
+    }
+}
+
+impl std::fmt::Debug for AudioGraph {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioGraph")
+            .field("buffer_size", &self.buffer_size)
+            .field("num_nodes", &self.nodes.len())
+            .field("num_connections", &self.connections.len())
+            .finish()
     }
 }

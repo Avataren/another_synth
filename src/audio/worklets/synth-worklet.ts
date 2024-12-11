@@ -2,148 +2,136 @@
 import './textencoder.js';
 
 import {
-    AudioProcessor,
-    initSync,
-    PortId,
-    NodeId,
+  AudioProcessor,
+  initSync,
 } from '../../../rust-wasm/pkg/audio_processor.js';
 declare const sampleRate: number;
 declare global {
-    interface AudioWorkletNodeOptions {
-        numberOfInputs?: number;
-        numberOfOutputs?: number;
-        outputChannelCount?: number[];
-        parameterData?: Record<string, number>;
-        // processorOptions?: any;
-    }
+  interface AudioWorkletNodeOptions {
+    numberOfInputs?: number;
+    numberOfOutputs?: number;
+    outputChannelCount?: number[];
+    parameterData?: Record<string, number>;
+    // processorOptions?: any;
+  }
 
-    class AudioWorkletProcessor {
-        constructor(options?: Partial<AudioWorkletNodeOptions>);
-        readonly port: MessagePort;
-        process(
-            inputs: Float32Array[][],
-            outputs: Float32Array[][],
-            parameters: Record<string, Float32Array>,
-        ): boolean;
-    }
+  class AudioWorkletProcessor {
+    constructor(options?: Partial<AudioWorkletNodeOptions>);
+    readonly port: MessagePort;
+    process(
+      inputs: Float32Array[][],
+      outputs: Float32Array[][],
+      parameters: Record<string, Float32Array>,
+    ): boolean;
+  }
 
-    function registerProcessor(
-        name: string,
-        processorCtor: typeof AudioWorkletProcessor,
-    ): void;
+  function registerProcessor(
+    name: string,
+    processorCtor: typeof AudioWorkletProcessor,
+  ): void;
 }
 
 class SynthAudioProcessor extends AudioWorkletProcessor {
-    private ready: boolean = false;
-    private emptyBuffer = new Float32Array(128);
-    private processor: AudioProcessor | null = null;
-    private oscillatorId: number | null = null;
-    private envelopeId: number | null = null;
+  private ready: boolean = false;
+  private processor: AudioProcessor | null = null;
+  private numVoices: number = 8;
 
-    static get parameterDescriptors() {
-        return [
-            {
-                name: 'frequency',
-                defaultValue: 440,
-                minValue: 20,
-                maxValue: 20000,
-                automationRate: 'a-rate',
-            },
-            {
-                name: 'gain',
-                defaultValue: 0.5,
-                minValue: 0,
-                maxValue: 1,
-                automationRate: 'k-rate',
-            },
-            {
-                name: 'gate',
-                defaultValue: 0.0,
-                minValue: 0,
-                maxValue: 1,
-                automationRate: 'a-rate',
-            },
-        ];
+  static get parameterDescriptors() {
+    const parameters = [];
+    const numVoices = 8; // Must match the number in constructor
+
+    // Create parameters for each voice
+    for (let i = 0; i < numVoices; i++) {
+      parameters.push(
+        {
+          name: `gate_${i}`,
+          defaultValue: 0,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: 'a-rate',
+        },
+        {
+          name: `frequency_${i}`,
+          defaultValue: 440,
+          minValue: 20,
+          maxValue: 20000,
+          automationRate: 'a-rate',
+        },
+        {
+          name: `gain_${i}`,
+          defaultValue: 1,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: 'k-rate',
+        },
+      );
     }
 
-    constructor() {
-        super();
-        this.port.postMessage({ type: 'ready' });
+    parameters.push({
+      name: 'master_gain',
+      defaultValue: 1,
+      minValue: 0,
+      maxValue: 1,
+      automationRate: 'k-rate',
+    });
 
-        this.port.onmessage = (event: MessageEvent) => {
-            if (event.data.type === 'wasm-binary') {
-                const { wasmBytes } = event.data;
-                const bytes = new Uint8Array(wasmBytes);
-                initSync({ module: bytes });
+    return parameters;
+  }
 
-                // Create processor and set up nodes
-                this.processor = new AudioProcessor();
-                this.processor.init(sampleRate);
+  constructor() {
+    super();
+    this.port.onmessage = (event: MessageEvent) => {
+      if (event.data.type === 'wasm-binary') {
+        const { wasmBytes } = event.data;
+        initSync({ module: new Uint8Array(wasmBytes) });
+        this.processor = new AudioProcessor();
+        this.processor.init(sampleRate, this.numVoices);
+        this.ready = true;
+      } else {
+        //console.log('unhandled message:', event);
+      }
+    };
+    this.port.postMessage({ type: 'ready' });
+  }
 
-                // Create nodes in correct order
-                this.oscillatorId = this.processor.add_oscillator().as_number();
-                this.envelopeId = this.processor.add_envelope().as_number();
+  override process(
+    _inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>,
+  ): boolean {
+    if (!this.ready || !this.processor) return true;
 
-                // Connect envelope to control oscillator's gain
-                this.processor.connect_nodes(
-                    NodeId.from_number(this.envelopeId),
-                    PortId.AudioOutput0, // Envelope output
-                    NodeId.from_number(this.oscillatorId), // Goes to oscillator
-                    PortId.GainMod, // As gain modulation
-                    1.0, // Full amount
-                );
+    const output = outputs[0];
+    if (!output) return true;
 
-                // Set up envelope
-                if (this.envelopeId !== null) {
-                    this.processor.update_envelope(
-                        NodeId.from_number(this.envelopeId),
-                        0.001,
-                        0.85,
-                        0.15,
-                        0.5,
-                    );
-                }
+    const outputLeft = output[0];
+    const outputRight = output[1] || output[0];
 
-                this.ready = true;
-            }
-        };
+    // Create single Float32Arrays for all voices
+    const gateArray = new Float32Array(this.numVoices);
+    const freqArray = new Float32Array(this.numVoices);
+    const gainArray = new Float32Array(this.numVoices);
+
+    // Fill arrays with current parameter values
+    for (let i = 0; i < this.numVoices; i++) {
+      gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
+      freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
+      gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
     }
 
-    counter = 0;
+    const masterGain = parameters.master_gain?.[0] ?? 1;
 
-    override process(
-        _inputs: Float32Array[][],
-        outputs: Float32Array[][],
-        parameters: Record<string, Float32Array>,
-    ): boolean {
-        if (!this.ready) return true;
+    this.processor.process_audio(
+      gateArray,
+      freqArray,
+      gainArray,
+      masterGain,
+      outputLeft!,
+      outputRight!,
+    );
 
-        const output = outputs[0];
-        if (!output) return true;
-
-        const outputLeft = output[0] || this.emptyBuffer;
-        const outputRight = output[1] || new Float32Array(outputLeft.length);
-        const gate = parameters.gate as Float32Array;
-        const frequency = parameters.frequency as Float32Array;
-
-        // Add debug logging
-        // console.log('Processing:', {
-        //   bufferSize: outputLeft.length,
-        //   gateValue: gate[0],
-        //   freqValue: frequency[0],
-        //   oscillatorId: this.oscillatorId,
-        //   envelopeId: this.envelopeId,
-        // });
-
-        try {
-            this.processor?.process_audio(gate, frequency, outputLeft, outputRight);
-        } catch (e) {
-            console.error('Error in process_audio:', e);
-            throw e;
-        }
-
-        return true;
-    }
+    return true;
+  }
 }
 
 registerProcessor('synth-audio-processor', SynthAudioProcessor);

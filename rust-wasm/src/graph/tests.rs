@@ -1,7 +1,7 @@
 use super::graph::AudioGraph;
 use super::types::Connection;
 use crate::{AudioNode, PortId};
-use std::collections::HashMap;
+use std::{any::Any, collections::HashMap};
 
 // Mock AudioNode implementation for testing
 struct MockNode {
@@ -53,6 +53,10 @@ impl AudioNode for MockNode {
     fn reset(&mut self) {}
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }

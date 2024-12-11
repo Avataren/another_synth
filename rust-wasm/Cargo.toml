@@ -26,11 +26,11 @@ codegen-units = 1
 rust-version = "nightly"
 
 [package.metadata.wasm-pack.profile.dev]
-wasm-opt = ['--enable-simd']
+wasm-opt = ['-O1', '--enable-simd']
 [package.metadata.wasm-pack.profile.profiling]
-wasm-opt = ['--enable-simd']
+wasm-opt = ['-O2', '--enable-simd']
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ['--enable-simd']
+wasm-opt = ['-O3', '--enable-simd']
 
 [[bench]]
 name = "graph_benchmark"

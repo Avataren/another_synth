@@ -32,10 +32,10 @@ pub struct EnvelopeConfig {
 impl Default for EnvelopeConfig {
     fn default() -> Self {
         Self {
-            attack: 0.01,
-            decay: 0.1,
-            sustain: 0.5,
-            release: 0.3,
+            attack: 0.001,
+            decay: 0.25,
+            sustain: 0.25,
+            release: 0.5,
             attack_curve: 0.0,
             decay_curve: 0.0,
             release_curve: 0.0,
@@ -73,6 +73,14 @@ impl Envelope {
 
     pub fn update_config(&mut self, config: EnvelopeConfig) {
         self.config = config;
+    }
+
+    pub fn get_phase(&self) -> EnvelopePhase {
+        self.phase
+    }
+
+    pub fn is_active(&self) -> bool {
+        !matches!(self.phase, EnvelopePhase::Idle)
     }
 
     fn trigger(&mut self, gate: f32) {
@@ -174,6 +182,10 @@ impl AudioNode for Envelope {
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }

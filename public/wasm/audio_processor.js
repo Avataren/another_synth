@@ -41,12 +41,6 @@ function passArrayF32ToWasm0(arg, malloc) {
     return ptr;
 }
 
-function _assertClass(instance, klass) {
-    if (!(instance instanceof klass)) {
-        throw new Error(`expected instance of ${klass.name}`);
-    }
-}
-
 function takeFromExternrefTable0(idx) {
     const value = wasm.__wbindgen_export_0.get(idx);
     wasm.__externref_table_dealloc(idx);
@@ -99,68 +93,41 @@ export class AudioProcessor {
     }
     /**
      * @param {number} sample_rate
+     * @param {number} num_voices
      */
-    init(sample_rate) {
-        wasm.audioprocessor_init(this.__wbg_ptr, sample_rate);
+    init(sample_rate, num_voices) {
+        wasm.audioprocessor_init(this.__wbg_ptr, sample_rate, num_voices);
     }
     /**
-     * @param {Float32Array} gate
-     * @param {Float32Array} frequency_param
+     * @param {Float32Array} gates
+     * @param {Float32Array} frequencies
+     * @param {Float32Array} gains
+     * @param {number} master_gain
      * @param {Float32Array} output_left
      * @param {Float32Array} output_right
      */
-    process_audio(gate, frequency_param, output_left, output_right) {
-        const ptr0 = passArrayF32ToWasm0(gate, wasm.__wbindgen_malloc);
+    process_audio(gates, frequencies, gains, master_gain, output_left, output_right) {
+        const ptr0 = passArrayF32ToWasm0(gates, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF32ToWasm0(frequency_param, wasm.__wbindgen_malloc);
+        const ptr1 = passArrayF32ToWasm0(frequencies, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        var ptr2 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
-        var len2 = WASM_VECTOR_LEN;
-        var ptr3 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+        const ptr2 = passArrayF32ToWasm0(gains, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        var ptr3 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
         var len3 = WASM_VECTOR_LEN;
-        wasm.audioprocessor_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, output_left, ptr3, len3, output_right);
+        var ptr4 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+        var len4 = WASM_VECTOR_LEN;
+        wasm.audioprocessor_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, master_gain, ptr3, len3, output_left, ptr4, len4, output_right);
     }
     /**
-     * @returns {NodeId}
-     */
-    add_envelope() {
-        const ret = wasm.audioprocessor_add_envelope(this.__wbg_ptr);
-        return NodeId.__wrap(ret);
-    }
-    /**
-     * @returns {NodeId}
-     */
-    add_oscillator() {
-        const ret = wasm.audioprocessor_add_oscillator(this.__wbg_ptr);
-        return NodeId.__wrap(ret);
-    }
-    /**
-     * @param {NodeId} from_node
-     * @param {PortId} from_port
-     * @param {NodeId} to_node
-     * @param {PortId} to_port
-     * @param {number} amount
-     * @returns {ConnectionId}
-     */
-    connect_nodes(from_node, from_port, to_node, to_port, amount) {
-        _assertClass(from_node, NodeId);
-        var ptr0 = from_node.__destroy_into_raw();
-        _assertClass(to_node, NodeId);
-        var ptr1 = to_node.__destroy_into_raw();
-        const ret = wasm.audioprocessor_connect_nodes(this.__wbg_ptr, ptr0, from_port, ptr1, to_port, amount);
-        return ConnectionId.__wrap(ret);
-    }
-    /**
-     * @param {NodeId} node_id
+     * @param {number} voice_index
      * @param {number} attack
      * @param {number} decay
      * @param {number} sustain
      * @param {number} release
      */
-    update_envelope(node_id, attack, decay, sustain, release) {
-        _assertClass(node_id, NodeId);
-        var ptr0 = node_id.__destroy_into_raw();
-        const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, ptr0, attack, decay, sustain, release);
+    update_envelope(voice_index, attack, decay, sustain, release) {
+        const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, attack, decay, sustain, release);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -172,14 +139,6 @@ const ConnectionIdFinalization = (typeof FinalizationRegistry === 'undefined')
     : new FinalizationRegistry(ptr => wasm.__wbg_connectionid_free(ptr >>> 0, 1));
 
 export class ConnectionId {
-
-    static __wrap(ptr) {
-        ptr = ptr >>> 0;
-        const obj = Object.create(ConnectionId.prototype);
-        obj.__wbg_ptr = ptr;
-        ConnectionIdFinalization.register(obj, obj.__wbg_ptr, obj);
-        return obj;
-    }
 
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
