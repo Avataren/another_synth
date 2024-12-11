@@ -53,12 +53,14 @@ impl AudioProcessor {
         self.graph.process_audio(output_left, output_right);
     }
 
+    //todo dereference NodeId and return usize instead!
     #[wasm_bindgen]
     pub fn add_envelope(&mut self) -> NodeId {
         let env = Box::new(Envelope::new(self.sample_rate, EnvelopeConfig::default()));
         self.graph.add_node(env)
     }
 
+    //todo dereference NodeId and return usize instead!
     #[wasm_bindgen]
     pub fn add_oscillator(&mut self) -> NodeId {
         let osc = Box::new(ModulatableOscillator::new(self.sample_rate));
