@@ -74,3 +74,146 @@ impl Voice {
         self.current_gain
     }
 }
+
+#[cfg(test)]
+mod voice_tests {
+    use super::*;
+
+    const BUFFER_SIZE: usize = 128; // Match AudioGraph's buffer size
+
+    fn create_test_voice() -> Voice {
+        let config = EnvelopeConfig {
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.5,
+            release: 0.3,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+        };
+        Voice::new(0, 44100.0, config)
+    }
+
+    // Helper function to process audio in chunks
+    fn process_samples(voice: &mut Voice, num_samples: usize) {
+        let mut left_buf = vec![0.0; BUFFER_SIZE];
+        let mut right_buf = vec![0.0; BUFFER_SIZE];
+
+        let num_chunks = (num_samples + BUFFER_SIZE - 1) / BUFFER_SIZE;
+        for _ in 0..num_chunks {
+            voice.graph.process_audio(&mut left_buf, &mut right_buf);
+        }
+    }
+
+    #[test]
+    fn test_voice_initially_inactive() {
+        let mut voice = create_test_voice();
+        voice.update_active_state();
+        assert!(
+            !voice.is_active(),
+            "Voice should be inactive when first created"
+        );
+    }
+
+    #[test]
+    fn test_voice_active_on_gate_high() {
+        let mut voice = create_test_voice();
+        voice.current_gate = 1.0;
+        voice.update_active_state();
+        assert!(
+            voice.is_active(),
+            "Voice should be active when gate is high"
+        );
+    }
+
+    #[test]
+    fn test_voice_inactive_after_release() {
+        let mut voice = create_test_voice();
+
+        // First trigger the voice
+        voice.graph.set_gate(&[1.0]);
+        voice.current_gate = 1.0;
+        voice.update_active_state();
+        assert!(voice.is_active(), "Voice should be active after trigger");
+
+        // Release the voice
+        voice.graph.set_gate(&[0.0]);
+        voice.current_gate = 0.0;
+
+        // Process enough samples to complete the release phase
+        let samples_needed = (voice.sample_rate * 0.5) as usize; // 0.5 seconds
+        process_samples(&mut voice, samples_needed);
+
+        voice.update_active_state();
+        assert!(
+            !voice.is_active(),
+            "Voice should be inactive after release phase completes"
+        );
+    }
+
+    #[test]
+    fn test_voice_active_during_release() {
+        let mut voice = create_test_voice();
+
+        // Trigger the voice
+        voice.graph.set_gate(&[1.0]);
+        voice.current_gate = 1.0;
+        // Process one buffer to let envelope respond to gate
+        process_samples(&mut voice, BUFFER_SIZE);
+        voice.update_active_state();
+
+        println!("After trigger - Active: {}", voice.is_active());
+        if let Some(node) = voice.graph.get_node(voice.envelope_id) {
+            if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
+                println!("After trigger - Phase: {:?}", env.get_phase());
+            }
+        }
+
+        // Release the voice
+        voice.graph.set_gate(&[0.0]);
+        voice.current_gate = 0.0;
+        // Process one buffer to let envelope enter release phase
+        process_samples(&mut voice, BUFFER_SIZE);
+
+        if let Some(node) = voice.graph.get_node(voice.envelope_id) {
+            if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
+                println!("After release processing - Phase: {:?}", env.get_phase());
+            }
+        }
+
+        voice.update_active_state();
+        println!("Final active state: {}", voice.is_active());
+
+        assert!(
+            voice.is_active(),
+            "Voice should still be active during release phase"
+        );
+    }
+
+    #[test]
+    fn test_voice_retrigger_during_release() {
+        let mut voice = create_test_voice();
+
+        // Initial trigger and release
+        voice.graph.set_gate(&[1.0]);
+        voice.current_gate = 1.0;
+        voice.update_active_state();
+
+        voice.graph.set_gate(&[0.0]);
+        voice.current_gate = 0.0;
+
+        // Process partially through release
+        process_samples(&mut voice, 441);
+
+        // Retrigger
+        voice.graph.set_gate(&[1.0]);
+        voice.current_gate = 1.0;
+        voice.update_active_state();
+
+        assert!(
+            voice.is_active(),
+            "Voice should be active after retrigger during release"
+        );
+    }
+}
