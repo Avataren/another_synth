@@ -1,3 +1,37 @@
+/// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
+///
+/// Core concepts:
+/// - Nodes: Audio processing units (oscillators, envelopes, etc.) that can have multiple inputs and outputs
+/// - Connections: Routes that carry audio/control signals between nodes' ports
+/// - Buffer Pool: A memory manager that pre-allocates and reuses audio buffers
+/// - Processing Order: A topologically sorted sequence of nodes ensuring correct signal flow
+///
+/// The system works by:
+/// 1. Construction:
+///    - Nodes are added to the graph and assigned unique IDs
+///    - Each node's ports get dedicated buffers from the buffer pool
+///    - Connections are established between nodes, recording source/destination ports
+///    - Processing order is computed to handle dependencies correctly
+///
+/// 2. Runtime Processing:
+///    - Global inputs (gate, frequency) are written to their dedicated buffers
+///    - Nodes are processed in topological order
+///    - For each node:
+///      - Input buffers are prepared (either from source nodes or global inputs)
+///      - Node processes its inputs and writes to its output buffers
+///      - Output buffers are available for downstream nodes
+///    - Final node's output is copied to the main output buffers
+///
+/// Key optimizations:
+/// - Buffer pool prevents audio buffer allocations during processing
+/// - Pre-computed processing order eliminates runtime dependency checks
+/// - Vec-based storage enables efficient node lookup
+/// - Connection information is cached to minimize lookup overhead
+/// - Temporary buffers are reused across processing cycles
+///
+/// The system maintains thread safety through Rust's ownership system and provides
+/// real-time safety by avoiding allocations in the processing path. It supports
+/// arbitrary node graphs as long as they don't contain feedback loops.
 use super::{
     buffer_pool::AudioBufferPool,
     types::{Connection, ConnectionId, NodeId},
