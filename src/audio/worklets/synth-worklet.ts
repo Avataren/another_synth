@@ -164,7 +164,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
             0,  // first macro
             carrierId,
             PortId.ModIndex,
-            30.0
+            100.0
         );
 
         return { carrierId, modulatorId, envelopeId };
@@ -189,7 +189,18 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         const gainArray = new Float32Array(this.numVoices);
         const macroArray = new Float32Array(this.numVoices * 4 * 128);
 
-        // Fill arrays with current parameter values
+        // We'll ramp from 0 to 30 over ~10 seconds as an example.
+        // The rampProgress should go from 0.0 to 1.0, then multiplied by 30.0.
+        // Assuming a block size of 128 and a sample rate of ~44100 Hz, 
+        // we get roughly 344 blocks per second (44100/128 ≈ 344).
+        // Over 10 seconds, that's about 3440 blocks.
+        const blocksPerSecond = sampleRate / 128; // ~344 blocks/sec
+        const rampDurationInSeconds = 2;
+        const totalBlocksForRamp = blocksPerSecond * rampDurationInSeconds;
+
+        const rampProgress = Math.min(this.macroPhase / totalBlocksForRamp, 1.0);
+        const currentValue = rampProgress * 1.0;
+
         for (let i = 0; i < this.numVoices; i++) {
             gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
             freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
@@ -202,18 +213,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
             for (let m = 0; m < 4; m++) {
                 const macroOffset = voiceOffset + m * 128;
 
-                // For first voice, first macro, generate LFO pattern
+                // For the first voice, first macro, we apply the ramp
                 if (i === 0 && m === 0) {
                     for (let j = 0; j < 128; j++) {
-                        //const phase = (j + this.macroPhase) * 2 * Math.PI / 12800;  // Full cycle over 128 samples
-                        //const value = (Math.sin(phase) + 1) * 0.5;  // Normalized to 0-1 range
-                        macroArray[macroOffset + j] = 0.1;
+                        macroArray[macroOffset + j] = currentValue;
+                    }
+                } else {
+                    // Other macros stay at 0 (or some default)
+                    for (let j = 0; j < 128; j++) {
+                        macroArray[macroOffset + j] = 0.0;
                     }
                 }
             }
         }
 
-        //this.macroPhase = (this.macroPhase + 1) % 12800;
+        this.macroPhase += 1; // increment macroPhase each block
 
         const masterGain = parameters.master_gain?.[0] ?? 1;
 

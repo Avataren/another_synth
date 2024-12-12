@@ -93,7 +93,15 @@ impl AudioProcessor for ModulatableOscillator {
 
             let mod_index = inputs
                 .get(&PortId::ModIndex)
-                .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
+                .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
+
+            // let mod_index = inputs.get(&PortId::ModIndex).map_or(
+            //     f32x4::splat(self.get_default_values()[&PortId::ModIndex]),
+            //     |input| {
+            //         let macro_value = input.get_simd(offset);
+            //         f32x4::splat(self.get_default_values()[&PortId::ModIndex]) * macro_value
+            //     },
+            // );
 
             let gain = inputs
                 .get(&PortId::GainMod)
