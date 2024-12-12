@@ -186,7 +186,7 @@ mod tests {
         let mut output_right = vec![0.0; buffer_size];
 
         graph.set_gate(&gate_on);
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
 
         // Verify output matches gate input
         assert_eq!(output_left, gate_on);
@@ -195,7 +195,7 @@ mod tests {
         // Test with gate off
         let gate_off = vec![0.0; buffer_size];
         graph.set_gate(&gate_off);
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
 
         // Verify output matches gate input
         assert_eq!(output_left, gate_off);

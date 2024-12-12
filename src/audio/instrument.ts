@@ -5,7 +5,7 @@ import { type NoiseState } from './dsp/noise-generator';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
 export default class Instrument {
-  readonly num_voices = 8;
+  readonly num_voices = 1;
   outputNode: AudioNode;
   workletNode: AudioWorkletNode | null = null;
   private activeNotes: Map<number, number> = new Map(); // midi note -> voice index
@@ -99,7 +99,8 @@ export default class Instrument {
 
       if (freqParam && gateParam && gainParam) {
         freqParam.setValueAtTime(frequency, this.audioContext.currentTime);
-        gateParam.setValueAtTime(1.0, this.audioContext.currentTime);
+        gateParam.setValueAtTime(0.0, this.audioContext.currentTime);
+        gateParam.setValueAtTime(1.0, this.audioContext.currentTime + 0.005);
         gainParam.setValueAtTime(velocity / 127, this.audioContext.currentTime);
       }
 

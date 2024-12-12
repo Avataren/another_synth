@@ -36,14 +36,13 @@ use super::{
     buffer_pool::AudioBufferPool,
     types::{Connection, ConnectionId, NodeId},
 };
-use crate::{AudioNode, PortId};
+use crate::{AudioNode, MacroManager, PortId};
 use std::collections::HashMap;
 
 pub struct AudioGraph {
-    // Change from HashMap to Vec for nodes
     pub(crate) nodes: Vec<Box<dyn AudioNode>>,
     pub(crate) connections: HashMap<ConnectionId, Connection>,
-    pub(crate) processing_order: Vec<usize>, // Changed from NodeId to direct indices
+    pub(crate) processing_order: Vec<usize>,
     pub(crate) buffer_size: usize,
     pub(crate) buffer_pool: AudioBufferPool,
     pub(crate) node_buffers: HashMap<(NodeId, PortId), usize>,
@@ -177,93 +176,105 @@ impl AudioGraph {
     }
 
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
-        // Clear all node output buffers
+        self.process_audio_with_macros(None, output_left, output_right)
+    }
+
+    pub fn process_audio_with_macros(
+        &mut self,
+        macro_manager: Option<&MacroManager>,
+        output_left: &mut [f32],
+        output_right: &mut [f32],
+    ) {
+        // Clear output buffers
         for &buffer_idx in self.node_buffers.values() {
             self.buffer_pool.clear(buffer_idx);
         }
 
-        // Ensure we have enough temporary buffers
-        let max_ports_per_node = self
-            .nodes
-            .iter()
-            .map(|node| node.get_ports().len())
-            .max()
-            .unwrap_or(0);
-
-        // Acquire temporary buffers as needed
-        while self.temp_buffer_indices.len() < max_ports_per_node {
-            let buffer_idx = self.buffer_pool.acquire(self.buffer_size);
-            self.temp_buffer_indices.push(buffer_idx);
-        }
-
         // Process nodes in order
         for &node_idx in &self.processing_order {
-            let node = &mut self.nodes[node_idx];
             let node_id = NodeId(node_idx);
+            let node = &mut self.nodes[node_idx];
             let ports = node.get_ports();
 
-            // First, collect all the input data into temporary vectors
-            let mut input_buffers = Vec::new();
+            // Collect inputs first
+            let mut input_data: Vec<(PortId, Vec<f32>)> = Vec::new();
 
             // Handle gate and frequency inputs
             if ports.contains_key(&PortId::Gate) {
                 let gate_data = self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec();
-                input_buffers.push((PortId::Gate, gate_data));
+                input_data.push((PortId::Gate, gate_data));
             }
 
             if ports.contains_key(&PortId::Frequency) {
                 let freq_data = self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec();
-                input_buffers.push((PortId::Frequency, freq_data));
+                input_data.push((PortId::Frequency, freq_data));
             }
 
             // Process connected inputs
             if let Some(connections) = self.input_connections.get(&node_id) {
                 for &(port, source_idx, amount) in connections {
                     let source_data = self.buffer_pool.copy_out(source_idx).to_vec();
-                    let mut input_data = vec![0.0; self.buffer_size];
-
                     if amount == 1.0 {
-                        input_data.copy_from_slice(&source_data);
+                        input_data.push((port, source_data));
                     } else {
-                        for (out, &inp) in input_data.iter_mut().zip(source_data.iter()) {
-                            *out = inp * amount;
-                        }
+                        let scaled_data: Vec<f32> =
+                            source_data.iter().map(|&x| x * amount).collect();
+                        input_data.push((port, scaled_data));
                     }
-
-                    input_buffers.push((port, input_data));
                 }
             }
 
-            // Create input map from collected data
-            let mut input_map = HashMap::new();
-            for (port, buffer) in &input_buffers {
-                input_map.insert(*port, buffer.as_slice());
+            // Create input map
+            let mut input_map: HashMap<PortId, &[f32]> = HashMap::new();
+            for (port, data) in &input_data {
+                input_map.insert(*port, data.as_slice());
             }
 
-            // Get output buffer indices
+            // Get output indices
             let output_indices: Vec<usize> = ports
                 .iter()
                 .filter(|(_, &is_output)| is_output)
                 .filter_map(|(&port, _)| self.node_buffers.get(&(node_id, port)).copied())
                 .collect();
 
-            // Get all output buffers mutably at once
-            let output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
-
-            // Create output map with mutable references
-            let mut output_refs: HashMap<PortId, &mut [f32]> = HashMap::new();
-            for (idx, buffer) in output_buffers {
-                if let Some((&(_, port), _)) = self
-                    .node_buffers
-                    .iter()
-                    .find(|((n, _), &i)| *n == node_id && i == idx)
-                {
-                    output_refs.insert(port, buffer);
+            // Process regular audio
+            {
+                let mut output_refs = HashMap::new();
+                let output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
+                for (idx, buffer) in output_buffers {
+                    if let Some((&(_, port), _)) = self
+                        .node_buffers
+                        .iter()
+                        .find(|((n, _), &i)| *n == node_id && i == idx)
+                    {
+                        output_refs.insert(port, buffer);
+                    }
                 }
+
+                node.process(&input_map, &mut output_refs, self.buffer_size);
             }
 
-            // Process the node
-            node.process(&input_map, &mut output_refs, self.buffer_size);
+            // Process macros if available
+            if let Some(macro_mgr) = macro_manager {
+                if ports.keys().any(|port| port.is_modulation_input()) {
+                    let mut macro_outputs = HashMap::new();
+                    let macro_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
+
+                    for (idx, buffer) in macro_buffers {
+                        if let Some((&(_, port), _)) = self
+                            .node_buffers
+                            .iter()
+                            .find(|((n, _), &i)| *n == node_id && i == idx)
+                        {
+                            macro_outputs.insert(port, buffer);
+                        }
+                    }
+
+                    for offset in (0..self.buffer_size).step_by(4) {
+                        macro_mgr.process_modulation(offset, &mut macro_outputs);
+                    }
+                }
+            }
         }
 
         // Copy final output

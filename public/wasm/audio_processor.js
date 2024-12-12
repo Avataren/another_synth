@@ -102,22 +102,38 @@ export class AudioProcessor {
      * @param {Float32Array} gates
      * @param {Float32Array} frequencies
      * @param {Float32Array} gains
+     * @param {Float32Array} macro_values
      * @param {number} master_gain
      * @param {Float32Array} output_left
      * @param {Float32Array} output_right
      */
-    process_audio(gates, frequencies, gains, master_gain, output_left, output_right) {
+    process_audio(gates, frequencies, gains, macro_values, master_gain, output_left, output_right) {
         const ptr0 = passArrayF32ToWasm0(gates, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArrayF32ToWasm0(frequencies, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passArrayF32ToWasm0(gains, wasm.__wbindgen_malloc);
         const len2 = WASM_VECTOR_LEN;
-        var ptr3 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
-        var len3 = WASM_VECTOR_LEN;
-        var ptr4 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+        const ptr3 = passArrayF32ToWasm0(macro_values, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        var ptr4 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
         var len4 = WASM_VECTOR_LEN;
-        wasm.audioprocessor_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, master_gain, ptr3, len3, output_left, ptr4, len4, output_right);
+        var ptr5 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+        var len5 = WASM_VECTOR_LEN;
+        wasm.audioprocessor_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, master_gain, ptr4, len4, output_left, ptr5, len5, output_right);
+    }
+    /**
+     * @param {number} voice_index
+     * @param {number} macro_index
+     * @param {number} target_node
+     * @param {PortId} target_port
+     * @param {number} amount
+     */
+    connect_macro(voice_index, macro_index, target_node, target_port, amount) {
+        const ret = wasm.audioprocessor_connect_macro(this.__wbg_ptr, voice_index, macro_index, target_node, target_port, amount);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * @param {number} voice_index

@@ -42,6 +42,18 @@ impl PortId {
         )
     }
 
+    pub fn is_modulation_input(&self) -> bool {
+        matches!(
+            self,
+            PortId::FrequencyMod
+                | PortId::PhaseMod
+                | PortId::GainMod
+                | PortId::CutoffMod
+                | PortId::ResonanceMod
+                | PortId::EnvelopeMod
+        )
+    }
+
     pub fn to_input_index(&self) -> Option<usize> {
         match self {
             PortId::AudioInput0 => Some(0),

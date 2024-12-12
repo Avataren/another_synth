@@ -54,7 +54,7 @@ fn bench_simple_patch_long(b: &mut Bencher) {
             patch.graph.set_frequency(&freq);
             patch
                 .graph
-                .process_audio(&mut output_left, &mut output_right);
+                .process_audio(None, &mut output_left, &mut output_right);
         }
     });
 }
@@ -97,7 +97,7 @@ fn bench_multi_voice_patch(b: &mut Bencher) {
         for _ in 0..10 {
             graph.set_gate(&gate);
             graph.set_frequency(&freq);
-            graph.process_audio(&mut output_left, &mut output_right);
+            graph.process_audio(None, &mut output_left, &mut output_right);
         }
     });
 }
@@ -175,7 +175,7 @@ fn bench_complex_modulation(b: &mut Bencher) {
                 .map(|f| f * (1.0 + (i as f32 * 0.1)))
                 .collect::<Vec<_>>();
             graph.set_frequency(&freq_mod);
-            graph.process_audio(&mut output_left, &mut output_right);
+            graph.process_audio(None, &mut output_left, &mut output_right);
         }
     });
 }
@@ -329,7 +329,7 @@ fn bench_complex_synth(b: &mut Bencher) {
                 .map(|f| f * (1.0 + (i as f32 * 0.01)))
                 .collect::<Vec<_>>();
             graph.set_frequency(&freq_mod);
-            graph.process_audio(&mut output_left, &mut output_right);
+            graph.process_audio(None, &mut output_left, &mut output_right);
         }
     });
 }
@@ -346,7 +346,7 @@ fn bench_buffer_operations(b: &mut Bencher) {
 
     b.iter(|| {
         graph.set_frequency(&freq);
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     });
 }
 
@@ -364,7 +364,7 @@ fn bench_single_oscillator(b: &mut Bencher) {
     graph.set_frequency(&freq);
 
     b.iter(|| {
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     });
 }
 
@@ -398,7 +398,7 @@ fn bench_connection_overhead(b: &mut Bencher) {
     graph.set_frequency(&freq);
 
     b.iter(|| {
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     });
 }
 
@@ -419,11 +419,11 @@ fn bench_envelope_steady_state(b: &mut Bencher) {
     // Put the envelope into sustain state
     graph.set_gate(&gate);
     for _ in 0..100 {
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     }
 
     b.iter(|| {
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     });
 }
 
@@ -445,7 +445,7 @@ fn bench_parallel_nodes(b: &mut Bencher) {
     graph.set_frequency(&freq);
 
     b.iter(|| {
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     });
 }
 
@@ -464,7 +464,7 @@ fn bench_large_buffer(b: &mut Bencher) {
     graph.set_frequency(&freq);
 
     b.iter(|| {
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     });
 }
 
@@ -484,6 +484,6 @@ fn bench_node_lookup(b: &mut Bencher) {
 
     // Only measure the process_audio call
     b.iter(|| {
-        graph.process_audio(&mut output_left, &mut output_right);
+        graph.process_audio(None, &mut output_left, &mut output_right);
     });
 }

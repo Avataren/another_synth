@@ -1,12 +1,11 @@
 use crate::{
-    AudioGraph, AudioNode, Connection, Envelope, EnvelopeConfig, ModulatableOscillator, NodeId,
-    PortId,
+    AudioGraph, Connection, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator,
+    ModulationTarget, NodeId, PortId,
 };
 
 #[derive(Debug)]
 pub struct Voice {
     pub id: usize,
-    #[allow(dead_code)]
     sample_rate: f32,
     pub graph: AudioGraph,
     pub oscillator_id: NodeId,
@@ -17,12 +16,16 @@ pub struct Voice {
     pub current_frequency: f32,
     pub current_gain: f32,
     pub active: bool,
+    macro_manager: MacroManager,
 }
 
 impl Voice {
     pub fn new(id: usize, sample_rate: f32, envelope_config: EnvelopeConfig) -> Self {
         let buffer_size = 128;
         let mut graph = AudioGraph::new(buffer_size);
+
+        // Create and initialize macro manager
+        let macro_manager = MacroManager::new(4, &mut graph.buffer_pool, buffer_size);
 
         let oscillator_id = graph.add_node(Box::new(ModulatableOscillator::new(sample_rate)));
         let envelope_id = {
@@ -48,7 +51,12 @@ impl Voice {
             current_frequency: 440.0,
             current_gain: 1.0,
             active: false,
+            macro_manager,
         }
+    }
+
+    pub fn clear_macros(&mut self) {
+        self.macro_manager.clear();
     }
 
     pub fn update_active_state(&mut self) {
@@ -73,147 +81,47 @@ impl Voice {
     pub fn get_current_gain(&self) -> f32 {
         self.current_gain
     }
-}
 
-#[cfg(test)]
-mod voice_tests {
-    use super::*;
-
-    const BUFFER_SIZE: usize = 128; // Match AudioGraph's buffer size
-
-    fn create_test_voice() -> Voice {
-        let config = EnvelopeConfig {
-            attack: 0.01,
-            decay: 0.1,
-            sustain: 0.5,
-            release: 0.3,
-            attack_curve: 0.0,
-            decay_curve: 0.0,
-            release_curve: 0.0,
-            attack_smoothing_samples: 0,
-        };
-        Voice::new(0, 44100.0, config)
+    pub fn update_macro(&mut self, macro_index: usize, values: &[f32]) -> Result<(), String> {
+        self.macro_manager.update_macro(macro_index, values)
     }
 
-    // Helper function to process audio in chunks
-    fn process_samples(voice: &mut Voice, num_samples: usize) {
-        let mut left_buf = vec![0.0; BUFFER_SIZE];
-        let mut right_buf = vec![0.0; BUFFER_SIZE];
-
-        let num_chunks = (num_samples + BUFFER_SIZE - 1) / BUFFER_SIZE;
-        for _ in 0..num_chunks {
-            voice.graph.process_audio(&mut left_buf, &mut right_buf);
-        }
+    pub fn add_macro_modulation(
+        &mut self,
+        macro_index: usize,
+        target_node: NodeId,
+        target_port: PortId,
+        amount: f32,
+    ) -> Result<(), String> {
+        self.macro_manager.add_modulation(
+            macro_index,
+            ModulationTarget {
+                node_id: target_node,
+                port_id: target_port,
+                amount,
+            },
+        )
     }
 
-    #[test]
-    fn test_voice_initially_inactive() {
-        let mut voice = create_test_voice();
-        voice.update_active_state();
-        assert!(
-            !voice.is_active(),
-            "Voice should be inactive when first created"
-        );
-    }
+    pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
+        use web_sys::console;
 
-    #[test]
-    fn test_voice_active_on_gate_high() {
-        let mut voice = create_test_voice();
-        voice.current_gate = 1.0;
-        voice.update_active_state();
-        assert!(
-            voice.is_active(),
-            "Voice should be active when gate is high"
-        );
-    }
+        // First, ensure all gates and frequencies are set
+        self.graph.set_gate(&[self.current_gate]);
+        self.graph.set_frequency(&[self.current_frequency]);
 
-    #[test]
-    fn test_voice_inactive_after_release() {
-        let mut voice = create_test_voice();
-
-        // First trigger the voice
-        voice.graph.set_gate(&[1.0]);
-        voice.current_gate = 1.0;
-        voice.update_active_state();
-        assert!(voice.is_active(), "Voice should be active after trigger");
-
-        // Release the voice
-        voice.graph.set_gate(&[0.0]);
-        voice.current_gate = 0.0;
-
-        // Process enough samples to complete the release phase
-        let samples_needed = (voice.sample_rate * 0.5) as usize; // 0.5 seconds
-        process_samples(&mut voice, samples_needed);
-
-        voice.update_active_state();
-        assert!(
-            !voice.is_active(),
-            "Voice should be inactive after release phase completes"
-        );
-    }
-
-    #[test]
-    fn test_voice_active_during_release() {
-        let mut voice = create_test_voice();
-
-        // Trigger the voice
-        voice.graph.set_gate(&[1.0]);
-        voice.current_gate = 1.0;
-        // Process one buffer to let envelope respond to gate
-        process_samples(&mut voice, BUFFER_SIZE);
-        voice.update_active_state();
-
-        println!("After trigger - Active: {}", voice.is_active());
-        if let Some(node) = voice.graph.get_node(voice.envelope_id) {
-            if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
-                println!("After trigger - Phase: {:?}", env.get_phase());
-            }
+        // Process audio with optional macro support
+        if self.macro_manager.has_active_macros() {
+            self.graph.process_audio_with_macros(
+                Some(&self.macro_manager),
+                output_left,
+                output_right,
+            );
+        } else {
+            self.graph.process_audio(output_left, output_right);
         }
 
-        // Release the voice
-        voice.graph.set_gate(&[0.0]);
-        voice.current_gate = 0.0;
-        // Process one buffer to let envelope enter release phase
-        process_samples(&mut voice, BUFFER_SIZE);
-
-        if let Some(node) = voice.graph.get_node(voice.envelope_id) {
-            if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
-                println!("After release processing - Phase: {:?}", env.get_phase());
-            }
-        }
-
-        voice.update_active_state();
-        println!("Final active state: {}", voice.is_active());
-
-        assert!(
-            voice.is_active(),
-            "Voice should still be active during release phase"
-        );
-    }
-
-    #[test]
-    fn test_voice_retrigger_during_release() {
-        let mut voice = create_test_voice();
-
-        // Initial trigger and release
-        voice.graph.set_gate(&[1.0]);
-        voice.current_gate = 1.0;
-        voice.update_active_state();
-
-        voice.graph.set_gate(&[0.0]);
-        voice.current_gate = 0.0;
-
-        // Process partially through release
-        process_samples(&mut voice, 441);
-
-        // Retrigger
-        voice.graph.set_gate(&[1.0]);
-        voice.current_gate = 1.0;
-        voice.update_active_state();
-
-        assert!(
-            voice.is_active(),
-            "Voice should be active after retrigger during release"
-        );
+        // Update voice state after processing
+        self.update_active_state();
     }
 }

@@ -2,6 +2,7 @@
 
 mod audio;
 mod graph;
+mod macros;
 mod nodes;
 mod processing;
 mod traits;
@@ -10,6 +11,7 @@ mod voice;
 
 pub use graph::AudioGraph;
 pub use graph::{Connection, ConnectionId, NodeId};
+pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::EnvelopeConfig;
 pub use nodes::{Envelope, ModulatableOscillator};
 pub use traits::{AudioNode, PortId};
@@ -58,21 +60,18 @@ impl AudioProcessor {
         gates: &[f32],
         frequencies: &[f32],
         gains: &[f32],
+        macro_values: &[f32],
         master_gain: f32,
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        // Clear output buffers
         output_left.fill(0.0);
         output_right.fill(0.0);
 
-        // Temporary buffers for voice output
         let mut voice_left = vec![0.0; output_left.len()];
         let mut voice_right = vec![0.0; output_right.len()];
 
-        // Process each voice
         for (i, voice) in self.voices.iter_mut().enumerate() {
-            // Get automation parameters for this voice
             let gate = gates.get(i).copied().unwrap_or(0.0);
             let frequency = frequencies.get(i).copied().unwrap_or(440.0);
             let gain = gains.get(i).copied().unwrap_or(1.0);
@@ -82,25 +81,22 @@ impl AudioProcessor {
             voice.current_frequency = frequency;
             voice.current_gain = gain;
 
-            // Skip processing if voice is inactive and no new gate trigger
+            // Skip if voice is inactive and no new gate
             if !voice.is_active() && gate <= 0.0 {
                 continue;
             }
 
-            // Clear temp buffers
             voice_left.fill(0.0);
             voice_right.fill(0.0);
 
-            // Process voice
-            voice.graph.set_gate(&[gate]);
-            voice.graph.set_frequency(&[frequency]);
-            voice.graph.process_audio(&mut voice_left, &mut voice_right);
+            // Process voice and update its state
+            voice.process_audio(&mut voice_left, &mut voice_right);
+            voice.update_active_state(); // Update state after processing
 
-            // Update voice active state after processing
-            voice.update_active_state();
+            let voice_output_sum: f32 = voice_left.iter().map(|x| x.abs()).sum();
 
-            // Apply voice gain and mix only if voice is active
-            if voice.is_active() {
+            // Mix if voice has gate or is still active
+            if gate > 0.0 || voice.is_active() {
                 for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
                     output_left[i] += left * gain;
                     output_right[i] += right * gain;
@@ -120,6 +116,25 @@ impl AudioProcessor {
     }
 
     #[wasm_bindgen]
+    pub fn connect_macro(
+        &mut self,
+        voice_index: usize,
+        macro_index: usize,
+        target_node: usize,
+        target_port: PortId,
+        amount: f32,
+    ) -> Result<(), JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        voice
+            .add_macro_modulation(macro_index, NodeId(target_node), target_port, amount)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    #[wasm_bindgen]
     pub fn update_envelope(
         &mut self,
         voice_index: usize,
@@ -127,7 +142,7 @@ impl AudioProcessor {
         decay: f32,
         sustain: f32,
         release: f32,
-    ) -> Result<(), String> {
+    ) -> Result<(), JsValue> {
         if let Some(voice) = self.voices.get_mut(voice_index) {
             if let Some(node) = voice.graph.get_node_mut(voice.envelope_id) {
                 if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
@@ -139,13 +154,13 @@ impl AudioProcessor {
                     env.update_config(config);
                     Ok(())
                 } else {
-                    Err("Node is not an Envelope".to_string())
+                    Err(JsValue::from_str("Node is not an Envelope"))
                 }
             } else {
-                Err("Node not found".to_string())
+                Err(JsValue::from_str("Node not found"))
             }
         } else {
-            Err("Voice not found".to_string())
+            Err(JsValue::from_str("Voice not found"))
         }
     }
 }
