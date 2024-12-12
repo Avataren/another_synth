@@ -33,52 +33,52 @@ impl AudioBufferPool {
 
     pub fn acquire(&mut self, buffer_size: usize) -> usize {
         let index = if let Some(index) = self.available.pop() {
-            console::log_1(&format!("Reusing buffer {} (in_use: {:?})", index, self.in_use).into());
+            // console::log_1(&format!("Reusing buffer {} (in_use: {:?})", index, self.in_use).into());
             index
         } else {
             let index = self.buffers.len();
-            console::log_1(
-                &format!("Creating new buffer {} (in_use: {:?})", index, self.in_use).into(),
-            );
+            // console::log_1(
+            //     &format!("Creating new buffer {} (in_use: {:?})", index, self.in_use).into(),
+            // );
             self.buffers.push(vec![0.0; buffer_size]);
             index
         };
         self.in_use.insert(index);
-        console::log_1(
-            &format!(
-                "After acquire: in_use={:?}, available={:?}",
-                self.in_use, self.available
-            )
-            .into(),
-        );
+        // console::log_1(
+        //     &format!(
+        //         "After acquire: in_use={:?}, available={:?}",
+        //         self.in_use, self.available
+        //     )
+        //     .into(),
+        // );
         index
     }
 
     pub fn release(&mut self, index: usize) {
         if self.in_use.remove(&index) {
-            console::log_1(
-                &format!(
-                    "Released buffer {} (in_use before: {:?})",
-                    index, self.in_use
-                )
-                .into(),
-            );
+            // console::log_1(
+            //     &format!(
+            //         "Released buffer {} (in_use before: {:?})",
+            //         index, self.in_use
+            //     )
+            //     .into(),
+            // );
             self.available.push(index);
-            console::log_1(
-                &format!(
-                    "After release: in_use={:?}, available={:?}",
-                    self.in_use, self.available
-                )
-                .into(),
-            );
+            // console::log_1(
+            //     &format!(
+            //         "After release: in_use={:?}, available={:?}",
+            //         self.in_use, self.available
+            //     )
+            //     .into(),
+            // );
         } else {
-            console::log_1(
-                &format!(
-                    "Attempted to release already-released buffer {} (in_use: {:?})",
-                    index, self.in_use
-                )
-                .into(),
-            );
+            // console::log_1(
+            //     &format!(
+            //         "Attempted to release already-released buffer {} (in_use: {:?})",
+            //         index, self.in_use
+            //     )
+            //     .into(),
+            // );
         }
     }
 

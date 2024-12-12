@@ -341,9 +341,6 @@ async function __wbg_load(module, imports) {
 function __wbg_get_imports() {
   const imports = {};
   imports.wbg = {};
-  imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
-    console.log(arg0);
-  };
   imports.wbg.__wbg_new_688846f374351c92 = function() {
     const ret = new Object();
     return ret;

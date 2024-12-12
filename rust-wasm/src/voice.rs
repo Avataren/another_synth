@@ -1,6 +1,6 @@
 use crate::{
-    AudioGraph, Connection, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator,
-    ModulationTarget, NodeId, PortId,
+    AudioGraph, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator, ModulationTarget,
+    NodeId, PortId,
 };
 
 #[derive(Debug)]
@@ -21,6 +21,8 @@ impl Voice {
     pub fn new(id: usize, sample_rate: f32) -> Self {
         let buffer_size = 128;
         let mut graph = AudioGraph::new(buffer_size);
+        // Create macro_manager by passing a mutable reference to graph.buffer_pool.
+        // After construction, macro_manager stores only indices, not references.
         let macro_manager = MacroManager::new(4, &mut graph.buffer_pool, buffer_size);
 
         Self {
@@ -34,18 +36,12 @@ impl Voice {
             macro_manager,
         }
     }
-    pub fn clear_macros(&mut self) {
-        self.macro_manager.clear();
-    }
 
     pub fn update_active_state(&mut self) {
-        // Update the voice's active state based on gate and envelope
         self.active = self.current_gate > 0.0 || self.has_active_envelopes();
     }
 
     fn has_active_envelopes(&self) -> bool {
-        // Iterate through nodes to find and check envelopes
-        // We could keep track of envelope IDs if needed
         self.graph.nodes.iter().any(|node| {
             if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
                 env.is_active()
@@ -62,12 +58,9 @@ impl Voice {
     pub fn get_current_gate(&self) -> f32 {
         self.current_gate
     }
+
     pub fn get_current_frequency(&self) -> f32 {
         self.current_frequency
-    }
-
-    pub fn update_macro(&mut self, macro_index: usize, values: &[f32]) -> Result<(), String> {
-        self.macro_manager.update_macro(macro_index, values)
     }
 
     pub fn add_macro_modulation(
@@ -86,45 +79,22 @@ impl Voice {
             },
         )
     }
+    pub fn clear_macros(&mut self) {
+        self.macro_manager.clear(&mut self.graph.buffer_pool);
+    }
+
+    pub fn update_macro(&mut self, macro_index: usize, values: &[f32]) -> Result<(), String> {
+        self.macro_manager
+            .update_macro(macro_index, values, &mut self.graph.buffer_pool)
+    }
 
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
-        // use web_sys::console;
-
-        // Set the control values
         self.graph.set_gate(&[self.current_gate]);
         self.graph.set_frequency(&[self.current_frequency]);
 
-        // Log max macro value for the first voice
-        // let max_val = self.macro_manager.get_macro_max_value(0);
-        // console::log_2(&"Max macro value:".into(), &max_val.into());
-
-        // Process the audio
         self.graph
             .process_audio_with_macros(Some(&self.macro_manager), output_left, output_right);
 
-        // Update state
         self.update_active_state();
     }
-
-    // pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
-    //     use web_sys::console;
-
-    //     // First, ensure all gates and frequencies are set
-    //     self.graph.set_gate(&[self.current_gate]);
-    //     self.graph.set_frequency(&[self.current_frequency]);
-
-    //     // Process audio with optional macro support
-    //     if self.macro_manager.has_active_macros() {
-    //         self.graph.process_audio_with_macros(
-    //             Some(&self.macro_manager),
-    //             output_left,
-    //             output_right,
-    //         );
-    //     } else {
-    //         self.graph.process_audio(output_left, output_right);
-    //     }
-
-    //     // Update voice state after processing
-    //     self.update_active_state();
-    // }
 }
