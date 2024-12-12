@@ -101,7 +101,36 @@ impl MacroManager {
         Ok(())
     }
 
+    pub fn get_macro_max_value(&self, macro_index: usize) -> f32 {
+        if let Some(macro_mod) = self.macros.get(macro_index) {
+            if let Some(pool) = self.buffer_pool {
+                unsafe {
+                    let buffer = (*pool).copy_out(macro_mod.get_value_buffer_idx());
+                    buffer.iter().fold(0.0f32, |max, &val| max.max(val))
+                }
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        }
+    }
+
     pub fn process_modulation(&self, offset: usize, inputs: &mut HashMap<PortId, &mut [f32]>) {
+        use web_sys::console;
+
+        if offset == 0 {
+            for macro_mod in &self.macros {
+                for target in macro_mod.get_targets() {
+                    console::log_3(
+                        &"Macro target:".into(),
+                        &format!("{:?}", target.port_id).into(),
+                        &target.amount.into(),
+                    );
+                }
+            }
+        }
+
         if self.macros.iter().all(|m| m.get_targets().is_empty()) {
             return;
         }

@@ -278,6 +278,12 @@ function __wbg_get_imports() {
   imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
     console.log(arg0);
   };
+  imports.wbg.__wbg_log_5f82480ac7a101b6 = function(arg0, arg1) {
+    console.log(arg0, arg1);
+  };
+  imports.wbg.__wbg_log_aca2171ff8d9e8fd = function(arg0, arg1, arg2) {
+    console.log(arg0, arg1, arg2);
+  };
   imports.wbg.__wbindgen_copy_to_typed_array = function(arg0, arg1, arg2) {
     new Uint8Array(arg2.buffer, arg2.byteOffset, arg2.byteLength).set(getArrayU8FromWasm0(arg0, arg1));
   };
@@ -290,6 +296,10 @@ function __wbg_get_imports() {
     table.set(offset + 2, true);
     table.set(offset + 3, false);
     ;
+  };
+  imports.wbg.__wbindgen_number_new = function(arg0) {
+    const ret = arg0;
+    return ret;
   };
   imports.wbg.__wbindgen_string_new = function(arg0, arg1) {
     const ret = getStringFromWasm0(arg0, arg1);
@@ -427,7 +437,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           // target node (oscillator)
           PortId2.FrequencyMod,
           // modulation target
-          2e3
+          200
           // modulation amount
         );
       }
@@ -494,18 +504,14 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
+      const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
-        const macroParam = parameters[`macro_${i}_${m}`];
-        if (macroParam) {
-          if (i === 0 && m === 0) {
-            for (let j = 0; j < 128; j++) {
-              const phase = (j + this.macroPhase) % 128;
-              const value = (Math.sin(phase * 0.1) + 1) * 0.5;
-              macroArray[j] = value;
-            }
-          } else {
-            const startIdx = i * 4 + m;
-            macroArray[startIdx] = macroParam[0];
+        const macroOffset = voiceOffset + m * 128;
+        if (i === 0 && m === 0) {
+          for (let j = 0; j < 128; j++) {
+            const phase = (j + this.macroPhase) % 128;
+            const value = (Math.sin(phase * 0.1) + 1) * 0.5;
+            macroArray[macroOffset + j] = value;
           }
         }
       }

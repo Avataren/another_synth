@@ -109,7 +109,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           0, // macro index
           0, // target node (oscillator)
           PortId.FrequencyMod, // modulation target
-          2000, // modulation amount
+          200, // modulation amount
         );
       }
     };
@@ -141,26 +141,24 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
 
+      // Calculate base offset for this voice's macros
+      const voiceOffset = i * 4 * 128;
+
       // Fill macro values
       for (let m = 0; m < 4; m++) {
-        const macroParam = parameters[`macro_${i}_${m}`];
-        if (macroParam) {
-          // For the first voice and first macro, create an LFO pattern
-          if (i === 0 && m === 0) {
-            for (let j = 0; j < 128; j++) {
-              const phase = (j + this.macroPhase) % 128;
-              const value = (Math.sin(phase * 0.1) + 1) * 0.5;
-              macroArray[j] = value;
-            }
-          } else {
-            const startIdx = i * 4 + m;
-            macroArray[startIdx] = macroParam[0]!;
+        const macroOffset = voiceOffset + m * 128;
+
+        // For first voice, first macro, generate LFO pattern
+        if (i === 0 && m === 0) {
+          for (let j = 0; j < 128; j++) {
+            const phase = (j + this.macroPhase) % 128;
+            const value = (Math.sin(phase * 0.1) + 1) * 0.5;
+            macroArray[macroOffset + j] = value;
           }
         }
       }
     }
 
-    // Update phase for next frame
     this.macroPhase = (this.macroPhase + 1) % 128;
 
     const masterGain = parameters.master_gain?.[0] ?? 1;

@@ -76,6 +76,15 @@ impl AudioProcessor {
             let frequency = frequencies.get(i).copied().unwrap_or(440.0);
             let gain = gains.get(i).copied().unwrap_or(1.0);
 
+            // Update macro values
+            for macro_idx in 0..4 {
+                let macro_start = i * 4 * 128 + (macro_idx * 128);
+                if macro_start + 128 <= macro_values.len() {
+                    let values = &macro_values[macro_start..macro_start + 128];
+                    let _ = voice.update_macro(macro_idx, values);
+                }
+            }
+
             // Update voice parameters
             voice.current_gate = gate;
             voice.current_frequency = frequency;
@@ -91,9 +100,7 @@ impl AudioProcessor {
 
             // Process voice and update its state
             voice.process_audio(&mut voice_left, &mut voice_right);
-            voice.update_active_state(); // Update state after processing
-
-            let voice_output_sum: f32 = voice_left.iter().map(|x| x.abs()).sum();
+            voice.update_active_state();
 
             // Mix if voice has gate or is still active
             if gate > 0.0 || voice.is_active() {

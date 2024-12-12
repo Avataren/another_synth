@@ -106,22 +106,41 @@ impl Voice {
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
         use web_sys::console;
 
-        // First, ensure all gates and frequencies are set
+        // Set the control values
         self.graph.set_gate(&[self.current_gate]);
         self.graph.set_frequency(&[self.current_frequency]);
 
-        // Process audio with optional macro support
-        if self.macro_manager.has_active_macros() {
-            self.graph.process_audio_with_macros(
-                Some(&self.macro_manager),
-                output_left,
-                output_right,
-            );
-        } else {
-            self.graph.process_audio(output_left, output_right);
-        }
+        // Log max macro value for the first voice
+        let max_val = self.macro_manager.get_macro_max_value(0);
+        console::log_2(&"Max macro value:".into(), &max_val.into());
 
-        // Update voice state after processing
+        // Process the audio
+        self.graph
+            .process_audio_with_macros(Some(&self.macro_manager), output_left, output_right);
+
+        // Update state
         self.update_active_state();
     }
+
+    // pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
+    //     use web_sys::console;
+
+    //     // First, ensure all gates and frequencies are set
+    //     self.graph.set_gate(&[self.current_gate]);
+    //     self.graph.set_frequency(&[self.current_frequency]);
+
+    //     // Process audio with optional macro support
+    //     if self.macro_manager.has_active_macros() {
+    //         self.graph.process_audio_with_macros(
+    //             Some(&self.macro_manager),
+    //             output_left,
+    //             output_right,
+    //         );
+    //     } else {
+    //         self.graph.process_audio(output_left, output_right);
+    //     }
+
+    //     // Update voice state after processing
+    //     self.update_active_state();
+    // }
 }
