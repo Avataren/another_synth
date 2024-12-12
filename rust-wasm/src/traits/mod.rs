@@ -18,6 +18,7 @@ pub enum PortId {
     Frequency,
     FrequencyMod,
     PhaseMod,
+    ModIndex,
     CutoffMod,
     ResonanceMod,
     GainMod,

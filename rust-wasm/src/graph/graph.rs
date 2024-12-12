@@ -1,3 +1,5 @@
+use web_sys::console;
+
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///
 /// Core concepts:
@@ -237,36 +239,37 @@ impl AudioGraph {
                 .filter_map(|(&port, _)| self.node_buffers.get(&(node_id, port)).copied())
                 .collect();
 
+            // Get a single set of mutable buffer references
+            let mut output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
+
             // Process regular audio
             {
                 let mut output_refs = HashMap::new();
-                let output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
-                for (idx, buffer) in output_buffers {
+                for (idx, buffer) in &mut output_buffers {
                     if let Some((&(_, port), _)) = self
                         .node_buffers
                         .iter()
-                        .find(|((n, _), &i)| *n == node_id && i == idx)
+                        .find(|((n, _), &i)| *n == node_id && i == *idx)
                     {
-                        output_refs.insert(port, buffer);
+                        output_refs.insert(port, &mut **buffer); // Dereference to get the right level
                     }
                 }
 
                 node.process(&input_map, &mut output_refs, self.buffer_size);
             }
 
-            // Process macros if available
+            // Process macros if available and needed
             if let Some(macro_mgr) = macro_manager {
                 if ports.keys().any(|port| port.is_modulation_input()) {
                     let mut macro_outputs = HashMap::new();
-                    let macro_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
 
-                    for (idx, buffer) in macro_buffers {
+                    for (idx, buffer) in &mut output_buffers {
                         if let Some((&(_, port), _)) = self
                             .node_buffers
                             .iter()
-                            .find(|((n, _), &i)| *n == node_id && i == idx)
+                            .find(|((n, _), &i)| *n == node_id && i == *idx)
                         {
-                            macro_outputs.insert(port, buffer);
+                            macro_outputs.insert(port, &mut **buffer); // Same here
                         }
                     }
 
@@ -278,14 +281,33 @@ impl AudioGraph {
         }
 
         // Copy final output
+        // if let Some(&final_idx) = self.processing_order.last() {
+        //     let final_node = NodeId(final_idx);
+        //     if let Some(&buffer_idx) = self.node_buffers.get(&(final_node, PortId::AudioOutput0)) {
+        //         let final_buffer = self.buffer_pool.copy_out(buffer_idx);
+        //         output_left.copy_from_slice(final_buffer);
+        //         output_right.copy_from_slice(final_buffer);
+        //     }
+        // }
+        //std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
         if let Some(&final_idx) = self.processing_order.last() {
             let final_node = NodeId(final_idx);
+            // console::log_1(
+            //     &format!(
+            //         "Final node: {:?}, trying to get buffer for {:?}",
+            //         final_node,
+            //         PortId::AudioOutput0
+            //     )
+            //     .into(),
+            // );
             if let Some(&buffer_idx) = self.node_buffers.get(&(final_node, PortId::AudioOutput0)) {
+                console::log_1(&format!("Found buffer index: {}", buffer_idx).into());
                 let final_buffer = self.buffer_pool.copy_out(buffer_idx);
                 output_left.copy_from_slice(final_buffer);
                 output_right.copy_from_slice(final_buffer);
             }
         }
+        self.buffer_pool.release_all();
     }
 }
 

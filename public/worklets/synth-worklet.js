@@ -87,6 +87,19 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
 
 // rust-wasm/pkg/audio_processor.js
 var wasm;
+function addToExternrefTable0(obj) {
+  const idx = wasm.__externref_table_alloc();
+  wasm.__wbindgen_export_2.set(idx, obj);
+  return idx;
+}
+function handleError(f, args) {
+  try {
+    return f.apply(this, args);
+  } catch (e) {
+    const idx = addToExternrefTable0(e);
+    wasm.__wbindgen_exn_store(idx);
+  }
+}
 var cachedUint8ArrayMemory0 = null;
 function getUint8ArrayMemory0() {
   if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
@@ -123,7 +136,7 @@ function passArrayF32ToWasm0(arg, malloc) {
   return ptr;
 }
 function takeFromExternrefTable0(idx) {
-  const value = wasm.__wbindgen_export_0.get(idx);
+  const value = wasm.__wbindgen_export_2.get(idx);
   wasm.__externref_table_dealloc(idx);
   return value;
 }
@@ -152,14 +165,16 @@ var PortId = Object.freeze({
   "10": "FrequencyMod",
   PhaseMod: 11,
   "11": "PhaseMod",
-  CutoffMod: 12,
-  "12": "CutoffMod",
-  ResonanceMod: 13,
-  "13": "ResonanceMod",
-  GainMod: 14,
-  "14": "GainMod",
-  EnvelopeMod: 15,
-  "15": "EnvelopeMod"
+  ModIndex: 12,
+  "12": "ModIndex",
+  CutoffMod: 13,
+  "13": "CutoffMod",
+  ResonanceMod: 14,
+  "14": "ResonanceMod",
+  GainMod: 15,
+  "15": "GainMod",
+  EnvelopeMod: 16,
+  "16": "EnvelopeMod"
 });
 var AudioProcessorFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
@@ -214,6 +229,45 @@ var AudioProcessor = class {
   }
   /**
    * @param {number} voice_index
+   * @returns {any}
+   */
+  create_fm_voice(voice_index) {
+    const ret = wasm.audioprocessor_create_fm_voice(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} node_id
+   * @param {number} attack
+   * @param {number} decay
+   * @param {number} sustain
+   * @param {number} release
+   */
+  update_envelope(voice_index, node_id, attack, decay, sustain, release) {
+    const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} from_node
+   * @param {PortId} from_port
+   * @param {number} to_node
+   * @param {PortId} to_port
+   * @param {number} amount
+   */
+  connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
+    const ret = wasm.audioprocessor_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
    * @param {number} macro_index
    * @param {number} target_node
    * @param {PortId} target_port
@@ -227,16 +281,28 @@ var AudioProcessor = class {
   }
   /**
    * @param {number} voice_index
-   * @param {number} attack
-   * @param {number} decay
-   * @param {number} sustain
-   * @param {number} release
+   * @param {number} from_node
+   * @param {PortId} from_port
+   * @param {number} to_node
+   * @param {PortId} to_port
+   * @param {number} amount
    */
-  update_envelope(voice_index, attack, decay, sustain, release) {
-    const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, attack, decay, sustain, release);
+  connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
+    const ret = wasm.audioprocessor_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
+  }
+  /**
+   * @param {number} voice_index
+   * @returns {number}
+   */
+  add_oscillator(voice_index) {
+    const ret = wasm.audioprocessor_add_oscillator(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
   }
 };
 var ConnectionIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
@@ -278,17 +344,21 @@ function __wbg_get_imports() {
   imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
     console.log(arg0);
   };
-  imports.wbg.__wbg_log_5f82480ac7a101b6 = function(arg0, arg1) {
-    console.log(arg0, arg1);
+  imports.wbg.__wbg_new_688846f374351c92 = function() {
+    const ret = new Object();
+    return ret;
   };
-  imports.wbg.__wbg_log_aca2171ff8d9e8fd = function(arg0, arg1, arg2) {
-    console.log(arg0, arg1, arg2);
+  imports.wbg.__wbg_set_4e647025551483bd = function() {
+    return handleError(function(arg0, arg1, arg2) {
+      const ret = Reflect.set(arg0, arg1, arg2);
+      return ret;
+    }, arguments);
   };
   imports.wbg.__wbindgen_copy_to_typed_array = function(arg0, arg1, arg2) {
     new Uint8Array(arg2.buffer, arg2.byteOffset, arg2.byteLength).set(getArrayU8FromWasm0(arg0, arg1));
   };
   imports.wbg.__wbindgen_init_externref_table = function() {
-    const table = wasm.__wbindgen_export_0;
+    const table = wasm.__wbindgen_export_2;
     const offset = table.grow(4);
     table.set(0, void 0);
     table.set(offset + 0, void 0);
@@ -391,14 +461,16 @@ var PortId2 = Object.freeze({
   "10": "FrequencyMod",
   PhaseMod: 11,
   "11": "PhaseMod",
-  CutoffMod: 12,
-  "12": "CutoffMod",
-  ResonanceMod: 13,
-  "13": "ResonanceMod",
-  GainMod: 14,
-  "14": "GainMod",
-  EnvelopeMod: 15,
-  "15": "EnvelopeMod"
+  ModIndex: 12,
+  "12": "ModIndex",
+  CutoffMod: 13,
+  "13": "CutoffMod",
+  ResonanceMod: 14,
+  "14": "ResonanceMod",
+  GainMod: 15,
+  "15": "GainMod",
+  EnvelopeMod: 16,
+  "16": "EnvelopeMod"
 });
 var AudioProcessorFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
@@ -427,19 +499,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         initSync({ module: new Uint8Array(wasmBytes) });
         this.processor = new AudioProcessor();
         this.processor.init(sampleRate, this.numVoices);
+        for (let i = 0; i < this.numVoices; i++) {
+          this.setupFMVoice(i);
+        }
         this.ready = true;
-        this.processor.connect_macro(
-          0,
-          // voice index
-          0,
-          // macro index
-          0,
-          // target node (oscillator)
-          PortId2.FrequencyMod,
-          // modulation target
-          200
-          // modulation amount
-        );
       }
     };
     this.port.postMessage({ type: "ready" });
@@ -490,6 +553,46 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     });
     return parameters;
   }
+  setupFMVoice(voiceIndex) {
+    const { carrierId, modulatorId, envelopeId } = this.processor.create_fm_voice(voiceIndex);
+    this.processor.update_envelope(
+      voiceIndex,
+      envelopeId,
+      0.01,
+      // attack
+      0.2,
+      // decay
+      0.5,
+      // sustain
+      0.5
+      // release
+    );
+    this.processor.connect_voice_nodes(
+      voiceIndex,
+      envelopeId,
+      PortId2.AudioOutput0,
+      carrierId,
+      PortId2.GainMod,
+      1
+    );
+    this.processor.connect_voice_nodes(
+      voiceIndex,
+      modulatorId,
+      PortId2.AudioOutput0,
+      carrierId,
+      PortId2.PhaseMod,
+      1
+    );
+    this.processor.connect_macro(
+      voiceIndex,
+      0,
+      // first macro
+      carrierId,
+      PortId2.ModIndex,
+      30
+    );
+    return { carrierId, modulatorId, envelopeId };
+  }
   process(_inputs, outputs, parameters) {
     if (!this.ready || !this.processor) return true;
     const output = outputs[0];
@@ -509,14 +612,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         const macroOffset = voiceOffset + m * 128;
         if (i === 0 && m === 0) {
           for (let j = 0; j < 128; j++) {
-            const phase = (j + this.macroPhase) % 128;
-            const value = (Math.sin(phase * 0.1) + 1) * 0.5;
-            macroArray[macroOffset + j] = value;
+            macroArray[macroOffset + j] = 0.1;
           }
         }
       }
     }
-    this.macroPhase = (this.macroPhase + 1) % 128;
     const masterGain = parameters.master_gain?.[0] ?? 1;
     this.processor.process_audio(
       gateArray,

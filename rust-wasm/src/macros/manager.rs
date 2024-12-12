@@ -119,17 +119,17 @@ impl MacroManager {
     pub fn process_modulation(&self, offset: usize, inputs: &mut HashMap<PortId, &mut [f32]>) {
         use web_sys::console;
 
-        if offset == 0 {
-            for macro_mod in &self.macros {
-                for target in macro_mod.get_targets() {
-                    console::log_3(
-                        &"Macro target:".into(),
-                        &format!("{:?}", target.port_id).into(),
-                        &target.amount.into(),
-                    );
-                }
-            }
-        }
+        // if offset == 0 {
+        //     for macro_mod in &self.macros {
+        //         for target in macro_mod.get_targets() {
+        //             console::log_3(
+        //                 &"Macro target:".into(),
+        //                 &format!("{:?}", target.port_id).into(),
+        //                 &target.amount.into(),
+        //             );
+        //         }
+        //     }
+        // }
 
         if self.macros.iter().all(|m| m.get_targets().is_empty()) {
             return;

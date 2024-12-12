@@ -1,5 +1,20 @@
 let wasm;
 
+function addToExternrefTable0(obj) {
+    const idx = wasm.__externref_table_alloc();
+    wasm.__wbindgen_export_2.set(idx, obj);
+    return idx;
+}
+
+function handleError(f, args) {
+    try {
+        return f.apply(this, args);
+    } catch (e) {
+        const idx = addToExternrefTable0(e);
+        wasm.__wbindgen_exn_store(idx);
+    }
+}
+
 let cachedUint8ArrayMemory0 = null;
 
 function getUint8ArrayMemory0() {
@@ -42,12 +57,12 @@ function passArrayF32ToWasm0(arg, malloc) {
 }
 
 function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_export_0.get(idx);
+    const value = wasm.__wbindgen_export_2.get(idx);
     wasm.__externref_table_dealloc(idx);
     return value;
 }
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -62,10 +77,11 @@ export const PortId = Object.freeze({
     Frequency: 9, "9": "Frequency",
     FrequencyMod: 10, "10": "FrequencyMod",
     PhaseMod: 11, "11": "PhaseMod",
-    CutoffMod: 12, "12": "CutoffMod",
-    ResonanceMod: 13, "13": "ResonanceMod",
-    GainMod: 14, "14": "GainMod",
-    EnvelopeMod: 15, "15": "EnvelopeMod",
+    ModIndex: 12, "12": "ModIndex",
+    CutoffMod: 13, "13": "CutoffMod",
+    ResonanceMod: 14, "14": "ResonanceMod",
+    GainMod: 15, "15": "GainMod",
+    EnvelopeMod: 16, "16": "EnvelopeMod",
 });
 
 const AudioProcessorFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -124,6 +140,45 @@ export class AudioProcessor {
     }
     /**
      * @param {number} voice_index
+     * @returns {any}
+     */
+    create_fm_voice(voice_index) {
+        const ret = wasm.audioprocessor_create_fm_voice(this.__wbg_ptr, voice_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {number} voice_index
+     * @param {number} node_id
+     * @param {number} attack
+     * @param {number} decay
+     * @param {number} sustain
+     * @param {number} release
+     */
+    update_envelope(voice_index, node_id, attack, decay, sustain, release) {
+        const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} voice_index
+     * @param {number} from_node
+     * @param {PortId} from_port
+     * @param {number} to_node
+     * @param {PortId} to_port
+     * @param {number} amount
+     */
+    connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
+        const ret = wasm.audioprocessor_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} voice_index
      * @param {number} macro_index
      * @param {number} target_node
      * @param {PortId} target_port
@@ -137,16 +192,28 @@ export class AudioProcessor {
     }
     /**
      * @param {number} voice_index
-     * @param {number} attack
-     * @param {number} decay
-     * @param {number} sustain
-     * @param {number} release
+     * @param {number} from_node
+     * @param {PortId} from_port
+     * @param {number} to_node
+     * @param {PortId} to_port
+     * @param {number} amount
      */
-    update_envelope(voice_index, attack, decay, sustain, release) {
-        const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, attack, decay, sustain, release);
+    connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
+        const ret = wasm.audioprocessor_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {number} voice_index
+     * @returns {number}
+     */
+    add_oscillator(voice_index) {
+        const ret = wasm.audioprocessor_add_oscillator(this.__wbg_ptr, voice_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
 }
 
@@ -397,17 +464,19 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
         console.log(arg0);
     };
-    imports.wbg.__wbg_log_5f82480ac7a101b6 = function(arg0, arg1) {
-        console.log(arg0, arg1);
+    imports.wbg.__wbg_new_688846f374351c92 = function() {
+        const ret = new Object();
+        return ret;
     };
-    imports.wbg.__wbg_log_aca2171ff8d9e8fd = function(arg0, arg1, arg2) {
-        console.log(arg0, arg1, arg2);
-    };
+    imports.wbg.__wbg_set_4e647025551483bd = function() { return handleError(function (arg0, arg1, arg2) {
+        const ret = Reflect.set(arg0, arg1, arg2);
+        return ret;
+    }, arguments) };
     imports.wbg.__wbindgen_copy_to_typed_array = function(arg0, arg1, arg2) {
         new Uint8Array(arg2.buffer, arg2.byteOffset, arg2.byteLength).set(getArrayU8FromWasm0(arg0, arg1));
     };
     imports.wbg.__wbindgen_init_externref_table = function() {
-        const table = wasm.__wbindgen_export_0;
+        const table = wasm.__wbindgen_export_2;
         const offset = table.grow(4);
         table.set(0, undefined);
         table.set(offset + 0, undefined);

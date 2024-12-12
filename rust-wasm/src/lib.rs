@@ -19,6 +19,7 @@ pub use utils::*;
 pub use voice::Voice;
 
 use wasm_bindgen::prelude::*;
+use web_sys::js_sys;
 
 #[wasm_bindgen]
 pub struct AudioProcessor {
@@ -50,7 +51,7 @@ impl AudioProcessor {
         self.num_voices = num_voices;
 
         self.voices = (0..num_voices)
-            .map(|id| Voice::new(id, sample_rate, self.envelope_config.clone()))
+            .map(|id| Voice::new(id, sample_rate))
             .collect();
     }
 
@@ -88,7 +89,6 @@ impl AudioProcessor {
             // Update voice parameters
             voice.current_gate = gate;
             voice.current_frequency = frequency;
-            voice.current_gain = gain;
 
             // Skip if voice is inactive and no new gate
             if !voice.is_active() && gate <= 0.0 {
@@ -123,6 +123,97 @@ impl AudioProcessor {
     }
 
     #[wasm_bindgen]
+    pub fn create_fm_voice(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        let carrier_id = voice
+            .graph
+            .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
+
+        let modulator_id = voice
+            .graph
+            .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
+
+        let envelope_id = voice.graph.add_node(Box::new(Envelope::new(
+            self.sample_rate,
+            EnvelopeConfig::default(),
+        )));
+
+        // Set the carrier as the output node
+        voice.output_node = carrier_id;
+
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"carrierId".into(), &(carrier_id.0.into()))?;
+        js_sys::Reflect::set(&obj, &"modulatorId".into(), &(modulator_id.0.into()))?;
+        js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
+
+        Ok(obj.into())
+    }
+
+    #[wasm_bindgen]
+    pub fn update_envelope(
+        &mut self,
+        voice_index: usize,
+        node_id: usize,
+        attack: f32,
+        decay: f32,
+        sustain: f32,
+        release: f32,
+    ) -> Result<(), JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+            if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
+                let config = EnvelopeConfig {
+                    attack,
+                    decay,
+                    sustain,
+                    release,
+                    ..Default::default()
+                };
+                env.update_config(config);
+                Ok(())
+            } else {
+                Err(JsValue::from_str("Node is not an Envelope"))
+            }
+        } else {
+            Err(JsValue::from_str("Node not found"))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn connect_voice_nodes(
+        &mut self,
+        voice_index: usize,
+        from_node: usize,
+        from_port: PortId,
+        to_node: usize,
+        to_port: PortId,
+        amount: f32,
+    ) -> Result<(), JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        voice.graph.connect(Connection {
+            from_node: NodeId(from_node),
+            from_port,
+            to_node: NodeId(to_node),
+            to_port,
+            amount,
+        });
+
+        Ok(())
+    }
+
+    #[wasm_bindgen]
     pub fn connect_macro(
         &mut self,
         voice_index: usize,
@@ -141,33 +232,41 @@ impl AudioProcessor {
             .map_err(|e| JsValue::from_str(&e))
     }
 
-    #[wasm_bindgen]
-    pub fn update_envelope(
+    pub fn connect_nodes(
         &mut self,
         voice_index: usize,
-        attack: f32,
-        decay: f32,
-        sustain: f32,
-        release: f32,
+        from_node: usize,
+        from_port: PortId,
+        to_node: usize,
+        to_port: PortId,
+        amount: f32,
     ) -> Result<(), JsValue> {
-        if let Some(voice) = self.voices.get_mut(voice_index) {
-            if let Some(node) = voice.graph.get_node_mut(voice.envelope_id) {
-                if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
-                    let mut config = EnvelopeConfig::default();
-                    config.attack = attack;
-                    config.decay = decay;
-                    config.sustain = sustain;
-                    config.release = release;
-                    env.update_config(config);
-                    Ok(())
-                } else {
-                    Err(JsValue::from_str("Node is not an Envelope"))
-                }
-            } else {
-                Err(JsValue::from_str("Node not found"))
-            }
-        } else {
-            Err(JsValue::from_str("Voice not found"))
-        }
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        voice.graph.connect(Connection {
+            from_node: NodeId(from_node),
+            from_port,
+            to_node: NodeId(to_node),
+            to_port,
+            amount,
+        });
+
+        Ok(())
+    }
+
+    pub fn add_oscillator(&mut self, voice_index: usize) -> Result<usize, JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        let osc_id = voice
+            .graph
+            .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
+
+        Ok(osc_id.0)
     }
 }

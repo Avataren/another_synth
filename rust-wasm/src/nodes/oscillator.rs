@@ -30,7 +30,8 @@ impl AudioNode for ModulatableOscillator {
         let mut ports = HashMap::new();
         ports.insert(PortId::Frequency, false);
         ports.insert(PortId::FrequencyMod, false);
-        ports.insert(PortId::PhaseMod, false);
+        ports.insert(PortId::PhaseMod, false); // Phase modulation input
+        ports.insert(PortId::ModIndex, false); // Modulation index control
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::AudioOutput0, true);
         ports
@@ -65,27 +66,23 @@ impl AudioProcessor for ModulatableOscillator {
         defaults.insert(PortId::Frequency, self.frequency);
         defaults.insert(PortId::FrequencyMod, 0.0);
         defaults.insert(PortId::PhaseMod, 0.0);
+        defaults.insert(PortId::ModIndex, 1.0);
         defaults.insert(PortId::GainMod, 1.0);
         defaults
     }
-
-    // fn prepare(&mut self, sample_rate: f32, _buffer_size: usize) {
-    //     self.sample_rate = sample_rate;
-    // }
 
     fn process(&mut self, context: &mut ProcessContext) {
         use std::simd::{f32x4, StdFloat};
 
         context.process_by_chunks(4, |offset, inputs, outputs| {
-            // Defensively get inputs with more logging
-            // Get required inputs or use defaults
+            // Get base frequency
             let freq = if let Some(input) = inputs.get(&PortId::Frequency) {
                 input.get_simd(offset)
             } else {
                 f32x4::splat(self.frequency)
             };
 
-            // Get optional inputs with defaults
+            // Get modulation inputs
             let fm = inputs
                 .get(&PortId::FrequencyMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
@@ -94,43 +91,46 @@ impl AudioProcessor for ModulatableOscillator {
                 .get(&PortId::PhaseMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
+            let mod_index = inputs
+                .get(&PortId::ModIndex)
+                .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
+
             let gain = inputs
                 .get(&PortId::GainMod)
                 .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
 
-            // Calculate frequency modulation
+            // Calculate frequency with modulation
             let modulated_freq =
                 freq * (f32x4::splat(1.0) + fm * f32x4::splat(self.freq_mod_amount));
 
-            // Calculate phase
+            // Calculate phase increment
             let phase_inc = f32x4::splat(2.0 * std::f32::consts::PI) * modulated_freq
                 / f32x4::splat(self.sample_rate);
 
+            // Apply phase modulation with modulation index
+            let modulated_pm = pm * mod_index * f32x4::splat(self.phase_mod_amount);
+
             let mut phases = [0.0f32; 4];
+            let two_pi = 2.0 * std::f32::consts::PI;
+
             for i in 0..4 {
-                self.phase += pm.to_array()[i] * self.phase_mod_amount;
+                // Add phase modulation
+                self.phase += modulated_pm.to_array()[i];
                 phases[i] = self.phase;
+                // Increment phase
                 self.phase += phase_inc.to_array()[i];
-                if self.phase >= 2.0 * std::f32::consts::PI {
-                    self.phase -= 2.0 * std::f32::consts::PI;
+                // Wrap phase
+                if self.phase >= two_pi {
+                    self.phase -= two_pi;
                 }
             }
 
             // Generate output
             let phase_simd = f32x4::from_array(phases);
-            let sin_output = phase_simd.sin();
-            let final_output = sin_output * gain;
+            let final_output = phase_simd.sin() * gain;
 
-            // Safe output handling with more logging
-            match outputs.get_mut(&PortId::AudioOutput0) {
-                Some(output) => {
-                    output.write_simd(offset, final_output);
-                }
-                None => {
-                    console::log_1(&JsValue::from_str(
-                        "Error: No AudioOutput0 port found in outputs",
-                    ));
-                }
+            if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
+                output.write_simd(offset, final_output);
             }
         });
     }

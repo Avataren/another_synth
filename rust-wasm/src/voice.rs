@@ -8,64 +8,51 @@ pub struct Voice {
     pub id: usize,
     sample_rate: f32,
     pub graph: AudioGraph,
-    pub oscillator_id: NodeId,
-    pub envelope_id: NodeId,
+    pub output_node: NodeId,
 
     // Voice state
     pub current_gate: f32,
     pub current_frequency: f32,
-    pub current_gain: f32,
     pub active: bool,
     macro_manager: MacroManager,
 }
 
 impl Voice {
-    pub fn new(id: usize, sample_rate: f32, envelope_config: EnvelopeConfig) -> Self {
+    pub fn new(id: usize, sample_rate: f32) -> Self {
         let buffer_size = 128;
         let mut graph = AudioGraph::new(buffer_size);
-
-        // Create and initialize macro manager
         let macro_manager = MacroManager::new(4, &mut graph.buffer_pool, buffer_size);
-
-        let oscillator_id = graph.add_node(Box::new(ModulatableOscillator::new(sample_rate)));
-        let envelope_id = {
-            let env = Box::new(Envelope::new(sample_rate, envelope_config));
-            graph.add_node(env)
-        };
-
-        graph.connect(Connection {
-            from_node: envelope_id,
-            from_port: PortId::AudioOutput0,
-            to_node: oscillator_id,
-            to_port: PortId::GainMod,
-            amount: 1.0,
-        });
 
         Self {
             id,
             sample_rate,
             graph,
-            oscillator_id,
-            envelope_id,
+            output_node: NodeId(0),
             current_gate: 0.0,
             current_frequency: 440.0,
-            current_gain: 1.0,
             active: false,
             macro_manager,
         }
     }
-
     pub fn clear_macros(&mut self) {
         self.macro_manager.clear();
     }
 
     pub fn update_active_state(&mut self) {
-        if let Some(node) = self.graph.get_node(self.envelope_id) {
+        // Update the voice's active state based on gate and envelope
+        self.active = self.current_gate > 0.0 || self.has_active_envelopes();
+    }
+
+    fn has_active_envelopes(&self) -> bool {
+        // Iterate through nodes to find and check envelopes
+        // We could keep track of envelope IDs if needed
+        self.graph.nodes.iter().any(|node| {
             if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
-                // Voice is active if gate is high or envelope is still producing sound
-                self.active = self.current_gate > 0.0 || env.is_active();
+                env.is_active()
+            } else {
+                false
             }
-        }
+        })
     }
 
     pub fn is_active(&self) -> bool {
@@ -77,9 +64,6 @@ impl Voice {
     }
     pub fn get_current_frequency(&self) -> f32 {
         self.current_frequency
-    }
-    pub fn get_current_gain(&self) -> f32 {
-        self.current_gain
     }
 
     pub fn update_macro(&mut self, macro_index: usize, values: &[f32]) -> Result<(), String> {
@@ -104,15 +88,15 @@ impl Voice {
     }
 
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
-        use web_sys::console;
+        // use web_sys::console;
 
         // Set the control values
         self.graph.set_gate(&[self.current_gate]);
         self.graph.set_frequency(&[self.current_frequency]);
 
         // Log max macro value for the first voice
-        let max_val = self.macro_manager.get_macro_max_value(0);
-        console::log_2(&"Max macro value:".into(), &max_val.into());
+        // let max_val = self.macro_manager.get_macro_max_value(0);
+        // console::log_2(&"Max macro value:".into(), &max_val.into());
 
         // Process the audio
         self.graph
