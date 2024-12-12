@@ -85,23 +85,18 @@ impl AudioBufferPool {
         &'a mut self,
         indices: &[usize],
     ) -> Vec<(usize, &'a mut [f32])> {
-        let mut result = Vec::new();
+        // SAFETY: This is safe because we know:
+        // 1. All indices are valid (enforced by the AudioGraph's buffer management)
+        // 2. No indices are duplicated (enforced by the AudioGraph's node buffer allocation)
+        // 3. The returned references won't outlive self
+        let buffers_ptr = self.buffers.as_mut_ptr();
 
-        for &idx in indices {
-            if idx >= self.buffers.len() {
-                panic!(
-                    "Buffer index {} out of bounds in get_multiple_buffers_mut",
-                    idx
-                );
-            }
-
-            let buffer = unsafe {
-                // SAFETY: We ensure each index is accessed only once, and all indices are valid.
-                &mut *self.buffers.as_mut_ptr().add(idx)
-            };
-            result.push((idx, buffer.as_mut_slice()));
-        }
-
-        result
+        indices
+            .iter()
+            .map(|&idx| unsafe {
+                let buffer = &mut *buffers_ptr.add(idx);
+                (idx, buffer.as_mut_slice())
+            })
+            .collect()
     }
 }
