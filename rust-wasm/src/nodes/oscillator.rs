@@ -92,40 +92,54 @@ impl AudioProcessor for ModulatableOscillator {
             let phase_inc = f32x4::splat(2.0 * std::f32::consts::PI) * modulated_freq
                 / f32x4::splat(self.sample_rate);
 
-            // Get phase modulation and modulation index
-            let phase_mod = inputs
+            // Get phase modulation and mod index
+            let pm = inputs
                 .get(&PortId::PhaseMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
-            // Get base mod index and apply macro modulation
+            // Get mod index and log its state
             let base_mod_index = self.get_default_values()[&PortId::ModIndex];
-            // let mod_index = inputs
-            //     .get(&PortId::ModIndex)
-            //     .map_or(f32x4::splat(base_mod_index), |input| {
-            //         f32x4::splat(base_mod_index) + input.get_simd(offset)
-            //     });
-            // console::log_1(&format!("mod_index:{:?}", mod_index).into());
-            // Apply phase modulation with modulation index
+            let mod_index = if let Some(input) = inputs.get(&PortId::ModIndex) {
+                let value = input.get_simd(offset);
+                // console::log_1(
+                //     &format!(
+                //         "Mod index at offset {}: base={}, input={:?}",
+                //         offset,
+                //         base_mod_index,
+                //         value.to_array()
+                //     )
+                //     .into(),
+                // );
+                f32x4::splat(base_mod_index) + value
+            } else {
+                // console::log_1(
+                //     &format!(
+                //         "Using default mod index {} at offset {}",
+                //         base_mod_index, offset
+                //     )
+                //     .into(),
+                // );
+                f32x4::splat(base_mod_index)
+            };
 
-            // Right before applying the mod_index
-            let base_mod_index = self.get_default_values()[&PortId::ModIndex];
-            let mod_index =
-                inputs
-                    .get(&PortId::ModIndex)
-                    .map_or(f32x4::splat(base_mod_index), |input| {
-                        let value = input.get_simd(offset);
-                        console::log_1(
-                            &format!(
-                                "ModIndex input at offset {}: {:?}",
-                                offset,
-                                value.to_array()
-                            )
-                            .into(),
-                        );
-                        f32x4::splat(base_mod_index) + value
-                    });
-
-            let modulated_pm = phase_mod * mod_index * f32x4::splat(self.phase_mod_amount);
+            // Calculate modulated phase mod with logging
+            let modulated_pm = {
+                let result = pm * mod_index * f32x4::splat(self.phase_mod_amount);
+                if offset % 64 == 0 {
+                    // Reduce log frequency
+                    // console::log_1(
+                    //     &format!(
+                    //         "Phase mod calc: pm={:?}, mod_index={:?}, amount={}, result={:?}",
+                    //         pm.to_array(),
+                    //         mod_index.to_array(),
+                    //         self.phase_mod_amount,
+                    //         result.to_array()
+                    //     )
+                    //     .into(),
+                    // );
+                }
+                result
+            };
 
             // Calculate phases for the 4-sample chunk
             let mut phases = [0.0f32; 4];

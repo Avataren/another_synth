@@ -93,6 +93,12 @@ impl MacroManager {
         }
     }
 
+    pub fn get_macro_buffer_idx(&self, macro_index: usize) -> Option<usize> {
+        self.macros
+            .get(macro_index)
+            .map(|m| m.get_value_buffer_idx())
+    }
+
     /// Prepare all macro data for this block by copying it out from the buffer_pool once.
     pub fn prepare_macro_data(&self, buffer_pool: &AudioBufferPool) -> MacroData {
         let mut macros_data = Vec::with_capacity(self.macros.len());
@@ -101,6 +107,20 @@ impl MacroManager {
             let buffer_idx = m.get_value_buffer_idx();
             let buffer = buffer_pool.copy_out(buffer_idx).to_vec();
             let targets = m.get_targets().to_vec();
+
+            // Debug macro data
+            // if !buffer.is_empty() {
+            //     console::log_1(
+            //         &format!(
+            //             "Preparing macro buffer {}: first values={:?}, targets={:?}",
+            //             buffer_idx,
+            //             &buffer[..4.min(buffer.len())],
+            //             targets
+            //         )
+            //         .into(),
+            //     );
+            // }
+
             macros_data.push((targets, buffer));
         }
 

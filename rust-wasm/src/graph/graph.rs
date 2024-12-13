@@ -198,6 +198,10 @@ impl AudioGraph {
             let node = &mut self.nodes[node_idx];
             let ports = node.get_ports();
 
+            // console::log_1(
+            //     &format!("Processing node {:?} with ports: {:?}", node_id, ports).into(),
+            // );
+
             // Collect inputs into input_data
             let mut input_data: Vec<(PortId, Vec<f32>)> = Vec::new();
 
@@ -215,10 +219,28 @@ impl AudioGraph {
 
             // Handle connections from upstream nodes
             if let Some(connections) = self.input_connections.get(&node_id) {
+                // console::log_1(
+                //     &format!(
+                //         "Processing connections for node {:?}: {:?}",
+                //         node_id, connections
+                //     )
+                //     .into(),
+                // );
                 for &(port, source_idx, amount) in connections {
-                    let source_data = self.buffer_pool.copy_out(source_idx).to_vec();
+                    let source_data = self.buffer_pool.copy_out(source_idx);
+                    // Add debug log for the source data
+                    // console::log_1(
+                    //     &format!(
+                    //         "Connection data: port={:?}, buffer={}, first_values={:?}",
+                    //         port,
+                    //         source_idx,
+                    //         &source_data[..4]
+                    //     )
+                    //     .into(),
+                    // );
+
                     let processed = if amount == 1.0 {
-                        source_data
+                        source_data.to_vec()
                     } else {
                         source_data.iter().map(|x| x * amount).collect()
                     };
@@ -231,6 +253,9 @@ impl AudioGraph {
             for (port, data) in &input_data {
                 input_map.insert(*port, data.as_slice());
             }
+            // console::log_1(
+            //     &format!("Node {:?} input map ports: {:?}", node_id, input_map.keys()).into(),
+            // );
 
             // Identify the outputs for this node
             let output_indices: Vec<usize> = ports
@@ -239,12 +264,18 @@ impl AudioGraph {
                 .filter_map(|(&port, _)| self.node_buffers.get(&(node_id, port)).copied())
                 .collect();
 
+            // console::log_1(
+            //     &format!("Node {:?} output indices: {:?}", node_id, output_indices).into(),
+            // );
+
             // If this node expects modulation inputs, prepare macro data now
             let macro_data = if let Some(macro_mgr) = macro_manager {
                 if ports.keys().any(|port| port.is_modulation_input()) {
+                    // console::log_1(&format!("Node {:?} expects modulation inputs", node_id).into());
                     // Prepare all macro data once before borrowing output buffers
                     Some(macro_mgr.prepare_macro_data(&self.buffer_pool))
                 } else {
+                    // console::log_1(&format!("Node {:?} has no modulation inputs", node_id).into());
                     None
                 }
             } else {
@@ -267,11 +298,23 @@ impl AudioGraph {
                     }
                 }
 
+                // console::log_1(
+                //     &format!(
+                //         "Node {:?} output refs ports: {:?}",
+                //         node_id,
+                //         output_refs.keys()
+                //     )
+                //     .into(),
+                // );
+
                 // Process the node
                 node.process(&input_map, &mut output_refs, self.buffer_size);
 
                 // Apply macro modulation if available
                 if let (Some(macro_mgr), Some(ref macro_data)) = (macro_manager, macro_data) {
+                    // console::log_1(
+                    //     &format!("Applying macro modulation to node {:?}", node_id).into(),
+                    // );
                     for offset in (0..self.buffer_size).step_by(4) {
                         macro_mgr.apply_modulation(offset, macro_data, &mut output_refs);
                     }
@@ -284,6 +327,7 @@ impl AudioGraph {
         // After all nodes are processed, copy the final node's output into output_left and output_right
         if let Some(&final_idx) = self.processing_order.last() {
             let final_node = NodeId(final_idx);
+            console::log_1(&format!("Writing final output from node {:?}", final_node).into());
 
             if let Some(&buffer_idx) = self.node_buffers.get(&(final_node, PortId::AudioOutput0)) {
                 let final_buffer = self.buffer_pool.copy_out(buffer_idx);

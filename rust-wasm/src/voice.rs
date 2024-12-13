@@ -72,6 +72,7 @@ impl Voice {
         target_port: PortId,
         amount: f32,
     ) -> Result<(), String> {
+        // First add the modulation target to the macro manager to get the buffer
         self.macro_manager.add_modulation(
             macro_index,
             ModulationTarget {
@@ -79,7 +80,22 @@ impl Voice {
                 port_id: target_port,
                 amount,
             },
-        )
+        )?;
+
+        // Get the buffer index that the macro manager is using
+        let buffer_idx = self
+            .macro_manager
+            .get_macro_buffer_idx(macro_index)
+            .ok_or_else(|| "Failed to get macro buffer index".to_string())?;
+
+        // Add to input connections using the same buffer
+        self.graph
+            .input_connections
+            .entry(target_node)
+            .or_default()
+            .push((target_port, buffer_idx, amount));
+
+        Ok(())
     }
 
     pub fn clear_macros(&mut self) {
@@ -87,6 +103,15 @@ impl Voice {
     }
 
     pub fn update_macro(&mut self, macro_index: usize, values: &[f32]) -> Result<(), String> {
+        // console::log_1(
+        //     &format!(
+        //         "Updating macro {}: first values={:?}",
+        //         macro_index,
+        //         &values[..4.min(values.len())]
+        //     )
+        //     .into(),
+        // );
+
         self.macro_manager
             .update_macro(macro_index, values, &mut self.graph.buffer_pool)
     }
