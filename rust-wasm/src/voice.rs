@@ -26,6 +26,8 @@ impl Voice {
         // Create macro_manager by passing a mutable reference to graph.buffer_pool.
         // After construction, macro_manager stores only indices, not references.
         let macro_manager = MacroManager::new(4, &mut graph.buffer_pool, buffer_size);
+        let output_node = NodeId(0);
+        graph.set_output_node(output_node);
 
         Self {
             id,
@@ -37,6 +39,11 @@ impl Voice {
             active: false,
             macro_manager,
         }
+    }
+
+    pub fn set_output_node(&mut self, node: NodeId) {
+        self.output_node = node;
+        self.graph.set_output_node(node);
     }
 
     pub fn update_active_state(&mut self) {
@@ -110,7 +117,9 @@ impl Voice {
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
         self.graph.set_gate(&[self.current_gate]);
         self.graph.set_frequency(&[self.current_frequency]);
-
+        console::log_1(
+            &format!("Processing voice with output node: {:?}", self.output_node).into(),
+        );
         self.graph
             .process_audio_with_macros(Some(&self.macro_manager), output_left, output_right);
 

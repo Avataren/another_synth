@@ -1,3 +1,5 @@
+use web_sys::console;
+
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///
 /// Core concepts:
@@ -50,6 +52,7 @@ pub struct AudioGraph {
     pub(crate) freq_buffer_idx: usize,
     pub(crate) input_connections: HashMap<NodeId, Vec<(PortId, usize, f32)>>,
     pub(crate) temp_buffer_indices: Vec<usize>,
+    pub(crate) output_node: Option<NodeId>,
 }
 
 impl AudioGraph {
@@ -69,7 +72,13 @@ impl AudioGraph {
             freq_buffer_idx,
             input_connections: HashMap::new(),
             temp_buffer_indices: Vec::new(),
+            output_node: None,
         }
+    }
+
+    pub fn set_output_node(&mut self, node: NodeId) {
+        self.output_node = Some(node);
+        self.update_processing_order();
     }
 
     pub fn add_node(&mut self, node: Box<dyn AudioNode>) -> NodeId {
@@ -115,22 +124,63 @@ impl AudioGraph {
             .any(|conn| conn.to_node == node_id && conn.to_port.is_audio_input())
     }
 
-    fn update_processing_order(&mut self) {
-        self.processing_order.clear();
-        let mut visited = vec![false; self.nodes.len()];
+    fn has_inputs(&self, node_id: NodeId) -> bool {
+        self.connections
+            .values()
+            .any(|conn| conn.to_node == node_id)
+    }
 
-        // First visit nodes with no audio inputs
-        for i in 0..self.nodes.len() {
-            let node_id = NodeId(i);
-            if !visited[i] && !self.has_audio_inputs(node_id) {
-                self.visit_node(i, &mut visited);
-            }
+    fn is_connected_to_output(
+        &self,
+        node_id: NodeId,
+        output_node: NodeId,
+        visited: &mut Vec<bool>,
+    ) -> bool {
+        if node_id == output_node {
+            return true;
         }
 
-        // Then visit any remaining unvisited nodes
-        for i in 0..self.nodes.len() {
-            if !visited[i] {
-                self.visit_node(i, &mut visited);
+        if visited[node_id.0] {
+            return false;
+        }
+        visited[node_id.0] = true;
+
+        self.connections
+            .values()
+            .filter(|conn| conn.from_node == node_id)
+            .any(|conn| self.is_connected_to_output(conn.to_node, output_node, visited))
+    }
+
+    fn update_processing_order(&mut self) {
+        if let Some(output_node) = self.output_node {
+            self.processing_order.clear();
+            let mut visited = vec![false; self.nodes.len()];
+            let mut active_nodes = Vec::new();
+
+            // Find nodes connected to output
+            for i in 0..self.nodes.len() {
+                visited.fill(false);
+                if self.is_connected_to_output(NodeId(i), output_node, &mut visited) {
+                    active_nodes.push(i);
+                }
+            }
+
+            // Update visited for final ordering
+            visited.fill(false);
+
+            // Visit source nodes first
+            for &i in &active_nodes {
+                let node_id = NodeId(i);
+                if !visited[i] && !self.has_inputs(node_id) {
+                    self.visit_node(i, &mut visited);
+                }
+            }
+
+            // Then remaining active nodes
+            for &i in &active_nodes {
+                if !visited[i] {
+                    self.visit_node(i, &mut visited);
+                }
             }
         }
     }
@@ -192,6 +242,7 @@ impl AudioGraph {
 
         // Process each node in topological order
         for &node_idx in &self.processing_order {
+            console::log_1(&format!("Processing node {}", node_idx).into());
             let node_id = NodeId(node_idx);
             let node = &mut self.nodes[node_idx];
             let ports = node.get_ports();

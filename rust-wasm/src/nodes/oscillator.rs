@@ -104,24 +104,19 @@ impl AudioProcessor for ModulatableOscillator {
                 f32x4::splat(base_mod_index)
             };
 
-            // Calculate modulated phase mod with logging
-            let modulated_pm = {
-                let result = pm * mod_index * f32x4::splat(self.phase_mod_amount);
-                result
-            };
+            // Calculate modulated phase mod
+            let modulated_pm = pm * mod_index * f32x4::splat(self.phase_mod_amount);
 
             // Calculate phases for the 4-sample chunk
             let mut phases = [0.0f32; 4];
             let two_pi = 2.0 * std::f32::consts::PI;
 
             for i in 0..4 {
-                // Add phase modulation to current phase
-                self.phase += modulated_pm.to_array()[i];
+                // Store the current phase plus modulation for output
+                let current_phase = self.phase + modulated_pm.to_array()[i];
+                phases[i] = current_phase;
 
-                // Store the current phase
-                phases[i] = self.phase;
-
-                // Increment phase for next sample
+                // Increment base phase for next sample (don't add modulation here)
                 self.phase += phase_inc.to_array()[i];
 
                 // Wrap phase between 0 and 2π

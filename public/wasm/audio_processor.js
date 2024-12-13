@@ -61,6 +61,11 @@ function takeFromExternrefTable0(idx) {
     wasm.__externref_table_dealloc(idx);
     return value;
 }
+
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
 /**
  * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16}
  */
@@ -162,6 +167,45 @@ export class AudioProcessor {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {number} voice_index
+     * @returns {any}
+     */
+    create_lfo(voice_index) {
+        const ret = wasm.audioprocessor_create_lfo(this.__wbg_ptr, voice_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {number} voice_index
+     * @param {number} lfo_id
+     * @param {number} frequency
+     * @param {number} waveform
+     * @param {boolean} use_absolute
+     * @param {boolean} use_normalized
+     */
+    update_lfo(voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized) {
+        const ret = wasm.audioprocessor_update_lfo(this.__wbg_ptr, voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} waveform
+     * @param {number} buffer_size
+     * @returns {Float32Array}
+     */
+    get_lfo_waveform(waveform, buffer_size) {
+        const ret = wasm.audioprocessor_get_lfo_waveform(this.__wbg_ptr, waveform, buffer_size);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @param {number} voice_index

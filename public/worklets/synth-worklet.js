@@ -140,6 +140,10 @@ function takeFromExternrefTable0(idx) {
   wasm.__externref_table_dealloc(idx);
   return value;
 }
+function getArrayF32FromWasm0(ptr, len) {
+  ptr = ptr >>> 0;
+  return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
 var PortId = Object.freeze({
   AudioInput0: 0,
   "0": "AudioInput0",
@@ -251,6 +255,45 @@ var AudioProcessor = class {
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
+  }
+  /**
+   * @param {number} voice_index
+   * @returns {any}
+   */
+  create_lfo(voice_index) {
+    const ret = wasm.audioprocessor_create_lfo(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} lfo_id
+   * @param {number} frequency
+   * @param {number} waveform
+   * @param {boolean} use_absolute
+   * @param {boolean} use_normalized
+   */
+  update_lfo(voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized) {
+    const ret = wasm.audioprocessor_update_lfo(this.__wbg_ptr, voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} waveform
+   * @param {number} buffer_size
+   * @returns {Float32Array}
+   */
+  get_lfo_waveform(waveform, buffer_size) {
+    const ret = wasm.audioprocessor_get_lfo_waveform(this.__wbg_ptr, waveform, buffer_size);
+    if (ret[3]) {
+      throw takeFromExternrefTable0(ret[2]);
+    }
+    var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
   }
   /**
    * @param {number} voice_index
@@ -492,7 +535,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "ready", false);
     __publicField(this, "processor", null);
     __publicField(this, "numVoices", 8);
-    __publicField(this, "macroPhase", 0);
     this.port.onmessage = (event) => {
       if (event.data.type === "wasm-binary") {
         const { wasmBytes } = event.data;
@@ -507,6 +549,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     };
     this.port.postMessage({ type: "ready" });
   }
+  // private macroPhase: number = 0;  // Commented out as we're using LFO instead
   static get parameterDescriptors() {
     const parameters = [];
     const numVoices = 8;
@@ -555,6 +598,19 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   setupFMVoice(voiceIndex) {
     const { carrierId, modulatorId, envelopeId } = this.processor.create_fm_voice(voiceIndex);
+    const { lfoId } = this.processor.create_lfo(voiceIndex);
+    this.processor.update_lfo(
+      voiceIndex,
+      lfoId,
+      0.15,
+      // 0.5 Hz frequency
+      0,
+      // Sine waveform
+      false,
+      // don't use absolute value
+      true
+      // use normalized value (0 to 1 range)
+    );
     this.processor.update_envelope(
       voiceIndex,
       envelopeId,
@@ -581,22 +637,19 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       PortId2.AudioOutput0,
       carrierId,
       PortId2.PhaseMod,
+      // Keep this as PhaseMod
       1
     );
-    console.log("Setting up macro connection:", {
+    this.processor.connect_voice_nodes(
       voiceIndex,
-      carrierId,
-      targetPort: PortId2.ModIndex
-    });
-    this.processor.connect_macro(
-      voiceIndex,
-      0,
-      // first macro
+      lfoId,
+      PortId2.AudioOutput0,
       carrierId,
       PortId2.ModIndex,
-      0.5
+      // Keep this as ModIndex
+      5
+      // This will now control how much the modulation index varies
     );
-    return { carrierId, modulatorId, envelopeId };
   }
   process(_inputs, outputs, parameters) {
     if (!this.ready || !this.processor) return true;
@@ -608,15 +661,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const freqArray = new Float32Array(this.numVoices);
     const gainArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
-    const blocksPerSecond = sampleRate / 128;
-    const totalBlocksForCycle = blocksPerSecond * 5;
-    const normalizedPhase = this.macroPhase % totalBlocksForCycle / totalBlocksForCycle;
-    let currentValue;
-    if (normalizedPhase < 0.5) {
-      currentValue = normalizedPhase * 2;
-    } else {
-      currentValue = 2 * (1 - normalizedPhase);
-    }
     for (let i = 0; i < this.numVoices; i++) {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
@@ -624,18 +668,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;
-        if (m === 0) {
-          for (let j = 0; j < 128; j++) {
-            macroArray[macroOffset + j] = currentValue;
-          }
-        } else {
-          for (let j = 0; j < 128; j++) {
-            macroArray[macroOffset + j] = 0;
-          }
+        const macroValue = parameters[`macro_${i}_${m}`]?.[0] ?? 0;
+        for (let j = 0; j < 128; j++) {
+          macroArray[macroOffset + j] = macroValue;
         }
       }
     }
-    this.macroPhase += 1;
     const masterGain = parameters.master_gain?.[0] ?? 1;
     this.processor.process_audio(
       gateArray,

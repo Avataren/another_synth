@@ -14,6 +14,7 @@ pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::EnvelopeConfig;
 pub use nodes::{Envelope, ModulatableOscillator};
+use nodes::{Lfo, LfoWaveform};
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
 pub use voice::Voice;
@@ -143,7 +144,7 @@ impl AudioProcessor {
         )));
 
         // Set the carrier as the output node
-        voice.output_node = carrier_id;
+        voice.set_output_node(carrier_id);
 
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(&obj, &"carrierId".into(), &(carrier_id.0.into()))?;
@@ -185,6 +186,77 @@ impl AudioProcessor {
         } else {
             Err(JsValue::from_str("Node not found"))
         }
+    }
+
+    #[wasm_bindgen]
+    pub fn create_lfo(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        let lfo_id = voice.graph.add_node(Box::new(Lfo::new(self.sample_rate)));
+
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"lfoId".into(), &(lfo_id.0.into()))?;
+
+        Ok(obj.into())
+    }
+
+    #[wasm_bindgen]
+    pub fn update_lfo(
+        &mut self,
+        voice_index: usize,
+        lfo_id: usize,
+        frequency: f32,
+        waveform: u8,
+        use_absolute: bool,
+        use_normalized: bool,
+    ) -> Result<(), JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        if let Some(node) = voice.graph.get_node_mut(NodeId(lfo_id)) {
+            if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
+                // Convert u8 to LfoWaveform
+                let waveform = match waveform {
+                    0 => LfoWaveform::Sine,
+                    1 => LfoWaveform::Triangle,
+                    2 => LfoWaveform::Square,
+                    3 => LfoWaveform::Saw,
+                    _ => LfoWaveform::Sine,
+                };
+
+                lfo.set_frequency(frequency);
+                lfo.set_waveform(waveform);
+                lfo.set_use_absolute(use_absolute);
+                lfo.set_use_normalized(use_normalized);
+                Ok(())
+            } else {
+                Err(JsValue::from_str("Node is not an LFO"))
+            }
+        } else {
+            Err(JsValue::from_str("Node not found"))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn get_lfo_waveform(
+        &mut self,
+        waveform: u8,
+        buffer_size: usize,
+    ) -> Result<Vec<f32>, JsValue> {
+        let waveform = match waveform {
+            0 => LfoWaveform::Sine,
+            1 => LfoWaveform::Triangle,
+            2 => LfoWaveform::Square,
+            3 => LfoWaveform::Saw,
+            _ => return Err(JsValue::from_str("Invalid waveform type")),
+        };
+
+        Ok(Lfo::get_waveform_data(waveform, buffer_size))
     }
 
     #[wasm_bindgen]

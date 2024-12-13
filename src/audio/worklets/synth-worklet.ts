@@ -37,7 +37,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private processor: AudioProcessor | null = null;
   private numVoices: number = 8;
-  private macroPhase: number = 0;
+  // private macroPhase: number = 0;  // Commented out as we're using LFO instead
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -70,7 +70,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         },
       );
 
-      // Add macro parameters for each voice
+      // Keep macro parameters for future use
       for (let m = 0; m < 4; m++) {
         parameters.push({
           name: `macro_${i}_${m}`,
@@ -117,14 +117,27 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const { carrierId, modulatorId, envelopeId } =
       this.processor!.create_fm_voice(voiceIndex);
 
+    // Create LFO for modulation index
+    const { lfoId } = this.processor!.create_lfo(voiceIndex);
+
+    // Configure LFO
+    this.processor!.update_lfo(
+      voiceIndex,
+      lfoId,
+      0.15,    // 0.5 Hz frequency
+      0,      // Sine waveform
+      false,  // don't use absolute value
+      true,   // use normalized value (0 to 1 range)
+    );
+
     // Set up envelope parameters
     this.processor!.update_envelope(
       voiceIndex,
       envelopeId,
       0.01, // attack
-      0.2, // decay
-      0.5, // sustain
-      0.5, // release
+      0.2,  // decay
+      0.5,  // sustain
+      0.5,  // release
     );
 
     // Connect envelope to carrier's gain
@@ -137,26 +150,27 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       1.0,
     );
 
-    // Connect envelope to carrier's gain
-    // this.processor!.connect_voice_nodes(
-    //     voiceIndex,
-    //     envelopeId,
-    //     PortId.AudioOutput0,
-    //     carrierId,
-    //     PortId.GainMod,
-    //     1.0
-    // );
-
-    // Connect modulator to carrier's phase mod
+    // Connect modulator to carrier's phase mod (for FM synthesis)
     this.processor!.connect_voice_nodes(
       voiceIndex,
       modulatorId,
       PortId.AudioOutput0,
       carrierId,
-      PortId.PhaseMod,
+      PortId.PhaseMod,  // Keep this as PhaseMod
       1.0,
     );
 
+    // Connect LFO to carrier's mod index (to vary the modulation amount)
+    this.processor!.connect_voice_nodes(
+      voiceIndex,
+      lfoId,
+      PortId.AudioOutput0,
+      carrierId,
+      PortId.ModIndex,  // Keep this as ModIndex
+      5.0,  // This will now control how much the modulation index varies
+    );
+
+    /* Commenting out macro connection
     console.log('Setting up macro connection:', {
       voiceIndex,
       carrierId,
@@ -171,8 +185,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       PortId.ModIndex,
       0.5,
     );
+    */
 
-    return { carrierId, modulatorId, envelopeId };
+    //return { carrierId, modulatorId, envelopeId, lfoId };
   }
 
   override process(
@@ -194,52 +209,22 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const gainArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
 
-    // Calculate modulation
-    const blocksPerSecond = sampleRate / 128;
-    const totalBlocksForCycle = blocksPerSecond * 5; // 5 second cycle
-
-    // Calculate normalized phase (0 to 1)
-    const normalizedPhase =
-      (this.macroPhase % totalBlocksForCycle) / totalBlocksForCycle;
-
-    // Create a triangular waveform (0 -> 1 -> 0)
-    let currentValue: number;
-    if (normalizedPhase < 0.5) {
-      // Ramp up from 0 to 1
-      currentValue = normalizedPhase * 2;
-    } else {
-      // Ramp down from 1 to 0
-      currentValue = 2 * (1 - normalizedPhase);
-    }
-
+    // Fill basic parameters and macro values
     for (let i = 0; i < this.numVoices; i++) {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
 
-      // Calculate base offset for this voice's macros
+      // Copy macro automation values from parameters
       const voiceOffset = i * 4 * 128;
-
-      // Fill macro values
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;
-
-        // For the first voice, first macro, we apply the ramp
-        if (m === 0) {
-          for (let j = 0; j < 128; j++) {
-            macroArray[macroOffset + j] = currentValue;
-          }
-        } else {
-          // Other macros stay at 0
-          for (let j = 0; j < 128; j++) {
-            macroArray[macroOffset + j] = 0.0;
-          }
+        const macroValue = parameters[`macro_${i}_${m}`]?.[0] ?? 0;
+        for (let j = 0; j < 128; j++) {
+          macroArray[macroOffset + j] = macroValue;
         }
       }
     }
-
-    this.macroPhase += 1;
-
     const masterGain = parameters.master_gain?.[0] ?? 1;
 
     this.processor.process_audio(
