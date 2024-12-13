@@ -327,7 +327,6 @@ impl AudioGraph {
         // After all nodes are processed, copy the final node's output into output_left and output_right
         if let Some(&final_idx) = self.processing_order.last() {
             let final_node = NodeId(final_idx);
-            console::log_1(&format!("Writing final output from node {:?}", final_node).into());
 
             if let Some(&buffer_idx) = self.node_buffers.get(&(final_node, PortId::AudioOutput0)) {
                 let final_buffer = self.buffer_pool.copy_out(buffer_idx);

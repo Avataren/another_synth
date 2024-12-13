@@ -491,7 +491,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     super();
     __publicField(this, "ready", false);
     __publicField(this, "processor", null);
-    __publicField(this, "numVoices", 1);
+    __publicField(this, "numVoices", 8);
     __publicField(this, "macroPhase", 0);
     this.port.onmessage = (event) => {
       if (event.data.type === "wasm-binary") {
@@ -594,7 +594,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       // first macro
       carrierId,
       PortId2.ModIndex,
-      5
+      1
     );
     return { carrierId, modulatorId, envelopeId };
   }
@@ -624,7 +624,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;
-        if (i === 0 && m === 0) {
+        if (m === 0) {
           for (let j = 0; j < 128; j++) {
             macroArray[macroOffset + j] = currentValue;
           }

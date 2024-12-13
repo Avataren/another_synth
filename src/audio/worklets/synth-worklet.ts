@@ -36,7 +36,7 @@ declare global {
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private processor: AudioProcessor | null = null;
-  private numVoices: number = 1;
+  private numVoices: number = 8;
   private macroPhase: number = 0;
 
   static get parameterDescriptors() {
@@ -169,7 +169,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       0, // first macro
       carrierId,
       PortId.ModIndex,
-      5.0,
+      1,
     );
 
     return { carrierId, modulatorId, envelopeId };
@@ -225,7 +225,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         const macroOffset = voiceOffset + m * 128;
 
         // For the first voice, first macro, we apply the ramp
-        if (i === 0 && m === 0) {
+        if (m === 0) {
           for (let j = 0; j < 128; j++) {
             macroArray[macroOffset + j] = currentValue;
           }

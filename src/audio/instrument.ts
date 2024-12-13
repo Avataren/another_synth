@@ -5,7 +5,7 @@ import { type NoiseState } from './dsp/noise-generator';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 
 export default class Instrument {
-  readonly num_voices = 1;
+  readonly num_voices = 8;
   outputNode: AudioNode;
   workletNode: AudioWorkletNode | null = null;
   private activeNotes: Map<number, number> = new Map(); // midi note -> voice index

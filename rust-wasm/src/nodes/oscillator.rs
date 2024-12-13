@@ -65,7 +65,7 @@ impl AudioProcessor for ModulatableOscillator {
         defaults.insert(PortId::Frequency, self.frequency);
         defaults.insert(PortId::FrequencyMod, 0.0);
         defaults.insert(PortId::PhaseMod, 0.0);
-        defaults.insert(PortId::ModIndex, 1.0); // Reasonable default for FM
+        defaults.insert(PortId::ModIndex, 0.0);
         defaults.insert(PortId::GainMod, 1.0);
         defaults
     }
