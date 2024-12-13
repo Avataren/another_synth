@@ -594,7 +594,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       // first macro
       carrierId,
       PortId2.ModIndex,
-      1
+      0.5
     );
     return { carrierId, modulatorId, envelopeId };
   }
@@ -609,7 +609,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const gainArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
     const blocksPerSecond = sampleRate / 128;
-    const totalBlocksForCycle = blocksPerSecond * 10;
+    const totalBlocksForCycle = blocksPerSecond * 5;
     const normalizedPhase = this.macroPhase % totalBlocksForCycle / totalBlocksForCycle;
     let currentValue;
     if (normalizedPhase < 0.5) {

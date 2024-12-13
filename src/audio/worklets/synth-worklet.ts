@@ -169,7 +169,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       0, // first macro
       carrierId,
       PortId.ModIndex,
-      1,
+      0.5,
     );
 
     return { carrierId, modulatorId, envelopeId };
@@ -196,7 +196,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Calculate modulation
     const blocksPerSecond = sampleRate / 128;
-    const totalBlocksForCycle = blocksPerSecond * 10; // 4 second cycle
+    const totalBlocksForCycle = blocksPerSecond * 5; // 5 second cycle
 
     // Calculate normalized phase (0 to 1)
     const normalizedPhase =
