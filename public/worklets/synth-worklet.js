@@ -2,1167 +2,651 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// src/audio/dsp/envelope.ts
-var Envelope = class {
-  constructor(sampleRate2, config = {
-    id: 0,
-    attack: 0.01,
-    decay: 0.1,
-    sustain: 0.5,
-    release: 0.3,
-    attackCurve: 0,
-    decayCurve: 0,
-    releaseCurve: 0
-  }) {
-    __publicField(this, "phase", "idle");
-    __publicField(this, "value", 0);
-    __publicField(this, "releaseLevel", 0);
-    __publicField(this, "sampleRate");
-    __publicField(this, "config");
-    __publicField(this, "position", 0);
-    __publicField(this, "lastGateValue", 0);
-    this.sampleRate = sampleRate2;
-    this.updateConfig(config);
+// src/audio/worklets/textencoder.js
+(function(window) {
+  "use strict";
+  function TextEncoder() {
   }
-  updateConfig(config) {
-    this.config = config;
-  }
-  getCurvedValue(position, curve) {
-    if (Math.abs(curve) < 1e-3) return position;
-    const alpha = Math.exp(Math.abs(curve));
-    if (curve > 0) {
-      return (Math.exp(position * Math.log(1 + alpha)) - 1) / alpha;
-    } else {
-      return Math.log(1 + position * alpha) / Math.log(1 + alpha);
-    }
-  }
-  trigger(gate) {
-    if (gate > 0) {
-      if (this.phase === "idle" || this.phase === "release") {
-        this.reset();
-        this.phase = "attack";
+  TextEncoder.prototype.encode = function(string) {
+    var octets = [];
+    var length = string.length;
+    var i = 0;
+    while (i < length) {
+      var codePoint = string.codePointAt(i);
+      var c = 0;
+      var bits = 0;
+      if (codePoint <= 127) {
+        c = 0;
+        bits = 0;
+      } else if (codePoint <= 2047) {
+        c = 6;
+        bits = 192;
+      } else if (codePoint <= 65535) {
+        c = 12;
+        bits = 224;
+      } else if (codePoint <= 2097151) {
+        c = 18;
+        bits = 240;
       }
-    } else {
-      if (this.phase !== "idle" && this.phase !== "release") {
-        this.phase = "release";
-        this.releaseLevel = this.value;
-        this.position = 0;
+      octets.push(bits | codePoint >> c);
+      c -= 6;
+      while (c >= 0) {
+        octets.push(128 | codePoint >> c & 63);
+        c -= 6;
       }
+      i += codePoint >= 65536 ? 2 : 1;
     }
-    this.lastGateValue = gate;
+    return octets;
+  };
+  globalThis.TextEncoder = TextEncoder;
+  if (!window["TextEncoder"]) window["TextEncoder"] = TextEncoder;
+  function TextDecoder2() {
   }
-  process(gateValue) {
-    if (gateValue !== this.lastGateValue) {
-      this.trigger(gateValue);
-    }
-    const increment = 1 / this.sampleRate;
-    switch (this.phase) {
-      case "attack": {
-        const attackTime = Math.max(this.config.attack, 1e-4);
-        this.position += increment / attackTime;
-        if (this.position >= 1) {
-          this.position = 0;
-          this.value = 1;
-          this.phase = "decay";
-        } else {
-          this.value = this.getCurvedValue(this.position, this.config.attackCurve);
+  TextDecoder2.prototype.decode = function(octets) {
+    if (!octets) return "";
+    var string = "";
+    var i = 0;
+    while (i < octets.length) {
+      var octet = octets[i];
+      var bytesNeeded = 0;
+      var codePoint = 0;
+      if (octet <= 127) {
+        bytesNeeded = 0;
+        codePoint = octet & 255;
+      } else if (octet <= 223) {
+        bytesNeeded = 1;
+        codePoint = octet & 31;
+      } else if (octet <= 239) {
+        bytesNeeded = 2;
+        codePoint = octet & 15;
+      } else if (octet <= 244) {
+        bytesNeeded = 3;
+        codePoint = octet & 7;
+      }
+      if (octets.length - i - bytesNeeded > 0) {
+        var k = 0;
+        while (k < bytesNeeded) {
+          octet = octets[i + k + 1];
+          codePoint = codePoint << 6 | octet & 63;
+          k += 1;
         }
-        break;
+      } else {
+        codePoint = 65533;
+        bytesNeeded = octets.length - i;
       }
-      case "decay": {
-        const decayTime = Math.max(this.config.decay, 1e-4);
-        this.position += increment / decayTime;
-        if (this.position >= 1) {
-          this.position = 0;
-          this.value = this.config.sustain;
-          this.phase = "sustain";
-        } else {
-          const decayPos = this.getCurvedValue(this.position, this.config.decayCurve);
-          this.value = 1 - decayPos * (1 - this.config.sustain);
-        }
-        break;
-      }
-      case "sustain": {
-        this.value = this.config.sustain;
-        break;
-      }
-      case "release": {
-        const releaseTime = Math.max(this.config.release, 1e-4);
-        this.position += increment / releaseTime;
-        if (this.position >= 1) {
-          this.position = 0;
-          this.value = 0;
-          this.phase = "idle";
-        } else {
-          const releasePos = this.getCurvedValue(this.position, this.config.releaseCurve);
-          this.value = this.releaseLevel * (1 - releasePos);
-        }
-        break;
-      }
-      case "idle": {
-        this.value = 0;
-        break;
-      }
+      string += String.fromCodePoint(codePoint);
+      i += bytesNeeded + 1;
     }
-    this.value = Math.max(0, Math.min(this.value, 1));
-    return this.value;
+    return string;
+  };
+  globalThis.TextDecoder = TextDecoder2;
+  if (!window["TextDecoder"]) window["TextDecoder"] = TextDecoder2;
+})(
+  typeof globalThis == "undefined" ? typeof global == "undefined" ? typeof self == "undefined" ? void 0 : self : global : globalThis
+);
+
+// rust-wasm/pkg/audio_processor.js
+var wasm;
+function addToExternrefTable0(obj) {
+  const idx = wasm.__externref_table_alloc();
+  wasm.__wbindgen_export_2.set(idx, obj);
+  return idx;
+}
+function handleError(f, args) {
+  try {
+    return f.apply(this, args);
+  } catch (e) {
+    const idx = addToExternrefTable0(e);
+    wasm.__wbindgen_exn_store(idx);
   }
-  isActive() {
-    return this.phase !== "idle";
+}
+var cachedUint8ArrayMemory0 = null;
+function getUint8ArrayMemory0() {
+  if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+    cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
   }
-  reset() {
-    this.phase = "idle";
-    this.value = 0;
-    this.releaseLevel = 0;
-    this.position = 0;
-    this.lastGateValue = 0;
+  return cachedUint8ArrayMemory0;
+}
+function getArrayU8FromWasm0(ptr, len) {
+  ptr = ptr >>> 0;
+  return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+var cachedTextDecoder = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }) : { decode: () => {
+  throw Error("TextDecoder not available");
+} };
+if (typeof TextDecoder !== "undefined") {
+  cachedTextDecoder.decode();
+}
+function getStringFromWasm0(ptr, len) {
+  ptr = ptr >>> 0;
+  return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+var cachedFloat32ArrayMemory0 = null;
+function getFloat32ArrayMemory0() {
+  if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+    cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+  }
+  return cachedFloat32ArrayMemory0;
+}
+var WASM_VECTOR_LEN = 0;
+function passArrayF32ToWasm0(arg, malloc) {
+  const ptr = malloc(arg.length * 4, 4) >>> 0;
+  getFloat32ArrayMemory0().set(arg, ptr / 4);
+  WASM_VECTOR_LEN = arg.length;
+  return ptr;
+}
+function takeFromExternrefTable0(idx) {
+  const value = wasm.__wbindgen_export_2.get(idx);
+  wasm.__externref_table_dealloc(idx);
+  return value;
+}
+var PortId = Object.freeze({
+  AudioInput0: 0,
+  "0": "AudioInput0",
+  AudioInput1: 1,
+  "1": "AudioInput1",
+  AudioInput2: 2,
+  "2": "AudioInput2",
+  AudioInput3: 3,
+  "3": "AudioInput3",
+  AudioOutput0: 4,
+  "4": "AudioOutput0",
+  AudioOutput1: 5,
+  "5": "AudioOutput1",
+  AudioOutput2: 6,
+  "6": "AudioOutput2",
+  AudioOutput3: 7,
+  "7": "AudioOutput3",
+  Gate: 8,
+  "8": "Gate",
+  Frequency: 9,
+  "9": "Frequency",
+  FrequencyMod: 10,
+  "10": "FrequencyMod",
+  PhaseMod: 11,
+  "11": "PhaseMod",
+  ModIndex: 12,
+  "12": "ModIndex",
+  CutoffMod: 13,
+  "13": "CutoffMod",
+  ResonanceMod: 14,
+  "14": "ResonanceMod",
+  GainMod: 15,
+  "15": "GainMod",
+  EnvelopeMod: 16,
+  "16": "EnvelopeMod"
+});
+var AudioProcessorFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_audioprocessor_free(ptr >>> 0, 1));
+var AudioProcessor = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    AudioProcessorFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_audioprocessor_free(ptr, 0);
+  }
+  constructor() {
+    const ret = wasm.audioprocessor_new();
+    this.__wbg_ptr = ret >>> 0;
+    AudioProcessorFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+  /**
+   * @param {number} sample_rate
+   * @param {number} num_voices
+   */
+  init(sample_rate, num_voices) {
+    wasm.audioprocessor_init(this.__wbg_ptr, sample_rate, num_voices);
+  }
+  /**
+   * @param {Float32Array} gates
+   * @param {Float32Array} frequencies
+   * @param {Float32Array} gains
+   * @param {Float32Array} macro_values
+   * @param {number} master_gain
+   * @param {Float32Array} output_left
+   * @param {Float32Array} output_right
+   */
+  process_audio(gates, frequencies, gains, macro_values, master_gain, output_left, output_right) {
+    const ptr0 = passArrayF32ToWasm0(gates, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF32ToWasm0(frequencies, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArrayF32ToWasm0(gains, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ptr3 = passArrayF32ToWasm0(macro_values, wasm.__wbindgen_malloc);
+    const len3 = WASM_VECTOR_LEN;
+    var ptr4 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
+    var len4 = WASM_VECTOR_LEN;
+    var ptr5 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+    var len5 = WASM_VECTOR_LEN;
+    wasm.audioprocessor_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, master_gain, ptr4, len4, output_left, ptr5, len5, output_right);
+  }
+  /**
+   * @param {number} voice_index
+   * @returns {any}
+   */
+  create_fm_voice(voice_index) {
+    const ret = wasm.audioprocessor_create_fm_voice(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} node_id
+   * @param {number} attack
+   * @param {number} decay
+   * @param {number} sustain
+   * @param {number} release
+   */
+  update_envelope(voice_index, node_id, attack, decay, sustain, release) {
+    const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} from_node
+   * @param {PortId} from_port
+   * @param {number} to_node
+   * @param {PortId} to_port
+   * @param {number} amount
+   */
+  connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
+    const ret = wasm.audioprocessor_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} macro_index
+   * @param {number} target_node
+   * @param {PortId} target_port
+   * @param {number} amount
+   */
+  connect_macro(voice_index, macro_index, target_node, target_port, amount) {
+    const ret = wasm.audioprocessor_connect_macro(this.__wbg_ptr, voice_index, macro_index, target_node, target_port, amount);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} from_node
+   * @param {PortId} from_port
+   * @param {number} to_node
+   * @param {PortId} to_port
+   * @param {number} amount
+   */
+  connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
+    const ret = wasm.audioprocessor_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
+   * @returns {number}
+   */
+  add_oscillator(voice_index) {
+    const ret = wasm.audioprocessor_add_oscillator(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
   }
 };
-
-// src/audio/wavetable/wave-utils.ts
-function fft(N, ar, ai) {
-  const NV2 = N >> 1;
-  const NM1 = N - 1;
-  let M = 0;
-  let TEMP = N;
-  while (TEMP >>= 1) ++M;
-  let j = 1;
-  for (let i = 1; i <= NM1; i++) {
-    if (i < j) {
-      const t = ar[j - 1];
-      ar[j - 1] = ar[i - 1];
-      ar[i - 1] = t;
-      const u = ai[j - 1];
-      ai[j - 1] = ai[i - 1];
-      ai[i - 1] = u;
-    }
-    let k = NV2;
-    while (k < j) {
-      j -= k;
-      k /= 2;
-    }
-    j += k;
-  }
-  let LE = 1;
-  for (let L = 1; L <= M; L++) {
-    const LE1 = LE;
-    LE *= 2;
-    let Ur = 1;
-    let Ui = 0;
-    const Wr = Math.cos(Math.PI / LE1);
-    const Wi = -Math.sin(Math.PI / LE1);
-    for (let j2 = 1; j2 <= LE1; j2++) {
-      for (let i = j2; i <= N; i += LE) {
-        const ip = i + LE1;
-        const Tr = ar[ip - 1] * Ur - ai[ip - 1] * Ui;
-        const Ti = ar[ip - 1] * Ui + ai[ip - 1] * Ur;
-        ar[ip - 1] = ar[i - 1] - Tr;
-        ai[ip - 1] = ai[i - 1] - Ti;
-        ar[i - 1] = ar[i - 1] + Tr;
-        ai[i - 1] = ai[i - 1] + Ti;
+var ConnectionIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_connectionid_free(ptr >>> 0, 1));
+var EnvelopeConfigFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_envelopeconfig_free(ptr >>> 0, 1));
+var NodeIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_nodeid_free(ptr >>> 0, 1));
+async function __wbg_load(module, imports) {
+  if (typeof Response === "function" && module instanceof Response) {
+    if (typeof WebAssembly.instantiateStreaming === "function") {
+      try {
+        return await WebAssembly.instantiateStreaming(module, imports);
+      } catch (e) {
+        if (module.headers.get("Content-Type") != "application/wasm") {
+          console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
+        } else {
+          throw e;
+        }
       }
-      const Ur_old = Ur;
-      Ur = Ur_old * Wr - Ui * Wi;
-      Ui = Ur_old * Wi + Ui * Wr;
+    }
+    const bytes = await module.arrayBuffer();
+    return await WebAssembly.instantiate(bytes, imports);
+  } else {
+    const instance = await WebAssembly.instantiate(module, imports);
+    if (instance instanceof WebAssembly.Instance) {
+      return { instance, module };
+    } else {
+      return instance;
     }
   }
 }
-var WaveTableGenerator = class {
-  /**
-   * Create wavetables for different frequency ranges from frequency domain data
-   */
-  static generateWaveTables(freqWaveRe, freqWaveIm, tableLength) {
-    freqWaveRe[0] = freqWaveIm[0] = 0;
-    freqWaveRe[tableLength >> 1] = freqWaveIm[tableLength >> 1] = 0;
-    const tables = [];
-    let maxHarmonic = tableLength >> 1;
-    const minVal = 1e-6;
-    while (Math.abs(freqWaveRe[maxHarmonic]) + Math.abs(freqWaveIm[maxHarmonic]) < minVal && maxHarmonic) {
-      --maxHarmonic;
+function __wbg_get_imports() {
+  const imports = {};
+  imports.wbg = {};
+  imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
+    console.log(arg0);
+  };
+  imports.wbg.__wbg_new_688846f374351c92 = function() {
+    const ret = new Object();
+    return ret;
+  };
+  imports.wbg.__wbg_set_4e647025551483bd = function() {
+    return handleError(function(arg0, arg1, arg2) {
+      const ret = Reflect.set(arg0, arg1, arg2);
+      return ret;
+    }, arguments);
+  };
+  imports.wbg.__wbindgen_copy_to_typed_array = function(arg0, arg1, arg2) {
+    new Uint8Array(arg2.buffer, arg2.byteOffset, arg2.byteLength).set(getArrayU8FromWasm0(arg0, arg1));
+  };
+  imports.wbg.__wbindgen_init_externref_table = function() {
+    const table = wasm.__wbindgen_export_2;
+    const offset = table.grow(4);
+    table.set(0, void 0);
+    table.set(offset + 0, void 0);
+    table.set(offset + 1, null);
+    table.set(offset + 2, true);
+    table.set(offset + 3, false);
+    ;
+  };
+  imports.wbg.__wbindgen_number_new = function(arg0) {
+    const ret = arg0;
+    return ret;
+  };
+  imports.wbg.__wbindgen_string_new = function(arg0, arg1) {
+    const ret = getStringFromWasm0(arg0, arg1);
+    return ret;
+  };
+  imports.wbg.__wbindgen_throw = function(arg0, arg1) {
+    throw new Error(getStringFromWasm0(arg0, arg1));
+  };
+  return imports;
+}
+function __wbg_init_memory(imports, memory) {
+}
+function __wbg_finalize_init(instance, module) {
+  wasm = instance.exports;
+  __wbg_init.__wbindgen_wasm_module = module;
+  cachedFloat32ArrayMemory0 = null;
+  cachedUint8ArrayMemory0 = null;
+  wasm.__wbindgen_start();
+  return wasm;
+}
+function initSync(module) {
+  if (wasm !== void 0) return wasm;
+  if (typeof module !== "undefined") {
+    if (Object.getPrototypeOf(module) === Object.prototype) {
+      ({ module } = module);
+    } else {
+      console.warn("using deprecated parameters for `initSync()`; pass a single object instead");
     }
-    if (maxHarmonic === 0) {
-      throw new Error("No harmonics found in input data");
+  }
+  const imports = __wbg_get_imports();
+  __wbg_init_memory(imports);
+  if (!(module instanceof WebAssembly.Module)) {
+    module = new WebAssembly.Module(module);
+  }
+  const instance = new WebAssembly.Instance(module, imports);
+  return __wbg_finalize_init(instance, module);
+}
+async function __wbg_init(module_or_path) {
+  if (wasm !== void 0) return wasm;
+  if (typeof module_or_path !== "undefined") {
+    if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
+      ({ module_or_path } = module_or_path);
+    } else {
+      console.warn("using deprecated parameters for the initialization function; pass a single object instead");
     }
-    let topFreq = 2 / 3 / maxHarmonic;
-    const ar = new Float64Array(tableLength);
-    const ai = new Float64Array(tableLength);
-    let scale = 0;
-    while (maxHarmonic) {
-      ar.fill(0);
-      ai.fill(0);
-      for (let idx = 1; idx <= maxHarmonic; idx++) {
-        ar[idx] = freqWaveRe[idx];
-        ai[idx] = freqWaveIm[idx];
-        ar[tableLength - idx] = freqWaveRe[tableLength - idx];
-        ai[tableLength - idx] = freqWaveIm[tableLength - idx];
-      }
-      fft(tableLength, ar, ai);
-      if (scale === 0) {
-        let max = 0;
-        for (let idx = 0; idx < tableLength; idx++) {
-          const temp = Math.abs(ai[idx]);
-          if (max < temp) max = temp;
-        }
-        scale = 1 / max * 0.999;
-      }
-      const wave = new Float32Array(tableLength + 1);
-      for (let idx = 0; idx < tableLength; idx++) {
-        wave[idx] = ai[idx] * scale;
-      }
-      wave[tableLength] = wave[0];
-      tables.push({
-        waveTableLen: tableLength,
-        topFreq,
-        waveTable: wave
-      });
-      topFreq *= 2;
-      maxHarmonic >>= 1;
-    }
-    return tables;
   }
-  /**
-   * Generate frequency domain data for a custom waveform
-   */
-  static generateCustomWaveform(harmonicAmplitudes, harmonicPhases, tableLength) {
-    const freqWaveRe = new Float64Array(tableLength);
-    const freqWaveIm = new Float64Array(tableLength);
-    const numHarmonics = Math.min(
-      harmonicAmplitudes.length,
-      harmonicPhases.length,
-      tableLength >> 1
-    );
-    for (let i = 1; i <= numHarmonics; i++) {
-      const amplitude = harmonicAmplitudes[i - 1];
-      const phase = harmonicPhases[i - 1];
-      freqWaveRe[i] = amplitude * Math.cos(phase);
-      freqWaveIm[i] = amplitude * Math.sin(phase);
-      freqWaveRe[tableLength - i] = freqWaveRe[i];
-      freqWaveIm[tableLength - i] = -freqWaveIm[i];
-    }
-    return { real: freqWaveRe, imag: freqWaveIm };
+  if (typeof module_or_path === "undefined") {
+    module_or_path = new URL("audio_processor_bg.wasm", import.meta.url);
   }
-  /**
-   * Helper to convert frequency to normalized frequency
-   */
-  static freqToNormalized(frequency, sampleRate2) {
-    return frequency / sampleRate2;
+  const imports = __wbg_get_imports();
+  if (typeof module_or_path === "string" || typeof Request === "function" && module_or_path instanceof Request || typeof URL === "function" && module_or_path instanceof URL) {
+    module_or_path = fetch(module_or_path);
   }
-  /**
-   * Helper to convert MIDI note to frequency
-   */
-  static noteToFrequency(note, detune = 0) {
-    return 440 * Math.pow(2, (note - 69 + detune / 100) / 12);
-  }
-};
+  __wbg_init_memory(imports);
+  const { instance, module } = await __wbg_load(await module_or_path, imports);
+  return __wbg_finalize_init(instance, module);
+}
 
-// src/audio/wavetable/wavetable-bank.ts
-var WaveTableBank = class {
-  constructor() {
-    __publicField(this, "tableLength", 2048);
-    __publicField(this, "waveforms", /* @__PURE__ */ new Map());
-    this.initializeWaveforms();
-  }
-  initializeWaveforms() {
-    this.generateSineWaveTables();
-    this.generateTriangleWaveTables();
-    this.generateSawtoothWaveTables();
-    this.generateSquareWaveTables();
-  }
-  generateSineWaveTables() {
-    const freqWaveRe = new Float64Array(this.tableLength);
-    const freqWaveIm = new Float64Array(this.tableLength);
-    freqWaveRe[1] = 1;
-    freqWaveRe[this.tableLength - 1] = -1;
-    const tables = WaveTableGenerator.generateWaveTables(
-      freqWaveRe,
-      freqWaveIm,
-      this.tableLength
-    );
-    this.waveforms.set("sine", tables);
-  }
-  generateTriangleWaveTables() {
-    const freqWaveRe = new Float64Array(this.tableLength);
-    const freqWaveIm = new Float64Array(this.tableLength);
-    for (let n = 1; n < this.tableLength >> 1; n += 2) {
-      const amplitude = 1 / (n * n);
-      if ((n - 1 >> 1) % 2 === 0) {
-        freqWaveRe[n] = amplitude;
-        freqWaveRe[this.tableLength - n] = -amplitude;
-      } else {
-        freqWaveRe[n] = -amplitude;
-        freqWaveRe[this.tableLength - n] = amplitude;
-      }
-    }
-    const tables = WaveTableGenerator.generateWaveTables(
-      freqWaveRe,
-      freqWaveIm,
-      this.tableLength
-    );
-    this.waveforms.set("triangle", tables);
-  }
-  generateSawtoothWaveTables() {
-    const freqWaveRe = new Float64Array(this.tableLength);
-    const freqWaveIm = new Float64Array(this.tableLength);
-    for (let n = 1; n < this.tableLength >> 1; n++) {
-      const amplitude = 1 / n;
-      freqWaveRe[n] = amplitude;
-      freqWaveRe[this.tableLength - n] = -amplitude;
-    }
-    const tables = WaveTableGenerator.generateWaveTables(
-      freqWaveRe,
-      freqWaveIm,
-      this.tableLength
-    );
-    this.waveforms.set("sawtooth", tables);
-  }
-  generateSquareWaveTables() {
-    const freqWaveRe = new Float64Array(this.tableLength);
-    const freqWaveIm = new Float64Array(this.tableLength);
-    for (let n = 1; n < this.tableLength >> 1; n += 2) {
-      const amplitude = 1 / n;
-      freqWaveRe[n] = amplitude;
-      freqWaveRe[this.tableLength - n] = -amplitude;
-    }
-    const tables = WaveTableGenerator.generateWaveTables(
-      freqWaveRe,
-      freqWaveIm,
-      this.tableLength
-    );
-    this.waveforms.set("square", tables);
-  }
-  getWaveform(type) {
-    const tables = this.waveforms.get(type);
-    if (!tables) {
-      throw new Error(`Waveform type ${type} not found in bank`);
-    }
-    return tables;
-  }
-  addCustomWaveform(name, harmonicAmplitudes, harmonicPhases) {
-    const { real, imag } = WaveTableGenerator.generateCustomWaveform(
-      harmonicAmplitudes,
-      harmonicPhases,
-      this.tableLength
-    );
-    const tables = WaveTableGenerator.generateWaveTables(
-      real,
-      imag,
-      this.tableLength
-    );
-    this.waveforms.set(name, tables);
-  }
-};
-
-// src/audio/wavetable/wavetable-oscillator.ts
-var WaveTableOscillator = class {
-  constructor(bank, initialType = "sine", sampleRate2 = 44100) {
-    this.bank = bank;
-    __publicField(this, "phasor", 0);
-    __publicField(this, "phaseInc", 0);
-    __publicField(this, "gain", 1);
-    __publicField(this, "detune", 0);
-    __publicField(this, "curWaveTable", 0);
-    __publicField(this, "currentWaveTables", []);
-    __publicField(this, "currentType");
-    __publicField(this, "sampleRate");
-    __publicField(this, "hardSyncEnabled", false);
-    __publicField(this, "is_active", true);
-    this.currentType = initialType;
-    this.sampleRate = sampleRate2;
-    this.setWaveform(initialType);
-  }
-  updateState(state) {
-    this.hardSync = state.hardsync;
-    this.detune = state.detune;
-    this.gain = state.gain;
-    this.setWaveform(state.waveform);
-    this.is_active = state.is_active;
-  }
-  get hardSync() {
-    return this.hardSyncEnabled;
-  }
-  set hardSync(val) {
-    this.hardSyncEnabled = val;
-  }
-  reset() {
-    this.phasor = 0;
-  }
-  setWaveform(type) {
-    this.currentWaveTables = this.bank.getWaveform(type);
-    this.currentType = type;
-    this.updateWaveTableSelector();
-  }
-  setFrequency(frequency) {
-    this.phaseInc = WaveTableGenerator.freqToNormalized(frequency, this.sampleRate);
-    this.updateWaveTableSelector();
-  }
-  setNote(note, detune = 0) {
-    const frequency = WaveTableGenerator.noteToFrequency(note, detune);
-    this.setFrequency(frequency);
-  }
-  setSampleRate(sampleRate2) {
-    this.sampleRate = sampleRate2;
-    if (this.phaseInc > 0) {
-      const frequency = this.phaseInc * this.sampleRate;
-      this.setFrequency(frequency);
-    }
-  }
-  getFrequency(baseFreq, detune) {
-    return baseFreq * Math.pow(2, detune / 1200);
-  }
-  updateWaveTableSelector() {
-    let curWaveTable = 0;
-    while (curWaveTable < this.currentWaveTables.length - 1 && this.phaseInc >= this.currentWaveTables[curWaveTable].topFreq) {
-      ++curWaveTable;
-    }
-    this.curWaveTable = curWaveTable;
-  }
-  process(frequency) {
-    if (!this.is_active) {
-      return 0;
-    }
-    const tunedFrequency = this.getFrequency(frequency, this.detune);
-    this.setFrequency(tunedFrequency);
-    this.phasor += this.phaseInc;
-    if (this.phasor >= 1) {
-      this.phasor -= 1;
-    }
-    const waveTable = this.currentWaveTables[this.curWaveTable];
-    const temp = this.phasor * waveTable.waveTableLen;
-    const intPart = Math.floor(temp);
-    const fracPart = temp - intPart;
-    const samp0 = waveTable.waveTable[intPart];
-    const samp1 = waveTable.waveTable[intPart + 1];
-    return (samp0 + (samp1 - samp0) * fracPart) * this.gain;
-  }
-  getWaveform() {
-    return this.currentType;
-  }
-  getCurrentFrequency() {
-    return this.phaseInc * this.sampleRate;
-  }
-};
-
-// src/audio/dsp/noise-generator.ts
-var _NoiseGenerator = class _NoiseGenerator {
-  constructor(sampleRate2) {
-    // Random number generator state
-    __publicField(this, "state0", 0);
-    __publicField(this, "state1", 0);
-    __publicField(this, "state2", 0);
-    __publicField(this, "state3", 0);
-    // Noise parameters
-    __publicField(this, "currentNoiseType");
-    __publicField(this, "dcOffset");
-    // Filter parameters
-    __publicField(this, "targetCutoff");
-    __publicField(this, "currentCutoff");
-    __publicField(this, "previousOutput");
-    __publicField(this, "filterCoeff");
-    __publicField(this, "sampleRate");
-    __publicField(this, "maxFrequency");
-    // Pink and Brownian noise state
-    __publicField(this, "pinkNoiseState");
-    __publicField(this, "brownNoiseState");
-    __publicField(this, "is_enabled");
-    // Cached noise function
-    __publicField(this, "currentNoiseFunc");
-    this.sampleRate = sampleRate2;
-    this.maxFrequency = sampleRate2 / 2;
-    this.currentNoiseType = 0 /* White */;
-    this.setSeed(123);
-    this.targetCutoff = 1;
-    this.currentCutoff = 1;
-    this.previousOutput = 0;
-    this.filterCoeff = 0;
-    this.dcOffset = 0;
-    this.pinkNoiseState = new Float32Array(7);
-    this.brownNoiseState = 0;
-    this.currentNoiseFunc = this.getWhiteNoise.bind(this);
-    this.updateFilterCoefficient();
-    this.is_enabled = true;
-  }
-  updateState(state) {
-    this.setNoiseType(state.noiseType);
-    this.setCutoff(state.cutoff);
-  }
-  setCutoff(value) {
-    this.targetCutoff = Math.max(0, Math.min(value, 1));
-  }
-  setDCOffset(value) {
-    this.dcOffset = Math.max(-1, Math.min(value, 1));
-  }
-  setSeed(seed) {
-    this.state0 = seed;
-    this.state1 = 362436069;
-    this.state2 = 521288629;
-    this.state3 = 88675123;
-  }
-  setNoiseType(noiseType) {
-    this.currentNoiseType = noiseType;
-    switch (noiseType) {
-      case 0 /* White */:
-        this.currentNoiseFunc = this.getWhiteNoise.bind(this);
-        break;
-      case 1 /* Pink */:
-        this.currentNoiseFunc = this.getPinkNoise.bind(this);
-        break;
-      case 2 /* Brownian */:
-        this.currentNoiseFunc = this.getBrownianNoise.bind(this);
-        break;
-    }
-  }
-  updateFilterCoefficient(cutoffMod = 1) {
-    this.currentCutoff += (this.targetCutoff * cutoffMod - this.currentCutoff) * _NoiseGenerator.CUTOFF_SMOOTHING;
-    let cutoffFrequency = _NoiseGenerator.MIN_FREQUENCY * Math.exp(Math.log(this.maxFrequency / _NoiseGenerator.MIN_FREQUENCY) * this.currentCutoff);
-    cutoffFrequency = Math.max(_NoiseGenerator.MIN_FREQUENCY, Math.min(cutoffFrequency, this.maxFrequency));
-    const rc = 1 / (2 * Math.PI * cutoffFrequency);
-    const dt = 1 / this.sampleRate;
-    this.filterCoeff = dt / (rc + dt);
-  }
-  generateRandomNumber() {
-    const result = (this.state1 * 5 << 7 | this.state1 * 5 >>> 25) * 9;
-    const t = this.state1 << 9;
-    this.state2 ^= this.state0;
-    this.state3 ^= this.state1;
-    this.state1 ^= this.state2;
-    this.state0 ^= this.state3;
-    this.state2 ^= t;
-    this.state3 = this.state3 << 11 | this.state3 >>> 21;
-    return result >>> 0;
-  }
-  getWhiteNoise() {
-    return this.generateRandomNumber() / 4294967295 * 2 - 1;
-  }
-  getPinkNoise() {
-    const white = this.getWhiteNoise();
-    this.pinkNoiseState[0] = 0.99886 * this.pinkNoiseState[0] + white * 0.0555179;
-    this.pinkNoiseState[1] = 0.99332 * this.pinkNoiseState[1] + white * 0.0750759;
-    this.pinkNoiseState[2] = 0.969 * this.pinkNoiseState[2] + white * 0.153852;
-    this.pinkNoiseState[3] = 0.8665 * this.pinkNoiseState[3] + white * 0.3104856;
-    this.pinkNoiseState[4] = 0.55 * this.pinkNoiseState[4] + white * 0.5329522;
-    this.pinkNoiseState[5] = -0.7616 * this.pinkNoiseState[5] - white * 0.016898;
-    const pink = this.pinkNoiseState[0] + this.pinkNoiseState[1] + this.pinkNoiseState[2] + this.pinkNoiseState[3] + this.pinkNoiseState[4] + this.pinkNoiseState[5] + this.pinkNoiseState[6] + white * 0.5362;
-    this.pinkNoiseState[6] = white * 0.115926;
-    return pink * _NoiseGenerator.PINK_NOISE_SCALE;
-  }
-  getBrownianNoise() {
-    const white = this.getWhiteNoise();
-    this.brownNoiseState = (this.brownNoiseState + 0.02 * white) / 1.02;
-    return this.brownNoiseState * _NoiseGenerator.BROWNIAN_NOISE_SCALE;
-  }
-  applyFilter(inputNoise) {
-    const output = this.filterCoeff * inputNoise + (1 - this.filterCoeff) * this.previousOutput;
-    this.previousOutput = output;
-    return output;
-  }
-  process(amplitude, gainParam, cutoffMod, output) {
-    const gain = amplitude * gainParam;
-    for (let i = 0; i < output.length; i++) {
-      this.updateFilterCoefficient(cutoffMod);
-      output[i] = this.applyFilter(this.currentNoiseFunc()) * gain + this.dcOffset;
-    }
-    return output;
-  }
-};
-__publicField(_NoiseGenerator, "PINK_NOISE_SCALE", 0.25);
-__publicField(_NoiseGenerator, "BROWNIAN_NOISE_SCALE", 3.5);
-__publicField(_NoiseGenerator, "CUTOFF_SMOOTHING", 0.1);
-__publicField(_NoiseGenerator, "MIN_FREQUENCY", 20);
-var NoiseGenerator = _NoiseGenerator;
-
-// src/audio/dsp/flanger-comb-filter.ts
-var FlangerCombFilter = class {
-  constructor(sampleRate2, maxDelayMs = 100) {
-    __publicField(this, "buffer");
-    __publicField(this, "bufferSize");
-    __publicField(this, "writeIndex", 0);
-    __publicField(this, "delaySamples", 0);
-    __publicField(this, "sampleRate");
-    __publicField(this, "phase", 0);
-    // Enhanced DC blocker state
-    __publicField(this, "x1", 0);
-    __publicField(this, "x2", 0);
-    __publicField(this, "y1", 0);
-    __publicField(this, "y2", 0);
-    __publicField(this, "R", 0.999);
-    // Pole radius
-    __publicField(this, "SQRT2", Math.sqrt(2));
-    // Original flanger parameters
-    __publicField(this, "FLANGER_RATE", 0.2);
-    __publicField(this, "FLANGER_DEPTH", 0.7);
-    __publicField(this, "FLANGER_MIX", 0.5);
-    __publicField(this, "_cut", 1e4);
-    __publicField(this, "_resonance", 0.5);
-    __publicField(this, "is_enabled", false);
-    __publicField(this, "filterAlpha", 0);
-    __publicField(this, "filterState", 0);
-    this.sampleRate = sampleRate2;
-    this.bufferSize = Math.floor(maxDelayMs / 1e3 * sampleRate2);
-    this.buffer = new Float32Array(this.bufferSize);
-    this.clear();
-    this.cut = this._cut;
-  }
-  removeDC(input) {
-    const output = input - 2 * this.x1 + this.x2 + 2 * this.R * this.y1 - this.R * this.R * this.y2;
-    this.x2 = this.x1;
-    this.x1 = input;
-    this.y2 = this.y1;
-    this.y1 = output;
-    return output / (1 + 2 * this.R + this.R * this.R);
-  }
-  setFrequency(frequency) {
-    const delayTimeSec = 1 / frequency;
-    this.delaySamples = delayTimeSec * this.sampleRate;
-    if (this.delaySamples >= this.bufferSize) {
-      this.delaySamples = this.bufferSize - 1;
-    }
-  }
-  updateState(state) {
-    this.cut = state.cut;
-    this.is_enabled = state.is_enabled;
-    this.resonance = state.resonance;
-  }
-  set cut(cut) {
-    this._cut = Math.max(20, Math.min(cut, this.sampleRate / 2));
-    const omega = 2 * Math.PI * this._cut / this.sampleRate;
-    this.filterAlpha = Math.exp(-omega);
-  }
-  get cut() {
-    return this._cut;
-  }
-  set resonance(resonance) {
-    this._resonance = Math.max(0, Math.min(resonance, 1));
-  }
-  get resonance() {
-    return this._resonance;
-  }
-  getModulatedDelay() {
-    const lfoValue = Math.sin(this.phase);
-    const modDepth = this.delaySamples * this.FLANGER_DEPTH;
-    return this.delaySamples + lfoValue * modDepth;
-  }
-  process(input) {
-    if (!this.is_enabled) {
-      return input;
-    }
-    this.phase += 2 * Math.PI * this.FLANGER_RATE / this.sampleRate;
-    if (this.phase >= 2 * Math.PI) {
-      this.phase -= 2 * Math.PI;
-    }
-    const delayInt = Math.floor(this.delaySamples);
-    const frac = this.delaySamples - delayInt;
-    const readIndex1 = (this.writeIndex - delayInt + this.bufferSize) % this.bufferSize;
-    const readIndex2 = (readIndex1 - 1 + this.bufferSize) % this.bufferSize;
-    const delayedSample1 = this.buffer[readIndex1];
-    const delayedSample2 = this.buffer[readIndex2];
-    const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
-    this.filterState = (1 - this.filterAlpha) * delayedSample + this.filterAlpha * this.filterState;
-    const maxFeedbackGain = 0.999;
-    const feedbackSample = this.filterState * maxFeedbackGain * this._resonance;
-    const feedbackSignal = input + feedbackSample;
-    const modDelay = this.getModulatedDelay();
-    const modDelayInt = Math.floor(modDelay);
-    const modFrac = modDelay - modDelayInt;
-    const modReadIndex1 = (this.writeIndex - modDelayInt + this.bufferSize) % this.bufferSize;
-    const modReadIndex2 = (modReadIndex1 - 1 + this.bufferSize) % this.bufferSize;
-    const modDelayedSample1 = this.buffer[modReadIndex1];
-    const modDelayedSample2 = this.buffer[modReadIndex2];
-    const modDelayedSample = modDelayedSample1 * (1 - modFrac) + modDelayedSample2 * modFrac;
-    this.buffer[this.writeIndex] = feedbackSignal;
-    this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
-    const output = feedbackSignal * (1 - this.FLANGER_MIX) + modDelayedSample * this.FLANGER_MIX;
-    return this.removeDC(output);
-  }
-  clear() {
-    this.buffer.fill(0);
-    this.writeIndex = 0;
-    this.filterState = 0;
-    this.phase = 0;
-    this.x1 = 0;
-    this.x2 = 0;
-    this.y1 = 0;
-    this.y2 = 0;
-  }
-};
-
-// src/audio/dsp/resonator-bank.ts
-var AllPassFilter = class {
-  constructor(maxDelaySamples, initialDelay, feedback) {
-    __publicField(this, "buffer");
-    __publicField(this, "bufferSize");
-    __publicField(this, "writeIndex", 0);
-    __publicField(this, "feedback");
-    __publicField(this, "delayLength");
-    this.bufferSize = Math.max(1, Math.floor(maxDelaySamples));
-    this.buffer = new Float32Array(this.bufferSize);
-    this.feedback = feedback;
-    this.delayLength = Math.min(this.bufferSize, Math.floor(initialDelay));
-  }
-  setDelayLength(samples) {
-    this.delayLength = Math.min(this.bufferSize, Math.max(1, Math.floor(samples)));
-    this.writeIndex = this.writeIndex % this.delayLength;
-  }
-  setFeedback(value) {
-    this.feedback = Math.max(-0.999, Math.min(0.999, value));
-  }
-  process(input) {
-    const readIndex = (this.writeIndex - this.delayLength + this.bufferSize) % this.bufferSize;
-    const bufSample = this.buffer[readIndex];
-    const output = -input + bufSample;
-    this.buffer[this.writeIndex] = input + bufSample * this.feedback;
-    this.writeIndex = (this.writeIndex + 1) % this.delayLength;
-    return output;
-  }
-  clear() {
-    this.buffer.fill(0);
-    this.writeIndex = 0;
-  }
-};
-var ResonatorBank = class {
-  constructor(sampleRate2, maxDelayMs = 100, blockSize = 128) {
-    __publicField(this, "sampleRate");
-    __publicField(this, "resonators", []);
-    // DC blocker state
-    __publicField(this, "x1", 0);
-    __publicField(this, "x2", 0);
-    __publicField(this, "y1", 0);
-    __publicField(this, "y2", 0);
-    __publicField(this, "R", 0.999);
-    // Pole radius for DC blocking
-    __publicField(this, "_cut", 1e4);
-    __publicField(this, "_resonance", 1);
-    __publicField(this, "is_enabled", true);
-    __publicField(this, "filterAlpha", 0);
-    __publicField(this, "bufferSize");
-    __publicField(this, "MAX_RESONATORS", 3);
-    // Slightly less than 1.0 to prevent runaway feedback
-    __publicField(this, "maxFeedbackGain", 0.999);
-    __publicField(this, "resonatorOutputs");
-    __publicField(this, "outputBuffer");
-    __publicField(this, "blockSize");
-    // We provide a wide variety of presets with different resonances and dispersion.
-    __publicField(this, "presets", [
-      {
-        name: "string",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 2, level: 0.4 },
-          { ratio: 3, level: 0.3 }
-        ],
-        cut: 8e3,
-        resonance: 1,
-        allpassDelay: 50,
-        allpassFeedback: 0.5
-      },
-      {
-        name: "simple-string",
-        resonators: [
-          { ratio: 1, level: 1 }
-        ],
-        cut: 8e3,
-        resonance: 1,
-        allpassDelay: 40,
-        allpassFeedback: 0.4
-      },
-      {
-        name: "piano-like",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 2, level: 0.5 }
-        ],
-        cut: 9e3,
-        resonance: 1,
-        allpassDelay: 60,
-        allpassFeedback: 0.3
-      },
-      {
-        name: "bell",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 2.5, level: 0.7 },
-          { ratio: 5.1, level: 0.3 }
-        ],
-        cut: 1e4,
-        resonance: 1,
-        allpassDelay: 100,
-        allpassFeedback: 0.6
-      },
-      {
-        name: "harp",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 2.04, level: 0.6 },
-          { ratio: 3.1, level: 0.3 }
-        ],
-        cut: 7e3,
-        resonance: 1,
-        allpassDelay: 45,
-        allpassFeedback: 0.45
-      },
-      {
-        name: "guitar",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 2.02, level: 0.5 },
-          { ratio: 3.99, level: 0.2 }
-        ],
-        cut: 8e3,
-        resonance: 1,
-        allpassDelay: 70,
-        allpassFeedback: 0.5
-      },
-      {
-        name: "marimba",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 2.95, level: 0.4 }
-        ],
-        cut: 6e3,
-        resonance: 1,
-        allpassDelay: 30,
-        allpassFeedback: 0.35
-      },
-      {
-        name: "wooden",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 1.58, level: 0.5 },
-          { ratio: 2.46, level: 0.3 }
-        ],
-        cut: 6e3,
-        resonance: 1,
-        allpassDelay: 80,
-        allpassFeedback: 0.55
-      },
-      {
-        name: "glass",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 2.414, level: 0.6 },
-          { ratio: 3.414, level: 0.4 }
-        ],
-        cut: 12e3,
-        resonance: 1,
-        allpassDelay: 90,
-        allpassFeedback: 0.4
-      },
-      {
-        name: "percussion",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 1.33, level: 0.7 }
-        ],
-        cut: 5e3,
-        resonance: 1,
-        allpassDelay: 20,
-        allpassFeedback: 0.5
-      },
-      {
-        name: "drone",
-        resonators: [
-          { ratio: 1, level: 1 },
-          { ratio: 1.2, level: 0.8 },
-          { ratio: 2.5, level: 0.6 }
-        ],
-        cut: 5e3,
-        resonance: 1,
-        allpassDelay: 100,
-        allpassFeedback: 0.5
-      }
-    ]);
-    this.sampleRate = sampleRate2;
-    this.bufferSize = Math.floor(maxDelayMs / 1e3 * sampleRate2);
-    this.blockSize = blockSize;
-    this.outputBuffer = new Float32Array(blockSize);
-    this.resonatorOutputs = Array(this.MAX_RESONATORS).fill(null).map(() => new Float32Array(blockSize));
-    const defaultAllpassDelay = 50;
-    const defaultAllpassFeedback = 0.5;
-    for (let i = 0; i < this.MAX_RESONATORS; i++) {
-      const buffer = new Float32Array(this.bufferSize);
-      const allpass = new AllPassFilter(this.bufferSize, defaultAllpassDelay, defaultAllpassFeedback);
-      this.resonators.push({
-        ratio: i === 0 ? 1 : i + 1,
-        level: i === 0 ? 1 : 0,
-        enabled: i === 0,
-        delaySamples: 0,
-        buffer,
-        writeIndex: 0,
-        filterState: 0,
-        allpass
-      });
-    }
-    this.clear();
-    this.cut = this._cut;
-  }
-  removeDC(input) {
-    const output = input - 2 * this.x1 + this.x2 + 2 * this.R * this.y1 - this.R * this.R * this.y2;
-    this.x2 = this.x1;
-    this.x1 = input;
-    this.y2 = this.y1;
-    this.y1 = output;
-    return output / (1 + 2 * this.R + this.R * this.R);
-  }
-  setFrequency(frequency) {
-    for (let i = 0; i < this.MAX_RESONATORS; i++) {
-      const r = this.resonators[i];
-      if (!r.enabled) continue;
-      const freq = frequency * r.ratio;
-      let delaySamples = this.sampleRate / freq;
-      if (delaySamples >= this.bufferSize) {
-        delaySamples = this.bufferSize - 1;
-      }
-      r.delaySamples = delaySamples;
-    }
-  }
-  updateState(state) {
-    this.cut = state.cut;
-    this.is_enabled = state.is_enabled;
-    this.resonance = state.resonance;
-  }
-  set cut(cut) {
-    this._cut = Math.max(20, Math.min(cut, this.sampleRate / 2));
-    const omega = 2 * Math.PI * this._cut / this.sampleRate;
-    this.filterAlpha = Math.exp(-omega);
-  }
-  get cut() {
-    return this._cut;
-  }
-  set resonance(resonance) {
-    this._resonance = Math.max(0, Math.min(resonance, 1));
-  }
-  get resonance() {
-    return this._resonance;
-  }
-  setResonatorEnabled(index, enabled) {
-    if (index === 0 && !enabled) return;
-    if (index >= 0 && index < this.MAX_RESONATORS) {
-      this.resonators[index].enabled = enabled;
-    }
-  }
-  setResonatorParams(index, ratio, level, enabled) {
-    if (index < 0 || index >= this.MAX_RESONATORS) return;
-    const r = this.resonators[index];
-    r.ratio = ratio;
-    r.level = level;
-    if (enabled !== void 0 && (index !== 0 || enabled)) {
-      r.enabled = enabled;
-    }
-  }
-  setPreset(name) {
-    const preset = this.presets.find((p) => p.name.toLowerCase() === name.toLowerCase());
-    if (!preset) {
-      console.log("preset " + name + " not found");
-      return;
-    }
-    console.log("set preset:", name);
-    for (let i = 0; i < this.MAX_RESONATORS; i++) {
-      const r = this.resonators[i];
-      r.enabled = false;
-      r.level = 0;
-      r.ratio = i + 1;
-    }
-    const pRes = preset.resonators;
-    for (let i = 0; i < pRes.length && i < this.MAX_RESONATORS; i++) {
-      const pr = pRes[i];
-      const r = this.resonators[i];
-      r.ratio = pr.ratio;
-      r.level = pr.level;
-      r.enabled = pr.enabled !== void 0 ? pr.enabled : i === 0 || pr.level > 0;
-    }
-    if (preset.cut !== void 0) this.cut = preset.cut;
-    if (preset.resonance !== void 0) this.resonance = preset.resonance;
-    const allpassDelay = preset.allpassDelay ?? 50;
-    const allpassFeedback = preset.allpassFeedback ?? 0.5;
-    for (let i = 0; i < this.MAX_RESONATORS; i++) {
-      this.resonators[i].allpass.setDelayLength(allpassDelay);
-      this.resonators[i].allpass.setFeedback(allpassFeedback);
-    }
-  }
-  process(inputBlock) {
-    if (!this.is_enabled) return inputBlock;
-    if (inputBlock.length !== this.blockSize) {
-      throw new Error(`Input block size ${inputBlock.length} does not match configured block size ${this.blockSize}`);
-    }
-    this.outputBuffer.fill(0);
-    this.resonatorOutputs.forEach((buffer) => buffer.fill(0));
-    for (let i = 0; i < this.MAX_RESONATORS; i++) {
-      const r = this.resonators[i];
-      if (!r.enabled || r.level <= 0) continue;
-      const resonatorOutput = this.resonatorOutputs[i];
-      const delaySamples = r.delaySamples;
-      const delayInt = Math.floor(delaySamples);
-      const frac = delaySamples - delayInt;
-      for (let n = 0; n < this.blockSize; n++) {
-        const readIndex1 = (r.writeIndex - delayInt + this.bufferSize) % this.bufferSize;
-        const readIndex2 = (readIndex1 - 1 + this.bufferSize) % this.bufferSize;
-        const delayedSample1 = r.buffer[readIndex1];
-        const delayedSample2 = r.buffer[readIndex2];
-        const delayedSample = delayedSample1 * (1 - frac) + delayedSample2 * frac;
-        r.filterState = delayedSample + (r.filterState - delayedSample) * this.filterAlpha;
-        const feedbackSample = r.filterState * this.maxFeedbackGain * this._resonance;
-        const feedbackSignal = inputBlock[n] + feedbackSample;
-        const dispersed = r.allpass.process(feedbackSignal);
-        r.buffer[r.writeIndex] = dispersed;
-        r.writeIndex = (r.writeIndex + 1) % this.bufferSize;
-        resonatorOutput[n] = dispersed * r.level;
-      }
-    }
-    for (let n = 0; n < this.blockSize; n++) {
-      let mixedSample = 0;
-      for (let i = 0; i < this.MAX_RESONATORS; i++) {
-        mixedSample += this.resonatorOutputs[i][n];
-      }
-      this.outputBuffer[n] = this.removeDC(mixedSample);
-    }
-    return this.outputBuffer;
-  }
-  clear() {
-    for (let i = 0; i < this.MAX_RESONATORS; i++) {
-      const r = this.resonators[i];
-      r.buffer.fill(0);
-      r.writeIndex = 0;
-      r.filterState = 0;
-      r.allpass.clear();
-    }
-    this.x1 = 0;
-    this.x2 = 0;
-    this.y1 = 0;
-    this.y2 = 0;
-  }
-};
+// public/wasm/audio_processor.js
+var wasm2;
+var cachedTextDecoder2 = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }) : { decode: () => {
+  throw Error("TextDecoder not available");
+} };
+if (typeof TextDecoder !== "undefined") {
+  cachedTextDecoder2.decode();
+}
+var PortId2 = Object.freeze({
+  AudioInput0: 0,
+  "0": "AudioInput0",
+  AudioInput1: 1,
+  "1": "AudioInput1",
+  AudioInput2: 2,
+  "2": "AudioInput2",
+  AudioInput3: 3,
+  "3": "AudioInput3",
+  AudioOutput0: 4,
+  "4": "AudioOutput0",
+  AudioOutput1: 5,
+  "5": "AudioOutput1",
+  AudioOutput2: 6,
+  "6": "AudioOutput2",
+  AudioOutput3: 7,
+  "7": "AudioOutput3",
+  Gate: 8,
+  "8": "Gate",
+  Frequency: 9,
+  "9": "Frequency",
+  FrequencyMod: 10,
+  "10": "FrequencyMod",
+  PhaseMod: 11,
+  "11": "PhaseMod",
+  ModIndex: 12,
+  "12": "ModIndex",
+  CutoffMod: 13,
+  "13": "CutoffMod",
+  ResonanceMod: 14,
+  "14": "ResonanceMod",
+  GainMod: 15,
+  "15": "GainMod",
+  EnvelopeMod: 16,
+  "16": "EnvelopeMod"
+});
+var AudioProcessorFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm2.__wbg_audioprocessor_free(ptr >>> 0, 1));
+var ConnectionIdFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm2.__wbg_connectionid_free(ptr >>> 0, 1));
+var EnvelopeConfigFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm2.__wbg_envelopeconfig_free(ptr >>> 0, 1));
+var NodeIdFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm2.__wbg_nodeid_free(ptr >>> 0, 1));
 
 // src/audio/worklets/synth-worklet.ts
-var WasmAudioProcessor = class extends AudioWorkletProcessor {
+var SynthAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
     super();
-    __publicField(this, "envelopes", /* @__PURE__ */ new Map());
-    __publicField(this, "oscillators", /* @__PURE__ */ new Map());
-    __publicField(this, "resonatorBank", new ResonatorBank(sampleRate));
-    __publicField(this, "lastGate", 0);
-    __publicField(this, "combFilter", new FlangerCombFilter(sampleRate, 100));
-    __publicField(this, "bank", new WaveTableBank());
-    __publicField(this, "noise", new NoiseGenerator(sampleRate));
-    __publicField(this, "noiseBuffer", new Float32Array(128));
-    this.oscillators.set(
-      0,
-      new WaveTableOscillator(this.bank, "sawtooth", sampleRate)
-    );
-    this.oscillators.set(
-      1,
-      new WaveTableOscillator(this.bank, "square", sampleRate)
-    );
-    this.envelopes.set(0, new Envelope(sampleRate));
-    this.envelopes.set(1, new Envelope(sampleRate));
-    this.noise.setNoiseType(2 /* Brownian */);
-    this.port.onmessage = async (event) => {
-      if (event.data.type === "initialize") {
-      }
-      if (event.data.type === "updateEnvelope") {
-        const msg = event.data;
-        const envelope = this.envelopes.get(msg.id);
-        if (envelope) {
-          envelope.updateConfig(msg.config);
-        } else {
-          this.envelopes.set(msg.id, new Envelope(sampleRate, msg.config));
+    __publicField(this, "ready", false);
+    __publicField(this, "processor", null);
+    __publicField(this, "numVoices", 8);
+    __publicField(this, "macroPhase", 0);
+    this.port.onmessage = (event) => {
+      if (event.data.type === "wasm-binary") {
+        const { wasmBytes } = event.data;
+        initSync({ module: new Uint8Array(wasmBytes) });
+        this.processor = new AudioProcessor();
+        this.processor.init(sampleRate, this.numVoices);
+        for (let i = 0; i < this.numVoices; i++) {
+          this.setupFMVoice(i);
         }
-      } else if (event.data.type === "updateNoise") {
-        const state = event.data.newState;
-        this.noise.updateState(state);
-      } else if (event.data.type === "updateOscillator") {
-        const state = event.data.newState;
-        const oscillator = this.oscillators.get(state.id);
-        if (oscillator) {
-          oscillator.updateState(state);
-        } else {
-          console.error("oscillator doesnt exist: ", state);
-        }
-      } else if (event.data.type === "updateFilter") {
-        const state = event.data.newState;
-        if (this.resonatorBank) {
-        } else {
-          console.error("oscillator doesnt exist: ", state);
-        }
+        this.ready = true;
       }
     };
-    this.resonatorBank.setPreset("marimba");
     this.port.postMessage({ type: "ready" });
   }
   static get parameterDescriptors() {
-    return [
-      {
-        name: "frequency",
-        defaultValue: 440,
-        minValue: 20,
-        maxValue: 2e4,
-        automationRate: "a-rate"
-      },
-      {
-        name: "gain",
-        defaultValue: 0.5,
-        minValue: 0,
-        maxValue: 1,
-        automationRate: "k-rate"
-      },
-      {
-        name: "detune",
-        defaultValue: 0,
-        minValue: -1200,
-        maxValue: 1200,
-        automationRate: "k-rate"
-      },
-      {
-        name: "gate",
-        defaultValue: 0,
-        minValue: 0,
-        maxValue: 1,
-        automationRate: "a-rate"
-      }
-    ];
-  }
-  getFrequency(baseFreq, detune) {
-    return baseFreq * Math.pow(2, detune / 1200);
-  }
-  softClip(sample) {
-    const threshold = 0.95;
-    if (sample > threshold) {
-      return threshold + (sample - threshold) / (1 + Math.pow((sample - threshold) / (1 - threshold), 2));
-    } else if (sample < -threshold) {
-      return -threshold + (sample + threshold) / (1 + Math.pow((sample + threshold) / (1 - threshold), 2));
-    } else {
-      return sample;
-    }
-  }
-  process(_inputs, outputs, parameters) {
-    const output = outputs[0];
-    const frequency = parameters.frequency;
-    const gate = parameters.gate;
-    const bufferSize = output[0].length;
-    this.noise.process(1, 1, 1, this.noiseBuffer);
-    this.resonatorBank.setFrequency(frequency[0]);
-    for (let i = 0; i < bufferSize; ++i) {
-      const freq = frequency[i] ?? frequency[0];
-      const gateValue = gate[i] ?? gate[0];
-      if (gateValue > 0 && this.lastGate <= 0) {
-        this.combFilter.clear();
-        this.combFilter.setFrequency(freq);
-        this.oscillators.forEach((oscillator, _id) => {
-          if (oscillator.hardSync) {
-            oscillator.reset();
-          }
+    const parameters = [];
+    const numVoices = 8;
+    for (let i = 0; i < numVoices; i++) {
+      parameters.push(
+        {
+          name: `gate_${i}`,
+          defaultValue: 0,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: "a-rate"
+        },
+        {
+          name: `frequency_${i}`,
+          defaultValue: 440,
+          minValue: 20,
+          maxValue: 2e4,
+          automationRate: "a-rate"
+        },
+        {
+          name: `gain_${i}`,
+          defaultValue: 1,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: "k-rate"
+        }
+      );
+      for (let m = 0; m < 4; m++) {
+        parameters.push({
+          name: `macro_${i}_${m}`,
+          defaultValue: 0,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: "a-rate"
         });
       }
-      const envelope0Value = this.envelopes.get(0).process(gateValue);
-      this.noiseBuffer[i] *= envelope0Value;
-      this.lastGate = gateValue;
     }
-    const outputBuf = this.resonatorBank.process(this.noiseBuffer);
-    for (let i = 0; i < bufferSize; ++i) {
-      outputBuf[i] *= 0.25;
+    parameters.push({
+      name: "master_gain",
+      defaultValue: 1,
+      minValue: 0,
+      maxValue: 1,
+      automationRate: "k-rate"
+    });
+    return parameters;
+  }
+  setupFMVoice(voiceIndex) {
+    const { carrierId, modulatorId, envelopeId } = this.processor.create_fm_voice(voiceIndex);
+    this.processor.update_envelope(
+      voiceIndex,
+      envelopeId,
+      0.01,
+      // attack
+      0.2,
+      // decay
+      0.5,
+      // sustain
+      0.5
+      // release
+    );
+    this.processor.connect_voice_nodes(
+      voiceIndex,
+      envelopeId,
+      PortId2.AudioOutput0,
+      carrierId,
+      PortId2.GainMod,
+      1
+    );
+    this.processor.connect_voice_nodes(
+      voiceIndex,
+      modulatorId,
+      PortId2.AudioOutput0,
+      carrierId,
+      PortId2.PhaseMod,
+      1
+    );
+    console.log("Setting up macro connection:", {
+      voiceIndex,
+      carrierId,
+      targetPort: PortId2.ModIndex
+    });
+    this.processor.connect_macro(
+      voiceIndex,
+      0,
+      // first macro
+      carrierId,
+      PortId2.ModIndex,
+      0.5
+    );
+    return { carrierId, modulatorId, envelopeId };
+  }
+  process(_inputs, outputs, parameters) {
+    if (!this.ready || !this.processor) return true;
+    const output = outputs[0];
+    if (!output) return true;
+    const outputLeft = output[0];
+    const outputRight = output[1] || output[0];
+    const gateArray = new Float32Array(this.numVoices);
+    const freqArray = new Float32Array(this.numVoices);
+    const gainArray = new Float32Array(this.numVoices);
+    const macroArray = new Float32Array(this.numVoices * 4 * 128);
+    const blocksPerSecond = sampleRate / 128;
+    const totalBlocksForCycle = blocksPerSecond * 5;
+    const normalizedPhase = this.macroPhase % totalBlocksForCycle / totalBlocksForCycle;
+    let currentValue;
+    if (normalizedPhase < 0.5) {
+      currentValue = normalizedPhase * 2;
+    } else {
+      currentValue = 2 * (1 - normalizedPhase);
     }
-    for (let channel = 0; channel < output.length; ++channel) {
-      output[channel].set(outputBuf);
+    for (let i = 0; i < this.numVoices; i++) {
+      gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
+      freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
+      gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
+      const voiceOffset = i * 4 * 128;
+      for (let m = 0; m < 4; m++) {
+        const macroOffset = voiceOffset + m * 128;
+        if (m === 0) {
+          for (let j = 0; j < 128; j++) {
+            macroArray[macroOffset + j] = currentValue;
+          }
+        } else {
+          for (let j = 0; j < 128; j++) {
+            macroArray[macroOffset + j] = 0;
+          }
+        }
+      }
     }
+    this.macroPhase += 1;
+    const masterGain = parameters.master_gain?.[0] ?? 1;
+    this.processor.process_audio(
+      gateArray,
+      freqArray,
+      gainArray,
+      macroArray,
+      masterGain,
+      outputLeft,
+      outputRight
+    );
     return true;
   }
 };
-registerProcessor("synth-audio-processor", WasmAudioProcessor);
+registerProcessor("synth-audio-processor", SynthAudioProcessor);

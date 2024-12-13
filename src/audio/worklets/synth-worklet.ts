@@ -1,233 +1,259 @@
 /// <reference lib="webworker" />
+import './textencoder.js';
 
-import { type FilterState } from 'src/audio/dsp/filter-state';
-
-import Envelope, { type EnvelopeMessage } from '../dsp/envelope';
-import { WaveTableBank } from '../wavetable/wavetable-bank';
 import {
-    type OscillatorState,
-    WaveTableOscillator,
-} from '../wavetable/wavetable-oscillator';
-import NoiseGenerator, { type NoiseState, NoiseType } from '../dsp/noise-generator';
-import FlangerCombFilter from '../dsp/flanger-comb-filter';
-import ResonatorBank from '../dsp/resonator-bank';
-
-declare const AudioWorkletProcessor: {
-    prototype: AudioWorkletProcessor;
-    new(): AudioWorkletProcessor;
-};
-
-declare const registerProcessor: (
-    name: string,
-    processorCtor: typeof AudioWorkletProcessor,
-) => void;
+  AudioProcessor,
+  initSync,
+} from '../../../rust-wasm/pkg/audio_processor.js';
+import { PortId } from 'app/public/wasm/audio_processor.js';
 
 declare const sampleRate: number;
 
-interface AudioWorkletProcessor {
+declare global {
+  interface AudioWorkletNodeOptions {
+    numberOfInputs?: number;
+    numberOfOutputs?: number;
+    outputChannelCount?: number[];
+    parameterData?: Record<string, number>;
+  }
+
+  class AudioWorkletProcessor {
+    constructor(options?: Partial<AudioWorkletNodeOptions>);
     readonly port: MessagePort;
     process(
-        inputs: Float32Array[][],
-        outputs: Float32Array[][],
-        parameters: Record<string, Float32Array>,
+      inputs: Float32Array[][],
+      outputs: Float32Array[][],
+      parameters: Record<string, Float32Array>,
     ): boolean;
+  }
+
+  function registerProcessor(
+    name: string,
+    processorCtor: typeof AudioWorkletProcessor,
+  ): void;
 }
 
-interface AudioParamDescriptor {
-    name: string;
-    defaultValue?: number;
-    minValue?: number;
-    maxValue?: number;
-    automationRate?: 'a-rate' | 'k-rate';
-}
+class SynthAudioProcessor extends AudioWorkletProcessor {
+  private ready: boolean = false;
+  private processor: AudioProcessor | null = null;
+  private numVoices: number = 8;
+  private macroPhase: number = 0;
 
-class WasmAudioProcessor extends AudioWorkletProcessor {
-    private envelopes: Map<number, Envelope> = new Map();
-    private oscillators: Map<number, WaveTableOscillator> = new Map();
-    private resonatorBank = new ResonatorBank(sampleRate);
-    private lastGate: number = 0;
-    private combFilter = new FlangerCombFilter(sampleRate, 100);
-    private bank = new WaveTableBank();
-    private noise = new NoiseGenerator(sampleRate);
-    private noiseBuffer = new Float32Array(128);
-    static get parameterDescriptors(): AudioParamDescriptor[] {
-        return [
-            {
-                name: 'frequency',
-                defaultValue: 440,
-                minValue: 20,
-                maxValue: 20000,
-                automationRate: 'a-rate',
-            },
-            {
-                name: 'gain',
-                defaultValue: 0.5,
-                minValue: 0,
-                maxValue: 1,
-                automationRate: 'k-rate',
-            },
-            {
-                name: 'detune',
-                defaultValue: 0,
-                minValue: -1200,
-                maxValue: 1200,
-                automationRate: 'k-rate',
-            },
-            {
-                name: 'gate',
-                defaultValue: 0,
-                minValue: 0,
-                maxValue: 1,
-                automationRate: 'a-rate',
-            },
-        ];
+  static get parameterDescriptors() {
+    const parameters = [];
+    const numVoices = 8; // Must match the number in constructor
+
+    // Create parameters for each voice
+    for (let i = 0; i < numVoices; i++) {
+      // Standard voice parameters
+      parameters.push(
+        {
+          name: `gate_${i}`,
+          defaultValue: 0,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: 'a-rate',
+        },
+        {
+          name: `frequency_${i}`,
+          defaultValue: 440,
+          minValue: 20,
+          maxValue: 20000,
+          automationRate: 'a-rate',
+        },
+        {
+          name: `gain_${i}`,
+          defaultValue: 1,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: 'k-rate',
+        },
+      );
+
+      // Add macro parameters for each voice
+      for (let m = 0; m < 4; m++) {
+        parameters.push({
+          name: `macro_${i}_${m}`,
+          defaultValue: 0,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: 'a-rate',
+        });
+      }
     }
 
-    constructor() {
-        super();
-        this.oscillators.set(
-            0,
-            new WaveTableOscillator(this.bank, 'sawtooth', sampleRate),
-        );
-        this.oscillators.set(
-            1,
-            new WaveTableOscillator(this.bank, 'square', sampleRate),
-        );
-        this.envelopes.set(0, new Envelope(sampleRate));
-        this.envelopes.set(1, new Envelope(sampleRate));
-        this.noise.setNoiseType(NoiseType.Brownian);
-        this.port.onmessage = async (event: MessageEvent) => {
-            if (event.data.type === 'initialize') {
-            }
+    parameters.push({
+      name: 'master_gain',
+      defaultValue: 1,
+      minValue: 0,
+      maxValue: 1,
+      automationRate: 'k-rate',
+    });
 
-            if (event.data.type === 'updateEnvelope') {
-                const msg = event.data as EnvelopeMessage;
-                const envelope = this.envelopes.get(msg.id);
-                if (envelope) {
-                    envelope.updateConfig(msg.config);
-                } else {
-                    this.envelopes.set(msg.id, new Envelope(sampleRate, msg.config));
-                }
-            }
-            else if (event.data.type === 'updateNoise') {
-                const state = event.data.newState as NoiseState;
-                this.noise.updateState(state);
-            }
-            else if (event.data.type === 'updateOscillator') {
-                const state = event.data.newState as OscillatorState;
-                const oscillator = this.oscillators.get(state.id);
-                if (oscillator) {
-                    oscillator.updateState(state);
-                } else {
-                    console.error('oscillator doesnt exist: ', state);
-                }
-            } else if (event.data.type === 'updateFilter') {
-                const state = event.data.newState as FilterState;
-                //const oscillator = this.oscillators.get(state.id);
-                if (this.resonatorBank) {
-                    //this.resonatorBank.updateState(state);
-                } else {
-                    console.error('oscillator doesnt exist: ', state);
-                }
-            }
-        };
-        this.resonatorBank.setPreset('marimba');
-        this.port.postMessage({ type: 'ready' });
+    return parameters;
+  }
+
+  constructor() {
+    super();
+    this.port.onmessage = (event: MessageEvent) => {
+      if (event.data.type === 'wasm-binary') {
+        const { wasmBytes } = event.data;
+        initSync({ module: new Uint8Array(wasmBytes) });
+        this.processor = new AudioProcessor();
+        this.processor.init(sampleRate, this.numVoices);
+
+        for (let i = 0; i < this.numVoices; i++) {
+          this.setupFMVoice(i);
+        }
+
+        this.ready = true;
+      }
+    };
+    this.port.postMessage({ type: 'ready' });
+  }
+
+  setupFMVoice(voiceIndex: number) {
+    // Create nodes and get their IDs
+    const { carrierId, modulatorId, envelopeId } =
+      this.processor!.create_fm_voice(voiceIndex);
+
+    // Set up envelope parameters
+    this.processor!.update_envelope(
+      voiceIndex,
+      envelopeId,
+      0.01, // attack
+      0.2, // decay
+      0.5, // sustain
+      0.5, // release
+    );
+
+    // Connect envelope to carrier's gain
+    this.processor!.connect_voice_nodes(
+      voiceIndex,
+      envelopeId,
+      PortId.AudioOutput0,
+      carrierId,
+      PortId.GainMod,
+      1.0,
+    );
+
+    // Connect envelope to carrier's gain
+    // this.processor!.connect_voice_nodes(
+    //     voiceIndex,
+    //     envelopeId,
+    //     PortId.AudioOutput0,
+    //     carrierId,
+    //     PortId.GainMod,
+    //     1.0
+    // );
+
+    // Connect modulator to carrier's phase mod
+    this.processor!.connect_voice_nodes(
+      voiceIndex,
+      modulatorId,
+      PortId.AudioOutput0,
+      carrierId,
+      PortId.PhaseMod,
+      1.0,
+    );
+
+    console.log('Setting up macro connection:', {
+      voiceIndex,
+      carrierId,
+      targetPort: PortId.ModIndex,
+    });
+
+    // Set up mod index macro
+    this.processor!.connect_macro(
+      voiceIndex,
+      0, // first macro
+      carrierId,
+      PortId.ModIndex,
+      0.5,
+    );
+
+    return { carrierId, modulatorId, envelopeId };
+  }
+
+  override process(
+    _inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>,
+  ): boolean {
+    if (!this.ready || !this.processor) return true;
+
+    const output = outputs[0];
+    if (!output) return true;
+
+    const outputLeft = output[0];
+    const outputRight = output[1] || output[0];
+
+    // Create parameter arrays
+    const gateArray = new Float32Array(this.numVoices);
+    const freqArray = new Float32Array(this.numVoices);
+    const gainArray = new Float32Array(this.numVoices);
+    const macroArray = new Float32Array(this.numVoices * 4 * 128);
+
+    // Calculate modulation
+    const blocksPerSecond = sampleRate / 128;
+    const totalBlocksForCycle = blocksPerSecond * 5; // 5 second cycle
+
+    // Calculate normalized phase (0 to 1)
+    const normalizedPhase =
+      (this.macroPhase % totalBlocksForCycle) / totalBlocksForCycle;
+
+    // Create a triangular waveform (0 -> 1 -> 0)
+    let currentValue: number;
+    if (normalizedPhase < 0.5) {
+      // Ramp up from 0 to 1
+      currentValue = normalizedPhase * 2;
+    } else {
+      // Ramp down from 1 to 0
+      currentValue = 2 * (1 - normalizedPhase);
     }
 
-    private getFrequency(baseFreq: number, detune: number): number {
-        return baseFreq * Math.pow(2, detune / 1200);
-    }
+    for (let i = 0; i < this.numVoices; i++) {
+      gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
+      freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
+      gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
 
-    private softClip(sample: number): number {
-        const threshold = 0.95; // Threshold before clipping starts
-        if (sample > threshold) {
-            return (
-                threshold +
-                (sample - threshold) /
-                (1 + Math.pow((sample - threshold) / (1 - threshold), 2))
-            );
-        } else if (sample < -threshold) {
-            return (
-                -threshold +
-                (sample + threshold) /
-                (1 + Math.pow((sample + threshold) / (1 - threshold), 2))
-            );
+      // Calculate base offset for this voice's macros
+      const voiceOffset = i * 4 * 128;
+
+      // Fill macro values
+      for (let m = 0; m < 4; m++) {
+        const macroOffset = voiceOffset + m * 128;
+
+        // For the first voice, first macro, we apply the ramp
+        if (m === 0) {
+          for (let j = 0; j < 128; j++) {
+            macroArray[macroOffset + j] = currentValue;
+          }
         } else {
-            return sample;
+          // Other macros stay at 0
+          for (let j = 0; j < 128; j++) {
+            macroArray[macroOffset + j] = 0.0;
+          }
         }
+      }
     }
 
-    override process(
-        _inputs: Float32Array[][],
-        outputs: Float32Array[][],
-        parameters: Record<string, Float32Array>,
-    ): boolean {
-        const output = outputs[0]! as Float32Array[];
-        const frequency = parameters.frequency as Float32Array;
-        //const gain = parameters.gain as Float32Array;
-        //const detune = parameters.detune as Float32Array;
-        const gate = parameters.gate as Float32Array;
+    this.macroPhase += 1;
 
-        const bufferSize = output[0]!.length;
-        //const gainValue = gain[0] as number;
-        //const detuneValue = detune[0] as number;
+    const masterGain = parameters.master_gain?.[0] ?? 1;
 
-        this.noise.process(1.0, 1.0, 1.0, this.noiseBuffer);
-        this.resonatorBank.setFrequency(frequency[0]!);
-        for (let i = 0; i < bufferSize; ++i) {
-            const freq = frequency[i] ?? (frequency[0] as number);
-            const gateValue = gate[i] ?? (gate[0] as number);
+    this.processor.process_audio(
+      gateArray,
+      freqArray,
+      gainArray,
+      macroArray,
+      masterGain,
+      outputLeft!,
+      outputRight!,
+    );
 
-            // Reset string on new note
-            if (gateValue > 0 && this.lastGate <= 0) {
-                this.combFilter.clear(); // Clear buffer for new note
-                this.combFilter.setFrequency(freq);
-                // this.combFilter.feedback = 0.999;
-                // this.combFilter.dampingFactor = 0.4;
-                this.oscillators.forEach((oscillator, _id) => {
-                    if (oscillator.hardSync) {
-                        oscillator.reset();
-                    }
-                });
-            }
-            // Get envelope value
-            const envelope0Value = this.envelopes.get(0)!.process(gateValue);
-            //const envelope1Value = this.envelopes.get(1)!.process(gateValue);
-            // let oscillatorSample = 0.0;
-            // this.oscillators.forEach((oscillator, _id) => {
-            //     oscillatorSample += oscillator.process(
-            //         this.getFrequency(freq, detuneValue),
-            //     );
-            // });
-            //
-            //oscillatorSample *= envelope0Value;
-            // oscillatorSample = this.noiseBuffer[i]! * envelope0Value;
-            // this.resonatorBank.setFrequency(freq);
-            // let sample = this.resonatorBank.process(oscillatorSample);
-            // sample = this.softClip(sample);
-            // // Copy to all channels
-
-
-            this.noiseBuffer[i]! *= envelope0Value;
-
-            // for (let channel = 0; channel < output.length; ++channel) {
-            //     output[channel]![i] = sample * envelope1Value;
-            // }
-
-            this.lastGate = gateValue;
-        }
-        const outputBuf = this.resonatorBank.process(this.noiseBuffer);
-        for (let i = 0; i < bufferSize; ++i) {
-            outputBuf[i]! *= 0.25;
-        }
-        for (let channel = 0; channel < output.length; ++channel) {
-            output[channel]!.set(outputBuf);
-        }
-
-
-        return true;
-    }
+    return true;
+  }
 }
 
-registerProcessor('synth-audio-processor', WasmAudioProcessor);
+registerProcessor('synth-audio-processor', SynthAudioProcessor);

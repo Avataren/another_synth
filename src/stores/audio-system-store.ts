@@ -5,7 +5,7 @@ import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
 import { type FilterState } from 'src/audio/dsp/filter-state';
 import Instrument from 'src/audio/instrument';
 import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
-import { loadWasmModule } from 'src/utils/wasm-loader';
+// import { loadWasmModule } from 'src/utils/wasm-loader';
 import { NoiseType, type NoiseState } from 'src/audio/dsp/noise-generator';
 interface AudioParamDescriptor {
   name: string;
@@ -14,8 +14,8 @@ interface AudioParamDescriptor {
   maxValue?: number;
   automationRate?: 'a-rate' | 'k-rate';
 }
-const max_instruments = 1;
-const max_voices = 8 * max_instruments;
+// const max_instruments = 1;
+// const max_voices = 8 * max_instruments;
 export interface WasmMemoryPointers {
   audioBufferPtr: number;
   envelope1Ptr: number;
@@ -128,49 +128,49 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     async setupAudio() {
       if (this.audioSystem) {
-        const wasmModule = await loadWasmModule(
-          'wasm/release.wasm',
-          this.wasmMemory,
-        );
+        // const wasmModule = await loadWasmModule(
+        //   'wasm/release.wasm',
+        //   this.wasmMemory,
+        // );
 
-        // Log the WASM exports to confirm
-        console.log('WASM Exports: ', wasmModule);
-        const bufferSize = 128;
+        // // Log the WASM exports to confirm
+        // console.log('WASM Exports: ', wasmModule);
+        // const bufferSize = 128;
 
-        for (let i = 0; i < max_voices; i++) {
-          const parameterPtrs = {
-            frequency: wasmModule.allocateF32Array(bufferSize),
-            gain: wasmModule.allocateF32Array(bufferSize),
-            detune: wasmModule.allocateF32Array(bufferSize),
-            gate: wasmModule.allocateF32Array(bufferSize),
-          };
+        // for (let i = 0; i < max_voices; i++) {
+        //   const parameterPtrs = {
+        //     frequency: wasmModule.allocateF32Array(bufferSize),
+        //     gain: wasmModule.allocateF32Array(bufferSize),
+        //     detune: wasmModule.allocateF32Array(bufferSize),
+        //     gate: wasmModule.allocateF32Array(bufferSize),
+        //   };
 
-          const audioBufPtr = wasmModule.allocateF32Array(bufferSize);
-          const osc1State = wasmModule.createOscillatorState();
-          console.log('osc1STate:', osc1State);
-          const osc2State = wasmModule.createOscillatorState();
-          const offsetsPtr = wasmModule.createBufferOffsets(
-            audioBufPtr,
-            parameterPtrs.frequency,
-            parameterPtrs.gain,
-            parameterPtrs.detune,
-            parameterPtrs.gate,
-            osc1State,
-            osc2State,
-          );
-          this.wasmPointers.push({
-            audioBufferPtr: audioBufPtr,
-            envelope1Ptr: wasmModule.createEnvelopeState(0.01, 0.2, 0.5, 0.25),
-            parameterPtrs: parameterPtrs,
-            offsetsPtr: offsetsPtr,
-          });
-          console.log(`Voice ${i} pointers:`, {
-            audio: audioBufPtr,
-            env: this.wasmPointers[i]?.envelope1Ptr,
-            params: parameterPtrs,
-            offsets: offsetsPtr,
-          });
-        }
+        //   const audioBufPtr = wasmModule.allocateF32Array(bufferSize);
+        //   const osc1State = wasmModule.createOscillatorState();
+        //   console.log('osc1STate:', osc1State);
+        //   const osc2State = wasmModule.createOscillatorState();
+        //   const offsetsPtr = wasmModule.createBufferOffsets(
+        //     audioBufPtr,
+        //     parameterPtrs.frequency,
+        //     parameterPtrs.gain,
+        //     parameterPtrs.detune,
+        //     parameterPtrs.gate,
+        //     osc1State,
+        //     osc2State,
+        //   );
+        //   this.wasmPointers.push({
+        //     audioBufferPtr: audioBufPtr,
+        //     envelope1Ptr: wasmModule.createEnvelopeState(0.01, 0.2, 0.5, 0.25),
+        //     parameterPtrs: parameterPtrs,
+        //     offsetsPtr: offsetsPtr,
+        //   });
+        //   console.log(`Voice ${i} pointers:`, {
+        //     audio: audioBufPtr,
+        //     env: this.wasmPointers[i]?.envelope1Ptr,
+        //     params: parameterPtrs,
+        //     offsets: offsetsPtr,
+        //   });
+        // }
 
         this.currentInstrument = new Instrument(
           this.audioSystem.destinationNode,

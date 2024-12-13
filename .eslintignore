@@ -8,3 +8,5 @@
 /public/wasm
 /public/worklets
 /src/assembly
+/rust-wasm/pkg
+/src/audio/worklets/synth-work-et-entry.ts
