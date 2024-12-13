@@ -108,19 +108,6 @@ impl MacroManager {
             let buffer = buffer_pool.copy_out(buffer_idx).to_vec();
             let targets = m.get_targets().to_vec();
 
-            // Debug macro data
-            // if !buffer.is_empty() {
-            //     console::log_1(
-            //         &format!(
-            //             "Preparing macro buffer {}: first values={:?}, targets={:?}",
-            //             buffer_idx,
-            //             &buffer[..4.min(buffer.len())],
-            //             targets
-            //         )
-            //         .into(),
-            //     );
-            // }
-
             macros_data.push((targets, buffer));
         }
 
@@ -157,11 +144,7 @@ impl MacroManager {
             let value = f32x4::from_array(values);
 
             for target in targets {
-                // Debug log for missing output ports
                 if !outputs.contains_key(&target.port_id) {
-                    // console::log_1(
-                    //     &format!("Warning: No output buffer for target: {:?}", target).into(),
-                    // );
                     continue;
                 }
 

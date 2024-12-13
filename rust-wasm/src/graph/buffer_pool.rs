@@ -1,7 +1,5 @@
 use std::collections::HashSet;
 
-use web_sys::console;
-
 pub struct AudioBufferPool {
     pub buffers: Vec<Vec<f32>>,
     available: Vec<usize>,
@@ -33,52 +31,19 @@ impl AudioBufferPool {
 
     pub fn acquire(&mut self, buffer_size: usize) -> usize {
         let index = if let Some(index) = self.available.pop() {
-            // console::log_1(&format!("Reusing buffer {} (in_use: {:?})", index, self.in_use).into());
             index
         } else {
             let index = self.buffers.len();
-            // console::log_1(
-            //     &format!("Creating new buffer {} (in_use: {:?})", index, self.in_use).into(),
-            // );
             self.buffers.push(vec![0.0; buffer_size]);
             index
         };
         self.in_use.insert(index);
-        // console::log_1(
-        //     &format!(
-        //         "After acquire: in_use={:?}, available={:?}",
-        //         self.in_use, self.available
-        //     )
-        //     .into(),
-        // );
         index
     }
 
     pub fn release(&mut self, index: usize) {
         if self.in_use.remove(&index) {
-            // console::log_1(
-            //     &format!(
-            //         "Released buffer {} (in_use before: {:?})",
-            //         index, self.in_use
-            //     )
-            //     .into(),
-            // );
             self.available.push(index);
-            // console::log_1(
-            //     &format!(
-            //         "After release: in_use={:?}, available={:?}",
-            //         self.in_use, self.available
-            //     )
-            //     .into(),
-            // );
-        } else {
-            // console::log_1(
-            //     &format!(
-            //         "Attempted to release already-released buffer {} (in_use: {:?})",
-            //         index, self.in_use
-            //     )
-            //     .into(),
-            // );
         }
     }
 
@@ -155,33 +120,4 @@ impl AudioBufferPool {
 
         result
     }
-    // pub fn get_multiple_buffers_mut<'a>(
-    //     &'a mut self,
-    //     indices: &[usize],
-    // ) -> Vec<(usize, &'a mut [f32])> {
-    //     let mut result = Vec::new();
-    //     console::log_1(
-    //         &format!(
-    //             "indices {:?}, buffer length: {:?}",
-    //             indices,
-    //             self.buffers.len()
-    //         )
-    //         .into(),
-    //     );
-    //     for &idx in indices {
-    //         if idx >= self.buffers.len() {
-    //             panic!(
-    //                 "Buffer index {} out of bounds in get_multiple_buffers_mut",
-    //                 idx
-    //             );
-    //         }
-    //         let buffer = unsafe {
-    //             // SAFETY: We ensure each index is accessed only once, and all indices are valid.
-    //             &mut *self.buffers.as_mut_ptr().add(idx)
-    //         };
-    //         result.push((idx, buffer.as_mut_slice()));
-    //     }
-
-    //     result
-    // }
 }

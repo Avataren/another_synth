@@ -2,8 +2,6 @@ use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 use std::any::Any;
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
-use web_sys::console;
 
 pub struct ModulatableOscillator {
     phase: f32,
@@ -101,43 +99,14 @@ impl AudioProcessor for ModulatableOscillator {
             let base_mod_index = self.get_default_values()[&PortId::ModIndex];
             let mod_index = if let Some(input) = inputs.get(&PortId::ModIndex) {
                 let value = input.get_simd(offset);
-                // console::log_1(
-                //     &format!(
-                //         "Mod index at offset {}: base={}, input={:?}",
-                //         offset,
-                //         base_mod_index,
-                //         value.to_array()
-                //     )
-                //     .into(),
-                // );
                 f32x4::splat(base_mod_index) + value
             } else {
-                // console::log_1(
-                //     &format!(
-                //         "Using default mod index {} at offset {}",
-                //         base_mod_index, offset
-                //     )
-                //     .into(),
-                // );
                 f32x4::splat(base_mod_index)
             };
 
             // Calculate modulated phase mod with logging
             let modulated_pm = {
                 let result = pm * mod_index * f32x4::splat(self.phase_mod_amount);
-                if offset % 64 == 0 {
-                    // Reduce log frequency
-                    // console::log_1(
-                    //     &format!(
-                    //         "Phase mod calc: pm={:?}, mod_index={:?}, amount={}, result={:?}",
-                    //         pm.to_array(),
-                    //         mod_index.to_array(),
-                    //         self.phase_mod_amount,
-                    //         result.to_array()
-                    //     )
-                    //     .into(),
-                    // );
-                }
                 result
             };
 

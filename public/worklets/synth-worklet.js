@@ -609,7 +609,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const gainArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
     const blocksPerSecond = sampleRate / 128;
-    const totalBlocksForCycle = blocksPerSecond * 4;
+    const totalBlocksForCycle = blocksPerSecond * 10;
     const normalizedPhase = this.macroPhase % totalBlocksForCycle / totalBlocksForCycle;
     let currentValue;
     if (normalizedPhase < 0.5) {

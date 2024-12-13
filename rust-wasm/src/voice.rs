@@ -103,15 +103,6 @@ impl Voice {
     }
 
     pub fn update_macro(&mut self, macro_index: usize, values: &[f32]) -> Result<(), String> {
-        // console::log_1(
-        //     &format!(
-        //         "Updating macro {}: first values={:?}",
-        //         macro_index,
-        //         &values[..4.min(values.len())]
-        //     )
-        //     .into(),
-        // );
-
         self.macro_manager
             .update_macro(macro_index, values, &mut self.graph.buffer_pool)
     }

@@ -196,7 +196,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Calculate modulation
     const blocksPerSecond = sampleRate / 128;
-    const totalBlocksForCycle = blocksPerSecond * 4; // 4 second cycle
+    const totalBlocksForCycle = blocksPerSecond * 10; // 4 second cycle
 
     // Calculate normalized phase (0 to 1)
     const normalizedPhase =
