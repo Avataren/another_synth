@@ -144,10 +144,11 @@ impl MacroManager {
 
                         let out_remaining = output_buffer.len() - offset;
                         let out_chunk_size = out_remaining.min(chunk_size);
-                        let mod_array = modulated.to_array();
 
-                        output_buffer[offset..offset + out_chunk_size]
-                            .copy_from_slice(&mod_array[..out_chunk_size]);
+                        // Add modulation instead of replacing
+                        for i in 0..out_chunk_size {
+                            output_buffer[offset + i] += modulated.to_array()[i];
+                        }
                     }
                 }
             }

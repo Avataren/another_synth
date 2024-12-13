@@ -586,7 +586,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       // first macro
       carrierId,
       PortId2.ModIndex,
-      100
+      5
     );
     return { carrierId, modulatorId, envelopeId };
   }
@@ -601,10 +601,14 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const gainArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
     const blocksPerSecond = sampleRate / 128;
-    const rampDurationInSeconds = 2;
-    const totalBlocksForRamp = blocksPerSecond * rampDurationInSeconds;
-    const rampProgress = Math.min(this.macroPhase / totalBlocksForRamp, 1);
-    const currentValue = rampProgress * 1;
+    const totalBlocksForCycle = blocksPerSecond * 4;
+    const normalizedPhase = this.macroPhase % totalBlocksForCycle / totalBlocksForCycle;
+    let currentValue;
+    if (normalizedPhase < 0.5) {
+      currentValue = normalizedPhase * 2;
+    } else {
+      currentValue = 2 * (1 - normalizedPhase);
+    }
     for (let i = 0; i < this.numVoices; i++) {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;

@@ -30,8 +30,7 @@ impl AudioNode for ModulatableOscillator {
         let mut ports = HashMap::new();
         ports.insert(PortId::Frequency, false);
         ports.insert(PortId::FrequencyMod, false);
-        ports.insert(PortId::PhaseMod, false); // Phase modulation input
-        ports.insert(PortId::ModIndex, false); // Modulation index control
+        ports.insert(PortId::PhaseMod, false);
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::AudioOutput0, true);
         ports
@@ -66,7 +65,7 @@ impl AudioProcessor for ModulatableOscillator {
         defaults.insert(PortId::Frequency, self.frequency);
         defaults.insert(PortId::FrequencyMod, 0.0);
         defaults.insert(PortId::PhaseMod, 0.0);
-        defaults.insert(PortId::ModIndex, 1.0);
+        defaults.insert(PortId::ModIndex, 1.0); // Reasonable default for FM
         defaults.insert(PortId::GainMod, 1.0);
         defaults
     }
@@ -75,68 +74,75 @@ impl AudioProcessor for ModulatableOscillator {
         use std::simd::{f32x4, StdFloat};
 
         context.process_by_chunks(4, |offset, inputs, outputs| {
-            // Get base frequency
-            let freq = if let Some(input) = inputs.get(&PortId::Frequency) {
+            // Get base frequency and apply frequency modulation
+            let base_freq = if let Some(input) = inputs.get(&PortId::Frequency) {
                 input.get_simd(offset)
             } else {
                 f32x4::splat(self.frequency)
             };
 
-            // Get modulation inputs
-            let fm = inputs
+            let freq_mod = inputs
                 .get(&PortId::FrequencyMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
-            let pm = inputs
-                .get(&PortId::PhaseMod)
-                .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
-
-            let mod_index = inputs
-                .get(&PortId::ModIndex)
-                .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
-
-            // let mod_index = inputs.get(&PortId::ModIndex).map_or(
-            //     f32x4::splat(self.get_default_values()[&PortId::ModIndex]),
-            //     |input| {
-            //         let macro_value = input.get_simd(offset);
-            //         f32x4::splat(self.get_default_values()[&PortId::ModIndex]) * macro_value
-            //     },
-            // );
-
-            let gain = inputs
-                .get(&PortId::GainMod)
-                .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
-
-            // Calculate frequency with modulation
             let modulated_freq =
-                freq * (f32x4::splat(1.0) + fm * f32x4::splat(self.freq_mod_amount));
+                base_freq * (f32x4::splat(1.0) + freq_mod * f32x4::splat(self.freq_mod_amount));
 
-            // Calculate phase increment
+            // Calculate phase increment for each sample
             let phase_inc = f32x4::splat(2.0 * std::f32::consts::PI) * modulated_freq
                 / f32x4::splat(self.sample_rate);
 
-            // Apply phase modulation with modulation index
-            let modulated_pm = pm * mod_index * f32x4::splat(self.phase_mod_amount);
+            // Get phase modulation and modulation index
+            let phase_mod = inputs
+                .get(&PortId::PhaseMod)
+                .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
+            // Get base mod index and apply macro modulation
+            let base_mod_index = self.get_default_values()[&PortId::ModIndex];
+            let mod_index = inputs
+                .get(&PortId::ModIndex)
+                .map_or(f32x4::splat(base_mod_index), |input| {
+                    f32x4::splat(base_mod_index) + input.get_simd(offset)
+                });
+            // console::log_1(&format!("mod_index:{:?}", mod_index).into());
+            // Apply phase modulation with modulation index
+            let modulated_pm = phase_mod * mod_index * f32x4::splat(self.phase_mod_amount);
+
+            // Calculate phases for the 4-sample chunk
             let mut phases = [0.0f32; 4];
             let two_pi = 2.0 * std::f32::consts::PI;
 
             for i in 0..4 {
-                // Add phase modulation
+                // Add phase modulation to current phase
                 self.phase += modulated_pm.to_array()[i];
+
+                // Store the current phase
                 phases[i] = self.phase;
-                // Increment phase
+
+                // Increment phase for next sample
                 self.phase += phase_inc.to_array()[i];
-                // Wrap phase
-                if self.phase >= two_pi {
+
+                // Wrap phase between 0 and 2π
+                while self.phase >= two_pi {
                     self.phase -= two_pi;
+                }
+                while self.phase < 0.0 {
+                    self.phase += two_pi;
                 }
             }
 
-            // Generate output
+            // Convert phases to SIMD vector and generate sine output
             let phase_simd = f32x4::from_array(phases);
-            let final_output = phase_simd.sin() * gain;
+            let sine_output = phase_simd.sin();
 
+            // Apply gain modulation
+            let gain = inputs
+                .get(&PortId::GainMod)
+                .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
+
+            let final_output = sine_output * gain;
+
+            // Write output
             if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
                 output.write_simd(offset, final_output);
             }
