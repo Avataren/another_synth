@@ -19,7 +19,7 @@ pub use utils::*;
 pub use voice::Voice;
 
 use wasm_bindgen::prelude::*;
-use web_sys::js_sys;
+use web_sys::{console, js_sys};
 
 #[wasm_bindgen]
 pub struct AudioProcessor {
@@ -222,6 +222,14 @@ impl AudioProcessor {
         target_port: PortId,
         amount: f32,
     ) -> Result<(), JsValue> {
+        console::log_1(
+            &format!(
+                "Connecting macro: voice={}, macro={}, node={}, port={:?}, amount={}",
+                voice_index, macro_index, target_node, target_port, amount
+            )
+            .into(),
+        );
+
         let voice = self
             .voices
             .get_mut(voice_index)

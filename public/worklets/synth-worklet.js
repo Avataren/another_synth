@@ -341,6 +341,9 @@ async function __wbg_load(module, imports) {
 function __wbg_get_imports() {
   const imports = {};
   imports.wbg = {};
+  imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
+    console.log(arg0);
+  };
   imports.wbg.__wbg_new_688846f374351c92 = function() {
     const ret = new Object();
     return ret;
@@ -488,7 +491,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     super();
     __publicField(this, "ready", false);
     __publicField(this, "processor", null);
-    __publicField(this, "numVoices", 8);
+    __publicField(this, "numVoices", 1);
     __publicField(this, "macroPhase", 0);
     this.port.onmessage = (event) => {
       if (event.data.type === "wasm-binary") {
@@ -580,6 +583,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       PortId2.PhaseMod,
       1
     );
+    console.log("Setting up macro connection:", {
+      voiceIndex,
+      carrierId,
+      targetPort: PortId2.ModIndex
+    });
     this.processor.connect_macro(
       voiceIndex,
       0,

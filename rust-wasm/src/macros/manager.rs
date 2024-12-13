@@ -1,3 +1,5 @@
+use web_sys::console;
+
 use super::types::{ModulationMacro, ModulationTarget};
 use crate::graph::AudioBufferPool;
 use crate::PortId;
@@ -116,16 +118,14 @@ impl MacroManager {
         macro_data: &MacroData,
         outputs: &mut HashMap<PortId, &mut [f32]>,
     ) {
+        // Early return if offset is beyond buffer size
         if offset >= macro_data.buffer_size {
             return;
         }
 
         for (targets, buffer) in &macro_data.macros {
-            if targets.is_empty() {
-                continue;
-            }
-
-            if offset >= buffer.len() {
+            // Skip if no targets or buffer is too short
+            if targets.is_empty() || offset >= buffer.len() {
                 continue;
             }
 
@@ -137,18 +137,33 @@ impl MacroManager {
             let value = f32x4::from_array(values);
 
             for target in targets {
+                // Debug log for missing output ports
+                if !outputs.contains_key(&target.port_id) {
+                    // console::log_1(
+                    //     &format!("Warning: No output buffer for target: {:?}", target).into(),
+                    // );
+                    continue;
+                }
+
                 if let Some(output_buffer) = outputs.get_mut(&target.port_id) {
                     if offset < output_buffer.len() {
                         let amount_simd = f32x4::splat(target.amount);
-                        let modulated = value * amount_simd;
 
+                        // Read current values from output buffer
+                        let mut current_values = [0.0f32; 4];
                         let out_remaining = output_buffer.len() - offset;
                         let out_chunk_size = out_remaining.min(chunk_size);
+                        current_values[..out_chunk_size]
+                            .copy_from_slice(&output_buffer[offset..offset + out_chunk_size]);
+                        let current = f32x4::from_array(current_values);
 
-                        // Add modulation instead of replacing
-                        for i in 0..out_chunk_size {
-                            output_buffer[offset + i] += modulated.to_array()[i];
-                        }
+                        // Apply modulation additively
+                        let modulated = current + (value * amount_simd);
+                        let mod_array = modulated.to_array();
+
+                        // Write back to output buffer
+                        output_buffer[offset..offset + out_chunk_size]
+                            .copy_from_slice(&mod_array[..out_chunk_size]);
                     }
                 }
             }

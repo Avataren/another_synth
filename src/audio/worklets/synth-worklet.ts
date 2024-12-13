@@ -36,7 +36,7 @@ declare global {
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private processor: AudioProcessor | null = null;
-  private numVoices: number = 8;
+  private numVoices: number = 1;
   private macroPhase: number = 0;
 
   static get parameterDescriptors() {
@@ -156,6 +156,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       PortId.PhaseMod,
       1.0,
     );
+
+    console.log('Setting up macro connection:', {
+      voiceIndex,
+      carrierId,
+      targetPort: PortId.ModIndex,
+    });
 
     // Set up mod index macro
     this.processor!.connect_macro(

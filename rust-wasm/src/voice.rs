@@ -1,3 +1,5 @@
+use web_sys::console;
+
 use crate::{
     AudioGraph, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator, ModulationTarget,
     NodeId, PortId,
@@ -79,6 +81,7 @@ impl Voice {
             },
         )
     }
+
     pub fn clear_macros(&mut self) {
         self.macro_manager.clear(&mut self.graph.buffer_pool);
     }

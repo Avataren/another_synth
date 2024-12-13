@@ -29,9 +29,9 @@ impl AudioNode for ModulatableOscillator {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
         ports.insert(PortId::Frequency, false);
-        ports.insert(PortId::FrequencyMod, false);
-        ports.insert(PortId::PhaseMod, false);
-        ports.insert(PortId::GainMod, false);
+        ports.insert(PortId::FrequencyMod, true);
+        ports.insert(PortId::PhaseMod, true);
+        ports.insert(PortId::GainMod, true);
         ports.insert(PortId::AudioOutput0, true);
         ports
     }
@@ -99,13 +99,32 @@ impl AudioProcessor for ModulatableOscillator {
 
             // Get base mod index and apply macro modulation
             let base_mod_index = self.get_default_values()[&PortId::ModIndex];
-            let mod_index = inputs
-                .get(&PortId::ModIndex)
-                .map_or(f32x4::splat(base_mod_index), |input| {
-                    f32x4::splat(base_mod_index) + input.get_simd(offset)
-                });
+            // let mod_index = inputs
+            //     .get(&PortId::ModIndex)
+            //     .map_or(f32x4::splat(base_mod_index), |input| {
+            //         f32x4::splat(base_mod_index) + input.get_simd(offset)
+            //     });
             // console::log_1(&format!("mod_index:{:?}", mod_index).into());
             // Apply phase modulation with modulation index
+
+            // Right before applying the mod_index
+            let base_mod_index = self.get_default_values()[&PortId::ModIndex];
+            let mod_index =
+                inputs
+                    .get(&PortId::ModIndex)
+                    .map_or(f32x4::splat(base_mod_index), |input| {
+                        let value = input.get_simd(offset);
+                        console::log_1(
+                            &format!(
+                                "ModIndex input at offset {}: {:?}",
+                                offset,
+                                value.to_array()
+                            )
+                            .into(),
+                        );
+                        f32x4::splat(base_mod_index) + value
+                    });
+
             let modulated_pm = phase_mod * mod_index * f32x4::splat(self.phase_mod_amount);
 
             // Calculate phases for the 4-sample chunk
