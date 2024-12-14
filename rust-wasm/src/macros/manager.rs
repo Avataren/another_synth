@@ -1,4 +1,3 @@
-use web_sys::console;
 
 use super::types::{ModulationMacro, ModulationTarget};
 use crate::graph::AudioBufferPool;

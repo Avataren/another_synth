@@ -1,4 +1,3 @@
-use web_sys::console;
 
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///

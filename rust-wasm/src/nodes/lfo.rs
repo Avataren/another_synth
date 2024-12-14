@@ -2,8 +2,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use web_sys::console;
-
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 
@@ -159,7 +157,7 @@ impl Lfo {
         self.trigger_mode = mode;
     }
 
-    fn get_sample_with_freq(&mut self, current_freq: f32) -> f32 {
+    fn get_sample(&mut self, current_freq: f32) -> f32 {
         let tables = LFO_TABLES.get().unwrap();
         let table = tables.get_table(self.waveform);
 
@@ -186,45 +184,6 @@ impl Lfo {
         let phase_increment = current_freq / self.sample_rate;
         self.phase = (self.phase + phase_increment) % 1.0;
         // }
-
-        sample
-    }
-
-    fn get_sample(&mut self) -> f32 {
-        let tables = LFO_TABLES.get().unwrap();
-        let table = tables.get_table(self.waveform);
-
-        // Get the current phase for table lookup
-        let table_phase = self.phase;
-        let table_index = table_phase * TABLE_SIZE as f32;
-
-        // Get indices for interpolation
-        let index1 = (table_index as usize) & TABLE_MASK;
-        let index2 = (index1 + 1) & TABLE_MASK;
-        let fraction = table_index - table_index.floor();
-
-        // Linear interpolation
-        let sample1 = table[index1];
-        let sample2 = table[index2];
-        let mut sample = sample1 + (sample2 - sample1) * fraction;
-
-        // Apply post-processing
-        if self.use_absolute {
-            sample = sample.abs();
-        }
-        if self.use_normalized {
-            sample = (sample + 1.0) * 0.5;
-        }
-
-        // Update phase for next sample
-        // For 0.5 Hz, we want to complete one cycle in 2 seconds
-        // So we need to increment by frequency/sample_rate
-        let phase_increment = self.frequency / self.sample_rate;
-        self.phase = (self.phase + phase_increment) % 1.0;
-
-        // For 1 Hz, we want a complete cycle (0 to 1.0) over sample_rate samples
-        //let phase_increment = (self.frequency * 2.0 * std::f32::consts::PI) / self.sample_rate;
-        //self.phase = (self.phase + phase_increment / (2.0 * std::f32::consts::PI)) % 1.0;
 
         sample
     }
@@ -347,7 +306,7 @@ impl AudioProcessor for Lfo {
                     if offset + i < context.buffer_size {
                         // Apply frequency modulation
                         let current_freq = base_freq * (1.0 + freq_mod.to_array()[i]);
-                        *value = self.get_sample_with_freq(current_freq);
+                        *value = self.get_sample(current_freq);
                     }
                 }
                 output.write_simd(offset, std::simd::f32x4::from_array(values));
@@ -370,9 +329,8 @@ mod tests {
         let mut output = vec![0.0; 44100];
 
         // Test with 1 Hz frequency
-        lfo.set_frequency(1.0);
         for i in 0..44100 {
-            output[i] = lfo.get_sample();
+            output[i] = lfo.get_sample(1.0);
         }
 
         // Check if we completed one cycle
@@ -384,7 +342,7 @@ mod tests {
         let mut lfo = Lfo::new(44100.0);
         let mut min: f32 = 1.0;
         let mut max: f32 = -1.0;
-
+        let frequency = 1.0;
         // Test range for all waveforms
         for waveform in &[
             LfoWaveform::Sine,
@@ -396,7 +354,7 @@ mod tests {
             lfo.reset();
 
             for _ in 0..1000 {
-                let sample = lfo.get_sample();
+                let sample = lfo.get_sample(frequency);
                 min = min.min(sample);
                 max = max.max(sample);
             }
@@ -410,7 +368,6 @@ mod tests {
         let sample_rate = 44100.0;
         let frequency = 1.0; // 1 Hz for easy cycle counting
         let mut lfo = Lfo::new(sample_rate);
-        lfo.set_frequency(frequency);
 
         // Test points we want to verify for each waveform
         let test_points = vec![
@@ -477,11 +434,11 @@ mod tests {
 
                 // Advance to the test point
                 for _ in 0..samples_to_advance {
-                    lfo.get_sample();
+                    lfo.get_sample(frequency);
                 }
 
                 // Get one more sample at our test point
-                let value = lfo.get_sample();
+                let value = lfo.get_sample(frequency);
 
                 println!(
                     "  At {} cycle ({}): got {}, expected {}",
@@ -623,7 +580,7 @@ mod tests {
         let mut lfo = Lfo::new(sample_rate);
 
         // Test with 0.5 Hz
-        lfo.set_frequency(0.5);
+        let frequency = 0.5;
 
         println!("LFO settings:");
         println!("Sample rate: {}", sample_rate);
@@ -635,7 +592,7 @@ mod tests {
         // Collect 2 seconds worth of samples
         let num_samples = (sample_rate as usize * 2);
         for _ in 0..num_samples {
-            samples.push(lfo.get_sample());
+            samples.push(lfo.get_sample(frequency));
         }
 
         // Print phase info every quarter second
@@ -692,7 +649,6 @@ mod tests {
         let sample_rate = 44100.0;
         let frequency = 0.5;
         let mut lfo = Lfo::new(sample_rate);
-        lfo.set_frequency(frequency);
 
         // Calculate how many samples we expect per cycle
         let samples_per_cycle = sample_rate / frequency;
@@ -702,7 +658,7 @@ mod tests {
         let mut phases = Vec::new();
         for _ in 0..samples_per_cycle as usize {
             phases.push(lfo.phase);
-            lfo.get_sample();
+            lfo.get_sample(frequency);
         }
 
         // Check phase values at key points
@@ -732,11 +688,12 @@ mod tests {
     #[test]
     fn test_normalized_lfo_range() {
         let mut lfo = Lfo::new(44100.0);
+        let frequency = 1.0;
         lfo.set_use_normalized(true);
 
         let mut samples = Vec::new();
         for _ in 0..44100 {
-            samples.push(lfo.get_sample());
+            samples.push(lfo.get_sample(frequency));
         }
 
         let max = samples.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));

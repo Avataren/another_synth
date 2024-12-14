@@ -1,8 +1,7 @@
-use web_sys::console;
 
 use crate::{
     nodes::{Lfo, LfoTriggerMode},
-    AudioGraph, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator, ModulationTarget,
+    AudioGraph, Envelope, MacroManager, ModulatableOscillator, ModulationTarget,
     NodeId, PortId,
 };
 

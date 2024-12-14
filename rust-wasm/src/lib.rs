@@ -88,7 +88,7 @@ impl AudioProcessor {
         self.sample_rate = sample_rate;
         self.num_voices = num_voices;
 
-        self.voices = (0..num_voices).map(|id| Voice::new(id)).collect();
+        self.voices = (0..num_voices).map(Voice::new).collect();
     }
 
     #[wasm_bindgen]
