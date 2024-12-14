@@ -126,14 +126,6 @@ impl Lfo {
     }
 
     pub fn set_frequency(&mut self, freq: f32) {
-        console::log_1(
-            &format!(
-                "Setting LFO frequency to {} from:\n{:?}",
-                freq,
-                std::backtrace::Backtrace::capture()
-            )
-            .into(),
-        );
         self.frequency = freq.max(0.0);
     }
 

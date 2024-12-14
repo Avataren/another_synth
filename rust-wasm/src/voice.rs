@@ -117,9 +117,7 @@ impl Voice {
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
         self.graph.set_gate(&[self.current_gate]);
         self.graph.set_frequency(&[self.current_frequency]);
-        console::log_1(
-            &format!("Processing voice with output node: {:?}", self.output_node).into(),
-        );
+
         self.graph
             .process_audio_with_macros(Some(&self.macro_manager), output_left, output_right);
 

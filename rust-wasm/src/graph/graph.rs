@@ -242,7 +242,6 @@ impl AudioGraph {
 
         // Process each node in topological order
         for &node_idx in &self.processing_order {
-            console::log_1(&format!("Processing node {}", node_idx).into());
             let node_id = NodeId(node_idx);
             let node = &mut self.nodes[node_idx];
             let ports = node.get_ports();

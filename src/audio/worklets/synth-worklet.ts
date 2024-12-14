@@ -124,11 +124,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.processor!.update_lfo(
       voiceIndex,
       lfoId,
-      0.5,    // 0.5 Hz frequency
-      0,      // Sine waveform
+      2.0,    // Hz frequency
+      0,      // waveform
       false,  // don't use absolute value
       true,   // use normalized value (0 to 1 range)
-      0
+      1       // trigger mode
     );
 
     // Set up envelope parameters
@@ -168,7 +168,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       PortId.AudioOutput0,
       carrierId,
       PortId.ModIndex,  // Keep this as ModIndex
-      5.0,  // This will now control how much the modulation index varies
+      10.0,  // This will now control how much the modulation index varies
     );
 
     /* Commenting out macro connection

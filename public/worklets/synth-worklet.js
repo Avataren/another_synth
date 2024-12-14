@@ -607,15 +607,16 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     this.processor.update_lfo(
       voiceIndex,
       lfoId,
-      0.5,
-      // 0.5 Hz frequency
+      2,
+      // Hz frequency
       0,
-      // Sine waveform
+      // waveform
       false,
       // don't use absolute value
       true,
       // use normalized value (0 to 1 range)
-      0
+      1
+      // trigger mode
     );
     this.processor.update_envelope(
       voiceIndex,
@@ -653,7 +654,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       carrierId,
       PortId2.ModIndex,
       // Keep this as ModIndex
-      5
+      10
       // This will now control how much the modulation index varies
     );
   }
