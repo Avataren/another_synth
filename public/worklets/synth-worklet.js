@@ -534,6 +534,19 @@ var NodeIdFinalization2 = typeof FinalizationRegistry === "undefined" ? { regist
 } } : new FinalizationRegistry((ptr) => wasm2.__wbg_nodeid_free(ptr >>> 0, 1));
 
 // src/audio/worklets/synth-worklet.ts
+var LfoTriggerMode = /* @__PURE__ */ ((LfoTriggerMode2) => {
+  LfoTriggerMode2[LfoTriggerMode2["None"] = 0] = "None";
+  LfoTriggerMode2[LfoTriggerMode2["Gate"] = 1] = "Gate";
+  LfoTriggerMode2[LfoTriggerMode2["Envelope"] = 2] = "Envelope";
+  return LfoTriggerMode2;
+})(LfoTriggerMode || {});
+var LFOWaveform = /* @__PURE__ */ ((LFOWaveform2) => {
+  LFOWaveform2[LFOWaveform2["Sine"] = 0] = "Sine";
+  LFOWaveform2[LFOWaveform2["Triangle"] = 1] = "Triangle";
+  LFOWaveform2[LFOWaveform2["Pulse"] = 2] = "Pulse";
+  LFOWaveform2[LFOWaveform2["Saw"] = 3] = "Saw";
+  return LFOWaveform2;
+})(LFOWaveform || {});
 var SynthAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -607,15 +620,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     this.processor.update_lfo(
       voiceIndex,
       lfoId,
-      2,
+      0.5,
       // Hz frequency
-      0,
+      1 /* Triangle */,
       // waveform
       false,
       // don't use absolute value
       true,
       // use normalized value (0 to 1 range)
-      1
+      1 /* Gate */
       // trigger mode
     );
     this.processor.update_envelope(
@@ -695,3 +708,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
 };
 registerProcessor("synth-audio-processor", SynthAudioProcessor);
+export {
+  LFOWaveform,
+  LfoTriggerMode
+};

@@ -33,19 +33,17 @@ impl AudioNode for MockNode {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         _buffer_size: usize,
     ) {
-        // Simple pass-through for testing
-        if let Some(input) = inputs.get(&PortId::AudioInput0) {
+        // Copy gate to output for test
+        if let Some(gate_input) = inputs.get(&PortId::Gate) {
             if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-                output.copy_from_slice(input);
+                output.copy_from_slice(gate_input);
             }
         }
 
-        // For testing envelope-like behavior
-        if let Some(input) = inputs.get(&PortId::Gate) {
+        // Pass through audio input if it exists
+        if let Some(audio_input) = inputs.get(&PortId::AudioInput0) {
             if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-                for (i, sample) in output.iter_mut().enumerate() {
-                    *sample = input[i];
-                }
+                output.copy_from_slice(audio_input);
             }
         }
     }

@@ -152,37 +152,36 @@ impl AudioGraph {
     }
 
     fn update_processing_order(&mut self) {
-        if let Some(output_node) = self.output_node {
-            self.processing_order.clear();
-            let mut visited = vec![false; self.nodes.len()];
-            let mut active_nodes = Vec::new();
+        self.processing_order.clear();
+        let mut visited = vec![false; self.nodes.len()];
 
-            // Find nodes connected to output
+        // If we have an output node, only process nodes connected to it
+        if let Some(output_node) = self.output_node {
             for i in 0..self.nodes.len() {
                 visited.fill(false);
                 if self.is_connected_to_output(NodeId(i), output_node, &mut visited) {
-                    active_nodes.push(i);
+                    self.visit_node(i, &mut visited);
                 }
             }
-
-            // Update visited for final ordering
-            visited.fill(false);
-
-            // Visit source nodes first
-            for &i in &active_nodes {
+        } else {
+            // No output node set - process all nodes in topological order
+            // First visit nodes with no inputs
+            for i in 0..self.nodes.len() {
                 let node_id = NodeId(i);
                 if !visited[i] && !self.has_inputs(node_id) {
                     self.visit_node(i, &mut visited);
                 }
             }
 
-            // Then remaining active nodes
-            for &i in &active_nodes {
+            // Then visit any remaining unvisited nodes
+            for i in 0..self.nodes.len() {
                 if !visited[i] {
                     self.visit_node(i, &mut visited);
                 }
             }
         }
+
+        // console::log_1(&format!("Processing order updated: {:?}", self.processing_order).into());
     }
 
     fn visit_node(&mut self, index: usize, visited: &mut [bool]) {
@@ -192,6 +191,7 @@ impl AudioGraph {
 
         visited[index] = true;
 
+        // Visit all nodes that feed into this one first
         let node_id = NodeId(index);
         let upstream_nodes: Vec<usize> = self
             .connections

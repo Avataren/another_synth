@@ -56,25 +56,31 @@ impl LfoTables {
         let mut square = vec![0.0; TABLE_SIZE];
         let mut saw = vec![0.0; TABLE_SIZE];
 
-        println!("Generating tables, size={}", TABLE_SIZE);
-
         for i in 0..TABLE_SIZE {
             let phase = 2.0 * std::f32::consts::PI * (i as f32) / (TABLE_SIZE as f32);
+            let normalized_phase = i as f32 / TABLE_SIZE as f32;
 
+            // Sine: starts at 0, goes up to 1, down to -1, back to 0
             sine[i] = phase.sin();
 
-            // Print diagnostic values at key points
-            if i == 0 || i == TABLE_SIZE / 4 || i == TABLE_SIZE / 2 || i == 3 * TABLE_SIZE / 4 {
-                println!("Table index {}: phase={:.3}, sin={:.3}", i, phase, sine[i]);
-            }
-        }
+            // Triangle: starts at 0, goes up to 1, down to -1, back to 0
+            triangle[i] = if normalized_phase < 0.25 {
+                4.0 * normalized_phase
+            } else if normalized_phase < 0.75 {
+                2.0 - 4.0 * normalized_phase
+            } else {
+                -4.0 + 4.0 * normalized_phase
+            };
 
-        // Verify we can look up a complete cycle
-        println!("Verifying sine values:");
-        let phases = [0.0, 0.25, 0.5, 0.75, 1.0];
-        for &p in &phases {
-            let idx = (p * TABLE_SIZE as f32) as usize & TABLE_MASK;
-            println!("Phase {:.2}: index={}, value={:.3}", p, idx, sine[idx]);
+            // Square: starts at 1, switches to -1 halfway
+            square[i] = if normalized_phase < 0.5 { 1.0 } else { -1.0 };
+
+            // Saw: starts at 0, ramps up to 1, then jumps to -1
+            saw[i] = if normalized_phase < 0.999 {
+                -1.0 + 2.0 * normalized_phase
+            } else {
+                -1.0 // Ensure we end at -1 for clean looping
+            };
         }
 
         Self {
@@ -398,6 +404,218 @@ mod tests {
 
         assert!(min >= -1.0 && max <= 1.0);
     }
+
+    #[test]
+    fn test_all_waveforms_basic_shape() {
+        let sample_rate = 44100.0;
+        let frequency = 1.0; // 1 Hz for easy cycle counting
+        let mut lfo = Lfo::new(sample_rate);
+        lfo.set_frequency(frequency);
+
+        // Test points we want to verify for each waveform
+        let test_points = vec![
+            (0.0, "start"),           // Start of cycle
+            (0.25, "quarter"),        // Quarter cycle
+            (0.5, "half"),            // Half cycle
+            (0.75, "three-quarters"), // Three-quarters cycle
+        ];
+
+        // Expected values for each waveform at these points
+        let expectations = vec![
+            // Sine wave expectations (starts at 0, peaks at 1)
+            (
+                LfoWaveform::Sine,
+                vec![
+                    (0.0, 0.0),   // Start at zero
+                    (0.25, 1.0),  // Peak at quarter
+                    (0.5, 0.0),   // Zero at half
+                    (0.75, -1.0), // Trough at three-quarters
+                ],
+            ),
+            // Triangle wave expectations (starts at 0, peaks at 1)
+            (
+                LfoWaveform::Triangle,
+                vec![
+                    (0.0, 0.0),   // Start at zero
+                    (0.25, 1.0),  // Peak at quarter
+                    (0.5, 0.0),   // Zero at half
+                    (0.75, -1.0), // Trough at three-quarters
+                ],
+            ),
+            // Square wave expectations (starts at 1)
+            (
+                LfoWaveform::Square,
+                vec![
+                    (0.0, 1.0),   // Start high
+                    (0.25, 1.0),  // Still high
+                    (0.5, -1.0),  // Low
+                    (0.75, -1.0), // Still low
+                ],
+            ),
+            // Saw wave expectations (starts at -1, ramps up)
+            (
+                LfoWaveform::Saw,
+                vec![
+                    (0.0, -1.0),  // Start at bottom
+                    (0.25, -0.5), // Quarter up
+                    (0.5, 0.0),   // Middle
+                    (0.75, 0.5),  // Three-quarters up
+                ],
+            ),
+        ];
+
+        for (waveform, expected_values) in expectations {
+            println!("\nTesting {:?} waveform", waveform);
+            lfo.set_waveform(waveform);
+            lfo.reset();
+
+            for ((cycle_point, point_name), (_, expected_value)) in
+                test_points.iter().zip(expected_values.iter())
+            {
+                // Calculate how many samples to advance
+                let samples_to_advance = (cycle_point * sample_rate / frequency) as usize;
+
+                // Advance to the test point
+                for _ in 0..samples_to_advance {
+                    lfo.get_sample();
+                }
+
+                // Get one more sample at our test point
+                let value = lfo.get_sample();
+
+                println!(
+                    "  At {} cycle ({}): got {}, expected {}",
+                    point_name, cycle_point, value, expected_value
+                );
+
+                assert!(
+                    (value - expected_value).abs() < 0.1,
+                    "Waveform {:?} at {} cycle: expected {}, got {}",
+                    waveform,
+                    point_name,
+                    expected_value,
+                    value
+                );
+
+                // Reset for next test point
+                lfo.reset();
+            }
+        }
+    }
+
+    // #[test]
+    // fn test_waveform_frequency_accuracy() {
+    //     let sample_rate = 44100.0;
+    //     let frequency = 1.0;
+    //     let mut lfo = Lfo::new(sample_rate);
+    //     lfo.set_frequency(frequency);
+
+    //     // Test each waveform
+    //     for waveform in &[
+    //         LfoWaveform::Sine,
+    //         LfoWaveform::Triangle,
+    //         LfoWaveform::Square,
+    //         LfoWaveform::Saw,
+    //     ] {
+    //         println!("\nTesting {:?} frequency accuracy", waveform);
+    //         lfo.set_waveform(*waveform);
+    //         lfo.reset();
+
+    //         let mut samples = Vec::new();
+    //         // Collect exactly one second of samples
+    //         for _ in 0..(sample_rate as usize) {
+    //             samples.push(lfo.get_sample());
+    //         }
+
+    //         // Print some key points for debugging
+    //         println!("Sample points:");
+    //         for i in (0..10).map(|x| (x as f32 * sample_rate / 10.0) as usize) {
+    //             println!("At {:.2}s: {:.3}", i as f32 / sample_rate, samples[i]);
+    //         }
+
+    //         // Count cycles based on waveform type
+    //         let mut cycles = 0;
+    //         let mut last_value = samples[0];
+
+    //         match waveform {
+    //             LfoWaveform::Square => {
+    //                 // Count falling edges (1 to -1)
+    //                 for sample in samples.iter().skip(1) {
+    //                     if last_value > 0.0 && *sample <= 0.0 {
+    //                         cycles += 1;
+    //                         println!(
+    //                             "Found square cycle at transition {} -> {}",
+    //                             last_value, sample
+    //                         );
+    //                     }
+    //                     last_value = *sample;
+    //                 }
+    //             }
+    //             LfoWaveform::Sine | LfoWaveform::Triangle => {
+    //                 // Look for completion of first quadrant (rising through zero)
+    //                 let mut prev_rising = false;
+    //                 let mut was_negative = false;
+
+    //                 for sample in samples.iter() {
+    //                     let rising = *sample > last_value;
+
+    //                     // Detect zero crossing while rising
+    //                     if rising && !prev_rising && was_negative {
+    //                         cycles += 1;
+    //                         println!("Found cycle zero crossing: {} -> {}", last_value, sample);
+    //                     }
+
+    //                     prev_rising = rising;
+    //                     was_negative = last_value < 0.0;
+    //                     last_value = *sample;
+    //                 }
+    //             }
+    //             LfoWaveform::Saw => {
+    //                 // For saw wave, we need to track the entire phase
+    //                 let mut last_sample = samples[0];
+    //                 let mut highest_seen = f32::NEG_INFINITY;
+
+    //                 for sample in samples.iter().skip(1) {
+    //                     // Track highest point to know when we're near completion
+    //                     highest_seen = highest_seen.max(*sample);
+
+    //                     // If we were near the top and suddenly jumped to near bottom,
+    //                     // that's our cycle completion
+    //                     if highest_seen > 0.9 && last_sample > 0.9 && *sample < -0.9 {
+    //                         cycles += 1;
+    //                         println!("Found saw reset: {} -> {}", last_sample, sample);
+    //                     }
+
+    //                     last_sample = *sample;
+    //                 }
+    //             }
+    //         }
+
+    //         // Report and verify cycles
+    //         println!("Found {} cycles", cycles);
+    //         assert_eq!(
+    //             cycles, 1,
+    //             "{:?} waveform should complete 1 cycle at 1 Hz (got {} cycles)",
+    //             waveform, cycles
+    //         );
+
+    //         // Verify amplitude range
+    //         let max = samples.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+    //         let min = samples.iter().fold(f32::INFINITY, |a, &b| a.min(b));
+    //         println!("Range for {:?}: min={}, max={}", waveform, min, max);
+
+    //         match waveform {
+    //             LfoWaveform::Square => {
+    //                 assert!((max - 1.0).abs() < 0.01, "Square wave should reach 1.0");
+    //                 assert!((min + 1.0).abs() < 0.01, "Square wave should reach -1.0");
+    //             }
+    //             _ => {
+    //                 assert!(max <= 1.0 && max > 0.9, "Should reach close to 1.0");
+    //                 assert!(min >= -1.0 && min < -0.9, "Should reach close to -1.0");
+    //             }
+    //         }
+    //     }
+    // }
 
     #[test]
     fn test_lfo_frequency_accuracy() {

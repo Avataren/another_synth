@@ -33,6 +33,19 @@ declare global {
   ): void;
 }
 
+export enum LfoTriggerMode {
+  None = 0,
+  Gate = 1,
+  Envelope = 2,
+}
+
+export enum LFOWaveform {
+  Sine = 0,
+  Triangle = 1,
+  Pulse = 2,
+  Saw = 3
+}
+
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private processor: AudioProcessor | null = null;
@@ -124,11 +137,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.processor!.update_lfo(
       voiceIndex,
       lfoId,
-      2.0,    // Hz frequency
-      0,      // waveform
+      0.5,    // Hz frequency
+      LFOWaveform.Triangle,      // waveform
       false,  // don't use absolute value
       true,   // use normalized value (0 to 1 range)
-      1       // trigger mode
+      LfoTriggerMode.Gate   // trigger mode
     );
 
     // Set up envelope parameters
