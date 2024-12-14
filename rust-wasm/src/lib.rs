@@ -12,8 +12,7 @@ mod voice;
 pub use graph::AudioGraph;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
-pub use nodes::EnvelopeConfig;
-pub use nodes::{Envelope, ModulatableOscillator};
+pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorUpdateParams};
 use nodes::{Lfo, LfoTriggerMode, LfoWaveform};
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
@@ -89,9 +88,7 @@ impl AudioProcessor {
         self.sample_rate = sample_rate;
         self.num_voices = num_voices;
 
-        self.voices = (0..num_voices)
-            .map(|id| Voice::new(id, sample_rate))
-            .collect();
+        self.voices = (0..num_voices).map(|id| Voice::new(id)).collect();
     }
 
     #[wasm_bindgen]
@@ -162,32 +159,47 @@ impl AudioProcessor {
     }
 
     #[wasm_bindgen]
-    pub fn create_fm_voice(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
+    pub fn initialize_voice(
+        &mut self,
+        voice_index: usize,
+        num_oscillators: usize,
+    ) -> Result<JsValue, JsValue> {
         let voice = self
             .voices
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        let carrier_id = voice
-            .graph
-            .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
+        // Create oscillators
+        let mut oscillator_ids = Vec::new();
+        for _ in 0..num_oscillators {
+            let osc_id = voice.add_oscillator(self.sample_rate);
+            oscillator_ids.push(osc_id.0); // Already using .0 here
+        }
 
-        let modulator_id = voice
-            .graph
-            .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
-
+        // Create envelope
         let envelope_id = voice.graph.add_node(Box::new(Envelope::new(
             self.sample_rate,
             EnvelopeConfig::default(),
         )));
+        voice.envelope = envelope_id;
 
-        // Set the carrier as the output node
-        voice.set_output_node(carrier_id);
+        // Set the first oscillator as the initial output node
+        if !oscillator_ids.is_empty() {
+            voice.set_output_node(NodeId(oscillator_ids[0]));
+        }
 
+        // Create return object with all IDs
         let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"carrierId".into(), &(carrier_id.0.into()))?;
-        js_sys::Reflect::set(&obj, &"modulatorId".into(), &(modulator_id.0.into()))?;
-        js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
+
+        // Add oscillator IDs
+        let oscillators_array = js_sys::Array::new();
+        for id in oscillator_ids {
+            oscillators_array.push(&JsValue::from(id));
+        }
+        js_sys::Reflect::set(&obj, &"oscillatorIds".into(), &oscillators_array)?;
+
+        // Add envelope ID - get the inner value
+        js_sys::Reflect::set(&obj, &"envelopeId".into(), &JsValue::from(envelope_id.0))?;
 
         Ok(obj.into())
     }
@@ -220,6 +232,30 @@ impl AudioProcessor {
                 Ok(())
             } else {
                 Err(JsValue::from_str("Node is not an Envelope"))
+            }
+        } else {
+            Err(JsValue::from_str("Node not found"))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn update_oscillator(
+        &mut self,
+        voice_index: usize,
+        oscillator_id: usize,
+        params: &OscillatorUpdateParams,
+    ) -> Result<(), JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        if let Some(node) = voice.graph.get_node_mut(NodeId(oscillator_id)) {
+            if let Some(osc) = node.as_any_mut().downcast_mut::<ModulatableOscillator>() {
+                osc.update_params(params);
+                Ok(())
+            } else {
+                Err(JsValue::from_str("Node is not an Oscillator"))
             }
         } else {
             Err(JsValue::from_str("Node not found"))

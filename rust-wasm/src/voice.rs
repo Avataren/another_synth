@@ -9,7 +9,6 @@ use crate::{
 #[derive(Debug)]
 pub struct Voice {
     pub id: usize,
-    sample_rate: f32,
     pub graph: AudioGraph,
     pub output_node: NodeId,
 
@@ -18,33 +17,41 @@ pub struct Voice {
     pub current_frequency: f32,
     pub active: bool,
     macro_manager: MacroManager,
+    pub oscillators: Vec<NodeId>,
+    pub envelope: NodeId,
 }
 
 impl Voice {
-    pub fn new(id: usize, sample_rate: f32) -> Self {
+    pub fn new(id: usize) -> Self {
         let buffer_size = 128;
-        let mut graph = AudioGraph::new(buffer_size);
-        // Create macro_manager by passing a mutable reference to graph.buffer_pool.
-        // After construction, macro_manager stores only indices, not references.
+        let mut graph = AudioGraph::new(buffer_size); // Pass sample_rate to graph
         let macro_manager = MacroManager::new(4, &mut graph.buffer_pool, buffer_size);
         let output_node = NodeId(0);
         graph.set_output_node(output_node);
 
         Self {
             id,
-            sample_rate,
             graph,
-            output_node: NodeId(0),
+            output_node,
             current_gate: 0.0,
             current_frequency: 440.0,
             active: false,
             macro_manager,
+            oscillators: Vec::new(),
+            envelope: NodeId(0),
         }
     }
 
     pub fn set_output_node(&mut self, node: NodeId) {
         self.output_node = node;
         self.graph.set_output_node(node);
+    }
+
+    pub fn add_oscillator(&mut self, sample_rate: f32) -> NodeId {
+        let osc = ModulatableOscillator::new(sample_rate);
+        let osc_id = self.graph.add_node(Box::new(osc));
+        self.oscillators.push(osc_id);
+        osc_id
     }
 
     //todo: we'll still need to update some nodes I think, like LFOs without a trigger state

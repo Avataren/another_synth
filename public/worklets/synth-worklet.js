@@ -240,10 +240,11 @@ var AudioProcessor = class {
   }
   /**
    * @param {number} voice_index
+   * @param {number} num_oscillators
    * @returns {any}
    */
-  create_fm_voice(voice_index) {
-    const ret = wasm.audioprocessor_create_fm_voice(this.__wbg_ptr, voice_index);
+  initialize_voice(voice_index, num_oscillators) {
+    const ret = wasm.audioprocessor_initialize_voice(this.__wbg_ptr, voice_index, num_oscillators);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
@@ -259,6 +260,18 @@ var AudioProcessor = class {
    */
   update_envelope(voice_index, node_id, attack, decay, sustain, release) {
     const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} oscillator_id
+   * @param {OscillatorUpdateParams} params
+   */
+  update_oscillator(voice_index, oscillator_id, params) {
+    _assertClass(params, OscillatorUpdateParams);
+    const ret = wasm.audioprocessor_update_oscillator(this.__wbg_ptr, voice_index, oscillator_id, params.__wbg_ptr);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -469,6 +482,85 @@ var LfoUpdateParams = class {
 var NodeIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_nodeid_free(ptr >>> 0, 1));
+var OscillatorUpdateParamsFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_oscillatorupdateparams_free(ptr >>> 0, 1));
+var OscillatorUpdateParams = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    OscillatorUpdateParamsFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_oscillatorupdateparams_free(ptr, 0);
+  }
+  /**
+   * @returns {number}
+   */
+  get frequency() {
+    const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set frequency(arg0) {
+    wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get phase_mod_amount() {
+    const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set phase_mod_amount(arg0) {
+    wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get freq_mod_amount() {
+    const ret = wasm.__wbg_get_envelopeconfig_sustain(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set freq_mod_amount(arg0) {
+    wasm.__wbg_set_envelopeconfig_sustain(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get detune() {
+    const ret = wasm.__wbg_get_envelopeconfig_release(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set detune(arg0) {
+    wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @param {number} frequency
+   * @param {number} phase_mod_amount
+   * @param {number} freq_mod_amount
+   * @param {number} detune
+   */
+  constructor(frequency, phase_mod_amount, freq_mod_amount, detune) {
+    const ret = wasm.oscillatorupdateparams_new(frequency, phase_mod_amount, freq_mod_amount, detune);
+    this.__wbg_ptr = ret >>> 0;
+    OscillatorUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+};
 async function __wbg_load(module, imports) {
   if (typeof Response === "function" && module instanceof Response) {
     if (typeof WebAssembly.instantiateStreaming === "function") {
@@ -499,8 +591,16 @@ function __wbg_get_imports() {
   imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
     console.log(arg0);
   };
+  imports.wbg.__wbg_new_254fa9eac11932ae = function() {
+    const ret = new Array();
+    return ret;
+  };
   imports.wbg.__wbg_new_688846f374351c92 = function() {
     const ret = new Object();
+    return ret;
+  };
+  imports.wbg.__wbg_push_6edad0df4b546b2c = function(arg0, arg1) {
+    const ret = arg0.push(arg1);
     return ret;
   };
   imports.wbg.__wbg_set_4e647025551483bd = function() {
@@ -583,68 +683,6 @@ async function __wbg_init(module_or_path) {
   return __wbg_finalize_init(instance, module);
 }
 
-// public/wasm/audio_processor.js
-var wasm2;
-var cachedTextDecoder2 = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }) : { decode: () => {
-  throw Error("TextDecoder not available");
-} };
-if (typeof TextDecoder !== "undefined") {
-  cachedTextDecoder2.decode();
-}
-var PortId2 = Object.freeze({
-  AudioInput0: 0,
-  "0": "AudioInput0",
-  AudioInput1: 1,
-  "1": "AudioInput1",
-  AudioInput2: 2,
-  "2": "AudioInput2",
-  AudioInput3: 3,
-  "3": "AudioInput3",
-  AudioOutput0: 4,
-  "4": "AudioOutput0",
-  AudioOutput1: 5,
-  "5": "AudioOutput1",
-  AudioOutput2: 6,
-  "6": "AudioOutput2",
-  AudioOutput3: 7,
-  "7": "AudioOutput3",
-  Gate: 8,
-  "8": "Gate",
-  GlobalFrequency: 9,
-  "9": "GlobalFrequency",
-  Frequency: 10,
-  "10": "Frequency",
-  FrequencyMod: 11,
-  "11": "FrequencyMod",
-  PhaseMod: 12,
-  "12": "PhaseMod",
-  ModIndex: 13,
-  "13": "ModIndex",
-  CutoffMod: 14,
-  "14": "CutoffMod",
-  ResonanceMod: 15,
-  "15": "ResonanceMod",
-  GainMod: 16,
-  "16": "GainMod",
-  EnvelopeMod: 17,
-  "17": "EnvelopeMod"
-});
-var AudioProcessorFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
-}, unregister: () => {
-} } : new FinalizationRegistry((ptr) => wasm2.__wbg_audioprocessor_free(ptr >>> 0, 1));
-var ConnectionIdFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
-}, unregister: () => {
-} } : new FinalizationRegistry((ptr) => wasm2.__wbg_connectionid_free(ptr >>> 0, 1));
-var EnvelopeConfigFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
-}, unregister: () => {
-} } : new FinalizationRegistry((ptr) => wasm2.__wbg_envelopeconfig_free(ptr >>> 0, 1));
-var LfoUpdateParamsFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
-}, unregister: () => {
-} } : new FinalizationRegistry((ptr) => wasm2.__wbg_lfoupdateparams_free(ptr >>> 0, 1));
-var NodeIdFinalization2 = typeof FinalizationRegistry === "undefined" ? { register: () => {
-}, unregister: () => {
-} } : new FinalizationRegistry((ptr) => wasm2.__wbg_nodeid_free(ptr >>> 0, 1));
-
 // src/audio/worklets/synth-worklet.ts
 var LfoTriggerMode = /* @__PURE__ */ ((LfoTriggerMode2) => {
   LfoTriggerMode2[LfoTriggerMode2["None"] = 0] = "None";
@@ -665,6 +703,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "ready", false);
     __publicField(this, "processor", null);
     __publicField(this, "numVoices", 8);
+    __publicField(this, "oscillatorsPerVoice", 2);
+    // Can be increased later
+    __publicField(this, "voices", []);
     this.port.onmessage = (event) => {
       if (event.data.type === "wasm-binary") {
         const { wasmBytes } = event.data;
@@ -672,17 +713,17 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         this.processor = new AudioProcessor();
         this.processor.init(sampleRate, this.numVoices);
         for (let i = 0; i < this.numVoices; i++) {
-          this.setupFMVoice(i);
+          this.initialize_synth(i);
         }
         this.ready = true;
       }
     };
     this.port.postMessage({ type: "ready" });
   }
-  // private macroPhase: number = 0;  // Commented out as we're using LFO instead
   static get parameterDescriptors() {
     const parameters = [];
     const numVoices = 8;
+    const oscillatorsPerVoice = 2;
     for (let i = 0; i < numVoices; i++) {
       parameters.push(
         {
@@ -707,6 +748,16 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           automationRate: "k-rate"
         }
       );
+      for (let osc = 0; osc < oscillatorsPerVoice; osc++) {
+        parameters.push({
+          name: `osc${osc}_detune_${i}`,
+          defaultValue: 0,
+          minValue: -100,
+          // ±100 cents = ±1 semitone
+          maxValue: 100,
+          automationRate: "a-rate"
+        });
+      }
       for (let m = 0; m < 4; m++) {
         parameters.push({
           name: `macro_${i}_${m}`,
@@ -726,21 +777,44 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     });
     return parameters;
   }
-  setupFMVoice(voiceIndex) {
-    const { carrierId, modulatorId, envelopeId } = this.processor.create_fm_voice(voiceIndex);
-    const { lfoId } = this.processor.create_lfo(voiceIndex);
-    const lfoparams = new LfoUpdateParams(
-      lfoId,
+  initialize_synth(voiceIndex) {
+    const result = this.processor.initialize_voice(voiceIndex, this.oscillatorsPerVoice);
+    const oscillatorIds = result.oscillatorIds;
+    const envelopeId = result.envelopeId;
+    const { lfoId: vibratoLfoId } = this.processor.create_lfo(voiceIndex);
+    const { lfoId: modLfoId } = this.processor.create_lfo(voiceIndex);
+    this.voices[voiceIndex] = {
+      oscillators: oscillatorIds,
+      envelope: envelopeId,
+      vibratoLfo: vibratoLfoId,
+      modLfo: modLfoId
+    };
+    const vibratoLfoParams = new LfoUpdateParams(
+      vibratoLfoId,
+      5,
+      // 5 Hz - typical vibrato rate
+      0 /* Sine */,
+      // smooth sine wave
+      false,
+      // bipolar modulation
+      false,
+      // full -1 to 1 range
+      0 /* None */
+      // free-running
+    );
+    this.processor.update_lfo(voiceIndex, vibratoLfoParams);
+    const modLfoParams = new LfoUpdateParams(
+      modLfoId,
       0.5,
+      // 0.5 Hz - slow modulation
       0 /* Sine */,
       true,
-      false,
+      // unipolar modulation
+      true,
+      // normalized range
       0 /* None */
     );
-    this.processor.update_lfo(
-      voiceIndex,
-      lfoparams
-    );
+    this.processor.update_lfo(voiceIndex, modLfoParams);
     this.processor.update_envelope(
       voiceIndex,
       envelopeId,
@@ -748,35 +822,40 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       // attack
       0.2,
       // decay
-      0.5,
+      0.7,
       // sustain
-      0.5
+      0.3
       // release
     );
-    this.processor.connect_voice_nodes(
+    for (const oscId of oscillatorIds) {
+      this.processor.connect_voice_nodes(
+        voiceIndex,
+        envelopeId,
+        PortId.AudioOutput0,
+        oscId,
+        PortId.GainMod,
+        1
+      );
+    }
+    this.processor.connect_macro(
       voiceIndex,
-      envelopeId,
-      PortId2.AudioOutput0,
-      carrierId,
-      PortId2.GainMod,
-      1
+      0,
+      vibratoLfoId,
+      PortId.ModIndex,
+      0.1
+      // Max 10% frequency variation
     );
-    this.processor.connect_voice_nodes(
-      voiceIndex,
-      modulatorId,
-      PortId2.AudioOutput0,
-      carrierId,
-      PortId2.PhaseMod,
-      1
-    );
-    this.processor.connect_voice_nodes(
-      voiceIndex,
-      lfoId,
-      PortId2.AudioOutput0,
-      carrierId,
-      PortId2.ModIndex,
-      10
-    );
+    for (const oscId of oscillatorIds) {
+      this.processor.connect_voice_nodes(
+        voiceIndex,
+        vibratoLfoId,
+        PortId.AudioOutput0,
+        oscId,
+        PortId.FrequencyMod,
+        0
+        // Initial amount - controlled by macro
+      );
+    }
   }
   process(_inputs, outputs, parameters) {
     if (!this.ready || !this.processor) return true;
@@ -792,6 +871,20 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
+      const voice = this.voices[i];
+      for (let osc = 0; osc < this.oscillatorsPerVoice; osc++) {
+        const oscId = voice.oscillators[osc];
+        const detuneValue = parameters[`osc${osc}_detune_${i}`]?.[0] ?? 0;
+        const params = new OscillatorUpdateParams(
+          freqArray[i],
+          1,
+          // phase_mod_amount
+          1,
+          // freq_mod_amount
+          detuneValue
+        );
+        this.processor.update_oscillator(i, oscId, params);
+      }
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;

@@ -152,10 +152,11 @@ export class AudioProcessor {
     }
     /**
      * @param {number} voice_index
+     * @param {number} num_oscillators
      * @returns {any}
      */
-    create_fm_voice(voice_index) {
-        const ret = wasm.audioprocessor_create_fm_voice(this.__wbg_ptr, voice_index);
+    initialize_voice(voice_index, num_oscillators) {
+        const ret = wasm.audioprocessor_initialize_voice(this.__wbg_ptr, voice_index, num_oscillators);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -171,6 +172,18 @@ export class AudioProcessor {
      */
     update_envelope(voice_index, node_id, attack, decay, sustain, release) {
         const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} voice_index
+     * @param {number} oscillator_id
+     * @param {OscillatorUpdateParams} params
+     */
+    update_oscillator(voice_index, oscillator_id, params) {
+        _assertClass(params, OscillatorUpdateParams);
+        const ret = wasm.audioprocessor_update_oscillator(this.__wbg_ptr, voice_index, oscillator_id, params.__wbg_ptr);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -587,6 +600,89 @@ export class NodeId {
     }
 }
 
+const OscillatorUpdateParamsFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_oscillatorupdateparams_free(ptr >>> 0, 1));
+
+export class OscillatorUpdateParams {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        OscillatorUpdateParamsFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_oscillatorupdateparams_free(ptr, 0);
+    }
+    /**
+     * @returns {number}
+     */
+    get frequency() {
+        const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set frequency(arg0) {
+        wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get phase_mod_amount() {
+        const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set phase_mod_amount(arg0) {
+        wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get freq_mod_amount() {
+        const ret = wasm.__wbg_get_envelopeconfig_sustain(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set freq_mod_amount(arg0) {
+        wasm.__wbg_set_envelopeconfig_sustain(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune() {
+        const ret = wasm.__wbg_get_envelopeconfig_release(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune(arg0) {
+        wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @param {number} frequency
+     * @param {number} phase_mod_amount
+     * @param {number} freq_mod_amount
+     * @param {number} detune
+     */
+    constructor(frequency, phase_mod_amount, freq_mod_amount, detune) {
+        const ret = wasm.oscillatorupdateparams_new(frequency, phase_mod_amount, freq_mod_amount, detune);
+        this.__wbg_ptr = ret >>> 0;
+        OscillatorUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+
 async function __wbg_load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
         if (typeof WebAssembly.instantiateStreaming === 'function') {
@@ -624,8 +720,16 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_log_464d1b2190ca1e04 = function(arg0) {
         console.log(arg0);
     };
+    imports.wbg.__wbg_new_254fa9eac11932ae = function() {
+        const ret = new Array();
+        return ret;
+    };
     imports.wbg.__wbg_new_688846f374351c92 = function() {
         const ret = new Object();
+        return ret;
+    };
+    imports.wbg.__wbg_push_6edad0df4b546b2c = function(arg0, arg1) {
+        const ret = arg0.push(arg1);
         return ret;
     };
     imports.wbg.__wbg_set_4e647025551483bd = function() { return handleError(function (arg0, arg1, arg2) {

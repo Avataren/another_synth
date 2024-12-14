@@ -4,9 +4,11 @@ import './textencoder.js';
 import {
   AudioProcessor,
   initSync,
-  LfoUpdateParams
+  LfoUpdateParams,
+  OscillatorUpdateParams,
+  PortId
 } from '../../../rust-wasm/pkg/audio_processor.js';
-import { PortId } from 'app/public/wasm/audio_processor.js';
+
 
 declare const sampleRate: number;
 
@@ -47,19 +49,27 @@ export enum LFOWaveform {
   Saw = 3
 }
 
+interface SynthVoice {
+  oscillators: number[];  // Array of oscillator IDs
+  envelope: number;
+  vibratoLfo?: number;
+  modLfo?: number;
+}
+
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private processor: AudioProcessor | null = null;
-  private numVoices: number = 8;
-  // private macroPhase: number = 0;  // Commented out as we're using LFO instead
+  private readonly numVoices: number = 8;
+  private readonly oscillatorsPerVoice: number = 2;  // Can be increased later
+  private voices: SynthVoice[] = [];
 
   static get parameterDescriptors() {
     const parameters = [];
     const numVoices = 8; // Must match the number in constructor
+    const oscillatorsPerVoice = 2;  // Must match class property
 
-    // Create parameters for each voice
     for (let i = 0; i < numVoices; i++) {
-      // Standard voice parameters
+      // Voice-level parameters
       parameters.push(
         {
           name: `gate_${i}`,
@@ -81,10 +91,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           minValue: 0,
           maxValue: 1,
           automationRate: 'k-rate',
-        },
+        }
       );
 
-      // Keep macro parameters for future use
+      // Per-oscillator parameters
+      for (let osc = 0; osc < oscillatorsPerVoice; osc++) {
+        parameters.push({
+          name: `osc${osc}_detune_${i}`,
+          defaultValue: 0,
+          minValue: -100,  // ±100 cents = ±1 semitone
+          maxValue: 100,
+          automationRate: 'a-rate',
+        });
+      }
+
+      // Macro parameters
       for (let m = 0; m < 4; m++) {
         parameters.push({
           name: `macro_${i}_${m}`,
@@ -107,6 +128,92 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     return parameters;
   }
 
+  initialize_synth(voiceIndex: number) {
+    // Initialize voice with oscillators
+    const result = this.processor!.initialize_voice(voiceIndex, this.oscillatorsPerVoice);
+
+    // We need to convert from JsValue correctly
+    const oscillatorIds = result.oscillatorIds;
+    const envelopeId = result.envelopeId;
+
+    // Create modulation sources
+    const { lfoId: vibratoLfoId } = this.processor!.create_lfo(voiceIndex);
+    const { lfoId: modLfoId } = this.processor!.create_lfo(voiceIndex);
+
+    // Store voice structure
+    this.voices[voiceIndex] = {
+      oscillators: oscillatorIds,
+      envelope: envelopeId,
+      vibratoLfo: vibratoLfoId,
+      modLfo: modLfoId
+    };
+
+    // Configure LFOs
+    const vibratoLfoParams = new LfoUpdateParams(
+      vibratoLfoId,
+      5.0,                  // 5 Hz - typical vibrato rate
+      LFOWaveform.Sine,     // smooth sine wave
+      false,                // bipolar modulation
+      false,                // full -1 to 1 range
+      LfoTriggerMode.None   // free-running
+    );
+    this.processor!.update_lfo(voiceIndex, vibratoLfoParams);
+
+    const modLfoParams = new LfoUpdateParams(
+      modLfoId,
+      0.5,                  // 0.5 Hz - slow modulation
+      LFOWaveform.Sine,
+      true,                 // unipolar modulation
+      true,                 // normalized range
+      LfoTriggerMode.None
+    );
+    this.processor!.update_lfo(voiceIndex, modLfoParams);
+
+    // Set up envelope
+    this.processor!.update_envelope(
+      voiceIndex,
+      envelopeId,
+      0.01,  // attack
+      0.2,   // decay
+      0.7,   // sustain
+      0.3    // release
+    );
+
+    // Basic routing: envelope → oscillator gains
+    for (const oscId of oscillatorIds) {
+      this.processor!.connect_voice_nodes(
+        voiceIndex,
+        envelopeId,
+        PortId.AudioOutput0,
+        oscId,
+        PortId.GainMod,
+        1.0
+      );
+    }
+
+    // Set up default macro connections
+    // Macro 0: Vibrato Amount
+    this.processor!.connect_macro(
+      voiceIndex,
+      0,
+      vibratoLfoId,
+      PortId.ModIndex,
+      0.1  // Max 10% frequency variation
+    );
+
+    // Connect vibrato to all oscillator frequencies
+    for (const oscId of oscillatorIds) {
+      this.processor!.connect_voice_nodes(
+        voiceIndex,
+        vibratoLfoId,
+        PortId.AudioOutput0,
+        oscId,
+        PortId.FrequencyMod,
+        0.0  // Initial amount - controlled by macro
+      );
+    }
+  }
+
   constructor() {
     super();
     this.port.onmessage = (event: MessageEvent) => {
@@ -117,95 +224,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         this.processor.init(sampleRate, this.numVoices);
 
         for (let i = 0; i < this.numVoices; i++) {
-          this.setupFMVoice(i);
+          this.initialize_synth(i);
         }
 
         this.ready = true;
       }
     };
     this.port.postMessage({ type: 'ready' });
-  }
-
-  setupFMVoice(voiceIndex: number) {
-    // Create nodes and get their IDs
-    const { carrierId, modulatorId, envelopeId } =
-      this.processor!.create_fm_voice(voiceIndex);
-
-    // Create LFO for modulation index
-    const { lfoId } = this.processor!.create_lfo(voiceIndex);
-
-    const lfoparams = new LfoUpdateParams(
-      lfoId,
-      0.5,
-      LFOWaveform.Sine,
-      true,
-      false,
-      LfoTriggerMode.None,
-    );
-    // Configure LFO
-    this.processor!.update_lfo(
-      voiceIndex,
-      lfoparams
-    );
-
-    // Set up envelope parameters
-    this.processor!.update_envelope(
-      voiceIndex,
-      envelopeId,
-      0.01, // attack
-      0.2,  // decay
-      0.5,  // sustain
-      0.5,  // release
-    );
-
-    // Connect envelope to carrier's gain
-    this.processor!.connect_voice_nodes(
-      voiceIndex,
-      envelopeId,
-      PortId.AudioOutput0,
-      carrierId,
-      PortId.GainMod,
-      1.0,
-    );
-
-    // Connect modulator to carrier's phase mod (for FM synthesis)
-    this.processor!.connect_voice_nodes(
-      voiceIndex,
-      modulatorId,
-      PortId.AudioOutput0,
-      carrierId,
-      PortId.PhaseMod,
-      1.0,
-    );
-
-    // Connect LFO to carrier's mod index (to vary the modulation amount)
-    this.processor!.connect_voice_nodes(
-      voiceIndex,
-      lfoId,
-      PortId.AudioOutput0,
-      carrierId,
-      PortId.ModIndex,
-      10.0,
-    );
-
-    /* Commenting out macro connection
-    console.log('Setting up macro connection:', {
-      voiceIndex,
-      carrierId,
-      targetPort: PortId.ModIndex,
-    });
-
-    // Set up mod index macro
-    this.processor!.connect_macro(
-      voiceIndex,
-      0, // first macro
-      carrierId,
-      PortId.ModIndex,
-      0.5,
-    );
-    */
-
-    //return { carrierId, modulatorId, envelopeId, lfoId };
   }
 
   override process(
@@ -233,7 +258,22 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
 
-      // Copy macro automation values from parameters
+      // Update oscillator detune values
+      const voice = this.voices[i]!;
+      for (let osc = 0; osc < this.oscillatorsPerVoice; osc++) {
+        const oscId = voice.oscillators[osc]!;
+        const detuneValue = parameters[`osc${osc}_detune_${i}`]?.[0] ?? 0;
+
+        const params = new OscillatorUpdateParams(
+          freqArray[i]!,
+          1.0,    // phase_mod_amount
+          1.0,    // freq_mod_amount
+          detuneValue
+        );
+        this.processor.update_oscillator(i, oscId, params);
+      }
+
+      // Handle macro automation
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;

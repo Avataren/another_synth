@@ -1,16 +1,39 @@
+use wasm_bindgen::prelude::wasm_bindgen;
+
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 use std::any::Any;
 use std::collections::HashMap;
+
+#[wasm_bindgen]
+pub struct OscillatorUpdateParams {
+    pub frequency: f32,
+    pub phase_mod_amount: f32,
+    pub freq_mod_amount: f32,
+    pub detune: f32, // In cents
+}
+
+#[wasm_bindgen]
+impl OscillatorUpdateParams {
+    #[wasm_bindgen(constructor)]
+    pub fn new(frequency: f32, phase_mod_amount: f32, freq_mod_amount: f32, detune: f32) -> Self {
+        Self {
+            frequency,
+            phase_mod_amount,
+            freq_mod_amount,
+            detune,
+        }
+    }
+}
 
 pub struct ModulatableOscillator {
     phase: f32,
     frequency: f32,
     phase_mod_amount: f32,
     freq_mod_amount: f32,
+    detune: f32,
     sample_rate: f32,
 }
-
 impl ModulatableOscillator {
     pub fn new(sample_rate: f32) -> Self {
         Self {
@@ -18,8 +41,22 @@ impl ModulatableOscillator {
             frequency: 440.0,
             phase_mod_amount: 1.0,
             freq_mod_amount: 1.0,
+            detune: 0.0,
             sample_rate,
         }
+    }
+
+    pub fn update_params(&mut self, params: &OscillatorUpdateParams) {
+        self.frequency = params.frequency;
+        self.phase_mod_amount = params.phase_mod_amount;
+        self.freq_mod_amount = params.freq_mod_amount;
+        self.detune = params.detune;
+    }
+
+    fn get_detuned_frequency(&self, base_freq: f32) -> f32 {
+        // Convert cents to frequency multiplier: 2^(cents/1200)
+        let multiplier = 2.0f32.powf(self.detune / 1200.0);
+        base_freq * multiplier
     }
 }
 
@@ -79,13 +116,20 @@ impl AudioProcessor for ModulatableOscillator {
                 f32x4::splat(self.frequency)
             };
 
+            // Apply detune
+            let detuned_freq = f32x4::from_array([
+                self.get_detuned_frequency(base_freq.to_array()[0]),
+                self.get_detuned_frequency(base_freq.to_array()[1]),
+                self.get_detuned_frequency(base_freq.to_array()[2]),
+                self.get_detuned_frequency(base_freq.to_array()[3]),
+            ]);
+
             let freq_mod = inputs
                 .get(&PortId::FrequencyMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
             let modulated_freq =
-                base_freq * (f32x4::splat(1.0) + freq_mod * f32x4::splat(self.freq_mod_amount));
-
+                detuned_freq * (f32x4::splat(1.0) + freq_mod * f32x4::splat(self.freq_mod_amount));
             // Calculate phase increment for each sample
             let phase_inc = f32x4::splat(2.0 * std::f32::consts::PI) * modulated_freq
                 / f32x4::splat(self.sample_rate);
