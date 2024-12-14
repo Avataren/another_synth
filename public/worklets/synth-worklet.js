@@ -818,13 +818,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     this.processor.update_envelope(
       voiceIndex,
       envelopeId,
-      0.01,
+      1e-3,
       // attack
       0.2,
       // decay
-      0.7,
+      0.2,
       // sustain
-      0.3
+      0.5
       // release
     );
     for (const oscId of oscillatorIds) {

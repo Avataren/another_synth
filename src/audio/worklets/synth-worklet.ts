@@ -173,10 +173,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.processor!.update_envelope(
       voiceIndex,
       envelopeId,
-      0.01,  // attack
+      0.001,  // attack
       0.2,   // decay
-      0.7,   // sustain
-      0.3    // release
+      0.2,   // sustain
+      0.5    // release
     );
 
     // Basic routing: envelope → oscillator gains
