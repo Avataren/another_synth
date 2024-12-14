@@ -7,16 +7,18 @@
     <q-card-section class="oscillator-container">
       <div class="knob-group">
         <q-toggle
-          v-model="oscillatorState.is_active"
+          v-model="oscillatorState.active"
           label="Active"
           @update:modelValue="handleActiveChange"
         />
+
         <q-toggle
-          v-model="oscillatorState.hardsync"
+          v-model="oscillatorState.hard_sync"
           label="Hard Sync"
           @update:modelValue="handleHardSyncChange"
         />
       </div>
+
       <div class="knob-group">
         <audio-knob-component
           v-model="oscillatorState.gain"
@@ -75,10 +77,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
-import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
-import { type WaveformType } from 'src/audio/wavetable/wave-utils';
+// import { type WaveformType } from 'src/audio/wavetable/wave-utils';
+import type OscillatorState from 'src/audio/models/OscillatorState';
 
 interface Props {
   node: AudioNode | null;
@@ -98,21 +100,20 @@ const oscillatorState = computed({
     if (!state) {
       console.warn(`No state found for oscillator ${props.oscIndex}`);
       return {
-        id: props.oscIndex,
-        gain: 1.0,
+        phase_mod_amount: 0,
+        freq_mod_amount: 0,
         detune_oct: 0,
         detune_semi: 0,
         detune_cents: 0,
         detune: 0,
-        hardsync: false,
-        waveform: 'sine',
-        is_active: true,
+        gain: 1,
+        active: false,
       } as OscillatorState;
     }
     return state;
   },
   set: (newState: OscillatorState) => {
-    store.oscillatorStates.set(props.oscIndex, { ...newState });
+    store.oscillatorStates.set(props.oscIndex, newState);
   },
 });
 
@@ -134,30 +135,30 @@ const totalDetune = computed(() => {
   );
 });
 
-const handleWaveformChange = (newWaveform: number) => {
-  let wf: WaveformType = 'sine';
-  switch (newWaveform) {
-    case 0:
-      wf = 'sine';
-      break;
-    case 1:
-      wf = 'triangle';
-      break;
-    case 2:
-      wf = 'sawtooth';
-      break;
-    case 3:
-      wf = 'square';
-      break;
-    default:
-      break;
-  }
+const handleWaveformChange = (_newWaveform: number) => {
+  //let wf: WaveformType = 'sine';
+  // switch (newWaveform) {
+  //   case 0:
+  //     wf = 'sine';
+  //     break;
+  //   case 1:
+  //     wf = 'triangle';
+  //     break;
+  //   case 2:
+  //     wf = 'sawtooth';
+  //     break;
+  //   case 3:
+  //     wf = 'square';
+  //     break;
+  //   default:
+  //     break;
+  // }
 
   const currentState = {
     ...oscillatorState.value,
-    waveform: wf,
+    //waveform: wf,
   };
-  store.oscillatorStates.set(props.oscIndex, currentState);
+  store.oscillatorStates.set(props.oscIndex, currentState as OscillatorState);
 };
 
 const handleHardSyncChange = (newValue: boolean) => {
@@ -165,15 +166,15 @@ const handleHardSyncChange = (newValue: boolean) => {
     ...oscillatorState.value,
     hardsync: newValue,
   };
-  store.oscillatorStates.set(props.oscIndex, currentState);
+  store.oscillatorStates.set(props.oscIndex, currentState as OscillatorState);
 };
 
 const handleActiveChange = (newValue: boolean) => {
   const currentState = {
     ...oscillatorState.value,
-    is_active: newValue,
+    active: newValue,
   };
-  store.oscillatorStates.set(props.oscIndex, currentState);
+  store.oscillatorStates.set(props.oscIndex, currentState as OscillatorState);
 };
 
 // Handle gain changes
@@ -211,10 +212,17 @@ watch(
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.oscIndex) {
         // console.log('state changed!');
-        store.currentInstrument?.updateOscillatorState(
-          props.oscIndex,
-          newState as OscillatorState,
-        );
+        store.currentInstrument?.updateOscillatorState(props.oscIndex, {
+          id: newState.id,
+          phase_mod_amount: 0,
+          freq_mod_amount: 0,
+          detune_oct: newState.detune_oct,
+          detune_semi: newState.detune_semi,
+          detune_cents: newState.detune_cents,
+          detune: newState.detune,
+          gain: newState.gain,
+          active: newState.active,
+        } as OscillatorState);
       }
     }
   },

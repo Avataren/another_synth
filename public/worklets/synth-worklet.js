@@ -267,10 +267,10 @@ var AudioEngine = class {
   /**
    * @param {number} voice_index
    * @param {number} oscillator_id
-   * @param {OscillatorUpdateParams} params
+   * @param {OscillatorStateUpdate} params
    */
   update_oscillator(voice_index, oscillator_id, params) {
-    _assertClass(params, OscillatorUpdateParams);
+    _assertClass(params, OscillatorStateUpdate);
     const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, voice_index, oscillator_id, params.__wbg_ptr);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
@@ -485,19 +485,19 @@ var LfoUpdateParams = class {
 var NodeIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_nodeid_free(ptr >>> 0, 1));
-var OscillatorUpdateParamsFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+var OscillatorStateUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
-} } : new FinalizationRegistry((ptr) => wasm.__wbg_oscillatorupdateparams_free(ptr >>> 0, 1));
-var OscillatorUpdateParams = class {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_oscillatorstateupdate_free(ptr >>> 0, 1));
+var OscillatorStateUpdate = class {
   __destroy_into_raw() {
     const ptr = this.__wbg_ptr;
     this.__wbg_ptr = 0;
-    OscillatorUpdateParamsFinalization.unregister(this);
+    OscillatorStateUpdateFinalization.unregister(this);
     return ptr;
   }
   free() {
     const ptr = this.__destroy_into_raw();
-    wasm.__wbg_oscillatorupdateparams_free(ptr, 0);
+    wasm.__wbg_oscillatorstateupdate_free(ptr, 0);
   }
   /**
    * @returns {number}
@@ -528,53 +528,109 @@ var OscillatorUpdateParams = class {
   /**
    * @returns {number}
    */
-  get detune() {
+  get detune_oct() {
     const ret = wasm.__wbg_get_envelopeconfig_sustain(this.__wbg_ptr);
     return ret;
   }
   /**
    * @param {number} arg0
    */
-  set detune(arg0) {
+  set detune_oct(arg0) {
     wasm.__wbg_set_envelopeconfig_sustain(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {number}
    */
-  get gain() {
+  get detune_semi() {
     const ret = wasm.__wbg_get_envelopeconfig_release(this.__wbg_ptr);
     return ret;
   }
   /**
    * @param {number} arg0
    */
-  set gain(arg0) {
+  set detune_semi(arg0) {
     wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get detune_cents() {
+    const ret = wasm.__wbg_get_envelopeconfig_attack_curve(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set detune_cents(arg0) {
+    wasm.__wbg_set_envelopeconfig_attack_curve(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get detune() {
+    const ret = wasm.__wbg_get_envelopeconfig_decay_curve(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set detune(arg0) {
+    wasm.__wbg_set_envelopeconfig_decay_curve(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {boolean}
+   */
+  get hard_sync() {
+    const ret = wasm.__wbg_get_oscillatorstateupdate_hard_sync(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * @param {boolean} arg0
+   */
+  set hard_sync(arg0) {
+    wasm.__wbg_set_oscillatorstateupdate_hard_sync(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get gain() {
+    const ret = wasm.__wbg_get_envelopeconfig_release_curve(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set gain(arg0) {
+    wasm.__wbg_set_envelopeconfig_release_curve(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {boolean}
    */
   get active() {
-    const ret = wasm.__wbg_get_oscillatorupdateparams_active(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_oscillatorstateupdate_active(this.__wbg_ptr);
     return ret !== 0;
   }
   /**
    * @param {boolean} arg0
    */
   set active(arg0) {
-    wasm.__wbg_set_oscillatorupdateparams_active(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_oscillatorstateupdate_active(this.__wbg_ptr, arg0);
   }
   /**
    * @param {number} phase_mod_amount
    * @param {number} freq_mod_amount
+   * @param {number} detune_oct
+   * @param {number} detune_semi
+   * @param {number} detune_cents
    * @param {number} detune
+   * @param {boolean} hard_sync
    * @param {number} gain
    * @param {boolean} active
    */
-  constructor(phase_mod_amount, freq_mod_amount, detune, gain, active) {
-    const ret = wasm.oscillatorupdateparams_new(phase_mod_amount, freq_mod_amount, detune, gain, active);
+  constructor(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active) {
+    const ret = wasm.oscillatorstateupdate_new(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active);
     this.__wbg_ptr = ret >>> 0;
-    OscillatorUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+    OscillatorStateUpdateFinalization.register(this, this.__wbg_ptr, this);
     return this;
   }
 };

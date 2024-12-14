@@ -1,8 +1,9 @@
+// import { OscillatorUpdateParams } from 'app/public/wasm/audio_processor';
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
 import { type FilterState } from './dsp/filter-state';
 import { type NoiseState } from './dsp/noise-generator';
-import { type OscillatorState } from './wavetable/wavetable-oscillator';
+import type OscillatorState from './models/OscillatorState';
 
 export default class Instrument {
   readonly num_voices = 8;

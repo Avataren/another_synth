@@ -2,32 +2,46 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
+use crate::NodeId;
 use std::any::Any;
 use std::collections::HashMap;
+use std::usize;
 
 #[wasm_bindgen]
-pub struct OscillatorUpdateParams {
+pub struct OscillatorStateUpdate {
     pub phase_mod_amount: f32,
     pub freq_mod_amount: f32,
+    pub detune_oct: f32,
+    pub detune_semi: f32,
+    pub detune_cents: f32,
     pub detune: f32,
+    pub hard_sync: bool,
     pub gain: f32,
     pub active: bool,
 }
 
 #[wasm_bindgen]
-impl OscillatorUpdateParams {
+impl OscillatorStateUpdate {
     #[wasm_bindgen(constructor)]
     pub fn new(
         phase_mod_amount: f32,
         freq_mod_amount: f32,
+        detune_oct: f32,
+        detune_semi: f32,
+        detune_cents: f32,
         detune: f32,
+        hard_sync: bool,
         gain: f32,
         active: bool,
     ) -> Self {
         Self {
             phase_mod_amount,
             freq_mod_amount,
+            detune_oct,
+            detune_semi,
+            detune_cents,
             detune,
+            hard_sync,
             gain,
             active,
         }
@@ -59,7 +73,7 @@ impl ModulatableOscillator {
         }
     }
 
-    pub fn update_params(&mut self, params: &OscillatorUpdateParams) {
+    pub fn update_params(&mut self, params: &OscillatorStateUpdate) {
         self.phase_mod_amount = params.phase_mod_amount;
         self.freq_mod_amount = params.freq_mod_amount;
         self.detune = params.detune;

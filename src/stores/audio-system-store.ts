@@ -4,9 +4,10 @@ import AudioSystem from 'src/audio/AudioSystem';
 import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
 import { type FilterState } from 'src/audio/dsp/filter-state';
 import Instrument from 'src/audio/instrument';
-import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
+//import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
 // import { loadWasmModule } from 'src/utils/wasm-loader';
 import { NoiseType, type NoiseState } from 'src/audio/dsp/noise-generator';
+import type OscillatorState from 'src/audio/models/OscillatorState';
 interface AudioParamDescriptor {
   name: string;
   defaultValue?: number;
@@ -85,14 +86,24 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         for (let i = 0; i <= 4; i++) {
           this.oscillatorStates.set(i, {
             id: i,
-            gain: 1.0,
+            phase_mod_amount: 0,
+            freq_mod_amount: 0,
             detune_oct: 0,
             detune_semi: 0,
             detune_cents: 0,
             detune: 0,
-            hardsync: false,
-            waveform: 'sine',
-            is_active: true
+            hard_sync: false,
+            gain: 1,
+            active: true
+            // id: i,
+            // gain: 1.0,
+            // detune_oct: 0,
+            // detune_semi: 0,
+            // detune_cents: 0,
+            // detune: 0,
+            // hardsync: false,
+            // waveform: 'sine',
+            // is_active: true
           });
         }
 

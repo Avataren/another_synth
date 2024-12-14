@@ -12,7 +12,7 @@ mod voice;
 pub use graph::AudioGraph;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
-pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorUpdateParams};
+pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use nodes::{Lfo, LfoTriggerMode, LfoWaveform};
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
@@ -243,7 +243,7 @@ impl AudioEngine {
         &mut self,
         voice_index: usize,
         oscillator_id: usize,
-        params: &OscillatorUpdateParams,
+        params: &OscillatorStateUpdate,
     ) -> Result<(), JsValue> {
         let voice = self
             .voices
