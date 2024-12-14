@@ -96,27 +96,27 @@ export const PortId = Object.freeze({
     EnvelopeMod: 17, "17": "EnvelopeMod",
 });
 
-const AudioProcessorFinalization = (typeof FinalizationRegistry === 'undefined')
+const AudioEngineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_audioprocessor_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_audioengine_free(ptr >>> 0, 1));
 
-export class AudioProcessor {
+export class AudioEngine {
 
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
-        AudioProcessorFinalization.unregister(this);
+        AudioEngineFinalization.unregister(this);
         return ptr;
     }
 
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_audioprocessor_free(ptr, 0);
+        wasm.__wbg_audioengine_free(ptr, 0);
     }
     constructor() {
-        const ret = wasm.audioprocessor_new();
+        const ret = wasm.audioengine_new();
         this.__wbg_ptr = ret >>> 0;
-        AudioProcessorFinalization.register(this, this.__wbg_ptr, this);
+        AudioEngineFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
     /**
@@ -124,7 +124,7 @@ export class AudioProcessor {
      * @param {number} num_voices
      */
     init(sample_rate, num_voices) {
-        wasm.audioprocessor_init(this.__wbg_ptr, sample_rate, num_voices);
+        wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
     }
     /**
      * @param {Float32Array} gates
@@ -148,7 +148,7 @@ export class AudioProcessor {
         var len4 = WASM_VECTOR_LEN;
         var ptr5 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
         var len5 = WASM_VECTOR_LEN;
-        wasm.audioprocessor_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, master_gain, ptr4, len4, output_left, ptr5, len5, output_right);
+        wasm.audioengine_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, master_gain, ptr4, len4, output_left, ptr5, len5, output_right);
     }
     /**
      * @param {number} voice_index
@@ -156,7 +156,7 @@ export class AudioProcessor {
      * @returns {any}
      */
     initialize_voice(voice_index, num_oscillators) {
-        const ret = wasm.audioprocessor_initialize_voice(this.__wbg_ptr, voice_index, num_oscillators);
+        const ret = wasm.audioengine_initialize_voice(this.__wbg_ptr, voice_index, num_oscillators);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -171,7 +171,7 @@ export class AudioProcessor {
      * @param {number} release
      */
     update_envelope(voice_index, node_id, attack, decay, sustain, release) {
-        const ret = wasm.audioprocessor_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
+        const ret = wasm.audioengine_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -183,7 +183,7 @@ export class AudioProcessor {
      */
     update_oscillator(voice_index, oscillator_id, params) {
         _assertClass(params, OscillatorUpdateParams);
-        const ret = wasm.audioprocessor_update_oscillator(this.__wbg_ptr, voice_index, oscillator_id, params.__wbg_ptr);
+        const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, voice_index, oscillator_id, params.__wbg_ptr);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -193,7 +193,7 @@ export class AudioProcessor {
      * @returns {any}
      */
     create_lfo(voice_index) {
-        const ret = wasm.audioprocessor_create_lfo(this.__wbg_ptr, voice_index);
+        const ret = wasm.audioengine_create_lfo(this.__wbg_ptr, voice_index);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -206,7 +206,7 @@ export class AudioProcessor {
     update_lfo(voice_index, params) {
         _assertClass(params, LfoUpdateParams);
         var ptr0 = params.__destroy_into_raw();
-        const ret = wasm.audioprocessor_update_lfo(this.__wbg_ptr, voice_index, ptr0);
+        const ret = wasm.audioengine_update_lfo(this.__wbg_ptr, voice_index, ptr0);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -217,7 +217,7 @@ export class AudioProcessor {
      * @returns {Float32Array}
      */
     get_lfo_waveform(waveform, buffer_size) {
-        const ret = wasm.audioprocessor_get_lfo_waveform(this.__wbg_ptr, waveform, buffer_size);
+        const ret = wasm.audioengine_get_lfo_waveform(this.__wbg_ptr, waveform, buffer_size);
         if (ret[3]) {
             throw takeFromExternrefTable0(ret[2]);
         }
@@ -234,7 +234,7 @@ export class AudioProcessor {
      * @param {number} amount
      */
     connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
-        const ret = wasm.audioprocessor_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+        const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -247,7 +247,7 @@ export class AudioProcessor {
      * @param {number} amount
      */
     connect_macro(voice_index, macro_index, target_node, target_port, amount) {
-        const ret = wasm.audioprocessor_connect_macro(this.__wbg_ptr, voice_index, macro_index, target_node, target_port, amount);
+        const ret = wasm.audioengine_connect_macro(this.__wbg_ptr, voice_index, macro_index, target_node, target_port, amount);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -261,7 +261,7 @@ export class AudioProcessor {
      * @param {number} amount
      */
     connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
-        const ret = wasm.audioprocessor_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -271,14 +271,14 @@ export class AudioProcessor {
      * @returns {number}
      */
     add_oscillator(voice_index) {
-        const ret = wasm.audioprocessor_add_oscillator(this.__wbg_ptr, voice_index);
+        const ret = wasm.audioengine_add_oscillator(this.__wbg_ptr, voice_index);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         return ret[0] >>> 0;
     }
     reset() {
-        wasm.audioprocessor_reset(this.__wbg_ptr);
+        wasm.audioengine_reset(this.__wbg_ptr);
     }
 }
 

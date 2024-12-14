@@ -22,7 +22,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{console, js_sys};
 
 #[wasm_bindgen]
-pub struct AudioProcessor {
+pub struct AudioEngine {
     voices: Vec<Voice>,
     sample_rate: f32,
     num_voices: usize,
@@ -61,14 +61,14 @@ impl LfoUpdateParams {
     }
 }
 
-impl Default for AudioProcessor {
+impl Default for AudioEngine {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[wasm_bindgen]
-impl AudioProcessor {
+impl AudioEngine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let num_voices = 8;

@@ -2,7 +2,7 @@
 import './textencoder.js';
 
 import {
-  AudioProcessor,
+  AudioEngine,
   initSync,
   LfoUpdateParams,
   OscillatorUpdateParams,
@@ -58,7 +58,7 @@ interface SynthVoice {
 
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
-  private processor: AudioProcessor | null = null;
+  private processor: AudioEngine | null = null;
   private readonly numVoices: number = 8;
   private readonly oscillatorsPerVoice: number = 2;  // Can be increased later
   private voices: SynthVoice[] = [];
@@ -220,7 +220,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       if (event.data.type === 'wasm-binary') {
         const { wasmBytes } = event.data;
         initSync({ module: new Uint8Array(wasmBytes) });
-        this.processor = new AudioProcessor();
+        this.processor = new AudioEngine();
         this.processor.init(sampleRate, this.numVoices);
 
         for (let i = 0; i < this.numVoices; i++) {
