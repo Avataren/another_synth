@@ -54,6 +54,7 @@ pub struct Envelope {
     last_gate_value: f32,
     smoothing_counter: usize,
     pre_attack_value: f32,
+    active: bool,
 }
 
 impl Envelope {
@@ -68,6 +69,7 @@ impl Envelope {
             last_gate_value: 0.0,
             smoothing_counter: 0,
             pre_attack_value: 0.0,
+            active: true,
         }
     }
 
@@ -187,6 +189,14 @@ impl AudioNode for Envelope {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
 

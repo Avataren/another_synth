@@ -673,13 +673,41 @@ export class OscillatorUpdateParams {
         wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
     }
     /**
+     * @returns {number}
+     */
+    get gain() {
+        const ret = wasm.__wbg_get_envelopeconfig_attack_curve(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set gain(arg0) {
+        wasm.__wbg_set_envelopeconfig_attack_curve(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {boolean}
+     */
+    get active() {
+        const ret = wasm.__wbg_get_oscillatorupdateparams_active(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} arg0
+     */
+    set active(arg0) {
+        wasm.__wbg_set_oscillatorupdateparams_active(this.__wbg_ptr, arg0);
+    }
+    /**
      * @param {number} frequency
      * @param {number} phase_mod_amount
      * @param {number} freq_mod_amount
      * @param {number} detune
+     * @param {number} gain
+     * @param {boolean} active
      */
-    constructor(frequency, phase_mod_amount, freq_mod_amount, detune) {
-        const ret = wasm.oscillatorupdateparams_new(frequency, phase_mod_amount, freq_mod_amount, detune);
+    constructor(frequency, phase_mod_amount, freq_mod_amount, detune, gain, active) {
+        const ret = wasm.oscillatorupdateparams_new(frequency, phase_mod_amount, freq_mod_amount, detune, gain, active);
         this.__wbg_ptr = ret >>> 0;
         OscillatorUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
         return this;

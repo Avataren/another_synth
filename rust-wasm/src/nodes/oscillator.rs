@@ -10,18 +10,29 @@ pub struct OscillatorUpdateParams {
     pub frequency: f32,
     pub phase_mod_amount: f32,
     pub freq_mod_amount: f32,
-    pub detune: f32, // In cents
+    pub detune: f32,
+    pub gain: f32,
+    pub active: bool,
 }
 
 #[wasm_bindgen]
 impl OscillatorUpdateParams {
     #[wasm_bindgen(constructor)]
-    pub fn new(frequency: f32, phase_mod_amount: f32, freq_mod_amount: f32, detune: f32) -> Self {
+    pub fn new(
+        frequency: f32,
+        phase_mod_amount: f32,
+        freq_mod_amount: f32,
+        detune: f32,
+        gain: f32,
+        active: bool,
+    ) -> Self {
         Self {
             frequency,
             phase_mod_amount,
             freq_mod_amount,
             detune,
+            gain,
+            active,
         }
     }
 }
@@ -32,8 +43,11 @@ pub struct ModulatableOscillator {
     phase_mod_amount: f32,
     freq_mod_amount: f32,
     detune: f32,
+    gain: f32,
     sample_rate: f32,
+    active: bool,
 }
+
 impl ModulatableOscillator {
     pub fn new(sample_rate: f32) -> Self {
         Self {
@@ -42,7 +56,9 @@ impl ModulatableOscillator {
             phase_mod_amount: 1.0,
             freq_mod_amount: 1.0,
             detune: 0.0,
+            gain: 1.0,
             sample_rate,
+            active: true,
         }
     }
 
@@ -51,6 +67,7 @@ impl ModulatableOscillator {
         self.phase_mod_amount = params.phase_mod_amount;
         self.freq_mod_amount = params.freq_mod_amount;
         self.detune = params.detune;
+        self.gain = params.gain;
     }
 
     fn get_detuned_frequency(&self, base_freq: f32) -> f32 {
@@ -92,6 +109,14 @@ impl AudioNode for ModulatableOscillator {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
 }
 
 impl AudioProcessor for ModulatableOscillator {
@@ -130,6 +155,7 @@ impl AudioProcessor for ModulatableOscillator {
 
             let modulated_freq =
                 detuned_freq * (f32x4::splat(1.0) + freq_mod * f32x4::splat(self.freq_mod_amount));
+
             // Calculate phase increment for each sample
             let phase_inc = f32x4::splat(2.0 * std::f32::consts::PI) * modulated_freq
                 / f32x4::splat(self.sample_rate);
@@ -139,7 +165,6 @@ impl AudioProcessor for ModulatableOscillator {
                 .get(&PortId::PhaseMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
-            // Get mod index and log its state
             let base_mod_index = self.get_default_values()[&PortId::ModIndex];
             let mod_index = if let Some(input) = inputs.get(&PortId::ModIndex) {
                 let value = input.get_simd(offset);
@@ -176,12 +201,12 @@ impl AudioProcessor for ModulatableOscillator {
             let phase_simd = f32x4::from_array(phases);
             let sine_output = phase_simd.sin();
 
-            // Apply gain modulation
-            let gain = inputs
+            // Apply gain modulation on top of base gain
+            let gain_mod = inputs
                 .get(&PortId::GainMod)
                 .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
 
-            let final_output = sine_output * gain;
+            let final_output = sine_output * gain_mod * f32x4::splat(self.gain);
 
             // Write output
             if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {

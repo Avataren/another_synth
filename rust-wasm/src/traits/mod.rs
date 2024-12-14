@@ -108,4 +108,8 @@ pub trait AudioNode: Any {
     fn reset(&mut self);
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn as_any(&self) -> &dyn Any;
+
+    // New methods for active state
+    fn is_active(&self) -> bool;
+    fn set_active(&mut self, active: bool);
 }

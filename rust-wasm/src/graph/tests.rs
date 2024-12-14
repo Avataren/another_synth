@@ -57,6 +57,12 @@ impl AudioNode for MockNode {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_active(&self) -> bool {
+        true
+    }
+
+    fn set_active(&mut self, _active: bool) {}
 }
 
 #[cfg(test)]

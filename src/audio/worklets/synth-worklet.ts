@@ -5,7 +5,7 @@ import {
   AudioEngine,
   initSync,
   LfoUpdateParams,
-  OscillatorUpdateParams,
+  // OscillatorUpdateParams,
   PortId
 } from '../../../rust-wasm/pkg/audio_processor.js';
 
@@ -257,21 +257,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
-
-      // Update oscillator detune values
-      const voice = this.voices[i]!;
-      for (let osc = 0; osc < this.oscillatorsPerVoice; osc++) {
-        const oscId = voice.oscillators[osc]!;
-        const detuneValue = parameters[`osc${osc}_detune_${i}`]?.[0] ?? 0;
-
-        const params = new OscillatorUpdateParams(
-          freqArray[i]!,
-          1.0,    // phase_mod_amount
-          1.0,    // freq_mod_amount
-          detuneValue
-        );
-        this.processor.update_oscillator(i, oscId, params);
-      }
 
       // Handle macro automation
       const voiceOffset = i * 4 * 128;

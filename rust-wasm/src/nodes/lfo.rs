@@ -106,7 +106,7 @@ pub struct Lfo {
     use_normalized: bool,
     pub trigger_mode: LfoTriggerMode,
     last_gate: f32,
-    is_active: bool,
+    active: bool,
 }
 
 impl Lfo {
@@ -124,7 +124,7 @@ impl Lfo {
             use_normalized: false,
             trigger_mode: LfoTriggerMode::Envelope,
             last_gate: 0.0,
-            is_active: false,
+            active: false,
         }
     }
 
@@ -216,7 +216,7 @@ impl Lfo {
     }
 
     pub fn is_active(&self) -> bool {
-        self.is_active && self.trigger_mode == LfoTriggerMode::None
+        self.active && self.trigger_mode == LfoTriggerMode::None
     }
 
     // pub fn set_is_active(&mut self, is_active: bool) {
@@ -254,6 +254,14 @@ impl AudioNode for Lfo {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
 

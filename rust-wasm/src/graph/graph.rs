@@ -258,6 +258,18 @@ impl AudioGraph {
         for &node_idx in &self.processing_order {
             let node_id = NodeId(node_idx);
             let node = &mut self.nodes[node_idx];
+
+            // Skip processing if node is inactive
+            if !node.is_active() {
+                // Clear output buffers for inactive nodes
+                for (&(id, port), &buffer_idx) in self.node_buffers.iter() {
+                    if id == node_id && port.is_audio_output() {
+                        self.buffer_pool.clear(buffer_idx);
+                    }
+                }
+                continue;
+            }
+
             let ports = node.get_ports();
 
             // Collect inputs into input_data
