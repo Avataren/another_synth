@@ -62,6 +62,12 @@ function takeFromExternrefTable0(idx) {
     return value;
 }
 
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
+}
+
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
@@ -182,15 +188,12 @@ export class AudioProcessor {
     }
     /**
      * @param {number} voice_index
-     * @param {number} lfo_id
-     * @param {number} frequency
-     * @param {number} waveform
-     * @param {boolean} use_absolute
-     * @param {boolean} use_normalized
-     * @param {number} trigger_mode
+     * @param {LfoUpdateParams} params
      */
-    update_lfo(voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode) {
-        const ret = wasm.audioprocessor_update_lfo(this.__wbg_ptr, voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode);
+    update_lfo(voice_index, params) {
+        _assertClass(params, LfoUpdateParams);
+        var ptr0 = params.__destroy_into_raw();
+        const ret = wasm.audioprocessor_update_lfo(this.__wbg_ptr, voice_index, ptr0);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -415,6 +418,117 @@ export class EnvelopeConfig {
      */
     set attack_smoothing_samples(arg0) {
         wasm.__wbg_set_envelopeconfig_attack_smoothing_samples(this.__wbg_ptr, arg0);
+    }
+}
+
+const LfoUpdateParamsFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_lfoupdateparams_free(ptr >>> 0, 1));
+
+export class LfoUpdateParams {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        LfoUpdateParamsFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_lfoupdateparams_free(ptr, 0);
+    }
+    /**
+     * @returns {number}
+     */
+    get lfo_id() {
+        const ret = wasm.__wbg_get_connectionid_0(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set lfo_id(arg0) {
+        wasm.__wbg_set_connectionid_0(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get frequency() {
+        const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set frequency(arg0) {
+        wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get waveform() {
+        const ret = wasm.__wbg_get_lfoupdateparams_waveform(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set waveform(arg0) {
+        wasm.__wbg_set_lfoupdateparams_waveform(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {boolean}
+     */
+    get use_absolute() {
+        const ret = wasm.__wbg_get_lfoupdateparams_use_absolute(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} arg0
+     */
+    set use_absolute(arg0) {
+        wasm.__wbg_set_lfoupdateparams_use_absolute(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {boolean}
+     */
+    get use_normalized() {
+        const ret = wasm.__wbg_get_lfoupdateparams_use_normalized(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} arg0
+     */
+    set use_normalized(arg0) {
+        wasm.__wbg_set_lfoupdateparams_use_normalized(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get trigger_mode() {
+        const ret = wasm.__wbg_get_lfoupdateparams_trigger_mode(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set trigger_mode(arg0) {
+        wasm.__wbg_set_lfoupdateparams_trigger_mode(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @param {number} lfo_id
+     * @param {number} frequency
+     * @param {number} waveform
+     * @param {boolean} use_absolute
+     * @param {boolean} use_normalized
+     * @param {number} trigger_mode
+     */
+    constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode) {
+        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode);
+        this.__wbg_ptr = ret >>> 0;
+        LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
 }
 

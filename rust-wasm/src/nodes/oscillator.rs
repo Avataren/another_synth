@@ -111,10 +111,10 @@ impl AudioProcessor for ModulatableOscillator {
             let mut phases = [0.0f32; 4];
             let two_pi = 2.0 * std::f32::consts::PI;
 
-            for i in 0..4 {
+            for (i, phase) in phases.iter_mut().enumerate() {
                 // Store the current phase plus modulation for output
                 let current_phase = self.phase + modulated_pm.to_array()[i];
-                phases[i] = current_phase;
+                *phase = current_phase;
 
                 // Increment base phase for next sample (don't add modulation here)
                 self.phase += phase_inc.to_array()[i];

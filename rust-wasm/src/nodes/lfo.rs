@@ -27,16 +27,14 @@ struct LfoTables {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoTriggerMode {
     None,     // LFO runs freely
-    Gate,     // Reset phase when gate goes from 0 to 1
-    Envelope, // Reset and only run while gate is high
+    Envelope, // Trigger lfo on gate
 }
 
 impl LfoTriggerMode {
     pub fn from_u8(value: u8) -> Self {
         match value {
             0 => LfoTriggerMode::None,
-            1 => LfoTriggerMode::Gate,
-            2 => LfoTriggerMode::Envelope,
+            1 => LfoTriggerMode::Envelope,
             _ => LfoTriggerMode::None,
         }
     }
@@ -108,7 +106,7 @@ pub struct Lfo {
     sample_rate: f32,
     use_absolute: bool,
     use_normalized: bool,
-    trigger_mode: LfoTriggerMode,
+    pub trigger_mode: LfoTriggerMode,
     last_gate: f32,
     is_active: bool,
 }
@@ -126,10 +124,15 @@ impl Lfo {
             sample_rate,
             use_absolute: false,
             use_normalized: false,
-            trigger_mode: LfoTriggerMode::Gate,
+            trigger_mode: LfoTriggerMode::Envelope,
             last_gate: 0.0,
             is_active: false,
         }
+    }
+
+    pub fn advance_phase(&mut self) {
+        let phase_increment = self.frequency / self.sample_rate;
+        self.phase = (self.phase + phase_increment) % 1.0;
     }
 
     pub fn set_frequency(&mut self, freq: f32) {
@@ -179,10 +182,10 @@ impl Lfo {
         }
 
         // Only advance phase if we're running (handles envelope mode)
-        if self.trigger_mode != LfoTriggerMode::Envelope || self.last_gate > 0.0 {
-            let phase_increment = current_freq / self.sample_rate;
-            self.phase = (self.phase + phase_increment) % 1.0;
-        }
+        // if self.trigger_mode != LfoTriggerMode::Envelope || self.last_gate > 0.0 {
+        let phase_increment = current_freq / self.sample_rate;
+        self.phase = (self.phase + phase_increment) % 1.0;
+        // }
 
         sample
     }
@@ -234,7 +237,7 @@ impl Lfo {
         let phase_increment = 1.0 / buffer_size as f32;
         let mut phase = 0.0;
 
-        for i in 0..buffer_size {
+        for buffer_value in buffer.iter_mut() {
             let table_index = phase * TABLE_SIZE as f32;
             let index1 = (table_index as usize) & TABLE_MASK;
             let index2 = (index1 + 1) & TABLE_MASK;
@@ -242,7 +245,7 @@ impl Lfo {
 
             let sample1 = table[index1];
             let sample2 = table[index2];
-            buffer[i] = sample1 + (sample2 - sample1) * fraction;
+            *buffer_value = sample1 + (sample2 - sample1) * fraction;
 
             phase += phase_increment;
             if phase >= 1.0 {
@@ -310,24 +313,12 @@ impl AudioProcessor for Lfo {
                 let gate_values = gate.get_simd(offset);
                 let gate_array = gate_values.to_array();
 
-                for i in 0..4 {
+                for (i, &current_gate) in gate_array.iter().enumerate() {
                     if offset + i < context.buffer_size {
-                        let current_gate = gate_array[i];
-
                         match self.trigger_mode {
-                            LfoTriggerMode::Gate => {
+                            LfoTriggerMode::Envelope => {
                                 // Reset phase on rising edge
                                 if current_gate > 0.0 && self.last_gate <= 0.0 {
-                                    self.reset();
-                                }
-                            }
-                            LfoTriggerMode::Envelope => {
-                                // Reset phase on rising edge and pause when gate is low
-                                if current_gate > 0.0 && self.last_gate <= 0.0 {
-                                    self.reset();
-                                }
-                                // If gate is low, don't advance phase in get_sample
-                                if current_gate <= 0.0 {
                                     self.reset();
                                 }
                             }
@@ -352,11 +343,11 @@ impl AudioProcessor for Lfo {
                     std::simd::f32x4::splat(0.0)
                 };
 
-                for i in 0..4 {
+                for (i, value) in values.iter_mut().enumerate() {
                     if offset + i < context.buffer_size {
                         // Apply frequency modulation
                         let current_freq = base_freq * (1.0 + freq_mod.to_array()[i]);
-                        values[i] = self.get_sample_with_freq(current_freq);
+                        *value = self.get_sample_with_freq(current_freq);
                     }
                 }
                 output.write_simd(offset, std::simd::f32x4::from_array(values));

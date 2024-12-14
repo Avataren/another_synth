@@ -31,6 +31,44 @@ pub struct AudioProcessor {
 }
 
 #[wasm_bindgen]
+pub struct LfoUpdateParams {
+    pub lfo_id: usize,
+    pub frequency: f32,
+    pub waveform: u8,
+    pub use_absolute: bool,
+    pub use_normalized: bool,
+    pub trigger_mode: u8,
+}
+
+#[wasm_bindgen]
+impl LfoUpdateParams {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        lfo_id: usize,
+        frequency: f32,
+        waveform: u8,
+        use_absolute: bool,
+        use_normalized: bool,
+        trigger_mode: u8,
+    ) -> LfoUpdateParams {
+        LfoUpdateParams {
+            lfo_id,
+            frequency,
+            waveform,
+            use_absolute,
+            use_normalized,
+            trigger_mode,
+        }
+    }
+}
+
+impl Default for AudioProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[wasm_bindgen]
 impl AudioProcessor {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
@@ -203,26 +241,20 @@ impl AudioProcessor {
         Ok(obj.into())
     }
 
-    #[wasm_bindgen]
     pub fn update_lfo(
         &mut self,
         voice_index: usize,
-        lfo_id: usize,
-        frequency: f32,
-        waveform: u8,
-        use_absolute: bool,
-        use_normalized: bool,
-        trigger_mode: u8,
+        params: LfoUpdateParams,
     ) -> Result<(), JsValue> {
         let voice = self
             .voices
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        if let Some(node) = voice.graph.get_node_mut(NodeId(lfo_id)) {
+        if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
             if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
                 // Convert u8 to LfoWaveform
-                let waveform = match waveform {
+                let waveform = match params.waveform {
                     0 => LfoWaveform::Sine,
                     1 => LfoWaveform::Triangle,
                     2 => LfoWaveform::Square,
@@ -230,11 +262,11 @@ impl AudioProcessor {
                     _ => LfoWaveform::Sine,
                 };
 
-                lfo.set_frequency(frequency);
+                lfo.set_frequency(params.frequency);
                 lfo.set_waveform(waveform);
-                lfo.set_use_absolute(use_absolute);
-                lfo.set_use_normalized(use_normalized);
-                lfo.set_trigger_mode(LfoTriggerMode::from_u8(trigger_mode));
+                lfo.set_use_absolute(params.use_absolute);
+                lfo.set_use_normalized(params.use_normalized);
+                lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
                 Ok(())
             } else {
                 Err(JsValue::from_str("Node is not an LFO"))

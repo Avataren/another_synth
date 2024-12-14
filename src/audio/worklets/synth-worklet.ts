@@ -4,6 +4,7 @@ import './textencoder.js';
 import {
   AudioProcessor,
   initSync,
+  LfoUpdateParams
 } from '../../../rust-wasm/pkg/audio_processor.js';
 import { PortId } from 'app/public/wasm/audio_processor.js';
 
@@ -133,15 +134,18 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     // Create LFO for modulation index
     const { lfoId } = this.processor!.create_lfo(voiceIndex);
 
+    const lfoparams = new LfoUpdateParams(
+      lfoId,
+      0.5,
+      LFOWaveform.Sine,
+      true,
+      false,
+      LfoTriggerMode.None,
+    );
     // Configure LFO
     this.processor!.update_lfo(
       voiceIndex,
-      lfoId,
-      0.5,    // Hz frequency
-      LFOWaveform.Triangle,      // waveform
-      false,  // don't use absolute value
-      true,   // use normalized value (0 to 1 range)
-      LfoTriggerMode.Gate   // trigger mode
+      lfoparams
     );
 
     // Set up envelope parameters

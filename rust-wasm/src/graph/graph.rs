@@ -118,11 +118,11 @@ impl AudioGraph {
         self.nodes.get_mut(node_id.0)
     }
 
-    fn has_audio_inputs(&self, node_id: NodeId) -> bool {
-        self.connections
-            .values()
-            .any(|conn| conn.to_node == node_id && conn.to_port.is_audio_input())
-    }
+    // fn has_audio_inputs(&self, node_id: NodeId) -> bool {
+    //     self.connections
+    //         .values()
+    //         .any(|conn| conn.to_node == node_id && conn.to_port.is_audio_input())
+    // }
 
     fn has_inputs(&self, node_id: NodeId) -> bool {
         self.connections

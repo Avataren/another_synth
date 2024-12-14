@@ -1,8 +1,9 @@
 use web_sys::console;
 
 use crate::{
-    nodes::Lfo, AudioGraph, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator,
-    ModulationTarget, NodeId, PortId,
+    nodes::{Lfo, LfoTriggerMode},
+    AudioGraph, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator, ModulationTarget,
+    NodeId, PortId,
 };
 
 #[derive(Debug)]
@@ -128,12 +129,43 @@ impl Voice {
     }
 
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
-        self.graph.set_gate(&[self.current_gate]);
-        self.graph.set_frequency(&[self.current_frequency]);
-
-        self.graph
-            .process_audio_with_macros(Some(&self.macro_manager), output_left, output_right);
+        // If the voice is inactive but has free-running LFOs, only update their phases
+        if !self.active && self.has_free_running_lfos() {
+            self.update_free_running_lfos();
+        } else if self.active {
+            // Normal processing path for active voices
+            self.graph.set_gate(&[self.current_gate]);
+            self.graph.set_frequency(&[self.current_frequency]);
+            self.graph.process_audio_with_macros(
+                Some(&self.macro_manager),
+                output_left,
+                output_right,
+            );
+        }
 
         self.update_active_state();
+    }
+
+    // New helper method to check for free-running LFOs
+    fn has_free_running_lfos(&self) -> bool {
+        self.graph.nodes.iter().any(|node| {
+            if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
+                lfo.trigger_mode == LfoTriggerMode::None
+            } else {
+                false
+            }
+        })
+    }
+
+    // New method to only update LFO phases
+    fn update_free_running_lfos(&mut self) {
+        for node in &mut self.graph.nodes {
+            if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
+                if lfo.trigger_mode == LfoTriggerMode::None {
+                    // Only advance the phase
+                    lfo.advance_phase();
+                }
+            }
+        }
     }
 }
