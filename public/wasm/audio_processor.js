@@ -67,7 +67,7 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -79,14 +79,15 @@ export const PortId = Object.freeze({
     AudioOutput2: 6, "6": "AudioOutput2",
     AudioOutput3: 7, "7": "AudioOutput3",
     Gate: 8, "8": "Gate",
-    Frequency: 9, "9": "Frequency",
-    FrequencyMod: 10, "10": "FrequencyMod",
-    PhaseMod: 11, "11": "PhaseMod",
-    ModIndex: 12, "12": "ModIndex",
-    CutoffMod: 13, "13": "CutoffMod",
-    ResonanceMod: 14, "14": "ResonanceMod",
-    GainMod: 15, "15": "GainMod",
-    EnvelopeMod: 16, "16": "EnvelopeMod",
+    GlobalFrequency: 9, "9": "GlobalFrequency",
+    Frequency: 10, "10": "Frequency",
+    FrequencyMod: 11, "11": "FrequencyMod",
+    PhaseMod: 12, "12": "PhaseMod",
+    ModIndex: 13, "13": "ModIndex",
+    CutoffMod: 14, "14": "CutoffMod",
+    ResonanceMod: 15, "15": "ResonanceMod",
+    GainMod: 16, "16": "GainMod",
+    EnvelopeMod: 17, "17": "EnvelopeMod",
 });
 
 const AudioProcessorFinalization = (typeof FinalizationRegistry === 'undefined')

@@ -201,8 +201,8 @@ impl Lfo {
 impl AudioNode for Lfo {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
-        // ports.insert(PortId::Frequency, false);
-        //ports.insert(PortId::Gate, false);
+        ports.insert(PortId::Frequency, false);
+        ports.insert(PortId::Gate, false);
         ports.insert(PortId::AudioOutput0, true);
         ports
     }
@@ -240,26 +240,30 @@ impl AudioProcessor for Lfo {
     }
 
     fn process(&mut self, context: &mut ProcessContext) {
-        if let Some(freq_input) = context.inputs.get(&PortId::Frequency) {
-            console::log_1(
-                &format!(
-                    "LFO receiving unexpected frequency input: {}",
-                    freq_input.get_simd(0).to_array()[0]
-                )
-                .into(),
-            );
-        }
+        // if let Some(freq_input) = context.inputs.get(&PortId::Frequency) {
+        //     console::log_1(
+        //         &format!(
+        //             "LFO receiving unexpected frequency input: {}",
+        //             freq_input.get_simd(0).to_array()[0]
+        //         )
+        //         .into(),
+        //     );
+        // }
         // Handle gate input for resetting phase
         if let Some(gate) = context.inputs.get(&PortId::Gate) {
-            if gate.get_simd(0).to_array()[0] > 0.0 {
-                self.reset();
-            }
+            //todo: implement a-rate gate-reset when gate goes from 0 to 1
+
+            // if gate.get_simd(0).to_array()[0] > 0.0 {
+            //     self.reset();
+            // }
         }
 
         // Process frequency modulation
         if let Some(freq_input) = context.inputs.get(&PortId::Frequency) {
-            let freq = freq_input.get_simd(0).to_array()[0];
-            self.set_frequency(freq);
+            // todo: implement a-rate frequency modulation
+
+            //let freq = freq_input.get_simd(0).to_array()[0];
+            //self.set_frequency(freq);
         }
 
         // Generate output samples

@@ -124,7 +124,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.processor!.update_lfo(
       voiceIndex,
       lfoId,
-      0.15,    // 0.5 Hz frequency
+      0.5,    // 0.5 Hz frequency
       0,      // Sine waveform
       false,  // don't use absolute value
       true,   // use normalized value (0 to 1 range)

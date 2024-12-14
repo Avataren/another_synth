@@ -257,9 +257,9 @@ impl AudioGraph {
             }
 
             // Handle Frequency input if the node has a Frequency port
-            if ports.contains_key(&PortId::Frequency) {
+            if ports.contains_key(&PortId::GlobalFrequency) {
                 let freq_data = self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec();
-                input_data.push((PortId::Frequency, freq_data));
+                input_data.push((PortId::GlobalFrequency, freq_data));
             }
 
             // Handle connections from upstream nodes

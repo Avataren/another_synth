@@ -26,7 +26,7 @@ impl ModulatableOscillator {
 impl AudioNode for ModulatableOscillator {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
-        ports.insert(PortId::Frequency, false);
+        ports.insert(PortId::GlobalFrequency, false);
         ports.insert(PortId::FrequencyMod, true);
         ports.insert(PortId::PhaseMod, true);
         ports.insert(PortId::GainMod, true);
@@ -73,7 +73,7 @@ impl AudioProcessor for ModulatableOscillator {
 
         context.process_by_chunks(4, |offset, inputs, outputs| {
             // Get base frequency and apply frequency modulation
-            let base_freq = if let Some(input) = inputs.get(&PortId::Frequency) {
+            let base_freq = if let Some(input) = inputs.get(&PortId::GlobalFrequency) {
                 input.get_simd(offset)
             } else {
                 f32x4::splat(self.frequency)
