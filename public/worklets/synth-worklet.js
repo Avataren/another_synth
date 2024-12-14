@@ -657,7 +657,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       PortId2.AudioOutput0,
       carrierId,
       PortId2.PhaseMod,
-      // Keep this as PhaseMod
       1
     );
     this.processor.connect_voice_nodes(
@@ -666,9 +665,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       PortId2.AudioOutput0,
       carrierId,
       PortId2.ModIndex,
-      // Keep this as ModIndex
       10
-      // This will now control how much the modulation index varies
     );
   }
   process(_inputs, outputs, parameters) {

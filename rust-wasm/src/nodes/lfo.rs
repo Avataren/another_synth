@@ -1,6 +1,5 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::f32::consts::PI;
 use std::sync::OnceLock;
 
 use web_sys::console;
@@ -46,7 +45,7 @@ impl LfoTriggerMode {
 // Global static tables using OnceLock for lazy initialization
 static LFO_TABLES: OnceLock<LfoTables> = OnceLock::new();
 
-const TABLE_SIZE: usize = 4096;
+const TABLE_SIZE: usize = 1024;
 const TABLE_MASK: usize = TABLE_SIZE - 1;
 
 impl LfoTables {
@@ -111,6 +110,7 @@ pub struct Lfo {
     use_normalized: bool,
     trigger_mode: LfoTriggerMode,
     last_gate: f32,
+    is_active: bool,
 }
 
 impl Lfo {
@@ -128,6 +128,7 @@ impl Lfo {
             use_normalized: false,
             trigger_mode: LfoTriggerMode::Gate,
             last_gate: 0.0,
+            is_active: false,
         }
     }
 
@@ -250,6 +251,14 @@ impl Lfo {
         }
 
         buffer
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.is_active && self.trigger_mode == LfoTriggerMode::None
+    }
+
+    pub fn set_is_active(&mut self, is_active: bool) {
+        self.is_active = is_active;
     }
 }
 

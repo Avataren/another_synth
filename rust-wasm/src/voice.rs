@@ -1,8 +1,8 @@
 use web_sys::console;
 
 use crate::{
-    AudioGraph, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator, ModulationTarget,
-    NodeId, PortId,
+    nodes::Lfo, AudioGraph, Envelope, EnvelopeConfig, MacroManager, ModulatableOscillator,
+    ModulationTarget, NodeId, PortId,
 };
 
 #[derive(Debug)]
@@ -46,8 +46,21 @@ impl Voice {
         self.graph.set_output_node(node);
     }
 
+    //todo: we'll still need to update some nodes I think, like LFOs without a trigger state
+    // as they should evolve independently of the gain amplitude
     pub fn update_active_state(&mut self) {
         self.active = self.current_gate > 0.0 || self.has_active_envelopes();
+    }
+
+    //this doesn't quite work yet, dont use
+    pub fn has_active_lfos(&self) -> bool {
+        self.graph.nodes.iter().any(|node| {
+            if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
+                lfo.is_active()
+            } else {
+                false
+            }
+        })
     }
 
     fn has_active_envelopes(&self) -> bool {

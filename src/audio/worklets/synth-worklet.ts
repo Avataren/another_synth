@@ -170,7 +170,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       modulatorId,
       PortId.AudioOutput0,
       carrierId,
-      PortId.PhaseMod,  // Keep this as PhaseMod
+      PortId.PhaseMod,
       1.0,
     );
 
@@ -180,8 +180,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       lfoId,
       PortId.AudioOutput0,
       carrierId,
-      PortId.ModIndex,  // Keep this as ModIndex
-      10.0,  // This will now control how much the modulation index varies
+      PortId.ModIndex,
+      10.0,
     );
 
     /* Commenting out macro connection
