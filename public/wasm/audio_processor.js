@@ -623,67 +623,54 @@ export class OscillatorUpdateParams {
     /**
      * @returns {number}
      */
-    get frequency() {
+    get phase_mod_amount() {
         const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
-    set frequency(arg0) {
+    set phase_mod_amount(arg0) {
         wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
-    get phase_mod_amount() {
+    get freq_mod_amount() {
         const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
-    set phase_mod_amount(arg0) {
+    set freq_mod_amount(arg0) {
         wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
-    get freq_mod_amount() {
+    get detune() {
         const ret = wasm.__wbg_get_envelopeconfig_sustain(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
-    set freq_mod_amount(arg0) {
+    set detune(arg0) {
         wasm.__wbg_set_envelopeconfig_sustain(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
-    get detune() {
+    get gain() {
         const ret = wasm.__wbg_get_envelopeconfig_release(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
-    set detune(arg0) {
-        wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @returns {number}
-     */
-    get gain() {
-        const ret = wasm.__wbg_get_envelopeconfig_attack_curve(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @param {number} arg0
-     */
     set gain(arg0) {
-        wasm.__wbg_set_envelopeconfig_attack_curve(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {boolean}
@@ -699,15 +686,14 @@ export class OscillatorUpdateParams {
         wasm.__wbg_set_oscillatorupdateparams_active(this.__wbg_ptr, arg0);
     }
     /**
-     * @param {number} frequency
      * @param {number} phase_mod_amount
      * @param {number} freq_mod_amount
      * @param {number} detune
      * @param {number} gain
      * @param {boolean} active
      */
-    constructor(frequency, phase_mod_amount, freq_mod_amount, detune, gain, active) {
-        const ret = wasm.oscillatorupdateparams_new(frequency, phase_mod_amount, freq_mod_amount, detune, gain, active);
+    constructor(phase_mod_amount, freq_mod_amount, detune, gain, active) {
+        const ret = wasm.oscillatorupdateparams_new(phase_mod_amount, freq_mod_amount, detune, gain, active);
         this.__wbg_ptr = ret >>> 0;
         OscillatorUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
         return this;

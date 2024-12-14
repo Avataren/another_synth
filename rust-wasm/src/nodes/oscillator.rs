@@ -7,7 +7,6 @@ use std::collections::HashMap;
 
 #[wasm_bindgen]
 pub struct OscillatorUpdateParams {
-    pub frequency: f32,
     pub phase_mod_amount: f32,
     pub freq_mod_amount: f32,
     pub detune: f32,
@@ -19,7 +18,6 @@ pub struct OscillatorUpdateParams {
 impl OscillatorUpdateParams {
     #[wasm_bindgen(constructor)]
     pub fn new(
-        frequency: f32,
         phase_mod_amount: f32,
         freq_mod_amount: f32,
         detune: f32,
@@ -27,7 +25,6 @@ impl OscillatorUpdateParams {
         active: bool,
     ) -> Self {
         Self {
-            frequency,
             phase_mod_amount,
             freq_mod_amount,
             detune,
@@ -63,7 +60,6 @@ impl ModulatableOscillator {
     }
 
     pub fn update_params(&mut self, params: &OscillatorUpdateParams) {
-        self.frequency = params.frequency;
         self.phase_mod_amount = params.phase_mod_amount;
         self.freq_mod_amount = params.freq_mod_amount;
         self.detune = params.detune;
