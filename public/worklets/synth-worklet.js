@@ -365,6 +365,9 @@ var AudioProcessor = class {
     }
     return ret[0] >>> 0;
   }
+  reset() {
+    wasm.audioprocessor_reset(this.__wbg_ptr);
+  }
 };
 var ConnectionIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {

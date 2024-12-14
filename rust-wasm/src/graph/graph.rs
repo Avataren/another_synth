@@ -1,4 +1,3 @@
-
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///
 /// Core concepts:
@@ -73,6 +72,22 @@ impl AudioGraph {
             temp_buffer_indices: Vec::new(),
             output_node: None,
         }
+    }
+
+    pub fn clear(&mut self) {
+        // Clear all connections
+        self.connections.clear();
+        self.input_connections.clear();
+
+        // Clear nodes
+        self.nodes.clear();
+        self.processing_order.clear();
+
+        // Reset output node
+        self.output_node = None;
+
+        // Release all buffers back to the pool
+        self.buffer_pool.release_all();
     }
 
     pub fn set_output_node(&mut self, node: NodeId) {

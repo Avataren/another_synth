@@ -419,4 +419,12 @@ impl AudioProcessor {
 
         Ok(osc_id.0)
     }
+
+    #[wasm_bindgen]
+    pub fn reset(&mut self) {
+        // Clear all voices
+        for voice in &mut self.voices {
+            voice.clear();
+        }
+    }
 }

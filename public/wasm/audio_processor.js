@@ -277,6 +277,9 @@ export class AudioProcessor {
         }
         return ret[0] >>> 0;
     }
+    reset() {
+        wasm.audioprocessor_reset(this.__wbg_ptr);
+    }
 }
 
 const ConnectionIdFinalization = (typeof FinalizationRegistry === 'undefined')

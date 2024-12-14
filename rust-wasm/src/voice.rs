@@ -1,8 +1,6 @@
-
 use crate::{
     nodes::{Lfo, LfoTriggerMode},
-    AudioGraph, Envelope, MacroManager, ModulatableOscillator, ModulationTarget,
-    NodeId, PortId,
+    AudioGraph, Envelope, MacroManager, ModulatableOscillator, ModulationTarget, NodeId, PortId,
 };
 
 #[derive(Debug)]
@@ -39,6 +37,24 @@ impl Voice {
             oscillators: Vec::new(),
             envelope: NodeId(0),
         }
+    }
+
+    pub fn clear(&mut self) {
+        // Clear the graph
+        self.graph.clear();
+
+        // Clear stored node references
+        self.oscillators.clear();
+        self.envelope = NodeId(0);
+        self.output_node = NodeId(0);
+
+        // Reset state
+        self.current_gate = 0.0;
+        self.current_frequency = 440.0;
+        self.active = false;
+
+        // Clear macro manager
+        self.macro_manager.clear(&mut self.graph.buffer_pool);
     }
 
     pub fn set_output_node(&mut self, node: NodeId) {
