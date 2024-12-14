@@ -233,7 +233,7 @@ fn bench_complex_synth(b: &mut Bencher) {
         envelopes.push((amp_env, filter_env, mod_env));
 
         // Create 3 oscillators per voice
-        for i in 0..3 {
+        for _i in 0..3 {
             let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
             voice_oscillators.push(osc);
 
@@ -258,7 +258,7 @@ fn bench_complex_synth(b: &mut Bencher) {
 
     // Complex modulation matrix
     for (voice_idx, voice_oscs) in oscillators.iter().enumerate() {
-        let (amp_env, filter_env, mod_env) = envelopes[voice_idx];
+        let (_amp_env, _filter_env, mod_env) = envelopes[voice_idx];
 
         // LFO to oscillator frequency modulation
         for (osc_idx, &osc) in voice_oscs.iter().enumerate() {
@@ -338,7 +338,7 @@ fn bench_complex_synth(b: &mut Bencher) {
 #[bench]
 fn bench_buffer_operations(b: &mut Bencher) {
     let mut graph = AudioGraph::new(BUFFER_SIZE);
-    let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+    let _osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
 
     let mut output_left = vec![0.0f32; BUFFER_SIZE];
     let mut output_right = vec![0.0f32; BUFFER_SIZE];
@@ -354,7 +354,7 @@ fn bench_buffer_operations(b: &mut Bencher) {
 #[bench]
 fn bench_single_oscillator(b: &mut Bencher) {
     let mut graph = AudioGraph::new(BUFFER_SIZE);
-    let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+    let _osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
 
     let mut output_left = vec![0.0f32; BUFFER_SIZE];
     let mut output_right = vec![0.0f32; BUFFER_SIZE];
@@ -407,7 +407,7 @@ fn bench_connection_overhead(b: &mut Bencher) {
 fn bench_envelope_steady_state(b: &mut Bencher) {
     let mut graph = AudioGraph::new(BUFFER_SIZE);
 
-    let env = graph.add_node(Box::new(Envelope::new(
+    let _env = graph.add_node(Box::new(Envelope::new(
         SAMPLE_RATE,
         EnvelopeConfig::default(),
     )));
@@ -454,7 +454,7 @@ fn bench_parallel_nodes(b: &mut Bencher) {
 fn bench_large_buffer(b: &mut Bencher) {
     const LARGE_BUFFER_SIZE: usize = 1024;
     let mut graph = AudioGraph::new(LARGE_BUFFER_SIZE);
-    let osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
+    let _osc = graph.add_node(Box::new(ModulatableOscillator::new(SAMPLE_RATE)));
 
     let mut output_left = vec![0.0f32; LARGE_BUFFER_SIZE];
     let mut output_right = vec![0.0f32; LARGE_BUFFER_SIZE];

@@ -257,9 +257,9 @@ impl Lfo {
         self.is_active && self.trigger_mode == LfoTriggerMode::None
     }
 
-    pub fn set_is_active(&mut self, is_active: bool) {
-        self.is_active = is_active;
-    }
+    // pub fn set_is_active(&mut self, is_active: bool) {
+    //     self.is_active = is_active;
+    // }
 }
 
 impl AudioNode for Lfo {
