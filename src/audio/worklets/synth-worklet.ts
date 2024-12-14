@@ -128,6 +128,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       0,      // Sine waveform
       false,  // don't use absolute value
       true,   // use normalized value (0 to 1 range)
+      0
     );
 
     // Set up envelope parameters

@@ -25,6 +25,24 @@ struct LfoTables {
     saw: Vec<f32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LfoTriggerMode {
+    None,     // LFO runs freely
+    Gate,     // Reset phase when gate goes from 0 to 1
+    Envelope, // Reset and only run while gate is high
+}
+
+impl LfoTriggerMode {
+    pub fn from_u8(value: u8) -> Self {
+        match value {
+            0 => LfoTriggerMode::None,
+            1 => LfoTriggerMode::Gate,
+            2 => LfoTriggerMode::Envelope,
+            _ => LfoTriggerMode::None,
+        }
+    }
+}
+
 // Global static tables using OnceLock for lazy initialization
 static LFO_TABLES: OnceLock<LfoTables> = OnceLock::new();
 
@@ -85,6 +103,8 @@ pub struct Lfo {
     sample_rate: f32,
     use_absolute: bool,
     use_normalized: bool,
+    trigger_mode: LfoTriggerMode,
+    last_gate: f32,
 }
 
 impl Lfo {
@@ -100,6 +120,8 @@ impl Lfo {
             sample_rate,
             use_absolute: false,
             use_normalized: false,
+            trigger_mode: LfoTriggerMode::Gate,
+            last_gate: 0.0,
         }
     }
 
@@ -129,6 +151,41 @@ impl Lfo {
 
     pub fn reset(&mut self) {
         self.phase = 0.0;
+    }
+
+    pub fn set_trigger_mode(&mut self, mode: LfoTriggerMode) {
+        self.trigger_mode = mode;
+    }
+
+    fn get_sample_with_freq(&mut self, current_freq: f32) -> f32 {
+        let tables = LFO_TABLES.get().unwrap();
+        let table = tables.get_table(self.waveform);
+
+        let table_phase = self.phase;
+        let table_index = table_phase * TABLE_SIZE as f32;
+
+        let index1 = (table_index as usize) & TABLE_MASK;
+        let index2 = (index1 + 1) & TABLE_MASK;
+        let fraction = table_index - table_index.floor();
+
+        let sample1 = table[index1];
+        let sample2 = table[index2];
+        let mut sample = sample1 + (sample2 - sample1) * fraction;
+
+        if self.use_absolute {
+            sample = sample.abs();
+        }
+        if self.use_normalized {
+            sample = (sample + 1.0) * 0.5;
+        }
+
+        // Only advance phase if we're running (handles envelope mode)
+        if self.trigger_mode != LfoTriggerMode::Envelope || self.last_gate > 0.0 {
+            let phase_increment = current_freq / self.sample_rate;
+            self.phase = (self.phase + phase_increment) % 1.0;
+        }
+
+        sample
     }
 
     fn get_sample(&mut self) -> f32 {
@@ -240,39 +297,59 @@ impl AudioProcessor for Lfo {
     }
 
     fn process(&mut self, context: &mut ProcessContext) {
-        // if let Some(freq_input) = context.inputs.get(&PortId::Frequency) {
-        //     console::log_1(
-        //         &format!(
-        //             "LFO receiving unexpected frequency input: {}",
-        //             freq_input.get_simd(0).to_array()[0]
-        //         )
-        //         .into(),
-        //     );
-        // }
         // Handle gate input for resetting phase
         if let Some(gate) = context.inputs.get(&PortId::Gate) {
-            //todo: implement a-rate gate-reset when gate goes from 0 to 1
+            for offset in (0..context.buffer_size).step_by(4) {
+                let gate_values = gate.get_simd(offset);
+                let gate_array = gate_values.to_array();
 
-            // if gate.get_simd(0).to_array()[0] > 0.0 {
-            //     self.reset();
-            // }
+                for i in 0..4 {
+                    if offset + i < context.buffer_size {
+                        let current_gate = gate_array[i];
+
+                        match self.trigger_mode {
+                            LfoTriggerMode::Gate => {
+                                // Reset phase on rising edge
+                                if current_gate > 0.0 && self.last_gate <= 0.0 {
+                                    self.reset();
+                                }
+                            }
+                            LfoTriggerMode::Envelope => {
+                                // Reset phase on rising edge and pause when gate is low
+                                if current_gate > 0.0 && self.last_gate <= 0.0 {
+                                    self.reset();
+                                }
+                                // If gate is low, don't advance phase in get_sample
+                                if current_gate <= 0.0 {
+                                    self.reset();
+                                }
+                            }
+                            LfoTriggerMode::None => {}
+                        }
+                        self.last_gate = current_gate;
+                    }
+                }
+            }
         }
 
-        // Process frequency modulation
-        if let Some(freq_input) = context.inputs.get(&PortId::Frequency) {
-            // todo: implement a-rate frequency modulation
-
-            //let freq = freq_input.get_simd(0).to_array()[0];
-            //self.set_frequency(freq);
-        }
-
-        // Generate output samples
+        // Generate output samples with frequency modulation
         if let Some(output) = context.outputs.get_mut(&PortId::AudioOutput0) {
             for offset in (0..context.buffer_size).step_by(4) {
                 let mut values = [0.0f32; 4];
+
+                // Get frequency modulation if connected
+                let base_freq = self.frequency;
+                let freq_mod = if let Some(freq_input) = context.inputs.get(&PortId::Frequency) {
+                    freq_input.get_simd(offset)
+                } else {
+                    std::simd::f32x4::splat(0.0)
+                };
+
                 for i in 0..4 {
                     if offset + i < context.buffer_size {
-                        values[i] = self.get_sample();
+                        // Apply frequency modulation
+                        let current_freq = base_freq * (1.0 + freq_mod.to_array()[i]);
+                        values[i] = self.get_sample_with_freq(current_freq);
                     }
                 }
                 output.write_simd(offset, std::simd::f32x4::from_array(values));

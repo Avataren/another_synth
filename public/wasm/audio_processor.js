@@ -187,9 +187,10 @@ export class AudioProcessor {
      * @param {number} waveform
      * @param {boolean} use_absolute
      * @param {boolean} use_normalized
+     * @param {number} trigger_mode
      */
-    update_lfo(voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized) {
-        const ret = wasm.audioprocessor_update_lfo(this.__wbg_ptr, voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized);
+    update_lfo(voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode) {
+        const ret = wasm.audioprocessor_update_lfo(this.__wbg_ptr, voice_index, lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

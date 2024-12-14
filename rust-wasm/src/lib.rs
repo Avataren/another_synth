@@ -14,7 +14,7 @@ pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::EnvelopeConfig;
 pub use nodes::{Envelope, ModulatableOscillator};
-use nodes::{Lfo, LfoWaveform};
+use nodes::{Lfo, LfoTriggerMode, LfoWaveform};
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
 pub use voice::Voice;
@@ -212,6 +212,7 @@ impl AudioProcessor {
         waveform: u8,
         use_absolute: bool,
         use_normalized: bool,
+        trigger_mode: u8,
     ) -> Result<(), JsValue> {
         let voice = self
             .voices
@@ -233,6 +234,7 @@ impl AudioProcessor {
                 lfo.set_waveform(waveform);
                 lfo.set_use_absolute(use_absolute);
                 lfo.set_use_normalized(use_normalized);
+                lfo.set_trigger_mode(LfoTriggerMode::from_u8(trigger_mode));
                 Ok(())
             } else {
                 Err(JsValue::from_str("Node is not an LFO"))
