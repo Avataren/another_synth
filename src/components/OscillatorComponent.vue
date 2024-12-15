@@ -62,7 +62,7 @@
 
         <audio-knob-component
           v-model="oscillatorState.phase_mod_amount!"
-          label="ModIndex"
+          label="PM ModIndex"
           :min="0"
           :max="100"
           :step="0.001"
