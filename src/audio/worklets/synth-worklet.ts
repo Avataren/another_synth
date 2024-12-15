@@ -9,7 +9,13 @@ import {
   PortId
 } from 'app/public/wasm/audio_processor.js';
 import OscillatorUpdateHandler from './handlers/oscillator-update-handler.js';
-
+import {
+  type SynthLayout,
+  type VoiceLayout,
+  VoiceNodeType,
+  type NodeConnection,
+  ModulationTarget
+} from '../types/synth-layout';
 
 declare const sampleRate: number;
 
@@ -50,27 +56,23 @@ export enum LFOWaveform {
   Saw = 3
 }
 
-interface SynthVoice {
-  oscillators: number[];  // Array of oscillator IDs
-  envelope: number;
-  vibratoLfo?: number;
-  modLfo?: number;
-}
-
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private audioEngine: AudioEngine | null = null;
   private readonly numVoices: number = 8;
-  private readonly oscillatorsPerVoice: number = 2;  // Can be increased later
-  private voices: SynthVoice[] = [];
+  private readonly maxOscillators: number = 2;
+  private readonly maxEnvelopes: number = 2;
+  private readonly maxLFOs: number = 2;
+  private readonly maxFilters: number = 1;
+  private voiceLayouts: VoiceLayout[] = [];
+  private nextNodeId: number = 0;
   private oscHandler = new OscillatorUpdateHandler();
+
   static get parameterDescriptors() {
     const parameters = [];
-    const numVoices = 8; // Must match the number in constructor
-    const oscillatorsPerVoice = 2;  // Must match class property
+    const numVoices = 8;
 
     for (let i = 0; i < numVoices; i++) {
-      // Voice-level parameters
       parameters.push(
         {
           name: `gate_${i}`,
@@ -95,17 +97,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         }
       );
 
-      // Per-oscillator parameters
-      for (let osc = 0; osc < oscillatorsPerVoice; osc++) {
-        parameters.push({
-          name: `osc${osc}_detune_${i}`,
-          defaultValue: 0,
-          minValue: -100,  // ±100 cents = ±1 semitone
-          maxValue: 100,
-          automationRate: 'a-rate',
-        });
-      }
-
       // Macro parameters
       for (let m = 0; m < 4; m++) {
         parameters.push({
@@ -129,89 +120,107 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     return parameters;
   }
 
-  initialize_synth(voiceIndex: number) {
-    // Initialize voice with oscillators
-    const result = this.audioEngine!.initialize_voice(voiceIndex, this.oscillatorsPerVoice);
+  private getNextNodeId(): number {
+    return this.nextNodeId++;
+  }
 
-    // We need to convert from JsValue correctly
-    const oscillatorIds = result.oscillatorIds;
-    const envelopeId = result.envelopeId;
+  private initializeVoice(voiceIndex: number): VoiceLayout {
+    if (!this.audioEngine) {
+      throw new Error('Audio engine not initialized');
+    }
 
-    // Create modulation sources
-    const { lfoId: vibratoLfoId } = this.audioEngine!.create_lfo(voiceIndex);
-    const { lfoId: modLfoId } = this.audioEngine!.create_lfo(voiceIndex);
-
-    // Store voice structure
-    this.voices[voiceIndex] = {
-      oscillators: oscillatorIds,
-      envelope: envelopeId,
-      vibratoLfo: vibratoLfoId,
-      modLfo: modLfoId
+    const voiceLayout: VoiceLayout = {
+      id: voiceIndex,
+      nodes: {
+        [VoiceNodeType.Oscillator]: [],
+        [VoiceNodeType.Envelope]: [],
+        [VoiceNodeType.LFO]: [],
+        [VoiceNodeType.Filter]: []
+      },
+      connections: []
     };
 
-    // Configure LFOs
-    const vibratoLfoParams = new LfoUpdateParams(
-      vibratoLfoId,
-      5.0,                  // 5 Hz - typical vibrato rate
-      LFOWaveform.Sine,     // smooth sine wave
-      false,                // bipolar modulation
-      false,                // full -1 to 1 range
-      LfoTriggerMode.None   // free-running
-    );
-    this.audioEngine!.update_lfo(voiceIndex, vibratoLfoParams);
+    // Create oscillators
+    for (let i = 0; i < this.maxOscillators; i++) {
+      const oscId = this.audioEngine.add_oscillator(voiceIndex);
+      voiceLayout.nodes[VoiceNodeType.Oscillator].push({
+        id: oscId,
+        type: VoiceNodeType.Oscillator
+      });
+    }
 
-    const modLfoParams = new LfoUpdateParams(
-      modLfoId,
-      0.5,                  // 0.5 Hz - slow modulation
-      LFOWaveform.Sine,
-      true,                 // unipolar modulation
-      true,                 // normalized range
-      LfoTriggerMode.None
-    );
-    this.audioEngine!.update_lfo(voiceIndex, modLfoParams);
+    // Create envelopes
+    for (let i = 0; i < this.maxEnvelopes; i++) {
+      const result = this.audioEngine.create_envelope(voiceIndex);
+      voiceLayout.nodes[VoiceNodeType.Envelope].push({
+        id: result.envelopeId,
+        type: VoiceNodeType.Envelope
+      });
+    }
 
-    // Set up envelope
-    this.audioEngine!.update_envelope(
-      voiceIndex,
-      envelopeId,
-      0.001,  // attack
-      0.2,   // decay
-      0.2,   // sustain
-      0.5    // release
-    );
+    // Create LFOs
+    for (let i = 0; i < this.maxLFOs; i++) {
+      const result = this.audioEngine.create_lfo(voiceIndex);
+      const lfoId = result.lfoId;
+      voiceLayout.nodes[VoiceNodeType.LFO].push({
+        id: lfoId,
+        type: VoiceNodeType.LFO
+      });
 
-    // Basic routing: envelope → oscillator gains
-    for (const oscId of oscillatorIds) {
-      this.audioEngine!.connect_voice_nodes(
+      // Initialize LFO with default settings
+      const lfoParams = new LfoUpdateParams(
+        lfoId,
+        2.0,              // Default frequency
+        LFOWaveform.Sine,
+        false,            // Not absolute
+        false,            // Not normalized
+        LfoTriggerMode.None
+      );
+      this.audioEngine.update_lfo(voiceIndex, lfoParams);
+    }
+
+    // Set up default connections
+    const [mainOsc] = voiceLayout.nodes[VoiceNodeType.Oscillator];
+    const [ampEnv] = voiceLayout.nodes[VoiceNodeType.Envelope];
+
+    if (mainOsc && ampEnv) {
+      this.audioEngine.connect_voice_nodes(
         voiceIndex,
-        envelopeId,
+        ampEnv.id,
         PortId.AudioOutput0,
-        oscId,
+        mainOsc.id,
         PortId.GainMod,
         1.0
       );
+
+      voiceLayout.connections.push({
+        fromId: ampEnv.id,
+        toId: mainOsc.id,
+        target: ModulationTarget.Gain,
+        amount: 1.0
+      });
     }
 
-    // Set up default macro connections
-    // Macro 0: Vibrato Amount
-    this.audioEngine!.connect_macro(
-      voiceIndex,
-      0,
-      vibratoLfoId,
-      PortId.ModIndex,
-      0.1  // Max 10% frequency variation
-    );
+    return voiceLayout;
+  }
 
-    // Connect vibrato to all oscillator frequencies
-    for (const oscId of oscillatorIds) {
-      this.audioEngine!.connect_voice_nodes(
-        voiceIndex,
-        vibratoLfoId,
-        PortId.AudioOutput0,
-        oscId,
-        PortId.FrequencyMod,
-        0.0  // Initial amount - controlled by macro
-      );
+  private getPortIdForTarget(target: ModulationTarget): PortId {
+    switch (target) {
+      case ModulationTarget.Frequency:
+        return PortId.FrequencyMod;
+      case ModulationTarget.Gain:
+        return PortId.GainMod;
+      case ModulationTarget.FilterCutoff:
+        return PortId.CutoffMod;
+      case ModulationTarget.FilterResonance:
+        return PortId.ResonanceMod;
+      case ModulationTarget.PhaseMod:
+        return PortId.PhaseMod;
+      case ModulationTarget.ModIndex:
+        return PortId.ModIndex;
+      default:
+        console.warn(`No PortId mapping for target: ${target}`);
+        return PortId.GainMod;
     }
   }
 
@@ -224,31 +233,94 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         this.audioEngine = new AudioEngine();
         this.audioEngine.init(sampleRate, this.numVoices);
 
+        // Initialize all voices
         for (let i = 0; i < this.numVoices; i++) {
-          this.initialize_synth(i);
+          const voiceLayout = this.initializeVoice(i);
+          this.voiceLayouts.push(voiceLayout);
         }
+
+        // Send layout to main thread
+        const layout: SynthLayout = {
+          voices: this.voiceLayouts,
+          globalNodes: {
+            masterGain: this.getNextNodeId(),
+            effectsChain: []
+          },
+          metadata: {
+            maxVoices: this.numVoices,
+            maxOscillators: this.maxOscillators,
+            maxEnvelopes: this.maxEnvelopes,
+            maxLFOs: this.maxLFOs,
+            maxFilters: this.maxFilters
+          }
+        };
+
+        this.port.postMessage({
+          type: 'synthLayout',
+          layout
+        });
 
         this.ready = true;
       }
+      else if (event.data.type === 'updateConnection') {
+        const { voiceId, connection } = event.data;
+        this.updateConnection(voiceId, connection);
+      }
       else if (event.data.type === 'updateOscillator') {
-        console.log('Got updateOscillator event:', event.data);
         if (this.audioEngine != null) {
           const { oscillatorId, newState } = event.data;
-          this.oscHandler.UpdateOscillator(this.audioEngine, new OscillatorStateUpdate(
-            0, //phase_mod_amount
-            0, //freq_mod_amount
-            newState.detune_oct, //detune oct
-            newState.detune_semi, //detune semi
-            newState.detune_cents, //detune cents
-            newState.detune, //detune
-            newState.hard_sync, //hard sync
-            newState.gain, //gain
-            newState.active, //active
-          ), oscillatorId, this.numVoices);
+          this.oscHandler.UpdateOscillator(
+            this.audioEngine,
+            new OscillatorStateUpdate(
+              0,
+              0,
+              newState.detune_oct,
+              newState.detune_semi,
+              newState.detune_cents,
+              newState.detune,
+              newState.hard_sync,
+              newState.gain,
+              newState.active,
+            ),
+            oscillatorId,
+            this.numVoices
+          );
         }
       }
     };
+
     this.port.postMessage({ type: 'ready' });
+  }
+
+  private updateConnection(voiceId: number, connection: NodeConnection) {
+    if (!this.audioEngine || voiceId >= this.voiceLayouts.length) return;
+
+    const voice = this.voiceLayouts[voiceId]!;
+
+    const existingIndex = voice.connections.findIndex(
+      conn => conn.fromId === connection.fromId &&
+        conn.toId === connection.toId &&
+        conn.target === connection.target
+    );
+
+    if (existingIndex !== -1) {
+      if (connection.amount === 0) {
+        voice.connections.splice(existingIndex, 1);
+      } else {
+        voice.connections[existingIndex] = connection;
+      }
+    } else if (connection.amount !== 0) {
+      voice.connections.push(connection);
+    }
+
+    this.audioEngine.connect_voice_nodes(
+      voiceId,
+      connection.fromId,
+      PortId.AudioOutput0,
+      connection.toId,
+      this.getPortIdForTarget(connection.target),
+      connection.amount
+    );
   }
 
   override process(
@@ -264,19 +336,19 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const outputLeft = output[0];
     const outputRight = output[1] || output[0];
 
+    if (!outputLeft || !outputRight) return true;
+
     // Create parameter arrays
     const gateArray = new Float32Array(this.numVoices);
     const freqArray = new Float32Array(this.numVoices);
     const gainArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
 
-    // Fill basic parameters and macro values
     for (let i = 0; i < this.numVoices; i++) {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
 
-      // Handle macro automation
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;
@@ -286,6 +358,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         }
       }
     }
+
     const masterGain = parameters.master_gain?.[0] ?? 1;
 
     this.audioEngine.process_audio(
@@ -294,8 +367,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       gainArray,
       macroArray,
       masterGain,
-      outputLeft!,
-      outputRight!,
+      outputLeft,
+      outputRight,
     );
 
     return true;

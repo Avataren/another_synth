@@ -164,6 +164,17 @@ export class AudioEngine {
     }
     /**
      * @param {number} voice_index
+     * @returns {any}
+     */
+    create_envelope(voice_index) {
+        const ret = wasm.audioengine_create_envelope(this.__wbg_ptr, voice_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {number} voice_index
      * @param {number} node_id
      * @param {number} attack
      * @param {number} decay

@@ -252,6 +252,17 @@ var AudioEngine = class {
   }
   /**
    * @param {number} voice_index
+   * @returns {any}
+   */
+  create_envelope(voice_index) {
+    const ret = wasm.audioengine_create_envelope(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @param {number} voice_index
    * @param {number} node_id
    * @param {number} attack
    * @param {number} decay
@@ -785,9 +796,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "ready", false);
     __publicField(this, "audioEngine", null);
     __publicField(this, "numVoices", 8);
-    __publicField(this, "oscillatorsPerVoice", 2);
-    // Can be increased later
-    __publicField(this, "voices", []);
+    __publicField(this, "maxOscillators", 2);
+    __publicField(this, "maxEnvelopes", 2);
+    __publicField(this, "maxLFOs", 2);
+    __publicField(this, "maxFilters", 1);
+    __publicField(this, "voiceLayouts", []);
+    __publicField(this, "nextNodeId", 0);
     __publicField(this, "oscHandler", new OscillatorUpdateHandler());
     this.port.onmessage = (event) => {
       if (event.data.type === "wasm-binary") {
@@ -796,33 +810,50 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         this.audioEngine = new AudioEngine();
         this.audioEngine.init(sampleRate, this.numVoices);
         for (let i = 0; i < this.numVoices; i++) {
-          this.initialize_synth(i);
+          const voiceLayout = this.initializeVoice(i);
+          this.voiceLayouts.push(voiceLayout);
         }
+        const layout = {
+          voices: this.voiceLayouts,
+          globalNodes: {
+            masterGain: this.getNextNodeId(),
+            effectsChain: []
+          },
+          metadata: {
+            maxVoices: this.numVoices,
+            maxOscillators: this.maxOscillators,
+            maxEnvelopes: this.maxEnvelopes,
+            maxLFOs: this.maxLFOs,
+            maxFilters: this.maxFilters
+          }
+        };
+        this.port.postMessage({
+          type: "synthLayout",
+          layout
+        });
         this.ready = true;
+      } else if (event.data.type === "updateConnection") {
+        const { voiceId, connection } = event.data;
+        this.updateConnection(voiceId, connection);
       } else if (event.data.type === "updateOscillator") {
-        console.log("Got updateOscillator event:", event.data);
         if (this.audioEngine != null) {
           const { oscillatorId, newState } = event.data;
-          this.oscHandler.UpdateOscillator(this.audioEngine, new OscillatorStateUpdate(
-            0,
-            //phase_mod_amount
-            0,
-            //freq_mod_amount
-            newState.detune_oct,
-            //detune oct
-            newState.detune_semi,
-            //detune semi
-            newState.detune_cents,
-            //detune cents
-            newState.detune,
-            //detune
-            newState.hard_sync,
-            //hard sync
-            newState.gain,
-            //gain
-            newState.active
-            //active
-          ), oscillatorId, this.numVoices);
+          this.oscHandler.UpdateOscillator(
+            this.audioEngine,
+            new OscillatorStateUpdate(
+              0,
+              0,
+              newState.detune_oct,
+              newState.detune_semi,
+              newState.detune_cents,
+              newState.detune,
+              newState.hard_sync,
+              newState.gain,
+              newState.active
+            ),
+            oscillatorId,
+            this.numVoices
+          );
         }
       }
     };
@@ -831,7 +862,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     const parameters = [];
     const numVoices = 8;
-    const oscillatorsPerVoice = 2;
     for (let i = 0; i < numVoices; i++) {
       parameters.push(
         {
@@ -856,16 +886,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           automationRate: "k-rate"
         }
       );
-      for (let osc = 0; osc < oscillatorsPerVoice; osc++) {
-        parameters.push({
-          name: `osc${osc}_detune_${i}`,
-          defaultValue: 0,
-          minValue: -100,
-          // ±100 cents = ±1 semitone
-          maxValue: 100,
-          automationRate: "a-rate"
-        });
-      }
       for (let m = 0; m < 4; m++) {
         parameters.push({
           name: `macro_${i}_${m}`,
@@ -885,85 +905,119 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     });
     return parameters;
   }
-  initialize_synth(voiceIndex) {
-    const result = this.audioEngine.initialize_voice(voiceIndex, this.oscillatorsPerVoice);
-    const oscillatorIds = result.oscillatorIds;
-    const envelopeId = result.envelopeId;
-    const { lfoId: vibratoLfoId } = this.audioEngine.create_lfo(voiceIndex);
-    const { lfoId: modLfoId } = this.audioEngine.create_lfo(voiceIndex);
-    this.voices[voiceIndex] = {
-      oscillators: oscillatorIds,
-      envelope: envelopeId,
-      vibratoLfo: vibratoLfoId,
-      modLfo: modLfoId
+  getNextNodeId() {
+    return this.nextNodeId++;
+  }
+  initializeVoice(voiceIndex) {
+    if (!this.audioEngine) {
+      throw new Error("Audio engine not initialized");
+    }
+    const voiceLayout = {
+      id: voiceIndex,
+      nodes: {
+        ["oscillator" /* Oscillator */]: [],
+        ["envelope" /* Envelope */]: [],
+        ["lfo" /* LFO */]: [],
+        ["filter" /* Filter */]: []
+      },
+      connections: []
     };
-    const vibratoLfoParams = new LfoUpdateParams(
-      vibratoLfoId,
-      5,
-      // 5 Hz - typical vibrato rate
-      0 /* Sine */,
-      // smooth sine wave
-      false,
-      // bipolar modulation
-      false,
-      // full -1 to 1 range
-      0 /* None */
-      // free-running
-    );
-    this.audioEngine.update_lfo(voiceIndex, vibratoLfoParams);
-    const modLfoParams = new LfoUpdateParams(
-      modLfoId,
-      0.5,
-      // 0.5 Hz - slow modulation
-      0 /* Sine */,
-      true,
-      // unipolar modulation
-      true,
-      // normalized range
-      0 /* None */
-    );
-    this.audioEngine.update_lfo(voiceIndex, modLfoParams);
-    this.audioEngine.update_envelope(
-      voiceIndex,
-      envelopeId,
-      1e-3,
-      // attack
-      0.2,
-      // decay
-      0.2,
-      // sustain
-      0.5
-      // release
-    );
-    for (const oscId of oscillatorIds) {
+    for (let i = 0; i < this.maxOscillators; i++) {
+      const oscId = this.audioEngine.add_oscillator(voiceIndex);
+      voiceLayout.nodes["oscillator" /* Oscillator */].push({
+        id: oscId,
+        type: "oscillator" /* Oscillator */
+      });
+    }
+    for (let i = 0; i < this.maxEnvelopes; i++) {
+      const result = this.audioEngine.create_envelope(voiceIndex);
+      voiceLayout.nodes["envelope" /* Envelope */].push({
+        id: result.envelopeId,
+        type: "envelope" /* Envelope */
+      });
+    }
+    for (let i = 0; i < this.maxLFOs; i++) {
+      const result = this.audioEngine.create_lfo(voiceIndex);
+      const lfoId = result.lfoId;
+      voiceLayout.nodes["lfo" /* LFO */].push({
+        id: lfoId,
+        type: "lfo" /* LFO */
+      });
+      const lfoParams = new LfoUpdateParams(
+        lfoId,
+        2,
+        // Default frequency
+        0 /* Sine */,
+        false,
+        // Not absolute
+        false,
+        // Not normalized
+        0 /* None */
+      );
+      this.audioEngine.update_lfo(voiceIndex, lfoParams);
+    }
+    const [mainOsc] = voiceLayout.nodes["oscillator" /* Oscillator */];
+    const [ampEnv] = voiceLayout.nodes["envelope" /* Envelope */];
+    if (mainOsc && ampEnv) {
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
-        envelopeId,
+        ampEnv.id,
         PortId.AudioOutput0,
-        oscId,
+        mainOsc.id,
         PortId.GainMod,
         1
       );
+      voiceLayout.connections.push({
+        fromId: ampEnv.id,
+        toId: mainOsc.id,
+        target: "gain" /* Gain */,
+        amount: 1
+      });
     }
-    this.audioEngine.connect_macro(
-      voiceIndex,
-      0,
-      vibratoLfoId,
-      PortId.ModIndex,
-      0.1
-      // Max 10% frequency variation
+    return voiceLayout;
+  }
+  getPortIdForTarget(target) {
+    switch (target) {
+      case "frequency" /* Frequency */:
+        return PortId.FrequencyMod;
+      case "gain" /* Gain */:
+        return PortId.GainMod;
+      case "cutoff" /* FilterCutoff */:
+        return PortId.CutoffMod;
+      case "resonance" /* FilterResonance */:
+        return PortId.ResonanceMod;
+      case "phase_mod" /* PhaseMod */:
+        return PortId.PhaseMod;
+      case "mod_index" /* ModIndex */:
+        return PortId.ModIndex;
+      default:
+        console.warn(`No PortId mapping for target: ${target}`);
+        return PortId.GainMod;
+    }
+  }
+  updateConnection(voiceId, connection) {
+    if (!this.audioEngine || voiceId >= this.voiceLayouts.length) return;
+    const voice = this.voiceLayouts[voiceId];
+    const existingIndex = voice.connections.findIndex(
+      (conn) => conn.fromId === connection.fromId && conn.toId === connection.toId && conn.target === connection.target
     );
-    for (const oscId of oscillatorIds) {
-      this.audioEngine.connect_voice_nodes(
-        voiceIndex,
-        vibratoLfoId,
-        PortId.AudioOutput0,
-        oscId,
-        PortId.FrequencyMod,
-        0
-        // Initial amount - controlled by macro
-      );
+    if (existingIndex !== -1) {
+      if (connection.amount === 0) {
+        voice.connections.splice(existingIndex, 1);
+      } else {
+        voice.connections[existingIndex] = connection;
+      }
+    } else if (connection.amount !== 0) {
+      voice.connections.push(connection);
     }
+    this.audioEngine.connect_voice_nodes(
+      voiceId,
+      connection.fromId,
+      PortId.AudioOutput0,
+      connection.toId,
+      this.getPortIdForTarget(connection.target),
+      connection.amount
+    );
   }
   process(_inputs, outputs, parameters) {
     if (!this.ready || !this.audioEngine) return true;
@@ -971,6 +1025,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     if (!output) return true;
     const outputLeft = output[0];
     const outputRight = output[1] || output[0];
+    if (!outputLeft || !outputRight) return true;
     const gateArray = new Float32Array(this.numVoices);
     const freqArray = new Float32Array(this.numVoices);
     const gainArray = new Float32Array(this.numVoices);

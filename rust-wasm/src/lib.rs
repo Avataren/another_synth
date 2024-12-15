@@ -205,6 +205,24 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
+    pub fn create_envelope(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        let envelope_id = voice.graph.add_node(Box::new(Envelope::new(
+            self.sample_rate,
+            EnvelopeConfig::default(),
+        )));
+
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
+
+        Ok(obj.into())
+    }
+
+    #[wasm_bindgen]
     pub fn update_envelope(
         &mut self,
         voice_index: usize,
