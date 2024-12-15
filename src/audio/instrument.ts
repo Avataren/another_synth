@@ -56,10 +56,10 @@ export default class Instrument {
     });
   }
 
-  public updateOscillatorState(key: number, newState: OscillatorState) {
+  public updateOscillatorState(oscillatorId: number, newState: OscillatorState) {
     this.workletNode?.port.postMessage({
       type: 'updateOscillator',
-      key,
+      oscillatorId,
       newState,
     });
   }
