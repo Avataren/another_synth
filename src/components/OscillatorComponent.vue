@@ -21,7 +21,7 @@
 
       <div class="knob-group">
         <audio-knob-component
-          v-model="oscillatorState.gain"
+          v-model="oscillatorState.gain!"
           label="Gain"
           :min="0"
           :max="1"
@@ -31,7 +31,7 @@
         />
 
         <audio-knob-component
-          v-model="oscillatorState.detune_oct"
+          v-model="oscillatorState.detune_oct!"
           label="Octave"
           :min="-5"
           :max="5"
@@ -41,7 +41,7 @@
         />
 
         <audio-knob-component
-          v-model="oscillatorState.detune_semi"
+          v-model="oscillatorState.detune_semi!"
           label="Semitones"
           :min="-12"
           :max="12"
@@ -51,13 +51,23 @@
         />
 
         <audio-knob-component
-          v-model="oscillatorState.detune_cents"
+          v-model="oscillatorState.detune_cents!"
           label="Cents"
           :min="-100"
           :max="100"
           :step="1"
           :decimals="0"
           @update:modelValue="handleDetuneChange"
+        />
+
+        <audio-knob-component
+          v-model="oscillatorState.phase_mod_amount!"
+          label="ModIndex"
+          :min="-30"
+          :max="30"
+          :step="0.001"
+          :decimals="3"
+          @update:modelValue="handleModIndexChange"
         />
 
         <audio-knob-component
@@ -132,9 +142,9 @@ onMounted(() => {
 
 const totalDetune = computed(() => {
   return (
-    oscillatorState.value.detune_oct * 1200 +
-    oscillatorState.value.detune_semi * 100 +
-    oscillatorState.value.detune_cents
+    oscillatorState.value.detune_oct! * 1200 +
+    oscillatorState.value.detune_semi! * 100 +
+    oscillatorState.value.detune_cents!
   );
 });
 
@@ -169,6 +179,15 @@ const handleHardSyncChange = (newValue: boolean) => {
     ...oscillatorState.value,
     hardsync: newValue,
   };
+  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
+};
+
+const handleModIndexChange = (newValue: number) => {
+  const currentState = {
+    ...oscillatorState.value,
+    phase_mod_amount: newValue,
+  };
+  console.log('setting mod inxex state:', currentState);
   store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };
 
@@ -215,17 +234,7 @@ watch(
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
         // console.log('state changed!');
-        store.currentInstrument?.updateOscillatorState(props.nodeId, {
-          id: newState.id,
-          phase_mod_amount: 0,
-          freq_mod_amount: 0,
-          detune_oct: newState.detune_oct,
-          detune_semi: newState.detune_semi,
-          detune_cents: newState.detune_cents,
-          detune: newState.detune,
-          gain: newState.gain,
-          active: newState.active,
-        } as OscillatorState);
+        store.currentInstrument?.updateOscillatorState(props.nodeId, newState);
       }
     }
   },

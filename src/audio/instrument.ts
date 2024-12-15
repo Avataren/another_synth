@@ -68,7 +68,7 @@ export default class Instrument {
     // Find which voice this oscillator belongs to
     const voiceIndex = this.findVoiceForNode(nodeId);
     if (voiceIndex === -1) return;
-
+    console.log('posting osc state:', newState);
     this.workletNode.port.postMessage({
       type: 'updateOscillator',
       voiceIndex,

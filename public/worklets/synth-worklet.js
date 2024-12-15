@@ -842,8 +842,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           this.oscHandler.UpdateOscillator(
             this.audioEngine,
             new OscillatorStateUpdate(
-              0,
-              0,
+              newState.phase_mod_amount,
+              newState.freq_mod_amount,
               newState.detune_oct,
               newState.detune_semi,
               newState.detune_cents,
