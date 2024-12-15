@@ -147,9 +147,10 @@ onMounted(() => {
 watch(
   () => filterState.value,
   (newState) => {
-    store.currentInstrument?.updateNoiseState({
-      ...newState,
-    } as NoiseState);
+    console.log('todo: update noisestate in instrument.ts ', newState);
+    // store.currentInstrument?.updateNoiseState({
+    //   ...newState,
+    // } as NoiseState);
   },
   { deep: true, immediate: true },
 );

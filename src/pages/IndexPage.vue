@@ -3,12 +3,29 @@
     <oscilloscope-component :node="destinationNode" />
     <frequency-analyzer-component :node="destinationNode" />
     <piano-keyboard-component />
-    <oscillator-component :node="destinationNode" :oscIndex="0" />
-    <oscillator-component :node="destinationNode" :oscIndex="1" />
+
+    <oscillator-component
+      v-for="osc in oscillatorNodes"
+      :key="osc.id"
+      :node="destinationNode"
+      :nodeId="osc.id"
+    />
+
     <noise-component :node="destinationNode" :Index="0" />
-    <envelope-component :node="destinationNode" :envIndex="0" />
-    <envelope-component :node="destinationNode" :envIndex="1" />
-    <filter-component :node="destinationNode" :Index="0" />
+
+    <envelope-component
+      v-for="env in envelopeNodes"
+      :key="env.id"
+      :node="destinationNode"
+      :nodeId="env.id"
+    />
+
+    <filter-component
+      v-for="filter in filterNodes"
+      :key="filter.id"
+      :node="destinationNode"
+      :nodeId="filter.id"
+    />
   </q-page>
 </template>
 
@@ -22,7 +39,27 @@ import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
 import FilterComponent from 'src/components/FilterComponent.vue';
 import NoiseComponent from 'src/components/NoiseComponent.vue';
 import { storeToRefs } from 'pinia';
+import { computed } from 'vue';
+import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 const store = useAudioSystemStore();
 const { destinationNode } = storeToRefs(store);
+
+// Get nodes for voice 0
+const oscillatorNodes = computed(() =>
+  store.getVoiceNodes(0, VoiceNodeType.Oscillator),
+);
+const envelopeNodes = computed(() =>
+  store.getVoiceNodes(0, VoiceNodeType.Envelope),
+);
+const filterNodes = computed(() =>
+  store.getVoiceNodes(0, VoiceNodeType.Filter),
+);
+//const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
+
+// For debugging - watch when nodes are available
+// Note: Remove in production
+// whenever(oscillatorNodes, (nodes) => {
+//   console.log('Oscillator nodes:', nodes);
+// });
 </script>

@@ -1,9 +1,16 @@
-// import { OscillatorUpdateParams } from 'app/public/wasm/audio_processor';
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
 import { type FilterState } from './dsp/filter-state';
-import { type NoiseState } from './dsp/noise-generator';
+// import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
+import {
+  type SynthLayout,
+  type NodeConnection,
+  // type VoiceLayout,
+  VoiceNodeType,
+  type ModulationTarget,
+  type LfoState
+} from './types/synth-layout';
 
 export default class Instrument {
   readonly num_voices = 8;
@@ -12,6 +19,7 @@ export default class Instrument {
   private activeNotes: Map<number, number> = new Map(); // midi note -> voice index
   private voiceLastUsedTime: number[] = []; // Track when each voice was last used
   private ready = false;
+  private synthLayout: SynthLayout | null = null;
 
   constructor(
     destination: AudioNode,
@@ -49,35 +57,99 @@ export default class Instrument {
     }
   }
 
-  public updateNoiseState(newState: NoiseState) {
-    this.workletNode?.port.postMessage({
-      type: 'updateNoise',
-      newState,
-    });
+  public updateLayout(layout: SynthLayout) {
+    this.synthLayout = layout;
+    console.log('Updated synth layout:', layout);
   }
 
-  public updateOscillatorState(oscillatorId: number, newState: OscillatorState) {
-    this.workletNode?.port.postMessage({
+  public updateOscillatorState(nodeId: number, newState: OscillatorState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+
+    // Find which voice this oscillator belongs to
+    const voiceIndex = this.findVoiceForNode(nodeId);
+    if (voiceIndex === -1) return;
+
+    this.workletNode.port.postMessage({
       type: 'updateOscillator',
-      oscillatorId,
+      voiceIndex,
+      oscillatorId: nodeId,
       newState,
     });
   }
 
-  public updateEnvelopeState(key: number, newState: EnvelopeConfig) {
-    this.workletNode?.port.postMessage({
+  public updateLfoState(nodeId: number, state: LfoState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+
+    const voiceIndex = this.findVoiceForNode(nodeId);
+    if (voiceIndex === -1) return;
+
+    this.workletNode.port.postMessage({
+      type: 'updateLfo',
+      voiceIndex,
+      lfoId: nodeId,
+      params: {
+        lfoId: nodeId,
+        frequency: state.frequency,
+        waveform: state.waveform,
+        useAbsolute: state.useAbsolute,
+        useNormalized: state.useNormalized,
+        triggerMode: state.triggerMode
+      }
+    });
+  }
+
+  public updateEnvelopeState(nodeId: number, newState: EnvelopeConfig) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+
+    const voiceIndex = this.findVoiceForNode(nodeId);
+    if (voiceIndex === -1) return;
+
+    this.workletNode.port.postMessage({
       type: 'updateEnvelope',
-      voice_index: key,
+      voiceIndex,
+      envelopeId: nodeId,
       config: newState,
     });
   }
 
-  public updateFilterState(key: number, newState: FilterState) {
-    this.workletNode?.port.postMessage({
+  public updateFilterState(nodeId: number, newState: FilterState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+
+    const voiceIndex = this.findVoiceForNode(nodeId);
+    if (voiceIndex === -1) return;
+
+    this.workletNode.port.postMessage({
       type: 'updateFilter',
-      voice_index: key,
+      voiceIndex,
+      filterId: nodeId,
       config: newState,
     });
+  }
+
+  public updateConnection(voiceIndex: number, connection: NodeConnection) {
+    if (!this.ready || !this.workletNode) return;
+
+    this.workletNode.port.postMessage({
+      type: 'updateConnection',
+      voiceIndex,
+      connection,
+    });
+  }
+
+  public createModulation(
+    voiceIndex: number,
+    sourceId: number,
+    targetId: number,
+    target: ModulationTarget,
+    amount: number
+  ) {
+    const connection: NodeConnection = {
+      fromId: sourceId,
+      toId: targetId,
+      target,
+      amount
+    };
+    this.updateConnection(voiceIndex, connection);
   }
 
   public note_on(midi_note: number, velocity: number) {
@@ -91,10 +163,7 @@ export default class Instrument {
     if (voiceIndex !== -1) {
       const frequency = this.midiNoteToFrequency(midi_note);
 
-      // Update parameters for the selected voice
-      const freqParam = this.workletNode.parameters.get(
-        `frequency_${voiceIndex}`,
-      );
+      const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
       const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
       const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
 
@@ -123,8 +192,22 @@ export default class Instrument {
     }
   }
 
+  private findVoiceForNode(nodeId: number): number {
+    if (!this.synthLayout) return -1;
+
+    for (let i = 0; i < this.synthLayout.voices.length; i++) {
+      const voice = this.synthLayout.voices[i]!;
+      // Check all node types
+      for (const nodeType of Object.values(VoiceNodeType)) {
+        if (voice.nodes[nodeType]?.some(node => node.id === nodeId)) {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
   private findFreeVoice(): number {
-    // Get list of used voice indices
     const usedVoiceIndices = new Set(this.activeNotes.values());
 
     // Find the oldest free voice
@@ -140,7 +223,6 @@ export default class Instrument {
       }
     }
 
-    // If we found a free voice, return it
     if (oldestFreeVoiceIndex !== -1) {
       return oldestFreeVoiceIndex;
     }
@@ -157,7 +239,6 @@ export default class Instrument {
     }
 
     if (oldestActiveVoiceIndex !== -1) {
-      // Find and release the note using this voice
       for (const [noteToRelease, voiceIndex] of this.activeNotes) {
         if (voiceIndex === oldestActiveVoiceIndex) {
           this.note_off(noteToRelease);

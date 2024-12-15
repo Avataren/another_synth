@@ -4,10 +4,16 @@ import AudioSystem from 'src/audio/AudioSystem';
 import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
 import { type FilterState } from 'src/audio/dsp/filter-state';
 import Instrument from 'src/audio/instrument';
-//import { type OscillatorState } from 'src/audio/wavetable/wavetable-oscillator';
-// import { loadWasmModule } from 'src/utils/wasm-loader';
 import { NoiseType, type NoiseState } from 'src/audio/dsp/noise-generator';
 import type OscillatorState from 'src/audio/models/OscillatorState';
+import {
+  type SynthLayout,
+  type NodeConnection,
+  type LfoState,
+  VoiceNodeType,
+  getNodesOfType,
+} from 'src/audio/types/synth-layout';
+
 interface AudioParamDescriptor {
   name: string;
   defaultValue?: number;
@@ -15,37 +21,72 @@ interface AudioParamDescriptor {
   maxValue?: number;
   automationRate?: 'a-rate' | 'k-rate';
 }
-// const max_instruments = 1;
-// const max_voices = 8 * max_instruments;
-export interface WasmMemoryPointers {
-  audioBufferPtr: number;
-  envelope1Ptr: number;
-  parameterPtrs: {
-    frequency: number;
-    gain: number;
-    detune: number;
-    gate: number;
-  };
-  offsetsPtr: number;
-}
+
+
 export const useAudioSystemStore = defineStore('audioSystem', {
   state: () => ({
     audioSystem: null as AudioSystem | null,
     destinationNode: null as AudioNode | null,
     currentInstrument: null as Instrument | null,
+    synthLayout: null as SynthLayout | null,
+
+    // State maps using node IDs from the layout
     oscillatorStates: new Map<number, OscillatorState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
-    noiseState: { noiseType: NoiseType.White, cutoff: 1.0, is_enabled: false } as NoiseState,
     filterStates: new Map<number, FilterState>(),
-    wasmPointers: new Array<WasmMemoryPointers>(),
-    voices_allocated: 0,
+    lfoStates: new Map<number, LfoState>(),
+
+    // Global states
+    noiseState: {
+      noiseType: NoiseType.White,
+      cutoff: 1.0,
+      is_enabled: false
+    } as NoiseState,
+
     wasmMemory: new WebAssembly.Memory({
       initial: 256,
       maximum: 1024,
       shared: true,
     }),
   }),
+
   getters: {
+    getVoiceNodes: (state) => (voiceIndex: number, nodeType: VoiceNodeType) => {
+      if (!state.synthLayout) return [];
+      const voice = state.synthLayout.voices[voiceIndex];
+      return voice ? getNodesOfType(voice, nodeType) : [];
+    },
+
+    getNodeState: (state) => (nodeId: number, nodeType: VoiceNodeType) => {
+      switch (nodeType) {
+        case VoiceNodeType.Oscillator:
+          return state.oscillatorStates.get(nodeId);
+        case VoiceNodeType.Envelope:
+          return state.envelopeStates.get(nodeId);
+        case VoiceNodeType.Filter:
+          return state.filterStates.get(nodeId);
+        case VoiceNodeType.LFO:
+          return state.lfoStates.get(nodeId);
+        default:
+          return null;
+      }
+    },
+
+    getNodeConnections: (state) => (voiceIndex: number, nodeId: number): NodeConnection[] => {
+      if (!state.synthLayout) return [];
+      const voice = state.synthLayout.voices[voiceIndex];
+      if (!voice) return [];
+      return voice.connections.filter(
+        conn => conn.fromId === nodeId || conn.toId === nodeId
+      );
+    },
+
+    maxVoices: (state) => state.synthLayout?.metadata?.maxVoices ?? 8,
+    maxOscillators: (state) => state.synthLayout?.metadata?.maxOscillators ?? 2,
+    maxEnvelopes: (state) => state.synthLayout?.metadata?.maxEnvelopes ?? 2,
+    maxLFOs: (state) => state.synthLayout?.metadata?.maxLFOs ?? 2,
+    maxFilters: (state) => state.synthLayout?.metadata?.maxFilters ?? 1,
+
     parameterDescriptors(): AudioParamDescriptor[] {
       return [
         {
@@ -79,110 +120,128 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       ];
     },
   },
+
   actions: {
     initializeAudioSystem() {
       if (!this.audioSystem) {
         this.audioSystem = new AudioSystem();
-        for (let i = 0; i <= 4; i++) {
-          this.oscillatorStates.set(i, {
-            id: i,
-            phase_mod_amount: 0,
-            freq_mod_amount: 0,
-            detune_oct: 0,
-            detune_semi: 0,
-            detune_cents: 0,
-            detune: 0,
-            hard_sync: false,
-            gain: 1,
-            active: true
-            // id: i,
-            // gain: 1.0,
-            // detune_oct: 0,
-            // detune_semi: 0,
-            // detune_cents: 0,
-            // detune: 0,
-            // hardsync: false,
-            // waveform: 'sine',
-            // is_active: true
-          });
+      }
+    },
+
+    updateSynthLayout(layout: SynthLayout) {
+      this.synthLayout = layout;
+
+      // Initialize states for all nodes
+      for (const voice of layout.voices) {
+        // Initialize oscillators
+        for (const osc of getNodesOfType(voice, VoiceNodeType.Oscillator)) {
+          if (!this.oscillatorStates.has(osc.id)) {
+            this.oscillatorStates.set(osc.id, {
+              id: osc.id,
+              phase_mod_amount: 0,
+              freq_mod_amount: 0,
+              detune_oct: 0,
+              detune_semi: 0,
+              detune_cents: 0,
+              detune: 0,
+              hard_sync: false,
+              gain: 1,
+              active: true
+            });
+          }
         }
 
-        for (let i = 0; i <= 4; i++) {
-          this.envelopeStates.set(i, {
-            id: i,
-            attack: 0.0,
-            decay: 0.1,
-            sustain: 0.5,
-            release: 0.1,
-            attackCurve: 0.0,
-            decayCurve: 0.0,
-            releaseCurve: 0.0
-          });
+        // Initialize envelopes
+        for (const env of getNodesOfType(voice, VoiceNodeType.Envelope)) {
+          if (!this.envelopeStates.has(env.id)) {
+            this.envelopeStates.set(env.id, {
+              id: env.id,
+              attack: 0.0,
+              decay: 0.1,
+              sustain: 0.5,
+              release: 0.1,
+              attackCurve: 0.0,
+              decayCurve: 0.0,
+              releaseCurve: 0.0
+            });
+          }
         }
 
-        for (let i = 0; i <= 2; i++) {
-          this.filterStates.set(i, {
-            id: i,
-            cut: 10000,
-            resonance: 0.5,
-            is_enabled: false
-          } as FilterState)
+        // Initialize filters
+        for (const filter of getNodesOfType(voice, VoiceNodeType.Filter)) {
+          if (!this.filterStates.has(filter.id)) {
+            this.filterStates.set(filter.id, {
+              id: filter.id,
+              cut: 10000,
+              resonance: 0.5,
+              is_enabled: false
+            } as FilterState);
+          }
+        }
+
+        // Initialize LFOs
+        for (const lfo of getNodesOfType(voice, VoiceNodeType.LFO)) {
+          if (!this.lfoStates.has(lfo.id)) {
+            this.lfoStates.set(lfo.id, {
+              id: lfo.id,
+              frequency: 2.0,
+              waveform: 0,
+              useAbsolute: false,
+              useNormalized: false,
+              triggerMode: 0
+            });
+          }
         }
       }
     },
 
-    getNextMemorySegment() {
-      const memSegment = this.wasmPointers[this.voices_allocated];
-      this.voices_allocated++;
-      return memSegment;
+    updateOscillator(nodeId: number, state: OscillatorState) {
+      this.oscillatorStates.set(nodeId, state);
+      this.currentInstrument?.updateOscillatorState(nodeId, state);
+    },
+
+    updateEnvelope(nodeId: number, state: EnvelopeConfig) {
+      this.envelopeStates.set(nodeId, state);
+      this.currentInstrument?.updateEnvelopeState(nodeId, state);
+    },
+
+    updateLfo(nodeId: number, state: LfoState) {
+      this.lfoStates.set(nodeId, state);
+      this.currentInstrument?.updateLfoState(nodeId, state);
+    },
+
+    updateFilter(nodeId: number, state: FilterState) {
+      this.filterStates.set(nodeId, state);
+      this.currentInstrument?.updateFilterState(nodeId, state);
+    },
+
+    updateConnection(voiceIndex: number, connection: NodeConnection) {
+      if (!this.synthLayout || !this.currentInstrument) return;
+
+      const voice = this.synthLayout.voices[voiceIndex];
+      if (!voice) return;
+
+      const existingIndex = voice.connections.findIndex(
+        conn => conn.fromId === connection.fromId &&
+          conn.toId === connection.toId &&
+          conn.target === connection.target
+      );
+
+      if (existingIndex !== -1) {
+        if (connection.amount === 0) {
+          voice.connections.splice(existingIndex, 1);
+        } else {
+          voice.connections[existingIndex] = connection;
+        }
+      } else if (connection.amount !== 0) {
+        voice.connections.push(connection);
+      }
+
+      this.currentInstrument.updateConnection(voiceIndex, connection);
     },
 
     async setupAudio() {
       if (this.audioSystem) {
-        // const wasmModule = await loadWasmModule(
-        //   'wasm/release.wasm',
-        //   this.wasmMemory,
-        // );
-
-        // // Log the WASM exports to confirm
-        // console.log('WASM Exports: ', wasmModule);
-        // const bufferSize = 128;
-
-        // for (let i = 0; i < max_voices; i++) {
-        //   const parameterPtrs = {
-        //     frequency: wasmModule.allocateF32Array(bufferSize),
-        //     gain: wasmModule.allocateF32Array(bufferSize),
-        //     detune: wasmModule.allocateF32Array(bufferSize),
-        //     gate: wasmModule.allocateF32Array(bufferSize),
-        //   };
-
-        //   const audioBufPtr = wasmModule.allocateF32Array(bufferSize);
-        //   const osc1State = wasmModule.createOscillatorState();
-        //   console.log('osc1STate:', osc1State);
-        //   const osc2State = wasmModule.createOscillatorState();
-        //   const offsetsPtr = wasmModule.createBufferOffsets(
-        //     audioBufPtr,
-        //     parameterPtrs.frequency,
-        //     parameterPtrs.gain,
-        //     parameterPtrs.detune,
-        //     parameterPtrs.gate,
-        //     osc1State,
-        //     osc2State,
-        //   );
-        //   this.wasmPointers.push({
-        //     audioBufferPtr: audioBufPtr,
-        //     envelope1Ptr: wasmModule.createEnvelopeState(0.01, 0.2, 0.5, 0.25),
-        //     parameterPtrs: parameterPtrs,
-        //     offsetsPtr: offsetsPtr,
-        //   });
-        //   console.log(`Voice ${i} pointers:`, {
-        //     audio: audioBufPtr,
-        //     env: this.wasmPointers[i]?.envelope1Ptr,
-        //     params: parameterPtrs,
-        //     offsets: offsetsPtr,
-        //   });
-        // }
-
         this.currentInstrument = new Instrument(
           this.audioSystem.destinationNode,
           this.audioSystem.audioContext,

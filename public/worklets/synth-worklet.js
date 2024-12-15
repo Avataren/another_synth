@@ -770,6 +770,7 @@ async function __wbg_init(module_or_path) {
 // src/audio/worklets/handlers/oscillator-update-handler.ts
 var OscillatorUpdateHandler = class {
   UpdateOscillator(engine, stateUpdate, oscillatorId, numVoices) {
+    console.log(`#UpdateOscillator ${oscillatorId}:`, stateUpdate);
     for (let i = 0; i < numVoices; i++) {
       engine.update_oscillator(i, oscillatorId, stateUpdate);
     }

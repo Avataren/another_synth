@@ -1,7 +1,7 @@
 <template>
   <q-card class="envelope-card">
     <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Envelope {{ envIndex + 1 }}</div>
+      <div class="text-h6">Envelope {{ nodeId + 1 }}</div>
     </q-card-section>
     <q-separator />
     <q-card-section class="envelope-container">
@@ -63,10 +63,13 @@ import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
 
 interface Props {
   node: AudioNode | null;
-  envIndex: number;
+  nodeId: number;
 }
 
-const props = withDefaults(defineProps<Props>(), { node: null, envIndex: 0 });
+const props = withDefaults(defineProps<Props>(), {
+  node: null,
+  nodeId: 0,
+});
 //const node = computed(() => props.node);
 
 const store = useAudioSystemStore();
@@ -74,9 +77,9 @@ const { envelopeStates } = storeToRefs(store);
 // Create a reactive reference to the oscillator state
 const envelopeState = computed({
   get: () => {
-    const state = envelopeStates.value.get(props.envIndex);
+    const state = envelopeStates.value.get(props.nodeId);
     if (!state) {
-      console.warn(`No state found for oscillator ${props.envIndex}`);
+      console.warn(`No state found for oscillator ${props.nodeId}`);
       return {
         attack: 0.0,
         decay: 0.1,
@@ -90,7 +93,7 @@ const envelopeState = computed({
     return state;
   },
   set: (newState: EnvelopeConfig) => {
-    store.envelopeStates.set(props.envIndex, { ...newState });
+    store.envelopeStates.set(props.nodeId, { ...newState });
   },
 });
 const handleAttackChange = (envVal: number) => {
@@ -98,39 +101,39 @@ const handleAttackChange = (envVal: number) => {
     ...envelopeState.value,
     attack: envVal,
   };
-  store.envelopeStates.set(props.envIndex, currentState);
+  store.envelopeStates.set(props.nodeId, currentState);
 };
 const handleDecayChange = (envVal: number) => {
   const currentState = {
     ...envelopeState.value,
     decay: envVal,
   };
-  store.envelopeStates.set(props.envIndex, currentState);
+  store.envelopeStates.set(props.nodeId, currentState);
 };
 const handleSustainChange = (envVal: number) => {
   const currentState = {
     ...envelopeState.value,
     sustain: envVal,
   };
-  store.envelopeStates.set(props.envIndex, currentState);
+  store.envelopeStates.set(props.nodeId, currentState);
 };
 const handleReleaseChange = (envVal: number) => {
   const currentState = {
     ...envelopeState.value,
     release: envVal,
   };
-  store.envelopeStates.set(props.envIndex, currentState);
+  store.envelopeStates.set(props.nodeId, currentState);
 };
 onMounted(() => {});
 
 watch(
-  () => ({ ...envelopeStates.value.get(props.envIndex) }), // Create new reference
+  () => ({ ...envelopeStates.value.get(props.nodeId) }), // Create new reference
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
-      if (newState.id === props.envIndex) {
+      if (newState.id === props.nodeId) {
         // console.log('state changed!');
         store.currentInstrument?.updateEnvelopeState(
-          props.envIndex,
+          props.nodeId,
           newState as EnvelopeConfig,
         );
       }

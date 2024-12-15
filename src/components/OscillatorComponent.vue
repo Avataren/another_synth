@@ -1,7 +1,7 @@
 <template>
   <q-card class="oscillator-card">
     <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Oscillator {{ oscIndex + 1 }}</div>
+      <div class="text-h6">Oscillator {{ nodeId + 1 }}</div>
     </q-card-section>
     <q-separator />
     <q-card-section class="oscillator-container">
@@ -84,10 +84,13 @@ import type OscillatorState from 'src/audio/models/OscillatorState';
 
 interface Props {
   node: AudioNode | null;
-  oscIndex: number;
+  nodeId: number;
 }
 
-const props = withDefaults(defineProps<Props>(), { node: null, oscIndex: 0 });
+const props = withDefaults(defineProps<Props>(), {
+  node: null,
+  nodeId: 0,
+});
 //const node = computed(() => props.node);
 
 const store = useAudioSystemStore();
@@ -96,9 +99,9 @@ const waveform = ref<number>(0);
 // Create a reactive reference to the oscillator state
 const oscillatorState = computed({
   get: () => {
-    const state = oscillatorStates.value.get(props.oscIndex);
+    const state = oscillatorStates.value.get(props.nodeId);
     if (!state) {
-      console.warn(`No state found for oscillator ${props.oscIndex}`);
+      console.warn(`No state found for oscillator ${props.nodeId}`);
       return {
         phase_mod_amount: 0,
         freq_mod_amount: 0,
@@ -113,13 +116,13 @@ const oscillatorState = computed({
     return state;
   },
   set: (newState: OscillatorState) => {
-    store.oscillatorStates.set(props.oscIndex, newState);
+    store.oscillatorStates.set(props.nodeId, newState);
   },
 });
 
 onMounted(() => {
-  if (!oscillatorStates.value.has(props.oscIndex)) {
-    oscillatorStates.value.set(props.oscIndex, oscillatorState.value);
+  if (!oscillatorStates.value.has(props.nodeId)) {
+    oscillatorStates.value.set(props.nodeId, oscillatorState.value);
   }
   // store.currentInstrument?.updateOscillatorState(
   //   props.oscIndex,
@@ -158,7 +161,7 @@ const handleWaveformChange = (_newWaveform: number) => {
     ...oscillatorState.value,
     //waveform: wf,
   };
-  store.oscillatorStates.set(props.oscIndex, currentState as OscillatorState);
+  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };
 
 const handleHardSyncChange = (newValue: boolean) => {
@@ -166,7 +169,7 @@ const handleHardSyncChange = (newValue: boolean) => {
     ...oscillatorState.value,
     hardsync: newValue,
   };
-  store.oscillatorStates.set(props.oscIndex, currentState as OscillatorState);
+  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };
 
 const handleActiveChange = (newValue: boolean) => {
@@ -174,7 +177,7 @@ const handleActiveChange = (newValue: boolean) => {
     ...oscillatorState.value,
     active: newValue,
   };
-  store.oscillatorStates.set(props.oscIndex, currentState as OscillatorState);
+  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };
 
 // Handle gain changes
@@ -185,7 +188,7 @@ const handleGainChange = (newValue: number) => {
     gain: newValue,
   };
   // Update the store with the new object
-  store.oscillatorStates.set(props.oscIndex, currentState);
+  store.oscillatorStates.set(props.nodeId, currentState);
 };
 
 // Handle any detune changes
@@ -195,7 +198,7 @@ const handleDetuneChange = () => {
     ...oscillatorState.value,
     detune: totalDetune.value,
   };
-  store.oscillatorStates.set(props.oscIndex, currentState);
+  store.oscillatorStates.set(props.nodeId, currentState);
 
   // if (node.value instanceof OscillatorNode) {
   //   node.value.detune.setValueAtTime(
@@ -207,12 +210,12 @@ const handleDetuneChange = () => {
 
 // Watch the oscillator state
 watch(
-  () => ({ ...oscillatorStates.value.get(props.oscIndex) }), // Create new reference
+  () => ({ ...oscillatorStates.value.get(props.nodeId) }), // Create new reference
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
-      if (newState.id === props.oscIndex) {
+      if (newState.id === props.nodeId) {
         // console.log('state changed!');
-        store.currentInstrument?.updateOscillatorState(props.oscIndex, {
+        store.currentInstrument?.updateOscillatorState(props.nodeId, {
           id: newState.id,
           phase_mod_amount: 0,
           freq_mod_amount: 0,

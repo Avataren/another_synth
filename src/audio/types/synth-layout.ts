@@ -20,6 +20,16 @@ export enum ModulationTarget {
     Pan = 'pan',
 }
 
+export interface LfoState {
+    id: number;
+    frequency: number;
+    waveform: number;
+    useAbsolute: boolean;
+    useNormalized: boolean;
+    triggerMode: number;
+}
+
+
 export interface FilterConfig {
     type: 'lowpass' | 'highpass' | 'bandpass';
 }
