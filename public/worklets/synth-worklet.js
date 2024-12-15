@@ -85,7 +85,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   typeof globalThis == "undefined" ? typeof global == "undefined" ? typeof self == "undefined" ? void 0 : self : global : globalThis
 );
 
-// rust-wasm/pkg/audio_processor.js
+// public/wasm/audio_processor.js
 var wasm;
 function addToExternrefTable0(obj) {
   const idx = wasm.__externref_table_alloc();
@@ -756,6 +756,15 @@ async function __wbg_init(module_or_path) {
   return __wbg_finalize_init(instance, module);
 }
 
+// src/audio/worklets/handlers/oscillator-update-handler.ts
+var OscillatorUpdateHandler = class {
+  UpdateOscillator(engine, stateUpdate, oscillatorId, numVoices) {
+    for (let i = 0; i < numVoices; i++) {
+      engine.update_oscillator(i, oscillatorId, stateUpdate);
+    }
+  }
+};
+
 // src/audio/worklets/synth-worklet.ts
 var LfoTriggerMode = /* @__PURE__ */ ((LfoTriggerMode2) => {
   LfoTriggerMode2[LfoTriggerMode2["None"] = 0] = "None";
@@ -774,21 +783,47 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
     super();
     __publicField(this, "ready", false);
-    __publicField(this, "processor", null);
+    __publicField(this, "audioEngine", null);
     __publicField(this, "numVoices", 8);
     __publicField(this, "oscillatorsPerVoice", 2);
     // Can be increased later
     __publicField(this, "voices", []);
+    __publicField(this, "oscHandler", new OscillatorUpdateHandler());
     this.port.onmessage = (event) => {
       if (event.data.type === "wasm-binary") {
         const { wasmBytes } = event.data;
         initSync({ module: new Uint8Array(wasmBytes) });
-        this.processor = new AudioEngine();
-        this.processor.init(sampleRate, this.numVoices);
+        this.audioEngine = new AudioEngine();
+        this.audioEngine.init(sampleRate, this.numVoices);
         for (let i = 0; i < this.numVoices; i++) {
           this.initialize_synth(i);
         }
         this.ready = true;
+      } else if (event.data.type === "updateOscillator") {
+        console.log("Got updateOscillator event:", event.data);
+        if (this.audioEngine != null) {
+          const { oscillatorId, newState } = event.data;
+          this.oscHandler.UpdateOscillator(this.audioEngine, new OscillatorStateUpdate(
+            0,
+            //phase_mod_amount
+            0,
+            //freq_mod_amount
+            newState.detune_oct,
+            //detune oct
+            newState.detune_semi,
+            //detune semi
+            newState.detune_cents,
+            //detune cents
+            newState.detune,
+            //detune
+            newState.hard_sync,
+            //hard sync
+            newState.gain,
+            //gain
+            newState.active
+            //active
+          ), oscillatorId, this.numVoices);
+        }
       }
     };
     this.port.postMessage({ type: "ready" });
@@ -851,11 +886,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     return parameters;
   }
   initialize_synth(voiceIndex) {
-    const result = this.processor.initialize_voice(voiceIndex, this.oscillatorsPerVoice);
+    const result = this.audioEngine.initialize_voice(voiceIndex, this.oscillatorsPerVoice);
     const oscillatorIds = result.oscillatorIds;
     const envelopeId = result.envelopeId;
-    const { lfoId: vibratoLfoId } = this.processor.create_lfo(voiceIndex);
-    const { lfoId: modLfoId } = this.processor.create_lfo(voiceIndex);
+    const { lfoId: vibratoLfoId } = this.audioEngine.create_lfo(voiceIndex);
+    const { lfoId: modLfoId } = this.audioEngine.create_lfo(voiceIndex);
     this.voices[voiceIndex] = {
       oscillators: oscillatorIds,
       envelope: envelopeId,
@@ -875,7 +910,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       0 /* None */
       // free-running
     );
-    this.processor.update_lfo(voiceIndex, vibratoLfoParams);
+    this.audioEngine.update_lfo(voiceIndex, vibratoLfoParams);
     const modLfoParams = new LfoUpdateParams(
       modLfoId,
       0.5,
@@ -887,8 +922,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       // normalized range
       0 /* None */
     );
-    this.processor.update_lfo(voiceIndex, modLfoParams);
-    this.processor.update_envelope(
+    this.audioEngine.update_lfo(voiceIndex, modLfoParams);
+    this.audioEngine.update_envelope(
       voiceIndex,
       envelopeId,
       1e-3,
@@ -901,7 +936,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       // release
     );
     for (const oscId of oscillatorIds) {
-      this.processor.connect_voice_nodes(
+      this.audioEngine.connect_voice_nodes(
         voiceIndex,
         envelopeId,
         PortId.AudioOutput0,
@@ -910,7 +945,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         1
       );
     }
-    this.processor.connect_macro(
+    this.audioEngine.connect_macro(
       voiceIndex,
       0,
       vibratoLfoId,
@@ -919,7 +954,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       // Max 10% frequency variation
     );
     for (const oscId of oscillatorIds) {
-      this.processor.connect_voice_nodes(
+      this.audioEngine.connect_voice_nodes(
         voiceIndex,
         vibratoLfoId,
         PortId.AudioOutput0,
@@ -931,7 +966,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   process(_inputs, outputs, parameters) {
-    if (!this.ready || !this.processor) return true;
+    if (!this.ready || !this.audioEngine) return true;
     const output = outputs[0];
     if (!output) return true;
     const outputLeft = output[0];
@@ -954,7 +989,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       }
     }
     const masterGain = parameters.master_gain?.[0] ?? 1;
-    this.processor.process_audio(
+    this.audioEngine.process_audio(
       gateArray,
       freqArray,
       gainArray,
