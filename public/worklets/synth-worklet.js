@@ -957,21 +957,36 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       );
       this.audioEngine.update_lfo(voiceIndex, lfoParams);
     }
-    const [mainOsc] = voiceLayout.nodes["oscillator" /* Oscillator */];
+    const oscillators = voiceLayout.nodes["oscillator" /* Oscillator */];
     const [ampEnv] = voiceLayout.nodes["envelope" /* Envelope */];
-    if (mainOsc && ampEnv) {
+    if (ampEnv && oscillators.length >= 2) {
+      const [osc1, osc2] = oscillators;
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         ampEnv.id,
         PortId.AudioOutput0,
-        mainOsc.id,
+        osc1.id,
         PortId.GainMod,
         1
       );
       voiceLayout.connections.push({
         fromId: ampEnv.id,
-        toId: mainOsc.id,
+        toId: osc1.id,
         target: "gain" /* Gain */,
+        amount: 1
+      });
+      this.audioEngine.connect_voice_nodes(
+        voiceIndex,
+        osc2.id,
+        PortId.AudioOutput0,
+        osc1.id,
+        PortId.PhaseMod,
+        1
+      );
+      voiceLayout.connections.push({
+        fromId: osc2.id,
+        toId: osc1.id,
+        target: "phase_mod" /* PhaseMod */,
         amount: 1
       });
     }

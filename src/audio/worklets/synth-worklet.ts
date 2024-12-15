@@ -180,27 +180,70 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     // Set up default connections
-    const [mainOsc] = voiceLayout.nodes[VoiceNodeType.Oscillator];
+    //const [mainOsc] = voiceLayout.nodes[VoiceNodeType.Oscillator];
+    //const [ampEnv] = voiceLayout.nodes[VoiceNodeType.Envelope];
+
+    // if (mainOsc && ampEnv) {
+    //   this.audioEngine.connect_voice_nodes(
+    //     voiceIndex,
+    //     ampEnv.id,
+    //     PortId.AudioOutput0,
+    //     mainOsc.id,
+    //     PortId.GainMod,
+    //     1.0
+    //   );
+
+    //   voiceLayout.connections.push({
+    //     fromId: ampEnv.id,
+    //     toId: mainOsc.id,
+    //     target: ModulationTarget.Gain,
+    //     amount: 1.0
+    //   });
+    // }
+    // Set up default connections
+    // Set up default connections
+    // Set up default connections
+    // Set up default connections
+    // Set up default connections
+    const oscillators = voiceLayout.nodes[VoiceNodeType.Oscillator];
     const [ampEnv] = voiceLayout.nodes[VoiceNodeType.Envelope];
 
-    if (mainOsc && ampEnv) {
+    if (ampEnv && oscillators.length >= 2) {
+      const [osc1, osc2] = oscillators;
+
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         ampEnv.id,
         PortId.AudioOutput0,
-        mainOsc.id,
+        osc1!.id,
         PortId.GainMod,
         1.0
       );
 
       voiceLayout.connections.push({
         fromId: ampEnv.id,
-        toId: mainOsc.id,
+        toId: osc1!.id,
         target: ModulationTarget.Gain,
         amount: 1.0
       });
-    }
 
+      // Oscillator 2 phase modulates Oscillator 1
+      this.audioEngine.connect_voice_nodes(
+        voiceIndex,
+        osc2!.id,
+        PortId.AudioOutput0,
+        osc1!.id,
+        PortId.PhaseMod,
+        1.0
+      );
+
+      voiceLayout.connections.push({
+        fromId: osc2!.id,
+        toId: osc1!.id,
+        target: ModulationTarget.PhaseMod,
+        amount: 1.0
+      });
+    }
     return voiceLayout;
   }
 

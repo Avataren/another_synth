@@ -2,7 +2,6 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
-use crate::NodeId;
 use std::any::Any;
 use std::collections::HashMap;
 use std::usize;
@@ -135,7 +134,7 @@ impl AudioProcessor for ModulatableOscillator {
         defaults.insert(PortId::Frequency, self.frequency);
         defaults.insert(PortId::FrequencyMod, 0.0);
         defaults.insert(PortId::PhaseMod, 0.0);
-        defaults.insert(PortId::ModIndex, 0.0);
+        defaults.insert(PortId::ModIndex, 1.0);
         defaults.insert(PortId::GainMod, 1.0);
         defaults
     }
