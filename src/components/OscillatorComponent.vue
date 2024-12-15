@@ -63,8 +63,8 @@
         <audio-knob-component
           v-model="oscillatorState.phase_mod_amount!"
           label="ModIndex"
-          :min="-30"
-          :max="30"
+          :min="0"
+          :max="60"
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleModIndexChange"
@@ -187,7 +187,6 @@ const handleModIndexChange = (newValue: number) => {
     ...oscillatorState.value,
     phase_mod_amount: newValue,
   };
-  console.log('setting mod inxex state:', currentState);
   store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };
 
@@ -234,7 +233,10 @@ watch(
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
         // console.log('state changed!');
-        store.currentInstrument?.updateOscillatorState(props.nodeId, newState);
+        store.currentInstrument?.updateOscillatorState(
+          props.nodeId,
+          newState as OscillatorState,
+        );
       }
     }
   },
