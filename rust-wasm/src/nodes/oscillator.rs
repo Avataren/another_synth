@@ -143,6 +143,11 @@ impl AudioProcessor for ModulatableOscillator {
         use std::simd::{f32x4, StdFloat};
         const TWO_PI: f32 = 2.0 * std::f32::consts::PI;
 
+        // NOTE: This implementation uses [0, 2π] phase range for direct sine calculation.
+        // When switching to wavetable lookup, convert to [0,1] phase range since it's more
+        // efficient for table indexing. The phase_mod_amount will need to be scaled by 1/(2π)
+        // in the wavetable version to maintain the same modulation depth.
+
         context.process_by_chunks(4, |offset, inputs, outputs| {
             // Get base frequency for carrier
             let base_freq = if let Some(input) = inputs.get(&PortId::GlobalFrequency) {
@@ -150,6 +155,7 @@ impl AudioProcessor for ModulatableOscillator {
             } else {
                 f32x4::splat(self.frequency)
             };
+
             // Calculate detuned carrier frequency and apply FM if any
             let detuned_freq = f32x4::from_array([
                 self.get_detuned_frequency(base_freq.to_array()[0]),
@@ -157,18 +163,22 @@ impl AudioProcessor for ModulatableOscillator {
                 self.get_detuned_frequency(base_freq.to_array()[2]),
                 self.get_detuned_frequency(base_freq.to_array()[3]),
             ]);
+
             let freq_mod = inputs
                 .get(&PortId::FrequencyMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
             let modulated_freq =
                 detuned_freq * (f32x4::splat(1.0) + freq_mod * f32x4::splat(self.freq_mod_amount));
+
             // Calculate phase increment for carrier
             let phase_inc = f32x4::splat(TWO_PI) * modulated_freq / f32x4::splat(self.sample_rate);
+
             // Get modulator signal for phase modulation
             let phase_mod = inputs
                 .get(&PortId::PhaseMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
+
             // Calculate phases for the 4-sample chunk
             let mut output_phases = [0.0f32; 4];
 
@@ -178,18 +188,23 @@ impl AudioProcessor for ModulatableOscillator {
 
                 // Wrap modulated phase to [0, 2π]
                 *phase = modulated_phase - (modulated_phase / TWO_PI).floor() * TWO_PI;
+
                 // Advance base phase for next sample
                 self.phase += phase_inc.to_array()[i];
                 self.phase -= (self.phase / TWO_PI).floor() * TWO_PI;
             }
+
             // Generate output
             let phase_simd = f32x4::from_array(output_phases);
             let sine_output = phase_simd.sin();
+
             // Apply gain modulation
             let gain_mod = inputs
                 .get(&PortId::GainMod)
                 .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
+
             let final_output = sine_output * gain_mod * f32x4::splat(self.gain);
+
             if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
                 output.write_simd(offset, final_output);
             }
