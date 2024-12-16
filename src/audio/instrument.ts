@@ -83,23 +83,24 @@ export default class Instrument {
   public updateLfoState(nodeId: number, state: LfoState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
-    const voiceIndex = this.findVoiceForNode(nodeId);
-    if (voiceIndex === -1) return;
-
-    this.workletNode.port.postMessage({
-      type: 'updateLfo',
-      voiceIndex,
-      lfoId: nodeId,
-      params: {
+    // const voiceIndex = this.findVoiceForNode(nodeId);
+    // if (voiceIndex === -1) return;
+    for (let voiceIndex = 0; voiceIndex < this.num_voices; voiceIndex++) {
+      this.workletNode.port.postMessage({
+        type: 'updateLfo',
+        voiceIndex,
         lfoId: nodeId,
-        frequency: state.frequency,
-        waveform: state.waveform,
-        useAbsolute: state.useAbsolute,
-        useNormalized: state.useNormalized,
-        triggerMode: state.triggerMode,
-        active: state.active  // Add the active state
-      }
-    });
+        params: {
+          lfoId: nodeId,
+          frequency: state.frequency,
+          waveform: state.waveform,
+          useAbsolute: state.useAbsolute,
+          useNormalized: state.useNormalized,
+          triggerMode: state.triggerMode,
+          active: state.active  // Add the active state
+        }
+      });
+    }
   }
 
   public async getLfoWaveform(waveform: number, bufferSize: number): Promise<Float32Array> {
