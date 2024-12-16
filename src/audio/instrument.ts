@@ -169,6 +169,29 @@ export default class Instrument {
   }
 
   public createModulation(
+    sourceId: number,
+    targetId: number,
+    target: ModulationTarget,
+    amount: number
+  ): void {
+    if (!this.ready || !this.workletNode) return;
+
+    // Apply the modulation to all voices
+    for (let voiceIndex = 0; voiceIndex < this.num_voices; voiceIndex++) {
+      this.workletNode.port.postMessage({
+        type: 'updateConnection',
+        voiceIndex,
+        connection: {
+          fromId: sourceId,
+          toId: targetId,
+          target,
+          amount,
+        },
+      });
+    }
+  }
+
+  public createModulationForVoice(
     voiceIndex: number,
     sourceId: number,
     targetId: number,

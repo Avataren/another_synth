@@ -72,7 +72,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
     },
 
-    getNodeConnections: (state) => (voiceIndex: number, nodeId: number): NodeConnection[] => {
+    getNodeConnectionsForVoice: (state) => (voiceIndex: number, nodeId: number): NodeConnection[] => {
       if (!state.synthLayout) return [];
       const voice = state.synthLayout.voices[voiceIndex];
       if (!voice) return [];
@@ -80,7 +80,25 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         conn => conn.fromId === nodeId || conn.toId === nodeId
       );
     },
+    getNodeConnections: (state) => (nodeId: number): NodeConnection[] => {
+      if (!state.synthLayout) return [];
+      const voice = state.synthLayout.voices[0];  // Only look at voice 0
+      if (!voice) return [];
+      return voice.connections.filter(
+        conn => conn.fromId === nodeId || conn.toId === nodeId
+      );
+    },
+    findNodeById: (state) => (nodeId: number) => {
+      if (!state.synthLayout) return null;
+      const voice = state.synthLayout.voices[0];
+      if (!voice) return null;
 
+      for (const type of Object.values(VoiceNodeType)) {
+        const node = voice.nodes[type].find(n => n.id === nodeId);
+        if (node) return { ...node, type };
+      }
+      return null;
+    },
     maxVoices: (state) => state.synthLayout?.metadata?.maxVoices ?? 8,
     maxOscillators: (state) => state.synthLayout?.metadata?.maxOscillators ?? 2,
     maxEnvelopes: (state) => state.synthLayout?.metadata?.maxEnvelopes ?? 2,
@@ -223,8 +241,37 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.filterStates.set(nodeId, state);
       this.currentInstrument?.updateFilterState(nodeId, state);
     },
+    updateConnection(connection: NodeConnection) {
+      if (!this.synthLayout || !this.currentInstrument) return;
 
-    updateConnection(voiceIndex: number, connection: NodeConnection) {
+      // Update connections in all voices
+      this.synthLayout.voices.forEach(voice => {
+        const existingIndex = voice.connections.findIndex(
+          conn => conn.fromId === connection.fromId &&
+            conn.toId === connection.toId &&
+            conn.target === connection.target
+        );
+
+        if (existingIndex !== -1) {
+          if (connection.amount === 0) {
+            voice.connections.splice(existingIndex, 1);
+          } else {
+            voice.connections[existingIndex] = connection;
+          }
+        } else if (connection.amount !== 0) {
+          voice.connections.push(connection);
+        }
+      });
+
+      // Let the instrument handle applying to all voices
+      this.currentInstrument.createModulation(
+        connection.fromId,
+        connection.toId,
+        connection.target,
+        connection.amount
+      );
+    },
+    updateConnectionForVoice(voiceIndex: number, connection: NodeConnection) {
       if (!this.synthLayout || !this.currentInstrument) return;
 
       const voice = this.synthLayout.voices[voiceIndex];

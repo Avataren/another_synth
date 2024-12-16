@@ -56,7 +56,7 @@
           @update:modelValue="handleTriggerModeChange"
         />
       </div>
-
+      <routing-component :source-id="props.nodeId" />
       <!-- Waveform visualization -->
       <div class="canvas-wrapper">
         <canvas ref="waveformCanvas"></canvas>
@@ -71,6 +71,7 @@ import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
 import { type LfoState } from 'src/audio/types/synth-layout';
+import RoutingComponent from './RoutingComponent.vue';
 
 interface Props {
   node: AudioNode | null;
