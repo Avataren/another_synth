@@ -212,16 +212,16 @@ const updateWaveformDisplay = async () => {
 };
 
 // Watch for waveform or visualization-affecting changes
-watch(
-  () => [
-    lfoState.value.waveform,
-    lfoState.value.useAbsolute,
-    lfoState.value.useNormalized,
-  ],
-  async () => {
-    await updateWaveformDisplay();
-  },
-);
+// watch(
+//   () => [
+//     lfoState.value.waveform,
+//     lfoState.value.useAbsolute,
+//     lfoState.value.useNormalized,
+//   ],
+//   async () => {
+//     await updateWaveformDisplay();
+//   },
+// );
 
 // Watch the LFO state
 watch(
