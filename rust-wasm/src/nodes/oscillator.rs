@@ -77,6 +77,7 @@ impl ModulatableOscillator {
         self.freq_mod_amount = params.freq_mod_amount;
         self.detune = params.detune;
         self.gain = params.gain;
+        self.set_active(params.active);
     }
 
     fn get_detuned_frequency(&self, base_freq: f32) -> f32 {

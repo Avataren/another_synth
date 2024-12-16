@@ -259,8 +259,8 @@ impl AudioGraph {
             let node_id = NodeId(node_idx);
             let node = &mut self.nodes[node_idx];
 
-            // Skip processing if node is inactive
-            if !node.is_active() {
+            // Skip processing if node shouldn't be processed
+            if !node.should_process() {
                 // Clear output buffers for inactive nodes
                 for (&(id, port), &buffer_idx) in self.node_buffers.iter() {
                     if id == node_id && port.is_audio_output() {
@@ -316,7 +316,6 @@ impl AudioGraph {
             // If this node expects modulation inputs, prepare macro data now
             let macro_data = if let Some(macro_mgr) = macro_manager {
                 if ports.keys().any(|port| port.is_modulation_input()) {
-                    // Prepare all macro data once before borrowing output buffers
                     Some(macro_mgr.prepare_macro_data(&self.buffer_pool))
                 } else {
                     None
@@ -350,18 +349,25 @@ impl AudioGraph {
                         macro_mgr.apply_modulation(offset, macro_data, &mut output_refs);
                     }
                 }
-                // output_buffers is dropped here, releasing the mutable borrow
             }
         }
 
-        // After all nodes are processed, copy the final node's output into output_left and output_right
-        if let Some(&final_idx) = self.processing_order.last() {
-            let final_node = NodeId(final_idx);
-
-            if let Some(&buffer_idx) = self.node_buffers.get(&(final_node, PortId::AudioOutput0)) {
-                let final_buffer = self.buffer_pool.copy_out(buffer_idx);
-                output_left.copy_from_slice(final_buffer);
-                output_right.copy_from_slice(final_buffer);
+        // After all nodes are processed, copy the final node's output to the main outputs
+        if let Some(output_node) = self.output_node {
+            if let Some(node) = self.nodes.get(output_node.0) {
+                if node.is_active() {
+                    if let Some(&buffer_idx) =
+                        self.node_buffers.get(&(output_node, PortId::AudioOutput0))
+                    {
+                        let final_buffer = self.buffer_pool.copy_out(buffer_idx);
+                        output_left.copy_from_slice(final_buffer);
+                        output_right.copy_from_slice(final_buffer);
+                    }
+                } else {
+                    // If output node is inactive, clear the outputs
+                    output_left.fill(0.0);
+                    output_right.fill(0.0);
+                }
             }
         }
     }

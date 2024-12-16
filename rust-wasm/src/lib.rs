@@ -234,6 +234,7 @@ impl AudioEngine {
         decay: f32,
         sustain: f32,
         release: f32,
+        active: bool,
     ) -> Result<(), JsValue> {
         let voice = self
             .voices
@@ -250,6 +251,7 @@ impl AudioEngine {
                     ..Default::default()
                 };
                 env.update_config(config);
+                env.set_active(active);
                 Ok(())
             } else {
                 Err(JsValue::from_str("Node is not an Envelope"))

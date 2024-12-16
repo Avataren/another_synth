@@ -268,9 +268,10 @@ var AudioEngine = class {
    * @param {number} decay
    * @param {number} sustain
    * @param {number} release
+   * @param {boolean} active
    */
-  update_envelope(voice_index, node_id, attack, decay, sustain, release) {
-    const ret = wasm.audioengine_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release);
+  update_envelope(voice_index, node_id, attack, decay, sustain, release, active) {
+    const ret = wasm.audioengine_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release, active);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }

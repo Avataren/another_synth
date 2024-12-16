@@ -211,18 +211,6 @@ const updateWaveformDisplay = async () => {
   ctx.stroke();
 };
 
-// Watch for waveform or visualization-affecting changes
-// watch(
-//   () => [
-//     lfoState.value.waveform,
-//     lfoState.value.useAbsolute,
-//     lfoState.value.useNormalized,
-//   ],
-//   async () => {
-//     await updateWaveformDisplay();
-//   },
-// );
-
 // Watch the LFO state
 watch(
   () => ({ ...lfoStates.value.get(props.nodeId) }),

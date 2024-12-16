@@ -99,17 +99,28 @@ impl PortId {
 
 pub trait AudioNode: Any {
     fn get_ports(&self) -> HashMap<PortId, bool>;
+
     fn process(
         &mut self,
         inputs: &HashMap<PortId, &[f32]>,
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     );
+
     fn reset(&mut self);
+
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn as_any(&self) -> &dyn Any;
 
-    // New methods for active state
+    // Active state management
     fn is_active(&self) -> bool;
     fn set_active(&mut self, active: bool);
+
+    // Optional method to handle state changes
+    fn on_active_changed(&mut self) {}
+
+    // Helper to determine if node should be processed
+    fn should_process(&self) -> bool {
+        self.is_active()
+    }
 }
