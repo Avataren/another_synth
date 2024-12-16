@@ -37,6 +37,7 @@ pub struct LfoUpdateParams {
     pub use_absolute: bool,
     pub use_normalized: bool,
     pub trigger_mode: u8,
+    pub active: bool, // Add this field
 }
 
 #[wasm_bindgen]
@@ -49,6 +50,7 @@ impl LfoUpdateParams {
         use_absolute: bool,
         use_normalized: bool,
         trigger_mode: u8,
+        active: bool, // Add this parameter
     ) -> LfoUpdateParams {
         LfoUpdateParams {
             lfo_id,
@@ -57,6 +59,7 @@ impl LfoUpdateParams {
             use_absolute,
             use_normalized,
             trigger_mode,
+            active,
         }
     }
 }
@@ -321,6 +324,7 @@ impl AudioEngine {
                 lfo.set_use_absolute(params.use_absolute);
                 lfo.set_use_normalized(params.use_normalized);
                 lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
+                lfo.set_active(params.active);
                 Ok(())
             } else {
                 Err(JsValue::from_str("Node is not an LFO"))

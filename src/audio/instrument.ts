@@ -92,8 +92,41 @@ export default class Instrument {
         waveform: state.waveform,
         useAbsolute: state.useAbsolute,
         useNormalized: state.useNormalized,
-        triggerMode: state.triggerMode
+        triggerMode: state.triggerMode,
+        active: state.active  // Add the active state
       }
+    });
+  }
+
+  public async getLfoWaveform(waveform: number, bufferSize: number): Promise<Float32Array> {
+    if (!this.ready || !this.workletNode) {
+      throw new Error('Audio system not ready');
+    }
+
+    return new Promise<Float32Array>((resolve, reject) => {
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.type === 'lfoWaveform') {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(e.data.waveform));
+        } else if (e.data.type === 'error' && e.data.source === 'getLfoWaveform') {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      this.workletNode?.port.addEventListener('message', handleMessage);
+
+      this.workletNode?.port.postMessage({
+        type: 'getLfoWaveform',
+        waveform,
+        bufferSize
+      });
+
+      // Add timeout to prevent hanging
+      setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for waveform data'));
+      }, 1000);
     });
   }
 

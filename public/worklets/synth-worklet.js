@@ -479,15 +479,29 @@ var LfoUpdateParams = class {
     wasm.__wbg_set_lfoupdateparams_trigger_mode(this.__wbg_ptr, arg0);
   }
   /**
+   * @returns {boolean}
+   */
+  get active() {
+    const ret = wasm.__wbg_get_lfoupdateparams_active(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * @param {boolean} arg0
+   */
+  set active(arg0) {
+    wasm.__wbg_set_lfoupdateparams_active(this.__wbg_ptr, arg0);
+  }
+  /**
    * @param {number} lfo_id
    * @param {number} frequency
    * @param {number} waveform
    * @param {boolean} use_absolute
    * @param {boolean} use_normalized
    * @param {number} trigger_mode
+   * @param {boolean} active
    */
-  constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode) {
-    const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode);
+  constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, active) {
+    const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, active);
     this.__wbg_ptr = ret >>> 0;
     LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
     return this;
@@ -855,6 +869,43 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             this.numVoices
           );
         }
+      } else if (event.data.type === "getLfoWaveform") {
+        if (this.audioEngine != null) {
+          try {
+            const waveformData = this.audioEngine.get_lfo_waveform(
+              event.data.waveform,
+              event.data.bufferSize
+            );
+            this.port.postMessage({
+              type: "lfoWaveform",
+              waveform: waveformData
+            });
+          } catch (err) {
+            console.error("Error generating LFO waveform:", err);
+            this.port.postMessage({
+              type: "error",
+              message: "Failed to generate LFO waveform"
+            });
+          }
+        }
+      } else if (event.data.type === "updateLfo") {
+        if (this.audioEngine != null) {
+          const { voiceIndex, lfoId, params } = event.data;
+          try {
+            const lfoParams = new LfoUpdateParams(
+              lfoId,
+              params.frequency,
+              params.waveform,
+              params.useAbsolute,
+              params.useNormalized,
+              params.triggerMode,
+              params.active
+            );
+            this.audioEngine.update_lfo(voiceIndex, lfoParams);
+          } catch (err) {
+            console.error("Error updating LFO:", err);
+          }
+        }
       }
     };
     this.port.postMessage({ type: "ready" });
@@ -952,7 +1003,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         // Not absolute
         false,
         // Not normalized
-        0 /* None */
+        0 /* None */,
+        false
       );
       this.audioEngine.update_lfo(voiceIndex, lfoParams);
     }

@@ -174,7 +174,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         LFOWaveform.Sine,
         false,            // Not absolute
         false,            // Not normalized
-        LfoTriggerMode.None
+        LfoTriggerMode.None,
+        false
       );
       this.audioEngine.update_lfo(voiceIndex, lfoParams);
     }
@@ -330,6 +331,47 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           );
         }
       }
+      else if (event.data.type === 'getLfoWaveform') {
+        if (this.audioEngine != null) {
+          try {
+            const waveformData = this.audioEngine.get_lfo_waveform(
+              event.data.waveform,
+              event.data.bufferSize
+            );
+
+            this.port.postMessage({
+              type: 'lfoWaveform',
+              waveform: waveformData
+            });
+          } catch (err) {
+            console.error('Error generating LFO waveform:', err);
+            this.port.postMessage({
+              type: 'error',
+              message: 'Failed to generate LFO waveform'
+            });
+          }
+        }
+      }
+      else if (event.data.type === 'updateLfo') {
+        if (this.audioEngine != null) {
+          const { voiceIndex, lfoId, params } = event.data;
+          try {
+            const lfoParams = new LfoUpdateParams(
+              lfoId,
+              params.frequency,
+              params.waveform,
+              params.useAbsolute,
+              params.useNormalized,
+              params.triggerMode,
+              params.active
+            );
+            this.audioEngine.update_lfo(voiceIndex, lfoParams);
+          } catch (err) {
+            console.error('Error updating LFO:', err);
+          }
+        }
+      }
+
     };
 
     this.port.postMessage({ type: 'ready' });

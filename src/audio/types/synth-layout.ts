@@ -21,12 +21,13 @@ export enum ModulationTarget {
 }
 
 export interface LfoState {
-    id: number;
+    id?: number;
     frequency: number;
     waveform: number;
     useAbsolute: boolean;
     useNormalized: boolean;
     triggerMode: number;
+    active: boolean;
 }
 
 

@@ -188,7 +188,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               waveform: 0,
               useAbsolute: false,
               useNormalized: false,
-              triggerMode: 0
+              triggerMode: 0,
+              active: false
             });
           }
         }
@@ -207,7 +208,15 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     updateLfo(nodeId: number, state: LfoState) {
       this.lfoStates.set(nodeId, state);
-      this.currentInstrument?.updateLfoState(nodeId, state);
+      this.currentInstrument?.updateLfoState(nodeId, {
+        id: nodeId,
+        frequency: state.frequency,
+        waveform: state.waveform,
+        useAbsolute: state.useAbsolute,
+        useNormalized: state.useNormalized,
+        triggerMode: state.triggerMode,
+        active: state.active  // Add this line
+      });
     },
 
     updateFilter(nodeId: number, state: FilterState) {

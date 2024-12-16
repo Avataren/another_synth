@@ -544,15 +544,29 @@ export class LfoUpdateParams {
         wasm.__wbg_set_lfoupdateparams_trigger_mode(this.__wbg_ptr, arg0);
     }
     /**
+     * @returns {boolean}
+     */
+    get active() {
+        const ret = wasm.__wbg_get_lfoupdateparams_active(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} arg0
+     */
+    set active(arg0) {
+        wasm.__wbg_set_lfoupdateparams_active(this.__wbg_ptr, arg0);
+    }
+    /**
      * @param {number} lfo_id
      * @param {number} frequency
      * @param {number} waveform
      * @param {boolean} use_absolute
      * @param {boolean} use_normalized
      * @param {number} trigger_mode
+     * @param {boolean} active
      */
-    constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode) {
-        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode);
+    constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, active) {
+        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, active);
         this.__wbg_ptr = ret >>> 0;
         LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
         return this;

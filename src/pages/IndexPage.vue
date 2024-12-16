@@ -10,7 +10,12 @@
       :node="destinationNode"
       :nodeId="osc.id"
     />
-
+    <lfo-component
+      v-for="lfo in lfoNodes"
+      :key="lfo.id"
+      :node="destinationNode"
+      :nodeId="lfo.id"
+    />
     <noise-component :node="destinationNode" :Index="0" />
 
     <envelope-component
@@ -38,6 +43,7 @@ import OscillatorComponent from 'src/components/OscillatorComponent.vue';
 import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
 import FilterComponent from 'src/components/FilterComponent.vue';
 import NoiseComponent from 'src/components/NoiseComponent.vue';
+import LfoComponent from 'src/components/LfoComponent.vue';
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -55,6 +61,7 @@ const envelopeNodes = computed(() =>
 const filterNodes = computed(() =>
   store.getVoiceNodes(0, VoiceNodeType.Filter),
 );
+const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 //const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 
 // For debugging - watch when nodes are available
