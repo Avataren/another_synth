@@ -310,6 +310,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           layout
         });
 
+        const engineState = this.audioEngine.get_current_state(); // returns a JsValue that can be used as a JS object
+        // engineState is now a plain JS object thanks to serde_wasm_bindgen
+        console.log('Engine State from Rust:', engineState);
+
         this.ready = true;
       } else if (event.data.type === 'updateModulation') {
         this.updateModulationForAllVoices(event.data.connection);

@@ -188,63 +188,77 @@ const applyConnection = (route: RouteConfig) => {
 };
 
 const updateRoute = (index: number, update: RouteUpdate) => {
-  const route = activeRoutes.value[index];
-  if (!route) return;
+  const oldRoute = activeRoutes.value[index];
+  if (!oldRoute) return;
 
-  const updatedRoute = { ...route };
+  // Make a fully-defined copy of oldRoute
+  const updatedRoute: RouteConfig = {
+    targetId: oldRoute.targetId,
+    target: oldRoute.target,
+    amount: oldRoute.amount,
+  };
 
-  // Handle target node change
+  // Flags to indicate what changed
+  let targetChanged = false;
+  let parameterChanged = false;
+
+  // Check if we are changing the target node
   if (update.targetId !== undefined) {
     const newTargetId =
       typeof update.targetId === 'object'
-        ? (update.targetId as TargetNode).id
+        ? update.targetId.id
         : update.targetId;
 
-    // First remove the old connection, with explicit removal flag
-    store.updateConnection({
-      fromId: props.sourceId,
-      toId: route.targetId,
-      target: route.target,
-      amount: 0,
-      isRemoving: true,
-    });
+    if (newTargetId !== oldRoute.targetId) {
+      updatedRoute.targetId = newTargetId;
+      targetChanged = true;
 
-    // When changing target, set a default parameter if needed
-    const params = getAvailableParams(newTargetId);
-    if (params.length > 0) {
-      const isCurrentParamValid = params.some((p) => p.value === route.target);
-      updatedRoute.target = isCurrentParamValid
-        ? route.target
-        : params[0]!.value;
+      // If the target node changes, ensure parameter is still valid
+      const params = getAvailableParams(newTargetId);
+      if (
+        params.length > 0 &&
+        !params.some((p) => p.value === updatedRoute.target)
+      ) {
+        updatedRoute.target = params[0]!.value;
+        parameterChanged = true; // Because we changed to a default parameter
+      }
     }
-
-    updatedRoute.targetId = newTargetId;
   }
 
-  // Handle parameter change
+  // Check if we are changing the parameter/target itself
   if (update.target !== undefined) {
-    // First remove old parameter connection with explicit removal flag
-    store.updateConnection({
-      fromId: props.sourceId,
-      toId: route.targetId,
-      target: route.target,
-      amount: 0,
-      isRemoving: true,
-    });
-
-    updatedRoute.target =
+    const newTargetValue =
       typeof update.target === 'number' ? update.target : update.target.value;
+
+    if (newTargetValue !== oldRoute.target) {
+      updatedRoute.target = newTargetValue;
+      parameterChanged = true;
+    }
   }
 
-  // Handle amount change - allow zero without removing connection
+  // Update the amount if provided
   if (update.amount !== undefined) {
     updatedRoute.amount = update.amount;
   }
 
-  // Update local state
+  // If we changed target node or parameter, remove the old connection
+  // before adding the new one
+  const connectionChanged = targetChanged || parameterChanged;
+  if (connectionChanged) {
+    // Remove old connection
+    store.updateConnection({
+      fromId: props.sourceId,
+      toId: oldRoute.targetId,
+      target: oldRoute.target,
+      amount: 0,
+      isRemoving: true,
+    });
+  }
+
+  // Now assign the updated route back
   activeRoutes.value[index] = updatedRoute;
 
-  // Apply the updated connection (without isRemoving flag)
+  // Finally, add or update the connection to reflect the changes
   store.updateConnection({
     fromId: props.sourceId,
     toId: updatedRoute.targetId,

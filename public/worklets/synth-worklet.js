@@ -5,9 +5,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
 // src/audio/worklets/textencoder.js
 (function(window) {
   "use strict";
-  function TextEncoder() {
+  function TextEncoder2() {
   }
-  TextEncoder.prototype.encode = function(string) {
+  TextEncoder2.prototype.encode = function(string) {
     var octets = [];
     var length = string.length;
     var i = 0;
@@ -38,8 +38,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     return octets;
   };
-  globalThis.TextEncoder = TextEncoder;
-  if (!window["TextEncoder"]) window["TextEncoder"] = TextEncoder;
+  globalThis.TextEncoder = TextEncoder2;
+  if (!window["TextEncoder"]) window["TextEncoder"] = TextEncoder2;
   function TextDecoder2() {
   }
   TextDecoder2.prototype.decode = function(octets) {
@@ -111,6 +111,113 @@ function getArrayU8FromWasm0(ptr, len) {
   ptr = ptr >>> 0;
   return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
+function debugString(val) {
+  const type = typeof val;
+  if (type == "number" || type == "boolean" || val == null) {
+    return `${val}`;
+  }
+  if (type == "string") {
+    return `"${val}"`;
+  }
+  if (type == "symbol") {
+    const description = val.description;
+    if (description == null) {
+      return "Symbol";
+    } else {
+      return `Symbol(${description})`;
+    }
+  }
+  if (type == "function") {
+    const name = val.name;
+    if (typeof name == "string" && name.length > 0) {
+      return `Function(${name})`;
+    } else {
+      return "Function";
+    }
+  }
+  if (Array.isArray(val)) {
+    const length = val.length;
+    let debug = "[";
+    if (length > 0) {
+      debug += debugString(val[0]);
+    }
+    for (let i = 1; i < length; i++) {
+      debug += ", " + debugString(val[i]);
+    }
+    debug += "]";
+    return debug;
+  }
+  const builtInMatches = /\[object ([^\]]+)\]/.exec(toString.call(val));
+  let className;
+  if (builtInMatches && builtInMatches.length > 1) {
+    className = builtInMatches[1];
+  } else {
+    return toString.call(val);
+  }
+  if (className == "Object") {
+    try {
+      return "Object(" + JSON.stringify(val) + ")";
+    } catch (_) {
+      return "Object";
+    }
+  }
+  if (val instanceof Error) {
+    return `${val.name}: ${val.message}
+${val.stack}`;
+  }
+  return className;
+}
+var WASM_VECTOR_LEN = 0;
+var cachedTextEncoder = typeof TextEncoder !== "undefined" ? new TextEncoder("utf-8") : { encode: () => {
+  throw Error("TextEncoder not available");
+} };
+var encodeString = typeof cachedTextEncoder.encodeInto === "function" ? function(arg, view) {
+  return cachedTextEncoder.encodeInto(arg, view);
+} : function(arg, view) {
+  const buf = cachedTextEncoder.encode(arg);
+  view.set(buf);
+  return {
+    read: arg.length,
+    written: buf.length
+  };
+};
+function passStringToWasm0(arg, malloc, realloc) {
+  if (realloc === void 0) {
+    const buf = cachedTextEncoder.encode(arg);
+    const ptr2 = malloc(buf.length, 1) >>> 0;
+    getUint8ArrayMemory0().subarray(ptr2, ptr2 + buf.length).set(buf);
+    WASM_VECTOR_LEN = buf.length;
+    return ptr2;
+  }
+  let len = arg.length;
+  let ptr = malloc(len, 1) >>> 0;
+  const mem = getUint8ArrayMemory0();
+  let offset = 0;
+  for (; offset < len; offset++) {
+    const code = arg.charCodeAt(offset);
+    if (code > 127) break;
+    mem[ptr + offset] = code;
+  }
+  if (offset !== len) {
+    if (offset !== 0) {
+      arg = arg.slice(offset);
+    }
+    ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
+    const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
+    const ret = encodeString(arg, view);
+    offset += ret.written;
+    ptr = realloc(ptr, len, offset, 1) >>> 0;
+  }
+  WASM_VECTOR_LEN = offset;
+  return ptr;
+}
+var cachedDataViewMemory0 = null;
+function getDataViewMemory0() {
+  if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || cachedDataViewMemory0.buffer.detached === void 0 && cachedDataViewMemory0.buffer !== wasm.memory.buffer) {
+    cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
+  }
+  return cachedDataViewMemory0;
+}
 var cachedTextDecoder = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }) : { decode: () => {
   throw Error("TextDecoder not available");
 } };
@@ -128,7 +235,6 @@ function getFloat32ArrayMemory0() {
   }
   return cachedFloat32ArrayMemory0;
 }
-var WASM_VECTOR_LEN = 0;
 function passArrayF32ToWasm0(arg, malloc) {
   const ptr = malloc(arg.length * 4, 4) >>> 0;
   getFloat32ArrayMemory0().set(arg, ptr / 4);
@@ -213,6 +319,13 @@ var AudioEngine = class {
    */
   init(sample_rate, num_voices) {
     wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
+  }
+  /**
+   * @returns {any}
+   */
+  get_current_state() {
+    const ret = wasm.audioengine_get_current_state(this.__wbg_ptr);
+    return ret;
   }
   /**
    * @param {Float32Array} gates
@@ -702,14 +815,35 @@ function __wbg_get_imports() {
     const ret = arg0.push(arg1);
     return ret;
   };
+  imports.wbg.__wbg_set_1d80752d0d5f0b21 = function(arg0, arg1, arg2) {
+    arg0[arg1 >>> 0] = arg2;
+  };
+  imports.wbg.__wbg_set_3f1d0b984ed272ed = function(arg0, arg1, arg2) {
+    arg0[arg1] = arg2;
+  };
   imports.wbg.__wbg_set_4e647025551483bd = function() {
     return handleError(function(arg0, arg1, arg2) {
       const ret = Reflect.set(arg0, arg1, arg2);
       return ret;
     }, arguments);
   };
+  imports.wbg.__wbindgen_bigint_from_u64 = function(arg0) {
+    const ret = BigInt.asUintN(64, arg0);
+    return ret;
+  };
   imports.wbg.__wbindgen_copy_to_typed_array = function(arg0, arg1, arg2) {
     new Uint8Array(arg2.buffer, arg2.byteOffset, arg2.byteLength).set(getArrayU8FromWasm0(arg0, arg1));
+  };
+  imports.wbg.__wbindgen_debug_string = function(arg0, arg1) {
+    const ret = debugString(arg1);
+    const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+    getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+  };
+  imports.wbg.__wbindgen_error_new = function(arg0, arg1) {
+    const ret = new Error(getStringFromWasm0(arg0, arg1));
+    return ret;
   };
   imports.wbg.__wbindgen_init_externref_table = function() {
     const table = wasm.__wbindgen_export_2;
@@ -739,6 +873,7 @@ function __wbg_init_memory(imports, memory) {
 function __wbg_finalize_init(instance, module) {
   wasm = instance.exports;
   __wbg_init.__wbindgen_wasm_module = module;
+  cachedDataViewMemory0 = null;
   cachedFloat32ArrayMemory0 = null;
   cachedUint8ArrayMemory0 = null;
   wasm.__wbindgen_start();
@@ -852,6 +987,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           type: "synthLayout",
           layout
         });
+        const engineState = this.audioEngine.get_current_state();
+        console.log("Engine State from Rust:", engineState);
         this.ready = true;
       } else if (event.data.type === "updateModulation") {
         this.updateModulationForAllVoices(event.data.connection);

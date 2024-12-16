@@ -14,6 +14,7 @@ pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use nodes::{Lfo, LfoTriggerMode, LfoWaveform};
+use serde::Serialize;
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
 pub use voice::Voice;
@@ -38,6 +39,32 @@ pub struct LfoUpdateParams {
     pub use_normalized: bool,
     pub trigger_mode: u8,
     pub active: bool, // Add this field
+}
+
+#[derive(Serialize)]
+struct EngineState {
+    voices: Vec<VoiceState>,
+}
+
+#[derive(Serialize)]
+struct VoiceState {
+    id: usize,
+    nodes: Vec<NodeState>,
+    connections: Vec<ConnectionState>,
+}
+
+#[derive(Serialize)]
+struct NodeState {
+    id: usize,
+    node_type: String,
+}
+
+#[derive(Serialize)]
+struct ConnectionState {
+    from_id: usize,
+    to_id: usize,
+    target: u32,
+    amount: f32,
 }
 
 #[wasm_bindgen]
@@ -92,6 +119,61 @@ impl AudioEngine {
         self.num_voices = num_voices;
 
         self.voices = (0..num_voices).map(Voice::new).collect();
+    }
+
+    #[wasm_bindgen]
+    pub fn get_current_state(&self) -> JsValue {
+        let voices: Vec<VoiceState> = self
+            .voices
+            .iter()
+            .enumerate()
+            .map(|(i, voice)| {
+                let nodes: Vec<NodeState> = voice
+                    .graph
+                    .nodes
+                    .iter()
+                    .enumerate()
+                    .map(|(ni, node)| {
+                        let node_type = if node
+                            .as_any()
+                            .downcast_ref::<ModulatableOscillator>()
+                            .is_some()
+                        {
+                            "oscillator".to_string()
+                        } else if node.as_any().downcast_ref::<Envelope>().is_some() {
+                            "envelope".to_string()
+                        } else if node.as_any().downcast_ref::<Lfo>().is_some() {
+                            "lfo".to_string()
+                        } else {
+                            "unknown".to_string()
+                        };
+
+                        NodeState { id: ni, node_type }
+                    })
+                    .collect();
+
+                let connections: Vec<ConnectionState> = voice
+                    .graph
+                    .connections
+                    .values()
+                    .map(|conn| ConnectionState {
+                        from_id: conn.from_node.0,
+                        to_id: conn.to_node.0,
+                        target: conn.to_port as u32,
+                        amount: conn.amount,
+                    })
+                    .collect();
+
+                VoiceState {
+                    id: i,
+                    nodes,
+                    connections,
+                }
+            })
+            .collect();
+
+        let engine_state = EngineState { voices };
+        serde_wasm_bindgen::to_value(&engine_state).unwrap()
     }
 
     #[wasm_bindgen]
