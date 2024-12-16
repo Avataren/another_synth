@@ -1,4 +1,7 @@
 {
   "extends": "./.quasar/tsconfig.json",
-  "exclude": ["src/assembly"]
+  "exclude": ["src/assembly"],
+  "compilerOptions": {
+    "types": ["vitest/globals"]
+  }
 }

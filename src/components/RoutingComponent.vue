@@ -29,13 +29,7 @@
                 <q-select
                   :model-value="route.targetId"
                   @update:model-value="
-                    (val) => {
-                      console.log('Target select changed:', {
-                        oldVal: route.targetId,
-                        newVal: val,
-                      });
-                      updateRoute(index, { targetId: val });
-                    }
+                    (val) => updateRoute(index, { targetId: val })
                   "
                   :options="availableTargetNodes"
                   label="Target"
@@ -52,13 +46,7 @@
                 <q-select
                   :model-value="route.target"
                   @update:model-value="
-                    (val) => {
-                      console.log('Parameter select changed:', {
-                        oldVal: route.target,
-                        newVal: val,
-                      });
-                      updateRoute(index, { target: val });
-                    }
+                    (val) => updateRoute(index, { target: val })
                   "
                   :options="getAvailableParams(route.targetId)"
                   label="Parameter"
@@ -73,7 +61,7 @@
                 <q-slider
                   :model-value="route.amount"
                   @update:model-value="
-                    updateRoute(index, { amount: $event ?? 0 })
+                    (val) => updateRoute(index, { amount: val ?? 0 })
                   "
                   :min="-1"
                   :max="1"
@@ -173,6 +161,7 @@ const getAvailableParams = (targetId: number): ModulationTargetOption[] => {
       params = [
         { value: ModulationTarget.Frequency, label: 'Frequency' },
         { value: ModulationTarget.PhaseMod, label: 'Phase' },
+        { value: ModulationTarget.ModIndex, label: 'Mod Index' },
         { value: ModulationTarget.Gain, label: 'Gain' },
       ];
       break;
@@ -186,82 +175,68 @@ const getAvailableParams = (targetId: number): ModulationTargetOption[] => {
       params = [];
   }
 
-  console.log('Available params for target:', {
-    targetId,
-    targetType: targetNode.type,
-    params,
-  });
-
   return params;
 };
 
+const applyConnection = (route: RouteConfig) => {
+  store.updateConnection({
+    fromId: props.sourceId,
+    toId: route.targetId,
+    target: route.target,
+    amount: route.amount,
+  });
+};
+
 const updateRoute = (index: number, update: RouteUpdate) => {
-  console.log('updateRoute:', { index, update });
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  // Create a new route object with updates
-  const updatedRoute: RouteConfig = {
-    ...route,
-  };
+  const updatedRoute = { ...route };
 
   // Handle target node change
   if (update.targetId !== undefined) {
-    // Extract ID if we received a full node object
     const newTargetId =
       typeof update.targetId === 'object'
         ? (update.targetId as TargetNode).id
         : update.targetId;
 
-    console.log('Target changed:', {
-      oldTarget: route.targetId,
-      newTarget: newTargetId,
-    });
-
-    // First remove the old connection
-    store.updateConnection({
-      fromId: props.sourceId,
-      toId: route.targetId,
-      target: route.target,
-      amount: 0, // Remove old connection
-    });
-
-    updatedRoute.targetId = newTargetId;
-
-    // When changing target, set a default parameter if we don't already have one
-    const params = getAvailableParams(newTargetId);
-    console.log('Available params for new target:', params);
-
-    if (params.length > 0) {
-      // Keep existing parameter if it's valid for new target, otherwise use first available
-      const isCurrentParamValid = params.some((p) => p.value === route.target);
-      updatedRoute.target = isCurrentParamValid
-        ? route.target
-        : params[0]!.value;
-
-      console.log('Parameter selection:', {
-        keptExisting: isCurrentParamValid,
-        oldParam: route.target,
-        newParam: updatedRoute.target,
-      });
-    }
-  }
-
-  // Handle parameter change
-  if (update.target !== undefined) {
-    // Remove old connection first
+    // First remove the old connection, with explicit removal flag
     store.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
       target: route.target,
       amount: 0,
+      isRemoving: true,
+    });
+
+    // When changing target, set a default parameter if needed
+    const params = getAvailableParams(newTargetId);
+    if (params.length > 0) {
+      const isCurrentParamValid = params.some((p) => p.value === route.target);
+      updatedRoute.target = isCurrentParamValid
+        ? route.target
+        : params[0]!.value;
+    }
+
+    updatedRoute.targetId = newTargetId;
+  }
+
+  // Handle parameter change
+  if (update.target !== undefined) {
+    // First remove old parameter connection with explicit removal flag
+    store.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: 0,
+      isRemoving: true,
     });
 
     updatedRoute.target =
       typeof update.target === 'number' ? update.target : update.target.value;
   }
 
-  // Handle amount change - but don't remove connection when amount is 0
+  // Handle amount change - allow zero without removing connection
   if (update.amount !== undefined) {
     updatedRoute.amount = update.amount;
   }
@@ -269,7 +244,7 @@ const updateRoute = (index: number, update: RouteUpdate) => {
   // Update local state
   activeRoutes.value[index] = updatedRoute;
 
-  // Then create the new connection
+  // Apply the updated connection (without isRemoving flag)
   store.updateConnection({
     fromId: props.sourceId,
     toId: updatedRoute.targetId,
@@ -288,12 +263,6 @@ const addNewRoute = () => {
   const firstParam = defaultParams[0];
   if (!firstParam) return;
 
-  console.log('Creating new route with params:', {
-    targetId: defaultTarget.id,
-    target: firstParam.value,
-  });
-
-  // Create new route with default values but tiny non-zero amount
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
     target: firstParam.value,
@@ -303,29 +272,25 @@ const addNewRoute = () => {
   // Add to active routes
   activeRoutes.value.push(newRoute);
 
-  // Immediately create the connection
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: newRoute.targetId,
-    target: newRoute.target,
-    amount: newRoute.amount,
-  });
+  // Create the connection
+  applyConnection(newRoute);
 };
 
 const removeRoute = (index: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  // Remove connection by setting amount to 0
+  // Remove from local state first
+  activeRoutes.value.splice(index, 1);
+
+  // Then remove from store with explicit removal flag
   store.updateConnection({
     fromId: props.sourceId,
     toId: route.targetId,
     target: route.target,
     amount: 0,
+    isRemoving: true,
   });
-
-  // Remove from local state
-  activeRoutes.value.splice(index, 1);
 };
 
 // Initialize existing connections on mount
@@ -345,54 +310,18 @@ onMounted(() => {
 watch(
   () => store.getNodeConnections(props.sourceId),
   (newConnections) => {
-    type ConnectionType = {
-      fromId: number;
-      toId: number;
-      target: ModulationTarget | ModulationTargetOption;
-      amount: number;
-    };
-
     const getTargetValue = (
       target: ModulationTarget | ModulationTargetOption,
     ): ModulationTarget => {
-      if (typeof target === 'number') {
-        return target;
-      }
-      return (target as ModulationTargetOption).value;
+      return typeof target === 'number' ? target : target.value;
     };
 
-    // Only update if we have a different number of connections
-    // or if connections are actually different
-    const currentConnections = activeRoutes.value.map((route) => ({
-      fromId: props.sourceId,
-      toId: route.targetId,
-      target: route.target,
-      amount: route.amount,
+    // Update routes without triggering new connections
+    activeRoutes.value = newConnections.map((conn) => ({
+      targetId: conn.toId,
+      target: getTargetValue(conn.target),
+      amount: conn.amount,
     }));
-
-    // Create a comparison function that ignores object references
-    const compareConnections = (a: ConnectionType[], b: ConnectionType[]) => {
-      if (a.length !== b.length) return false;
-      return a.every((conn, i) => {
-        const newConn = b[i];
-        if (!newConn) return false;
-        return (
-          conn.fromId === newConn.fromId &&
-          conn.toId === newConn.toId &&
-          getTargetValue(conn.target) === getTargetValue(newConn.target) &&
-          conn.amount === newConn.amount
-        );
-      });
-    };
-
-    if (!compareConnections(currentConnections, newConnections)) {
-      // Update routes without triggering new connections
-      activeRoutes.value = newConnections.map((conn) => ({
-        targetId: conn.toId,
-        target: getTargetValue(conn.target),
-        amount: conn.amount,
-      }));
-    }
   },
   { deep: true },
 );

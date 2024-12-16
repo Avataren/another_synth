@@ -12,6 +12,8 @@ import {
   type LfoState,
   VoiceNodeType,
   getNodesOfType,
+  type ModulationTarget,
+  type VoiceLayout,
 } from 'src/audio/types/synth-layout';
 
 interface AudioParamDescriptor {
@@ -154,11 +156,30 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         )
       ) ?? false;
     },
+    hasMatchingConnection(fromId: number, toId: number, target: ModulationTarget): boolean {
+      return this.synthLayout?.voices.some(voice =>
+        voice.connections.some(conn =>
+          conn.fromId === fromId &&
+          conn.toId === toId &&
+          conn.target === target
+        )
+      ) ?? false;
+    },
     updateSynthLayout(layout: SynthLayout) {
-      this.synthLayout = layout;
+      console.log('Updating synth layout:', layout);
+
+      // Create a deep copy to ensure we don't mutate the input directly
+      this.synthLayout = JSON.parse(JSON.stringify(layout));
+
+      // Ensure connections array exists for each voice
+      this.synthLayout!.voices.forEach(voice => {
+        if (!voice.connections) {
+          voice.connections = [];
+        }
+      });
 
       // Initialize states for all nodes
-      for (const voice of layout.voices) {
+      for (const voice of this.synthLayout!.voices) {
         // Initialize oscillators
         for (const osc of getNodesOfType(voice, VoiceNodeType.Oscillator)) {
           if (!this.oscillatorStates.has(osc.id)) {
@@ -220,6 +241,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
         }
       }
+
+      console.log('Updated synth layout state:', this.synthLayout);
     },
 
     updateOscillator(nodeId: number, state: OscillatorState) {
@@ -249,12 +272,18 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.filterStates.set(nodeId, state);
       this.currentInstrument?.updateFilterState(nodeId, state);
     },
+    // Helper to find a connection in a voice
+    findConnection(voice: VoiceLayout, connection: NodeConnection) {
+      return voice.connections.findIndex((conn: NodeConnection) =>
+        conn.fromId === connection.fromId &&
+        conn.toId === connection.toId &&
+        conn.target === connection.target
+      );
+    },
     updateConnection(connection: NodeConnection) {
       if (!this.synthLayout || !this.currentInstrument) return;
 
-      console.log('Store updateConnection:', connection);
-
-      // Send to instrument for voice updates
+      // Update the WASM side
       this.currentInstrument.createModulation(
         connection.fromId,
         connection.toId,
@@ -262,68 +291,61 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         connection.amount
       );
 
-      // If this is an explicit removal request (not just a zero amount)
-      const isRemoval = connection.amount === 0 && this.hasExistingConnection(
-        connection.fromId,
-        connection.toId
-      );
+      // Update each voice in the layout
+      this.synthLayout.voices.forEach((voice) => {
+        if (!voice.connections) {
+          voice.connections = [];
+        }
 
-      if (isRemoval) {
-        this.synthLayout.voices.forEach(voice => {
-          voice.connections = voice.connections.filter(conn =>
-            !(conn.fromId === connection.fromId &&
-              conn.toId === connection.toId)
-          );
-        });
-        return;
-      }
-
-      // Otherwise update or add the connection to all voices
-      this.synthLayout.voices.forEach(voice => {
         const existingIndex = voice.connections.findIndex(conn =>
           conn.fromId === connection.fromId &&
-          conn.toId === connection.toId
+          conn.toId === connection.toId &&
+          conn.target === connection.target
         );
 
-        const newConnection = {
-          fromId: connection.fromId,
-          toId: connection.toId,
-          target: connection.target,
-          amount: connection.amount
-        };
-
-        if (existingIndex !== -1) {
-          voice.connections[existingIndex] = newConnection;
-        } else {
-          voice.connections.push(newConnection);
+        if (connection.isRemoving && existingIndex !== -1) {
+          // Only remove if explicitly requested via delete button
+          voice.connections.splice(existingIndex, 1);
+        } else if (existingIndex !== -1) {
+          // Update existing connection, even if amount is 0
+          voice.connections[existingIndex] = { ...connection };
+        } else if (!connection.isRemoving) {
+          // Add new connection (even if amount is 0)
+          voice.connections.push({ ...connection });
         }
       });
     },
+
     updateConnectionForVoice(voiceIndex: number, connection: NodeConnection) {
-      if (!this.synthLayout || !this.currentInstrument) return;
-
-      const voice = this.synthLayout.voices[voiceIndex];
-      if (!voice) return;
-
-      const existingIndex = voice.connections.findIndex(
-        conn => conn.fromId === connection.fromId &&
-          conn.toId === connection.toId &&
-          conn.target === connection.target
-      );
-
-      if (existingIndex !== -1) {
-        if (connection.amount === 0) {
-          voice.connections.splice(existingIndex, 1);
-        } else {
-          voice.connections[existingIndex] = connection;
-        }
-      } else if (connection.amount !== 0) {
-        voice.connections.push(connection);
+      if (!this.synthLayout || !this.currentInstrument) {
+        console.error('Cannot update connection: store not initialized');
+        return;
       }
 
+      const voice = this.synthLayout.voices[voiceIndex];
+      if (!voice) {
+        console.error('Voice not found:', voiceIndex);
+        return;
+      }
+
+      // Ensure connections array exists
+      if (!voice.connections) {
+        voice.connections = [];
+      }
+
+      const existingIndex = this.findConnection(voice, connection);
+
+      if (connection.amount === 0 && existingIndex !== -1) {
+        voice.connections.splice(existingIndex, 1);
+      } else if (existingIndex !== -1) {
+        voice.connections[existingIndex] = { ...connection };
+      } else if (connection.amount !== 0) {
+        voice.connections.push({ ...connection });
+      }
+
+      // Update the WASM side
       this.currentInstrument.updateConnection(voiceIndex, connection);
     },
-
     async setupAudio() {
       if (this.audioSystem) {
         this.currentInstrument = new Instrument(

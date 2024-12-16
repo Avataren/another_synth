@@ -14,7 +14,8 @@ export enum ModulationTarget {
     FilterCutoff = 2,
     FilterResonance = 3,
     PhaseMod = 4,
-    ModIndex = 5
+    ModIndex = 5,
+
 }
 
 export interface ModulationTargetObject {
@@ -44,8 +45,9 @@ export type ModulationTargetOption = {
 export interface NodeConnection {
     fromId: number;
     toId: number;
-    target: ModulationTarget;  // Keep this simple - we'll convert from ModulationTargetOption
+    target: ModulationTarget;
     amount: number;
+    isRemoving?: boolean;
 }
 
 export interface FilterConfig {
