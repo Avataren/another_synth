@@ -24,6 +24,7 @@ interface AudioParamDescriptor {
 
 
 export const useAudioSystemStore = defineStore('audioSystem', {
+
   state: () => ({
     audioSystem: null as AudioSystem | null,
     destinationNode: null as AudioNode | null,
@@ -145,7 +146,14 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         this.audioSystem = new AudioSystem();
       }
     },
-
+    // Helper method to check if connection exists
+    hasExistingConnection(fromId: number, toId: number): boolean {
+      return this.synthLayout?.voices.some(voice =>
+        voice.connections.some(conn =>
+          conn.fromId === fromId && conn.toId === toId
+        )
+      ) ?? false;
+    },
     updateSynthLayout(layout: SynthLayout) {
       this.synthLayout = layout;
 
@@ -244,32 +252,52 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     updateConnection(connection: NodeConnection) {
       if (!this.synthLayout || !this.currentInstrument) return;
 
-      // Update connections in all voices
-      this.synthLayout.voices.forEach(voice => {
-        const existingIndex = voice.connections.findIndex(
-          conn => conn.fromId === connection.fromId &&
-            conn.toId === connection.toId &&
-            conn.target === connection.target
-        );
+      console.log('Store updateConnection:', connection);
 
-        if (existingIndex !== -1) {
-          if (connection.amount === 0) {
-            voice.connections.splice(existingIndex, 1);
-          } else {
-            voice.connections[existingIndex] = connection;
-          }
-        } else if (connection.amount !== 0) {
-          voice.connections.push(connection);
-        }
-      });
-
-      // Let the instrument handle applying to all voices
+      // Send to instrument for voice updates
       this.currentInstrument.createModulation(
         connection.fromId,
         connection.toId,
         connection.target,
         connection.amount
       );
+
+      // If this is an explicit removal request (not just a zero amount)
+      const isRemoval = connection.amount === 0 && this.hasExistingConnection(
+        connection.fromId,
+        connection.toId
+      );
+
+      if (isRemoval) {
+        this.synthLayout.voices.forEach(voice => {
+          voice.connections = voice.connections.filter(conn =>
+            !(conn.fromId === connection.fromId &&
+              conn.toId === connection.toId)
+          );
+        });
+        return;
+      }
+
+      // Otherwise update or add the connection to all voices
+      this.synthLayout.voices.forEach(voice => {
+        const existingIndex = voice.connections.findIndex(conn =>
+          conn.fromId === connection.fromId &&
+          conn.toId === connection.toId
+        );
+
+        const newConnection = {
+          fromId: connection.fromId,
+          toId: connection.toId,
+          target: connection.target,
+          amount: connection.amount
+        };
+
+        if (existingIndex !== -1) {
+          voice.connections[existingIndex] = newConnection;
+        } else {
+          voice.connections.push(newConnection);
+        }
+      });
     },
     updateConnectionForVoice(voiceIndex: number, connection: NodeConnection) {
       if (!this.synthLayout || !this.currentInstrument) return;

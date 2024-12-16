@@ -27,7 +27,16 @@
               <!-- Target Node Selection -->
               <div class="col-4">
                 <q-select
-                  v-model="route.targetId"
+                  :model-value="route.targetId"
+                  @update:model-value="
+                    (val) => {
+                      console.log('Target select changed:', {
+                        oldVal: route.targetId,
+                        newVal: val,
+                      });
+                      updateRoute(index, { targetId: val });
+                    }
+                  "
                   :options="availableTargetNodes"
                   label="Target"
                   dense
@@ -35,34 +44,43 @@
                   filled
                   option-value="id"
                   option-label="name"
-                  @update:model-value="updateRoute(index)"
                 />
               </div>
 
               <!-- Parameter Selection -->
               <div class="col-4">
                 <q-select
-                  v-model="route.target"
+                  :model-value="route.target"
+                  @update:model-value="
+                    (val) => {
+                      console.log('Parameter select changed:', {
+                        oldVal: route.target,
+                        newVal: val,
+                      });
+                      updateRoute(index, { target: val });
+                    }
+                  "
                   :options="getAvailableParams(route.targetId)"
                   label="Parameter"
                   dense
                   dark
                   filled
-                  @update:model-value="updateRoute(index)"
                 />
               </div>
 
               <!-- Amount Slider -->
               <div class="col-3">
                 <q-slider
-                  v-model="route.amount"
+                  :model-value="route.amount"
+                  @update:model-value="
+                    updateRoute(index, { amount: $event ?? 0 })
+                  "
                   :min="-1"
                   :max="1"
                   :step="0.01"
                   label
                   label-always
                   dark
-                  @update:model-value="updateRoute(index)"
                 />
               </div>
 
@@ -88,6 +106,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import type { ModulationTargetOption } from 'src/audio/types/synth-layout';
 import { ModulationTarget, VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Props {
@@ -106,9 +125,14 @@ interface RouteConfig {
   amount: number;
 }
 
+type RouteUpdate = {
+  targetId?: number | TargetNode;
+  target?: ModulationTarget | ModulationTargetOption;
+  amount?: number;
+};
+
 const props = defineProps<Props>();
 const store = useAudioSystemStore();
-
 const activeRoutes = ref<RouteConfig[]>([]);
 
 // Get all available target nodes (using voice 0 as reference)
@@ -136,25 +160,122 @@ const availableTargetNodes = computed((): TargetNode[] => {
 });
 
 // Get available parameters based on target node type
-const getAvailableParams = (targetId: number) => {
+const getAvailableParams = (targetId: number): ModulationTargetOption[] => {
   const targetNode = availableTargetNodes.value.find((n) => n.id === targetId);
-  if (!targetNode) return [];
+  if (!targetNode) {
+    console.log('No target node found for id:', targetId);
+    return [];
+  }
 
+  let params: ModulationTargetOption[];
   switch (targetNode.type) {
     case VoiceNodeType.Oscillator:
-      return [
+      params = [
         { value: ModulationTarget.Frequency, label: 'Frequency' },
         { value: ModulationTarget.PhaseMod, label: 'Phase' },
         { value: ModulationTarget.Gain, label: 'Gain' },
       ];
+      break;
     case VoiceNodeType.Filter:
-      return [
+      params = [
         { value: ModulationTarget.FilterCutoff, label: 'Cutoff' },
         { value: ModulationTarget.FilterResonance, label: 'Resonance' },
       ];
+      break;
     default:
-      return [];
+      params = [];
   }
+
+  console.log('Available params for target:', {
+    targetId,
+    targetType: targetNode.type,
+    params,
+  });
+
+  return params;
+};
+
+const updateRoute = (index: number, update: RouteUpdate) => {
+  console.log('updateRoute:', { index, update });
+  const route = activeRoutes.value[index];
+  if (!route) return;
+
+  // Create a new route object with updates
+  const updatedRoute: RouteConfig = {
+    ...route,
+  };
+
+  // Handle target node change
+  if (update.targetId !== undefined) {
+    // Extract ID if we received a full node object
+    const newTargetId =
+      typeof update.targetId === 'object'
+        ? (update.targetId as TargetNode).id
+        : update.targetId;
+
+    console.log('Target changed:', {
+      oldTarget: route.targetId,
+      newTarget: newTargetId,
+    });
+
+    // First remove the old connection
+    store.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: 0, // Remove old connection
+    });
+
+    updatedRoute.targetId = newTargetId;
+
+    // When changing target, set a default parameter if we don't already have one
+    const params = getAvailableParams(newTargetId);
+    console.log('Available params for new target:', params);
+
+    if (params.length > 0) {
+      // Keep existing parameter if it's valid for new target, otherwise use first available
+      const isCurrentParamValid = params.some((p) => p.value === route.target);
+      updatedRoute.target = isCurrentParamValid
+        ? route.target
+        : params[0]!.value;
+
+      console.log('Parameter selection:', {
+        keptExisting: isCurrentParamValid,
+        oldParam: route.target,
+        newParam: updatedRoute.target,
+      });
+    }
+  }
+
+  // Handle parameter change
+  if (update.target !== undefined) {
+    // Remove old connection first
+    store.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: 0,
+    });
+
+    updatedRoute.target =
+      typeof update.target === 'number' ? update.target : update.target.value;
+  }
+
+  // Handle amount change - but don't remove connection when amount is 0
+  if (update.amount !== undefined) {
+    updatedRoute.amount = update.amount;
+  }
+
+  // Update local state
+  activeRoutes.value[index] = updatedRoute;
+
+  // Then create the new connection
+  store.updateConnection({
+    fromId: props.sourceId,
+    toId: updatedRoute.targetId,
+    target: updatedRoute.target,
+    amount: updatedRoute.amount,
+  });
 };
 
 const addNewRoute = () => {
@@ -167,10 +288,27 @@ const addNewRoute = () => {
   const firstParam = defaultParams[0];
   if (!firstParam) return;
 
-  activeRoutes.value.push({
+  console.log('Creating new route with params:', {
     targetId: defaultTarget.id,
     target: firstParam.value,
-    amount: 0,
+  });
+
+  // Create new route with default values but tiny non-zero amount
+  const newRoute: RouteConfig = {
+    targetId: defaultTarget.id,
+    target: firstParam.value,
+    amount: 0.0001, // Start with tiny amount instead of 0
+  };
+
+  // Add to active routes
+  activeRoutes.value.push(newRoute);
+
+  // Immediately create the connection
+  store.updateConnection({
+    fromId: props.sourceId,
+    toId: newRoute.targetId,
+    target: newRoute.target,
+    amount: newRoute.amount,
   });
 };
 
@@ -178,26 +316,16 @@ const removeRoute = (index: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
+  // Remove connection by setting amount to 0
   store.updateConnection({
     fromId: props.sourceId,
     toId: route.targetId,
     target: route.target,
-    amount: 0, // Setting amount to 0 removes the connection
+    amount: 0,
   });
 
+  // Remove from local state
   activeRoutes.value.splice(index, 1);
-};
-
-const updateRoute = (index: number) => {
-  const route = activeRoutes.value[index];
-  if (!route || !store.currentInstrument) return;
-
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: route.target,
-    amount: route.amount,
-  });
 };
 
 // Initialize existing connections on mount
@@ -205,7 +333,10 @@ onMounted(() => {
   const connections = store.getNodeConnections(props.sourceId);
   activeRoutes.value = connections.map((conn) => ({
     targetId: conn.toId,
-    target: conn.target,
+    target:
+      typeof conn.target === 'number'
+        ? conn.target
+        : (conn.target as ModulationTargetOption).value,
     amount: conn.amount,
   }));
 });
@@ -214,17 +345,51 @@ onMounted(() => {
 watch(
   () => store.getNodeConnections(props.sourceId),
   (newConnections) => {
-    const currentRoutes = activeRoutes.value.map((route) => ({
+    type ConnectionType = {
+      fromId: number;
+      toId: number;
+      target: ModulationTarget | ModulationTargetOption;
+      amount: number;
+    };
+
+    const getTargetValue = (
+      target: ModulationTarget | ModulationTargetOption,
+    ): ModulationTarget => {
+      if (typeof target === 'number') {
+        return target;
+      }
+      return (target as ModulationTargetOption).value;
+    };
+
+    // Only update if we have a different number of connections
+    // or if connections are actually different
+    const currentConnections = activeRoutes.value.map((route) => ({
       fromId: props.sourceId,
       toId: route.targetId,
       target: route.target,
       amount: route.amount,
     }));
 
-    if (JSON.stringify(currentRoutes) !== JSON.stringify(newConnections)) {
+    // Create a comparison function that ignores object references
+    const compareConnections = (a: ConnectionType[], b: ConnectionType[]) => {
+      if (a.length !== b.length) return false;
+      return a.every((conn, i) => {
+        const newConn = b[i];
+        if (!newConn) return false;
+        return (
+          conn.fromId === newConn.fromId &&
+          conn.toId === newConn.toId &&
+          getTargetValue(conn.target) === getTargetValue(newConn.target) &&
+          conn.amount === newConn.amount
+        );
+      });
+    };
+
+    if (!compareConnections(currentConnections, newConnections)) {
+      // Update routes without triggering new connections
       activeRoutes.value = newConnections.map((conn) => ({
         targetId: conn.toId,
-        target: conn.target,
+        target: getTargetValue(conn.target),
         amount: conn.amount,
       }));
     }

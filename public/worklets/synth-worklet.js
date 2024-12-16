@@ -791,6 +791,11 @@ var OscillatorUpdateHandler = class {
   }
 };
 
+// src/audio/types/synth-layout.ts
+function isModulationTargetObject(target) {
+  return typeof target === "object" && "value" in target;
+}
+
 // src/audio/worklets/synth-worklet.ts
 var LfoTriggerMode = /* @__PURE__ */ ((LfoTriggerMode2) => {
   LfoTriggerMode2[LfoTriggerMode2["None"] = 0] = "None";
@@ -828,6 +833,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           const voiceLayout = this.initializeVoice(i);
           this.voiceLayouts.push(voiceLayout);
         }
+        console.log("voiceLayouts:", this.voiceLayouts);
         const layout = {
           voices: this.voiceLayouts,
           globalNodes: {
@@ -847,9 +853,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           layout
         });
         this.ready = true;
+      } else if (event.data.type === "updateModulation") {
+        this.updateModulationForAllVoices(event.data.connection);
       } else if (event.data.type === "updateConnection") {
-        const { voiceId, connection } = event.data;
-        this.updateConnection(voiceId, connection);
+        const { voiceIndex, connection } = event.data;
+        console.log("worklet:: got updateConnection:", voiceIndex, connection);
+        this.updateConnection(voiceIndex, connection);
       } else if (event.data.type === "updateOscillator") {
         if (this.audioEngine != null) {
           const { oscillatorId, newState } = event.data;
@@ -1024,7 +1033,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       voiceLayout.connections.push({
         fromId: ampEnv.id,
         toId: osc1.id,
-        target: "gain" /* Gain */,
+        target: 1 /* Gain */,
         amount: 1
       });
       this.audioEngine.connect_voice_nodes(
@@ -1038,54 +1047,76 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       voiceLayout.connections.push({
         fromId: osc2.id,
         toId: osc1.id,
-        target: "phase_mod" /* PhaseMod */,
+        target: 4 /* PhaseMod */,
         amount: 1
       });
     }
     return voiceLayout;
   }
   getPortIdForTarget(target) {
-    switch (target) {
-      case "frequency" /* Frequency */:
+    const targetValue = isModulationTargetObject(target) ? target.value : target;
+    switch (targetValue) {
+      case 0 /* Frequency */:
         return PortId.FrequencyMod;
-      case "gain" /* Gain */:
+      case 1 /* Gain */:
         return PortId.GainMod;
-      case "cutoff" /* FilterCutoff */:
+      case 2 /* FilterCutoff */:
         return PortId.CutoffMod;
-      case "resonance" /* FilterResonance */:
+      case 3 /* FilterResonance */:
         return PortId.ResonanceMod;
-      case "phase_mod" /* PhaseMod */:
+      case 4 /* PhaseMod */:
         return PortId.PhaseMod;
-      case "mod_index" /* ModIndex */:
+      case 5 /* ModIndex */:
         return PortId.ModIndex;
       default:
-        console.warn(`No PortId mapping for target: ${target}`);
+        console.warn(`No PortId mapping for target: ${targetValue}`);
         return PortId.GainMod;
     }
   }
   updateConnection(voiceId, connection) {
-    if (!this.audioEngine || voiceId >= this.voiceLayouts.length) return;
-    const voice = this.voiceLayouts[voiceId];
-    const existingIndex = voice.connections.findIndex(
-      (conn) => conn.fromId === connection.fromId && conn.toId === connection.toId && conn.target === connection.target
-    );
-    if (existingIndex !== -1) {
-      if (connection.amount === 0) {
-        voice.connections.splice(existingIndex, 1);
-      } else {
-        voice.connections[existingIndex] = connection;
-      }
-    } else if (connection.amount !== 0) {
-      voice.connections.push(connection);
+    if (!this.audioEngine || voiceId >= this.voiceLayouts.length) {
+      console.warn("Invalid voice ID or audio engine not ready:", voiceId);
+      return;
     }
-    this.audioEngine.connect_voice_nodes(
-      voiceId,
-      connection.fromId,
-      PortId.AudioOutput0,
-      connection.toId,
-      this.getPortIdForTarget(connection.target),
-      connection.amount
-    );
+    console.log(`Updating connection for voice ${voiceId}:`, connection);
+    try {
+      this.audioEngine.connect_voice_nodes(
+        voiceId,
+        connection.fromId,
+        PortId.AudioOutput0,
+        connection.toId,
+        this.getPortIdForTarget(connection.target),
+        connection.amount
+      );
+      console.log(`Connection updated for voice ${voiceId}`);
+    } catch (err) {
+      console.error(`Failed to update connection for voice ${voiceId}:`, err);
+    }
+  }
+  updateModulationForAllVoices(connection) {
+    if (!this.audioEngine) {
+      console.warn("Audio engine not ready");
+      return;
+    }
+    for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
+      const voice = this.voiceLayouts[voiceId];
+      if (!voice) continue;
+      console.log(`Updating modulation for voice ${voiceId}:`, connection);
+      try {
+        const portId = this.getPortIdForTarget(connection.target);
+        console.log("portId: ", portId);
+        this.audioEngine.connect_voice_nodes(
+          voiceId,
+          connection.fromId,
+          PortId.AudioOutput0,
+          connection.toId,
+          portId,
+          connection.amount
+        );
+      } catch (err) {
+        console.error(`Failed to update modulation for voice ${voiceId}:`, err);
+      }
+    }
   }
   process(_inputs, outputs, parameters) {
     if (!this.ready || !this.audioEngine) return true;

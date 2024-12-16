@@ -167,9 +167,8 @@ const handleNormalizedChange = (newValue: boolean) => {
   store.lfoStates.set(props.nodeId, currentState);
 };
 
-// Function to update the waveform display
 const updateWaveformDisplay = async () => {
-  if (!waveformCanvas.value || !store.currentInstrument) return;
+  if (!waveformCanvas.value) return;
 
   const canvas = waveformCanvas.value;
   const ctx = canvas.getContext('2d');
@@ -186,30 +185,47 @@ const updateWaveformDisplay = async () => {
   // Clear the canvas
   ctx.clearRect(0, 0, width, height);
 
-  // Get waveform data from the WASM module
-  const waveformData = await store.currentInstrument.getLfoWaveform(
-    lfoState.value.waveform,
-    width,
-  );
+  try {
+    // Check if the store and instrument are ready
+    if (!store.currentInstrument?.isReady) {
+      // Use the public getter
+      // If not ready, retry after a short delay
+      setTimeout(updateWaveformDisplay, 100);
+      return;
+    }
 
-  // Draw the waveform
-  ctx.beginPath();
-  ctx.strokeStyle = '#2196F3'; // Blue color
-  ctx.lineWidth = 2;
+    // Get waveform data from the WASM module
+    const waveformData = await store.currentInstrument.getLfoWaveform(
+      lfoState.value.waveform,
+      width,
+    );
 
-  for (let i = 0; i < waveformData.length; i++) {
-    const x = i;
-    // Map the y value from [-1, 1] to [0, height]
-    const y = ((1 - waveformData[i]!) * height) / 2;
+    // Draw the waveform
+    ctx.beginPath();
+    ctx.strokeStyle = '#2196F3'; // Blue color
+    ctx.lineWidth = 2;
 
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
+    for (let i = 0; i < waveformData.length; i++) {
+      const x = i;
+      // Map the y value from [-1, 1] to [0, height]
+      const y = ((1 - waveformData[i]!) * height) / 2;
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+
+    ctx.stroke();
+  } catch (err: unknown) {
+    // Properly type the error
+    console.warn('Could not update waveform display:', err);
+    // Properly type check the error
+    if (err instanceof Error && err.message === 'Audio system not ready') {
+      setTimeout(updateWaveformDisplay, 100);
     }
   }
-
-  ctx.stroke();
 };
 
 // Watch the LFO state

@@ -8,16 +8,22 @@ export enum VoiceNodeType {
     Filter = 'filter'
 }
 
-// Define the possible modulation targets
 export enum ModulationTarget {
-    Frequency = 'frequency',
-    Gain = 'gain',
-    FilterCutoff = 'cutoff',
-    FilterResonance = 'resonance',
-    PhaseMod = 'phase_mod',
-    ModIndex = 'mod_index',
-    PWM = 'pwm',
-    Pan = 'pan',
+    Frequency = 0,
+    Gain = 1,
+    FilterCutoff = 2,
+    FilterResonance = 3,
+    PhaseMod = 4,
+    ModIndex = 5
+}
+
+export interface ModulationTargetObject {
+    value: ModulationTarget;
+}
+
+// Type guard to check if something is a ModulationTargetObject
+export function isModulationTargetObject(target: ModulationTarget | ModulationTargetObject): target is ModulationTargetObject {
+    return typeof target === 'object' && 'value' in target;
 }
 
 export interface LfoState {
@@ -30,6 +36,17 @@ export interface LfoState {
     active: boolean;
 }
 
+export type ModulationTargetOption = {
+    value: ModulationTarget;
+    label: string;
+}
+
+export interface NodeConnection {
+    fromId: number;
+    toId: number;
+    target: ModulationTarget;  // Keep this simple - we'll convert from ModulationTargetOption
+    amount: number;
+}
 
 export interface FilterConfig {
     type: 'lowpass' | 'highpass' | 'bandpass';
@@ -112,7 +129,7 @@ export const findModulationTargets = (voice: VoiceLayout, sourceId: number): Arr
         .filter(conn => conn.fromId === sourceId)
         .map(conn => ({
             nodeId: conn.toId,
-            target: conn.target,
+            target: typeof conn.target === 'number' ? conn.target : conn.target,
             amount: conn.amount
         }));
 };

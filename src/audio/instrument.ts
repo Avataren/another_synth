@@ -9,7 +9,7 @@ import {
   // type VoiceLayout,
   VoiceNodeType,
   type ModulationTarget,
-  type LfoState
+  type LfoState,
 } from './types/synth-layout';
 
 export default class Instrument {
@@ -20,6 +20,10 @@ export default class Instrument {
   private voiceLastUsedTime: number[] = []; // Track when each voice was last used
   private ready = false;
   private synthLayout: SynthLayout | null = null;
+
+  public get isReady(): boolean {
+    return this.ready;
+  }
 
   constructor(
     destination: AudioNode,
@@ -160,7 +164,7 @@ export default class Instrument {
 
   public updateConnection(voiceIndex: number, connection: NodeConnection) {
     if (!this.ready || !this.workletNode) return;
-
+    console.log('instrument::updateConection:', voiceIndex, connection);
     this.workletNode.port.postMessage({
       type: 'updateConnection',
       voiceIndex,
@@ -176,19 +180,21 @@ export default class Instrument {
   ): void {
     if (!this.ready || !this.workletNode) return;
 
-    // Apply the modulation to all voices
-    for (let voiceIndex = 0; voiceIndex < this.num_voices; voiceIndex++) {
-      this.workletNode.port.postMessage({
-        type: 'updateConnection',
-        voiceIndex,
-        connection: {
-          fromId: sourceId,
-          toId: targetId,
-          target,
-          amount,
-        },
-      });
-    }
+    console.log('Creating modulation:', { sourceId, targetId, target, amount });
+
+    // Send a single message, let the worklet handle voice distribution
+    const message = {
+      type: 'updateModulation',  // Changed from updateConnection to be clearer
+      connection: {
+        fromId: Number(sourceId),
+        toId: Number(targetId),
+        target: Number(target),
+        amount: Number(amount)
+      }
+    };
+
+    console.log('Sending modulation message:', message);
+    this.workletNode.port.postMessage(message);
   }
 
   public createModulationForVoice(

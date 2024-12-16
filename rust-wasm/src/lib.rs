@@ -367,7 +367,7 @@ impl AudioEngine {
             .voices
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
+        console::log_1(&format!("(wasm) Connecting voice {:?}", voice_index).into());
         voice.graph.connect(Connection {
             from_node: NodeId(from_node),
             from_port,
