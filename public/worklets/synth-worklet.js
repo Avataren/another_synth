@@ -228,6 +228,11 @@ function getStringFromWasm0(ptr, len) {
   ptr = ptr >>> 0;
   return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
+function takeFromExternrefTable0(idx) {
+  const value = wasm.__wbindgen_export_2.get(idx);
+  wasm.__externref_table_dealloc(idx);
+  return value;
+}
 var cachedFloat32ArrayMemory0 = null;
 function getFloat32ArrayMemory0() {
   if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
@@ -240,11 +245,6 @@ function passArrayF32ToWasm0(arg, malloc) {
   getFloat32ArrayMemory0().set(arg, ptr / 4);
   WASM_VECTOR_LEN = arg.length;
   return ptr;
-}
-function takeFromExternrefTable0(idx) {
-  const value = wasm.__wbindgen_export_2.get(idx);
-  wasm.__externref_table_dealloc(idx);
-  return value;
 }
 function _assertClass(instance, klass) {
   if (!(instance instanceof klass)) {
@@ -319,6 +319,19 @@ var AudioEngine = class {
    */
   init(sample_rate, num_voices) {
     wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
+  }
+  /**
+   * @param {number} voice_index
+   * @param {number} from_node
+   * @param {PortId} from_port
+   * @param {number} to_node
+   * @param {PortId} to_port
+   */
+  remove_voice_connection(voice_index, from_node, from_port, to_node, to_port) {
+    const ret = wasm.audioengine_remove_voice_connection(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
   }
   /**
    * @returns {any}
@@ -1284,16 +1297,24 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       const voice = this.voiceLayouts[voiceId];
       if (!voice) continue;
       try {
-        const portId = this.getPortIdForTarget(connection.target);
-        console.log(`Voice ${voiceId} - Converted portId:`, portId, "from target:", connection.target);
-        this.audioEngine.connect_voice_nodes(
-          voiceId,
-          connection.fromId,
-          PortId.AudioOutput0,
-          connection.toId,
-          portId,
-          connection.amount
-        );
+        if (connection.isRemoving) {
+          this.audioEngine.remove_voice_connection(
+            voiceId,
+            connection.fromId,
+            PortId.AudioOutput0,
+            connection.toId,
+            this.getPortIdForTarget(connection.target)
+          );
+        } else {
+          this.audioEngine.connect_voice_nodes(
+            voiceId,
+            connection.fromId,
+            PortId.AudioOutput0,
+            connection.toId,
+            this.getPortIdForTarget(connection.target),
+            connection.amount
+          );
+        }
         console.log(`Successfully updated voice ${voiceId}`);
       } catch (err) {
         console.error(`Failed to update modulation for voice ${voiceId}:`, err);

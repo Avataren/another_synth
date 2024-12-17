@@ -109,6 +109,34 @@ impl AudioGraph {
         id
     }
 
+    pub fn remove_connection(&mut self, connection: &Connection) {
+        // Remove from connections map
+        let conn_id = self
+            .connections
+            .iter()
+            .find(|(_, conn)| {
+                conn.from_node == connection.from_node
+                    && conn.to_node == connection.to_node
+                    && conn.to_port == connection.to_port
+            })
+            .map(|(id, _)| *id);
+
+        if let Some(id) = conn_id {
+            self.connections.remove(&id);
+        }
+
+        // Remove from input_connections
+        if let Some(inputs) = self.input_connections.get_mut(&connection.to_node) {
+            inputs.retain(|(port, _, _)| *port != connection.to_port);
+            if inputs.is_empty() {
+                self.input_connections.remove(&connection.to_node);
+            }
+        }
+
+        // Update processing order since connections changed
+        self.update_processing_order();
+    }
+
     pub fn connect(&mut self, connection: Connection) -> ConnectionId {
         let id = ConnectionId(self.connections.len());
         self.connections.insert(id, connection.clone());

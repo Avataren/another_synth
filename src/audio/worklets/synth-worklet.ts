@@ -464,26 +464,33 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
-    // Log incoming connection for debugging
     console.log('Updating modulation with connection:', connection);
 
-    // Apply the modulation to all voices
     for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
       const voice = this.voiceLayouts[voiceId];
       if (!voice) continue;
 
       try {
-        const portId = this.getPortIdForTarget(connection.target);
-        console.log(`Voice ${voiceId} - Converted portId:`, portId, 'from target:', connection.target);
-
-        this.audioEngine.connect_voice_nodes(
-          voiceId,
-          connection.fromId,
-          PortId.AudioOutput0,
-          connection.toId,
-          portId,
-          connection.amount
-        );
+        if (connection.isRemoving) {
+          // Remove connection
+          this.audioEngine.remove_voice_connection(
+            voiceId,
+            connection.fromId,
+            PortId.AudioOutput0,
+            connection.toId,
+            this.getPortIdForTarget(connection.target)
+          );
+        } else {
+          // Add or update connection
+          this.audioEngine.connect_voice_nodes(
+            voiceId,
+            connection.fromId,
+            PortId.AudioOutput0,
+            connection.toId,
+            this.getPortIdForTarget(connection.target),
+            connection.amount
+          );
+        }
 
         console.log(`Successfully updated voice ${voiceId}`);
       } catch (err) {

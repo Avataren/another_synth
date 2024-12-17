@@ -122,6 +122,31 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
+    pub fn remove_voice_connection(
+        &mut self,
+        voice_index: usize,
+        from_node: usize,
+        from_port: PortId,
+        to_node: usize,
+        to_port: PortId,
+    ) -> Result<(), JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        voice.graph.remove_connection(&Connection {
+            from_node: NodeId(from_node),
+            from_port,
+            to_node: NodeId(to_node),
+            to_port,
+            amount: 0.0, // amount doesn't matter for removal
+        });
+
+        Ok(())
+    }
+
+    #[wasm_bindgen]
     pub fn get_current_state(&self) -> JsValue {
         let voices: Vec<VoiceState> = self
             .voices

@@ -1,6 +1,6 @@
 // src/audio/sync-manager.ts
 
-import { type NodeConnection } from './types/synth-layout';
+import { type ModulationTarget, type ModulationTargetOption, type NodeConnection } from './types/synth-layout';
 import { useAudioSystemStore } from '../stores/audio-system-store';
 
 // Must match the Rust PortId enum exactly
@@ -119,6 +119,28 @@ export class AudioSyncManager {
         }
     }
 
+    private normalizeConnections(connections: WasmConnection[]): WasmConnection[] {
+        // Group connections by from_id, to_id, and target
+        const connectionMap = new Map<string, WasmConnection>();
+
+        for (const conn of connections) {
+            const key = `${conn.from_id}-${conn.to_id}-${conn.target}`;
+            // Keep the connection with the highest amount for each unique key
+            if (!connectionMap.has(key) || connectionMap.get(key)!.amount < conn.amount) {
+                connectionMap.set(key, conn);
+            }
+        }
+
+        return Array.from(connectionMap.values());
+    }
+
+    private getTargetValue(target: ModulationTarget | ModulationTargetOption): ModulationTarget {
+        if (typeof target === 'object' && 'value' in target) {
+            return target.value;
+        }
+        return target;
+    }
+
     private findConnectionDifferences(
         storeConns: NodeConnection[],
         wasmConns: WasmConnection[]
@@ -128,70 +150,57 @@ export class AudioSyncManager {
             wasm: WasmConnection | null
         }> = [];
 
-        // Convert store connections to WASM format for comparison
-        const normalizedStoreConns = storeConns.map(conn => ({
+        // Convert store connections to WASM format and normalize them
+        const normalizedStoreConns = this.normalizeConnections(storeConns.map(conn => ({
             from_id: conn.fromId,
             to_id: conn.toId,
-            target: this.convertToWasmTarget(conn.target),
+            target: this.convertToWasmTarget(this.getTargetValue(conn.target)),
             amount: conn.amount
-        }));
+        })));
+        // Normalize WASM connections
+        const normalizedWasmConns = this.normalizeConnections(wasmConns);
 
-        // Sort both arrays for consistent comparison
-        const sortedStore = [...normalizedStoreConns].sort((a, b) =>
-            a.from_id - b.from_id ||
-            a.to_id - b.to_id ||
-            a.target - b.target
-        );
+        // Create maps for easy lookup
+        const storeMap = new Map(normalizedStoreConns.map(conn => [
+            `${conn.from_id}-${conn.to_id}-${conn.target}`,
+            conn
+        ]));
+        const wasmMap = new Map(normalizedWasmConns.map(conn => [
+            `${conn.from_id}-${conn.to_id}-${conn.target}`,
+            conn
+        ]));
 
-        const sortedWasm = [...wasmConns].sort((a, b) =>
-            a.from_id - b.from_id ||
-            a.to_id - b.to_id ||
-            a.target - b.target
-        );
-
-        // Compare sorted arrays
-        for (let i = 0; i < Math.max(sortedStore.length, sortedWasm.length); i++) {
-            const store = sortedStore[i];
-            const wasm = sortedWasm[i];
-
-            if (!store || !wasm) {
-                differences.push({
-                    store: store ? {
-                        fromId: store.from_id,
-                        toId: store.to_id,
-                        target: this.convertFromWasmTarget(store.target),
-                        amount: store.amount
-                    } : null,
-                    wasm: wasm || null
-                });
-                continue;
+        // Find differences
+        for (const [key, storeConn] of storeMap) {
+            const wasmConn = wasmMap.get(key);
+            if (!wasmConn || Math.abs(storeConn.amount - wasmConn.amount) >= 0.001) {
+                differences.push({ store: this.convertToStoreConnection(storeConn), wasm: wasmConn || null });
             }
+        }
 
-            if (
-                store.from_id !== wasm.from_id ||
-                store.to_id !== wasm.to_id ||
-                store.target !== wasm.target ||
-                Math.abs(store.amount - wasm.amount) >= 0.001
-            ) {
-                differences.push({
-                    store: {
-                        fromId: store.from_id,
-                        toId: store.to_id,
-                        target: this.convertFromWasmTarget(store.target),
-                        amount: store.amount
-                    },
-                    wasm: wasm
-                });
+        for (const [key, wasmConn] of wasmMap) {
+            if (!storeMap.has(key)) {
+                differences.push({ store: null, wasm: wasmConn });
             }
         }
 
         if (differences.length > 0) {
-            console.log('Connections after normalization:');
-            console.log('Store:', JSON.stringify(sortedStore, null, 2));
-            console.log('WASM:', JSON.stringify(sortedWasm, null, 2));
+            console.log('Normalized connections:');
+            console.log('Store:', JSON.stringify(normalizedStoreConns, null, 2));
+            console.log('WASM:', JSON.stringify(normalizedWasmConns, null, 2));
+            console.log('Differences:', differences);
         }
 
         return differences;
+    }
+
+    private convertToStoreConnection(wasmConn: WasmConnection): NodeConnection {
+        return {
+            fromId: wasmConn.from_id,
+            toId: wasmConn.to_id,
+            target: this.convertFromWasmTarget(wasmConn.target),
+            amount: wasmConn.amount
+        };
     }
 
     private async syncWithWasm() {

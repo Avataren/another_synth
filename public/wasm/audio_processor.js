@@ -168,6 +168,12 @@ function getStringFromWasm0(ptr, len) {
     return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_export_2.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
+}
+
 let cachedFloat32ArrayMemory0 = null;
 
 function getFloat32ArrayMemory0() {
@@ -182,12 +188,6 @@ function passArrayF32ToWasm0(arg, malloc) {
     getFloat32ArrayMemory0().set(arg, ptr / 4);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
-}
-
-function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_export_2.get(idx);
-    wasm.__externref_table_dealloc(idx);
-    return value;
 }
 
 function _assertClass(instance, klass) {
@@ -253,6 +253,19 @@ export class AudioEngine {
      */
     init(sample_rate, num_voices) {
         wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
+    }
+    /**
+     * @param {number} voice_index
+     * @param {number} from_node
+     * @param {PortId} from_port
+     * @param {number} to_node
+     * @param {PortId} to_port
+     */
+    remove_voice_connection(voice_index, from_node, from_port, to_node, to_port) {
+        const ret = wasm.audioengine_remove_voice_connection(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * @returns {any}
