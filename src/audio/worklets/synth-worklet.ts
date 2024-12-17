@@ -250,9 +250,25 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     return voiceLayout;
   }
 
+  private isValidModulationTarget(target: ModulationTarget | ModulationTargetObject): boolean {
+    const targetValue = isModulationTargetObject(target)
+      ? target.value
+      : typeof target === 'number'
+        ? target
+        : null;
+
+    if (targetValue === null) return false;
+    return Object.values(ModulationTarget).includes(targetValue);
+  }
+
   private getPortIdForTarget(target: ModulationTarget | ModulationTargetObject): PortId {
-    // Use the type guard to safely handle both enum and object forms
+    if (!this.isValidModulationTarget(target)) {
+      console.warn('Invalid modulation target:', target);
+      return PortId.GainMod; // Default to gain mod
+    }
+
     const targetValue = isModulationTargetObject(target) ? target.value : target;
+    console.log('Converting target:', targetValue);
 
     switch (targetValue) {
       case ModulationTarget.Frequency:
@@ -268,7 +284,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case ModulationTarget.ModIndex:
         return PortId.ModIndex;
       default:
-        console.warn(`No PortId mapping for target: ${targetValue}`);
+        console.warn('Unhandled target value, defaulting to GainMod:', targetValue);
         return PortId.GainMod;
     }
   }
@@ -342,6 +358,31 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
             oscillatorId,
             this.numVoices
           );
+        }
+      }
+      else if (event.data.type === 'getNodeLayout') {
+        if (!this.audioEngine) {
+          this.port.postMessage({
+            type: 'error',
+            messageId: event.data.messageId,
+            message: 'Audio engine not initialized'
+          });
+          return;
+        }
+
+        try {
+          const layout = this.audioEngine.get_current_state();
+          this.port.postMessage({
+            type: 'nodeLayout',
+            messageId: event.data.messageId,
+            layout: JSON.stringify(layout)
+          });
+        } catch (err) {
+          this.port.postMessage({
+            type: 'error',
+            messageId: event.data.messageId,
+            message: err instanceof Error ? err.message : 'Failed to get node layout'
+          });
         }
       }
       else if (event.data.type === 'getLfoWaveform') {
@@ -423,16 +464,18 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
+    // Log incoming connection for debugging
+    console.log('Updating modulation with connection:', connection);
+
     // Apply the modulation to all voices
     for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
       const voice = this.voiceLayouts[voiceId];
       if (!voice) continue;
 
-      console.log(`Updating modulation for voice ${voiceId}:`, connection);
-
       try {
         const portId = this.getPortIdForTarget(connection.target);
-        console.log('portId: ', portId);
+        console.log(`Voice ${voiceId} - Converted portId:`, portId, 'from target:', connection.target);
+
         this.audioEngine.connect_voice_nodes(
           voiceId,
           connection.fromId,
@@ -441,6 +484,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           portId,
           connection.amount
         );
+
+        console.log(`Successfully updated voice ${voiceId}`);
       } catch (err) {
         console.error(`Failed to update modulation for voice ${voiceId}:`, err);
       }

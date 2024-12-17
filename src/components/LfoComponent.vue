@@ -56,7 +56,7 @@
           @update:modelValue="handleTriggerModeChange"
         />
       </div>
-      <routing-component :source-id="props.nodeId" />
+      <routing-component :source-id="props.nodeId" :debug="true" />
       <!-- Waveform visualization -->
       <div class="canvas-wrapper">
         <canvas ref="waveformCanvas"></canvas>

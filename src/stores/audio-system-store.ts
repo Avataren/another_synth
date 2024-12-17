@@ -15,6 +15,7 @@ import {
   type ModulationTarget,
   type VoiceLayout,
 } from 'src/audio/types/synth-layout';
+import { AudioSyncManager } from 'src/audio/sync-manager';
 
 interface AudioParamDescriptor {
   name: string;
@@ -32,7 +33,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     destinationNode: null as AudioNode | null,
     currentInstrument: null as Instrument | null,
     synthLayout: null as SynthLayout | null,
-
+    syncManager: null as AudioSyncManager | null,
     // State maps using node IDs from the layout
     oscillatorStates: new Map<number, OscillatorState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
@@ -354,6 +355,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           this.wasmMemory,
         );
         this.destinationNode = this.audioSystem.destinationNode;
+        this.syncManager = new AudioSyncManager();
+        this.syncManager.start();
       } else {
         console.error('AudioSystem not initialized');
       }

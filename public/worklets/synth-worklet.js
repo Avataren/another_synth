@@ -927,6 +927,15 @@ var OscillatorUpdateHandler = class {
 };
 
 // src/audio/types/synth-layout.ts
+var ModulationTarget = /* @__PURE__ */ ((ModulationTarget2) => {
+  ModulationTarget2[ModulationTarget2["Frequency"] = 0] = "Frequency";
+  ModulationTarget2[ModulationTarget2["Gain"] = 1] = "Gain";
+  ModulationTarget2[ModulationTarget2["FilterCutoff"] = 2] = "FilterCutoff";
+  ModulationTarget2[ModulationTarget2["FilterResonance"] = 3] = "FilterResonance";
+  ModulationTarget2[ModulationTarget2["PhaseMod"] = 4] = "PhaseMod";
+  ModulationTarget2[ModulationTarget2["ModIndex"] = 5] = "ModIndex";
+  return ModulationTarget2;
+})(ModulationTarget || {});
 function isModulationTargetObject(target) {
   return typeof target === "object" && "value" in target;
 }
@@ -1015,6 +1024,29 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             oscillatorId,
             this.numVoices
           );
+        }
+      } else if (event.data.type === "getNodeLayout") {
+        if (!this.audioEngine) {
+          this.port.postMessage({
+            type: "error",
+            messageId: event.data.messageId,
+            message: "Audio engine not initialized"
+          });
+          return;
+        }
+        try {
+          const layout = this.audioEngine.get_current_state();
+          this.port.postMessage({
+            type: "nodeLayout",
+            messageId: event.data.messageId,
+            layout: JSON.stringify(layout)
+          });
+        } catch (err) {
+          this.port.postMessage({
+            type: "error",
+            messageId: event.data.messageId,
+            message: err instanceof Error ? err.message : "Failed to get node layout"
+          });
         }
       } else if (event.data.type === "getLfoWaveform") {
         if (this.audioEngine != null) {
@@ -1192,8 +1224,18 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     return voiceLayout;
   }
+  isValidModulationTarget(target) {
+    const targetValue = isModulationTargetObject(target) ? target.value : typeof target === "number" ? target : null;
+    if (targetValue === null) return false;
+    return Object.values(ModulationTarget).includes(targetValue);
+  }
   getPortIdForTarget(target) {
+    if (!this.isValidModulationTarget(target)) {
+      console.warn("Invalid modulation target:", target);
+      return PortId.GainMod;
+    }
     const targetValue = isModulationTargetObject(target) ? target.value : target;
+    console.log("Converting target:", targetValue);
     switch (targetValue) {
       case 0 /* Frequency */:
         return PortId.FrequencyMod;
@@ -1208,7 +1250,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case 5 /* ModIndex */:
         return PortId.ModIndex;
       default:
-        console.warn(`No PortId mapping for target: ${targetValue}`);
+        console.warn("Unhandled target value, defaulting to GainMod:", targetValue);
         return PortId.GainMod;
     }
   }
@@ -1237,13 +1279,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       console.warn("Audio engine not ready");
       return;
     }
+    console.log("Updating modulation with connection:", connection);
     for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
       const voice = this.voiceLayouts[voiceId];
       if (!voice) continue;
-      console.log(`Updating modulation for voice ${voiceId}:`, connection);
       try {
         const portId = this.getPortIdForTarget(connection.target);
-        console.log("portId: ", portId);
+        console.log(`Voice ${voiceId} - Converted portId:`, portId, "from target:", connection.target);
         this.audioEngine.connect_voice_nodes(
           voiceId,
           connection.fromId,
@@ -1252,6 +1294,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           portId,
           connection.amount
         );
+        console.log(`Successfully updated voice ${voiceId}`);
       } catch (err) {
         console.error(`Failed to update modulation for voice ${voiceId}:`, err);
       }

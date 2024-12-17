@@ -10,6 +10,7 @@ import {
   VoiceNodeType,
   type ModulationTarget,
   type LfoState,
+  type ModulationTargetOption,
 } from './types/synth-layout';
 
 export default class Instrument {
@@ -99,6 +100,45 @@ export default class Instrument {
     });
   }
 
+  public async getWasmNodeConnections(): Promise<string> {
+    if (!this.ready || !this.workletNode) {
+      throw new Error('Audio system not ready');
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      const messageId = Date.now().toString();
+      // Initialize with a dummy value that we'll clear later
+      let timeoutId = setTimeout(() => { }, 0);
+
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          clearTimeout(timeoutId);
+          resolve(e.data.layout);
+        } else if (e.data.type === 'error' && e.data.messageId === messageId) {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          clearTimeout(timeoutId);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      this.workletNode!.port.addEventListener('message', handleMessage);
+
+      // Send request with ID
+      this.workletNode!.port.postMessage({
+        type: 'getNodeLayout',
+        messageId: messageId
+      });
+
+      // Clear the initial timeout and set the real one
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for node layout data'));
+      }, 5000);
+    });
+  }
+
   public async getLfoWaveform(waveform: number, bufferSize: number): Promise<Float32Array> {
     if (!this.ready || !this.workletNode) {
       throw new Error('Audio system not ready');
@@ -169,23 +209,35 @@ export default class Instrument {
     });
   }
 
+  // In instrument.ts
   public createModulation(
     sourceId: number,
     targetId: number,
-    target: ModulationTarget,
+    target: ModulationTarget | ModulationTargetOption,
     amount: number
   ): void {
     if (!this.ready || !this.workletNode) return;
 
-    console.log('Creating modulation:', { sourceId, targetId, target, amount });
+    // Extract numeric value from target
+    const targetValue = typeof target === 'number'
+      ? target
+      : typeof target === 'object' && 'value' in target
+        ? target.value
+        : null;
 
-    // Send a single message, let the worklet handle voice distribution
+    if (targetValue === null) {
+      console.error('Invalid target type:', target);
+      return;
+    }
+
+    console.log('Creating modulation:', { sourceId, targetId, targetValue, amount });
+
     const message = {
-      type: 'updateModulation',  // Changed from updateConnection to be clearer
+      type: 'updateModulation',
       connection: {
         fromId: Number(sourceId),
         toId: Number(targetId),
-        target: Number(target),
+        target: Number(targetValue),
         amount: Number(amount)
       }
     };
