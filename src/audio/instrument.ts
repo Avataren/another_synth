@@ -10,7 +10,8 @@ import {
   VoiceNodeType,
   type ModulationTarget,
   type LfoState,
-  type ModulationTargetOption,
+  isModulationTargetObject,
+  type ModulationTargetObject,
 } from './types/synth-layout';
 
 export default class Instrument {
@@ -209,35 +210,30 @@ export default class Instrument {
     });
   }
 
-  // In instrument.ts
   public createModulation(
     sourceId: number,
     targetId: number,
-    target: ModulationTarget | ModulationTargetOption,
+    target: ModulationTarget | ModulationTargetObject,
     amount: number
   ): void {
     if (!this.ready || !this.workletNode) return;
 
-    // Extract numeric value from target
-    const targetValue = typeof target === 'number'
-      ? target
-      : typeof target === 'object' && 'value' in target
-        ? target.value
-        : null;
+    // Normalize target to a ModulationTarget enum value
+    const normalizedTarget = isModulationTargetObject(target) ? target.value : target;
 
-    if (targetValue === null) {
-      console.error('Invalid target type:', target);
-      return;
-    }
-
-    console.log('Creating modulation:', { sourceId, targetId, targetValue, amount });
+    console.log('Creating modulation:', {
+      sourceId,
+      targetId,
+      targetValue: normalizedTarget,
+      amount
+    });
 
     const message = {
       type: 'updateModulation',
       connection: {
         fromId: Number(sourceId),
         toId: Number(targetId),
-        target: Number(targetValue),
+        target: Number(normalizedTarget),
         amount: Number(amount)
       }
     };

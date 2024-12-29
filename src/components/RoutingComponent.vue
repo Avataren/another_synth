@@ -95,7 +95,11 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import type { ModulationTargetOption } from 'src/audio/types/synth-layout';
-import { ModulationTarget, VoiceNodeType } from 'src/audio/types/synth-layout';
+import {
+  isModulationTargetObject,
+  ModulationTarget,
+  VoiceNodeType,
+} from 'src/audio/types/synth-layout';
 
 interface Props {
   sourceId: number;
@@ -255,21 +259,28 @@ const handleParamChange = (index: number, newParam: ModulationTarget) => {
   updateDebugState('Parameter changed');
 };
 
-const handleAmountChange = (index: number, newAmount: number) => {
+const handleAmountChange = async (index: number, newAmount: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  route.amount = newAmount;
-  route.lastUpdateTime = Date.now();
+  try {
+    const normalizedTarget = isModulationTargetObject(route.target)
+      ? route.target.value
+      : route.target;
 
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: route.target,
-    amount: newAmount,
-  });
+    await store.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: normalizedTarget,
+      amount: newAmount,
+      isRemoving: newAmount === 0,
+    });
 
-  updateDebugState('Amount changed');
+    route.amount = newAmount;
+    route.lastUpdateTime = Date.now();
+  } catch (error) {
+    console.error('Failed to update modulation:', error);
+  }
 };
 
 const addNewRoute = () => {

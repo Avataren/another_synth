@@ -36,7 +36,8 @@ describe('Routing System Tests', () => {
             maxOscillators: 2,
             maxEnvelopes: 2,
             maxLFOs: 2,
-            maxFilters: 1
+            maxFilters: 1,
+            stateVersion: 0
         }
     });
 

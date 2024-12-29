@@ -20,6 +20,7 @@ export enum ModulationTarget {
 
 export interface ModulationTargetObject {
     value: ModulationTarget;
+    label: string;
 }
 
 // Type guard to check if something is a ModulationTargetObject
@@ -45,7 +46,7 @@ export type ModulationTargetOption = {
 export interface NodeConnection {
     fromId: number;
     toId: number;
-    target: ModulationTarget;
+    target: ModulationTarget | ModulationTargetObject;
     amount: number;
     isRemoving?: boolean;
 }
@@ -59,14 +60,6 @@ export interface VoiceNode {
     id: number;
     type: VoiceNodeType;
     config?: FilterConfig; // Only filters need config for now
-}
-
-// Represents the routing between nodes
-export interface NodeConnection {
-    fromId: number;
-    toId: number;
-    target: ModulationTarget;
-    amount: number;
 }
 
 // The complete layout of a voice
@@ -97,7 +90,9 @@ export interface SynthLayout {
         maxEnvelopes: number;
         maxLFOs: number;
         maxFilters: number;
+        stateVersion: number;
     };
+
 }
 
 export type LayoutUpdateMessage = {
@@ -131,7 +126,7 @@ export const findModulationTargets = (voice: VoiceLayout, sourceId: number): Arr
         .filter(conn => conn.fromId === sourceId)
         .map(conn => ({
             nodeId: conn.toId,
-            target: typeof conn.target === 'number' ? conn.target : conn.target,
+            target: isModulationTargetObject(conn.target) ? conn.target.value : conn.target,
             amount: conn.amount
         }));
 };

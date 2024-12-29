@@ -979,128 +979,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "maxFilters", 1);
     __publicField(this, "voiceLayouts", []);
     __publicField(this, "nextNodeId", 0);
+    __publicField(this, "stateVersion", 0);
     __publicField(this, "oscHandler", new OscillatorUpdateHandler());
     this.port.onmessage = (event) => {
-      if (event.data.type === "wasm-binary") {
-        const { wasmBytes } = event.data;
-        initSync({ module: new Uint8Array(wasmBytes) });
-        this.audioEngine = new AudioEngine();
-        this.audioEngine.init(sampleRate, this.numVoices);
-        for (let i = 0; i < this.numVoices; i++) {
-          const voiceLayout = this.initializeVoice(i);
-          this.voiceLayouts.push(voiceLayout);
-        }
-        console.log("voiceLayouts:", this.voiceLayouts);
-        const layout = {
-          voices: this.voiceLayouts,
-          globalNodes: {
-            masterGain: this.getNextNodeId(),
-            effectsChain: []
-          },
-          metadata: {
-            maxVoices: this.numVoices,
-            maxOscillators: this.maxOscillators,
-            maxEnvelopes: this.maxEnvelopes,
-            maxLFOs: this.maxLFOs,
-            maxFilters: this.maxFilters
-          }
-        };
-        this.port.postMessage({
-          type: "synthLayout",
-          layout
-        });
-        const engineState = this.audioEngine.get_current_state();
-        console.log("Engine State from Rust:", engineState);
-        this.ready = true;
-      } else if (event.data.type === "updateModulation") {
-        this.updateModulationForAllVoices(event.data.connection);
-      } else if (event.data.type === "updateConnection") {
-        const { voiceIndex, connection } = event.data;
-        console.log("worklet:: got updateConnection:", voiceIndex, connection);
-        this.updateConnection(voiceIndex, connection);
-      } else if (event.data.type === "updateOscillator") {
-        if (this.audioEngine != null) {
-          const { oscillatorId, newState } = event.data;
-          this.oscHandler.UpdateOscillator(
-            this.audioEngine,
-            new OscillatorStateUpdate(
-              newState.phase_mod_amount,
-              newState.freq_mod_amount,
-              newState.detune_oct,
-              newState.detune_semi,
-              newState.detune_cents,
-              newState.detune,
-              newState.hard_sync,
-              newState.gain,
-              newState.active
-            ),
-            oscillatorId,
-            this.numVoices
-          );
-        }
-      } else if (event.data.type === "getNodeLayout") {
-        if (!this.audioEngine) {
-          this.port.postMessage({
-            type: "error",
-            messageId: event.data.messageId,
-            message: "Audio engine not initialized"
-          });
-          return;
-        }
-        try {
-          const layout = this.audioEngine.get_current_state();
-          this.port.postMessage({
-            type: "nodeLayout",
-            messageId: event.data.messageId,
-            layout: JSON.stringify(layout)
-          });
-        } catch (err) {
-          this.port.postMessage({
-            type: "error",
-            messageId: event.data.messageId,
-            message: err instanceof Error ? err.message : "Failed to get node layout"
-          });
-        }
-      } else if (event.data.type === "getLfoWaveform") {
-        if (this.audioEngine != null) {
-          try {
-            const waveformData = this.audioEngine.get_lfo_waveform(
-              event.data.waveform,
-              event.data.bufferSize
-            );
-            this.port.postMessage({
-              type: "lfoWaveform",
-              waveform: waveformData
-            });
-          } catch (err) {
-            console.error("Error generating LFO waveform:", err);
-            this.port.postMessage({
-              type: "error",
-              message: "Failed to generate LFO waveform"
-            });
-          }
-        }
-      } else if (event.data.type === "updateLfo") {
-        if (this.audioEngine != null) {
-          const { lfoId, params } = event.data;
-          try {
-            for (let i = 0; i < this.numVoices; i++) {
-              const lfoParams = new LfoUpdateParams(
-                lfoId,
-                params.frequency,
-                params.waveform,
-                params.useAbsolute,
-                params.useNormalized,
-                params.triggerMode,
-                params.active
-              );
-              this.audioEngine.update_lfo(i, lfoParams);
-            }
-          } catch (err) {
-            console.error("Error updating LFO:", err);
-          }
-        }
-      }
+      this.handleMessage(event);
     };
     this.port.postMessage({ type: "ready" });
   }
@@ -1150,6 +1032,83 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     });
     return parameters;
   }
+  handleMessage(event) {
+    switch (event.data.type) {
+      case "wasm-binary":
+        this.handleWasmInit(event.data);
+        break;
+      case "updateModulation":
+        this.updateModulation(event.data.connection);
+        break;
+      case "updateConnection":
+        this.handleUpdateConnection(event.data);
+        break;
+      case "updateOscillator":
+        this.handleUpdateOscillator(event.data);
+        break;
+      case "getNodeLayout":
+        this.handleGetNodeLayout(event.data);
+        break;
+      case "getLfoWaveform":
+        this.handleGetLfoWaveform(event.data);
+        break;
+      case "updateLfo":
+        this.handleUpdateLfo(event.data);
+        break;
+      case "requestSync":
+        this.handleRequestSync();
+        break;
+    }
+  }
+  handleWasmInit(data) {
+    try {
+      const { wasmBytes } = data;
+      initSync({ module: new Uint8Array(wasmBytes) });
+      this.audioEngine = new AudioEngine();
+      this.audioEngine.init(sampleRate, this.numVoices);
+      for (let i = 0; i < this.numVoices; i++) {
+        const voiceLayout = this.initializeVoice(i);
+        this.voiceLayouts.push(voiceLayout);
+      }
+      this.initializeState();
+      this.ready = true;
+    } catch (error) {
+      console.error("Failed to initialize WASM audio engine:", error);
+      this.port.postMessage({
+        type: "error",
+        error: "Failed to initialize audio engine"
+      });
+    }
+  }
+  initializeState() {
+    if (!this.audioEngine) return;
+    const initialState = this.audioEngine.get_current_state();
+    this.stateVersion++;
+    this.port.postMessage({
+      type: "initialState",
+      state: initialState,
+      version: this.stateVersion
+    });
+    const layout = {
+      voices: this.voiceLayouts,
+      globalNodes: {
+        masterGain: this.getNextNodeId(),
+        effectsChain: []
+      },
+      metadata: {
+        maxVoices: this.numVoices,
+        maxOscillators: this.maxOscillators,
+        maxEnvelopes: this.maxEnvelopes,
+        maxLFOs: this.maxLFOs,
+        maxFilters: this.maxFilters,
+        stateVersion: this.stateVersion
+      }
+    };
+    this.port.postMessage({
+      type: "synthLayout",
+      layout
+    });
+  }
   getNextNodeId() {
     return this.nextNodeId++;
   }
@@ -1193,12 +1152,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         2,
         // Default frequency
         0 /* Sine */,
+        // Default waveform
         false,
         // Not absolute
         false,
         // Not normalized
         0 /* None */,
+        // Default trigger mode
         false
+        // Not active
       );
       this.audioEngine.update_lfo(voiceIndex, lfoParams);
     }
@@ -1237,75 +1199,35 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     return voiceLayout;
   }
-  isValidModulationTarget(target) {
-    const targetValue = isModulationTargetObject(target) ? target.value : typeof target === "number" ? target : null;
-    if (targetValue === null) return false;
-    return Object.values(ModulationTarget).includes(targetValue);
-  }
-  getPortIdForTarget(target) {
-    if (!this.isValidModulationTarget(target)) {
-      console.warn("Invalid modulation target:", target);
-      return PortId.GainMod;
-    }
-    const targetValue = isModulationTargetObject(target) ? target.value : target;
-    console.log("Converting target:", targetValue);
-    switch (targetValue) {
-      case 0 /* Frequency */:
-        return PortId.FrequencyMod;
-      case 1 /* Gain */:
-        return PortId.GainMod;
-      case 2 /* FilterCutoff */:
-        return PortId.CutoffMod;
-      case 3 /* FilterResonance */:
-        return PortId.ResonanceMod;
-      case 4 /* PhaseMod */:
-        return PortId.PhaseMod;
-      case 5 /* ModIndex */:
-        return PortId.ModIndex;
-      default:
-        console.warn("Unhandled target value, defaulting to GainMod:", targetValue);
-        return PortId.GainMod;
-    }
-  }
-  updateConnection(voiceId, connection) {
-    if (!this.audioEngine || voiceId >= this.voiceLayouts.length) {
-      console.warn("Invalid voice ID or audio engine not ready:", voiceId);
-      return;
-    }
-    console.log(`Updating connection for voice ${voiceId}:`, connection);
+  updateModulation(connection) {
+    if (!this.audioEngine) return;
     try {
-      this.audioEngine.connect_voice_nodes(
-        voiceId,
-        connection.fromId,
-        PortId.AudioOutput0,
-        connection.toId,
-        this.getPortIdForTarget(connection.target),
-        connection.amount
-      );
-      console.log(`Connection updated for voice ${voiceId}`);
-    } catch (err) {
-      console.error(`Failed to update connection for voice ${voiceId}:`, err);
-    }
-  }
-  updateModulationForAllVoices(connection) {
-    if (!this.audioEngine) {
-      console.warn("Audio engine not ready");
-      return;
-    }
-    console.log("Updating modulation with connection:", connection);
-    for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
-      const voice = this.voiceLayouts[voiceId];
-      if (!voice) continue;
-      try {
-        if (connection.isRemoving) {
-          this.audioEngine.remove_voice_connection(
-            voiceId,
-            connection.fromId,
-            PortId.AudioOutput0,
-            connection.toId,
-            this.getPortIdForTarget(connection.target)
-          );
-        } else {
+      const currentState = this.audioEngine.get_current_state();
+      console.log("Current state before update:", JSON.stringify({
+        voices: currentState.voices.map((voice) => voice.connections)
+      }, null, 2));
+      for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
+        console.log(`Removing connection for voice ${voiceId}:`, {
+          fromId: connection.fromId,
+          toId: connection.toId,
+          target: this.getPortIdForTarget(connection.target)
+        });
+        this.audioEngine.remove_voice_connection(
+          voiceId,
+          connection.fromId,
+          PortId.AudioOutput0,
+          connection.toId,
+          this.getPortIdForTarget(connection.target)
+        );
+      }
+      if (!connection.isRemoving && connection.amount !== 0) {
+        for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
+          console.log(`Adding connection for voice ${voiceId}:`, {
+            fromId: connection.fromId,
+            toId: connection.toId,
+            target: this.getPortIdForTarget(connection.target),
+            amount: connection.amount
+          });
           this.audioEngine.connect_voice_nodes(
             voiceId,
             connection.fromId,
@@ -1315,10 +1237,185 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             connection.amount
           );
         }
-        console.log(`Successfully updated voice ${voiceId}`);
-      } catch (err) {
-        console.error(`Failed to update modulation for voice ${voiceId}:`, err);
       }
+      const newState = this.audioEngine.get_current_state();
+      console.log("New state after update:", JSON.stringify({
+        voices: newState.voices.map((voice) => voice.connections)
+      }, null, 2));
+      this.stateVersion++;
+      this.port.postMessage({
+        type: "stateUpdated",
+        version: this.stateVersion,
+        state: newState
+      });
+    } catch (err) {
+      console.error("Failed to update modulation:", err);
+      this.port.postMessage({
+        type: "error",
+        error: "Failed to update modulation"
+      });
+    }
+  }
+  handleUpdateConnection(data) {
+    const { voiceIndex, connection } = data;
+    if (!this.audioEngine) return;
+    try {
+      if (connection.isRemoving) {
+        this.audioEngine.remove_voice_connection(
+          voiceIndex,
+          connection.fromId,
+          PortId.AudioOutput0,
+          connection.toId,
+          this.getPortIdForTarget(connection.target)
+        );
+      } else {
+        this.audioEngine.connect_voice_nodes(
+          voiceIndex,
+          connection.fromId,
+          PortId.AudioOutput0,
+          connection.toId,
+          this.getPortIdForTarget(connection.target),
+          connection.amount
+        );
+      }
+      this.stateVersion++;
+      this.port.postMessage({
+        type: "stateUpdated",
+        version: this.stateVersion,
+        state: this.audioEngine.get_current_state()
+      });
+    } catch (err) {
+      console.error("Failed to update connection:", err);
+    }
+  }
+  handleUpdateOscillator(data) {
+    if (!this.audioEngine) return;
+    try {
+      this.oscHandler.UpdateOscillator(
+        this.audioEngine,
+        new OscillatorStateUpdate(
+          data.newState.phase_mod_amount,
+          data.newState.freq_mod_amount,
+          data.newState.detune_oct,
+          data.newState.detune_semi,
+          data.newState.detune_cents,
+          data.newState.detune,
+          data.newState.hard_sync,
+          data.newState.gain,
+          data.newState.active
+        ),
+        data.oscillatorId,
+        this.numVoices
+      );
+    } catch (err) {
+      console.error("Failed to update oscillator:", err);
+    }
+  }
+  handleGetNodeLayout(data) {
+    if (!this.audioEngine) {
+      this.port.postMessage({
+        type: "error",
+        messageId: data.messageId,
+        message: "Audio engine not initialized"
+      });
+      return;
+    }
+    try {
+      const layout = this.audioEngine.get_current_state();
+      this.port.postMessage({
+        type: "nodeLayout",
+        messageId: data.messageId,
+        layout: JSON.stringify(layout)
+      });
+    } catch (err) {
+      this.port.postMessage({
+        type: "error",
+        messageId: data.messageId,
+        message: err instanceof Error ? err.message : "Failed to get node layout"
+      });
+    }
+  }
+  handleGetLfoWaveform(data) {
+    if (!this.audioEngine) return;
+    try {
+      const waveformData = this.audioEngine.get_lfo_waveform(
+        data.waveform,
+        data.bufferSize
+      );
+      this.port.postMessage({
+        type: "lfoWaveform",
+        waveform: waveformData
+      });
+    } catch (err) {
+      console.error("Error generating LFO waveform:", err);
+      this.port.postMessage({
+        type: "error",
+        message: "Failed to generate LFO waveform"
+      });
+    }
+  }
+  isValidModulationTarget(target) {
+    const targetValue = isModulationTargetObject(target) ? target.value : typeof target === "number" ? target : null;
+    if (targetValue === null) return false;
+    return Object.values(ModulationTarget).includes(targetValue);
+  }
+  getPortIdForTarget(target) {
+    const normalizedTarget = isModulationTargetObject(target) ? target.value : target;
+    console.log("Converting ModulationTarget to PortId:", {
+      input: target,
+      normalized: normalizedTarget
+    });
+    switch (normalizedTarget) {
+      case 0 /* Frequency */:
+        return PortId.FrequencyMod;
+      // 11
+      case 1 /* Gain */:
+        return PortId.GainMod;
+      // 16
+      case 4 /* PhaseMod */:
+        return PortId.PhaseMod;
+      // 12
+      case 5 /* ModIndex */:
+        return PortId.ModIndex;
+      // 13
+      case 2 /* FilterCutoff */:
+        return PortId.CutoffMod;
+      // 14
+      case 3 /* FilterResonance */:
+        return PortId.ResonanceMod;
+      // 15
+      default:
+        console.warn("Unknown ModulationTarget:", normalizedTarget);
+        return PortId.GainMod;
+    }
+  }
+  handleUpdateLfo(data) {
+    if (!this.audioEngine) return;
+    try {
+      for (let i = 0; i < this.numVoices; i++) {
+        const lfoParams = new LfoUpdateParams(
+          data.params.lfoId,
+          data.params.frequency,
+          data.params.waveform,
+          data.params.useAbsolute,
+          data.params.useNormalized,
+          data.params.triggerMode,
+          data.params.active
+        );
+        this.audioEngine.update_lfo(i, lfoParams);
+      }
+    } catch (err) {
+      console.error("Error updating LFO:", err);
+    }
+  }
+  handleRequestSync() {
+    if (this.audioEngine) {
+      this.stateVersion++;
+      this.port.postMessage({
+        type: "stateUpdated",
+        version: this.stateVersion,
+        state: this.audioEngine.get_current_state()
+      });
     }
   }
   process(_inputs, outputs, parameters) {

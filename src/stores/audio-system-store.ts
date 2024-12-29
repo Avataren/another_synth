@@ -14,6 +14,7 @@ import {
   getNodesOfType,
   type ModulationTarget,
   type VoiceLayout,
+  isModulationTargetObject,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 
@@ -25,6 +26,12 @@ interface AudioParamDescriptor {
   automationRate?: 'a-rate' | 'k-rate';
 }
 
+// interface StoreConnection {
+//   fromId: number;
+//   toId: number;
+//   target: ModulationTarget;
+//   amount: number;
+// }
 
 export const useAudioSystemStore = defineStore('audioSystem', {
 
@@ -282,39 +289,71 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       );
     },
     updateConnection(connection: NodeConnection) {
-      if (!this.synthLayout || !this.currentInstrument) return;
+      if (!this.currentInstrument || !this.synthLayout) return;
 
-      // Update the WASM side
-      this.currentInstrument.createModulation(
-        connection.fromId,
-        connection.toId,
-        connection.target,
-        connection.amount
-      );
+      try {
+        // Normalize target
+        const normalizedConnection = {
+          fromId: connection.fromId,
+          toId: connection.toId,
+          target: isModulationTargetObject(connection.target)
+            ? connection.target.value
+            : connection.target,
+          amount: connection.amount,
+          isRemoving: connection.isRemoving
+        };
 
-      // Update each voice in the layout
-      this.synthLayout.voices.forEach((voice) => {
-        if (!voice.connections) {
-          voice.connections = [];
-        }
+        console.log('Processing connection with normalized target:', {
+          normalized: normalizedConnection,
+          existing: this.synthLayout.voices[0]!.connections
+        });
 
-        const existingIndex = voice.connections.findIndex(conn =>
-          conn.fromId === connection.fromId &&
-          conn.toId === connection.toId &&
-          conn.target === connection.target
+        this.synthLayout.voices.forEach((voice) => {
+          // First, remove any existing connections with the same source and target
+          voice.connections = voice.connections.filter(conn => {
+            const shouldKeep = !(
+              conn.fromId === normalizedConnection.fromId &&
+              conn.toId === normalizedConnection.toId
+            );
+            console.log('Connection filter:', {
+              existing: {
+                fromId: conn.fromId,
+                toId: conn.toId,
+                target: conn.target
+              },
+              new: normalizedConnection,
+              keep: shouldKeep
+            });
+            return shouldKeep;
+          });
+
+          // Then add the new connection if it's not being removed
+          if (!normalizedConnection.isRemoving && normalizedConnection.amount !== 0) {
+            voice.connections.push({
+              fromId: normalizedConnection.fromId,
+              toId: normalizedConnection.toId,
+              target: normalizedConnection.target,
+              amount: normalizedConnection.amount
+            });
+          }
+        });
+
+        // Send to audio engine after store update
+        this.currentInstrument.createModulation(
+          normalizedConnection.fromId,
+          normalizedConnection.toId,
+          normalizedConnection.target,
+          normalizedConnection.amount
         );
 
-        if (connection.isRemoving && existingIndex !== -1) {
-          // Only remove if explicitly requested via delete button
-          voice.connections.splice(existingIndex, 1);
-        } else if (existingIndex !== -1) {
-          // Update existing connection, even if amount is 0
-          voice.connections[existingIndex] = { ...connection };
-        } else if (!connection.isRemoving) {
-          // Add new connection (even if amount is 0)
-          voice.connections.push({ ...connection });
-        }
-      });
+        console.log('Store state after update:',
+          JSON.stringify(this.synthLayout.voices[0]!.connections, null, 2)
+        );
+
+      } catch (error) {
+        console.error('Failed to update connection:', error);
+        throw error;
+      }
     },
 
     updateConnectionForVoice(voiceIndex: number, connection: NodeConnection) {
