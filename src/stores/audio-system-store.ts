@@ -16,7 +16,7 @@ import {
   type VoiceLayout,
   isModulationTargetObject,
 } from 'src/audio/types/synth-layout';
-import { AudioSyncManager } from 'src/audio/sync-manager';
+import { AudioSyncManager, type WasmConnection, type WasmState } from 'src/audio/sync-manager';
 
 interface AudioParamDescriptor {
   name: string;
@@ -46,6 +46,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     envelopeStates: new Map<number, EnvelopeConfig>(),
     filterStates: new Map<number, FilterState>(),
     lfoStates: new Map<number, LfoState>(),
+    isUpdatingFromWasm: false,
 
     // Global states
     noiseState: {
@@ -288,67 +289,73 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         conn.target === connection.target
       );
     },
-    updateConnection(connection: NodeConnection) {
-      if (!this.currentInstrument || !this.synthLayout) return;
+    async updateConnection(connection: NodeConnection) {
+      if (!this.currentInstrument || !this.synthLayout?.voices?.[0]) return;
 
       try {
-        // Normalize target
-        const normalizedConnection = {
-          fromId: connection.fromId,
-          toId: connection.toId,
-          target: isModulationTargetObject(connection.target)
-            ? connection.target.value
-            : connection.target,
-          amount: connection.amount,
-          isRemoving: connection.isRemoving
-        };
+        // Store original connections for rollback
+        const originalConnections = JSON.parse(
+          JSON.stringify(this.synthLayout.voices[0].connections)
+        );
 
         console.log('Processing connection with normalized target:', {
-          normalized: normalizedConnection,
-          existing: this.synthLayout.voices[0]!.connections
+          connection,
+          existing: this.synthLayout.voices[0].connections
         });
 
-        this.synthLayout.voices.forEach((voice) => {
-          // First, remove any existing connections with the same source and target
-          voice.connections = voice.connections.filter(conn => {
-            const shouldKeep = !(
-              conn.fromId === normalizedConnection.fromId &&
-              conn.toId === normalizedConnection.toId
-            );
-            console.log('Connection filter:', {
-              existing: {
-                fromId: conn.fromId,
-                toId: conn.toId,
-                target: conn.target
-              },
-              new: normalizedConnection,
-              keep: shouldKeep
-            });
-            return shouldKeep;
+        // Update WASM first using the existing modulation API
+        await this.currentInstrument.createModulation(
+          connection.fromId,
+          connection.toId,
+          connection.target,
+          connection.amount
+        );
+
+        // Validate state after update
+        const wasmState = await this.currentInstrument.getWasmNodeConnections();
+        const stateData = JSON.parse(wasmState) as WasmState;
+
+        // Verify the intended connection exists in the expected state
+        const expectedChange = connection.isRemoving || connection.amount === 0
+          ? 'removed'
+          : 'added';
+
+        // Get the WASM target value that corresponds to our ModulationTarget
+        const expectedTarget = this.syncManager?.convertModulationTarget(connection.target);
+
+        console.log('Validating connection update:', {
+          expectedChange,
+          expectedTarget,
+          currentConnections: stateData.voices[0]?.connections,
+          connection
+        });
+
+        // Check if the specific connection exists with the right target
+        const connectionExists = stateData.voices[0]?.connections.some((conn: WasmConnection) => {
+          const matchesNodes = conn.from_id === connection.fromId && conn.to_id === connection.toId;
+          const isTargetMatch = expectedTarget ? conn.target === expectedTarget : true;
+          return matchesNodes && isTargetMatch;
+        });
+
+        if ((expectedChange === 'added' && !connectionExists) ||
+          (expectedChange === 'removed' && connectionExists)) {
+          console.error('Connection update validation failed, rolling back', {
+            expected: expectedChange,
+            actual: connectionExists ? 'exists' : 'missing',
+            connection,
+            wasmState: stateData.voices[0]?.connections,
           });
 
-          // Then add the new connection if it's not being removed
-          if (!normalizedConnection.isRemoving && normalizedConnection.amount !== 0) {
-            voice.connections.push({
-              fromId: normalizedConnection.fromId,
-              toId: normalizedConnection.toId,
-              target: normalizedConnection.target,
-              amount: normalizedConnection.amount
+          if (this.synthLayout) {
+            this.synthLayout.voices.forEach(voice => {
+              voice.connections = JSON.parse(JSON.stringify(originalConnections));
             });
           }
-        });
+          throw new Error('Connection update validation failed');
+        }
 
-        // Send to audio engine after store update
-        this.currentInstrument.createModulation(
-          normalizedConnection.fromId,
-          normalizedConnection.toId,
-          normalizedConnection.target,
-          normalizedConnection.amount
-        );
-
-        console.log('Store state after update:',
-          JSON.stringify(this.synthLayout.voices[0]!.connections, null, 2)
-        );
+        // Update successful, force sync to ensure everything is aligned
+        await this.syncManager?.forceSync();
 
       } catch (error) {
         console.error('Failed to update connection:', error);
@@ -373,7 +380,13 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         voice.connections = [];
       }
 
-      const existingIndex = this.findConnection(voice, connection);
+      // Find existing connection
+      const existingIndex = voice.connections.findIndex(conn =>
+        conn.fromId === connection.fromId &&
+        conn.toId === connection.toId &&
+        (isModulationTargetObject(conn.target) ? conn.target.value : conn.target) ===
+        (isModulationTargetObject(connection.target) ? connection.target.value : connection.target)
+      );
 
       if (connection.amount === 0 && existingIndex !== -1) {
         voice.connections.splice(existingIndex, 1);
@@ -401,4 +414,5 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
     },
   },
+
 });

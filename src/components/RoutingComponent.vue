@@ -351,17 +351,22 @@ onMounted(() => {
 watch(
   () => store.getNodeConnections(props.sourceId),
   (newConnections) => {
-    if (!isUpdatingFromExternal.value) return;
+    // Only update if this is an external change (from WASM)
+    if (isUpdatingFromExternal.value) {
+      try {
+        const mappedRoutes = newConnections.map((conn) => ({
+          targetId: conn.toId,
+          target: getTargetValue(conn.target),
+          amount: conn.amount,
+          lastUpdateTime: Date.now(),
+        }));
 
-    isUpdatingFromExternal.value = true;
-    activeRoutes.value = newConnections.map((conn) => ({
-      targetId: conn.toId,
-      target: getTargetValue(conn.target),
-      amount: conn.amount,
-      lastUpdateTime: Date.now(),
-    }));
-    isUpdatingFromExternal.value = false;
-    updateDebugState('External update');
+        activeRoutes.value = mappedRoutes;
+        updateDebugState('External update');
+      } finally {
+        isUpdatingFromExternal.value = false;
+      }
+    }
   },
   { deep: true },
 );

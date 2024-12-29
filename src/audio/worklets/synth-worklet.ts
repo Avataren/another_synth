@@ -71,25 +71,25 @@ export interface LfoUpdateData {
   }
 }
 
-interface WasmVoiceConnection {
-  from_id: number;
-  to_id: number;
-  target: number;
-  amount: number;
-}
+// interface WasmVoiceConnection {
+//   from_id: number;
+//   to_id: number;
+//   target: number;
+//   amount: number;
+// }
 
-interface WasmVoice {
-  id: number;
-  connections: WasmVoiceConnection[];
-  nodes: Array<{
-    id: number;
-    node_type: string;
-  }>;
-}
+// interface WasmVoice {
+//   id: number;
+//   connections: WasmVoiceConnection[];
+//   nodes: Array<{
+//     id: number;
+//     node_type: string;
+//   }>;
+// }
 
-interface WasmState {
-  voices: WasmVoice[];
-}
+// interface WasmState {
+//   voices: WasmVoice[];
+// }
 
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
@@ -170,8 +170,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'wasm-binary':
         this.handleWasmInit(event.data);
         break;
-      case 'updateModulation':
-        this.updateModulation(event.data.connection);
+      case 'updateModulation':  // Add this case
+        this.handleUpdateModulation(event.data);
         break;
       case 'updateConnection':
         this.handleUpdateConnection(event.data);
@@ -360,88 +360,30 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     return voiceLayout;
   }
 
-  private updateModulation(connection: NodeConnection) {
-    if (!this.audioEngine) return;
-
-    try {
-      // Log the existing state before update
-      const currentState = this.audioEngine.get_current_state() as WasmState;
-      console.log('Current state before update:', JSON.stringify({
-        voices: currentState.voices.map((voice: WasmVoice) => voice.connections)
-      }, null, 2));
-
-      // Remove existing connection first
-      for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
-        console.log(`Removing connection for voice ${voiceId}:`, {
-          fromId: connection.fromId,
-          toId: connection.toId,
-          target: this.getPortIdForTarget(connection.target)
-        });
-
-        this.audioEngine.remove_voice_connection(
-          voiceId,
-          connection.fromId,
-          PortId.AudioOutput0,
-          connection.toId,
-          this.getPortIdForTarget(connection.target)
-        );
-      }
-
-      // Only add new connection if not removing and amount isn't 0
-      if (!connection.isRemoving && connection.amount !== 0) {
-        for (let voiceId = 0; voiceId < this.numVoices; voiceId++) {
-          console.log(`Adding connection for voice ${voiceId}:`, {
-            fromId: connection.fromId,
-            toId: connection.toId,
-            target: this.getPortIdForTarget(connection.target),
-            amount: connection.amount
-          });
-
-          this.audioEngine.connect_voice_nodes(
-            voiceId,
-            connection.fromId,
-            PortId.AudioOutput0,
-            connection.toId,
-            this.getPortIdForTarget(connection.target),
-            connection.amount
-          );
-        }
-      }
-
-      // Get and log the new state
-      const newState = this.audioEngine.get_current_state() as WasmState;
-      console.log('New state after update:', JSON.stringify({
-        voices: newState.voices.map((voice: WasmVoice) => voice.connections)
-      }, null, 2));
-
-      // Increment state version and notify main thread
-      this.stateVersion++;
-      this.port.postMessage({
-        type: 'stateUpdated',
-        version: this.stateVersion,
-        state: newState
-      });
-    } catch (err) {
-      console.error('Failed to update modulation:', err);
-      this.port.postMessage({
-        type: 'error',
-        error: 'Failed to update modulation'
-      });
-    }
-  }
-
   private handleUpdateConnection(data: { voiceIndex: number; connection: NodeConnection }) {
+    // Keep the existing handleUpdateConnection logic
     const { voiceIndex, connection } = data;
     if (!this.audioEngine) return;
 
     try {
+      const portId = this.getPortIdForTarget(connection.target);
+      console.log('Handling connection update:', {
+        voiceIndex,
+        fromId: connection.fromId,
+        toId: connection.toId,
+        target: connection.target,
+        portId,
+        isRemoving: connection.isRemoving,
+        amount: connection.amount
+      });
+
       if (connection.isRemoving) {
         this.audioEngine.remove_voice_connection(
           voiceIndex,
           connection.fromId,
           PortId.AudioOutput0,
           connection.toId,
-          this.getPortIdForTarget(connection.target)
+          portId
         );
       } else {
         this.audioEngine.connect_voice_nodes(
@@ -449,19 +391,93 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           connection.fromId,
           PortId.AudioOutput0,
           connection.toId,
-          this.getPortIdForTarget(connection.target),
+          portId,
           connection.amount
         );
       }
 
       this.stateVersion++;
+      const newState = this.audioEngine.get_current_state();
+
+      console.log('Connection update completed:', {
+        connection,
+        newState: newState.voices[voiceIndex].connections
+      });
+
       this.port.postMessage({
         type: 'stateUpdated',
         version: this.stateVersion,
-        state: this.audioEngine.get_current_state()
+        state: newState
       });
+
     } catch (err) {
       console.error('Failed to update connection:', err);
+    }
+  }
+
+  private handleUpdateModulation(data: {
+    connection: { fromId: number; toId: number; target: ModulationTarget; amount: number },
+    messageId: string
+  }) {
+    if (!this.audioEngine) return;
+
+    try {
+      // Get initial state for validation
+      const initialState = this.audioEngine.get_current_state();
+
+      // Convert the ModulationTarget to PortId
+      const targetPortId = this.getPortIdForTarget(data.connection.target);
+
+      // Remove if amount is 0
+      if (data.connection.amount === 0) {
+        // Remove for all voices
+        for (let voiceIndex = 0; voiceIndex < this.numVoices; voiceIndex++) {
+          console.log(`Removing connection for voice ${voiceIndex}:`, {
+            fromId: data.connection.fromId,
+            toId: data.connection.toId,
+            target: targetPortId
+          });
+
+          this.audioEngine.remove_voice_connection(
+            voiceIndex,
+            data.connection.fromId,
+            PortId.AudioOutput0,
+            data.connection.toId,
+            targetPortId
+          );
+        }
+      } else {
+        // Add for all voices
+        for (let voiceIndex = 0; voiceIndex < this.numVoices; voiceIndex++) {
+          this.audioEngine.connect_voice_nodes(
+            voiceIndex,
+            data.connection.fromId,
+            PortId.AudioOutput0,
+            data.connection.toId,
+            targetPortId,
+            data.connection.amount
+          );
+        }
+      }
+
+      // Get updated state
+      const newState = this.audioEngine.get_current_state();
+
+      // Send response back
+      this.port.postMessage({
+        type: 'modulationUpdated',
+        messageId: data.messageId,
+        previousState: initialState,
+        newState
+      });
+
+    } catch (err) {
+      console.error('Error updating modulation:', err);
+      this.port.postMessage({
+        type: 'error',
+        messageId: data.messageId,
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
   }
 
@@ -554,24 +570,30 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     console.log('Converting ModulationTarget to PortId:', {
       input: target,
-      normalized: normalizedTarget
+      normalized: normalizedTarget,
+      inputType: typeof target,
+      targetEnum: ModulationTarget[normalizedTarget]
     });
 
     switch (normalizedTarget) {
-      case ModulationTarget.Frequency:
-        return PortId.FrequencyMod;  // 11
-      case ModulationTarget.Gain:
-        return PortId.GainMod;       // 16
-      case ModulationTarget.PhaseMod:
-        return PortId.PhaseMod;      // 12
-      case ModulationTarget.ModIndex:
-        return PortId.ModIndex;      // 13
-      case ModulationTarget.FilterCutoff:
-        return PortId.CutoffMod;     // 14
-      case ModulationTarget.FilterResonance:
-        return PortId.ResonanceMod;  // 15
+      case ModulationTarget.Frequency:  // 0
+        return PortId.FrequencyMod;   // 11
+      case ModulationTarget.Gain:       // 1
+        return PortId.GainMod;        // 16
+      case ModulationTarget.FilterCutoff: // 2
+        return PortId.CutoffMod;      // 14
+      case ModulationTarget.FilterResonance: // 3
+        return PortId.ResonanceMod;   // 15
+      case ModulationTarget.PhaseMod:   // 4
+        return PortId.PhaseMod;       // 12
+      case ModulationTarget.ModIndex:   // 5
+        return PortId.ModIndex;       // 13
       default:
-        console.warn('Unknown ModulationTarget:', normalizedTarget);
+        console.warn('Unknown ModulationTarget:', {
+          target,
+          normalized: normalizedTarget,
+          ModulationTarget
+        });
         return PortId.GainMod;
     }
   }

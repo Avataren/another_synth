@@ -1,18 +1,19 @@
 // src/audio/sync-manager.ts
 
-import { ModulationTarget, type ModulationTargetOption, type NodeConnection } from './types/synth-layout';
+import { isModulationTargetObject, ModulationTarget, type ModulationTargetObject, type ModulationTargetOption, type NodeConnection } from './types/synth-layout';
 import { useAudioSystemStore } from '../stores/audio-system-store';
 import { PortId } from 'app/public/wasm/audio_processor';
 
 interface WasmVoice {
+    id: number;
     connections: WasmConnection[];
+    nodes: WasmNode[];
 }
-
 interface WasmLayout {
     voices: WasmVoice[];
 }
 
-interface WasmConnection {
+export interface WasmConnection {
     from_id: number;
     to_id: number;
     target: PortId;
@@ -24,15 +25,15 @@ interface WasmNode {
     node_type: string;
 }
 
-interface WasmVoiceState {
-    id: number;
-    nodes: WasmNode[];
-    connections: WasmConnection[];
-}
+// interface WasmVoiceState {
+//     id: number;
+//     nodes: WasmNode[];
+//     connections: WasmConnection[];
+// }
 
-interface WasmState {
+export interface WasmState {
+    voices: WasmVoice[];
     version: number;
-    voices: WasmVoiceState[];
 }
 
 export class AudioSyncManager {
@@ -82,9 +83,17 @@ export class AudioSyncManager {
 
         try {
             const wasmState = await this.store.currentInstrument.getWasmNodeConnections();
-            const stateData = JSON.parse(wasmState);
-            this.stateVersion = stateData.version;
-            await this.updateStoreState(stateData);
+            const stateData: WasmState = JSON.parse(wasmState);
+
+            // Compare current state with new state
+            const currentState = JSON.stringify(this.store.synthLayout?.voices.map(v => v.connections));
+            const newState = JSON.stringify(stateData.voices.map((v: WasmVoice) => v.connections));
+
+            if (currentState !== newState) {
+                console.log('State mismatch detected, updating from WASM');
+                this.stateVersion = stateData.version;
+                await this.updateStoreState(stateData);
+            }
         } catch (error) {
             console.error('Force sync failed:', error);
             throw error;
@@ -94,29 +103,87 @@ export class AudioSyncManager {
     private async updateStoreState(stateData: WasmState) {
         if (!this.store.synthLayout) return;
 
-        console.log('Updating store state with:', stateData);
+        try {
+            console.log('Updating store state from WASM:', {
+                incoming: stateData,
+                current: this.store.synthLayout
+            });
 
-        this.store.synthLayout.voices.forEach((voice, index) => {
-            const wasmVoice = stateData.voices[index];
-            if (wasmVoice) {
-                // Clear existing connections first
-                voice.connections = [];
+            this.store.isUpdatingFromWasm = true;
 
-                // Add new connections from WASM state, converting the target
-                voice.connections = wasmVoice.connections.map(conn => ({
-                    fromId: conn.from_id,
-                    toId: conn.to_id,
-                    target: this.convertFromWasmTarget(conn.target),  // Convert PortId to ModulationTarget
-                    amount: conn.amount
-                }));
+            this.store.synthLayout.voices.forEach((voice, index) => {
+                const wasmVoice = stateData.voices[index];
+                if (wasmVoice) {
+                    // Create new array to prevent mutation
+                    const newConnections = wasmVoice.connections.map(conn => {
+                        const target = this.convertFromWasmTarget(conn.target);
+                        console.log('Converting connection:', {
+                            from: conn,
+                            convertedTarget: target,
+                            ModulationTarget: ModulationTarget[target]
+                        });
+                        return {
+                            fromId: conn.from_id,
+                            toId: conn.to_id,
+                            target: target,
+                            amount: conn.amount
+                        };
+                    });
+
+                    voice.connections = newConnections;
+                }
+            });
+
+            if (this.store.synthLayout.metadata) {
+                this.store.synthLayout.metadata.stateVersion = this.stateVersion;
             }
-        });
 
-        if (this.store.synthLayout.metadata) {
-            this.store.synthLayout.metadata.stateVersion = this.stateVersion;
+            // Force update
+            this.store.synthLayout = { ...this.store.synthLayout };
+
+        } catch (error) {
+            console.error('Failed to update store state:', error);
+        } finally {
+            this.store.isUpdatingFromWasm = false;
         }
+    }
 
-        console.log('Store state updated:', this.store.synthLayout);
+
+    public async validateState(): Promise<boolean> {
+        if (!this.store.currentInstrument?.isReady) return true;
+
+        const wasmState = await this.store.currentInstrument.getWasmNodeConnections();
+        const stateData: WasmState = JSON.parse(wasmState);
+
+        const currentState = JSON.stringify(this.store.synthLayout?.voices.map(v => v.connections));
+        const wasmStateStr = JSON.stringify(stateData.voices.map((v: WasmVoice) => v.connections));
+
+        return currentState === wasmStateStr;
+    }
+
+    public convertModulationTarget(target: ModulationTarget | ModulationTargetObject): number {
+        const normalizedTarget = isModulationTargetObject(target)
+            ? target.value
+            : target;
+
+        // Convert from ModulationTarget enum to WASM PortId values
+        switch (normalizedTarget) {
+            case ModulationTarget.Frequency:
+                return 11;  // FrequencyMod
+            case ModulationTarget.Gain:
+                return 16;  // GainMod
+            case ModulationTarget.FilterCutoff:
+                return 14;  // CutoffMod
+            case ModulationTarget.FilterResonance:
+                return 15;  // ResonanceMod
+            case ModulationTarget.PhaseMod:
+                return 12;  // PhaseMod
+            case ModulationTarget.ModIndex:
+                return 13;  // ModIndex
+            default:
+                console.warn('Unknown target:', target);
+                return 16;  // Default to GainMod
+        }
     }
 
     private convertToWasmTarget(target: ModulationTarget): PortId {
@@ -139,22 +206,27 @@ export class AudioSyncManager {
         }
     }
 
-    private convertFromWasmTarget(target: PortId): ModulationTarget {
-        switch (target) {
-            case PortId.FrequencyMod:
-                return ModulationTarget.Frequency;
-            case PortId.GainMod:
-                return ModulationTarget.Gain;
-            case PortId.PhaseMod:
-                return ModulationTarget.PhaseMod;
-            case PortId.ModIndex:
-                return ModulationTarget.ModIndex;
-            case PortId.CutoffMod:
-                return ModulationTarget.FilterCutoff;
-            case PortId.ResonanceMod:
-                return ModulationTarget.FilterResonance;
+    private convertFromWasmTarget(portId: PortId): ModulationTarget {
+        console.log('Converting from WASM PortId to ModulationTarget:', {
+            portId,
+            portIdEnum: PortId[portId]
+        });
+
+        switch (portId) {
+            case PortId.FrequencyMod:    // 11
+                return ModulationTarget.Frequency;  // 0
+            case PortId.GainMod:         // 16
+                return ModulationTarget.Gain;       // 1
+            case PortId.CutoffMod:       // 14
+                return ModulationTarget.FilterCutoff; // 2
+            case PortId.ResonanceMod:    // 15
+                return ModulationTarget.FilterResonance; // 3
+            case PortId.PhaseMod:        // 12
+                return ModulationTarget.PhaseMod;   // 4
+            case PortId.ModIndex:        // 13
+                return ModulationTarget.ModIndex;   // 5
             default:
-                console.warn('Unknown WASM target:', target);
+                console.warn('Unknown WASM PortId:', portId);
                 return ModulationTarget.Gain;
         }
     }

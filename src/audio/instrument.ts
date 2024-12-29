@@ -10,7 +10,6 @@ import {
   VoiceNodeType,
   type ModulationTarget,
   type LfoState,
-  isModulationTargetObject,
   type ModulationTargetObject,
 } from './types/synth-layout';
 
@@ -210,36 +209,50 @@ export default class Instrument {
     });
   }
 
-  public createModulation(
+  async createModulation(
     sourceId: number,
     targetId: number,
     target: ModulationTarget | ModulationTargetObject,
     amount: number
-  ): void {
-    if (!this.ready || !this.workletNode) return;
-
-    // Normalize target to a ModulationTarget enum value
-    const normalizedTarget = isModulationTargetObject(target) ? target.value : target;
-
-    console.log('Creating modulation:', {
-      sourceId,
-      targetId,
-      targetValue: normalizedTarget,
-      amount
-    });
-
+  ): Promise<void> {
     const message = {
       type: 'updateModulation',
       connection: {
         fromId: Number(sourceId),
         toId: Number(targetId),
-        target: Number(normalizedTarget),
+        target: Number(target),
         amount: Number(amount)
       }
     };
 
-    console.log('Sending modulation message:', message);
-    this.workletNode.port.postMessage(message);
+    // Return a Promise that resolves when the state is updated
+    return new Promise((resolve, reject) => {
+      const messageId = Date.now().toString();
+      const timeoutId = setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleResponse);
+        reject(new Error('Timeout waiting for modulation update'));
+      }, 1000);
+
+      const handleResponse = (e: MessageEvent) => {
+        if (e.data.type === 'modulationUpdated' && e.data.messageId === messageId) {
+          clearTimeout(timeoutId);
+          this.workletNode?.port.removeEventListener('message', handleResponse);
+          resolve();
+        }
+      };
+
+      this.workletNode?.port.addEventListener('message', handleResponse);
+
+      console.log('Sending modulation message:', {
+        ...message,
+        messageId
+      });
+
+      this.workletNode?.port.postMessage({
+        ...message,
+        messageId
+      });
+    });
   }
 
   public createModulationForVoice(
