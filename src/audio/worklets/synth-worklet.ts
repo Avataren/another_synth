@@ -412,9 +412,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     try {
       const targetPortId = this.getPortIdForTarget(connection.target);
+      console.log('handleUpdateConnection:', {
+        voiceIndex,
+        connection,
+        targetPortId,
+        fullData: data,  // Log the full data object
+        removing: connection.isRemoving,  // Explicitly log isRemoving
+        type: typeof connection.isRemoving  // Check the type
+      });
 
-      // Only remove if we match both the node IDs AND the target type
       if (connection.isRemoving) {
+        console.log('Removing connection');  // Add this to confirm we enter this branch
         this.audioEngine.remove_specific_connection(
           voiceIndex,
           connection.fromId,

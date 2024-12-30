@@ -331,21 +331,30 @@ export class AudioSyncManager {
                     fromId: connection.fromId,
                     toId: connection.toId,
                     target: normalizedTarget,
-                    amount: connection.amount,
-                    ...(connection.modifyExisting !== undefined && { modifyExisting: connection.modifyExisting }),
-                    ...(connection.isRemoving !== undefined && { isRemoving: connection.isRemoving })
+                    amount: connection.amount
                 };
+
+                if (connection.isRemoving) {
+                    connectionUpdate.isRemoving = connection.isRemoving;
+                }
+                if (connection.modifyExisting) {
+                    connectionUpdate.modifyExisting = connection.modifyExisting;
+                }
 
                 this.store.currentInstrument.updateConnection(voiceIndex, connectionUpdate);
             }
 
-            await this.forceSync();
+            // Only force sync if we're not removing a connection
+            if (!connection.isRemoving) {
+                await this.forceSync();
+            }
 
         } catch (error) {
             console.error('Failed to modify connection:', error);
             throw error;
         }
     }
+
     private async syncWithWasm() {
         try {
 

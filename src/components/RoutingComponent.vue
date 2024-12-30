@@ -74,7 +74,12 @@
                   round
                   color="negative"
                   icon="delete"
-                  @click="removeRoute(index)"
+                  @click="
+                    () => {
+                      console.log('Delete button clicked', index);
+                      removeRoute(index);
+                    }
+                  "
                   dense
                 />
               </div>
@@ -305,21 +310,38 @@ const addNewRoute = async () => {
 };
 
 const removeRoute = (index: number) => {
+  console.log('removeRoute triggered with index:', index);
   const route = activeRoutes.value[index];
-  if (!route) return;
+  if (!route) {
+    console.log('No route found for index:', index);
+    return;
+  }
 
-  // First remove from local state
-  activeRoutes.value.splice(index, 1);
+  console.log('Found route to remove:', {
+    route,
+    sourceId: props.sourceId,
+    fullConnection: {
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: route.amount,
+      isRemoving: true,
+      modifyExisting: true,
+    },
+  });
 
-  // Then send removal to WASM
+  // Send removal to WASM first
   store.updateConnection({
     fromId: props.sourceId,
     toId: route.targetId,
     target: route.target,
     amount: route.amount,
     isRemoving: true,
-    modifyExisting: true, // Ensure we only remove this specific connection
+    modifyExisting: true,
   });
+
+  // Then update local state
+  activeRoutes.value.splice(index, 1);
 };
 
 const getTargetValue = (

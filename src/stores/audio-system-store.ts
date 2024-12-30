@@ -291,8 +291,13 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       );
     },
     async updateConnection(connection: NodeConnectionUpdate) {
-      if (!this.syncManager) return;
+      console.log('store.updateConnection:', {
+        connection,
+        isRemoving: connection.isRemoving,
+        fullConnection: connection
+      });
 
+      if (!this.syncManager) return;
       try {
         await this.syncManager.modifyConnection(connection);
       } catch (error) {
