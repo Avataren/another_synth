@@ -1194,7 +1194,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         fromId: osc2.id,
         toId: osc1.id,
         target: 4 /* PhaseMod */,
-        amount: 0
+        amount: 1
       });
     }
     return voiceLayout;
@@ -1203,29 +1203,14 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const { voiceIndex, connection } = data;
     if (!this.audioEngine) return;
     try {
-      if (connection.modifyExisting) {
+      const targetPortId = this.getPortIdForTarget(connection.target);
+      if (connection.isRemoving) {
         this.audioEngine.remove_voice_connection(
           voiceIndex,
           connection.fromId,
           PortId.AudioOutput0,
           connection.toId,
-          this.getPortIdForTarget(connection.target)
-        );
-        this.audioEngine.connect_voice_nodes(
-          voiceIndex,
-          connection.fromId,
-          PortId.AudioOutput0,
-          connection.toId,
-          this.getPortIdForTarget(connection.target),
-          connection.amount
-        );
-      } else if (connection.isRemoving) {
-        this.audioEngine.remove_voice_connection(
-          voiceIndex,
-          connection.fromId,
-          PortId.AudioOutput0,
-          connection.toId,
-          this.getPortIdForTarget(connection.target)
+          targetPortId
         );
       } else {
         this.audioEngine.connect_voice_nodes(
@@ -1233,7 +1218,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           connection.fromId,
           PortId.AudioOutput0,
           connection.toId,
-          this.getPortIdForTarget(connection.target),
+          targetPortId,
           connection.amount
         );
       }
@@ -1244,32 +1229,29 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;
     try {
-      const initialState = this.audioEngine.get_current_state();
       const targetPortId = this.getPortIdForTarget(data.connection.target);
       for (let voiceIndex = 0; voiceIndex < this.numVoices; voiceIndex++) {
-        this.audioEngine.connect_voice_nodes(
-          voiceIndex,
-          data.connection.fromId,
-          PortId.AudioOutput0,
-          data.connection.toId,
-          targetPortId,
-          data.connection.amount
-        );
+        if (data.connection.isRemoving) {
+          this.audioEngine.remove_voice_connection(
+            voiceIndex,
+            data.connection.fromId,
+            PortId.AudioOutput0,
+            data.connection.toId,
+            targetPortId
+          );
+        } else {
+          this.audioEngine.connect_voice_nodes(
+            voiceIndex,
+            data.connection.fromId,
+            PortId.AudioOutput0,
+            data.connection.toId,
+            targetPortId,
+            data.connection.amount
+          );
+        }
       }
-      const newState = this.audioEngine.get_current_state();
-      this.port.postMessage({
-        type: "modulationUpdated",
-        messageId: data.messageId,
-        previousState: initialState,
-        newState
-      });
     } catch (err) {
       console.error("Error updating modulation:", err);
-      this.port.postMessage({
-        type: "error",
-        messageId: data.messageId,
-        error: err instanceof Error ? err.message : String(err)
-      });
     }
   }
   handleUpdateOscillator(data) {

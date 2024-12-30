@@ -48,3 +48,22 @@ pub struct Connection {
     pub to_port: PortId,
     pub amount: f32,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConnectionKey {
+    pub from_node: NodeId,
+    pub from_port: PortId,
+    pub to_node: NodeId,
+    pub to_port: PortId,
+}
+
+impl ConnectionKey {
+    pub fn new(from_node: NodeId, from_port: PortId, to_node: NodeId, to_port: PortId) -> Self {
+        Self {
+            from_node,
+            from_port,
+            to_node,
+            to_port,
+        }
+    }
+}

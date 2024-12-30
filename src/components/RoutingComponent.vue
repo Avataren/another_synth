@@ -236,13 +236,13 @@ const handleParamChange = async (index: number, newParam: ModulationTarget) => {
   if (!route) return;
 
   try {
-    // Just update the target, that's all we're doing
+    // Create a new connection rather than modifying existing
     await store.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
       target: newParam,
       amount: route.amount,
-      modifyExisting: true, // Flag to indicate we're changing the target of an existing connection
+      // Don't include modifyExisting flag here - we want a new connection
     });
 
     route.target = newParam;

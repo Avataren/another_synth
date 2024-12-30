@@ -353,7 +353,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         fromId: osc2!.id,
         toId: osc1!.id,
         target: ModulationTarget.PhaseMod,
-        amount: 0.0
+        amount: 1.0
       });
     }
 
@@ -362,48 +362,33 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateConnection(data: {
     voiceIndex: number;
-    connection: NodeConnection & { modifyExisting?: boolean }
+    connection: NodeConnection & {
+      modifyExisting?: boolean;
+      isRemoving?: boolean;
+    }
   }) {
     const { voiceIndex, connection } = data;
     if (!this.audioEngine) return;
 
     try {
-      if (connection.modifyExisting) {
-        // For an existing connection, remove old target and add new one
-        this.audioEngine.remove_voice_connection(
-          voiceIndex,
-          connection.fromId,
-          PortId.AudioOutput0,
-          connection.toId,
-          this.getPortIdForTarget(connection.target)
-        );
+      const targetPortId = this.getPortIdForTarget(connection.target);
 
-        // Add with new target
-        this.audioEngine.connect_voice_nodes(
-          voiceIndex,
-          connection.fromId,
-          PortId.AudioOutput0,
-          connection.toId,
-          this.getPortIdForTarget(connection.target),
-          connection.amount
-        );
-      } else if (connection.isRemoving) {
-        // Only remove if explicitly told to remove
+      if (connection.isRemoving) {
         this.audioEngine.remove_voice_connection(
           voiceIndex,
           connection.fromId,
           PortId.AudioOutput0,
           connection.toId,
-          this.getPortIdForTarget(connection.target)
+          targetPortId
         );
       } else {
-        // Normal connection
+        // Always add/update the connection regardless of amount
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
           connection.fromId,
           PortId.AudioOutput0,
           connection.toId,
-          this.getPortIdForTarget(connection.target),
+          targetPortId,
           connection.amount
         );
       }
@@ -413,49 +398,46 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleUpdateModulation(data: {
-    connection: { fromId: number; toId: number; target: ModulationTarget; amount: number },
+    connection: {
+      fromId: number;
+      toId: number;
+      target: ModulationTarget;
+      amount: number;
+      isRemoving?: boolean;
+      modifyExisting?: boolean;
+    },
     messageId: string
   }) {
     if (!this.audioEngine) return;
 
     try {
-      // Get initial state for validation
-      const initialState = this.audioEngine.get_current_state();
-
-      // Convert the ModulationTarget to PortId
       const targetPortId = this.getPortIdForTarget(data.connection.target);
 
-
-      // Add for all voices
       for (let voiceIndex = 0; voiceIndex < this.numVoices; voiceIndex++) {
-        this.audioEngine.connect_voice_nodes(
-          voiceIndex,
-          data.connection.fromId,
-          PortId.AudioOutput0,
-          data.connection.toId,
-          targetPortId,
-          data.connection.amount
-        );
+        if (data.connection.isRemoving) {
+          this.audioEngine.remove_voice_connection(
+            voiceIndex,
+            data.connection.fromId,
+            PortId.AudioOutput0,
+            data.connection.toId,
+            targetPortId
+          );
+        } else {
+          // Always add/update the connection regardless of amount
+          this.audioEngine.connect_voice_nodes(
+            voiceIndex,
+            data.connection.fromId,
+            PortId.AudioOutput0,
+            data.connection.toId,
+            targetPortId,
+            data.connection.amount
+          );
+        }
       }
 
-      // Get updated state
-      const newState = this.audioEngine.get_current_state();
-
-      // Send response back
-      this.port.postMessage({
-        type: 'modulationUpdated',
-        messageId: data.messageId,
-        previousState: initialState,
-        newState
-      });
-
+      // Get updated state and send response...
     } catch (err) {
       console.error('Error updating modulation:', err);
-      this.port.postMessage({
-        type: 'error',
-        messageId: data.messageId,
-        error: err instanceof Error ? err.message : String(err)
-      });
     }
   }
 

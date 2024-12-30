@@ -34,14 +34,14 @@
 /// arbitrary node graphs as long as they don't contain feedback loops.
 use super::{
     buffer_pool::AudioBufferPool,
-    types::{Connection, ConnectionId, NodeId},
+    types::{Connection, ConnectionId, ConnectionKey, NodeId},
 };
 use crate::{AudioNode, MacroManager, PortId};
 use std::collections::HashMap;
 
 pub struct AudioGraph {
     pub(crate) nodes: Vec<Box<dyn AudioNode>>,
-    pub(crate) connections: HashMap<ConnectionId, Connection>,
+    pub(crate) connections: HashMap<ConnectionKey, Connection>,
     pub(crate) processing_order: Vec<usize>,
     pub(crate) buffer_size: usize,
     pub(crate) buffer_pool: AudioBufferPool,
@@ -154,9 +154,17 @@ impl AudioGraph {
         self.update_processing_order();
     }
 
-    pub fn connect(&mut self, connection: Connection) -> ConnectionId {
-        let id = ConnectionId(self.connections.len());
-        self.connections.insert(id, connection.clone());
+    pub fn connect(&mut self, connection: Connection) -> ConnectionKey {
+        // Return type changed
+        let key = ConnectionKey::new(
+            connection.from_node,
+            connection.from_port,
+            connection.to_node,
+            connection.to_port,
+        );
+
+        // Update/add the connection
+        self.connections.insert(key, connection.clone());
 
         // Update input connection mapping
         let source_buffer_idx = self.node_buffers[&(connection.from_node, connection.from_port)];
@@ -166,7 +174,7 @@ impl AudioGraph {
             .push((connection.to_port, source_buffer_idx, connection.amount));
 
         self.update_processing_order();
-        id
+        key
     }
 
     pub fn get_node(&self, node_id: NodeId) -> Option<&Box<dyn AudioNode>> {
