@@ -109,24 +109,31 @@ impl AudioGraph {
         id
     }
 
-    pub fn remove_specific_connection(&mut self, connection: Connection) {
-        // Find and remove only connections that match ALL parameters
-        self.connections.retain(|_, conn| {
-            !(conn.from_node == connection.from_node
-                && conn.to_node == connection.to_node
-                && conn.to_port == connection.to_port
-                && conn.from_port == connection.from_port)
-        });
+    pub fn debug_connections(&self) -> Vec<(ConnectionKey, Connection)> {
+        self.connections
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
 
-        // Also update input_connections
-        if let Some(inputs) = self.input_connections.get_mut(&connection.to_node) {
-            inputs.retain(|(port, _, _)| *port != connection.to_port);
+    pub fn remove_specific_connection(
+        &mut self,
+        from_node: NodeId,
+        from_port: PortId,
+        to_node: NodeId,
+        to_port: PortId,
+    ) {
+        let key = ConnectionKey::new(from_node, from_port, to_node, to_port);
+        self.connections.remove(&key);
+
+        // Only remove this specific connection from input_connections
+        if let Some(inputs) = self.input_connections.get_mut(&to_node) {
+            inputs.retain(|(port, _, _)| !(*port == to_port && from_node == from_node));
             if inputs.is_empty() {
-                self.input_connections.remove(&connection.to_node);
+                self.input_connections.remove(&to_node);
             }
         }
 
-        // Update processing order since connections changed
         self.update_processing_order();
     }
 
@@ -155,7 +162,6 @@ impl AudioGraph {
     }
 
     pub fn connect(&mut self, connection: Connection) -> ConnectionKey {
-        // Return type changed
         let key = ConnectionKey::new(
             connection.from_node,
             connection.from_port,
@@ -163,15 +169,46 @@ impl AudioGraph {
             connection.to_port,
         );
 
-        // Update/add the connection
+        // Debug log before connection
+        web_sys::console::log_1(
+            &format!(
+                "Adding connection: from={:?} to={:?} port={:?} amount={:?}",
+                connection.from_node, connection.to_node, connection.to_port, connection.amount
+            )
+            .into(),
+        );
+
+        // Insert/update this specific connection
         self.connections.insert(key, connection.clone());
 
         // Update input connection mapping
         let source_buffer_idx = self.node_buffers[&(connection.from_node, connection.from_port)];
-        self.input_connections
+
+        // Get or create the input connections vec for this node
+        let inputs = self
+            .input_connections
             .entry(connection.to_node)
-            .or_default()
-            .push((connection.to_port, source_buffer_idx, connection.amount));
+            .or_default();
+
+        // Find and update or add the new connection
+        let existing_idx = inputs
+            .iter()
+            .position(|(port, _, _)| *port == connection.to_port);
+
+        if let Some(idx) = existing_idx {
+            inputs[idx] = (connection.to_port, source_buffer_idx, connection.amount);
+        } else {
+            inputs.push((connection.to_port, source_buffer_idx, connection.amount));
+        }
+
+        // Debug log after connection
+        web_sys::console::log_1(
+            &format!(
+                "Connection added: connections={:?} inputs={:?}",
+                self.connections, self.input_connections
+            )
+            .into(),
+        );
 
         self.update_processing_order();
         key
@@ -342,11 +379,26 @@ impl AudioGraph {
 
             // Handle connections from upstream nodes
             if let Some(connections) = self.input_connections.get(&node_id) {
+                // Group connections by port for proper summing
+                let mut port_buffers: HashMap<PortId, Vec<f32>> = HashMap::new();
+
                 for &(port, source_idx, amount) in connections {
                     let source_data = self.buffer_pool.copy_out(source_idx);
 
-                    let processed = source_data.iter().map(|x| x * amount).collect();
-                    input_data.push((port, processed));
+                    // Initialize the port's buffer if it doesn't exist
+                    let buffer = port_buffers
+                        .entry(port)
+                        .or_insert_with(|| vec![0.0; self.buffer_size]);
+
+                    // Apply amount for all modulation types
+                    for (i, &sample) in source_data.iter().enumerate() {
+                        buffer[i] += sample * amount;
+                    }
+                }
+
+                // Add all accumulated inputs to input_data
+                for (port, buffer) in port_buffers {
+                    input_data.push((port, buffer));
                 }
             }
 

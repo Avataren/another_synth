@@ -487,6 +487,30 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
+    pub fn remove_specific_connection(
+        &mut self,
+        voice_index: usize,
+        from_node: usize,
+        from_port: PortId,
+        to_node: usize,
+        to_port: PortId,
+    ) -> Result<(), JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        voice.graph.remove_specific_connection(
+            NodeId(from_node),
+            from_port,
+            NodeId(to_node),
+            to_port,
+        );
+
+        Ok(())
+    }
+
+    #[wasm_bindgen]
     pub fn connect_macro(
         &mut self,
         voice_index: usize,

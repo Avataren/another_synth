@@ -401,6 +401,19 @@ export class AudioEngine {
     }
     /**
      * @param {number} voice_index
+     * @param {number} from_node
+     * @param {PortId} from_port
+     * @param {number} to_node
+     * @param {PortId} to_port
+     */
+    remove_specific_connection(voice_index, from_node, from_port, to_node, to_port) {
+        const ret = wasm.audioengine_remove_specific_connection(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} voice_index
      * @param {number} macro_index
      * @param {number} target_node
      * @param {PortId} target_port

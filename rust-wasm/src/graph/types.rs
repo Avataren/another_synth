@@ -40,7 +40,7 @@ impl NodeId {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConnectionId(pub usize);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Connection {
     pub from_node: NodeId,
     pub from_port: PortId,
@@ -49,7 +49,7 @@ pub struct Connection {
     pub amount: f32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ConnectionKey {
     pub from_node: NodeId,
     pub from_port: PortId,

@@ -297,32 +297,27 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     // Create LFOs
     for (let i = 0; i < this.maxLFOs; i++) {
       const result = this.audioEngine.create_lfo(voiceIndex);
-      const lfoId = result.lfoId;
       voiceLayout.nodes[VoiceNodeType.LFO].push({
-        id: lfoId,
+        id: result.lfoId,
         type: VoiceNodeType.LFO
       });
-
-      // Initialize LFO with default settings
-      const lfoParams = new LfoUpdateParams(
-        lfoId,
-        2.0,              // Default frequency
-        LFOWaveform.Sine, // Default waveform
-        false,            // Not absolute
-        false,            // Not normalized
-        LfoTriggerMode.None, // Default trigger mode
-        false             // Not active
-      );
-      this.audioEngine.update_lfo(voiceIndex, lfoParams);
     }
 
-    // Set up default connections for oscillators
+    // Set up initial connections
     const oscillators = voiceLayout.nodes[VoiceNodeType.Oscillator];
     const [ampEnv] = voiceLayout.nodes[VoiceNodeType.Envelope];
 
     if (ampEnv && oscillators.length >= 2) {
       const [osc1, osc2] = oscillators;
 
+      console.log('Initial setup - connecting:', {
+        voiceIndex,
+        osc1,
+        osc2,
+        ampEnv
+      });
+
+      // Connect envelope to oscillator 1's gain
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         ampEnv.id,
@@ -332,14 +327,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         1.0
       );
 
-      voiceLayout.connections.push({
-        fromId: ampEnv.id,
-        toId: osc1!.id,
-        target: ModulationTarget.Gain,
-        amount: 1.0
-      });
+      console.log('Added gain modulation connection');
 
-      // Oscillator 2 phase modulates Oscillator 1
+      // Connect oscillator 2's output to oscillator 1's phase mod
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         osc2!.id,
@@ -349,15 +339,50 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         1.0
       );
 
-      voiceLayout.connections.push({
-        fromId: osc2!.id,
-        toId: osc1!.id,
-        target: ModulationTarget.PhaseMod,
-        amount: 1.0
+      console.log('Added phase modulation connection');
+
+      // Log connections
+      console.log('Setting up connections for voice:', {
+        voiceIndex,
+        connections: [
+          {
+            type: 'gainMod',
+            fromId: ampEnv.id,
+            toId: osc1!.id,
+            target: PortId.GainMod,
+            amount: 1.0
+          },
+          {
+            type: 'phaseMod',
+            fromId: osc2!.id,
+            toId: osc1!.id,
+            target: PortId.PhaseMod,
+            amount: 1.0
+          }
+        ]
       });
+
+      const currentState = this.audioEngine.get_current_state();
+      console.log('Current engine state:', currentState);
+
+      // Add connections to layout
+      voiceLayout.connections = [
+        {
+          fromId: ampEnv.id,
+          toId: osc1!.id,
+          target: ModulationTarget.Gain,
+          amount: 1.0
+        },
+        {
+          fromId: osc2!.id,
+          toId: osc1!.id,
+          target: ModulationTarget.PhaseMod,
+          amount: 1.0
+        }
+      ];
     }
 
-    return voiceLayout;
+    return voiceLayout;  // Return in all cases
   }
 
   private handleUpdateConnection(data: {
@@ -373,8 +398,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     try {
       const targetPortId = this.getPortIdForTarget(connection.target);
 
+      // Only remove if we match both the node IDs AND the target type
       if (connection.isRemoving) {
-        this.audioEngine.remove_voice_connection(
+        this.audioEngine.remove_specific_connection(
           voiceIndex,
           connection.fromId,
           PortId.AudioOutput0,
@@ -382,7 +408,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           targetPortId
         );
       } else {
-        // Always add/update the connection regardless of amount
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
           connection.fromId,

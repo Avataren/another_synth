@@ -285,7 +285,7 @@ const addNewRoute = async () => {
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
     target: defaultParams[0]!.value,
-    amount: 0,
+    amount: 1.0,
     lastUpdateTime: Date.now(),
   };
 

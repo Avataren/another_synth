@@ -467,6 +467,19 @@ var AudioEngine = class {
   }
   /**
    * @param {number} voice_index
+   * @param {number} from_node
+   * @param {PortId} from_port
+   * @param {number} to_node
+   * @param {PortId} to_port
+   */
+  remove_specific_connection(voice_index, from_node, from_port, to_node, to_port) {
+    const ret = wasm.audioengine_remove_specific_connection(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} voice_index
    * @param {number} macro_index
    * @param {number} target_node
    * @param {PortId} target_port
@@ -1142,32 +1155,21 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     for (let i = 0; i < this.maxLFOs; i++) {
       const result = this.audioEngine.create_lfo(voiceIndex);
-      const lfoId = result.lfoId;
       voiceLayout.nodes["lfo" /* LFO */].push({
-        id: lfoId,
+        id: result.lfoId,
         type: "lfo" /* LFO */
       });
-      const lfoParams = new LfoUpdateParams(
-        lfoId,
-        2,
-        // Default frequency
-        0 /* Sine */,
-        // Default waveform
-        false,
-        // Not absolute
-        false,
-        // Not normalized
-        0 /* None */,
-        // Default trigger mode
-        false
-        // Not active
-      );
-      this.audioEngine.update_lfo(voiceIndex, lfoParams);
     }
     const oscillators = voiceLayout.nodes["oscillator" /* Oscillator */];
     const [ampEnv] = voiceLayout.nodes["envelope" /* Envelope */];
     if (ampEnv && oscillators.length >= 2) {
       const [osc1, osc2] = oscillators;
+      console.log("Initial setup - connecting:", {
+        voiceIndex,
+        osc1,
+        osc2,
+        ampEnv
+      });
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         ampEnv.id,
@@ -1176,12 +1178,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.GainMod,
         1
       );
-      voiceLayout.connections.push({
-        fromId: ampEnv.id,
-        toId: osc1.id,
-        target: 1 /* Gain */,
-        amount: 1
-      });
+      console.log("Added gain modulation connection");
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         osc2.id,
@@ -1190,12 +1187,42 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.PhaseMod,
         1
       );
-      voiceLayout.connections.push({
-        fromId: osc2.id,
-        toId: osc1.id,
-        target: 4 /* PhaseMod */,
-        amount: 1
+      console.log("Added phase modulation connection");
+      console.log("Setting up connections for voice:", {
+        voiceIndex,
+        connections: [
+          {
+            type: "gainMod",
+            fromId: ampEnv.id,
+            toId: osc1.id,
+            target: PortId.GainMod,
+            amount: 1
+          },
+          {
+            type: "phaseMod",
+            fromId: osc2.id,
+            toId: osc1.id,
+            target: PortId.PhaseMod,
+            amount: 1
+          }
+        ]
       });
+      const currentState = this.audioEngine.get_current_state();
+      console.log("Current engine state:", currentState);
+      voiceLayout.connections = [
+        {
+          fromId: ampEnv.id,
+          toId: osc1.id,
+          target: 1 /* Gain */,
+          amount: 1
+        },
+        {
+          fromId: osc2.id,
+          toId: osc1.id,
+          target: 4 /* PhaseMod */,
+          amount: 1
+        }
+      ];
     }
     return voiceLayout;
   }
@@ -1205,7 +1232,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     try {
       const targetPortId = this.getPortIdForTarget(connection.target);
       if (connection.isRemoving) {
-        this.audioEngine.remove_voice_connection(
+        this.audioEngine.remove_specific_connection(
           voiceIndex,
           connection.fromId,
           PortId.AudioOutput0,
