@@ -385,6 +385,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     return voiceLayout;  // Return in all cases
   }
 
+  remove_specific_connection(
+    voice_index: number,
+    from_node: number,
+    to_node: number,
+    to_port: PortId,
+  ) {
+    if (!this.audioEngine) return;
+    this.audioEngine.remove_specific_connection(
+      voice_index,
+      from_node,
+      to_node,
+      to_port
+    );
+  }
+
   private handleUpdateConnection(data: {
     voiceIndex: number;
     connection: NodeConnection & {
@@ -403,7 +418,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         this.audioEngine.remove_specific_connection(
           voiceIndex,
           connection.fromId,
-          PortId.AudioOutput0,
           connection.toId,
           targetPortId
         );

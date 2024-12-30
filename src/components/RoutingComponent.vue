@@ -236,13 +236,13 @@ const handleParamChange = async (index: number, newParam: ModulationTarget) => {
   if (!route) return;
 
   try {
-    // Create a new connection rather than modifying existing
+    // Keep the old connection and add the new one
     await store.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
       target: newParam,
       amount: route.amount,
-      // Don't include modifyExisting flag here - we want a new connection
+      modifyExisting: false, // This tells the system to add rather than replace
     });
 
     route.target = newParam;
@@ -308,17 +308,18 @@ const removeRoute = (index: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  // Remove from local state
+  // First remove from local state
   activeRoutes.value.splice(index, 1);
 
+  // Then send removal to WASM
   store.updateConnection({
     fromId: props.sourceId,
     toId: route.targetId,
     target: route.target,
     amount: route.amount,
     isRemoving: true,
+    modifyExisting: true, // Ensure we only remove this specific connection
   });
-  updateDebugState('Route removed');
 };
 
 const getTargetValue = (

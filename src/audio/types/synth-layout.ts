@@ -53,7 +53,7 @@ export interface NodeConnection {
 }
 
 export interface NodeConnectionUpdate extends NodeConnection {
-    modifyExisting?: boolean;
+    modifyExisting?: boolean | undefined;
 }
 
 export interface FilterConfig {
@@ -135,6 +135,7 @@ export const findModulationTargets = (voice: VoiceLayout, sourceId: number): Arr
             amount: conn.amount
         }));
 };
+
 
 // Example of creating a default voice layout
 export const createDefaultVoiceLayout = (voiceId: number, startingNodeId: number): VoiceLayout => {

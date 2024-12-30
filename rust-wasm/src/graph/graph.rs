@@ -34,7 +34,7 @@
 /// arbitrary node graphs as long as they don't contain feedback loops.
 use super::{
     buffer_pool::AudioBufferPool,
-    types::{Connection, ConnectionId, ConnectionKey, NodeId},
+    types::{Connection, ConnectionKey, NodeId},
 };
 use crate::{AudioNode, MacroManager, PortId};
 use std::collections::HashMap;
@@ -109,6 +109,30 @@ impl AudioGraph {
         id
     }
 
+    pub fn add_connection(&mut self, connection: Connection) {
+        let key = ConnectionKey::new(
+            connection.from_node,
+            connection.from_port,
+            connection.to_node,
+            connection.to_port,
+        );
+
+        let source_buffer_idx = self.node_buffers[&(connection.from_node, connection.from_port)];
+        let to_port = connection.to_port;
+        let to_node = connection.to_node;
+        let amount = connection.amount;
+
+        self.connections.insert(key, connection);
+
+        self.input_connections.entry(to_node).or_default().push((
+            to_port,
+            source_buffer_idx,
+            amount,
+        ));
+
+        self.update_processing_order();
+    }
+
     pub fn debug_connections(&self) -> Vec<(ConnectionKey, Connection)> {
         self.connections
             .iter()
@@ -123,12 +147,13 @@ impl AudioGraph {
         to_node: NodeId,
         to_port: PortId,
     ) {
+        // Remove from main connections
         let key = ConnectionKey::new(from_node, from_port, to_node, to_port);
         self.connections.remove(&key);
 
-        // Only remove this specific connection from input_connections
+        // Remove from input connections map
         if let Some(inputs) = self.input_connections.get_mut(&to_node) {
-            inputs.retain(|(port, _, _)| !(*port == to_port && from_node == from_node));
+            inputs.retain(|(port, _, _)| !(port == &to_port && from_node == from_node));
             if inputs.is_empty() {
                 self.input_connections.remove(&to_node);
             }

@@ -474,15 +474,17 @@ impl AudioEngine {
             .voices
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-        console::log_1(&format!("(wasm) Connecting voice {:?}", voice_index).into());
-        voice.graph.connect(Connection {
+
+        // Create new connection without removing existing ones
+        let connection = Connection {
             from_node: NodeId(from_node),
             from_port,
             to_node: NodeId(to_node),
             to_port,
             amount,
-        });
+        };
 
+        voice.graph.add_connection(connection);
         Ok(())
     }
 
@@ -491,20 +493,34 @@ impl AudioEngine {
         &mut self,
         voice_index: usize,
         from_node: usize,
-        from_port: PortId,
         to_node: usize,
         to_port: PortId,
     ) -> Result<(), JsValue> {
+        console::log_1(
+            &format!(
+                "Removing connection: voice={}, from={}, to={}, port={:?}",
+                voice_index, from_node, to_node, to_port
+            )
+            .into(),
+        );
+
         let voice = self
             .voices
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        voice.graph.remove_specific_connection(
-            NodeId(from_node),
-            from_port,
-            NodeId(to_node),
-            to_port,
+        let before_count = voice.graph.connections.len();
+        voice.graph.connections.retain(|_, conn| {
+            !(conn.from_node.0 == from_node && conn.to_node.0 == to_node && conn.to_port == to_port)
+        });
+        let after_count = voice.graph.connections.len();
+
+        console::log_1(
+            &format!(
+                "Connections before: {}, after: {}",
+                before_count, after_count
+            )
+            .into(),
         );
 
         Ok(())

@@ -319,41 +319,33 @@ export class AudioSyncManager {
         };
     }
 
-    async modifyConnection(connection: NodeConnectionUpdate): Promise<void> {
+    public async modifyConnection(connection: NodeConnectionUpdate): Promise<void> {
         if (!this.store.currentInstrument?.isReady) return;
 
         try {
             const numVoices = this.store.synthLayout?.voices.length || 0;
-            const normalizedTarget = isModulationTargetObject(connection.target)
-                ? connection.target.value
-                : connection.target;
+            const normalizedTarget = isModulationTargetObject(connection.target) ? connection.target.value : connection.target;
 
-            // Apply the change to all voices to maintain polyphony
             for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
                 const connectionUpdate: NodeConnectionUpdate = {
                     fromId: connection.fromId,
                     toId: connection.toId,
                     target: normalizedTarget,
                     amount: connection.amount,
-                    ...(connection.isRemoving && { isRemoving: true }),
-                    ...(connection.modifyExisting && { modifyExisting: true })
+                    ...(connection.modifyExisting !== undefined && { modifyExisting: connection.modifyExisting }),
+                    ...(connection.isRemoving !== undefined && { isRemoving: connection.isRemoving })
                 };
 
-                this.store.currentInstrument.updateConnection(
-                    voiceIndex,
-                    connectionUpdate
-                );
+                this.store.currentInstrument.updateConnection(voiceIndex, connectionUpdate);
             }
 
-            this.stateVersion++;
-            this.lastWasmState = await this.store.currentInstrument.getWasmNodeConnections();
+            await this.forceSync();
 
         } catch (error) {
             console.error('Failed to modify connection:', error);
             throw error;
         }
     }
-
     private async syncWithWasm() {
         try {
 
