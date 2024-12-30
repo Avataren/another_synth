@@ -43,12 +43,17 @@ export type ModulationTargetOption = {
     label: string;
 }
 
+// Option 2: Base interface and extended interface
 export interface NodeConnection {
     fromId: number;
     toId: number;
     target: ModulationTarget | ModulationTargetObject;
     amount: number;
     isRemoving?: boolean;
+}
+
+export interface NodeConnectionUpdate extends NodeConnection {
+    modifyExisting?: boolean;
 }
 
 export interface FilterConfig {

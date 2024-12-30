@@ -11,6 +11,7 @@ import {
   type ModulationTarget,
   type LfoState,
   type ModulationTargetObject,
+  type NodeConnectionUpdate,
 } from './types/synth-layout';
 
 export default class Instrument {
@@ -199,7 +200,7 @@ export default class Instrument {
     });
   }
 
-  public updateConnection(voiceIndex: number, connection: NodeConnection) {
+  public updateConnection(voiceIndex: number, connection: NodeConnectionUpdate) {
     if (!this.ready || !this.workletNode) return;
     console.log('instrument::updateConection:', voiceIndex, connection);
     this.workletNode.port.postMessage({

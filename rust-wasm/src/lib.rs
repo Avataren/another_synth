@@ -140,7 +140,7 @@ impl AudioEngine {
             from_port,
             to_node: NodeId(to_node),
             to_port,
-            amount: 0.0,
+            amount: 0.0, // The amount doesn't matter for removal
         });
 
         Ok(())

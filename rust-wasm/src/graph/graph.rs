@@ -336,11 +336,8 @@ impl AudioGraph {
             if let Some(connections) = self.input_connections.get(&node_id) {
                 for &(port, source_idx, amount) in connections {
                     let source_data = self.buffer_pool.copy_out(source_idx);
-                    let processed = if amount == 1.0 {
-                        source_data.to_vec()
-                    } else {
-                        source_data.iter().map(|x| x * amount).collect()
-                    };
+
+                    let processed = source_data.iter().map(|x| x * amount).collect();
                     input_data.push((port, processed));
                 }
             }

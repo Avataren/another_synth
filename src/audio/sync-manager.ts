@@ -1,6 +1,9 @@
 // src/audio/sync-manager.ts
 
-import { isModulationTargetObject, ModulationTarget, type ModulationTargetObject, type ModulationTargetOption, type NodeConnection } from './types/synth-layout';
+import {
+    isModulationTargetObject, ModulationTarget, type NodeConnectionUpdate,
+    type ModulationTargetObject, type ModulationTargetOption, type NodeConnection
+} from './types/synth-layout';
 import { useAudioSystemStore } from '../stores/audio-system-store';
 import { PortId } from 'app/public/wasm/audio_processor';
 
@@ -314,6 +317,41 @@ export class AudioSyncManager {
             target: this.convertFromWasmTarget(wasmConn.target),
             amount: wasmConn.amount
         };
+    }
+
+    async modifyConnection(connection: NodeConnectionUpdate): Promise<void> {
+        if (!this.store.currentInstrument?.isReady) return;
+
+        try {
+            const numVoices = this.store.synthLayout?.voices.length || 0;
+            const normalizedTarget = isModulationTargetObject(connection.target)
+                ? connection.target.value
+                : connection.target;
+
+            // Apply the change to all voices to maintain polyphony
+            for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
+                const connectionUpdate: NodeConnectionUpdate = {
+                    fromId: connection.fromId,
+                    toId: connection.toId,
+                    target: normalizedTarget,
+                    amount: connection.amount,
+                    ...(connection.isRemoving && { isRemoving: true }),
+                    ...(connection.modifyExisting && { modifyExisting: true })
+                };
+
+                this.store.currentInstrument.updateConnection(
+                    voiceIndex,
+                    connectionUpdate
+                );
+            }
+
+            this.stateVersion++;
+            this.lastWasmState = await this.store.currentInstrument.getWasmNodeConnections();
+
+        } catch (error) {
+            console.error('Failed to modify connection:', error);
+            throw error;
+        }
     }
 
     private async syncWithWasm() {

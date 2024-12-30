@@ -231,32 +231,25 @@ const handleTargetChange = (index: number, newTargetId: number) => {
   updateDebugState('Target changed');
 };
 
-const handleParamChange = (index: number, newParam: ModulationTarget) => {
+const handleParamChange = async (index: number, newParam: ModulationTarget) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  // Remove old connection
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: route.target,
-    amount: 0,
-    isRemoving: true,
-  });
+  try {
+    // Just update the target, that's all we're doing
+    await store.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: newParam,
+      amount: route.amount,
+      modifyExisting: true, // Flag to indicate we're changing the target of an existing connection
+    });
 
-  // Update route
-  route.target = newParam;
-  route.lastUpdateTime = Date.now();
-
-  // Create new connection
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: route.target,
-    amount: route.amount,
-  });
-
-  updateDebugState('Parameter changed');
+    route.target = newParam;
+    route.lastUpdateTime = Date.now();
+  } catch (error) {
+    console.error('Failed to update parameter:', error);
+  }
 };
 
 const handleAmountChange = async (index: number, newAmount: number) => {
@@ -273,7 +266,6 @@ const handleAmountChange = async (index: number, newAmount: number) => {
       toId: route.targetId,
       target: normalizedTarget,
       amount: newAmount,
-      isRemoving: newAmount === 0,
     });
 
     route.amount = newAmount;
@@ -283,7 +275,7 @@ const handleAmountChange = async (index: number, newAmount: number) => {
   }
 };
 
-const addNewRoute = () => {
+const addNewRoute = async () => {
   const defaultTarget = availableTargetNodes.value[0];
   if (!defaultTarget) return;
 
@@ -297,31 +289,35 @@ const addNewRoute = () => {
     lastUpdateTime: Date.now(),
   };
 
-  activeRoutes.value.push(newRoute);
+  try {
+    await store.updateConnection({
+      fromId: props.sourceId,
+      toId: newRoute.targetId,
+      target: newRoute.target,
+      amount: newRoute.amount,
+    });
 
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: newRoute.targetId,
-    target: newRoute.target,
-    amount: newRoute.amount,
-  });
-
-  updateDebugState('Route added');
+    activeRoutes.value.push(newRoute);
+    updateDebugState('Route added');
+  } catch (error) {
+    console.error('Failed to add new route:', error);
+  }
 };
 
 const removeRoute = (index: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
+  // Remove from local state
+  activeRoutes.value.splice(index, 1);
+
   store.updateConnection({
     fromId: props.sourceId,
     toId: route.targetId,
     target: route.target,
-    amount: 0,
+    amount: route.amount,
     isRemoving: true,
   });
-
-  activeRoutes.value.splice(index, 1);
   updateDebugState('Route removed');
 };
 

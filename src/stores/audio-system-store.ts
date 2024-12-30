@@ -15,8 +15,9 @@ import {
   type ModulationTarget,
   type VoiceLayout,
   isModulationTargetObject,
+  type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
-import { AudioSyncManager, type WasmConnection, type WasmState } from 'src/audio/sync-manager';
+import { AudioSyncManager } from 'src/audio/sync-manager';
 
 interface AudioParamDescriptor {
   name: string;
@@ -289,74 +290,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         conn.target === connection.target
       );
     },
-    async updateConnection(connection: NodeConnection) {
-      if (!this.currentInstrument || !this.synthLayout?.voices?.[0]) return;
+    async updateConnection(connection: NodeConnectionUpdate) {
+      if (!this.syncManager) return;
 
       try {
-        // Store original connections for rollback
-        const originalConnections = JSON.parse(
-          JSON.stringify(this.synthLayout.voices[0].connections)
-        );
-
-        console.log('Processing connection with normalized target:', {
-          connection,
-          existing: this.synthLayout.voices[0].connections
-        });
-
-        // Update WASM first using the existing modulation API
-        await this.currentInstrument.createModulation(
-          connection.fromId,
-          connection.toId,
-          connection.target,
-          connection.amount
-        );
-
-        // Validate state after update
-        const wasmState = await this.currentInstrument.getWasmNodeConnections();
-        const stateData = JSON.parse(wasmState) as WasmState;
-
-        // Verify the intended connection exists in the expected state
-        const expectedChange = connection.isRemoving || connection.amount === 0
-          ? 'removed'
-          : 'added';
-
-        // Get the WASM target value that corresponds to our ModulationTarget
-        const expectedTarget = this.syncManager?.convertModulationTarget(connection.target);
-
-        console.log('Validating connection update:', {
-          expectedChange,
-          expectedTarget,
-          currentConnections: stateData.voices[0]?.connections,
-          connection
-        });
-
-        // Check if the specific connection exists with the right target
-        const connectionExists = stateData.voices[0]?.connections.some((conn: WasmConnection) => {
-          const matchesNodes = conn.from_id === connection.fromId && conn.to_id === connection.toId;
-          const isTargetMatch = expectedTarget ? conn.target === expectedTarget : true;
-          return matchesNodes && isTargetMatch;
-        });
-
-        if ((expectedChange === 'added' && !connectionExists) ||
-          (expectedChange === 'removed' && connectionExists)) {
-          console.error('Connection update validation failed, rolling back', {
-            expected: expectedChange,
-            actual: connectionExists ? 'exists' : 'missing',
-            connection,
-            wasmState: stateData.voices[0]?.connections,
-          });
-
-          if (this.synthLayout) {
-            this.synthLayout.voices.forEach(voice => {
-              voice.connections = JSON.parse(JSON.stringify(originalConnections));
-            });
-          }
-          throw new Error('Connection update validation failed');
-        }
-
-        // Update successful, force sync to ensure everything is aligned
-        await this.syncManager?.forceSync();
-
+        await this.syncManager.modifyConnection(connection);
       } catch (error) {
         console.error('Failed to update connection:', error);
         throw error;
@@ -388,11 +326,13 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         (isModulationTargetObject(connection.target) ? connection.target.value : connection.target)
       );
 
-      if (connection.amount === 0 && existingIndex !== -1) {
+      // Only remove if explicitly asked to remove
+      if (connection.isRemoving && existingIndex !== -1) {
         voice.connections.splice(existingIndex, 1);
       } else if (existingIndex !== -1) {
         voice.connections[existingIndex] = { ...connection };
-      } else if (connection.amount !== 0) {
+      } else {
+        // Always add new connections regardless of amount
         voice.connections.push({ ...connection });
       }
 
