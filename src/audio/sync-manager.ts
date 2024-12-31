@@ -165,12 +165,12 @@ export class AudioSyncManager {
     }
 
     public convertModulationTarget(target: ModulationTarget | ModulationTargetObject): number {
-        const normalizedTarget = isModulationTargetObject(target)
-            ? target.value
-            : target;
+        const rawTarget = isModulationTargetObject(target)
+            ? Number(target.value)
+            : Number(target);
 
         // Convert from ModulationTarget enum to WASM PortId values
-        switch (normalizedTarget) {
+        switch (rawTarget) {
             case ModulationTarget.Frequency:
                 return 11;  // FrequencyMod
             case ModulationTarget.Gain:
@@ -324,31 +324,18 @@ export class AudioSyncManager {
 
         try {
             const numVoices = this.store.synthLayout?.voices.length || 0;
-            const normalizedTarget = isModulationTargetObject(connection.target) ? connection.target.value : connection.target;
+            const rawConnection: NodeConnectionUpdate = {
+                fromId: Number(connection.fromId),
+                toId: Number(connection.toId),
+                target: isModulationTargetObject(connection.target) ? Number(connection.target.value) : Number(connection.target),
+                amount: Number(connection.amount),
+                isRemoving: Boolean(connection.isRemoving),
+                modifyExisting: Boolean(connection.modifyExisting)
+            };
 
             for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
-                const connectionUpdate: NodeConnectionUpdate = {
-                    fromId: connection.fromId,
-                    toId: connection.toId,
-                    target: normalizedTarget,
-                    amount: connection.amount
-                };
-
-                if (connection.isRemoving) {
-                    connectionUpdate.isRemoving = connection.isRemoving;
-                }
-                if (connection.modifyExisting) {
-                    connectionUpdate.modifyExisting = connection.modifyExisting;
-                }
-
-                this.store.currentInstrument.updateConnection(voiceIndex, connectionUpdate);
+                this.store.currentInstrument.updateConnection(voiceIndex, rawConnection);
             }
-
-            // Only force sync if we're not removing a connection
-            if (!connection.isRemoving) {
-                await this.forceSync();
-            }
-
         } catch (error) {
             console.error('Failed to modify connection:', error);
             throw error;

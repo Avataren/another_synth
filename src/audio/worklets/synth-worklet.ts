@@ -412,30 +412,37 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     try {
       const targetPortId = this.getPortIdForTarget(connection.target);
-      console.log('handleUpdateConnection:', {
+      console.log('WASM connection details:', {
         voiceIndex,
         connection,
         targetPortId,
-        fullData: data,
-        removing: connection.isRemoving,
+        raw: {
+          fromId: Number(connection.fromId),
+          fromPort: PortId.AudioOutput0,
+          toId: Number(connection.toId),
+          targetPort: targetPortId,
+          amount: Number(connection.amount),
+          isRemoving: connection.isRemoving
+        }
       });
 
       if (connection.isRemoving) {
-        console.log('Removing connection');
+        console.log('Removing WASM connection');
         this.audioEngine.remove_specific_connection(
           voiceIndex,
-          connection.fromId,
-          connection.toId,
+          Number(connection.fromId),
+          Number(connection.toId),
           targetPortId
         );
       } else {
+        console.log('Adding WASM connection');
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
-          connection.fromId,
+          Number(connection.fromId),
           PortId.AudioOutput0,
-          connection.toId,
+          Number(connection.toId),
           targetPortId,
-          connection.amount
+          Number(connection.amount)
         );
       }
     } catch (err) {

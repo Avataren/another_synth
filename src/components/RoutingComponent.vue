@@ -45,6 +45,9 @@
                 <q-select
                   v-model="route.target"
                   :options="getAvailableParams(route.targetId)"
+                  option-value="value"
+                  option-label="label"
+                  :value="getAvailableParams(route.targetId)[0]"
                   label="Parameter"
                   dense
                   dark
@@ -99,7 +102,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
-import type { ModulationTargetOption } from 'src/audio/types/synth-layout';
+import type {
+  ModulationTargetOption,
+  NodeConnection,
+} from 'src/audio/types/synth-layout';
 import {
   isModulationTargetObject,
   ModulationTarget,
@@ -123,7 +129,7 @@ interface TargetNode {
 
 interface RouteConfig {
   targetId: number;
-  target: ModulationTarget;
+  target: ModulationTargetOption;
   amount: number;
   lastUpdateTime?: number;
 }
@@ -185,13 +191,7 @@ const getAvailableParams = (targetId: number): ModulationTargetOption[] => {
 interface DebugState {
   lastAction: string;
   timestamp: string;
-  storeConnections: Array<{
-    fromId: number;
-    toId: number;
-    target: ModulationTarget | ModulationTargetOption;
-    amount: number;
-    isRemoving?: boolean;
-  }> | null;
+  storeConnections: NodeConnection[] | null;
   localRoutes: RouteConfig[] | null;
 }
 
@@ -201,57 +201,69 @@ const updateDebugState = (action: string) => {
   debugState.value = {
     lastAction: action,
     timestamp: new Date().toISOString(),
-    storeConnections: store.getNodeConnections(props.sourceId),
+    storeConnections: [...store.getNodeConnections(props.sourceId)],
     localRoutes: activeRoutes.value,
   };
 };
 
-const handleTargetChange = (index: number, newTargetId: number) => {
+const handleTargetChange = async (index: number, newTargetId: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  // Remove old connection first
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: route.target,
-    amount: 0,
-    isRemoving: true,
-  });
+  const targetId = Number(newTargetId);
+  const params = getAvailableParams(targetId);
+  const defaultParam = params[0];
+  if (!defaultParam) return;
 
-  // Update route with new target and valid parameter
-  const params = getAvailableParams(newTargetId);
-  route.targetId = newTargetId;
-  route.target = params[0]?.value ?? route.target;
-  route.lastUpdateTime = Date.now();
+  try {
+    await store.updateConnection({
+      fromId: props.sourceId,
+      toId: targetId,
+      target: route.target.value,
+      amount: 0,
+      isRemoving: true,
+    });
 
-  // Create new connection
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: route.target,
-    amount: route.amount,
-  });
+    await store.updateConnection({
+      fromId: props.sourceId,
+      toId: targetId,
+      target: defaultParam.value,
+      amount: route.amount,
+    });
 
-  updateDebugState('Target changed');
+    route.targetId = targetId;
+    route.target = defaultParam; // Store full ModulationTargetOption
+    route.lastUpdateTime = Date.now();
+  } catch (error) {
+    console.error('Failed to update target:', error);
+  }
 };
 
-const handleParamChange = async (index: number, newParam: ModulationTarget) => {
+const handleParamChange = async (
+  index: number,
+  newParam: ModulationTargetOption,
+) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
   try {
-    // Keep the old connection and add the new one
+    const newParamVal = { ...newParam };
     await store.updateConnection({
       fromId: props.sourceId,
-      toId: route.targetId,
-      target: newParam,
+      toId: Number(route.targetId),
+      target: route.target.value,
       amount: route.amount,
-      modifyExisting: false, // This tells the system to add rather than replace
+      isRemoving: true,
     });
 
-    route.target = newParam;
-    route.lastUpdateTime = Date.now();
+    route.target = newParamVal;
+
+    await store.updateConnection({
+      fromId: props.sourceId,
+      toId: Number(route.targetId),
+      target: newParamVal.value,
+      amount: route.amount,
+    });
   } catch (error) {
     console.error('Failed to update parameter:', error);
   }
@@ -289,11 +301,10 @@ const addNewRoute = async () => {
 
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
-    target: defaultParams[0]!.value,
+    target: defaultParams[0]!, // Store full option object
     amount: 1.0,
     lastUpdateTime: Date.now(),
   };
-
   try {
     await store.updateConnection({
       fromId: props.sourceId,
@@ -356,12 +367,20 @@ const getTargetValue = (
 onMounted(() => {
   const connections = store.getNodeConnections(props.sourceId);
   isUpdatingFromExternal.value = true;
-  activeRoutes.value = connections.map((conn) => ({
-    targetId: conn.toId,
-    target: getTargetValue(conn.target),
-    amount: conn.amount,
-    lastUpdateTime: Date.now(),
-  }));
+
+  activeRoutes.value = connections.map((conn) => {
+    const params = getAvailableParams(conn.toId);
+    const targetParam = params.find(
+      (p) => p.value === getTargetValue(conn.target),
+    );
+    return {
+      targetId: conn.toId,
+      target: targetParam || params[0]!,
+      amount: conn.amount,
+      lastUpdateTime: Date.now(),
+    };
+  });
+
   isUpdatingFromExternal.value = false;
   updateDebugState('Mounted');
 });
@@ -370,15 +389,20 @@ onMounted(() => {
 watch(
   () => store.getNodeConnections(props.sourceId),
   (newConnections) => {
-    // Only update if this is an external change (from WASM)
     if (isUpdatingFromExternal.value) {
       try {
-        const mappedRoutes = newConnections.map((conn) => ({
-          targetId: conn.toId,
-          target: getTargetValue(conn.target),
-          amount: conn.amount,
-          lastUpdateTime: Date.now(),
-        }));
+        const mappedRoutes = newConnections.map((conn) => {
+          const params = getAvailableParams(conn.toId);
+          const targetParam = params.find(
+            (p) => p.value === getTargetValue(conn.target),
+          );
+          return {
+            targetId: conn.toId,
+            target: targetParam || params[0]!,
+            amount: conn.amount,
+            lastUpdateTime: Date.now(),
+          };
+        });
 
         activeRoutes.value = mappedRoutes;
         updateDebugState('External update');
@@ -387,7 +411,6 @@ watch(
       }
     }
   },
-  { deep: true },
 );
 </script>
 
