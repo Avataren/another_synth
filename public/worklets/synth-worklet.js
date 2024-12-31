@@ -1244,11 +1244,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         connection,
         targetPortId,
         fullData: data,
-        // Log the full data object
-        removing: connection.isRemoving,
-        // Explicitly log isRemoving
-        type: typeof connection.isRemoving
-        // Check the type
+        removing: connection.isRemoving
       });
       if (connection.isRemoving) {
         console.log("Removing connection");
