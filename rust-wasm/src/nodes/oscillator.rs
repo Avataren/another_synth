@@ -144,11 +144,6 @@ impl AudioProcessor for ModulatableOscillator {
         use std::simd::{f32x4, StdFloat};
         const TWO_PI: f32 = 2.0 * std::f32::consts::PI;
 
-        // NOTE: This implementation uses [0, 2π] phase range for direct sine calculation.
-        // When switching to wavetable lookup, convert to [0,1] phase range since it's more
-        // efficient for table indexing. The phase_mod_amount will need to be scaled by 1/(2π)
-        // in the wavetable version to maintain the same modulation depth.
-
         context.process_by_chunks(4, |offset, inputs, outputs| {
             // Get base frequency for carrier
             let base_freq = if let Some(input) = inputs.get(&PortId::GlobalFrequency) {
@@ -199,12 +194,16 @@ impl AudioProcessor for ModulatableOscillator {
             let phase_simd = f32x4::from_array(output_phases);
             let sine_output = phase_simd.sin();
 
-            // Apply gain modulation
-            let gain_mod = inputs
-                .get(&PortId::GainMod)
-                .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
+            // Apply gain modulation - start with base gain
+            let mut final_gain = f32x4::splat(self.gain);
 
-            let final_output = sine_output * gain_mod * f32x4::splat(self.gain);
+            // Multiply by each gain modulation input sequentially
+            if let Some(ref gain_inputs) = inputs.get(&PortId::GainMod) {
+                let gain_mod = gain_inputs.get_simd(offset);
+                final_gain = final_gain * gain_mod;
+            }
+
+            let final_output = sine_output * final_gain;
 
             if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
                 output.write_simd(offset, final_output);

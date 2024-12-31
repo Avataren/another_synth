@@ -143,23 +143,36 @@ impl AudioGraph {
     pub fn remove_specific_connection(
         &mut self,
         from_node: NodeId,
-        from_port: PortId,
         to_node: NodeId,
         to_port: PortId,
     ) {
-        // Remove from main connections
-        let key = ConnectionKey::new(from_node, from_port, to_node, to_port);
-        self.connections.remove(&key);
+        // Remove from connections HashMap
+        let to_remove: Vec<_> = self
+            .connections
+            .iter()
+            .filter(|(_, conn)| {
+                conn.from_node == from_node && conn.to_node == to_node && conn.to_port == to_port
+            })
+            .map(|(k, _)| k.clone())
+            .collect();
 
-        // Remove from input connections map
+        for key in to_remove {
+            self.connections.remove(&key);
+        }
+
+        // Update input_connections but only remove the specific connection
         if let Some(inputs) = self.input_connections.get_mut(&to_node) {
-            inputs.retain(|(port, _, _)| !(port == &to_port && from_node == from_node));
+            inputs.retain(|(port, buffer_idx, _)| {
+                // Only remove if both port and source buffer match
+                !(*port == to_port
+                    && self.node_buffers.get(&(from_node, PortId::AudioOutput0))
+                        == Some(buffer_idx))
+            });
+
             if inputs.is_empty() {
                 self.input_connections.remove(&to_node);
             }
         }
-
-        self.update_processing_order();
     }
 
     pub fn remove_connection(&mut self, connection: &Connection) {
@@ -386,8 +399,6 @@ impl AudioGraph {
             }
 
             let ports = node.get_ports();
-
-            // Collect inputs into input_data
             let mut input_data: Vec<(PortId, Vec<f32>)> = Vec::new();
 
             // Handle Gate input if the node has a Gate port
@@ -404,20 +415,34 @@ impl AudioGraph {
 
             // Handle connections from upstream nodes
             if let Some(connections) = self.input_connections.get(&node_id) {
-                // Group connections by port for proper summing
                 let mut port_buffers: HashMap<PortId, Vec<f32>> = HashMap::new();
 
                 for &(port, source_idx, amount) in connections {
                     let source_data = self.buffer_pool.copy_out(source_idx);
 
-                    // Initialize the port's buffer if it doesn't exist
-                    let buffer = port_buffers
-                        .entry(port)
-                        .or_insert_with(|| vec![0.0; self.buffer_size]);
+                    match port {
+                        // VCA-style modulation
+                        PortId::GainMod => {
+                            let buffer = port_buffers
+                                .entry(port)
+                                .or_insert_with(|| vec![1.0; self.buffer_size]);
 
-                    // Apply amount for all modulation types
-                    for (i, &sample) in source_data.iter().enumerate() {
-                        buffer[i] += sample * amount;
+                            // Direct multiplication for gain
+                            for (i, &sample) in source_data.iter().enumerate() {
+                                buffer[i] *= sample;
+                            }
+                        }
+                        // Bipolar modulation
+                        _ => {
+                            let buffer = port_buffers
+                                .entry(port)
+                                .or_insert_with(|| vec![1.0; self.buffer_size]);
+
+                            // Bipolar modulation formula: carrier * (1.0 + (mod * amount))
+                            for (i, &sample) in source_data.iter().enumerate() {
+                                buffer[i] *= 1.0 + (sample * amount);
+                            }
+                        }
                     }
                 }
 

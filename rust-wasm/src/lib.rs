@@ -509,51 +509,9 @@ impl AudioEngine {
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        let before_count = voice.graph.connections.len();
-
-        // Remove from connections HashMap
-        let to_remove: Vec<_> = voice
+        voice
             .graph
-            .connections
-            .iter()
-            .filter(|(_, conn)| {
-                conn.from_node.0 == from_node
-                    && conn.to_node.0 == to_node
-                    && conn.to_port == to_port
-            })
-            .map(|(k, _)| k.clone())
-            .collect();
-
-        for key in to_remove {
-            voice.graph.connections.remove(&key);
-        }
-
-        // Update input_connections but only remove the specific connection
-        if let Some(inputs) = voice.graph.input_connections.get_mut(&NodeId(to_node)) {
-            inputs.retain(|(port, buffer_idx, _)| {
-                // Only remove if both port and source buffer match
-                !(*port == to_port
-                    && voice
-                        .graph
-                        .node_buffers
-                        .get(&(NodeId(from_node), PortId::AudioOutput0))
-                        == Some(buffer_idx))
-            });
-
-            if inputs.is_empty() {
-                voice.graph.input_connections.remove(&NodeId(to_node));
-            }
-        }
-
-        let after_count = voice.graph.connections.len();
-
-        console::log_1(
-            &format!(
-                "Connections before: {}, after: {}",
-                before_count, after_count
-            )
-            .into(),
-        );
+            .remove_specific_connection(NodeId(from_node), NodeId(to_node), to_port);
 
         Ok(())
     }
