@@ -294,7 +294,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       console.log('store.updateConnection:', {
         connection,
         isRemoving: connection.isRemoving,
-        fullConnection: connection
+        fullConnection: {
+          ...connection,
+          isRemoving: connection.isRemoving
+        }
       });
 
       if (!this.syncManager) return;

@@ -1239,38 +1239,43 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
     try {
       const targetPortId = this.getPortIdForTarget(connection.target);
-      console.log("WASM connection details:", {
+      console.log("Connection update:", {
         voiceIndex,
         connection,
         targetPortId,
-        raw: {
-          fromId: Number(connection.fromId),
-          fromPort: PortId.AudioOutput0,
-          toId: Number(connection.toId),
-          targetPort: targetPortId,
-          amount: Number(connection.amount),
-          isRemoving: connection.isRemoving
-        }
+        isRemoving: connection.isRemoving
       });
       if (connection.isRemoving) {
-        console.log("Removing WASM connection");
+        console.log("Removing connection:", {
+          voiceIndex,
+          fromId: connection.fromId,
+          toId: connection.toId,
+          targetPortId
+        });
         this.audioEngine.remove_specific_connection(
           voiceIndex,
-          Number(connection.fromId),
-          Number(connection.toId),
+          connection.fromId,
+          connection.toId,
           targetPortId
         );
       } else {
-        console.log("Adding WASM connection");
+        console.log("Adding connection:", {
+          voiceIndex,
+          fromId: connection.fromId,
+          toId: connection.toId,
+          targetPortId,
+          amount: connection.amount
+        });
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
-          Number(connection.fromId),
+          connection.fromId,
           PortId.AudioOutput0,
-          Number(connection.toId),
+          connection.toId,
           targetPortId,
-          Number(connection.amount)
+          connection.amount
         );
       }
+      this.handleRequestSync();
     } catch (err) {
       console.error("Failed to update connection:", err);
     }

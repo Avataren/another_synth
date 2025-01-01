@@ -47,7 +47,6 @@
                   :options="getAvailableParams(route.targetId)"
                   option-value="value"
                   option-label="label"
-                  :value="getAvailableParams(route.targetId)[0]"
                   label="Parameter"
                   dense
                   dark
@@ -148,17 +147,24 @@ const debugState = ref<DebugState>({
 const availableTargetNodes = computed((): TargetNode[] => {
   const nodes: TargetNode[] = [];
   const voice = store.synthLayout?.voices[0];
+  console.log('Computing availableTargetNodes:', {
+    voice,
+    sourceId: props.sourceId,
+  });
+
   if (!voice) return nodes;
 
   for (const type of Object.values(VoiceNodeType)) {
     const typeNodes = voice.nodes[type];
     typeNodes.forEach((node, index) => {
       if (node.id !== props.sourceId) {
-        nodes.push({
+        const targetNode = {
           id: node.id,
           name: `${type} ${index + 1}`,
           type: type,
-        });
+        };
+        console.log('Adding target node:', targetNode);
+        nodes.push(targetNode);
       }
     });
   }
@@ -166,26 +172,61 @@ const availableTargetNodes = computed((): TargetNode[] => {
   return nodes;
 });
 
-const getAvailableParams = (targetId: number): ModulationTargetOption[] => {
-  const targetNode = availableTargetNodes.value.find((n) => n.id === targetId);
-  if (!targetNode) return [];
+watch(
+  () => [store.synthLayout, ...activeRoutes.value.map((r) => r.targetId)],
+  () => {
+    console.log('Recomputing nodes due to layout or targetId change');
+    const nodes = availableTargetNodes.value;
+    activeRoutes.value.forEach((route, idx) => {
+      if (!nodes.find((n) => n.id === route.targetId)) {
+        console.warn(`Invalid targetId ${route.targetId} for route ${idx}`);
+      }
+    });
+  },
+  { deep: true },
+);
 
-  switch (targetNode.type) {
-    case VoiceNodeType.Oscillator:
-      return [
-        { value: ModulationTarget.Frequency, label: 'Frequency' },
-        { value: ModulationTarget.PhaseMod, label: 'Phase' },
-        { value: ModulationTarget.ModIndex, label: 'Mod Index' },
-        { value: ModulationTarget.Gain, label: 'Gain' },
-      ];
-    case VoiceNodeType.Filter:
-      return [
-        { value: ModulationTarget.FilterCutoff, label: 'Cutoff' },
-        { value: ModulationTarget.FilterResonance, label: 'Resonance' },
-      ];
-    default:
-      return [];
+// Debug route mutations
+watch(
+  activeRoutes,
+  (newRoutes) => {
+    console.log('Routes updated:', newRoutes);
+  },
+  { deep: true },
+);
+
+const getAvailableParams = (
+  targetId: number | { id: number },
+): ModulationTargetOption[] => {
+  const id = typeof targetId === 'object' ? targetId.id : Number(targetId);
+  console.log('Getting params for target:', {
+    id,
+    nodes: availableTargetNodes.value,
+  });
+  const targetNode = availableTargetNodes.value.find((n) => n.id === id);
+
+  if (!targetNode) {
+    console.log('Target node not found for id:', id);
+    return [];
   }
+
+  const params =
+    targetNode.type === VoiceNodeType.Oscillator
+      ? [
+          { value: ModulationTarget.PhaseMod, label: 'Phase' },
+          { value: ModulationTarget.Frequency, label: 'Frequency' },
+          { value: ModulationTarget.ModIndex, label: 'Mod Index' },
+          { value: ModulationTarget.Gain, label: 'Gain' },
+        ]
+      : targetNode.type === VoiceNodeType.Filter
+        ? [
+            { value: ModulationTarget.FilterCutoff, label: 'Cutoff' },
+            { value: ModulationTarget.FilterResonance, label: 'Resonance' },
+          ]
+        : [];
+
+  console.log('Returning params:', params);
+  return params;
 };
 
 interface DebugState {
@@ -206,33 +247,44 @@ const updateDebugState = (action: string) => {
   };
 };
 
-const handleTargetChange = async (index: number, newTargetId: number) => {
+const handleTargetChange = async (
+  index: number,
+  newTargetId: number | { id: number },
+) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  const targetId = Number(newTargetId);
+  const targetId =
+    typeof newTargetId === 'object' ? newTargetId.id : Number(newTargetId);
   const params = getAvailableParams(targetId);
   const defaultParam = params[0];
-  if (!defaultParam) return;
+
+  if (!defaultParam) {
+    console.error('No params available for target:', targetId);
+    return;
+  }
 
   try {
     await store.updateConnection({
       fromId: props.sourceId,
-      toId: targetId,
+      toId: route.targetId,
       target: route.target.value,
-      amount: 0,
+      amount: route.amount,
       isRemoving: true,
     });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     await store.updateConnection({
       fromId: props.sourceId,
       toId: targetId,
       target: defaultParam.value,
       amount: route.amount,
+      isRemoving: false,
     });
 
     route.targetId = targetId;
-    route.target = defaultParam; // Store full ModulationTargetOption
+    route.target = defaultParam;
     route.lastUpdateTime = Date.now();
   } catch (error) {
     console.error('Failed to update target:', error);
@@ -246,24 +298,36 @@ const handleParamChange = async (
   const route = activeRoutes.value[index];
   if (!route) return;
 
+  console.log('Param change:', {
+    oldTarget: route.target,
+    newParam: newParam,
+    index,
+  });
+
   try {
-    const newParamVal = { ...newParam };
+    // Remove old connection
     await store.updateConnection({
       fromId: props.sourceId,
-      toId: Number(route.targetId),
+      toId: route.targetId,
       target: route.target.value,
       amount: route.amount,
       isRemoving: true,
     });
 
-    route.target = newParamVal;
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
+    // Add new connection
     await store.updateConnection({
       fromId: props.sourceId,
-      toId: Number(route.targetId),
-      target: newParamVal.value,
+      toId: route.targetId,
+      target: newParam.value,
       amount: route.amount,
+      isRemoving: false,
     });
+
+    // Update local state last
+    route.target = { ...newParam };
+    route.lastUpdateTime = Date.now();
   } catch (error) {
     console.error('Failed to update parameter:', error);
   }
@@ -299,17 +363,19 @@ const addNewRoute = async () => {
   const defaultParams = getAvailableParams(defaultTarget.id);
   if (!defaultParams.length) return;
 
+  // Initialize with proper option object
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
-    target: defaultParams[0]!, // Store full option object
+    target: { value: ModulationTarget.PhaseMod, label: 'Phase' }, // Explicit default
     amount: 1.0,
     lastUpdateTime: Date.now(),
   };
+
   try {
     await store.updateConnection({
       fromId: props.sourceId,
       toId: newRoute.targetId,
-      target: newRoute.target,
+      target: newRoute.target.value,
       amount: newRoute.amount,
     });
 
@@ -320,39 +386,24 @@ const addNewRoute = async () => {
   }
 };
 
-const removeRoute = (index: number) => {
-  console.log('removeRoute triggered with index:', index);
+const removeRoute = async (index: number) => {
   const route = activeRoutes.value[index];
-  if (!route) {
-    console.log('No route found for index:', index);
-    return;
-  }
+  if (!route) return;
 
-  console.log('Found route to remove:', {
-    route,
-    sourceId: props.sourceId,
-    fullConnection: {
+  try {
+    await store.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
-      target: route.target,
+      target: route.target.value,
       amount: route.amount,
       isRemoving: true,
-      modifyExisting: true,
-    },
-  });
+    });
 
-  // Send removal to WASM first
-  store.updateConnection({
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: route.target,
-    amount: route.amount,
-    isRemoving: true,
-    modifyExisting: true,
-  });
-
-  // Then update local state
-  activeRoutes.value.splice(index, 1);
+    activeRoutes.value.splice(index, 1);
+    updateDebugState('Route removed');
+  } catch (error) {
+    console.error('Failed to remove route:', error);
+  }
 };
 
 const getTargetValue = (

@@ -324,17 +324,25 @@ export class AudioSyncManager {
 
         try {
             const numVoices = this.store.synthLayout?.voices.length || 0;
-            const rawConnection: NodeConnectionUpdate = {
+
+            // Create plain object version of connection
+            const plainConnection = {
                 fromId: Number(connection.fromId),
                 toId: Number(connection.toId),
-                target: isModulationTargetObject(connection.target) ? Number(connection.target.value) : Number(connection.target),
+                target: typeof connection.target === 'object' ? Number(connection.target.value) : Number(connection.target),
                 amount: Number(connection.amount),
-                isRemoving: Boolean(connection.isRemoving),
-                modifyExisting: Boolean(connection.modifyExisting)
+                isRemoving: Boolean(connection.isRemoving)
             };
 
             for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
-                this.store.currentInstrument.updateConnection(voiceIndex, rawConnection);
+                if (connection.isRemoving) {
+                    this.store.currentInstrument.updateConnection(voiceIndex, {
+                        ...plainConnection,
+                        isRemoving: true
+                    });
+                } else {
+                    this.store.currentInstrument.updateConnection(voiceIndex, plainConnection);
+                }
             }
         } catch (error) {
             console.error('Failed to modify connection:', error);

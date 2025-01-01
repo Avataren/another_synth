@@ -202,11 +202,17 @@ export default class Instrument {
 
   public updateConnection(voiceIndex: number, connection: NodeConnectionUpdate) {
     if (!this.ready || !this.workletNode) return;
-    console.log('instrument::updateConection:', voiceIndex, connection);
+    console.log('instrument::updateConnection with isRemoving:', connection.isRemoving);
     this.workletNode.port.postMessage({
       type: 'updateConnection',
       voiceIndex,
-      connection,
+      connection: {
+        ...connection,  // Ensure isRemoving is included
+        fromId: Number(connection.fromId),
+        toId: Number(connection.toId),
+        target: Number(connection.target),
+        amount: Number(connection.amount)
+      }
     });
   }
 
@@ -253,6 +259,23 @@ export default class Instrument {
         ...message,
         messageId
       });
+    });
+  }
+
+  public remove_specific_connection(
+    voice_index: number,
+    from_node: number,
+    to_node: number,
+    to_port: number,
+  ) {
+    if (!this.ready || !this.workletNode) return;
+
+    this.workletNode.port.postMessage({
+      type: 'removeConnection',
+      voiceIndex: voice_index,
+      fromNode: from_node,
+      toNode: to_node,
+      toPort: to_port
     });
   }
 
