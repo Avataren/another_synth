@@ -16,7 +16,7 @@
             label="Add Routing"
             @click="addNewRoute"
             class="q-mb-md"
-            :disable="!availableTargetNodes.length"
+            :disable="!availableTargetOptions.length"
           />
 
           <div
@@ -29,7 +29,7 @@
               <div class="col-4">
                 <q-select
                   v-model="route.targetId"
-                  :options="availableTargetNodes"
+                  :options="getAvailableTargets(index)"
                   label="Target"
                   dense
                   dark
@@ -44,7 +44,7 @@
               <div class="col-4">
                 <q-select
                   v-model="route.target"
-                  :options="getAvailableParams(route.targetId)"
+                  :options="getAvailableParams(route.targetId, index)"
                   option-value="value"
                   option-label="label"
                   label="Parameter"
@@ -76,12 +76,7 @@
                   round
                   color="negative"
                   icon="delete"
-                  @click="
-                    () => {
-                      console.log('Delete button clicked', index);
-                      removeRoute(index);
-                    }
-                  "
+                  @click="() => removeRoute(index)"
                   dense
                 />
               </div>
@@ -143,14 +138,10 @@ const debugState = ref<DebugState>({
   localRoutes: null,
 });
 
-// Get all available target nodes (using voice 0 as reference)
-const availableTargetNodes = computed((): TargetNode[] => {
+// Get all target nodes (using voice 0 as reference)
+const allTargetNodes = computed((): TargetNode[] => {
   const nodes: TargetNode[] = [];
   const voice = store.synthLayout?.voices[0];
-  console.log('Computing availableTargetNodes:', {
-    voice,
-    sourceId: props.sourceId,
-  });
 
   if (!voice) return nodes;
 
@@ -158,13 +149,11 @@ const availableTargetNodes = computed((): TargetNode[] => {
     const typeNodes = voice.nodes[type];
     typeNodes.forEach((node, index) => {
       if (node.id !== props.sourceId) {
-        const targetNode = {
+        nodes.push({
           id: node.id,
           name: `${type} ${index + 1}`,
           type: type,
-        };
-        console.log('Adding target node:', targetNode);
-        nodes.push(targetNode);
+        });
       }
     });
   }
@@ -172,61 +161,84 @@ const availableTargetNodes = computed((): TargetNode[] => {
   return nodes;
 });
 
-watch(
-  () => [store.synthLayout, ...activeRoutes.value.map((r) => r.targetId)],
-  () => {
-    console.log('Recomputing nodes due to layout or targetId change');
-    const nodes = availableTargetNodes.value;
-    activeRoutes.value.forEach((route, idx) => {
-      if (!nodes.find((n) => n.id === route.targetId)) {
-        console.warn(`Invalid targetId ${route.targetId} for route ${idx}`);
-      }
-    });
-  },
-  { deep: true },
-);
+// Get available target options (filtering out existing routes)
+const availableTargetOptions = computed(() => {
+  const usedCombinations = new Set(
+    activeRoutes.value.map(
+      (route) =>
+        `${route.targetId}-${isModulationTargetObject(route.target) ? route.target.value : route.target}`,
+    ),
+  );
 
-// Debug route mutations
-watch(
-  activeRoutes,
-  (newRoutes) => {
-    console.log('Routes updated:', newRoutes);
-  },
-  { deep: true },
-);
+  return allTargetNodes.value.filter((node) => {
+    const params = getAvailableParamsForType(node.type);
+    return params.some(
+      (param) => !usedCombinations.has(`${node.id}-${param.value}`),
+    );
+  });
+});
 
+// Helper function to get parameters for a node type
+const getAvailableParamsForType = (
+  nodeType: VoiceNodeType,
+): ModulationTargetOption[] => {
+  return nodeType === VoiceNodeType.Oscillator
+    ? [
+        { value: ModulationTarget.PhaseMod, label: 'Phase' },
+        { value: ModulationTarget.Frequency, label: 'Frequency' },
+        { value: ModulationTarget.ModIndex, label: 'Mod Index' },
+        { value: ModulationTarget.Gain, label: 'Gain' },
+      ]
+    : nodeType === VoiceNodeType.Filter
+      ? [
+          { value: ModulationTarget.FilterCutoff, label: 'Cutoff' },
+          { value: ModulationTarget.FilterResonance, label: 'Resonance' },
+        ]
+      : [];
+};
+
+// Get available targets for a specific route
+const getAvailableTargets = (currentIndex: number) => {
+  const usedCombinations = new Set(
+    activeRoutes.value
+      .filter((_, index) => index !== currentIndex)
+      .map(
+        (route) =>
+          `${route.targetId}-${isModulationTargetObject(route.target) ? route.target.value : route.target}`,
+      ),
+  );
+
+  return allTargetNodes.value.filter((node) => {
+    const params = getAvailableParamsForType(node.type);
+    return params.some(
+      (param) => !usedCombinations.has(`${node.id}-${param.value}`),
+    );
+  });
+};
+
+// Get available parameters for a specific target and route
 const getAvailableParams = (
   targetId: number | { id: number },
+  currentIndex: number,
 ): ModulationTargetOption[] => {
   const id = typeof targetId === 'object' ? targetId.id : Number(targetId);
-  console.log('Getting params for target:', {
-    id,
-    nodes: availableTargetNodes.value,
-  });
-  const targetNode = availableTargetNodes.value.find((n) => n.id === id);
+  const targetNode = allTargetNodes.value.find((n) => n.id === id);
 
-  if (!targetNode) {
-    console.log('Target node not found for id:', id);
-    return [];
-  }
+  if (!targetNode) return [];
 
-  const params =
-    targetNode.type === VoiceNodeType.Oscillator
-      ? [
-          { value: ModulationTarget.PhaseMod, label: 'Phase' },
-          { value: ModulationTarget.Frequency, label: 'Frequency' },
-          { value: ModulationTarget.ModIndex, label: 'Mod Index' },
-          { value: ModulationTarget.Gain, label: 'Gain' },
-        ]
-      : targetNode.type === VoiceNodeType.Filter
-        ? [
-            { value: ModulationTarget.FilterCutoff, label: 'Cutoff' },
-            { value: ModulationTarget.FilterResonance, label: 'Resonance' },
-          ]
-        : [];
+  const usedCombinations = new Set(
+    activeRoutes.value
+      .filter((_, index) => index !== currentIndex)
+      .map(
+        (route) =>
+          `${route.targetId}-${isModulationTargetObject(route.target) ? route.target.value : route.target}`,
+      ),
+  );
 
-  console.log('Returning params:', params);
-  return params;
+  const allParams = getAvailableParamsForType(targetNode.type);
+  return allParams.filter(
+    (param) => !usedCombinations.has(`${id}-${param.value}`),
+  );
 };
 
 interface DebugState {
@@ -256,7 +268,7 @@ const handleTargetChange = async (
 
   const targetId =
     typeof newTargetId === 'object' ? newTargetId.id : Number(newTargetId);
-  const params = getAvailableParams(targetId);
+  const params = getAvailableParams(targetId, index);
   const defaultParam = params[0];
 
   if (!defaultParam) {
@@ -298,14 +310,7 @@ const handleParamChange = async (
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  console.log('Param change:', {
-    oldTarget: route.target,
-    newParam: newParam,
-    index,
-  });
-
   try {
-    // Remove old connection
     await store.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
@@ -316,7 +321,6 @@ const handleParamChange = async (
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Add new connection
     await store.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
@@ -325,7 +329,6 @@ const handleParamChange = async (
       isRemoving: false,
     });
 
-    // Update local state last
     route.target = { ...newParam };
     route.lastUpdateTime = Date.now();
   } catch (error) {
@@ -357,16 +360,21 @@ const handleAmountChange = async (index: number, newAmount: number) => {
 };
 
 const addNewRoute = async () => {
-  const defaultTarget = availableTargetNodes.value[0];
+  const defaultTarget = availableTargetOptions.value[0];
   if (!defaultTarget) return;
 
-  const defaultParams = getAvailableParams(defaultTarget.id);
+  const defaultParams = getAvailableParams(
+    defaultTarget.id,
+    activeRoutes.value.length,
+  );
   if (!defaultParams.length) return;
 
-  // Initialize with proper option object
+  const defaultParam = defaultParams[0];
+  if (!defaultParam) return;
+
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
-    target: { value: ModulationTarget.PhaseMod, label: 'Phase' }, // Explicit default
+    target: defaultParam,
     amount: 1.0,
     lastUpdateTime: Date.now(),
   };
@@ -406,27 +414,29 @@ const removeRoute = async (index: number) => {
   }
 };
 
-const getTargetValue = (
-  target: ModulationTarget | ModulationTargetOption,
-): ModulationTarget => {
-  if (typeof target === 'number') {
-    return target;
-  }
-  return (target as ModulationTargetOption).value;
-};
-
 onMounted(() => {
   const connections = store.getNodeConnections(props.sourceId);
   isUpdatingFromExternal.value = true;
 
   activeRoutes.value = connections.map((conn) => {
-    const params = getAvailableParams(conn.toId);
+    const targetNode = allTargetNodes.value.find((n) => n.id === conn.toId);
+    if (!targetNode) throw new Error(`Target node not found: ${conn.toId}`);
+
+    const params = getAvailableParamsForType(targetNode.type);
     const targetParam = params.find(
-      (p) => p.value === getTargetValue(conn.target),
+      (p) =>
+        p.value ===
+        (isModulationTargetObject(conn.target)
+          ? conn.target.value
+          : conn.target),
     );
+
+    if (!targetParam)
+      throw new Error(`Invalid target parameter for node ${conn.toId}`);
+
     return {
       targetId: conn.toId,
-      target: targetParam || params[0]!,
+      target: targetParam,
       amount: conn.amount,
       lastUpdateTime: Date.now(),
     };
@@ -443,13 +453,27 @@ watch(
     if (isUpdatingFromExternal.value) {
       try {
         const mappedRoutes = newConnections.map((conn) => {
-          const params = getAvailableParams(conn.toId);
-          const targetParam = params.find(
-            (p) => p.value === getTargetValue(conn.target),
+          const targetNode = allTargetNodes.value.find(
+            (n) => n.id === conn.toId,
           );
+          if (!targetNode)
+            throw new Error(`Target node not found: ${conn.toId}`);
+
+          const params = getAvailableParamsForType(targetNode.type);
+          const targetParam = params.find(
+            (p) =>
+              p.value ===
+              (isModulationTargetObject(conn.target)
+                ? conn.target.value
+                : conn.target),
+          );
+
+          if (!targetParam)
+            throw new Error(`Invalid target parameter for node ${conn.toId}`);
+
           return {
             targetId: conn.toId,
-            target: targetParam || params[0]!,
+            target: targetParam,
             amount: conn.amount,
             lastUpdateTime: Date.now(),
           };
