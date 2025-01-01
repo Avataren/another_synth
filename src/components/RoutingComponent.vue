@@ -28,13 +28,12 @@
               <!-- Target Node Selection -->
               <div class="col-4">
                 <q-select
-                  v-model="route.targetId"
+                  v-model="route.targetNode"
                   :options="getAvailableTargets(index)"
                   label="Target"
                   dense
                   dark
                   filled
-                  option-value="id"
                   option-label="name"
                   @update:model-value="(val) => handleTargetChange(index, val)"
                 />
@@ -123,6 +122,7 @@ interface TargetNode {
 
 interface RouteConfig {
   targetId: number;
+  targetNode: TargetNode;
   target: ModulationTargetOption;
   amount: number;
   lastUpdateTime?: number;
@@ -149,9 +149,27 @@ const allTargetNodes = computed((): TargetNode[] => {
     const typeNodes = voice.nodes[type];
     typeNodes.forEach((node, index) => {
       if (node.id !== props.sourceId) {
+        // Format the name based on the node type
+        let nodeName = '';
+        switch (type) {
+          case VoiceNodeType.Oscillator:
+            nodeName = `Oscillator ${index + 1}`;
+            break;
+          case VoiceNodeType.Filter:
+            nodeName = `Filter ${index + 1}`;
+            break;
+          case VoiceNodeType.Envelope:
+            nodeName = `Envelope ${index + 1}`;
+            break;
+          case VoiceNodeType.LFO:
+            nodeName = `LFO ${index + 1}`;
+            break;
+          default:
+            nodeName = `${type} ${index + 1}`;
+        }
         nodes.push({
           id: node.id,
-          name: `${type} ${index + 1}`,
+          name: nodeName,
           type: type,
         });
       }
@@ -259,15 +277,11 @@ const updateDebugState = (action: string) => {
   };
 };
 
-const handleTargetChange = async (
-  index: number,
-  newTargetId: number | { id: number },
-) => {
+const handleTargetChange = async (index: number, newTarget: TargetNode) => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  const targetId =
-    typeof newTargetId === 'object' ? newTargetId.id : Number(newTargetId);
+  const targetId = newTarget.id;
   const params = getAvailableParams(targetId, index);
   const defaultParam = params[0];
 
@@ -374,6 +388,7 @@ const addNewRoute = async () => {
 
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
+    targetNode: defaultTarget,
     target: defaultParam,
     amount: 1.0,
     lastUpdateTime: Date.now(),
@@ -436,6 +451,7 @@ onMounted(() => {
 
     return {
       targetId: conn.toId,
+      targetNode,
       target: targetParam,
       amount: conn.amount,
       lastUpdateTime: Date.now(),
@@ -473,6 +489,7 @@ watch(
 
           return {
             targetId: conn.toId,
+            targetNode,
             target: targetParam,
             amount: conn.amount,
             lastUpdateTime: Date.now(),
