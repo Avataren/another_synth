@@ -191,46 +191,41 @@ export class AudioSyncManager {
 
     private convertToWasmTarget(target: ModulationTarget): PortId {
         switch (target) {
-            case ModulationTarget.Frequency:
-                return PortId.FrequencyMod;
-            case ModulationTarget.Gain:
-                return PortId.GainMod;
             case ModulationTarget.PhaseMod:
-                return PortId.PhaseMod;
+                return PortId.PhaseMod;      // 12
+            case ModulationTarget.Gain:
+                return PortId.GainMod;       // 16
+            case ModulationTarget.Frequency:
+                return PortId.FrequencyMod;  // 11
             case ModulationTarget.ModIndex:
-                return PortId.ModIndex;
+                return PortId.ModIndex;      // 13
             case ModulationTarget.FilterCutoff:
-                return PortId.CutoffMod;
+                return PortId.CutoffMod;     // 14
             case ModulationTarget.FilterResonance:
-                return PortId.ResonanceMod;
+                return PortId.ResonanceMod;  // 15
             default:
-                console.warn('Unknown target:', target);
-                return PortId.GainMod;
+                console.error('Unknown target:', target);
+                throw new Error(`Invalid modulation target: ${target}`);
         }
     }
 
     private convertFromWasmTarget(portId: PortId): ModulationTarget {
-        console.log('Converting from WASM PortId to ModulationTarget:', {
-            portId,
-            portIdEnum: PortId[portId]
-        });
-
         switch (portId) {
-            case PortId.FrequencyMod:    // 11
-                return ModulationTarget.Frequency;  // 0
+            case PortId.PhaseMod:        // 12
+                return ModulationTarget.PhaseMod;   // 4
             case PortId.GainMod:         // 16
                 return ModulationTarget.Gain;       // 1
+            case PortId.FrequencyMod:    // 11
+                return ModulationTarget.Frequency;  // 0
+            case PortId.ModIndex:        // 13
+                return ModulationTarget.ModIndex;   // 5
             case PortId.CutoffMod:       // 14
                 return ModulationTarget.FilterCutoff; // 2
             case PortId.ResonanceMod:    // 15
                 return ModulationTarget.FilterResonance; // 3
-            case PortId.PhaseMod:        // 12
-                return ModulationTarget.PhaseMod;   // 4
-            case PortId.ModIndex:        // 13
-                return ModulationTarget.ModIndex;   // 5
             default:
-                console.warn('Unknown WASM PortId:', portId);
-                return ModulationTarget.Gain;
+                console.error('Unknown WASM PortId:', portId);
+                throw new Error(`Invalid port ID: ${portId}`);
         }
     }
 
@@ -264,35 +259,36 @@ export class AudioSyncManager {
             wasm: WasmConnection | null
         }> = [];
 
-        // Convert store connections to WASM format and normalize them
-        const normalizedStoreConns: WasmConnection[] = storeConns.map(conn => ({
-            from_id: conn.fromId,
-            to_id: conn.toId,
-            target: this.convertToWasmTarget(this.getTargetValue(conn.target)),
-            amount: conn.amount
-        }));
+        // Create maps for easier lookup using a composite key that includes target
+        const getStoreConnectionKey = (fromId: number, toId: number, target: ModulationTarget | ModulationTargetOption) => {
+            const targetValue = isModulationTargetObject(target) ? target.value : target;
+            return `${fromId}-${toId}-${targetValue}`;
+        };
 
-        // Create maps for easy lookup
-        const storeMap = new Map(normalizedStoreConns.map(conn => [
-            `${conn.from_id}-${conn.to_id}-${conn.target}`,
-            conn
-        ]));
-        const wasmMap = new Map(wasmConns.map(conn => [
-            `${conn.from_id}-${conn.to_id}-${conn.target}`,
-            conn
-        ]));
+        const getWasmConnectionKey = (fromId: number, toId: number, target: PortId) => {
+            return `${fromId}-${toId}-${this.convertFromWasmTarget(target)}`;
+        };
 
-        // Find differences
+        const storeMap = new Map<string, NodeConnection>();
+        storeConns.forEach(conn => {
+            const key = getStoreConnectionKey(conn.fromId, conn.toId, conn.target);
+            storeMap.set(key, conn);
+        });
+
+        const wasmMap = new Map<string, WasmConnection>();
+        wasmConns.forEach(conn => {
+            const key = getWasmConnectionKey(conn.from_id, conn.to_id, conn.target);
+            wasmMap.set(key, conn);
+        });
+
+        // Check for differences
         for (const [key, storeConn] of storeMap) {
-            const wasmConn = wasmMap.get(key);
-            if (!wasmConn || Math.abs(storeConn.amount - wasmConn.amount) >= 0.001) {
-                differences.push({
-                    store: this.convertToStoreConnection(storeConn),
-                    wasm: wasmConn || null
-                });
+            if (!wasmMap.has(key)) {
+                differences.push({ store: storeConn, wasm: null });
             }
         }
 
+        // Find WASM connections that don't exist in store
         for (const [key, wasmConn] of wasmMap) {
             if (!storeMap.has(key)) {
                 differences.push({ store: null, wasm: wasmConn });
@@ -300,8 +296,8 @@ export class AudioSyncManager {
         }
 
         if (differences.length > 0) {
-            console.log('Normalized connections:', {
-                store: normalizedStoreConns,
+            console.log('Connection differences:', {
+                store: storeConns,
                 wasm: wasmConns,
                 differences
             });
@@ -352,17 +348,13 @@ export class AudioSyncManager {
 
     private async syncWithWasm() {
         try {
-
             if (!this.store.currentInstrument?.isReady) {
-                return;
-            }
-
-            if (!this.store.currentInstrument) {
                 return;
             }
 
             const wasmState = await this.store.currentInstrument.getWasmNodeConnections();
 
+            // Only proceed if state has changed
             if (wasmState === this.lastWasmState) {
                 return;
             }
@@ -382,13 +374,24 @@ export class AudioSyncManager {
                 if (differences.length > 0) {
                     console.log('Found differences:', differences);
 
+                    // Instead of automatically updating from WASM state, we should respect removals
                     const synthLayout = this.store.synthLayout;
                     if (synthLayout) {
-                        // Update each voice's connections
                         synthLayout.voices.forEach((voice, index) => {
                             const wasmVoice = wasmLayout.voices[index];
                             if (wasmVoice) {
-                                voice.connections = wasmVoice.connections.map(conn => ({
+                                // Only update with connections that should exist
+                                const validConnections = wasmVoice.connections.filter(conn => {
+                                    // Check if this connection was recently removed
+                                    const wasRemoved = this.store.isUpdating &&
+                                        storeConnections.every(storeConn =>
+                                            !(storeConn.fromId === conn.from_id &&
+                                                storeConn.toId === conn.to_id &&
+                                                this.convertFromWasmTarget(conn.target) === storeConn.target));
+                                    return !wasRemoved;
+                                });
+
+                                voice.connections = validConnections.map(conn => ({
                                     fromId: conn.from_id,
                                     toId: conn.to_id,
                                     target: this.convertFromWasmTarget(conn.target),
@@ -398,9 +401,6 @@ export class AudioSyncManager {
                         });
                     }
                 }
-
-                // Reset failed attempts on successful sync
-                this.failedAttempts = 0;
 
             } catch (error) {
                 console.error('Failed to parse or process WASM state:', error);

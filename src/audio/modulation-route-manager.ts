@@ -4,10 +4,10 @@ import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import {
     VoiceNodeType,
     ModulationTarget,
-    type NodeConnection,
     type ModulationTargetOption,
     type VoiceNode,
     isModulationTargetObject,
+    type NodeConnectionUpdate,
 } from './types/synth-layout';
 
 export interface TargetNode {
@@ -102,7 +102,7 @@ export class ModulationRouteManager {
                     { value: ModulationTarget.PhaseMod, label: 'Phase' },
                     { value: ModulationTarget.Frequency, label: 'Frequency' },
                     { value: ModulationTarget.ModIndex, label: 'Mod Index' },
-                    { value: ModulationTarget.Gain, label: 'Gain' },
+                    { value: ModulationTarget.Gain, label: 'Gain' },  // Ensure Gain is listed here
                 ];
             case VoiceNodeType.Filter:
                 return [
@@ -113,7 +113,6 @@ export class ModulationRouteManager {
                 return [];
         }
     }
-
     private findNodeById(nodeId: number): VoiceNode | undefined {
         const voice = this.store.synthLayout?.voices[0];
         if (!voice) return undefined;
@@ -125,7 +124,7 @@ export class ModulationRouteManager {
         return undefined;
     }
 
-    async updateConnection(connection: NodeConnection): Promise<void> {
+    async updateConnection(connection: NodeConnectionUpdate): Promise<void> {
         try {
             await this.store.updateConnection(connection);
         } catch (error) {

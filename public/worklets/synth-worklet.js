@@ -1238,46 +1238,69 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const { voiceIndex, connection } = data;
     if (!this.audioEngine) return;
     try {
-      const targetPortId = this.getPortIdForTarget(connection.target);
-      console.log("Connection update:", {
-        voiceIndex,
-        connection,
-        targetPortId,
-        isRemoving: connection.isRemoving
-      });
-      if (connection.isRemoving) {
-        console.log("Removing connection:", {
-          voiceIndex,
-          fromId: connection.fromId,
-          toId: connection.toId,
-          targetPortId
-        });
+      const beforeState = this.audioEngine.get_current_state();
+      const fromId = connection.fromId;
+      const toId = connection.toId;
+      const existingConns = beforeState.voices[voiceIndex]?.connections.filter(
+        (conn) => conn.from_id === fromId && conn.to_id === toId
+      ) || [];
+      for (const conn of existingConns) {
+        const portId = this.wasmTargetToPortId(conn.target);
         this.audioEngine.remove_specific_connection(
           voiceIndex,
-          connection.fromId,
-          connection.toId,
-          targetPortId
+          fromId,
+          toId,
+          portId
         );
-      } else {
-        console.log("Adding connection:", {
-          voiceIndex,
-          fromId: connection.fromId,
-          toId: connection.toId,
-          targetPortId,
-          amount: connection.amount
-        });
+      }
+      if (!connection.isRemoving) {
+        const targetPortId = this.getPortIdForTarget(connection.target);
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
-          connection.fromId,
+          fromId,
           PortId.AudioOutput0,
-          connection.toId,
+          toId,
           targetPortId,
           connection.amount
         );
       }
-      this.handleRequestSync();
+      const afterState = this.audioEngine.get_current_state();
+      this.port.postMessage({
+        type: "stateUpdated",
+        version: this.stateVersion++,
+        state: afterState
+      });
     } catch (err) {
-      console.error("Failed to update connection:", err);
+      console.error("Connection update failed:", err);
+    }
+  }
+  handleRequestSync() {
+    if (this.audioEngine) {
+      this.stateVersion++;
+      this.port.postMessage({
+        type: "stateUpdated",
+        version: this.stateVersion,
+        state: this.audioEngine.get_current_state()
+      });
+    }
+  }
+  wasmTargetToPortId(wasmTarget) {
+    switch (wasmTarget) {
+      case 11:
+        return PortId.FrequencyMod;
+      case 12:
+        return PortId.PhaseMod;
+      case 13:
+        return PortId.ModIndex;
+      case 14:
+        return PortId.CutoffMod;
+      case 15:
+        return PortId.ResonanceMod;
+      case 16:
+        return PortId.GainMod;
+      default:
+        console.warn("Unknown WASM target:", wasmTarget);
+        throw new Error(`Invalid WASM target: ${wasmTarget}`);
     }
   }
   handleUpdateModulation(data) {
@@ -1380,39 +1403,34 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     return Object.values(ModulationTarget).includes(targetValue);
   }
   getPortIdForTarget(target) {
-    const normalizedTarget = isModulationTargetObject(target) ? target.value : target;
-    console.log("Converting ModulationTarget to PortId:", {
-      input: target,
-      normalized: normalizedTarget,
-      inputType: typeof target,
-      targetEnum: ModulationTarget[normalizedTarget]
+    console.log("Getting PortId for:", {
+      target,
+      type: typeof target,
+      isObject: isModulationTargetObject(target)
     });
-    switch (normalizedTarget) {
+    let targetValue;
+    if (isModulationTargetObject(target)) {
+      targetValue = target.value;
+    } else if (typeof target === "number") {
+      targetValue = target;
+    } else {
+      throw new Error(`Invalid target type: ${typeof target}`);
+    }
+    switch (targetValue) {
       case 0 /* Frequency */:
         return PortId.FrequencyMod;
-      // 11
       case 1 /* Gain */:
         return PortId.GainMod;
-      // 16
       case 2 /* FilterCutoff */:
         return PortId.CutoffMod;
-      // 14
       case 3 /* FilterResonance */:
         return PortId.ResonanceMod;
-      // 15
       case 4 /* PhaseMod */:
         return PortId.PhaseMod;
-      // 12
       case 5 /* ModIndex */:
         return PortId.ModIndex;
-      // 13
       default:
-        console.warn("Unknown ModulationTarget:", {
-          target,
-          normalized: normalizedTarget,
-          ModulationTarget
-        });
-        return PortId.GainMod;
+        throw new Error(`Invalid ModulationTarget: ${targetValue}`);
     }
   }
   handleUpdateLfo(data) {
@@ -1432,16 +1450,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       }
     } catch (err) {
       console.error("Error updating LFO:", err);
-    }
-  }
-  handleRequestSync() {
-    if (this.audioEngine) {
-      this.stateVersion++;
-      this.port.postMessage({
-        type: "stateUpdated",
-        version: this.stateVersion,
-        state: this.audioEngine.get_current_state()
-      });
     }
   }
   process(_inputs, outputs, parameters) {

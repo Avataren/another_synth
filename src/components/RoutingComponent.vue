@@ -200,30 +200,25 @@ const handleParamChange = async (
   const route = activeRoutes.value[index];
   if (!route) return;
 
+  console.log('Starting param change:', {
+    fromId: props.sourceId,
+    toId: route.targetId,
+    target: newParam.value,
+    amount: route.amount,
+  });
+
   try {
-    // Remove old connection
-    await routeManager.updateConnection({
+    await store.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
-      target: route.target,
-      amount: route.amount,
-      isRemoving: true,
-    });
-
-    // Add new connection
-    await routeManager.updateConnection({
-      fromId: props.sourceId,
-      toId: route.targetId,
-      target: newParam,
+      target: newParam.value, // Pass the enum value directly
       amount: route.amount,
     });
-
     route.target = newParam;
   } catch (error) {
     console.error('Failed to update parameter:', error);
   }
 };
-
 const handleAmountChange = async (index: number, newAmount: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;

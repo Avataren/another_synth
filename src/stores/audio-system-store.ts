@@ -16,6 +16,7 @@ import {
   type VoiceLayout,
   isModulationTargetObject,
   type NodeConnectionUpdate,
+  type ModulationTargetOption,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 
@@ -48,6 +49,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     filterStates: new Map<number, FilterState>(),
     lfoStates: new Map<number, LfoState>(),
     isUpdatingFromWasm: false,
+    isUpdating: false,
+    updateQueue: [] as NodeConnectionUpdate[],
+    lastUpdateError: null as Error | null,
 
     // Global states
     noiseState: {
@@ -291,24 +295,37 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       );
     },
     async updateConnection(connection: NodeConnectionUpdate) {
-      console.log('store.updateConnection:', {
-        connection,
-        isRemoving: connection.isRemoving,
-        fullConnection: {
-          ...connection,
-          isRemoving: connection.isRemoving
-        }
-      });
+      if (this.isUpdating) throw new Error('Update in progress');
+      this.isUpdating = true;
 
-      if (!this.syncManager) return;
       try {
-        await this.syncManager.modifyConnection(connection);
-      } catch (error) {
-        console.error('Failed to update connection:', error);
-        throw error;
+        const numVoices = this.synthLayout?.voices.length || 0;
+        console.log('Store handling connection:', {
+          connection,
+          normalized: this.normalizeTarget(connection.target)
+        });
+
+        for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
+          if (!this.currentInstrument) throw new Error('No instrument');
+
+          await this.currentInstrument.updateConnection(voiceIndex, {
+            fromId: Number(connection.fromId),
+            toId: Number(connection.toId),
+            target: this.normalizeTarget(connection.target),
+            amount: Number(connection.amount),
+            isRemoving: Boolean(connection.isRemoving)
+          });
+        }
+      } finally {
+        this.isUpdating = false;
       }
     },
-
+    normalizeTarget(target: ModulationTarget | ModulationTargetOption): ModulationTarget {
+      if (isModulationTargetObject(target)) {
+        return target.value;
+      }
+      return target;
+    },
     updateConnectionForVoice(voiceIndex: number, connection: NodeConnection) {
       if (!this.synthLayout || !this.currentInstrument) {
         console.error('Cannot update connection: store not initialized');

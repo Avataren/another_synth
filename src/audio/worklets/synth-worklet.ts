@@ -71,6 +71,23 @@ export interface LfoUpdateData {
   }
 }
 
+interface WasmConnection {
+  from_id: number;
+  to_id: number;
+  target: number;
+  amount: number;
+}
+
+interface WasmVoice {
+  id: number;
+  connections: WasmConnection[];
+  nodes: Array<{ id: number; node_type: string; }>;
+}
+
+interface WasmState {
+  voices: WasmVoice[];
+}
+
 // interface WasmVoiceConnection {
 //   from_id: number;
 //   to_id: number;
@@ -411,49 +428,71 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
 
     try {
-      const targetPortId = this.getPortIdForTarget(connection.target);
-      console.log('Connection update:', {
-        voiceIndex,
-        connection,
-        targetPortId,
-        isRemoving: connection.isRemoving
-      });
+      const beforeState = this.audioEngine.get_current_state() as WasmState;
+      const fromId = connection.fromId;
+      const toId = connection.toId;
 
-      if (connection.isRemoving) {
-        console.log('Removing connection:', {
-          voiceIndex,
-          fromId: connection.fromId,
-          toId: connection.toId,
-          targetPortId
-        });
+      const existingConns = beforeState.voices[voiceIndex]?.connections.filter(
+        (conn: WasmConnection) => conn.from_id === fromId && conn.to_id === toId
+      ) || [];
+
+      // Convert WASM target number to PortId
+      for (const conn of existingConns) {
+        const portId = this.wasmTargetToPortId(conn.target);
         this.audioEngine.remove_specific_connection(
           voiceIndex,
-          connection.fromId,
-          connection.toId,
-          targetPortId
+          fromId,
+          toId,
+          portId
         );
-      } else {
-        console.log('Adding connection:', {
-          voiceIndex,
-          fromId: connection.fromId,
-          toId: connection.toId,
-          targetPortId,
-          amount: connection.amount
-        });
+      }
+
+      if (!connection.isRemoving) {
+        const targetPortId = this.getPortIdForTarget(connection.target);
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
-          connection.fromId,
+          fromId,
           PortId.AudioOutput0,
-          connection.toId,
+          toId,
           targetPortId,
           connection.amount
         );
       }
 
-      // Force state update after modification
-      this.handleRequestSync();
+      const afterState = this.audioEngine.get_current_state() as WasmState;
+      this.port.postMessage({
+        type: 'stateUpdated',
+        version: this.stateVersion++,
+        state: afterState
+      });
+
     } catch (err) {
-      console.error('Failed to update connection:', err);
+      console.error('Connection update failed:', err);
+    }
+  }
+  private handleRequestSync() {
+    if (this.audioEngine) {
+      this.stateVersion++;
+      this.port.postMessage({
+        type: 'stateUpdated',
+        version: this.stateVersion,
+        state: this.audioEngine.get_current_state()
+      });
+    }
+  }
+
+  private wasmTargetToPortId(wasmTarget: number): PortId {
+    // Map WASM target numbers to PortId enum values
+    switch (wasmTarget) {
+      case 11: return PortId.FrequencyMod;
+      case 12: return PortId.PhaseMod;
+      case 13: return PortId.ModIndex;
+      case 14: return PortId.CutoffMod;
+      case 15: return PortId.ResonanceMod;
+      case 16: return PortId.GainMod;
+      default:
+        console.warn('Unknown WASM target:', wasmTarget);
+        throw new Error(`Invalid WASM target: ${wasmTarget}`);
     }
   }
 
@@ -586,35 +625,36 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private getPortIdForTarget(target: ModulationTarget | ModulationTargetObject): PortId {
-    const normalizedTarget = isModulationTargetObject(target) ? target.value : target;
-
-    console.log('Converting ModulationTarget to PortId:', {
-      input: target,
-      normalized: normalizedTarget,
-      inputType: typeof target,
-      targetEnum: ModulationTarget[normalizedTarget]
+    console.log('Getting PortId for:', {
+      target,
+      type: typeof target,
+      isObject: isModulationTargetObject(target)
     });
 
-    switch (normalizedTarget) {
-      case ModulationTarget.Frequency:  // 0
-        return PortId.FrequencyMod;   // 11
-      case ModulationTarget.Gain:       // 1
-        return PortId.GainMod;        // 16
-      case ModulationTarget.FilterCutoff: // 2
-        return PortId.CutoffMod;      // 14
-      case ModulationTarget.FilterResonance: // 3
-        return PortId.ResonanceMod;   // 15
-      case ModulationTarget.PhaseMod:   // 4
-        return PortId.PhaseMod;       // 12
-      case ModulationTarget.ModIndex:   // 5
-        return PortId.ModIndex;       // 13
-      default:
-        console.warn('Unknown ModulationTarget:', {
-          target,
-          normalized: normalizedTarget,
-          ModulationTarget
-        });
+    let targetValue: ModulationTarget;
+    if (isModulationTargetObject(target)) {
+      targetValue = target.value;
+    } else if (typeof target === 'number') {
+      targetValue = target;
+    } else {
+      throw new Error(`Invalid target type: ${typeof target}`);
+    }
+
+    switch (targetValue) {
+      case ModulationTarget.Frequency:
+        return PortId.FrequencyMod;
+      case ModulationTarget.Gain:
         return PortId.GainMod;
+      case ModulationTarget.FilterCutoff:
+        return PortId.CutoffMod;
+      case ModulationTarget.FilterResonance:
+        return PortId.ResonanceMod;
+      case ModulationTarget.PhaseMod:
+        return PortId.PhaseMod;
+      case ModulationTarget.ModIndex:
+        return PortId.ModIndex;
+      default:
+        throw new Error(`Invalid ModulationTarget: ${targetValue}`);
     }
   }
 
@@ -639,16 +679,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleRequestSync() {
-    if (this.audioEngine) {
-      this.stateVersion++;
-      this.port.postMessage({
-        type: 'stateUpdated',
-        version: this.stateVersion,
-        state: this.audioEngine.get_current_state()
-      });
-    }
-  }
 
   override process(
     _inputs: Float32Array[][],

@@ -53,8 +53,8 @@ export interface NodeConnection {
 
 export interface NodeConnectionUpdate extends NodeConnection {
     modifyExisting?: boolean;
+    oldTarget?: ModulationTarget | ModulationTargetObject;
 }
-
 export interface FilterConfig {
     type: 'lowpass' | 'highpass' | 'bandpass';
 }
