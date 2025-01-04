@@ -5,7 +5,7 @@ import {
     type NodeConnection
 } from './types/synth-layout';
 import { useAudioSystemStore } from '../stores/audio-system-store';
-import { type PortId } from 'app/public/wasm/audio_processor';
+import { PortId } from 'app/public/wasm/audio_processor';
 
 interface WasmVoice {
     id: number;
@@ -219,23 +219,35 @@ export class AudioSyncManager {
         try {
             const numVoices = this.store.synthLayout?.voices.length || 0;
 
+            // Validate target is a valid PortId
+            const target = connection.target;
+            if (typeof target !== 'number' || !(target in PortId)) {
+                throw new Error(`Invalid target: ${connection.target}`);
+            }
+
             // Create plain connection object with the correct type
             const plainConnection: NodeConnectionUpdate = {
                 fromId: Number(connection.fromId),
                 toId: Number(connection.toId),
-                target: connection.target, // Now using PortId directly
+                target: target as PortId,
                 amount: Number(connection.amount),
                 isRemoving: Boolean(connection.isRemoving)
             };
 
+            console.log('Processing validated connection:', {
+                original: connection,
+                processed: plainConnection,
+                targetValue: target
+            });
+
             for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
                 if (connection.isRemoving) {
-                    this.store.currentInstrument.updateConnection(voiceIndex, {
+                    await this.store.currentInstrument.updateConnection(voiceIndex, {
                         ...plainConnection,
                         isRemoving: true
                     });
                 } else {
-                    this.store.currentInstrument.updateConnection(voiceIndex, plainConnection);
+                    await this.store.currentInstrument.updateConnection(voiceIndex, plainConnection);
                 }
             }
         } catch (error) {
