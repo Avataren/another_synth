@@ -299,55 +299,86 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       try {
         const numVoices = this.synthLayout?.voices.length || 0;
 
-        // No need for target conversion since connection.target is already PortId
-        console.log('Store - Connection update:', {
-          connection,
-          isRemoving: connection.isRemoving
-        });
+        // Create a completely new object with primitives
+        const plainConnection = {
+          fromId: Number(connection.fromId),
+          toId: Number(connection.toId),
+          target: Number(connection.target),
+          amount: Number(connection.amount)
+        } as NodeConnectionUpdate;
 
-        // First update WASM for all voices
-        for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
-          if (!this.currentInstrument) throw new Error('No instrument');
+        // Handle removing/changing connections
+        const isChangingConnection = !connection.isRemoving && this.synthLayout?.voices[0]!.connections.some(conn =>
+          conn.fromId === connection.fromId &&
+          conn.toId === connection.toId &&
+          conn.target !== connection.target
+        );
 
-          await this.currentInstrument.updateConnection(voiceIndex, {
-            fromId: Number(connection.fromId),
-            toId: Number(connection.toId),
-            target: connection.target,
-            amount: Number(connection.amount),
-            isRemoving: Boolean(connection.isRemoving)
-          });
+        // If we're changing a connection type, we need to remove the old one first
+        if (isChangingConnection) {
+          // Find the old connection to remove it
+          const oldConnection = this.synthLayout!.voices[0]!.connections.find(conn =>
+            conn.fromId === connection.fromId &&
+            conn.toId === connection.toId
+          );
+
+          if (oldConnection) {
+            // Remove the old connection first
+            const removeConnection = {
+              ...plainConnection,
+              target: oldConnection.target,
+              isRemoving: true
+            };
+
+            // Remove old connection from all voices
+            for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
+              if (!this.currentInstrument) throw new Error('No instrument');
+              await this.currentInstrument.updateConnection(voiceIndex, removeConnection);
+            }
+          }
         }
 
-        // Then update store state for all voices
+        // Now handle the actual connection update/removal
+        if (connection.isRemoving) {
+          plainConnection.isRemoving = true;
+        }
+
+        // Update WASM for all voices
+        for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
+          if (!this.currentInstrument) throw new Error('No instrument');
+          await this.currentInstrument.updateConnection(voiceIndex, plainConnection);
+        }
+
+        // Update store state
         if (this.synthLayout) {
           this.synthLayout.voices.forEach(voice => {
             if (!voice.connections) voice.connections = [];
 
-            if (connection.isRemoving) {
-              // Remove the specific connection
+            if (connection.isRemoving || isChangingConnection) {
+              // Remove any existing connection with same source and target
               voice.connections = voice.connections.filter(conn =>
-                !(conn.fromId === connection.fromId &&
-                  conn.toId === connection.toId &&
-                  conn.target === connection.target)
+                !(conn.fromId === plainConnection.fromId &&
+                  conn.toId === plainConnection.toId)
               );
-            } else {
-              // Remove any existing connection with same routing
-              voice.connections = voice.connections.filter(conn =>
-                !(conn.fromId === connection.fromId &&
-                  conn.toId === connection.toId &&
-                  conn.target === connection.target)
-              );
+            }
 
-              // Add the new/updated connection
+            if (!connection.isRemoving) {
+              // Add new connection
               voice.connections.push({
-                fromId: connection.fromId,
-                toId: connection.toId,
-                target: connection.target,
-                amount: connection.amount
+                fromId: plainConnection.fromId,
+                toId: plainConnection.toId,
+                target: plainConnection.target,
+                amount: plainConnection.amount
               });
             }
           });
+
+          // Force a reactivity update
+          this.synthLayout = { ...this.synthLayout };
         }
+      } catch (error) {
+        console.error('Connection update failed:', error);
+        throw error;
       } finally {
         this.isUpdating = false;
       }

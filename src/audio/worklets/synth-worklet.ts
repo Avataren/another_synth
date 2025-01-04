@@ -369,14 +369,51 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
 
     try {
+      console.log('Worklet handling connection update:', {
+        voiceIndex,
+        connection,
+        type: connection.isRemoving ? 'remove' : 'update'
+      });
+
       if (connection.isRemoving) {
+        // Use the exact target port for removal
         this.audioEngine.remove_specific_connection(
           voiceIndex,
           connection.fromId,
           connection.toId,
-          connection.target
+          connection.target // Use target directly from connection
         );
+
+        console.log('Removed connection:', {
+          voice: voiceIndex,
+          from: connection.fromId,
+          to: connection.toId,
+          target: connection.target
+        });
+
+        // Check state after removal
+        const state = this.audioEngine.get_current_state();
+        console.log('State after removal:', state);
       } else {
+        // When adding/updating, first remove any existing modulation connections
+        // from this source to this target
+        [
+          PortId.PhaseMod,
+          PortId.FrequencyMod,
+          PortId.GainMod,
+          PortId.ModIndex,
+          PortId.CutoffMod,
+          PortId.ResonanceMod
+        ].forEach(target => {
+          this.audioEngine!.remove_specific_connection(
+            voiceIndex,
+            connection.fromId,
+            connection.toId,
+            target
+          );
+        });
+
+        // Then add the new connection
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
           connection.fromId,
@@ -387,10 +424,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         );
       }
     } catch (err) {
-      console.error('Connection update failed:', err);
+      console.error('Connection update failed in worklet:', err);
     }
   }
-
 
   private handleRequestSync() {
     if (this.audioEngine) {

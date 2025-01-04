@@ -215,29 +215,49 @@ export default class Instrument {
   public updateConnection(voiceIndex: number, connection: NodeConnectionUpdate): void {
     if (!this.ready || !this.workletNode) return;
 
-    const message: {
-      type: 'updateConnection';
-      voiceIndex: number;
-      connection: {
-        fromId: number;
-        toId: number;
-        target: PortId;
-        amount: number;
-        isRemoving?: boolean;
-      };
+    console.log('Preparing connection update:', {
+      original: connection,
+      voiceIndex
+    });
+
+    // Type the safe connection properly
+    const safeConnection: {
+      fromId: number;
+      toId: number;
+      target: number;
+      amount: number;
+      isRemoving?: boolean;
     } = {
-      type: 'updateConnection',
-      voiceIndex,
-      connection: {
-        fromId: Number(connection.fromId),
-        toId: Number(connection.toId),
-        target: connection.target,
-        amount: Number(connection.amount),
-        ...(connection.isRemoving !== undefined && { isRemoving: connection.isRemoving })
-      }
+      fromId: Number(connection.fromId),
+      toId: Number(connection.toId),
+      target: Number(connection.target),
+      amount: Number(connection.amount)
     };
 
-    this.workletNode.port.postMessage(message);
+    if (connection.isRemoving) {
+      safeConnection.isRemoving = true;
+    }
+
+    const message = {
+      type: 'updateConnection',
+      voiceIndex: Number(voiceIndex),
+      connection: safeConnection
+    };
+
+    console.log('Sending connection message:', JSON.stringify(message));
+
+    try {
+      this.workletNode.port.postMessage(message);
+    } catch (error) {
+      console.error('Connection update failed:', {
+        message,
+        error,
+        connectionType: typeof connection,
+        messageType: typeof message,
+        stringified: JSON.stringify(message)
+      });
+      throw error;
+    }
   }
 
   async createModulation(
