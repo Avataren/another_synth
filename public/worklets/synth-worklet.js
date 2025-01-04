@@ -952,18 +952,26 @@ var OscillatorUpdateHandler = class {
 };
 
 // src/audio/types/synth-layout.ts
-var ModulationTarget = /* @__PURE__ */ ((ModulationTarget2) => {
-  ModulationTarget2[ModulationTarget2["Frequency"] = 0] = "Frequency";
-  ModulationTarget2[ModulationTarget2["Gain"] = 1] = "Gain";
-  ModulationTarget2[ModulationTarget2["FilterCutoff"] = 2] = "FilterCutoff";
-  ModulationTarget2[ModulationTarget2["FilterResonance"] = 3] = "FilterResonance";
-  ModulationTarget2[ModulationTarget2["PhaseMod"] = 4] = "PhaseMod";
-  ModulationTarget2[ModulationTarget2["ModIndex"] = 5] = "ModIndex";
-  return ModulationTarget2;
-})(ModulationTarget || {});
-function isModulationTargetObject(target) {
-  return typeof target === "object" && "value" in target;
-}
+var PORT_LABELS = {
+  [PortId.AudioInput0]: "Audio Input 1",
+  [PortId.AudioInput1]: "Audio Input 2",
+  [PortId.AudioInput2]: "Audio Input 3",
+  [PortId.AudioInput3]: "Audio Input 4",
+  [PortId.AudioOutput0]: "Audio Output 1",
+  [PortId.AudioOutput1]: "Audio Output 2",
+  [PortId.AudioOutput2]: "Audio Output 3",
+  [PortId.AudioOutput3]: "Audio Output 4",
+  [PortId.Gate]: "Gate",
+  [PortId.GlobalFrequency]: "Global Frequency",
+  [PortId.Frequency]: "Base Frequency",
+  [PortId.FrequencyMod]: "Frequency Mod",
+  [PortId.PhaseMod]: "Phase Mod",
+  [PortId.ModIndex]: "Mod Index",
+  [PortId.CutoffMod]: "Filter Cutoff",
+  [PortId.ResonanceMod]: "Filter Resonance",
+  [PortId.GainMod]: "Gain",
+  [PortId.EnvelopeMod]: "Envelope Amount"
+};
 
 // src/audio/worklets/synth-worklet.ts
 var LfoTriggerMode = /* @__PURE__ */ ((LfoTriggerMode2) => {
@@ -1128,6 +1136,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     if (!this.audioEngine) {
       throw new Error("Audio engine not initialized");
     }
+    console.log("Initializing voice:", voiceIndex);
     const voiceLayout = {
       id: voiceIndex,
       nodes: {
@@ -1140,6 +1149,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     };
     for (let i = 0; i < this.maxOscillators; i++) {
       const oscId = this.audioEngine.add_oscillator(voiceIndex);
+      console.log(`Created oscillator ${i} with id ${oscId}`);
       voiceLayout.nodes["oscillator" /* Oscillator */].push({
         id: oscId,
         type: "oscillator" /* Oscillator */
@@ -1147,6 +1157,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     for (let i = 0; i < this.maxEnvelopes; i++) {
       const result = this.audioEngine.create_envelope(voiceIndex);
+      console.log(`Created envelope ${i} with id ${result.envelopeId}`);
       voiceLayout.nodes["envelope" /* Envelope */].push({
         id: result.envelopeId,
         type: "envelope" /* Envelope */
@@ -1154,6 +1165,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     for (let i = 0; i < this.maxLFOs; i++) {
       const result = this.audioEngine.create_lfo(voiceIndex);
+      console.log(`Created LFO ${i} with id ${result.lfoId}`);
       voiceLayout.nodes["lfo" /* LFO */].push({
         id: result.lfoId,
         type: "lfo" /* LFO */
@@ -1163,11 +1175,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const [ampEnv] = voiceLayout.nodes["envelope" /* Envelope */];
     if (ampEnv && oscillators.length >= 2) {
       const [osc1, osc2] = oscillators;
-      console.log("Initial setup - connecting:", {
-        voiceIndex,
+      console.log("Setting up initial connections:", {
+        ampEnv,
         osc1,
-        osc2,
-        ampEnv
+        osc2
       });
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
@@ -1177,7 +1188,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.GainMod,
         1
       );
-      console.log("Added gain modulation connection");
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         osc2.id,
@@ -1186,42 +1196,26 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.PhaseMod,
         1
       );
-      console.log("Added phase modulation connection");
-      console.log("Setting up connections for voice:", {
-        voiceIndex,
-        connections: [
-          {
-            type: "gainMod",
-            fromId: ampEnv.id,
-            toId: osc1.id,
-            target: PortId.GainMod,
-            amount: 1
-          },
-          {
-            type: "phaseMod",
-            fromId: osc2.id,
-            toId: osc1.id,
-            target: PortId.PhaseMod,
-            amount: 1
-          }
-        ]
-      });
-      const currentState = this.audioEngine.get_current_state();
-      console.log("Current engine state:", currentState);
       voiceLayout.connections = [
         {
           fromId: ampEnv.id,
           toId: osc1.id,
-          target: 1 /* Gain */,
+          target: PortId.GainMod,
           amount: 1
         },
         {
           fromId: osc2.id,
           toId: osc1.id,
-          target: 4 /* PhaseMod */,
+          target: PortId.PhaseMod,
           amount: 1
         }
       ];
+      console.log("Voice layout after setup:", voiceLayout);
+    } else {
+      console.warn("Not enough nodes for initial connections:", {
+        ampEnv,
+        oscillatorsLength: oscillators.length
+      });
     }
     return voiceLayout;
   }
@@ -1238,38 +1232,23 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const { voiceIndex, connection } = data;
     if (!this.audioEngine) return;
     try {
-      const beforeState = this.audioEngine.get_current_state();
-      const fromId = connection.fromId;
-      const toId = connection.toId;
-      const existingConns = beforeState.voices[voiceIndex]?.connections.filter(
-        (conn) => conn.from_id === fromId && conn.to_id === toId
-      ) || [];
-      for (const conn of existingConns) {
-        const portId = this.wasmTargetToPortId(conn.target);
+      if (connection.isRemoving) {
         this.audioEngine.remove_specific_connection(
           voiceIndex,
-          fromId,
-          toId,
-          portId
+          connection.fromId,
+          connection.toId,
+          connection.target
         );
-      }
-      if (!connection.isRemoving) {
-        const targetPortId = this.getPortIdForTarget(connection.target);
+      } else {
         this.audioEngine.connect_voice_nodes(
           voiceIndex,
-          fromId,
+          connection.fromId,
           PortId.AudioOutput0,
-          toId,
-          targetPortId,
+          connection.toId,
+          connection.target,
           connection.amount
         );
       }
-      const afterState = this.audioEngine.get_current_state();
-      this.port.postMessage({
-        type: "stateUpdated",
-        version: this.stateVersion++,
-        state: afterState
-      });
     } catch (err) {
       console.error("Connection update failed:", err);
     }
@@ -1299,22 +1278,19 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case 16:
         return PortId.GainMod;
       default:
-        console.warn("Unknown WASM target:", wasmTarget);
         throw new Error(`Invalid WASM target: ${wasmTarget}`);
     }
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;
     try {
-      const targetPortId = this.getPortIdForTarget(data.connection.target);
       for (let voiceIndex = 0; voiceIndex < this.numVoices; voiceIndex++) {
         if (data.connection.isRemoving) {
-          this.audioEngine.remove_voice_connection(
+          this.audioEngine.remove_specific_connection(
             voiceIndex,
             data.connection.fromId,
-            PortId.AudioOutput0,
             data.connection.toId,
-            targetPortId
+            data.connection.target
           );
         } else {
           this.audioEngine.connect_voice_nodes(
@@ -1322,7 +1298,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             data.connection.fromId,
             PortId.AudioOutput0,
             data.connection.toId,
-            targetPortId,
+            data.connection.target,
             data.connection.amount
           );
         }
@@ -1395,42 +1371,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         type: "error",
         message: "Failed to generate LFO waveform"
       });
-    }
-  }
-  isValidModulationTarget(target) {
-    const targetValue = isModulationTargetObject(target) ? target.value : typeof target === "number" ? target : null;
-    if (targetValue === null) return false;
-    return Object.values(ModulationTarget).includes(targetValue);
-  }
-  getPortIdForTarget(target) {
-    console.log("Getting PortId for:", {
-      target,
-      type: typeof target,
-      isObject: isModulationTargetObject(target)
-    });
-    let targetValue;
-    if (isModulationTargetObject(target)) {
-      targetValue = target.value;
-    } else if (typeof target === "number") {
-      targetValue = target;
-    } else {
-      throw new Error(`Invalid target type: ${typeof target}`);
-    }
-    switch (targetValue) {
-      case 0 /* Frequency */:
-        return PortId.FrequencyMod;
-      case 1 /* Gain */:
-        return PortId.GainMod;
-      case 2 /* FilterCutoff */:
-        return PortId.CutoffMod;
-      case 3 /* FilterResonance */:
-        return PortId.ResonanceMod;
-      case 4 /* PhaseMod */:
-        return PortId.PhaseMod;
-      case 5 /* ModIndex */:
-        return PortId.ModIndex;
-      default:
-        throw new Error(`Invalid ModulationTarget: ${targetValue}`);
     }
   }
   handleUpdateLfo(data) {

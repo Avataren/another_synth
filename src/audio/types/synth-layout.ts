@@ -1,31 +1,12 @@
 // src/audio/types/synth-layout.ts
+import { PortId } from 'app/public/wasm/audio_processor';
 
 // Define the types of nodes we can have in a voice
 export enum VoiceNodeType {
     Oscillator = 'oscillator',
+    Filter = 'filter',
     Envelope = 'envelope',
     LFO = 'lfo',
-    Filter = 'filter'
-}
-
-export enum ModulationTarget {
-    Frequency = 0,
-    Gain = 1,
-    FilterCutoff = 2,
-    FilterResonance = 3,
-    PhaseMod = 4,
-    ModIndex = 5,
-
-}
-
-export interface ModulationTargetObject {
-    value: ModulationTarget;
-    label: string;
-}
-
-// Type guard to check if something is a ModulationTargetObject
-export function isModulationTargetObject(target: ModulationTarget | ModulationTargetObject): target is ModulationTargetObject {
-    return typeof target === 'object' && 'value' in target;
 }
 
 export interface LfoState {
@@ -38,23 +19,43 @@ export interface LfoState {
     active: boolean;
 }
 
-export type ModulationTargetOption = {
-    value: ModulationTarget;
-    label: string;
-}
-
 export interface NodeConnection {
     fromId: number;
     toId: number;
-    target: ModulationTarget | ModulationTargetObject;
+    target: PortId;
     amount: number;
-    isRemoving?: boolean;
 }
 
 export interface NodeConnectionUpdate extends NodeConnection {
-    modifyExisting?: boolean;
-    oldTarget?: ModulationTarget | ModulationTargetObject;
+    isRemoving?: boolean;
 }
+
+export const PORT_LABELS: Record<PortId, string> = {
+    [PortId.AudioInput0]: 'Audio Input 1',
+    [PortId.AudioInput1]: 'Audio Input 2',
+    [PortId.AudioInput2]: 'Audio Input 3',
+    [PortId.AudioInput3]: 'Audio Input 4',
+    [PortId.AudioOutput0]: 'Audio Output 1',
+    [PortId.AudioOutput1]: 'Audio Output 2',
+    [PortId.AudioOutput2]: 'Audio Output 3',
+    [PortId.AudioOutput3]: 'Audio Output 4',
+    [PortId.Gate]: 'Gate',
+    [PortId.GlobalFrequency]: 'Global Frequency',
+    [PortId.Frequency]: 'Base Frequency',
+    [PortId.FrequencyMod]: 'Frequency Mod',
+    [PortId.PhaseMod]: 'Phase Mod',
+    [PortId.ModIndex]: 'Mod Index',
+    [PortId.CutoffMod]: 'Filter Cutoff',
+    [PortId.ResonanceMod]: 'Filter Resonance',
+    [PortId.GainMod]: 'Gain',
+    [PortId.EnvelopeMod]: 'Envelope Amount',
+};
+
+export interface ModulationTargetOption {
+    value: PortId;
+    label: string;
+}
+
 export interface FilterConfig {
     type: 'lowpass' | 'highpass' | 'bandpass';
 }
@@ -63,17 +64,13 @@ export interface FilterConfig {
 export interface VoiceNode {
     id: number;
     type: VoiceNodeType;
-    config?: FilterConfig; // Only filters need config for now
 }
 
 // The complete layout of a voice
 export interface VoiceLayout {
     id: number;
     nodes: {
-        [VoiceNodeType.Oscillator]: VoiceNode[];
-        [VoiceNodeType.Envelope]: VoiceNode[];
-        [VoiceNodeType.LFO]: VoiceNode[];
-        [VoiceNodeType.Filter]: VoiceNode[];
+        [key in VoiceNodeType]: VoiceNode[];
     };
     connections: NodeConnection[];
 }
@@ -121,66 +118,86 @@ export const findNodeConnections = (voice: VoiceLayout, nodeId: number): NodeCon
     );
 };
 
-export const findModulationTargets = (voice: VoiceLayout, sourceId: number): Array<{
+export function findModulationTargets(voice: VoiceLayout, sourceId: number): Array<{
     nodeId: number;
-    target: ModulationTarget;
+    target: PortId;
     amount: number;
-}> => {
+}> {
     return voice.connections
         .filter(conn => conn.fromId === sourceId)
         .map(conn => ({
             nodeId: conn.toId,
-            target: isModulationTargetObject(conn.target) ? conn.target.value : conn.target,
-            amount: conn.amount
+            target: conn.target,
+            amount: conn.amount,
         }));
-};
+}
+export function isModulationPort(port: PortId): boolean {
+    return port === PortId.FrequencyMod ||
+        port === PortId.PhaseMod ||
+        port === PortId.ModIndex ||
+        port === PortId.CutoffMod ||
+        port === PortId.ResonanceMod ||
+        port === PortId.GainMod ||
+        port === PortId.EnvelopeMod;
+}
 
+
+export function getModulationTargetsForType(type: VoiceNodeType): ModulationTargetOption[] {
+    switch (type) {
+        case VoiceNodeType.Oscillator:
+            return [
+                { value: PortId.PhaseMod, label: PORT_LABELS[PortId.PhaseMod] },
+                { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
+                { value: PortId.ModIndex, label: PORT_LABELS[PortId.ModIndex] },
+                { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
+            ];
+        case VoiceNodeType.Filter:
+            return [
+                { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
+                { value: PortId.ResonanceMod, label: PORT_LABELS[PortId.ResonanceMod] },
+            ];
+        default:
+            return [];
+    }
+}
+
+export function createNodeConnection(
+    fromId: number,
+    toId: number,
+    target: PortId,
+    amount: number
+): NodeConnection {
+    return { fromId, toId, target, amount };
+}
 
 // Example of creating a default voice layout
-export const createDefaultVoiceLayout = (voiceId: number, startingNodeId: number): VoiceLayout => {
-    let currentNodeId = startingNodeId;
+export function createDefaultVoiceLayout(voice: {
+    oscillators: VoiceNode[];
+    envelopes: VoiceNode[];
+    filters: VoiceNode[];
+}): VoiceLayout {
+    const [osc1, osc2] = voice.oscillators;
+    const [ampEnv] = voice.envelopes;
+    const filter = voice.filters[0];
 
     const layout: VoiceLayout = {
-        id: voiceId,
+        id: 0,
         nodes: {
-            [VoiceNodeType.Oscillator]: [
-                { id: currentNodeId++, type: VoiceNodeType.Oscillator },
-                { id: currentNodeId++, type: VoiceNodeType.Oscillator }
-            ],
-            [VoiceNodeType.Envelope]: [
-                { id: currentNodeId++, type: VoiceNodeType.Envelope },
-                { id: currentNodeId++, type: VoiceNodeType.Envelope }
-            ],
-            [VoiceNodeType.LFO]: [
-                { id: currentNodeId++, type: VoiceNodeType.LFO },
-                { id: currentNodeId++, type: VoiceNodeType.LFO }
-            ],
-            [VoiceNodeType.Filter]: [
-                {
-                    id: currentNodeId++,
-                    type: VoiceNodeType.Filter,
-                    config: {
-                        type: 'lowpass',
-                    }
-                }
-            ]
+            [VoiceNodeType.Oscillator]: voice.oscillators,
+            [VoiceNodeType.Envelope]: voice.envelopes,
+            [VoiceNodeType.Filter]: voice.filters,
+            [VoiceNodeType.LFO]: [],
         },
-        connections: []
+        connections: [],
     };
 
-    // Add default connections
-    const [osc1, osc2] = layout.nodes[VoiceNodeType.Oscillator];
-    const [ampEnv] = layout.nodes[VoiceNodeType.Envelope];
-    const filter = layout.nodes[VoiceNodeType.Filter][0]!;
-
-    layout.connections = [
-        // Basic signal flow
-        { fromId: osc1!.id, toId: filter.id, target: ModulationTarget.Gain, amount: 1.0 },
-        { fromId: osc2!.id, toId: filter.id, target: ModulationTarget.Gain, amount: 1.0 },
-
-        // Default envelope routing
-        { fromId: ampEnv!.id, toId: filter.id, target: ModulationTarget.Gain, amount: 1.0 }
-    ];
+    if (osc1 && osc2 && ampEnv && filter) {
+        layout.connections = [
+            createNodeConnection(osc1.id, filter.id, PortId.GainMod, 1.0),
+            createNodeConnection(osc2.id, filter.id, PortId.GainMod, 1.0),
+            createNodeConnection(ampEnv.id, filter.id, PortId.GainMod, 1.0),
+        ];
+    }
 
     return layout;
-};
+}

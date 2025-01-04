@@ -21,7 +21,7 @@
 
           <div
             v-for="(route, index) in activeRoutes"
-            :key="`${route.targetId}-${route.target.value}-${index}`"
+            :key="`${route.targetId}-${route.target}-${index}`"
             class="route-item q-mb-sm"
           >
             <div class="row q-col-gutter-sm items-center">
@@ -95,8 +95,11 @@ import {
   type TargetNode,
 } from '../audio/modulation-route-manager';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
-import type { ModulationTargetOption } from 'src/audio/types/synth-layout';
-import { isModulationTargetObject } from 'src/audio/types/synth-layout';
+import {
+  PORT_LABELS,
+  type ModulationTargetOption,
+} from 'src/audio/types/synth-layout';
+import { type PortId } from 'app/public/wasm/audio_processor';
 
 interface Props {
   sourceId: number;
@@ -109,7 +112,8 @@ const routeManager = new ModulationRouteManager(store, props.sourceId);
 interface RouteConfig {
   targetId: number;
   targetNode: TargetNode;
-  target: ModulationTargetOption;
+  target: PortId;
+  targetLabel: string;
   amount: number;
 }
 
@@ -140,7 +144,8 @@ const addNewRoute = async () => {
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
     targetNode: defaultTarget,
-    target: defaultParam,
+    target: defaultParam.value,
+    targetLabel: defaultParam.label,
     amount: 1.0,
   };
 
@@ -180,14 +185,15 @@ const handleTargetChange = async (index: number, newTarget: TargetNode) => {
     await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: newTarget.id,
-      target: defaultParam,
+      target: defaultParam.value,
       amount: route.amount,
     });
 
     // Update local state
     route.targetId = newTarget.id;
     route.targetNode = newTarget;
-    route.target = defaultParam;
+    route.target = defaultParam.value;
+    route.targetLabel = defaultParam.label;
   } catch (error) {
     console.error('Failed to update target:', error);
   }
@@ -200,25 +206,31 @@ const handleParamChange = async (
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  console.log('Starting param change:', {
-    fromId: props.sourceId,
-    toId: route.targetId,
-    target: newParam.value,
-    amount: route.amount,
-  });
-
   try {
-    await store.updateConnection({
+    // Remove old connection first
+    await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
-      target: newParam.value, // Pass the enum value directly
+      target: route.target,
+      amount: route.amount,
+      isRemoving: true,
+    });
+
+    // Add new connection
+    await routeManager.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: newParam.value,
       amount: route.amount,
     });
-    route.target = newParam;
+
+    route.target = newParam.value;
+    route.targetLabel = newParam.label;
   } catch (error) {
     console.error('Failed to update parameter:', error);
   }
 };
+
 const handleAmountChange = async (index: number, newAmount: number) => {
   const route = activeRoutes.value[index];
   if (!route) return;
@@ -275,20 +287,18 @@ onMounted(() => {
       .find((n) => n.id === conn.toId);
     if (!targetNode) throw new Error(`Target node not found: ${conn.toId}`);
 
-    const target = isModulationTargetObject(conn.target)
-      ? conn.target
-      : {
-          value: conn.target,
-          label:
-            routeManager
-              .getAvailableParams(conn.toId)
-              .find((p) => p.value === conn.target)?.label || 'Unknown',
-        };
+    // Get the human-readable label for this port
+    const label =
+      routeManager
+        .getAvailableParams(conn.toId)
+        .find((p) => p.value === conn.target)?.label ||
+      PORT_LABELS[conn.target];
 
     return {
       targetId: conn.toId,
       targetNode,
-      target,
+      target: conn.target,
+      targetLabel: label,
       amount: conn.amount,
     };
   });

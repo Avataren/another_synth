@@ -3,11 +3,10 @@
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import {
     VoiceNodeType,
-    ModulationTarget,
     type ModulationTargetOption,
     type VoiceNode,
-    isModulationTargetObject,
     type NodeConnectionUpdate,
+    getModulationTargetsForType
 } from './types/synth-layout';
 
 export interface TargetNode {
@@ -55,27 +54,20 @@ export class ModulationRouteManager {
      * Gets available parameters for a target node that aren't already used in other routes
      */
     getAvailableParams(targetId: number): ModulationTargetOption[] {
-        const voice = this.store.synthLayout?.voices[0];
-        if (!voice) return [];
-
         const node = this.findNodeById(targetId);
         if (!node) return [];
 
-        // Get existing connections to this target from this source
-        const existingConnections = voice.connections.filter(conn =>
-            conn.fromId === this.sourceId &&
-            conn.toId === targetId
-        );
-
         // Get all possible parameters for this node type
-        const allParams = this.getParamsForNodeType(node.type);
+        const allParams = getModulationTargetsForType(node.type);
 
         // Filter out parameters that are already used
+        const existingConnections = this.store.getNodeConnections(this.sourceId);
         return allParams.filter(param => {
-            const isUsed = existingConnections.some(conn => {
-                const connTarget = isModulationTargetObject(conn.target) ? conn.target.value : conn.target;
-                return connTarget === param.value;
-            });
+            const isUsed = existingConnections.some(conn =>
+                conn.fromId === this.sourceId &&
+                conn.toId === targetId &&
+                conn.target === param.value
+            );
             return !isUsed;
         });
     }
@@ -95,31 +87,32 @@ export class ModulationRouteManager {
         }
     }
 
-    private getParamsForNodeType(type: VoiceNodeType): ModulationTargetOption[] {
-        switch (type) {
-            case VoiceNodeType.Oscillator:
-                return [
-                    { value: ModulationTarget.PhaseMod, label: 'Phase' },
-                    { value: ModulationTarget.Frequency, label: 'Frequency' },
-                    { value: ModulationTarget.ModIndex, label: 'Mod Index' },
-                    { value: ModulationTarget.Gain, label: 'Gain' },  // Ensure Gain is listed here
-                ];
-            case VoiceNodeType.Filter:
-                return [
-                    { value: ModulationTarget.FilterCutoff, label: 'Cutoff' },
-                    { value: ModulationTarget.FilterResonance, label: 'Resonance' },
-                ];
-            default:
-                return [];
-        }
-    }
+    // private getParamsForNodeType(type: VoiceNodeType): ModulationTargetOption[] {
+    //     switch (type) {
+    //         case VoiceNodeType.Oscillator:
+    //             return [
+    //                 { value: ModulationTarget.PhaseMod, label: 'Phase' },
+    //                 { value: ModulationTarget.Frequency, label: 'Frequency' },
+    //                 { value: ModulationTarget.ModIndex, label: 'Mod Index' },
+    //                 { value: ModulationTarget.Gain, label: 'Gain' },
+    //             ];
+    //         case VoiceNodeType.Filter:
+    //             return [
+    //                 { value: ModulationTarget.FilterCutoff, label: 'Cutoff' },
+    //                 { value: ModulationTarget.FilterResonance, label: 'Resonance' },
+    //             ];
+    //         default:
+    //             return [];
+    //     }
+    // }
+
     private findNodeById(nodeId: number): VoiceNode | undefined {
         const voice = this.store.synthLayout?.voices[0];
         if (!voice) return undefined;
 
         for (const type of Object.values(VoiceNodeType)) {
             const node = voice.nodes[type].find(n => n.id === nodeId);
-            if (node) return node;
+            if (node) return { ...node, type };
         }
         return undefined;
     }

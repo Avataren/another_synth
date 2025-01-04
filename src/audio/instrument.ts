@@ -1,3 +1,4 @@
+import { type PortId } from 'app/public/wasm/audio_processor';
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
 import { type FilterState } from './dsp/filter-state';
@@ -8,11 +9,22 @@ import {
   type NodeConnection,
   // type VoiceLayout,
   VoiceNodeType,
-  type ModulationTarget,
   type LfoState,
-  type ModulationTargetObject,
   type NodeConnectionUpdate,
 } from './types/synth-layout';
+
+// interface ConnectionUpdateMessage {
+//   type: 'updateConnection';
+//   voiceIndex: number;
+//   connection: {
+//     fromId: number;
+//     toId: number;
+//     target: PortId;
+//     amount: number;
+//     isRemoving?: boolean;
+//   };
+//   oldTarget?: PortId;
+// }
 
 export default class Instrument {
   readonly num_voices = 8;
@@ -200,40 +212,65 @@ export default class Instrument {
     });
   }
 
-  public updateConnection(voiceIndex: number, connection: NodeConnectionUpdate) {
+  public updateConnection(voiceIndex: number, connection: NodeConnectionUpdate): void {
     if (!this.ready || !this.workletNode) return;
-    console.log('instrument::updateConnection with isRemoving:', connection.isRemoving);
-    this.workletNode.port.postMessage({
+
+    const message: {
+      type: 'updateConnection';
+      voiceIndex: number;
+      connection: {
+        fromId: number;
+        toId: number;
+        target: PortId;
+        amount: number;
+        isRemoving?: boolean;
+      };
+    } = {
       type: 'updateConnection',
       voiceIndex,
       connection: {
-        ...connection,  // Ensure isRemoving is included
         fromId: Number(connection.fromId),
         toId: Number(connection.toId),
-        target: Number(connection.target),
-        amount: Number(connection.amount)
+        target: connection.target,
+        amount: Number(connection.amount),
+        ...(connection.isRemoving !== undefined && { isRemoving: connection.isRemoving })
       }
-    });
+    };
+
+    this.workletNode.port.postMessage(message);
   }
 
   async createModulation(
     sourceId: number,
     targetId: number,
-    target: ModulationTarget | ModulationTargetObject,
+    target: PortId,
     amount: number
   ): Promise<void> {
-    const message = {
+    const message: {
+      type: 'updateModulation';
+      connection: {
+        fromId: number;
+        toId: number;
+        target: PortId;
+        amount: number;
+      };
+    } = {
       type: 'updateModulation',
       connection: {
         fromId: Number(sourceId),
         toId: Number(targetId),
-        target: Number(target),
+        target,  // PortId is already the correct type
         amount: Number(amount)
       }
     };
 
     // Return a Promise that resolves when the state is updated
     return new Promise((resolve, reject) => {
+      if (!this.workletNode) {
+        reject(new Error('Worklet not initialized'));
+        return;
+      }
+
       const messageId = Date.now().toString();
       const timeoutId = setTimeout(() => {
         this.workletNode?.port.removeEventListener('message', handleResponse);
@@ -248,14 +285,9 @@ export default class Instrument {
         }
       };
 
-      this.workletNode?.port.addEventListener('message', handleResponse);
+      this.workletNode.port.addEventListener('message', handleResponse);
 
-      console.log('Sending modulation message:', {
-        ...message,
-        messageId
-      });
-
-      this.workletNode?.port.postMessage({
+      this.workletNode.port.postMessage({
         ...message,
         messageId
       });
@@ -283,7 +315,7 @@ export default class Instrument {
     voiceIndex: number,
     sourceId: number,
     targetId: number,
-    target: ModulationTarget,
+    target: PortId,
     amount: number
   ) {
     const connection: NodeConnection = {
