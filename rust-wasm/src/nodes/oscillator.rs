@@ -176,20 +176,22 @@ impl AudioProcessor for ModulatableOscillator {
                 .get(&PortId::PhaseMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
-            // Get mod index modulation if it exists
+            // Get mod index control value if it exists
             let mod_index = inputs
                 .get(&PortId::ModIndex)
                 .map_or(f32x4::splat(self.phase_mod_amount), |input| {
-                    input.get_simd(offset) * f32x4::splat(self.phase_mod_amount)
+                    input.get_simd(offset)
                 });
 
             // Calculate phases for the 4-sample chunk
             let mut output_phases = [0.0f32; 4];
 
             for (i, phase) in output_phases.iter_mut().enumerate() {
-                // Apply phase modulation with modulated index
-                let modulated_phase =
-                    self.phase + mod_index.to_array()[i] * phase_mod.to_array()[i];
+                // First scale the modulator by the mod index
+                let scaled_modulator = phase_mod.to_array()[i] * mod_index.to_array()[i];
+
+                // Then use this scaled signal for phase modulation
+                let modulated_phase = self.phase + scaled_modulator * self.phase_mod_amount;
 
                 // Wrap modulated phase to [0, 2π]
                 *phase = modulated_phase - (modulated_phase / TWO_PI).floor() * TWO_PI;
