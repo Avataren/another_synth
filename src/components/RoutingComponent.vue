@@ -98,6 +98,7 @@ import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import {
   PORT_LABELS,
   type ModulationTargetOption,
+  type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
 import { type PortId } from 'app/public/wasm/audio_processor';
 
@@ -206,25 +207,49 @@ const handleParamChange = async (
   const route = activeRoutes.value[index];
   if (!route) return;
 
+  // Ensure we have valid parameters
+  if (typeof newParam?.value !== 'number') {
+    console.error('Invalid new parameter value:', newParam);
+    return;
+  }
+
   try {
-    // Remove old connection first
-    await routeManager.updateConnection({
+    // For removal, we need to use the current target's value
+    const currentTargetValue =
+      typeof route.target === 'number'
+        ? route.target
+        : (route.target as ModulationTargetOption).value;
+
+    if (typeof currentTargetValue !== 'number') {
+      console.error('Invalid current target value:', currentTargetValue);
+      return;
+    }
+
+    // Create typed connection object for removal
+    const removeConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: route.target,
+      target: currentTargetValue,
       amount: route.amount,
       isRemoving: true,
-    });
+    };
 
-    // Add new connection
-    await routeManager.updateConnection({
+    // Create typed connection object for new connection
+    const newConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
       target: newParam.value,
       amount: route.amount,
-    });
+    };
 
-    route.target = newParam.value;
+    console.log('Removing connection:', removeConnection);
+    await routeManager.updateConnection(removeConnection);
+
+    console.log('Adding new connection:', newConnection);
+    await routeManager.updateConnection(newConnection);
+
+    // Only update local state after successful updates
+    route.target = newParam.value; // Store just the value now, not the whole object
     route.targetLabel = newParam.label;
   } catch (error) {
     console.error('Failed to update parameter:', error);

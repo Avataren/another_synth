@@ -108,8 +108,8 @@ export default class Instrument {
         useAbsolute: state.useAbsolute,
         useNormalized: state.useNormalized,
         triggerMode: state.triggerMode,
-        active: state.active  // Add the active state
-      }
+        active: state.active, // Add the active state
+      },
     });
   }
 
@@ -121,7 +121,7 @@ export default class Instrument {
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => { }, 0);
+      let timeoutId = setTimeout(() => {}, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
@@ -140,7 +140,7 @@ export default class Instrument {
       // Send request with ID
       this.workletNode!.port.postMessage({
         type: 'getNodeLayout',
-        messageId: messageId
+        messageId: messageId,
       });
 
       // Clear the initial timeout and set the real one
@@ -152,7 +152,10 @@ export default class Instrument {
     });
   }
 
-  public async getLfoWaveform(waveform: number, bufferSize: number): Promise<Float32Array> {
+  public async getLfoWaveform(
+    waveform: number,
+    bufferSize: number,
+  ): Promise<Float32Array> {
     if (!this.ready || !this.workletNode) {
       throw new Error('Audio system not ready');
     }
@@ -162,7 +165,10 @@ export default class Instrument {
         if (e.data.type === 'lfoWaveform') {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(e.data.waveform));
-        } else if (e.data.type === 'error' && e.data.source === 'getLfoWaveform') {
+        } else if (
+          e.data.type === 'error' &&
+          e.data.source === 'getLfoWaveform'
+        ) {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           reject(new Error(e.data.message));
         }
@@ -173,7 +179,7 @@ export default class Instrument {
       this.workletNode?.port.postMessage({
         type: 'getLfoWaveform',
         waveform,
-        bufferSize
+        bufferSize,
       });
 
       // Add timeout to prevent hanging
@@ -212,49 +218,53 @@ export default class Instrument {
     });
   }
 
-  public updateConnection(voiceIndex: number, connection: NodeConnectionUpdate): void {
+  public updateConnection(
+    voiceIndex: number,
+    connection: NodeConnectionUpdate,
+  ): void {
     if (!this.ready || !this.workletNode) return;
 
-    console.log('Preparing connection update:', {
-      original: connection,
-      voiceIndex
-    });
-
-    // Type the safe connection properly
-    const safeConnection: {
-      fromId: number;
-      toId: number;
-      target: number;
-      amount: number;
-      isRemoving?: boolean;
-    } = {
-      fromId: Number(connection.fromId),
-      toId: Number(connection.toId),
-      target: Number(connection.target),
-      amount: Number(connection.amount)
-    };
-
-    if (connection.isRemoving) {
-      safeConnection.isRemoving = true;
+    // Validate input parameters
+    if (typeof connection.target !== 'number') {
+      console.error(
+        'Invalid target type in connection:',
+        typeof connection.target,
+      );
+      return;
     }
 
-    const message = {
-      type: 'updateConnection',
-      voiceIndex: Number(voiceIndex),
-      connection: safeConnection
+    if (
+      typeof connection.fromId !== 'number' ||
+      typeof connection.toId !== 'number'
+    ) {
+      console.error('Invalid ID type in connection:', {
+        fromId: typeof connection.fromId,
+        toId: typeof connection.toId,
+      });
+      return;
+    }
+
+    // Create a safe connection object with validated values
+    const safeConnection = {
+      fromId: connection.fromId,
+      toId: connection.toId,
+      target: connection.target,
+      amount: Number(connection.amount) || 0,
+      isRemoving: Boolean(connection.isRemoving),
     };
 
-    console.log('Sending connection message:', JSON.stringify(message));
+    console.log('Sending validated connection:', safeConnection);
 
     try {
-      this.workletNode.port.postMessage(message);
+      this.workletNode.port.postMessage({
+        type: 'updateConnection',
+        voiceIndex: voiceIndex,
+        connection: safeConnection,
+      });
     } catch (error) {
-      console.error('Connection update failed:', {
-        message,
-        error,
-        connectionType: typeof connection,
-        messageType: typeof message,
-        stringified: JSON.stringify(message)
+      console.error('Failed to send connection message:', error, {
+        connection: safeConnection,
+        original: connection,
       });
       throw error;
     }
@@ -264,7 +274,7 @@ export default class Instrument {
     sourceId: number,
     targetId: number,
     target: PortId,
-    amount: number
+    amount: number,
   ): Promise<void> {
     const message: {
       type: 'updateModulation';
@@ -279,9 +289,9 @@ export default class Instrument {
       connection: {
         fromId: Number(sourceId),
         toId: Number(targetId),
-        target,  // PortId is already the correct type
-        amount: Number(amount)
-      }
+        target, // PortId is already the correct type
+        amount: Number(amount),
+      },
     };
 
     // Return a Promise that resolves when the state is updated
@@ -298,7 +308,10 @@ export default class Instrument {
       }, 1000);
 
       const handleResponse = (e: MessageEvent) => {
-        if (e.data.type === 'modulationUpdated' && e.data.messageId === messageId) {
+        if (
+          e.data.type === 'modulationUpdated' &&
+          e.data.messageId === messageId
+        ) {
           clearTimeout(timeoutId);
           this.workletNode?.port.removeEventListener('message', handleResponse);
           resolve();
@@ -309,7 +322,7 @@ export default class Instrument {
 
       this.workletNode.port.postMessage({
         ...message,
-        messageId
+        messageId,
       });
     });
   }
@@ -327,7 +340,7 @@ export default class Instrument {
       voiceIndex: voice_index,
       fromNode: from_node,
       toNode: to_node,
-      toPort: to_port
+      toPort: to_port,
     });
   }
 
@@ -336,13 +349,13 @@ export default class Instrument {
     sourceId: number,
     targetId: number,
     target: PortId,
-    amount: number
+    amount: number,
   ) {
     const connection: NodeConnection = {
       fromId: sourceId,
       toId: targetId,
       target,
-      amount
+      amount,
     };
     this.updateConnection(voiceIndex, connection);
   }
@@ -358,7 +371,9 @@ export default class Instrument {
     if (voiceIndex !== -1) {
       const frequency = this.midiNoteToFrequency(midi_note);
 
-      const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+      const freqParam = this.workletNode.parameters.get(
+        `frequency_${voiceIndex}`,
+      );
       const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
       const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
 
@@ -394,7 +409,7 @@ export default class Instrument {
       const voice = this.synthLayout.voices[i]!;
       // Check all node types
       for (const nodeType of Object.values(VoiceNodeType)) {
-        if (voice.nodes[nodeType]?.some(node => node.id === nodeId)) {
+        if (voice.nodes[nodeType]?.some((node) => node.id === nodeId)) {
           return i;
         }
       }

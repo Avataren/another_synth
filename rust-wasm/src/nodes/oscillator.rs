@@ -91,9 +91,10 @@ impl AudioNode for ModulatableOscillator {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
         ports.insert(PortId::GlobalFrequency, false);
-        ports.insert(PortId::FrequencyMod, true);
-        ports.insert(PortId::PhaseMod, true);
-        ports.insert(PortId::GainMod, true);
+        ports.insert(PortId::FrequencyMod, false);
+        ports.insert(PortId::PhaseMod, false);
+        ports.insert(PortId::ModIndex, false);
+        ports.insert(PortId::GainMod, false);
         ports.insert(PortId::AudioOutput0, true);
         ports
     }
@@ -175,12 +176,20 @@ impl AudioProcessor for ModulatableOscillator {
                 .get(&PortId::PhaseMod)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
+            // Get mod index modulation if it exists
+            let mod_index = inputs
+                .get(&PortId::ModIndex)
+                .map_or(f32x4::splat(self.phase_mod_amount), |input| {
+                    input.get_simd(offset) * f32x4::splat(self.phase_mod_amount)
+                });
+
             // Calculate phases for the 4-sample chunk
             let mut output_phases = [0.0f32; 4];
 
             for (i, phase) in output_phases.iter_mut().enumerate() {
-                // Apply phase modulation directly in radians
-                let modulated_phase = self.phase + self.phase_mod_amount * phase_mod.to_array()[i];
+                // Apply phase modulation with modulated index
+                let modulated_phase =
+                    self.phase + mod_index.to_array()[i] * phase_mod.to_array()[i];
 
                 // Wrap modulated phase to [0, 2π]
                 *phase = modulated_phase - (modulated_phase / TWO_PI).floor() * TWO_PI;
