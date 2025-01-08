@@ -44,6 +44,7 @@
                 <q-select
                   v-model="route.target"
                   :options="getAvailableParams(route.targetId)"
+                  :display-value="route.targetLabel"
                   option-label="label"
                   label="Parameter"
                   dense
@@ -214,22 +215,11 @@ const handleParamChange = async (
   }
 
   try {
-    // For removal, we need to use the current target's value
-    const currentTargetValue =
-      typeof route.target === 'number'
-        ? route.target
-        : (route.target as ModulationTargetOption).value;
-
-    if (typeof currentTargetValue !== 'number') {
-      console.error('Invalid current target value:', currentTargetValue);
-      return;
-    }
-
     // Create typed connection object for removal
     const removeConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: currentTargetValue,
+      target: route.target, // This is already a PortId
       amount: route.amount,
       isRemoving: true,
     };
@@ -238,7 +228,7 @@ const handleParamChange = async (
     const newConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: newParam.value,
+      target: newParam.value as PortId, // Convert value to PortId
       amount: route.amount,
     };
 
@@ -248,8 +238,8 @@ const handleParamChange = async (
     console.log('Adding new connection:', newConnection);
     await routeManager.updateConnection(newConnection);
 
-    // Only update local state after successful updates
-    route.target = newParam.value; // Store just the value now, not the whole object
+    // Update the route with new values
+    route.target = newParam.value as PortId; // Store the PortId
     route.targetLabel = newParam.label;
   } catch (error) {
     console.error('Failed to update parameter:', error);
