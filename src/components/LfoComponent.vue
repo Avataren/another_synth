@@ -56,7 +56,11 @@
           @update:modelValue="handleTriggerModeChange"
         />
       </div>
-      <routing-component :source-id="props.nodeId" :debug="true" />
+      <routing-component
+        :source-id="props.nodeId"
+        :source-type="VoiceNodeType.LFO"
+        :debug="true"
+      />
       <!-- Waveform visualization -->
       <div class="canvas-wrapper">
         <canvas ref="waveformCanvas"></canvas>
@@ -72,6 +76,7 @@ import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
 import { type LfoState } from 'src/audio/types/synth-layout';
 import RoutingComponent from './RoutingComponent.vue';
+import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Props {
   node: AudioNode | null;

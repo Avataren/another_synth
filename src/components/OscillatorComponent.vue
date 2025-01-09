@@ -80,6 +80,16 @@
           @update:modelValue="handleWaveformChange"
         />
       </div>
+
+      <routing-component
+        :source-id="nodeId"
+        :source-type="VoiceNodeType.Oscillator"
+        :debug="true"
+      />
+      <!-- Waveform visualization -->
+      <div class="canvas-wrapper">
+        <canvas ref="waveformCanvas"></canvas>
+      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -91,6 +101,8 @@ import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
 // import { type WaveformType } from 'src/audio/wavetable/wave-utils';
 import type OscillatorState from 'src/audio/models/OscillatorState';
+import RoutingComponent from './RoutingComponent.vue';
+import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Props {
   node: AudioNode | null;
@@ -105,6 +117,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const store = useAudioSystemStore();
 const { oscillatorStates } = storeToRefs(store);
+const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 const waveform = ref<number>(0);
 // Create a reactive reference to the oscillator state
 const oscillatorState = computed({

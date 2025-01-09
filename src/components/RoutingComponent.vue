@@ -90,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import {
   ModulationRouteManager,
   type TargetNode,
@@ -98,6 +98,7 @@ import {
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import {
   PORT_LABELS,
+  type VoiceNodeType,
   type ModulationTargetOption,
   type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
@@ -105,11 +106,17 @@ import { type PortId } from 'app/public/wasm/audio_processor';
 
 interface Props {
   sourceId: number;
+  sourceType: VoiceNodeType;
+  debug?: boolean;
 }
 
 const props = defineProps<Props>();
 const store = useAudioSystemStore();
-const routeManager = new ModulationRouteManager(store, props.sourceId);
+const routeManager = new ModulationRouteManager(
+  store,
+  props.sourceId,
+  props.sourceType,
+);
 
 interface RouteConfig {
   targetId: number;
@@ -293,31 +300,74 @@ const removeRoute = async (index: number) => {
   }
 };
 
-onMounted(() => {
-  const connections = store.getNodeConnections(props.sourceId);
+onMounted(async () => {
+  // Wait a tick for the store to be ready
+  await nextTick();
 
-  activeRoutes.value = connections.map((conn) => {
-    const targetNode = routeManager
-      .getAvailableTargets()
-      .find((n) => n.id === conn.toId);
-    if (!targetNode) throw new Error(`Target node not found: ${conn.toId}`);
+  if (!store.synthLayout?.voices?.length) {
+    console.warn('Synth layout not ready, waiting...');
+    // Add a small delay to allow layout to initialize
+    setTimeout(initializeRoutes, 100);
+    return;
+  }
 
-    // Get the human-readable label for this port
-    const label =
-      routeManager
-        .getAvailableParams(conn.toId)
-        .find((p) => p.value === conn.target)?.label ||
-      PORT_LABELS[conn.target];
-
-    return {
-      targetId: conn.toId,
-      targetNode,
-      target: conn.target,
-      targetLabel: label,
-      amount: conn.amount,
-    };
-  });
+  initializeRoutes();
 });
+
+// Add this new function to handle route initialization
+const initializeRoutes = () => {
+  try {
+    const connections = store.getNodeConnections(props.sourceId);
+
+    // Safety check for connections
+    if (!connections?.length) {
+      console.log('No initial connections found for node:', props.sourceId);
+      activeRoutes.value = [];
+      return;
+    }
+
+    // Map connections to routes with safety checks
+    activeRoutes.value = connections
+      .map((conn) => {
+        // Get available targets
+        const availableTargets = routeManager.getAvailableTargets();
+        if (!availableTargets?.length) {
+          console.warn('No available targets found');
+          return null;
+        }
+
+        // Find target node
+        const targetNode = availableTargets.find((n) => n.id === conn.toId);
+        if (!targetNode) {
+          console.warn(
+            `Target node ${conn.toId} not found in available targets for source ${props.sourceId}`,
+          );
+          return null;
+        }
+
+        // Get parameters
+        const params = routeManager.getAvailableParams(conn.toId);
+        const label =
+          params.find((p) => p.value === conn.target)?.label ||
+          PORT_LABELS[conn.target] ||
+          'Unknown Parameter';
+
+        return {
+          targetId: conn.toId,
+          targetNode,
+          target: conn.target,
+          targetLabel: label,
+          amount: conn.amount,
+        };
+      })
+      .filter((route): route is RouteConfig => route !== null); // Filter out null routes
+
+    console.log('Initialized routes:', activeRoutes.value);
+  } catch (error) {
+    console.error('Error initializing routes:', error);
+    activeRoutes.value = [];
+  }
+};
 </script>
 
 <style scoped>
