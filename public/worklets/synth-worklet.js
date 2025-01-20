@@ -291,7 +291,9 @@ var PortId = Object.freeze({
   GainMod: 16,
   "16": "GainMod",
   EnvelopeMod: 17,
-  "17": "EnvelopeMod"
+  "17": "EnvelopeMod",
+  StereoPan: 18,
+  "18": "StereoPan"
 });
 var AudioEngineFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
@@ -382,6 +384,17 @@ var AudioEngine = class {
    */
   create_envelope(voice_index) {
     const ret = wasm.audioengine_create_envelope(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @param {number} voice_index
+   * @returns {any}
+   */
+  create_mixer(voice_index) {
+    const ret = wasm.audioengine_create_mixer(this.__wbg_ptr, voice_index);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
@@ -970,7 +983,8 @@ var PORT_LABELS = {
   [PortId.CutoffMod]: "Filter Cutoff",
   [PortId.ResonanceMod]: "Filter Resonance",
   [PortId.GainMod]: "Gain",
-  [PortId.EnvelopeMod]: "Envelope Amount"
+  [PortId.EnvelopeMod]: "Envelope Amount",
+  [PortId.StereoPan]: "Stereo Panning"
 };
 
 // src/audio/worklets/synth-worklet.ts
@@ -1143,10 +1157,16 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         ["oscillator" /* Oscillator */]: [],
         ["envelope" /* Envelope */]: [],
         ["lfo" /* LFO */]: [],
-        ["filter" /* Filter */]: []
+        ["filter" /* Filter */]: [],
+        ["mixer" /* Mixer */]: []
       },
       connections: []
     };
+    const mixerId = this.audioEngine.create_mixer(voiceIndex);
+    voiceLayout.nodes["mixer" /* Mixer */].push({
+      id: mixerId,
+      type: "mixer" /* Mixer */
+    });
     for (let i = 0; i < this.maxOscillators; i++) {
       const oscId = this.audioEngine.add_oscillator(voiceIndex);
       console.log(`Created oscillator ${i} with id ${oscId}`);
@@ -1184,8 +1204,16 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         voiceIndex,
         ampEnv.id,
         PortId.AudioOutput0,
-        osc1.id,
+        mixerId.id,
         PortId.GainMod,
+        1
+      );
+      this.audioEngine.connect_voice_nodes(
+        voiceIndex,
+        osc1.id,
+        PortId.AudioOutput0,
+        mixerId.id,
+        PortId.AudioInput0,
         1
       );
       this.audioEngine.connect_voice_nodes(
@@ -1199,8 +1227,14 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       voiceLayout.connections = [
         {
           fromId: ampEnv.id,
-          toId: osc1.id,
+          toId: mixerId.id,
           target: PortId.GainMod,
+          amount: 1
+        },
+        {
+          fromId: osc1.id,
+          toId: mixerId.id,
+          target: PortId.AudioInput0,
           amount: 1
         },
         {
@@ -1453,7 +1487,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!output) return true;
     const outputLeft = output[0];
-    const outputRight = output[1] || output[0];
+    const outputRight = output[1];
     if (!outputLeft || !outputRight) return true;
     const gateArray = new Float32Array(this.numVoices);
     const freqArray = new Float32Array(this.numVoices);

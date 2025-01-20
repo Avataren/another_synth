@@ -201,7 +201,7 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -222,6 +222,7 @@ export const PortId = Object.freeze({
     ResonanceMod: 15, "15": "ResonanceMod",
     GainMod: 16, "16": "GainMod",
     EnvelopeMod: 17, "17": "EnvelopeMod",
+    StereoPan: 18, "18": "StereoPan",
 });
 
 const AudioEngineFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -316,6 +317,17 @@ export class AudioEngine {
      */
     create_envelope(voice_index) {
         const ret = wasm.audioengine_create_envelope(this.__wbg_ptr, voice_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {number} voice_index
+     * @returns {any}
+     */
+    create_mixer(voice_index) {
+        const ret = wasm.audioengine_create_mixer(this.__wbg_ptr, voice_index);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

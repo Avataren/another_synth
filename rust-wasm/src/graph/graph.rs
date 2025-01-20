@@ -508,12 +508,22 @@ impl AudioGraph {
         if let Some(output_node) = self.output_node {
             if let Some(node) = self.nodes.get(output_node.0) {
                 if node.is_active() {
-                    if let Some(&buffer_idx) =
+                    // Get both stereo outputs
+                    if let Some(&left_buffer_idx) =
                         self.node_buffers.get(&(output_node, PortId::AudioOutput0))
                     {
-                        let final_buffer = self.buffer_pool.copy_out(buffer_idx);
-                        output_left.copy_from_slice(final_buffer);
-                        output_right.copy_from_slice(final_buffer);
+                        let left_buffer = self.buffer_pool.copy_out(left_buffer_idx);
+                        output_left.copy_from_slice(left_buffer);
+
+                        // Get right channel if it exists, otherwise use left
+                        if let Some(&right_buffer_idx) =
+                            self.node_buffers.get(&(output_node, PortId::AudioOutput1))
+                        {
+                            let right_buffer = self.buffer_pool.copy_out(right_buffer_idx);
+                            output_right.copy_from_slice(right_buffer);
+                        } else {
+                            output_right.copy_from_slice(left_buffer);
+                        }
                     }
                 } else {
                     // If output node is inactive, clear the outputs

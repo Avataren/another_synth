@@ -5,7 +5,11 @@ import type { LayoutUpdateMessage } from './types/synth-layout';
 export async function createStandardAudioWorklet(audioContext: AudioContext): Promise<AudioWorkletNode> {
   await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}worklets/synth-worklet.js`);
 
-  const workletNode = new AudioWorkletNode(audioContext, 'synth-audio-processor');
+  const workletNode = new AudioWorkletNode(audioContext, 'synth-audio-processor', {
+    numberOfInputs: 0,
+    numberOfOutputs: 1,
+    outputChannelCount: [2],  // Specify stereo output
+  });
   const store = useAudioSystemStore();
 
   return new Promise((resolve, reject) => {

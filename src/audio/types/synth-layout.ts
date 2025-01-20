@@ -7,6 +7,7 @@ export enum VoiceNodeType {
     Filter = 'filter',
     Envelope = 'envelope',
     LFO = 'lfo',
+    Mixer = 'mixer'
 }
 
 export interface LfoState {
@@ -49,6 +50,7 @@ export const PORT_LABELS: Record<PortId, string> = {
     [PortId.ResonanceMod]: 'Filter Resonance',
     [PortId.GainMod]: 'Gain',
     [PortId.EnvelopeMod]: 'Envelope Amount',
+    [PortId.StereoPan]: 'Stereo Panning'
 };
 
 export interface ModulationTargetOption {
@@ -131,6 +133,7 @@ export function findModulationTargets(voice: VoiceLayout, sourceId: number): Arr
             amount: conn.amount,
         }));
 }
+
 export function isModulationPort(port: PortId): boolean {
     return port === PortId.FrequencyMod ||
         port === PortId.PhaseMod ||
@@ -187,6 +190,7 @@ export function createDefaultVoiceLayout(voice: {
             [VoiceNodeType.Envelope]: voice.envelopes,
             [VoiceNodeType.Filter]: voice.filters,
             [VoiceNodeType.LFO]: [],
+            [VoiceNodeType.Mixer]: [],
         },
         connections: [],
     };

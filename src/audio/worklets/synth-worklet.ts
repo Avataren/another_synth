@@ -250,10 +250,18 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         [VoiceNodeType.Oscillator]: [],
         [VoiceNodeType.Envelope]: [],
         [VoiceNodeType.LFO]: [],
-        [VoiceNodeType.Filter]: []
+        [VoiceNodeType.Filter]: [],
+        [VoiceNodeType.Mixer]: []
       },
       connections: []
     };
+
+    // Create mixer
+    const mixerId = this.audioEngine.create_mixer(voiceIndex);
+    voiceLayout.nodes[VoiceNodeType.Mixer].push({
+      id: mixerId,
+      type: VoiceNodeType.Mixer
+    });
 
     // Create oscillators
     for (let i = 0; i < this.maxOscillators; i++) {
@@ -298,13 +306,23 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         osc2
       });
 
-      // Connect envelope to oscillator 1's gain
+      // Connect envelope to mixer's gain input
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
         ampEnv.id,
         PortId.AudioOutput0,
-        osc1!.id,
+        mixerId.id,
         PortId.GainMod,
+        1.0
+      );
+
+      // Connect oscillator 1 to mixer audio input
+      this.audioEngine.connect_voice_nodes(
+        voiceIndex,
+        osc1!.id,
+        PortId.AudioOutput0,
+        mixerId.id,
+        PortId.AudioInput0,
         1.0
       );
 
@@ -322,8 +340,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       voiceLayout.connections = [
         {
           fromId: ampEnv.id,
-          toId: osc1!.id,
+          toId: mixerId.id,
           target: PortId.GainMod,
+          amount: 1.0
+        },
+        {
+          fromId: osc1!.id,
+          toId: mixerId.id,
+          target: PortId.AudioInput0,
           amount: 1.0
         },
         {
@@ -626,7 +650,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!output) return true;
 
     const outputLeft = output[0];
-    const outputRight = output[1] || output[0];
+    const outputRight = output[1];
 
     if (!outputLeft || !outputRight) return true;
 

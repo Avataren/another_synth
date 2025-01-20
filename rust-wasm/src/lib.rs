@@ -13,7 +13,7 @@ pub use graph::AudioGraph;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
-use nodes::{Lfo, LfoTriggerMode, LfoWaveform};
+use nodes::{Lfo, LfoTriggerMode, LfoWaveform, Mixer};
 use serde::Serialize;
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
@@ -328,6 +328,21 @@ impl AudioEngine {
 
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
+
+        Ok(obj.into())
+    }
+
+    #[wasm_bindgen]
+    pub fn create_mixer(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        let mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
+        voice.graph.set_output_node(mixer_id);
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"mixerId".into(), &(mixer_id.0.into()))?;
 
         Ok(obj.into())
     }
