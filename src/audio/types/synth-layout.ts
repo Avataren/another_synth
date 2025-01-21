@@ -141,7 +141,8 @@ export function isModulationPort(port: PortId): boolean {
         port === PortId.CutoffMod ||
         port === PortId.ResonanceMod ||
         port === PortId.GainMod ||
-        port === PortId.EnvelopeMod;
+        port === PortId.EnvelopeMod ||
+        port === PortId.StereoPan;
 }
 
 
@@ -158,6 +159,10 @@ export function getModulationTargetsForType(type: VoiceNodeType): ModulationTarg
             return [
                 { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
                 { value: PortId.ResonanceMod, label: PORT_LABELS[PortId.ResonanceMod] },
+            ];
+        case VoiceNodeType.Mixer:
+            return [
+                { value: PortId.StereoPan, label: PORT_LABELS[PortId.StereoPan] },
             ];
         default:
             return [];
