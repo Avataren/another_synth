@@ -162,7 +162,13 @@ export function getModulationTargetsForType(type: VoiceNodeType): ModulationTarg
             ];
         case VoiceNodeType.Mixer:
             return [
+                { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
                 { value: PortId.StereoPan, label: PORT_LABELS[PortId.StereoPan] },
+            ];
+        case VoiceNodeType.Envelope:
+            return [
+                { value: PortId.GainMod, label: 'Gain' },
+                // ... any other valid envelope targets
             ];
         default:
             return [];
@@ -176,37 +182,4 @@ export function createNodeConnection(
     amount: number
 ): NodeConnection {
     return { fromId, toId, target, amount };
-}
-
-// Example of creating a default voice layout
-export function createDefaultVoiceLayout(voice: {
-    oscillators: VoiceNode[];
-    envelopes: VoiceNode[];
-    filters: VoiceNode[];
-}): VoiceLayout {
-    const [osc1, osc2] = voice.oscillators;
-    const [ampEnv] = voice.envelopes;
-    const filter = voice.filters[0];
-
-    const layout: VoiceLayout = {
-        id: 0,
-        nodes: {
-            [VoiceNodeType.Oscillator]: voice.oscillators,
-            [VoiceNodeType.Envelope]: voice.envelopes,
-            [VoiceNodeType.Filter]: voice.filters,
-            [VoiceNodeType.LFO]: [],
-            [VoiceNodeType.Mixer]: [],
-        },
-        connections: [],
-    };
-
-    if (osc1 && osc2 && ampEnv && filter) {
-        layout.connections = [
-            createNodeConnection(osc1.id, filter.id, PortId.GainMod, 1.0),
-            createNodeConnection(osc2.id, filter.id, PortId.GainMod, 1.0),
-            createNodeConnection(ampEnv.id, filter.id, PortId.GainMod, 1.0),
-        ];
-    }
-
-    return layout;
 }

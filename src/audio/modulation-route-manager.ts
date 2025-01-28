@@ -20,7 +20,7 @@ export class ModulationRouteManager {
     private readonly store = useAudioSystemStore(),
     private readonly sourceId: number,
     private readonly sourceType: VoiceNodeType,
-  ) {}
+  ) { }
 
   /**
    * Gets all target nodes that can accept new modulation connections
@@ -32,6 +32,7 @@ export class ModulationRouteManager {
       return [];
     }
 
+    console.log('Getting available targets for source:', this.sourceId, 'type:', this.sourceType);
     const nodes: TargetNode[] = [];
 
     for (const type of Object.values(VoiceNodeType)) {
@@ -47,6 +48,7 @@ export class ModulationRouteManager {
 
         // Check if this node has any available parameters
         const params = this.getAvailableParams(node.id);
+        console.log('Available params for node:', node.id, 'type:', type, 'params:', params);
         if (params.length === 0) return;
 
         nodes.push({
@@ -57,6 +59,7 @@ export class ModulationRouteManager {
       });
     }
 
+    console.log('Final available targets:', nodes);
     return nodes;
   }
 

@@ -41,25 +41,25 @@ pub struct LfoUpdateParams {
     pub active: bool, // Add this field
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct EngineState {
     voices: Vec<VoiceState>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct VoiceState {
     id: usize,
     nodes: Vec<NodeState>,
     connections: Vec<ConnectionState>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct NodeState {
     id: usize,
     node_type: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct ConnectionState {
     from_id: usize,
     to_id: usize,
@@ -158,22 +158,9 @@ impl AudioEngine {
                     .nodes
                     .iter()
                     .enumerate()
-                    .map(|(ni, node)| {
-                        let node_type = if node
-                            .as_any()
-                            .downcast_ref::<ModulatableOscillator>()
-                            .is_some()
-                        {
-                            "oscillator".to_string()
-                        } else if node.as_any().downcast_ref::<Envelope>().is_some() {
-                            "envelope".to_string()
-                        } else if node.as_any().downcast_ref::<Lfo>().is_some() {
-                            "lfo".to_string()
-                        } else {
-                            "unknown".to_string()
-                        };
-
-                        NodeState { id: ni, node_type }
+                    .map(|(ni, node)| NodeState {
+                        id: ni,
+                        node_type: node.node_type().to_string(),
                     })
                     .collect();
 
@@ -198,6 +185,13 @@ impl AudioEngine {
             .collect();
 
         let engine_state = EngineState { voices };
+        console::log_1(
+            &format!(
+                "lib.rs::get_current_state Serializing state: {:?}",
+                engine_state
+            )
+            .into(),
+        );
         serde_wasm_bindgen::to_value(&engine_state).unwrap()
     }
 
@@ -341,10 +335,9 @@ impl AudioEngine {
 
         let mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
         voice.graph.set_output_node(mixer_id);
-        let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"mixerId".into(), &(mixer_id.0.into()))?;
 
-        Ok(obj.into())
+        // Just return the ID directly like other nodes
+        Ok(JsValue::from(mixer_id.0))
     }
 
     #[wasm_bindgen]
@@ -485,6 +478,14 @@ impl AudioEngine {
         to_port: PortId,
         amount: f32,
     ) -> Result<(), JsValue> {
+        console::log_1(
+            &format!(
+                "lib.rs::connect_voice_nodes Connecting nodes: from={}, to={}, port={:?}, amount={}",
+                from_node, to_node, to_port, amount
+            )
+            .into(),
+        );
+
         let voice = self
             .voices
             .get_mut(voice_index)

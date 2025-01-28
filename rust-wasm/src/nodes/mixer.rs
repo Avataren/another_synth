@@ -56,6 +56,10 @@ impl AudioNode for Mixer {
     fn set_active(&mut self, active: bool) {
         self.enabled = active;
     }
+
+    fn node_type(&self) -> &str {
+        "mixer"
+    }
 }
 
 impl AudioProcessor for Mixer {
@@ -67,6 +71,7 @@ impl AudioProcessor for Mixer {
     }
 
     fn process(&mut self, context: &mut ProcessContext) {
+        use std::simd::num::SimdFloat;
         use std::simd::{f32x4, StdFloat};
 
         context.process_by_chunks(4, |offset, inputs, outputs| {
@@ -80,24 +85,27 @@ impl AudioProcessor for Mixer {
                 .get(&PortId::StereoPan)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
-            // Convert -1 to 1 range to 0 to 1 range for the constant power calculation
+            // Clamp pan values to -1.0...1.0 range using simd_min and simd_max
+            let pan = pan.simd_max(f32x4::splat(-1.0)).simd_min(f32x4::splat(1.0));
+
+            // Convert pan position from -1...1 to 0...1 range
             let normalized_pan = (pan + f32x4::splat(1.0)) * f32x4::splat(0.5);
 
-            // Calculate pan angles using constant power law
-            let pan_angle = normalized_pan * f32x4::splat(PI / 2.0);
-            let left_gain = pan_angle.cos();
-            let right_gain = pan_angle.sin();
+            // Calculate constant power gains using square root method
+            // This ensures that left_gain² + right_gain² = 1 for all pan positions
+            let right_gain = normalized_pan.sqrt();
+            let left_gain = (f32x4::splat(1.0) - normalized_pan).sqrt();
 
             // Get mono input
             let input_mono = inputs
                 .get(&PortId::AudioInput0)
                 .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
 
-            // Apply gain and panning
+            // Apply gain modulation and panning
             let output_l = input_mono * gain_mod * left_gain;
             let output_r = input_mono * gain_mod * right_gain;
 
-            // Write outputs
+            // Write to output buffers
             if let Some(out_l) = outputs.get_mut(&PortId::AudioOutput0) {
                 out_l.write_simd(offset, output_l);
             }

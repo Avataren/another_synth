@@ -1,5 +1,6 @@
 export interface EnvelopeConfig {
     id: number;
+    active: boolean;
     attack: number;      // seconds
     decay: number;       // seconds
     sustain: number;     // 0-1
@@ -26,6 +27,7 @@ export default class Envelope {
 
     constructor(sampleRate: number, config: EnvelopeConfig = {
         id: 0,
+        active: true,
         attack: 0.01,
         decay: 0.1,
         sustain: 0.5,

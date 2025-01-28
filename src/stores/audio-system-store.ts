@@ -179,7 +179,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
     updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout:', layout);
-
+      console.log('Received layout in store:', JSON.stringify(layout, null, 2));
+      console.log('First voice connections in store:',
+        JSON.stringify(layout.voices[0]!.connections, null, 2)
+      );
       // Create a deep copy to ensure we don't mutate the input directly
       this.synthLayout = JSON.parse(JSON.stringify(layout));
 
@@ -221,7 +224,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               release: 0.1,
               attackCurve: 0.0,
               decayCurve: 0.0,
-              releaseCurve: 0.0
+              releaseCurve: 0.0,
+              active: true,
             });
           }
         }

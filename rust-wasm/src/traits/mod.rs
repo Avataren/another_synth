@@ -124,4 +124,8 @@ pub trait AudioNode: Any {
     fn should_process(&self) -> bool {
         self.is_active()
     }
+
+    fn node_type(&self) -> &str {
+        "unknown" // Default implementation returns "unknown"
+    }
 }

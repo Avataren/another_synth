@@ -128,6 +128,10 @@ impl AudioNode for ModulatableOscillator {
     fn set_active(&mut self, active: bool) {
         self.active = active;
     }
+
+    fn node_type(&self) -> &str {
+        "oscillator"
+    }
 }
 
 impl AudioProcessor for ModulatableOscillator {

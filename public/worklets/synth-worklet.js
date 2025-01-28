@@ -1163,6 +1163,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       connections: []
     };
     const mixerId = this.audioEngine.create_mixer(voiceIndex);
+    console.log("#mixerID: ", mixerId);
     voiceLayout.nodes["mixer" /* Mixer */].push({
       id: mixerId,
       type: "mixer" /* Mixer */
@@ -1204,7 +1205,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         voiceIndex,
         ampEnv.id,
         PortId.AudioOutput0,
-        mixerId.id,
+        mixerId,
         PortId.GainMod,
         1
       );
@@ -1212,7 +1213,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         voiceIndex,
         osc1.id,
         PortId.AudioOutput0,
-        mixerId.id,
+        mixerId,
         PortId.AudioInput0,
         1
       );
@@ -1227,13 +1228,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       voiceLayout.connections = [
         {
           fromId: ampEnv.id,
-          toId: mixerId.id,
+          toId: mixerId,
           target: PortId.GainMod,
           amount: 1
         },
         {
           fromId: osc1.id,
-          toId: mixerId.id,
+          toId: mixerId,
           target: PortId.AudioInput0,
           amount: 1
         },
@@ -1431,10 +1432,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     try {
       const layout = this.audioEngine.get_current_state();
+      console.log("synth-worklet::handleGetNodeLayer layout:", layout);
       this.port.postMessage({
         type: "nodeLayout",
         messageId: data.messageId,
-        layout: JSON.stringify(layout)
+        layout
+        //JSON.stringify(layout)
       });
     } catch (err) {
       this.port.postMessage({

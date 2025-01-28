@@ -318,6 +318,10 @@ onMounted(async () => {
 const initializeRoutes = () => {
   try {
     const connections = store.getNodeConnections(props.sourceId);
+    console.log('Connection details:', {
+      sourceId: props.sourceId,
+      connections: connections, // Convert to JSON to see actual values
+    });
 
     // Safety check for connections
     if (!connections?.length) {
