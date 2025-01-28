@@ -56,17 +56,18 @@ export class AudioSyncManager {
 
         try {
             await this.syncWithWasm();
-            this.syncInterval = window.setInterval(() => {
-                this.syncWithWasm().catch(error => {
-                    console.warn('Sync attempt failed:', error);
-                    this.failedAttempts++;
+            //uncomment to check periodically
+            // this.syncInterval = window.setInterval(() => {
+            //     this.syncWithWasm().catch(error => {
+            //         console.warn('Sync attempt failed:', error);
+            //         this.failedAttempts++;
 
-                    if (this.failedAttempts >= this.maxFailedAttempts) {
-                        console.error('Max sync attempts reached, stopping sync manager');
-                        this.stop();
-                    }
-                });
-            }, this.syncIntervalMs);
+            //         if (this.failedAttempts >= this.maxFailedAttempts) {
+            //             console.error('Max sync attempts reached, stopping sync manager');
+            //             this.stop();
+            //         }
+            //     });
+            // }, this.syncIntervalMs);
         } catch (error) {
             console.error('Failed to start sync manager:', error);
             throw error;
@@ -143,17 +144,17 @@ export class AudioSyncManager {
         }
     }
 
-    public async validateState(): Promise<boolean> {
-        if (!this.store.currentInstrument?.isReady) return true;
+    // public async validateState(): Promise<boolean> {
+    //     if (!this.store.currentInstrument?.isReady) return true;
 
-        const wasmState = await this.store.currentInstrument.getWasmNodeConnections();
-        const stateData: WasmState = JSON.parse(wasmState);
+    //     const wasmState = await this.store.currentInstrument.getWasmNodeConnections();
+    //     const stateData: WasmState = JSON.parse(wasmState);
 
-        const currentState = JSON.stringify(this.store.synthLayout?.voices.map(v => v.connections));
-        const wasmStateStr = JSON.stringify(stateData.voices.map((v: WasmVoice) => v.connections));
+    //     const currentState = JSON.stringify(this.store.synthLayout?.voices.map(v => v.connections));
+    //     const wasmStateStr = JSON.stringify(stateData.voices.map((v: WasmVoice) => v.connections));
 
-        return currentState === wasmStateStr;
-    }
+    //     return currentState === wasmStateStr;
+    // }
 
     public async updateConnection(connection: NodeConnectionUpdate): Promise<void> {
         if (!this.store.currentInstrument?.isReady) return;
@@ -264,7 +265,7 @@ export class AudioSyncManager {
             if (wasmState === this.lastWasmState) return;
 
             this.lastWasmState = wasmState;
-
+            console.log('# wasmState:', wasmState);
             const wasmLayout = JSON.parse(wasmState) as WasmLayout;
             const wasmConnections = wasmLayout.voices.flatMap(voice => voice.connections || []);
             const storeConnections = this.store.synthLayout?.voices.flatMap(voice => voice.connections) || [];

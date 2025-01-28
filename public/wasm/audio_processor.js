@@ -619,6 +619,19 @@ export class EnvelopeConfig {
     set attack_smoothing_samples(arg0) {
         wasm.__wbg_set_envelopeconfig_attack_smoothing_samples(this.__wbg_ptr, arg0);
     }
+    /**
+     * @returns {boolean}
+     */
+    get active() {
+        const ret = wasm.__wbg_get_envelopeconfig_active(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} arg0
+     */
+    set active(arg0) {
+        wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
+    }
 }
 
 const LfoUpdateParamsFinalization = (typeof FinalizationRegistry === 'undefined')

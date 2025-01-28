@@ -1089,6 +1089,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateLfo":
         this.handleUpdateLfo(event.data);
         break;
+      case "updateEnvelope":
+        this.handleUpdateEnvelope(event.data);
+        break;
       case "requestSync":
         this.handleRequestSync();
         break;
@@ -1436,8 +1439,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       this.port.postMessage({
         type: "nodeLayout",
         messageId: data.messageId,
-        layout
-        //JSON.stringify(layout)
+        layout: JSON.stringify(layout)
       });
     } catch (err) {
       this.port.postMessage({
@@ -1464,6 +1466,25 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         type: "error",
         message: "Failed to generate LFO waveform"
       });
+    }
+  }
+  handleUpdateEnvelope(data) {
+    if (!this.audioEngine) return;
+    console.log("handleUpdateEnvelope:", data);
+    try {
+      for (let i = 0; i < this.numVoices; i++) {
+        this.audioEngine.update_envelope(
+          i,
+          data.envelopeId,
+          data.config.attack,
+          data.config.decay,
+          data.config.sustain,
+          data.config.release,
+          data.config.active
+        );
+      }
+    } catch (err) {
+      console.error("Error updating LFO:", err);
     }
   }
   handleUpdateLfo(data) {

@@ -27,6 +27,7 @@ pub struct EnvelopeConfig {
     pub decay_curve: f32,
     pub release_curve: f32,
     pub attack_smoothing_samples: usize,
+    pub active: bool,
 }
 
 impl Default for EnvelopeConfig {
@@ -40,6 +41,7 @@ impl Default for EnvelopeConfig {
             decay_curve: 0.0,
             release_curve: 0.0,
             attack_smoothing_samples: 16,
+            active: true,
         }
     }
 }
@@ -283,6 +285,7 @@ mod envelope_tests {
             decay_curve: 0.0,
             release_curve: 0.0,
             attack_smoothing_samples: 0,
+            active: true,
         };
         let mut env = Envelope::new(sample_rate, config);
 
@@ -312,6 +315,7 @@ mod envelope_tests {
             decay_curve: 0.0,
             release_curve: 0.0,
             attack_smoothing_samples: 0,
+            active: true,
         };
         let mut env = Envelope::new(sample_rate, config);
 
@@ -343,6 +347,7 @@ mod envelope_tests {
             decay_curve: 0.0,
             release_curve: 0.0,
             attack_smoothing_samples: 0,
+            active: true,
         };
         let mut env = Envelope::new(sample_rate, config);
 
@@ -372,6 +377,7 @@ mod envelope_tests {
             decay_curve: 0.0,
             release_curve: 0.0,
             attack_smoothing_samples: 0,
+            active: true,
         };
         let mut env = Envelope::new(sample_rate, config);
 
@@ -405,6 +411,7 @@ mod envelope_tests {
             decay_curve: 0.0,
             release_curve: 0.0,
             attack_smoothing_samples: 16,
+            active: true,
         };
         let mut env = Envelope::new(sample_rate, config);
 

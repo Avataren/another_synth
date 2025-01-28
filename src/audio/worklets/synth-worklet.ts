@@ -3,6 +3,7 @@ import './textencoder.js';
 
 import {
   AudioEngine,
+  type EnvelopeConfig,
   initSync,
   LfoUpdateParams,
   OscillatorStateUpdate,
@@ -15,6 +16,11 @@ import {
   VoiceNodeType,
   type NodeConnectionUpdate
 } from '../types/synth-layout';
+
+interface EnvelopeUpdate {
+  config: EnvelopeConfig,
+  envelopeId: number,
+}
 
 declare const sampleRate: number;
 
@@ -164,6 +170,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'updateLfo':
         this.handleUpdateLfo(event.data);
+        break;
+      case 'updateEnvelope':
+        this.handleUpdateEnvelope(event.data);
         break;
       case 'requestSync':
         this.handleRequestSync();
@@ -586,7 +595,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type: 'nodeLayout',
         messageId: data.messageId,
-        layout: layout,//JSON.stringify(layout)
+        layout: JSON.stringify(layout)
       });
     } catch (err) {
       this.port.postMessage({
@@ -619,6 +628,23 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  private handleUpdateEnvelope(data: EnvelopeUpdate) {
+    if (!this.audioEngine) return;
+    console.log('handleUpdateEnvelope:', data);
+    try {
+      for (let i = 0; i < this.numVoices; i++) {
+        this.audioEngine.update_envelope(i,
+          data.envelopeId,
+          data.config.attack,
+          data.config.decay,
+          data.config.sustain,
+          data.config.release,
+          data.config.active);
+      }
+    } catch (err) {
+      console.error('Error updating LFO:', err);
+    }
+  }
 
   private handleUpdateLfo(data: LfoUpdateData) {
     if (!this.audioEngine) return;

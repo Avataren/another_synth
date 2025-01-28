@@ -117,11 +117,11 @@ export default class Instrument {
     if (!this.ready || !this.workletNode) {
       throw new Error('Audio system not ready');
     }
-
+    console.log('#### getWasmNodeConnections');
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => {}, 0);
+      let timeoutId = setTimeout(() => { }, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
