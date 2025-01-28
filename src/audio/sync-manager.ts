@@ -47,7 +47,7 @@ export class AudioSyncManager {
     private failedAttempts = 0;
     private readonly maxFailedAttempts = 3;
 
-    constructor(private syncIntervalMs: number = 1000) { }
+    // constructor(private syncIntervalMs: number = 1000) { }
 
     async start() {
         if (this.syncInterval) {

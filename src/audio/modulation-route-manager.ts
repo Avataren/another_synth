@@ -32,36 +32,31 @@ export class ModulationRouteManager {
       return [];
     }
 
-    console.log('Getting available targets for source:', this.sourceId, 'type:', this.sourceType);
     const nodes: TargetNode[] = [];
 
     for (const type of Object.values(VoiceNodeType)) {
-      if (!voice.nodes[type]) {
-        console.warn(`No nodes found for type ${type}`);
-        continue;
-      }
+      if (!voice.nodes[type]) continue;
 
       const typeNodes = voice.nodes[type];
       typeNodes.forEach((node, index) => {
         // Skip self-modulation
         if (node.id === this.sourceId) return;
 
-        // Check if this node has any available parameters
+        // Include node if it has any available parameters
         const params = this.getAvailableParams(node.id);
-        console.log('Available params for node:', node.id, 'type:', type, 'params:', params);
-        if (params.length === 0) return;
-
-        nodes.push({
-          id: node.id,
-          name: this.getNodeName(type, index),
-          type: type,
-        });
+        if (params.length > 0) {
+          nodes.push({
+            id: node.id,
+            name: this.getNodeName(type, index),
+            type: type,
+          });
+        }
       });
     }
 
-    console.log('Final available targets:', nodes);
     return nodes;
   }
+
 
   /**
    * Gets available parameters for a target node that aren't already used in other routes
@@ -73,17 +68,19 @@ export class ModulationRouteManager {
     // Get all possible parameters for this node type
     const allParams = getModulationTargetsForType(node.type);
 
-    // Filter out parameters that are already used
-    const existingConnections = this.store.getNodeConnections(this.sourceId);
-    return allParams.filter((param) => {
-      const isUsed = existingConnections.some(
-        (conn) =>
-          conn.fromId === this.sourceId &&
-          conn.toId === targetId &&
-          conn.target === param.value,
+    // Get existing connections only for this specific source->target pair
+    const existingConnections = this.store.getNodeConnections(this.sourceId)
+      .filter(conn => conn.fromId === this.sourceId && conn.toId === targetId);
+
+    // Only filter out parameters that are already connected for this specific target
+    const availableParams = allParams.filter((param) => {
+      const isUsedForThisTarget = existingConnections.some(
+        (conn) => conn.target === param.value
       );
-      return !isUsed;
+      return !isUsedForThisTarget;
     });
+
+    return availableParams;
   }
 
   private getNodeName(type: VoiceNodeType, index: number): string {

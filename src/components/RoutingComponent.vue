@@ -42,7 +42,11 @@
               <!-- Parameter Selection -->
               <div class="col-4">
                 <q-select
-                  v-model="route.target"
+                  :model-value="
+                    getAvailableParams(route.targetId).find(
+                      (p) => p.value === route.target,
+                    )
+                  "
                   :options="getAvailableParams(route.targetId)"
                   :display-value="route.targetLabel"
                   option-label="label"
@@ -215,39 +219,38 @@ const handleParamChange = async (
   const route = activeRoutes.value[index];
   if (!route) return;
 
-  // Ensure we have valid parameters
-  if (typeof newParam?.value !== 'number') {
-    console.error('Invalid new parameter value:', newParam);
-    return;
-  }
-
   try {
-    // Create typed connection object for removal
+    // First remove old connection - ensure we have a plain number
+    const oldTarget = route.target as PortId; // Current target should already be a PortId
+
     const removeConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: route.target, // This is already a PortId
+      target: oldTarget,
       amount: route.amount,
       isRemoving: true,
     };
 
-    // Create typed connection object for new connection
+    console.log('Removing old connection:', removeConnection);
+    await routeManager.updateConnection(removeConnection);
+
+    // Add new connection using the value from ModulationTargetOption
+    const newTarget = newParam.value as PortId;
     const newConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: newParam.value as PortId, // Convert value to PortId
+      target: newTarget,
       amount: route.amount,
     };
-
-    console.log('Removing connection:', removeConnection);
-    await routeManager.updateConnection(removeConnection);
 
     console.log('Adding new connection:', newConnection);
     await routeManager.updateConnection(newConnection);
 
-    // Update the route with new values
-    route.target = newParam.value as PortId; // Store the PortId
+    // Update local state
+    route.target = newTarget;
     route.targetLabel = newParam.label;
+
+    console.log('Updated route state:', route);
   } catch (error) {
     console.error('Failed to update parameter:', error);
   }
@@ -286,14 +289,16 @@ const removeRoute = async (index: number) => {
   if (!route) return;
 
   try {
-    await routeManager.updateConnection({
+    // Create a plain connection object with validated target
+    const removeConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: route.target,
-      amount: route.amount,
+      target: Number(route.target) as PortId, // Convert from proxy to number
+      amount: Number(route.amount),
       isRemoving: true,
-    });
+    };
 
+    await routeManager.updateConnection(removeConnection);
     activeRoutes.value.splice(index, 1);
   } catch (error) {
     console.error('Failed to remove route:', error);
@@ -318,9 +323,13 @@ onMounted(async () => {
 const initializeRoutes = () => {
   try {
     const connections = store.getNodeConnections(props.sourceId);
-    console.log('Connection details:', {
+    console.log('Initializing routes:', {
       sourceId: props.sourceId,
-      connections: connections, // Convert to JSON to see actual values
+      connections: connections,
+      availableTargets: routeManager.getAvailableTargets(),
+      availableParams: connections.map((conn) =>
+        routeManager.getAvailableParams(conn.toId),
+      ),
     });
 
     // Safety check for connections
@@ -349,8 +358,13 @@ const initializeRoutes = () => {
           return null;
         }
 
-        // Get parameters
+        // Get parameters and log them
         const params = routeManager.getAvailableParams(conn.toId);
+        console.log('Parameters for connection:', {
+          targetId: conn.toId,
+          availableParams: params,
+        });
+
         const label =
           params.find((p) => p.value === conn.target)?.label ||
           PORT_LABELS[conn.target] ||
@@ -364,7 +378,7 @@ const initializeRoutes = () => {
           amount: conn.amount,
         };
       })
-      .filter((route): route is RouteConfig => route !== null); // Filter out null routes
+      .filter((route): route is RouteConfig => route !== null);
 
     console.log('Initialized routes:', activeRoutes.value);
   } catch (error) {

@@ -303,48 +303,18 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       try {
         const numVoices = this.synthLayout?.voices.length || 0;
 
-        // Create a completely new object with primitives
+        // Convert proxies to plain numbers and validate
         const plainConnection = {
           fromId: Number(connection.fromId),
           toId: Number(connection.toId),
-          target: Number(connection.target),
-          amount: Number(connection.amount)
+          target: Number(connection.target) as PortId,
+          amount: Number(connection.amount),
+          isRemoving: Boolean(connection.isRemoving)
         } as NodeConnectionUpdate;
 
-        // Handle removing/changing connections
-        const isChangingConnection = !connection.isRemoving && this.synthLayout?.voices[0]!.connections.some(conn =>
-          conn.fromId === connection.fromId &&
-          conn.toId === connection.toId &&
-          conn.target !== connection.target
-        );
-
-        // If we're changing a connection type, we need to remove the old one first
-        if (isChangingConnection) {
-          // Find the old connection to remove it
-          const oldConnection = this.synthLayout!.voices[0]!.connections.find(conn =>
-            conn.fromId === connection.fromId &&
-            conn.toId === connection.toId
-          );
-
-          if (oldConnection) {
-            // Remove the old connection first
-            const removeConnection = {
-              ...plainConnection,
-              target: oldConnection.target,
-              isRemoving: true
-            };
-
-            // Remove old connection from all voices
-            for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
-              if (!this.currentInstrument) throw new Error('No instrument');
-              await this.currentInstrument.updateConnection(voiceIndex, removeConnection);
-            }
-          }
-        }
-
-        // Now handle the actual connection update/removal
-        if (connection.isRemoving) {
-          plainConnection.isRemoving = true;
+        // Validate target
+        if (isNaN(plainConnection.target)) {
+          throw new Error(`Invalid target value: ${connection.target}`);
         }
 
         // Update WASM for all voices
@@ -358,22 +328,33 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           this.synthLayout.voices.forEach(voice => {
             if (!voice.connections) voice.connections = [];
 
-            if (connection.isRemoving || isChangingConnection) {
-              // Remove any existing connection with same source and target
+            if (connection.isRemoving) {
+              // Only remove the specific connection with matching target
               voice.connections = voice.connections.filter(conn =>
                 !(conn.fromId === plainConnection.fromId &&
-                  conn.toId === plainConnection.toId)
+                  conn.toId === plainConnection.toId &&
+                  conn.target === plainConnection.target)
               );
-            }
+            } else {
+              // Add or update connection
+              const existingIndex = voice.connections.findIndex(conn =>
+                conn.fromId === plainConnection.fromId &&
+                conn.toId === plainConnection.toId &&
+                conn.target === plainConnection.target
+              );
 
-            if (!connection.isRemoving) {
-              // Add new connection
-              voice.connections.push({
+              const newConnection = {
                 fromId: plainConnection.fromId,
                 toId: plainConnection.toId,
                 target: plainConnection.target,
                 amount: plainConnection.amount
-              });
+              };
+
+              if (existingIndex !== -1) {
+                voice.connections[existingIndex] = newConnection;
+              } else {
+                voice.connections.push(newConnection);
+              }
             }
           });
 
