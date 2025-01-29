@@ -255,6 +255,9 @@ function getArrayF32FromWasm0(ptr, len) {
   ptr = ptr >>> 0;
   return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
+function isLikeNone(x) {
+  return x === void 0 || x === null;
+}
 var PortId = Object.freeze({
   AudioInput0: 0,
   "0": "AudioInput0",
@@ -294,6 +297,16 @@ var PortId = Object.freeze({
   "17": "EnvelopeMod",
   StereoPan: 18,
   "18": "StereoPan"
+});
+var WasmModulationType = Object.freeze({
+  VCA: 0,
+  "0": "VCA",
+  Bipolar: 1,
+  "1": "Bipolar",
+  Additive: 2,
+  "2": "Additive",
+  Ring: 3,
+  "3": "Ring"
 });
 var AudioEngineFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
@@ -471,9 +484,10 @@ var AudioEngine = class {
    * @param {number} to_node
    * @param {PortId} to_port
    * @param {number} amount
+   * @param {WasmModulationType | undefined} [modulation_type]
    */
-  connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
-    const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+  connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
+    const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 4 : modulation_type);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -510,9 +524,10 @@ var AudioEngine = class {
    * @param {number} to_node
    * @param {PortId} to_port
    * @param {number} amount
+   * @param {WasmModulationType | undefined} [modulation_type]
    */
-  connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
-    const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+  connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
+    const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 4 : modulation_type);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -1210,7 +1225,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         mixerId,
         PortId.GainMod,
-        1
+        1,
+        WasmModulationType.VCA
       );
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
@@ -1218,7 +1234,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         mixerId,
         PortId.AudioInput0,
-        1
+        1,
+        WasmModulationType.VCA
       );
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
@@ -1226,7 +1243,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         osc1.id,
         PortId.PhaseMod,
-        1
+        1,
+        WasmModulationType.VCA
       );
       voiceLayout.connections = [
         {
@@ -1321,7 +1339,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         connection.toId,
         connection.target,
-        connection.amount
+        connection.amount,
+        WasmModulationType.VCA
       );
       const state = this.audioEngine.get_current_state();
       console.log("State after adding connection:", state);
@@ -1377,7 +1396,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             PortId.AudioOutput0,
             data.connection.toId,
             data.connection.target,
-            data.connection.amount
+            data.connection.amount,
+            WasmModulationType.VCA
           );
         }
       }

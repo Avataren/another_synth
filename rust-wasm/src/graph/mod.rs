@@ -1,9 +1,11 @@
 mod buffer_pool;
 mod graph;
+mod modulation_processor;
 #[cfg(test)]
 mod tests;
 mod types;
 
 pub use buffer_pool::AudioBufferPool;
 pub use graph::AudioGraph;
-pub use types::{Connection, ConnectionId, NodeId};
+pub use modulation_processor::ModulationProcessor;
+pub use types::{Connection, ConnectionId, ModulationType, NodeId};

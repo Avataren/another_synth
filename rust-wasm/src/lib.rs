@@ -10,6 +10,7 @@ mod utils;
 mod voice;
 
 pub use graph::AudioGraph;
+use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
@@ -21,6 +22,25 @@ pub use voice::Voice;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{console, js_sys};
+
+#[wasm_bindgen]
+pub enum WasmModulationType {
+    VCA = 0,
+    Bipolar = 1,
+    Additive = 2,
+    Ring = 3,
+}
+
+impl From<WasmModulationType> for ModulationType {
+    fn from(wasm_type: WasmModulationType) -> Self {
+        match wasm_type {
+            WasmModulationType::VCA => ModulationType::VCA,
+            WasmModulationType::Bipolar => ModulationType::Bipolar,
+            WasmModulationType::Additive => ModulationType::Additive,
+            WasmModulationType::Ring => ModulationType::Ring,
+        }
+    }
+}
 
 #[wasm_bindgen]
 pub struct AudioEngine {
@@ -140,7 +160,8 @@ impl AudioEngine {
             from_port,
             to_node: NodeId(to_node),
             to_port,
-            amount: 0.0, // The amount doesn't matter for removal
+            amount: 0.0,                          // The amount doesn't matter for removal
+            modulation_type: ModulationType::VCA, // neither does modulation_type
         });
 
         Ok(())
@@ -477,27 +498,22 @@ impl AudioEngine {
         to_node: usize,
         to_port: PortId,
         amount: f32,
+        modulation_type: Option<WasmModulationType>,
     ) -> Result<(), JsValue> {
-        console::log_1(
-            &format!(
-                "lib.rs::connect_voice_nodes Connecting nodes: from={}, to={}, port={:?}, amount={}",
-                from_node, to_node, to_port, amount
-            )
-            .into(),
-        );
-
         let voice = self
             .voices
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        // Create new connection without removing existing ones
         let connection = Connection {
             from_node: NodeId(from_node),
             from_port,
             to_node: NodeId(to_node),
             to_port,
             amount,
+            modulation_type: modulation_type
+                .map(ModulationType::from)
+                .unwrap_or_default(),
         };
 
         voice.graph.add_connection(connection);
@@ -567,6 +583,7 @@ impl AudioEngine {
         to_node: usize,
         to_port: PortId,
         amount: f32,
+        modulation_type: Option<WasmModulationType>,
     ) -> Result<(), JsValue> {
         let voice = self
             .voices
@@ -579,6 +596,9 @@ impl AudioEngine {
             to_node: NodeId(to_node),
             to_port,
             amount,
+            modulation_type: modulation_type
+                .map(ModulationType::from)
+                .unwrap_or_default(),
         });
 
         Ok(())

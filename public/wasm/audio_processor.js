@@ -200,6 +200,10 @@ function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
 /**
  * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18}
  */
@@ -223,6 +227,15 @@ export const PortId = Object.freeze({
     GainMod: 16, "16": "GainMod",
     EnvelopeMod: 17, "17": "EnvelopeMod",
     StereoPan: 18, "18": "StereoPan",
+});
+/**
+ * @enum {0 | 1 | 2 | 3}
+ */
+export const WasmModulationType = Object.freeze({
+    VCA: 0, "0": "VCA",
+    Bipolar: 1, "1": "Bipolar",
+    Additive: 2, "2": "Additive",
+    Ring: 3, "3": "Ring",
 });
 
 const AudioEngineFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -404,9 +417,10 @@ export class AudioEngine {
      * @param {number} to_node
      * @param {PortId} to_port
      * @param {number} amount
+     * @param {WasmModulationType | undefined} [modulation_type]
      */
-    connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
-        const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+    connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
+        const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 4 : modulation_type);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -443,9 +457,10 @@ export class AudioEngine {
      * @param {number} to_node
      * @param {PortId} to_port
      * @param {number} amount
+     * @param {WasmModulationType | undefined} [modulation_type]
      */
-    connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount) {
-        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount);
+    connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
+        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 4 : modulation_type);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

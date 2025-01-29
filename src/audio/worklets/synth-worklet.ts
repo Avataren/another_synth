@@ -7,7 +7,8 @@ import {
   initSync,
   LfoUpdateParams,
   OscillatorStateUpdate,
-  PortId
+  PortId,
+  WasmModulationType
 } from 'app/public/wasm/audio_processor.js';
 import OscillatorUpdateHandler from './handlers/oscillator-update-handler.js';
 import {
@@ -323,7 +324,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         mixerId,
         PortId.GainMod,
-        1.0
+        1.0,
+        WasmModulationType.VCA
       );
 
       // Connect oscillator 1 to mixer audio input
@@ -333,7 +335,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         mixerId,
         PortId.AudioInput0,
-        1.0
+        1.0,
+        WasmModulationType.VCA
       );
 
       // Connect oscillator 2's output to oscillator 1's phase mod
@@ -343,7 +346,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         osc1!.id,
         PortId.PhaseMod,
-        1.0
+        1.0,
+        WasmModulationType.VCA
       );
 
       // Add connections to layout
@@ -464,7 +468,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioOutput0,
         connection.toId,
         connection.target,
-        connection.amount
+        connection.amount,
+        WasmModulationType.VCA
       );
 
       // Verify connection was added
@@ -529,7 +534,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
             PortId.AudioOutput0,
             data.connection.toId,
             data.connection.target,
-            data.connection.amount
+            data.connection.amount,
+            WasmModulationType.VCA
           );
         }
       }

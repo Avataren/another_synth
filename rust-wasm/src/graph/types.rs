@@ -40,6 +40,21 @@ impl NodeId {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConnectionId(pub usize);
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u8)]
+pub enum ModulationType {
+    VCA = 0,
+    Bipolar = 1,
+    Additive = 2,
+    Ring = 3,
+}
+
+impl Default for ModulationType {
+    fn default() -> Self {
+        ModulationType::Bipolar
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Connection {
     pub from_node: NodeId,
@@ -47,6 +62,7 @@ pub struct Connection {
     pub to_node: NodeId,
     pub to_port: PortId,
     pub amount: f32,
+    pub modulation_type: ModulationType,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
