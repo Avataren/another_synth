@@ -2,6 +2,13 @@ use crate::PortId;
 use std::ops::Deref;
 use wasm_bindgen::prelude::*;
 
+#[derive(Clone)]
+pub struct ModulationSource {
+    pub buffer: Vec<f32>,
+    pub amount: f32,
+    pub mod_type: ModulationType,
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub usize);

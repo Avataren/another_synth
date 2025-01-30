@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::wasm_bindgen;
 
+use crate::graph::{ModulationSource, ModulationType};
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 use std::any::Any;
@@ -101,22 +102,175 @@ impl AudioNode for ModulatableOscillator {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, &[f32]>,
+        audio_inputs: &HashMap<PortId, Vec<f32>>,
+        mod_inputs: &HashMap<PortId, Vec<ModulationSource>>,
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        let default_values = self.get_default_values();
-        let mut context = ProcessContext::new(inputs, outputs, buffer_size, &default_values);
-        AudioProcessor::process(self, &mut context);
+        use std::simd::{f32x4, StdFloat};
+        const TWO_PI: f32 = 2.0 * std::f32::consts::PI;
+
+        // Pre-process modulations into single buffers
+        let mut freq_mod = vec![0.0; buffer_size];
+        let mut phase_mod = vec![0.0; buffer_size];
+        let mut gain_mod = vec![1.0; buffer_size];
+
+        // Process frequency modulation
+        if let Some(sources) = mod_inputs.get(&PortId::FrequencyMod) {
+            for source in sources {
+                for i in (0..buffer_size).step_by(4) {
+                    let end = (i + 4).min(buffer_size);
+                    let mut chunk = [0.0; 4];
+                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
+
+                    let mod_chunk = f32x4::from_array(chunk);
+                    let current_chunk = f32x4::from_array([
+                        freq_mod[i],
+                        freq_mod[i + 1],
+                        freq_mod[i + 2],
+                        freq_mod[i + 3],
+                    ]);
+
+                    let processed = match source.mod_type {
+                        ModulationType::Additive => mod_chunk * f32x4::splat(source.amount),
+                        _ => mod_chunk * f32x4::splat(source.amount),
+                    };
+
+                    let result = current_chunk + processed;
+                    let result_array = result.to_array();
+                    freq_mod[i..end].copy_from_slice(&result_array[0..end - i]);
+                }
+            }
+        }
+
+        // Process phase modulation
+        if let Some(sources) = mod_inputs.get(&PortId::PhaseMod) {
+            for source in sources {
+                for i in (0..buffer_size).step_by(4) {
+                    let end = (i + 4).min(buffer_size);
+                    let mut chunk = [0.0; 4];
+                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
+
+                    let mod_chunk = f32x4::from_array(chunk);
+                    let current_chunk = f32x4::from_array([
+                        phase_mod[i],
+                        phase_mod[i + 1],
+                        phase_mod[i + 2],
+                        phase_mod[i + 3],
+                    ]);
+
+                    let processed = mod_chunk * f32x4::splat(source.amount * self.phase_mod_amount);
+                    let result = current_chunk + processed;
+                    let result_array = result.to_array();
+                    phase_mod[i..end].copy_from_slice(&result_array[0..end - i]);
+                }
+            }
+        }
+
+        // Process gain modulation
+        if let Some(sources) = mod_inputs.get(&PortId::GainMod) {
+            for source in sources {
+                for i in (0..buffer_size).step_by(4) {
+                    let end = (i + 4).min(buffer_size);
+                    let mut chunk = [0.0; 4];
+                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
+
+                    let mod_chunk = f32x4::from_array(chunk);
+                    let current_chunk = f32x4::from_array([
+                        gain_mod[i],
+                        gain_mod[i + 1],
+                        gain_mod[i + 2],
+                        gain_mod[i + 3],
+                    ]);
+
+                    let processed = match source.mod_type {
+                        ModulationType::VCA => (mod_chunk * f32x4::splat(source.amount)),
+                        _ => mod_chunk * f32x4::splat(source.amount),
+                    };
+
+                    let result = current_chunk * processed;
+                    let result_array = result.to_array();
+                    gain_mod[i..end].copy_from_slice(&result_array[0..end - i]);
+                }
+            }
+        }
+
+        // Main audio processing
+        if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
+            for i in (0..buffer_size).step_by(4) {
+                let end = (i + 4).min(buffer_size);
+
+                // Get base frequency
+                let base_freq = if let Some(freq_input) = audio_inputs.get(&PortId::GlobalFrequency)
+                {
+                    let mut chunk = [0.0; 4];
+                    chunk[0..end - i].copy_from_slice(&freq_input[i..end]);
+                    f32x4::from_array(chunk)
+                } else {
+                    f32x4::splat(self.frequency)
+                };
+
+                // Get modulation chunks
+                let mut freq_chunk = [0.0; 4];
+                freq_chunk[0..end - i].copy_from_slice(&freq_mod[i..end]);
+                let freq_mod_chunk = f32x4::from_array(freq_chunk);
+
+                let mut phase_chunk = [0.0; 4];
+                phase_chunk[0..end - i].copy_from_slice(&phase_mod[i..end]);
+                let phase_mod_chunk = f32x4::from_array(phase_chunk);
+
+                let mut gain_chunk = [1.0; 4];
+                gain_chunk[0..end - i].copy_from_slice(&gain_mod[i..end]);
+                let gain_mod_chunk = f32x4::from_array(gain_chunk);
+
+                // Calculate modulated frequency
+                let detuned_freq = f32x4::from_array([
+                    self.get_detuned_frequency(base_freq.to_array()[0]),
+                    self.get_detuned_frequency(base_freq.to_array()[1]),
+                    self.get_detuned_frequency(base_freq.to_array()[2]),
+                    self.get_detuned_frequency(base_freq.to_array()[3]),
+                ]);
+
+                let modulated_freq = detuned_freq * (f32x4::splat(1.0) + freq_mod_chunk);
+                let phase_inc =
+                    f32x4::splat(TWO_PI) * modulated_freq / f32x4::splat(self.sample_rate);
+
+                // Generate phases
+                let phases = f32x4::from_array([
+                    self.phase,
+                    self.phase + phase_inc.to_array()[0],
+                    self.phase + phase_inc.to_array()[0] + phase_inc.to_array()[1],
+                    self.phase
+                        + phase_inc.to_array()[0]
+                        + phase_inc.to_array()[1]
+                        + phase_inc.to_array()[2],
+                ]);
+
+                // Add phase modulation and generate output
+                let modulated_phase = phases + phase_mod_chunk;
+                let sine = modulated_phase.sin();
+                let final_output = sine * f32x4::splat(self.gain) * gain_mod_chunk;
+
+                // Write output
+                let result = final_output.to_array();
+                output[i..end].copy_from_slice(&result[0..end - i]);
+
+                // Update phase
+                self.phase += phase_inc.to_array()[0..end - i].iter().sum::<f32>();
+                self.phase %= TWO_PI;
+            }
+        }
     }
 
+    // Other methods remain the same...
     fn reset(&mut self) {
-        AudioProcessor::reset(self);
+        self.phase = 0.0;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

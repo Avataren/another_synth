@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::simd::f32x4;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+use crate::graph::ModulationSource;
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 use crate::utils::curves::get_curved_value;
@@ -172,17 +173,53 @@ impl AudioNode for Envelope {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, &[f32]>,
+        audio_inputs: &HashMap<PortId, Vec<f32>>,
+        _mod_inputs: &HashMap<PortId, Vec<ModulationSource>>, // Envelope doesn't use modulation
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        let default_values = self.get_default_values();
-        let mut context = ProcessContext::new(inputs, outputs, buffer_size, &default_values);
-        AudioProcessor::process(self, &mut context);
+        use std::simd::f32x4;
+
+        // Process in chunks of 4 samples
+        for i in (0..buffer_size).step_by(4) {
+            let end = (i + 4).min(buffer_size);
+
+            // Get gate values
+            let mut gate_chunk = [0.0; 4];
+            if let Some(gate_input) = audio_inputs.get(&PortId::Gate) {
+                gate_chunk[0..end - i].copy_from_slice(&gate_input[i..end]);
+            }
+            let gate_values = f32x4::from_array(gate_chunk);
+            let gate_array = gate_values.to_array();
+
+            let mut values = [0.0f32; 4];
+
+            // Process each sample in the chunk
+            for j in 0..(end - i) {
+                if gate_array[j] != self.last_gate_value {
+                    self.trigger(gate_array[j]);
+                }
+
+                let increment = 1.0 / self.sample_rate;
+                values[j] = self.process_sample(increment);
+            }
+
+            // Write output
+            if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
+                let values_simd = f32x4::from_array(values);
+                output[i..end].copy_from_slice(&values_simd.to_array()[0..end - i]);
+            }
+        }
     }
 
+    // Rest of the implementation remains the same
     fn reset(&mut self) {
-        AudioProcessor::reset(self);
+        self.phase = EnvelopePhase::Idle;
+        self.value = 0.0;
+        self.release_level = 0.0;
+        self.position = 0.0;
+        self.last_gate_value = 0.0;
+        self.smoothing_counter = 0;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

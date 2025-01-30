@@ -3,6 +3,8 @@ use std::collections::HashMap;
 // src/traits/mod.rs
 use wasm_bindgen::prelude::*;
 
+use crate::graph::ModulationSource;
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PortId {
@@ -103,7 +105,8 @@ pub trait AudioNode: Any {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, &[f32]>,
+        audio_inputs: &HashMap<PortId, Vec<f32>>,
+        mod_inputs: &HashMap<PortId, Vec<ModulationSource>>,
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     );

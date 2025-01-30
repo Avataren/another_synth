@@ -2,6 +2,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use crate::graph::ModulationSource;
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 
@@ -235,17 +236,67 @@ impl AudioNode for Lfo {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, &[f32]>,
+        audio_inputs: &HashMap<PortId, Vec<f32>>,
+        _mod_inputs: &HashMap<PortId, Vec<ModulationSource>>, // LFO doesn't use modulation inputs
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        let default_values = self.get_default_values();
-        let mut context = ProcessContext::new(inputs, outputs, buffer_size, &default_values);
-        AudioProcessor::process(self, &mut context);
+        use std::simd::f32x4;
+
+        // Handle gate input for resetting phase
+        if let Some(gate_input) = audio_inputs.get(&PortId::Gate) {
+            for i in (0..buffer_size).step_by(4) {
+                let end = (i + 4).min(buffer_size);
+                let mut gate_chunk = [0.0; 4];
+                gate_chunk[0..end - i].copy_from_slice(&gate_input[i..end]);
+
+                let gate_values = f32x4::from_array(gate_chunk);
+                let gate_array = gate_values.to_array();
+
+                for j in 0..(end - i) {
+                    let current_gate = gate_array[j];
+                    match self.trigger_mode {
+                        LfoTriggerMode::Envelope => {
+                            // Reset phase on rising edge
+                            if current_gate > 0.0 && self.last_gate <= 0.0 {
+                                self.reset();
+                            }
+                        }
+                        LfoTriggerMode::None => {}
+                    }
+                    self.last_gate = current_gate;
+                }
+            }
+        }
+
+        // Generate output samples with frequency modulation
+        if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
+            for i in (0..buffer_size).step_by(4) {
+                let end = (i + 4).min(buffer_size);
+                let mut values = [0.0f32; 4];
+
+                // Get frequency input if connected
+                let mut freq_chunk = [self.frequency; 4];
+                if let Some(freq_input) = audio_inputs.get(&PortId::Frequency) {
+                    freq_chunk[0..end - i].copy_from_slice(&freq_input[i..end]);
+                }
+                let freq_values = f32x4::from_array(freq_chunk);
+
+                for j in 0..(end - i) {
+                    // Apply frequency
+                    let current_freq = freq_values.to_array()[j];
+                    values[j] = self.get_sample(current_freq);
+                }
+
+                // Write output
+                output[i..end].copy_from_slice(&values[0..end - i]);
+            }
+        }
     }
 
+    // Other methods remain the same
     fn reset(&mut self) {
-        AudioProcessor::reset(self);
+        self.phase = 0.0;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

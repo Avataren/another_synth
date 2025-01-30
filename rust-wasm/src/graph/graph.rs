@@ -35,6 +35,7 @@
 use super::{
     buffer_pool::AudioBufferPool,
     types::{Connection, ConnectionKey, NodeId},
+    ModulationSource,
 };
 use crate::graph::ModulationProcessor;
 use crate::graph::ModulationType;
@@ -418,9 +419,6 @@ impl AudioGraph {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        let processor = ModulationProcessor::new();
-        let mut temp_buffer = vec![0.0; self.buffer_size];
-
         // Clear all node buffers at start of processing
         for &buffer_idx in self.node_buffers.values() {
             self.buffer_pool.clear(buffer_idx);
@@ -442,50 +440,61 @@ impl AudioGraph {
             }
 
             let ports = self.nodes[node_idx].get_ports().clone();
-            let mut input_data: Vec<(PortId, Vec<f32>)> = Vec::new();
 
-            // Handle Gate input
+            // Collect all input buffers first to avoid multiple mutable borrows
+            let mut collected_buffers = Vec::new();
+
+            // Gate and Frequency inputs
             if ports.contains_key(&PortId::Gate) {
-                let gate_data = self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec();
-                input_data.push((PortId::Gate, gate_data));
+                collected_buffers.push((
+                    PortId::Gate,
+                    self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
+                ));
             }
-
-            // Handle Frequency input
             if ports.contains_key(&PortId::GlobalFrequency) {
-                let freq_data = self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec();
-                input_data.push((PortId::GlobalFrequency, freq_data));
+                collected_buffers.push((
+                    PortId::GlobalFrequency,
+                    self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
+                ));
             }
 
-            // Handle modulation inputs
+            // Collect all connection buffers
             if let Some(connections) = self.input_connections.get(&node_id) {
-                let mut port_buffers: HashMap<PortId, Vec<f32>> = HashMap::new();
-
-                self.process_modulation(
-                    &mut port_buffers,
-                    &processor,
-                    connections,
-                    &self.buffer_pool,
-                    &mut temp_buffer,
-                );
-
-                // Add accumulated inputs
-                for (port, buffer) in port_buffers {
-                    input_data.push((port, buffer));
+                for &(port, source_idx, amount) in connections {
+                    let buffer = self.buffer_pool.copy_out(source_idx).to_vec();
+                    collected_buffers.push((port, buffer));
                 }
             }
 
-            // Build input map
-            let mut input_map: HashMap<PortId, &[f32]> = HashMap::new();
-            for (port, data) in &input_data {
-                input_map.insert(*port, data.as_slice());
-            }
+            // Build audio and modulation input maps
+            let mut audio_inputs = HashMap::new();
+            let mut mod_inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
 
-            // Get output indices
-            let output_indices: Vec<usize> = ports
-                .iter()
-                .filter(|(_, &is_output)| is_output)
-                .filter_map(|(&port, _)| self.node_buffers.get(&(node_id, port)).copied())
-                .collect();
+            for (port, buffer) in collected_buffers {
+                if port.is_modulation_input() {
+                    let amount = self
+                        .input_connections
+                        .get(&node_id)
+                        .and_then(|conns| conns.iter().find(|(p, _, _)| *p == port))
+                        .map(|(_, _, amt)| *amt)
+                        .unwrap_or(1.0);
+
+                    let mod_type = self
+                        .connections
+                        .values()
+                        .find(|conn| conn.to_node == node_id && conn.to_port == port)
+                        .map(|conn| conn.modulation_type)
+                        .unwrap_or(ModulationType::Bipolar);
+
+                    mod_inputs.entry(port).or_default().push(ModulationSource {
+                        buffer,
+                        amount,
+                        mod_type,
+                    });
+                } else {
+                    audio_inputs.insert(port, buffer);
+                }
+            }
 
             // Handle macro modulation
             let macro_data = if let Some(macro_mgr) = macro_manager {
@@ -498,29 +507,48 @@ impl AudioGraph {
                 None
             };
 
-            // Process the node
-            {
-                let mut output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
-                let mut output_refs = HashMap::new();
+            // Collect output buffer indices
+            let output_indices: Vec<usize> = ports
+                .iter()
+                .filter(|(_, &is_output)| is_output)
+                .filter_map(|(&port, _)| self.node_buffers.get(&(node_id, port)).copied())
+                .collect();
 
-                for (idx, buffer) in &mut output_buffers {
-                    if let Some((&(_id, port), _)) =
-                        self.node_buffers.iter().find(|((_, _), &i)| i == *idx)
-                    {
-                        output_refs.insert(port, &mut **buffer);
-                    }
-                }
+            // Get output buffers all at once
+            let mut output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
 
-                let node = &mut self.nodes[node_idx];
-                node.process(&input_map, &mut output_refs, self.buffer_size);
-
-                // Apply macro modulation
-                if let (Some(macro_mgr), Some(ref macro_data)) = (macro_manager, macro_data) {
-                    for offset in (0..self.buffer_size).step_by(4) {
-                        macro_mgr.apply_modulation(offset, macro_data, &mut output_refs);
+            // Build output map
+            let mut outputs = HashMap::new();
+            for (buffer_idx, buffer) in output_buffers.iter_mut() {
+                // Find the corresponding port for this buffer index
+                if let Some(((node_id_key, port), _)) = self
+                    .node_buffers
+                    .iter()
+                    .find(|((n, _), &idx)| idx == *buffer_idx && n.0 == node_idx)
+                {
+                    if ports.get(port) == Some(&true) {
+                        outputs.insert(*port, &mut **buffer);
                     }
                 }
             }
+
+            // Process the node
+            self.nodes[node_idx].process(
+                &audio_inputs,
+                &mod_inputs,
+                &mut outputs,
+                self.buffer_size,
+            );
+
+            // Apply macro modulation if needed
+            if let (Some(macro_mgr), Some(ref macro_data)) = (macro_manager, macro_data) {
+                for offset in (0..self.buffer_size).step_by(4) {
+                    macro_mgr.apply_modulation(offset, macro_data, &mut outputs);
+                }
+            }
+
+            // Drop output_buffers here to release the borrow on buffer_pool
+            drop(output_buffers);
         }
 
         // Copy final output
