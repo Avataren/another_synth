@@ -229,13 +229,12 @@ export const PortId = Object.freeze({
     StereoPan: 18, "18": "StereoPan",
 });
 /**
- * @enum {0 | 1 | 2 | 3}
+ * @enum {0 | 1 | 2}
  */
 export const WasmModulationType = Object.freeze({
     VCA: 0, "0": "VCA",
     Bipolar: 1, "1": "Bipolar",
     Additive: 2, "2": "Additive",
-    Ring: 3, "3": "Ring",
 });
 
 const AudioEngineFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -420,7 +419,7 @@ export class AudioEngine {
      * @param {WasmModulationType | undefined} [modulation_type]
      */
     connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
-        const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 4 : modulation_type);
+        const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -460,7 +459,7 @@ export class AudioEngine {
      * @param {WasmModulationType | undefined} [modulation_type]
      */
     connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
-        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 4 : modulation_type);
+        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

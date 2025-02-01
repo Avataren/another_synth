@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::graph::{ModulationSource, ModulationType};
+use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 use std::any::Any;
@@ -88,6 +88,18 @@ impl ModulatableOscillator {
     }
 }
 
+impl ModulationProcessor for ModulatableOscillator {
+    fn get_modulation_type(&self, port: PortId) -> ModulationType {
+        match port {
+            PortId::FrequencyMod => ModulationType::Bipolar,
+            PortId::PhaseMod => ModulationType::Additive,
+            PortId::ModIndex => ModulationType::VCA,
+            PortId::GainMod => ModulationType::VCA,
+            _ => ModulationType::VCA,
+        }
+    }
+}
+
 impl AudioNode for ModulatableOscillator {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
@@ -108,94 +120,44 @@ impl AudioNode for ModulatableOscillator {
         buffer_size: usize,
     ) {
         use std::simd::{f32x4, StdFloat};
+        // use web_sys::console;
         const TWO_PI: f32 = 2.0 * std::f32::consts::PI;
 
-        // Pre-process modulations into single buffers
-        let mut freq_mod = vec![0.0; buffer_size];
-        let mut phase_mod = vec![0.0; buffer_size];
-        let mut gain_mod = vec![1.0; buffer_size];
+        // Debug log incoming connections
+        // console::log_1(
+        //     &format!(
+        //         "Oscillator processing - Mod inputs ports: {:?}",
+        //         mod_inputs.keys().collect::<Vec<_>>()
+        //     )
+        //     .into(),
+        // );
 
-        // Process frequency modulation
-        if let Some(sources) = mod_inputs.get(&PortId::FrequencyMod) {
-            for source in sources {
-                for i in (0..buffer_size).step_by(4) {
-                    let end = (i + 4).min(buffer_size);
-                    let mut chunk = [0.0; 4];
-                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
+        // Process modulations using the trait
+        let freq_mod = self.process_modulations(
+            buffer_size,
+            mod_inputs.get(&PortId::FrequencyMod),
+            0.0,
+            PortId::FrequencyMod,
+        );
+        let phase_mod = self.process_modulations(
+            buffer_size,
+            mod_inputs.get(&PortId::PhaseMod),
+            0.0,
+            PortId::PhaseMod,
+        );
+        let gain_mod = self.process_modulations(
+            buffer_size,
+            mod_inputs.get(&PortId::GainMod),
+            1.0,
+            PortId::GainMod,
+        );
+        let mod_index = self.process_modulations(
+            buffer_size,
+            mod_inputs.get(&PortId::ModIndex),
+            1.0,
+            PortId::ModIndex,
+        );
 
-                    let mod_chunk = f32x4::from_array(chunk);
-                    let current_chunk = f32x4::from_array([
-                        freq_mod[i],
-                        freq_mod[i + 1],
-                        freq_mod[i + 2],
-                        freq_mod[i + 3],
-                    ]);
-
-                    let processed = match source.mod_type {
-                        ModulationType::Additive => mod_chunk * f32x4::splat(source.amount),
-                        _ => mod_chunk * f32x4::splat(source.amount),
-                    };
-
-                    let result = current_chunk + processed;
-                    let result_array = result.to_array();
-                    freq_mod[i..end].copy_from_slice(&result_array[0..end - i]);
-                }
-            }
-        }
-
-        // Process phase modulation
-        if let Some(sources) = mod_inputs.get(&PortId::PhaseMod) {
-            for source in sources {
-                for i in (0..buffer_size).step_by(4) {
-                    let end = (i + 4).min(buffer_size);
-                    let mut chunk = [0.0; 4];
-                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
-
-                    let mod_chunk = f32x4::from_array(chunk);
-                    let current_chunk = f32x4::from_array([
-                        phase_mod[i],
-                        phase_mod[i + 1],
-                        phase_mod[i + 2],
-                        phase_mod[i + 3],
-                    ]);
-
-                    let processed = mod_chunk * f32x4::splat(source.amount * self.phase_mod_amount);
-                    let result = current_chunk + processed;
-                    let result_array = result.to_array();
-                    phase_mod[i..end].copy_from_slice(&result_array[0..end - i]);
-                }
-            }
-        }
-
-        // Process gain modulation
-        if let Some(sources) = mod_inputs.get(&PortId::GainMod) {
-            for source in sources {
-                for i in (0..buffer_size).step_by(4) {
-                    let end = (i + 4).min(buffer_size);
-                    let mut chunk = [0.0; 4];
-                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
-
-                    let mod_chunk = f32x4::from_array(chunk);
-                    let current_chunk = f32x4::from_array([
-                        gain_mod[i],
-                        gain_mod[i + 1],
-                        gain_mod[i + 2],
-                        gain_mod[i + 3],
-                    ]);
-
-                    let processed = match source.mod_type {
-                        ModulationType::VCA => (mod_chunk * f32x4::splat(source.amount)),
-                        _ => mod_chunk * f32x4::splat(source.amount),
-                    };
-
-                    let result = current_chunk * processed;
-                    let result_array = result.to_array();
-                    gain_mod[i..end].copy_from_slice(&result_array[0..end - i]);
-                }
-            }
-        }
-
-        // Main audio processing
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
@@ -210,18 +172,23 @@ impl AudioNode for ModulatableOscillator {
                     f32x4::splat(self.frequency)
                 };
 
-                // Get modulation chunks
+                // Get SIMD modulation chunks
                 let mut freq_chunk = [0.0; 4];
                 freq_chunk[0..end - i].copy_from_slice(&freq_mod[i..end]);
                 let freq_mod_chunk = f32x4::from_array(freq_chunk);
 
                 let mut phase_chunk = [0.0; 4];
                 phase_chunk[0..end - i].copy_from_slice(&phase_mod[i..end]);
-                let phase_mod_chunk = f32x4::from_array(phase_chunk);
+                let phase_mod_simd = f32x4::from_array(phase_chunk);
 
                 let mut gain_chunk = [1.0; 4];
                 gain_chunk[0..end - i].copy_from_slice(&gain_mod[i..end]);
                 let gain_mod_chunk = f32x4::from_array(gain_chunk);
+
+                // Get mod index with proper modulation application
+                let mut mod_index_chunk = [1.0; 4];
+                mod_index_chunk[0..end - i].copy_from_slice(&mod_index[i..end]);
+                let mod_index_vec = f32x4::from_array(mod_index_chunk);
 
                 // Calculate modulated frequency
                 let detuned_freq = f32x4::from_array([
@@ -246,14 +213,18 @@ impl AudioNode for ModulatableOscillator {
                         + phase_inc.to_array()[2],
                 ]);
 
-                // Add phase modulation and generate output
-                let modulated_phase = phases + phase_mod_chunk;
+                // KEY CHANGE: Apply mod index to scale the phase modulation effect
+                let phase_mod_depth = mod_index_vec * f32x4::splat(self.phase_mod_amount);
+                let scaled_phase_mod = phase_mod_simd * phase_mod_depth;
+                let modulated_phase = phases + scaled_phase_mod;
+
+                // Generate final output
                 let sine = modulated_phase.sin();
-                let final_output = sine * f32x4::splat(self.gain) * gain_mod_chunk;
+                let result = sine * f32x4::splat(self.gain) * gain_mod_chunk;
 
                 // Write output
-                let result = final_output.to_array();
-                output[i..end].copy_from_slice(&result[0..end - i]);
+                let output_array = result.to_array();
+                output[i..end].copy_from_slice(&output_array[0..end - i]);
 
                 // Update phase
                 self.phase += phase_inc.to_array()[0..end - i].iter().sum::<f32>();
@@ -262,7 +233,6 @@ impl AudioNode for ModulatableOscillator {
         }
     }
 
-    // Other methods remain the same...
     fn reset(&mut self) {
         self.phase = 0.0;
     }

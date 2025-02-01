@@ -53,6 +53,8 @@ impl PortId {
             PortId::FrequencyMod
                 | PortId::PhaseMod
                 | PortId::GainMod
+                | PortId::ModIndex
+                | PortId::StereoPan
                 | PortId::CutoffMod
                 | PortId::ResonanceMod
                 | PortId::EnvelopeMod

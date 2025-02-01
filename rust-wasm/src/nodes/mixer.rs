@@ -1,4 +1,4 @@
-use crate::graph::{ModulationSource, ModulationType};
+use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::processing::{AudioProcessor, ProcessContext};
 use crate::traits::{AudioNode, PortId};
 use std::any::Any;
@@ -14,7 +14,7 @@ impl Mixer {
         Self { enabled: true }
     }
 }
-
+impl ModulationProcessor for Mixer {}
 impl AudioNode for Mixer {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
@@ -35,64 +35,19 @@ impl AudioNode for Mixer {
     ) {
         use std::simd::{f32x4, StdFloat};
 
-        // Create buffers for accumulated modulations
-        let mut gain_mod = vec![1.0; buffer_size];
-        let mut pan_mod = vec![0.0; buffer_size];
-
-        // Process gain modulation
-        if let Some(sources) = mod_inputs.get(&PortId::GainMod) {
-            for source in sources {
-                for i in (0..buffer_size).step_by(4) {
-                    let end = (i + 4).min(buffer_size);
-                    let mut chunk = [0.0; 4];
-                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
-
-                    let mod_chunk = f32x4::from_array(chunk);
-                    let current_chunk = f32x4::from_array([
-                        gain_mod[i],
-                        gain_mod[i + 1],
-                        gain_mod[i + 2],
-                        gain_mod[i + 3],
-                    ]);
-
-                    let processed = match source.mod_type {
-                        ModulationType::VCA => (mod_chunk * f32x4::splat(source.amount)),
-                        _ => mod_chunk * f32x4::splat(source.amount),
-                    };
-
-                    let result = current_chunk * processed;
-                    let result_array = result.to_array();
-                    gain_mod[i..end].copy_from_slice(&result_array[0..end - i]);
-                }
-            }
-        }
-
-        // Process pan modulation
-        if let Some(sources) = mod_inputs.get(&PortId::StereoPan) {
-            for source in sources {
-                for i in (0..buffer_size).step_by(4) {
-                    let end = (i + 4).min(buffer_size);
-                    let mut chunk = [0.0; 4];
-                    chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
-
-                    let mod_chunk = f32x4::from_array(chunk);
-                    let current_chunk = f32x4::from_array([
-                        pan_mod[i],
-                        pan_mod[i + 1],
-                        pan_mod[i + 2],
-                        pan_mod[i + 3],
-                    ]);
-
-                    let processed = match source.mod_type {
-                        ModulationType::Additive => mod_chunk * f32x4::splat(source.amount),
-                        _ => current_chunk + (mod_chunk * f32x4::splat(source.amount)),
-                    };
-
-                    let result_array = processed.to_array();
-                    pan_mod[i..end].copy_from_slice(&result_array[0..end - i]);
-                }
-            }
-        }
+        // Process modulations using the trait
+        let gain_mod = self.process_modulations(
+            buffer_size,
+            mod_inputs.get(&PortId::GainMod),
+            1.0,
+            PortId::GainMod,
+        );
+        let pan_mod = self.process_modulations(
+            buffer_size,
+            mod_inputs.get(&PortId::StereoPan),
+            0.0,
+            PortId::StereoPan,
+        );
 
         // Main audio processing
         for i in (0..buffer_size).step_by(4) {
@@ -136,6 +91,7 @@ impl AudioNode for Mixer {
         }
     }
 
+    // Rest of implementation remains the same...
     fn reset(&mut self) {}
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

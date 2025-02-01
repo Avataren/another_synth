@@ -149,6 +149,14 @@ impl AudioGraph {
         to_node: NodeId,
         to_port: PortId,
     ) {
+        web_sys::console::log_1(
+            &format!(
+                "remove_specific_connection - Before remove: connections={:?}, inputs={:?}",
+                self.connections, self.input_connections
+            )
+            .into(),
+        );
+
         // Remove from connections HashMap
         let to_remove: Vec<_> = self
             .connections
@@ -176,6 +184,14 @@ impl AudioGraph {
                 self.input_connections.remove(&to_node);
             }
         }
+
+        web_sys::console::log_1(
+            &format!(
+                "remove_specific_connection - After remove: connections={:?}, inputs={:?}",
+                self.connections, self.input_connections
+            )
+            .into(),
+        );
     }
 
     pub fn remove_connection(&mut self, connection: &Connection) {
@@ -201,22 +217,20 @@ impl AudioGraph {
         // Update processing order since connections changed
         self.update_processing_order();
     }
-
     pub fn connect(&mut self, connection: Connection) -> ConnectionKey {
+        web_sys::console::log_1(
+            &format!(
+                "connect - Before connect: connections={:?}, inputs={:?}",
+                self.connections, self.input_connections
+            )
+            .into(),
+        );
+
         let key = ConnectionKey::new(
             connection.from_node,
             connection.from_port,
             connection.to_node,
             connection.to_port,
-        );
-
-        // Debug log before connection
-        web_sys::console::log_1(
-            &format!(
-                "Adding connection: from={:?} to={:?} port={:?} amount={:?}",
-                connection.from_node, connection.to_node, connection.to_port, connection.amount
-            )
-            .into(),
         );
 
         // Insert/update this specific connection
@@ -237,15 +251,28 @@ impl AudioGraph {
             .position(|(port, _, _)| *port == connection.to_port);
 
         if let Some(idx) = existing_idx {
+            web_sys::console::log_1(
+                &format!(
+                    "Updating existing connection at idx {}: old={:?}, new=({:?}, {:?}, {:?})",
+                    idx, inputs[idx], connection.to_port, source_buffer_idx, connection.amount
+                )
+                .into(),
+            );
             inputs[idx] = (connection.to_port, source_buffer_idx, connection.amount);
         } else {
+            web_sys::console::log_1(
+                &format!(
+                    "Adding new connection: ({:?}, {:?}, {:?})",
+                    connection.to_port, source_buffer_idx, connection.amount
+                )
+                .into(),
+            );
             inputs.push((connection.to_port, source_buffer_idx, connection.amount));
         }
 
-        // Debug log after connection
         web_sys::console::log_1(
             &format!(
-                "Connection added: connections={:?} inputs={:?}",
+                "connect - After connect: connections={:?}, inputs={:?}",
                 self.connections, self.input_connections
             )
             .into(),
@@ -254,6 +281,59 @@ impl AudioGraph {
         self.update_processing_order();
         key
     }
+
+    // pub fn connect(&mut self, connection: Connection) -> ConnectionKey {
+    //     let key = ConnectionKey::new(
+    //         connection.from_node,
+    //         connection.from_port,
+    //         connection.to_node,
+    //         connection.to_port,
+    //     );
+
+    //     // Debug log before connection
+    //     web_sys::console::log_1(
+    //         &format!(
+    //             "Adding connection: from={:?} to={:?} port={:?} amount={:?}",
+    //             connection.from_node, connection.to_node, connection.to_port, connection.amount
+    //         )
+    //         .into(),
+    //     );
+
+    //     // Insert/update this specific connection
+    //     self.connections.insert(key, connection.clone());
+
+    //     // Update input connection mapping
+    //     let source_buffer_idx = self.node_buffers[&(connection.from_node, connection.from_port)];
+
+    //     // Get or create the input connections vec for this node
+    //     let inputs = self
+    //         .input_connections
+    //         .entry(connection.to_node)
+    //         .or_default();
+
+    //     // Find and update or add the new connection
+    //     let existing_idx = inputs
+    //         .iter()
+    //         .position(|(port, _, _)| *port == connection.to_port);
+
+    //     if let Some(idx) = existing_idx {
+    //         inputs[idx] = (connection.to_port, source_buffer_idx, connection.amount);
+    //     } else {
+    //         inputs.push((connection.to_port, source_buffer_idx, connection.amount));
+    //     }
+
+    //     // Debug log after connection
+    //     web_sys::console::log_1(
+    //         &format!(
+    //             "Connection added: connections={:?} inputs={:?}",
+    //             self.connections, self.input_connections
+    //         )
+    //         .into(),
+    //     );
+
+    //     self.update_processing_order();
+    //     key
+    // }
 
     pub fn get_node(&self, node_id: NodeId) -> Option<&Box<dyn AudioNode>> {
         self.nodes.get(node_id.0)
@@ -374,44 +454,44 @@ impl AudioGraph {
         self.process_audio_with_macros(None, output_left, output_right);
     }
 
-    fn process_modulation(
-        &self,
-        port_buffers: &mut HashMap<PortId, Vec<f32>>,
-        processor: &ModulationProcessor,
-        connections: &[(PortId, usize, f32)],
-        buffer_pool: &AudioBufferPool,
-        temp_buffer: &mut Vec<f32>,
-    ) {
-        for &(port, source_idx, amount) in connections {
-            let source_data = buffer_pool.copy_out(source_idx);
+    // fn process_modulation(
+    //     &self,
+    //     port_buffers: &mut HashMap<PortId, Vec<f32>>,
+    //     processor: &ModulationProcessor,
+    //     connections: &[(PortId, usize, f32)],
+    //     buffer_pool: &AudioBufferPool,
+    //     temp_buffer: &mut Vec<f32>,
+    // ) {
+    //     for &(port, source_idx, amount) in connections {
+    //         let source_data = buffer_pool.copy_out(source_idx);
 
-            // Initialize buffer if it doesn't exist
-            let buffer = port_buffers
-                .entry(port)
-                .or_insert_with(|| vec![1.0; self.buffer_size]);
+    //         // Initialize buffer if it doesn't exist
+    //         let buffer = port_buffers
+    //             .entry(port)
+    //             .or_insert_with(|| vec![1.0; self.buffer_size]);
 
-            // Copy current buffer to temp
-            temp_buffer.copy_from_slice(buffer);
+    //         // Copy current buffer to temp
+    //         temp_buffer.copy_from_slice(buffer);
 
-            // Get modulation type
-            let mod_type = if port == PortId::GainMod {
-                ModulationType::VCA
-            } else {
-                self.connections
-                    .values()
-                    .find(|conn| {
-                        conn.to_port == port && (amount - conn.amount).abs() < f32::EPSILON
-                    })
-                    .map(|conn| conn.modulation_type)
-                    .unwrap_or(ModulationType::Bipolar)
-            };
+    //         // Get modulation type
+    //         let mod_type = if port == PortId::GainMod {
+    //             ModulationType::VCA
+    //         } else {
+    //             self.connections
+    //                 .values()
+    //                 .find(|conn| {
+    //                     conn.to_port == port && (amount - conn.amount).abs() < f32::EPSILON
+    //                 })
+    //                 .map(|conn| conn.modulation_type)
+    //                 .unwrap_or(ModulationType::Bipolar)
+    //         };
 
-            // Process using temp buffer as input
-            let process_fn = processor.get_processor_fn(mod_type);
-            let amount_vec = f32x4::splat(amount);
-            process_fn(processor, temp_buffer, source_data, amount_vec, buffer);
-        }
-    }
+    //         // Process using temp buffer as input
+    //         let process_fn = processor.get_processor_fn(mod_type);
+    //         let amount_vec = f32x4::splat(amount);
+    //         process_fn(processor, temp_buffer, source_data, amount_vec, buffer);
+    //     }
+    // }
 
     pub fn process_audio_with_macros(
         &mut self,
@@ -419,6 +499,8 @@ impl AudioGraph {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
+        // use web_sys::console;
+
         // Clear all node buffers at start of processing
         for &buffer_idx in self.node_buffers.values() {
             self.buffer_pool.clear(buffer_idx);
@@ -427,6 +509,11 @@ impl AudioGraph {
         // Process each node in topological order
         for &node_idx in &self.processing_order {
             let node_id = NodeId(node_idx);
+
+            // Debug the connections for this node
+            // if let Some(connections) = self.input_connections.get(&node_id) {
+            //     console::log_1(&format!("Node {} connections: {:?}", node_idx, connections).into());
+            // }
 
             // Skip processing if node shouldn't be processed
             if !self.nodes[node_idx].should_process() {
@@ -441,62 +528,67 @@ impl AudioGraph {
 
             let ports = self.nodes[node_idx].get_ports().clone();
 
-            // Collect all input buffers first to avoid multiple mutable borrows
-            let mut collected_buffers = Vec::new();
-
-            // Gate and Frequency inputs
-            if ports.contains_key(&PortId::Gate) {
-                collected_buffers.push((
-                    PortId::Gate,
-                    self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
-                ));
-            }
-            if ports.contains_key(&PortId::GlobalFrequency) {
-                collected_buffers.push((
-                    PortId::GlobalFrequency,
-                    self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
-                ));
-            }
-
-            // Collect all connection buffers
-            if let Some(connections) = self.input_connections.get(&node_id) {
-                for &(port, source_idx, amount) in connections {
-                    let buffer = self.buffer_pool.copy_out(source_idx).to_vec();
-                    collected_buffers.push((port, buffer));
-                }
-            }
-
             // Build audio and modulation input maps
             let mut audio_inputs = HashMap::new();
             let mut mod_inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
 
-            for (port, buffer) in collected_buffers {
-                if port.is_modulation_input() {
-                    let amount = self
-                        .input_connections
-                        .get(&node_id)
-                        .and_then(|conns| conns.iter().find(|(p, _, _)| *p == port))
-                        .map(|(_, _, amt)| *amt)
-                        .unwrap_or(1.0);
+            // Handle gate and frequency inputs
+            if ports.contains_key(&PortId::Gate) {
+                audio_inputs.insert(
+                    PortId::Gate,
+                    self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
+                );
+            }
+            if ports.contains_key(&PortId::GlobalFrequency) {
+                audio_inputs.insert(
+                    PortId::GlobalFrequency,
+                    self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
+                );
+            }
 
-                    let mod_type = self
-                        .connections
-                        .values()
-                        .find(|conn| conn.to_node == node_id && conn.to_port == port)
-                        .map(|conn| conn.modulation_type)
-                        .unwrap_or(ModulationType::Bipolar);
+            // Process connections
+            if let Some(connections) = self.input_connections.get(&node_id) {
+                for &(port, source_idx, amount) in connections {
+                    // console::log_1(
+                    //     &format!(
+                    //         "Processing connection - port: {:?}, source: {}, amount: {}",
+                    //         port, source_idx, amount
+                    //     )
+                    //     .into(),
+                    // );
 
-                    mod_inputs.entry(port).or_default().push(ModulationSource {
-                        buffer,
-                        amount,
-                        mod_type,
-                    });
-                } else {
-                    audio_inputs.insert(port, buffer);
+                    let buffer = self.buffer_pool.copy_out(source_idx).to_vec();
+
+                    if port.is_modulation_input() {
+                        // Find the connection to get its modulation type
+                        let mod_type = self
+                            .connections
+                            .values()
+                            .find(|conn| conn.to_node == node_id && conn.to_port == port)
+                            .map(|conn| conn.modulation_type)
+                            .unwrap_or(ModulationType::VCA);
+
+                        mod_inputs.entry(port).or_default().push(ModulationSource {
+                            buffer,
+                            amount,
+                            mod_type,
+                        });
+                    } else {
+                        audio_inputs.insert(port, buffer);
+                    }
                 }
             }
 
-            // Handle macro modulation
+            // console::log_1(
+            //     &format!(
+            //         "Built mod_inputs for node {}: {:?}",
+            //         node_idx,
+            //         mod_inputs.keys().collect::<Vec<_>>()
+            //     )
+            //     .into(),
+            // );
+
+            // Handle macro modulation if needed
             let macro_data = if let Some(macro_mgr) = macro_manager {
                 if ports.keys().any(|port| port.is_modulation_input()) {
                     Some(macro_mgr.prepare_macro_data(&self.buffer_pool))
@@ -507,20 +599,18 @@ impl AudioGraph {
                 None
             };
 
-            // Collect output buffer indices
+            // Get output buffers all at once
             let output_indices: Vec<usize> = ports
                 .iter()
                 .filter(|(_, &is_output)| is_output)
                 .filter_map(|(&port, _)| self.node_buffers.get(&(node_id, port)).copied())
                 .collect();
 
-            // Get output buffers all at once
             let mut output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
 
             // Build output map
             let mut outputs = HashMap::new();
             for (buffer_idx, buffer) in output_buffers.iter_mut() {
-                // Find the corresponding port for this buffer index
                 if let Some(((node_id_key, port), _)) = self
                     .node_buffers
                     .iter()

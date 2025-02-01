@@ -28,7 +28,6 @@ pub enum WasmModulationType {
     VCA = 0,
     Bipolar = 1,
     Additive = 2,
-    Ring = 3,
 }
 
 impl From<WasmModulationType> for ModulationType {
@@ -37,7 +36,6 @@ impl From<WasmModulationType> for ModulationType {
             WasmModulationType::VCA => ModulationType::VCA,
             WasmModulationType::Bipolar => ModulationType::Bipolar,
             WasmModulationType::Additive => ModulationType::Additive,
-            WasmModulationType::Ring => ModulationType::Ring,
         }
     }
 }
@@ -206,13 +204,13 @@ impl AudioEngine {
             .collect();
 
         let engine_state = EngineState { voices };
-        console::log_1(
-            &format!(
-                "lib.rs::get_current_state Serializing state: {:?}",
-                engine_state
-            )
-            .into(),
-        );
+        // console::log_1(
+        //     &format!(
+        //         "lib.rs::get_current_state Serializing state: {:?}",
+        //         engine_state
+        //     )
+        //     .into(),
+        // );
         serde_wasm_bindgen::to_value(&engine_state).unwrap()
     }
 
