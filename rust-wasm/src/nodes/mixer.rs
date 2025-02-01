@@ -14,7 +14,19 @@ impl Mixer {
         Self { enabled: true }
     }
 }
-impl ModulationProcessor for Mixer {}
+impl ModulationProcessor for Mixer {
+    fn get_modulation_type(&self, port: PortId) -> ModulationType {
+        match port {
+            PortId::FrequencyMod => ModulationType::Bipolar,
+            PortId::PhaseMod => ModulationType::Additive,
+            PortId::ModIndex => ModulationType::VCA,
+            PortId::GainMod => ModulationType::VCA,
+            PortId::StereoPan => ModulationType::Additive, // Changed to Bipolar for proper pan behavior
+            _ => ModulationType::VCA,
+        }
+    }
+}
+
 impl AudioNode for Mixer {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
