@@ -2,7 +2,6 @@
 import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
-import { type FilterState } from 'src/audio/dsp/filter-state';
 import Instrument from 'src/audio/instrument';
 import { NoiseType, type NoiseState } from 'src/audio/dsp/noise-generator';
 import type OscillatorState from 'src/audio/models/OscillatorState';
@@ -14,6 +13,7 @@ import {
   getNodesOfType,
   type VoiceLayout,
   type NodeConnectionUpdate,
+  type FilterState,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import { type PortId } from 'app/public/wasm/audio_processor';
@@ -236,9 +236,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           if (!this.filterStates.has(filter.id)) {
             this.filterStates.set(filter.id, {
               id: filter.id,
-              cut: 10000,
+              cutoff: 10000,
               resonance: 0.5,
-              is_enabled: false
+              active: false
             } as FilterState);
           }
         }

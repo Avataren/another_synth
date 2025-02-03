@@ -1,8 +1,8 @@
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
-import { type FilterState } from 'src/audio/dsp/filter-state';
 import { type OscillatorState } from './wavetable/wavetable-oscillator';
 import { type NoiseState } from './dsp/noise-generator';
+import { type FilterState } from './types/synth-layout';
 
 export default class Voice {
   private active: boolean = false;

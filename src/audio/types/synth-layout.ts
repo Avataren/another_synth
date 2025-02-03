@@ -63,6 +63,13 @@ export interface FilterConfig {
     type: 'lowpass' | 'highpass' | 'bandpass';
 }
 
+export interface FilterState {
+    id: number;
+    cutoff: number;
+    resonance: number;
+    active: boolean;
+}
+
 // Represents a node in the voice with its configuration
 export interface VoiceNode {
     id: number;

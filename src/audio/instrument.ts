@@ -1,7 +1,7 @@
 import { type PortId } from 'app/public/wasm/audio_processor';
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
-import { type FilterState } from './dsp/filter-state';
+// import { type FilterState } from './dsp/filter-state';
 // import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
 import {
@@ -11,6 +11,7 @@ import {
   VoiceNodeType,
   type LfoState,
   type NodeConnectionUpdate,
+  type FilterState,
 } from './types/synth-layout';
 
 // interface ConnectionUpdateMessage {

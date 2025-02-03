@@ -1,6 +1,6 @@
-export interface FilterState {
-    id: number;
-    cut: number;
-    is_enabled: boolean;
-    resonance: number;
-}
+// export interface FilterState {
+//     id: number;
+//     cut: number;
+//     is_enabled: boolean;
+//     resonance: number;
+// }

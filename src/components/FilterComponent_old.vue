@@ -1,7 +1,7 @@
 <!-- <template>
   <q-card class="filter-card">
     <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Resonator bank {{ Index + 1 }}</div>
+      <div class="text-h6">Filter {{ nodeId + 1 }}</div>
     </q-card-section>
     <q-separator />
     <q-card-section class="filter-container">
@@ -50,12 +50,17 @@ import FFT from 'fft.js';
 // import VariableCombFilter from 'src/audio/dsp/variable-comb-filter';
 import { type FilterState } from 'src/audio/dsp/filter-state';
 import FlangerCombFilter from 'src/audio/dsp/flanger-comb-filter';
+
 interface Props {
   node: AudioNode | null;
-  Index: number;
+  nodeId: number;
 }
 
-const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
+const props = withDefaults(defineProps<Props>(), {
+  node: null,
+  nodeId: 0,
+});
+
 const frequencyCanvas = ref<HTMLCanvasElement | null>(null);
 
 const store = useAudioSystemStore();
@@ -63,11 +68,11 @@ const { filterStates, audioSystem } = storeToRefs(store);
 // Create a reactive reference to the oscillator state
 const filterState = computed({
   get: () => {
-    const state = filterStates.value.get(props.Index);
+    const state = filterStates.value.get(props.nodeId);
     if (!state) {
-      console.warn(`No state found for oscillator ${props.Index}`);
+      console.warn(`No state found for oscillator ${props.nodeId}`);
       return {
-        id: props.Index,
+        id: props.nodeId,
         cut: 1000,
         resonance: 0.5,
         is_enabled: false,
@@ -76,7 +81,7 @@ const filterState = computed({
     return state;
   },
   set: (newState: FilterState) => {
-    store.filterStates.set(props.Index, { ...newState });
+    store.filterStates.set(props.nodeId, { ...newState });
   },
 });
 
@@ -85,7 +90,7 @@ const handleResonanceChange = (val: number) => {
     ...filterState.value,
     resonance: val,
   };
-  store.filterStates.set(props.Index, currentState);
+  store.filterStates.set(props.nodeId, currentState);
 };
 
 const handleEnabledChange = (val: boolean) => {
@@ -93,7 +98,7 @@ const handleEnabledChange = (val: boolean) => {
     ...filterState.value,
     is_enabled: val,
   };
-  store.filterStates.set(props.Index, currentState);
+  store.filterStates.set(props.nodeId, currentState);
 };
 
 const handleCutoffChange = (val: number) => {
@@ -101,7 +106,7 @@ const handleCutoffChange = (val: number) => {
     ...filterState.value,
     cut: val,
   };
-  store.filterStates.set(props.Index, currentState);
+  store.filterStates.set(props.nodeId, currentState);
 };
 
 onMounted(() => {
@@ -109,13 +114,13 @@ onMounted(() => {
 });
 
 watch(
-  () => ({ ...filterStates.value.get(props.Index) }), // Create new reference
+  () => ({ ...filterStates.value.get(props.nodeId) }), // Create new reference
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       ('');
-      if (newState.id === props.Index) {
+      if (newState.id === props.nodeId) {
         store.currentInstrument?.updateFilterState(
-          props.Index,
+          props.nodeId,
           newState as FilterState,
         );
         computeFrequencyResponse();
