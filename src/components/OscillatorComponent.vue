@@ -64,7 +64,7 @@
           v-model="oscillatorState.phase_mod_amount!"
           label="ModIndex"
           :min="0"
-          :max="100"
+          :max="30"
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleModIndexChange"
