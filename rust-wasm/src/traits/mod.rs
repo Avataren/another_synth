@@ -107,8 +107,7 @@ pub trait AudioNode: Any {
 
     fn process(
         &mut self,
-        audio_inputs: &HashMap<PortId, Vec<f32>>,
-        mod_inputs: &HashMap<PortId, Vec<ModulationSource>>,
+        inputs: &HashMap<PortId, Vec<ModulationSource>>,
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     );

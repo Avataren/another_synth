@@ -1,9 +1,10 @@
-use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
-use crate::processing::{AudioProcessor, ProcessContext};
-use crate::traits::{AudioNode, PortId};
 use std::any::Any;
 use std::collections::HashMap;
 use std::simd::num::SimdFloat;
+use std::simd::{f32x4, StdFloat};
+
+use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
+use crate::traits::{AudioNode, PortId};
 
 pub struct Mixer {
     enabled: bool,
@@ -14,14 +15,16 @@ impl Mixer {
         Self { enabled: true }
     }
 }
+
 impl ModulationProcessor for Mixer {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
+            PortId::AudioInput0 => ModulationType::Additive,
             PortId::FrequencyMod => ModulationType::Bipolar,
             PortId::PhaseMod => ModulationType::Additive,
             PortId::ModIndex => ModulationType::VCA,
             PortId::GainMod => ModulationType::VCA,
-            PortId::StereoPan => ModulationType::Additive, // Changed to Bipolar for proper pan behavior
+            PortId::StereoPan => ModulationType::Additive,
             _ => ModulationType::VCA,
         }
     }
@@ -33,15 +36,14 @@ impl AudioNode for Mixer {
         ports.insert(PortId::AudioInput0, false); // Left input
         ports.insert(PortId::AudioOutput0, true); // Left output
         ports.insert(PortId::AudioOutput1, true); // Right output
-        ports.insert(PortId::GainMod, false);
+        ports.insert(PortId::GainMod, false); // For envelope control
         ports.insert(PortId::StereoPan, false);
         ports
     }
 
     fn process(
         &mut self,
-        audio_inputs: &HashMap<PortId, Vec<f32>>,
-        mod_inputs: &HashMap<PortId, Vec<ModulationSource>>,
+        inputs: &HashMap<PortId, Vec<ModulationSource>>,
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
@@ -50,48 +52,62 @@ impl AudioNode for Mixer {
         // Process modulations using the trait
         let gain_mod = self.process_modulations(
             buffer_size,
-            mod_inputs.get(&PortId::GainMod),
+            inputs.get(&PortId::GainMod),
             1.0,
             PortId::GainMod,
         );
-        let pan_mod = self.process_modulations(
+
+        // Special processing for pan to ensure we stay in -1 to 1 range
+        let mut pan_values = vec![0.0; buffer_size];
+        if let Some(pan_sources) = inputs.get(&PortId::StereoPan) {
+            for source in pan_sources {
+                for (i, &src) in source.buffer.iter().enumerate() {
+                    // Additive combination but ensure we stay in range
+                    pan_values[i] = (pan_values[i] + (src * source.amount)).clamp(-1.0, 1.0);
+                }
+            }
+        }
+
+        let audio_in = self.process_modulations(
             buffer_size,
-            mod_inputs.get(&PortId::StereoPan),
+            inputs.get(&PortId::AudioInput0),
             0.0,
-            PortId::StereoPan,
+            PortId::AudioInput0,
         );
 
-        // Main audio processing
+        // Process in chunks
         for i in (0..buffer_size).step_by(4) {
             let end = (i + 4).min(buffer_size);
 
-            // Get input chunk
-            let mut input_chunk = [0.0; 4];
-            if let Some(input) = audio_inputs.get(&PortId::AudioInput0) {
-                input_chunk[0..end - i].copy_from_slice(&input[i..end]);
-            }
-            let input_mono = f32x4::from_array(input_chunk);
+            // Load input chunks
+            let input_chunk = {
+                let mut chunk = [0.0; 4];
+                chunk[0..end - i].copy_from_slice(&audio_in[i..end]);
+                f32x4::from_array(chunk)
+            };
 
-            // Get modulation chunks
-            let mut gain_chunk = [1.0; 4];
-            gain_chunk[0..end - i].copy_from_slice(&gain_mod[i..end]);
-            let gain_mod_vec = f32x4::from_array(gain_chunk);
+            let gain_chunk = {
+                let mut chunk = [1.0; 4];
+                chunk[0..end - i].copy_from_slice(&gain_mod[i..end]);
+                f32x4::from_array(chunk)
+            };
 
-            let mut pan_chunk = [0.0; 4];
-            pan_chunk[0..end - i].copy_from_slice(&pan_mod[i..end]);
-            let pan = f32x4::from_array(pan_chunk);
+            let pan_chunk = {
+                let mut chunk = [0.0; 4];
+                chunk[0..end - i].copy_from_slice(&pan_values[i..end]);
+                f32x4::from_array(chunk)
+            };
 
-            // Clamp pan values
-            let pan = pan.simd_max(f32x4::splat(-1.0)).simd_min(f32x4::splat(1.0));
-            let normalized_pan = (pan + f32x4::splat(1.0)) * f32x4::splat(0.5);
+            // Convert pan from -1...1 to 0...1 range for constant power law
+            let normalized_pan = (pan_chunk + f32x4::splat(1.0)) * f32x4::splat(0.5);
 
-            // Calculate stereo gains
+            // Calculate stereo gains using constant power law
             let right_gain = normalized_pan.sqrt();
             let left_gain = (f32x4::splat(1.0) - normalized_pan).sqrt();
 
-            // Calculate final outputs
-            let output_l = input_mono * gain_mod_vec * left_gain;
-            let output_r = input_mono * gain_mod_vec * right_gain;
+            // Apply gain modulation and panning
+            let output_l = input_chunk * gain_chunk * left_gain;
+            let output_r = input_chunk * gain_chunk * right_gain;
 
             // Write outputs
             if let Some(out_l) = outputs.get_mut(&PortId::AudioOutput0) {
@@ -102,8 +118,6 @@ impl AudioNode for Mixer {
             }
         }
     }
-
-    // Rest of implementation remains the same...
     fn reset(&mut self) {}
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -125,60 +139,4 @@ impl AudioNode for Mixer {
     fn node_type(&self) -> &str {
         "mixer"
     }
-}
-
-impl AudioProcessor for Mixer {
-    fn get_default_values(&self) -> HashMap<PortId, f32> {
-        let mut defaults = HashMap::new();
-        defaults.insert(PortId::GainMod, 1.0);
-        defaults.insert(PortId::StereoPan, 0.0); // Center position
-        defaults
-    }
-
-    fn process(&mut self, context: &mut ProcessContext) {
-        use std::simd::num::SimdFloat;
-        use std::simd::{f32x4, StdFloat};
-
-        context.process_by_chunks(4, |offset, inputs, outputs| {
-            // Get gain modulation
-            let gain_mod = inputs
-                .get(&PortId::GainMod)
-                .map_or(f32x4::splat(1.0), |input| input.get_simd(offset));
-
-            // Get pan position (-1.0 = full left, 0.0 = center, 1.0 = full right)
-            let pan = inputs
-                .get(&PortId::StereoPan)
-                .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
-
-            // Clamp pan values to -1.0...1.0 range using simd_min and simd_max
-            let pan = pan.simd_max(f32x4::splat(-1.0)).simd_min(f32x4::splat(1.0));
-
-            // Convert pan position from -1...1 to 0...1 range
-            let normalized_pan = (pan + f32x4::splat(1.0)) * f32x4::splat(0.5);
-
-            // Calculate constant power gains using square root method
-            // This ensures that left_gain² + right_gain² = 1 for all pan positions
-            let right_gain = normalized_pan.sqrt();
-            let left_gain = (f32x4::splat(1.0) - normalized_pan).sqrt();
-
-            // Get mono input
-            let input_mono = inputs
-                .get(&PortId::AudioInput0)
-                .map_or(f32x4::splat(0.0), |input| input.get_simd(offset));
-
-            // Apply gain modulation and panning
-            let output_l = input_mono * gain_mod * left_gain;
-            let output_r = input_mono * gain_mod * right_gain;
-
-            // Write to output buffers
-            if let Some(out_l) = outputs.get_mut(&PortId::AudioOutput0) {
-                out_l.write_simd(offset, output_l);
-            }
-            if let Some(out_r) = outputs.get_mut(&PortId::AudioOutput1) {
-                out_r.write_simd(offset, output_r);
-            }
-        });
-    }
-
-    fn reset(&mut self) {}
 }

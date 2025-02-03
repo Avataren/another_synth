@@ -499,7 +499,8 @@ impl AudioGraph {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        // use web_sys::console;
+        // Prepare macro data once at the start
+        let macro_data = macro_manager.map(|m| m.prepare_macro_data(&mut self.buffer_pool));
 
         // Clear all node buffers at start of processing
         for &buffer_idx in self.node_buffers.values() {
@@ -509,11 +510,6 @@ impl AudioGraph {
         // Process each node in topological order
         for &node_idx in &self.processing_order {
             let node_id = NodeId(node_idx);
-
-            // Debug the connections for this node
-            // if let Some(connections) = self.input_connections.get(&node_id) {
-            //     console::log_1(&format!("Node {} connections: {:?}", node_idx, connections).into());
-            // }
 
             // Skip processing if node shouldn't be processed
             if !self.nodes[node_idx].should_process() {
@@ -527,79 +523,53 @@ impl AudioGraph {
             }
 
             let ports = self.nodes[node_idx].get_ports().clone();
-
-            // Build audio and modulation input maps
-            let mut audio_inputs = HashMap::new();
-            let mut mod_inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
+            let mut inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
 
             // Handle gate and frequency inputs
             if ports.contains_key(&PortId::Gate) {
-                audio_inputs.insert(
-                    PortId::Gate,
-                    self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
-                );
+                inputs
+                    .entry(PortId::Gate)
+                    .or_default()
+                    .push(ModulationSource {
+                        buffer: self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
+                        amount: 1.0,
+                        mod_type: ModulationType::Additive,
+                    });
             }
             if ports.contains_key(&PortId::GlobalFrequency) {
-                audio_inputs.insert(
-                    PortId::GlobalFrequency,
-                    self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
-                );
+                inputs
+                    .entry(PortId::GlobalFrequency)
+                    .or_default()
+                    .push(ModulationSource {
+                        buffer: self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
+                        amount: 1.0,
+                        mod_type: ModulationType::Additive,
+                    });
             }
 
-            // Process connections
+            // Process all connections
             if let Some(connections) = self.input_connections.get(&node_id) {
                 for &(port, source_idx, amount) in connections {
-                    // console::log_1(
-                    //     &format!(
-                    //         "Processing connection - port: {:?}, source: {}, amount: {}",
-                    //         port, source_idx, amount
-                    //     )
-                    //     .into(),
-                    // );
-
                     let buffer = self.buffer_pool.copy_out(source_idx).to_vec();
-
-                    if port.is_modulation_input() {
-                        // Find the connection to get its modulation type
-                        let mod_type = self
-                            .connections
+                    let mod_type = if port.is_audio_input() {
+                        ModulationType::Additive
+                    } else {
+                        self.connections
                             .values()
                             .find(|conn| conn.to_node == node_id && conn.to_port == port)
                             .map(|conn| conn.modulation_type)
-                            .unwrap_or(ModulationType::VCA);
+                            .unwrap_or(ModulationType::VCA)
+                    };
 
-                        mod_inputs.entry(port).or_default().push(ModulationSource {
-                            buffer,
-                            amount,
-                            mod_type,
-                        });
-                    } else {
-                        audio_inputs.insert(port, buffer);
-                    }
+                    inputs.entry(port).or_default().push(ModulationSource {
+                        buffer,
+                        amount,
+                        mod_type,
+                    });
                 }
             }
 
-            // console::log_1(
-            //     &format!(
-            //         "Built mod_inputs for node {}: {:?}",
-            //         node_idx,
-            //         mod_inputs.keys().collect::<Vec<_>>()
-            //     )
-            //     .into(),
-            // );
-
-            // Handle macro modulation if needed
-            let macro_data = if let Some(macro_mgr) = macro_manager {
-                if ports.keys().any(|port| port.is_modulation_input()) {
-                    Some(macro_mgr.prepare_macro_data(&self.buffer_pool))
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            // Get output buffers all at once
+            // Get output buffers
             let output_indices: Vec<usize> = ports
                 .iter()
                 .filter(|(_, &is_output)| is_output)
@@ -607,9 +577,8 @@ impl AudioGraph {
                 .collect();
 
             let mut output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
-
-            // Build output map
             let mut outputs = HashMap::new();
+
             for (buffer_idx, buffer) in output_buffers.iter_mut() {
                 if let Some(((node_id_key, port), _)) = self
                     .node_buffers
@@ -622,18 +591,13 @@ impl AudioGraph {
                 }
             }
 
-            // Process the node
-            self.nodes[node_idx].process(
-                &audio_inputs,
-                &mod_inputs,
-                &mut outputs,
-                self.buffer_size,
-            );
+            // Process node
+            self.nodes[node_idx].process(&inputs, &mut outputs, self.buffer_size);
 
-            // Apply macro modulation if needed
-            if let (Some(macro_mgr), Some(ref macro_data)) = (macro_manager, macro_data) {
+            // Apply macro modulation if available
+            if let (Some(mgr), Some(ref data)) = (macro_manager, &macro_data) {
                 for offset in (0..self.buffer_size).step_by(4) {
-                    macro_mgr.apply_modulation(offset, macro_data, &mut outputs);
+                    mgr.apply_modulation(offset, data, &mut outputs);
                 }
             }
 
@@ -641,7 +605,7 @@ impl AudioGraph {
             drop(output_buffers);
         }
 
-        // Copy final output
+        // Handle final output
         if let Some(output_node) = self.output_node {
             if let Some(node) = self.nodes.get(output_node.0) {
                 if node.is_active() {
