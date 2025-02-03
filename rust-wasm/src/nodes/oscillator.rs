@@ -71,7 +71,7 @@ impl ModulatableOscillator {
         Self {
             phase: 0.0,
             frequency: 440.0,
-            phase_mod_amount: 1.0,
+            phase_mod_amount: 0.0,
             freq_mod_amount: 1.0,
             detune: 0.0,
             gain: 1.0,
