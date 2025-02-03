@@ -27,6 +27,7 @@ pub enum PortId {
     GainMod,
     EnvelopeMod,
     StereoPan,
+    FeedbackMod,
 }
 
 impl PortId {

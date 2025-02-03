@@ -62,12 +62,22 @@
 
         <audio-knob-component
           v-model="oscillatorState.phase_mod_amount!"
-          label="PM ModIndex"
+          label="ModIndex"
           :min="0"
           :max="100"
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleModIndexChange"
+        />
+
+        <audio-knob-component
+          v-model="oscillatorState.feedback_amount!"
+          label="Feedback"
+          :min="0"
+          :max="1"
+          :step="0.001"
+          :decimals="3"
+          @update:modelValue="handleFeedbackChange"
         />
 
         <audio-knob-component
@@ -203,6 +213,14 @@ const handleModIndexChange = (newValue: number) => {
   store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };
 
+const handleFeedbackChange = (newValue: number) => {
+  const currentState = {
+    ...oscillatorState.value,
+    feedback_amount: newValue,
+  };
+  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
+};
+
 const handleActiveChange = (newValue: boolean) => {
   const currentState = {
     ...oscillatorState.value,
@@ -259,7 +277,7 @@ watch(
 
 <style scoped>
 .oscillator-card {
-  width: 600px;
+  width: 650px;
   margin: 0 auto;
 }
 

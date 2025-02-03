@@ -296,7 +296,9 @@ var PortId = Object.freeze({
   EnvelopeMod: 17,
   "17": "EnvelopeMod",
   StereoPan: 18,
-  "18": "StereoPan"
+  "18": "StereoPan",
+  FeedbackMod: 19,
+  "19": "FeedbackMod"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -771,14 +773,14 @@ var OscillatorStateUpdate = class {
    * @returns {boolean}
    */
   get hard_sync() {
-    const ret = wasm.__wbg_get_oscillatorstateupdate_hard_sync(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_envelopeconfig_active(this.__wbg_ptr);
     return ret !== 0;
   }
   /**
    * @param {boolean} arg0
    */
   set hard_sync(arg0) {
-    wasm.__wbg_set_oscillatorstateupdate_hard_sync(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {number}
@@ -807,6 +809,19 @@ var OscillatorStateUpdate = class {
     wasm.__wbg_set_oscillatorstateupdate_active(this.__wbg_ptr, arg0);
   }
   /**
+   * @returns {number}
+   */
+  get feedback_amount() {
+    const ret = wasm.__wbg_get_oscillatorstateupdate_feedback_amount(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set feedback_amount(arg0) {
+    wasm.__wbg_set_oscillatorstateupdate_feedback_amount(this.__wbg_ptr, arg0);
+  }
+  /**
    * @param {number} phase_mod_amount
    * @param {number} freq_mod_amount
    * @param {number} detune_oct
@@ -816,9 +831,10 @@ var OscillatorStateUpdate = class {
    * @param {boolean} hard_sync
    * @param {number} gain
    * @param {boolean} active
+   * @param {number} feedback_amount
    */
-  constructor(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active) {
-    const ret = wasm.oscillatorstateupdate_new(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active);
+  constructor(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active, feedback_amount) {
+    const ret = wasm.oscillatorstateupdate_new(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active, feedback_amount);
     this.__wbg_ptr = ret >>> 0;
     OscillatorStateUpdateFinalization.register(this, this.__wbg_ptr, this);
     return this;
@@ -997,7 +1013,8 @@ var PORT_LABELS = {
   [PortId.ResonanceMod]: "Filter Resonance",
   [PortId.GainMod]: "Gain",
   [PortId.EnvelopeMod]: "Envelope Amount",
-  [PortId.StereoPan]: "Stereo Panning"
+  [PortId.StereoPan]: "Stereo Panning",
+  [PortId.FeedbackMod]: "Feedback"
 };
 
 // src/audio/worklets/synth-worklet.ts
@@ -1417,7 +1434,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           data.newState.detune,
           data.newState.hard_sync,
           data.newState.gain,
-          data.newState.active
+          data.newState.active,
+          data.newState.feedback_amount
         ),
         data.oscillatorId,
         this.numVoices

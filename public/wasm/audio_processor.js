@@ -205,7 +205,7 @@ function isLikeNone(x) {
     return x === undefined || x === null;
 }
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -227,6 +227,7 @@ export const PortId = Object.freeze({
     GainMod: 16, "16": "GainMod",
     EnvelopeMod: 17, "17": "EnvelopeMod",
     StereoPan: 18, "18": "StereoPan",
+    FeedbackMod: 19, "19": "FeedbackMod",
 });
 /**
  * @enum {0 | 1 | 2}
@@ -831,7 +832,9 @@ export class NodeId {
 const OscillatorStateUpdateFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_oscillatorstateupdate_free(ptr >>> 0, 1));
-
+/**
+ * Updated state struct with a new `feedback_amount` field.
+ */
 export class OscillatorStateUpdate {
 
     __destroy_into_raw() {
@@ -927,14 +930,14 @@ export class OscillatorStateUpdate {
      * @returns {boolean}
      */
     get hard_sync() {
-        const ret = wasm.__wbg_get_oscillatorstateupdate_hard_sync(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_active(this.__wbg_ptr);
         return ret !== 0;
     }
     /**
      * @param {boolean} arg0
      */
     set hard_sync(arg0) {
-        wasm.__wbg_set_oscillatorstateupdate_hard_sync(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
@@ -963,6 +966,19 @@ export class OscillatorStateUpdate {
         wasm.__wbg_set_oscillatorstateupdate_active(this.__wbg_ptr, arg0);
     }
     /**
+     * @returns {number}
+     */
+    get feedback_amount() {
+        const ret = wasm.__wbg_get_oscillatorstateupdate_feedback_amount(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set feedback_amount(arg0) {
+        wasm.__wbg_set_oscillatorstateupdate_feedback_amount(this.__wbg_ptr, arg0);
+    }
+    /**
      * @param {number} phase_mod_amount
      * @param {number} freq_mod_amount
      * @param {number} detune_oct
@@ -972,9 +988,10 @@ export class OscillatorStateUpdate {
      * @param {boolean} hard_sync
      * @param {number} gain
      * @param {boolean} active
+     * @param {number} feedback_amount
      */
-    constructor(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active) {
-        const ret = wasm.oscillatorstateupdate_new(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active);
+    constructor(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active, feedback_amount) {
+        const ret = wasm.oscillatorstateupdate_new(phase_mod_amount, freq_mod_amount, detune_oct, detune_semi, detune_cents, detune, hard_sync, gain, active, feedback_amount);
         this.__wbg_ptr = ret >>> 0;
         OscillatorStateUpdateFinalization.register(this, this.__wbg_ptr, this);
         return this;

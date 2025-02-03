@@ -208,6 +208,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               detune: 0,
               hard_sync: false,
               gain: 1,
+              feedback_amount: 0,
               active: true
             });
           }

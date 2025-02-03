@@ -560,6 +560,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           data.newState.hard_sync,
           data.newState.gain,
           data.newState.active,
+          data.newState.feedback_amount
         ),
         data.oscillatorId,
         this.numVoices

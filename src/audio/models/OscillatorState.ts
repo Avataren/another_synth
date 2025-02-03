@@ -8,5 +8,6 @@ export default interface OscillatorState {
     detune: number,
     hard_sync: boolean,
     gain: number,
+    feedback_amount: number,
     active: boolean,
 };
