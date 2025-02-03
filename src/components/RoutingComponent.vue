@@ -145,9 +145,13 @@ const getAvailableParams = (targetId: number) => {
 };
 
 const addNewRoute = async () => {
-  const defaultTarget = availableTargetNodes.value[0];
-  if (!defaultTarget) return;
+  const availableTargets = routeManager.getAvailableTargets();
+  if (!availableTargets.length) {
+    console.warn("No available targets that won't create feedback loops");
+    return;
+  }
 
+  const defaultTarget = availableTargets[0]!;
   const params = routeManager.getAvailableParams(defaultTarget.id);
   if (!params.length) return;
 
