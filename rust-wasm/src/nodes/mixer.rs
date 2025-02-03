@@ -47,8 +47,6 @@ impl AudioNode for Mixer {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        use std::simd::{f32x4, StdFloat};
-
         // Process modulations using the trait
         let gain_mod = self.process_modulations(
             buffer_size,
@@ -57,16 +55,13 @@ impl AudioNode for Mixer {
             PortId::GainMod,
         );
 
-        // Special processing for pan to ensure we stay in -1 to 1 range
-        let mut pan_values = vec![0.0; buffer_size];
-        if let Some(pan_sources) = inputs.get(&PortId::StereoPan) {
-            for source in pan_sources {
-                for (i, &src) in source.buffer.iter().enumerate() {
-                    // Additive combination but ensure we stay in range
-                    pan_values[i] = (pan_values[i] + (src * source.amount)).clamp(-1.0, 1.0);
-                }
-            }
-        }
+        // Process pan modulation using standard ModulationProcessor
+        let pan_mod = self.process_modulations(
+            buffer_size,
+            inputs.get(&PortId::StereoPan),
+            0.0,
+            PortId::StereoPan,
+        );
 
         let audio_in = self.process_modulations(
             buffer_size,
@@ -94,7 +89,11 @@ impl AudioNode for Mixer {
 
             let pan_chunk = {
                 let mut chunk = [0.0; 4];
-                chunk[0..end - i].copy_from_slice(&pan_values[i..end]);
+                chunk[0..end - i].copy_from_slice(&pan_mod[i..end]);
+                // Clamp pan values after all modulations are combined
+                for v in &mut chunk {
+                    *v = v.clamp(-1.0, 1.0);
+                }
                 f32x4::from_array(chunk)
             };
 
@@ -118,6 +117,7 @@ impl AudioNode for Mixer {
             }
         }
     }
+
     fn reset(&mut self) {}
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
