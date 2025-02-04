@@ -1,32 +1,48 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::simd::{f32x4, StdFloat};
+use std::simd::f32x4;
 
 use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::traits::{AudioNode, PortId};
 
+/// A low‑pass state variable filter that recalculates coefficients every sample,
+/// applies parameter smoothing, and flushes denormals.
 pub struct LpFilter {
+    /// Sample rate (Hz)
     sample_rate: f32,
+    /// Base cutoff (Hz) before modulation
+    base_cutoff: f32,
+    /// Base resonance before modulation
+    base_resonance: f32,
+    /// Current (smoothed) cutoff
     cutoff: f32,
+    /// Current (smoothed) resonance
     resonance: f32,
+    /// Enabled flag
     enabled: bool,
-    // State variables
+    // Filter state variables
     s1: f32,
     s2: f32,
-    // Coefficients
-    g: f32,  // frequency coefficient
-    k: f32,  // resonance coefficient
-    a1: f32, // feedback coefficient 1
-    a2: f32, // feedback coefficient 2
-    a3: f32, // feedback coefficient 3
+    // Filter coefficients
+    g: f32,
+    k: f32,
+    a1: f32,
+    a2: f32,
+    a3: f32,
+    /// Smoothing factor (0.0 = immediate change)
+    smoothing_factor: f32,
 }
 
 impl LpFilter {
     pub fn new(sample_rate: f32) -> Self {
+        let base_cutoff = 10000.0;
+        let base_resonance = 0.0;
         let mut filter = Self {
             sample_rate,
-            cutoff: 1000.0,
-            resonance: 0.0,
+            base_cutoff,
+            base_resonance,
+            cutoff: base_cutoff,
+            resonance: base_resonance,
             enabled: true,
             s1: 0.0,
             s2: 0.0,
@@ -35,23 +51,23 @@ impl LpFilter {
             a1: 0.0,
             a2: 0.0,
             a3: 0.0,
+            smoothing_factor: 0.01,
         };
         filter.update_coefficients();
         filter
     }
 
+    /// Set the base cutoff and resonance (before modulation)
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        self.cutoff = cutoff.clamp(20.0, 20000.0);
-        self.resonance = resonance.clamp(0.0, 1.2);
-        self.update_coefficients();
+        self.base_cutoff = cutoff.clamp(20.0, 20000.0);
+        self.base_resonance = resonance.clamp(0.0, 1.2);
     }
 
+    /// Update filter coefficients based on the current cutoff and resonance.
+    #[inline]
     fn update_coefficients(&mut self) {
-        // Calculate filter coefficients
         self.g = (std::f32::consts::PI * self.cutoff / self.sample_rate).tan();
         self.k = 2.0 - 2.0 * self.resonance;
-
-        // Precalculate coefficients for efficiency
         let a = 1.0 / (1.0 + self.g * (self.g + self.k));
         self.a1 = self.g * a;
         self.a2 = self.g * self.a1;
@@ -65,7 +81,6 @@ impl ModulationProcessor for LpFilter {
             PortId::AudioInput0 => ModulationType::Additive,
             PortId::CutoffMod => ModulationType::VCA,
             PortId::ResonanceMod => ModulationType::Additive,
-            PortId::GainMod => ModulationType::VCA,
             _ => ModulationType::VCA,
         }
     }
@@ -78,7 +93,6 @@ impl AudioNode for LpFilter {
         ports.insert(PortId::AudioOutput0, true);
         ports.insert(PortId::CutoffMod, false);
         ports.insert(PortId::ResonanceMod, false);
-        ports.insert(PortId::GainMod, false);
         ports
     }
 
@@ -88,102 +102,95 @@ impl AudioNode for LpFilter {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Helper function to process inputs for a port
-        let process_input = |sources: Option<&Vec<ModulationSource>>, default: f32| -> Vec<f32> {
-            let mut result = vec![default; buffer_size];
+        // Obtain modulation buffers via the trait's process_modulations.
+        let audio_in = self.process_modulations(
+            buffer_size,
+            inputs.get(&PortId::AudioInput0),
+            0.0,
+            PortId::AudioInput0,
+        );
+        let cutoff_mod = self.process_modulations(
+            buffer_size,
+            inputs.get(&PortId::CutoffMod),
+            1.0,
+            PortId::CutoffMod,
+        );
+        let resonance_mod = self.process_modulations(
+            buffer_size,
+            inputs.get(&PortId::ResonanceMod),
+            0.0,
+            PortId::ResonanceMod,
+        );
 
-            if let Some(sources) = sources {
-                for source in sources {
-                    match source.mod_type {
-                        ModulationType::Additive => {
-                            for (res, &src) in result.iter_mut().zip(source.buffer.iter()) {
-                                *res += src * source.amount;
-                            }
-                        }
-                        ModulationType::Bipolar => {
-                            for (res, &src) in result.iter_mut().zip(source.buffer.iter()) {
-                                *res *= 1.0 + (src * source.amount);
-                            }
-                        }
-                        ModulationType::VCA => {
-                            for (res, &src) in result.iter_mut().zip(source.buffer.iter()) {
-                                *res *= 1.0 + (src * source.amount);
-                            }
-                        }
-                    }
-                }
-            }
+        const DENORMAL_THRESHOLD: f32 = 1e-20;
 
-            result
-        };
+        if let Some(out_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
+            let audio_in_slice = &audio_in[..];
+            let cutoff_slice = &cutoff_mod[..];
+            let resonance_slice = &resonance_mod[..];
 
-        // Process all inputs
-        let audio_in = process_input(inputs.get(&PortId::AudioInput0), 0.0);
-        let cutoff_mod = process_input(inputs.get(&PortId::CutoffMod), 1.0);
-        let resonance_mod = process_input(inputs.get(&PortId::ResonanceMod), 0.0);
-        let gain_mod = process_input(inputs.get(&PortId::GainMod), 1.0);
+            // Process samples in blocks of 4 using SIMD.
+            for i in (0..buffer_size).step_by(4) {
+                let end = (i + 4).min(buffer_size);
+                let block_len = end - i;
 
-        // Process in chunks
-        for i in (0..buffer_size).step_by(4) {
-            let end = (i + 4).min(buffer_size);
+                // Load SIMD chunks.
+                let input_chunk = f32x4::from_array({
+                    let mut arr = [0.0; 4];
+                    arr[..block_len].copy_from_slice(&audio_in_slice[i..end]);
+                    arr
+                });
+                let cutoff_chunk = f32x4::from_array({
+                    let mut arr = [1.0; 4];
+                    arr[..block_len].copy_from_slice(&cutoff_slice[i..end]);
+                    arr
+                });
+                let resonance_chunk = f32x4::from_array({
+                    let mut arr = [0.0; 4];
+                    arr[..block_len].copy_from_slice(&resonance_slice[i..end]);
+                    arr
+                });
 
-            // Convert inputs to SIMD
-            let input = {
-                let mut chunk = [0.0; 4];
-                chunk[0..end - i].copy_from_slice(&audio_in[i..end]);
-                f32x4::from_array(chunk)
-            };
+                // Convert SIMD vectors to arrays once for the inner loop.
+                let cutoff_arr = cutoff_chunk.to_array();
+                let resonance_arr = resonance_chunk.to_array();
+                let input_arr = input_chunk.to_array();
 
-            let cutoff_mod = {
-                let mut chunk = [1.0; 4];
-                chunk[0..end - i].copy_from_slice(&cutoff_mod[i..end]);
-                f32x4::from_array(chunk)
-            };
+                let mut output_chunk = [0.0f32; 4];
 
-            let resonance_mod = {
-                let mut chunk = [0.0; 4];
-                chunk[0..end - i].copy_from_slice(&resonance_mod[i..end]);
-                f32x4::from_array(chunk)
-            };
+                for j in 0..block_len {
+                    // Compute target parameters.
+                    let target_cutoff = (self.base_cutoff * cutoff_arr[j]).clamp(20.0, 20000.0);
+                    let target_resonance = (self.base_resonance + resonance_arr[j]).clamp(0.0, 1.2);
 
-            let gain_mod = {
-                let mut chunk = [1.0; 4];
-                chunk[0..end - i].copy_from_slice(&gain_mod[i..end]);
-                f32x4::from_array(chunk)
-            };
-
-            // Process each sample in the chunk
-            let mut output = [0.0f32; 4];
-            for j in 0..(end - i) {
-                // Apply modulation and clamp values
-                let cutoff = (self.cutoff * cutoff_mod.to_array()[j]).clamp(20.0, 20000.0);
-                let resonance = (self.resonance + resonance_mod.to_array()[j]).clamp(0.0, 1.2);
-
-                // Update coefficients if modulation changed them
-                if cutoff != self.cutoff || resonance != self.resonance {
-                    self.cutoff = cutoff;
-                    self.resonance = resonance;
+                    // Smoothly update parameters.
+                    self.cutoff += self.smoothing_factor * (target_cutoff - self.cutoff);
+                    self.resonance += self.smoothing_factor * (target_resonance - self.resonance);
                     self.update_coefficients();
+
+                    let x = input_arr[j];
+
+                    // State variable filter algorithm.
+                    let hp = (x - self.k * self.s1 - self.s2) * self.a1;
+                    let bp = self.g * hp + self.s1;
+                    let lp = self.g * bp + self.s2;
+
+                    // Update filter state.
+                    self.s1 = self.g * hp + bp;
+                    self.s2 = self.g * bp + lp;
+
+                    // Flush denormals.
+                    if self.s1.abs() < DENORMAL_THRESHOLD {
+                        self.s1 = 0.0;
+                    }
+                    if self.s2.abs() < DENORMAL_THRESHOLD {
+                        self.s2 = 0.0;
+                    }
+
+                    output_chunk[j] = lp;
                 }
 
-                let x = input.to_array()[j];
-
-                // State variable filter algorithm
-                let hp = (x - self.k * self.s1 - self.s2) * self.a1;
-                let bp = self.g * hp + self.s1;
-                let lp = self.g * bp + self.s2;
-
-                // Update state
-                self.s1 = self.g * hp + bp;
-                self.s2 = self.g * bp + lp;
-
-                // Apply gain modulation to output
-                output[j] = lp * gain_mod.to_array()[j];
-            }
-
-            // Write output
-            if let Some(out_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
-                out_buffer[i..end].copy_from_slice(&output[0..end - i]);
+                out_buffer[i..end].copy_from_slice(&output_chunk[..block_len]);
             }
         }
     }
@@ -196,19 +203,15 @@ impl AudioNode for LpFilter {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
-
     fn is_active(&self) -> bool {
         self.enabled
     }
-
     fn set_active(&mut self, active: bool) {
         self.enabled = active;
     }
-
     fn node_type(&self) -> &str {
         "lpfilter"
     }

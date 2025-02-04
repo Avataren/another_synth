@@ -536,8 +536,19 @@ var AudioEngine = class {
    * @param {number} voice_index
    * @returns {number}
    */
-  add_oscillator(voice_index) {
-    const ret = wasm.audioengine_add_oscillator(this.__wbg_ptr, voice_index);
+  create_filter(voice_index) {
+    const ret = wasm.audioengine_create_filter(this.__wbg_ptr, voice_index);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
+   * @param {number} voice_index
+   * @returns {number}
+   */
+  create_oscillator(voice_index) {
+    const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr, voice_index);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
@@ -1201,8 +1212,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       id: mixerId,
       type: "mixer" /* Mixer */
     });
+    const filterId = this.audioEngine.create_filter(voiceIndex);
+    voiceLayout.nodes["filter" /* Filter */].push({
+      id: filterId,
+      type: "filter" /* Filter */
+    });
     for (let i = 0; i < this.maxOscillators; i++) {
-      const oscId = this.audioEngine.add_oscillator(voiceIndex);
+      const oscId = this.audioEngine.create_oscillator(voiceIndex);
       console.log(`Created oscillator ${i} with id ${oscId}`);
       voiceLayout.nodes["oscillator" /* Oscillator */].push({
         id: oscId,
@@ -1236,6 +1252,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       });
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
+        filterId,
+        PortId.AudioOutput0,
+        mixerId,
+        PortId.AudioInput0,
+        1,
+        WasmModulationType.VCA
+      );
+      this.audioEngine.connect_voice_nodes(
+        voiceIndex,
         ampEnv.id,
         PortId.AudioOutput0,
         mixerId,
@@ -1247,7 +1272,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         voiceIndex,
         osc1.id,
         PortId.AudioOutput0,
-        mixerId,
+        filterId,
         PortId.AudioInput0,
         1,
         WasmModulationType.VCA
@@ -1270,7 +1295,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         },
         {
           fromId: osc1.id,
-          toId: mixerId,
+          toId: filterId,
           target: PortId.AudioInput0,
           amount: 1
         },

@@ -274,9 +274,18 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       type: VoiceNodeType.Mixer
     });
 
+    // create filter
+    const filterId = this.audioEngine.create_filter(voiceIndex);
+    voiceLayout.nodes[VoiceNodeType.Filter].push({
+      id: filterId,
+      type: VoiceNodeType.Filter
+    })
+
+
+
     // Create oscillators
     for (let i = 0; i < this.maxOscillators; i++) {
-      const oscId = this.audioEngine.add_oscillator(voiceIndex);
+      const oscId = this.audioEngine.create_oscillator(voiceIndex);
       console.log(`Created oscillator ${i} with id ${oscId}`);
       voiceLayout.nodes[VoiceNodeType.Oscillator].push({
         id: oscId,
@@ -317,6 +326,19 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         osc2
       });
 
+
+
+      // Connect envelope to mixer's gain input
+      this.audioEngine.connect_voice_nodes(
+        voiceIndex,
+        filterId,
+        PortId.AudioOutput0,
+        mixerId,
+        PortId.AudioInput0,
+        1.0,
+        WasmModulationType.VCA
+      );
+
       // Connect envelope to mixer's gain input
       this.audioEngine.connect_voice_nodes(
         voiceIndex,
@@ -333,7 +355,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         voiceIndex,
         osc1!.id,
         PortId.AudioOutput0,
-        mixerId,
+        filterId,
         PortId.AudioInput0,
         1.0,
         WasmModulationType.VCA
@@ -360,7 +382,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         },
         {
           fromId: osc1!.id,
-          toId: mixerId,
+          toId: filterId,
           target: PortId.AudioInput0,
           amount: 1.0
         },

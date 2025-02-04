@@ -14,7 +14,7 @@ use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
-use nodes::{Lfo, LfoTriggerMode, LfoWaveform, Mixer};
+use nodes::{Lfo, LfoTriggerMode, LfoWaveform, LpFilter, Mixer};
 use serde::Serialize;
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
@@ -602,7 +602,22 @@ impl AudioEngine {
         Ok(())
     }
 
-    pub fn add_oscillator(&mut self, voice_index: usize) -> Result<usize, JsValue> {
+    #[wasm_bindgen]
+    pub fn create_filter(&mut self, voice_index: usize) -> Result<usize, JsValue> {
+        let voice = self
+            .voices
+            .get_mut(voice_index)
+            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+        let filter_id = voice
+            .graph
+            .add_node(Box::new(LpFilter::new(self.sample_rate)));
+
+        Ok(filter_id.0)
+    }
+
+    #[wasm_bindgen]
+    pub fn create_oscillator(&mut self, voice_index: usize) -> Result<usize, JsValue> {
         let voice = self
             .voices
             .get_mut(voice_index)

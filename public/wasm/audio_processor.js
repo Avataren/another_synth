@@ -469,8 +469,19 @@ export class AudioEngine {
      * @param {number} voice_index
      * @returns {number}
      */
-    add_oscillator(voice_index) {
-        const ret = wasm.audioengine_add_oscillator(this.__wbg_ptr, voice_index);
+    create_filter(voice_index) {
+        const ret = wasm.audioengine_create_filter(this.__wbg_ptr, voice_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @param {number} voice_index
+     * @returns {number}
+     */
+    create_oscillator(voice_index) {
+        const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr, voice_index);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
