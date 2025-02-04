@@ -452,6 +452,17 @@ var AudioEngine = class {
     return takeFromExternrefTable0(ret[0]);
   }
   /**
+   * @param {number} filter_id
+   * @param {number} cutoff
+   * @param {number} resonance
+   */
+  update_filters(filter_id, cutoff, resonance) {
+    const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
    * @param {number} voice_index
    * @param {LfoUpdateParams} params
    */
@@ -1115,6 +1126,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateModulation":
         this.handleUpdateModulation(event.data);
         break;
+      case "updateFilter":
+        this.handleUpdateFilter(event.data);
+        break;
       case "updateConnection":
         this.handleUpdateConnection(event.data);
         break;
@@ -1417,6 +1431,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       default:
         throw new Error(`Invalid WASM target: ${wasmTarget}`);
     }
+  }
+  handleUpdateFilter(data) {
+    console.log("handle filter update:", data);
+    this.audioEngine.update_filters(data.filterId, data.config.cutoff, data.config.resonance);
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;

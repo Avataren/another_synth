@@ -385,6 +385,17 @@ export class AudioEngine {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * @param {number} filter_id
+     * @param {number} cutoff
+     * @param {number} resonance
+     */
+    update_filters(filter_id, cutoff, resonance) {
+        const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {number} voice_index
      * @param {LfoUpdateParams} params
      */

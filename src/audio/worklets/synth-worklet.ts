@@ -15,7 +15,8 @@ import {
   type SynthLayout,
   type VoiceLayout,
   VoiceNodeType,
-  type NodeConnectionUpdate
+  type NodeConnectionUpdate,
+  type FilterState
 } from '../types/synth-layout';
 
 interface EnvelopeUpdate {
@@ -156,6 +157,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'updateModulation':  // Add this case
         this.handleUpdateModulation(event.data);
+        break;
+      case 'updateFilter':
+        this.handleUpdateFilter(event.data)
         break;
       case 'updateConnection':
         this.handleUpdateConnection(event.data);
@@ -526,6 +530,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       default:
         throw new Error(`Invalid WASM target: ${wasmTarget}`);
     }
+  }
+
+  private handleUpdateFilter(data: { type: string, filterId: number, config: FilterState }) {
+    console.log('handle filter update:', data);
+    this.audioEngine!.update_filters(data.filterId, data.config.cutoff, data.config.resonance);
   }
 
   private handleUpdateModulation(data: {

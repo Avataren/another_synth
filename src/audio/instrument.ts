@@ -208,12 +208,11 @@ export default class Instrument {
   public updateFilterState(nodeId: number, newState: FilterState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
-    const voiceIndex = this.findVoiceForNode(nodeId);
-    if (voiceIndex === -1) return;
+    // const voiceIndex = this.findVoiceForNode(nodeId);
+    // if (voiceIndex === -1) return;
 
     this.workletNode.port.postMessage({
       type: 'updateFilter',
-      voiceIndex,
       filterId: nodeId,
       config: newState,
     });

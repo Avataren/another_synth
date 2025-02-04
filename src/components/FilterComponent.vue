@@ -27,10 +27,10 @@
         <audio-knob-component
           v-model="filterState.resonance"
           label="Resonance"
-          :min="0.1"
-          :max="10"
-          :step="0.1"
-          :decimals="1"
+          :min="0.0"
+          :max="1.0"
+          :step="0.001"
+          :decimals="3"
           @update:modelValue="handleResonanceChange"
         />
       </div>

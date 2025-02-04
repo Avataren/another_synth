@@ -5,37 +5,45 @@ use std::simd::f32x4;
 use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::traits::{AudioNode, PortId};
 
-/// A low‑pass state variable filter that recalculates coefficients every sample,
-/// applies parameter smoothing, and flushes denormals.
+/// A TPT (Two-Pole, Two-Integrator) state variable filter that lets you set
+/// cutoff anywhere from 0 to 20 kHz and a normalized resonance from 0 to 1.
+/// Here, resonance = 0 yields a Butterworth (no resonance) response and resonance = 1
+/// gives maximum resonance (leading to self-oscillation at the extreme).
 pub struct LpFilter {
     /// Sample rate (Hz)
     sample_rate: f32,
-    /// Base cutoff (Hz) before modulation
+    /// Base cutoff (Hz) before modulation (0–20 kHz)
     base_cutoff: f32,
-    /// Base resonance before modulation
+    /// Base resonance (normalized 0–1) before modulation
     base_resonance: f32,
-    /// Current (smoothed) cutoff
+    /// Smoothed cutoff
     cutoff: f32,
-    /// Current (smoothed) resonance
+    /// Smoothed resonance
     resonance: f32,
     /// Enabled flag
     enabled: bool,
-    // Filter state variables
-    s1: f32,
-    s2: f32,
-    // Filter coefficients
+    // --- Filter state ---
+    /// Band-pass state
+    bp: f32,
+    /// Low-pass state
+    lp: f32,
+    // --- Coefficients ---
+    /// \(g = \tan(\pi \,fc/fs)\) (with fc clamped to 99% of Nyquist)
     g: f32,
+    /// Feedback coefficient, computed as \(k = 2*(1-resonance)\).  
+    /// Thus, resonance = 0 ⇒ k = 2 (Butterworth response, no peaking),  
+    /// resonance = 1 ⇒ k = 0 (maximum resonance/self-oscillation).
     k: f32,
-    a1: f32,
-    a2: f32,
-    a3: f32,
-    /// Smoothing factor (0.0 = immediate change)
+    /// Normalization factor: \(a = \frac{1}{1+g\,(g+k)}\)
+    a: f32,
+    /// Parameter smoothing factor (0.0 = immediate change)
     smoothing_factor: f32,
 }
 
 impl LpFilter {
     pub fn new(sample_rate: f32) -> Self {
-        let base_cutoff = 10000.0;
+        // Default parameters: cutoff = 1 kHz, resonance = 0 (no peak)
+        let base_cutoff = 1000.0;
         let base_resonance = 0.0;
         let mut filter = Self {
             sample_rate,
@@ -44,34 +52,35 @@ impl LpFilter {
             cutoff: base_cutoff,
             resonance: base_resonance,
             enabled: true,
-            s1: 0.0,
-            s2: 0.0,
+            bp: 0.0,
+            lp: 0.0,
             g: 0.0,
             k: 0.0,
-            a1: 0.0,
-            a2: 0.0,
-            a3: 0.0,
-            smoothing_factor: 0.01,
+            a: 0.0,
+            smoothing_factor: 0.1,
         };
         filter.update_coefficients();
         filter
     }
 
-    /// Set the base cutoff and resonance (before modulation)
+    /// Set the base cutoff (0–20 kHz) and resonance (0–1, normalized).
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        self.base_cutoff = cutoff.clamp(20.0, 20000.0);
-        self.base_resonance = resonance.clamp(0.0, 1.2);
+        self.base_cutoff = cutoff.clamp(0.0, 20000.0);
+        self.base_resonance = resonance.clamp(0.0, 1.0);
     }
 
-    /// Update filter coefficients based on the current cutoff and resonance.
+    /// Update coefficients based on the current (smoothed) cutoff and resonance.
     #[inline]
     fn update_coefficients(&mut self) {
-        self.g = (std::f32::consts::PI * self.cutoff / self.sample_rate).tan();
-        self.k = 2.0 - 2.0 * self.resonance;
-        let a = 1.0 / (1.0 + self.g * (self.g + self.k));
-        self.a1 = self.g * a;
-        self.a2 = self.g * self.a1;
-        self.a3 = self.g * self.a2;
+        let nyquist = self.sample_rate / 2.0;
+        // Clamp the cutoff to 99% of Nyquist to avoid extreme tan() values.
+        let fc = self.cutoff.clamp(0.0, nyquist * 0.99);
+        self.g = (std::f32::consts::PI * fc / self.sample_rate).tan();
+        // Invert the resonance mapping:
+        // For resonance = 0: k = 2.0 (Butterworth, minimal peak)
+        // For resonance = 1: k = 0.0 (maximum resonance, self-oscillation threshold)
+        self.k = 2.0 * (1.0 - self.resonance);
+        self.a = 1.0 / (1.0 + self.g * (self.g + self.k));
     }
 }
 
@@ -102,7 +111,7 @@ impl AudioNode for LpFilter {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Obtain modulation buffers via the trait's process_modulations.
+        // Retrieve modulation buffers.
         let audio_in = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::AudioInput0),
@@ -129,12 +138,12 @@ impl AudioNode for LpFilter {
             let cutoff_slice = &cutoff_mod[..];
             let resonance_slice = &resonance_mod[..];
 
-            // Process samples in blocks of 4 using SIMD.
+            // Process in blocks of 4 samples using SIMD for unpacking.
+            // State propagation is handled sample-by-sample.
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
                 let block_len = end - i;
 
-                // Load SIMD chunks.
                 let input_chunk = f32x4::from_array({
                     let mut arr = [0.0; 4];
                     arr[..block_len].copy_from_slice(&audio_in_slice[i..end]);
@@ -151,43 +160,43 @@ impl AudioNode for LpFilter {
                     arr
                 });
 
-                // Convert SIMD vectors to arrays once for the inner loop.
+                let input_arr = input_chunk.to_array();
                 let cutoff_arr = cutoff_chunk.to_array();
                 let resonance_arr = resonance_chunk.to_array();
-                let input_arr = input_chunk.to_array();
 
                 let mut output_chunk = [0.0f32; 4];
 
                 for j in 0..block_len {
-                    // Compute target parameters.
-                    let target_cutoff = (self.base_cutoff * cutoff_arr[j]).clamp(20.0, 20000.0);
-                    let target_resonance = (self.base_resonance + resonance_arr[j]).clamp(0.0, 1.2);
+                    // Compute per-sample target parameters.
+                    let target_cutoff = self.base_cutoff * cutoff_arr[j];
+                    let target_resonance = self.base_resonance + resonance_arr[j];
 
-                    // Smoothly update parameters.
+                    // Smooth parameters.
                     self.cutoff += self.smoothing_factor * (target_cutoff - self.cutoff);
                     self.resonance += self.smoothing_factor * (target_resonance - self.resonance);
+                    self.cutoff = self.cutoff.clamp(0.0, 20000.0);
+                    self.resonance = self.resonance.clamp(0.0, 1.0);
                     self.update_coefficients();
 
                     let x = input_arr[j];
 
-                    // State variable filter algorithm.
-                    let hp = (x - self.k * self.s1 - self.s2) * self.a1;
-                    let bp = self.g * hp + self.s1;
-                    let lp = self.g * bp + self.s2;
-
-                    // Update filter state.
-                    self.s1 = self.g * hp + bp;
-                    self.s2 = self.g * bp + lp;
+                    // TPT SVF equations:
+                    //   hp = (x - lp - k*bp) * a
+                    //   bp += g * hp
+                    //   lp += g * bp
+                    let hp = (x - self.lp - self.k * self.bp) * self.a;
+                    self.bp += self.g * hp;
+                    self.lp += self.g * self.bp;
 
                     // Flush denormals.
-                    if self.s1.abs() < DENORMAL_THRESHOLD {
-                        self.s1 = 0.0;
+                    if self.bp.abs() < DENORMAL_THRESHOLD {
+                        self.bp = 0.0;
                     }
-                    if self.s2.abs() < DENORMAL_THRESHOLD {
-                        self.s2 = 0.0;
+                    if self.lp.abs() < DENORMAL_THRESHOLD {
+                        self.lp = 0.0;
                     }
 
-                    output_chunk[j] = lp;
+                    output_chunk[j] = self.lp;
                 }
 
                 out_buffer[i..end].copy_from_slice(&output_chunk[..block_len]);
@@ -196,8 +205,8 @@ impl AudioNode for LpFilter {
     }
 
     fn reset(&mut self) {
-        self.s1 = 0.0;
-        self.s2 = 0.0;
+        self.bp = 0.0;
+        self.lp = 0.0;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

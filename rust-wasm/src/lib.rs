@@ -434,6 +434,26 @@ impl AudioEngine {
         Ok(obj.into())
     }
 
+    #[wasm_bindgen]
+    pub fn update_filters(
+        &mut self,
+        filter_id: usize,
+        cutoff: f32,
+        resonance: f32,
+    ) -> Result<(), JsValue> {
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(filter_id)) {
+                if let Some(filter) = node.as_any_mut().downcast_mut::<LpFilter>() {
+                    filter.set_params(cutoff, resonance);
+                } else {
+                    return Err(JsValue::from_str("Node is not a Filter"));
+                }
+            } else {
+                return Err(JsValue::from_str("Node not found"));
+            }
+        }
+        Ok(())
+    }
     pub fn update_lfo(
         &mut self,
         voice_index: usize,
