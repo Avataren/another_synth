@@ -463,16 +463,14 @@ var AudioEngine = class {
     }
   }
   /**
-   * @param {number} voice_index
+   * Update all LFOs across all   voices. This is called by the host when the user
+   * changes an LFO's settings.
    * @param {LfoUpdateParams} params
    */
-  update_lfo(voice_index, params) {
+  update_lfos(params) {
     _assertClass(params, LfoUpdateParams);
     var ptr0 = params.__destroy_into_raw();
-    const ret = wasm.audioengine_update_lfo(this.__wbg_ptr, voice_index, ptr0);
-    if (ret[1]) {
-      throw takeFromExternrefTable0(ret[0]);
-    }
+    wasm.audioengine_update_lfos(this.__wbg_ptr, ptr0);
   }
   /**
    * @param {number} waveform
@@ -1553,18 +1551,16 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   handleUpdateLfo(data) {
     if (!this.audioEngine) return;
     try {
-      for (let i = 0; i < this.numVoices; i++) {
-        const lfoParams = new LfoUpdateParams(
-          data.params.lfoId,
-          data.params.frequency,
-          data.params.waveform,
-          data.params.useAbsolute,
-          data.params.useNormalized,
-          data.params.triggerMode,
-          data.params.active
-        );
-        this.audioEngine.update_lfo(i, lfoParams);
-      }
+      const lfoParams = new LfoUpdateParams(
+        data.params.lfoId,
+        data.params.frequency,
+        data.params.waveform,
+        data.params.useAbsolute,
+        data.params.useNormalized,
+        data.params.triggerMode,
+        data.params.active
+      );
+      this.audioEngine.update_lfos(lfoParams);
     } catch (err) {
       console.error("Error updating LFO:", err);
     }

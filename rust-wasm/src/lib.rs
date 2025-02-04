@@ -454,41 +454,68 @@ impl AudioEngine {
         }
         Ok(())
     }
-    pub fn update_lfo(
-        &mut self,
-        voice_index: usize,
-        params: LfoUpdateParams,
-    ) -> Result<(), JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
-            if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
-                // Convert u8 to LfoWaveform
-                let waveform = match params.waveform {
-                    0 => LfoWaveform::Sine,
-                    1 => LfoWaveform::Triangle,
-                    2 => LfoWaveform::Square,
-                    3 => LfoWaveform::Saw,
-                    _ => LfoWaveform::Sine,
-                };
+    /// Update all LFOs across all   voices. This is called by the host when the user
+    /// changes an LFO's settings.  
+    pub fn update_lfos(&mut self, params: LfoUpdateParams) {
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
+                if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
+                    // Convert u8 to LfoWaveform
+                    let waveform = match params.waveform {
+                        0 => LfoWaveform::Sine,
+                        1 => LfoWaveform::Triangle,
+                        2 => LfoWaveform::Square,
+                        3 => LfoWaveform::Saw,
+                        _ => LfoWaveform::Sine,
+                    };
 
-                lfo.set_frequency(params.frequency);
-                lfo.set_waveform(waveform);
-                lfo.set_use_absolute(params.use_absolute);
-                lfo.set_use_normalized(params.use_normalized);
-                lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
-                lfo.set_active(params.active);
-                Ok(())
-            } else {
-                Err(JsValue::from_str("Node is not an LFO"))
+                    lfo.set_frequency(params.frequency);
+                    lfo.set_waveform(waveform);
+                    lfo.set_use_absolute(params.use_absolute);
+                    lfo.set_use_normalized(params.use_normalized);
+                    lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
+                    lfo.set_active(params.active);
+                }
             }
-        } else {
-            Err(JsValue::from_str("Node not found"))
         }
     }
+
+    // pub fn update_lfo(
+    //     &mut self,
+    //     voice_index: usize,
+    //     params: LfoUpdateParams,
+    // ) -> Result<(), JsValue> {
+    //     let voice = self
+    //         .voices
+    //         .get_mut(voice_index)
+    //         .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+
+    //     if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
+    //         if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
+    //             // Convert u8 to LfoWaveform
+    //             let waveform = match params.waveform {
+    //                 0 => LfoWaveform::Sine,
+    //                 1 => LfoWaveform::Triangle,
+    //                 2 => LfoWaveform::Square,
+    //                 3 => LfoWaveform::Saw,
+    //                 _ => LfoWaveform::Sine,
+    //             };
+
+    //             lfo.set_frequency(params.frequency);
+    //             lfo.set_waveform(waveform);
+    //             lfo.set_use_absolute(params.use_absolute);
+    //             lfo.set_use_normalized(params.use_normalized);
+    //             lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
+    //             lfo.set_active(params.active);
+    //             Ok(())
+    //         } else {
+    //             Err(JsValue::from_str("Node is not an LFO"))
+    //         }
+    //     } else {
+    //         Err(JsValue::from_str("Node not found"))
+    //     }
+    // }
 
     #[wasm_bindgen]
     pub fn get_lfo_waveform(

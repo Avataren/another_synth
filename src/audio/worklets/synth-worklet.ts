@@ -673,18 +673,19 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
 
     try {
-      for (let i = 0; i < this.numVoices; i++) {
-        const lfoParams = new LfoUpdateParams(
-          data.params.lfoId,
-          data.params.frequency,
-          data.params.waveform,
-          data.params.useAbsolute,
-          data.params.useNormalized,
-          data.params.triggerMode,
-          data.params.active
-        );
-        this.audioEngine.update_lfo(i, lfoParams);
-      }
+      //for (let i = 0; i < this.numVoices; i++) {
+
+      const lfoParams = new LfoUpdateParams(
+        data.params.lfoId,
+        data.params.frequency,
+        data.params.waveform,
+        data.params.useAbsolute,
+        data.params.useNormalized,
+        data.params.triggerMode,
+        data.params.active
+      );
+      this.audioEngine.update_lfos(lfoParams);
+      //}
     } catch (err) {
       console.error('Error updating LFO:', err);
     }

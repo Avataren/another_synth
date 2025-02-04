@@ -396,16 +396,14 @@ export class AudioEngine {
         }
     }
     /**
-     * @param {number} voice_index
+     * Update all LFOs across all   voices. This is called by the host when the user
+     * changes an LFO's settings.
      * @param {LfoUpdateParams} params
      */
-    update_lfo(voice_index, params) {
+    update_lfos(params) {
         _assertClass(params, LfoUpdateParams);
         var ptr0 = params.__destroy_into_raw();
-        const ret = wasm.audioengine_update_lfo(this.__wbg_ptr, voice_index, ptr0);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
+        wasm.audioengine_update_lfos(this.__wbg_ptr, ptr0);
     }
     /**
      * @param {number} waveform
