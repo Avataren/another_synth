@@ -102,11 +102,11 @@ impl ModulatableOscillator {
 impl ModulationProcessor for ModulatableOscillator {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
-            PortId::FrequencyMod => ModulationType::Bipolar,
+            PortId::FrequencyMod => ModulationType::VCA,
             PortId::PhaseMod => ModulationType::Additive,
             PortId::ModIndex => ModulationType::VCA,
             PortId::GainMod => ModulationType::VCA,
-            PortId::FeedbackMod => ModulationType::Additive,
+            PortId::FeedbackMod => ModulationType::VCA,
             _ => ModulationType::VCA,
         }
     }
@@ -138,7 +138,7 @@ impl AudioNode for ModulatableOscillator {
         let freq_mod = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::FrequencyMod),
-            0.0,
+            1.0,
             PortId::FrequencyMod,
         );
         let phase_mod = self.process_modulations(
@@ -164,7 +164,7 @@ impl AudioNode for ModulatableOscillator {
         let feedback_mod = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::FeedbackMod),
-            0.0,
+            1.0,
             PortId::FeedbackMod,
         );
 

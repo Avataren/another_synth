@@ -178,6 +178,7 @@ export function getModulationTargetsForType(
             ];
         case VoiceNodeType.Filter:
             return [
+                { value: PortId.AudioInput0, label: PORT_LABELS[PortId.AudioInput0] },
                 { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
                 { value: PortId.ResonanceMod, label: PORT_LABELS[PortId.ResonanceMod] },
             ];
