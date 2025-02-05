@@ -269,14 +269,13 @@ export class AudioEngine {
         wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
     }
     /**
-     * @param {number} voice_index
      * @param {number} from_node
      * @param {PortId} from_port
      * @param {number} to_node
      * @param {PortId} to_port
      */
-    remove_voice_connection(voice_index, from_node, from_port, to_node, to_port) {
-        const ret = wasm.audioengine_remove_voice_connection(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port);
+    remove_connection(from_node, from_port, to_node, to_port) {
+        const ret = wasm.audioengine_remove_connection(this.__wbg_ptr, from_node, from_port, to_node, to_port);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -314,40 +313,6 @@ export class AudioEngine {
     }
     /**
      * @param {number} voice_index
-     * @param {number} num_oscillators
-     * @returns {any}
-     */
-    initialize_voice(voice_index, num_oscillators) {
-        const ret = wasm.audioengine_initialize_voice(this.__wbg_ptr, voice_index, num_oscillators);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {number} voice_index
-     * @returns {any}
-     */
-    create_envelope(voice_index) {
-        const ret = wasm.audioengine_create_envelope(this.__wbg_ptr, voice_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {number} voice_index
-     * @returns {any}
-     */
-    create_mixer(voice_index) {
-        const ret = wasm.audioengine_create_mixer(this.__wbg_ptr, voice_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {number} voice_index
      * @param {number} node_id
      * @param {number} attack
      * @param {number} decay
@@ -374,15 +339,54 @@ export class AudioEngine {
         }
     }
     /**
-     * @param {number} voice_index
      * @returns {any}
      */
-    create_lfo(voice_index) {
-        const ret = wasm.audioengine_create_lfo(this.__wbg_ptr, voice_index);
+    create_envelope() {
+        const ret = wasm.audioengine_create_envelope(this.__wbg_ptr);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    create_mixer() {
+        const ret = wasm.audioengine_create_mixer(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    create_lfo() {
+        const ret = wasm.audioengine_create_lfo(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {number}
+     */
+    create_filter() {
+        const ret = wasm.audioengine_create_filter(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    create_oscillator() {
+        const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
     /**
      * @param {number} filter_id
@@ -420,7 +424,6 @@ export class AudioEngine {
         return v1;
     }
     /**
-     * @param {number} voice_index
      * @param {number} from_node
      * @param {PortId} from_port
      * @param {number} to_node
@@ -428,20 +431,19 @@ export class AudioEngine {
      * @param {number} amount
      * @param {WasmModulationType | undefined} [modulation_type]
      */
-    connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
-        const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
+    connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type) {
+        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
     }
     /**
-     * @param {number} voice_index
      * @param {number} from_node
      * @param {number} to_node
      * @param {PortId} to_port
      */
-    remove_specific_connection(voice_index, from_node, to_node, to_port) {
-        const ret = wasm.audioengine_remove_specific_connection(this.__wbg_ptr, voice_index, from_node, to_node, to_port);
+    remove_specific_connection(from_node, to_node, to_port) {
+        const ret = wasm.audioengine_remove_specific_connection(this.__wbg_ptr, from_node, to_node, to_port);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -458,43 +460,6 @@ export class AudioEngine {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
-    }
-    /**
-     * @param {number} voice_index
-     * @param {number} from_node
-     * @param {PortId} from_port
-     * @param {number} to_node
-     * @param {PortId} to_port
-     * @param {number} amount
-     * @param {WasmModulationType | undefined} [modulation_type]
-     */
-    connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
-        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} voice_index
-     * @returns {number}
-     */
-    create_filter(voice_index) {
-        const ret = wasm.audioengine_create_filter(this.__wbg_ptr, voice_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @param {number} voice_index
-     * @returns {number}
-     */
-    create_oscillator(voice_index) {
-        const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr, voice_index);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
     }
     reset() {
         wasm.audioengine_reset(this.__wbg_ptr);
@@ -1061,10 +1026,6 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_new_688846f374351c92 = function() {
         const ret = new Object();
-        return ret;
-    };
-    imports.wbg.__wbg_push_6edad0df4b546b2c = function(arg0, arg1) {
-        const ret = arg0.push(arg1);
         return ret;
     };
     imports.wbg.__wbg_set_1d80752d0d5f0b21 = function(arg0, arg1, arg2) {

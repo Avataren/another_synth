@@ -140,28 +140,23 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
-    pub fn remove_voice_connection(
+    pub fn remove_connection(
         &mut self,
-        voice_index: usize,
         from_node: usize,
         from_port: PortId,
         to_node: usize,
         to_port: PortId,
     ) -> Result<(), JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-        voice.graph.remove_connection(&Connection {
-            from_node: NodeId(from_node),
-            from_port,
-            to_node: NodeId(to_node),
-            to_port,
-            amount: 0.0,                          // The amount doesn't matter for removal
-            modulation_type: ModulationType::VCA, // neither does modulation_type
-        });
-
+        for (i, voice) in self.voices.iter_mut().enumerate() {
+            voice.graph.remove_connection(&Connection {
+                from_node: NodeId(from_node),
+                from_port,
+                to_node: NodeId(to_node),
+                to_port,
+                amount: 0.0, // The amount doesn't matter for removal
+                modulation_type: ModulationType::VCA, // neither does modulation_type
+            });
+        }
         Ok(())
     }
 
@@ -281,83 +276,51 @@ impl AudioEngine {
         }
     }
 
-    #[wasm_bindgen]
-    pub fn initialize_voice(
-        &mut self,
-        voice_index: usize,
-        num_oscillators: usize,
-    ) -> Result<JsValue, JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+    // #[wasm_bindgen]
+    // pub fn initialize_voice(
+    //     &mut self,
+    //     voice_index: usize,
+    //     num_oscillators: usize,
+    // ) -> Result<JsValue, JsValue> {
+    //     let voice = self
+    //         .voices
+    //         .get_mut(voice_index)
+    //         .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        // Create oscillators
-        let mut oscillator_ids = Vec::new();
-        for _ in 0..num_oscillators {
-            let osc_id = voice.add_oscillator(self.sample_rate);
-            oscillator_ids.push(osc_id.0); // Already using .0 here
-        }
+    //     // Create oscillators
+    //     let mut oscillator_ids = Vec::new();
+    //     for _ in 0..num_oscillators {
+    //         let osc_id = voice.add_oscillator(self.sample_rate);
+    //         oscillator_ids.push(osc_id.0); // Already using .0 here
+    //     }
 
-        // Create envelope
-        let envelope_id = voice.graph.add_node(Box::new(Envelope::new(
-            self.sample_rate,
-            EnvelopeConfig::default(),
-        )));
-        voice.envelope = envelope_id;
+    //     // Create envelope
+    //     let envelope_id = voice.graph.add_node(Box::new(Envelope::new(
+    //         self.sample_rate,
+    //         EnvelopeConfig::default(),
+    //     )));
+    //     voice.envelope = envelope_id;
 
-        // Set the first oscillator as the initial output node
-        if !oscillator_ids.is_empty() {
-            voice.set_output_node(NodeId(oscillator_ids[0]));
-        }
+    //     // Set the first oscillator as the initial output node
+    //     if !oscillator_ids.is_empty() {
+    //         voice.set_output_node(NodeId(oscillator_ids[0]));
+    //     }
 
-        // Create return object with all IDs
-        let obj = js_sys::Object::new();
+    //     // Create return object with all IDs
+    //     let obj = js_sys::Object::new();
 
-        // Add oscillator IDs
-        let oscillators_array = js_sys::Array::new();
-        for id in oscillator_ids {
-            oscillators_array.push(&JsValue::from(id));
-        }
-        js_sys::Reflect::set(&obj, &"oscillatorIds".into(), &oscillators_array)?;
+    //     // Add oscillator IDs
+    //     let oscillators_array = js_sys::Array::new();
+    //     for id in oscillator_ids {
+    //         oscillators_array.push(&JsValue::from(id));
+    //     }
+    //     js_sys::Reflect::set(&obj, &"oscillatorIds".into(), &oscillators_array)?;
 
-        // Add envelope ID - get the inner value
-        js_sys::Reflect::set(&obj, &"envelopeId".into(), &JsValue::from(envelope_id.0))?;
+    //     // Add envelope ID - get the inner value
+    //     js_sys::Reflect::set(&obj, &"envelopeId".into(), &JsValue::from(envelope_id.0))?;
 
-        Ok(obj.into())
-    }
-
-    #[wasm_bindgen]
-    pub fn create_envelope(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-        let envelope_id = voice.graph.add_node(Box::new(Envelope::new(
-            self.sample_rate,
-            EnvelopeConfig::default(),
-        )));
-
-        let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
-
-        Ok(obj.into())
-    }
-
-    #[wasm_bindgen]
-    pub fn create_mixer(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-        let mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
-        voice.graph.set_output_node(mixer_id);
-
-        // Just return the ID directly like other nodes
-        Ok(JsValue::from(mixer_id.0))
-    }
+    //     Ok(obj.into())
+    // }
 
     #[wasm_bindgen]
     pub fn update_envelope(
@@ -420,18 +383,63 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
-    pub fn create_lfo(&mut self, voice_index: usize) -> Result<JsValue, JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+    pub fn create_envelope(&mut self) -> Result<JsValue, JsValue> {
+        let mut envelope_id = NodeId(0);
+        for voice in &mut self.voices {
+            envelope_id = voice.graph.add_node(Box::new(Envelope::new(
+                self.sample_rate,
+                EnvelopeConfig::default(),
+            )));
+        }
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
 
-        let lfo_id = voice.graph.add_node(Box::new(Lfo::new(self.sample_rate)));
+        Ok(obj.into())
+    }
 
+    #[wasm_bindgen]
+    pub fn create_mixer(&mut self) -> Result<JsValue, JsValue> {
+        let mut mixer_id = NodeId(0);
+        for voice in &mut self.voices {
+            mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
+            voice.graph.set_output_node(mixer_id);
+        }
+        // Just return the ID directly like other nodes
+        Ok(JsValue::from(mixer_id.0))
+    }
+
+    #[wasm_bindgen]
+    pub fn create_lfo(&mut self) -> Result<JsValue, JsValue> {
+        let mut lfo_id = NodeId(0);
+        for voice in &mut self.voices {
+            lfo_id = voice.graph.add_node(Box::new(Lfo::new(self.sample_rate)));
+        }
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(&obj, &"lfoId".into(), &(lfo_id.0.into()))?;
 
         Ok(obj.into())
+    }
+
+    #[wasm_bindgen]
+    pub fn create_filter(&mut self) -> Result<usize, JsValue> {
+        let mut filter_id = NodeId(0);
+        for voice in &mut self.voices {
+            filter_id = voice
+                .graph
+                .add_node(Box::new(LpFilter::new(self.sample_rate)));
+        }
+        Ok(filter_id.0)
+    }
+
+    #[wasm_bindgen]
+    pub fn create_oscillator(&mut self) -> Result<usize, JsValue> {
+        let mut osc_id = NodeId(0);
+        for voice in &mut self.voices {
+            osc_id = voice
+                .graph
+                .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
+        }
+        Ok(osc_id.0)
     }
 
     #[wasm_bindgen]
@@ -456,7 +464,7 @@ impl AudioEngine {
     }
 
     /// Update all LFOs across all   voices. This is called by the host when the user
-    /// changes an LFO's settings.  
+    /// changes an LFO's settings.
     pub fn update_lfos(&mut self, params: LfoUpdateParams) {
         for voice in &mut self.voices {
             if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
@@ -535,9 +543,8 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
-    pub fn connect_voice_nodes(
+    pub fn connect_nodes(
         &mut self,
-        voice_index: usize,
         from_node: usize,
         from_port: PortId,
         to_node: usize,
@@ -545,11 +552,6 @@ impl AudioEngine {
         amount: f32,
         modulation_type: Option<WasmModulationType>,
     ) -> Result<(), JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
         let connection = Connection {
             from_node: NodeId(from_node),
             from_port,
@@ -561,34 +563,32 @@ impl AudioEngine {
                 .unwrap_or_default(),
         };
 
-        voice.graph.add_connection(connection);
+        for voice in &mut self.voices {
+            voice.graph.add_connection(connection.clone());
+        }
         Ok(())
     }
 
     #[wasm_bindgen]
     pub fn remove_specific_connection(
         &mut self,
-        voice_index: usize,
         from_node: usize,
         to_node: usize,
         to_port: PortId,
     ) -> Result<(), JsValue> {
         console::log_1(
             &format!(
-                "Removing connection: voice={}, from={}, to={}, port={:?}",
-                voice_index, from_node, to_node, to_port
+                "Removing connection: from={}, to={}, port={:?}",
+                from_node, to_node, to_port
             )
             .into(),
         );
 
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-        voice
-            .graph
-            .remove_specific_connection(NodeId(from_node), NodeId(to_node), to_port);
+        for voice in &mut self.voices {
+            voice
+                .graph
+                .remove_specific_connection(NodeId(from_node), NodeId(to_node), to_port);
+        }
 
         Ok(())
     }
@@ -620,62 +620,34 @@ impl AudioEngine {
             .map_err(|e| JsValue::from_str(&e))
     }
 
-    pub fn connect_nodes(
-        &mut self,
-        voice_index: usize,
-        from_node: usize,
-        from_port: PortId,
-        to_node: usize,
-        to_port: PortId,
-        amount: f32,
-        modulation_type: Option<WasmModulationType>,
-    ) -> Result<(), JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+    // pub fn connect_nodes(
+    //     &mut self,
+    //     voice_index: usize,
+    //     from_node: usize,
+    //     from_port: PortId,
+    //     to_node: usize,
+    //     to_port: PortId,
+    //     amount: f32,
+    //     modulation_type: Option<WasmModulationType>,
+    // ) -> Result<(), JsValue> {
+    //     let voice = self
+    //         .voices
+    //         .get_mut(voice_index)
+    //         .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
-        voice.graph.connect(Connection {
-            from_node: NodeId(from_node),
-            from_port,
-            to_node: NodeId(to_node),
-            to_port,
-            amount,
-            modulation_type: modulation_type
-                .map(ModulationType::from)
-                .unwrap_or_default(),
-        });
+    //     voice.graph.connect(Connection {
+    //         from_node: NodeId(from_node),
+    //         from_port,
+    //         to_node: NodeId(to_node),
+    //         to_port,
+    //         amount,
+    //         modulation_type: modulation_type
+    //             .map(ModulationType::from)
+    //             .unwrap_or_default(),
+    //     });
 
-        Ok(())
-    }
-
-    #[wasm_bindgen]
-    pub fn create_filter(&mut self, voice_index: usize) -> Result<usize, JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-        let filter_id = voice
-            .graph
-            .add_node(Box::new(LpFilter::new(self.sample_rate)));
-
-        Ok(filter_id.0)
-    }
-
-    #[wasm_bindgen]
-    pub fn create_oscillator(&mut self, voice_index: usize) -> Result<usize, JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-        let osc_id = voice
-            .graph
-            .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
-
-        Ok(osc_id.0)
-    }
+    //     Ok(())
+    // }
 
     #[wasm_bindgen]
     pub fn reset(&mut self) {

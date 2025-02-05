@@ -34,7 +34,6 @@ interface AudioParamDescriptor {
 // }
 
 export const useAudioSystemStore = defineStore('audioSystem', {
-
   state: () => ({
     audioSystem: null as AudioSystem | null,
     destinationNode: null as AudioNode | null,
@@ -55,7 +54,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     noiseState: {
       noiseType: NoiseType.White,
       cutoff: 1.0,
-      is_enabled: false
+      is_enabled: false,
     } as NoiseState,
 
     wasmMemory: new WebAssembly.Memory({
@@ -87,29 +86,33 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
     },
 
-    getNodeConnectionsForVoice: (state) => (voiceIndex: number, nodeId: number): NodeConnection[] => {
-      if (!state.synthLayout) return [];
-      const voice = state.synthLayout.voices[voiceIndex];
-      if (!voice) return [];
-      return voice.connections.filter(
-        conn => conn.fromId === nodeId || conn.toId === nodeId
-      );
-    },
-    getNodeConnections: (state) => (nodeId: number): NodeConnection[] => {
-      if (!state.synthLayout) return [];
-      const voice = state.synthLayout.voices[0];  // Only look at voice 0
-      if (!voice) return [];
-      return voice.connections.filter(
-        conn => conn.fromId === nodeId || conn.toId === nodeId
-      );
-    },
+    getNodeConnectionsForVoice:
+      (state) =>
+      (voiceIndex: number, nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[voiceIndex];
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+        );
+      },
+    getNodeConnections:
+      (state) =>
+      (nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[0]; // Only look at voice 0
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+        );
+      },
     findNodeById: (state) => (nodeId: number) => {
       if (!state.synthLayout) return null;
       const voice = state.synthLayout.voices[0];
       if (!voice) return null;
 
       for (const type of Object.values(VoiceNodeType)) {
-        const node = voice.nodes[type].find(n => n.id === nodeId);
+        const node = voice.nodes[type].find((n) => n.id === nodeId);
         if (node) return { ...node, type };
       }
       return null;
@@ -162,32 +165,42 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
     // Helper method to check if connection exists
     hasExistingConnection(fromId: number, toId: number): boolean {
-      return this.synthLayout?.voices.some(voice =>
-        voice.connections.some(conn =>
-          conn.fromId === fromId && conn.toId === toId
-        )
-      ) ?? false;
+      return (
+        this.synthLayout?.voices.some((voice) =>
+          voice.connections.some(
+            (conn) => conn.fromId === fromId && conn.toId === toId,
+          ),
+        ) ?? false
+      );
     },
-    hasMatchingConnection(fromId: number, toId: number, target: PortId): boolean {
-      return this.synthLayout?.voices.some(voice =>
-        voice.connections.some(conn =>
-          conn.fromId === fromId &&
-          conn.toId === toId &&
-          conn.target === target
-        )
-      ) ?? false;
+    hasMatchingConnection(
+      fromId: number,
+      toId: number,
+      target: PortId,
+    ): boolean {
+      return (
+        this.synthLayout?.voices.some((voice) =>
+          voice.connections.some(
+            (conn) =>
+              conn.fromId === fromId &&
+              conn.toId === toId &&
+              conn.target === target,
+          ),
+        ) ?? false
+      );
     },
     updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout:', layout);
       console.log('Received layout in store:', JSON.stringify(layout, null, 2));
-      console.log('First voice connections in store:',
-        JSON.stringify(layout.voices[0]!.connections, null, 2)
+      console.log(
+        'First voice connections in store:',
+        JSON.stringify(layout.voices[0]!.connections, null, 2),
       );
       // Create a deep copy to ensure we don't mutate the input directly
       this.synthLayout = JSON.parse(JSON.stringify(layout));
 
       // Ensure connections array exists for each voice
-      this.synthLayout!.voices.forEach(voice => {
+      this.synthLayout!.voices.forEach((voice) => {
         if (!voice.connections) {
           voice.connections = [];
         }
@@ -209,7 +222,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               hard_sync: false,
               gain: 1,
               feedback_amount: 0,
-              active: true
+              active: true,
             });
           }
         }
@@ -238,7 +251,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               id: filter.id,
               cutoff: 10000,
               resonance: 0.0,
-              active: false
+              active: false,
             } as FilterState);
           }
         }
@@ -253,7 +266,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               useAbsolute: false,
               useNormalized: false,
               triggerMode: 0,
-              active: false
+              active: false,
             });
           }
         }
@@ -281,7 +294,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         useAbsolute: state.useAbsolute,
         useNormalized: state.useNormalized,
         triggerMode: state.triggerMode,
-        active: state.active  // Add this line
+        active: state.active, // Add this line
       });
     },
 
@@ -291,10 +304,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
     // Helper to find a connection in a voice
     findConnection(voice: VoiceLayout, connection: NodeConnection) {
-      return voice.connections.findIndex((conn: NodeConnection) =>
-        conn.fromId === connection.fromId &&
-        conn.toId === connection.toId &&
-        conn.target === connection.target
+      return voice.connections.findIndex(
+        (conn: NodeConnection) =>
+          conn.fromId === connection.fromId &&
+          conn.toId === connection.toId &&
+          conn.target === connection.target,
       );
     },
     async updateConnection(connection: NodeConnectionUpdate) {
@@ -302,7 +316,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.isUpdating = true;
 
       try {
-        const numVoices = this.synthLayout?.voices.length || 0;
+        // const numVoices = this.synthLayout?.voices.length || 0;
 
         // Convert proxies to plain numbers and validate
         const plainConnection = {
@@ -310,7 +324,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           toId: Number(connection.toId),
           target: Number(connection.target) as PortId,
           amount: Number(connection.amount),
-          isRemoving: Boolean(connection.isRemoving)
+          isRemoving: Boolean(connection.isRemoving),
         } as NodeConnectionUpdate;
 
         // Validate target
@@ -319,36 +333,40 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         }
 
         // Update WASM for all voices
-        for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
-          if (!this.currentInstrument) throw new Error('No instrument');
-          await this.currentInstrument.updateConnection(voiceIndex, plainConnection);
-        }
+        // for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
+        if (!this.currentInstrument) throw new Error('No instrument');
+        await this.currentInstrument.updateConnection(plainConnection);
+        // }
 
         // Update store state
         if (this.synthLayout) {
-          this.synthLayout.voices.forEach(voice => {
+          this.synthLayout.voices.forEach((voice) => {
             if (!voice.connections) voice.connections = [];
 
             if (connection.isRemoving) {
               // Only remove the specific connection with matching target
-              voice.connections = voice.connections.filter(conn =>
-                !(conn.fromId === plainConnection.fromId &&
-                  conn.toId === plainConnection.toId &&
-                  conn.target === plainConnection.target)
+              voice.connections = voice.connections.filter(
+                (conn) =>
+                  !(
+                    conn.fromId === plainConnection.fromId &&
+                    conn.toId === plainConnection.toId &&
+                    conn.target === plainConnection.target
+                  ),
               );
             } else {
               // Add or update connection
-              const existingIndex = voice.connections.findIndex(conn =>
-                conn.fromId === plainConnection.fromId &&
-                conn.toId === plainConnection.toId &&
-                conn.target === plainConnection.target
+              const existingIndex = voice.connections.findIndex(
+                (conn) =>
+                  conn.fromId === plainConnection.fromId &&
+                  conn.toId === plainConnection.toId &&
+                  conn.target === plainConnection.target,
               );
 
               const newConnection = {
                 fromId: plainConnection.fromId,
                 toId: plainConnection.toId,
                 target: plainConnection.target,
-                amount: plainConnection.amount
+                amount: plainConnection.amount,
               };
 
               if (existingIndex !== -1) {
@@ -375,66 +393,74 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     //   }
     //   return target;
     // },
-    updateConnectionForVoice(voiceIndex: number, connection: NodeConnectionUpdate) {
-      if (!this.synthLayout || !this.currentInstrument) {
-        console.error('Cannot update connection: store not initialized');
-        return;
-      }
+    // updateConnectionForVoice(
+    //   // voiceIndex: number,
+    //   connection: NodeConnectionUpdate,
+    // ) {
+    //   if (!this.synthLayout || !this.currentInstrument) {
+    //     console.error('Cannot update connection: store not initialized');
+    //     return;
+    //   }
 
-      const voice = this.synthLayout.voices[voiceIndex];
-      if (!voice) {
-        console.error('Voice not found:', voiceIndex);
-        return;
-      }
+    //   const voice = this.synthLayout.voices[voiceIndex];
+    //   if (!voice) {
+    //     console.error('Voice not found:', voiceIndex);
+    //     return;
+    //   }
 
-      // Ensure connections array exists
-      if (!voice.connections) {
-        voice.connections = [];
-      }
+    //   // Ensure connections array exists
+    //   if (!voice.connections) {
+    //     voice.connections = [];
+    //   }
 
-      // Find existing connection with EXACT same routing
-      const existingIndex = voice.connections.findIndex(conn =>
-        conn.fromId === connection.fromId &&
-        conn.toId === connection.toId &&
-        conn.target === connection.target  // Direct PortId comparison
-      );
+    //   // Find existing connection with EXACT same routing
+    //   const existingIndex = voice.connections.findIndex(
+    //     (conn) =>
+    //       conn.fromId === connection.fromId &&
+    //       conn.toId === connection.toId &&
+    //       conn.target === connection.target, // Direct PortId comparison
+    //   );
 
-      // Log the operation for debugging
-      console.log('Updating connection:', {
-        operation: connection.isRemoving ? 'remove' : existingIndex !== -1 ? 'update' : 'add',
-        existing: existingIndex !== -1,
-        connection,
-        currentConnections: voice.connections
-      });
+    //   // Log the operation for debugging
+    //   console.log('Updating connection:', {
+    //     operation: connection.isRemoving
+    //       ? 'remove'
+    //       : existingIndex !== -1
+    //         ? 'update'
+    //         : 'add',
+    //     existing: existingIndex !== -1,
+    //     connection,
+    //     currentConnections: voice.connections,
+    //   });
 
-      if (connection.isRemoving) {
-        if (existingIndex !== -1) {
-          // Only remove the specific modulation route
-          voice.connections.splice(existingIndex, 1);
-        }
-      } else {
-        if (existingIndex !== -1) {
-          // Update existing connection
-          voice.connections[existingIndex] = {
-            fromId: connection.fromId,
-            toId: connection.toId,
-            target: connection.target,
-            amount: connection.amount
-          };
-        } else {
-          // Add new connection if it doesn't exist
-          voice.connections.push({
-            fromId: connection.fromId,
-            toId: connection.toId,
-            target: connection.target,
-            amount: connection.amount
-          });
-        }
-      }
+    //   if (connection.isRemoving) {
+    //     if (existingIndex !== -1) {
+    //       // Only remove the specific modulation route
+    //       voice.connections.splice(existingIndex, 1);
+    //     }
+    //   } else {
+    //     if (existingIndex !== -1) {
+    //       // Update existing connection
+    //       voice.connections[existingIndex] = {
+    //         fromId: connection.fromId,
+    //         toId: connection.toId,
+    //         target: connection.target,
+    //         amount: connection.amount,
+    //       };
+    //     } else {
+    //       // Add new connection if it doesn't exist
+    //       voice.connections.push({
+    //         fromId: connection.fromId,
+    //         toId: connection.toId,
+    //         target: connection.target,
+    //         amount: connection.amount,
+    //       });
+    //     }
+    //   }
 
-      // Update WASM side with the NodeConnectionUpdate
-      this.currentInstrument.updateConnection(voiceIndex, connection);
-    },
+    //   // Update WASM side with the NodeConnectionUpdate
+    //   this.currentInstrument.updateConnection(voiceIndex, connection);
+    // },
     async setupAudio() {
       if (this.audioSystem) {
         this.currentInstrument = new Instrument(
@@ -450,5 +476,4 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
     },
   },
-
 });

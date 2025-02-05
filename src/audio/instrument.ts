@@ -1,4 +1,4 @@
-import { type PortId } from 'app/public/wasm/audio_processor';
+// import { type PortId } from 'app/public/wasm/audio_processor';
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import { type EnvelopeConfig } from './dsp/envelope';
 // import { type FilterState } from './dsp/filter-state';
@@ -6,7 +6,7 @@ import { type EnvelopeConfig } from './dsp/envelope';
 import type OscillatorState from './models/OscillatorState';
 import {
   type SynthLayout,
-  type NodeConnection,
+  // type NodeConnection,
   // type VoiceLayout,
   VoiceNodeType,
   type LfoState,
@@ -85,11 +85,11 @@ export default class Instrument {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
     // Find which voice this oscillator belongs to
-    const voiceIndex = this.findVoiceForNode(nodeId);
-    if (voiceIndex === -1) return;
+    // const voiceIndex = this.findVoiceForNode(nodeId);
+    // if (voiceIndex === -1) return;
     this.workletNode.port.postMessage({
       type: 'updateOscillator',
-      voiceIndex,
+      // voiceIndex,
       oscillatorId: nodeId,
       newState,
     });
@@ -122,7 +122,7 @@ export default class Instrument {
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => { }, 0);
+      let timeoutId = setTimeout(() => {}, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
@@ -218,10 +218,7 @@ export default class Instrument {
     });
   }
 
-  public updateConnection(
-    voiceIndex: number,
-    connection: NodeConnectionUpdate,
-  ): void {
+  public updateConnection(connection: NodeConnectionUpdate): void {
     if (!this.ready || !this.workletNode) return;
 
     // Validate input parameters
@@ -258,7 +255,6 @@ export default class Instrument {
     try {
       this.workletNode.port.postMessage({
         type: 'updateConnection',
-        voiceIndex: voiceIndex,
         connection: safeConnection,
       });
     } catch (error) {
@@ -270,65 +266,64 @@ export default class Instrument {
     }
   }
 
-  async createModulation(
-    sourceId: number,
-    targetId: number,
-    target: PortId,
-    amount: number,
-  ): Promise<void> {
-    const message: {
-      type: 'updateModulation';
-      connection: {
-        fromId: number;
-        toId: number;
-        target: PortId;
-        amount: number;
-      };
-    } = {
-      type: 'updateModulation',
-      connection: {
-        fromId: Number(sourceId),
-        toId: Number(targetId),
-        target, // PortId is already the correct type
-        amount: Number(amount),
-      },
-    };
+  // async createModulation(
+  //   sourceId: number,
+  //   targetId: number,
+  //   target: PortId,
+  //   amount: number,
+  // ): Promise<void> {
+  //   const message: {
+  //     type: 'updateModulation';
+  //     connection: {
+  //       fromId: number;
+  //       toId: number;
+  //       target: PortId;
+  //       amount: number;
+  //     };
+  //   } = {
+  //     type: 'updateModulation',
+  //     connection: {
+  //       fromId: Number(sourceId),
+  //       toId: Number(targetId),
+  //       target, // PortId is already the correct type
+  //       amount: Number(amount),
+  //     },
+  //   };
 
-    // Return a Promise that resolves when the state is updated
-    return new Promise((resolve, reject) => {
-      if (!this.workletNode) {
-        reject(new Error('Worklet not initialized'));
-        return;
-      }
+  //   // Return a Promise that resolves when the state is updated
+  //   return new Promise((resolve, reject) => {
+  //     if (!this.workletNode) {
+  //       reject(new Error('Worklet not initialized'));
+  //       return;
+  //     }
 
-      const messageId = Date.now().toString();
-      const timeoutId = setTimeout(() => {
-        this.workletNode?.port.removeEventListener('message', handleResponse);
-        reject(new Error('Timeout waiting for modulation update'));
-      }, 1000);
+  //     const messageId = Date.now().toString();
+  //     const timeoutId = setTimeout(() => {
+  //       this.workletNode?.port.removeEventListener('message', handleResponse);
+  //       reject(new Error('Timeout waiting for modulation update'));
+  //     }, 1000);
 
-      const handleResponse = (e: MessageEvent) => {
-        if (
-          e.data.type === 'modulationUpdated' &&
-          e.data.messageId === messageId
-        ) {
-          clearTimeout(timeoutId);
-          this.workletNode?.port.removeEventListener('message', handleResponse);
-          resolve();
-        }
-      };
+  //     const handleResponse = (e: MessageEvent) => {
+  //       if (
+  //         e.data.type === 'modulationUpdated' &&
+  //         e.data.messageId === messageId
+  //       ) {
+  //         clearTimeout(timeoutId);
+  //         this.workletNode?.port.removeEventListener('message', handleResponse);
+  //         resolve();
+  //       }
+  //     };
 
-      this.workletNode.port.addEventListener('message', handleResponse);
+  //     this.workletNode.port.addEventListener('message', handleResponse);
 
-      this.workletNode.port.postMessage({
-        ...message,
-        messageId,
-      });
-    });
-  }
+  //     this.workletNode.port.postMessage({
+  //       ...message,
+  //       messageId,
+  //     });
+  //   });
+  // }
 
   public remove_specific_connection(
-    voice_index: number,
     from_node: number,
     to_node: number,
     to_port: number,
@@ -337,28 +332,26 @@ export default class Instrument {
 
     this.workletNode.port.postMessage({
       type: 'removeConnection',
-      voiceIndex: voice_index,
       fromNode: from_node,
       toNode: to_node,
       toPort: to_port,
     });
   }
 
-  public createModulationForVoice(
-    voiceIndex: number,
-    sourceId: number,
-    targetId: number,
-    target: PortId,
-    amount: number,
-  ) {
-    const connection: NodeConnection = {
-      fromId: sourceId,
-      toId: targetId,
-      target,
-      amount,
-    };
-    this.updateConnection(voiceIndex, connection);
-  }
+  // public createModulationForVoice(
+  //   sourceId: number,
+  //   targetId: number,
+  //   target: PortId,
+  //   amount: number,
+  // ) {
+  //   const connection: NodeConnection = {
+  //     fromId: sourceId,
+  //     toId: targetId,
+  //     target,
+  //     amount,
+  //   };
+  //   this.updateConnection(connection);
+  // }
 
   public note_on(midi_note: number, velocity: number) {
     if (!this.ready || !this.workletNode) return;

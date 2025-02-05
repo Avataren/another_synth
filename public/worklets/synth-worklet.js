@@ -336,14 +336,13 @@ var AudioEngine = class {
     wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
   }
   /**
-   * @param {number} voice_index
    * @param {number} from_node
    * @param {PortId} from_port
    * @param {number} to_node
    * @param {PortId} to_port
    */
-  remove_voice_connection(voice_index, from_node, from_port, to_node, to_port) {
-    const ret = wasm.audioengine_remove_voice_connection(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port);
+  remove_connection(from_node, from_port, to_node, to_port) {
+    const ret = wasm.audioengine_remove_connection(this.__wbg_ptr, from_node, from_port, to_node, to_port);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -381,40 +380,6 @@ var AudioEngine = class {
   }
   /**
    * @param {number} voice_index
-   * @param {number} num_oscillators
-   * @returns {any}
-   */
-  initialize_voice(voice_index, num_oscillators) {
-    const ret = wasm.audioengine_initialize_voice(this.__wbg_ptr, voice_index, num_oscillators);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  /**
-   * @param {number} voice_index
-   * @returns {any}
-   */
-  create_envelope(voice_index) {
-    const ret = wasm.audioengine_create_envelope(this.__wbg_ptr, voice_index);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  /**
-   * @param {number} voice_index
-   * @returns {any}
-   */
-  create_mixer(voice_index) {
-    const ret = wasm.audioengine_create_mixer(this.__wbg_ptr, voice_index);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  /**
-   * @param {number} voice_index
    * @param {number} node_id
    * @param {number} attack
    * @param {number} decay
@@ -441,15 +406,54 @@ var AudioEngine = class {
     }
   }
   /**
-   * @param {number} voice_index
    * @returns {any}
    */
-  create_lfo(voice_index) {
-    const ret = wasm.audioengine_create_lfo(this.__wbg_ptr, voice_index);
+  create_envelope() {
+    const ret = wasm.audioengine_create_envelope(this.__wbg_ptr);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @returns {any}
+   */
+  create_mixer() {
+    const ret = wasm.audioengine_create_mixer(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @returns {any}
+   */
+  create_lfo() {
+    const ret = wasm.audioengine_create_lfo(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @returns {number}
+   */
+  create_filter() {
+    const ret = wasm.audioengine_create_filter(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
+  create_oscillator() {
+    const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
   }
   /**
    * @param {number} filter_id
@@ -487,7 +491,6 @@ var AudioEngine = class {
     return v1;
   }
   /**
-   * @param {number} voice_index
    * @param {number} from_node
    * @param {PortId} from_port
    * @param {number} to_node
@@ -495,20 +498,19 @@ var AudioEngine = class {
    * @param {number} amount
    * @param {WasmModulationType | undefined} [modulation_type]
    */
-  connect_voice_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
-    const ret = wasm.audioengine_connect_voice_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
+  connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type) {
+    const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
   }
   /**
-   * @param {number} voice_index
    * @param {number} from_node
    * @param {number} to_node
    * @param {PortId} to_port
    */
-  remove_specific_connection(voice_index, from_node, to_node, to_port) {
-    const ret = wasm.audioengine_remove_specific_connection(this.__wbg_ptr, voice_index, from_node, to_node, to_port);
+  remove_specific_connection(from_node, to_node, to_port) {
+    const ret = wasm.audioengine_remove_specific_connection(this.__wbg_ptr, from_node, to_node, to_port);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -525,43 +527,6 @@ var AudioEngine = class {
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
-  }
-  /**
-   * @param {number} voice_index
-   * @param {number} from_node
-   * @param {PortId} from_port
-   * @param {number} to_node
-   * @param {PortId} to_port
-   * @param {number} amount
-   * @param {WasmModulationType | undefined} [modulation_type]
-   */
-  connect_nodes(voice_index, from_node, from_port, to_node, to_port, amount, modulation_type) {
-    const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, voice_index, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
-    if (ret[1]) {
-      throw takeFromExternrefTable0(ret[0]);
-    }
-  }
-  /**
-   * @param {number} voice_index
-   * @returns {number}
-   */
-  create_filter(voice_index) {
-    const ret = wasm.audioengine_create_filter(this.__wbg_ptr, voice_index);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return ret[0] >>> 0;
-  }
-  /**
-   * @param {number} voice_index
-   * @returns {number}
-   */
-  create_oscillator(voice_index) {
-    const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr, voice_index);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return ret[0] >>> 0;
   }
   reset() {
     wasm.audioengine_reset(this.__wbg_ptr);
@@ -898,10 +863,6 @@ function __wbg_get_imports() {
     const ret = new Object();
     return ret;
   };
-  imports.wbg.__wbg_push_6edad0df4b546b2c = function(arg0, arg1) {
-    const ret = arg0.push(arg1);
-    return ret;
-  };
   imports.wbg.__wbg_set_1d80752d0d5f0b21 = function(arg0, arg1, arg2) {
     arg0[arg1 >>> 0] = arg2;
   };
@@ -1156,9 +1117,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       initSync({ module: new Uint8Array(wasmBytes) });
       this.audioEngine = new AudioEngine();
       this.audioEngine.init(sampleRate, this.numVoices);
+      const voiceLayout = this.initializeVoices();
       for (let i = 0; i < this.numVoices; i++) {
-        const voiceLayout = this.initializeVoice(i);
-        this.voiceLayouts.push(voiceLayout);
+        this.voiceLayouts.push({ ...voiceLayout, id: i });
       }
       this.initializeState();
       this.ready = true;
@@ -1202,13 +1163,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   getNextNodeId() {
     return this.nextNodeId++;
   }
-  initializeVoice(voiceIndex) {
+  initializeVoices() {
     if (!this.audioEngine) {
       throw new Error("Audio engine not initialized");
     }
-    console.log("Initializing voice:", voiceIndex);
+    console.log("Initializing voices");
     const voiceLayout = {
-      id: voiceIndex,
+      id: -1,
       nodes: {
         ["oscillator" /* Oscillator */]: [],
         ["envelope" /* Envelope */]: [],
@@ -1218,19 +1179,19 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       },
       connections: []
     };
-    const mixerId = this.audioEngine.create_mixer(voiceIndex);
+    const mixerId = this.audioEngine.create_mixer();
     console.log("#mixerID: ", mixerId);
     voiceLayout.nodes["mixer" /* Mixer */].push({
       id: mixerId,
       type: "mixer" /* Mixer */
     });
-    const filterId = this.audioEngine.create_filter(voiceIndex);
+    const filterId = this.audioEngine.create_filter();
     voiceLayout.nodes["filter" /* Filter */].push({
       id: filterId,
       type: "filter" /* Filter */
     });
     for (let i = 0; i < this.maxOscillators; i++) {
-      const oscId = this.audioEngine.create_oscillator(voiceIndex);
+      const oscId = this.audioEngine.create_oscillator();
       console.log(`Created oscillator ${i} with id ${oscId}`);
       voiceLayout.nodes["oscillator" /* Oscillator */].push({
         id: oscId,
@@ -1238,7 +1199,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       });
     }
     for (let i = 0; i < this.maxEnvelopes; i++) {
-      const result = this.audioEngine.create_envelope(voiceIndex);
+      const result = this.audioEngine.create_envelope();
       console.log(`Created envelope ${i} with id ${result.envelopeId}`);
       voiceLayout.nodes["envelope" /* Envelope */].push({
         id: result.envelopeId,
@@ -1246,7 +1207,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       });
     }
     for (let i = 0; i < this.maxLFOs; i++) {
-      const result = this.audioEngine.create_lfo(voiceIndex);
+      const result = this.audioEngine.create_lfo();
       console.log(`Created LFO ${i} with id ${result.lfoId}`);
       voiceLayout.nodes["lfo" /* LFO */].push({
         id: result.lfoId,
@@ -1262,8 +1223,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         osc1,
         osc2
       });
-      this.audioEngine.connect_voice_nodes(
-        voiceIndex,
+      this.audioEngine.connect_nodes(
         filterId,
         PortId.AudioOutput0,
         mixerId,
@@ -1271,8 +1231,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         1,
         WasmModulationType.VCA
       );
-      this.audioEngine.connect_voice_nodes(
-        voiceIndex,
+      this.audioEngine.connect_nodes(
         ampEnv.id,
         PortId.AudioOutput0,
         mixerId,
@@ -1280,8 +1239,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         1,
         WasmModulationType.VCA
       );
-      this.audioEngine.connect_voice_nodes(
-        voiceIndex,
+      this.audioEngine.connect_nodes(
         osc1.id,
         PortId.AudioOutput0,
         filterId,
@@ -1289,8 +1247,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         1,
         WasmModulationType.VCA
       );
-      this.audioEngine.connect_voice_nodes(
-        voiceIndex,
+      this.audioEngine.connect_nodes(
         osc2.id,
         PortId.AudioOutput0,
         osc1.id,
@@ -1327,14 +1284,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     return voiceLayout;
   }
-  remove_specific_connection(voice_index, from_node, to_node, to_port) {
+  remove_specific_connection(from_node, to_node, to_port) {
     if (!this.audioEngine) return;
-    this.audioEngine.remove_specific_connection(
-      voice_index,
-      from_node,
-      to_node,
-      to_port
-    );
+    this.audioEngine.remove_specific_connection(from_node, to_node, to_port);
   }
   /**
    * Port mapping check/verification:
@@ -1347,24 +1299,21 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
    * PortId.AudioOutput0 = 4
    */
   handleUpdateConnection(data) {
-    const { voiceIndex, connection } = data;
+    const { connection } = data;
     if (!this.audioEngine) return;
     try {
       console.log("Worklet handling connection update:", {
-        voiceIndex,
         connection,
         type: connection.isRemoving ? "remove" : "update",
         targetPort: connection.target
       });
       if (connection.isRemoving) {
         this.audioEngine.remove_specific_connection(
-          voiceIndex,
           connection.fromId,
           connection.toId,
           connection.target
         );
         console.log("Removed connection:", {
-          voice: voiceIndex,
           from: connection.fromId,
           to: connection.toId,
           target: connection.target
@@ -1372,21 +1321,18 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         return;
       }
       this.audioEngine.remove_specific_connection(
-        voiceIndex,
         connection.fromId,
         connection.toId,
         connection.target
       );
       console.log("Adding new connection:", {
-        voice: voiceIndex,
         from: connection.fromId,
         fromPort: PortId.AudioOutput0,
         to: connection.toId,
         target: connection.target,
         amount: connection.amount
       });
-      this.audioEngine.connect_voice_nodes(
-        voiceIndex,
+      this.audioEngine.connect_nodes(
         connection.fromId,
         PortId.AudioOutput0,
         connection.toId,
@@ -1432,30 +1378,30 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleUpdateFilter(data) {
     console.log("handle filter update:", data);
-    this.audioEngine.update_filters(data.filterId, data.config.cutoff, data.config.resonance);
+    this.audioEngine.update_filters(
+      data.filterId,
+      data.config.cutoff,
+      data.config.resonance
+    );
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;
     try {
-      for (let voiceIndex = 0; voiceIndex < this.numVoices; voiceIndex++) {
-        if (data.connection.isRemoving) {
-          this.audioEngine.remove_specific_connection(
-            voiceIndex,
-            data.connection.fromId,
-            data.connection.toId,
-            data.connection.target
-          );
-        } else {
-          this.audioEngine.connect_voice_nodes(
-            voiceIndex,
-            data.connection.fromId,
-            PortId.AudioOutput0,
-            data.connection.toId,
-            data.connection.target,
-            data.connection.amount,
-            WasmModulationType.VCA
-          );
-        }
+      if (data.connection.isRemoving) {
+        this.audioEngine.remove_specific_connection(
+          data.connection.fromId,
+          data.connection.toId,
+          data.connection.target
+        );
+      } else {
+        this.audioEngine.connect_nodes(
+          data.connection.fromId,
+          PortId.AudioOutput0,
+          data.connection.toId,
+          data.connection.target,
+          data.connection.amount,
+          WasmModulationType.VCA
+        );
       }
     } catch (err) {
       console.error("Error updating modulation:", err);

@@ -1,5 +1,5 @@
 use crate::PortId;
-use std::ops::Deref;
+use std::{default, ops::Deref};
 use wasm_bindgen::prelude::*;
 
 #[derive(Clone)]
@@ -12,6 +12,12 @@ pub struct ModulationSource {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub usize);
+
+impl Default for NodeId {
+    fn default() -> Self {
+        NodeId(0)
+    }
+}
 
 impl From<usize> for NodeId {
     fn from(value: usize) -> Self {

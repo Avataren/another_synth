@@ -30,6 +30,12 @@ pub enum PortId {
     FeedbackMod,
 }
 
+impl Default for PortId {
+    fn default() -> Self {
+        PortId::AudioInput0
+    }
+}
+
 impl PortId {
     pub fn is_audio_input(&self) -> bool {
         matches!(
