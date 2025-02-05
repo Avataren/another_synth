@@ -1,16 +1,14 @@
-use crate::{graph::ModulationType, PortId};
-
 use super::ModulationSource;
+use crate::{graph::ModulationType, PortId};
+use std::simd::{f32x4, StdFloat};
 
 pub trait ModulationProcessor {
-    // Allow nodes to specify what type of modulation to use for each port
+    #[inline]
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
             PortId::FrequencyMod => ModulationType::Bipolar,
             PortId::PhaseMod => ModulationType::Additive,
-            PortId::ModIndex => ModulationType::VCA,
-            PortId::GainMod => ModulationType::VCA,
-            _ => ModulationType::VCA,
+            PortId::ModIndex | PortId::GainMod | _ => ModulationType::VCA,
         }
     }
 
@@ -21,53 +19,69 @@ pub trait ModulationProcessor {
         initial_value: f32,
         port: PortId,
     ) -> Vec<f32> {
-        use std::simd::{f32x4, StdFloat};
-        use web_sys::console;
-
         let mut output = vec![initial_value; buffer_size];
 
-        if let Some(mod_sources) = sources {
-            // console::log_1(&format!(
-            //     "Processing modulation for port {:?}, sources: {}",
-            //     port,
-            //     mod_sources.len()
-            // ).into());
+        let Some(mod_sources) = sources else {
+            return output;
+        };
+        if mod_sources.is_empty() {
+            return output;
+        };
 
-            for source in mod_sources {
-                // console::log_1(&format!(
-                //     "Source - amount: {}, mod_type: {:?}, buffer[0]: {}",
-                //     source.amount,
-                //     source.mod_type,
-                //     source.buffer[0]
-                // ).into());
+        let preferred_type = self.get_modulation_type(port);
+        let chunks = buffer_size / 4;
+        let remainder = buffer_size % 4;
 
-                for i in (0..buffer_size).step_by(4) {
-                    let end = (i + 4).min(buffer_size);
+        // Process in SIMD chunks
+        for source in mod_sources {
+            let amount_splat = f32x4::splat(source.amount);
 
-                    let mut current_chunk = [initial_value; 4];
-                    current_chunk[0..end - i].copy_from_slice(&output[i..end]);
-                    let current = f32x4::from_array(current_chunk);
+            // Pre-calculate constants for frequency cents
+            let (cents_mul, div_1200) = if matches!(preferred_type, ModulationType::FrequencyCents)
+            {
+                (f32x4::splat(100.0), f32x4::splat(1200.0))
+            } else {
+                (f32x4::splat(0.0), f32x4::splat(0.0))
+            };
 
-                    let mut mod_chunk = [0.0; 4];
-                    mod_chunk[0..end - i].copy_from_slice(&source.buffer[i..end]);
-                    let modulation = f32x4::from_array(mod_chunk);
+            // Main SIMD loop
+            for i in 0..chunks {
+                let idx = i * 4;
+                let current = f32x4::from_slice(&output[idx..]);
+                let modulation = f32x4::from_slice(&source.buffer[idx..]);
 
-                    // Use the port's preferred modulation type
-                    let preferred_type = self.get_modulation_type(port);
-                    let processed = match preferred_type {
-                        ModulationType::VCA => current * modulation * f32x4::splat(source.amount),
-                        ModulationType::Bipolar => {
-                            //current
-                            //  * (f32x4::splat(1.0) + (modulation * f32x4::splat(source.amount)))
-                            let cents = modulation * f32x4::splat(source.amount * 100.0); // Convert to cents
-                            (cents / f32x4::splat(1200.0)).exp2()
+                let processed = match preferred_type {
+                    ModulationType::VCA => current * modulation * amount_splat,
+                    ModulationType::FrequencyCents => {
+                        let cents = modulation * amount_splat * cents_mul;
+                        (cents / div_1200).exp2()
+                    }
+                    ModulationType::Bipolar => {
+                        current * (f32x4::splat(1.0) + (modulation * amount_splat))
+                    }
+                    ModulationType::Additive => current + (modulation * amount_splat),
+                };
+
+                processed.copy_to_slice(&mut output[idx..idx + 4]);
+            }
+
+            // Handle remaining elements
+            if remainder > 0 {
+                let start = chunks * 4;
+                for i in 0..remainder {
+                    let idx = start + i;
+                    let current = output[idx];
+                    let modulation = source.buffer[idx];
+
+                    output[idx] = match preferred_type {
+                        ModulationType::VCA => current * modulation * source.amount,
+                        ModulationType::FrequencyCents => {
+                            let cents = modulation * source.amount * 100.0;
+                            (cents / 1200.0).exp2()
                         }
-                        ModulationType::Additive => {
-                            current + (modulation * f32x4::splat(source.amount))
-                        }
+                        ModulationType::Bipolar => current * (1.0 + (modulation * source.amount)),
+                        ModulationType::Additive => current + (modulation * source.amount),
                     };
-
-                    output[i..end].copy_from_slice(&processed.to_array()[0..end - i]);
                 }
             }
         }

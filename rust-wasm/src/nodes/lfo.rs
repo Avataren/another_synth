@@ -245,7 +245,7 @@ impl AudioNode for Lfo {
                                 *res *= 1.0 + (src * source.amount);
                             }
                         }
-                        ModulationType::VCA => {
+                        _ => {
                             for (res, &src) in result.iter_mut().zip(source.buffer.iter()) {
                                 *res *= 1.0 + (src * source.amount);
                             }

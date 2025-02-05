@@ -110,7 +110,7 @@ impl ModulatableOscillator {
 impl ModulationProcessor for ModulatableOscillator {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
-            PortId::FrequencyMod => ModulationType::Bipolar,
+            PortId::FrequencyMod => ModulationType::FrequencyCents,
             PortId::PhaseMod => ModulationType::Additive,
             PortId::ModIndex => ModulationType::VCA,
             PortId::GainMod => ModulationType::VCA,

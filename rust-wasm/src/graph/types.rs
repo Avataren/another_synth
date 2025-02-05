@@ -59,6 +59,7 @@ pub enum ModulationType {
     VCA = 0,
     Bipolar = 1,
     Additive = 2,
+    FrequencyCents = 3,
 }
 
 impl Default for ModulationType {
