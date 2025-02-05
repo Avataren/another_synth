@@ -83,6 +83,14 @@ impl ModulatableOscillator {
         }
     }
 
+    fn calculate_freq_mod(&self, mod_value: f32) -> f32 {
+        // Convert mod_value (-1 to 1) to cents deviation based on freq_mod_amount
+        // freq_mod_amount now represents maximum cents deviation
+        let cents_deviation = mod_value * self.freq_mod_amount;
+        // Convert cents to frequency multiplier
+        2.0f32.powf(cents_deviation / 1200.0)
+    }
+
     /// Update parameters including the new feedback parameter.
     pub fn update_params(&mut self, params: &OscillatorStateUpdate) {
         self.phase_mod_amount = params.phase_mod_amount;
@@ -102,7 +110,7 @@ impl ModulatableOscillator {
 impl ModulationProcessor for ModulatableOscillator {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
-            PortId::FrequencyMod => ModulationType::VCA,
+            PortId::FrequencyMod => ModulationType::Bipolar,
             PortId::PhaseMod => ModulationType::Additive,
             PortId::ModIndex => ModulationType::VCA,
             PortId::GainMod => ModulationType::VCA,
@@ -198,7 +206,9 @@ impl AudioNode for ModulatableOscillator {
 
                     // Calculate effective (detuned and frequency-modulated) frequency.
                     let detuned_freq = self.get_detuned_frequency(freq_sample);
-                    let modulated_freq = detuned_freq * (1.0 + freq_mod_sample);
+
+                    //let modulated_freq = detuned_freq * self.calculate_freq_mod(freq_mod_sample);
+                    let modulated_freq = detuned_freq * freq_mod_sample;
                     let phase_inc = TWO_PI * modulated_freq / self.sample_rate;
                     self.phase += phase_inc;
 
@@ -270,7 +280,10 @@ impl AudioNode for ModulatableOscillator {
                     let detuned_freq_simd = f32x4::from_array(detuned_array);
 
                     // Calculate the modulated frequency and the phase increment.
-                    let modulated_freq = detuned_freq_simd * (f32x4::splat(1.0) + freq_mod_simd);
+                    let modulated_freq = detuned_freq_simd * freq_mod_simd;
+                    // let modulated_freq = detuned_freq_simd
+                    //     * (f32x4::splat(1.0)
+                    //         + (freq_mod_simd * f32x4::splat(self.freq_mod_amount)));
                     let phase_inc =
                         f32x4::splat(TWO_PI) * modulated_freq / f32x4::splat(self.sample_rate);
                     let phase_inc_arr = phase_inc.to_array();

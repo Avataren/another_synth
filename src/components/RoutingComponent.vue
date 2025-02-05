@@ -60,14 +60,11 @@
 
               <!-- Amount Slider -->
               <div class="col-3">
-                <q-slider
+                <amount-slider
                   v-model="route.amount"
-                  :min="-1"
-                  :max="1"
-                  :step="0.01"
-                  label
-                  label-always
-                  dark
+                  :min="0"
+                  :max="100"
+                  :step="0.5"
                   @update:model-value="
                     (val) => handleAmountChange(index, Number(val))
                   "
@@ -107,6 +104,7 @@ import {
   type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
 import { type PortId } from 'app/public/wasm/audio_processor';
+import AmountSlider from './AmountSlider.vue';
 
 interface Props {
   sourceId: number;

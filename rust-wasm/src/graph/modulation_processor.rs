@@ -57,8 +57,10 @@ pub trait ModulationProcessor {
                     let processed = match preferred_type {
                         ModulationType::VCA => current * modulation * f32x4::splat(source.amount),
                         ModulationType::Bipolar => {
-                            current
-                                * (f32x4::splat(1.0) + (modulation * f32x4::splat(source.amount)))
+                            //current
+                            //  * (f32x4::splat(1.0) + (modulation * f32x4::splat(source.amount)))
+                            let cents = modulation * f32x4::splat(source.amount * 100.0); // Convert to cents
+                            (cents / f32x4::splat(1200.0)).exp2()
                         }
                         ModulationType::Additive => {
                             current + (modulation * f32x4::splat(source.amount))
