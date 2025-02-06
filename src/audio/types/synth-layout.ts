@@ -190,7 +190,10 @@ export function getModulationTargetsForType(
         { value: PortId.StereoPan, label: PORT_LABELS[PortId.StereoPan] },
       ];
     case VoiceNodeType.LFO:
-      return [{ value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] }];
+      return [
+        { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
+        { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
+      ];
     case VoiceNodeType.Envelope:
       return [
         { value: PortId.GainMod, label: 'Gain' },

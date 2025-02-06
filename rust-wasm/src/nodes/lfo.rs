@@ -224,7 +224,7 @@ impl Lfo {
 impl ModulationProcessor for Lfo {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
-            PortId::Frequency => ModulationType::Bipolar,
+            PortId::FrequencyMod => ModulationType::VCA,
             PortId::Gate => ModulationType::Additive,
             PortId::GainMod => ModulationType::VCA,
             _ => ModulationType::VCA,
@@ -235,7 +235,7 @@ impl ModulationProcessor for Lfo {
 impl AudioNode for Lfo {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
-        ports.insert(PortId::Frequency, false);
+        ports.insert(PortId::FrequencyMod, false);
         ports.insert(PortId::Gate, false);
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::AudioOutput0, true);
@@ -255,7 +255,7 @@ impl AudioNode for Lfo {
         // no modulation results in an unchanged value.
         let freq_mod = self.process_modulations(
             buffer_size,
-            inputs.get(&PortId::Frequency),
+            inputs.get(&PortId::FrequencyMod),
             1.0,
             PortId::Frequency,
         );
