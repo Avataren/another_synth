@@ -109,6 +109,7 @@ export default class Instrument {
         useAbsolute: state.useAbsolute,
         useNormalized: state.useNormalized,
         triggerMode: state.triggerMode,
+        gain: state.gain,
         active: state.active, // Add the active state
       },
     });

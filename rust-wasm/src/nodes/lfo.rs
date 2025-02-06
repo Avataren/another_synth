@@ -24,7 +24,7 @@ struct LfoTables {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoTriggerMode {
     None,     // LFO runs freely
-    Envelope, // Trigger lfo on gate
+    Envelope, // Trigger LFO on gate
 }
 
 impl LfoTriggerMode {
@@ -91,6 +91,7 @@ impl LfoTables {
 pub struct Lfo {
     phase: f32,
     frequency: f32,
+    gain: f32,
     waveform: LfoWaveform,
     phase_offset: f32,
     sample_rate: f32,
@@ -103,11 +104,13 @@ pub struct Lfo {
 
 impl Lfo {
     pub fn new(sample_rate: f32) -> Self {
+        // Initialize the lookup tables once.
         LFO_TABLES.get_or_init(LfoTables::new);
 
         Self {
             phase: 0.0,
             frequency: 1.0,
+            gain: 1.0,
             waveform: LfoWaveform::Sine,
             phase_offset: 0.0,
             sample_rate,
@@ -119,9 +122,20 @@ impl Lfo {
         }
     }
 
+    /// Public method used by external callers (e.g. for free‑running LFOs).
+    /// It always advances the phase using the current static frequency.
     pub fn advance_phase(&mut self) {
-        let phase_increment = self.frequency / self.sample_rate;
+        self.advance_phase_with(self.frequency);
+    }
+
+    /// Private helper to advance the phase by a given frequency.
+    /// This is used internally so that we can apply frequency modulation.
+    fn advance_phase_with(&mut self, current_freq: f32) {
+        let phase_increment = current_freq / self.sample_rate;
         self.phase = (self.phase + phase_increment) % 1.0;
+    }
+    pub fn set_gain(&mut self, gain: f32) {
+        self.gain = gain;
     }
 
     pub fn set_frequency(&mut self, freq: f32) {
@@ -144,20 +158,19 @@ impl Lfo {
         self.trigger_mode = mode;
     }
 
+    /// Returns a sample and advances the phase. The frequency used for phase advancement
+    /// is taken as the effective frequency for that sample.
     fn get_sample(&mut self, current_freq: f32) -> f32 {
         let tables = LFO_TABLES.get().unwrap();
         let table = tables.get_table(self.waveform);
 
         let table_phase = self.phase;
         let table_index = table_phase * TABLE_SIZE as f32;
-
         let index1 = (table_index as usize) & TABLE_MASK;
         let index2 = (index1 + 1) & TABLE_MASK;
         let fraction = table_index - table_index.floor();
 
-        let sample1 = table[index1];
-        let sample2 = table[index2];
-        let mut sample = sample1 + (sample2 - sample1) * fraction;
+        let mut sample = table[index1] + (table[index2] - table[index1]) * fraction;
 
         if self.use_absolute {
             sample = sample.abs();
@@ -166,12 +179,12 @@ impl Lfo {
             sample = (sample + 1.0) * 0.5;
         }
 
-        let phase_increment = current_freq / self.sample_rate;
-        self.phase = (self.phase + phase_increment) % 1.0;
+        self.advance_phase_with(current_freq);
 
         sample
     }
 
+    /// Returns waveform data from the corresponding lookup table.
     pub fn get_waveform_data(waveform: LfoWaveform, buffer_size: usize) -> Vec<f32> {
         let tables = LFO_TABLES.get_or_init(LfoTables::new);
         let table = tables.get_table(waveform);
@@ -203,11 +216,17 @@ impl Lfo {
     }
 }
 
+// === Modulation Processor Implementation ===
+//
+// Here we override `get_modulation_type` for the ports we use in this node. In this
+// refactoring we want frequency and gain modulation to be bipolar (i.e. to produce a
+// multiplier of (1.0 + modulation)) while gate modulation remains additive.
 impl ModulationProcessor for Lfo {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
-            PortId::Frequency => ModulationType::VCA,
+            PortId::Frequency => ModulationType::Bipolar,
             PortId::Gate => ModulationType::Additive,
+            PortId::GainMod => ModulationType::VCA,
             _ => ModulationType::VCA,
         }
     }
@@ -218,6 +237,7 @@ impl AudioNode for Lfo {
         let mut ports = HashMap::new();
         ports.insert(PortId::Frequency, false);
         ports.insert(PortId::Gate, false);
+        ports.insert(PortId::GainMod, false);
         ports.insert(PortId::AudioOutput0, true);
         ports
     }
@@ -228,73 +248,44 @@ impl AudioNode for Lfo {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Helper function to process inputs
-        let process_input = |sources: Option<&Vec<ModulationSource>>, default: f32| -> Vec<f32> {
-            let mut result = vec![default; buffer_size];
+        // Use the modulation processor to obtain per‑sample modulation data.
+        //
+        // For frequency and gain modulation we choose an initial value of 1.0 so that,
+        // when multiplied by the static parameter (self.frequency or self.gain),
+        // no modulation results in an unchanged value.
+        let freq_mod = self.process_modulations(
+            buffer_size,
+            inputs.get(&PortId::Frequency),
+            1.0,
+            PortId::Frequency,
+        );
+        let gate_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0, PortId::Gate);
+        let gain_mod = self.process_modulations(
+            buffer_size,
+            inputs.get(&PortId::GainMod),
+            1.0,
+            PortId::GainMod,
+        );
 
-            if let Some(sources) = sources {
-                for source in sources {
-                    match source.mod_type {
-                        ModulationType::Additive => {
-                            for (res, &src) in result.iter_mut().zip(source.buffer.iter()) {
-                                *res += src * source.amount;
-                            }
-                        }
-                        ModulationType::Bipolar => {
-                            for (res, &src) in result.iter_mut().zip(source.buffer.iter()) {
-                                *res *= 1.0 + (src * source.amount);
-                            }
-                        }
-                        _ => {
-                            for (res, &src) in result.iter_mut().zip(source.buffer.iter()) {
-                                *res *= 1.0 + (src * source.amount);
-                            }
-                        }
-                    }
-                }
-            }
-
-            result
-        };
-
-        // Process inputs
-        let freq_input = process_input(inputs.get(&PortId::Frequency), self.frequency);
-        let gate_input = process_input(inputs.get(&PortId::Gate), 0.0);
-
-        // Process in chunks
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-            for i in (0..buffer_size).step_by(4) {
-                let end = (i + 4).min(buffer_size);
-
-                // Handle gate input for trigger mode
-                let mut gate_chunk = [0.0; 4];
-                gate_chunk[0..end - i].copy_from_slice(&gate_input[i..end]);
-                let gate_values = f32x4::from_array(gate_chunk);
-                let gate_array = gate_values.to_array();
-
-                for j in 0..(end - i) {
-                    let current_gate = gate_array[j];
-                    match self.trigger_mode {
-                        LfoTriggerMode::Envelope => {
-                            if current_gate > 0.0 && self.last_gate <= 0.0 {
-                                self.reset();
-                            }
-                        }
-                        LfoTriggerMode::None => {}
+            // Process each sample (you can still process in SIMD chunks for the gate if desired)
+            for i in 0..buffer_size {
+                // If using envelope trigger mode, check for a rising edge on the gate.
+                if self.trigger_mode == LfoTriggerMode::Envelope {
+                    if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
+                        self.reset();
                     }
-                    self.last_gate = current_gate;
+                    self.last_gate = gate_mod[i];
                 }
 
-                // Generate output with frequency modulation
-                let mut values = [0.0f32; 4];
-                let mut freq_chunk = [self.frequency; 4];
-                freq_chunk[0..end - i].copy_from_slice(&freq_input[i..end]);
+                // Compute the effective frequency: apply frequency modulation
+                let effective_freq = self.frequency * freq_mod[i];
+                let sample = self.get_sample(effective_freq);
 
-                for j in 0..(end - i) {
-                    values[j] = self.get_sample(freq_chunk[j]);
-                }
-
-                output[i..end].copy_from_slice(&values[0..end - i]);
+                // Compute the effective gain: multiply the static gain by the gain modulation.
+                let effective_gain = self.gain * gain_mod[i];
+                output[i] = sample * effective_gain;
             }
         }
     }

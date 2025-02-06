@@ -266,6 +266,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               useAbsolute: false,
               useNormalized: false,
               triggerMode: 0,
+              gain: 1.0,
               active: false,
             });
           }
@@ -294,6 +295,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         useAbsolute: state.useAbsolute,
         useNormalized: state.useNormalized,
         triggerMode: state.triggerMode,
+        gain: state.gain,
         active: state.active, // Add this line
       });
     },

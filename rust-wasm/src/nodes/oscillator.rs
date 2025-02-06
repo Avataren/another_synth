@@ -218,7 +218,7 @@ impl AudioNode for ModulatableOscillator {
                         phase_mod_sample * self.phase_mod_amount * mod_index_sample;
 
                     // Feedback processing.
-                    let fb_multiplier = feedback_mod_sample; // + 1.0;
+                    let fb_multiplier = feedback_mod_sample;
                     let effective_feedback = self.feedback_amount * fb_multiplier;
                     let scaled_feedback = effective_feedback * (std::f32::consts::PI / 2.0);
                     let feedback_val =

@@ -730,6 +730,19 @@ export class LfoUpdateParams {
         wasm.__wbg_set_lfoupdateparams_trigger_mode(this.__wbg_ptr, arg0);
     }
     /**
+     * @returns {number}
+     */
+    get gain() {
+        const ret = wasm.__wbg_get_envelopeconfig_sustain(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set gain(arg0) {
+        wasm.__wbg_set_envelopeconfig_sustain(this.__wbg_ptr, arg0);
+    }
+    /**
      * @returns {boolean}
      */
     get active() {
@@ -749,10 +762,11 @@ export class LfoUpdateParams {
      * @param {boolean} use_absolute
      * @param {boolean} use_normalized
      * @param {number} trigger_mode
+     * @param {number} gain
      * @param {boolean} active
      */
-    constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, active) {
-        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, active);
+    constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, gain, active) {
+        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, gain, active);
         this.__wbg_ptr = ret >>> 0;
         LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
         return this;

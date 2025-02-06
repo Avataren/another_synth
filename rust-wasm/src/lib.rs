@@ -56,7 +56,8 @@ pub struct LfoUpdateParams {
     pub use_absolute: bool,
     pub use_normalized: bool,
     pub trigger_mode: u8,
-    pub active: bool, // Add this field
+    pub gain: f32,
+    pub active: bool,
 }
 
 #[derive(Serialize, Debug)]
@@ -95,7 +96,8 @@ impl LfoUpdateParams {
         use_absolute: bool,
         use_normalized: bool,
         trigger_mode: u8,
-        active: bool, // Add this parameter
+        gain: f32,
+        active: bool,
     ) -> LfoUpdateParams {
         LfoUpdateParams {
             lfo_id,
@@ -104,6 +106,7 @@ impl LfoUpdateParams {
             use_absolute,
             use_normalized,
             trigger_mode,
+            gain,
             active,
         }
     }
@@ -478,6 +481,7 @@ impl AudioEngine {
                         _ => LfoWaveform::Sine,
                     };
 
+                    lfo.set_gain(params.gain);
                     lfo.set_frequency(params.frequency);
                     lfo.set_waveform(waveform);
                     lfo.set_use_absolute(params.use_absolute);

@@ -72,6 +72,7 @@ export interface LfoUpdateData {
     useAbsolute: boolean;
     useNormalized: boolean;
     triggerMode: number;
+    gain: number;
     active: boolean;
   };
 }
@@ -675,6 +676,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.params.useAbsolute,
         data.params.useNormalized,
         data.params.triggerMode,
+        data.params.gain,
         data.params.active,
       );
       this.audioEngine.update_lfos(lfoParams);

@@ -55,6 +55,16 @@
           :decimals="0"
           @update:modelValue="handleTriggerModeChange"
         />
+
+        <audio-knob-component
+          v-model="lfoState.gain"
+          label="Gain"
+          :min="-5"
+          :max="5"
+          :step="0.001"
+          :decimals="2"
+          @update:modelValue="handleGainChange"
+        />
       </div>
       <routing-component
         :source-id="props.nodeId"
@@ -106,6 +116,7 @@ const lfoState = computed({
         useAbsolute: false,
         useNormalized: false,
         triggerMode: 0,
+        gain: 1.0,
         active: true,
       };
     }
@@ -130,6 +141,15 @@ const handleFrequencyChange = (newFrequency: number) => {
   };
   store.lfoStates.set(props.nodeId, currentState);
 };
+
+const handleGainChange = (newGain: number) => {
+  const currentState = {
+    ...lfoState.value,
+    gain: newGain,
+  };
+  store.lfoStates.set(props.nodeId, currentState);
+};
+
 
 const handleWaveformChange = async (newWaveform: number) => {
   const currentState = {
@@ -246,6 +266,7 @@ watch(
         useAbsolute: newState?.useAbsolute ?? false,
         useNormalized: newState?.useNormalized ?? false,
         triggerMode: newState?.triggerMode ?? 0,
+        gain: newState?.gain ?? 1,
         active: newState?.active ?? true,
       };
 
