@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::simd::f32x4;
+use std::simd::num::SimdFloat;
+use std::simd::{f32x4, StdFloat};
 use std::sync::OnceLock;
 
 use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
@@ -134,6 +135,7 @@ impl Lfo {
         let phase_increment = current_freq / self.sample_rate;
         self.phase = (self.phase + phase_increment) % 1.0;
     }
+
     pub fn set_gain(&mut self, gain: f32) {
         self.gain = gain;
     }
@@ -158,8 +160,8 @@ impl Lfo {
         self.trigger_mode = mode;
     }
 
-    /// Returns a sample and advances the phase. The frequency used for phase advancement
-    /// is taken as the effective frequency for that sample.
+    /// Returns a sample and advances the phase.
+    /// This method is used in the scalar (envelope‑trigger) path.
     fn get_sample(&mut self, current_freq: f32) -> f32 {
         let tables = LFO_TABLES.get().unwrap();
         let table = tables.get_table(self.waveform);
@@ -185,27 +187,69 @@ impl Lfo {
     }
 
     /// Returns waveform data from the corresponding lookup table.
+    ///
+    /// This version uses SIMD to fill the buffer in blocks of 4 samples at a time.
     pub fn get_waveform_data(waveform: LfoWaveform, buffer_size: usize) -> Vec<f32> {
         let tables = LFO_TABLES.get_or_init(LfoTables::new);
         let table = tables.get_table(waveform);
         let mut buffer = vec![0.0; buffer_size];
         let phase_increment = 1.0 / buffer_size as f32;
         let mut phase = 0.0;
+        let table_size_f = TABLE_SIZE as f32;
+        let mut i = 0;
 
-        for buffer_value in buffer.iter_mut() {
-            let table_index = phase * TABLE_SIZE as f32;
-            let index1 = (table_index as usize) & TABLE_MASK;
-            let index2 = (index1 + 1) & TABLE_MASK;
+        // Process in SIMD blocks of 4 samples.
+        while i + 4 <= buffer_size {
+            let phases = f32x4::from_array([
+                phase,
+                phase + phase_increment,
+                phase + 2.0 * phase_increment,
+                phase + 3.0 * phase_increment,
+            ]);
+            let table_indices = phases * f32x4::splat(table_size_f);
+            let index_f = table_indices.floor();
+            let fraction = table_indices - index_f;
+
+            // Compute the lookup indices (wrapping around via TABLE_MASK)
+            let i0 = (index_f[0] as usize) & TABLE_MASK;
+            let i1 = (index_f[1] as usize) & TABLE_MASK;
+            let i2 = (index_f[2] as usize) & TABLE_MASK;
+            let i3 = (index_f[3] as usize) & TABLE_MASK;
+            let i0_next = (i0 + 1) & TABLE_MASK;
+            let i1_next = (i1 + 1) & TABLE_MASK;
+            let i2_next = (i2 + 1) & TABLE_MASK;
+            let i3_next = (i3 + 1) & TABLE_MASK;
+
+            // Linear interpolation for each lane.
+            let sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
+            let sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
+            let sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
+            let sample3 = table[i3] + (table[i3_next] - table[i3]) * fraction[3];
+
+            buffer[i] = sample0;
+            buffer[i + 1] = sample1;
+            buffer[i + 2] = sample2;
+            buffer[i + 3] = sample3;
+
+            phase += 4.0 * phase_increment;
+            if phase >= 1.0 {
+                phase -= 1.0;
+            }
+            i += 4;
+        }
+
+        // Process any remaining samples.
+        while i < buffer_size {
+            let table_index = phase * table_size_f;
+            let index = (table_index as usize) & TABLE_MASK;
+            let index_next = (index + 1) & TABLE_MASK;
             let fraction = table_index - table_index.floor();
-
-            let sample1 = table[index1];
-            let sample2 = table[index2];
-            *buffer_value = sample1 + (sample2 - sample1) * fraction;
-
+            buffer[i] = table[index] + (table[index_next] - table[index]) * fraction;
             phase += phase_increment;
             if phase >= 1.0 {
                 phase -= 1.0;
             }
+            i += 1;
         }
 
         buffer
@@ -218,9 +262,7 @@ impl Lfo {
 
 // === Modulation Processor Implementation ===
 //
-// Here we override `get_modulation_type` for the ports we use in this node. In this
-// refactoring we want frequency and gain modulation to be bipolar (i.e. to produce a
-// multiplier of (1.0 + modulation)) while gate modulation remains additive.
+// Here we override `get_modulation_type` for the ports we use in this node.
 impl ModulationProcessor for Lfo {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
@@ -248,16 +290,13 @@ impl AudioNode for Lfo {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Use the modulation processor to obtain per‑sample modulation data.
-        //
-        // For frequency and gain modulation we choose an initial value of 1.0 so that,
-        // when multiplied by the static parameter (self.frequency or self.gain),
-        // no modulation results in an unchanged value.
+        // Retrieve per‑sample modulation arrays.
+        // For frequency and gain modulation we start with a “neutral” multiplier (1.0).
         let freq_mod = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::FrequencyMod),
             1.0,
-            PortId::Frequency,
+            PortId::FrequencyMod,
         );
         let gate_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0, PortId::Gate);
@@ -269,23 +308,120 @@ impl AudioNode for Lfo {
         );
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-            // Process each sample (you can still process in SIMD chunks for the gate if desired)
-            for i in 0..buffer_size {
-                // If using envelope trigger mode, check for a rising edge on the gate.
-                if self.trigger_mode == LfoTriggerMode::Envelope {
+            // If using free‑running mode, we can process in SIMD blocks.
+            if self.trigger_mode == LfoTriggerMode::None {
+                let table = LFO_TABLES.get().unwrap().get_table(self.waveform);
+                let table_size_f = TABLE_SIZE as f32;
+                let sample_rate = self.sample_rate;
+                let base_frequency = self.frequency;
+                let mut phase = self.phase;
+                let mut i = 0;
+                while i + 4 <= buffer_size {
+                    // Compute per‑sample effective frequencies.
+                    let freq0 = base_frequency * freq_mod[i];
+                    let freq1 = base_frequency * freq_mod[i + 1];
+                    let freq2 = base_frequency * freq_mod[i + 2];
+                    let freq3 = base_frequency * freq_mod[i + 3];
+                    let inc0 = freq0 / sample_rate;
+                    let inc1 = freq1 / sample_rate;
+                    let inc2 = freq2 / sample_rate;
+                    let inc3 = freq3 / sample_rate;
+
+                    // Compute the phases for the four samples.
+                    let p0 = phase;
+                    let p1 = p0 + inc0;
+                    let p2 = p1 + inc1;
+                    let p3 = p2 + inc2;
+                    let phases = f32x4::from_array([p0, p1, p2, p3]);
+
+                    // Lookup table index and interpolation.
+                    let table_indices = phases * f32x4::splat(table_size_f);
+                    let index_f = table_indices.floor();
+                    let fraction = table_indices - index_f;
+                    let i0 = (index_f[0] as usize) & TABLE_MASK;
+                    let i1 = (index_f[1] as usize) & TABLE_MASK;
+                    let i2 = (index_f[2] as usize) & TABLE_MASK;
+                    let i3 = (index_f[3] as usize) & TABLE_MASK;
+                    let i0_next = (i0 + 1) & TABLE_MASK;
+                    let i1_next = (i1 + 1) & TABLE_MASK;
+                    let i2_next = (i2 + 1) & TABLE_MASK;
+                    let i3_next = (i3 + 1) & TABLE_MASK;
+
+                    let sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
+                    let sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
+                    let sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
+                    let sample3 = table[i3] + (table[i3_next] - table[i3]) * fraction[3];
+
+                    // Apply use_absolute / normalized settings.
+                    let mut sample_vec = f32x4::from_array([sample0, sample1, sample2, sample3]);
+                    if self.use_absolute {
+                        sample_vec = sample_vec.abs();
+                    }
+                    if self.use_normalized {
+                        sample_vec = (sample_vec + f32x4::splat(1.0)) * f32x4::splat(0.5);
+                    }
+
+                    // Apply gain modulation.
+                    let gain0 = self.gain * gain_mod[i];
+                    let gain1 = self.gain * gain_mod[i + 1];
+                    let gain2 = self.gain * gain_mod[i + 2];
+                    let gain3 = self.gain * gain_mod[i + 3];
+                    let gain_vec = f32x4::from_array([gain0, gain1, gain2, gain3]);
+                    sample_vec = sample_vec * gain_vec;
+
+                    // Store the computed samples.
+                    let out = sample_vec.to_array();
+                    output[i] = out[0];
+                    output[i + 1] = out[1];
+                    output[i + 2] = out[2];
+                    output[i + 3] = out[3];
+
+                    // Advance phase: note that the final phase for this block is computed as:
+                    // p3 + (inc3 computed below)
+                    phase = p3 + inc3;
+                    if phase >= 1.0 {
+                        phase %= 1.0;
+                    }
+                    i += 4;
+                }
+                self.phase = phase;
+                // Process any remaining samples in scalar.
+                for j in i..buffer_size {
+                    let freq = base_frequency * freq_mod[j];
+                    let inc = freq / sample_rate;
+                    let table_index = phase * table_size_f;
+                    let index = (table_index as usize) & TABLE_MASK;
+                    let index_next = (index + 1) & TABLE_MASK;
+                    let fraction = table_index - table_index.floor();
+                    let mut sample = table[index] + (table[index_next] - table[index]) * fraction;
+                    if self.use_absolute {
+                        sample = sample.abs();
+                    }
+                    if self.use_normalized {
+                        sample = (sample + 1.0) * 0.5;
+                    }
+                    let effective_gain = self.gain * gain_mod[j];
+                    output[j] = sample * effective_gain;
+                    phase += inc;
+                    if phase >= 1.0 {
+                        phase -= 1.0;
+                    }
+                }
+                self.phase = phase;
+            } else {
+                // In envelope‑trigger mode we must check for rising edges on each sample.
+                // We fall back to the scalar loop in this case.
+                for i in 0..buffer_size {
                     if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
                         self.reset();
                     }
                     self.last_gate = gate_mod[i];
+
+                    let effective_freq = self.frequency * freq_mod[i];
+                    let sample = self.get_sample(effective_freq);
+                    let effective_gain = self.gain * gain_mod[i];
+                    output[i] = sample * effective_gain;
                 }
-
-                // Compute the effective frequency: apply frequency modulation
-                let effective_freq = self.frequency * freq_mod[i];
-                let sample = self.get_sample(effective_freq);
-
-                // Compute the effective gain: multiply the static gain by the gain modulation.
-                let effective_gain = self.gain * gain_mod[i];
-                output[i] = sample * effective_gain;
             }
         }
     }
