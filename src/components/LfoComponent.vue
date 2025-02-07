@@ -23,58 +23,59 @@
           label="Absolute"
           @update:modelValue="handleAbsoluteChange"
         />
-      </div>
 
-      <div class="knob-group">
-        <audio-knob-component
-          v-model="lfoState.frequency"
-          label="Frequency"
-          :min="0.01"
-          :max="20"
-          :step="0.01"
-          :decimals="2"
-          @update:modelValue="handleFrequencyChange"
-        />
-
-        <audio-knob-component
-          v-model="waveform"
-          label="Waveform"
-          :min="0"
-          :max="3"
-          :step="1"
-          :decimals="0"
-          @update:modelValue="handleWaveformChange"
-        />
-
-        <audio-knob-component
+        <q-toggle
           v-model="triggerMode"
           label="Trigger"
-          :min="0"
-          :max="1"
-          :step="1"
-          :decimals="0"
           @update:modelValue="handleTriggerModeChange"
         />
+      </div>
 
-        <audio-knob-component
-          v-model="lfoState.gain"
-          label="Gain"
-          :min="-5"
-          :max="5"
-          :step="0.001"
-          :decimals="2"
-          @update:modelValue="handleGainChange"
-        />
+      <div class="controls-and-waveform">
+        <div class="knob-group">
+          <audio-knob-component
+            v-model="lfoState.frequency"
+            label="Frequency"
+            :min="0.01"
+            :max="20"
+            :step="0.01"
+            :decimals="2"
+            @update:modelValue="handleFrequencyChange"
+          />
+
+          <div class="waveform-container">
+            <div class="waveform-control">
+              <audio-knob-component
+                v-model="waveform"
+                label="Waveform"
+                :min="0"
+                :max="3"
+                :step="1"
+                :decimals="0"
+                @update:modelValue="handleWaveformChange"
+              />
+              <div class="canvas-wrapper">
+                <canvas ref="waveformCanvas"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <audio-knob-component
+            v-model="lfoState.gain"
+            label="Gain"
+            :min="-5"
+            :max="5"
+            :step="0.001"
+            :decimals="2"
+            @update:modelValue="handleGainChange"
+          />
+        </div>
       </div>
       <routing-component
         :source-id="props.nodeId"
         :source-type="VoiceNodeType.LFO"
         :debug="true"
       />
-      <!-- Waveform visualization -->
-      <div class="canvas-wrapper">
-        <canvas ref="waveformCanvas"></canvas>
-      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -102,7 +103,7 @@ const store = useAudioSystemStore();
 const { lfoStates } = storeToRefs(store);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 const waveform = ref<number>(0);
-const triggerMode = ref<number>(0);
+const triggerMode = ref<boolean>(false);
 
 // Create a reactive reference to the LFO state
 const lfoState = computed({
@@ -150,7 +151,6 @@ const handleGainChange = (newGain: number) => {
   store.lfoStates.set(props.nodeId, currentState);
 };
 
-
 const handleWaveformChange = async (newWaveform: number) => {
   const currentState = {
     ...lfoState.value,
@@ -160,10 +160,10 @@ const handleWaveformChange = async (newWaveform: number) => {
   await updateWaveformDisplay();
 };
 
-const handleTriggerModeChange = (newTriggerMode: number) => {
+const handleTriggerModeChange = (newTriggerMode: boolean) => {
   const currentState = {
     ...lfoState.value,
-    triggerMode: newTriggerMode,
+    triggerMode: newTriggerMode ? 1 : 0,
   };
   store.lfoStates.set(props.nodeId, currentState);
 };
@@ -211,28 +211,49 @@ const updateWaveformDisplay = async () => {
   ctx.clearRect(0, 0, width, height);
 
   try {
-    // Check if the store and instrument are ready
     if (!store.currentInstrument?.isReady) {
-      // Use the public getter
-      // If not ready, retry after a short delay
       setTimeout(updateWaveformDisplay, 100);
       return;
     }
 
-    // Get waveform data from the WASM module
     const waveformData = await store.currentInstrument.getLfoWaveform(
       lfoState.value.waveform,
       width,
     );
 
+    // Set up gradients and styling
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, 'rgba(33, 150, 243, 0.1)'); // Light blue
+    gradient.addColorStop(1, 'rgba(33, 150, 243, 0.3)'); // Darker blue
+
+    // Draw background
+    ctx.fillStyle = '#f8f9fa'; // Light gray background
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw grid lines
+    ctx.strokeStyle = 'rgba(33, 150, 243, 0.1)';
+    ctx.lineWidth = 1;
+
+    // Vertical grid lines
+    for (let x = 0; x < width; x += width / 8) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+
+    // Horizontal grid lines
+    for (let y = 0; y < height; y += height / 4) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+
     // Draw the waveform
     ctx.beginPath();
-    ctx.strokeStyle = '#2196F3'; // Blue color
-    ctx.lineWidth = 2;
-
     for (let i = 0; i < waveformData.length; i++) {
       const x = i;
-      // Map the y value from [-1, 1] to [0, height]
       const y = ((1 - waveformData[i]!) * height) / 2;
 
       if (i === 0) {
@@ -242,11 +263,30 @@ const updateWaveformDisplay = async () => {
       }
     }
 
+    // Create filled area under the curve
+    ctx.lineTo(width, height);
+    ctx.lineTo(0, height);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Draw the line on top
+    ctx.beginPath();
+    for (let i = 0; i < waveformData.length; i++) {
+      const x = i;
+      const y = ((1 - waveformData[i]!) * height) / 2;
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.strokeStyle = '#1976D2'; // Darker blue for the line
+    ctx.lineWidth = 2;
     ctx.stroke();
   } catch (err: unknown) {
-    // Properly type the error
     console.warn('Could not update waveform display:', err);
-    // Properly type check the error
     if (err instanceof Error && err.message === 'Audio system not ready') {
       setTimeout(updateWaveformDisplay, 100);
     }
@@ -296,17 +336,35 @@ watch(
   margin-bottom: 1rem;
 }
 
+.controls-and-waveform {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.waveform-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.waveform-control {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .canvas-wrapper {
-  width: 100%;
-  height: 120px;
-  margin-top: 1rem;
+  width: 160px;
+  height: 80px;
 }
 
 canvas {
   width: 100%;
   height: 100%;
-  border: 1px solid #ccc;
-  background-color: rgb(200, 200, 200);
+  border: 1px solid #e0e0e0;
+  background-color: #f8f9fa;
   border-radius: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 </style>
