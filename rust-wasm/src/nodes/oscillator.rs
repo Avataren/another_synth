@@ -7,7 +7,6 @@ use web_sys::console;
 use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::traits::{AudioNode, PortId};
 
-/// Updated state struct with a new `feedback_amount` field.
 #[wasm_bindgen]
 pub struct OscillatorStateUpdate {
     pub phase_mod_amount: f32,
@@ -61,9 +60,11 @@ pub struct ModulatableOscillator {
     gain: f32,
     sample_rate: f32,
     active: bool,
-    feedback_amount: f32, // base feedback amount from the update
-    last_output: f32,     // previous output sample (for feedback)
-    last_feedback: f32,   // output before the previous sample (no longer used)
+    feedback_amount: f32,
+    last_output: f32,
+    last_feedback: f32,
+    hard_sync: bool,
+    last_gate_value: f32,
 }
 
 impl ModulatableOscillator {
@@ -77,31 +78,34 @@ impl ModulatableOscillator {
             gain: 1.0,
             sample_rate,
             active: true,
-            feedback_amount: 0.0, // default: no feedback
+            feedback_amount: 0.0,
             last_output: 0.0,
             last_feedback: 0.0,
+            hard_sync: false,
+            last_gate_value: 0.0,
         }
     }
 
-    fn calculate_freq_mod(&self, mod_value: f32) -> f32 {
-        // Frequency modulation remains untouched.
-        let cents_deviation = mod_value * self.freq_mod_amount;
-        2.0f32.powf(cents_deviation / 1200.0)
-    }
-
-    /// Update parameters including the new feedback parameter.
     pub fn update_params(&mut self, params: &OscillatorStateUpdate) {
         self.phase_mod_amount = params.phase_mod_amount;
         self.freq_mod_amount = params.freq_mod_amount;
         self.detune = params.detune;
         self.gain = params.gain;
-        self.feedback_amount = params.feedback_amount; // update feedback parameter
+        self.feedback_amount = params.feedback_amount;
+        self.hard_sync = params.hard_sync;
         self.set_active(params.active);
     }
 
     fn get_detuned_frequency(&self, base_freq: f32) -> f32 {
         let multiplier = 2.0f32.powf(self.detune / 1200.0);
         base_freq * multiplier
+    }
+
+    fn check_gate(&mut self, gate: f32) {
+        if self.hard_sync && gate > 0.0 && self.last_gate_value <= 0.0 {
+            self.phase = 0.0;
+        }
+        self.last_gate_value = gate;
     }
 }
 
@@ -113,6 +117,7 @@ impl ModulationProcessor for ModulatableOscillator {
             PortId::ModIndex => ModulationType::VCA,
             PortId::GainMod => ModulationType::VCA,
             PortId::FeedbackMod => ModulationType::VCA,
+            PortId::Gate => ModulationType::Additive,
             _ => ModulationType::VCA,
         }
     }
@@ -128,6 +133,7 @@ impl AudioNode for ModulatableOscillator {
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::FeedbackMod, false);
         ports.insert(PortId::AudioOutput0, true);
+        ports.insert(PortId::Gate, false);
         ports
     }
 
@@ -137,10 +143,9 @@ impl AudioNode for ModulatableOscillator {
         outputs: &mut std::collections::HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        use std::simd::{f32x4, StdFloat};
         const TWO_PI: f32 = 2.0 * std::f32::consts::PI;
 
-        // Process modulation inputs for each port.
+        // Process modulation inputs for each port
         let freq_mod = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::FrequencyMod),
@@ -159,14 +164,12 @@ impl AudioNode for ModulatableOscillator {
             1.0,
             PortId::GainMod,
         );
-        // The modulation index “phase_mod_amount” is combined with this mod index input.
         let mod_index = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::ModIndex),
             1.0,
             PortId::ModIndex,
         );
-        // For feedback modulation, we start at 0 (additive accumulation).
         let feedback_mod = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::FeedbackMod),
@@ -174,7 +177,17 @@ impl AudioNode for ModulatableOscillator {
             PortId::FeedbackMod,
         );
 
-        // Get base frequency from GlobalFrequency if available.
+        // Process gate input for hard sync
+        let mut gate_buffer = vec![0.0; buffer_size];
+        if let Some(sources) = inputs.get(&PortId::Gate) {
+            for source in sources {
+                for (dest, &src) in gate_buffer.iter_mut().zip(source.buffer.iter()) {
+                    *dest += src * source.amount;
+                }
+            }
+        }
+
+        // Get base frequency
         let base_freq = if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
             if !freq_sources.is_empty() {
                 freq_sources[0].buffer.clone()
@@ -186,15 +199,16 @@ impl AudioNode for ModulatableOscillator {
         };
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-            // Use scalar processing if any feedback is active.
             let use_scalar = (self.feedback_amount != 0.0)
-                || (!feedback_mod.is_empty() && feedback_mod.iter().any(|&v| v != 0.0));
+                || (!feedback_mod.is_empty() && feedback_mod.iter().any(|&v| v != 0.0))
+                || self.hard_sync;
 
             if use_scalar {
-                // ---------------------------
-                // Scalar processing branch (with feedback)
-                // ---------------------------
+                // Scalar processing branch
                 for i in 0..buffer_size {
+                    // Check gate for hard sync
+                    self.check_gate(gate_buffer[i]);
+
                     let freq_sample = base_freq[i];
                     let freq_mod_sample = freq_mod[i];
                     let phase_mod_sample = phase_mod[i];
@@ -202,47 +216,34 @@ impl AudioNode for ModulatableOscillator {
                     let mod_index_sample = mod_index[i];
                     let feedback_mod_sample = feedback_mod[i];
 
-                    // Calculate effective (detuned and frequency–modulated) frequency.
                     let detuned_freq = self.get_detuned_frequency(freq_sample);
                     let modulated_freq = detuned_freq * freq_mod_sample;
                     let phase_inc = TWO_PI * modulated_freq / self.sample_rate;
                     self.phase += phase_inc;
 
-                    // Apply phase modulation.
                     let input_phase_mod =
                         phase_mod_sample * self.phase_mod_amount * mod_index_sample;
-
-                    // --- Updated Feedback Processing ---
                     let effective_feedback = self.feedback_amount * feedback_mod_sample;
-                    // Instead of averaging two samples and scaling by PI/2, simply use the previous output.
                     let feedback_val = self.last_output * effective_feedback;
-                    // ----------------------------------
 
-                    // The final modulated phase includes the current phase, phase modulation, and feedback.
                     let modulated_phase = self.phase + input_phase_mod + feedback_val;
                     let sine = modulated_phase.sin();
                     let sample = sine * self.gain * gain_mod_sample;
 
-                    // Update feedback history.
                     self.last_feedback = self.last_output;
                     self.last_output = sample;
                     output[i] = sample;
 
-                    // Wrap the phase when exceeding TWO_PI.
                     if self.phase >= TWO_PI {
                         self.phase -= TWO_PI;
                     }
                 }
             } else {
-                // ---------------------------
-                // SIMD processing branch (no feedback)
-                // ---------------------------
+                // SIMD processing branch
                 let mut i = 0;
                 while i < buffer_size {
-                    // Process in chunks of up to 4 samples.
                     let chunk_size = (buffer_size - i).min(4);
 
-                    // Prepare arrays for the current chunk.
                     let mut freq_chunk = [0.0; 4];
                     let mut freq_mod_chunk = [0.0; 4];
                     let mut phase_mod_chunk = [0.0; 4];
@@ -257,14 +258,12 @@ impl AudioNode for ModulatableOscillator {
                         mod_index_chunk[j] = mod_index[i + j];
                     }
 
-                    // Create SIMD vectors from the chunk arrays.
                     let base_freq_simd = f32x4::from_array(freq_chunk);
                     let freq_mod_simd = f32x4::from_array(freq_mod_chunk);
                     let phase_mod_simd = f32x4::from_array(phase_mod_chunk);
                     let gain_mod_simd = f32x4::from_array(gain_mod_chunk);
                     let mod_index_simd = f32x4::from_array(mod_index_chunk);
 
-                    // Compute detuned frequency for each sample.
                     let base_freq_arr = base_freq_simd.to_array();
                     let mut detuned_array = [0.0; 4];
                     for k in 0..chunk_size {
@@ -272,13 +271,11 @@ impl AudioNode for ModulatableOscillator {
                     }
                     let detuned_freq_simd = f32x4::from_array(detuned_array);
 
-                    // Calculate the modulated frequency and phase increment.
                     let modulated_freq = detuned_freq_simd * freq_mod_simd;
                     let phase_inc =
                         f32x4::splat(TWO_PI) * modulated_freq / f32x4::splat(self.sample_rate);
                     let phase_inc_arr = phase_inc.to_array();
 
-                    // Cumulatively add phase increments.
                     let mut phases_arr = [0.0; 4];
                     let mut current_phase = self.phase;
                     for k in 0..chunk_size {
@@ -287,22 +284,18 @@ impl AudioNode for ModulatableOscillator {
                     }
                     let phases_simd = f32x4::from_array(phases_arr);
 
-                    // Apply phase modulation exactly as in the scalar branch.
                     let mod_depth = f32x4::splat(self.phase_mod_amount) * mod_index_simd;
                     let scaled_phase_mod = phase_mod_simd * mod_depth;
                     let modulated_phase = phases_simd + scaled_phase_mod;
 
-                    // Generate the sine output.
                     let sine = modulated_phase.sin();
                     let result = sine * f32x4::splat(self.gain) * gain_mod_simd;
 
-                    // Write the computed samples to the output.
                     let result_arr = result.to_array();
                     for j in 0..chunk_size {
                         output[i + j] = result_arr[j];
                     }
 
-                    // Update the oscillator’s phase to the last computed phase in this chunk.
                     self.phase = current_phase % TWO_PI;
 
                     i += chunk_size;
@@ -315,6 +308,7 @@ impl AudioNode for ModulatableOscillator {
         self.phase = 0.0;
         self.last_output = 0.0;
         self.last_feedback = 0.0;
+        self.last_gate_value = 0.0;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

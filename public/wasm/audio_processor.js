@@ -831,9 +831,7 @@ export class NodeId {
 const OscillatorStateUpdateFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_oscillatorstateupdate_free(ptr >>> 0, 1));
-/**
- * Updated state struct with a new `feedback_amount` field.
- */
+
 export class OscillatorStateUpdate {
 
     __destroy_into_raw() {
