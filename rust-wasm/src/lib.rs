@@ -13,10 +13,11 @@ pub use graph::AudioGraph;
 use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
-pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use nodes::{
-    Lfo, LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
+    AnalogOscillator, AnalogOscillatorStateUpdate, Lfo, LfoTriggerMode, LfoWaveform, LpFilter,
+    Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform,
 };
+pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Serialize;
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
@@ -158,18 +159,11 @@ impl LfoUpdateParams {
     }
 }
 
-impl Default for AudioEngine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[wasm_bindgen]
 impl AudioEngine {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    pub fn new(sample_rate: f32) -> Self {
         let num_voices = 8;
-        let sample_rate = 44100.0;
         let envelope_config = EnvelopeConfig::default();
 
         Self {
@@ -437,7 +431,7 @@ impl AudioEngine {
         &mut self,
         voice_index: usize,
         oscillator_id: usize,
-        params: &OscillatorStateUpdate,
+        params: &AnalogOscillatorStateUpdate,
     ) -> Result<(), JsValue> {
         let voice = self
             .voices
@@ -445,7 +439,7 @@ impl AudioEngine {
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
         if let Some(node) = voice.graph.get_node_mut(NodeId(oscillator_id)) {
-            if let Some(osc) = node.as_any_mut().downcast_mut::<ModulatableOscillator>() {
+            if let Some(osc) = node.as_any_mut().downcast_mut::<AnalogOscillator>() {
                 osc.update_params(params);
                 Ok(())
             } else {
@@ -520,9 +514,10 @@ impl AudioEngine {
     pub fn create_oscillator(&mut self) -> Result<usize, JsValue> {
         let mut osc_id = NodeId(0);
         for voice in &mut self.voices {
-            osc_id = voice
-                .graph
-                .add_node(Box::new(ModulatableOscillator::new(self.sample_rate)));
+            osc_id = voice.graph.add_node(Box::new(AnalogOscillator::new(
+                self.sample_rate,
+                Waveform::Sine,
+            )));
         }
         Ok(osc_id.0)
     }

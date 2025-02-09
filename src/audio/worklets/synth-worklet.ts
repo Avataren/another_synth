@@ -1,16 +1,7 @@
 /// <reference lib="webworker" />
 import './textencoder.js';
 
-import {
-  AudioEngine,
-  type EnvelopeConfig,
-  initSync,
-  LfoUpdateParams,
-  NoiseUpdateParams,
-  OscillatorStateUpdate,
-  PortId,
-  WasmModulationType,
-} from 'app/public/wasm/audio_processor.js';
+
 import OscillatorUpdateHandler from './handlers/oscillator-update-handler.js';
 import {
   type SynthLayout,
@@ -20,7 +11,17 @@ import {
   type FilterState,
 } from '../types/synth-layout';
 import { type NoiseUpdate } from '../types/noise.js';
-
+import {
+  AnalogOscillatorStateUpdate,
+  AudioEngine,
+  type EnvelopeConfig,
+  initSync,
+  LfoUpdateParams,
+  NoiseUpdateParams,
+  PortId,
+  WasmModulationType,
+  Waveform,
+} from 'app/public/wasm/audio_processor.js';
 interface EnvelopeUpdate {
   config: EnvelopeConfig;
   envelopeId: number;
@@ -195,7 +196,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     try {
       const { wasmBytes } = data;
       initSync({ module: new Uint8Array(wasmBytes) });
-      this.audioEngine = new AudioEngine();
+      console.log('SAMPLERATE: ', sampleRate);
+      this.audioEngine = new AudioEngine(sampleRate);
       this.audioEngine.init(sampleRate, this.numVoices);
 
       // Initialize all voices first
@@ -601,24 +603,25 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateOscillator(data: {
     oscillatorId: number;
-    newState: OscillatorStateUpdate;
+    newState: AnalogOscillatorStateUpdate;
   }) {
     if (!this.audioEngine) return;
 
     try {
       this.oscHandler.UpdateOscillator(
         this.audioEngine,
-        new OscillatorStateUpdate(
+        new AnalogOscillatorStateUpdate(
           data.newState.phase_mod_amount,
           data.newState.freq_mod_amount,
-          data.newState.detune_oct,
-          data.newState.detune_semi,
-          data.newState.detune_cents,
+          // data.newState.detune_oct,
+          // data.newState.detune_semi,
+          // data.newState.detune_cents,
           data.newState.detune,
           data.newState.hard_sync,
           data.newState.gain,
           data.newState.active,
           data.newState.feedback_amount,
+          Waveform.Sine
         ),
         data.oscillatorId,
         this.numVoices,
