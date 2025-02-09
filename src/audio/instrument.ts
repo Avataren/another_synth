@@ -4,6 +4,7 @@ import { type EnvelopeConfig } from './dsp/envelope';
 // import { type FilterState } from './dsp/filter-state';
 // import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
+import { NoiseState, NoiseUpdate } from './types/noise';
 import {
   type SynthLayout,
   // type NodeConnection,
@@ -81,6 +82,20 @@ export default class Instrument {
     console.log('Updated synth layout:', layout);
   }
 
+  public updateNoiseState(nodeId: number, state: NoiseState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+
+    this.workletNode.port.postMessage({
+      type: 'updateNoise',
+      noiseId: nodeId,
+      config: {
+        noise_type: state.noiseType,
+        cutoff: state.cutoff,
+        gain: state.is_enabled ? 1.0 : 0.0,
+      } as NoiseUpdate
+    });
+  }
+
   public updateOscillatorState(nodeId: number, newState: OscillatorState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
@@ -123,7 +138,7 @@ export default class Instrument {
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => {}, 0);
+      let timeoutId = setTimeout(() => { }, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {

@@ -14,7 +14,9 @@ use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
-use nodes::{Lfo, LfoTriggerMode, LfoWaveform, LpFilter, Mixer};
+use nodes::{
+    Lfo, LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
+};
 use serde::Serialize;
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
@@ -22,6 +24,43 @@ pub use voice::Voice;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{console, js_sys};
+
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WasmNoiseType {
+    White = 0,
+    Pink = 1,
+    Brownian = 2,
+}
+
+impl From<WasmNoiseType> for NoiseType {
+    fn from(wasm_type: WasmNoiseType) -> Self {
+        match wasm_type {
+            WasmNoiseType::White => NoiseType::White,
+            WasmNoiseType::Pink => NoiseType::Pink,
+            WasmNoiseType::Brownian => NoiseType::Brownian,
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub struct NoiseUpdateParams {
+    pub noise_type: WasmNoiseType,
+    pub cutoff: f32,
+    pub gain: f32,
+}
+
+#[wasm_bindgen]
+impl NoiseUpdateParams {
+    #[wasm_bindgen(constructor)]
+    pub fn new(noise_type: WasmNoiseType, cutoff: f32, gain: f32) -> NoiseUpdateParams {
+        NoiseUpdateParams {
+            noise_type,
+            cutoff,
+            gain,
+        }
+    }
+}
 
 #[wasm_bindgen]
 pub enum WasmModulationType {
@@ -326,6 +365,30 @@ impl AudioEngine {
     // }
 
     #[wasm_bindgen]
+    pub fn update_noise(
+        &mut self,
+        noise_id: usize,
+        params: &NoiseUpdateParams,
+    ) -> Result<(), JsValue> {
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(noise_id)) {
+                if let Some(noise) = node.as_any_mut().downcast_mut::<NoiseGenerator>() {
+                    noise.update(NoiseUpdate {
+                        noise_type: params.noise_type.into(),
+                        cutoff: params.cutoff,
+                        gain: params.gain,
+                    });
+                } else {
+                    return Err(JsValue::from_str("Node is not a NoiseGenerator"));
+                }
+            } else {
+                return Err(JsValue::from_str("Node not found"));
+            }
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen]
     pub fn update_envelope(
         &mut self,
         voice_index: usize,
@@ -432,6 +495,17 @@ impl AudioEngine {
                 .add_node(Box::new(LpFilter::new(self.sample_rate)));
         }
         Ok(filter_id.0)
+    }
+
+    #[wasm_bindgen]
+    pub fn create_noise(&mut self) -> Result<usize, JsValue> {
+        let mut noise_id = NodeId(0);
+        for voice in &mut self.voices {
+            noise_id = voice
+                .graph
+                .add_node(Box::new(NoiseGenerator::new(self.sample_rate)));
+        }
+        Ok(noise_id.0)
     }
 
     #[wasm_bindgen]

@@ -16,7 +16,13 @@
       :node="destinationNode"
       :nodeId="lfo.id"
     />
-    <noise-component :node="destinationNode" :Index="0" />
+
+    <noise-component
+      v-for="noise in noiseNodes"
+      :key="noise.id"
+      :node="destinationNode"
+      :noiseId="noise.id"
+    />
 
     <envelope-component
       v-for="env in envelopeNodes"
@@ -61,6 +67,8 @@ const envelopeNodes = computed(() =>
 const filterNodes = computed(() =>
   store.getVoiceNodes(0, VoiceNodeType.Filter),
 );
+
+const noiseNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Noise));
 const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 //const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 

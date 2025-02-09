@@ -268,9 +268,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         [VoiceNodeType.LFO]: [],
         [VoiceNodeType.Filter]: [],
         [VoiceNodeType.Mixer]: [],
+        [VoiceNodeType.Noise]: [],
       },
       connections: [],
     };
+
+    //create noise generator
+    const noiseId = this.audioEngine.create_noise();
+    voiceLayout.nodes[VoiceNodeType.Noise].push({
+      id: noiseId,
+      type: VoiceNodeType.Noise,
+    });
 
     // Create mixer
     const mixerId = this.audioEngine.create_mixer();
@@ -329,6 +337,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         osc1,
         osc2,
       });
+
+      // this.audioEngine.connect_nodes(
+      //   noiseId,
+      //   PortId.AudioOutput0,
+      //   mixerId,
+      //   PortId.AudioInput0,
+      //   1.0,
+      //   WasmModulationType.VCA,
+      // );
 
       // Connect envelope to mixer's gain input
       this.audioEngine.connect_nodes(

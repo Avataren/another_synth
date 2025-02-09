@@ -3,7 +3,6 @@ import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
 import Instrument from 'src/audio/instrument';
-import { NoiseType, type NoiseState } from 'src/audio/dsp/noise-generator';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import {
   type SynthLayout,
@@ -17,6 +16,7 @@ import {
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import { type PortId } from 'app/public/wasm/audio_processor';
+import { NoiseState, NoiseType } from 'src/audio/types/noise';
 
 interface AudioParamDescriptor {
   name: string;
@@ -88,24 +88,24 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-      (voiceIndex: number, nodeId: number): NodeConnection[] => {
-        if (!state.synthLayout) return [];
-        const voice = state.synthLayout.voices[voiceIndex];
-        if (!voice) return [];
-        return voice.connections.filter(
-          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-        );
-      },
+        (voiceIndex: number, nodeId: number): NodeConnection[] => {
+          if (!state.synthLayout) return [];
+          const voice = state.synthLayout.voices[voiceIndex];
+          if (!voice) return [];
+          return voice.connections.filter(
+            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+          );
+        },
     getNodeConnections:
       (state) =>
-      (nodeId: number): NodeConnection[] => {
-        if (!state.synthLayout) return [];
-        const voice = state.synthLayout.voices[0]; // Only look at voice 0
-        if (!voice) return [];
-        return voice.connections.filter(
-          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-        );
-      },
+        (nodeId: number): NodeConnection[] => {
+          if (!state.synthLayout) return [];
+          const voice = state.synthLayout.voices[0]; // Only look at voice 0
+          if (!voice) return [];
+          return voice.connections.filter(
+            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+          );
+        },
     findNodeById: (state) => (nodeId: number) => {
       if (!state.synthLayout) return null;
       const voice = state.synthLayout.voices[0];

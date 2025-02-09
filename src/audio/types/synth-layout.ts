@@ -8,6 +8,7 @@ export enum VoiceNodeType {
     Envelope = 'envelope',
     LFO = 'lfo',
     Mixer = 'mixer',
+    Noise = 'noise'
 }
 
 export interface LfoState {

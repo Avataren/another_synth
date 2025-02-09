@@ -237,6 +237,14 @@ export const WasmModulationType = Object.freeze({
     Bipolar: 1, "1": "Bipolar",
     Additive: 2, "2": "Additive",
 });
+/**
+ * @enum {0 | 1 | 2}
+ */
+export const WasmNoiseType = Object.freeze({
+    White: 0, "0": "White",
+    Pink: 1, "1": "Pink",
+    Brownian: 2, "2": "Brownian",
+});
 
 const AudioEngineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -312,6 +320,17 @@ export class AudioEngine {
         wasm.audioengine_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, master_gain, ptr4, len4, output_left, ptr5, len5, output_right);
     }
     /**
+     * @param {number} noise_id
+     * @param {NoiseUpdateParams} params
+     */
+    update_noise(noise_id, params) {
+        _assertClass(params, NoiseUpdateParams);
+        const ret = wasm.audioengine_update_noise(this.__wbg_ptr, noise_id, params.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {number} voice_index
      * @param {number} node_id
      * @param {number} attack
@@ -373,6 +392,16 @@ export class AudioEngine {
      */
     create_filter() {
         const ret = wasm.audioengine_create_filter(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    create_noise() {
+        const ret = wasm.audioengine_create_noise(this.__wbg_ptr);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -825,6 +854,75 @@ export class NodeId {
     static from_number(value) {
         const ret = wasm.nodeid_from_number(value);
         return NodeId.__wrap(ret);
+    }
+}
+
+const NoiseUpdateParamsFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_noiseupdateparams_free(ptr >>> 0, 1));
+
+export class NoiseUpdateParams {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        NoiseUpdateParamsFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_noiseupdateparams_free(ptr, 0);
+    }
+    /**
+     * @returns {WasmNoiseType}
+     */
+    get noise_type() {
+        const ret = wasm.__wbg_get_noiseupdateparams_noise_type(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {WasmNoiseType} arg0
+     */
+    set noise_type(arg0) {
+        wasm.__wbg_set_noiseupdateparams_noise_type(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get cutoff() {
+        const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set cutoff(arg0) {
+        wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get gain() {
+        const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set gain(arg0) {
+        wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @param {WasmNoiseType} noise_type
+     * @param {number} cutoff
+     * @param {number} gain
+     */
+    constructor(noise_type, cutoff, gain) {
+        const ret = wasm.noiseupdateparams_new(noise_type, cutoff, gain);
+        this.__wbg_ptr = ret >>> 0;
+        NoiseUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
 }
 
