@@ -113,6 +113,7 @@ import { storeToRefs } from 'pinia';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
+// import { Waveform } from 'app/public/wasm/audio_processor';
 
 interface Props {
   node: AudioNode | null;
@@ -171,20 +172,20 @@ const totalDetune = computed(() => {
   );
 });
 
-const handleWaveformChange = (_newWaveform: number) => {
-  //let wf: WaveformType = 'sine';
+const handleWaveformChange = (newWaveform: number) => {
+  // let wf: Waveform = Waveform.Sine;
   // switch (newWaveform) {
   //   case 0:
-  //     wf = 'sine';
+  //     wf = Waveform.Sine;
   //     break;
   //   case 1:
-  //     wf = 'triangle';
+  //     wf = Waveform.Triangle;
   //     break;
   //   case 2:
-  //     wf = 'sawtooth';
+  //     wf = Waveform.Saw;
   //     break;
   //   case 3:
-  //     wf = 'square';
+  //     wf = Waveform.Square;
   //     break;
   //   default:
   //     break;
@@ -192,7 +193,7 @@ const handleWaveformChange = (_newWaveform: number) => {
 
   const currentState = {
     ...oscillatorState.value,
-    //waveform: wf,
+    waveform: newWaveform,
   };
   store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };

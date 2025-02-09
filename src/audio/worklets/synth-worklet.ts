@@ -20,7 +20,7 @@ import {
   NoiseUpdateParams,
   PortId,
   WasmModulationType,
-  Waveform,
+  // Waveform,
 } from 'app/public/wasm/audio_processor.js';
 interface EnvelopeUpdate {
   config: EnvelopeConfig;
@@ -621,7 +621,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           data.newState.gain,
           data.newState.active,
           data.newState.feedback_amount,
-          Waveform.Sine
+          data.newState.waveform
         ),
         data.oscillatorId,
         this.numVoices,

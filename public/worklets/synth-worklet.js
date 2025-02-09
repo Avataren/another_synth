@@ -1556,7 +1556,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           data.newState.gain,
           data.newState.active,
           data.newState.feedback_amount,
-          Waveform.Sine
+          data.newState.waveform
         ),
         data.oscillatorId,
         this.numVoices
