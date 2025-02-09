@@ -1,127 +1,220 @@
 <!-- AudioKnobComponent.vue -->
 <template>
   <div class="knob-wrapper">
-    <div class="knob-container">
-      <q-knob
-        :angle="180"
-        :model-value="modelValue"
-        @update:model-value="$emit('update:modelValue', $event)"
-        :min="min"
-        :max="max"
-        :step="step"
-        size="70px"
-        show-value
-        :thickness="0.22"
-        :color="color"
-        :track-color="trackColor"
-        class="q-mb-sm"
-        :decimals="decimals"
-        :display-value="!isEditing"
+    <div
+      class="knob-container"
+      :style="{ width: props.size + 'px', height: props.size + 'px' }"
+      ref="knobRef"
+    >
+      <!-- Base Track -->
+      <svg
+        class="knob-track"
+        :width="props.size"
+        :height="props.size"
+        :viewBox="`0 0 ${props.size} ${props.size}`"
       >
-        <div
-          @click.stop.prevent="startEditing"
-          @mousedown.stop.prevent="() => {}"
-          class="value-display"
-        >
-          <div v-if="unitFunc">{{ displayUnit }}</div>
-          <div v-else>
-            <template v-if="!isEditing">
-              {{ formatValue(modelValue) }}
-            </template>
-            <q-input
-              v-else
-              v-model.number="editValue"
-              dense
-              type="number"
-              :min="min"
-              :max="max"
-              :step="step"
-              @blur="finishEditing"
-              @keyup.enter="finishEditing"
-              class="edit-input"
-              ref="inputRef"
-              input-class="text-center"
-              :rules="[validateValue]"
-              hide-bottom-space
-            >
-              <!-- <template v-slot:append v-if="unit">
-              <span class="label bg-primary ext-grey-7">{{ unit }}</span>
-            </template> -->
-            </q-input>
-          </div>
+        <path
+          :d="describeSemiCircle"
+          stroke="#333333"
+          :stroke-width="props.thickness"
+          fill="none"
+          stroke-linecap="round"
+        />
+        <!-- Value Track -->
+        <path
+          :d="describeValueArc"
+          :stroke="props.color"
+          :stroke-width="props.thickness"
+          fill="none"
+          stroke-linecap="round"
+        />
+      </svg>
+
+      <!-- Center Value Display -->
+      <div class="value-display">
+        <div v-if="props.unitFunc">
+          {{ displayUnit }}
         </div>
-      </q-knob>
+        <div v-else>
+          {{ formatValue(props.modelValue) }}
+        </div>
+      </div>
+
+      <!-- Label -->
+      <div class="knob-label">{{ props.label }}</div>
     </div>
-    <div class="knob-label">{{ label }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, computed } from 'vue';
-import { QInput } from 'quasar';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 
 interface Props {
   modelValue: number;
   label: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  decimals?: number;
+  min: number;
+  max: number;
+  decimals: number;
   unit?: string;
   color?: string;
-  trackColor?: string;
   unitFunc?: (val: number) => string;
+  size?: number;
+  dragSensitivity?: number;
+  thickness?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   min: 0,
   max: 1,
-  step: 0.01,
   decimals: 2,
   unit: '',
-  color: 'orange',
-  trackColor: 'orange-3',
+  color: '#ff9800',
+  size: 70,
+  dragSensitivity: 0.5,
+  thickness: 4,
 });
-const displayUnit = computed(() =>
-  props.unitFunc ? props.unitFunc(props.modelValue) : props.unit,
+
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: number): void;
+}>();
+
+// Define a ref for the knob container so we can attach drag events.
+const knobRef = ref<HTMLElement | null>(null);
+
+// Local state for dragging
+const isDragging = ref(false);
+const pendingDrag = ref(false);
+const startX = ref(0);
+const startY = ref(0);
+const startValue = ref(props.modelValue);
+
+// ───── ARC CONSTANTS ─────
+// We want an arc that spans 260° (from -40° to 220°)
+const START_ANGLE = -40;
+const END_ANGLE = 220;
+const RANGE = END_ANGLE - START_ANGLE; // 260°
+
+//
+// COMPUTED PROPERTIES
+//
+
+const describeSemiCircle = computed((): string => {
+  const radius = props.size / 2 - 4;
+  const center = props.size / 2;
+  return describeArc(center, center, radius, START_ANGLE, END_ANGLE);
+});
+
+const currentAngle = computed((): number => {
+  const percentage = (props.modelValue - props.min) / (props.max - props.min);
+  return START_ANGLE + percentage * RANGE;
+});
+
+const describeValueArc = computed((): string => {
+  const radius = props.size / 2 - 4;
+  const center = props.size / 2;
+  return describeArc(center, center, radius, START_ANGLE, currentAngle.value);
+});
+
+const displayUnit = computed((): string =>
+  props.unitFunc ? props.unitFunc(props.modelValue) : props.unit || '',
 );
-const emit = defineEmits(['update:modelValue']);
 
-const isEditing = ref(false);
-const editValue = ref(props.modelValue);
-const inputRef = ref<QInput | null>(null);
+//
+// HELPER FUNCTIONS
+//
 
-const formatValue = (value: number) => {
-  return `${value.toFixed(props.decimals)}${props.unit}`;
+// Converts polar coordinates to cartesian.
+function polarToCartesian(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  angleInDegrees: number,
+) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
+}
+
+// Returns an SVG arc path.
+function describeArc(
+  x: number,
+  y: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+): string {
+  const start = polarToCartesian(x, y, radius, startAngle);
+  const end = polarToCartesian(x, y, radius, endAngle);
+  let diff = endAngle - startAngle;
+  if (diff < 0) diff += 360;
+  const largeArcFlag = diff <= 180 ? '0' : '1';
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+}
+
+const formatValue = (value: number): string => {
+  return `${value.toFixed(props.decimals)}${props.unit || ''}`;
 };
 
-const validateValue = (val: number) => {
-  const minValid = props.min === undefined || val >= props.min;
-  const maxValid = props.max === undefined || val <= props.max;
+//
+// DRAG EVENT HANDLERS
+//
 
-  if (!minValid || !maxValid) {
-    return `Value must be between ${props.min ?? '-∞'} and ${props.max ?? '∞'}`;
+function onMouseDown(e: MouseEvent) {
+  e.preventDefault(); // Prevent default text selection
+  startX.value = e.clientX;
+  startY.value = e.clientY;
+  startValue.value = props.modelValue;
+  pendingDrag.value = true;
+  // Add a class to disable text selection on the knob element only.
+  knobRef.value?.classList.add('no-select');
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
+}
+
+function onMouseMove(e: MouseEvent) {
+  const dx = e.clientX - startX.value;
+  const dy = e.clientY - startY.value;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  // Begin dragging after a small movement threshold.
+  if (pendingDrag.value && distance > 3) {
+    isDragging.value = true;
+    pendingDrag.value = false;
   }
-
-  return true;
-};
-
-const startEditing = () => {
-  editValue.value = props.modelValue;
-  isEditing.value = true;
-  nextTick(() => {
-    inputRef.value?.focus();
-  });
-};
-
-const finishEditing = () => {
-  isEditing.value = false;
-  const newValue = Number(editValue.value);
-
-  if (!isNaN(newValue) && validateValue(newValue) === true) {
-    emit('update:modelValue', newValue);
+  if (isDragging.value) {
+    const deltaY = startY.value - e.clientY;
+    const sensitivity = props.dragSensitivity;
+    const deltaValue = (deltaY * sensitivity * (props.max - props.min)) / 200;
+    const newValue = startValue.value + deltaValue;
+    const clampedValue = Math.min(
+      props.max,
+      Math.max(props.min, Number(newValue.toFixed(props.decimals))),
+    );
+    if (clampedValue !== props.modelValue) {
+      emit('update:modelValue', clampedValue);
+    }
   }
-};
+}
+
+function onMouseUp(_e: MouseEvent) {
+  // Remove the no-select class when dragging is complete.
+  knobRef.value?.classList.remove('no-select');
+  document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('mouseup', onMouseUp);
+  isDragging.value = false;
+  pendingDrag.value = false;
+}
+
+onMounted(() => {
+  knobRef.value?.addEventListener('mousedown', onMouseDown);
+});
+
+onUnmounted(() => {
+  knobRef.value?.removeEventListener('mousedown', onMouseDown);
+  document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('mouseup', onMouseUp);
+});
 </script>
 
 <style scoped>
@@ -130,10 +223,30 @@ const finishEditing = () => {
   flex-direction: column;
   align-items: center;
   padding: 0.5rem;
+  color: #ffffff;
 }
 
 .knob-container {
   position: relative;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Disable text selection on the knob element during dragging */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.knob-track {
+  transform: rotate(-90deg);
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .value-display {
@@ -141,20 +254,22 @@ const finishEditing = () => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  cursor: pointer;
   min-width: 40px;
   text-align: center;
   z-index: 1;
-}
-
-.edit-input {
-  width: 65px;
+  font-size: 0.9rem;
+  color: #ffffff;
 }
 
 .knob-label {
   margin-top: 0.5rem;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: rgba(192, 192, 192, 0.7);
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 </style>
