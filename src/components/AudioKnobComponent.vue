@@ -3,15 +3,15 @@
   <div class="knob-wrapper">
     <div
       class="knob-container"
-      :style="{ width: props.size + 'px', height: props.size + 'px' }"
+      :style="{ width: knobSize + 'px', height: knobSize + 'px' }"
       ref="knobRef"
     >
       <!-- Base Track -->
       <svg
         class="knob-track"
-        :width="props.size"
-        :height="props.size"
-        :viewBox="`0 0 ${props.size} ${props.size}`"
+        :width="knobSize"
+        :height="knobSize"
+        :viewBox="`0 0 ${knobSize} ${knobSize}`"
       >
         <path
           :d="describeSemiCircle"
@@ -58,9 +58,11 @@ interface Props {
   unit?: string;
   color?: string;
   unitFunc?: (val: number) => string;
-  size?: number;
+  size?: number; // still available as a fallback if needed
   dragSensitivity?: number;
   thickness?: number;
+  // New prop to select a preset scale:
+  scale?: 'full' | 'half' | 'mini';
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -72,11 +74,27 @@ const props = withDefaults(defineProps<Props>(), {
   size: 70,
   dragSensitivity: 0.5,
   thickness: 4,
+  scale: 'full', // default scale
 });
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: number): void;
 }>();
+
+// Compute the knob size based on the selected scale.
+// These numbers are arbitrary – adjust as needed.
+const knobSize = computed(() => {
+  switch (props.scale) {
+    case 'full':
+      return 70;
+    case 'half':
+      return 35;
+    case 'mini':
+      return 20;
+    default:
+      return props.size;
+  }
+});
 
 // Define a ref for the knob container so we can attach drag events.
 const knobRef = ref<HTMLElement | null>(null);
@@ -94,13 +112,10 @@ const START_ANGLE = -40;
 const END_ANGLE = 220;
 const RANGE = END_ANGLE - START_ANGLE; // 260°
 
-//
-// COMPUTED PROPERTIES
-//
-
+// ─── COMPUTED PROPERTIES ───
 const describeSemiCircle = computed((): string => {
-  const radius = props.size / 2 - 4;
-  const center = props.size / 2;
+  const radius = knobSize.value / 2 - 4;
+  const center = knobSize.value / 2;
   return describeArc(center, center, radius, START_ANGLE, END_ANGLE);
 });
 
@@ -110,8 +125,8 @@ const currentAngle = computed((): number => {
 });
 
 const describeValueArc = computed((): string => {
-  const radius = props.size / 2 - 4;
-  const center = props.size / 2;
+  const radius = knobSize.value / 2 - 4;
+  const center = knobSize.value / 2;
   return describeArc(center, center, radius, START_ANGLE, currentAngle.value);
 });
 
@@ -119,9 +134,7 @@ const displayUnit = computed((): string =>
   props.unitFunc ? props.unitFunc(props.modelValue) : props.unit || '',
 );
 
-//
-// HELPER FUNCTIONS
-//
+// ─── HELPER FUNCTIONS ───
 
 // Converts polar coordinates to cartesian.
 function polarToCartesian(
@@ -157,9 +170,7 @@ const formatValue = (value: number): string => {
   return `${value.toFixed(props.decimals)}${props.unit || ''}`;
 };
 
-//
-// DRAG EVENT HANDLERS
-//
+// ─── DRAG EVENT HANDLERS ───
 
 function onMouseDown(e: MouseEvent) {
   e.preventDefault(); // Prevent default text selection
