@@ -6,6 +6,7 @@ import {
   type EnvelopeConfig,
   initSync,
   LfoUpdateParams,
+  NoiseUpdateParams,
   OscillatorStateUpdate,
   PortId,
   WasmModulationType,
@@ -18,6 +19,7 @@ import {
   type NodeConnectionUpdate,
   type FilterState,
 } from '../types/synth-layout';
+import { type NoiseUpdate } from '../types/noise.js';
 
 interface EnvelopeUpdate {
   config: EnvelopeConfig;
@@ -158,6 +160,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'updateModulation': // Add this case
         this.handleUpdateModulation(event.data);
+        break;
+      case 'updateNoise':
+        this.handleNoiseUpdate(event.data);
         break;
       case 'updateFilter':
         this.handleUpdateFilter(event.data);
@@ -531,6 +536,20 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       default:
         throw new Error(`Invalid WASM target: ${wasmTarget}`);
     }
+  }
+
+  private handleNoiseUpdate(data: { noiseId: number, config: NoiseUpdate }) {
+    if (!this.audioEngine) return;
+    console.log('noiseData:', data);
+
+    const params = new NoiseUpdateParams(
+      data.config.noise_type,
+      data.config.cutoff,
+      data.config.gain,
+      data.config.enabled
+    );
+
+    this.audioEngine.update_noise(data.noiseId, params);
   }
 
   private handleUpdateFilter(data: {

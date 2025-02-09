@@ -91,7 +91,8 @@ export default class Instrument {
       config: {
         noise_type: state.noiseType,
         cutoff: state.cutoff,
-        gain: state.is_enabled ? 1.0 : 0.0,
+        gain: state.gain || 1.0,
+        enabled: state.is_enabled
       } as NoiseUpdate
     });
   }

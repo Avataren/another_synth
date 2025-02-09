@@ -15,4 +15,5 @@ export interface NoiseUpdate {
     noise_type: NoiseType;
     cutoff: number;
     gain: number;
+    enabled: boolean;
 }

@@ -33,6 +33,16 @@
           :decimals="3"
           @update:modelValue="handleCutoffChange"
         />
+
+        <audio-knob-component
+          v-model="noiseState.gain"
+          label="Gain"
+          :min="0"
+          :max="1"
+          :step="0.001"
+          :decimals="3"
+          @update:modelValue="handleGainChange"
+        />
       </div>
 
       <!-- Add the routing component -->
@@ -130,6 +140,14 @@ const handleCutoffChange = (val: number) => {
   const currentState = {
     ...filterState.value,
     cutoff: val,
+  };
+  store.noiseState = currentState;
+};
+
+const handleGainChange = (val: number) => {
+  const currentState = {
+    ...filterState.value,
+    gain: val,
   };
   store.noiseState = currentState;
 };

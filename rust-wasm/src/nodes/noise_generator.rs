@@ -11,9 +11,9 @@ use crate::traits::{AudioNode, PortId};
 /// The type of noise to generate
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NoiseType {
-    White,
-    Pink,
-    Brownian,
+    White = 0,
+    Pink = 1,
+    Brownian = 2,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -21,6 +21,7 @@ pub struct NoiseUpdate {
     pub noise_type: NoiseType,
     pub cutoff: f32,
     pub gain: f32,
+    pub enabled: bool,
 }
 
 /// A noise generator that uses SIMD operations for efficient processing
@@ -96,7 +97,7 @@ impl NoiseGenerator {
             pink_state: [f32x4::splat(0.0); 7],
             brown_state: f32x4::splat(0.0),
             const_pink_scale: f32x4::splat(0.25), // Pink noise scaling factor
-            const_brown_scale: f32x4::splat(3.5), // Brownian noise scaling factor
+            const_brown_scale: f32x4::splat(8.0), // Brownian noise scaling factor
             cutoff_table,
         }
     }
@@ -133,8 +134,9 @@ impl NoiseGenerator {
     }
 
     fn update_filter_coefficient(&mut self, cutoff_mod: f32) {
-        self.target_cutoff = cutoff_mod.clamp(0.0, 1.0);
-        self.current_cutoff += (self.target_cutoff - self.current_cutoff) * Self::CUTOFF_SMOOTHING;
+        // Apply modulation to base cutoff
+        let target = (self.target_cutoff * cutoff_mod).clamp(0.0, 1.0);
+        self.current_cutoff += (target - self.current_cutoff) * Self::CUTOFF_SMOOTHING;
 
         // Use lookup table for filter coefficient
         let index = (self.current_cutoff * (Self::CUTOFF_TABLE_SIZE - 1) as f32) as usize;

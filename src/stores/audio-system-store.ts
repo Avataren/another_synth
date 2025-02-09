@@ -54,6 +54,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     noiseState: {
       noiseType: NoiseType.White,
       cutoff: 1.0,
+      gain: 1.0,
       is_enabled: false,
     } as NoiseState,
 

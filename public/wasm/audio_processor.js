@@ -914,12 +914,26 @@ export class NoiseUpdateParams {
         wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
     }
     /**
+     * @returns {boolean}
+     */
+    get enabled() {
+        const ret = wasm.__wbg_get_noiseupdateparams_enabled(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} arg0
+     */
+    set enabled(arg0) {
+        wasm.__wbg_set_noiseupdateparams_enabled(this.__wbg_ptr, arg0);
+    }
+    /**
      * @param {WasmNoiseType} noise_type
      * @param {number} cutoff
      * @param {number} gain
+     * @param {boolean} enabled
      */
-    constructor(noise_type, cutoff, gain) {
-        const ret = wasm.noiseupdateparams_new(noise_type, cutoff, gain);
+    constructor(noise_type, cutoff, gain, enabled) {
+        const ret = wasm.noiseupdateparams_new(noise_type, cutoff, gain, enabled);
         this.__wbg_ptr = ret >>> 0;
         NoiseUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
         return this;

@@ -48,16 +48,23 @@ pub struct NoiseUpdateParams {
     pub noise_type: WasmNoiseType,
     pub cutoff: f32,
     pub gain: f32,
+    pub enabled: bool,
 }
 
 #[wasm_bindgen]
 impl NoiseUpdateParams {
     #[wasm_bindgen(constructor)]
-    pub fn new(noise_type: WasmNoiseType, cutoff: f32, gain: f32) -> NoiseUpdateParams {
+    pub fn new(
+        noise_type: WasmNoiseType,
+        cutoff: f32,
+        gain: f32,
+        enabled: bool,
+    ) -> NoiseUpdateParams {
         NoiseUpdateParams {
             noise_type,
             cutoff,
             gain,
+            enabled,
         }
     }
 }
@@ -377,6 +384,7 @@ impl AudioEngine {
                         noise_type: params.noise_type.into(),
                         cutoff: params.cutoff,
                         gain: params.gain,
+                        enabled: params.enabled,
                     });
                 } else {
                     return Err(JsValue::from_str("Node is not a NoiseGenerator"));
