@@ -56,7 +56,7 @@ import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
-import { NoiseState, NoiseType } from 'src/audio/types/noise';
+import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 
 interface Props {
   noiseId: number;
@@ -68,7 +68,7 @@ const props = withDefaults(defineProps<Props>(), {
 const frequencyCanvas = ref<HTMLCanvasElement | null>(null);
 
 const store = useAudioSystemStore();
-const { noiseState, audioSystem } = storeToRefs(store);
+const { noiseState } = storeToRefs(store);
 
 const parseNoiseUnit = (val: number) => {
   switch (val as NoiseType) {

@@ -16,7 +16,7 @@ import {
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import { type PortId } from 'app/public/wasm/audio_processor';
-import { NoiseState, NoiseType } from 'src/audio/types/noise';
+import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 
 interface AudioParamDescriptor {
   name: string;

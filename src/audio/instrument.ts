@@ -4,7 +4,7 @@ import { type EnvelopeConfig } from './dsp/envelope';
 // import { type FilterState } from './dsp/filter-state';
 // import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
-import { NoiseState, NoiseUpdate } from './types/noise';
+import { type NoiseState, type NoiseUpdate } from './types/noise';
 import {
   type SynthLayout,
   // type NodeConnection,
