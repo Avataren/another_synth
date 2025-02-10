@@ -25,14 +25,13 @@ pub struct Wavetable {
 /// A set of multiple wavetables covering different frequency ranges.
 pub struct WavetableBank {
     pub tables: Vec<Wavetable>,
-    pub sample_rate: f32,
 }
 
 /// Fixed number of tables we want to build:
 const N_TABLES: usize = 11;
 
 impl WavetableBank {
-    /// Build a bank of N = 16 tables (or however many you choose) from largest to smallest size,
+    /// Build a bank of N = N_TABLES tables from largest to smallest size,
     /// doubling top frequency each time.
     ///
     /// - `waveform`: Sine, Saw, Square, Triangle, etc.
@@ -85,15 +84,12 @@ impl WavetableBank {
             top_freq_hz *= 2.0; // e.g. 20 Hz -> 40 Hz -> 80 Hz ...
         }
 
-        // If you want them in ascending top_freq order for easier selection logic,
-        // you can keep them as is. We'll assume table[0] covers up to 20 Hz,
+        // Aascending top_freq order for easier selection logic,
+        // We'll assume table[0] covers up to 20 Hz,
         // table[1] covers up to 40 Hz, etc. Then in `select_table`, we pick
         // the first table whose top_freq_hz >= requested frequency.
 
-        WavetableBank {
-            tables,
-            sample_rate,
-        }
+        WavetableBank { tables }
     }
 
     /// Pick the first table whose `top_freq_hz` >= `frequency`.
