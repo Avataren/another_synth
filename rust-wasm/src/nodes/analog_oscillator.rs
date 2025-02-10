@@ -1,12 +1,13 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
 use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::{AudioNode, PortId};
 
-use super::{Waveform, WAVETABLE_BANKS};
+use super::{Waveform, WavetableBank};
 #[derive(Debug, Clone, Copy)]
 #[wasm_bindgen]
 pub struct AnalogOscillatorStateUpdate {
@@ -64,11 +65,15 @@ pub struct AnalogOscillator {
     phase_mod_amount: f32,
     freq_mod_amount: f32,
     detune: f32,
+    wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 }
 
 impl AnalogOscillator {
-    pub fn new(sample_rate: f32, waveform: Waveform) -> Self {
-        let max_block_size = 1024;
+    pub fn new(
+        sample_rate: f32,
+        waveform: Waveform,
+        wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
+    ) -> Self {
         Self {
             phase: 0.0,
             sample_rate,
@@ -80,10 +85,11 @@ impl AnalogOscillator {
             last_gate_value: 0.0,
             frequency: 440.0,
             waveform,
-            gate_buffer: vec![0.0; max_block_size],
+            gate_buffer: vec![0.0; 1024],
             phase_mod_amount: 0.0,
             freq_mod_amount: 1.0,
             detune: 0.0,
+            wavetable_banks,
         }
     }
 
@@ -215,14 +221,20 @@ impl AudioNode for AnalogOscillator {
         };
 
         // Retrieve the wavetable bank.
-        let bank = WAVETABLE_BANKS
-            .get(&self.waveform)
-            .expect("Wavetable bank not found");
+        let waveform = self.waveform;
+        let bank = self
+            .wavetable_banks
+            .get(&waveform)
+            .expect("Wavetable bank not found")
+            .clone(); // now `bank` is independent of self
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in 0..buffer_size {
+                // Copy out the gate value (f32 is Copy, so this is a value, not a borrow)
+                let gate_val = self.gate_buffer[i];
+
                 // --- Hard Sync ---
-                self.check_gate(self.gate_buffer[i]);
+                self.check_gate(gate_val);
 
                 // --- Retrieve modulation values for this sample ---
                 let freq_sample = base_freq[i];
@@ -233,47 +245,29 @@ impl AudioNode for AnalogOscillator {
                 let feedback_mod_sample = feedback_mod[i];
 
                 // --- Frequency Calculation & Phase Increment ---
-                // Apply detune (in cents) to the base frequency.
                 let detuned_freq = freq_sample * 2.0f32.powf(self.detune / 1200.0);
-                // Multiply by any frequency modulation.
                 let effective_freq = detuned_freq * freq_mod_sample * self.freq_mod_amount;
-                // In a sine oscillator the phase increment is TWO_PI * f / sample_rate.
-                // We keep our internal phase in radians.
                 let phase_inc = TWO_PI * effective_freq / self.sample_rate;
                 self.phase += phase_inc;
                 if self.phase >= TWO_PI {
                     self.phase -= TWO_PI;
                 }
 
-                // --- Modulation: Using Radians for Phase Arithmetic ---
-                // In your sine oscillator the modulation amounts (both external and feedback)
-                // are in radians. We do the same here.
+                // --- Modulation Calculations ---
                 let external_phase_mod =
                     phase_mod_sample * self.phase_mod_amount * mod_index_sample;
                 let effective_feedback = self.feedback_amount * feedback_mod_sample;
                 let feedback_val = self.last_output * effective_feedback;
 
-                // Combine the base phase (in radians) with modulation.
                 let modulated_phase = self.phase + external_phase_mod + feedback_val;
-
-                // --- Convert to Normalized Phase for Wavetable Lookup ---
-                // Instead of using .fract(), use rem_euclid to ensure the result is always in [0, TWO_PI)
                 let normalized_phase = modulated_phase.rem_euclid(TWO_PI) / TWO_PI;
 
-                // --- Wavetable Lookup ---
-                // Select the appropriate wavetable for the effective frequency.
-                //let table = bank.select_table(effective_freq);
-                //let normalized_freq = effective_freq / self.sample_rate; // freq / SR
-                let table = bank.select_table(effective_freq); // or pass normalized_freq if your code changed
-
-                // Map the normalized phase (0–1) to an index into the table.
+                // Use the bank we copied out earlier.
+                let table = bank.select_table(effective_freq);
                 let pos = normalized_phase * (table.table_size as f32);
                 let sample = cubic_interp(&table.samples, pos);
 
-                // --- Output ---
                 output[i] = sample * self.gain * gain_mod_sample;
-
-                // Store the current sample for feedback in the next iteration.
                 self.last_output = sample;
             }
         }

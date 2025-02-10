@@ -9,13 +9,15 @@ mod traits;
 mod utils;
 mod voice;
 
+use std::{collections::HashMap, sync::Arc};
+
 pub use graph::AudioGraph;
 use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
 use nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Lfo, LfoTriggerMode, LfoWaveform, LpFilter,
-    Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform,
+    Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Serialize;
@@ -93,6 +95,7 @@ pub struct AudioEngine {
     sample_rate: f32,
     num_voices: usize,
     envelope_config: EnvelopeConfig,
+    wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 }
 
 #[wasm_bindgen]
@@ -166,11 +169,58 @@ impl AudioEngine {
         let num_voices = 8;
         let envelope_config = EnvelopeConfig::default();
 
+        // Create the wavetable banks using the actual sample_rate.
+        let max_table_size = 2048;
+        let min_table_size = 64;
+        let lowest_top_freq_hz = 20.0;
+        let mut banks = HashMap::new();
+        banks.insert(
+            Waveform::Sine,
+            Arc::new(WavetableBank::new(
+                Waveform::Sine,
+                max_table_size,
+                min_table_size,
+                lowest_top_freq_hz,
+                sample_rate,
+            )),
+        );
+        banks.insert(
+            Waveform::Saw,
+            Arc::new(WavetableBank::new(
+                Waveform::Saw,
+                max_table_size,
+                min_table_size,
+                lowest_top_freq_hz,
+                sample_rate,
+            )),
+        );
+        banks.insert(
+            Waveform::Square,
+            Arc::new(WavetableBank::new(
+                Waveform::Square,
+                max_table_size,
+                min_table_size,
+                lowest_top_freq_hz,
+                sample_rate,
+            )),
+        );
+        banks.insert(
+            Waveform::Triangle,
+            Arc::new(WavetableBank::new(
+                Waveform::Triangle,
+                max_table_size,
+                min_table_size,
+                lowest_top_freq_hz,
+                sample_rate,
+            )),
+        );
+
         Self {
             voices: Vec::new(),
             sample_rate,
             num_voices,
             envelope_config,
+            wavetable_banks: Arc::new(banks),
         }
     }
 
@@ -517,6 +567,7 @@ impl AudioEngine {
             osc_id = voice.graph.add_node(Box::new(AnalogOscillator::new(
                 self.sample_rate,
                 Waveform::Sine,
+                self.wavetable_banks.clone(), // pass the shared banks
             )));
         }
         Ok(osc_id.0)
