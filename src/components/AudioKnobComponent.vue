@@ -88,9 +88,9 @@ const knobSize = computed(() => {
     case 'full':
       return 70;
     case 'half':
-      return 35;
+      return 50;
     case 'mini':
-      return 20;
+      return 35;
     default:
       return props.size;
   }

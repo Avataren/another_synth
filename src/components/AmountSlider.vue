@@ -20,8 +20,10 @@
       :min="min"
       :max="max"
       :step="step"
-      style="width: 85px"
-      @update:model-value="(val: string | number | null) => handleInputChange(val)"
+      style="width: 60px"
+      @update:model-value="
+        (val: string | number | null) => handleInputChange(val)
+      "
     />
   </div>
 </template>
@@ -39,19 +41,22 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   min: 0,
   max: 100,
-  step: 1
+  step: 1,
 });
 
 const emit = defineEmits<{
-  'update:modelValue': [value: number]
+  'update:modelValue': [value: number];
 }>();
 
 const localValue = ref(props.modelValue);
 
 // Watch for external changes
-watch(() => props.modelValue, (newVal) => {
-  localValue.value = newVal;
-});
+watch(
+  () => props.modelValue,
+  (newVal) => {
+    localValue.value = newVal;
+  },
+);
 
 // Handle slider changes
 const handleSliderChange = (value: number | null) => {

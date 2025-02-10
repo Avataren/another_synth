@@ -5,90 +5,101 @@
     </q-card-section>
     <q-separator />
     <q-card-section class="oscillator-container">
-      <div class="knob-group">
-        <q-toggle
-          v-model="oscillatorState.active"
-          label="Active"
-          @update:modelValue="handleActiveChange"
-        />
+      <div class="top-row">
+        <div class="toggle-group">
+          <q-toggle
+            v-model="oscillatorState.active"
+            label="Active"
+            @update:modelValue="handleActiveChange"
+          />
 
-        <q-toggle
-          v-model="oscillatorState.hard_sync"
-          label="Hard Sync"
-          @update:modelValue="handleHardSyncChange"
-        />
+          <q-toggle
+            v-model="oscillatorState.hard_sync"
+            label="Hard Sync"
+            @update:modelValue="handleHardSyncChange"
+          />
+        </div>
       </div>
 
-      <div class="knob-group">
-        <audio-knob-component
-          v-model="oscillatorState.gain!"
-          label="Gain"
-          :min="0"
-          :max="1"
-          :step="0.001"
-          :decimals="2"
-          @update:modelValue="handleGainChange"
-        />
+      <div class="controls-row">
+        <div class="main-controls-group">
+          <audio-knob-component
+            v-model="oscillatorState.gain!"
+            label="Gain"
+            :min="0"
+            :max="1"
+            :step="0.001"
+            :decimals="2"
+            @update:modelValue="handleGainChange"
+          />
 
-        <audio-knob-component
-          v-model="oscillatorState.detune_oct!"
-          label="Octave"
-          :min="-5"
-          :max="5"
-          :step="1"
-          :decimals="0"
-          @update:modelValue="handleDetuneChange"
-        />
+          <audio-knob-component
+            v-model="oscillatorState.phase_mod_amount!"
+            label="ModIndex"
+            :min="0"
+            :max="30"
+            :step="0.001"
+            :decimals="3"
+            @update:modelValue="handleModIndexChange"
+          />
 
-        <audio-knob-component
-          v-model="oscillatorState.detune_semi!"
-          label="Semitones"
-          :min="-12"
-          :max="12"
-          :step="1"
-          :decimals="0"
-          @update:modelValue="handleDetuneChange"
-        />
+          <audio-knob-component
+            v-model="oscillatorState.feedback_amount!"
+            label="Feedback"
+            :min="0"
+            :max="1"
+            :step="0.001"
+            :decimals="3"
+            @update:modelValue="handleFeedbackChange"
+          />
 
-        <audio-knob-component
-          v-model="oscillatorState.detune_cents!"
-          label="Cents"
-          :min="-100"
-          :max="100"
-          :step="1"
-          :decimals="0"
-          @update:modelValue="handleDetuneChange"
-        />
+          <audio-knob-component
+            v-model="waveform"
+            label="Waveform"
+            :min="0"
+            :max="3"
+            :step="1"
+            :decimals="0"
+            @update:modelValue="handleWaveformChange"
+          />
+        </div>
+      </div>
 
-        <audio-knob-component
-          v-model="oscillatorState.phase_mod_amount!"
-          label="ModIndex"
-          :min="0"
-          :max="30"
-          :step="0.001"
-          :decimals="3"
-          @update:modelValue="handleModIndexChange"
-        />
+      <div class="detune-row">
+        <div class="detune-group">
+          <audio-knob-component
+            v-model="oscillatorState.detune_oct!"
+            label="Octave"
+            :min="-5"
+            :max="5"
+            :step="1"
+            :decimals="0"
+            scale="half"
+            @update:modelValue="handleDetuneChange"
+          />
 
-        <audio-knob-component
-          v-model="oscillatorState.feedback_amount!"
-          label="Feedback"
-          :min="0"
-          :max="1"
-          :step="0.001"
-          :decimals="3"
-          @update:modelValue="handleFeedbackChange"
-        />
+          <audio-knob-component
+            v-model="oscillatorState.detune_semi!"
+            label="Semitones"
+            :min="-12"
+            :max="12"
+            :step="1"
+            :decimals="0"
+            scale="half"
+            @update:modelValue="handleDetuneChange"
+          />
 
-        <audio-knob-component
-          v-model="waveform"
-          label="Waveform"
-          :min="0"
-          :max="3"
-          :step="1"
-          :decimals="0"
-          @update:modelValue="handleWaveformChange"
-        />
+          <audio-knob-component
+            v-model="oscillatorState.detune_cents!"
+            label="Cents"
+            :min="-100"
+            :max="100"
+            :step="1"
+            :decimals="0"
+            scale="half"
+            @update:modelValue="handleDetuneChange"
+          />
+        </div>
       </div>
 
       <routing-component
@@ -96,10 +107,6 @@
         :source-type="VoiceNodeType.Oscillator"
         :debug="true"
       />
-      <!-- Waveform visualization -->
-      <div class="canvas-wrapper">
-        <canvas ref="waveformCanvas"></canvas>
-      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -128,7 +135,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const store = useAudioSystemStore();
 const { oscillatorStates } = storeToRefs(store);
-const waveformCanvas = ref<HTMLCanvasElement | null>(null);
+//const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 const waveform = ref<number>(0);
 // Create a reactive reference to the oscillator state
 const oscillatorState = computed({
@@ -278,32 +285,45 @@ watch(
 
 <style scoped>
 .oscillator-card {
-  width: 650px;
-  margin: 0 auto;
+  width: 600px;
+  margin: 5px auto;
 }
 
 .oscillator-container {
   padding: 1rem;
 }
 
-.knob-group {
+.top-row {
   display: flex;
-  justify-content: space-around;
-  align-items: flex-start;
   margin-bottom: 1rem;
 }
 
-.canvas-wrapper {
-  width: 100%;
-  height: 120px;
-  margin-top: 1rem;
+.toggle-group {
+  display: flex;
+  gap: 1rem;
 }
 
-canvas {
-  width: 100%;
-  height: 100%;
-  border: 1px solid #ccc;
-  background-color: rgb(200, 200, 200);
-  border-radius: 4px;
+.controls-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.main-controls-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.detune-row {
+  display: flex;
+  justify-content: center;
+  /* gap: 0.25rem; */
+  /* justify-content: flex-end; */
+  /* margin-bottom: 1rem; */
+}
+
+.detune-group {
+  display: flex;
+  gap: 0.5rem;
 }
 </style>

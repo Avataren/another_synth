@@ -1,12 +1,13 @@
 <template>
   <div class="routing-section">
     <q-expansion-item
-      group="routing"
+      v-model="isExpanded"
       icon="share"
       label="Modulation Routing"
       header-class="bg-dark text-white"
       dark
       expand-icon-class="text-white"
+      default-opened
     >
       <q-card dark class="bg-dark">
         <q-card-section>
@@ -119,6 +120,9 @@ const routeManager = new ModulationRouteManager(
   props.sourceId,
   props.sourceType,
 );
+
+// Add state for expansion control
+const isExpanded = ref(true);
 
 interface RouteConfig {
   targetId: number;
@@ -321,7 +325,6 @@ onMounted(async () => {
   initializeRoutes();
 });
 
-// Add this new function to handle route initialization
 const initializeRoutes = () => {
   try {
     const connections = store.getNodeConnections(props.sourceId);

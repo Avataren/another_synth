@@ -1,42 +1,69 @@
 <template>
-  <q-page class="row items-center justify-evenly">
-    <oscilloscope-component :node="destinationNode" />
-    <frequency-analyzer-component :node="destinationNode" />
-    <piano-keyboard-component />
+  <q-page class="column">
+    <!-- Top row with analyzers -->
+    <div class="row q-col-gutter-md q-mb-md">
+      <div class="col-6">
+        <oscilloscope-component :node="destinationNode" />
+      </div>
+      <div class="col-6">
+        <frequency-analyzer-component :node="destinationNode" />
+      </div>
+    </div>
 
-    <oscillator-component
-      v-for="osc in oscillatorNodes"
-      :key="osc.id"
-      :node="destinationNode"
-      :nodeId="osc.id"
-    />
-    <lfo-component
-      v-for="lfo in lfoNodes"
-      :key="lfo.id"
-      :node="destinationNode"
-      :nodeId="lfo.id"
-    />
+    <!-- Main three columns -->
+    <div class="row q-col-gutter-md flex-grow">
+      <!-- Generators column -->
+      <div class="col-4 column q-gutter-y-md node-bg">
+        <div class="text-h6">Generators</div>
+        <oscillator-component
+          v-for="osc in oscillatorNodes"
+          :key="osc.id"
+          :node="destinationNode"
+          :nodeId="osc.id"
+        />
+        <noise-component
+          v-for="noise in noiseNodes"
+          :key="noise.id"
+          :node="destinationNode"
+          :noiseId="noise.id"
+        />
+      </div>
 
-    <noise-component
-      v-for="noise in noiseNodes"
-      :key="noise.id"
-      :node="destinationNode"
-      :noiseId="noise.id"
-    />
+      <!-- Modulators column -->
+      <div class="col-4 column q-gutter-y-md node-bg">
+        <div class="text-h6">Modulators</div>
+        <lfo-component
+          v-for="lfo in lfoNodes"
+          :key="lfo.id"
+          :node="destinationNode"
+          :nodeId="lfo.id"
+        />
+        <envelope-component
+          v-for="env in envelopeNodes"
+          :key="env.id"
+          :node="destinationNode"
+          :nodeId="env.id"
+        />
+      </div>
 
-    <envelope-component
-      v-for="env in envelopeNodes"
-      :key="env.id"
-      :node="destinationNode"
-      :nodeId="env.id"
-    />
+      <!-- Filters column -->
+      <div class="col-4 column q-gutter-y-md node-bg">
+        <div class="text-h6">Filters</div>
+        <filter-component
+          v-for="filter in filterNodes"
+          :key="filter.id"
+          :node="destinationNode"
+          :nodeId="filter.id"
+        />
+      </div>
+    </div>
 
-    <filter-component
-      v-for="filter in filterNodes"
-      :key="filter.id"
-      :node="destinationNode"
-      :nodeId="filter.id"
-    />
+    <!-- Bottom keyboard -->
+    <div class="row q-mt-md">
+      <div class="col">
+        <piano-keyboard-component />
+      </div>
+    </div>
   </q-page>
 </template>
 
@@ -78,3 +105,10 @@ const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 //   console.log('Oscillator nodes:', nodes);
 // });
 </script>
+
+<style>
+.node-bg {
+  background-color: red;
+  padding: 5px;
+}
+</style>
