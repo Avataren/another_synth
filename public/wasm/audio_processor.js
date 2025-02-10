@@ -246,6 +246,7 @@ export const WasmNoiseType = Object.freeze({
     Brownian: 2, "2": "Brownian",
 });
 /**
+ * Example waveforms.
  * @enum {0 | 1 | 2 | 3 | 4}
  */
 export const Waveform = Object.freeze({

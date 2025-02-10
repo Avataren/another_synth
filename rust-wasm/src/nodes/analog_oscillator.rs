@@ -262,7 +262,10 @@ impl AudioNode for AnalogOscillator {
 
                 // --- Wavetable Lookup ---
                 // Select the appropriate wavetable for the effective frequency.
-                let table = bank.select_table(effective_freq);
+                //let table = bank.select_table(effective_freq);
+                //let normalized_freq = effective_freq / self.sample_rate; // freq / SR
+                let table = bank.select_table(effective_freq); // or pass normalized_freq if your code changed
+
                 // Map the normalized phase (0–1) to an index into the table.
                 let pos = normalized_phase * (table.table_size as f32);
                 let sample = cubic_interp(&table.samples, pos);
