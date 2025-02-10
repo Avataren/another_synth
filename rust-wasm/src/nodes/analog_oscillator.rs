@@ -89,15 +89,15 @@ impl AnalogOscillator {
 
     pub fn update_params(&mut self, params: &AnalogOscillatorStateUpdate) {
         console::log_1(&format!("### Updating params: {:#?}", params).into());
-        // self.gain = params.gain;
+        self.gain = params.gain;
         self.feedback_amount = params.feedback_amount;
         self.hard_sync = params.hard_sync;
-        // self.active = params.active;
+        self.active = params.active;
         self.waveform = params.waveform;
         // Update modulation parameters.
         self.phase_mod_amount = params.phase_mod_amount;
         //self.freq_mod_amount = params.freq_mod_amount;
-        // self.detune = params.detune;
+        self.detune = params.detune;
         // self.last_output = 0.0;
     }
 
