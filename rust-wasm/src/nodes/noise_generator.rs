@@ -224,7 +224,7 @@ impl NoiseGenerator {
 impl ModulationProcessor for NoiseGenerator {
     fn get_modulation_type(&self, port: PortId) -> ModulationType {
         match port {
-            PortId::CutoffMod => ModulationType::Bipolar,
+            PortId::CutoffMod => ModulationType::VCA,
             PortId::GainMod => ModulationType::VCA,
             _ => ModulationType::VCA,
         }

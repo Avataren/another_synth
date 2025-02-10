@@ -184,6 +184,11 @@ export function getModulationTargetsForType(
                 { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
                 { value: PortId.ResonanceMod, label: PORT_LABELS[PortId.ResonanceMod] },
             ];
+        case VoiceNodeType.Noise:
+            return [
+                { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
+                { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
+            ];
         case VoiceNodeType.Mixer:
             return [
                 { value: PortId.AudioInput0, label: PORT_LABELS[PortId.AudioInput0] },
