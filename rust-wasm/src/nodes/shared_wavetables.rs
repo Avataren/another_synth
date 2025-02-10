@@ -10,7 +10,7 @@ use super::{Waveform, WavetableBank};
 pub static WAVETABLE_BANKS: Lazy<HashMap<Waveform, Arc<WavetableBank>>> = Lazy::new(|| {
     let sample_rate = 48000.0;
     let max_table_size = 2048;
-    let min_table_size = 2048;
+    let min_table_size = 64;
     let lowest_top_freq_hz = 20.0;
     let mut map = HashMap::new();
 
