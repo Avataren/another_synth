@@ -43,7 +43,7 @@ pub struct LpFilter {
 impl LpFilter {
     pub fn new(sample_rate: f32) -> Self {
         // Default parameters: cutoff = 1 kHz, resonance = 0 (no peak)
-        let base_cutoff = 1000.0;
+        let base_cutoff = 20000.0;
         let base_resonance = 0.0;
         let mut filter = Self {
             sample_rate,

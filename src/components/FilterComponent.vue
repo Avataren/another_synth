@@ -85,7 +85,7 @@ const filterState = computed<FilterState>({
       console.warn(`No state found for filter ${props.nodeId}`);
       return {
         id: props.nodeId,
-        cutoff: 1000,
+        cutoff: 20000,
         resonance: 1,
         active: true,
       } as FilterState;
