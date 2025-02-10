@@ -108,7 +108,10 @@ const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 
 <style>
 .node-bg {
-  background-color: red;
-  padding: 5px;
+  /* background-color: red; */
+  padding: 0.5rem;
+}
+.column {
+  padding: 1rem;
 }
 </style>

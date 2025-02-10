@@ -322,7 +322,7 @@ watch(
 <style scoped>
 .lfo-card {
   width: 600px;
-  margin: 0 auto;
+  margin: 0.5rem auto;
 }
 
 .lfo-container {

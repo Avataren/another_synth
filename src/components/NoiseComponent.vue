@@ -173,7 +173,7 @@ watch(
 <style scoped>
 .filter-card {
   width: 600px;
-  margin: 0 auto;
+  margin: 0.5rem auto;
 }
 
 .filter-container {

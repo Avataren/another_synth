@@ -242,7 +242,7 @@ onUnmounted(() => {
 <style scoped>
 .envelope-card {
   width: 600px;
-  margin: 0 auto;
+  margin: 0.5rem auto;
 }
 
 .envelope-container {

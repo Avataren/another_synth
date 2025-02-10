@@ -286,7 +286,7 @@ watch(
 <style scoped>
 .oscillator-card {
   width: 600px;
-  margin: 5px auto;
+  margin: 0.5rem auto;
 }
 
 .oscillator-container {
