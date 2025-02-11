@@ -184,7 +184,7 @@ impl AudioNode for AnalogOscillator {
         let mod_index = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::ModIndex),
-            1.0,
+            0.0,
             PortId::ModIndex,
         );
         let feedback_mod = self.process_modulations(
@@ -254,13 +254,19 @@ impl AudioNode for AnalogOscillator {
                 }
 
                 // --- Modulation Calculations ---
-                let external_phase_mod =
-                    phase_mod_sample * self.phase_mod_amount * mod_index_sample;
+                // let external_phase_mod =
+                //     phase_mod_sample * (self.phase_mod_amount + mod_index_sample);
+                let modulation_depth = self.phase_mod_amount + mod_index_sample;
+                let external_phase_mod = phase_mod_sample * modulation_depth * TWO_PI;
+
                 let effective_feedback = self.feedback_amount * feedback_mod_sample;
                 let feedback_val = self.last_output * effective_feedback;
 
                 let modulated_phase = self.phase + external_phase_mod + feedback_val;
                 let normalized_phase = modulated_phase.rem_euclid(TWO_PI) / TWO_PI;
+
+                // let modulated_phase = self.phase + external_phase_mod + feedback_val;
+                // let normalized_phase = modulated_phase.rem_euclid(TWO_PI) / TWO_PI;
 
                 // Use the bank we copied out earlier.
                 let table = bank.select_table(effective_freq);
@@ -308,7 +314,8 @@ impl ModulationProcessor for AnalogOscillator {
         match port {
             PortId::FrequencyMod => ModulationType::FrequencyCents,
             PortId::PhaseMod => ModulationType::Additive,
-            PortId::ModIndex | PortId::GainMod | PortId::FeedbackMod => ModulationType::VCA,
+            PortId::ModIndex => ModulationType::Additive, // Keep as Additive
+            PortId::GainMod | PortId::FeedbackMod => ModulationType::VCA,
             PortId::Gate => ModulationType::Additive,
             _ => ModulationType::VCA,
         }
