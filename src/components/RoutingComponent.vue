@@ -27,7 +27,7 @@
           >
             <div class="row q-col-gutter-sm items-center">
               <!-- Target Node Selection -->
-              <div class="col-5">
+              <div class="col-4">
                 <q-select
                   v-model="route.targetNode"
                   :options="getAvailableTargets()"
@@ -41,7 +41,7 @@
               </div>
 
               <!-- Parameter Selection -->
-              <div class="col-5">
+              <div class="col-4">
                 <q-select
                   :model-value="
                     getAvailableParams(route.targetId).find(
@@ -83,7 +83,7 @@
                   "
                 />
               </div>
-              <div class="col-4">
+              <div class="col-2">
                 <q-select
                   v-model="route.modulationType"
                   :options="modulationTypes"

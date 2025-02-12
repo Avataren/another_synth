@@ -361,7 +361,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         mixerId,
         PortId.AudioInput0,
         1.0,
-        WasmModulationType.VCA,
+        WasmModulationType.Additive,
       );
 
       // Connect envelope to mixer's gain input
@@ -381,7 +381,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         filterId,
         PortId.AudioInput0,
         1.0,
-        WasmModulationType.VCA,
+        WasmModulationType.Additive,
       );
 
       // Connect oscillator 2's output to oscillator 1's phase mod
@@ -391,7 +391,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         osc1!.id,
         PortId.PhaseMod,
         1.0,
-        WasmModulationType.VCA,
+        WasmModulationType.Additive,
       );
 
       // Add connections to layout

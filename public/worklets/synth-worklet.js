@@ -1351,7 +1351,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         mixerId,
         PortId.AudioInput0,
         1,
-        WasmModulationType.VCA
+        WasmModulationType.Additive
       );
       this.audioEngine.connect_nodes(
         ampEnv.id,
@@ -1367,7 +1367,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         filterId,
         PortId.AudioInput0,
         1,
-        WasmModulationType.VCA
+        WasmModulationType.Additive
       );
       this.audioEngine.connect_nodes(
         osc2.id,
@@ -1375,7 +1375,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         osc1.id,
         PortId.PhaseMod,
         1,
-        WasmModulationType.VCA
+        WasmModulationType.Additive
       );
       voiceLayout.connections = [
         {
