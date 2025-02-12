@@ -27,7 +27,7 @@
           >
             <div class="row q-col-gutter-sm items-center">
               <!-- Target Node Selection -->
-              <div class="col-4">
+              <div class="col-5">
                 <q-select
                   v-model="route.targetNode"
                   :options="getAvailableTargets()"
@@ -41,7 +41,7 @@
               </div>
 
               <!-- Parameter Selection -->
-              <div class="col-4">
+              <div class="col-5">
                 <q-select
                   :model-value="
                     getAvailableParams(route.targetId).find(
@@ -60,12 +60,24 @@
               </div>
 
               <!-- Amount Slider -->
-              <div class="col-3">
-                <amount-slider
+              <div class="col-1">
+                <!-- <amount-slider
                   v-model="route.amount"
                   :min="0"
                   :max="100"
                   :step="0.5"
+                  @update:model-value="
+                    (val) => handleAmountChange(index, Number(val))
+                  "
+                /> -->
+                <audio-knob-component
+                  v-model="route.amount!"
+                  label=""
+                  :min="0"
+                  :max="100"
+                  :step="0.1"
+                  :decimals="2"
+                  scale="half"
                   @update:model-value="
                     (val) => handleAmountChange(index, Number(val))
                   "
@@ -105,8 +117,8 @@ import {
   type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
 import { type PortId } from 'app/public/wasm/audio_processor';
-import AmountSlider from './AmountSlider.vue';
-
+// import AmountSlider from './AmountSlider.vue';
+import AudioKnobComponent from './AudioKnobComponent.vue';
 interface Props {
   sourceId: number;
   sourceType: VoiceNodeType;

@@ -30,14 +30,29 @@
         />
       </svg>
 
-      <!-- Center Value Display -->
-      <div class="value-display">
-        <div v-if="props.unitFunc">
-          {{ displayUnit }}
-        </div>
-        <div v-else>
-          {{ formatValue(props.modelValue) }}
-        </div>
+      <!-- Center Value Display / Input (double-click to edit) -->
+      <div
+        class="value-display"
+        @dblclick.stop="startEditing"
+        @mousedown="handleValueMouseDown"
+      >
+        <template v-if="isEditing">
+          <input
+            ref="inputRef"
+            class="value-input"
+            v-model="inputValue"
+            @keydown.enter="commitEditing"
+            @blur="commitEditing"
+          />
+        </template>
+        <template v-else>
+          <div v-if="props.unitFunc">
+            {{ displayUnit }}
+          </div>
+          <div v-else>
+            {{ formatValue(props.modelValue) }}
+          </div>
+        </template>
       </div>
 
       <!-- Label -->
@@ -47,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 
 interface Props {
   modelValue: number;
@@ -58,7 +73,7 @@ interface Props {
   unit?: string;
   color?: string;
   unitFunc?: (val: number) => string;
-  size?: number; // still available as a fallback if needed
+  size?: number; // fallback if needed
   dragSensitivity?: number;
   thickness?: number;
   // New prop to select a preset scale:
@@ -82,7 +97,6 @@ const emit = defineEmits<{
 }>();
 
 // Compute the knob size based on the selected scale.
-// These numbers are arbitrary – adjust as needed.
 const knobSize = computed(() => {
   switch (props.scale) {
     case 'full':
@@ -105,6 +119,9 @@ const pendingDrag = ref(false);
 const startX = ref(0);
 const startY = ref(0);
 const startValue = ref(props.modelValue);
+
+// We'll track the last ctrl-key state so that when it changes mid-drag we update our baseline.
+let lastCtrl = false;
 
 // ───── ARC CONSTANTS ─────
 // We want an arc that spans 260° (from -40° to 220°)
@@ -170,13 +187,49 @@ const formatValue = (value: number): string => {
   return `${value.toFixed(props.decimals)}${props.unit || ''}`;
 };
 
+// ─── MANUAL INPUT STATE & METHODS ───
+
+const isEditing = ref(false);
+const inputValue = ref(String(props.modelValue));
+const inputRef = ref<HTMLInputElement | null>(null);
+
+function startEditing(e: MouseEvent) {
+  // Prevent any bubbling so that dragging isn't started.
+  e.stopPropagation();
+  isEditing.value = true;
+  inputValue.value = String(props.modelValue);
+  nextTick(() => {
+    inputRef.value?.focus();
+    inputRef.value?.select();
+  });
+}
+
+function commitEditing() {
+  const newValue = parseFloat(inputValue.value);
+  if (!isNaN(newValue)) {
+    // Do not clamp the value—allow numbers outside the min/max range.
+    emit('update:modelValue', Number(newValue.toFixed(props.decimals)));
+  }
+  isEditing.value = false;
+}
+
+// Prevent text selection when not editing.
+function handleValueMouseDown(e: MouseEvent) {
+  if (!isEditing.value) {
+    e.preventDefault();
+  }
+}
+
 // ─── DRAG EVENT HANDLERS ───
 
 function onMouseDown(e: MouseEvent) {
+  // If the mousedown is on the value display (for editing) do nothing.
+  if ((e.target as HTMLElement).closest('.value-display')) return;
   e.preventDefault(); // Prevent default text selection
   startX.value = e.clientX;
   startY.value = e.clientY;
   startValue.value = props.modelValue;
+  lastCtrl = e.ctrlKey;
   pendingDrag.value = true;
   // Add a class to disable text selection on the knob element only.
   knobRef.value?.classList.add('no-select');
@@ -194,10 +247,19 @@ function onMouseMove(e: MouseEvent) {
     pendingDrag.value = false;
   }
   if (isDragging.value) {
+    // If the ctrl key state has changed mid-drag, reset our starting point.
+    if (e.ctrlKey !== lastCtrl) {
+      startY.value = e.clientY;
+      startValue.value = props.modelValue;
+      lastCtrl = e.ctrlKey;
+    }
     const deltaY = startY.value - e.clientY;
-    const sensitivity = props.dragSensitivity;
-    const deltaValue = (deltaY * sensitivity * (props.max - props.min)) / 200;
+    // Adjust sensitivity if ctrl is held.
+    const adjustedSensitivity = props.dragSensitivity * (e.ctrlKey ? 0.2 : 1);
+    const deltaValue =
+      (deltaY * adjustedSensitivity * (props.max - props.min)) / 200;
     const newValue = startValue.value + deltaValue;
+    // For dragging we still clamp to min/max.
     const clampedValue = Math.min(
       props.max,
       Math.max(props.min, Number(newValue.toFixed(props.decimals))),
@@ -260,6 +322,7 @@ onUnmounted(() => {
   left: 0;
 }
 
+/* In non-editing mode, disable selection on the value display */
 .value-display {
   position: absolute;
   top: 50%;
@@ -270,6 +333,19 @@ onUnmounted(() => {
   z-index: 1;
   font-size: 0.9rem;
   color: #ffffff;
+  cursor: text;
+  user-select: none;
+}
+
+.value-input {
+  width: 100%;
+  text-align: center;
+  font-size: 0.9rem;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  user-select: text;
 }
 
 .knob-label {
