@@ -20,98 +20,76 @@ pub trait ModulationProcessor {
         initial_value: f32,
         port: PortId,
     ) -> Vec<f32> {
-        let mut output = vec![initial_value; buffer_size];
-
-        let Some(mod_sources) = sources else {
-            return output;
+        let Some(sources) = sources else {
+            return vec![initial_value; buffer_size];
         };
-        if mod_sources.is_empty() {
-            return output;
+        if sources.is_empty() {
+            return vec![initial_value; buffer_size];
         };
 
-        let preferred_type = self.get_modulation_type(port);
+        // Determine proper starting value based on first modulation type
+        // or mix of types
+        let has_vca = sources
+            .iter()
+            .any(|s| matches!(s.mod_type, ModulationType::VCA));
+        let has_bipolar = sources
+            .iter()
+            .any(|s| matches!(s.mod_type, ModulationType::Bipolar));
+        let has_additive = sources
+            .iter()
+            .any(|s| matches!(s.mod_type, ModulationType::Additive));
 
-        // For additive modulation, create a separate buffer for accumulating modulations
-        let mut mod_accumulator = if matches!(preferred_type, ModulationType::Additive) {
-            vec![0.0; buffer_size]
+        // For pure VCA/Bipolar modulation, start at 1.0
+        // For pure additive modulation, start at initial_value
+        // For mixed types, need both
+        let starting_value = if has_vca || has_bipolar {
+            1.0
         } else {
-            Vec::new()
+            initial_value
         };
 
-        let chunks = buffer_size / 4;
-        let remainder = buffer_size % 4;
+        let mut output = vec![starting_value; buffer_size];
+        let mut additive_accumulator = vec![0.0; buffer_size];
 
-        // Process in SIMD chunks
-        for source in mod_sources {
-            let amount_splat = f32x4::splat(source.amount);
-
-            // Pre-calculate constants for frequency cents
-            let (cents_mul, div_1200) = if matches!(preferred_type, ModulationType::FrequencyCents)
-            {
-                (f32x4::splat(100.0), f32x4::splat(1200.0))
-            } else {
-                (f32x4::splat(0.0), f32x4::splat(0.0))
-            };
-
-            // Main SIMD loop
-            for i in 0..chunks {
-                let idx = i * 4;
-                let current = f32x4::from_slice(&output[idx..]);
-                let modulation = f32x4::from_slice(&source.buffer[idx..]);
-
-                let processed = match preferred_type {
-                    ModulationType::VCA => current * modulation * amount_splat,
-                    ModulationType::FrequencyCents => {
-                        let cents = modulation * amount_splat * cents_mul;
-                        (cents / div_1200).exp2()
+        // Process modulations by type
+        for source in sources {
+            match source.mod_type {
+                ModulationType::VCA => {
+                    for i in 0..buffer_size {
+                        output[i] *= source.buffer[i] * source.amount;
                     }
-                    ModulationType::Bipolar => {
-                        current * (f32x4::splat(1.0) + (modulation * amount_splat))
-                    }
-                    ModulationType::Additive => {
-                        let mod_chunk = f32x4::from_slice(&mod_accumulator[idx..]);
-                        mod_chunk + (modulation * amount_splat)
-                    }
-                };
-
-                if matches!(preferred_type, ModulationType::Additive) {
-                    processed.copy_to_slice(&mut mod_accumulator[idx..idx + 4]);
-                } else {
-                    processed.copy_to_slice(&mut output[idx..idx + 4]);
                 }
-            }
-
-            // Handle remaining elements
-            if remainder > 0 {
-                let start = chunks * 4;
-                for i in 0..remainder {
-                    let idx = start + i;
-                    let current = output[idx];
-                    let modulation = source.buffer[idx];
-
-                    match preferred_type {
-                        ModulationType::VCA => {
-                            output[idx] = current * modulation * source.amount;
-                        }
-                        ModulationType::FrequencyCents => {
-                            let cents = modulation * source.amount * 100.0;
-                            output[idx] = (cents / 1200.0).exp2();
-                        }
-                        ModulationType::Bipolar => {
-                            output[idx] = current * (1.0 + (modulation * source.amount));
-                        }
-                        ModulationType::Additive => {
-                            mod_accumulator[idx] += modulation * source.amount;
-                        }
+                ModulationType::Bipolar => {
+                    for i in 0..buffer_size {
+                        output[i] *= 1.0 + (source.buffer[i] * source.amount);
+                    }
+                }
+                ModulationType::Additive => {
+                    for i in 0..buffer_size {
+                        additive_accumulator[i] += source.buffer[i] * source.amount;
+                    }
+                }
+                ModulationType::FrequencyCents => {
+                    for i in 0..buffer_size {
+                        let cents = source.buffer[i] * source.amount * 100.0;
+                        output[i] *= (cents / 1200.0).exp2();
                     }
                 }
             }
         }
 
-        // For additive modulation, add the accumulated modulations to the initial value
-        if matches!(preferred_type, ModulationType::Additive) {
-            for i in 0..buffer_size {
-                output[i] += mod_accumulator[i];
+        // Final combination depends on what types we saw
+        if has_additive {
+            if has_vca || has_bipolar {
+                // Mix multiplicative and additive
+                for i in 0..buffer_size {
+                    output[i] = output[i] * initial_value + additive_accumulator[i];
+                }
+            } else {
+                // Pure additive
+                for i in 0..buffer_size {
+                    output[i] += additive_accumulator[i];
+                }
             }
         }
 

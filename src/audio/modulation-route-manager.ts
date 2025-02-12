@@ -8,6 +8,7 @@ import {
   type NodeConnectionUpdate,
   getModulationTargetsForType,
 } from './types/synth-layout';
+import { PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
 
 export interface TargetNode {
   id: number;
@@ -20,7 +21,7 @@ export class ModulationRouteManager {
     private readonly store = useAudioSystemStore(),
     private readonly sourceId: number,
     private readonly sourceType: VoiceNodeType,
-  ) {}
+  ) { }
 
   private getNodeName(type: VoiceNodeType, index: number): string {
     switch (type) {
@@ -80,6 +81,21 @@ export class ModulationRouteManager {
 
     // Start checking from the target node
     return hasPathToSource(targetNodeId, new Set());
+  }
+
+  public getDefaultModulationType(port: PortId): WasmModulationType {
+    switch (port) {
+      case PortId.FrequencyMod:
+        return WasmModulationType.Bipolar;  // Type 1
+      case PortId.PhaseMod:
+      case PortId.ModIndex:
+        return WasmModulationType.Additive;  // Type 2
+      case PortId.GainMod:
+      case PortId.FeedbackMod:
+        return WasmModulationType.VCA;  // Type 0
+      default:
+        return WasmModulationType.VCA;  // Type 0
+    }
   }
 
   /**
@@ -171,6 +187,17 @@ export class ModulationRouteManager {
 
   async updateConnection(connection: NodeConnectionUpdate): Promise<void> {
     try {
+      // Remove this auto-defaulting logic:
+      // if (!connection.modulationType) {
+      //   connection.modulationType = this.getDefaultModulationType(connection.target);
+      // }
+
+      // Log the connection before sending to store
+      console.log('ModulationRouteManager handling connection:', {
+        original: connection,
+        modType: connection.modulationType
+      });
+
       await this.store.updateConnection(connection);
     } catch (error) {
       console.error('Failed to update connection:', error);

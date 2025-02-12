@@ -71,7 +71,7 @@ impl NoiseUpdateParams {
         }
     }
 }
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[wasm_bindgen]
 pub enum WasmModulationType {
     VCA = 0,
@@ -684,6 +684,13 @@ impl AudioEngine {
         amount: f32,
         modulation_type: Option<WasmModulationType>,
     ) -> Result<(), JsValue> {
+        console::log_1(
+            &format!(
+                "RUST: Connecting nodes: from={}, to={}, modulation type={:?}",
+                from_node, to_node, modulation_type
+            )
+            .into(),
+        );
         let connection = Connection {
             from_node: NodeId(from_node),
             from_port,

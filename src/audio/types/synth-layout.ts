@@ -1,5 +1,5 @@
 // src/audio/types/synth-layout.ts
-import { PortId } from 'app/public/wasm/audio_processor';
+import { PortId, type WasmModulationType } from 'app/public/wasm/audio_processor';
 
 // Define the types of nodes we can have in a voice
 export enum VoiceNodeType {
@@ -22,15 +22,21 @@ export interface LfoState {
     active: boolean;
 }
 
+export interface NodeConnectionUpdate {
+    fromId: number;
+    toId: number;
+    target: PortId;
+    amount: number;
+    isRemoving?: boolean;
+    modulationType?: WasmModulationType;
+}
+
 export interface NodeConnection {
     fromId: number;
     toId: number;
     target: PortId;
     amount: number;
-}
-
-export interface NodeConnectionUpdate extends NodeConnection {
-    isRemoving?: boolean;
+    modulationType: WasmModulationType;
 }
 
 export const PORT_LABELS: Record<PortId, string> = {
@@ -215,6 +221,7 @@ export function createNodeConnection(
     toId: number,
     target: PortId,
     amount: number,
+    modulationType: WasmModulationType,
 ): NodeConnection {
-    return { fromId, toId, target, amount };
+    return { fromId, toId, target, amount, modulationType };
 }

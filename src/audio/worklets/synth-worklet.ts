@@ -401,18 +401,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           toId: mixerId,
           target: PortId.GainMod,
           amount: 1.0,
+          modulationType: WasmModulationType.VCA,
         },
         {
           fromId: osc1!.id,
           toId: filterId,
           target: PortId.AudioInput0,
           amount: 1.0,
+          modulationType: WasmModulationType.VCA,
         },
         {
           fromId: osc2!.id,
           toId: osc1!.id,
           target: PortId.PhaseMod,
           amount: 1.0,
+          modulationType: WasmModulationType.Additive,
         },
       ];
 
@@ -489,6 +492,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         to: connection.toId,
         target: connection.target,
         amount: connection.amount,
+        modulationType: connection.modulationType,
       });
 
       this.audioEngine.connect_nodes(
@@ -497,7 +501,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         connection.toId,
         connection.target,
         connection.amount,
-        WasmModulationType.VCA,
+        connection.modulationType,
       );
 
       // Verify connection was added

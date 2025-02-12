@@ -146,13 +146,13 @@ impl AudioGraph {
         to_node: NodeId,
         to_port: PortId,
     ) {
-        web_sys::console::log_1(
-            &format!(
-                "remove_specific_connection - Before remove: connections={:?}, inputs={:?}",
-                self.connections, self.input_connections
-            )
-            .into(),
-        );
+        // web_sys::console::log_1(
+        //     &format!(
+        //         "remove_specific_connection - Before remove: connections={:?}, inputs={:?}",
+        //         self.connections, self.input_connections
+        //     )
+        //     .into(),
+        // );
 
         // Remove matching connection(s) from the connections map.
         let to_remove: Vec<_> = self
@@ -188,13 +188,13 @@ impl AudioGraph {
             }
         }
 
-        web_sys::console::log_1(
-            &format!(
-                "remove_specific_connection - After remove: connections={:?}, inputs={:?}",
-                self.connections, self.input_connections
-            )
-            .into(),
-        );
+        // web_sys::console::log_1(
+        //     &format!(
+        //         "remove_specific_connection - After remove: connections={:?}, inputs={:?}",
+        //         self.connections, self.input_connections
+        //     )
+        //     .into(),
+        // );
     }
 
     /// Removes a connection based on an entire Connection struct.

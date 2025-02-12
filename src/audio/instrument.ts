@@ -264,6 +264,7 @@ export default class Instrument {
       toId: connection.toId,
       target: connection.target,
       amount: Number(connection.amount) || 0,
+      modulationType: connection.modulationType,
       isRemoving: Boolean(connection.isRemoving),
     };
 

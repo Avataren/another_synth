@@ -15,7 +15,7 @@ import {
   type FilterState,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
-import { type PortId } from 'app/public/wasm/audio_processor';
+import { WasmModulationType, type PortId } from 'app/public/wasm/audio_processor';
 import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 
 interface AudioParamDescriptor {
@@ -319,35 +319,23 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.isUpdating = true;
 
       try {
-        // const numVoices = this.synthLayout?.voices.length || 0;
-
-        // Convert proxies to plain numbers and validate
         const plainConnection = {
           fromId: Number(connection.fromId),
           toId: Number(connection.toId),
           target: Number(connection.target) as PortId,
           amount: Number(connection.amount),
           isRemoving: Boolean(connection.isRemoving),
+          modulationType: connection.modulationType
         } as NodeConnectionUpdate;
 
-        // Validate target
-        if (isNaN(plainConnection.target)) {
-          throw new Error(`Invalid target value: ${connection.target}`);
-        }
-
-        // Update WASM for all voices
-        // for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
         if (!this.currentInstrument) throw new Error('No instrument');
         await this.currentInstrument.updateConnection(plainConnection);
-        // }
 
-        // Update store state
         if (this.synthLayout) {
           this.synthLayout.voices.forEach((voice) => {
             if (!voice.connections) voice.connections = [];
 
             if (connection.isRemoving) {
-              // Only remove the specific connection with matching target
               voice.connections = voice.connections.filter(
                 (conn) =>
                   !(
@@ -357,7 +345,6 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                   ),
               );
             } else {
-              // Add or update connection
               const existingIndex = voice.connections.findIndex(
                 (conn) =>
                   conn.fromId === plainConnection.fromId &&
@@ -370,6 +357,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 toId: plainConnection.toId,
                 target: plainConnection.target,
                 amount: plainConnection.amount,
+                modulationType: plainConnection.modulationType || WasmModulationType.VCA,
               };
 
               if (existingIndex !== -1) {
@@ -380,7 +368,6 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             }
           });
 
-          // Force a reactivity update
           this.synthLayout = { ...this.synthLayout };
         }
       } catch (error) {

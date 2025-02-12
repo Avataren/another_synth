@@ -1382,19 +1382,22 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           fromId: ampEnv.id,
           toId: mixerId,
           target: PortId.GainMod,
-          amount: 1
+          amount: 1,
+          modulationType: WasmModulationType.VCA
         },
         {
           fromId: osc1.id,
           toId: filterId,
           target: PortId.AudioInput0,
-          amount: 1
+          amount: 1,
+          modulationType: WasmModulationType.VCA
         },
         {
           fromId: osc2.id,
           toId: osc1.id,
           target: PortId.PhaseMod,
-          amount: 1
+          amount: 1,
+          modulationType: WasmModulationType.Additive
         }
       ];
       console.log("Voice layout after setup:", voiceLayout);
@@ -1452,7 +1455,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         fromPort: PortId.AudioOutput0,
         to: connection.toId,
         target: connection.target,
-        amount: connection.amount
+        amount: connection.amount,
+        modulationType: connection.modulationType
       });
       this.audioEngine.connect_nodes(
         connection.fromId,
@@ -1460,7 +1464,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         connection.toId,
         connection.target,
         connection.amount,
-        WasmModulationType.VCA
+        connection.modulationType
       );
       const state = this.audioEngine.get_current_state();
       console.log("State after adding connection:", state);

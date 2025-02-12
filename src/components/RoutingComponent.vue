@@ -83,7 +83,18 @@
                   "
                 />
               </div>
-
+              <div class="col-4">
+                <q-select
+                  v-model="route.modulationType"
+                  :options="modulationTypes"
+                  label="Type"
+                  dense
+                  dark
+                  filled
+                  option-label="label"
+                  @update:model-value="(val) => handleModTypeChange(index, val)"
+                />
+              </div>
               <!-- Delete Button -->
               <div class="col-1">
                 <q-btn
@@ -116,7 +127,10 @@ import {
   type ModulationTargetOption,
   type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
-import { type PortId } from 'app/public/wasm/audio_processor';
+import {
+  WasmModulationType,
+  type PortId,
+} from 'app/public/wasm/audio_processor';
 // import AmountSlider from './AmountSlider.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 interface Props {
@@ -142,6 +156,12 @@ interface RouteConfig {
   target: PortId;
   targetLabel: string;
   amount: number;
+  modulationType: ModulationTypeOption;
+}
+
+interface ModulationTypeOption {
+  value: WasmModulationType;
+  label: string;
 }
 
 const activeRoutes = ref<RouteConfig[]>([]);
@@ -172,12 +192,21 @@ const addNewRoute = async () => {
   const defaultParam = params[0];
   if (!defaultParam) return;
 
+  // Get the appropriate default modulation type for this target
+  const defaultModType = routeManager.getDefaultModulationType(
+    defaultParam.value,
+  );
+
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
     targetNode: defaultTarget,
     target: defaultParam.value,
     targetLabel: defaultParam.label,
     amount: 1.0,
+    modulationType: {
+      value: defaultModType,
+      label: getModulationTypeLabel(defaultModType),
+    },
   };
 
   try {
@@ -186,11 +215,56 @@ const addNewRoute = async () => {
       toId: newRoute.targetId,
       target: newRoute.target,
       amount: newRoute.amount,
+      modulationType: defaultModType,
     });
 
     activeRoutes.value.push(newRoute);
   } catch (error) {
     console.error('Failed to add new route:', error);
+  }
+};
+
+const modulationTypes = ref<ModulationTypeOption[]>([
+  { value: WasmModulationType.VCA, label: 'VCA' }, // 0
+  { value: WasmModulationType.Bipolar, label: 'Bipolar' }, // 1
+  { value: WasmModulationType.Additive, label: 'Add' }, // 2
+]);
+
+const handleModTypeChange = async (
+  index: number,
+  newType: ModulationTypeOption,
+) => {
+  const route = activeRoutes.value[index];
+  if (!route) return;
+
+  try {
+    console.log('Setting new modulation type:', {
+      newType,
+      value: newType.value, // Let's check this value
+    });
+
+    // Remove old connection
+    await routeManager.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: route.amount,
+      modulationType: route.modulationType.value,
+      isRemoving: true,
+    });
+
+    // Add new connection with new type
+    await routeManager.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: route.amount,
+      modulationType: newType.value,
+    });
+
+    route.modulationType = newType;
+  } catch (error) {
+    console.error('Failed to update modulation type:', error);
   }
 };
 
@@ -238,37 +312,44 @@ const handleParamChange = async (
   if (!route) return;
 
   try {
-    // First remove old connection - ensure we have a plain number
-    const oldTarget = route.target as PortId; // Current target should already be a PortId
+    console.log('Parameter change - Starting state:', {
+      route,
+      newParam,
+      currentModType: route.modulationType,
+    });
+
+    const oldTarget = route.target as PortId;
+    const currentModType = route.modulationType;
 
     const removeConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
       target: oldTarget,
       amount: route.amount,
+      modulationType: currentModType.value,
       isRemoving: true,
     };
 
-    console.log('Removing old connection:', removeConnection);
+    console.log('Removing connection with modType:', removeConnection);
     await routeManager.updateConnection(removeConnection);
 
-    // Add new connection using the value from ModulationTargetOption
-    const newTarget = newParam.value as PortId;
+    // Add new connection, explicitly preserving the modulation type
     const newConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: newTarget,
+      target: newParam.value as PortId,
       amount: route.amount,
+      modulationType: currentModType.value, // Explicitly keep current mod type
     };
 
-    console.log('Adding new connection:', newConnection);
+    console.log('Adding new connection with preserved modType:', newConnection);
     await routeManager.updateConnection(newConnection);
 
     // Update local state
-    route.target = newTarget;
+    route.target = newParam.value as PortId;
     route.targetLabel = newParam.label;
-
-    console.log('Updated route state:', route);
+    // Explicitly keep the same modulation type
+    console.log('Final route state:', route);
   } catch (error) {
     console.error('Failed to update parameter:', error);
   }
@@ -285,6 +366,7 @@ const handleAmountChange = async (index: number, newAmount: number) => {
       toId: route.targetId,
       target: route.target,
       amount: route.amount,
+      modulationType: route.modulationType.value, // Keep current modulation type
       isRemoving: true,
     });
 
@@ -294,6 +376,7 @@ const handleAmountChange = async (index: number, newAmount: number) => {
       toId: route.targetId,
       target: route.target,
       amount: newAmount,
+      modulationType: route.modulationType.value, // Keep current modulation type
     });
 
     route.amount = newAmount;
@@ -336,6 +419,19 @@ onMounted(async () => {
 
   initializeRoutes();
 });
+
+function getModulationTypeLabel(type: WasmModulationType): string {
+  switch (type) {
+    case WasmModulationType.VCA:
+      return 'VCA';
+    case WasmModulationType.Additive:
+      return 'Add';
+    case WasmModulationType.Bipolar:
+      return 'Bipolar';
+    default:
+      return 'VCA';
+  }
+}
 
 const initializeRoutes = () => {
   try {
@@ -393,6 +489,12 @@ const initializeRoutes = () => {
           target: conn.target,
           targetLabel: label,
           amount: conn.amount,
+          modulationType: {
+            value: conn.modulationType || WasmModulationType.VCA,
+            label: getModulationTypeLabel(
+              conn.modulationType || WasmModulationType.VCA,
+            ),
+          },
         };
       })
       .filter((route): route is RouteConfig => route !== null);
