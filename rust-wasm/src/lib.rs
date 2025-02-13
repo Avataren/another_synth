@@ -253,53 +253,101 @@ impl AudioEngine {
         Ok(())
     }
 
+    // #[wasm_bindgen]
+    // pub fn get_current_state(&self) -> JsValue {
+    //     let voices: Vec<VoiceState> = self
+    //         .voices
+    //         .iter()
+    //         .enumerate()
+    //         .map(|(i, voice)| {
+    //             let nodes: Vec<NodeState> = voice
+    //                 .graph
+    //                 .nodes
+    //                 .iter()
+    //                 .enumerate()
+    //                 .map(|(ni, node)| NodeState {
+    //                     id: ni,
+    //                     node_type: node.node_type().to_string(),
+    //                 })
+    //                 .collect();
+
+    //             let connections: Vec<ConnectionState> = voice
+    //                 .graph
+    //                 .connections
+    //                 .values()
+    //                 .map(|conn| ConnectionState {
+    //                     from_id: conn.from_node.0,
+    //                     to_id: conn.to_node.0,
+    //                     target: conn.to_port as u32,
+    //                     amount: conn.amount,
+    //                 })
+    //                 .collect();
+
+    //             VoiceState {
+    //                 id: i,
+    //                 nodes,
+    //                 connections,
+    //             }
+    //         })
+    //         .collect();
+
+    //     let engine_state = EngineState { voices };
+    //     // console::log_1(
+    //     //     &format!(
+    //     //         "lib.rs::get_current_state Serializing state: {:?}",
+    //     //         engine_state
+    //     //     )
+    //     //     .into(),
+    //     // );
+    //     serde_wasm_bindgen::to_value(&engine_state).unwrap()
+    // }
+
     #[wasm_bindgen]
     pub fn get_current_state(&self) -> JsValue {
-        let voices: Vec<VoiceState> = self
-            .voices
-            .iter()
-            .enumerate()
-            .map(|(i, voice)| {
-                let nodes: Vec<NodeState> = voice
-                    .graph
-                    .nodes
-                    .iter()
-                    .enumerate()
-                    .map(|(ni, node)| NodeState {
-                        id: ni,
+        // Use voice 0 as the canonical layout.
+        if let Some(voice) = self.voices.get(0) {
+            // Here we assume that the nodes vector was built by add_node
+            // so the index matches the node's id.
+            let nodes: Vec<NodeState> = voice
+                .graph
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(i, node)| {
+                    NodeState {
+                        id: i, // This is the same as the node's assigned id.
                         node_type: node.node_type().to_string(),
-                    })
-                    .collect();
+                    }
+                })
+                .collect();
 
-                let connections: Vec<ConnectionState> = voice
-                    .graph
-                    .connections
-                    .values()
-                    .map(|conn| ConnectionState {
-                        from_id: conn.from_node.0,
-                        to_id: conn.to_node.0,
-                        target: conn.to_port as u32,
-                        amount: conn.amount,
-                    })
-                    .collect();
+            let connections: Vec<ConnectionState> = voice
+                .graph
+                .connections
+                .values()
+                .map(|conn| ConnectionState {
+                    from_id: conn.from_node.0,
+                    to_id: conn.to_node.0,
+                    target: conn.to_port as u32,
+                    amount: conn.amount,
+                })
+                .collect();
 
-                VoiceState {
-                    id: i,
-                    nodes,
-                    connections,
-                }
-            })
-            .collect();
+            let canonical_voice = VoiceState {
+                id: 0,
+                nodes,
+                connections,
+            };
 
-        let engine_state = EngineState { voices };
-        // console::log_1(
-        //     &format!(
-        //         "lib.rs::get_current_state Serializing state: {:?}",
-        //         engine_state
-        //     )
-        //     .into(),
-        // );
-        serde_wasm_bindgen::to_value(&engine_state).unwrap()
+            let engine_state = EngineState {
+                voices: vec![canonical_voice],
+            };
+
+            serde_wasm_bindgen::to_value(&engine_state).unwrap()
+        } else {
+            let engine_state = EngineState { voices: vec![] };
+            serde_wasm_bindgen::to_value(&engine_state).unwrap()
+        }
     }
 
     #[wasm_bindgen]

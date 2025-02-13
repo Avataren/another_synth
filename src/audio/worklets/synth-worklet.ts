@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
 import './textencoder.js';
 
-
 import OscillatorUpdateHandler from './handlers/oscillator-update-handler.js';
 import {
   type SynthLayout,
@@ -544,7 +543,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleNoiseUpdate(data: { noiseId: number, config: NoiseUpdate }) {
+  private handleNoiseUpdate(data: { noiseId: number; config: NoiseUpdate }) {
     if (!this.audioEngine) return;
     console.log('noiseData:', data);
 
@@ -552,7 +551,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.config.noise_type,
       data.config.cutoff,
       data.config.gain,
-      data.config.enabled
+      data.config.enabled,
     );
 
     this.audioEngine.update_noise(data.noiseId, params);
@@ -625,7 +624,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           data.newState.gain,
           data.newState.active,
           data.newState.feedback_amount,
-          data.newState.waveform
+          data.newState.waveform,
         ),
         data.oscillatorId,
         this.numVoices,

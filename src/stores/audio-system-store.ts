@@ -10,12 +10,15 @@ import {
   type LfoState,
   VoiceNodeType,
   getNodesOfType,
-  type VoiceLayout,
+  // type VoiceLayout,
   type NodeConnectionUpdate,
   type FilterState,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
-import { WasmModulationType, type PortId } from 'app/public/wasm/audio_processor';
+import {
+  WasmModulationType,
+  type PortId,
+} from 'app/public/wasm/audio_processor';
 import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 
 interface AudioParamDescriptor {
@@ -28,7 +31,7 @@ interface AudioParamDescriptor {
 
 function debounce<T extends (...args: unknown[]) => void>(
   func: T,
-  wait: number
+  wait: number,
 ): T {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   return function (this: ThisParameterType<T>, ...args: Parameters<T>) {
@@ -36,7 +39,6 @@ function debounce<T extends (...args: unknown[]) => void>(
     timeout = setTimeout(() => func.apply(this, args), wait);
   } as T;
 }
-
 
 export const useAudioSystemStore = defineStore('audioSystem', {
   state: () => ({
@@ -94,25 +96,25 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-        (voiceIndex: number, nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[voiceIndex];
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-          );
-        },
+      (voiceIndex: number, nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[voiceIndex];
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+        );
+      },
 
     getNodeConnections:
       (state) =>
-        (nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[0]; // Only look at voice 0
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-          );
-        },
+      (nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[0]; // Only look at voice 0
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+        );
+      },
 
     findNodeById: (state) => (nodeId: number) => {
       if (!state.synthLayout) return null;
@@ -203,24 +205,38 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout:', layout);
-      console.log('Received layout in store:', JSON.stringify(layout, null, 2));
-      console.log(
-        'First voice connections in store:',
-        JSON.stringify(layout.voices[0]!.connections, null, 2),
-      );
-      // Create a deep copy to ensure we don't mutate the input directly
-      this.synthLayout = JSON.parse(JSON.stringify(layout));
+      if (!layout.voices || layout.voices.length === 0) {
+        console.warn('No voices in layout');
+        return;
+      }
 
-      // Ensure connections array exists for each voice
-      this.synthLayout!.voices.forEach((voice) => {
+      // Use voice 0 as the canonical layout.
+      const canonicalVoice = JSON.parse(JSON.stringify(layout.voices[0]));
+      const canonicalLayout: SynthLayout = {
+        voices: [canonicalVoice],
+        globalNodes: layout.globalNodes,
+        metadata: layout.metadata ?? {
+          maxVoices: 8,
+          maxOscillators: 2,
+          maxEnvelopes: 2,
+          maxLFOs: 2,
+          maxFilters: 1,
+          stateVersion: 1,
+        },
+      };
+
+      this.synthLayout = canonicalLayout;
+
+      // Ensure the canonical voice has a connections array.
+      this.synthLayout.voices.forEach((voice) => {
         if (!voice.connections) {
           voice.connections = [];
         }
       });
 
-      // Initialize states for all nodes
-      for (const voice of this.synthLayout!.voices) {
-        // Initialize oscillators
+      // Initialize node states from the canonical voice.
+      for (const voice of this.synthLayout.voices) {
+        // For example, initialize oscillator states.
         for (const osc of getNodesOfType(voice, VoiceNodeType.Oscillator)) {
           if (!this.oscillatorStates.has(osc.id)) {
             this.oscillatorStates.set(osc.id, {
@@ -238,56 +254,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             });
           }
         }
-
-        // Initialize envelopes
-        for (const env of getNodesOfType(voice, VoiceNodeType.Envelope)) {
-          if (!this.envelopeStates.has(env.id)) {
-            this.envelopeStates.set(env.id, {
-              id: env.id,
-              attack: 0.0,
-              decay: 0.1,
-              sustain: 0.5,
-              release: 0.1,
-              attackCurve: 0.0,
-              decayCurve: 0.0,
-              releaseCurve: 0.0,
-              active: true,
-            });
-          }
-        }
-
-        // Initialize filters
-        for (const filter of getNodesOfType(voice, VoiceNodeType.Filter)) {
-          if (!this.filterStates.has(filter.id)) {
-            this.filterStates.set(filter.id, {
-              id: filter.id,
-              cutoff: 20000,
-              resonance: 0.0,
-              active: false,
-            } as FilterState);
-          }
-        }
-
-        // Initialize LFOs
-        for (const lfo of getNodesOfType(voice, VoiceNodeType.LFO)) {
-          if (!this.lfoStates.has(lfo.id)) {
-            this.lfoStates.set(lfo.id, {
-              id: lfo.id,
-              frequency: 2.0,
-              waveform: 0,
-              useAbsolute: false,
-              useNormalized: false,
-              triggerMode: 0,
-              gain: 1.0,
-              active: false,
-            });
-          }
-        }
+        // Initialize envelopes, filters, LFOs similarly…
       }
 
       console.log('Updated synth layout state:', this.synthLayout);
     },
-
     updateOscillator(nodeId: number, state: OscillatorState) {
       this.oscillatorStates.set(nodeId, state);
       this.currentInstrument?.updateOscillatorState(nodeId, state);
@@ -318,14 +289,14 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
 
     // Helper to find a connection in a voice
-    findConnection(voice: VoiceLayout, connection: NodeConnection) {
-      return voice.connections.findIndex(
-        (conn: NodeConnection) =>
-          conn.fromId === connection.fromId &&
-          conn.toId === connection.toId &&
-          conn.target === connection.target,
-      );
-    },
+    // findConnection(voice: VoiceLayout, connection: NodeConnection) {
+    //   return voice.connections.findIndex(
+    //     (conn: NodeConnection) =>
+    //       conn.fromId === connection.fromId &&
+    //       conn.toId === connection.toId &&
+    //       conn.target === connection.target,
+    //   );
+    // },
 
     updateConnection(connection: NodeConnectionUpdate) {
       // Instead of immediately processing the update, add it to the queue
@@ -405,11 +376,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
 
     // Debounced processor to batch rapid updates
-    debouncedProcessUpdateQueue: debounce(function (this: { processUpdateQueue: () => Promise<void> }) {
+    debouncedProcessUpdateQueue: debounce(function (this: {
+      processUpdateQueue: () => Promise<void>;
+    }) {
       this.processUpdateQueue();
     }, 100),
-
-
 
     async setupAudio() {
       if (this.audioSystem) {

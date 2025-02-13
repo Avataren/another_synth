@@ -92,8 +92,8 @@ export default class Instrument {
         noise_type: state.noiseType,
         cutoff: state.cutoff,
         gain: state.gain || 1.0,
-        enabled: state.is_enabled
-      } as NoiseUpdate
+        enabled: state.is_enabled,
+      } as NoiseUpdate,
     });
   }
 
@@ -139,7 +139,7 @@ export default class Instrument {
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => { }, 0);
+      let timeoutId = setTimeout(() => {}, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
@@ -211,12 +211,12 @@ export default class Instrument {
   public updateEnvelopeState(nodeId: number, newState: EnvelopeConfig) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
-    const voiceIndex = this.findVoiceForNode(nodeId);
-    if (voiceIndex === -1) return;
+    //const voiceIndex = this.findVoiceForNode(nodeId);
+    //if (voiceIndex === -1) return;
 
     this.workletNode.port.postMessage({
       type: 'updateEnvelope',
-      voiceIndex,
+      //      voiceIndex,
       envelopeId: nodeId,
       config: newState,
     });

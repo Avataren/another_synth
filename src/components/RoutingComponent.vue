@@ -435,7 +435,10 @@ function getModulationTypeLabel(type: WasmModulationType): string {
 
 const initializeRoutes = () => {
   try {
-    const connections = store.getNodeConnections(props.sourceId);
+    //const connections = store.getNodeConnections(props.sourceId);
+    const connections = store
+      .getNodeConnections(props.sourceId)
+      .filter((conn) => conn.fromId === props.sourceId);
     console.log('Initializing routes:', {
       sourceId: props.sourceId,
       connections: connections,
