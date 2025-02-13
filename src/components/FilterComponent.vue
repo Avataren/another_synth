@@ -86,7 +86,7 @@ const filterState = computed<FilterState>({
       return {
         id: props.nodeId,
         cutoff: 20000,
-        resonance: 1,
+        resonance: 0,
         active: true,
       } as FilterState;
     }

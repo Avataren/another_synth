@@ -118,7 +118,7 @@ const lfoState = computed({
         useNormalized: false,
         triggerMode: 0,
         gain: 1.0,
-        active: true,
+        active: false,
       };
     }
     return state;
