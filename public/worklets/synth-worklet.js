@@ -1377,29 +1377,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         1,
         WasmModulationType.Additive
       );
-      voiceLayout.connections = [
-        {
-          fromId: ampEnv.id,
-          toId: mixerId,
-          target: PortId.GainMod,
-          amount: 1,
-          modulationType: WasmModulationType.VCA
-        },
-        {
-          fromId: osc1.id,
-          toId: filterId,
-          target: PortId.AudioInput0,
-          amount: 1,
-          modulationType: WasmModulationType.VCA
-        },
-        {
-          fromId: osc2.id,
-          toId: osc1.id,
-          target: PortId.PhaseMod,
-          amount: 1,
-          modulationType: WasmModulationType.Additive
-        }
-      ];
+      this.handleRequestSync();
       console.log("Voice layout after setup:", voiceLayout);
     } else {
       console.warn("Not enough nodes for initial connections:", {
@@ -1466,8 +1444,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         connection.amount,
         connection.modulationType
       );
-      const state = this.audioEngine.get_current_state();
-      console.log("State after adding connection:", state);
+      this.handleRequestSync();
     } catch (err) {
       console.error("Connection update failed in worklet:", err, {
         data: connection

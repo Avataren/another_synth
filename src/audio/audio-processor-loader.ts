@@ -2,13 +2,17 @@
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import type { LayoutUpdateMessage } from './types/synth-layout';
 
-export async function createStandardAudioWorklet(audioContext: AudioContext): Promise<AudioWorkletNode> {
-  await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}worklets/synth-worklet.js`);
+export async function createStandardAudioWorklet(
+  audioContext: AudioContext
+): Promise<AudioWorkletNode> {
+  await audioContext.audioWorklet.addModule(
+    `${import.meta.env.BASE_URL}worklets/synth-worklet.js`
+  );
 
   const workletNode = new AudioWorkletNode(audioContext, 'synth-audio-processor', {
     numberOfInputs: 0,
     numberOfOutputs: 1,
-    outputChannelCount: [2],  // Specify stereo output
+    outputChannelCount: [2], // Specify stereo output
   });
   const store = useAudioSystemStore();
 
@@ -19,7 +23,8 @@ export async function createStandardAudioWorklet(audioContext: AudioContext): Pr
 
     // Handle messages from the worklet
     workletNode.port.onmessage = async (event) => {
-      if (event.data.type === 'ready') {
+      const data = event.data;
+      if (data.type === 'ready') {
         console.log('AudioWorkletProcessor is ready, sending WASM...');
         try {
           const wasmUrl = `${import.meta.env.BASE_URL}wasm/audio_processor_bg.wasm`;
@@ -30,18 +35,24 @@ export async function createStandardAudioWorklet(audioContext: AudioContext): Pr
           clearTimeout(timeoutId);
           reject(error);
         }
-      }
-      else if (event.data.type === 'synthLayout') {
-        console.log('Received synth layout:', event.data);
+      } else if (data.type === 'synthLayout') {
+        console.log('Received synth layout:', data);
 
         // Update both the store and the instrument
-        const layoutMessage = event.data as LayoutUpdateMessage;
+        const layoutMessage = data as LayoutUpdateMessage;
         store.updateSynthLayout(layoutMessage.layout);
         store.currentInstrument?.updateLayout(layoutMessage.layout);
 
         // Now that we have the layout, the synth is fully initialized
         clearTimeout(timeoutId);
         resolve(workletNode);
+      } else if (data.type === 'stateUpdated') {
+        // This is the pushed update from the worklet whenever state changes.
+        console.log('Received automatic state update:', data);
+        // Assuming that "data.state" is in the same format as the layout,
+        // update the store accordingly.
+        store.updateSynthLayout(data.state);
+        store.currentInstrument?.updateLayout(data.state);
       }
     };
 
@@ -53,8 +64,10 @@ export async function createStandardAudioWorklet(audioContext: AudioContext): Pr
 }
 
 export async function createEffectsAudioWorklet(
-  audioContext: AudioContext,
+  audioContext: AudioContext
 ): Promise<AudioWorkletNode> {
-  await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}worklets/effects-worklet.js`);
+  await audioContext.audioWorklet.addModule(
+    `${import.meta.env.BASE_URL}worklets/effects-worklet.js`
+  );
   return new AudioWorkletNode(audioContext, 'effects-audio-processor');
 }

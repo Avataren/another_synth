@@ -129,6 +129,19 @@ export const getNodesOfType = (
   return voice.nodes[type] || [];
 };
 
+export interface RawNode {
+  id: number;
+  node_type: string;
+}
+
+export interface RawConnection {
+  from_id: number;
+  to_id: number;
+  target: number;
+  amount: number;
+  modulation_type: string;
+}
+
 export const findNodeById = (
   voice: VoiceLayout,
   id: number,
