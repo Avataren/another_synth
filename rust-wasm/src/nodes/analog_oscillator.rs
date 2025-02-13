@@ -8,6 +8,7 @@ use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::{AudioNode, PortId};
 
 use super::{Waveform, WavetableBank};
+
 #[derive(Debug, Clone, Copy)]
 #[wasm_bindgen]
 pub struct AnalogOscillatorStateUpdate {
@@ -49,7 +50,7 @@ impl AnalogOscillatorStateUpdate {
 
 pub struct AnalogOscillator {
     // Core oscillator state.
-    phase: f32, // Normalized phase [0, 1)
+    phase: f32, // Phase in radians [0, TWO_PI)
     sample_rate: f32,
     gain: f32,
     active: bool,
@@ -67,6 +68,9 @@ pub struct AnalogOscillator {
     detune: f32,
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 }
+
+// Implement the trait using your new process_modulations implementation.
+impl ModulationProcessor for AnalogOscillator {}
 
 impl AnalogOscillator {
     pub fn new(
@@ -104,7 +108,6 @@ impl AnalogOscillator {
         self.phase_mod_amount = params.phase_mod_amount;
         //self.freq_mod_amount = params.freq_mod_amount;
         self.detune = params.detune;
-        // self.last_output = 0.0;
     }
 
     // Checks the gate value for hard-sync.
@@ -157,42 +160,21 @@ impl AudioNode for AnalogOscillator {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        //log self.phase_mod_amount, self.freq_mod_amount, self.detune
-        // console::log_1(&format!("###phase_mod_amount: {:#?}", self.phase_mod_amount).into());
         use std::f32::consts::PI;
         const TWO_PI: f32 = 2.0 * PI;
 
-        // Process modulation inputs.
-        let freq_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::FrequencyMod),
-            1.0,
-            PortId::FrequencyMod,
-        );
-        let phase_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::PhaseMod),
-            0.0,
-            PortId::PhaseMod,
-        );
-        let gain_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::GainMod),
-            1.0,
-            PortId::GainMod,
-        );
+        // Process modulation inputs using the new mixed mode.
+        let freq_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
+        let phase_mod = self.process_modulations(buffer_size, inputs.get(&PortId::PhaseMod), 0.0);
+        let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
         let mod_index = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::ModIndex),
-            0.0,
-            PortId::ModIndex,
+            self.phase_mod_amount, // This is our additive base.
         );
-        let feedback_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::FeedbackMod),
-            1.0,
-            PortId::FeedbackMod,
-        );
+        let feedback_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::FeedbackMod), 1.0);
 
         // Prepare the gate buffer.
         if self.gate_buffer.len() < buffer_size {
@@ -230,7 +212,6 @@ impl AudioNode for AnalogOscillator {
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in 0..buffer_size {
-                // Copy out the gate value (f32 is Copy, so this is a value, not a borrow)
                 let gate_val = self.gate_buffer[i];
 
                 // --- Hard Sync ---
@@ -254,21 +235,15 @@ impl AudioNode for AnalogOscillator {
                 }
 
                 // --- Modulation Calculations ---
-                // let external_phase_mod =
-                //     phase_mod_sample * (self.phase_mod_amount + mod_index_sample);
-                let modulation_depth = self.phase_mod_amount + mod_index_sample;
-                let external_phase_mod = phase_mod_sample * modulation_depth * TWO_PI;
-
+                // Use the mixed modulation from mod_index (which already includes both additive and multiplicative contributions)
+                let external_phase_mod = phase_mod_sample * mod_index_sample * TWO_PI;
                 let effective_feedback = self.feedback_amount * feedback_mod_sample;
                 let feedback_val = self.last_output * effective_feedback;
 
                 let modulated_phase = self.phase + external_phase_mod + feedback_val;
                 let normalized_phase = modulated_phase.rem_euclid(TWO_PI) / TWO_PI;
 
-                // let modulated_phase = self.phase + external_phase_mod + feedback_val;
-                // let normalized_phase = modulated_phase.rem_euclid(TWO_PI) / TWO_PI;
-
-                // Use the bank we copied out earlier.
+                // Retrieve the appropriate wavetable.
                 let table = bank.select_table(effective_freq);
                 let pos = normalized_phase * (table.table_size as f32);
                 let sample = cubic_interp(&table.samples, pos);
@@ -285,9 +260,6 @@ impl AudioNode for AnalogOscillator {
         self.last_gate_value = 0.0;
     }
 
-    /// Returns the `AnalogOscillator` as a mutable reference to a trait object of type `dyn Any`.
-    /*************  ✨ Codeium Command ⭐  *************/
-    /******  3bc1c3db-1e79-4ada-9e46-1917317be46a  *******/
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -306,18 +278,5 @@ impl AudioNode for AnalogOscillator {
 
     fn node_type(&self) -> &str {
         "analog_oscillator"
-    }
-}
-
-impl ModulationProcessor for AnalogOscillator {
-    fn get_modulation_type(&self, port: PortId) -> ModulationType {
-        match port {
-            PortId::FrequencyMod => ModulationType::FrequencyCents,
-            PortId::PhaseMod => ModulationType::Additive,
-            PortId::ModIndex => ModulationType::Additive, // Keep as Additive
-            PortId::GainMod | PortId::FeedbackMod => ModulationType::VCA,
-            PortId::Gate => ModulationType::Additive,
-            _ => ModulationType::VCA,
-        }
     }
 }

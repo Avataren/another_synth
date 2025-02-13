@@ -30,8 +30,8 @@ pub struct LpFilter {
     // --- Coefficients ---
     /// \(g = \tan(\pi \,fc/fs)\) (with fc clamped to 99% of Nyquist)
     g: f32,
-    /// Feedback coefficient, computed as \(k = 2*(1-resonance)\).  
-    /// Thus, resonance = 0 ⇒ k = 2 (Butterworth response, no peaking),  
+    /// Feedback coefficient, computed as \(k = 2*(1-resonance)\).
+    /// Thus, resonance = 0 ⇒ k = 2 (Butterworth response, no peaking),
     /// resonance = 1 ⇒ k = 0 (maximum resonance/self-oscillation).
     k: f32,
     /// Normalization factor: \(a = \frac{1}{1+g\,(g+k)}\)
@@ -42,7 +42,7 @@ pub struct LpFilter {
 
 impl LpFilter {
     pub fn new(sample_rate: f32) -> Self {
-        // Default parameters: cutoff = 1 kHz, resonance = 0 (no peak)
+        // Default parameters: cutoff = 20 kHz, resonance = 0 (no peak)
         let base_cutoff = 20000.0;
         let base_resonance = 0.0;
         let mut filter = Self {
@@ -84,16 +84,7 @@ impl LpFilter {
     }
 }
 
-impl ModulationProcessor for LpFilter {
-    fn get_modulation_type(&self, port: PortId) -> ModulationType {
-        match port {
-            PortId::AudioInput0 => ModulationType::Additive,
-            PortId::CutoffMod => ModulationType::VCA,
-            PortId::ResonanceMod => ModulationType::Additive,
-            _ => ModulationType::VCA,
-        }
-    }
-}
+impl ModulationProcessor for LpFilter {}
 
 impl AudioNode for LpFilter {
     fn get_ports(&self) -> HashMap<PortId, bool> {
@@ -111,25 +102,15 @@ impl AudioNode for LpFilter {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Retrieve modulation buffers.
-        let audio_in = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::AudioInput0),
-            0.0,
-            PortId::AudioInput0,
-        );
-        let cutoff_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::CutoffMod),
-            1.0,
-            PortId::CutoffMod,
-        );
-        let resonance_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::ResonanceMod),
-            0.0,
-            PortId::ResonanceMod,
-        );
+        // Process modulation inputs using the new mixed‑mode implementation.
+        // Audio input is treated additively (initial value 0.0).
+        let audio_in = self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
+        // For cutoff modulation we use an initial value of 1.0 so that in the absence of modulation,
+        // cutoff_mod evaluates to 1.0 and the filter’s base cutoff is used.
+        let cutoff_mod = self.process_modulations(buffer_size, inputs.get(&PortId::CutoffMod), 1.0);
+        // For resonance modulation we use an initial value of 0.0 so that no modulation leaves the base resonance unchanged.
+        let resonance_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::ResonanceMod), 0.0);
 
         const DENORMAL_THRESHOLD: f32 = 1e-20;
 
@@ -139,7 +120,7 @@ impl AudioNode for LpFilter {
             let resonance_slice = &resonance_mod[..];
 
             // Process in blocks of 4 samples using SIMD for unpacking.
-            // State propagation is handled sample-by-sample.
+            // Note: the filter state (bp and lp) is updated sample‑by‑sample.
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
                 let block_len = end - i;

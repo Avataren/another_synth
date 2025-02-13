@@ -16,19 +16,7 @@ impl Mixer {
     }
 }
 
-impl ModulationProcessor for Mixer {
-    fn get_modulation_type(&self, port: PortId) -> ModulationType {
-        match port {
-            PortId::AudioInput0 => ModulationType::Additive,
-            PortId::FrequencyMod => ModulationType::Bipolar,
-            PortId::PhaseMod => ModulationType::Additive,
-            PortId::ModIndex => ModulationType::VCA,
-            PortId::GainMod => ModulationType::VCA,
-            PortId::StereoPan => ModulationType::Additive,
-            _ => ModulationType::VCA,
-        }
-    }
-}
+impl ModulationProcessor for Mixer {}
 
 impl AudioNode for Mixer {
     fn get_ports(&self) -> HashMap<PortId, bool> {
@@ -48,27 +36,12 @@ impl AudioNode for Mixer {
         buffer_size: usize,
     ) {
         // Process modulations using the trait
-        let gain_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::GainMod),
-            1.0,
-            PortId::GainMod,
-        );
+        let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
 
         // Process pan modulation using standard ModulationProcessor
-        let pan_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::StereoPan),
-            0.0,
-            PortId::StereoPan,
-        );
+        let pan_mod = self.process_modulations(buffer_size, inputs.get(&PortId::StereoPan), 0.0);
 
-        let audio_in = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::AudioInput0),
-            0.0,
-            PortId::AudioInput0,
-        );
+        let audio_in = self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
 
         // Process in chunks
         for i in (0..buffer_size).step_by(4) {

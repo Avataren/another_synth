@@ -187,7 +187,6 @@ impl Lfo {
     }
 
     /// Returns waveform data from the corresponding lookup table.
-    ///
     /// This version uses SIMD to fill the buffer in blocks of 4 samples at a time.
     pub fn get_waveform_data(waveform: LfoWaveform, buffer_size: usize) -> Vec<f32> {
         let tables = LFO_TABLES.get_or_init(LfoTables::new);
@@ -263,16 +262,7 @@ impl Lfo {
 // === Modulation Processor Implementation ===
 //
 // Here we override `get_modulation_type` for the ports we use in this node.
-impl ModulationProcessor for Lfo {
-    fn get_modulation_type(&self, port: PortId) -> ModulationType {
-        match port {
-            PortId::FrequencyMod => ModulationType::VCA,
-            PortId::Gate => ModulationType::Additive,
-            PortId::GainMod => ModulationType::VCA,
-            _ => ModulationType::VCA,
-        }
-    }
-}
+impl ModulationProcessor for Lfo {}
 
 impl AudioNode for Lfo {
     fn get_ports(&self) -> HashMap<PortId, bool> {
@@ -292,23 +282,13 @@ impl AudioNode for Lfo {
     ) {
         // Retrieve per‑sample modulation arrays.
         // For frequency and gain modulation we start with a “neutral” multiplier (1.0).
-        let freq_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::FrequencyMod),
-            1.0,
-            PortId::FrequencyMod,
-        );
-        let gate_mod =
-            self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0, PortId::Gate);
-        let gain_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::GainMod),
-            1.0,
-            PortId::GainMod,
-        );
+        let freq_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
+        let gate_mod = self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0);
+        let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-            // If using free‑running mode, we can process in SIMD blocks.
+            // Free‑running mode: use SIMD processing.
             if self.trigger_mode == LfoTriggerMode::None {
                 let table = LFO_TABLES.get().unwrap().get_table(self.waveform);
                 let table_size_f = TABLE_SIZE as f32;
@@ -377,7 +357,7 @@ impl AudioNode for Lfo {
                     output[i + 3] = out[3];
 
                     // Advance phase: note that the final phase for this block is computed as:
-                    // p3 + (inc3 computed below)
+                    // p3 + inc3.
                     phase = p3 + inc3;
                     if phase >= 1.0 {
                         phase %= 1.0;
@@ -409,8 +389,8 @@ impl AudioNode for Lfo {
                 }
                 self.phase = phase;
             } else {
-                // In envelope‑trigger mode we must check for rising edges on each sample.
-                // We fall back to the scalar loop in this case.
+                // In envelope‑trigger mode we check for rising edges on each sample.
+                // Use scalar processing.
                 for i in 0..buffer_size {
                     if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
                         self.reset();

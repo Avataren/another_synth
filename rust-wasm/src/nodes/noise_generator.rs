@@ -221,15 +221,7 @@ impl NoiseGenerator {
     }
 }
 
-impl ModulationProcessor for NoiseGenerator {
-    fn get_modulation_type(&self, port: PortId) -> ModulationType {
-        match port {
-            PortId::CutoffMod => ModulationType::VCA,
-            PortId::GainMod => ModulationType::VCA,
-            _ => ModulationType::VCA,
-        }
-    }
-}
+impl ModulationProcessor for NoiseGenerator {}
 
 impl AudioNode for NoiseGenerator {
     fn get_ports(&self) -> HashMap<PortId, bool> {
@@ -246,19 +238,9 @@ impl AudioNode for NoiseGenerator {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        let cutoff_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::CutoffMod),
-            1.0,
-            PortId::CutoffMod,
-        );
+        let cutoff_mod = self.process_modulations(buffer_size, inputs.get(&PortId::CutoffMod), 1.0);
 
-        let gain_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::GainMod),
-            1.0,
-            PortId::GainMod,
-        );
+        let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             // Process in SIMD chunks of 4 samples

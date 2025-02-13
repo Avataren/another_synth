@@ -335,40 +335,47 @@ impl AudioGraph {
     }
 
     fn update_processing_order(&mut self) {
-        self.processing_order.clear();
         let num_nodes = self.nodes.len();
-        if let Some(output_node) = self.output_node {
-            // First, determine which nodes are connected to the output node.
-            let mut connected = vec![false; num_nodes];
-            for i in 0..num_nodes {
-                let mut temp_visited = vec![false; num_nodes];
-                if self.is_connected_to_output(NodeId(i), output_node, &mut temp_visited) {
-                    connected[i] = true;
-                }
-            }
-            let mut visited = vec![false; num_nodes];
-            for i in 0..num_nodes {
-                if connected[i] && !visited[i] {
-                    self.visit_node(i, &mut visited);
-                }
-            }
-        } else {
-            // If no output node is set, perform a full topological sort.
-            let mut visited = vec![false; num_nodes];
-            for i in 0..num_nodes {
-                let node_id = NodeId(i);
-                if !visited[i] && !self.has_inputs(node_id) {
-                    self.visit_node(i, &mut visited);
-                }
-            }
-            for i in 0..num_nodes {
-                if !visited[i] {
-                    self.visit_node(i, &mut visited);
+        let mut in_degree = vec![0; num_nodes];
+
+        // Compute in-degrees for each node.
+        for conn in self.connections.values() {
+            in_degree[conn.to_node.0] += 1;
+        }
+
+        // Start with all nodes that have no incoming connections.
+        let mut queue: Vec<usize> = in_degree
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &deg)| if deg == 0 { Some(i) } else { None })
+            .collect();
+
+        self.processing_order.clear();
+
+        // Process nodes in order.
+        while let Some(node_index) = queue.pop() {
+            self.processing_order.push(node_index);
+
+            // For each connection from this node, reduce the in-degree of its destination.
+            for conn in self.connections.values() {
+                if conn.from_node.0 == node_index {
+                    let dest = conn.to_node.0;
+                    in_degree[dest] -= 1;
+                    if in_degree[dest] == 0 {
+                        queue.push(dest);
+                    }
                 }
             }
         }
-        // Optionally log the processing order.
-        // web_sys::console::log_1(&format!("Processing order updated: {:?}", self.processing_order).into());
+
+        // If there is a cycle (or some nodes were not reached), add any remaining nodes.
+        if self.processing_order.len() < num_nodes {
+            for i in 0..num_nodes {
+                if !self.processing_order.contains(&i) {
+                    self.processing_order.push(i);
+                }
+            }
+        }
     }
 
     fn visit_node(&mut self, index: usize, visited: &mut [bool]) {

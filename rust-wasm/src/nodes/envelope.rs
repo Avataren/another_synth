@@ -171,14 +171,8 @@ impl Envelope {
     }
 }
 
-impl ModulationProcessor for Envelope {
-    fn get_modulation_type(&self, port: PortId) -> ModulationType {
-        match port {
-            PortId::Gate => ModulationType::Additive,
-            _ => ModulationType::VCA,
-        }
-    }
-}
+// Use the new mixed-mode modulation processor.
+impl ModulationProcessor for Envelope {}
 
 impl AudioNode for Envelope {
     fn get_ports(&self) -> HashMap<PortId, bool> {
@@ -196,48 +190,37 @@ impl AudioNode for Envelope {
     ) {
         use std::simd::f32x4;
 
-        // Process gate signals - combine all sources additively
-        let mut gate_buffer = vec![0.0; buffer_size];
-        if let Some(sources) = inputs.get(&PortId::Gate) {
-            for source in sources {
-                for (dest, &src) in gate_buffer.iter_mut().zip(source.buffer.iter()) {
-                    *dest += src * source.amount; // Apply source amount
-                }
-            }
-        }
+        // Combine all gate sources using the new modulation processor.
+        let gate_buffer = self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0);
 
-        // Process in chunks of 4 samples
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
 
-                // Get gate values for this chunk
+                // Copy gate values for this chunk.
                 let mut gate_chunk = [0.0; 4];
-                gate_chunk[0..end - i].copy_from_slice(&gate_buffer[i..end]);
+                gate_chunk[0..(end - i)].copy_from_slice(&gate_buffer[i..end]);
                 let gate_values = f32x4::from_array(gate_chunk);
                 let gate_array = gate_values.to_array();
 
                 let mut values = [0.0f32; 4];
 
-                // Process each sample in the chunk
                 for j in 0..(end - i) {
-                    // Convert gate to binary (any non-zero value triggers the gate)
+                    // Convert gate to binary: any non-zero value triggers the gate.
                     let current_gate = if gate_array[j] > 0.0 { 1.0 } else { 0.0 };
 
-                    // Check for gate changes and trigger envelope accordingly
+                    // Check for gate changes and trigger the envelope.
                     if current_gate != self.last_gate_value {
                         self.trigger(current_gate);
                     }
                     self.last_gate_value = current_gate;
 
-                    // Process the envelope
                     let increment = 1.0 / self.sample_rate;
                     values[j] = self.process_sample(increment);
                 }
 
-                // Write output using SIMD
                 let values_simd = f32x4::from_array(values);
-                output[i..end].copy_from_slice(&values_simd.to_array()[0..end - i]);
+                output[i..end].copy_from_slice(&values_simd.to_array()[0..(end - i)]);
             }
         }
     }

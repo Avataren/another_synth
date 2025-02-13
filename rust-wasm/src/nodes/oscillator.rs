@@ -109,19 +109,7 @@ impl ModulatableOscillator {
     }
 }
 
-impl ModulationProcessor for ModulatableOscillator {
-    fn get_modulation_type(&self, port: PortId) -> ModulationType {
-        match port {
-            PortId::FrequencyMod => ModulationType::FrequencyCents,
-            PortId::PhaseMod => ModulationType::Additive,
-            PortId::ModIndex => ModulationType::VCA,
-            PortId::GainMod => ModulationType::VCA,
-            PortId::FeedbackMod => ModulationType::VCA,
-            PortId::Gate => ModulationType::Additive,
-            _ => ModulationType::VCA,
-        }
-    }
-}
+impl ModulationProcessor for ModulatableOscillator {}
 
 impl AudioNode for ModulatableOscillator {
     fn get_ports(&self) -> HashMap<PortId, bool> {
@@ -146,36 +134,13 @@ impl AudioNode for ModulatableOscillator {
         const TWO_PI: f32 = 2.0 * std::f32::consts::PI;
 
         // Process modulation inputs for each port
-        let freq_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::FrequencyMod),
-            1.0,
-            PortId::FrequencyMod,
-        );
-        let phase_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::PhaseMod),
-            0.0,
-            PortId::PhaseMod,
-        );
-        let gain_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::GainMod),
-            1.0,
-            PortId::GainMod,
-        );
-        let mod_index = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::ModIndex),
-            1.0,
-            PortId::ModIndex,
-        );
-        let feedback_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::FeedbackMod),
-            1.0,
-            PortId::FeedbackMod,
-        );
+        let freq_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
+        let phase_mod = self.process_modulations(buffer_size, inputs.get(&PortId::PhaseMod), 0.0);
+        let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
+        let mod_index = self.process_modulations(buffer_size, inputs.get(&PortId::ModIndex), 1.0);
+        let feedback_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::FeedbackMod), 1.0);
 
         // Process gate input for hard sync
         let mut gate_buffer = vec![0.0; buffer_size];
