@@ -52,7 +52,9 @@ pub struct AudioGraph {
     pub(crate) gate_buffer_idx: usize,
     pub(crate) freq_buffer_idx: usize,
     // We now include the source node in the tuple so we can identify which connection to remove.
-    pub(crate) input_connections: HashMap<NodeId, Vec<(PortId, usize, f32, NodeId)>>,
+    pub(crate) input_connections:
+        HashMap<NodeId, Vec<(PortId, usize, f32, NodeId, ModulationType)>>,
+
     pub(crate) temp_buffer_indices: Vec<usize>,
     pub(crate) output_node: Option<NodeId>,
 }
@@ -127,6 +129,7 @@ impl AudioGraph {
             source_buffer_idx,
             amount,
             connection.from_node,
+            connection.modulation_type,
         ));
 
         self.update_processing_order();
@@ -178,7 +181,7 @@ impl AudioGraph {
 
         // Update input_connections by removing entries matching the criteria.
         if let Some(inputs) = self.input_connections.get_mut(&to_node) {
-            inputs.retain(|(port, buffer_idx, _amount, src_node)| {
+            inputs.retain(|(port, buffer_idx, _amount, src_node, _mod_type)| {
                 !(*port == to_port
                     && *src_node == from_node
                     && from_node_buffer_indices.contains(buffer_idx))
@@ -187,6 +190,17 @@ impl AudioGraph {
                 self.input_connections.remove(&to_node);
             }
         }
+
+        // if let Some(inputs) = self.input_connections.get_mut(&to_node) {
+        //     inputs.retain(|(port, buffer_idx, _amount, src_node)| {
+        //         !(*port == to_port
+        //             && *src_node == from_node
+        //             && from_node_buffer_indices.contains(buffer_idx))
+        //     });
+        //     if inputs.is_empty() {
+        //         self.input_connections.remove(&to_node);
+        //     }
+        // }
 
         // web_sys::console::log_1(
         //     &format!(
@@ -217,7 +231,7 @@ impl AudioGraph {
 
         // Update input_connections accordingly.
         if let Some(inputs) = self.input_connections.get_mut(&connection.to_node) {
-            inputs.retain(|(port, buffer_idx, _amount, src_node)| {
+            inputs.retain(|(port, buffer_idx, _amount, src_node, _mod_type)| {
                 !(*port == connection.to_port
                     && *src_node == connection.from_node
                     && from_node_buffer_indices.contains(buffer_idx))
@@ -226,6 +240,17 @@ impl AudioGraph {
                 self.input_connections.remove(&connection.to_node);
             }
         }
+
+        // if let Some(inputs) = self.input_connections.get_mut(&connection.to_node) {
+        //     inputs.retain(|(port, buffer_idx, _amount, src_node)| {
+        //         !(*port == connection.to_port
+        //             && *src_node == connection.from_node
+        //             && from_node_buffer_indices.contains(buffer_idx))
+        //     });
+        //     if inputs.is_empty() {
+        //         self.input_connections.remove(&connection.to_node);
+        //     }
+        // }
 
         self.update_processing_order();
     }
@@ -255,39 +280,61 @@ impl AudioGraph {
             .or_default();
 
         // Update an existing connection if one exists.
-        let existing_idx = inputs.iter().position(|(port, _, _, src_node)| {
+        let existing_idx = inputs.iter().position(|(port, _, _, src_node, _)| {
             *port == connection.to_port && *src_node == connection.from_node
         });
 
         if let Some(idx) = existing_idx {
-            web_sys::console::log_1(
-                &format!(
-                    "Updating existing connection at idx {}: old={:?}, new=({:?}, {:?}, {:?})",
-                    idx, inputs[idx], connection.to_port, source_buffer_idx, connection.amount
-                )
-                .into(),
-            );
             inputs[idx] = (
                 connection.to_port,
                 source_buffer_idx,
                 connection.amount,
                 connection.from_node,
+                connection.modulation_type,
             );
         } else {
-            web_sys::console::log_1(
-                &format!(
-                    "Adding new connection: ({:?}, {:?}, {:?})",
-                    connection.to_port, source_buffer_idx, connection.amount
-                )
-                .into(),
-            );
             inputs.push((
                 connection.to_port,
                 source_buffer_idx,
                 connection.amount,
                 connection.from_node,
+                connection.modulation_type,
             ));
         }
+
+        // let existing_idx = inputs.iter().position(|(port, _, _, src_node)| {
+        //     *port == connection.to_port && *src_node == connection.from_node
+        // });
+
+        // if let Some(idx) = existing_idx {
+        //     web_sys::console::log_1(
+        //         &format!(
+        //             "Updating existing connection at idx {}: old={:?}, new=({:?}, {:?}, {:?})",
+        //             idx, inputs[idx], connection.to_port, source_buffer_idx, connection.amount
+        //         )
+        //         .into(),
+        //     );
+        //     inputs[idx] = (
+        //         connection.to_port,
+        //         source_buffer_idx,
+        //         connection.amount,
+        //         connection.from_node,
+        //     );
+        // } else {
+        //     web_sys::console::log_1(
+        //         &format!(
+        //             "Adding new connection: ({:?}, {:?}, {:?})",
+        //             connection.to_port, source_buffer_idx, connection.amount
+        //         )
+        //         .into(),
+        //     );
+        //     inputs.push((
+        //         connection.to_port,
+        //         source_buffer_idx,
+        //         connection.amount,
+        //         connection.from_node,
+        //     ));
+        // }
 
         web_sys::console::log_1(
             &format!(
@@ -471,17 +518,8 @@ impl AudioGraph {
 
             // Process all connections.
             if let Some(connections) = self.input_connections.get(&node_id) {
-                for &(port, source_idx, amount, _src_node) in connections {
+                for &(port, source_idx, amount, _src_node, mod_type) in connections {
                     let buffer = self.buffer_pool.copy_out(source_idx).to_vec();
-                    let mod_type = if port.is_audio_input() {
-                        ModulationType::Additive
-                    } else {
-                        self.connections
-                            .values()
-                            .find(|conn| conn.to_node == node_id && conn.to_port == port)
-                            .map(|conn| conn.modulation_type)
-                            .unwrap_or(ModulationType::VCA)
-                    };
                     inputs.entry(port).or_default().push(ModulationSource {
                         buffer,
                         amount,
