@@ -123,7 +123,7 @@ import {
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import {
   PORT_LABELS,
-  type VoiceNodeType,
+  VoiceNodeType,
   type ModulationTargetOption,
   type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
@@ -435,62 +435,47 @@ function getModulationTypeLabel(type: WasmModulationType): string {
 
 const initializeRoutes = () => {
   try {
-    //const connections = store.getNodeConnections(props.sourceId);
-    const connections = store
-      .getNodeConnections(props.sourceId)
-      .filter((conn) => conn.fromId === props.sourceId);
-    console.log('Initializing routes:', {
+    const connections = store.getNodeConnections(props.sourceId);
+    console.log('Raw connections for node:', {
       sourceId: props.sourceId,
-      connections: connections,
-      availableTargets: routeManager.getAvailableTargets(),
-      availableParams: connections.map((conn) =>
-        routeManager.getAvailableParams(conn.toId),
-      ),
+      connections: JSON.stringify(connections, null, 2), // More detailed connection logging
     });
 
-    // Safety check for connections
     if (!connections?.length) {
       console.log('No initial connections found for node:', props.sourceId);
       activeRoutes.value = [];
       return;
     }
 
-    // Map connections to routes with safety checks
-    activeRoutes.value = connections
+    // Log before filtering
+    console.log('Before filtering:', {
+      sourceId: props.sourceId,
+      outgoingConnections: connections.filter(
+        (conn) => conn.fromId === props.sourceId,
+      ),
+    });
+
+    // Map connections to routes
+    const routes = connections
+      .filter((conn) => conn.fromId === props.sourceId) // Only outgoing connections
       .map((conn) => {
-        // Get available targets
-        const availableTargets = routeManager.getAvailableTargets();
-        if (!availableTargets?.length) {
-          console.warn('No available targets found');
-          return null;
-        }
-
-        // Find target node
-        const targetNode = availableTargets.find((n) => n.id === conn.toId);
-        if (!targetNode) {
-          console.warn(
-            `Target node ${conn.toId} not found in available targets for source ${props.sourceId}`,
-          );
-          return null;
-        }
-
-        // Get parameters and log them
-        const params = routeManager.getAvailableParams(conn.toId);
-        console.log('Parameters for connection:', {
-          targetId: conn.toId,
-          availableParams: params,
+        console.log('Processing connection:', {
+          conn,
+          targetInfo: store.findNodeById(conn.toId),
         });
 
-        const label =
-          params.find((p) => p.value === conn.target)?.label ||
-          PORT_LABELS[conn.target] ||
-          'Unknown Parameter';
+        // Get target node info
+        const targetNode = {
+          id: conn.toId,
+          name: getNodeName(conn.toId),
+          type: getNodeType(conn.toId),
+        };
 
-        return {
+        const route = {
           targetId: conn.toId,
           targetNode,
           target: conn.target,
-          targetLabel: label,
+          targetLabel: PORT_LABELS[conn.target] || 'Unknown Parameter',
           amount: conn.amount,
           modulationType: {
             value: conn.modulationType || WasmModulationType.VCA,
@@ -499,14 +484,47 @@ const initializeRoutes = () => {
             ),
           },
         };
+
+        console.log('Created route:', route);
+        return route;
       })
       .filter((route): route is RouteConfig => route !== null);
 
-    console.log('Initialized routes:', activeRoutes.value);
+    activeRoutes.value = routes;
+    console.log('Final routes:', {
+      sourceId: props.sourceId,
+      routes: JSON.stringify(routes, null, 2),
+    });
   } catch (error) {
     console.error('Error initializing routes:', error);
     activeRoutes.value = [];
   }
+};
+
+// Helper functions
+const getNodeName = (nodeId: number): string => {
+  const node = store.findNodeById(nodeId);
+  if (!node) return `Node ${nodeId}`;
+
+  switch (node.type) {
+    case VoiceNodeType.Oscillator:
+      return `Oscillator ${nodeId}`;
+    case VoiceNodeType.Filter:
+      return `Filter ${nodeId}`;
+    case VoiceNodeType.Envelope:
+      return `Envelope ${nodeId}`;
+    case VoiceNodeType.LFO:
+      return `LFO ${nodeId}`;
+    case VoiceNodeType.Mixer:
+      return 'Mixer';
+    default:
+      return `Unknown Node ${nodeId}`;
+  }
+};
+
+const getNodeType = (nodeId: number): VoiceNodeType => {
+  const node = store.findNodeById(nodeId);
+  return node?.type || VoiceNodeType.Oscillator;
 };
 </script>
 

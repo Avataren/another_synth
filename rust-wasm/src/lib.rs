@@ -71,7 +71,7 @@ impl NoiseUpdateParams {
         }
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[wasm_bindgen]
 pub enum WasmModulationType {
     VCA = 0,
@@ -134,6 +134,7 @@ struct ConnectionState {
     to_id: usize,
     target: u32,
     amount: f32,
+    modulation_type: WasmModulationType,
 }
 
 #[wasm_bindgen]
@@ -330,6 +331,11 @@ impl AudioEngine {
                     to_id: conn.to_node.0,
                     target: conn.to_port as u32,
                     amount: conn.amount,
+                    modulation_type: match conn.modulation_type {
+                        ModulationType::VCA => WasmModulationType::VCA,
+                        ModulationType::Bipolar => WasmModulationType::Bipolar,
+                        ModulationType::Additive | _ => WasmModulationType::Additive,
+                    },
                 })
                 .collect();
 

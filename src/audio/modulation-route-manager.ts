@@ -21,7 +21,7 @@ export class ModulationRouteManager {
     private readonly store = useAudioSystemStore(),
     private readonly sourceId: number,
     private readonly sourceType: VoiceNodeType,
-  ) { }
+  ) {}
 
   private getNodeName(type: VoiceNodeType, index: number): string {
     switch (type) {
@@ -56,6 +56,16 @@ export class ModulationRouteManager {
     const voice = this.store.synthLayout?.voices[0];
     if (!voice) return false;
 
+    // Check if this connection already exists
+    const existingConnection = voice.connections.find(
+      (conn) => conn.fromId === sourceId && conn.toId === targetNodeId,
+    );
+
+    // If the connection already exists, it's not creating new feedback
+    if (existingConnection) {
+      return false;
+    }
+
     // Helper function to check if there's a path from target back to source
     const hasPathToSource = (
       currentId: number,
@@ -86,15 +96,15 @@ export class ModulationRouteManager {
   public getDefaultModulationType(port: PortId): WasmModulationType {
     switch (port) {
       case PortId.FrequencyMod:
-        return WasmModulationType.Bipolar;  // Type 1
+        return WasmModulationType.Bipolar; // Type 1
       case PortId.PhaseMod:
       case PortId.ModIndex:
-        return WasmModulationType.Additive;  // Type 2
+        return WasmModulationType.Additive; // Type 2
       case PortId.GainMod:
       case PortId.FeedbackMod:
-        return WasmModulationType.VCA;  // Type 0
+        return WasmModulationType.VCA; // Type 0
       default:
-        return WasmModulationType.VCA;  // Type 0
+        return WasmModulationType.VCA; // Type 0
     }
   }
 
@@ -195,7 +205,7 @@ export class ModulationRouteManager {
       // Log the connection before sending to store
       console.log('ModulationRouteManager handling connection:', {
         original: connection,
-        modType: connection.modulationType
+        modType: connection.modulationType,
       });
 
       await this.store.updateConnection(connection);
