@@ -249,7 +249,6 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       });
 
       // Initialize node states from the canonical voice.
-      // Initialize node states from the canonical voice.
       for (const voice of this.synthLayout.voices) {
         // Initialize oscillator states
         for (const osc of getNodesOfType(voice, VoiceNodeType.Oscillator)) {
@@ -411,7 +410,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                   target: plainConnection.target,
                   amount: plainConnection.amount,
                   modulationType:
-                    plainConnection.modulationType || WasmModulationType.VCA,
+                    plainConnection.modulationType ||
+                    WasmModulationType.Additive,
                 };
 
                 if (existingIndex !== -1) {
