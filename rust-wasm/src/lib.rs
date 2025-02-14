@@ -20,6 +20,7 @@ use nodes::{
     Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
+use serde::Deserialize;
 use serde::Serialize;
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
@@ -42,6 +43,34 @@ impl From<WasmNoiseType> for NoiseType {
             WasmNoiseType::White => NoiseType::White,
             WasmNoiseType::Pink => NoiseType::Pink,
             WasmNoiseType::Brownian => NoiseType::Brownian,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct JsEnvelopeConfig {
+    id: Option<u32>,
+    active: bool,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+    attackCurve: f32,
+    decayCurve: f32,
+    releaseCurve: f32,
+}
+impl From<JsEnvelopeConfig> for EnvelopeConfig {
+    fn from(js_conf: JsEnvelopeConfig) -> Self {
+        EnvelopeConfig {
+            attack: js_conf.attack,
+            decay: js_conf.decay,
+            sustain: js_conf.sustain,
+            release: js_conf.release,
+            attack_curve: js_conf.attackCurve,
+            decay_curve: js_conf.decayCurve,
+            release_curve: js_conf.releaseCurve,
+            attack_smoothing_samples: 16, // a sensible default
+            active: js_conf.active,
         }
     }
 }
@@ -547,6 +576,31 @@ impl AudioEngine {
         } else {
             Err(JsValue::from_str(&errors.join("; ")))
         }
+    }
+
+    #[wasm_bindgen]
+    pub fn get_envelope_preview(
+        sample_rate: f32,
+        js_config: JsValue,
+        preview_duration: f32,
+    ) -> Result<js_sys::Float32Array, JsValue> {
+        // Deserialize the JS object into our helper struct.
+        let js_conf: JsEnvelopeConfig = serde_wasm_bindgen::from_value(js_config)
+            .map_err(|err| JsValue::from_str(&err.to_string()))?;
+
+        // Convert it into our internal EnvelopeConfig.
+        let config: EnvelopeConfig = js_conf.into();
+
+        // Create a temporary envelope and generate the preview.
+        let envelope = Envelope::new(sample_rate, config);
+        let preview_values = envelope.preview(preview_duration);
+
+        // Convert Vec<f32> into a Float32Array.
+        let array = js_sys::Float32Array::new_with_length(preview_values.len() as u32);
+        for (i, &value) in preview_values.iter().enumerate() {
+            array.set_index(i as u32, value);
+        }
+        Ok(array)
     }
 
     #[wasm_bindgen]

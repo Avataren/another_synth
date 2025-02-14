@@ -170,6 +170,47 @@ export default class Instrument {
     });
   }
 
+  public async getEnvelopePreview(
+    config: EnvelopeConfig,
+    previewDuration: number,
+  ): Promise<Float32Array> {
+    if (!this.ready || !this.workletNode) {
+      throw new Error('Audio system not ready');
+    }
+
+    return new Promise<Float32Array>((resolve, reject) => {
+      const handleMessage = (e: MessageEvent) => {
+        if (
+          e.data.type === 'envelopePreview' &&
+          e.data.source === 'getEnvelopePreview'
+        ) {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(e.data.preview));
+        } else if (
+          e.data.type === 'error' &&
+          e.data.source === 'getEnvelopePreview'
+        ) {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      this.workletNode?.port.addEventListener('message', handleMessage);
+
+      this.workletNode?.port.postMessage({
+        type: 'getEnvelopePreview',
+        // Convert the config to a plain object (using JSON‑serialization or spread)
+        config: JSON.parse(JSON.stringify(config)),
+        previewDuration,
+      });
+
+      setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for envelope preview'));
+      }, 1000);
+    });
+  }
+
   public async getLfoWaveform(
     waveform: number,
     bufferSize: number,

@@ -188,6 +188,39 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'requestSync':
         this.handleRequestSync();
         break;
+      case 'getEnvelopePreview':
+        this.handleGetEnvelopePreview(event.data);
+        break;
+    }
+  }
+
+  // Inside SynthAudioProcessor's handleMessage method:
+  private handleGetEnvelopePreview(data: {
+    config: EnvelopeConfig;
+    previewDuration: number;
+  }) {
+    if (!this.audioEngine) return;
+    try {
+      // Call the wasm-bound function on the AudioEngine instance.
+      // Ensure you pass the envelope config and preview duration.
+      const envelopePreviewData = AudioEngine.get_envelope_preview(
+        sampleRate,
+        data.config, // The envelope configuration (should match EnvelopeConfig)
+        data.previewDuration,
+      );
+      // Send the preview data (a Float32Array) back to the main thread.
+      this.port.postMessage({
+        type: 'envelopePreview',
+        preview: envelopePreviewData, // This is already a Float32Array.
+        source: 'getEnvelopePreview',
+      });
+    } catch (err) {
+      console.error('Error generating envelope preview:', err);
+      this.port.postMessage({
+        type: 'error',
+        source: 'getEnvelopePreview',
+        message: 'Failed to generate envelope preview',
+      });
     }
   }
 

@@ -12,6 +12,9 @@
           @update:modelValue="handleActiveChange"
         />
       </div>
+      <div class="canvas-wrapper">
+        <canvas ref="waveformCanvas"></canvas>
+      </div>
 
       <div class="knob-group">
         <audio-knob-component
@@ -92,10 +95,6 @@
         :source-type="VoiceNodeType.Envelope"
         :debug="true"
       />
-
-      <div class="canvas-wrapper">
-        <canvas ref="waveformCanvas"></canvas>
-      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -122,57 +121,6 @@ const props = withDefaults(defineProps<Props>(), {
 const store = useAudioSystemStore();
 const { envelopeStates } = storeToRefs(store);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
-
-// Function to draw the envelope shape on the canvas - defined first!
-const drawEnvelopeShape = () => {
-  const canvas = waveformCanvas.value;
-  if (!canvas) return;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  // Set canvas resolution
-  const width = canvas.offsetWidth;
-  const height = canvas.offsetHeight;
-  canvas.width = width;
-  canvas.height = height;
-
-  // Clear canvas
-  ctx.clearRect(0, 0, width, height);
-
-  // Draw envelope shape
-  ctx.beginPath();
-  ctx.strokeStyle = '#2196F3';
-  ctx.lineWidth = 2;
-
-  const state = envelopeState.value;
-
-  // Calculate time segments
-  const totalTime = state.attack + state.decay + 1 + state.release; // 1 second for sustain
-  const pixelsPerSecond = width / totalTime;
-
-  // Starting point
-  ctx.moveTo(0, height);
-
-  // Attack
-  const attackX = state.attack * pixelsPerSecond;
-  ctx.lineTo(attackX, 0);
-
-  // Decay
-  const decayX = attackX + state.decay * pixelsPerSecond;
-  const sustainY = height * (1 - state.sustain);
-  ctx.lineTo(decayX, sustainY);
-
-  // Sustain
-  const sustainX = decayX + pixelsPerSecond; // 1 second sustain
-  ctx.lineTo(sustainX, sustainY);
-
-  // Release
-  const releaseX = sustainX + state.release * pixelsPerSecond;
-  ctx.lineTo(releaseX, height);
-
-  ctx.stroke();
-};
 
 // Create a reactive reference to the envelope state
 const envelopeState = computed({
@@ -263,9 +211,72 @@ const handleReleaseChange = (envVal: number) => {
   store.envelopeStates.set(props.nodeId, currentState);
 };
 
+const updateEnvelopePreview = () => {
+  const config = envelopeState.value;
+  const previewDuration = config.attack + config.decay + 1 + config.release;
+
+  store.currentInstrument
+    ?.getEnvelopePreview(config, previewDuration)
+    .then((previewData) => {
+      drawEnvelopePreviewWithData(previewData);
+    })
+    .catch((err) => {
+      console.error('Failed to get envelope preview:', err);
+    });
+};
+
+const drawEnvelopePreviewWithData = (previewData: Float32Array) => {
+  const canvas = waveformCanvas.value;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Set canvas dimensions
+  const width = canvas.offsetWidth;
+  const height = canvas.offsetHeight;
+  canvas.width = width;
+  canvas.height = height;
+
+  ctx.fillStyle = 'rgb(32, 45, 66)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Downsample the preview data to match the canvas width.
+  const totalSamples = previewData.length;
+  const step = totalSamples / width;
+
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgb(160, 190, 225)';
+  ctx.lineWidth = 2;
+
+  // Map the envelope value (0 to 1) to canvas y-coordinate.
+  ctx.moveTo(0, height - previewData[0]! * height);
+
+  for (let x = 1; x < width; x++) {
+    const sampleIndex = Math.floor(x * step);
+    const value = previewData[sampleIndex];
+    const y = height - value! * height;
+    ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+};
+
+onMounted(() => {
+  if (!envelopeStates.value.has(props.nodeId)) {
+    envelopeStates.value.set(props.nodeId, envelopeState.value);
+  }
+  setTimeout(updateEnvelopePreview, 250);
+
+  // Add resize listener
+  window.addEventListener('resize', updateEnvelopePreview);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateEnvelopePreview);
+});
+
 // Watch for changes in the envelope state
 watch(
-  () => ({ ...envelopeStates.value.get(props.nodeId) }), // Create new reference
+  () => ({ ...envelopeStates.value.get(props.nodeId) }),
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
@@ -273,26 +284,12 @@ watch(
           props.nodeId,
           newState as EnvelopeConfig,
         );
-        drawEnvelopeShape();
+        updateEnvelopePreview();
       }
     }
   },
   { deep: true, immediate: true },
 );
-
-onMounted(() => {
-  if (!envelopeStates.value.has(props.nodeId)) {
-    envelopeStates.value.set(props.nodeId, envelopeState.value);
-  }
-  drawEnvelopeShape();
-
-  // Add resize listener
-  window.addEventListener('resize', drawEnvelopeShape);
-});
-
-onUnmounted(() => {
-  window.removeEventListener('resize', drawEnvelopeShape);
-});
 </script>
 
 <style scoped>
@@ -321,8 +318,8 @@ onUnmounted(() => {
 canvas {
   width: 100%;
   height: 100%;
-  border: 1px solid #ccc;
+  border: none;
   background-color: rgb(200, 200, 200);
-  border-radius: 4px;
+  /* border-radius: 4px; */
 }
 </style>
