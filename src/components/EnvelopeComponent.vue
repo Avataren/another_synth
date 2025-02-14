@@ -263,7 +263,7 @@ const handleReleaseChange = (envVal: number) => {
   store.envelopeStates.set(props.nodeId, currentState);
 };
 
-// Watch for changes in the envelope state - after drawEnvelopeShape is defined
+// Watch for changes in the envelope state
 watch(
   () => ({ ...envelopeStates.value.get(props.nodeId) }), // Create new reference
   (newState, oldState) => {
@@ -273,7 +273,7 @@ watch(
           props.nodeId,
           newState as EnvelopeConfig,
         );
-        drawEnvelopeShape(); // Now this reference is valid
+        drawEnvelopeShape();
       }
     }
   },
@@ -308,7 +308,7 @@ onUnmounted(() => {
 .knob-group {
   display: flex;
   justify-content: space-around;
-  align-items: flex-start;
+  align-items: baseline;
   margin-bottom: 1rem;
 }
 
