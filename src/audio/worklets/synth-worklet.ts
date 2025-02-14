@@ -2,6 +2,7 @@
 import './textencoder.js';
 
 import OscillatorUpdateHandler from './handlers/oscillator-update-handler.js';
+import type { EnvelopeConfig } from '../types/synth-layout';
 import {
   type SynthLayout,
   type VoiceLayout,
@@ -13,7 +14,6 @@ import { type NoiseUpdate } from '../types/noise.js';
 import {
   AnalogOscillatorStateUpdate,
   AudioEngine,
-  type EnvelopeConfig,
   initSync,
   LfoUpdateParams,
   NoiseUpdateParams,
@@ -665,17 +665,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
     console.log('handleUpdateEnvelope:', data);
     try {
-      for (let i = 0; i < this.numVoices; i++) {
-        this.audioEngine.update_envelope(
-          i,
-          data.envelopeId,
-          data.config.attack,
-          data.config.decay,
-          data.config.sustain,
-          data.config.release,
-          data.config.active,
-        );
-      }
+      this.audioEngine.update_envelope(
+        data.envelopeId,
+        data.config.attack,
+        data.config.decay,
+        data.config.sustain,
+        data.config.release,
+        data.config.attackCurve,
+        data.config.decayCurve,
+        data.config.releaseCurve,
+        data.config.active,
+      );
     } catch (err) {
       console.error('Error updating LFO:', err);
     }

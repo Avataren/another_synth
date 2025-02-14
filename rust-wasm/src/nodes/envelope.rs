@@ -47,6 +47,34 @@ impl Default for EnvelopeConfig {
     }
 }
 
+#[wasm_bindgen]
+impl EnvelopeConfig {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        attack: f32,
+        decay: f32,
+        sustain: f32,
+        release: f32,
+        attack_curve: f32,
+        decay_curve: f32,
+        release_curve: f32,
+        attack_smoothing_samples: usize,
+        active: bool,
+    ) -> Self {
+        EnvelopeConfig {
+            attack,
+            decay,
+            sustain,
+            release,
+            attack_curve,
+            decay_curve,
+            release_curve,
+            attack_smoothing_samples,
+            active,
+        }
+    }
+}
+
 pub struct Envelope {
     phase: EnvelopePhase,
     value: f32,
@@ -78,6 +106,7 @@ impl Envelope {
 
     pub fn update_config(&mut self, config: EnvelopeConfig) {
         self.config = config;
+        self.smoothing_counter = 0;
     }
 
     pub fn get_phase(&self) -> EnvelopePhase {

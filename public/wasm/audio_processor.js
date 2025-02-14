@@ -484,16 +484,18 @@ export class AudioEngine {
         }
     }
     /**
-     * @param {number} voice_index
      * @param {number} node_id
      * @param {number} attack
      * @param {number} decay
      * @param {number} sustain
      * @param {number} release
+     * @param {number} attack_curve
+     * @param {number} decay_curve
+     * @param {number} release_curve
      * @param {boolean} active
      */
-    update_envelope(voice_index, node_id, attack, decay, sustain, release, active) {
-        const ret = wasm.audioengine_update_envelope(this.__wbg_ptr, voice_index, node_id, attack, decay, sustain, release, active);
+    update_envelope(node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active) {
+        const ret = wasm.audioengine_update_envelope(this.__wbg_ptr, node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -813,6 +815,23 @@ export class EnvelopeConfig {
      */
     set active(arg0) {
         wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @param {number} attack
+     * @param {number} decay
+     * @param {number} sustain
+     * @param {number} release
+     * @param {number} attack_curve
+     * @param {number} decay_curve
+     * @param {number} release_curve
+     * @param {number} attack_smoothing_samples
+     * @param {boolean} active
+     */
+    constructor(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active) {
+        const ret = wasm.envelopeconfig_new(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active);
+        this.__wbg_ptr = ret >>> 0;
+        EnvelopeConfigFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
 }
 

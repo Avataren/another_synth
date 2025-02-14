@@ -25,6 +25,17 @@
         />
 
         <audio-knob-component
+          v-model="envelopeState.attackCurve"
+          label="ACoeff"
+          scale="half"
+          :min="-10"
+          :max="10"
+          :step="0.01"
+          :decimals="2"
+          @update:modelValue="handleAttackCoeffChange"
+        />
+
+        <audio-knob-component
           v-model="envelopeState.decay"
           label="Decay"
           :min="0"
@@ -32,6 +43,17 @@
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleDecayChange"
+        />
+
+        <audio-knob-component
+          v-model="envelopeState.decayCurve"
+          label="DCoeff"
+          scale="half"
+          :min="-10"
+          :max="10"
+          :step="0.01"
+          :decimals="2"
+          @update:modelValue="handleDecayCoeffChange"
         />
 
         <audio-knob-component
@@ -44,6 +66,16 @@
           @update:modelValue="handleSustainChange"
         />
 
+        <audio-knob-component
+          v-model="envelopeState.releaseCurve"
+          label="RCoeff"
+          scale="half"
+          :min="-10"
+          :max="10"
+          :step="0.01"
+          :decimals="2"
+          @update:modelValue="handleReleaseCoeffChange"
+        />
         <audio-knob-component
           v-model="envelopeState.release"
           label="Release"
@@ -73,8 +105,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
-import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
 import RoutingComponent from './RoutingComponent.vue';
+import type { EnvelopeConfig } from 'src/audio/types/synth-layout';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Props {
@@ -171,6 +203,30 @@ const handleActiveChange = (newValue: boolean) => {
   const currentState = {
     ...envelopeState.value,
     active: newValue,
+  };
+  store.envelopeStates.set(props.nodeId, currentState);
+};
+
+const handleAttackCoeffChange = (envVal: number) => {
+  const currentState = {
+    ...envelopeState.value,
+    attackCurve: envVal,
+  };
+  store.envelopeStates.set(props.nodeId, currentState);
+};
+
+const handleDecayCoeffChange = (envVal: number) => {
+  const currentState = {
+    ...envelopeState.value,
+    decayCurve: envVal,
+  };
+  store.envelopeStates.set(props.nodeId, currentState);
+};
+
+const handleReleaseCoeffChange = (envVal: number) => {
+  const currentState = {
+    ...envelopeState.value,
+    releaseCurve: envVal,
   };
   store.envelopeStates.set(props.nodeId, currentState);
 };

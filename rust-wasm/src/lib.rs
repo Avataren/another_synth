@@ -497,36 +497,55 @@ impl AudioEngine {
     #[wasm_bindgen]
     pub fn update_envelope(
         &mut self,
-        voice_index: usize,
         node_id: usize,
         attack: f32,
         decay: f32,
         sustain: f32,
         release: f32,
+        attack_curve: f32,
+        decay_curve: f32,
+        release_curve: f32,
         active: bool,
     ) -> Result<(), JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
+        console::log_1(
+            &format!(
+                "RUST: envelope curves: attack_curve={}, decay_curve={}, release_curve={}",
+                attack_curve, decay_curve, release_curve
+            )
+            .into(),
+        );
 
-        if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
-            if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
-                let config = EnvelopeConfig {
-                    attack,
-                    decay,
-                    sustain,
-                    release,
-                    ..Default::default()
-                };
-                env.update_config(config);
-                env.set_active(active);
-                Ok(())
+        let mut errors: Vec<String> = Vec::new();
+
+        // Iterate over all voices and attempt to update the envelope.
+        for (i, voice) in self.voices.iter_mut().enumerate() {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+                if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
+                    let config = EnvelopeConfig {
+                        attack,
+                        decay,
+                        sustain,
+                        release,
+                        attack_curve,
+                        decay_curve,
+                        release_curve,
+                        attack_smoothing_samples: 16,
+                        active,
+                    };
+                    env.update_config(config);
+                    env.set_active(active);
+                } else {
+                    errors.push(format!("Voice {}: Node is not an Envelope", i));
+                }
             } else {
-                Err(JsValue::from_str("Node is not an Envelope"))
+                errors.push(format!("Voice {}: Node not found", i));
             }
+        }
+
+        if errors.is_empty() {
+            Ok(())
         } else {
-            Err(JsValue::from_str("Node not found"))
+            Err(JsValue::from_str(&errors.join("; ")))
         }
     }
 

@@ -1,10 +1,10 @@
 // import { type PortId } from 'app/public/wasm/audio_processor';
 import { createStandardAudioWorklet } from './audio-processor-loader';
-import { type EnvelopeConfig } from './dsp/envelope';
 // import { type FilterState } from './dsp/filter-state';
 // import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
+import type { EnvelopeConfig } from './types/synth-layout';
 import {
   type SynthLayout,
   // type NodeConnection,

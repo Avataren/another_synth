@@ -1,9 +1,9 @@
 // src/stores/audioSystem.ts
 import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
-import { type EnvelopeConfig } from 'src/audio/dsp/envelope';
 import Instrument from 'src/audio/instrument';
 import type OscillatorState from 'src/audio/models/OscillatorState';
+import type { EnvelopeConfig } from 'src/audio/types/synth-layout';
 import {
   type SynthLayout,
   type NodeConnection,
@@ -97,24 +97,24 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-        (voiceIndex: number, nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[voiceIndex];
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-          );
-        },
+      (voiceIndex: number, nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[voiceIndex];
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+        );
+      },
     getNodeConnections:
       (state) =>
-        (nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[0]; // Only look at voice 0
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
-          );
-        },
+      (nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[0]; // Only look at voice 0
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
+        );
+      },
 
     // getNodeConnections:
     //   (state) =>
@@ -229,13 +229,16 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           console.warn('Unknown modulation type:', raw);
           return WasmModulationType.Additive;
       }
-    }
-    ,
+    },
     updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout with:', layout);
 
       // Validate that we have at least one voice.
-      if (!layout.voices || !Array.isArray(layout.voices) || layout.voices.length === 0) {
+      if (
+        !layout.voices ||
+        !Array.isArray(layout.voices) ||
+        layout.voices.length === 0
+      ) {
         console.warn('Received invalid synth layout (no voices).');
         return;
       }
@@ -244,7 +247,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       const layoutClone = JSON.parse(JSON.stringify(layout)) as SynthLayout;
 
       // Process each voice.
-      layoutClone.voices = layoutClone.voices.map(voice => {
+      layoutClone.voices = layoutClone.voices.map((voice) => {
         // --- Convert Connections ---
         if (Array.isArray(voice.connections) && voice.connections.length > 0) {
           // Check if the connections are in raw format by testing for "from_id".
@@ -252,14 +255,19 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           if ('from_id' in firstConn) {
             // Define an interface for raw connections.
 
-            const rawConnections = voice.connections as unknown as RawConnection[];
-            voice.connections = rawConnections.map((rawConn: RawConnection): NodeConnection => ({
-              fromId: rawConn.from_id,
-              toId: rawConn.to_id,
-              target: rawConn.target as PortId, // explicit cast
-              amount: rawConn.amount,
-              modulationType: this.convertModulationType(rawConn.modulation_type),
-            }));
+            const rawConnections =
+              voice.connections as unknown as RawConnection[];
+            voice.connections = rawConnections.map(
+              (rawConn: RawConnection): NodeConnection => ({
+                fromId: rawConn.from_id,
+                toId: rawConn.to_id,
+                target: rawConn.target as PortId, // explicit cast
+                amount: rawConn.amount,
+                modulationType: this.convertModulationType(
+                  rawConn.modulation_type,
+                ),
+              }),
+            );
           }
           // Otherwise, assume it's already in the correct format.
         }
@@ -268,7 +276,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         // If nodes are given as an array, convert them into an object keyed by VoiceNodeType.
         if (Array.isArray(voice.nodes)) {
           // Create an object with empty arrays for each node type.
-          const nodesByType: { [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[] } = {
+          const nodesByType: {
+            [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[];
+          } = {
             [VoiceNodeType.Oscillator]: [],
             [VoiceNodeType.Filter]: [],
             [VoiceNodeType.Envelope]: [],
@@ -320,7 +330,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       const canonicalVoice = layoutClone.voices[0];
       if (canonicalVoice && canonicalVoice.nodes) {
         // Initialize oscillator states.
-        for (const osc of getNodesOfType(canonicalVoice, VoiceNodeType.Oscillator) || []) {
+        for (const osc of getNodesOfType(
+          canonicalVoice,
+          VoiceNodeType.Oscillator,
+        ) || []) {
           if (!this.oscillatorStates.has(osc.id)) {
             this.oscillatorStates.set(osc.id, {
               id: osc.id,
@@ -338,13 +351,16 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
         }
         // Initialize envelope states.
-        for (const env of getNodesOfType(canonicalVoice, VoiceNodeType.Envelope) || []) {
+        for (const env of getNodesOfType(
+          canonicalVoice,
+          VoiceNodeType.Envelope,
+        ) || []) {
           if (!this.envelopeStates.has(env.id)) {
             this.envelopeStates.set(env.id, {
               id: env.id,
-              attack: 0.01,
+              attack: 0.0,
               decay: 0.1,
-              sustain: 0.7,
+              sustain: 0.5,
               release: 0.1,
               active: true,
               attackCurve: 0,
@@ -354,7 +370,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
         }
         // Initialize filter states.
-        for (const filter of getNodesOfType(canonicalVoice, VoiceNodeType.Filter) || []) {
+        for (const filter of getNodesOfType(
+          canonicalVoice,
+          VoiceNodeType.Filter,
+        ) || []) {
           if (!this.filterStates.has(filter.id)) {
             this.filterStates.set(filter.id, {
               id: filter.id,
@@ -365,7 +384,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
         }
         // Initialize LFO states.
-        for (const lfo of getNodesOfType(canonicalVoice, VoiceNodeType.LFO) || []) {
+        for (const lfo of getNodesOfType(canonicalVoice, VoiceNodeType.LFO) ||
+          []) {
           if (!this.lfoStates.has(lfo.id)) {
             this.lfoStates.set(lfo.id, {
               id: lfo.id,
@@ -383,114 +403,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // Force Vue reactivity by reassigning a shallow copy.
       this.synthLayout = { ...this.synthLayout };
-    }
-
-    ,
-
-    // updateSynthLayout(layout: SynthLayout) {
-    //   console.log('Raw synth layout:', {
-    //     layout: JSON.stringify(layout, null, 2),
-    //     firstVoiceConnections: layout.voices[0]!.connections,
-    //   });
-    //   console.log('Updating synth layout:', layout);
-    //   if (!layout.voices || layout.voices.length === 0) {
-    //     console.warn('No voices in layout');
-    //     return;
-    //   }
-
-    //   // Use voice 0 as the canonical layout.
-    //   const canonicalVoice = JSON.parse(JSON.stringify(layout.voices[0]));
-    //   const canonicalLayout: SynthLayout = {
-    //     voices: [canonicalVoice],
-    //     globalNodes: layout.globalNodes,
-    //     metadata: layout.metadata ?? {
-    //       maxVoices: 8,
-    //       maxOscillators: 2,
-    //       maxEnvelopes: 2,
-    //       maxLFOs: 2,
-    //       maxFilters: 1,
-    //       stateVersion: 1,
-    //     },
-    //   };
-
-    //   this.synthLayout = canonicalLayout;
-
-    //   // Ensure the canonical voice has a connections array.
-    //   this.synthLayout.voices.forEach((voice) => {
-    //     if (!voice.connections) {
-    //       voice.connections = [];
-    //     }
-    //   });
-
-    //   // Initialize node states from the canonical voice.
-    //   for (const voice of this.synthLayout.voices) {
-    //     // Initialize oscillator states
-    //     for (const osc of getNodesOfType(voice, VoiceNodeType.Oscillator)) {
-    //       if (!this.oscillatorStates.has(osc.id)) {
-    //         this.oscillatorStates.set(osc.id, {
-    //           id: osc.id,
-    //           phase_mod_amount: 0,
-    //           freq_mod_amount: 0,
-    //           detune_oct: 0,
-    //           detune_semi: 0,
-    //           detune_cents: 0,
-    //           detune: 0,
-    //           hard_sync: false,
-    //           gain: 1,
-    //           feedback_amount: 0,
-    //           active: true,
-    //         });
-    //       }
-    //     }
-
-    //     // Initialize filter states
-    //     for (const filter of getNodesOfType(voice, VoiceNodeType.Filter)) {
-    //       if (!this.filterStates.has(filter.id)) {
-    //         this.filterStates.set(filter.id, {
-    //           id: filter.id,
-    //           cutoff: 20000,
-    //           resonance: 0,
-    //           active: true,
-    //         });
-    //       }
-    //     }
-
-    //     // Initialize envelope states
-    //     for (const env of getNodesOfType(voice, VoiceNodeType.Envelope)) {
-    //       if (!this.envelopeStates.has(env.id)) {
-    //         this.envelopeStates.set(env.id, {
-    //           id: env.id,
-    //           attack: 0.01,
-    //           decay: 0.1,
-    //           sustain: 0.7,
-    //           release: 0.1,
-    //           active: true,
-    //           attackCurve: 0,
-    //           decayCurve: 0,
-    //           releaseCurve: 0,
-    //         });
-    //       }
-    //     }
-
-    //     // Initialize LFO states
-    //     for (const lfo of getNodesOfType(voice, VoiceNodeType.LFO)) {
-    //       if (!this.lfoStates.has(lfo.id)) {
-    //         this.lfoStates.set(lfo.id, {
-    //           id: lfo.id,
-    //           frequency: 1.0,
-    //           waveform: 0, // Sine
-    //           useAbsolute: false,
-    //           useNormalized: true,
-    //           triggerMode: 0, // None
-    //           gain: 1.0,
-    //           active: true,
-    //         });
-    //       }
-    //     }
-    //   }
-
-    //   console.log('Updated synth layout state:', this.synthLayout);
-    // },
+    },
     updateOscillator(nodeId: number, state: OscillatorState) {
       this.oscillatorStates.set(nodeId, state);
       this.currentInstrument?.updateOscillatorState(nodeId, state);
@@ -588,7 +501,6 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                       ? plainConnection.modulationType
                       : WasmModulationType.Additive,
                 };
-
 
                 if (existingIndex !== -1) {
                   voice.connections[existingIndex] = newConnection;
