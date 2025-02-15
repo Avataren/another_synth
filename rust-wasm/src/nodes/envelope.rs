@@ -37,10 +37,10 @@ pub struct EnvelopeConfig {
 impl Default for EnvelopeConfig {
     fn default() -> Self {
         Self {
-            attack: 0.001,
-            decay: 0.25,
-            sustain: 0.25,
-            release: 0.5,
+            attack: 0.00,
+            decay: 0.1,
+            sustain: 0.5,
+            release: 0.1,
             attack_curve: 0.0,
             decay_curve: 0.0,
             release_curve: 0.0,
@@ -112,6 +112,9 @@ impl Envelope {
             decay_table: Vec::with_capacity(CURVE_TABLE_SIZE),
             release_table: Vec::with_capacity(CURVE_TABLE_SIZE),
         };
+        if env.config.attack <= 0.0001 {
+            env.config.attack = 0.0001;
+        }
         env.update_lookup_tables();
         env
     }
@@ -137,6 +140,10 @@ impl Envelope {
 
     pub fn update_config(&mut self, config: EnvelopeConfig) {
         self.config = config;
+        if self.config.attack <= 0.0001 {
+            self.config.attack = 0.0001;
+        }
+
         self.smoothing_counter = 0;
         self.update_lookup_tables();
     }

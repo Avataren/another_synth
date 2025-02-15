@@ -59,17 +59,8 @@
                 />
               </div>
 
-              <!-- Amount Slider -->
+              <!-- Amount Knob -->
               <div class="col-1">
-                <!-- <amount-slider
-                  v-model="route.amount"
-                  :min="0"
-                  :max="100"
-                  :step="0.5"
-                  @update:model-value="
-                    (val) => handleAmountChange(index, Number(val))
-                  "
-                /> -->
                 <audio-knob-component
                   v-model="route.amount!"
                   label=""
@@ -79,10 +70,12 @@
                   :decimals="2"
                   scale="half"
                   @update:model-value="
-                    (val) => handleAmountChange(index, Number(val))
+                    (val) => handleAmountChangeThrottled(index, Number(val))
                   "
                 />
               </div>
+
+              <!-- Modulation Type Selection -->
               <div class="col-2">
                 <q-select
                   v-model="route.modulationType"
@@ -95,6 +88,7 @@
                   @update:model-value="(val) => handleModTypeChange(index, val)"
                 />
               </div>
+
               <!-- Delete Button -->
               <div class="col-1">
                 <q-btn
@@ -131,8 +125,8 @@ import {
   WasmModulationType,
   type PortId,
 } from 'app/public/wasm/audio_processor';
-// import AmountSlider from './AmountSlider.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
+
 interface Props {
   sourceId: number;
   sourceType: VoiceNodeType;
@@ -147,8 +141,7 @@ const routeManager = new ModulationRouteManager(
   props.sourceType,
 );
 
-// Add state for expansion control
-const isExpanded = ref(true);
+const isExpanded = ref<boolean>(true);
 
 interface RouteConfig {
   targetId: number;
@@ -170,15 +163,15 @@ const availableTargetNodes = computed(() => {
   return routeManager.getAvailableTargets();
 });
 
-const getAvailableTargets = () => {
+const getAvailableTargets = (): TargetNode[] => {
   return routeManager.getAvailableTargets();
 };
 
-const getAvailableParams = (targetId: number) => {
+const getAvailableParams = (targetId: number): ModulationTargetOption[] => {
   return routeManager.getAvailableParams(targetId);
 };
 
-const addNewRoute = async () => {
+const addNewRoute = async (): Promise<void> => {
   const availableTargets = routeManager.getAvailableTargets();
   if (!availableTargets.length) {
     console.warn("No available targets that won't create feedback loops");
@@ -189,15 +182,10 @@ const addNewRoute = async () => {
   const params = routeManager.getAvailableParams(defaultTarget.id);
   if (!params.length) return;
 
-  const defaultParam = params[0];
-  if (!defaultParam) return;
-
-  // Get the appropriate default modulation type for this target
+  const defaultParam = params[0]!;
   const defaultModType = routeManager.getDefaultModulationType(
     defaultParam.value,
   );
-
-  console.log('### defaultModType:', defaultModType);
 
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
@@ -219,7 +207,6 @@ const addNewRoute = async () => {
       amount: newRoute.amount,
       modulationType: defaultModType,
     });
-
     activeRoutes.value.push(newRoute);
   } catch (error) {
     console.error('Failed to add new route:', error);
@@ -227,25 +214,19 @@ const addNewRoute = async () => {
 };
 
 const modulationTypes = ref<ModulationTypeOption[]>([
-  { value: WasmModulationType.VCA, label: 'VCA' }, // 0
-  { value: WasmModulationType.Bipolar, label: 'Bipolar' }, // 1
-  { value: WasmModulationType.Additive, label: 'Add' }, // 2
+  { value: WasmModulationType.VCA, label: 'VCA' },
+  { value: WasmModulationType.Bipolar, label: 'Bipolar' },
+  { value: WasmModulationType.Additive, label: 'Add' },
 ]);
 
 const handleModTypeChange = async (
   index: number,
   newType: ModulationTypeOption,
-) => {
+): Promise<void> => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
   try {
-    console.log('Setting new modulation type:', {
-      newType,
-      value: newType.value, // Let's check this value
-    });
-
-    // Remove old connection
     await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
@@ -255,7 +236,6 @@ const handleModTypeChange = async (
       isRemoving: true,
     });
 
-    // Add new connection with new type
     await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
@@ -270,16 +250,18 @@ const handleModTypeChange = async (
   }
 };
 
-const handleTargetChange = async (index: number, newTarget: TargetNode) => {
+const handleTargetChange = async (
+  index: number,
+  newTarget: TargetNode,
+): Promise<void> => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
   const params = routeManager.getAvailableParams(newTarget.id);
-  const defaultParam = params[0];
-  if (!defaultParam) return;
+  if (!params.length) return;
+  const defaultParam = params[0]!;
 
   try {
-    // Remove old connection
     await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
@@ -288,7 +270,6 @@ const handleTargetChange = async (index: number, newTarget: TargetNode) => {
       isRemoving: true,
     });
 
-    // Add new connection
     await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: newTarget.id,
@@ -297,7 +278,6 @@ const handleTargetChange = async (index: number, newTarget: TargetNode) => {
       modulationType: routeManager.getDefaultModulationType(defaultParam.value),
     });
 
-    // Update local state
     route.targetId = newTarget.id;
     route.targetNode = newTarget;
     route.target = defaultParam.value;
@@ -310,18 +290,12 @@ const handleTargetChange = async (index: number, newTarget: TargetNode) => {
 const handleParamChange = async (
   index: number,
   newParam: ModulationTargetOption,
-) => {
+): Promise<void> => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
   try {
-    console.log('Parameter change - Starting state:', {
-      route,
-      newParam,
-      currentModType: route.modulationType,
-    });
-
-    const oldTarget = route.target as PortId;
+    const oldTarget = route.target;
     const currentModType = route.modulationType;
 
     const removeConnection: NodeConnectionUpdate = {
@@ -333,71 +307,34 @@ const handleParamChange = async (
       isRemoving: true,
     };
 
-    console.log('Removing connection with modType:', removeConnection);
     await routeManager.updateConnection(removeConnection);
 
-    // Add new connection, explicitly preserving the modulation type
     const newConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
       target: newParam.value as PortId,
       amount: route.amount,
-      modulationType: currentModType.value, // Explicitly keep current mod type
+      modulationType: currentModType.value,
     };
 
-    console.log('Adding new connection with preserved modType:', newConnection);
     await routeManager.updateConnection(newConnection);
 
-    // Update local state
     route.target = newParam.value as PortId;
     route.targetLabel = newParam.label;
-    // Explicitly keep the same modulation type
-    console.log('Final route state:', route);
   } catch (error) {
     console.error('Failed to update parameter:', error);
   }
 };
 
-const handleAmountChange = async (index: number, newAmount: number) => {
+const removeRoute = async (index: number): Promise<void> => {
   const route = activeRoutes.value[index];
   if (!route) return;
 
   try {
-    // Remove old connection
-    await routeManager.updateConnection({
-      fromId: props.sourceId,
-      toId: route.targetId,
-      target: route.target,
-      amount: route.amount,
-      modulationType: route.modulationType.value, // Keep current modulation type
-      isRemoving: true,
-    });
-
-    // Add new connection with new amount
-    await routeManager.updateConnection({
-      fromId: props.sourceId,
-      toId: route.targetId,
-      target: route.target,
-      amount: newAmount,
-      modulationType: route.modulationType.value, // Keep current modulation type
-    });
-
-    route.amount = newAmount;
-  } catch (error) {
-    console.error('Failed to update amount:', error);
-  }
-};
-
-const removeRoute = async (index: number) => {
-  const route = activeRoutes.value[index];
-  if (!route) return;
-
-  try {
-    // Create a plain connection object with validated target
     const removeConnection: NodeConnectionUpdate = {
       fromId: props.sourceId,
       toId: route.targetId,
-      target: Number(route.target) as PortId, // Convert from proxy to number
+      target: Number(route.target) as PortId,
       amount: Number(route.amount),
       isRemoving: true,
     };
@@ -409,13 +346,96 @@ const removeRoute = async (index: number) => {
   }
 };
 
+// --- Throttling via Periodic Update ---
+// For each route index, we keep a throttle state containing an interval, a pending value, and a timeout.
+interface ThrottleState {
+  intervalId: ReturnType<typeof setInterval> | null;
+  pending: number | null;
+  timeoutId: ReturnType<typeof setTimeout> | null;
+}
+const throttleStates = new Map<number, ThrottleState>();
+
+/**
+ * Throttled handler for amount changes.
+ * When the knob value changes, we update a pending value.
+ * If no interval is active, we start one that fires every 100ms.
+ * The interval checks for a pending update and sends it via executeAmountUpdate.
+ * We also schedule a timeout (150ms) that clears the interval if no new events occur.
+ */
+const handleAmountChangeThrottled = (
+  index: number,
+  newAmount: number,
+): void => {
+  let state = throttleStates.get(index);
+  if (!state) {
+    state = {
+      intervalId: null,
+      pending: null,
+      timeoutId: null,
+    };
+    throttleStates.set(index, state);
+  }
+  // Update the pending value with the latest knob value.
+  state.pending = newAmount;
+  // If no interval is active, start one.
+  if (!state.intervalId) {
+    state.intervalId = setInterval(() => {
+      if (state!.pending !== null) {
+        executeAmountUpdate(index, state!.pending!);
+        state!.pending = null;
+      }
+    }, 100);
+  }
+  // Reset the timeout so that the interval is cleared after 150ms of inactivity.
+  if (state.timeoutId) {
+    clearTimeout(state.timeoutId);
+  }
+  state.timeoutId = setTimeout(() => {
+    if (state!.intervalId) {
+      clearInterval(state!.intervalId);
+      state!.intervalId = null;
+    }
+    state!.timeoutId = null;
+  }, 150);
+};
+
+const executeAmountUpdate = async (
+  index: number,
+  amount: number,
+): Promise<void> => {
+  const route = activeRoutes.value[index];
+  if (!route) return;
+
+  try {
+    // Remove the old connection...
+    await routeManager.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: route.amount,
+      modulationType: route.modulationType.value,
+      isRemoving: true,
+    });
+    // ...and add the new connection with the updated amount.
+    await routeManager.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: amount,
+      modulationType: route.modulationType.value,
+    });
+
+    route.amount = amount;
+  } catch (error) {
+    console.error('Failed to update amount:', error);
+  }
+};
+
 onMounted(async () => {
-  // Wait a tick for the store to be ready
   await nextTick();
 
   if (!store.synthLayout?.voices?.length) {
     console.warn('Synth layout not ready, waiting...');
-    // Add a small delay to allow layout to initialize
     setTimeout(initializeRoutes, 100);
     return;
   }
@@ -436,12 +456,12 @@ function getModulationTypeLabel(type: WasmModulationType): string {
   }
 }
 
-const initializeRoutes = () => {
+const initializeRoutes = (): void => {
   try {
     const connections = store.getNodeConnections(props.sourceId);
     console.log('Raw connections for node:', {
       sourceId: props.sourceId,
-      connections: JSON.stringify(connections, null, 2), // More detailed connection logging
+      connections: JSON.stringify(connections, null, 2),
     });
 
     if (!connections?.length) {
@@ -450,7 +470,6 @@ const initializeRoutes = () => {
       return;
     }
 
-    // Log before filtering
     console.log('Before filtering:', {
       sourceId: props.sourceId,
       outgoingConnections: connections.filter(
@@ -458,25 +477,24 @@ const initializeRoutes = () => {
       ),
     });
 
-    // Map connections to routes
     const routes = connections
-      .filter((conn) => conn.fromId === props.sourceId) // Only outgoing connections
+      .filter((conn) => conn.fromId === props.sourceId)
       .map((conn) => {
-        console.log('Processing connection:', {
-          conn,
-          targetInfo: store.findNodeById(conn.toId),
-        });
-
-        // Get target node info
-        const targetNode = {
+        const targetFromStore = store.findNodeById(conn.toId);
+        if (!targetFromStore) {
+          console.warn('Target node not found for id: ' + conn.toId);
+          return null;
+        }
+        // Construct a full TargetNode with a 'name' property.
+        const targetNode: TargetNode = {
           id: conn.toId,
           name: getNodeName(conn.toId),
           type: getNodeType(conn.toId),
         };
 
-        const route = {
+        const route: RouteConfig = {
           targetId: conn.toId,
-          targetNode,
+          targetNode: targetNode,
           target: conn.target,
           targetLabel: PORT_LABELS[conn.target] || 'Unknown Parameter',
           amount: conn.amount,
@@ -486,7 +504,6 @@ const initializeRoutes = () => {
           },
         };
 
-        console.log('Created route:', route);
         return route;
       })
       .filter((route): route is RouteConfig => route !== null);
@@ -502,7 +519,6 @@ const initializeRoutes = () => {
   }
 };
 
-// Helper functions
 const getNodeName = (nodeId: number): string => {
   const node = store.findNodeById(nodeId);
   if (!node) return `Node ${nodeId}`;
