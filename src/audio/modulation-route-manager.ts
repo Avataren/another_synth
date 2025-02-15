@@ -21,18 +21,20 @@ export class ModulationRouteManager {
     private readonly store = useAudioSystemStore(),
     private readonly sourceId: number,
     private readonly sourceType: VoiceNodeType,
-  ) {}
+  ) { }
 
   private getNodeName(type: VoiceNodeType, index: number): string {
     switch (type) {
-      case VoiceNodeType.Oscillator:
-        return `Oscillator ${index + 1}`;
-      case VoiceNodeType.Filter:
-        return `Filter ${index + 1}`;
-      case VoiceNodeType.Envelope:
-        return `Envelope ${index + 1}`;
-      case VoiceNodeType.LFO:
-        return `LFO ${index + 1}`;
+      // case VoiceNodeType.Oscillator:
+      //   return `Oscillator ${index + 1}`;
+      // case VoiceNodeType.Filter:
+      //   return `Filter ${index + 1}`;
+      // case VoiceNodeType.Envelope:
+      //   return `Envelope ${index + 1}`;
+      // case VoiceNodeType.LFO:
+      //   return `LFO ${index + 1}`;
+      // case VoiceNodeType.GlobalFrequency:
+      //   return `Global Frequency ${index + 1}`;
       default:
         return `${type} ${index + 1}`;
     }
@@ -99,12 +101,13 @@ export class ModulationRouteManager {
         return WasmModulationType.Bipolar; // Type 1
       case PortId.PhaseMod:
       case PortId.ModIndex:
+
         return WasmModulationType.Additive; // Type 2
       case PortId.GainMod:
       case PortId.FeedbackMod:
         return WasmModulationType.VCA; // Type 0
       default:
-        return WasmModulationType.VCA; // Type 0
+        return WasmModulationType.Additive; // Type 0
     }
   }
 

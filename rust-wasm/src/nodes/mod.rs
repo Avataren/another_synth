@@ -1,19 +1,19 @@
 pub mod analog_oscillator;
 pub mod envelope;
+pub mod global_frequency_node;
 pub mod lfo;
 pub mod lpfilter;
 pub mod mixer;
 pub mod noise_generator;
 pub mod oscillator;
-pub mod shared_wavetables;
 pub mod wavetable;
 
 pub use analog_oscillator::*;
 pub use envelope::*;
+pub use global_frequency_node::*;
 pub use lfo::*;
 pub use lpfilter::*;
 pub use mixer::*;
 pub use noise_generator::*;
 pub use oscillator::*;
-pub use shared_wavetables::*;
 pub use wavetable::*;

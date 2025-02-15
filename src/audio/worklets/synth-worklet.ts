@@ -256,6 +256,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
 
     const initialState = this.audioEngine.get_current_state();
+    console.log('initialState:', initialState);
     this.stateVersion++;
 
     // Send both the initial state and state version
@@ -308,6 +309,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         [VoiceNodeType.Filter]: [],
         [VoiceNodeType.Mixer]: [],
         [VoiceNodeType.Noise]: [],
+        [VoiceNodeType.GlobalFrequency]: [],
       },
       connections: [],
     };
@@ -364,6 +366,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       });
     }
 
+    voiceLayout.nodes[VoiceNodeType.GlobalFrequency].push({
+      id: 0,
+      type: VoiceNodeType.GlobalFrequency
+    })
     // Set up initial connections
     const oscillators = voiceLayout.nodes[VoiceNodeType.Oscillator];
     const [ampEnv] = voiceLayout.nodes[VoiceNodeType.Envelope];

@@ -12,6 +12,7 @@ export enum VoiceNodeType {
   LFO = 'lfo',
   Mixer = 'mixer',
   Noise = 'noise',
+  GlobalFrequency = 'globalfrequency'
 }
 
 export interface LfoState {
@@ -75,6 +76,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.EnvelopeMod]: 'Envelope Amount',
   [PortId.StereoPan]: 'Stereo Panning',
   [PortId.FeedbackMod]: 'Feedback',
+  [PortId.DetuneMod]: 'Detune',
 };
 
 export interface ModulationTargetOption {
@@ -235,6 +237,8 @@ export function getModulationTargetsForType(
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
       ];
+    case VoiceNodeType.GlobalFrequency:
+      return [{ value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] }];
     // case VoiceNodeType.Envelope:
     //   return [
     //     { value: PortId.GainMod, label: 'Gain' },

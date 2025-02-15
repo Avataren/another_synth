@@ -283,55 +283,6 @@ impl AudioEngine {
         Ok(())
     }
 
-    // #[wasm_bindgen]
-    // pub fn get_current_state(&self) -> JsValue {
-    //     let voices: Vec<VoiceState> = self
-    //         .voices
-    //         .iter()
-    //         .enumerate()
-    //         .map(|(i, voice)| {
-    //             let nodes: Vec<NodeState> = voice
-    //                 .graph
-    //                 .nodes
-    //                 .iter()
-    //                 .enumerate()
-    //                 .map(|(ni, node)| NodeState {
-    //                     id: ni,
-    //                     node_type: node.node_type().to_string(),
-    //                 })
-    //                 .collect();
-
-    //             let connections: Vec<ConnectionState> = voice
-    //                 .graph
-    //                 .connections
-    //                 .values()
-    //                 .map(|conn| ConnectionState {
-    //                     from_id: conn.from_node.0,
-    //                     to_id: conn.to_node.0,
-    //                     target: conn.to_port as u32,
-    //                     amount: conn.amount,
-    //                 })
-    //                 .collect();
-
-    //             VoiceState {
-    //                 id: i,
-    //                 nodes,
-    //                 connections,
-    //             }
-    //         })
-    //         .collect();
-
-    //     let engine_state = EngineState { voices };
-    //     // console::log_1(
-    //     //     &format!(
-    //     //         "lib.rs::get_current_state Serializing state: {:?}",
-    //     //         engine_state
-    //     //     )
-    //     //     .into(),
-    //     // );
-    //     serde_wasm_bindgen::to_value(&engine_state).unwrap()
-    // }
-
     #[wasm_bindgen]
     pub fn get_current_state(&self) -> JsValue {
         // Use voice 0 as the canonical layout.
@@ -451,52 +402,6 @@ impl AudioEngine {
             }
         }
     }
-
-    // #[wasm_bindgen]
-    // pub fn initialize_voice(
-    //     &mut self,
-    //     voice_index: usize,
-    //     num_oscillators: usize,
-    // ) -> Result<JsValue, JsValue> {
-    //     let voice = self
-    //         .voices
-    //         .get_mut(voice_index)
-    //         .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-    //     // Create oscillators
-    //     let mut oscillator_ids = Vec::new();
-    //     for _ in 0..num_oscillators {
-    //         let osc_id = voice.add_oscillator(self.sample_rate);
-    //         oscillator_ids.push(osc_id.0); // Already using .0 here
-    //     }
-
-    //     // Create envelope
-    //     let envelope_id = voice.graph.add_node(Box::new(Envelope::new(
-    //         self.sample_rate,
-    //         EnvelopeConfig::default(),
-    //     )));
-    //     voice.envelope = envelope_id;
-
-    //     // Set the first oscillator as the initial output node
-    //     if !oscillator_ids.is_empty() {
-    //         voice.set_output_node(NodeId(oscillator_ids[0]));
-    //     }
-
-    //     // Create return object with all IDs
-    //     let obj = js_sys::Object::new();
-
-    //     // Add oscillator IDs
-    //     let oscillators_array = js_sys::Array::new();
-    //     for id in oscillator_ids {
-    //         oscillators_array.push(&JsValue::from(id));
-    //     }
-    //     js_sys::Reflect::set(&obj, &"oscillatorIds".into(), &oscillators_array)?;
-
-    //     // Add envelope ID - get the inner value
-    //     js_sys::Reflect::set(&obj, &"envelopeId".into(), &JsValue::from(envelope_id.0))?;
-
-    //     Ok(obj.into())
-    // }
 
     #[wasm_bindgen]
     pub fn update_noise(
@@ -748,42 +653,6 @@ impl AudioEngine {
         }
     }
 
-    // pub fn update_lfo(
-    //     &mut self,
-    //     voice_index: usize,
-    //     params: LfoUpdateParams,
-    // ) -> Result<(), JsValue> {
-    //     let voice = self
-    //         .voices
-    //         .get_mut(voice_index)
-    //         .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-    //     if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
-    //         if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
-    //             // Convert u8 to LfoWaveform
-    //             let waveform = match params.waveform {
-    //                 0 => LfoWaveform::Sine,
-    //                 1 => LfoWaveform::Triangle,
-    //                 2 => LfoWaveform::Square,
-    //                 3 => LfoWaveform::Saw,
-    //                 _ => LfoWaveform::Sine,
-    //             };
-
-    //             lfo.set_frequency(params.frequency);
-    //             lfo.set_waveform(waveform);
-    //             lfo.set_use_absolute(params.use_absolute);
-    //             lfo.set_use_normalized(params.use_normalized);
-    //             lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
-    //             lfo.set_active(params.active);
-    //             Ok(())
-    //         } else {
-    //             Err(JsValue::from_str("Node is not an LFO"))
-    //         }
-    //     } else {
-    //         Err(JsValue::from_str("Node not found"))
-    //     }
-    // }
-
     #[wasm_bindgen]
     pub fn get_lfo_waveform(
         &mut self,
@@ -885,35 +754,6 @@ impl AudioEngine {
             .add_macro_modulation(macro_index, NodeId(target_node), target_port, amount)
             .map_err(|e| JsValue::from_str(&e))
     }
-
-    // pub fn connect_nodes(
-    //     &mut self,
-    //     voice_index: usize,
-    //     from_node: usize,
-    //     from_port: PortId,
-    //     to_node: usize,
-    //     to_port: PortId,
-    //     amount: f32,
-    //     modulation_type: Option<WasmModulationType>,
-    // ) -> Result<(), JsValue> {
-    //     let voice = self
-    //         .voices
-    //         .get_mut(voice_index)
-    //         .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-    //     voice.graph.connect(Connection {
-    //         from_node: NodeId(from_node),
-    //         from_port,
-    //         to_node: NodeId(to_node),
-    //         to_port,
-    //         amount,
-    //         modulation_type: modulation_type
-    //             .map(ModulationType::from)
-    //             .unwrap_or_default(),
-    //     });
-
-    //     Ok(())
-    // }
 
     #[wasm_bindgen]
     pub fn reset(&mut self) {

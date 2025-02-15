@@ -119,7 +119,7 @@ impl Lfo {
             use_normalized: false,
             trigger_mode: LfoTriggerMode::Envelope,
             last_gate: 0.0,
-            active: false,
+            active: true,
         }
     }
 

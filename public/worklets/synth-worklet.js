@@ -307,7 +307,9 @@ var PortId = Object.freeze({
   StereoPan: 18,
   "18": "StereoPan",
   FeedbackMod: 19,
-  "19": "FeedbackMod"
+  "19": "FeedbackMod",
+  DetuneMod: 20,
+  "20": "DetuneMod"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -1223,7 +1225,8 @@ var PORT_LABELS = {
   [PortId.GainMod]: "Gain",
   [PortId.EnvelopeMod]: "Envelope Amount",
   [PortId.StereoPan]: "Stereo Panning",
-  [PortId.FeedbackMod]: "Feedback"
+  [PortId.FeedbackMod]: "Feedback",
+  [PortId.DetuneMod]: "Detune"
 };
 
 // src/audio/worklets/synth-worklet.ts
@@ -1394,6 +1397,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   initializeState() {
     if (!this.audioEngine) return;
     const initialState = this.audioEngine.get_current_state();
+    console.log("initialState:", initialState);
     this.stateVersion++;
     this.port.postMessage({
       type: "initialState",
@@ -1436,7 +1440,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         ["lfo" /* LFO */]: [],
         ["filter" /* Filter */]: [],
         ["mixer" /* Mixer */]: [],
-        ["noise" /* Noise */]: []
+        ["noise" /* Noise */]: [],
+        ["globalfrequency" /* GlobalFrequency */]: []
       },
       connections: []
     };
@@ -1480,6 +1485,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         type: "lfo" /* LFO */
       });
     }
+    voiceLayout.nodes["globalfrequency" /* GlobalFrequency */].push({
+      id: 0,
+      type: "globalfrequency" /* GlobalFrequency */
+    });
     const oscillators = voiceLayout.nodes["oscillator" /* Oscillator */];
     const [ampEnv] = voiceLayout.nodes["envelope" /* Envelope */];
     if (ampEnv && oscillators.length >= 2) {

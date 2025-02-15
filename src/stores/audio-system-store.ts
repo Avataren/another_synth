@@ -97,24 +97,24 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-      (voiceIndex: number, nodeId: number): NodeConnection[] => {
-        if (!state.synthLayout) return [];
-        const voice = state.synthLayout.voices[voiceIndex];
-        if (!voice) return [];
-        return voice.connections.filter(
-          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-        );
-      },
+        (voiceIndex: number, nodeId: number): NodeConnection[] => {
+          if (!state.synthLayout) return [];
+          const voice = state.synthLayout.voices[voiceIndex];
+          if (!voice) return [];
+          return voice.connections.filter(
+            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+          );
+        },
     getNodeConnections:
       (state) =>
-      (nodeId: number): NodeConnection[] => {
-        if (!state.synthLayout) return [];
-        const voice = state.synthLayout.voices[0]; // Only look at voice 0
-        if (!voice) return [];
-        return voice.connections.filter(
-          (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
-        );
-      },
+        (nodeId: number): NodeConnection[] => {
+          if (!state.synthLayout) return [];
+          const voice = state.synthLayout.voices[0]; // Only look at voice 0
+          if (!voice) return [];
+          return voice.connections.filter(
+            (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
+          );
+        },
 
     // getNodeConnections:
     //   (state) =>
@@ -285,6 +285,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.LFO]: [],
             [VoiceNodeType.Mixer]: [],
             [VoiceNodeType.Noise]: [],
+            [VoiceNodeType.GlobalFrequency]: [],
           };
 
           // Define an interface for raw nodes.
@@ -307,6 +308,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.Mixer;
               case 'noise_generator':
                 return VoiceNodeType.Noise;
+              case 'global_frequency_node':
+                return VoiceNodeType.GlobalFrequency;
+
               default:
                 console.warn('Unknown node type:', raw);
                 return raw as VoiceNodeType;

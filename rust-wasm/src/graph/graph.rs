@@ -38,7 +38,7 @@ use super::{
     types::{Connection, ConnectionKey, NodeId},
     ModulationSource,
 };
-use crate::graph::ModulationType;
+use crate::{graph::ModulationType, nodes::GlobalFrequencyNode};
 use crate::{AudioNode, MacroManager, PortId};
 use std::collections::HashMap;
 
@@ -50,12 +50,12 @@ pub struct AudioGraph {
     pub(crate) buffer_pool: AudioBufferPool,
     pub(crate) node_buffers: HashMap<(NodeId, PortId), usize>,
     pub(crate) gate_buffer_idx: usize,
-    pub(crate) freq_buffer_idx: usize,
     // We now include the source node in the tuple so we can identify which connection to remove.
     pub(crate) input_connections:
         HashMap<NodeId, Vec<(PortId, usize, f32, NodeId, ModulationType)>>,
 
     pub(crate) temp_buffer_indices: Vec<usize>,
+    pub(crate) global_frequency_node: Option<NodeId>,
     pub(crate) output_node: Option<NodeId>,
 }
 
@@ -63,9 +63,8 @@ impl AudioGraph {
     pub fn new(buffer_size: usize) -> Self {
         let mut buffer_pool = AudioBufferPool::new(buffer_size, 32);
         let gate_buffer_idx = buffer_pool.acquire(buffer_size);
-        let freq_buffer_idx = buffer_pool.acquire(buffer_size);
 
-        Self {
+        let mut graph = Self {
             nodes: Vec::new(),
             connections: HashMap::new(),
             processing_order: Vec::new(),
@@ -73,11 +72,18 @@ impl AudioGraph {
             buffer_pool,
             node_buffers: HashMap::new(),
             gate_buffer_idx,
-            freq_buffer_idx,
             input_connections: HashMap::new(),
             temp_buffer_indices: Vec::new(),
+            global_frequency_node: None,
             output_node: None,
-        }
+        };
+
+        // Create and add the GlobalFrequencyNode:
+        let global_node = Box::new(GlobalFrequencyNode::new(440.0, buffer_size));
+        let global_node_id = graph.add_node(global_node);
+        graph.global_frequency_node = Some(global_node_id);
+
+        graph
     }
 
     pub fn clear(&mut self) {
@@ -105,8 +111,38 @@ impl AudioGraph {
         }
         self.nodes.push(node);
         self.update_processing_order();
+
+        // Auto-connect the GlobalFrequency node if the new node accepts it.
+        if let Some(ref ports) = self.nodes.last().map(|n| n.get_ports()) {
+            if ports.contains_key(&PortId::GlobalFrequency) {
+                if let Some(global_node_id) = self.global_frequency_node {
+                    // Create a connection from the global frequency node's output
+                    self.add_connection(Connection {
+                        from_node: global_node_id,
+                        from_port: PortId::GlobalFrequency,
+                        to_node: id,
+                        to_port: PortId::GlobalFrequency,
+                        amount: 1.0,
+                        modulation_type: ModulationType::Additive,
+                    });
+                }
+            }
+        }
+
         id
     }
+
+    // pub fn add_node(&mut self, node: Box<dyn AudioNode>) -> NodeId {
+    //     let id = NodeId(self.nodes.len());
+    //     // Allocate buffers for each port.
+    //     for (port, _) in node.get_ports() {
+    //         let buffer_idx = self.buffer_pool.acquire(self.buffer_size);
+    //         self.node_buffers.insert((id, port), buffer_idx);
+    //     }
+    //     self.nodes.push(node);
+    //     self.update_processing_order();
+    //     id
+    // }
 
     pub fn add_connection(&mut self, connection: Connection) {
         let key = ConnectionKey::new(
@@ -455,13 +491,16 @@ impl AudioGraph {
     }
 
     pub fn set_frequency(&mut self, freq: &[f32]) {
-        if freq.len() == 1 {
-            self.buffer_pool.fill(self.freq_buffer_idx, freq[0]);
-        } else {
-            self.buffer_pool.copy_in(self.freq_buffer_idx, freq);
+        if let Some(global_node_id) = self.global_frequency_node {
+            if let Some(node) = self.get_node_mut(global_node_id) {
+                if let Some(global_freq_node) =
+                    node.as_any_mut().downcast_mut::<GlobalFrequencyNode>()
+                {
+                    global_freq_node.set_base_frequency(freq);
+                }
+            }
         }
     }
-
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
         self.process_audio_with_macros(None, output_left, output_right);
     }
@@ -505,16 +544,16 @@ impl AudioGraph {
                         mod_type: ModulationType::Additive,
                     });
             }
-            if ports.contains_key(&PortId::GlobalFrequency) {
-                inputs
-                    .entry(PortId::GlobalFrequency)
-                    .or_default()
-                    .push(ModulationSource {
-                        buffer: self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
-                        amount: 1.0,
-                        mod_type: ModulationType::Additive,
-                    });
-            }
+            // if ports.contains_key(&PortId::GlobalFrequency) {
+            //     inputs
+            //         .entry(PortId::GlobalFrequency)
+            //         .or_default()
+            //         .push(ModulationSource {
+            //             buffer: self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
+            //             amount: 1.0,
+            //             mod_type: ModulationType::Additive,
+            //         });
+            // }
 
             // Process all connections.
             if let Some(connections) = self.input_connections.get(&node_id) {
@@ -598,7 +637,7 @@ impl Drop for AudioGraph {
             self.buffer_pool.release(buffer_idx);
         }
         self.buffer_pool.release(self.gate_buffer_idx);
-        self.buffer_pool.release(self.freq_buffer_idx);
+        // self.buffer_pool.release(self.freq_buffer_idx);
     }
 }
 

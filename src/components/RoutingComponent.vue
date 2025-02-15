@@ -197,6 +197,8 @@ const addNewRoute = async () => {
     defaultParam.value,
   );
 
+  console.log('### defaultModType:', defaultModType);
+
   const newRoute: RouteConfig = {
     targetId: defaultTarget.id,
     targetNode: defaultTarget,
@@ -292,6 +294,7 @@ const handleTargetChange = async (index: number, newTarget: TargetNode) => {
       toId: newTarget.id,
       target: defaultParam.value,
       amount: route.amount,
+      modulationType: routeManager.getDefaultModulationType(defaultParam.value),
     });
 
     // Update local state
@@ -478,10 +481,8 @@ const initializeRoutes = () => {
           targetLabel: PORT_LABELS[conn.target] || 'Unknown Parameter',
           amount: conn.amount,
           modulationType: {
-            value: conn.modulationType || WasmModulationType.VCA,
-            label: getModulationTypeLabel(
-              conn.modulationType || WasmModulationType.VCA,
-            ),
+            value: conn.modulationType,
+            label: getModulationTypeLabel(conn.modulationType),
           },
         };
 

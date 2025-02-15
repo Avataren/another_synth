@@ -28,6 +28,7 @@ pub enum PortId {
     EnvelopeMod,
     StereoPan,
     FeedbackMod,
+    DetuneMod,
 }
 
 impl Default for PortId {
