@@ -1228,6 +1228,19 @@ var PORT_LABELS = {
   [PortId.FeedbackMod]: "Feedback",
   [PortId.DetuneMod]: "Detune"
 };
+function convertRawModulationType(raw) {
+  switch (raw) {
+    case "VCA":
+      return WasmModulationType.VCA;
+    case "Bipolar":
+      return WasmModulationType.Bipolar;
+    case "Additive":
+      return WasmModulationType.Additive;
+    default:
+      console.warn("Unknown modulation type:", raw);
+      return WasmModulationType.Additive;
+  }
+}
 
 // src/audio/worklets/synth-worklet.ts
 var LfoTriggerMode = /* @__PURE__ */ ((LfoTriggerMode2) => {
@@ -1380,10 +1393,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       console.log("SAMPLERATE: ", sampleRate);
       this.audioEngine = new AudioEngine(sampleRate);
       this.audioEngine.init(sampleRate, this.numVoices);
-      const voiceLayout = this.initializeVoices();
-      for (let i = 0; i < this.numVoices; i++) {
-        this.voiceLayouts.push({ ...voiceLayout, id: i });
-      }
+      this.createNodesAndSetupConnections();
+      this.initializeVoices();
       this.initializeState();
       this.ready = true;
     } catch (error) {
@@ -1427,77 +1438,31 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   getNextNodeId() {
     return this.nextNodeId++;
   }
-  initializeVoices() {
-    if (!this.audioEngine) {
-      throw new Error("Audio engine not initialized");
-    }
-    console.log("Initializing voices");
-    const voiceLayout = {
-      id: -1,
-      nodes: {
-        ["oscillator" /* Oscillator */]: [],
-        ["envelope" /* Envelope */]: [],
-        ["lfo" /* LFO */]: [],
-        ["filter" /* Filter */]: [],
-        ["mixer" /* Mixer */]: [],
-        ["noise" /* Noise */]: [],
-        ["globalfrequency" /* GlobalFrequency */]: []
-      },
-      connections: []
-    };
-    const noiseId = this.audioEngine.create_noise();
-    voiceLayout.nodes["noise" /* Noise */].push({
-      id: noiseId,
-      type: "noise" /* Noise */
-    });
+  createNodesAndSetupConnections() {
+    if (!this.audioEngine) throw new Error("Audio engine not initialized");
+    this.audioEngine.create_noise();
     const mixerId = this.audioEngine.create_mixer();
-    console.log("#mixerID: ", mixerId);
-    voiceLayout.nodes["mixer" /* Mixer */].push({
-      id: mixerId,
-      type: "mixer" /* Mixer */
-    });
+    console.log("#mixerID:", mixerId);
     const filterId = this.audioEngine.create_filter();
-    voiceLayout.nodes["filter" /* Filter */].push({
-      id: filterId,
-      type: "filter" /* Filter */
-    });
+    const oscIds = [];
     for (let i = 0; i < this.maxOscillators; i++) {
       const oscId = this.audioEngine.create_oscillator();
       console.log(`Created oscillator ${i} with id ${oscId}`);
-      voiceLayout.nodes["oscillator" /* Oscillator */].push({
-        id: oscId,
-        type: "oscillator" /* Oscillator */
-      });
+      oscIds.push(oscId);
     }
+    const envelopeIds = [];
     for (let i = 0; i < this.maxEnvelopes; i++) {
       const result = this.audioEngine.create_envelope();
       console.log(`Created envelope ${i} with id ${result.envelopeId}`);
-      voiceLayout.nodes["envelope" /* Envelope */].push({
-        id: result.envelopeId,
-        type: "envelope" /* Envelope */
-      });
+      envelopeIds.push(result.envelopeId);
     }
+    const lfoIds = [];
     for (let i = 0; i < this.maxLFOs; i++) {
       const result = this.audioEngine.create_lfo();
       console.log(`Created LFO ${i} with id ${result.lfoId}`);
-      voiceLayout.nodes["lfo" /* LFO */].push({
-        id: result.lfoId,
-        type: "lfo" /* LFO */
-      });
+      lfoIds.push(result.lfoId);
     }
-    voiceLayout.nodes["globalfrequency" /* GlobalFrequency */].push({
-      id: 0,
-      type: "globalfrequency" /* GlobalFrequency */
-    });
-    const oscillators = voiceLayout.nodes["oscillator" /* Oscillator */];
-    const [ampEnv] = voiceLayout.nodes["envelope" /* Envelope */];
-    if (ampEnv && oscillators.length >= 2) {
-      const [osc1, osc2] = oscillators;
-      console.log("Setting up initial connections:", {
-        ampEnv,
-        osc1,
-        osc2
-      });
+    if (envelopeIds.length > 0 && oscIds.length >= 2) {
       this.audioEngine.connect_nodes(
         filterId,
         PortId.AudioOutput0,
@@ -1507,7 +1472,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         WasmModulationType.Additive
       );
       this.audioEngine.connect_nodes(
-        ampEnv.id,
+        envelopeIds[0],
         PortId.AudioOutput0,
         mixerId,
         PortId.GainMod,
@@ -1515,7 +1480,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         WasmModulationType.VCA
       );
       this.audioEngine.connect_nodes(
-        osc1.id,
+        oscIds[0],
         PortId.AudioOutput0,
         filterId,
         PortId.AudioInput0,
@@ -1523,22 +1488,81 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         WasmModulationType.Additive
       );
       this.audioEngine.connect_nodes(
-        osc2.id,
+        oscIds[1],
         PortId.AudioOutput0,
-        osc1.id,
+        oscIds[0],
         PortId.PhaseMod,
         1,
         WasmModulationType.Additive
       );
       this.handleRequestSync();
-      console.log("Voice layout after setup:", voiceLayout);
     } else {
-      console.warn("Not enough nodes for initial connections:", {
-        ampEnv,
-        oscillatorsLength: oscillators.length
-      });
+      console.warn("Not enough nodes for initial connections");
     }
-    return voiceLayout;
+  }
+  initializeVoices() {
+    if (!this.audioEngine) throw new Error("Audio engine not initialized");
+    const wasmState = this.audioEngine.get_current_state();
+    console.log("Raw WASM state:", wasmState);
+    if (!wasmState.voices || wasmState.voices.length === 0) {
+      throw new Error("No voices available in WASM state");
+    }
+    const rawCanonicalVoice = wasmState.voices[0];
+    const nodesByType = {
+      ["oscillator" /* Oscillator */]: [],
+      ["envelope" /* Envelope */]: [],
+      ["lfo" /* LFO */]: [],
+      ["filter" /* Filter */]: [],
+      ["mixer" /* Mixer */]: [],
+      ["noise" /* Noise */]: [],
+      ["globalfrequency" /* GlobalFrequency */]: []
+    };
+    for (const rawNode of rawCanonicalVoice.nodes) {
+      let type;
+      switch (rawNode.node_type) {
+        case "analog_oscillator":
+          type = "oscillator" /* Oscillator */;
+          break;
+        case "lpfilter":
+          type = "filter" /* Filter */;
+          break;
+        case "envelope":
+          type = "envelope" /* Envelope */;
+          break;
+        case "lfo":
+          type = "lfo" /* LFO */;
+          break;
+        case "mixer":
+          type = "mixer" /* Mixer */;
+          break;
+        case "noise_generator":
+          type = "noise" /* Noise */;
+          break;
+        case "global_frequency":
+          type = "globalfrequency" /* GlobalFrequency */;
+          break;
+        default:
+          console.warn("Unknown node type:", rawNode.node_type);
+          type = rawNode.node_type;
+      }
+      nodesByType[type].push({ id: rawNode.id, type });
+    }
+    const connections = rawCanonicalVoice.connections.map((rawConn) => ({
+      fromId: rawConn.from_id,
+      toId: rawConn.to_id,
+      target: rawConn.target,
+      amount: rawConn.amount,
+      modulationType: convertRawModulationType(rawConn.modulation_type)
+    }));
+    const canonicalVoice = {
+      id: rawCanonicalVoice.id,
+      nodes: nodesByType,
+      connections
+    };
+    this.voiceLayouts = [];
+    for (let i = 0; i < this.numVoices; i++) {
+      this.voiceLayouts.push({ ...canonicalVoice, id: i });
+    }
   }
   remove_specific_connection(from_node, to_node, to_port) {
     if (!this.audioEngine) return;

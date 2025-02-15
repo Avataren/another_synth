@@ -1,7 +1,7 @@
 // src/audio/types/synth-layout.ts
 import {
   PortId,
-  type WasmModulationType,
+  WasmModulationType,
 } from 'app/public/wasm/audio_processor';
 
 // Define the types of nodes we can have in a voice
@@ -156,6 +156,16 @@ export interface RawConnection {
   modulation_type: string;
 }
 
+export interface RawVoice {
+  id: number;
+  nodes: RawNode[];
+  connections: RawConnection[];
+}
+
+export interface WasmState {
+  voices: RawVoice[];
+}
+
 export const findNodeById = (
   voice: VoiceLayout,
   id: number,
@@ -173,6 +183,21 @@ export const findNodeConnections = (
     (conn) => conn.fromId === nodeId || conn.toId === nodeId,
   );
 };
+
+export function convertRawModulationType(raw: string): WasmModulationType {
+  switch (raw) {
+    case 'VCA':
+      return WasmModulationType.VCA;
+    case 'Bipolar':
+      return WasmModulationType.Bipolar;
+    case 'Additive':
+      return WasmModulationType.Additive;
+    default:
+      console.warn('Unknown modulation type:', raw);
+      return WasmModulationType.Additive; // default fallback
+  }
+}
+
 
 export function findModulationTargets(
   voice: VoiceLayout,
