@@ -308,7 +308,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.Mixer;
               case 'noise_generator':
                 return VoiceNodeType.Noise;
-              case 'global_frequency_node':
+              case 'global_frequency':
                 return VoiceNodeType.GlobalFrequency;
 
               default:

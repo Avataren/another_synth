@@ -220,8 +220,8 @@ const updateEnvelopePreview = () => {
     .then((previewData) => {
       drawEnvelopePreviewWithData(previewData);
     })
-    .catch((err) => {
-      console.error('Failed to get envelope preview:', err);
+    .catch((_err) => {
+      //console.error('Failed to get envelope preview:', err);
     });
 };
 
