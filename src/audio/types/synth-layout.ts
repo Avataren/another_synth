@@ -77,6 +77,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.StereoPan]: 'Stereo Panning',
   [PortId.FeedbackMod]: 'Feedback',
   [PortId.DetuneMod]: 'Detune',
+  [PortId.WavetableIndex]: 'Wavetable Index',
 };
 
 export interface ModulationTargetOption {

@@ -309,7 +309,9 @@ var PortId = Object.freeze({
   FeedbackMod: 19,
   "19": "FeedbackMod",
   DetuneMod: 20,
-  "20": "DetuneMod"
+  "20": "DetuneMod",
+  WavetableIndex: 21,
+  "21": "WavetableIndex"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -977,6 +979,9 @@ var NoiseUpdateParams = class {
 var OscillatorStateUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_oscillatorstateupdate_free(ptr >>> 0, 1));
+var WavetableOscillatorStateUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_wavetableoscillatorstateupdate_free(ptr >>> 0, 1));
 async function __wbg_load(module, imports) {
   if (typeof Response === "function" && module instanceof Response) {
     if (typeof WebAssembly.instantiateStreaming === "function") {
@@ -1240,7 +1245,8 @@ var PORT_LABELS = {
   [PortId.EnvelopeMod]: "Envelope Amount",
   [PortId.StereoPan]: "Stereo Panning",
   [PortId.FeedbackMod]: "Feedback",
-  [PortId.DetuneMod]: "Detune"
+  [PortId.DetuneMod]: "Detune",
+  [PortId.WavetableIndex]: "Wavetable Index"
 };
 function convertRawModulationType(raw) {
   switch (raw) {
