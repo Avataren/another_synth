@@ -4,22 +4,24 @@ use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
 
 use super::{Waveform, WavetableBank};
 
+/// This struct now includes unison parameters: the number of voices and the spread (in cents).
 #[derive(Debug, Clone, Copy)]
 #[wasm_bindgen]
 pub struct AnalogOscillatorStateUpdate {
     pub phase_mod_amount: f32,
-    pub freq_mod_amount: f32,
     pub detune: f32,
     pub hard_sync: bool,
     pub gain: f32,
     pub active: bool,
     pub feedback_amount: f32,
     pub waveform: Waveform,
+    pub unison_voices: u32, // number of voices in unison
+    pub spread: f32,        // spread in cents (the maximum additional detune per voice)
 }
 
 #[wasm_bindgen]
@@ -27,30 +29,32 @@ impl AnalogOscillatorStateUpdate {
     #[wasm_bindgen(constructor)]
     pub fn new(
         phase_mod_amount: f32,
-        freq_mod_amount: f32,
         detune: f32,
         hard_sync: bool,
         gain: f32,
         active: bool,
         feedback_amount: f32,
         waveform: Waveform,
+        unison_voices: u32,
+        spread: f32,
     ) -> Self {
         Self {
             phase_mod_amount,
-            freq_mod_amount,
             detune,
             hard_sync,
             gain,
             active,
             feedback_amount,
             waveform,
+            unison_voices,
+            spread,
         }
     }
 }
 
 pub struct AnalogOscillator {
     // Core oscillator state.
-    phase: f32, // Phase in radians [0, TWO_PI)
+    phase: f32, // Base phase (used only for initialization)
     sample_rate: f32,
     gain: f32,
     active: bool,
@@ -64,8 +68,12 @@ pub struct AnalogOscillator {
 
     // Modulation parameters.
     phase_mod_amount: f32,
-    freq_mod_amount: f32,
     detune: f32,
+    // Unison parameters.
+    unison_voices: usize,
+    spread: f32,            // Spread in cents: maximum detune offset for voices.
+    voice_phases: Vec<f32>, // Phase for each voice.
+
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 }
 
@@ -73,6 +81,7 @@ pub struct AnalogOscillator {
 impl ModulationProcessor for AnalogOscillator {}
 
 impl AnalogOscillator {
+    /// Create a new oscillator. The caller must provide the number of unison voices and the spread.
     pub fn new(
         sample_rate: f32,
         waveform: Waveform,
@@ -91,8 +100,10 @@ impl AnalogOscillator {
             waveform,
             gate_buffer: vec![0.0; 1024],
             phase_mod_amount: 0.0,
-            freq_mod_amount: 1.0,
             detune: 0.0,
+            unison_voices: 1,
+            spread: 0.1,
+            voice_phases: vec![0.0; 1],
             wavetable_banks,
         }
     }
@@ -106,20 +117,34 @@ impl AnalogOscillator {
         self.waveform = params.waveform;
         // Update modulation parameters.
         self.phase_mod_amount = params.phase_mod_amount;
-        //self.freq_mod_amount = params.freq_mod_amount;
         self.detune = params.detune;
+        // Update unison settings.
+        self.spread = params.spread;
+        // Ensure at least one voice is active.
+        let new_voice_count = if params.unison_voices == 0 {
+            1
+        } else {
+            params.unison_voices as usize
+        };
+        if new_voice_count != self.unison_voices {
+            self.unison_voices = new_voice_count;
+            // Initialize each voice's phase to the current base phase.
+            self.voice_phases = vec![self.phase; new_voice_count];
+        }
     }
 
-    // Checks the gate value for hard-sync.
+    // Checks the gate value for hard-sync. On a rising edge, reset all voice phases.
     fn check_gate(&mut self, gate: f32) {
         if self.hard_sync && gate > 0.0 && self.last_gate_value <= 0.0 {
-            self.phase = 0.0;
+            for phase in self.voice_phases.iter_mut() {
+                *phase = 0.0;
+            }
         }
         self.last_gate_value = gate;
     }
 }
 
-// Cubic interpolation for improved quality.
+/// Cubic interpolation for improved wavetable quality.
 fn cubic_interp(samples: &[f32], pos: f32) -> f32 {
     let n = samples.len();
     let i = pos.floor() as isize;
@@ -160,10 +185,7 @@ impl AudioNode for AnalogOscillator {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        use std::f32::consts::PI;
-        const TWO_PI: f32 = 2.0 * PI;
-
-        // Process modulation inputs using the new mixed mode.
+        // Process modulation inputs.
         let freq_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
         let phase_mod = self.process_modulations(buffer_size, inputs.get(&PortId::PhaseMod), 0.0);
@@ -171,7 +193,7 @@ impl AudioNode for AnalogOscillator {
         let mod_index = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::ModIndex),
-            self.phase_mod_amount, // This is our additive base.
+            self.phase_mod_amount, // additive base for phase modulation
         );
         let feedback_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::FeedbackMod), 1.0);
@@ -191,7 +213,7 @@ impl AudioNode for AnalogOscillator {
             }
         }
 
-        // Get base frequency.
+        // Get base frequency (from modulation or default).
         let base_freq = if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
             if !freq_sources.is_empty() && !freq_sources[0].buffer.is_empty() {
                 freq_sources[0].buffer.clone()
@@ -208,16 +230,14 @@ impl AudioNode for AnalogOscillator {
             .wavetable_banks
             .get(&waveform)
             .expect("Wavetable bank not found")
-            .clone(); // now `bank` is independent of self
+            .clone();
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in 0..buffer_size {
                 let gate_val = self.gate_buffer[i];
-
-                // --- Hard Sync ---
                 self.check_gate(gate_val);
 
-                // --- Retrieve modulation values for this sample ---
+                // Retrieve modulation values for this sample.
                 let freq_sample = base_freq[i];
                 let freq_mod_sample = freq_mod[i];
                 let phase_mod_sample = phase_mod[i];
@@ -225,31 +245,68 @@ impl AudioNode for AnalogOscillator {
                 let mod_index_sample = mod_index[i];
                 let feedback_mod_sample = feedback_mod[i];
 
-                // --- Frequency Calculation & Phase Increment ---
-                let detuned_freq = freq_sample * 2.0f32.powf(self.detune / 1200.0);
-                let effective_freq = detuned_freq * freq_mod_sample * self.freq_mod_amount;
-                let phase_inc = TWO_PI * effective_freq / self.sample_rate;
-                self.phase += phase_inc;
-                if self.phase >= TWO_PI {
-                    self.phase -= TWO_PI;
+                // Set up weighted sum variables.
+                let mut sample_sum = 0.0;
+                let mut total_weight = 0.0;
+                // Use a Gaussian curve for voice weighting, centered on the middle voice.
+                let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
+                // Sigma controls the spread of the Gaussian; adjust as needed.
+                let sigma = self.unison_voices as f32 / 4.0;
+
+                // Process each unison voice.
+                for voice in 0..self.unison_voices {
+                    let voice_f = voice as f32;
+                    // Compute a Gaussian weight (center voice will have the highest weight).
+                    let distance = (voice_f - center_index).abs();
+                    let weight = (-distance * distance / (2.0 * sigma * sigma)).exp();
+                    total_weight += weight;
+
+                    // Compute per-voice detune offset.
+                    // With a spread of 4 cents and 3 voices, this produces offsets of -4, 0, and 4 cents.
+                    let voice_offset = if self.unison_voices > 1 {
+                        self.spread * (2.0 * (voice_f / ((self.unison_voices - 1) as f32)) - 1.0)
+                    } else {
+                        0.0
+                    };
+
+                    // Combine global detune and per-voice offset.
+                    let total_detune = self.detune + voice_offset;
+                    // Apply detune (convert cents to frequency multiplier).
+                    let detuned_freq = freq_sample * 2.0_f32.powf(total_detune / 1200.0);
+                    let effective_freq = detuned_freq * freq_mod_sample;
+                    let phase_inc = effective_freq / self.sample_rate;
+
+                    // Update this voice's phase.
+                    self.voice_phases[voice] += phase_inc;
+                    if self.voice_phases[voice] >= 1.0 {
+                        self.voice_phases[voice] -= 1.0;
+                    }
+
+                    // Select the appropriate wavetable based on the effective frequency.
+                    let table = bank.select_table(effective_freq);
+
+                    // Apply phase modulation and feedback.
+                    // Convert modulation from radians to cycles by dividing by 2π.
+                    let external_phase_mod =
+                        (phase_mod_sample * mod_index_sample) / (2.0 * std::f32::consts::PI);
+                    let effective_feedback = self.feedback_amount * feedback_mod_sample;
+                    //                    let feedback_val = self.last_output * effective_feedback;
+                    let feedback_val =
+                        (self.last_output * effective_feedback) / (std::f32::consts::PI * 1.5);
+
+                    let modulated_phase =
+                        self.voice_phases[voice] + external_phase_mod + feedback_val;
+                    let normalized_phase = modulated_phase.rem_euclid(1.0);
+                    let pos = normalized_phase * (table.table_size as f32);
+                    let voice_sample = cubic_interp(&table.samples, pos);
+
+                    sample_sum += voice_sample * weight;
                 }
 
-                // --- Modulation Calculations ---
-                // Use the mixed modulation from mod_index (which already includes both additive and multiplicative contributions)
-                let external_phase_mod = phase_mod_sample * mod_index_sample * TWO_PI;
-                let effective_feedback = self.feedback_amount * feedback_mod_sample;
-                let feedback_val = self.last_output * effective_feedback;
-
-                let modulated_phase = self.phase + external_phase_mod + feedback_val;
-                let normalized_phase = modulated_phase.rem_euclid(TWO_PI) / TWO_PI;
-
-                // Retrieve the appropriate wavetable.
-                let table = bank.select_table(effective_freq);
-                let pos = normalized_phase * (table.table_size as f32);
-                let sample = cubic_interp(&table.samples, pos);
-
-                output[i] = sample * self.gain * gain_mod_sample;
-                self.last_output = sample;
+                // Compute the weighted average so the center voice is emphasized.
+                let final_sample = sample_sum / total_weight;
+                output[i] = final_sample * self.gain * gain_mod_sample;
+                self.last_output = final_sample;
             }
         }
     }
@@ -258,6 +315,10 @@ impl AudioNode for AnalogOscillator {
         self.phase = 0.0;
         self.last_output = 0.0;
         self.last_gate_value = 0.0;
+        // Reset all voice phases.
+        for phase in self.voice_phases.iter_mut() {
+            *phase = 0.0;
+        }
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

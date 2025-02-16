@@ -6,13 +6,14 @@ use web_sys::console;
 
 /// Example waveforms.
 #[wasm_bindgen]
+#[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Waveform {
-    Sine,
-    Saw,
-    Square,
-    Triangle,
-    Custom,
+    Sine = 0,
+    Saw = 1,
+    Square = 2,
+    Triangle = 3,
+    Custom = 4,
 }
 
 /// One wavetable: time-domain samples plus the "top frequency" in Hz it can handle.

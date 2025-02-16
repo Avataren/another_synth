@@ -9,5 +9,8 @@ export default interface OscillatorState {
     hard_sync: boolean,
     gain: number,
     feedback_amount: number,
+    waveform: number,
     active: boolean,
+    unison_voices: number,
+    spread: number,
 };

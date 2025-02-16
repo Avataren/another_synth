@@ -350,7 +350,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               hard_sync: false,
               gain: 1,
               feedback_amount: 0,
+              waveform: 0,
               active: true,
+              unison_voices: 1.0,
+              spread: 0,
             });
           }
         }

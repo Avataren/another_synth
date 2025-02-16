@@ -20,8 +20,9 @@ import {
   NoiseUpdateParams,
   PortId,
   WasmModulationType,
-  // Waveform,
+  type Waveform,
 } from 'app/public/wasm/audio_processor.js';
+import type OscillatorState from '../models/OscillatorState.js';
 interface EnvelopeUpdate {
   config: EnvelopeConfig;
   envelopeId: number;
@@ -642,26 +643,30 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateOscillator(data: {
     oscillatorId: number;
-    newState: AnalogOscillatorStateUpdate;
+    newState: OscillatorState;
   }) {
     if (!this.audioEngine) return;
+
+    const oscStateUpdate = new AnalogOscillatorStateUpdate(
+      data.newState.phase_mod_amount,
+      //data.newState.freq_mod_amount,
+      //   // data.newState.detune_oct,
+      //   // data.newState.detune_semi,
+      //   // data.newState.detune_cents,
+      data.newState.detune,
+      data.newState.hard_sync,
+      data.newState.gain,
+      data.newState.active,
+      data.newState.feedback_amount,
+      (data.newState.waveform >> 0) as unknown as Waveform,
+      data.newState.unison_voices,
+      data.newState.spread
+    );
 
     try {
       this.oscHandler.UpdateOscillator(
         this.audioEngine,
-        new AnalogOscillatorStateUpdate(
-          data.newState.phase_mod_amount,
-          data.newState.freq_mod_amount,
-          // data.newState.detune_oct,
-          // data.newState.detune_semi,
-          // data.newState.detune_cents,
-          data.newState.detune,
-          data.newState.hard_sync,
-          data.newState.gain,
-          data.newState.active,
-          data.newState.feedback_amount,
-          data.newState.waveform,
-        ),
+        oscStateUpdate,
         data.oscillatorId,
         this.numVoices,
       );

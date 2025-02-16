@@ -369,19 +369,6 @@ var AnalogOscillatorStateUpdate = class {
   /**
    * @returns {number}
    */
-  get freq_mod_amount() {
-    const ret = wasm.__wbg_get_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr);
-    return ret;
-  }
-  /**
-   * @param {number} arg0
-   */
-  set freq_mod_amount(arg0) {
-    wasm.__wbg_set_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr, arg0);
-  }
-  /**
-   * @returns {number}
-   */
   get detune() {
     const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune(this.__wbg_ptr);
     return ret;
@@ -458,17 +445,44 @@ var AnalogOscillatorStateUpdate = class {
     wasm.__wbg_set_analogoscillatorstateupdate_waveform(this.__wbg_ptr, arg0);
   }
   /**
+   * @returns {number}
+   */
+  get unison_voices() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_unison_voices(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set unison_voices(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_unison_voices(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get spread() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_spread(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set spread(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
+  }
+  /**
    * @param {number} phase_mod_amount
-   * @param {number} freq_mod_amount
    * @param {number} detune
    * @param {boolean} hard_sync
    * @param {number} gain
    * @param {boolean} active
    * @param {number} feedback_amount
    * @param {Waveform} waveform
+   * @param {number} unison_voices
+   * @param {number} spread
    */
-  constructor(phase_mod_amount, freq_mod_amount, detune, hard_sync, gain, active, feedback_amount, waveform) {
-    const ret = wasm.analogoscillatorstateupdate_new(phase_mod_amount, freq_mod_amount, detune, hard_sync, gain, active, feedback_amount, waveform);
+  constructor(phase_mod_amount, detune, hard_sync, gain, active, feedback_amount, waveform, unison_voices, spread) {
+    const ret = wasm.analogoscillatorstateupdate_new(phase_mod_amount, detune, hard_sync, gain, active, feedback_amount, waveform, unison_voices, spread);
     this.__wbg_ptr = ret >>> 0;
     AnalogOscillatorStateUpdateFinalization.register(this, this.__wbg_ptr, this);
     return this;
@@ -774,14 +788,14 @@ var LfoUpdateParams = class {
    * @returns {number}
    */
   get frequency() {
-    const ret = wasm.__wbg_get_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
     return ret;
   }
   /**
    * @param {number} arg0
    */
   set frequency(arg0) {
-    wasm.__wbg_set_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {number}
@@ -912,27 +926,27 @@ var NoiseUpdateParams = class {
    * @returns {number}
    */
   get cutoff() {
-    const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
     return ret;
   }
   /**
    * @param {number} arg0
    */
   set cutoff(arg0) {
-    wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {number}
    */
   get gain() {
-    const ret = wasm.__wbg_get_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
     return ret;
   }
   /**
    * @param {number} arg0
    */
   set gain(arg0) {
-    wasm.__wbg_set_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {boolean}
@@ -1700,22 +1714,25 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleUpdateOscillator(data) {
     if (!this.audioEngine) return;
+    const oscStateUpdate = new AnalogOscillatorStateUpdate(
+      data.newState.phase_mod_amount,
+      //data.newState.freq_mod_amount,
+      //   // data.newState.detune_oct,
+      //   // data.newState.detune_semi,
+      //   // data.newState.detune_cents,
+      data.newState.detune,
+      data.newState.hard_sync,
+      data.newState.gain,
+      data.newState.active,
+      data.newState.feedback_amount,
+      data.newState.waveform >> 0,
+      data.newState.unison_voices,
+      data.newState.spread
+    );
     try {
       this.oscHandler.UpdateOscillator(
         this.audioEngine,
-        new AnalogOscillatorStateUpdate(
-          data.newState.phase_mod_amount,
-          data.newState.freq_mod_amount,
-          // data.newState.detune_oct,
-          // data.newState.detune_semi,
-          // data.newState.detune_cents,
-          data.newState.detune,
-          data.newState.hard_sync,
-          data.newState.gain,
-          data.newState.active,
-          data.newState.feedback_amount,
-          data.newState.waveform
-        ),
+        oscStateUpdate,
         data.oscillatorId,
         this.numVoices
       );

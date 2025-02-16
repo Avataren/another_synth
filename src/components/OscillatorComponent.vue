@@ -99,6 +99,28 @@
             scale="half"
             @update:modelValue="handleDetuneChange"
           />
+
+          <audio-knob-component
+            v-model="oscillatorState.unison_voices!"
+            label="Unison"
+            :min="1"
+            :max="10"
+            :step="1"
+            :decimals="0"
+            scale="half"
+            @update:modelValue="handleUnisonVoicesChange"
+          />
+
+          <audio-knob-component
+            v-model="oscillatorState.spread!"
+            label="Spread"
+            :min="0"
+            :max="100"
+            :step="1"
+            :decimals="0"
+            scale="half"
+            @update:modelValue="handleUnisonSpreadChange"
+          />
         </div>
       </div>
 
@@ -152,6 +174,8 @@ const oscillatorState = computed({
         detune: 0,
         gain: 1,
         active: false,
+        unison_voices: 1,
+        spread: 0,
       } as OscillatorState;
     }
     return state;
@@ -201,6 +225,22 @@ const handleWaveformChange = (newWaveform: number) => {
   const currentState = {
     ...oscillatorState.value,
     waveform: newWaveform,
+  };
+  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
+};
+
+const handleUnisonVoicesChange = (newValue: number) => {
+  const currentState = {
+    ...oscillatorState.value,
+    unison_voices: newValue,
+  };
+  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
+};
+
+const handleUnisonSpreadChange = (newValue: number) => {
+  const currentState = {
+    ...oscillatorState.value,
+    spread: newValue,
   };
   store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
 };
