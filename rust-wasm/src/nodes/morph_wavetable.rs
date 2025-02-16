@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
@@ -99,14 +99,20 @@ impl WavetableMorphCollection {
 /// A bank of wavetable morph collections, keyed by a name.
 /// (For example, you might have one collection called "default" that holds several waveforms.)
 pub struct WavetableSynthBank {
-    pub collections: HashMap<String, WavetableMorphCollection>,
+    pub collections: HashMap<String, Rc<WavetableMorphCollection>>,
 }
 
 impl WavetableSynthBank {
     pub fn new() -> Self {
-        Self {
-            collections: HashMap::new(),
-        }
+        let base_size = 1024;
+        let mut collections = HashMap::new();
+        collections.insert(
+            "default".to_string(),
+            Rc::new(WavetableMorphCollection::generate_test_collection(
+                base_size,
+            )),
+        );
+        Self { collections }
     }
 
     /// Add a new collection to the bank.
@@ -115,22 +121,12 @@ impl WavetableSynthBank {
         name: impl Into<String>,
         collection: WavetableMorphCollection,
     ) {
-        self.collections.insert(name.into(), collection);
+        self.collections.insert(name.into(), Rc::new(collection));
     }
 
     /// Retrieve a collection by name.
-    pub fn get_collection(&self, name: &str) -> Option<&WavetableMorphCollection> {
-        self.collections.get(name)
-    }
-
-    /// Generate a test bank containing a default morph collection.
-    pub fn generate_test_bank(base_size: usize) -> Self {
-        let mut bank = Self::new();
-        bank.add_collection(
-            "default",
-            WavetableMorphCollection::generate_test_collection(base_size),
-        );
-        bank
+    pub fn get_collection(&self, name: &str) -> Option<Rc<WavetableMorphCollection>> {
+        self.collections.get(name).cloned()
     }
 }
 

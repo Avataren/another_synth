@@ -7,6 +7,7 @@ import {
 // Define the types of nodes we can have in a voice
 export enum VoiceNodeType {
   Oscillator = 'oscillator',
+  WavetableOscillator = 'wavetable_oscillator',
   Filter = 'filter',
   Envelope = 'envelope',
   LFO = 'lfo',

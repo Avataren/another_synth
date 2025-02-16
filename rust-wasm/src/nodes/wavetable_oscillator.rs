@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
@@ -7,7 +8,7 @@ use web_sys::console;
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
 
-use super::morph_wavetable::WavetableSynthBank;
+use super::morph_wavetable::{WavetableMorphCollection, WavetableSynthBank};
 
 // Import the bank and related types from our wavetable module.
 
@@ -77,7 +78,7 @@ pub struct WavetableOscillator {
     // Name of the morph collection to use.
     collection_name: String,
     // The bank of wavetable morph collections.
-    wavetable_bank: WavetableSynthBank,
+    wavetable_bank: Rc<WavetableSynthBank>,
 }
 
 impl ModulationProcessor for WavetableOscillator {}
@@ -87,7 +88,7 @@ impl WavetableOscillator {
     /// - `sample_rate`: audio sample rate.
     /// - `bank`: the wavetable synth bank (passed by value).
     /// - `collection_name`: the name of the morph collection to use (e.g., "default").
-    pub fn new(sample_rate: f32, bank: WavetableSynthBank) -> Self {
+    pub fn new(sample_rate: f32, bank: Rc<WavetableSynthBank>) -> Self {
         Self {
             sample_rate,
             gain: 1.0,
@@ -140,6 +141,11 @@ impl WavetableOscillator {
         }
         self.last_gate_value = gate;
     }
+}
+
+fn get_collection_from_bank(bank: &WavetableSynthBank, name: &str) -> Rc<WavetableMorphCollection> {
+    bank.get_collection(name)
+        .expect("Wavetable collection not found")
 }
 
 impl AudioNode for WavetableOscillator {
@@ -201,20 +207,14 @@ impl AudioNode for WavetableOscillator {
             vec![self.frequency; buffer_size]
         };
 
-        // Use a raw pointer trick to obtain a collection reference without holding an immutable borrow on self.
-        let bank_ptr: *const WavetableSynthBank = &self.wavetable_bank;
-        let collection = unsafe {
-            (*bank_ptr)
-                .get_collection(&self.collection_name)
-                .expect("Wavetable collection not found")
-        };
-
-        // Clone the gate buffer locally.
-        let gate_buf = self.gate_buffer.clone();
+        // Retrieve the active morph collection in its own block.
+        // (This limits the lifetime of the immutable borrow.)
+        let collection = get_collection_from_bank(&self.wavetable_bank, &self.collection_name);
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in 0..buffer_size {
-                let gate_val = gate_buf[i];
+                // Directly index self.gate_buffer to get a copy of the f32 value.
+                let gate_val = self.gate_buffer[i];
                 self.check_gate(gate_val);
 
                 let freq_sample = base_freq[i];

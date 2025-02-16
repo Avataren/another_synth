@@ -280,6 +280,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[];
           } = {
             [VoiceNodeType.Oscillator]: [],
+            [VoiceNodeType.WavetableOscillator]: [],
             [VoiceNodeType.Filter]: [],
             [VoiceNodeType.Envelope]: [],
             [VoiceNodeType.LFO]: [],
@@ -310,6 +311,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.Noise;
               case 'global_frequency':
                 return VoiceNodeType.GlobalFrequency;
+              case 'wavetable_oscillator':
+                return VoiceNodeType.WavetableOscillator;
 
               default:
                 console.warn('Unknown node type:', raw);

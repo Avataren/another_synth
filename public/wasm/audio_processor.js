@@ -604,6 +604,16 @@ export class AudioEngine {
         return ret[0] >>> 0;
     }
     /**
+     * @returns {number}
+     */
+    create_wavetable_oscillator() {
+        const ret = wasm.audioengine_create_wavetable_oscillator(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
      * @param {number} filter_id
      * @param {number} cutoff
      * @param {number} resonance

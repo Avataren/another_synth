@@ -403,6 +403,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     // Convert the raw nodes array into an object keyed by VoiceNodeType.
     const nodesByType: { [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[] } = {
       [VoiceNodeType.Oscillator]: [],
+      [VoiceNodeType.WavetableOscillator]: [],
       [VoiceNodeType.Envelope]: [],
       [VoiceNodeType.LFO]: [],
       [VoiceNodeType.Filter]: [],
@@ -435,6 +436,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         case 'global_frequency':
           type = VoiceNodeType.GlobalFrequency;
           break;
+        case 'wavetable_oscillator':
+          type = VoiceNodeType.WavetableOscillator;
         default:
           console.warn('Unknown node type:', rawNode.node_type);
           type = rawNode.node_type as VoiceNodeType;

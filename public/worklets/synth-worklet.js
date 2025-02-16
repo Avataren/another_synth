@@ -677,6 +677,16 @@ var AudioEngine = class {
     return ret[0] >>> 0;
   }
   /**
+   * @returns {number}
+   */
+  create_wavetable_oscillator() {
+    const ret = wasm.audioengine_create_wavetable_oscillator(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
    * @param {number} filter_id
    * @param {number} cutoff
    * @param {number} resonance
@@ -1530,6 +1540,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const rawCanonicalVoice = wasmState.voices[0];
     const nodesByType = {
       ["oscillator" /* Oscillator */]: [],
+      ["wavetable_oscillator" /* WavetableOscillator */]: [],
       ["envelope" /* Envelope */]: [],
       ["lfo" /* LFO */]: [],
       ["filter" /* Filter */]: [],
@@ -1561,6 +1572,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         case "global_frequency":
           type = "globalfrequency" /* GlobalFrequency */;
           break;
+        case "wavetable_oscillator":
+          type = "wavetable_oscillator" /* WavetableOscillator */;
         default:
           console.warn("Unknown node type:", rawNode.node_type);
           type = rawNode.node_type;

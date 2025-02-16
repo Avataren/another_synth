@@ -9,15 +9,17 @@ mod traits;
 mod utils;
 mod voice;
 
+use std::rc::Rc;
 use std::{collections::HashMap, sync::Arc};
 
 pub use graph::AudioGraph;
 use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
+use nodes::morph_wavetable::{self, WavetableSynthBank};
 use nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Lfo, LfoTriggerMode, LfoWaveform, LpFilter,
-    Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
+    Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
@@ -123,7 +125,7 @@ pub struct AudioEngine {
     voices: Vec<Voice>,
     sample_rate: f32,
     num_voices: usize,
-    envelope_config: EnvelopeConfig,
+    wavetable_synthbank: Rc<WavetableSynthBank>,
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 }
 
@@ -197,12 +199,12 @@ impl AudioEngine {
     #[wasm_bindgen(constructor)]
     pub fn new(sample_rate: f32) -> Self {
         let num_voices = 8;
-        let envelope_config = EnvelopeConfig::default();
 
         // Create the wavetable banks using the actual sample_rate.
         let max_table_size = 2048;
         let min_table_size = 64;
         let lowest_top_freq_hz = 20.0;
+        let wavetable_synthbank = Rc::new(WavetableSynthBank::new());
         let mut banks = HashMap::new();
         banks.insert(
             Waveform::Sine,
@@ -249,7 +251,7 @@ impl AudioEngine {
             voices: Vec::new(),
             sample_rate,
             num_voices,
-            envelope_config,
+            wavetable_synthbank,
             wavetable_banks: Arc::new(banks),
         }
     }
@@ -600,6 +602,18 @@ impl AudioEngine {
                 self.sample_rate,
                 Waveform::Sine,
                 self.wavetable_banks.clone(), // pass the shared banks
+            )));
+        }
+        Ok(osc_id.0)
+    }
+
+    #[wasm_bindgen]
+    pub fn create_wavetable_oscillator(&mut self) -> Result<usize, JsValue> {
+        let mut osc_id = NodeId(0);
+        for voice in &mut self.voices {
+            osc_id = voice.graph.add_node(Box::new(WavetableOscillator::new(
+                self.sample_rate,
+                self.wavetable_synthbank.clone(),
             )));
         }
         Ok(osc_id.0)
