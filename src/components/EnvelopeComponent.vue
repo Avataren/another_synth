@@ -1,7 +1,7 @@
 <template>
   <q-card class="envelope-card">
     <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Envelope {{ nodeId + 1 }}</div>
+      <div class="text-h6">Envelope {{ nodeId }}</div>
     </q-card-section>
     <q-separator />
     <q-card-section class="envelope-container">

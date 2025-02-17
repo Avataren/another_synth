@@ -1,7 +1,7 @@
 <template>
   <q-card class="filter-card">
     <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Filter {{ props.nodeId + 1 }}</div>
+      <div class="text-h6">Filter {{ props.nodeId }}</div>
     </q-card-section>
     <q-separator />
     <q-card-section class="filter-container">

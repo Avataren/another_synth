@@ -524,6 +524,8 @@ const getNodeName = (nodeId: number): string => {
   if (!node) return `Node ${nodeId}`;
 
   switch (node.type) {
+    case VoiceNodeType.WavetableOscillator:
+      return `Wavetable Oscillator ${nodeId}`;
     case VoiceNodeType.Oscillator:
       return `Oscillator ${nodeId}`;
     case VoiceNodeType.Filter:
