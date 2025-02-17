@@ -435,7 +435,7 @@ impl AudioEngine {
         let num_voices = 8;
         let max_table_size = 2048;
         console::log_1(&format!("INITIALIZING AUDIO ENGINE WITH {} VOICES", num_voices).into());
-        console::log_1(&format!("WavetableSynthBank").into());
+        console::log_1(&format!("Creating WavetableSynthBank").into());
         let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
         let mut banks = HashMap::new();
         console::log_1(&format!("Creating Sine").into());
@@ -596,24 +596,24 @@ impl AudioEngine {
             voice.current_frequency = frequency;
 
             // Skip if voice is inactive and no new gate
-            if !voice.is_active() && gate <= 0.0 {
-                continue;
-            }
+            // if !voice.is_active() && gate <= 0.0 {
+            //     continue;
+            // }
 
             voice_left.fill(0.0);
             voice_right.fill(0.0);
 
             // Process voice and update its state
             voice.process_audio(&mut voice_left, &mut voice_right);
-            voice.update_active_state();
+            //voice.update_active_state();
 
             // Mix if voice has gate or is still active
-            if gate > 0.0 || voice.is_active() {
-                for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
-                    output_left[i] += left * gain;
-                    output_right[i] += right * gain;
-                }
+            // if gate > 0.0 || voice.is_active() {
+            for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
+                output_left[i] += left * gain;
+                output_right[i] += right * gain;
             }
+            // }
         }
 
         // Apply master gain

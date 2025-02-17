@@ -426,6 +426,15 @@ impl AudioNode for Lfo {
         self.active = active;
     }
 
+    fn should_process(&self) -> bool {
+        self.trigger_mode != LfoTriggerMode::Envelope || self.active
+    }
+
+    /*************  ✨ Codeium Command ⭐  *************/
+    /// Returns a string identifier for the node type.
+    ///
+    /// Used for serialization and debugging.
+    /******  07fb0ac3-d9be-4749-b52f-e88bb8197216  *******/
     fn node_type(&self) -> &str {
         "lfo"
     }
