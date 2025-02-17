@@ -13,4 +13,5 @@ export default interface OscillatorState {
     active: boolean,
     unison_voices: number,
     spread: number,
+    wave_index: number
 };

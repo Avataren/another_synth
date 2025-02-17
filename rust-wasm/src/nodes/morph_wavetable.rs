@@ -1,5 +1,4 @@
 use std::{collections::HashMap, rc::Rc};
-use wasm_bindgen::prelude::*;
 use web_sys::console;
 
 /// Cubic interpolation helper. Assumes the samples slice is cyclic.

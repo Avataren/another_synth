@@ -50,6 +50,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     syncManager: null as AudioSyncManager | null,
     // State maps using node IDs from the layout
     oscillatorStates: new Map<number, OscillatorState>(),
+    wavetableOscillatorStates: new Map<number, OscillatorState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
     filterStates: new Map<number, FilterState>(),
     lfoStates: new Map<number, LfoState>(),
@@ -357,6 +358,32 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               active: true,
               unison_voices: 1.0,
               spread: 0,
+              wave_index: 0.0
+            });
+          }
+        }
+
+        for (const osc of getNodesOfType(
+          canonicalVoice,
+          VoiceNodeType.WavetableOscillator,
+        ) || []) {
+          if (!this.wavetableOscillatorStates.has(osc.id)) {
+            this.wavetableOscillatorStates.set(osc.id, {
+              id: osc.id,
+              phase_mod_amount: 0,
+              freq_mod_amount: 0,
+              detune_oct: 0,
+              detune_semi: 0,
+              detune_cents: 0,
+              detune: 0,
+              hard_sync: false,
+              gain: 1,
+              feedback_amount: 0,
+              waveform: 0,
+              active: true,
+              unison_voices: 1.0,
+              spread: 0,
+              wave_index: 0.0
             });
           }
         }

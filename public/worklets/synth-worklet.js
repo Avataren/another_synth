@@ -85,15 +85,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   typeof globalThis == "undefined" ? typeof global == "undefined" ? typeof self == "undefined" ? void 0 : self : global : globalThis
 );
 
-// src/audio/worklets/handlers/oscillator-update-handler.ts
-var OscillatorUpdateHandler = class {
-  UpdateOscillator(engine, stateUpdate, oscillatorId, numVoices) {
-    for (let i = 0; i < numVoices; i++) {
-      engine.update_oscillator(i, oscillatorId, stateUpdate);
-    }
-  }
-};
-
 // public/wasm/audio_processor.js
 var wasm;
 var WASM_VECTOR_LEN = 0;
@@ -605,13 +596,23 @@ var AudioEngine = class {
     return takeFromExternrefTable0(ret[0]);
   }
   /**
-   * @param {number} voice_index
+   * @param {number} oscillator_id
+   * @param {WavetableOscillatorStateUpdate} params
+   */
+  update_wavetable_oscillator(oscillator_id, params) {
+    _assertClass(params, WavetableOscillatorStateUpdate);
+    const ret = wasm.audioengine_update_wavetable_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
    * @param {number} oscillator_id
    * @param {AnalogOscillatorStateUpdate} params
    */
-  update_oscillator(voice_index, oscillator_id, params) {
+  update_oscillator(oscillator_id, params) {
     _assertClass(params, AnalogOscillatorStateUpdate);
-    const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, voice_index, oscillator_id, params.__wbg_ptr);
+    const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -992,6 +993,152 @@ var OscillatorStateUpdateFinalization = typeof FinalizationRegistry === "undefin
 var WavetableOscillatorStateUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_wavetableoscillatorstateupdate_free(ptr >>> 0, 1));
+var WavetableOscillatorStateUpdate = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    WavetableOscillatorStateUpdateFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_wavetableoscillatorstateupdate_free(ptr, 0);
+  }
+  /**
+   * @returns {number}
+   */
+  get phase_mod_amount() {
+    const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set phase_mod_amount(arg0) {
+    wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get detune() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set detune(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {boolean}
+   */
+  get hard_sync() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_hard_sync(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * @param {boolean} arg0
+   */
+  set hard_sync(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_hard_sync(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get gain() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set gain(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_detune(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {boolean}
+   */
+  get active() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_active(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * @param {boolean} arg0
+   */
+  set active(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_active(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get feedback_amount() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_gain(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set feedback_amount(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_gain(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get unison_voices() {
+    const ret = wasm.__wbg_get_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set unison_voices(arg0) {
+    wasm.__wbg_set_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get spread() {
+    const ret = wasm.__wbg_get_envelopeconfig_decay_curve(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set spread(arg0) {
+    wasm.__wbg_set_envelopeconfig_decay_curve(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get wavetable_index() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_spread(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set wavetable_index(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @param {number} phase_mod_amount
+   * @param {number} detune
+   * @param {boolean} hard_sync
+   * @param {number} gain
+   * @param {boolean} active
+   * @param {number} feedback_amount
+   * @param {number} unison_voices
+   * @param {number} spread
+   * @param {number} wavetable_index
+   */
+  constructor(phase_mod_amount, detune, hard_sync, gain, active, feedback_amount, unison_voices, spread, wavetable_index) {
+    const ret = wasm.wavetableoscillatorstateupdate_new(phase_mod_amount, detune, hard_sync, gain, active, feedback_amount, unison_voices, spread, wavetable_index);
+    this.__wbg_ptr = ret >>> 0;
+    WavetableOscillatorStateUpdateFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+};
 async function __wbg_load(module, imports) {
   if (typeof Response === "function" && module instanceof Response) {
     if (typeof WebAssembly.instantiateStreaming === "function") {
@@ -1299,7 +1446,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "voiceLayouts", []);
     __publicField(this, "nextNodeId", 0);
     __publicField(this, "stateVersion", 0);
-    __publicField(this, "oscHandler", new OscillatorUpdateHandler());
     this.port.onmessage = (event) => {
       this.handleMessage(event);
     };
@@ -1367,6 +1513,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         break;
       case "updateConnection":
         this.handleUpdateConnection(event.data);
+        break;
+      case "updateWavetableOscillator":
+        this.handleUpdateWavetableOscillator(event.data);
         break;
       case "updateOscillator":
         this.handleUpdateOscillator(event.data);
@@ -1475,11 +1624,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     console.log("#mixerID:", mixerId);
     const filterId = this.audioEngine.create_filter();
     const oscIds = [];
-    for (let i = 0; i < this.maxOscillators; i++) {
-      const oscId = this.audioEngine.create_oscillator();
-      console.log(`Created oscillator ${i} with id ${oscId}`);
-      oscIds.push(oscId);
-    }
+    const wtoscId = this.audioEngine.create_wavetable_oscillator();
+    oscIds.push(wtoscId);
+    const oscId = this.audioEngine.create_oscillator();
+    oscIds.push(oscId);
     const envelopeIds = [];
     for (let i = 0; i < this.maxEnvelopes; i++) {
       const result = this.audioEngine.create_envelope();
@@ -1731,14 +1879,29 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       console.error("Error updating modulation:", err);
     }
   }
+  handleUpdateWavetableOscillator(data) {
+    if (!this.audioEngine) return;
+    const oscStateUpdate = new WavetableOscillatorStateUpdate(
+      data.newState.phase_mod_amount,
+      data.newState.detune,
+      data.newState.hard_sync,
+      data.newState.gain,
+      data.newState.active,
+      data.newState.feedback_amount,
+      data.newState.unison_voices,
+      data.newState.spread,
+      data.newState.wave_index
+    );
+    try {
+      this.audioEngine.update_wavetable_oscillator(data.oscillatorId, oscStateUpdate);
+    } catch (err) {
+      console.error("Failed to update oscillator:", err);
+    }
+  }
   handleUpdateOscillator(data) {
     if (!this.audioEngine) return;
     const oscStateUpdate = new AnalogOscillatorStateUpdate(
       data.newState.phase_mod_amount,
-      //data.newState.freq_mod_amount,
-      //   // data.newState.detune_oct,
-      //   // data.newState.detune_semi,
-      //   // data.newState.detune_cents,
       data.newState.detune,
       data.newState.hard_sync,
       data.newState.gain,
@@ -1749,11 +1912,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.newState.spread
     );
     try {
-      this.oscHandler.UpdateOscillator(
-        this.audioEngine,
-        oscStateUpdate,
+      this.audioEngine.update_oscillator(
         data.oscillatorId,
-        this.numVoices
+        oscStateUpdate
       );
     } catch (err) {
       console.error("Failed to update oscillator:", err);

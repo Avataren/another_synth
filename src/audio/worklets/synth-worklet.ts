@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
 import './textencoder.js';
 
-import OscillatorUpdateHandler from './handlers/oscillator-update-handler.js';
 import type { EnvelopeConfig, RawConnection, RawVoice, WasmState } from '../types/synth-layout';
 import {
   type SynthLayout,
@@ -20,6 +19,7 @@ import {
   NoiseUpdateParams,
   PortId,
   WasmModulationType,
+  WavetableOscillatorStateUpdate,
   type Waveform,
 } from 'app/public/wasm/audio_processor.js';
 import type OscillatorState from '../models/OscillatorState.js';
@@ -92,7 +92,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private voiceLayouts: VoiceLayout[] = [];
   private nextNodeId: number = 0;
   private stateVersion: number = 0;
-  private oscHandler = new OscillatorUpdateHandler();
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -171,6 +170,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'updateConnection':
         this.handleUpdateConnection(event.data);
+        break;
+      case 'updateWavetableOscillator':
+        this.handleUpdateWavetableOscillator(event.data);
         break;
       case 'updateOscillator':
         this.handleUpdateOscillator(event.data);
@@ -312,11 +314,16 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Create oscillators.
     const oscIds: number[] = [];
-    for (let i = 0; i < this.maxOscillators; i++) {
-      const oscId = this.audioEngine.create_oscillator();
-      console.log(`Created oscillator ${i} with id ${oscId}`);
-      oscIds.push(oscId);
-    }
+    //for (let i = 0; i < this.maxOscillators; i++) {
+
+    const wtoscId = this.audioEngine.create_wavetable_oscillator();
+    oscIds.push(wtoscId);
+
+    const oscId = this.audioEngine.create_oscillator();
+    //      console.log(`Created oscillator ${i} with id ${oscId}`);
+    oscIds.push(oscId);
+
+    //  }
 
     // Create envelopes.
     const envelopeIds: number[] = [];
@@ -644,6 +651,34 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+
+
+  private handleUpdateWavetableOscillator(data: {
+    oscillatorId: number;
+    newState: OscillatorState;
+  }) {
+    if (!this.audioEngine) return;
+
+    const oscStateUpdate = new WavetableOscillatorStateUpdate(
+      data.newState.phase_mod_amount,
+      data.newState.detune,
+      data.newState.hard_sync,
+      data.newState.gain,
+      data.newState.active,
+      data.newState.feedback_amount,
+      data.newState.unison_voices,
+      data.newState.spread,
+      data.newState.wave_index
+    );
+
+    try {
+      this.audioEngine.update_wavetable_oscillator(data.oscillatorId, oscStateUpdate);
+    } catch (err) {
+      console.error('Failed to update oscillator:', err);
+    }
+  }
+
+
   private handleUpdateOscillator(data: {
     oscillatorId: number;
     newState: OscillatorState;
@@ -652,10 +687,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     const oscStateUpdate = new AnalogOscillatorStateUpdate(
       data.newState.phase_mod_amount,
-      //data.newState.freq_mod_amount,
-      //   // data.newState.detune_oct,
-      //   // data.newState.detune_semi,
-      //   // data.newState.detune_cents,
       data.newState.detune,
       data.newState.hard_sync,
       data.newState.gain,
@@ -667,11 +698,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     );
 
     try {
-      this.oscHandler.UpdateOscillator(
-        this.audioEngine,
-        oscStateUpdate,
+      this.audioEngine.update_oscillator(
         data.oscillatorId,
-        this.numVoices,
+        oscStateUpdate,
       );
     } catch (err) {
       console.error('Failed to update oscillator:', err);

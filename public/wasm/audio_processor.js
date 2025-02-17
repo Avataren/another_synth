@@ -532,13 +532,23 @@ export class AudioEngine {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * @param {number} voice_index
+     * @param {number} oscillator_id
+     * @param {WavetableOscillatorStateUpdate} params
+     */
+    update_wavetable_oscillator(oscillator_id, params) {
+        _assertClass(params, WavetableOscillatorStateUpdate);
+        const ret = wasm.audioengine_update_wavetable_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {number} oscillator_id
      * @param {AnalogOscillatorStateUpdate} params
      */
-    update_oscillator(voice_index, oscillator_id, params) {
+    update_oscillator(oscillator_id, params) {
         _assertClass(params, AnalogOscillatorStateUpdate);
-        const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, voice_index, oscillator_id, params.__wbg_ptr);
+        const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

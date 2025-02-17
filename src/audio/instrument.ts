@@ -97,15 +97,25 @@ export default class Instrument {
     });
   }
 
+  public updateWavetableOscillatorState(nodeId: number, newState: OscillatorState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+
+    // Find which voice this oscillator belongs to
+    // const voiceIndex = this.findVoiceForNode(nodeId);
+    this.workletNode.port.postMessage({
+      type: 'updateWavetableOscillator',
+      oscillatorId: nodeId,
+      newState,
+    });
+  }
+
   public updateOscillatorState(nodeId: number, newState: OscillatorState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
     // Find which voice this oscillator belongs to
     // const voiceIndex = this.findVoiceForNode(nodeId);
-    // if (voiceIndex === -1) return;
     this.workletNode.port.postMessage({
       type: 'updateOscillator',
-      // voiceIndex,
       oscillatorId: nodeId,
       newState,
     });

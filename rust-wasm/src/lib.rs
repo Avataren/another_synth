@@ -20,6 +20,7 @@ use nodes::morph_wavetable::{self, WavetableSynthBank};
 use nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Lfo, LfoTriggerMode, LfoWaveform, LpFilter,
     Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
+    WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
@@ -511,27 +512,47 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
+    pub fn update_wavetable_oscillator(
+        &mut self,
+        oscillator_id: usize,
+        params: &WavetableOscillatorStateUpdate,
+    ) -> Result<(), JsValue> {
+        for voice in &mut self.voices {
+            let node = voice
+                .graph
+                .get_node_mut(NodeId(oscillator_id))
+                .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
+            let osc = node
+                .as_any_mut()
+                .downcast_mut::<WavetableOscillator>()
+                .ok_or_else(|| {
+                    JsValue::from_str("Node is not a WavetableOscillator in one of the voices")
+                })?;
+            osc.update_params(params);
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen]
     pub fn update_oscillator(
         &mut self,
-        voice_index: usize,
         oscillator_id: usize,
         params: &AnalogOscillatorStateUpdate,
     ) -> Result<(), JsValue> {
-        let voice = self
-            .voices
-            .get_mut(voice_index)
-            .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
-
-        if let Some(node) = voice.graph.get_node_mut(NodeId(oscillator_id)) {
-            if let Some(osc) = node.as_any_mut().downcast_mut::<AnalogOscillator>() {
-                osc.update_params(params);
-                Ok(())
-            } else {
-                Err(JsValue::from_str("Node is not an Oscillator"))
-            }
-        } else {
-            Err(JsValue::from_str("Node not found"))
+        for voice in &mut self.voices {
+            let node = voice
+                .graph
+                .get_node_mut(NodeId(oscillator_id))
+                .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
+            let osc = node
+                .as_any_mut()
+                .downcast_mut::<AnalogOscillator>()
+                .ok_or_else(|| {
+                    JsValue::from_str("Node is not an AnalogOscillator in one of the voices")
+                })?;
+            osc.update_params(params);
         }
+        Ok(())
     }
 
     #[wasm_bindgen]

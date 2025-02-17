@@ -15,6 +15,14 @@
       <!-- Generators column -->
       <div class="col-4 column q-gutter-y-md node-bg">
         <div class="text-h6">Generators</div>
+
+        <wavetable-oscillator-component
+          v-for="osc in wavetableOscillatorNodes"
+          :key="osc.id"
+          :node="destinationNode"
+          :nodeId="osc.id"
+        />
+
         <oscillator-component
           v-for="osc in oscillatorNodes"
           :key="osc.id"
@@ -69,6 +77,7 @@
 
 <script setup lang="ts">
 import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
+import WavetableOscillatorComponent from 'src/components/WavetableOscillatorComponent.vue';
 import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import PianoKeyboardComponent from 'src/components/PianoKeyboardComponent.vue';
@@ -85,6 +94,10 @@ const store = useAudioSystemStore();
 const { destinationNode } = storeToRefs(store);
 
 // Get nodes for voice 0
+const wavetableOscillatorNodes = computed(() =>
+  store.getVoiceNodes(0, VoiceNodeType.WavetableOscillator),
+);
+
 const oscillatorNodes = computed(() =>
   store.getVoiceNodes(0, VoiceNodeType.Oscillator),
 );
