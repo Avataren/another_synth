@@ -427,7 +427,7 @@ impl AudioNode for Lfo {
     }
 
     fn should_process(&self) -> bool {
-        self.trigger_mode != LfoTriggerMode::Envelope || self.active
+        self.active
     }
 
     /*************  ✨ Codeium Command ⭐  *************/
