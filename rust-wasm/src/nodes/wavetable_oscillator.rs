@@ -27,6 +27,28 @@ fn poly_blep(t: f32, dt: f32) -> f32 {
     0.0
 }
 
+/// A simple one-pole lowpass filter that carries its state.
+/// (In production you may want a higher-order filter.)
+fn simple_lowpass_filter_in_place(
+    buffer: &mut [f32],
+    oversample_factor: usize,
+    sample_rate: f32,
+    state: &mut f32,
+) {
+    // For oversampled data the effective cutoff should be scaled.
+    let cutoff = (sample_rate * 0.45) / (oversample_factor as f32);
+    let rc = 1.0 / (2.0 * std::f32::consts::PI * cutoff.max(1.0));
+    let dt = 1.0 / (sample_rate * oversample_factor as f32);
+    let alpha = dt / (rc + dt);
+    let mut prev = *state;
+    for x in buffer.iter_mut() {
+        let out = prev + alpha * (*x - prev);
+        *x = out;
+        prev = out;
+    }
+    *state = prev;
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy)]
 pub struct WavetableOscillatorStateUpdate {
@@ -99,6 +121,7 @@ pub struct WavetableOscillator {
     oversample_factor: usize,
     /// When true, apply polyBLEP correction at waveform discontinuities.
     use_polyblep: bool,
+    filter_prev: f32,
 }
 
 impl ModulationProcessor for WavetableOscillator {}
@@ -129,6 +152,7 @@ impl WavetableOscillator {
             wavetable_bank: bank,
             oversample_factor: 4, // change to 2, 4, etc. to enable oversampling
             use_polyblep: false,  // set true if your waveform has discontinuities (e.g. saw)
+            filter_prev: 0.0,
         }
     }
 
@@ -200,27 +224,25 @@ impl AudioNode for WavetableOscillator {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Process modulation inputs.
+        // --- 1) Process modulations ---
         let freq_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
         let phase_mod = self.process_modulations(buffer_size, inputs.get(&PortId::PhaseMod), 0.0);
         let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
         let feedback_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::FeedbackMod), 1.0);
-        // Process ModIndex modulation for scaling phase modulation:
         let mod_index = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::ModIndex),
             self.phase_mod_amount,
         );
-        // (The wavetable index modulation remains separate.)
         let wavetable_index_mod = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::WavetableIndex),
             self.wavetable_index,
         );
 
-        // Prepare the gate buffer.
+        // --- 2) Prepare gate buffer ---
         if self.gate_buffer.len() < buffer_size {
             self.gate_buffer.resize(buffer_size, 0.0);
         }
@@ -235,7 +257,7 @@ impl AudioNode for WavetableOscillator {
             }
         }
 
-        // Base frequency from GlobalFrequency modulation or default.
+        // --- 3) Base frequency (from GlobalFrequency or default) ---
         let base_freq = if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
             if !freq_sources.is_empty() && !freq_sources[0].buffer.is_empty() {
                 freq_sources[0].buffer.clone()
@@ -246,81 +268,113 @@ impl AudioNode for WavetableOscillator {
             vec![self.frequency; buffer_size]
         };
 
-        // Retrieve the active morph collection.
+        // --- 4) Get the active wavetable collection ---
         let collection = get_collection_from_bank(&self.wavetable_bank, &self.collection_name);
 
-        if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-            for i in 0..buffer_size {
-                let gate_val = self.gate_buffer[i];
-                self.check_gate(gate_val);
+        // --- 5) Prepare oversampled buffer ---
+        let os_factor = self.oversample_factor;
+        let oversampled_len = buffer_size * os_factor;
+        let mut oversampled_buffer = vec![0.0_f32; oversampled_len];
 
-                let freq_sample = base_freq[i];
-                let phase_mod_sample = phase_mod[i];
-                let gain_mod_sample = gain_mod[i];
-                let feedback_mod_sample = feedback_mod[i];
-                let wavetable_index_sample = wavetable_index_mod[i];
-                // Use mod_index modulation to scale the phase modulation depth.
-                let mod_index_sample = mod_index[i];
-                let external_phase_mod =
-                    (phase_mod_sample * mod_index_sample) / (2.0 * std::f32::consts::PI);
+        // --- 6) Main synthesis loop ---
+        for i in 0..buffer_size {
+            // Check for hard sync via the gate.
+            let gate_val = self.gate_buffer[i];
+            self.check_gate(gate_val);
 
-                let effective_feedback = self.feedback_amount * feedback_mod_sample;
-                let feedback_val =
-                    (self.last_output * effective_feedback) / (std::f32::consts::PI * 1.5);
+            // Get per-sample modulation values.
+            let freq_sample = base_freq[i];
+            let phase_mod_sample = phase_mod[i];
+            let gain_mod_sample = gain_mod[i]; // Now used per sub-sample below.
+            let feedback_mod_sample = feedback_mod[i];
+            let wavetable_index_sample = wavetable_index_mod[i];
+            let mod_index_sample = mod_index[i];
 
+            // Compute external phase modulation (applied once per sample).
+            let ext_phase = (phase_mod_sample * mod_index_sample) / (2.0 * std::f32::consts::PI);
+            // Compute feedback (applied once per sample).
+            let fb = (self.last_output * self.feedback_amount * feedback_mod_sample)
+                / (std::f32::consts::PI * 1.5);
+
+            // For each oversampled sub-sample within this sample:
+            for os in 0..os_factor {
                 let mut sample_sum = 0.0;
                 let mut total_weight = 0.0;
-                let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
-                let sigma = self.unison_voices as f32 / 4.0;
 
-                // Process each unison voice.
+                // Sum contributions from all unison voices.
                 for voice in 0..self.unison_voices {
                     let voice_f = voice as f32;
-                    let distance = (voice_f - center_index).abs();
-                    let weight = (-distance * distance / (2.0 * sigma * sigma)).exp();
+                    let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
+                    let sigma = self.unison_voices as f32 / 4.0;
+                    let weight =
+                        (-((voice_f - center_index).powi(2)) / (2.0 * sigma * sigma)).exp();
                     total_weight += weight;
 
+                    // Compute detune for this voice.
                     let voice_offset = if self.unison_voices > 1 {
                         self.spread * (2.0 * (voice_f / ((self.unison_voices - 1) as f32)) - 1.0)
                     } else {
                         0.0
                     };
-
                     let total_detune = self.detune + voice_offset;
                     let detuned_freq = freq_sample * 2.0_f32.powf(total_detune / 1200.0);
                     let effective_freq = detuned_freq * freq_mod[i];
                     let phase_inc = effective_freq / self.sample_rate;
+                    let dt_os = phase_inc / os_factor as f32;
 
-                    let mut voice_sample_acc = 0.0;
-                    let oversample_factor = self.oversample_factor;
-                    let base_phase = self.voice_phases[voice];
-
-                    for os in 0..oversample_factor {
-                        // Each sub-sample gets the same external phase mod and feedback.
-                        let sub_phase = (base_phase
-                            + external_phase_mod
-                            + feedback_val
-                            + phase_inc * (os as f32 / oversample_factor as f32))
-                            .rem_euclid(1.0);
-                        let mut sub_sample =
-                            collection.lookup_sample(sub_phase, wavetable_index_sample);
-                        if self.use_polyblep {
-                            sub_sample -= poly_blep(sub_phase, phase_inc);
-                        }
-                        voice_sample_acc += sub_sample;
-                    }
-                    let voice_sample = voice_sample_acc / oversample_factor as f32;
-                    sample_sum += voice_sample * weight;
-
-                    // Update voice phase once per output sample.
-                    self.voice_phases[voice] += phase_inc;
-                    if self.voice_phases[voice] >= 1.0 {
-                        self.voice_phases[voice] -= 1.0;
-                    }
+                    // Use the stored phase for this voice (without mod offsets).
+                    let start_phase = self.voice_phases[voice];
+                    // Compute sub-sample phase:
+                    let sub_phase =
+                        (start_phase + ext_phase + fb + dt_os * (os as f32)).rem_euclid(1.0);
+                    let wv_sample = collection.lookup_sample(sub_phase, wavetable_index_sample);
+                    sample_sum += wv_sample * weight;
                 }
+                // Apply gain modulation per sub-sample and store.
+                oversampled_buffer[i * os_factor + os] = sample_sum * gain_mod_sample;
+            }
 
-                let final_sample = sample_sum / total_weight;
-                output[i] = final_sample * self.gain * gain_mod_sample;
+            // Update each voice’s stored phase (without including external mod or feedback).
+            for voice in 0..self.unison_voices {
+                let voice_offset = if self.unison_voices > 1 {
+                    self.spread * (2.0 * (voice as f32 / ((self.unison_voices - 1) as f32)) - 1.0)
+                } else {
+                    0.0
+                };
+                let total_detune = self.detune + voice_offset;
+                let detuned_freq = freq_sample * 2.0_f32.powf(total_detune / 1200.0);
+                let effective_freq = detuned_freq * freq_mod[i];
+                let phase_inc = effective_freq / self.sample_rate;
+                self.voice_phases[voice] = (self.voice_phases[voice] + phase_inc).rem_euclid(1.0);
+            }
+            // (We could update self.last_output later during decimation.)
+        }
+
+        // --- 7) Filter the oversampled buffer (using persistent filter state) ---
+        simple_lowpass_filter_in_place(
+            &mut oversampled_buffer,
+            os_factor,
+            self.sample_rate,
+            &mut self.filter_prev,
+        );
+
+        // --- 8) Decimate oversampled buffer to produce final output ---
+        if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
+            for i in 0..buffer_size {
+                // Here we use a simple decimation: take the first sub-sample of each block.
+                let sample = oversampled_buffer[i * os_factor];
+                // Recompute total unison weight.
+                let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
+                let sigma = self.unison_voices as f32 / 4.0;
+                let mut total_weight = 0.0;
+                for voice in 0..self.unison_voices {
+                    let voice_f = voice as f32;
+                    let weight =
+                        (-((voice_f - center_index).powi(2)) / (2.0 * sigma * sigma)).exp();
+                    total_weight += weight;
+                }
+                let final_sample = (sample / total_weight) * self.gain;
+                output[i] = final_sample;
                 self.last_output = final_sample;
             }
         }
