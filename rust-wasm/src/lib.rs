@@ -13,11 +13,13 @@ pub use graph::AudioGraph;
 use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
-use nodes::morph_wavetable::{self, SynthWavetable, WavetableMorphCollection, WavetableSynthBank};
+use nodes::morph_wavetable::{
+    cubic_interp, MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
+};
 use nodes::{
-    AnalogOscillator, AnalogOscillatorStateUpdate, Lfo, LfoTriggerMode, LfoWaveform, LpFilter,
-    Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
-    WavetableOscillatorStateUpdate,
+    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Lfo,
+    LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform,
+    Wavetable, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
@@ -37,77 +39,156 @@ use hound;
 use std::error::Error;
 
 /// Convert integer samples of various bit depths to f32 in the range [-1.0, 1.0].
+/// Given a base waveform (one cycle) as a Vec<f32> of length `base_size`,
+/// build a mipmapped wavetable bank by generating a chain of band‑limited tables.
+/// This mimics your earlier mipmapping code (e.g. in wavetable.rs) but for a custom waveform.
+// fn generate_custom_wavetable_bank(
+//     base_samples: Vec<f32>,
+//     base_size: usize,
+//     sample_rate: f32,
+//     lowest_top_freq_hz: f32,
+//     min_table_size: usize,
+//     n_tables: usize,
+// ) -> Result<WavetableBank, Box<dyn Error>> {
+//     let mut tables = Vec::new();
+//     let mut table_size = base_size;
+//     let mut top_freq_hz = lowest_top_freq_hz;
+
+//     for _ in 0..n_tables {
+//         if table_size < min_table_size {
+//             table_size = min_table_size;
+//         }
+//         // Compute the maximum harmonic that can be represented
+//         // (roughly, partial_limit = floor((Nyquist) / top_freq_hz)).
+//         //let partial_limit = ((sample_rate * 0.5) / top_freq_hz).floor() as usize;
+//         // Optionally lower the effective partial limit
+//         //let partial_limit = (((sample_rate * 0.5) / top_freq_hz).floor() as f32 * 0.7).floor() as usize;
+//         let partial_limit =
+//             (((sample_rate * 0.5) / top_freq_hz).floor() as f32 * 0.7).floor() as usize;
+
+//         // Generate the band-limited table from the base_samples.
+//         let table_samples =
+//             generate_custom_table(&base_samples, base_size, table_size, partial_limit)?;
+//         // Create a Wavetable (as defined in your mipmapping module).
+//         let wavetable = Wavetable {
+//             samples: table_samples,
+//             table_size,
+//             top_freq_hz,
+//         };
+//         tables.push(wavetable);
+//         // Prepare for the next mip level.
+//         table_size /= 2;
+//         top_freq_hz *= 2.0;
+//     }
+//     // Reverse the tables so that table[0] covers the lowest frequencies.
+//     tables.reverse();
+//     Ok(WavetableBank { tables })
+// }
+
+/// Given the base waveform (one cycle) in `base_samples` (length = base_size),
+/// generate a band-limited table of length `table_size` by FFT–processing:
+/// 1. Resample (if needed) to `table_size`.
+/// 2. FFT the samples, zero out harmonics above `max_harmonic`,
+///    then perform an inverse FFT and normalize.
+fn generate_custom_table(
+    base_samples: &Vec<f32>,
+    base_size: usize,
+    table_size: usize,
+    max_harmonic: usize,
+) -> Result<Vec<f32>, Box<dyn Error>> {
+    use rustfft::{num_complex::Complex, FftPlanner};
+
+    // If the desired table size differs from base_size, resample using cubic interpolation.
+    let resampled: Vec<f32> = if table_size != base_size {
+        (0..table_size)
+            .map(|i| {
+                let pos = i as f32 * base_size as f32 / table_size as f32;
+                cubic_interp(&base_samples, pos)
+            })
+            .collect()
+    } else {
+        base_samples.clone()
+    };
+
+    // Convert to complex numbers.
+    let mut spectrum: Vec<Complex<f32>> = resampled
+        .iter()
+        .map(|&s| Complex { re: s, im: 0.0 })
+        .collect();
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(table_size);
+    fft.process(&mut spectrum);
+
+    // Zero out all harmonics above max_harmonic.
+    // (Assumes spectrum[0] is DC; we keep indices 1..=max_harmonic and the symmetric ones.)
+    for i in (max_harmonic + 1)..(table_size - max_harmonic) {
+        spectrum[i] = Complex { re: 0.0, im: 0.0 };
+    }
+
+    // Inverse FFT.
+    let ifft = planner.plan_fft_inverse(table_size);
+    ifft.process(&mut spectrum);
+
+    // Normalize and extract real part.
+    let mut samples_out: Vec<f32> = spectrum.iter().map(|c| c.re / table_size as f32).collect();
+
+    // Optional amplitude normalization.
+    if let Some(peak) = samples_out
+        .iter()
+        .map(|s| s.abs())
+        .max_by(|a, b| a.partial_cmp(b).unwrap())
+    {
+        if peak > 1e-12 {
+            for s in samples_out.iter_mut() {
+                *s /= peak;
+            }
+        }
+    }
+    // Append a wrap-around sample.
+    samples_out.push(samples_out[0]);
+    Ok(samples_out)
+}
+
+/// Convert a WAV file (via a hound reader) into a WavetableMorphCollection that contains
+/// one mipmapped wavetable per complete cycle (of length `base_size`) found in the file.
 fn import_wav_hound_reader<R: std::io::Read>(
     reader: R,
     base_size: usize,
-) -> Result<WavetableMorphCollection, Box<dyn std::error::Error>> {
+) -> Result<WavetableMorphCollection, Box<dyn Error>> {
     let mut wav_reader = hound::WavReader::new(reader)?;
     let spec = wav_reader.spec();
-    let bits = spec.bits_per_sample;
-    let format = spec.sample_format;
+    let sample_rate = spec.sample_rate as f32;
 
-    // Decide how to read + convert based on the WAV's format.
-    let samples: Vec<f32> = match (bits, format) {
-        // ----- 32-bit float WAV -----
+    // Read samples from the WAV (handling various bit depths/formats).
+    let samples: Vec<f32> = match (spec.bits_per_sample, spec.sample_format) {
         (32, hound::SampleFormat::Float) => {
             wav_reader.samples::<f32>().map(|s| s.unwrap()).collect()
         }
-
-        // ----- 16-bit int WAV -----
-        (16, hound::SampleFormat::Int) => {
-            // Here we read i16 and convert to f32 in [-1.0, 1.0].
-            wav_reader
-                .samples::<i16>()
-                .map(|s| {
-                    let val = s.unwrap() as f32;
-                    val / (i16::MAX as f32)
-                })
-                .collect()
-        }
-
-        // ----- 24-bit int WAV -----
+        (16, hound::SampleFormat::Int) => wav_reader
+            .samples::<i16>()
+            .map(|s| s.unwrap() as f32 / i16::MAX as f32)
+            .collect(),
         (24, hound::SampleFormat::Int) => {
-            // 24-bit samples are stored in a 32-bit container (i32),
-            // but only the lower 24 bits are valid. We sign-extend and divide by the max.
-            //
-            // For 24-bit, the maximum positive sample is 0x7FFFFF (8388607 decimal).
-            // We'll shift left then right to sign-extend properly, then scale.
-            let shift = 32 - 24; // 8
+            let shift = 32 - 24;
             wav_reader
                 .samples::<i32>()
-                .map(|s| {
-                    let val_32 = s.unwrap() << shift >> shift; // sign-extend
-                    val_32 as f32 / 8_388_607.0
-                })
+                .map(|s| (s.unwrap() << shift >> shift) as f32 / 8_388_607.0)
                 .collect()
         }
-
-        // ----- 32-bit int WAV -----
-        (32, hound::SampleFormat::Int) => {
-            // 32-bit integer max is i32::MAX = 2_147_483_647
-            wav_reader
-                .samples::<i32>()
-                .map(|s| {
-                    let val = s.unwrap() as f32;
-                    val / (i32::MAX as f32)
-                })
-                .collect()
-        }
-
-        // ----- Other formats not handled in this snippet -----
-        _ => {
+        (32, hound::SampleFormat::Int) => wav_reader
+            .samples::<i32>()
+            .map(|s| s.unwrap() as f32 / i32::MAX as f32)
+            .collect(),
+        (bits, format) => {
             return Err(format!(
                 "Unsupported WAV format: bits_per_sample={} sample_format={:?}",
                 bits, format
             )
-            .into());
+            .into())
         }
     };
 
-    // At this point, `samples` is a Vec<f32> scaled to [-1.0, 1.0] if from an int format,
-    // or directly read if from a float format.
-
-    // Optionally do your base_size logic:
     let total_samples = samples.len();
     if total_samples % base_size != 0 {
         eprintln!(
@@ -115,18 +196,21 @@ fn import_wav_hound_reader<R: std::io::Read>(
             total_samples % base_size
         );
     }
+    let num_cycles = total_samples / base_size;
+    web_sys::console::log_1(&format!("Number of complete wavetables: {}", num_cycles).into());
 
-    let num_tables = total_samples / base_size;
-    web_sys::console::log_1(&format!("Number of complete wavetables: {}", num_tables).into());
-
-    // Create a new morph collection and add each complete wavetable.
     let mut collection = WavetableMorphCollection::new();
-    for i in 0..num_tables {
+
+    for i in 0..num_cycles {
         let start = i * base_size;
         let end = start + base_size;
-        let table_samples = samples[start..end].to_vec();
-        let wavetable = SynthWavetable::new(table_samples, base_size);
-        collection.add_wavetable(wavetable);
+        let cycle_samples = samples[start..end].to_vec();
+
+        // Generate a mipmapped bank using our dynamic method.
+        let bank = generate_mipmapped_bank_dynamic(cycle_samples, base_size, sample_rate)?;
+        // Wrap the bank in your collection’s expected type (for example, MipmappedWavetable).
+        let mipmapped = MipmappedWavetable { bank };
+        collection.add_wavetable(mipmapped);
     }
 
     Ok(collection)
@@ -349,53 +433,40 @@ impl AudioEngine {
     #[wasm_bindgen(constructor)]
     pub fn new(sample_rate: f32) -> Self {
         let num_voices = 8;
-
-        // Create the wavetable banks using the actual sample_rate.
         let max_table_size = 2048;
-        let min_table_size = 64;
-        let lowest_top_freq_hz = 20.0;
-
-        let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new()));
+        console::log_1(&format!("INITIALIZING AUDIO ENGINE WITH {} VOICES", num_voices).into());
+        console::log_1(&format!("WavetableSynthBank").into());
+        let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
         let mut banks = HashMap::new();
+        console::log_1(&format!("Creating Sine").into());
         banks.insert(
             Waveform::Sine,
-            Arc::new(WavetableBank::new(
-                Waveform::Sine,
-                max_table_size,
-                min_table_size,
-                lowest_top_freq_hz,
-                sample_rate,
-            )),
+            Arc::new(
+                WavetableBank::new(Waveform::Sine, max_table_size, sample_rate)
+                    .expect("Failed to create Sine wavetable bank"),
+            ),
         );
+        console::log_1(&format!("Creating Saw",).into());
         banks.insert(
             Waveform::Saw,
-            Arc::new(WavetableBank::new(
-                Waveform::Saw,
-                max_table_size,
-                min_table_size,
-                lowest_top_freq_hz,
-                sample_rate,
-            )),
+            Arc::new(
+                WavetableBank::new(Waveform::Saw, max_table_size, sample_rate)
+                    .expect("Failed to create Saw wavetable bank"),
+            ),
         );
         banks.insert(
             Waveform::Square,
-            Arc::new(WavetableBank::new(
-                Waveform::Square,
-                max_table_size,
-                min_table_size,
-                lowest_top_freq_hz,
-                sample_rate,
-            )),
+            Arc::new(
+                WavetableBank::new(Waveform::Square, max_table_size, sample_rate)
+                    .expect("Failed to create Square wavetable bank"),
+            ),
         );
         banks.insert(
             Waveform::Triangle,
-            Arc::new(WavetableBank::new(
-                Waveform::Triangle,
-                max_table_size,
-                min_table_size,
-                lowest_top_freq_hz,
-                sample_rate,
-            )),
+            Arc::new(
+                WavetableBank::new(Waveform::Triangle, max_table_size, sample_rate)
+                    .expect("Failed to create Triangle wavetable bank"),
+            ),
         );
 
         Self {

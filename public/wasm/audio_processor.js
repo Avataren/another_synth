@@ -257,7 +257,6 @@ export const WasmNoiseType = Object.freeze({
     Brownian: 2, "2": "Brownian",
 });
 /**
- * Example waveforms.
  * @enum {0 | 1 | 2 | 3 | 4}
  */
 export const Waveform = Object.freeze({
@@ -1359,9 +1358,7 @@ export class OscillatorStateUpdate {
 const WavetableOscillatorStateUpdateFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wavetableoscillatorstateupdate_free(ptr >>> 0, 1));
-/**
- * A state update message for the oscillator.
- */
+
 export class WavetableOscillatorStateUpdate {
 
     __destroy_into_raw() {

@@ -4,7 +4,6 @@ use rustfft::{num_complex::Complex, FftPlanner};
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-/// Example waveforms.
 #[wasm_bindgen]
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -16,185 +15,175 @@ pub enum Waveform {
     Custom = 4,
 }
 
-/// One wavetable: time-domain samples plus the "top frequency" in Hz it can handle.
+/// A single wavetable: time–domain samples plus the “top frequency” (Hz) that table can safely cover.
 pub struct Wavetable {
     pub samples: Vec<f32>,
     pub table_size: usize,
     pub top_freq_hz: f32,
 }
 
-/// A set of multiple wavetables covering different frequency ranges.
+/// A bank of wavetables, each covering a different frequency range.
 pub struct WavetableBank {
     pub tables: Vec<Wavetable>,
 }
 
-/// Fixed number of tables we want to build:
-const N_TABLES: usize = 11;
-
-impl WavetableBank {
-    /// Build a bank of N = N_TABLES tables from largest to smallest size,
-    /// doubling top frequency each time.
-    ///
-    /// - `waveform`: Sine, Saw, Square, Triangle, etc.
-    /// - `max_table_size`: e.g. 2048 or 4096.
-    /// - `min_table_size`: e.g. 64.
-    /// - `lowest_top_freq_hz`: the largest fundamental freq handled by the biggest table. e.g. 20.0 Hz
-    /// - `sample_rate`: your audio sample rate.
-    pub fn new(
-        waveform: Waveform,
-        max_table_size: usize,
-        min_table_size: usize,
-        lowest_top_freq_hz: f32,
-        sample_rate: f32,
-    ) -> Self {
-        let mut tables = Vec::new();
-
-        // Start with the largest table and a low top frequency (e.g. 20 Hz).
-        let mut table_size = max_table_size;
-        let mut top_freq_hz = lowest_top_freq_hz;
-
-        for i in 0..N_TABLES {
-            // Ensure we don't go below min_table_size.
-            if table_size < min_table_size {
-                table_size = min_table_size;
-            }
-
-            // partial_limit = floor((Nyquist) / top_freq_hz)
-            let partial_limit = ((sample_rate * 0.5) / top_freq_hz).floor() as usize;
-
-            // Build the table
-            let samples = generate_waveform_table(waveform, table_size, partial_limit);
-
-            console::log_1(
-                &format!(
-                    "Table {:2}: size={:4}, partial_limit={:4}, top_freq_hz={:.2}",
-                    i, table_size, partial_limit, top_freq_hz
-                )
-                .into(),
-            );
-
-            tables.push(Wavetable {
-                samples,
-                table_size,
-                top_freq_hz,
-            });
-
-            // For the next iteration: halve table size, double the top frequency.
-            // Even if we stay at `min_table_size`, we can keep going to fill all 16 tables.
-            table_size >>= 1; // e.g. 2048 -> 1024 -> 512 ...
-            top_freq_hz *= 2.0; // e.g. 20 Hz -> 40 Hz -> 80 Hz ...
-        }
-
-        // Aascending top_freq order for easier selection logic,
-        // We'll assume table[0] covers up to 20 Hz,
-        // table[1] covers up to 40 Hz, etc. Then in `select_table`, we pick
-        // the first table whose top_freq_hz >= requested frequency.
-
-        WavetableBank { tables }
+/// Helper: Given frequency–domain arrays, find the highest harmonic that exceeds a small threshold.
+fn compute_max_harmonic(freq_re: &[f32], freq_im: &[f32], num_samples: usize) -> usize {
+    let min_val = 0.000001; // threshold (–120 dB)
+    let mut max_harmonic = num_samples / 2; // Nyquist index
+    while max_harmonic > 0 && (freq_re[max_harmonic].abs() + freq_im[max_harmonic].abs() < min_val)
+    {
+        max_harmonic -= 1;
     }
-
-    /// Pick the first table whose `top_freq_hz` >= `frequency`.
-    /// If none found, return the last table.
-    pub fn select_table(&self, frequency: f32) -> &Wavetable {
-        for (i, t) in self.tables.iter().enumerate() {
-            if frequency <= t.top_freq_hz {
-                return t;
-            }
-        }
-        let last_index = self.tables.len() - 1;
-        &self.tables[last_index]
-    }
+    max_harmonic
 }
 
-/// Generate one time-domain table by discarding partials above `max_harmonic`.
-fn generate_waveform_table(waveform: Waveform, table_size: usize, max_harmonic: usize) -> Vec<f32> {
-    let (freq_re, freq_im) = generate_full_spectrum(waveform, table_size);
-
-    // Prepare arrays for "band-limited" partials
-    let mut limited_re = vec![0.0; table_size];
-    let mut limited_im = vec![0.0; table_size];
-
-    let max_h = max_harmonic.min(table_size >> 1);
-
-    // Copy partials 1..=max_h
-    for i in 1..=max_h {
-        limited_re[i] = freq_re[i];
-        limited_im[i] = freq_im[i];
-
-        let neg = table_size - i;
-        limited_re[neg] = freq_re[neg];
-        limited_im[neg] = freq_im[neg];
+/// Generates a bank of mipmapped tables by taking a full–cycle base table (in time domain),
+/// computing its FFT, and then successively discarding higher partials.
+/// This function is now used for all waveform types.
+pub fn generate_mipmapped_bank_dynamic(
+    mut base_samples: Vec<f32>,
+    base_size: usize,
+    sample_rate: f32,
+) -> Result<WavetableBank, Box<dyn std::error::Error>> {
+    // If base_samples contains an extra wrap–around sample, remove it.
+    if base_samples.len() == base_size + 1 {
+        base_samples.truncate(base_size);
+    } else if base_samples.len() != base_size {
+        return Err(format!(
+            "Expected base_samples length {} but got {}",
+            base_size,
+            base_samples.len()
+        )
+        .into());
     }
 
-    let mut spectrum: Vec<Complex<f32>> = limited_re
-        .into_iter()
-        .zip(limited_im.into_iter())
-        .map(|(re, im)| Complex { re, im })
+    // Convert the base cycle into the frequency domain.
+    let mut spectrum: Vec<Complex<f32>> = base_samples
+        .iter()
+        .map(|&s| Complex { re: s, im: 0.0 })
         .collect();
 
+    console::log_1(&format!("Generated base table of length {}", base_size).into());
     let mut planner = FftPlanner::new();
-    let ifft = planner.plan_fft_inverse(table_size);
-    ifft.process(&mut spectrum);
+    let fft = planner.plan_fft_forward(base_size);
+    console::log_1(&format!("Planned FFT of length {}", base_size).into());
+    fft.process(&mut spectrum);
+    console::log_1(&format!("FFT processed base table of length {}", base_size).into());
 
-    // Normalize by table_size
-    let mut samples: Vec<f32> = spectrum.iter().map(|c| c.re / table_size as f32).collect();
+    // Separate the real and imaginary parts.
+    let freq_re: Vec<f32> = spectrum.iter().map(|c| c.re).collect();
+    let freq_im: Vec<f32> = spectrum.iter().map(|c| c.im).collect();
 
-    // Optional amplitude normalize
-    if let Some(&max_val) = samples
-        .iter()
-        .max_by(|a, b| a.abs().partial_cmp(&b.abs()).unwrap())
-    {
-        let peak = max_val.abs();
-        if peak > 1e-12 {
-            for s in &mut samples {
-                *s /= peak;
-            }
-        }
+    // Determine the highest significant harmonic.
+    let mut max_harmonic = compute_max_harmonic(&freq_re, &freq_im, base_size);
+    if max_harmonic == 0 {
+        return Err("No significant harmonics found in the waveform".into());
     }
 
-    // Add wrap-around sample
-    samples.push(samples[0]);
-    samples
+    // Compute the initial top frequency (in Hz).
+    // (The strict non-aliasing condition is f0 <= 1/(2*max_harmonic), but we allow a little extra.)
+    let mut top_freq = (2.0 / 3.0 / (max_harmonic as f32)) * sample_rate;
+
+    let mut tables = Vec::new();
+    let mut current_max_harmonic = max_harmonic;
+
+    // Generate mip–levels until there are no harmonics left.
+    while current_max_harmonic > 0 {
+        console::log_1(
+            &format!(
+                "Generating mip level with {} harmonics",
+                current_max_harmonic
+            )
+            .into(),
+        );
+        // Create a new (zero–filled) frequency buffer.
+        let mut level_spectrum = vec![Complex { re: 0.0, im: 0.0 }; base_size];
+
+        // Copy harmonics 1..=current_max_harmonic (and the corresponding symmetric bins).
+        for idx in 1..=current_max_harmonic {
+            level_spectrum[idx] = spectrum[idx];
+            level_spectrum[base_size - idx] = spectrum[base_size - idx];
+        }
+
+        // Inverse FFT to get the time–domain wavetable.
+        let ifft = planner.plan_fft_inverse(base_size);
+        let mut time_domain = level_spectrum.clone();
+        ifft.process(&mut time_domain);
+
+        // Normalize and extract real parts.
+        let mut table: Vec<f32> = time_domain
+            .iter()
+            .map(|c| c.re / base_size as f32)
+            .collect();
+        // Append a wrap–around sample for continuity.
+        table.push(table[0]);
+
+        tables.push(Wavetable {
+            samples: table,
+            table_size: base_size,
+            top_freq_hz: top_freq,
+        });
+
+        // For the next level, double the top frequency and halve the number of harmonics.
+        top_freq *= 2.0;
+        current_max_harmonic /= 2;
+    }
+
+    Ok(WavetableBank { tables })
 }
 
-/// Generate the *ideal* full spectrum (real & imag) for one cycle of a waveform.
+/// Generate the *ideal* full spectrum (real & imaginary parts) for one cycle of a waveform,
+/// with Fourier coefficients scaled so that after the inverse FFT (which divides by `table_size`)
+/// the resulting waveform has the intended amplitude.
 fn generate_full_spectrum(waveform: Waveform, table_size: usize) -> (Vec<f32>, Vec<f32>) {
     let mut freq_re = vec![0.0; table_size];
     let mut freq_im = vec![0.0; table_size];
 
+    // For a sine wave (and similarly for other waveforms), the proper Fourier series
+    // coefficients (assuming an inverse FFT scaling by 1/table_size) are:
+    //   X[1] = -i * table_size/2,  X[table_size-1] = i * table_size/2.
+    // This ensures that:
+    //   x[n] = 1/table_size * (X[1]*exp(i*2pi*n/table_size) + X[table_size-1]*exp(-i*2pi*n/table_size))
+    // equals sin(2pi*n/table_size) with peak amplitude ~1.
+    let scale = table_size as f32 / 2.0;
+
     match waveform {
         Waveform::Sine => {
-            // Single partial at n=1
-            freq_im[1] = -0.5;
-            freq_im[table_size - 1] = 0.5;
+            // Only one partial: n=1 (and its symmetric counterpart).
+            freq_im[1] = -scale;
+            freq_im[table_size - 1] = scale;
         }
         Waveform::Saw => {
+            // Sawtooth: all harmonics up to Nyquist with amplitude ~1/n.
             for n in 1..=(table_size >> 1) {
-                freq_im[n] = -1.0 / (n as f32);
-                freq_im[table_size - n] = -freq_im[n];
+                freq_im[n] = -scale / (n as f32);
+                freq_im[table_size - n] = scale / (n as f32);
             }
         }
         Waveform::Square => {
+            // Square: only odd harmonics.
             for n in (1..=(table_size >> 1)).step_by(2) {
-                freq_im[n] = 1.0 / (n as f32);
-                freq_im[table_size - n] = -freq_im[n];
+                freq_im[n] = scale / (n as f32);
+                freq_im[table_size - n] = -scale / (n as f32);
             }
         }
         Waveform::Triangle => {
+            // Triangle: only odd harmonics with amplitudes decaying as 1/n².
             let mut i = 0;
             for n in (1..=(table_size >> 1)).step_by(2) {
-                let amplitude = if i % 2 == 0 { 1.0 } else { -1.0 };
-                freq_im[n] = amplitude / (n * n) as f32;
+                let amplitude = if i % 2 == 0 { scale } else { -scale };
+                freq_im[n] = amplitude / ((n * n) as f32);
                 freq_im[table_size - n] = -freq_im[n];
                 i += 1;
             }
         }
         Waveform::Custom => {
-            // Fill your custom partials here...
+            // Implement your custom waveform coefficients here.
         }
     }
 
-    // Zero out DC and Nyquist
+    // Zero out the DC and Nyquist bins.
     freq_re[0] = 0.0;
     freq_im[0] = 0.0;
     let half = table_size >> 1;
@@ -202,4 +191,54 @@ fn generate_full_spectrum(waveform: Waveform, table_size: usize) -> (Vec<f32>, V
     freq_im[half] = 0.0;
 
     (freq_re, freq_im)
+}
+
+/// Generate a base cycle (time–domain) from the full–spectrum ideal waveform.
+/// The result is a table that spans one period, with a duplicate sample appended at the end.
+fn generate_base_samples(waveform: Waveform, table_size: usize) -> Vec<f32> {
+    let (freq_re, freq_im) = generate_full_spectrum(waveform, table_size);
+    let mut spectrum: Vec<Complex<f32>> = freq_re
+        .into_iter()
+        .zip(freq_im.into_iter())
+        .map(|(re, im)| Complex { re, im })
+        .collect();
+
+    let mut planner = FftPlanner::new();
+    let ifft = planner.plan_fft_inverse(table_size);
+    ifft.process(&mut spectrum);
+    let mut samples: Vec<f32> = spectrum.iter().map(|c| c.re / table_size as f32).collect();
+    samples.push(samples[0]); // wrap–around sample for seamless looping
+    samples
+}
+
+impl WavetableBank {
+    /// Create a bank of wavetables for the given waveform using the dynamic mip–mapping approach.
+    /// - `waveform`: which waveform to build (Sine, Saw, Square, Triangle, or Custom).
+    /// - `max_table_size`: size of the base (full–spectrum) table (e.g. 2048 or 4096).
+    /// - `sample_rate`: the audio sample rate.
+    ///
+    /// (Note: since the mip–mapping process may fail if no significant harmonics are found,
+    /// this method returns a `Result`.)
+    pub fn new(
+        waveform: Waveform,
+        max_table_size: usize,
+        sample_rate: f32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        // Generate a full–cycle (base) table with all available harmonics.
+        let base_samples = generate_base_samples(waveform, max_table_size);
+        // Now build the mip–mapped bank from the base table.
+        console::log_1(&format!("Generating mipmapped bank for {:?} waveform", waveform).into());
+        generate_mipmapped_bank_dynamic(base_samples, max_table_size, sample_rate)
+    }
+
+    /// Select the first table whose `top_freq_hz` is greater than or equal to the given frequency.
+    /// If no such table exists, the last (lowest–quality) table is returned.
+    pub fn select_table(&self, frequency: f32) -> &Wavetable {
+        for t in &self.tables {
+            if frequency <= t.top_freq_hz {
+                return t;
+            }
+        }
+        self.tables.last().unwrap()
+    }
 }
