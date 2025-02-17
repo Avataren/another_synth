@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use web_sys::console;
 
 // These are assumed to be defined elsewhere in your codebase:
 use crate::graph::{ModulationProcessor, ModulationSource};
@@ -11,44 +10,89 @@ use crate::{AudioNode, PortId};
 
 use super::morph_wavetable::{WavetableMorphCollection, WavetableSynthBank};
 
-/// A helper function implementing a simple polyBLEP correction.
-/// This function returns a correction value to subtract from discontinuous
-/// waveforms (e.g. sawtooth). The parameter `t` is the (normalized) phase,
-/// and `dt` is the phase increment per sample.
-fn poly_blep(t: f32, dt: f32) -> f32 {
-    if t < dt {
-        // scale t to [0,1]
-        let t = t / dt;
-        return t + t - t * t - 1.0;
-    } else if t > 1.0 - dt {
-        let t = (t - 1.0) / dt;
-        return t * t + t + t + 1.0;
+use std::f32::consts::PI;
+
+/// A helper sinc function.
+fn sinc(x: f32) -> f32 {
+    if x.abs() < 1e-6 {
+        1.0
+    } else {
+        x.sin() / x
     }
-    0.0
 }
 
-/// A simple one-pole lowpass filter that carries its state.
-/// (In production you may want a higher-order filter.)
-fn simple_lowpass_filter_in_place(
-    buffer: &mut [f32],
-    oversample_factor: usize,
-    sample_rate: f32,
-    state: &mut f32,
-) {
-    // For oversampled data the effective cutoff should be scaled.
-    let cutoff = (sample_rate * 0.45) / (oversample_factor as f32);
-    let rc = 1.0 / (2.0 * std::f32::consts::PI * cutoff.max(1.0));
-    let dt = 1.0 / (sample_rate * oversample_factor as f32);
-    let alpha = dt / (rc + dt);
-    let mut prev = *state;
-    for x in buffer.iter_mut() {
-        let out = prev + alpha * (*x - prev);
-        *x = out;
-        prev = out;
-    }
-    *state = prev;
+/// A FIR lowpass filter based on a windowed-sinc design.
+/// This filter maintains an internal delay line (state) so that it can process data in blocks.
+pub struct FIRFilter {
+    coeffs: Vec<f32>,
+    delay_line: Vec<f32>, // Holds the last (N-1) samples from the previous block.
 }
 
+impl FIRFilter {
+    /// Create a new FIR lowpass filter.
+    ///
+    /// * `num_taps` - Number of filter taps (e.g. 64).
+    /// * `oversample_factor` - The oversampling factor.
+    ///
+    /// The cutoff is chosen such that (in Hz) it is near 0.45× the base sample rate.
+    /// In the oversampled domain (sample_rate * oversample_factor), the normalized cutoff is:
+    /// f_c = (0.45 * sample_rate) / (sample_rate * oversample_factor/2) = 0.9 / oversample_factor.
+    pub fn new(num_taps: usize, oversample_factor: usize) -> Self {
+        // Compute normalized cutoff frequency (cycles/sample, with Nyquist = 0.5).
+        let f_c = (0.9 / oversample_factor as f32).min(0.5);
+        let center = (num_taps - 1) as f32 / 2.0;
+        let mut coeffs = Vec::with_capacity(num_taps);
+        for n in 0..num_taps {
+            let n_f = n as f32;
+            let x = n_f - center;
+            // Ideal lowpass impulse response (sinc) with cutoff f_c.
+            let ideal = if x == 0.0 {
+                2.0 * f_c
+            } else {
+                2.0 * f_c * sinc(2.0 * PI * f_c * x)
+            };
+            // Hamming window
+            let window = 0.54 - 0.46 * ((2.0 * PI * n_f) / ((num_taps - 1) as f32)).cos();
+            coeffs.push(ideal * window);
+        }
+        // Normalize coefficients so that their sum is 1.0.
+        let sum: f32 = coeffs.iter().sum();
+        for coef in coeffs.iter_mut() {
+            *coef /= sum;
+        }
+        Self {
+            coeffs,
+            delay_line: vec![0.0; num_taps - 1],
+        }
+    }
+
+    /// Process a block of input samples.
+    /// This method applies the FIR filter on the input block while preserving state across blocks.
+    pub fn process_block(&mut self, input: &[f32]) -> Vec<f32> {
+        let num_taps = self.coeffs.len();
+        let mut output = Vec::with_capacity(input.len());
+
+        // Create an extended buffer by prepending the previous delay_line.
+        let mut extended = self.delay_line.clone();
+        extended.extend_from_slice(input);
+
+        // Convolve the filter kernel with the extended input.
+        for i in 0..input.len() {
+            let mut y = 0.0;
+            for j in 0..num_taps {
+                y += self.coeffs[j] * extended[i + j];
+            }
+            output.push(y);
+        }
+        // Update delay_line with the last (num_taps - 1) samples of the extended buffer.
+        let new_delay_start = extended.len() - (num_taps - 1);
+        self.delay_line
+            .copy_from_slice(&extended[new_delay_start..]);
+        output
+    }
+}
+
+/// A state update message for the oscillator.
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy)]
 pub struct WavetableOscillatorStateUpdate {
@@ -119,9 +163,8 @@ pub struct WavetableOscillator {
     // --- New fields for improved quality ---
     /// Oversampling factor (1 = no oversampling, 2 = 2×, 4 = 4×, etc.)
     oversample_factor: usize,
-    /// When true, apply polyBLEP correction at waveform discontinuities.
-    use_polyblep: bool,
-    filter_prev: f32,
+    /// FIR filter for anti-aliasing when decimating oversampled data.
+    fir_filter: FIRFilter,
 }
 
 impl ModulationProcessor for WavetableOscillator {}
@@ -130,8 +173,10 @@ impl WavetableOscillator {
     /// Create a new oscillator.
     /// - `sample_rate`: audio sample rate.
     /// - `bank`: the wavetable synth bank (passed by value).
-    /// - `collection_name`: the name of the morph collection to use (e.g., "default").
+    /// - The FIR filter is initialized with a chosen number of taps.
     pub fn new(sample_rate: f32, bank: Rc<RefCell<WavetableSynthBank>>) -> Self {
+        let oversample_factor = 4; // For example, 4× oversampling.
+        let num_taps = 32; // Choose a filter length (more taps → sharper cutoff).
         Self {
             sample_rate,
             gain: 1.0,
@@ -150,9 +195,8 @@ impl WavetableOscillator {
             wavetable_index: 0.0,
             collection_name: "default".to_string(),
             wavetable_bank: bank,
-            oversample_factor: 4, // change to 2, 4, etc. to enable oversampling
-            use_polyblep: false,  // set true if your waveform has discontinuities (e.g. saw)
-            filter_prev: 0.0,
+            oversample_factor,
+            fir_filter: FIRFilter::new(num_taps, oversample_factor),
         }
     }
 
@@ -291,10 +335,9 @@ impl AudioNode for WavetableOscillator {
             let mod_index_sample = mod_index[i];
 
             // Compute external phase modulation (applied once per sample).
-            let ext_phase = (phase_mod_sample * mod_index_sample) / (2.0 * std::f32::consts::PI);
+            let ext_phase = (phase_mod_sample * mod_index_sample) / (2.0 * PI);
             // Compute feedback (applied once per sample).
-            let fb = (self.last_output * self.feedback_amount * feedback_mod_sample)
-                / (std::f32::consts::PI * 1.5);
+            let fb = (self.last_output * self.feedback_amount * feedback_mod_sample) / (PI * 1.5);
 
             // For each oversampled sub-sample within this sample:
             for os in 0..os_factor {
@@ -350,19 +393,14 @@ impl AudioNode for WavetableOscillator {
             // (We could update self.last_output later during decimation.)
         }
 
-        // --- 7) Filter the oversampled buffer (using persistent filter state) ---
-        simple_lowpass_filter_in_place(
-            &mut oversampled_buffer,
-            os_factor,
-            self.sample_rate,
-            &mut self.filter_prev,
-        );
+        // --- 7) Filter the oversampled buffer using the high-quality FIR filter ---
+        let filtered_oversampled = self.fir_filter.process_block(&oversampled_buffer);
 
         // --- 8) Decimate oversampled buffer to produce final output ---
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in 0..buffer_size {
-                // Here we use a simple decimation: take the first sub-sample of each block.
-                let sample = oversampled_buffer[i * os_factor];
+                // Here we decimate by taking the first sub-sample of each block.
+                let sample = filtered_oversampled[i * os_factor];
                 // Recompute total unison weight.
                 let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
                 let sigma = self.unison_voices as f32 / 4.0;
@@ -386,6 +424,8 @@ impl AudioNode for WavetableOscillator {
         for phase in self.voice_phases.iter_mut() {
             *phase = 0.0;
         }
+        // Optionally, clear the FIR filter delay line:
+        self.fir_filter.delay_line.fill(0.0);
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

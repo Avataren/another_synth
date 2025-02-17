@@ -1359,7 +1359,9 @@ export class OscillatorStateUpdate {
 const WavetableOscillatorStateUpdateFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wavetableoscillatorstateupdate_free(ptr >>> 0, 1));
-
+/**
+ * A state update message for the oscillator.
+ */
 export class WavetableOscillatorStateUpdate {
 
     __destroy_into_raw() {

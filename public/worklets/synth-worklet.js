@@ -1568,7 +1568,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleImportWavetableData(data) {
     const uint8Data = new Uint8Array(data.data);
-    console.log("data:", uint8Data);
     this.audioEngine.import_wavetable(data.nodeId, uint8Data, 2048);
   }
   // Inside SynthAudioProcessor's handleMessage method:
@@ -1997,7 +1996,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleUpdateEnvelope(data) {
     if (!this.audioEngine) return;
-    console.log("handleUpdateEnvelope:", data);
     try {
       this.audioEngine.update_envelope(
         data.envelopeId,

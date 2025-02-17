@@ -208,7 +208,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     data: Uint8Array;
   }) {
     const uint8Data = new Uint8Array(data.data);
-    console.log('data:', uint8Data);
     this.audioEngine!.import_wavetable(data.nodeId, uint8Data, 2048);
   }
 
@@ -774,7 +773,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateEnvelope(data: EnvelopeUpdate) {
     if (!this.audioEngine) return;
-    console.log('handleUpdateEnvelope:', data);
+    //console.log('handleUpdateEnvelope:', data);
     try {
       this.audioEngine.update_envelope(
         data.envelopeId,
