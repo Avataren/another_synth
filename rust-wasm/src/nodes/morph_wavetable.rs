@@ -145,10 +145,10 @@ pub fn generate_saw_table(base_size: usize) -> SynthWavetable {
     let samples: Vec<f32> = (0..base_size)
         .map(|i| {
             let phase = i as f32 / base_size as f32;
-            2.0 * phase - 1.0
+            1.0 - 2.0 * phase // Reversed saw wave: starts at 1.0 and goes to -1.0
         })
         .collect();
-    console::log_1(&format!("Generated saw table (size: {})", base_size).into());
+    console::log_1(&format!("Generated reversed saw table (size: {})", base_size).into());
     SynthWavetable::new(samples, base_size)
 }
 

@@ -126,8 +126,8 @@ impl WavetableOscillator {
             wavetable_index: 0.0,
             collection_name: "default".to_string(),
             wavetable_bank: bank,
-            oversample_factor: 16, // change to 2, 4, etc. to enable oversampling
-            use_polyblep: true,    // set true if your waveform has discontinuities (e.g. saw)
+            oversample_factor: 4, // change to 2, 4, etc. to enable oversampling
+            use_polyblep: true,   // set true if your waveform has discontinuities (e.g. saw)
         }
     }
 
