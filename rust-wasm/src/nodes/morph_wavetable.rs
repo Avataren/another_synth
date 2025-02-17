@@ -55,9 +55,9 @@ impl WavetableMorphCollection {
     pub fn generate_test_collection(base_size: usize) -> Self {
         let mut collection = Self::new();
         collection.add_wavetable(generate_sine_table(base_size));
+        collection.add_wavetable(generate_triangle_table(base_size));
         collection.add_wavetable(generate_saw_table(base_size));
         collection.add_wavetable(generate_square_table(base_size));
-        collection.add_wavetable(generate_triangle_table(base_size));
         collection
     }
 
