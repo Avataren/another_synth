@@ -10,7 +10,21 @@ use crate::{AudioNode, PortId};
 
 use super::morph_wavetable::{WavetableMorphCollection, WavetableSynthBank};
 
-// Import the bank and related types from our wavetable module.
+/// A helper function implementing a simple polyBLEP correction.
+/// This function returns a correction value to subtract from discontinuous
+/// waveforms (e.g. sawtooth). The parameter `t` is the (normalized) phase,
+/// and `dt` is the phase increment per sample.
+fn poly_blep(t: f32, dt: f32) -> f32 {
+    if t < dt {
+        // scale t to [0,1]
+        let t = t / dt;
+        return t + t - t * t - 1.0;
+    } else if t > 1.0 - dt {
+        let t = (t - 1.0) / dt;
+        return t * t + t + t + 1.0;
+    }
+    0.0
+}
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy)]
@@ -79,6 +93,11 @@ pub struct WavetableOscillator {
     collection_name: String,
     // The bank of wavetable morph collections.
     wavetable_bank: Rc<WavetableSynthBank>,
+    // --- New fields for improved quality ---
+    /// Oversampling factor (1 = no oversampling, 2 = 2×, 4 = 4×, etc.)
+    oversample_factor: usize,
+    /// When true, apply polyBLEP correction at waveform discontinuities.
+    use_polyblep: bool,
 }
 
 impl ModulationProcessor for WavetableOscillator {}
@@ -107,6 +126,8 @@ impl WavetableOscillator {
             wavetable_index: 0.0,
             collection_name: "default".to_string(),
             wavetable_bank: bank,
+            oversample_factor: 8, // change to 2, 4, etc. to enable oversampling
+            use_polyblep: true,   // set true if your waveform has discontinuities (e.g. saw)
         }
     }
 
@@ -207,13 +228,11 @@ impl AudioNode for WavetableOscillator {
             vec![self.frequency; buffer_size]
         };
 
-        // Retrieve the active morph collection in its own block.
-        // (This limits the lifetime of the immutable borrow.)
+        // Retrieve the active morph collection.
         let collection = get_collection_from_bank(&self.wavetable_bank, &self.collection_name);
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in 0..buffer_size {
-                // Directly index self.gate_buffer to get a copy of the f32 value.
                 let gate_val = self.gate_buffer[i];
                 self.check_gate(gate_val);
 
@@ -223,11 +242,19 @@ impl AudioNode for WavetableOscillator {
                 let feedback_mod_sample = feedback_mod[i];
                 let wavetable_index_sample = wavetable_index_mod[i];
 
+                // Compute phase modulation and feedback modulation offsets.
+                let external_phase_mod =
+                    (phase_mod_sample * self.phase_mod_amount) / (2.0 * std::f32::consts::PI);
+                let effective_feedback = self.feedback_amount * feedback_mod_sample;
+                let feedback_val =
+                    (self.last_output * effective_feedback) / (std::f32::consts::PI * 1.5);
+
                 let mut sample_sum = 0.0;
                 let mut total_weight = 0.0;
                 let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
                 let sigma = self.unison_voices as f32 / 4.0;
 
+                // Process each unison voice.
                 for voice in 0..self.unison_voices {
                     let voice_f = voice as f32;
                     let distance = (voice_f - center_index).abs();
@@ -245,24 +272,32 @@ impl AudioNode for WavetableOscillator {
                     let effective_freq = detuned_freq * freq_mod[i];
                     let phase_inc = effective_freq / self.sample_rate;
 
+                    let mut voice_sample_acc = 0.0;
+                    let oversample_factor = self.oversample_factor;
+                    let base_phase = self.voice_phases[voice];
+
+                    // Oversampling loop: average several sub-samples.
+                    for os in 0..oversample_factor {
+                        let sub_phase = (base_phase
+                            + external_phase_mod
+                            + feedback_val
+                            + phase_inc * (os as f32 / oversample_factor as f32))
+                            .rem_euclid(1.0);
+                        let mut sub_sample =
+                            collection.lookup_sample(sub_phase, wavetable_index_sample);
+                        if self.use_polyblep {
+                            sub_sample -= poly_blep(sub_phase, phase_inc);
+                        }
+                        voice_sample_acc += sub_sample;
+                    }
+                    let voice_sample = voice_sample_acc / oversample_factor as f32;
+                    sample_sum += voice_sample * weight;
+
+                    // Update voice phase (only once per output sample).
                     self.voice_phases[voice] += phase_inc;
                     if self.voice_phases[voice] >= 1.0 {
                         self.voice_phases[voice] -= 1.0;
                     }
-
-                    let external_phase_mod =
-                        (phase_mod_sample * self.phase_mod_amount) / (2.0 * std::f32::consts::PI);
-                    let effective_feedback = self.feedback_amount * feedback_mod_sample;
-                    let feedback_val =
-                        (self.last_output * effective_feedback) / (std::f32::consts::PI * 1.5);
-
-                    let modulated_phase =
-                        self.voice_phases[voice] + external_phase_mod + feedback_val;
-                    let normalized_phase = modulated_phase.rem_euclid(1.0);
-
-                    let voice_sample =
-                        collection.lookup_sample(normalized_phase, wavetable_index_sample);
-                    sample_sum += voice_sample * weight;
                 }
 
                 let final_sample = sample_sum / total_weight;

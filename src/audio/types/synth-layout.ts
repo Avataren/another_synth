@@ -233,6 +233,15 @@ export function getModulationTargetsForType(
   type: VoiceNodeType,
 ): ModulationTargetOption[] {
   switch (type) {
+    case VoiceNodeType.WavetableOscillator:
+      return [
+        { value: PortId.PhaseMod, label: PORT_LABELS[PortId.PhaseMod] },
+        { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
+        { value: PortId.ModIndex, label: PORT_LABELS[PortId.ModIndex] },
+        { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
+        { value: PortId.FeedbackMod, label: PORT_LABELS[PortId.FeedbackMod] },
+        { value: PortId.WavetableIndex, label: PORT_LABELS[PortId.WavetableIndex] },
+      ];
     case VoiceNodeType.Oscillator:
       return [
         { value: PortId.PhaseMod, label: PORT_LABELS[PortId.PhaseMod] },
