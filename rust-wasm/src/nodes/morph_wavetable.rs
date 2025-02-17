@@ -103,7 +103,7 @@ pub struct WavetableSynthBank {
 
 impl WavetableSynthBank {
     pub fn new() -> Self {
-        let base_size = 1024;
+        let base_size = 2048;
         let mut collections = HashMap::new();
         collections.insert(
             "default".to_string(),

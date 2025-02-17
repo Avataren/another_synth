@@ -126,8 +126,8 @@ impl WavetableOscillator {
             wavetable_index: 0.0,
             collection_name: "default".to_string(),
             wavetable_bank: bank,
-            oversample_factor: 8, // change to 2, 4, etc. to enable oversampling
-            use_polyblep: true,   // set true if your waveform has discontinuities (e.g. saw)
+            oversample_factor: 16, // change to 2, 4, etc. to enable oversampling
+            use_polyblep: true,    // set true if your waveform has discontinuities (e.g. saw)
         }
     }
 
@@ -175,6 +175,8 @@ impl AudioNode for WavetableOscillator {
         ports.insert(PortId::GlobalFrequency, false);
         ports.insert(PortId::FrequencyMod, false);
         ports.insert(PortId::PhaseMod, false);
+        // New modulator to control phase modulation depth:
+        ports.insert(PortId::ModIndex, false);
         ports.insert(PortId::WavetableIndex, false);
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::FeedbackMod, false);
@@ -196,6 +198,13 @@ impl AudioNode for WavetableOscillator {
         let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
         let feedback_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::FeedbackMod), 1.0);
+        // Process ModIndex modulation for scaling phase modulation:
+        let mod_index = self.process_modulations(
+            buffer_size,
+            inputs.get(&PortId::ModIndex),
+            self.phase_mod_amount,
+        );
+        // (The wavetable index modulation remains separate.)
         let wavetable_index_mod = self.process_modulations(
             buffer_size,
             inputs.get(&PortId::WavetableIndex),
@@ -241,10 +250,11 @@ impl AudioNode for WavetableOscillator {
                 let gain_mod_sample = gain_mod[i];
                 let feedback_mod_sample = feedback_mod[i];
                 let wavetable_index_sample = wavetable_index_mod[i];
-
-                // Compute phase modulation and feedback modulation offsets.
+                // Use mod_index modulation to scale the phase modulation depth.
+                let mod_index_sample = mod_index[i];
                 let external_phase_mod =
-                    (phase_mod_sample * self.phase_mod_amount) / (2.0 * std::f32::consts::PI);
+                    (phase_mod_sample * mod_index_sample) / (2.0 * std::f32::consts::PI);
+
                 let effective_feedback = self.feedback_amount * feedback_mod_sample;
                 let feedback_val =
                     (self.last_output * effective_feedback) / (std::f32::consts::PI * 1.5);
@@ -276,8 +286,8 @@ impl AudioNode for WavetableOscillator {
                     let oversample_factor = self.oversample_factor;
                     let base_phase = self.voice_phases[voice];
 
-                    // Oversampling loop: average several sub-samples.
                     for os in 0..oversample_factor {
+                        // Each sub-sample gets the same external phase mod and feedback.
                         let sub_phase = (base_phase
                             + external_phase_mod
                             + feedback_val
@@ -293,7 +303,7 @@ impl AudioNode for WavetableOscillator {
                     let voice_sample = voice_sample_acc / oversample_factor as f32;
                     sample_sum += voice_sample * weight;
 
-                    // Update voice phase (only once per output sample).
+                    // Update voice phase once per output sample.
                     self.voice_phases[voice] += phase_inc;
                     if self.voice_phases[voice] >= 1.0 {
                         self.voice_phases[voice] -= 1.0;
