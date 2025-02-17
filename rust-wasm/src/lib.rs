@@ -9,14 +9,11 @@ mod traits;
 mod utils;
 mod voice;
 
-use std::rc::Rc;
-use std::{collections::HashMap, sync::Arc};
-
 pub use graph::AudioGraph;
 use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};
-use nodes::morph_wavetable::{self, WavetableSynthBank};
+use nodes::morph_wavetable::{self, SynthWavetable, WavetableMorphCollection, WavetableSynthBank};
 use nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Lfo, LfoTriggerMode, LfoWaveform, LpFilter,
     Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
@@ -25,12 +22,164 @@ use nodes::{
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
+use std::io::{Cursor, Read};
+use std::rc::Rc;
+use std::{collections::HashMap, sync::Arc};
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
 pub use voice::Voice;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{console, js_sys};
+
+use hound;
+use std::error::Error;
+
+/// Convert integer samples of various bit depths to f32 in the range [-1.0, 1.0].
+fn import_wav_hound_reader<R: std::io::Read>(
+    reader: R,
+    base_size: usize,
+) -> Result<WavetableMorphCollection, Box<dyn std::error::Error>> {
+    let mut wav_reader = hound::WavReader::new(reader)?;
+    let spec = wav_reader.spec();
+    let bits = spec.bits_per_sample;
+    let format = spec.sample_format;
+
+    // Decide how to read + convert based on the WAV's format.
+    let samples: Vec<f32> = match (bits, format) {
+        // ----- 32-bit float WAV -----
+        (32, hound::SampleFormat::Float) => {
+            wav_reader.samples::<f32>().map(|s| s.unwrap()).collect()
+        }
+
+        // ----- 16-bit int WAV -----
+        (16, hound::SampleFormat::Int) => {
+            // Here we read i16 and convert to f32 in [-1.0, 1.0].
+            wav_reader
+                .samples::<i16>()
+                .map(|s| {
+                    let val = s.unwrap() as f32;
+                    val / (i16::MAX as f32)
+                })
+                .collect()
+        }
+
+        // ----- 24-bit int WAV -----
+        (24, hound::SampleFormat::Int) => {
+            // 24-bit samples are stored in a 32-bit container (i32),
+            // but only the lower 24 bits are valid. We sign-extend and divide by the max.
+            //
+            // For 24-bit, the maximum positive sample is 0x7FFFFF (8388607 decimal).
+            // We'll shift left then right to sign-extend properly, then scale.
+            let shift = 32 - 24; // 8
+            wav_reader
+                .samples::<i32>()
+                .map(|s| {
+                    let val_32 = s.unwrap() << shift >> shift; // sign-extend
+                    val_32 as f32 / 8_388_607.0
+                })
+                .collect()
+        }
+
+        // ----- 32-bit int WAV -----
+        (32, hound::SampleFormat::Int) => {
+            // 32-bit integer max is i32::MAX = 2_147_483_647
+            wav_reader
+                .samples::<i32>()
+                .map(|s| {
+                    let val = s.unwrap() as f32;
+                    val / (i32::MAX as f32)
+                })
+                .collect()
+        }
+
+        // ----- Other formats not handled in this snippet -----
+        _ => {
+            return Err(format!(
+                "Unsupported WAV format: bits_per_sample={} sample_format={:?}",
+                bits, format
+            )
+            .into());
+        }
+    };
+
+    // At this point, `samples` is a Vec<f32> scaled to [-1.0, 1.0] if from an int format,
+    // or directly read if from a float format.
+
+    // Optionally do your base_size logic:
+    let total_samples = samples.len();
+    if total_samples % base_size != 0 {
+        eprintln!(
+            "Warning: {} extra samples will be ignored (not a complete wavetable)",
+            total_samples % base_size
+        );
+    }
+
+    let num_tables = total_samples / base_size;
+    web_sys::console::log_1(&format!("Number of complete wavetables: {}", num_tables).into());
+
+    // Create a new morph collection and add each complete wavetable.
+    let mut collection = WavetableMorphCollection::new();
+    for i in 0..num_tables {
+        let start = i * base_size;
+        let end = start + base_size;
+        let table_samples = samples[start..end].to_vec();
+        let wavetable = SynthWavetable::new(table_samples, base_size);
+        collection.add_wavetable(wavetable);
+    }
+
+    Ok(collection)
+}
+
+/// Helper function that uses hound to parse the WAV data from any reader
+/// and break it into complete wavetables of length `base_size`.
+// pub fn import_wav_hound_reader<R: std::io::Read>(
+//     reader: R,
+//     base_size: usize,
+// ) -> Result<WavetableMorphCollection, Box<dyn std::error::Error>> {
+//     let mut wav_reader = hound::WavReader::new(reader)?;
+//     let spec = wav_reader.spec();
+
+//     web_sys::console::log_1(&format!("wav specs: {:?}", spec).into());
+
+//     // if spec.bits_per_sample != 32 {
+//     //     return Err(format!("Expected 32 bits per sample, got {}.", spec.bits_per_sample).into());
+//     // }
+//     // // Check that the WAV is in 32-bit float format.
+//     // if spec.sample_format != hound::SampleFormat::Float {
+//     //     return Err("WAV file is not in 32-bit float format.".into());
+//     // }
+
+//     // Read all samples into a Vec<f32>
+//     let samples: Vec<f32> = wav_reader.samples::<f32>().map(|s| s.unwrap()).collect();
+//     let total_samples = samples.len();
+
+//     // Warn if extra samples are present.
+//     if total_samples % base_size != 0 {
+//         web_sys::console::log_1(
+//             &format!(
+//                 "Warning: {} extra samples will be ignored (not a complete wavetable)",
+//                 total_samples % base_size
+//             )
+//             .into(),
+//         );
+//     }
+//     let num_tables = total_samples / base_size;
+//     web_sys::console::log_1(&format!("Number of complete wavetables: {}", num_tables).into());
+
+//     // Create a new morph collection and add each complete wavetable.
+//     let mut collection = WavetableMorphCollection::new();
+//     for i in 0..num_tables {
+//         let start = i * base_size;
+//         let end = start + base_size;
+//         let table_samples = samples[start..end].to_vec();
+//         let wavetable = SynthWavetable::new(table_samples, base_size);
+//         collection.add_wavetable(wavetable);
+//     }
+
+//     Ok(collection)
+// }
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -126,7 +275,7 @@ pub struct AudioEngine {
     voices: Vec<Voice>,
     sample_rate: f32,
     num_voices: usize,
-    wavetable_synthbank: Rc<WavetableSynthBank>,
+    wavetable_synthbank: Rc<RefCell<WavetableSynthBank>>,
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 }
 
@@ -205,7 +354,8 @@ impl AudioEngine {
         let max_table_size = 2048;
         let min_table_size = 64;
         let lowest_top_freq_hz = 20.0;
-        let wavetable_synthbank = Rc::new(WavetableSynthBank::new());
+
+        let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new()));
         let mut banks = HashMap::new();
         banks.insert(
             Waveform::Sine,
@@ -444,13 +594,13 @@ impl AudioEngine {
         release_curve: f32,
         active: bool,
     ) -> Result<(), JsValue> {
-        console::log_1(
-            &format!(
-                "RUST: envelope curves: attack_curve={}, decay_curve={}, release_curve={}",
-                attack_curve, decay_curve, release_curve
-            )
-            .into(),
-        );
+        // console::log_1(
+        //     &format!(
+        //         "RUST: envelope curves: attack_curve={}, decay_curve={}, release_curve={}",
+        //         attack_curve, decay_curve, release_curve
+        //     )
+        //     .into(),
+        // );
 
         let mut errors: Vec<String> = Vec::new();
 
@@ -532,6 +682,151 @@ impl AudioEngine {
         }
         Ok(())
     }
+
+    /// Refactored import_wavetable function that uses the hound-based helper.
+    /// It accepts the WAV data as a byte slice, uses a Cursor to create a reader,
+    /// builds a new morph collection from the data, adds it to the synth bank under
+    /// the name "imported", and then updates all wavetable oscillators to use it.
+    #[wasm_bindgen]
+    pub fn import_wavetable(
+        &mut self,
+        nodeId: usize,
+        data: &[u8],
+        base_size: usize,
+    ) -> Result<(), JsValue> {
+        // Wrap the incoming data in a Cursor and call the hound helper.
+        let cursor = Cursor::new(data);
+        let collection = import_wav_hound_reader(cursor, base_size)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        // Add the new collection to the synth bank.
+        self.wavetable_synthbank
+            .borrow_mut()
+            .add_collection("imported", collection);
+
+        // Update the oscillator's active wavetable to the newly imported collection.
+        for voice in &mut self.voices {
+            let node = voice
+                .graph
+                .get_node_mut(NodeId(nodeId))
+                .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
+            let osc = node
+                .as_any_mut()
+                .downcast_mut::<WavetableOscillator>()
+                .ok_or_else(|| {
+                    JsValue::from_str("Node is not a WavetableOscillator in one of the voices")
+                })?;
+            osc.set_current_wavetable("imported");
+        }
+
+        Ok(())
+    }
+
+    // #[wasm_bindgen]
+    // pub fn import_wavetable(
+    //     &mut self,
+    //     nodeId: usize,
+    //     data: &[u8],
+    //     base_size: usize,
+    // ) -> Result<(), JsValue> {
+    //     use web_sys::console;
+
+    //     console::log_1(&format!("import_wavetable: Received data length: {}", data.len()).into());
+
+    //     // Check that the data is at least 44 bytes for the header.
+    //     if data.len() < 44 {
+    //         console::log_1(&"Data too short to be a valid WAV file.".into());
+    //         return Err(JsValue::from_str("Data too short to be a valid WAV file"));
+    //     }
+
+    //     let mut cursor = std::io::Cursor::new(data);
+    //     let mut header = [0u8; 44];
+
+    //     console::log_1(&"Reading WAV header...".into());
+    //     match cursor.read_exact(&mut header) {
+    //         Ok(()) => console::log_1(&"Successfully read header.".into()),
+    //         Err(e) => {
+    //             console::log_1(&format!("Failed to read header: {}", e).into());
+    //             return Err(JsValue::from_str(&e.to_string()));
+    //         }
+    //     }
+
+    //     console::log_1(&format!("Header bytes: {:?}", &header).into());
+
+    //     // Verify the "RIFF" and "WAVE" markers.
+    //     if &header[0..4] != b"RIFF" || &header[8..12] != b"WAVE" {
+    //         console::log_1(&"Invalid WAV header markers.".into());
+    //         return Err(JsValue::from_str("Invalid WAV header"));
+    //     }
+    //     console::log_1(&"WAV header markers are valid.".into());
+
+    //     // Process the sample data.
+    //     let sample_bytes = &data[44..];
+    //     console::log_1(&format!("Sample bytes length: {}", sample_bytes.len()).into());
+    //     if sample_bytes.len() % 4 != 0 {
+    //         console::log_1(&"Sample bytes length is not a multiple of 4.".into());
+    //         return Err(JsValue::from_str("Corrupt WAV data"));
+    //     }
+    //     let total_samples = sample_bytes.len() / 4;
+    //     console::log_1(&format!("Total samples: {}", total_samples).into());
+
+    //     // Safety: We assume the WAV is in native-endian 32-bit float format.
+    //     let samples: &[f32] = unsafe {
+    //         std::slice::from_raw_parts(sample_bytes.as_ptr() as *const f32, total_samples)
+    //     };
+
+    //     // Ensure the total number of samples divides evenly into wavetables.
+    //     if total_samples % base_size != 0 {
+    //         console::log_1(
+    //             &format!(
+    //                 "Total samples {} is not a multiple of base_size {}.",
+    //                 total_samples, base_size
+    //             )
+    //             .into(),
+    //         );
+    //         return Err(JsValue::from_str(
+    //             "WAV length is not a multiple of base size",
+    //         ));
+    //     }
+    //     let num_tables = total_samples / base_size;
+    //     console::log_1(&format!("Number of wavetables: {}", num_tables).into());
+
+    //     // Create a new morph collection.
+    //     let mut collection = WavetableMorphCollection::new();
+    //     for i in 0..num_tables {
+    //         let start = i * base_size;
+    //         let end = start + base_size;
+    //         console::log_1(
+    //             &format!("Creating wavetable {}: samples {} to {}", i, start, end).into(),
+    //         );
+    //         let table_samples = samples[start..end].to_vec();
+    //         let wavetable = SynthWavetable::new(table_samples, base_size);
+    //         collection.add_wavetable(wavetable);
+    //     }
+
+    //     console::log_1(&"Adding imported collection to synthbank.".into());
+    //     self.wavetable_synthbank
+    //         .borrow_mut()
+    //         .add_collection("imported", collection);
+    //     console::log_1(&"Wavetable import complete.".into());
+
+    //     //update wavetable oscillator current wavetable
+    //     for voice in &mut self.voices {
+    //         let node = voice
+    //             .graph
+    //             .get_node_mut(NodeId(nodeId))
+    //             .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
+    //         let osc = node
+    //             .as_any_mut()
+    //             .downcast_mut::<WavetableOscillator>()
+    //             .ok_or_else(|| {
+    //                 JsValue::from_str("Node is not an AnalogOscillator in one of the voices")
+    //             })?;
+    //         osc.set_current_wavetable("imported");
+    //     }
+
+    //     Ok(())
+    // }
 
     #[wasm_bindgen]
     pub fn update_oscillator(
@@ -715,13 +1010,13 @@ impl AudioEngine {
         amount: f32,
         modulation_type: Option<WasmModulationType>,
     ) -> Result<(), JsValue> {
-        console::log_1(
-            &format!(
-                "RUST: Connecting nodes: from={}, to={}, modulation type={:?}",
-                from_node, to_node, modulation_type
-            )
-            .into(),
-        );
+        // console::log_1(
+        //     &format!(
+        //         "RUST: Connecting nodes: from={}, to={}, modulation type={:?}",
+        //         from_node, to_node, modulation_type
+        //     )
+        //     .into(),
+        // );
         let connection = Connection {
             from_node: NodeId(from_node),
             from_port,

@@ -74,7 +74,10 @@
           />
         </div>
       </div>
-
+      <q-card-section class="import-section">
+        <div class="text-h6">Import Wavetable</div>
+        <input type="file" accept=".wav" @change="handleWavFileUpload" />
+      </q-card-section>
       <div class="detune-row">
         <div class="detune-group">
           <audio-knob-component
@@ -213,6 +216,31 @@ const totalDetune = computed(() => {
     oscillatorState.value.detune_cents!
   );
 });
+
+const handleWavFileUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length) return;
+  const file = input.files[0];
+  if (!file) {
+    console.error('No file selected');
+    return;
+  }
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const wavBytes = new Uint8Array(arrayBuffer);
+    console.log('WAV file loaded, size:', wavBytes.length);
+
+    if (store.currentInstrument) {
+      // Call the new import function on your instrument
+      store.currentInstrument.importWavetableData(props.nodeId, wavBytes);
+    } else {
+      console.error('Instrument instance not available');
+    }
+  } catch (err) {
+    console.error('Error reading WAV file:', err);
+    alert(err);
+  }
+};
 
 const handleWaveformChange = (newWaveform: number) => {
   // let wf: Waveform = Waveform.Sine;

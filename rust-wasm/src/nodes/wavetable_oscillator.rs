@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -92,7 +93,7 @@ pub struct WavetableOscillator {
     // Name of the morph collection to use.
     collection_name: String,
     // The bank of wavetable morph collections.
-    wavetable_bank: Rc<WavetableSynthBank>,
+    wavetable_bank: Rc<RefCell<WavetableSynthBank>>,
     // --- New fields for improved quality ---
     /// Oversampling factor (1 = no oversampling, 2 = 2×, 4 = 4×, etc.)
     oversample_factor: usize,
@@ -107,7 +108,7 @@ impl WavetableOscillator {
     /// - `sample_rate`: audio sample rate.
     /// - `bank`: the wavetable synth bank (passed by value).
     /// - `collection_name`: the name of the morph collection to use (e.g., "default").
-    pub fn new(sample_rate: f32, bank: Rc<WavetableSynthBank>) -> Self {
+    pub fn new(sample_rate: f32, bank: Rc<RefCell<WavetableSynthBank>>) -> Self {
         Self {
             sample_rate,
             gain: 1.0,
@@ -127,13 +128,17 @@ impl WavetableOscillator {
             collection_name: "default".to_string(),
             wavetable_bank: bank,
             oversample_factor: 4, // change to 2, 4, etc. to enable oversampling
-            use_polyblep: true,   // set true if your waveform has discontinuities (e.g. saw)
+            use_polyblep: false,  // set true if your waveform has discontinuities (e.g. saw)
         }
+    }
+
+    pub fn set_current_wavetable(&mut self, collection_name: &str) {
+        self.collection_name = collection_name.to_string();
     }
 
     /// Update oscillator parameters.
     pub fn update_params(&mut self, params: &WavetableOscillatorStateUpdate) {
-        console::log_1(&format!("Updating params: {:#?}", params).into());
+        // console::log_1(&format!("Updating params: {:#?}", params).into());
         self.gain = params.gain;
         self.feedback_amount = params.feedback_amount;
         self.hard_sync = params.hard_sync;
@@ -164,8 +169,12 @@ impl WavetableOscillator {
     }
 }
 
-fn get_collection_from_bank(bank: &WavetableSynthBank, name: &str) -> Rc<WavetableMorphCollection> {
-    bank.get_collection(name)
+fn get_collection_from_bank(
+    bank: &RefCell<WavetableSynthBank>,
+    name: &str,
+) -> Rc<WavetableMorphCollection> {
+    bank.borrow()
+        .get_collection(name)
         .expect("Wavetable collection not found")
 }
 

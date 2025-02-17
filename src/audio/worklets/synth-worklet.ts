@@ -195,7 +195,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'getEnvelopePreview':
         this.handleGetEnvelopePreview(event.data);
         break;
+      case 'importWavetable':
+        this.handleImportWavetableData(event.data);
+        break;
     }
+  }
+
+  private handleImportWavetableData(data: {
+    type: string;
+    // Using wavData.buffer transfers the ArrayBuffer
+    nodeId: number,
+    data: Uint8Array;
+  }) {
+    const uint8Data = new Uint8Array(data.data);
+    console.log('data:', uint8Data);
+    this.audioEngine!.import_wavetable(data.nodeId, uint8Data, 2048);
   }
 
   // Inside SynthAudioProcessor's handleMessage method:

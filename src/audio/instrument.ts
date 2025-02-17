@@ -97,6 +97,24 @@ export default class Instrument {
     });
   }
 
+  public importWavetableData(nodeId: number, wavData: Uint8Array): void {
+    if (!this.ready || !this.workletNode) {
+      console.error('Audio system not ready for importing wavetable data');
+      return;
+    }
+    // Send the WAV data to the audio worklet.
+    // Transfer the underlying ArrayBuffer to avoid copying.
+    this.workletNode.port.postMessage(
+      {
+        type: 'importWavetable',
+        // Using wavData.buffer transfers the ArrayBuffer
+        nodeId,
+        data: wavData.buffer,
+      }
+    );
+    console.log('Sent wavetable data to worklet');
+  }
+
   public updateWavetableOscillatorState(nodeId: number, newState: OscillatorState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 

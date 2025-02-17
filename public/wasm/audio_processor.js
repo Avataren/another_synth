@@ -200,6 +200,13 @@ function _assertClass(instance, klass) {
     }
 }
 
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
@@ -240,6 +247,8 @@ export const WasmModulationType = Object.freeze({
     Additive: 2, "2": "Additive",
 });
 /**
+ * Helper function that uses hound to parse the WAV data from any reader
+ * and break it into complete wavetables of length `base_size`.
  * @enum {0 | 1 | 2}
  */
 export const WasmNoiseType = Object.freeze({
@@ -538,6 +547,23 @@ export class AudioEngine {
     update_wavetable_oscillator(oscillator_id, params) {
         _assertClass(params, WavetableOscillatorStateUpdate);
         const ret = wasm.audioengine_update_wavetable_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Refactored import_wavetable function that uses the hound-based helper.
+     * It accepts the WAV data as a byte slice, uses a Cursor to create a reader,
+     * builds a new morph collection from the data, adds it to the synth bank under
+     * the name "imported", and then updates all wavetable oscillators to use it.
+     * @param {number} nodeId
+     * @param {Uint8Array} data
+     * @param {number} base_size
+     */
+    import_wavetable(nodeId, data, base_size) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.audioengine_import_wavetable(this.__wbg_ptr, nodeId, ptr0, len0, base_size);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

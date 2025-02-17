@@ -114,6 +114,10 @@ impl WavetableSynthBank {
         Self { collections }
     }
 
+    pub fn clear(&mut self) {
+        self.collections.clear();
+    }
+
     /// Add a new collection to the bank.
     pub fn add_collection(
         &mut self,
