@@ -671,11 +671,12 @@ export class AudioEngine {
     }
     /**
      * @param {number} waveform
+     * @param {number} phase_offset
      * @param {number} buffer_size
      * @returns {Float32Array}
      */
-    get_lfo_waveform(waveform, buffer_size) {
-        const ret = wasm.audioengine_get_lfo_waveform(this.__wbg_ptr, waveform, buffer_size);
+    get_lfo_waveform(waveform, phase_offset, buffer_size) {
+        const ret = wasm.audioengine_get_lfo_waveform(this.__wbg_ptr, waveform, phase_offset, buffer_size);
         if (ret[3]) {
             throw takeFromExternrefTable0(ret[2]);
         }
@@ -957,6 +958,19 @@ export class LfoUpdateParams {
     /**
      * @returns {number}
      */
+    get phase_offset() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set phase_offset(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_detune(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
     get waveform() {
         const ret = wasm.__wbg_get_lfoupdateparams_waveform(this.__wbg_ptr);
         return ret;
@@ -1010,14 +1024,14 @@ export class LfoUpdateParams {
      * @returns {number}
      */
     get gain() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_gain(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set gain(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_detune(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_analogoscillatorstateupdate_gain(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {boolean}
@@ -1035,6 +1049,7 @@ export class LfoUpdateParams {
     /**
      * @param {number} lfo_id
      * @param {number} frequency
+     * @param {number} phase_offset
      * @param {number} waveform
      * @param {boolean} use_absolute
      * @param {boolean} use_normalized
@@ -1042,8 +1057,8 @@ export class LfoUpdateParams {
      * @param {number} gain
      * @param {boolean} active
      */
-    constructor(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, gain, active) {
-        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, waveform, use_absolute, use_normalized, trigger_mode, gain, active);
+    constructor(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active) {
+        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active);
         this.__wbg_ptr = ret >>> 0;
         LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
         return this;

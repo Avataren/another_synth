@@ -367,6 +367,7 @@ pub struct AudioEngine {
 pub struct LfoUpdateParams {
     pub lfo_id: usize,
     pub frequency: f32,
+    pub phase_offset: f32,
     pub waveform: u8,
     pub use_absolute: bool,
     pub use_normalized: bool,
@@ -408,6 +409,7 @@ impl LfoUpdateParams {
     pub fn new(
         lfo_id: usize,
         frequency: f32,
+        phase_offset: f32,
         waveform: u8,
         use_absolute: bool,
         use_normalized: bool,
@@ -418,6 +420,7 @@ impl LfoUpdateParams {
         LfoUpdateParams {
             lfo_id,
             frequency,
+            phase_offset,
             waveform,
             use_absolute,
             use_normalized,
@@ -1043,6 +1046,7 @@ impl AudioEngine {
                     };
 
                     lfo.set_gain(params.gain);
+                    lfo.set_phase_offset(params.phase_offset);
                     lfo.set_frequency(params.frequency);
                     lfo.set_waveform(waveform);
                     lfo.set_use_absolute(params.use_absolute);
@@ -1058,6 +1062,7 @@ impl AudioEngine {
     pub fn get_lfo_waveform(
         &mut self,
         waveform: u8,
+        phase_offset: f32,
         buffer_size: usize,
     ) -> Result<Vec<f32>, JsValue> {
         let waveform = match waveform {
@@ -1068,7 +1073,7 @@ impl AudioEngine {
             _ => return Err(JsValue::from_str("Invalid waveform type")),
         };
 
-        Ok(Lfo::get_waveform_data(waveform, buffer_size))
+        Ok(Lfo::get_waveform_data(waveform, phase_offset, buffer_size))
     }
 
     #[wasm_bindgen]

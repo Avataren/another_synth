@@ -19,6 +19,7 @@ export enum VoiceNodeType {
 export interface LfoState {
   id?: number;
   frequency: number;
+  phaseOffset: number;
   waveform: number;
   useAbsolute: boolean;
   useNormalized: boolean;

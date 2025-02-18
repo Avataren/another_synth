@@ -72,6 +72,7 @@ export interface LfoUpdateData {
   params: {
     lfoId: number;
     frequency: number;
+    phaseOffset: number;
     waveform: number;
     useAbsolute: boolean;
     useNormalized: boolean;
@@ -749,12 +750,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleGetLfoWaveform(data: { waveform: number; bufferSize: number }) {
+  private handleGetLfoWaveform(data: { waveform: number; phaseOffset: number, bufferSize: number }) {
     if (!this.audioEngine) return;
 
     try {
       const waveformData = this.audioEngine.get_lfo_waveform(
         data.waveform,
+        data.phaseOffset,
         data.bufferSize,
       );
 
@@ -800,6 +802,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       const lfoParams = new LfoUpdateParams(
         data.params.lfoId,
         data.params.frequency,
+        data.params.phaseOffset,
         data.params.waveform,
         data.params.useAbsolute,
         data.params.useNormalized,

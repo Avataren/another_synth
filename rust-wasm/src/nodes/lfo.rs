@@ -148,6 +148,10 @@ impl Lfo {
         self.waveform = waveform;
     }
 
+    pub fn set_phase_offset(&mut self, offset: f32) {
+        self.phase_offset = offset;
+    }
+
     pub fn set_use_absolute(&mut self, use_absolute: bool) {
         self.use_absolute = use_absolute;
     }
@@ -166,8 +170,9 @@ impl Lfo {
         let tables = LFO_TABLES.get().unwrap();
         let table = tables.get_table(self.waveform);
 
-        let table_phase = self.phase;
-        let table_index = table_phase * TABLE_SIZE as f32;
+        // Add phase_offset here, so the first sample also uses the offset.
+        let effective_phase = (self.phase + self.phase_offset) % 1.0;
+        let table_index = effective_phase * TABLE_SIZE as f32;
         let index1 = (table_index as usize) & TABLE_MASK;
         let index2 = (index1 + 1) & TABLE_MASK;
         let fraction = table_index - table_index.floor();
@@ -188,7 +193,11 @@ impl Lfo {
 
     /// Returns waveform data from the corresponding lookup table.
     /// This version uses SIMD to fill the buffer in blocks of 4 samples at a time.
-    pub fn get_waveform_data(waveform: LfoWaveform, buffer_size: usize) -> Vec<f32> {
+    pub fn get_waveform_data(
+        waveform: LfoWaveform,
+        phase_offset: f32,
+        buffer_size: usize,
+    ) -> Vec<f32> {
         let tables = LFO_TABLES.get_or_init(LfoTables::new);
         let table = tables.get_table(waveform);
         let mut buffer = vec![0.0; buffer_size];
@@ -199,13 +208,18 @@ impl Lfo {
 
         // Process in SIMD blocks of 4 samples.
         while i + 4 <= buffer_size {
+            // Compute the phases for the next four samples.
             let phases = f32x4::from_array([
                 phase,
                 phase + phase_increment,
                 phase + 2.0 * phase_increment,
                 phase + 3.0 * phase_increment,
             ]);
-            let table_indices = phases * f32x4::splat(table_size_f);
+            // Apply the phase offset to each phase and wrap to [0, 1).
+            let effective_phases = (phases + f32x4::splat(phase_offset))
+                - (phases + f32x4::splat(phase_offset)).floor();
+
+            let table_indices = effective_phases * f32x4::splat(table_size_f);
             let index_f = table_indices.floor();
             let fraction = table_indices - index_f;
 
@@ -237,9 +251,11 @@ impl Lfo {
             i += 4;
         }
 
-        // Process any remaining samples.
+        // Process any remaining samples in scalar.
         while i < buffer_size {
-            let table_index = phase * table_size_f;
+            // Apply phase offset and wrap the phase.
+            let effective_phase = (phase + phase_offset) % 1.0;
+            let table_index = effective_phase * table_size_f;
             let index = (table_index as usize) & TABLE_MASK;
             let index_next = (index + 1) & TABLE_MASK;
             let fraction = table_index - table_index.floor();
@@ -314,8 +330,13 @@ impl AudioNode for Lfo {
                     let p3 = p2 + inc2;
                     let phases = f32x4::from_array([p0, p1, p2, p3]);
 
-                    // Lookup table index and interpolation.
-                    let table_indices = phases * f32x4::splat(table_size_f);
+                    // Apply the phase offset here and wrap the result.
+                    let effective_phases = phases + f32x4::splat(self.phase_offset);
+                    // Subtract the floor to ensure the phases remain in [0.0, 1.0).
+                    let effective_phases = effective_phases - effective_phases.floor();
+
+                    // Compute lookup table indices.
+                    let table_indices = effective_phases * f32x4::splat(table_size_f);
                     let index_f = table_indices.floor();
                     let fraction = table_indices - index_f;
                     let i0 = (index_f[0] as usize) & TABLE_MASK;
@@ -327,6 +348,7 @@ impl AudioNode for Lfo {
                     let i2_next = (i2 + 1) & TABLE_MASK;
                     let i3_next = (i3 + 1) & TABLE_MASK;
 
+                    // Linear interpolation for each lane.
                     let sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
                     let sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
                     let sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
@@ -365,11 +387,13 @@ impl AudioNode for Lfo {
                     i += 4;
                 }
                 self.phase = phase;
-                // Process any remaining samples in scalar.
+
+                // Process any remaining samples in scalar (update similarly if needed).
                 for j in i..buffer_size {
                     let freq = base_frequency * freq_mod[j];
                     let inc = freq / sample_rate;
-                    let table_index = phase * table_size_f;
+                    let effective_phase = (phase + self.phase_offset) % 1.0;
+                    let table_index = effective_phase * table_size_f;
                     let index = (table_index as usize) & TABLE_MASK;
                     let index_next = (index + 1) & TABLE_MASK;
                     let fraction = table_index - table_index.floor();

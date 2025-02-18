@@ -428,8 +428,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               id: lfo.id,
               frequency: 1.0,
               waveform: 0, // e.g., sine waveform
+              phaseOffset: 0.0,
               useAbsolute: false,
-              useNormalized: true,
+              useNormalized: false,
               triggerMode: 0, // None
               gain: 1.0,
               active: true,
@@ -456,6 +457,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.currentInstrument?.updateLfoState(nodeId, {
         id: nodeId,
         frequency: state.frequency,
+        phaseOffset: 0.0,
         waveform: state.waveform,
         useAbsolute: state.useAbsolute,
         useNormalized: state.useNormalized,

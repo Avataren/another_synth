@@ -149,6 +149,7 @@ export default class Instrument {
       params: {
         lfoId: nodeId,
         frequency: state.frequency,
+        phaseOffset: state.phaseOffset,
         waveform: state.waveform,
         useAbsolute: state.useAbsolute,
         useNormalized: state.useNormalized,
@@ -241,6 +242,7 @@ export default class Instrument {
 
   public async getLfoWaveform(
     waveform: number,
+    phaseOffset: number,
     bufferSize: number,
   ): Promise<Float32Array> {
     if (!this.ready || !this.workletNode) {
@@ -266,6 +268,7 @@ export default class Instrument {
       this.workletNode?.port.postMessage({
         type: 'getLfoWaveform',
         waveform,
+        phaseOffset,
         bufferSize,
       });
 

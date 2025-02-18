@@ -34,6 +34,26 @@
       <div class="controls-and-waveform">
         <div class="knob-group">
           <audio-knob-component
+            v-model="lfoState.gain"
+            label="Gain"
+            :min="-5"
+            :max="5"
+            :step="0.001"
+            :decimals="2"
+            @update:modelValue="handleGainChange"
+          />
+
+          <audio-knob-component
+            v-model="lfoState.phaseOffset"
+            label="Phase"
+            :min="0"
+            :max="1"
+            :step="0.001"
+            :decimals="3"
+            @update:modelValue="handlePhaseChange"
+          />
+
+          <audio-knob-component
             v-model="lfoState.frequency"
             label="Frequency"
             :min="0.01"
@@ -59,16 +79,6 @@
               </div>
             </div>
           </div>
-
-          <audio-knob-component
-            v-model="lfoState.gain"
-            label="Gain"
-            :min="-5"
-            :max="5"
-            :step="0.001"
-            :decimals="2"
-            @update:modelValue="handleGainChange"
-          />
         </div>
       </div>
       <routing-component
@@ -114,6 +124,7 @@ const lfoState = computed({
       return {
         frequency: 1.0,
         waveform: 0,
+        phaseOffset: 0,
         useAbsolute: false,
         useNormalized: false,
         triggerMode: 0,
@@ -132,7 +143,16 @@ onMounted(async () => {
   if (!lfoStates.value.has(props.nodeId)) {
     lfoStates.value.set(props.nodeId, lfoState.value);
   }
-  await updateWaveformDisplay();
+
+  if (waveformCanvas.value) {
+    const canvas = waveformCanvas.value;
+    // Set canvas resolution once on mount
+    const width = canvas.offsetWidth;
+    const height = canvas.offsetHeight;
+    canvas.width = width;
+    canvas.height = height;
+    await updateWaveformDisplay();
+  }
 });
 
 const handleFrequencyChange = (newFrequency: number) => {
@@ -141,6 +161,15 @@ const handleFrequencyChange = (newFrequency: number) => {
     frequency: newFrequency,
   };
   store.lfoStates.set(props.nodeId, currentState);
+};
+
+const handlePhaseChange = async (newPhase: number) => {
+  const currentState = {
+    ...lfoState.value,
+    phaseOffset: newPhase,
+  };
+  store.lfoStates.set(props.nodeId, currentState);
+  updateWaveformDisplay();
 };
 
 const handleGainChange = (newGain: number) => {
@@ -199,16 +228,12 @@ const updateWaveformDisplay = async () => {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Get the actual canvas dimensions
-  const width = canvas.offsetWidth;
-  const height = canvas.offsetHeight;
+  // Use the preset canvas resolution
+  const width = canvas.width;
+  const height = canvas.height;
 
-  // Set the canvas resolution to match its display size
-  canvas.width = width;
-  canvas.height = height;
-
-  // Clear the canvas
-  ctx.clearRect(0, 0, width, height);
+  // Clear the canvas without resetting its size
+  //ctx.clearRect(0, 0, width, height);
 
   try {
     if (!store.currentInstrument?.isReady) {
@@ -218,13 +243,9 @@ const updateWaveformDisplay = async () => {
 
     const waveformData = await store.currentInstrument.getLfoWaveform(
       lfoState.value.waveform,
+      lfoState.value.phaseOffset,
       width,
     );
-
-    // Set up gradients and styling
-    const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, 'rgba(33, 150, 243, 0.1)'); // Light blue
-    gradient.addColorStop(1, 'rgba(33, 150, 243, 0.3)'); // Darker blue
 
     // Draw background
     ctx.fillStyle = '#f8f9fa'; // Light gray background
@@ -250,39 +271,40 @@ const updateWaveformDisplay = async () => {
       ctx.stroke();
     }
 
-    // Draw the waveform
+    // Draw the waveform (filled area)
     ctx.beginPath();
     for (let i = 0; i < waveformData.length; i++) {
       const x = i;
       const y = ((1 - waveformData[i]!) * height) / 2;
-
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);
       }
     }
-
-    // Create filled area under the curve
     ctx.lineTo(width, height);
     ctx.lineTo(0, height);
     ctx.closePath();
+
+    // Create a gradient for the fill
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, 'rgba(33, 150, 243, 0.1)');
+    gradient.addColorStop(1, 'rgba(33, 150, 243, 0.3)');
     ctx.fillStyle = gradient;
     ctx.fill();
 
-    // Draw the line on top
+    // Draw the waveform line on top
     ctx.beginPath();
     for (let i = 0; i < waveformData.length; i++) {
       const x = i;
       const y = ((1 - waveformData[i]!) * height) / 2;
-
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);
       }
     }
-    ctx.strokeStyle = '#1976D2'; // Darker blue for the line
+    ctx.strokeStyle = '#1976D2';
     ctx.lineWidth = 2;
     ctx.stroke();
   } catch (err: unknown) {
@@ -302,6 +324,7 @@ watch(
       const completeState: LfoState = {
         id: props.nodeId,
         frequency: newState?.frequency ?? 1.0,
+        phaseOffset: newState?.phaseOffset ?? 0.0,
         waveform: newState?.waveform ?? 0,
         useAbsolute: newState?.useAbsolute ?? false,
         useNormalized: newState?.useNormalized ?? false,
@@ -360,8 +383,8 @@ watch(
 }
 
 canvas {
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
   border: 1px solid #e0e0e0;
   background-color: #f8f9fa;
   border-radius: 4px;
