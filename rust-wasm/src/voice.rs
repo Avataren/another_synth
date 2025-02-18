@@ -1,7 +1,8 @@
 use crate::{
     graph::ModulationType,
     nodes::{Lfo, LfoTriggerMode},
-    AudioGraph, Envelope, MacroManager, ModulatableOscillator, ModulationTarget, NodeId, PortId,
+    AudioGraph, AudioNode, Envelope, MacroManager, ModulatableOscillator, ModulationTarget, NodeId,
+    PortId,
 };
 
 #[derive(Debug)]

@@ -24,8 +24,9 @@ struct LfoTables {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoTriggerMode {
-    None,     // LFO runs freely
-    Envelope, // Trigger LFO on gate
+    None,     // LFO runs freely (loops continuously)
+    Envelope, // Trigger LFO on gate (repeats waveform)
+    OneShot,  // Trigger LFO on gate, play once, then hold the final sample
 }
 
 impl LfoTriggerMode {
@@ -33,6 +34,7 @@ impl LfoTriggerMode {
         match value {
             0 => LfoTriggerMode::None,
             1 => LfoTriggerMode::Envelope,
+            2 => LfoTriggerMode::OneShot,
             _ => LfoTriggerMode::None,
         }
     }
@@ -52,7 +54,7 @@ impl LfoTables {
 
         for i in 0..TABLE_SIZE {
             let phase = 2.0 * std::f32::consts::PI * (i as f32) / (TABLE_SIZE as f32);
-            let normalized_phase = i as f32 / TABLE_SIZE as f32;
+            let normalized_phase = i as f32 / (TABLE_SIZE as f32);
 
             sine[i] = phase.sin();
             triangle[i] = if normalized_phase < 0.25 {
@@ -64,11 +66,10 @@ impl LfoTables {
             };
 
             square[i] = if normalized_phase < 0.5 { 1.0 } else { -1.0 };
-            saw[i] = if normalized_phase < 0.999 {
-                -1.0 + 2.0 * normalized_phase
-            } else {
-                -1.0
-            };
+
+            // For saw, use TABLE_SIZE-1 so that when i == TABLE_SIZE-1, the value is exactly 1.0.
+            let saw_phase = i as f32 / ((TABLE_SIZE - 1) as f32);
+            saw[i] = -1.0 + 2.0 * saw_phase;
         }
 
         Self {
@@ -101,6 +102,9 @@ pub struct Lfo {
     pub trigger_mode: LfoTriggerMode,
     last_gate: f32,
     active: bool,
+    /// When in OneShot mode, once the cycle completes (phase reaches 1.0)
+    /// we store the final sample here to hold it for subsequent calls.
+    oneshot_final_sample: Option<f32>,
 }
 
 impl Lfo {
@@ -117,20 +121,20 @@ impl Lfo {
             sample_rate,
             use_absolute: false,
             use_normalized: false,
+            // Default trigger mode; can be changed later via set_trigger_mode.
             trigger_mode: LfoTriggerMode::Envelope,
             last_gate: 0.0,
             active: true,
+            oneshot_final_sample: None,
         }
     }
 
-    /// Public method used by external callers (e.g. for free‑running LFOs).
-    /// It always advances the phase using the current static frequency.
+    /// Advances the phase using the current frequency.
     pub fn advance_phase(&mut self) {
         self.advance_phase_with(self.frequency);
     }
 
-    /// Private helper to advance the phase by a given frequency.
-    /// This is used internally so that we can apply frequency modulation.
+    /// Advances the phase by the specified frequency (wrapping at 1.0).
     fn advance_phase_with(&mut self, current_freq: f32) {
         let phase_increment = current_freq / self.sample_rate;
         self.phase = (self.phase + phase_increment) % 1.0;
@@ -161,16 +165,21 @@ impl Lfo {
     }
 
     pub fn set_trigger_mode(&mut self, mode: LfoTriggerMode) {
-        self.trigger_mode = mode;
+        self.reset();
+        if (mode == LfoTriggerMode::Envelope) {
+            self.trigger_mode = LfoTriggerMode::OneShot;
+        } else {
+            self.trigger_mode = LfoTriggerMode::None;
+        }
     }
 
     /// Returns a sample and advances the phase.
-    /// This method is used in the scalar (envelope‑trigger) path.
+    /// This version wraps the phase (used in free‑running and envelope modes).
     fn get_sample(&mut self, current_freq: f32) -> f32 {
         let tables = LFO_TABLES.get().unwrap();
         let table = tables.get_table(self.waveform);
 
-        // Add phase_offset here, so the first sample also uses the offset.
+        // Apply phase offset; wrap phase to [0.0, 1.0).
         let effective_phase = (self.phase + self.phase_offset) % 1.0;
         let table_index = effective_phase * TABLE_SIZE as f32;
         let index1 = (table_index as usize) & TABLE_MASK;
@@ -178,7 +187,6 @@ impl Lfo {
         let fraction = table_index - table_index.floor();
 
         let mut sample = table[index1] + (table[index2] - table[index1]) * fraction;
-
         if self.use_absolute {
             sample = sample.abs();
         }
@@ -191,8 +199,51 @@ impl Lfo {
         sample
     }
 
-    /// Returns waveform data from the corresponding lookup table.
-    /// This version uses SIMD to fill the buffer in blocks of 4 samples at a time.
+    /// In OneShot mode, the LFO runs from phase 0 to 1 once.
+    /// Once 1.0 is reached, the final sample is stored and held.
+    fn get_sample_one_shot(&mut self, current_freq: f32) -> f32 {
+        // If we've already finished the cycle, simply return the held final sample.
+        if let Some(final_sample) = self.oneshot_final_sample {
+            return final_sample;
+        }
+
+        let phase_increment = current_freq / self.sample_rate;
+        let tables = LFO_TABLES.get().unwrap();
+        let table = tables.get_table(self.waveform);
+
+        // Only the fractional part of the phase_offset matters.
+        let offset = self.phase_offset.fract();
+        // Compute the lookup phase without affecting the LFO's internal phase.
+        let effective_phase = (self.phase + offset) % 1.0;
+
+        // In one-shot mode we use TABLE_SIZE-1 so that an effective phase of 1.0 maps
+        // exactly to the final table entry.
+        let table_index = effective_phase * ((TABLE_SIZE - 1) as f32);
+        let index1 = table_index.floor() as usize;
+        let index2 = if index1 + 1 < TABLE_SIZE {
+            index1 + 1
+        } else {
+            index1
+        };
+        let fraction = table_index - table_index.floor();
+
+        let mut sample = table[index1] + (table[index2] - table[index1]) * fraction;
+        if self.use_absolute {
+            sample = sample.abs();
+        }
+        if self.use_normalized {
+            sample = (sample + 1.0) * 0.5;
+        }
+
+        // Advance the internal phase but clamp it to 1.0.
+        self.phase = (self.phase + phase_increment).min(1.0);
+        if self.phase >= 1.0 {
+            self.oneshot_final_sample = Some(sample);
+        }
+        sample
+    }
+
+    /// Returns waveform data as a vector of samples using SIMD processing.
     pub fn get_waveform_data(
         waveform: LfoWaveform,
         phase_offset: f32,
@@ -206,24 +257,19 @@ impl Lfo {
         let table_size_f = TABLE_SIZE as f32;
         let mut i = 0;
 
-        // Process in SIMD blocks of 4 samples.
+        // Process samples in SIMD blocks of 4.
         while i + 4 <= buffer_size {
-            // Compute the phases for the next four samples.
             let phases = f32x4::from_array([
                 phase,
                 phase + phase_increment,
                 phase + 2.0 * phase_increment,
                 phase + 3.0 * phase_increment,
             ]);
-            // Apply the phase offset to each phase and wrap to [0, 1).
             let effective_phases = (phases + f32x4::splat(phase_offset))
                 - (phases + f32x4::splat(phase_offset)).floor();
-
             let table_indices = effective_phases * f32x4::splat(table_size_f);
             let index_f = table_indices.floor();
             let fraction = table_indices - index_f;
-
-            // Compute the lookup indices (wrapping around via TABLE_MASK)
             let i0 = (index_f[0] as usize) & TABLE_MASK;
             let i1 = (index_f[1] as usize) & TABLE_MASK;
             let i2 = (index_f[2] as usize) & TABLE_MASK;
@@ -233,7 +279,6 @@ impl Lfo {
             let i2_next = (i2 + 1) & TABLE_MASK;
             let i3_next = (i3 + 1) & TABLE_MASK;
 
-            // Linear interpolation for each lane.
             let sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
             let sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
             let sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
@@ -251,9 +296,8 @@ impl Lfo {
             i += 4;
         }
 
-        // Process any remaining samples in scalar.
+        // Process any remaining samples.
         while i < buffer_size {
-            // Apply phase offset and wrap the phase.
             let effective_phase = (phase + phase_offset) % 1.0;
             let table_index = effective_phase * table_size_f;
             let index = (table_index as usize) & TABLE_MASK;
@@ -266,20 +310,24 @@ impl Lfo {
             }
             i += 1;
         }
-
         buffer
     }
 
-    pub fn is_active(&self) -> bool {
-        self.active && self.trigger_mode == LfoTriggerMode::None
+    /// Resets the LFO phase. In OneShot mode, also clears the stored final sample.
+    fn reset(&mut self) {
+        self.phase = 0.0;
+        self.oneshot_final_sample = None;
     }
 }
 
-// === Modulation Processor Implementation ===
 //
-// Here we override `get_modulation_type` for the ports we use in this node.
+// === ModulationProcessor Implementation ===
+//
 impl ModulationProcessor for Lfo {}
 
+//
+// === AudioNode Implementation ===
+//
 impl AudioNode for Lfo {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
@@ -296,142 +344,46 @@ impl AudioNode for Lfo {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Retrieve per‑sample modulation arrays.
-        // For frequency and gain modulation we start with a “neutral” multiplier (1.0).
         let freq_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
         let gate_mod = self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0);
         let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-            // Free‑running mode: use SIMD processing.
             if self.trigger_mode == LfoTriggerMode::None {
-                let table = LFO_TABLES.get().unwrap().get_table(self.waveform);
-                let table_size_f = TABLE_SIZE as f32;
-                let sample_rate = self.sample_rate;
-                let base_frequency = self.frequency;
-                let mut phase = self.phase;
-                let mut i = 0;
-                while i + 4 <= buffer_size {
-                    // Compute per‑sample effective frequencies.
-                    let freq0 = base_frequency * freq_mod[i];
-                    let freq1 = base_frequency * freq_mod[i + 1];
-                    let freq2 = base_frequency * freq_mod[i + 2];
-                    let freq3 = base_frequency * freq_mod[i + 3];
-                    let inc0 = freq0 / sample_rate;
-                    let inc1 = freq1 / sample_rate;
-                    let inc2 = freq2 / sample_rate;
-                    let inc3 = freq3 / sample_rate;
-
-                    // Compute the phases for the four samples.
-                    let p0 = phase;
-                    let p1 = p0 + inc0;
-                    let p2 = p1 + inc1;
-                    let p3 = p2 + inc2;
-                    let phases = f32x4::from_array([p0, p1, p2, p3]);
-
-                    // Apply the phase offset here and wrap the result.
-                    let effective_phases = phases + f32x4::splat(self.phase_offset);
-                    // Subtract the floor to ensure the phases remain in [0.0, 1.0).
-                    let effective_phases = effective_phases - effective_phases.floor();
-
-                    // Compute lookup table indices.
-                    let table_indices = effective_phases * f32x4::splat(table_size_f);
-                    let index_f = table_indices.floor();
-                    let fraction = table_indices - index_f;
-                    let i0 = (index_f[0] as usize) & TABLE_MASK;
-                    let i1 = (index_f[1] as usize) & TABLE_MASK;
-                    let i2 = (index_f[2] as usize) & TABLE_MASK;
-                    let i3 = (index_f[3] as usize) & TABLE_MASK;
-                    let i0_next = (i0 + 1) & TABLE_MASK;
-                    let i1_next = (i1 + 1) & TABLE_MASK;
-                    let i2_next = (i2 + 1) & TABLE_MASK;
-                    let i3_next = (i3 + 1) & TABLE_MASK;
-
-                    // Linear interpolation for each lane.
-                    let sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
-                    let sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
-                    let sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
-                    let sample3 = table[i3] + (table[i3_next] - table[i3]) * fraction[3];
-
-                    // Apply use_absolute / normalized settings.
-                    let mut sample_vec = f32x4::from_array([sample0, sample1, sample2, sample3]);
-                    if self.use_absolute {
-                        sample_vec = sample_vec.abs();
-                    }
-                    if self.use_normalized {
-                        sample_vec = (sample_vec + f32x4::splat(1.0)) * f32x4::splat(0.5);
-                    }
-
-                    // Apply gain modulation.
-                    let gain0 = self.gain * gain_mod[i];
-                    let gain1 = self.gain * gain_mod[i + 1];
-                    let gain2 = self.gain * gain_mod[i + 2];
-                    let gain3 = self.gain * gain_mod[i + 3];
-                    let gain_vec = f32x4::from_array([gain0, gain1, gain2, gain3]);
-                    sample_vec = sample_vec * gain_vec;
-
-                    // Store the computed samples.
-                    let out = sample_vec.to_array();
-                    output[i] = out[0];
-                    output[i + 1] = out[1];
-                    output[i + 2] = out[2];
-                    output[i + 3] = out[3];
-
-                    // Advance phase: note that the final phase for this block is computed as:
-                    // p3 + inc3.
-                    phase = p3 + inc3;
-                    if phase >= 1.0 {
-                        phase %= 1.0;
-                    }
-                    i += 4;
-                }
-                self.phase = phase;
-
-                // Process any remaining samples in scalar (update similarly if needed).
-                for j in i..buffer_size {
-                    let freq = base_frequency * freq_mod[j];
-                    let inc = freq / sample_rate;
-                    let effective_phase = (phase + self.phase_offset) % 1.0;
-                    let table_index = effective_phase * table_size_f;
-                    let index = (table_index as usize) & TABLE_MASK;
-                    let index_next = (index + 1) & TABLE_MASK;
-                    let fraction = table_index - table_index.floor();
-                    let mut sample = table[index] + (table[index_next] - table[index]) * fraction;
-                    if self.use_absolute {
-                        sample = sample.abs();
-                    }
-                    if self.use_normalized {
-                        sample = (sample + 1.0) * 0.5;
-                    }
-                    let effective_gain = self.gain * gain_mod[j];
-                    output[j] = sample * effective_gain;
-                    phase += inc;
-                    if phase >= 1.0 {
-                        phase -= 1.0;
-                    }
-                }
-                self.phase = phase;
-            } else {
-                // In envelope‑trigger mode we check for rising edges on each sample.
-                // Use scalar processing.
+                // Free‑running mode: run continuously without any gate trigger.
                 for i in 0..buffer_size {
-                    if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
-                        self.reset();
-                    }
-                    self.last_gate = gate_mod[i];
-
                     let effective_freq = self.frequency * freq_mod[i];
                     let sample = self.get_sample(effective_freq);
                     let effective_gain = self.gain * gain_mod[i];
                     output[i] = sample * effective_gain;
                 }
+            } else if self.trigger_mode == LfoTriggerMode::Envelope {
+                // Envelope mode: reset on gate trigger; continuously wraps.
+                for i in 0..buffer_size {
+                    if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
+                        self.reset();
+                    }
+                    self.last_gate = gate_mod[i];
+                    let effective_freq = self.frequency * freq_mod[i];
+                    let sample = self.get_sample(effective_freq);
+                    let effective_gain = self.gain * gain_mod[i];
+                    output[i] = sample * effective_gain;
+                }
+            } else if self.trigger_mode == LfoTriggerMode::OneShot {
+                // OneShot mode: reset on gate trigger; once phase reaches 1.0, hold the final sample.
+                for i in 0..buffer_size {
+                    if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
+                        self.reset();
+                    }
+                    self.last_gate = gate_mod[i];
+                    let effective_freq = self.frequency * freq_mod[i];
+                    let effective_gain = self.gain * gain_mod[i];
+                    let sample = self.get_sample_one_shot(effective_freq);
+                    output[i] = sample * effective_gain;
+                }
             }
         }
-    }
-
-    fn reset(&mut self) {
-        self.phase = 0.0;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -454,11 +406,13 @@ impl AudioNode for Lfo {
         self.active
     }
 
-    /*************  ✨ Codeium Command ⭐  *************/
-    /// Returns a string identifier for the node type.
-    ///
-    /// Used for serialization and debugging.
-    /******  07fb0ac3-d9be-4749-b52f-e88bb8197216  *******/
+    fn reset(&mut self) {
+        self.phase = 0.0;
+        if self.trigger_mode == LfoTriggerMode::OneShot {
+            self.oneshot_final_sample = None;
+        }
+    }
+
     fn node_type(&self) -> &str {
         "lfo"
     }
