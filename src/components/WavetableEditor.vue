@@ -175,6 +175,86 @@
               />
             </div>
           </div>
+
+          <!-- Wave Warp Timeline -->
+          <div class="q-my-md">
+            <div class="text-subtitle2">Wave Warp Timeline</div>
+            <div class="timeline wave-warp-timeline" ref="waveWarpTimeline">
+              <div class="timeline-bar"></div>
+
+              <!-- Wave Warp Keyframe markers -->
+              <div
+                v-for="(keyframe, index) in waveWarpKeyframes"
+                :key="'warp-' + index"
+                class="keyframe-marker"
+                :class="{ selected: index === selectedWaveWarpKeyframe }"
+                :style="{
+                  left: timelineRect
+                    ? (keyframe.time / 100) * (timelineRect.width - 40) +
+                      20 +
+                      'px'
+                    : keyframe.time + '%',
+                }"
+                @mousedown.stop="startWaveWarpDrag($event, index)"
+                @click.stop="selectWaveWarpKeyframe(index)"
+              >
+                <q-icon
+                  name="fiber_manual_record"
+                  size="24px"
+                  :color="
+                    index === selectedWaveWarpKeyframe ? 'purple' : 'blue'
+                  "
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Wave Warp Parameters -->
+          <div
+            class="q-my-md"
+            v-if="waveWarpKeyframes[selectedWaveWarpKeyframe]"
+          >
+            <div class="row q-gutter-md">
+              <div class="col">
+                <q-input
+                  v-model="
+                    waveWarpKeyframes[selectedWaveWarpKeyframe].params.amount
+                  "
+                  type="number"
+                  label="Amount"
+                  :min="-1"
+                  :max="1"
+                  :step="0.01"
+                  style="max-width: 150px"
+                />
+              </div>
+              <div class="col">
+                <q-select
+                  v-model="
+                    waveWarpKeyframes[selectedWaveWarpKeyframe].params.type
+                  "
+                  label="Warp Type"
+                  :options="waveWarpTypes"
+                  style="max-width: 150px"
+                />
+              </div>
+              <div class="col">
+                <q-btn
+                  flat
+                  color="primary"
+                  label="Add Keyframe"
+                  @click="addWaveWarpKeyframe"
+                />
+                <q-btn
+                  flat
+                  color="negative"
+                  label="Remove Keyframe"
+                  @click="removeWaveWarpKeyframe"
+                  :disable="waveWarpKeyframes.length <= 1"
+                />
+              </div>
+            </div>
+          </div>
         </q-card-section>
 
         <q-card-actions align="right">
@@ -192,7 +272,7 @@ export default {
   props: {
     numHarmonics: {
       type: Number,
-      default: 32,
+      default: 64,
     },
   },
   data() {
@@ -226,8 +306,17 @@ export default {
         left: 0,
         top: 0,
       },
+      // Wave Warp system
+      waveWarpKeyframes: [],
+      selectedWaveWarpKeyframe: 0,
+      isDraggingWaveWarp: false,
+      dragWarpIndex: null,
+      dragWarpStartX: 0,
+      initialWarpTime: 0,
+      warpMorphAmount: 0,
+      waveWarpTypes: ['pow', 'sine', 'asym', 'bend'],
       contextMenuClickPosition: null,
-      // Add dragStartX for drag tracking
+      // Drag tracking
       dragStartX: 0,
       initialKeyframeTime: 0,
       morphAmount: 0,
@@ -244,24 +333,49 @@ export default {
         })),
       },
     ];
+
+    // Initial wave warp keyframe setup
+    this.waveWarpKeyframes = [
+      {
+        time: 0,
+        params: {
+          amount: 0,
+          type: 'pow',
+        },
+      },
+    ];
+
     this.selectedKeyframe = 0;
+    this.selectedWaveWarpKeyframe = 0;
+
     this.$nextTick(() => {
       if (this.$refs.timeline) {
         this.updateTimelineLayout();
       }
     });
+
     // Add window event listeners for dragging
     window.addEventListener('mousemove', this.onDrag);
     window.addEventListener('mouseup', this.stopDrag);
     window.addEventListener('resize', this.handleResize);
+    window.addEventListener('mousemove', this.onWaveWarpDrag);
+    window.addEventListener('mouseup', this.stopWaveWarpDrag);
   },
   beforeUnmount() {
     // Clean up event listeners
+    window.removeEventListener('mouseup', this.stopWaveWarpDrag);
+    window.removeEventListener('mousemove', this.onWaveWarpDrag);
     window.removeEventListener('mousemove', this.onDrag);
     window.removeEventListener('mouseup', this.stopDrag);
     window.removeEventListener('resize', this.handleResize);
   },
   watch: {
+    'waveWarp.amount'() {
+      this.updateWaveformPreview();
+    },
+    'waveWarp.type'() {
+      this.updateWaveformPreview();
+    },
     showEditor: {
       immediate: true,
       handler(newVal) {
@@ -316,6 +430,83 @@ export default {
     },
   },
   methods: {
+    startWaveWarpDrag(event, index) {
+      event.stopPropagation();
+      this.isDraggingWaveWarp = true;
+      this.dragWarpIndex = index;
+
+      if (!this.timelineRect) {
+        this.timelineRect = this.$refs.waveWarpTimeline.getBoundingClientRect();
+      }
+
+      this.dragWarpStartX = event.clientX;
+      this.initialWarpTime = this.waveWarpKeyframes[index].time;
+      this.selectedWaveWarpKeyframe = index;
+    },
+
+    onWaveWarpDrag(event) {
+      if (
+        !this.isDraggingWaveWarp ||
+        this.dragWarpIndex === null ||
+        !this.timelineRect
+      )
+        return;
+
+      const availableWidth = this.timelineRect.width - 40;
+      const deltaX = event.clientX - this.dragWarpStartX;
+      const deltaTime = (deltaX / availableWidth) * 100;
+      let newTime = this.initialWarpTime + deltaTime;
+      newTime = Math.max(0, Math.min(100, newTime));
+
+      this.waveWarpKeyframes[this.dragWarpIndex].time = newTime;
+      this.sortWaveWarpKeyframes();
+      this.selectedWaveWarpKeyframe = this.waveWarpKeyframes.findIndex(
+        (kf) => kf.time === newTime,
+      );
+      this.updateWaveformPreview();
+    },
+
+    stopWaveWarpDrag() {
+      this.isDraggingWaveWarp = false;
+      this.dragWarpIndex = null;
+    },
+
+    addWaveWarpKeyframe() {
+      const current = this.waveWarpKeyframes[this.selectedWaveWarpKeyframe];
+      let newTime = current.time;
+
+      if (this.selectedWaveWarpKeyframe < this.waveWarpKeyframes.length - 1) {
+        const next = this.waveWarpKeyframes[this.selectedWaveWarpKeyframe + 1];
+        newTime = (current.time + next.time) / 2;
+      }
+
+      const newKeyframe = {
+        time: newTime,
+        params: { ...current.params },
+      };
+
+      this.waveWarpKeyframes.push(newKeyframe);
+      this.sortWaveWarpKeyframes();
+      this.selectedWaveWarpKeyframe = this.waveWarpKeyframes.findIndex(
+        (kf) => kf === newKeyframe,
+      );
+    },
+
+    removeWaveWarpKeyframe() {
+      if (
+        this.waveWarpKeyframes.length > 1 &&
+        this.selectedWaveWarpKeyframe !== null
+      ) {
+        this.waveWarpKeyframes.splice(this.selectedWaveWarpKeyframe, 1);
+        if (this.selectedWaveWarpKeyframe >= this.waveWarpKeyframes.length) {
+          this.selectedWaveWarpKeyframe = this.waveWarpKeyframes.length - 1;
+        }
+      }
+    },
+
+    sortWaveWarpKeyframes() {
+      this.waveWarpKeyframes.sort((a, b) => a.time - b.time);
+    },
     updateTimelineLayout() {
       if (!this.$refs.timeline) return;
 
@@ -373,7 +564,54 @@ export default {
         });
       }
     },
+    applyWaveWarp(waveform, params) {
+      if (params.amount === 0) return waveform;
 
+      const warped = new Float64Array(waveform.length);
+      const normalizedAmount = params.amount;
+
+      for (let i = 0; i < waveform.length; i++) {
+        const phase = i / waveform.length;
+        let warpedPhase = phase;
+
+        switch (params.type) {
+          case 'pow':
+            if (normalizedAmount > 0) {
+              warpedPhase = Math.pow(phase, 1 + normalizedAmount * 3);
+            } else {
+              warpedPhase = 1 - Math.pow(1 - phase, 1 - normalizedAmount * 3);
+            }
+            break;
+          case 'sine':
+            warpedPhase =
+              phase +
+              (normalizedAmount * Math.sin(2 * Math.PI * phase)) /
+                (2 * Math.PI);
+            break;
+          case 'asym':
+            const asymAmount = Math.abs(normalizedAmount);
+            if (phase < 0.5) {
+              warpedPhase = phase * (1 - asymAmount);
+            } else {
+              warpedPhase = phase * (1 + asymAmount) - asymAmount;
+            }
+            break;
+          case 'bend':
+            warpedPhase = phase + normalizedAmount * (phase * (1 - phase));
+            break;
+        }
+
+        warpedPhase = Math.max(0, Math.min(1, warpedPhase));
+        const indexFloat = warpedPhase * (waveform.length - 1);
+        const index1 = Math.floor(indexFloat);
+        const index2 = Math.min(index1 + 1, waveform.length - 1);
+        const frac = indexFloat - index1;
+
+        warped[i] = waveform[index1] * (1 - frac) + waveform[index2] * frac;
+      }
+
+      return warped;
+    },
     updateWaveformAtScrubPosition() {
       // Find surrounding keyframes for interpolation
       let prevKeyframe = null;
@@ -429,8 +667,107 @@ export default {
       // Calculate scrub position as percentage
       this.scrubPosition = ((x - 20) / availableWidth) * 100;
 
-      // Update waveform based on new scrub position
-      this.updateWaveformAtScrubPosition();
+      // Find surrounding keyframes for interpolation
+      let prevKeyframe = null;
+      let nextKeyframe = null;
+
+      for (let i = 0; i < this.keyframes.length - 1; i++) {
+        if (
+          this.scrubPosition >= this.keyframes[i].time &&
+          this.scrubPosition <= this.keyframes[i + 1].time
+        ) {
+          prevKeyframe = this.keyframes[i];
+          nextKeyframe = this.keyframes[i + 1];
+          break;
+        }
+      }
+
+      // Handle edge cases
+      if (!prevKeyframe || !nextKeyframe) {
+        if (this.scrubPosition <= this.keyframes[0].time) {
+          this.selectedKeyframe = 0;
+          this.morphAmount = 0;
+        } else {
+          this.selectedKeyframe = this.keyframes.length - 1;
+          this.morphAmount = 0;
+        }
+      } else {
+        // Calculate interpolation amount
+        const t =
+          (this.scrubPosition - prevKeyframe.time) /
+          (nextKeyframe.time - prevKeyframe.time);
+
+        this.selectedKeyframe = this.keyframes.indexOf(prevKeyframe);
+        this.morphAmount = t;
+      }
+
+      // Update waveform with new interpolation
+      this.updateWaveformPreview();
+    },
+    updateWaveWarpAtScrubPosition() {
+      let prevKeyframe = null;
+      let nextKeyframe = null;
+
+      for (let i = 0; i < this.waveWarpKeyframes.length - 1; i++) {
+        if (
+          this.scrubPosition >= this.waveWarpKeyframes[i].time &&
+          this.scrubPosition <= this.waveWarpKeyframes[i + 1].time
+        ) {
+          prevKeyframe = this.waveWarpKeyframes[i];
+          nextKeyframe = this.waveWarpKeyframes[i + 1];
+          break;
+        }
+      }
+
+      if (!prevKeyframe || !nextKeyframe) {
+        if (this.scrubPosition <= this.waveWarpKeyframes[0].time) {
+          this.selectedWaveWarpKeyframe = 0;
+          this.warpMorphAmount = 0;
+        } else {
+          this.selectedWaveWarpKeyframe = this.waveWarpKeyframes.length - 1;
+          this.warpMorphAmount = 0;
+        }
+      } else {
+        const t =
+          (this.scrubPosition - prevKeyframe.time) /
+          (nextKeyframe.time - prevKeyframe.time);
+
+        this.selectedWaveWarpKeyframe =
+          this.waveWarpKeyframes.indexOf(prevKeyframe);
+        this.warpMorphAmount = t;
+      }
+    },
+    updateHarmonicsAtScrubPosition() {
+      let prevKeyframe = null;
+      let nextKeyframe = null;
+
+      for (let i = 0; i < this.keyframes.length - 1; i++) {
+        if (
+          this.scrubPosition >= this.keyframes[i].time &&
+          this.scrubPosition <= this.keyframes[i + 1].time
+        ) {
+          prevKeyframe = this.keyframes[i];
+          nextKeyframe = this.keyframes[i + 1];
+          break;
+        }
+      }
+
+      if (!prevKeyframe || !nextKeyframe) {
+        if (this.scrubPosition <= this.keyframes[0].time) {
+          this.selectedKeyframe = 0;
+          this.morphAmount = 0;
+        } else {
+          this.selectedKeyframe = this.keyframes.length - 1;
+          this.morphAmount = 0;
+        }
+      } else {
+        const t =
+          (this.scrubPosition - prevKeyframe.time) /
+          (nextKeyframe.time - prevKeyframe.time);
+
+        this.selectedKeyframe = this.keyframes.indexOf(prevKeyframe);
+        this.morphAmount = t;
+      }
     },
 
     handleTimelineMouseDown(event) {
@@ -645,52 +982,85 @@ export default {
         return;
       }
 
-      let currentHarmonics = [
-        ...this.keyframes[this.selectedKeyframe].harmonics,
-      ];
+      const currentKeyframe = this.keyframes[this.selectedKeyframe];
+      let interpolatedHarmonics = [...currentKeyframe.harmonics];
 
-      // Interpolate between keyframes if we have a next keyframe and morphAmount
+      // Interpolate between keyframes if we're between two keyframes
       if (
-        this.selectedKeyframe < this.keyframes.length - 1 &&
-        this.morphAmount > 0
+        this.morphAmount > 0 &&
+        this.selectedKeyframe < this.keyframes.length - 1
       ) {
-        const nextHarmonics =
-          this.keyframes[this.selectedKeyframe + 1].harmonics;
+        const nextKeyframe = this.keyframes[this.selectedKeyframe + 1];
 
-        // Interpolate each harmonic's amplitude and phase
-        currentHarmonics = currentHarmonics.map((harmonic, index) => {
-          return {
+        interpolatedHarmonics = currentKeyframe.harmonics.map(
+          (harmonic, index) => ({
             amplitude:
               harmonic.amplitude * (1 - this.morphAmount) +
-              nextHarmonics[index].amplitude * this.morphAmount,
+              nextKeyframe.harmonics[index].amplitude * this.morphAmount,
             phase:
               harmonic.phase * (1 - this.morphAmount) +
-              nextHarmonics[index].phase * this.morphAmount,
-          };
-        });
+              nextKeyframe.harmonics[index].phase * this.morphAmount,
+          }),
+        );
       }
 
-      // Generate waveform with interpolated harmonics
+      // Generate waveform using interpolated harmonics
       const N = this.fftSize;
       const waveform = new Float64Array(N);
 
       for (let i = 0; i < N; i++) {
         let sample = 0;
-        for (let k = 1; k <= currentHarmonics.length; k++) {
-          const { amplitude, phase } = currentHarmonics[k - 1];
-          sample += amplitude * Math.cos((2 * Math.PI * k * i) / N + phase);
+        for (let h = 0; h < interpolatedHarmonics.length; h++) {
+          const { amplitude, phase } = interpolatedHarmonics[h];
+          const harmonicNumber = h + 1;
+          sample +=
+            amplitude *
+            Math.sin((2 * Math.PI * harmonicNumber * i) / N + phase);
         }
         waveform[i] = sample;
       }
 
-      if (this.removeDC) {
-        this.removeDCOffset(waveform);
-      }
-      if (this.normalize) {
-        this.normalizeWaveform(waveform);
+      // Apply wave warping if needed
+      let currentWarpParams = {
+        ...this.waveWarpKeyframes[this.selectedWaveWarpKeyframe].params,
+      };
+
+      if (
+        this.warpMorphAmount > 0 &&
+        this.selectedWaveWarpKeyframe < this.waveWarpKeyframes.length - 1
+      ) {
+        const nextParams =
+          this.waveWarpKeyframes[this.selectedWaveWarpKeyframe + 1].params;
+        currentWarpParams = {
+          amount:
+            currentWarpParams.amount * (1 - this.warpMorphAmount) +
+            nextParams.amount * this.warpMorphAmount,
+          type:
+            this.warpMorphAmount < 0.5
+              ? currentWarpParams.type
+              : nextParams.type,
+        };
       }
 
-      this.drawWaveform(waveform);
+      // Apply modifiers
+      let processedWaveform = waveform;
+
+      if (currentWarpParams.amount !== 0) {
+        processedWaveform = this.applyWaveWarp(
+          processedWaveform,
+          currentWarpParams,
+        );
+      }
+
+      if (this.removeDC) {
+        this.removeDCOffset(processedWaveform);
+      }
+
+      if (this.normalize) {
+        this.normalizeWaveform(processedWaveform);
+      }
+
+      this.drawWaveform(processedWaveform);
     },
     removeDCOffset(waveform) {
       const avg = waveform.reduce((sum, val) => sum + val, 0) / waveform.length;
@@ -699,6 +1069,13 @@ export default {
       }
     },
 
+    /*************  ✨ Codeium Command ⭐  *************/
+    /**
+     * Normalize a waveform by scaling all samples by the absolute maximum value.
+     * This is useful for avoiding clipping when the waveform is played back.
+     * @param {Float64Array} waveform The waveform to normalize.
+     */
+    /******  88462a26-43b5-4af4-958b-7a71e443fc3a  *******/
     normalizeWaveform(waveform) {
       let maxVal = 0;
       for (let i = 0; i < waveform.length; i++) {
@@ -792,5 +1169,10 @@ export default {
 .harmonic-slider {
   margin-top: 10px;
   height: 140px;
+}
+
+.wave-warp-timeline {
+  background: #f0e0f0;
+  cursor: default;
 }
 </style>
