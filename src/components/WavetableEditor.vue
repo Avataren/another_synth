@@ -21,9 +21,6 @@
             class="current-harmonics q-my-md"
           >
             <div class="row items-center">
-              <div class="text-subtitle2" style="width: 120px">
-                Time: {{ keyframes[selectedKeyframe].time.toFixed(1) }}%
-              </div>
               <div
                 class="vertical-sliders"
                 style="flex: 1; overflow-x: auto; white-space: nowrap"
@@ -48,7 +45,7 @@
                     :max="1"
                     :step="0.01"
                     color="primary"
-                    style="height: 60px"
+                    class="harmonic-slider"
                   />
                   <!-- Phase slider -->
                   <q-slider
@@ -59,11 +56,14 @@
                     :max="phaseMax"
                     :step="0.01"
                     color="accent"
-                    style="height: 60px"
+                    class="harmonic-slider"
                   />
                   <div style="font-size: 10px">H{{ hIndex + 1 }}</div>
                 </div>
               </div>
+            </div>
+            <div class="text-subtitle2" style="width: 120px">
+              Time: {{ keyframes[selectedKeyframe].time.toFixed(1) }}%
             </div>
           </div>
 
@@ -109,20 +109,11 @@
                 :disable="keyframes.length <= 1"
               />
             </div>
-
-            <!-- Example DSP toggles & button -->
-            <div class="row items-center">
-              <q-toggle v-model="removeDC" label="Remove DC" class="q-mr-md" />
-              <q-toggle v-model="normalize" label="Normalize" class="q-mr-md" />
-              <q-btn
-                label="Add Asymm"
-                color="secondary"
-                flat
-                @click="addAsymm"
-              />
-            </div>
           </div>
-
+          <div class="row items-center">
+            <q-toggle v-model="removeDC" label="Remove DC" class="q-mr-md" />
+            <q-toggle v-model="normalize" label="Normalize" class="q-mr-md" />
+          </div>
           <!-- Timeline -->
           <div
             class="timeline"
@@ -224,7 +215,7 @@ export default {
       ],
       // Extra DSP / advanced controls
       removeDC: false,
-      normalize: false,
+      normalize: true,
       phaseMin: -Math.PI,
       phaseMax: Math.PI,
       // Scrubbing
@@ -290,16 +281,52 @@ export default {
     normalize() {
       this.updateWaveformPreview();
     },
-    selectedPreset(newVal) {
-      if (newVal === 'harmonicSeries') {
-        this.applyHarmonicSeriesPreset();
-        this.selectedPreset = 'custom'; // Reset to custom after applying
-      }
-    },
   },
   methods: {
-    handlePresetChange() {
-      // Logic handled in the watcher
+    handlePresetChange(newVal) {
+      if (newVal === 'harmonicSeries') {
+        // Clear existing keyframes first
+        this.keyframes = [
+          {
+            time: 0,
+            harmonics: Array.from({ length: this.numHarmonics }, () => ({
+              amplitude: 0,
+              phase: 0,
+            })),
+          },
+        ];
+
+        // Apply new preset in next tick
+        this.$nextTick(() => {
+          const totalKeyframes = 8;
+          const newKeyframes = [];
+
+          for (let i = 0; i < totalKeyframes; i++) {
+            const time = (i / (totalKeyframes - 1)) * 100;
+            const harmonics = Array.from({ length: this.numHarmonics }, () => ({
+              amplitude: 0,
+              phase: 0,
+            }));
+            if (i < this.numHarmonics) {
+              harmonics[i].amplitude = 1;
+            }
+            newKeyframes.push({ time, harmonics });
+          }
+
+          this.scrubPosition = 0;
+          this.selectedKeyframe = 0;
+          this.keyframes = newKeyframes;
+
+          // Force timeline and waveform updates
+          this.$nextTick(() => {
+            if (this.$refs.timeline) {
+              this.timelineRect = this.$refs.timeline.getBoundingClientRect();
+            }
+            this.updateWaveformPreview();
+            this.selectedPreset = 'custom';
+          });
+        });
+      }
     },
 
     updateWaveformAtScrubPosition() {
@@ -537,15 +564,6 @@ export default {
       this.keyframes.sort((a, b) => a.time - b.time);
     },
 
-    addAsymm() {
-      const current = this.keyframes[this.selectedKeyframe];
-      if (!current) return;
-      current.harmonics.forEach((h, i) => {
-        h.phase += i * 0.1;
-      });
-      this.updateWaveformPreview();
-    },
-
     updateWaveformPreview() {
       if (
         !this.keyframes.length ||
@@ -693,5 +711,14 @@ export default {
 
 .keyframe-marker.selected {
   z-index: 4;
+}
+
+.vertical-sliders {
+  height: 200px;
+}
+
+.harmonic-slider {
+  margin-top: 10px;
+  height: 140px;
 }
 </style>
