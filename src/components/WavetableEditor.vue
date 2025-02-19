@@ -12,8 +12,7 @@
         <q-card-section>
           <div class="text-h6">Wavetable Editor</div>
           <div class="text-subtitle2 q-mb-md">
-            Adjust amplitude &amp; phase for each harmonic. Morph between
-            keyframes, remove DC, normalize, etc.
+            Adjust amplitude & phase for each harmonic.
           </div>
 
           <!-- Harmonic sliders (Amplitude & Phase) -->
@@ -124,30 +123,57 @@
             </div>
           </div>
 
-          <!-- Morph slider -->
-          <div class="q-my-md">
-            <div class="text-subtitle2">
-              Morph (between current &amp; next keyframe)
-            </div>
-            <q-slider
-              v-model="morphPosition"
-              :min="0"
-              :max="1"
-              :step="0.01"
-              style="width: 300px"
-              label-always
-            />
-          </div>
-
           <!-- Timeline -->
-          <div class="timeline" ref="timeline" @click="onTimelineClick($event)">
+          <div
+            class="timeline"
+            ref="timeline"
+            @click="updateScrubPosition"
+            @contextmenu.prevent="showTimelineContextMenu"
+          >
+            <q-menu v-model="showContextMenu" context-menu>
+              <q-list dense>
+                <q-item clickable v-close-popup @click="addKeyframeAtPosition">
+                  <q-item-section>Add Keyframe</q-item-section>
+                </q-item>
+                <q-item
+                  clickable
+                  v-close-popup
+                  @click="removeKeyframe"
+                  :disable="keyframes.length <= 1"
+                >
+                  <q-item-section>Remove Keyframe</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+
             <div class="timeline-bar"></div>
+
+            <!-- Scrubber -->
+            <div
+              class="timeline-scrubber"
+              :style="{
+                left: timelineRect
+                  ? (scrubPosition / 100) * (timelineRect.width - 40) +
+                    20 +
+                    'px'
+                  : scrubPosition + '%',
+              }"
+              @mousedown.stop="startScrubbing"
+            ></div>
+
+            <!-- Keyframe markers -->
             <div
               v-for="(keyframe, index) in keyframes"
               :key="index"
               class="keyframe-marker"
               :class="{ selected: index === selectedKeyframe }"
-              :style="getMarkerStyle(keyframe.time)"
+              :style="{
+                left: timelineRect
+                  ? (keyframe.time / 100) * (timelineRect.width - 40) +
+                    20 +
+                    'px'
+                  : keyframe.time + '%',
+              }"
               @mousedown.stop="startDrag($event, index)"
               @click.stop="selectKeyframe(index)"
             >
@@ -197,16 +223,27 @@ export default {
         { label: 'Harmonic Series', value: 'harmonicSeries' },
       ],
       // Extra DSP / advanced controls
-      morphPosition: 0, // 0..1 morph between current and next keyframe
       removeDC: false,
       normalize: false,
       phaseMin: -Math.PI,
       phaseMax: Math.PI,
+      // Scrubbing
+      scrubPosition: 0,
+      isScrubbing: false,
+      showContextMenu: false,
+      contextMenuPosition: {
+        left: 0,
+        top: 0,
+      },
+      contextMenuClickPosition: null,
+      // Add dragStartX for drag tracking
+      dragStartX: 0,
+      initialKeyframeTime: 0,
+      morphAmount: 0,
     };
   },
   mounted() {
-    // Start with a single keyframe at time 0
-    // Each harmonic has amplitude & phase
+    // Initial keyframe setup
     this.keyframes = [
       {
         time: 0,
@@ -217,6 +254,15 @@ export default {
       },
     ];
     this.selectedKeyframe = 0;
+
+    // Add window event listeners for dragging
+    window.addEventListener('mousemove', this.onDrag);
+    window.addEventListener('mouseup', this.stopDrag);
+  },
+  beforeUnmount() {
+    // Clean up event listeners
+    window.removeEventListener('mousemove', this.onDrag);
+    window.removeEventListener('mouseup', this.stopDrag);
   },
   watch: {
     showEditor(newVal) {
@@ -237,11 +283,6 @@ export default {
     },
     selectedKeyframe() {
       this.updateWaveformPreview();
-      // Reset morphPosition whenever we select a new keyframe
-      this.morphPosition = 0;
-    },
-    morphPosition() {
-      this.updateWaveformPreview();
     },
     removeDC() {
       this.updateWaveformPreview();
@@ -252,52 +293,216 @@ export default {
     selectedPreset(newVal) {
       if (newVal === 'harmonicSeries') {
         this.applyHarmonicSeriesPreset();
-        this.selectedPreset = 'custom';
+        this.selectedPreset = 'custom'; // Reset to custom after applying
       }
     },
   },
   methods: {
-    handlePresetChange(_newPreset) {
-      // Called by QSelect; logic is handled in the watcher
+    handlePresetChange() {
+      // Logic handled in the watcher
     },
 
-    /**
-     * Updated: Only the nth harmonic is active for each successive keyframe.
-     * With 8 total keyframes, keyframe 0 -> partial #1, keyframe 1 -> partial #2, etc.
-     */
+    updateWaveformAtScrubPosition() {
+      // Find surrounding keyframes for interpolation
+      let prevKeyframe = null;
+      let nextKeyframe = null;
+
+      // Find the surrounding keyframes
+      for (let i = 0; i < this.keyframes.length - 1; i++) {
+        if (
+          this.scrubPosition >= this.keyframes[i].time &&
+          this.scrubPosition <= this.keyframes[i + 1].time
+        ) {
+          prevKeyframe = this.keyframes[i];
+          nextKeyframe = this.keyframes[i + 1];
+          break;
+        }
+      }
+
+      // Handle edge cases
+      if (!prevKeyframe || !nextKeyframe) {
+        if (this.scrubPosition <= this.keyframes[0].time) {
+          // Before first keyframe
+          this.selectedKeyframe = 0;
+          this.morphAmount = 0;
+        } else {
+          // After last keyframe
+          this.selectedKeyframe = this.keyframes.length - 1;
+          this.morphAmount = 0;
+        }
+      } else {
+        // Calculate interpolation amount
+        const t =
+          (this.scrubPosition - prevKeyframe.time) /
+          (nextKeyframe.time - prevKeyframe.time);
+
+        this.selectedKeyframe = this.keyframes.indexOf(prevKeyframe);
+        this.morphAmount = t;
+      }
+
+      // Update the waveform with the new interpolation
+      this.updateWaveformPreview();
+    },
+
+    updateScrubPosition(event) {
+      if (!this.timelineRect) {
+        this.timelineRect = this.$refs.timeline.getBoundingClientRect();
+      }
+      const availableWidth = this.timelineRect.width - 40;
+      let x = event.clientX - this.timelineRect.left;
+
+      // Constrain x to the timeline bounds
+      x = Math.max(20, Math.min(x, this.timelineRect.width - 20));
+
+      // Calculate scrub position as percentage
+      this.scrubPosition = ((x - 20) / availableWidth) * 100;
+
+      // Update waveform based on new scrub position
+      this.updateWaveformAtScrubPosition();
+    },
+
+    startScrubbing(event) {
+      this.isScrubbing = true;
+      this.updateScrubPosition(event);
+      document.addEventListener('mousemove', this.onScrub);
+      document.addEventListener('mouseup', this.stopScrubbing);
+    },
+
+    onScrub(event) {
+      if (!this.isScrubbing) return;
+      this.updateScrubPosition(event);
+    },
+
+    stopScrubbing() {
+      this.isScrubbing = false;
+      document.removeEventListener('mousemove', this.onScrub);
+      document.removeEventListener('mouseup', this.stopScrubbing);
+    },
+
+    showTimelineContextMenu(event) {
+      this.timelineRect = this.$refs.timeline.getBoundingClientRect();
+      const timelinePadding = 20;
+      const effectiveWidth = this.timelineRect.width - timelinePadding * 2;
+      const clickX = event.clientX - this.timelineRect.left - timelinePadding;
+      const percentagePosition = Math.max(
+        0,
+        Math.min(100, (clickX / effectiveWidth) * 100),
+      );
+
+      this.contextMenuClickPosition = percentagePosition;
+      this.showContextMenu = true;
+      this.contextMenuPosition = {
+        left: event.clientX,
+        top: event.clientY,
+      };
+    },
+
+    addKeyframeAtPosition() {
+      if (this.contextMenuClickPosition === null) return;
+
+      const existingKeyframeIndex = this.keyframes.findIndex(
+        (kf) => Math.abs(kf.time - this.contextMenuClickPosition) < 0.1,
+      );
+
+      if (existingKeyframeIndex !== -1) {
+        this.selectedKeyframe = existingKeyframeIndex;
+        this.contextMenuClickPosition = null;
+        return;
+      }
+
+      const newKeyframe = {
+        time: this.contextMenuClickPosition,
+        harmonics: this.keyframes[this.selectedKeyframe].harmonics.map((h) => ({
+          amplitude: h.amplitude,
+          phase: h.phase,
+        })),
+      };
+
+      this.keyframes.push(newKeyframe);
+      this.sortKeyframes();
+      this.selectedKeyframe = this.keyframes.findIndex(
+        (kf) => Math.abs(kf.time - this.contextMenuClickPosition) < 0.1,
+      );
+      this.contextMenuClickPosition = null;
+    },
+
+    startDrag(event, index) {
+      event.stopPropagation();
+      this.isDragging = true;
+      this.dragIndex = index;
+
+      if (!this.timelineRect) {
+        this.timelineRect = this.$refs.timeline.getBoundingClientRect();
+      }
+
+      this.dragStartX = event.clientX;
+      this.initialKeyframeTime = this.keyframes[index].time;
+      this.selectedKeyframe = index;
+    },
+
+    onDrag(event) {
+      if (!this.isDragging || this.dragIndex === null || !this.timelineRect)
+        return;
+
+      const availableWidth = this.timelineRect.width - 40;
+      const deltaX = event.clientX - this.dragStartX;
+      const deltaTime = (deltaX / availableWidth) * 100;
+      let newTime = this.initialKeyframeTime + deltaTime;
+      newTime = Math.max(0, Math.min(100, newTime));
+
+      this.keyframes[this.dragIndex].time = newTime;
+      this.sortKeyframes();
+      this.selectedKeyframe = this.keyframes.findIndex(
+        (kf) => kf.time === newTime,
+      );
+      this.updateWaveformPreview();
+    },
+
+    stopDrag() {
+      this.isDragging = false;
+      this.dragIndex = null;
+    },
+
     applyHarmonicSeriesPreset() {
       const totalKeyframes = 8;
       const newKeyframes = [];
 
       for (let i = 0; i < totalKeyframes; i++) {
         const time = (i / (totalKeyframes - 1)) * 100;
-        // Initialize all partials to 0 amplitude
         const harmonics = Array.from({ length: this.numHarmonics }, () => ({
           amplitude: 0,
           phase: 0,
         }));
-        // Turn on just the i-th partial (if within bounds)
         if (i < this.numHarmonics) {
           harmonics[i].amplitude = 1;
         }
         newKeyframes.push({ time, harmonics });
       }
 
+      // Reset all state before applying new keyframes
+      this.scrubPosition = 0;
       this.keyframes = newKeyframes;
       this.selectedKeyframe = 0;
-      this.updateWaveformPreview();
+
+      // Force a fresh update of the waveform
+      this.$nextTick(() => {
+        this.updateWaveformPreview();
+      });
     },
 
     cancel() {
       this.showEditor = false;
     },
+
     apply() {
       console.log('Applied Keyframes:', this.keyframes);
       this.showEditor = false;
     },
+
     selectKeyframe(index) {
       this.selectedKeyframe = index;
     },
+
     addKeyframe() {
       const current = this.keyframes[this.selectedKeyframe];
       let newTime = current.time;
@@ -318,6 +523,7 @@ export default {
         (kf) => kf === newKeyframe,
       );
     },
+
     removeKeyframe() {
       if (this.keyframes.length > 1 && this.selectedKeyframe !== null) {
         this.keyframes.splice(this.selectedKeyframe, 1);
@@ -326,116 +532,60 @@ export default {
         }
       }
     },
-    onTimelineClick(event) {
-      if (!this.$refs.timeline) return;
-      const rect = this.$refs.timeline.getBoundingClientRect();
-      this.timelineRect = rect;
-      const clickX = event.clientX - rect.left;
-      const availableWidth = rect.width - 40; // account for padding
-      let percentage = ((clickX - 20) / availableWidth) * 100;
-      percentage = Math.max(0, Math.min(percentage, 100));
-      // Clone the current keyframe's harmonics
-      const newKeyframe = {
-        time: percentage,
-        harmonics: this.keyframes[this.selectedKeyframe].harmonics.map((h) => ({
-          amplitude: h.amplitude,
-          phase: h.phase,
-        })),
-      };
-      this.keyframes.push(newKeyframe);
-      this.sortKeyframes();
-      this.selectedKeyframe = this.keyframes.findIndex(
-        (kf) => kf === newKeyframe,
-      );
-    },
-    startDrag(event, index) {
-      this.isDragging = true;
-      this.dragIndex = index;
-      this.timelineRect = this.$refs.timeline.getBoundingClientRect();
-      document.addEventListener('mousemove', this.onDrag);
-      document.addEventListener('mouseup', this.stopDrag);
-    },
-    onDrag(event) {
-      if (!this.isDragging || this.dragIndex === null || !this.timelineRect)
-        return;
-      const availableWidth = this.timelineRect.width - 40;
-      let x = event.clientX - this.timelineRect.left;
-      x = Math.max(20, Math.min(x, this.timelineRect.width - 20));
-      let percentage = ((x - 20) / availableWidth) * 100;
-      const draggedKeyframe = this.keyframes[this.dragIndex];
-      draggedKeyframe.time = percentage;
-      this.sortKeyframes();
-      this.selectedKeyframe = this.keyframes.findIndex(
-        (kf) => kf === draggedKeyframe,
-      );
-    },
-    stopDrag() {
-      this.isDragging = false;
-      this.dragIndex = null;
-      document.removeEventListener('mousemove', this.onDrag);
-      document.removeEventListener('mouseup', this.stopDrag);
-    },
+
     sortKeyframes() {
       this.keyframes.sort((a, b) => a.time - b.time);
     },
-    getMarkerStyle(time) {
-      if (!this.timelineRect) return { left: time + '%' };
-      const availableWidth = this.timelineRect.width - 40;
-      let leftPx = (time / 100) * availableWidth + 20;
-      return { left: leftPx + 'px' };
-    },
 
-    // Example "Add Asymm" function: shifts phase of each harmonic
     addAsymm() {
       const current = this.keyframes[this.selectedKeyframe];
       if (!current) return;
       current.harmonics.forEach((h, i) => {
-        // Shift phase by a function of i (example)
         h.phase += i * 0.1;
       });
       this.updateWaveformPreview();
     },
 
     updateWaveformPreview() {
-      // Guard: Ensure we have at least one keyframe and a valid selected index
       if (
         !this.keyframes.length ||
         this.selectedKeyframe < 0 ||
         this.selectedKeyframe >= this.keyframes.length
       ) {
-        console.warn(
-          'updateWaveformPreview: Invalid selectedKeyframe index:',
-          this.selectedKeyframe,
-        );
         return;
       }
 
-      // Determine the "morphed" harmonics
-      let currentHarmonics = this.keyframes[this.selectedKeyframe].harmonics;
+      let currentHarmonics = [
+        ...this.keyframes[this.selectedKeyframe].harmonics,
+      ];
+
+      // Interpolate between keyframes if we have a next keyframe and morphAmount
       if (
         this.selectedKeyframe < this.keyframes.length - 1 &&
-        this.morphPosition > 0
+        this.morphAmount > 0
       ) {
-        // Interpolate between current keyframe and the next
         const nextHarmonics =
           this.keyframes[this.selectedKeyframe + 1].harmonics;
-        currentHarmonics = currentHarmonics.map((h, i) => {
-          const amp =
-            h.amplitude * (1 - this.morphPosition) +
-            nextHarmonics[i].amplitude * this.morphPosition;
-          const ph =
-            h.phase * (1 - this.morphPosition) +
-            nextHarmonics[i].phase * this.morphPosition;
-          return { amplitude: amp, phase: ph };
+
+        // Interpolate each harmonic's amplitude and phase
+        currentHarmonics = currentHarmonics.map((harmonic, index) => {
+          return {
+            amplitude:
+              harmonic.amplitude * (1 - this.morphAmount) +
+              nextHarmonics[index].amplitude * this.morphAmount,
+            phase:
+              harmonic.phase * (1 - this.morphAmount) +
+              nextHarmonics[index].phase * this.morphAmount,
+          };
         });
       }
 
-      // Sum partials into a buffer
+      // Generate waveform with interpolated harmonics
       const N = this.fftSize;
       const waveform = new Float64Array(N);
+
       for (let i = 0; i < N; i++) {
         let sample = 0;
-        // k in [1..numHarmonics] matches array indices [0..numHarmonics-1]
         for (let k = 1; k <= currentHarmonics.length; k++) {
           const { amplitude, phase } = currentHarmonics[k - 1];
           sample += amplitude * Math.cos((2 * Math.PI * k * i) / N + phase);
@@ -443,25 +593,22 @@ export default {
         waveform[i] = sample;
       }
 
-      // Optionally remove DC offset
       if (this.removeDC) {
         this.removeDCOffset(waveform);
       }
-      // Optionally normalize
       if (this.normalize) {
         this.normalizeWaveform(waveform);
       }
 
-      // Draw the waveform
       this.drawWaveform(waveform);
     },
-
     removeDCOffset(waveform) {
       const avg = waveform.reduce((sum, val) => sum + val, 0) / waveform.length;
       for (let i = 0; i < waveform.length; i++) {
         waveform[i] -= avg;
       }
     },
+
     normalizeWaveform(waveform) {
       let maxVal = 0;
       for (let i = 0; i < waveform.length; i++) {
@@ -515,6 +662,7 @@ export default {
   border-radius: 4px;
   box-sizing: border-box;
 }
+
 .timeline-bar {
   position: absolute;
   top: 50%;
@@ -524,13 +672,26 @@ export default {
   background: #ccc;
   transform: translateY(-50%);
 }
+
+.timeline-scrubber {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #ff0000;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
 .keyframe-marker {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
   cursor: pointer;
+  z-index: 3;
 }
+
 .keyframe-marker.selected {
-  /* Additional styling for the selected marker if desired */
+  z-index: 4;
 }
 </style>
