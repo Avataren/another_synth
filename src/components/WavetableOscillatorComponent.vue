@@ -166,8 +166,7 @@ import { storeToRefs } from 'pinia';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
-import { type WaveTable } from 'src/audio/wavetable/wave-utils';
-// import { Waveform } from 'app/public/wasm/audio_processor';
+import { type Wavetable } from 'src/components/WaveTable/WavetableUtils';
 
 interface Props {
   node: AudioNode | null;
@@ -283,8 +282,9 @@ const handleWaveformChange = (newWaveform: number) => {
   );
 };
 
-const handleWavetableUpdate = (newWavetable: WaveTable[]) => {
+const handleWavetableUpdate = (newWavetable: Wavetable) => {
   console.log('###got wavetable:', newWavetable);
+  store.currentInstrument?.updateWavetable(props.nodeId, newWavetable);
 };
 
 const handleWaveformIndexChange = (newValue: number) => {

@@ -1,4 +1,5 @@
 // import { type PortId } from 'app/public/wasm/audio_processor';
+import { type Wavetable } from 'src/components/WaveTable/WavetableUtils';
 import { createStandardAudioWorklet } from './audio-processor-loader';
 // import { type FilterState } from './dsp/filter-state';
 // import { type NoiseState } from './dsp/noise-generator';
@@ -292,6 +293,10 @@ export default class Instrument {
       envelopeId: nodeId,
       config: newState,
     });
+  }
+
+  public updateWavetable(nodeId: number, newWavetable: Wavetable) {
+    console.log('### instrument got wavetable:', newWavetable);
   }
 
   public updateFilterState(nodeId: number, newState: FilterState) {

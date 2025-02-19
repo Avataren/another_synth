@@ -81,6 +81,7 @@
         </q-card-section>
 
         <q-card-actions align="right">
+          <q-btn flat label="Reset" color="warning" @click="resetToSinewave" />
           <q-btn flat label="Close" @click="cancel" />
           <q-btn flat label="Apply" color="primary" @click="apply" />
         </q-card-actions>
@@ -230,6 +231,41 @@ export default {
     },
   },
   methods: {
+    resetToSinewave() {
+      // Reset to initial single keyframe with pure sine
+      this.keyframes = [
+        {
+          time: 0,
+          harmonics: Array.from({ length: this.numHarmonics }, (_, i) => ({
+            amplitude: i === 0 ? 1 : 0,
+            phase: 0,
+          })),
+        },
+      ];
+
+      // Reset wave warp to initial state
+      this.waveWarpKeyframes = [
+        {
+          time: 0,
+          params: {
+            xAmount: 0,
+            yAmount: 0,
+            asymmetric: false,
+          },
+        },
+      ];
+
+      // Reset selection and position states
+      this.selectedKeyframe = 0;
+      this.selectedWaveWarpKeyframe = 0;
+      this.scrubPosition = 0;
+      this.morphAmount = 0;
+      this.warpMorphAmount = 0;
+
+      // Reset DSP controls
+      this.removeDC = false;
+      this.normalize = true;
+    },
     generateAndEmitWavetable(): void {
       try {
         const wavetable = generateWavetable(
