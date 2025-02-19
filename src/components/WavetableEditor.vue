@@ -118,7 +118,7 @@
           <div
             class="timeline"
             ref="timeline"
-            @click="updateScrubPosition"
+            @mousedown="handleTimelineMouseDown"
             @contextmenu.prevent="showTimelineContextMenu"
           >
             <q-menu v-model="showContextMenu" context-menu>
@@ -166,7 +166,7 @@
                   : keyframe.time + '%',
               }"
               @mousedown.stop="startDrag($event, index)"
-              @click.stop="selectKeyframe(index)"
+              @click.stop="handleKeyframeClick($event, index)"
             >
               <q-icon
                 name="fiber_manual_record"
@@ -433,6 +433,28 @@ export default {
       this.updateWaveformAtScrubPosition();
     },
 
+    handleTimelineMouseDown(event) {
+      // Check if we clicked directly on a keyframe marker
+      const target = event.target;
+      const isKeyframeClick = target.closest('.keyframe-marker');
+
+      if (isKeyframeClick) {
+        // Let the keyframe click handler manage this interaction
+        return;
+      }
+
+      // Prevent context menu from showing during drag
+      event.preventDefault();
+
+      // Start scrubbing immediately
+      this.isScrubbing = true;
+      this.updateScrubPosition(event);
+
+      // Add document-level event listeners
+      document.addEventListener('mousemove', this.onScrub);
+      document.addEventListener('mouseup', this.stopScrubbing);
+    },
+
     startScrubbing(event) {
       this.isScrubbing = true;
       this.updateScrubPosition(event);
@@ -450,7 +472,12 @@ export default {
       document.removeEventListener('mousemove', this.onScrub);
       document.removeEventListener('mouseup', this.stopScrubbing);
     },
-
+    handleKeyframeClick(event, index) {
+      event.stopPropagation(); // Prevent timeline click
+      if (!this.isDragging) {
+        this.selectKeyframe(index);
+      }
+    },
     showTimelineContextMenu(event) {
       this.timelineRect = this.$refs.timeline.getBoundingClientRect();
       const timelinePadding = 20;
