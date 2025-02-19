@@ -178,10 +178,32 @@ export default {
       x = Math.max(20, Math.min(x, this.timelineRect.width - 20));
       const newPosition = ((x - 20) / availableWidth) * 100;
 
-      // Calculate morph amount based on position
-      const morphAmount = this.calculateMorphAmount(newPosition);
+      // Find the appropriate keyframe indices based on position
+      let currentIndex = 0;
+      while (
+        currentIndex < this.keyframes.length - 1 &&
+        this.keyframes[currentIndex + 1].time <= newPosition
+      ) {
+        currentIndex++;
+      }
 
-      this.$emit('update:scrub', newPosition);
+      // Update selected keyframe
+      if (this.selectedKeyframe !== currentIndex) {
+        this.$emit('update:selected', currentIndex);
+      }
+
+      // Calculate morph amount
+      let morphAmount = 0;
+      if (currentIndex < this.keyframes.length - 1) {
+        const current = this.keyframes[currentIndex];
+        const next = this.keyframes[currentIndex + 1];
+        const range = next.time - current.time;
+        if (range > 0) {
+          morphAmount = (newPosition - current.time) / range;
+          morphAmount = Math.max(0, Math.min(1, morphAmount));
+        }
+      }
+
       this.$emit('update:morph', morphAmount);
     },
 
@@ -198,44 +220,23 @@ export default {
 
       if (currentIndex >= this.keyframes.length - 1) {
         this.$emit('update:selected', this.keyframes.length - 1);
-        return {
-          amount: 0,
-          currentParams: this.keyframes[this.keyframes.length - 1].params,
-        };
+        return 0;
       }
 
       const current = this.keyframes[currentIndex];
       const next = this.keyframes[currentIndex + 1];
-
       const range = next.time - current.time;
-      if (range === 0)
-        return {
-          amount: 0,
-          currentParams: current.params,
-        };
+
+      if (range === 0) return 0;
 
       const amount = (position - current.time) / range;
+      const morphAmount = Math.max(0, Math.min(1, amount));
 
       if (this.selectedKeyframe !== currentIndex) {
         this.$emit('update:selected', currentIndex);
       }
 
-      // Interpolate parameters
-      const interpolatedParams = {
-        xAmount:
-          current.params.xAmount +
-          (next.params.xAmount - current.params.xAmount) * amount,
-        yAmount:
-          current.params.yAmount +
-          (next.params.yAmount - current.params.yAmount) * amount,
-        asymmetric:
-          amount < 0.5 ? current.params.asymmetric : next.params.asymmetric,
-      };
-
-      return {
-        amount: Math.max(0, Math.min(1, amount)),
-        currentParams: interpolatedParams,
-      };
+      return morphAmount;
     },
 
     showContextMenu(event) {

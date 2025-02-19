@@ -83,7 +83,10 @@
             <input type="file" accept=".wav" @change="handleWavFileUpload" />
           </div>
         </div>
-        <WavetableEditor />
+        <WavetableEditor
+          :num-harmonics="32"
+          @update:wavetable="handleWavetableUpdate"
+        />
       </q-card-section>
       <div class="detune-row">
         <div class="detune-group">
@@ -163,6 +166,7 @@ import { storeToRefs } from 'pinia';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
+import { type WaveTable } from 'src/audio/wavetable/wave-utils';
 // import { Waveform } from 'app/public/wasm/audio_processor';
 
 interface Props {
@@ -277,6 +281,10 @@ const handleWaveformChange = (newWaveform: number) => {
     props.nodeId,
     currentState as OscillatorState,
   );
+};
+
+const handleWavetableUpdate = (newWavetable: WaveTable[]) => {
+  console.log('###got wavetable:', newWavetable);
 };
 
 const handleWaveformIndexChange = (newValue: number) => {

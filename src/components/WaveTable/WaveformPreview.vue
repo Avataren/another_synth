@@ -161,7 +161,7 @@ export default {
           waveform[i] = sample;
         }
 
-        // Apply wave warping if needed
+        // Get current wave warp parameters and interpolate if needed
         let currentWarpParams = {
           ...this.waveWarpKeyframes[this.selectedWaveWarpKeyframe].params,
         };
@@ -170,28 +170,33 @@ export default {
           this.warpMorphAmount > 0 &&
           this.selectedWaveWarpKeyframe < this.waveWarpKeyframes.length - 1
         ) {
+          const currentParams =
+            this.waveWarpKeyframes[this.selectedWaveWarpKeyframe].params;
           const nextParams =
             this.waveWarpKeyframes[this.selectedWaveWarpKeyframe + 1].params;
+
           currentWarpParams = {
-            amount:
-              currentWarpParams.amount * (1 - this.warpMorphAmount) +
-              nextParams.amount * this.warpMorphAmount,
-            type:
+            xAmount:
+              currentParams.xAmount * (1 - this.warpMorphAmount) +
+              nextParams.xAmount * this.warpMorphAmount,
+            yAmount:
+              currentParams.yAmount * (1 - this.warpMorphAmount) +
+              nextParams.yAmount * this.warpMorphAmount,
+            asymmetric:
               this.warpMorphAmount < 0.5
-                ? currentWarpParams.type
-                : nextParams.type,
+                ? currentParams.asymmetric
+                : nextParams.asymmetric,
           };
         }
 
         // Apply modifiers
         let processedWaveform = waveform;
 
-        if (currentWarpParams.amount !== 0) {
-          processedWaveform = this.applyWaveWarp(
-            processedWaveform,
-            currentWarpParams,
-          );
-        }
+        // Always apply wave warp (even with zero amounts, to maintain consistency)
+        processedWaveform = this.applyWaveWarp(
+          processedWaveform,
+          currentWarpParams,
+        );
 
         if (this.removeDC) {
           this.removeDCOffset(processedWaveform);
