@@ -139,7 +139,7 @@ export default {
         { label: 'Harmonic Series', value: 'harmonicSeries' },
       ],
       // DSP controls
-      removeDC: false,
+      removeDC: true,
       normalize: true,
       phaseMin: -Math.PI,
       phaseMax: Math.PI,
