@@ -120,6 +120,7 @@ function handleNoteOff(note: number) {
 
 onMounted(() => {
   keyboardStore.setupGlobalKeyboardListeners();
+  keyboardStore.setupMidiListeners();
   setupKeyboardListener();
 });
 
