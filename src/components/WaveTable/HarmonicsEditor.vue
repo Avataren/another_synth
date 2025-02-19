@@ -63,7 +63,8 @@ export default {
   },
   methods: {
     updateHarmonic(_index) {
-      this.$emit('update:harmonics', [...this.harmonics]);
+      const updatedHarmonics = this.harmonics.map((h) => ({ ...h }));
+      this.$emit('update:harmonics', updatedHarmonics);
     },
   },
 };

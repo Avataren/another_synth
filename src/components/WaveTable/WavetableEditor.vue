@@ -53,6 +53,7 @@
             :selected-keyframe="selectedKeyframe"
             :scrub-position="scrubPosition"
             @update:selected="selectKeyframe"
+            @update:keyframes="updateKeyframes"
             @update:scrub="updateScrubPosition"
             @update:morph="updateMorphAmount"
             @add-keyframe="addKeyframe"
@@ -107,7 +108,7 @@ export default {
   props: {
     numHarmonics: {
       type: Number,
-      default: 64,
+      default: 32,
     },
   },
   data() {
@@ -222,16 +223,19 @@ export default {
       }
     },
     updateHarmonics(newHarmonics) {
-      // Create new references to trigger reactivity
-      this.keyframes = this.keyframes.map((kf, index) => {
+      // Create a deep copy of the keyframes array
+      const updatedKeyframes = this.keyframes.map((kf, index) => {
         if (index === this.selectedKeyframe) {
           return {
             ...kf,
-            harmonics: newHarmonics,
+            harmonics: newHarmonics.map((h) => ({ ...h })), // Deep copy each harmonic
           };
         }
-        return kf;
+        return { ...kf };
       });
+
+      // Update the keyframes
+      this.keyframes = updatedKeyframes;
 
       // Ensure the waveform preview updates
       this.$nextTick(() => {
@@ -323,7 +327,14 @@ export default {
         }
       }
     },
-
+    updateKeyframes(newKeyframes) {
+      this.keyframes = newKeyframes;
+      this.$nextTick(() => {
+        if (this.$refs.waveformPreview) {
+          this.$refs.waveformPreview.updateWaveformPreview();
+        }
+      });
+    },
     sortKeyframes() {
       this.keyframes.sort((a, b) => a.time - b.time);
     },

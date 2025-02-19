@@ -288,16 +288,33 @@ export default {
       let newTime = this.initialKeyframeTime + deltaTime;
       newTime = Math.max(0, Math.min(100, newTime));
 
+      // Create a copy of the keyframes array
       const updatedKeyframes = [...this.keyframes];
-      updatedKeyframes[this.dragIndex] = {
+
+      // Update the dragged keyframe's time
+      const draggedKeyframe = {
         ...updatedKeyframes[this.dragIndex],
         time: newTime,
       };
 
-      this.$emit(
-        'update:keyframes',
-        updatedKeyframes.sort((a, b) => a.time - b.time),
-      );
+      // Remove the keyframe from its current position
+      updatedKeyframes.splice(this.dragIndex, 1);
+
+      // Find the correct position to insert the keyframe
+      let insertIndex = 0;
+      while (
+        insertIndex < updatedKeyframes.length &&
+        updatedKeyframes[insertIndex].time < newTime
+      ) {
+        insertIndex++;
+      }
+
+      // Insert the keyframe at its new position
+      updatedKeyframes.splice(insertIndex, 0, draggedKeyframe);
+
+      // Emit the updates
+      this.$emit('update:keyframes', updatedKeyframes);
+      this.$emit('update:selected', insertIndex);
     },
 
     stopDrag() {

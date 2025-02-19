@@ -68,6 +68,7 @@ export default {
         this.updateWaveformPreview();
       },
       deep: true,
+      immediate: true,
     },
     selectedKeyframe() {
       this.updateWaveformPreview();
