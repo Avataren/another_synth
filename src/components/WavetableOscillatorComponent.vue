@@ -75,8 +75,15 @@
         </div>
       </div>
       <q-card-section class="import-section">
-        <div class="text-h6">Import Wavetable</div>
-        <input type="file" accept=".wav" @change="handleWavFileUpload" />
+        <div class="row">
+          <div class="col">
+            <div class="text-h6">Import Wavetable</div>
+          </div>
+          <div class="col">
+            <input type="file" accept=".wav" @change="handleWavFileUpload" />
+          </div>
+        </div>
+        <WavetableEditor />
       </q-card-section>
       <div class="detune-row">
         <div class="detune-group">
@@ -149,6 +156,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
+import WavetableEditor from './WavetableEditor.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
 // import { type WaveformType } from 'src/audio/wavetable/wave-utils';
