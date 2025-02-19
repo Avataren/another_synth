@@ -245,30 +245,63 @@ export default {
       },
     ];
     this.selectedKeyframe = 0;
-
+    this.$nextTick(() => {
+      if (this.$refs.timeline) {
+        this.updateTimelineLayout();
+      }
+    });
     // Add window event listeners for dragging
     window.addEventListener('mousemove', this.onDrag);
     window.addEventListener('mouseup', this.stopDrag);
+    window.addEventListener('resize', this.handleResize);
   },
   beforeUnmount() {
     // Clean up event listeners
     window.removeEventListener('mousemove', this.onDrag);
     window.removeEventListener('mouseup', this.stopDrag);
+    window.removeEventListener('resize', this.handleResize);
   },
   watch: {
-    showEditor(newVal) {
-      if (newVal) {
+    showEditor: {
+      immediate: true,
+      handler(newVal) {
+        if (newVal) {
+          // Clear any existing timeouts
+          if (this.initTimeout) {
+            clearTimeout(this.initTimeout);
+          }
+
+          // Wait for dialog transition (250ms is typical for Quasar transitions)
+          this.initTimeout = setTimeout(() => {
+            if (this.$refs.timeline) {
+              // Force a layout reflow
+              void this.$refs.timeline.offsetWidth;
+              this.timelineRect = this.$refs.timeline.getBoundingClientRect();
+              this.updateTimelineLayout();
+
+              // Double-check measurements after a brief delay
+              setTimeout(() => {
+                if (this.$refs.timeline) {
+                  const newRect = this.$refs.timeline.getBoundingClientRect();
+                  if (newRect.width !== this.timelineRect.width) {
+                    this.timelineRect = newRect;
+                    this.updateTimelineLayout();
+                  }
+                }
+              }, 50);
+            }
+          }, 300);
+        }
+      },
+    },
+    keyframes: {
+      handler() {
         this.$nextTick(() => {
           if (this.$refs.timeline) {
             this.timelineRect = this.$refs.timeline.getBoundingClientRect();
           }
           this.updateWaveformPreview();
         });
-      }
-    },
-    keyframes: {
-      handler() {
-        this.updateWaveformPreview();
       },
       deep: true,
     },
@@ -283,6 +316,18 @@ export default {
     },
   },
   methods: {
+    updateTimelineLayout() {
+      if (!this.$refs.timeline) return;
+
+      this.timelineRect = this.$refs.timeline.getBoundingClientRect();
+      // Force a re-render of keyframe positions
+      this.keyframes = [...this.keyframes];
+    },
+    handleResize() {
+      if (this.showEditor) {
+        this.updateTimelineLayout();
+      }
+    },
     handlePresetChange(newVal) {
       if (newVal === 'harmonicSeries') {
         // Clear existing keyframes first
