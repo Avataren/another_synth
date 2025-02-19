@@ -42,7 +42,7 @@
           v-model="envelopeState.decay"
           label="Decay"
           :min="0"
-          :max="3"
+          :max="10"
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleDecayChange"

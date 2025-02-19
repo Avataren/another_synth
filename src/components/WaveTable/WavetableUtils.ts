@@ -288,6 +288,189 @@ export const generateWavetable = (
     };
 };
 
+interface WavetableWav {
+    samples: Float32Array[];
+    numWaveforms: number;
+    sampleLength: number;
+}
+
+const generateWavetableWav = (
+    keyframes: Keyframe[],
+    waveWarpKeyframes: WaveWarpKeyframe[],
+    numWaveforms = 256,
+    sampleLength = 2048,
+    onProgress?: (progress: number) => void
+): WavetableWav => {
+    // ... existing validation code ...
+
+    const samplesArray: Float32Array[] = new Array(numWaveforms);
+
+    for (let i = 0; i < numWaveforms; i++) {
+        const position = (i / (numWaveforms - 1)) * 100;
+        samplesArray[i] = generateWaveformAtPositionForWav(
+            position,
+            keyframes,
+            waveWarpKeyframes,
+            sampleLength
+        );
+
+        if (onProgress) {
+            onProgress(i / numWaveforms);
+        }
+    }
+
+    return {
+        samples: samplesArray,
+        numWaveforms,
+        sampleLength
+    };
+};
+
+const generateWaveformAtPositionForWav = (
+    position: number,
+    keyframes: Keyframe[],
+    waveWarpKeyframes: WaveWarpKeyframe[],
+    sampleLength: number
+): Float32Array => {
+    if (!keyframes.length || !waveWarpKeyframes.length) {
+        throw new Error('Keyframes arrays cannot be empty');
+    }
+
+    // Find current keyframe indices and morph amounts
+    const { currentIndex: harmonicIndex, morphAmount: harmonicMorph } =
+        findKeyframeIndices(position, keyframes);
+    const { currentIndex: warpIndex, morphAmount: warpMorph } =
+        findKeyframeIndices(position, waveWarpKeyframes);
+
+    // Get interpolated harmonics
+    const currentHarmonics = keyframes[harmonicIndex]!.harmonics;
+    const interpolatedHarmonics = harmonicIndex < keyframes.length - 1
+        ? interpolateHarmonics(
+            currentHarmonics,
+            keyframes[harmonicIndex + 1]!.harmonics,
+            harmonicMorph
+        )
+        : currentHarmonics;
+
+    // Get interpolated warp parameters
+    const currentWarp = waveWarpKeyframes[warpIndex]!.params;
+    const interpolatedWarp = warpIndex < waveWarpKeyframes.length - 1
+        ? interpolateWarpParams(
+            currentWarp,
+            waveWarpKeyframes[warpIndex + 1]!.params,
+            warpMorph
+        )
+        : currentWarp;
+
+    // Generate time-domain waveform
+    const timeDomain = generateWaveformFromHarmonics(interpolatedHarmonics, sampleLength);
+
+    // Apply wave warping
+    return new Float32Array(applyWaveWarp(timeDomain, interpolatedWarp));
+};
+
+const encodeWavFile = (wavetable: WavetableWav): ArrayBuffer => {
+    const numChannels = 1;
+    const sampleRate = 44100;
+    const bitsPerSample = 32;
+    const bytesPerSample = bitsPerSample / 8;
+
+    // Calculate total number of samples and file size
+    const totalSamples = wavetable.numWaveforms * wavetable.sampleLength;
+    const dataSize = totalSamples * bytesPerSample;
+    const fileSize = 44 + dataSize; // 44 bytes for WAV header
+
+    // Create buffer for the entire WAV file
+    const buffer = new ArrayBuffer(fileSize);
+    const view = new DataView(buffer);
+
+    // Write WAV header
+    // "RIFF" chunk descriptor
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, fileSize - 8, true);
+    writeString(view, 8, 'WAVE');
+
+    // "fmt " sub-chunk
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true); // Sub-chunk size (16 for PCM)
+    view.setUint16(20, 3, true);  // Audio format (3 for IEEE float)
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // Byte rate
+    view.setUint16(32, numChannels * bytesPerSample, true); // Block align
+    view.setUint16(34, bitsPerSample, true);
+
+    // "data" sub-chunk
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    // Write sample data
+    let offset = 44;
+    for (let i = 0; i < wavetable.numWaveforms; i++) {
+        const waveform = wavetable.samples[i]!;
+        for (let j = 0; j < wavetable.sampleLength; j++) {
+            view.setFloat32(offset, waveform[j]!, true);
+            offset += bytesPerSample;
+        }
+    }
+
+    return buffer;
+};
+
+const writeString = (view: DataView, offset: number, string: string): void => {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+};
+
+export const exportWavetableToWav = (
+    keyframes: Keyframe[],
+    waveWarpKeyframes: WaveWarpKeyframe[],
+    numWaveforms = 256,
+    sampleLength = 2048,
+    onProgress?: (progress: number) => void
+): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+        try {
+            // Generate wavetable with progress updates
+            const wavetable = generateWavetableWav(
+                keyframes,
+                waveWarpKeyframes,
+                numWaveforms,
+                sampleLength,
+                (genProgress) => {
+                    if (onProgress) {
+                        // Generation is 80% of the process, encoding is 20%
+                        onProgress(genProgress * 0.8);
+                    }
+                }
+            );
+
+            // Encode to WAV with progress updates
+            const result = encodeWavFile(wavetable);
+            if (onProgress) {
+                onProgress(1); // Complete
+            }
+            resolve(result);
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
+// export const exportWavetableToWav = (
+//     keyframes: Keyframe[],
+//     waveWarpKeyframes: WaveWarpKeyframe[],
+//     numWaveforms = 256,
+//     sampleLength = 2048
+// ): ArrayBuffer => {
+//     const wavetable = generateWavetableWav(keyframes, waveWarpKeyframes, numWaveforms, sampleLength);
+//     return encodeWavFile(wavetable);
+// };
+
+
+export type { WavetableWav };
+
 // Export interfaces for use in other files
 export type {
     Harmonic,

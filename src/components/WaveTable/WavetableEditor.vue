@@ -80,10 +80,46 @@
           />
         </q-card-section>
 
-        <q-card-actions align="right">
-          <q-btn flat label="Reset" color="warning" @click="resetToSinewave" />
-          <q-btn flat label="Close" @click="cancel" />
-          <q-btn flat label="Apply" color="primary" @click="apply" />
+        <q-card-actions align="right" class="q-px-md">
+          <div class="row full-width items-center q-gutter-md">
+            <div class="col">
+              <q-linear-progress
+                :value="generationProgress"
+                color="primary"
+                class="q-mt-md"
+                style="height: 4px"
+              >
+                <div class="absolute-full flex flex-center">
+                  <q-badge color="primary" text-color="white">
+                    {{ Math.round(generationProgress * 100) }}%
+                  </q-badge>
+                </div>
+              </q-linear-progress>
+            </div>
+            <div class="col-auto">
+              <q-btn
+                flat
+                label="Reset"
+                color="warning"
+                @click="resetToSinewave"
+                :disable="isGenerating"
+              />
+              <q-btn
+                flat
+                label="Close"
+                @click="cancel"
+                :disable="isGenerating"
+              />
+              <q-btn
+                flat
+                label="Apply"
+                color="primary"
+                @click="apply"
+                :loading="isGenerating"
+                :disable="isGenerating"
+              />
+            </div>
+          </div>
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -99,6 +135,7 @@ import WavetableTimeline from './WavetableTimeline.vue';
 import WaveWarpTimeline from './WaveWarpTimeline.vue';
 import DSPControls from './DSPControls.vue';
 import {
+  exportWavetableToWav,
   generateWavetable,
   type Keyframe,
   type WaveWarpKeyframe,
@@ -152,6 +189,8 @@ export default {
       warpMorphAmount: 0,
       // Wave Warp types - Added this
       waveWarpTypes: ['pow', 'sine', 'asym', 'bend'],
+      generationProgress: 0,
+      isGenerating: false,
     };
   },
   ref() {
@@ -484,11 +523,33 @@ export default {
       this.keyframes.sort((a, b) => a.time - b.time);
     },
 
-    apply() {
+    async apply() {
+      this.isGenerating = true;
+      this.generationProgress = 0;
+
       try {
-        this.generateAndEmitWavetable();
+        // Generate WAV file as ArrayBuffer with progress updates
+        const wavBuffer = await exportWavetableToWav(
+          this.keyframes,
+          this.waveWarpKeyframes,
+          256, // numWaveforms
+          2048, // sampleLength
+          (progress) => {
+            console.log('progress', progress);
+            this.generationProgress = progress;
+          },
+        );
+
+        // Convert ArrayBuffer to Uint8Array
+        const wavData = new Uint8Array(wavBuffer);
+
+        // Emit the WAV data
+        this.$emit('update:wavetable', wavData);
       } catch (error) {
         console.error('Error generating wavetable:', error);
+      } finally {
+        this.isGenerating = false;
+        this.generationProgress = 0;
       }
     },
 
