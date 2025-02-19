@@ -198,14 +198,21 @@ export default {
 
       if (currentIndex >= this.keyframes.length - 1) {
         this.$emit('update:selected', this.keyframes.length - 1);
-        return 0;
+        return {
+          amount: 0,
+          currentParams: this.keyframes[this.keyframes.length - 1].params,
+        };
       }
 
       const current = this.keyframes[currentIndex];
       const next = this.keyframes[currentIndex + 1];
 
       const range = next.time - current.time;
-      if (range === 0) return 0;
+      if (range === 0)
+        return {
+          amount: 0,
+          currentParams: current.params,
+        };
 
       const amount = (position - current.time) / range;
 
@@ -213,7 +220,22 @@ export default {
         this.$emit('update:selected', currentIndex);
       }
 
-      return Math.max(0, Math.min(1, amount));
+      // Interpolate parameters
+      const interpolatedParams = {
+        xAmount:
+          current.params.xAmount +
+          (next.params.xAmount - current.params.xAmount) * amount,
+        yAmount:
+          current.params.yAmount +
+          (next.params.yAmount - current.params.yAmount) * amount,
+        asymmetric:
+          amount < 0.5 ? current.params.asymmetric : next.params.asymmetric,
+      };
+
+      return {
+        amount: Math.max(0, Math.min(1, amount)),
+        currentParams: interpolatedParams,
+      };
     },
 
     showContextMenu(event) {
@@ -243,7 +265,11 @@ export default {
       const current = this.keyframes[this.selectedKeyframe];
       const newKeyframe = {
         time: newTime,
-        params: { ...current.params },
+        params: {
+          xAmount: current.params.xAmount || 0,
+          yAmount: current.params.yAmount || 0,
+          asymmetric: current.params.asymmetric || false,
+        },
       };
 
       const updatedKeyframes = [...this.keyframes, newKeyframe];

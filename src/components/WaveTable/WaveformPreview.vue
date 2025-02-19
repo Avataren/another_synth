@@ -206,49 +206,60 @@ export default {
     },
 
     applyWaveWarp(waveform, params) {
-      if (params.amount === 0) return waveform;
+      if (params.xAmount === 0 && params.yAmount === 0) return waveform;
 
       const warped = new Float64Array(waveform.length);
-      const normalizedAmount = params.amount;
+      const N = waveform.length;
 
-      for (let i = 0; i < waveform.length; i++) {
-        const phase = i / waveform.length;
-        let warpedPhase = phase;
+      for (let i = 0; i < N; i++) {
+        // Normalize position to [-1, 1] range
+        const normalizedPos = (i / N) * 2 - 1;
 
-        switch (params.type) {
-          case 'pow':
-            if (normalizedAmount > 0) {
-              warpedPhase = Math.pow(phase, 1 + normalizedAmount * 3);
+        // Apply X warping
+        let xPos = normalizedPos;
+        if (params.xAmount !== 0) {
+          if (params.asymmetric) {
+            // Asymmetric warping
+            if (normalizedPos >= 0) {
+              xPos = Math.pow(normalizedPos, 1 + params.xAmount * 0.2);
             } else {
-              warpedPhase = 1 - Math.pow(1 - phase, 1 - normalizedAmount * 3);
+              xPos = -Math.pow(-normalizedPos, 1 + params.xAmount * 0.2);
             }
-            break;
-          case 'sine':
-            warpedPhase =
-              phase +
-              (normalizedAmount * Math.sin(2 * Math.PI * phase)) /
-                (2 * Math.PI);
-            break;
-          case 'asym':
-            const asymAmount = Math.abs(normalizedAmount);
-            if (phase < 0.5) {
-              warpedPhase = phase * (1 - asymAmount);
-            } else {
-              warpedPhase = phase * (1 + asymAmount) - asymAmount;
-            }
-            break;
-          case 'bend':
-            warpedPhase = phase + normalizedAmount * (phase * (1 - phase));
-            break;
+          } else {
+            // Symmetric warping
+            const sign = Math.sign(normalizedPos);
+            const absPos = Math.abs(normalizedPos);
+            xPos = sign * Math.pow(absPos, 1 + params.xAmount * 0.2);
+          }
         }
 
-        warpedPhase = Math.max(0, Math.min(1, warpedPhase));
-        const indexFloat = warpedPhase * (waveform.length - 1);
-        const index1 = Math.floor(indexFloat);
-        const index2 = Math.min(index1 + 1, waveform.length - 1);
-        const frac = indexFloat - index1;
+        // Convert back to [0, 1] range for interpolation
+        const samplePos = (xPos + 1) * 0.5 * (N - 1);
+        const index1 = Math.floor(samplePos);
+        const index2 = Math.min(index1 + 1, N - 1);
+        const frac = samplePos - index1;
 
-        warped[i] = waveform[index1] * (1 - frac) + waveform[index2] * frac;
+        // Linear interpolation
+        let sample = waveform[index1] * (1 - frac) + waveform[index2] * frac;
+
+        // Apply Y warping
+        if (params.yAmount !== 0) {
+          if (params.asymmetric) {
+            // Asymmetric Y warping
+            if (sample >= 0) {
+              sample = Math.pow(sample, 1 + params.yAmount * 0.2);
+            } else {
+              sample = -Math.pow(-sample, 1 + params.yAmount * 0.2);
+            }
+          } else {
+            // Symmetric Y warping
+            const sign = Math.sign(sample);
+            const absSample = Math.abs(sample);
+            sample = sign * Math.pow(absSample, 1 + params.yAmount * 0.2);
+          }
+        }
+
+        warped[i] = sample;
       }
 
       return warped;

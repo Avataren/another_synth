@@ -155,8 +155,9 @@ export default {
       {
         time: 0,
         params: {
-          amount: 0,
-          type: 'pow',
+          xAmount: 0,
+          yAmount: 0,
+          asymmetric: false,
         },
       },
     ];

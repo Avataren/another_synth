@@ -1,29 +1,53 @@
+<!-- WaveWarpParameters.vue -->
 <template>
-  <div class="row q-gutter-md">
-    <div class="col-12">
-      <q-slider
-        v-model="localAmount"
-        :min="-1"
-        :max="1"
-        :step="0.01"
-        label
-        label-always
-        color="purple"
-        @update:model-value="updateAmount"
-      >
-        <template v-slot:thumb-label>
-          {{ localAmount.toFixed(2) }}
-        </template>
-      </q-slider>
-    </div>
-    <div class="col">
-      <q-select
-        v-model="localType"
-        label="Warp Type"
-        :options="warpTypes"
-        style="max-width: 150px"
-        @update:model-value="updateType"
-      />
+  <div class="wave-warp-parameters q-pa-md">
+    <div class="row q-col-gutter-md">
+      <!-- X Warp -->
+      <div class="col-12">
+        <div class="text-subtitle2">X Warp</div>
+        <q-slider
+          v-model="localXAmount"
+          :min="-4"
+          :max="50"
+          :step="0.1"
+          label
+          label-always
+          color="purple"
+          @update:model-value="updateParams"
+        >
+          <template v-slot:thumb-label>
+            {{ localXAmount.toFixed(2) }}
+          </template>
+        </q-slider>
+      </div>
+
+      <!-- Y Warp -->
+      <div class="col-12">
+        <div class="text-subtitle2">Y Warp</div>
+        <q-slider
+          v-model="localYAmount"
+          :min="-4"
+          :max="50"
+          :step="0.1"
+          label
+          label-always
+          color="teal"
+          @update:model-value="updateParams"
+        >
+          <template v-slot:thumb-label>
+            {{ localYAmount.toFixed(2) }}
+          </template>
+        </q-slider>
+      </div>
+
+      <!-- Asymmetric Mode Toggle -->
+      <div class="col-12">
+        <q-toggle
+          v-model="localAsymmetric"
+          label="Asymmetric"
+          @update:model-value="updateParams"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -36,45 +60,38 @@ export default {
       type: Object,
       required: true,
       validator: (value) => {
-        return 'amount' in value && 'type' in value;
+        return (
+          'xAmount' in value && 'yAmount' in value && 'asymmetric' in value
+        );
       },
-    },
-    warpTypes: {
-      type: Array,
-      required: true,
     },
   },
 
   data() {
     return {
-      localAmount: this.params.amount,
-      localType: this.params.type,
+      localXAmount: this.params.xAmount,
+      localYAmount: this.params.yAmount,
+      localAsymmetric: this.params.asymmetric,
     };
   },
 
   watch: {
-    'params.amount'(newVal) {
-      this.localAmount = newVal;
-    },
-    'params.type'(newVal) {
-      this.localType = newVal;
+    params: {
+      handler(newParams) {
+        this.localXAmount = newParams.xAmount;
+        this.localYAmount = newParams.yAmount;
+        this.localAsymmetric = newParams.asymmetric;
+      },
+      deep: true,
     },
   },
 
-  emits: ['update:params'],
-
   methods: {
-    updateAmount(newAmount) {
+    updateParams() {
       this.$emit('update:params', {
-        ...this.params,
-        amount: newAmount,
-      });
-    },
-
-    updateType(newType) {
-      this.$emit('update:params', {
-        ...this.params,
-        type: newType,
+        xAmount: this.localXAmount,
+        yAmount: this.localYAmount,
+        asymmetric: this.localAsymmetric,
       });
     },
   },
