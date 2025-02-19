@@ -156,7 +156,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
-import WavetableEditor from './WavetableEditor.vue';
+import WavetableEditor from './WaveTable/WavetableEditor.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
 // import { type WaveformType } from 'src/audio/wavetable/wave-utils';
