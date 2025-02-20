@@ -33,7 +33,7 @@
 
           <!-- Harmonics Editor Component -->
           <HarmonicsEditor
-            :key="selectedKeyframe + '-' + currentKeyframe.harmonics.length"
+            :key="currentKeyframe.harmonics.length"
             :harmonics="currentKeyframe.harmonics"
             :phase-min="phaseMin"
             :phase-max="phaseMax"
