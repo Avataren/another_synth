@@ -216,55 +216,6 @@ fn import_wav_hound_reader<R: std::io::Read>(
     Ok(collection)
 }
 
-/// Helper function that uses hound to parse the WAV data from any reader
-/// and break it into complete wavetables of length `base_size`.
-// pub fn import_wav_hound_reader<R: std::io::Read>(
-//     reader: R,
-//     base_size: usize,
-// ) -> Result<WavetableMorphCollection, Box<dyn std::error::Error>> {
-//     let mut wav_reader = hound::WavReader::new(reader)?;
-//     let spec = wav_reader.spec();
-
-//     web_sys::console::log_1(&format!("wav specs: {:?}", spec).into());
-
-//     // if spec.bits_per_sample != 32 {
-//     //     return Err(format!("Expected 32 bits per sample, got {}.", spec.bits_per_sample).into());
-//     // }
-//     // // Check that the WAV is in 32-bit float format.
-//     // if spec.sample_format != hound::SampleFormat::Float {
-//     //     return Err("WAV file is not in 32-bit float format.".into());
-//     // }
-
-//     // Read all samples into a Vec<f32>
-//     let samples: Vec<f32> = wav_reader.samples::<f32>().map(|s| s.unwrap()).collect();
-//     let total_samples = samples.len();
-
-//     // Warn if extra samples are present.
-//     if total_samples % base_size != 0 {
-//         web_sys::console::log_1(
-//             &format!(
-//                 "Warning: {} extra samples will be ignored (not a complete wavetable)",
-//                 total_samples % base_size
-//             )
-//             .into(),
-//         );
-//     }
-//     let num_tables = total_samples / base_size;
-//     web_sys::console::log_1(&format!("Number of complete wavetables: {}", num_tables).into());
-
-//     // Create a new morph collection and add each complete wavetable.
-//     let mut collection = WavetableMorphCollection::new();
-//     for i in 0..num_tables {
-//         let start = i * base_size;
-//         let end = start + base_size;
-//         let table_samples = samples[start..end].to_vec();
-//         let wavetable = SynthWavetable::new(table_samples, base_size);
-//         collection.add_wavetable(wavetable);
-//     }
-
-//     Ok(collection)
-// }
-
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WasmNoiseType {
@@ -772,7 +723,8 @@ impl AudioEngine {
         let cursor = Cursor::new(data);
         let collection = import_wav_hound_reader(cursor, base_size)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-
+        // Clear the existing collections so only one is kept.
+        self.wavetable_synthbank.borrow_mut().collections.clear();
         // Add the new collection to the synth bank.
         self.wavetable_synthbank
             .borrow_mut()

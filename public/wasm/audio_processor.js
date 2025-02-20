@@ -247,8 +247,6 @@ export const WasmModulationType = Object.freeze({
     Additive: 2, "2": "Additive",
 });
 /**
- * Helper function that uses hound to parse the WAV data from any reader
- * and break it into complete wavetables of length `base_size`.
  * @enum {0 | 1 | 2}
  */
 export const WasmNoiseType = Object.freeze({
