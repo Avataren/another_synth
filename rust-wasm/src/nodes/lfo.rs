@@ -4,6 +4,8 @@ use std::simd::num::SimdFloat;
 use std::simd::{f32x4, StdFloat};
 use std::sync::OnceLock;
 
+use web_sys::console;
+
 use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
 use crate::traits::{AudioNode, PortId};
 
@@ -121,8 +123,7 @@ impl Lfo {
             sample_rate,
             use_absolute: false,
             use_normalized: false,
-            // Default trigger mode; can be changed later via set_trigger_mode.
-            trigger_mode: LfoTriggerMode::Envelope,
+            trigger_mode: LfoTriggerMode::None,
             last_gate: 0.0,
             active: true,
             oneshot_final_sample: None,

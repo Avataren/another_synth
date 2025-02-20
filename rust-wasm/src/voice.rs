@@ -161,7 +161,8 @@ impl Voice {
 
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
         // If the voice is inactive but has free-running LFOs, only update their phases
-        if !self.active && self.has_free_running_lfos() {
+        if !self.is_active() {
+            // && self.has_free_running_lfos() {
             self.update_free_running_lfos();
         } else if self.active {
             // Normal processing path for active voices
@@ -177,7 +178,6 @@ impl Voice {
         self.update_active_state();
     }
 
-    // New helper method to check for free-running LFOs
     fn has_free_running_lfos(&self) -> bool {
         self.graph.nodes.iter().any(|node| {
             if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
@@ -193,6 +193,7 @@ impl Voice {
         for node in &mut self.graph.nodes {
             if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
                 if lfo.trigger_mode == LfoTriggerMode::None {
+                    // web_sys::console::log_1(&format!("LFO state advancing phase",).into());
                     // Only advance the phase
                     lfo.advance_phase();
                 }

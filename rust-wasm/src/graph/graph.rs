@@ -38,10 +38,7 @@ use super::{
     types::{Connection, ConnectionKey, NodeId},
     ModulationSource,
 };
-use crate::{
-    graph::ModulationType,
-    nodes::{GlobalFrequencyNode, Lfo, LfoTriggerMode},
-};
+use crate::{graph::ModulationType, nodes::GlobalFrequencyNode};
 use crate::{AudioNode, MacroManager, PortId};
 use std::collections::HashMap;
 
@@ -424,54 +421,25 @@ impl AudioGraph {
         let num_nodes = self.nodes.len();
         let mut in_degree = vec![0; num_nodes];
 
-        // First, identify any LFOs in None mode
-        let continuous_lfos: Vec<NodeId> = self
-            .nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(i, node)| {
-                if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
-                    if lfo.trigger_mode == LfoTriggerMode::None {
-                        Some(NodeId(i))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        // Compute in-degrees for each node
+        // Compute in-degrees for each node.
         for conn in self.connections.values() {
-            // Always include connections from continuous LFOs
-            if continuous_lfos.contains(&conn.from_node) {
-                in_degree[conn.to_node.0] += 1;
-            } else {
-                in_degree[conn.to_node.0] += 1;
-            }
+            in_degree[conn.to_node.0] += 1;
         }
 
-        // Start with nodes that have no incoming connections
+        // Start with all nodes that have no incoming connections.
         let mut queue: Vec<usize> = in_degree
             .iter()
             .enumerate()
-            .filter_map(|(i, &deg)| {
-                if deg == 0 || continuous_lfos.iter().any(|lfo| lfo.0 == i) {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(i, &deg)| if deg == 0 { Some(i) } else { None })
             .collect();
 
         self.processing_order.clear();
 
-        // Process nodes in order
+        // Process nodes in order.
         while let Some(node_index) = queue.pop() {
             self.processing_order.push(node_index);
 
-            // Process outgoing connections
+            // For each connection from this node, reduce the in-degree of its destination.
             for conn in self.connections.values() {
                 if conn.from_node.0 == node_index {
                     let dest = conn.to_node.0;
@@ -483,7 +451,7 @@ impl AudioGraph {
             }
         }
 
-        // If there is a cycle or some nodes were not reached, add remaining nodes
+        // If there is a cycle (or some nodes were not reached), add any remaining nodes.
         if self.processing_order.len() < num_nodes {
             for i in 0..num_nodes {
                 if !self.processing_order.contains(&i) {

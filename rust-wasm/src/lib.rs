@@ -532,6 +532,10 @@ impl AudioEngine {
         let mut voice_right = vec![0.0; output_right.len()];
 
         for (i, voice) in self.voices.iter_mut().enumerate() {
+            // web_sys::console::log_1(
+            //     &format!("Processing voice {} - active: {}", i, voice.is_active()).into(),
+            // );
+
             let gate = gates.get(i).copied().unwrap_or(0.0);
             let frequency = frequencies.get(i).copied().unwrap_or(440.0);
             let gain = gains.get(i).copied().unwrap_or(1.0);
