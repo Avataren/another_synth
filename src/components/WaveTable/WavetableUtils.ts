@@ -1,95 +1,84 @@
-interface Harmonic {
+// Exported interfaces
+export interface Harmonic {
     amplitude: number;
     phase: number;
 }
 
-interface WaveWarpParams {
+export interface WaveWarpParams {
     xAmount: number;
     yAmount: number;
     asymmetric: boolean;
 }
 
-interface Keyframe {
+export interface Keyframe {
     time: number;
     harmonics: Harmonic[];
 }
 
-interface WaveWarpKeyframe {
+export interface WaveWarpKeyframe {
     time: number;
     params: WaveWarpParams;
 }
 
-interface KeyframeIndices {
+export interface KeyframeIndices {
     currentIndex: number;
     morphAmount: number;
 }
 
-interface Wavetable {
+export interface Wavetable {
     real: Float64Array[];
     imag: Float64Array[];
     numWaveforms: number;
     fftSize: number;
 }
 
-const findKeyframeIndices = (
+export interface WavetableWav {
+    samples: Float32Array[];
+    numWaveforms: number;
+    sampleLength: number;
+}
+
+// Find keyframe indices and calculate morph amount.
+export const findKeyframeIndices = (
     position: number,
     keyframes: (Keyframe | WaveWarpKeyframe)[]
 ): KeyframeIndices => {
     if (keyframes.length === 0) {
         throw new Error('Keyframes array cannot be empty');
     }
-
     let currentIndex = 0;
-
-    // Find the last keyframe that starts before or at our position
     while (
         currentIndex < keyframes.length - 1 &&
         keyframes[currentIndex + 1]!.time <= position
     ) {
         currentIndex++;
     }
-
-    // If we're at or past the last keyframe, return last index with no morphing
     if (currentIndex >= keyframes.length - 1) {
         return { currentIndex, morphAmount: 0 };
     }
-
     const current = keyframes[currentIndex]!;
     const next = keyframes[currentIndex + 1]!;
-
-    // Calculate time range between current and next keyframe
     const timeRange = next.time - current.time;
+    if (timeRange === 0) return { currentIndex, morphAmount: 0 };
 
-    // If keyframes are at the same time, no morphing
-    if (timeRange === 0) {
-        return { currentIndex, morphAmount: 0 };
-    }
-
-    // Calculate morph amount based on position within the time range
     const morphAmount = (position - current.time) / timeRange;
-
     return {
         currentIndex,
         morphAmount: Math.max(0, Math.min(1, morphAmount))
     };
 };
 
-const interpolateHarmonics = (
+export const interpolateHarmonics = (
     current: Harmonic[],
     next: Harmonic[],
     amount: number
-): Harmonic[] => {
-    return current.map((harmonic, index) => ({
-        amplitude:
-            harmonic.amplitude * (1 - amount) +
-            next[index]!.amplitude * amount,
-        phase:
-            harmonic.phase * (1 - amount) +
-            next[index]!.phase * amount
+): Harmonic[] =>
+    current.map((h, i) => ({
+        amplitude: h.amplitude * (1 - amount) + next[i]!.amplitude * amount,
+        phase: h.phase * (1 - amount) + next[i]!.phase * amount
     }));
-};
 
-const interpolateWarpParams = (
+export const interpolateWarpParams = (
     current: WaveWarpParams,
     next: WaveWarpParams,
     amount: number
@@ -99,154 +88,136 @@ const interpolateWarpParams = (
     asymmetric: amount < 0.5 ? current.asymmetric : next.asymmetric
 });
 
-const generateWaveformFromHarmonics = (
+export const generateWaveformFromHarmonics = (
     harmonics: Harmonic[],
-    fftSize: number
+    size: number
 ): Float64Array => {
-    const waveform = new Float64Array(fftSize);
-
-    for (let i = 0; i < fftSize; i++) {
+    const waveform = new Float64Array(size);
+    const twoPi = 2 * Math.PI;
+    for (let i = 0; i < size; i++) {
         let sample = 0;
         for (let h = 0; h < harmonics.length; h++) {
             const { amplitude, phase } = harmonics[h]!;
-            const harmonicNumber = h + 1;
-            sample += amplitude *
-                Math.sin((2 * Math.PI * harmonicNumber * i) / fftSize + phase);
+            sample += amplitude * Math.sin((twoPi * (h + 1) * i) / size + phase);
         }
         waveform[i] = sample;
     }
-
     return waveform;
 };
 
-const applyWaveWarp = (
+export const applyWaveWarp = (
     waveform: Float64Array,
     params: WaveWarpParams
 ): Float64Array => {
-    if (params.xAmount === 0 && params.yAmount === 0) {
-        return waveform;
-    }
-
+    if (params.xAmount === 0 && params.yAmount === 0) return waveform;
     const warped = new Float64Array(waveform.length);
     const N = waveform.length;
-
+    const xExp = 1 + params.xAmount * 0.2;
+    const yExp = 1 + params.yAmount * 0.2;
     for (let i = 0; i < N; i++) {
         const normalizedPos = (i / N) * 2 - 1;
-
-        // Apply X warping
         let xPos = normalizedPos;
         if (params.xAmount !== 0) {
-            if (params.asymmetric) {
-                if (normalizedPos >= 0) {
-                    xPos = Math.pow(normalizedPos, 1 + params.xAmount * 0.2);
-                } else {
-                    xPos = -Math.pow(-normalizedPos, 1 + params.xAmount * 0.2);
-                }
-            } else {
-                const sign = Math.sign(normalizedPos);
-                const absPos = Math.abs(normalizedPos);
-                xPos = sign * Math.pow(absPos, 1 + params.xAmount * 0.2);
-            }
+            xPos =
+                params.asymmetric
+                    ? normalizedPos >= 0
+                        ? Math.pow(normalizedPos, xExp)
+                        : -Math.pow(-normalizedPos, xExp)
+                    : Math.sign(normalizedPos) *
+                    Math.pow(Math.abs(normalizedPos), xExp);
         }
-
         const samplePos = (xPos + 1) * 0.5 * (N - 1);
         const index1 = Math.floor(samplePos);
         const index2 = Math.min(index1 + 1, N - 1);
         const frac = samplePos - index1;
-
-        let sample = waveform[index1]! * (1 - frac) + waveform[index2]! * frac;
-
-        // Apply Y warping
+        let sample =
+            waveform[index1]! * (1 - frac) +
+            waveform[index2]! * frac;
         if (params.yAmount !== 0) {
-            if (params.asymmetric) {
-                if (sample >= 0) {
-                    sample = Math.pow(sample, 1 + params.yAmount * 0.2);
-                } else {
-                    sample = -Math.pow(-sample, 1 + params.yAmount * 0.2);
-                }
-            } else {
-                const sign = Math.sign(sample);
-                const absSample = Math.abs(sample);
-                sample = sign * Math.pow(absSample, 1 + params.yAmount * 0.2);
-            }
+            sample =
+                params.asymmetric
+                    ? sample >= 0
+                        ? Math.pow(sample, yExp)
+                        : -Math.pow(-sample, yExp)
+                    : Math.sign(sample) * Math.pow(Math.abs(sample), yExp);
         }
-
         warped[i] = sample;
     }
-
     return warped;
 };
 
-const computeFFT = (timeDomain: Float64Array): {
-    real: Float64Array;
-    imag: Float64Array;
-} => {
+export const computeFFT = (
+    timeDomain: Float64Array
+): { real: Float64Array; imag: Float64Array } => {
     const N = timeDomain.length;
     const numFreqs = Math.floor(N / 2) + 1;
     const realArray = new Float64Array(numFreqs);
     const imagArray = new Float64Array(numFreqs);
-
+    const twoPiOverN = (2 * Math.PI) / N;
     for (let k = 0; k < numFreqs; k++) {
-        let realSum = 0;
-        let imagSum = 0;
-
+        let realSum = 0,
+            imagSum = 0;
         for (let n = 0; n < N; n++) {
-            const angle = (2 * Math.PI * k * n) / N;
+            const angle = twoPiOverN * k * n;
             realSum += timeDomain[n]! * Math.cos(angle);
             imagSum -= timeDomain[n]! * Math.sin(angle);
         }
-
         realArray[k] = realSum / N;
         imagArray[k] = imagSum / N;
     }
-
     return { real: realArray, imag: imagArray };
 };
 
-const generateWaveformAtPosition = (
+// Internal helper: generate a warped waveform.
+// Not exported because it’s only used internally.
+const generateWarpedWaveform = (
     position: number,
     keyframes: Keyframe[],
     waveWarpKeyframes: WaveWarpKeyframe[],
-    fftSize: number
-): { real: Float64Array; imag: Float64Array } => {
-    if (!keyframes.length || !waveWarpKeyframes.length) {
-        throw new Error('Keyframes arrays cannot be empty');
-    }
-
-    // Find current keyframe indices and morph amounts
+    length: number
+): Float64Array => {
     const { currentIndex: harmonicIndex, morphAmount: harmonicMorph } =
         findKeyframeIndices(position, keyframes);
     const { currentIndex: warpIndex, morphAmount: warpMorph } =
         findKeyframeIndices(position, waveWarpKeyframes);
 
-    // Get interpolated harmonics
     const currentHarmonics = keyframes[harmonicIndex]!.harmonics;
-    const interpolatedHarmonics = harmonicIndex < keyframes.length - 1
-        ? interpolateHarmonics(
-            currentHarmonics,
-            keyframes[harmonicIndex + 1]!.harmonics,
-            harmonicMorph
-        )
-        : currentHarmonics;
+    const harmonics =
+        harmonicIndex < keyframes.length - 1
+            ? interpolateHarmonics(
+                currentHarmonics,
+                keyframes[harmonicIndex + 1]!.harmonics,
+                harmonicMorph
+            )
+            : currentHarmonics;
 
-    // Get interpolated warp parameters
     const currentWarp = waveWarpKeyframes[warpIndex]!.params;
-    const interpolatedWarp = warpIndex < waveWarpKeyframes.length - 1
-        ? interpolateWarpParams(
-            currentWarp,
-            waveWarpKeyframes[warpIndex + 1]!.params,
-            warpMorph
-        )
-        : currentWarp;
+    const warpParams =
+        warpIndex < waveWarpKeyframes.length - 1
+            ? interpolateWarpParams(
+                currentWarp,
+                waveWarpKeyframes[warpIndex + 1]!.params,
+                warpMorph
+            )
+            : currentWarp;
 
-    // Generate time-domain waveform
-    const timeDomain = generateWaveformFromHarmonics(interpolatedHarmonics, fftSize);
+    const timeDomain = generateWaveformFromHarmonics(harmonics, length);
+    return applyWaveWarp(timeDomain, warpParams);
+};
 
-    // Apply wave warping
-    const warpedWaveform = applyWaveWarp(timeDomain, interpolatedWarp);
-
-    // Convert to frequency domain
-    return computeFFT(warpedWaveform);
+export const generateWaveformAtPosition = (
+    position: number,
+    keyframes: Keyframe[],
+    waveWarpKeyframes: WaveWarpKeyframe[],
+    fftSize: number
+): { real: Float64Array; imag: Float64Array } => {
+    const warped = generateWarpedWaveform(
+        position,
+        keyframes,
+        waveWarpKeyframes,
+        fftSize
+    );
+    return computeFFT(warped);
 };
 
 export const generateWavetable = (
@@ -258,29 +229,22 @@ export const generateWavetable = (
     if (!keyframes.length || !waveWarpKeyframes.length) {
         throw new Error('Keyframes arrays cannot be empty');
     }
-
     if (numWaveforms < 1 || fftSize < 1) {
         throw new Error('numWaveforms and fftSize must be positive integers');
     }
-
-    // If there is only one keyframe for both harmonics and warp, compute once.
     if (keyframes.length === 1 && waveWarpKeyframes.length === 1) {
-        console.log('only one keyframe');
-        const singleResult = generateWaveformAtPosition(0, keyframes, waveWarpKeyframes, fftSize);
+        const singleResult = generateWaveformAtPosition(
+            0,
+            keyframes,
+            waveWarpKeyframes,
+            fftSize
+        );
         const realArrays = new Array(numWaveforms).fill(singleResult.real);
         const imagArrays = new Array(numWaveforms).fill(singleResult.imag);
-        return {
-            real: realArrays,
-            imag: imagArrays,
-            numWaveforms,
-            fftSize
-        };
+        return { real: realArrays, imag: imagArrays, numWaveforms, fftSize };
     }
-
     const realArrays: Float64Array[] = new Array(numWaveforms);
     const imagArrays: Float64Array[] = new Array(numWaveforms);
-
-    // Otherwise, generate each waveform normally.
     for (let i = 0; i < numWaveforms; i++) {
         const position = (i / (numWaveforms - 1)) * 100;
         const { real, imag } = generateWaveformAtPosition(
@@ -292,60 +256,55 @@ export const generateWavetable = (
         realArrays[i] = real;
         imagArrays[i] = imag;
     }
-
-    return {
-        real: realArrays,
-        imag: imagArrays,
-        numWaveforms,
-        fftSize
-    };
+    return { real: realArrays, imag: imagArrays, numWaveforms, fftSize };
 };
 
-interface WavetableWav {
-    samples: Float32Array[];
-    numWaveforms: number;
-    sampleLength: number;
-}
-
-const processWaveform = (
+export const processWaveform = (
     waveform: Float32Array,
     removeDC: boolean,
     normalize: boolean
 ): Float32Array => {
-    // Create a copy to avoid mutating the original
     const processed = new Float32Array(waveform);
-
-    if (removeDC) {
-        // Calculate the mean value (DC offset)
-        let sum = 0;
+    if (removeDC || normalize) {
+        let sum = 0,
+            max = 0;
         for (let i = 0; i < processed.length; i++) {
-            sum += processed[i]!;
+            const sample = processed[i]!;
+            if (removeDC) sum += sample;
+            if (normalize) {
+                const absVal = Math.abs(sample);
+                if (absVal > max) max = absVal;
+            }
         }
-        const mean = sum / processed.length;
-        // Subtract the mean from every sample
-        for (let i = 0; i < processed.length; i++) {
-            processed[i]! -= mean;
-        }
-    }
-
-    if (normalize) {
-        // Find the maximum absolute value in the waveform
-        let max = 0;
-        for (let i = 0; i < processed.length; i++) {
-            const absVal = Math.abs(processed[i]!);
-            if (absVal > max) max = absVal;
-        }
-        // Avoid dividing by zero and scale samples so the max is 1
-        if (max > 0) {
+        if (removeDC) {
+            const mean = sum / processed.length;
             for (let i = 0; i < processed.length; i++) {
-                processed[i]! /= max;
+                processed[i] = processed[i]! - mean;
+            }
+        }
+        if (normalize && max > 0) {
+            for (let i = 0; i < processed.length; i++) {
+                processed[i] = processed[i]! / max;
             }
         }
     }
-
     return processed;
 };
 
+export const generateWaveformAtPositionForWav = (
+    position: number,
+    keyframes: Keyframe[],
+    waveWarpKeyframes: WaveWarpKeyframe[],
+    sampleLength: number
+): Float32Array => {
+    const warped = generateWarpedWaveform(
+        position,
+        keyframes,
+        waveWarpKeyframes,
+        sampleLength
+    );
+    return new Float32Array(warped);
+};
 
 const generateWavetableWav = (
     keyframes: Keyframe[],
@@ -354,136 +313,68 @@ const generateWavetableWav = (
     sampleLength = 2048,
     removeDC: boolean,
     normalize: boolean,
-    onProgress?: (progress: number) => void,
+    onProgress?: (progress: number) => void
 ): WavetableWav => {
     if (!keyframes.length || !waveWarpKeyframes.length) {
         throw new Error('Keyframes arrays cannot be empty');
     }
-
-    // If only one keyframe exists, process it once
     if (keyframes.length === 1 && waveWarpKeyframes.length === 1) {
-        let singleWaveform = generateWaveformAtPositionForWav(0, keyframes, waveWarpKeyframes, sampleLength);
+        let singleWaveform = generateWaveformAtPositionForWav(
+            0,
+            keyframes,
+            waveWarpKeyframes,
+            sampleLength
+        );
         singleWaveform = processWaveform(singleWaveform, removeDC, normalize);
         const samplesArray = new Array(numWaveforms).fill(singleWaveform);
-        if (onProgress) {
-            onProgress(1);
-        }
-        return {
-            samples: samplesArray,
-            numWaveforms,
-            sampleLength
-        };
+        onProgress && onProgress(1);
+        return { samples: samplesArray, numWaveforms, sampleLength };
     }
-
     const samplesArray: Float32Array[] = new Array(numWaveforms);
-
     for (let i = 0; i < numWaveforms; i++) {
         const position = (i / (numWaveforms - 1)) * 100;
-        // Generate raw waveform
         let waveform = generateWaveformAtPositionForWav(
             position,
             keyframes,
             waveWarpKeyframes,
             sampleLength
         );
-        // Process waveform based on the settings
         waveform = processWaveform(waveform, removeDC, normalize);
-
         samplesArray[i] = waveform;
-
-        if (onProgress) {
-            onProgress(i / numWaveforms);
-        }
+        onProgress && onProgress(i / numWaveforms);
     }
-
-    return {
-        samples: samplesArray,
-        numWaveforms,
-        sampleLength
-    };
+    return { samples: samplesArray, numWaveforms, sampleLength };
 };
 
-
-
-const generateWaveformAtPositionForWav = (
-    position: number,
-    keyframes: Keyframe[],
-    waveWarpKeyframes: WaveWarpKeyframe[],
-    sampleLength: number
-): Float32Array => {
-    if (!keyframes.length || !waveWarpKeyframes.length) {
-        throw new Error('Keyframes arrays cannot be empty');
+const writeString = (view: DataView, offset: number, str: string): void => {
+    for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
     }
-
-    // Find current keyframe indices and morph amounts
-    const { currentIndex: harmonicIndex, morphAmount: harmonicMorph } =
-        findKeyframeIndices(position, keyframes);
-    const { currentIndex: warpIndex, morphAmount: warpMorph } =
-        findKeyframeIndices(position, waveWarpKeyframes);
-
-    // Get interpolated harmonics
-    const currentHarmonics = keyframes[harmonicIndex]!.harmonics;
-    const interpolatedHarmonics = harmonicIndex < keyframes.length - 1
-        ? interpolateHarmonics(
-            currentHarmonics,
-            keyframes[harmonicIndex + 1]!.harmonics,
-            harmonicMorph
-        )
-        : currentHarmonics;
-
-    // Get interpolated warp parameters
-    const currentWarp = waveWarpKeyframes[warpIndex]!.params;
-    const interpolatedWarp = warpIndex < waveWarpKeyframes.length - 1
-        ? interpolateWarpParams(
-            currentWarp,
-            waveWarpKeyframes[warpIndex + 1]!.params,
-            warpMorph
-        )
-        : currentWarp;
-
-    // Generate time-domain waveform
-    const timeDomain = generateWaveformFromHarmonics(interpolatedHarmonics, sampleLength);
-
-    // Apply wave warping
-    return new Float32Array(applyWaveWarp(timeDomain, interpolatedWarp));
 };
 
-const encodeWavFile = (wavetable: WavetableWav): ArrayBuffer => {
+export const encodeWavFile = (wavetable: WavetableWav): ArrayBuffer => {
     const numChannels = 1;
     const sampleRate = 44100;
     const bitsPerSample = 32;
     const bytesPerSample = bitsPerSample / 8;
-
-    // Calculate total number of samples and file size
     const totalSamples = wavetable.numWaveforms * wavetable.sampleLength;
     const dataSize = totalSamples * bytesPerSample;
-    const fileSize = 44 + dataSize; // 44 bytes for WAV header
-
-    // Create buffer for the entire WAV file
+    const fileSize = 44 + dataSize;
     const buffer = new ArrayBuffer(fileSize);
     const view = new DataView(buffer);
-
-    // Write WAV header
-    // "RIFF" chunk descriptor
     writeString(view, 0, 'RIFF');
     view.setUint32(4, fileSize - 8, true);
     writeString(view, 8, 'WAVE');
-
-    // "fmt " sub-chunk
     writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true); // Sub-chunk size (16 for PCM)
-    view.setUint16(20, 3, true);  // Audio format (3 for IEEE float)
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 3, true);
     view.setUint16(22, numChannels, true);
     view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // Byte rate
-    view.setUint16(32, numChannels * bytesPerSample, true); // Block align
+    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
+    view.setUint16(32, numChannels * bytesPerSample, true);
     view.setUint16(34, bitsPerSample, true);
-
-    // "data" sub-chunk
     writeString(view, 36, 'data');
     view.setUint32(40, dataSize, true);
-
-    // Write sample data
     let offset = 44;
     for (let i = 0; i < wavetable.numWaveforms; i++) {
         const waveform = wavetable.samples[i]!;
@@ -492,14 +383,7 @@ const encodeWavFile = (wavetable: WavetableWav): ArrayBuffer => {
             offset += bytesPerSample;
         }
     }
-
     return buffer;
-};
-
-const writeString = (view: DataView, offset: number, string: string): void => {
-    for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-    }
 };
 
 export const exportWavetableToWav = (
@@ -509,11 +393,11 @@ export const exportWavetableToWav = (
     sampleLength = 2048,
     removeDC: boolean,
     normalize: boolean,
-    onProgress?: (progress: number) => void,
+    onProgress?: (progress: number) => void
 ): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
         try {
-            // Generate wavetable with progress updates and processing
+            // Note: we explicitly type the parameter "genProgress" as number.
             const wavetable = generateWavetableWav(
                 keyframes,
                 waveWarpKeyframes,
@@ -521,46 +405,13 @@ export const exportWavetableToWav = (
                 sampleLength,
                 removeDC,
                 normalize,
-                (genProgress) => {
-                    if (onProgress) {
-                        // Generation is 80% of the process, encoding is 20%
-                        onProgress(genProgress * 0.8);
-                    }
-                },
-
+                (genProgress: number) => onProgress && onProgress(genProgress * 0.8)
             );
-
-            // Encode to WAV with progress updates
             const result = encodeWavFile(wavetable);
-            if (onProgress) {
-                onProgress(1); // Complete
-            }
+            onProgress && onProgress(1);
             resolve(result);
         } catch (error) {
             reject(error);
         }
     });
-};
-
-
-// export const exportWavetableToWav = (
-//     keyframes: Keyframe[],
-//     waveWarpKeyframes: WaveWarpKeyframe[],
-//     numWaveforms = 256,
-//     sampleLength = 2048
-// ): ArrayBuffer => {
-//     const wavetable = generateWavetableWav(keyframes, waveWarpKeyframes, numWaveforms, sampleLength);
-//     return encodeWavFile(wavetable);
-// };
-
-
-export type { WavetableWav };
-
-// Export interfaces for use in other files
-export type {
-    Harmonic,
-    WaveWarpParams,
-    Keyframe,
-    WaveWarpKeyframe,
-    Wavetable
 };

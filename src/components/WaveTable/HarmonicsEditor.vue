@@ -1,19 +1,11 @@
 <template>
   <div class="current-harmonics q-my-md">
     <div class="row items-center">
-      <div
-        class="vertical-sliders"
-        style="flex: 1; overflow-x: auto; white-space: nowrap"
-      >
+      <div class="vertical-sliders">
         <div
-          v-for="(harmonic, hIndex) in localHarmonics"
-          :key="hIndex"
-          style="
-            display: inline-block;
-            margin: 0 4px;
-            text-align: center;
-            vertical-align: top;
-          "
+          v-for="(harmonic, index) in localHarmonics"
+          :key="index"
+          class="harmonic-container"
         >
           <!-- Amplitude slider -->
           <q-slider
@@ -25,9 +17,7 @@
             :step="0.01"
             color="primary"
             class="harmonic-slider"
-            @update:model-value="
-              (val) => updateHarmonic(hIndex, val, 'amplitude')
-            "
+            @update:model-value="(val) => updateAmplitude(index, val)"
           />
           <!-- Phase slider -->
           <q-slider
@@ -39,9 +29,9 @@
             :step="0.01"
             color="accent"
             class="harmonic-slider"
-            @update:model-value="(val) => updateHarmonic(hIndex, val, 'phase')"
+            @update:model-value="(val) => updatePhase(index, val)"
           />
-          <div style="font-size: 10px">H{{ hIndex + 1 }}</div>
+          <div class="harmonic-label">H{{ index + 1 }}</div>
         </div>
       </div>
     </div>
@@ -67,16 +57,14 @@ export default {
   },
   data() {
     return {
-      // Local copy to allow internal updates without mutating the prop
+      // Local copy to allow internal updates without mutating the prop.
       localHarmonics: [],
     };
   },
   watch: {
-    // When the parent's harmonics change (for example, due to resampling),
-    // update the local copy and log the change.
+    // When the parent's harmonics change, clone the array to avoid accidental mutations.
     harmonics: {
       handler(newHarmonics) {
-        // Clone the array to avoid accidental mutations
         this.localHarmonics = newHarmonics.map((h) => ({ ...h }));
       },
       deep: true,
@@ -84,17 +72,42 @@ export default {
     },
   },
   methods: {
+    updateAmplitude(index, value) {
+      this.updateHarmonic(index, value, 'amplitude');
+    },
+    updatePhase(index, value) {
+      this.updateHarmonic(index, value, 'phase');
+    },
     updateHarmonic(index, newValue, key) {
-      // Update the specific harmonic in the local copy.
+      // Create a new harmonic object to preserve immutability.
       const updated = { ...this.localHarmonics[index], [key]: newValue };
-      // Ensure reactivity using Vue.set
+      // Use Vue.set to ensure reactivity (required in Vue 2).
       this.$set(this.localHarmonics, index, updated);
-
-      // Emit the updated harmonics array to the parent.
-      const emittedArray = this.localHarmonics.map((h) => ({ ...h }));
-
-      this.$emit('update:harmonics', emittedArray);
+      // Emit a new cloned harmonics array to the parent.
+      this.$emit(
+        'update:harmonics',
+        this.localHarmonics.map((h) => ({ ...h })),
+      );
     },
   },
 };
 </script>
+
+<style scoped>
+.vertical-sliders {
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.harmonic-container {
+  display: inline-block;
+  margin: 0 4px;
+  text-align: center;
+  vertical-align: top;
+}
+
+.harmonic-label {
+  font-size: 10px;
+}
+</style>
