@@ -48,7 +48,7 @@ export default class Instrument {
     memory: WebAssembly.Memory,
   ) {
     this.outputNode = audioContext.createGain();
-    //(this.outputNode as GainNode).gain.value = 0.25;
+    (this.outputNode as GainNode).gain.value = 0.5;
     this.outputNode.connect(destination);
     this.voiceLastUsedTime = new Array(this.num_voices).fill(0);
     this.setupAudio(memory);

@@ -112,8 +112,8 @@ impl Envelope {
             decay_table: Vec::with_capacity(CURVE_TABLE_SIZE),
             release_table: Vec::with_capacity(CURVE_TABLE_SIZE),
         };
-        if env.config.attack <= 0.0001 {
-            env.config.attack = 0.0001;
+        if env.config.attack <= 0.0005 {
+            env.config.attack = 0.0005;
         }
         env.update_lookup_tables();
         env
@@ -140,8 +140,8 @@ impl Envelope {
 
     pub fn update_config(&mut self, config: EnvelopeConfig) {
         self.config = config;
-        if self.config.attack <= 0.0001 {
-            self.config.attack = 0.0001;
+        if self.config.attack <= 0.0005 {
+            self.config.attack = 0.0005;
         }
 
         self.smoothing_counter = 0;

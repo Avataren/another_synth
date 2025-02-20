@@ -1,3 +1,4 @@
+// WaveformPreview.vue
 <template>
   <div class="waveform-preview q-my-md">
     <div class="text-subtitle2">Waveform Preview</div>
@@ -11,6 +12,8 @@
 </template>
 
 <script>
+import { debounce } from 'lodash';
+
 export default {
   name: 'WaveformPreview',
   props: {
@@ -59,155 +62,186 @@ export default {
   data() {
     return {
       fftSize: 1024,
+      isUpdating: false,
+      rafId: null,
+      lastDrawnState: null,
     };
+  },
+
+  created() {
+    // Create debounced update function
+    this.debouncedUpdate = debounce(this.performUpdate, 16); // ~60fps
+  },
+
+  beforeUnmount() {
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+    }
   },
 
   watch: {
     keyframes: {
       handler() {
-        this.updateWaveformPreview();
+        this.scheduleUpdate();
       },
       deep: true,
-      immediate: true,
     },
     selectedKeyframe() {
-      this.updateWaveformPreview();
+      this.scheduleUpdate();
     },
-    morphAmount: {
-      handler() {
-        this.updateWaveformPreview();
-      },
-      immediate: true,
+    morphAmount() {
+      this.scheduleUpdate();
     },
     waveWarpKeyframes: {
       handler() {
-        this.updateWaveformPreview();
+        this.scheduleUpdate();
       },
       deep: true,
     },
     selectedWaveWarpKeyframe() {
-      this.updateWaveformPreview();
+      this.scheduleUpdate();
     },
-    warpMorphAmount: {
-      handler() {
-        this.updateWaveformPreview();
-      },
-      immediate: true,
+    warpMorphAmount() {
+      this.scheduleUpdate();
     },
     removeDC() {
-      this.updateWaveformPreview();
+      this.scheduleUpdate();
     },
     normalize() {
-      this.updateWaveformPreview();
+      this.scheduleUpdate();
     },
-    scrubPosition: {
-      handler() {
-        this.updateWaveformPreview();
-      },
-      immediate: true,
-    },
-  },
-
-  mounted() {
-    this.updateWaveformPreview();
   },
 
   methods: {
-    updateWaveformPreview() {
-      if (
-        !this.keyframes.length ||
-        this.selectedKeyframe < 0 ||
-        this.selectedKeyframe >= this.keyframes.length
-      ) {
+    scheduleUpdate() {
+      this.debouncedUpdate();
+    },
+
+    performUpdate() {
+      if (this.isUpdating || !this.keyframes.length) return;
+
+      // Check if state has actually changed
+      const currentState = this.getStateSnapshot();
+      if (this.statesAreEqual(currentState, this.lastDrawnState)) {
         return;
       }
 
-      requestAnimationFrame(() => {
-        const currentKeyframe = this.keyframes[this.selectedKeyframe];
-        let interpolatedHarmonics = [...currentKeyframe.harmonics];
-
-        // Interpolate between keyframes if we're between two keyframes
-        if (
-          this.morphAmount > 0 &&
-          this.selectedKeyframe < this.keyframes.length - 1
-        ) {
-          const nextKeyframe = this.keyframes[this.selectedKeyframe + 1];
-
-          interpolatedHarmonics = currentKeyframe.harmonics.map(
-            (harmonic, index) => ({
-              amplitude:
-                harmonic.amplitude * (1 - this.morphAmount) +
-                nextKeyframe.harmonics[index].amplitude * this.morphAmount,
-              phase:
-                harmonic.phase * (1 - this.morphAmount) +
-                nextKeyframe.harmonics[index].phase * this.morphAmount,
-            }),
-          );
-        }
-
-        // Generate waveform using interpolated harmonics
-        const N = this.fftSize;
-        const waveform = new Float64Array(N);
-
-        for (let i = 0; i < N; i++) {
-          let sample = 0;
-          for (let h = 0; h < interpolatedHarmonics.length; h++) {
-            const { amplitude, phase } = interpolatedHarmonics[h];
-            const harmonicNumber = h + 1;
-            sample +=
-              amplitude *
-              Math.sin((2 * Math.PI * harmonicNumber * i) / N + phase);
-          }
-          waveform[i] = sample;
-        }
-
-        // Get current wave warp parameters and interpolate if needed
-        let currentWarpParams = {
-          ...this.waveWarpKeyframes[this.selectedWaveWarpKeyframe].params,
-        };
-
-        if (
-          this.warpMorphAmount > 0 &&
-          this.selectedWaveWarpKeyframe < this.waveWarpKeyframes.length - 1
-        ) {
-          const currentParams =
-            this.waveWarpKeyframes[this.selectedWaveWarpKeyframe].params;
-          const nextParams =
-            this.waveWarpKeyframes[this.selectedWaveWarpKeyframe + 1].params;
-
-          currentWarpParams = {
-            xAmount:
-              currentParams.xAmount * (1 - this.warpMorphAmount) +
-              nextParams.xAmount * this.warpMorphAmount,
-            yAmount:
-              currentParams.yAmount * (1 - this.warpMorphAmount) +
-              nextParams.yAmount * this.warpMorphAmount,
-            asymmetric:
-              this.warpMorphAmount < 0.5
-                ? currentParams.asymmetric
-                : nextParams.asymmetric,
-          };
-        }
-
-        // Apply modifiers
-        let processedWaveform = waveform;
-
-        // Always apply wave warp (even with zero amounts, to maintain consistency)
-        processedWaveform = this.applyWaveWarp(
-          processedWaveform,
-          currentWarpParams,
-        );
-
-        if (this.removeDC) {
-          this.removeDCOffset(processedWaveform);
-        }
-
-        if (this.normalize) {
-          this.normalizeWaveform(processedWaveform);
-        }
-
-        this.drawWaveform(processedWaveform);
+      this.isUpdating = true;
+      this.rafId = requestAnimationFrame(() => {
+        this.generateAndDrawWaveform();
+        this.isUpdating = false;
+        this.lastDrawnState = currentState;
       });
+    },
+
+    getStateSnapshot() {
+      const currentKeyframe = this.keyframes[this.selectedKeyframe];
+      return {
+        harmonics: currentKeyframe?.harmonics.map((h) => ({ ...h })),
+        morphAmount: this.morphAmount,
+        warpParams: {
+          ...this.waveWarpKeyframes[this.selectedWaveWarpKeyframe]?.params,
+        },
+        warpMorphAmount: this.warpMorphAmount,
+        removeDC: this.removeDC,
+        normalize: this.normalize,
+      };
+    },
+
+    statesAreEqual(state1, state2) {
+      if (!state1 || !state2) return false;
+      return JSON.stringify(state1) === JSON.stringify(state2);
+    },
+
+    generateAndDrawWaveform() {
+      if (!this.keyframes.length || !this.waveWarpKeyframes.length) return;
+
+      const currentKeyframe = this.keyframes[this.selectedKeyframe];
+      let interpolatedHarmonics = [...currentKeyframe.harmonics];
+
+      // Interpolate between harmonics keyframes
+      if (
+        this.morphAmount > 0 &&
+        this.selectedKeyframe < this.keyframes.length - 1
+      ) {
+        const nextKeyframe = this.keyframes[this.selectedKeyframe + 1];
+        interpolatedHarmonics = this.interpolateHarmonics(
+          currentKeyframe.harmonics,
+          nextKeyframe.harmonics,
+          this.morphAmount,
+        );
+      }
+
+      // Get current wave warp parameters
+      const currentWarpKeyframe =
+        this.waveWarpKeyframes[this.selectedWaveWarpKeyframe];
+      let warpParams = { ...currentWarpKeyframe.params };
+
+      // Interpolate between wave warp keyframes
+      if (
+        this.warpMorphAmount > 0 &&
+        this.selectedWaveWarpKeyframe < this.waveWarpKeyframes.length - 1
+      ) {
+        const nextWarpKeyframe =
+          this.waveWarpKeyframes[this.selectedWaveWarpKeyframe + 1];
+        warpParams = this.interpolateWarpParams(
+          currentWarpKeyframe.params,
+          nextWarpKeyframe.params,
+          this.warpMorphAmount,
+        );
+      }
+
+      // Generate base waveform
+      const baseWaveform = this.generateWaveform(interpolatedHarmonics);
+
+      // Apply wave warping
+      const warpedWaveform = this.applyWaveWarp(baseWaveform, warpParams);
+
+      // Apply additional processing
+      const processedWaveform = this.processWaveform(warpedWaveform);
+
+      // Draw the result
+      this.drawWaveform(processedWaveform);
+    },
+
+    interpolateHarmonics(current, next, amount) {
+      return current.map((harmonic, index) => ({
+        amplitude:
+          harmonic.amplitude * (1 - amount) + next[index].amplitude * amount,
+        phase: harmonic.phase * (1 - amount) + next[index].phase * amount,
+      }));
+    },
+
+    generateWaveform(harmonics) {
+      // Use TypedArrays for better performance
+      const waveform = new Float64Array(this.fftSize);
+      const twoPi = 2 * Math.PI;
+
+      // Pre-calculate phase values
+      const phaseMultipliers = new Float64Array(harmonics.length);
+      for (let h = 0; h < harmonics.length; h++) {
+        phaseMultipliers[h] = (twoPi * (h + 1)) / this.fftSize;
+      }
+
+      // Generate waveform
+      for (let i = 0; i < this.fftSize; i++) {
+        let sample = 0;
+        for (let h = 0; h < harmonics.length; h++) {
+          const { amplitude, phase } = harmonics[h];
+          sample += amplitude * Math.sin(phaseMultipliers[h] * i + phase);
+        }
+        waveform[i] = sample;
+      }
+
+      return waveform;
+    },
+
+    interpolateWarpParams(current, next, amount) {
+      return {
+        xAmount: current.xAmount * (1 - amount) + next.xAmount * amount,
+        yAmount: current.yAmount * (1 - amount) + next.yAmount * amount,
+        asymmetric: amount < 0.5 ? current.asymmetric : next.asymmetric,
+      };
     },
 
     applyWaveWarp(waveform, params) {
@@ -215,30 +249,28 @@ export default {
 
       const warped = new Float64Array(waveform.length);
       const N = waveform.length;
+      const xExp = 1 + params.xAmount * 0.2;
+      const yExp = 1 + params.yAmount * 0.2;
 
       for (let i = 0; i < N; i++) {
-        // Normalize position to [-1, 1] range
         const normalizedPos = (i / N) * 2 - 1;
+        let xPos = normalizedPos;
 
         // Apply X warping
-        let xPos = normalizedPos;
         if (params.xAmount !== 0) {
           if (params.asymmetric) {
-            // Asymmetric warping
-            if (normalizedPos >= 0) {
-              xPos = Math.pow(normalizedPos, 1 + params.xAmount * 0.2);
-            } else {
-              xPos = -Math.pow(-normalizedPos, 1 + params.xAmount * 0.2);
-            }
+            xPos =
+              normalizedPos >= 0
+                ? Math.pow(normalizedPos, xExp)
+                : -Math.pow(-normalizedPos, xExp);
           } else {
-            // Symmetric warping
-            const sign = Math.sign(normalizedPos);
-            const absPos = Math.abs(normalizedPos);
-            xPos = sign * Math.pow(absPos, 1 + params.xAmount * 0.2);
+            xPos =
+              Math.sign(normalizedPos) *
+              Math.pow(Math.abs(normalizedPos), xExp);
           }
         }
 
-        // Convert back to [0, 1] range for interpolation
+        // Convert back to sample position
         const samplePos = (xPos + 1) * 0.5 * (N - 1);
         const index1 = Math.floor(samplePos);
         const index2 = Math.min(index1 + 1, N - 1);
@@ -250,17 +282,10 @@ export default {
         // Apply Y warping
         if (params.yAmount !== 0) {
           if (params.asymmetric) {
-            // Asymmetric Y warping
-            if (sample >= 0) {
-              sample = Math.pow(sample, 1 + params.yAmount * 0.2);
-            } else {
-              sample = -Math.pow(-sample, 1 + params.yAmount * 0.2);
-            }
+            sample =
+              sample >= 0 ? Math.pow(sample, yExp) : -Math.pow(-sample, yExp);
           } else {
-            // Symmetric Y warping
-            const sign = Math.sign(sample);
-            const absSample = Math.abs(sample);
-            sample = sign * Math.pow(absSample, 1 + params.yAmount * 0.2);
+            sample = Math.sign(sample) * Math.pow(Math.abs(sample), yExp);
           }
         }
 
@@ -270,36 +295,51 @@ export default {
       return warped;
     },
 
-    removeDCOffset(waveform) {
-      const avg = waveform.reduce((sum, val) => sum + val, 0) / waveform.length;
-      for (let i = 0; i < waveform.length; i++) {
-        waveform[i] -= avg;
-      }
-    },
+    processWaveform(waveform) {
+      const processed = new Float64Array(waveform);
 
-    normalizeWaveform(waveform) {
-      let maxVal = 0;
-      for (let i = 0; i < waveform.length; i++) {
-        const absVal = Math.abs(waveform[i]);
-        if (absVal > maxVal) maxVal = absVal;
-      }
-      if (maxVal > 0) {
-        for (let i = 0; i < waveform.length; i++) {
-          waveform[i] /= maxVal;
+      if (this.removeDC || this.normalize) {
+        let sum = 0,
+          max = 0;
+
+        // Single pass for both operations
+        for (let i = 0; i < processed.length; i++) {
+          const sample = processed[i];
+          if (this.removeDC) sum += sample;
+          if (this.normalize) {
+            const absVal = Math.abs(sample);
+            if (absVal > max) max = absVal;
+          }
+        }
+
+        if (this.removeDC) {
+          const mean = sum / processed.length;
+          for (let i = 0; i < processed.length; i++) {
+            processed[i] -= mean;
+          }
+        }
+
+        if (this.normalize && max > 0) {
+          const scale = 1 / max;
+          for (let i = 0; i < processed.length; i++) {
+            processed[i] *= scale;
+          }
         }
       }
+
+      return processed;
     },
 
     drawWaveform(waveform) {
       const canvas = this.$refs.canvas;
       if (!canvas) return;
+
       const ctx = canvas.getContext('2d');
       const width = canvas.width;
       const height = canvas.height;
+      const scale = height / 2;
 
       ctx.clearRect(0, 0, width, height);
-      ctx.beginPath();
-      const scale = height / 2;
 
       // Draw center line
       ctx.strokeStyle = '#cccccc';
@@ -311,17 +351,23 @@ export default {
 
       // Draw waveform
       ctx.beginPath();
-      for (let i = 0; i < waveform.length; i++) {
-        const x = (i / (waveform.length - 1)) * width;
+      ctx.strokeStyle = '#ff0000';
+      ctx.lineWidth = 2;
+
+      // Calculate step size for smoother rendering
+      const step = Math.max(1, Math.floor(waveform.length / width));
+
+      for (let i = 0; i < waveform.length; i += step) {
+        const x = (i / waveform.length) * width;
         const y = height / 2 - waveform[i] * scale;
+
         if (i === 0) {
           ctx.moveTo(x, y);
         } else {
           ctx.lineTo(x, y);
         }
       }
-      ctx.strokeStyle = '#ff0000';
-      ctx.lineWidth = 2;
+
       ctx.stroke();
     },
   },

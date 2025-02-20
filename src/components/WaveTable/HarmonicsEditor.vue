@@ -1,3 +1,4 @@
+// HarmonicsEditor.vue
 <template>
   <div class="current-harmonics q-my-md">
     <div class="row items-center">
@@ -17,7 +18,7 @@
             :step="0.01"
             color="primary"
             class="harmonic-slider"
-            @update:model-value="(val) => updateAmplitude(index, val)"
+            @update:model-value="(val) => debouncedUpdateAmplitude(index, val)"
           />
           <!-- Phase slider -->
           <q-slider
@@ -29,7 +30,7 @@
             :step="0.01"
             color="accent"
             class="harmonic-slider"
-            @update:model-value="(val) => updatePhase(index, val)"
+            @update:model-value="(val) => debouncedUpdatePhase(index, val)"
           />
           <div class="harmonic-label">H{{ index + 1 }}</div>
         </div>
@@ -39,6 +40,8 @@
 </template>
 
 <script>
+import { debounce } from 'lodash';
+
 export default {
   name: 'HarmonicsEditor',
   props: {
@@ -55,14 +58,22 @@ export default {
       required: true,
     },
   },
+
   data() {
     return {
-      // Local copy to allow internal updates without mutating the prop.
       localHarmonics: [],
+      updateQueue: new Map(),
+      isUpdating: false,
     };
   },
+
+  created() {
+    this.debouncedUpdateAmplitude = debounce(this.updateAmplitude, 16);
+    this.debouncedUpdatePhase = debounce(this.updatePhase, 16);
+    this.debouncedEmitUpdates = debounce(this.emitUpdates, 32);
+  },
+
   watch: {
-    // When the parent's harmonics change, clone the array to avoid accidental mutations.
     harmonics: {
       handler(newHarmonics) {
         this.localHarmonics = newHarmonics.map((h) => ({ ...h }));
@@ -71,23 +82,46 @@ export default {
       immediate: true,
     },
   },
+
   methods: {
     updateAmplitude(index, value) {
-      this.updateHarmonic(index, value, 'amplitude');
+      this.queueUpdate(index, 'amplitude', value);
     },
+
     updatePhase(index, value) {
-      this.updateHarmonic(index, value, 'phase');
+      this.queueUpdate(index, 'phase', value);
     },
-    updateHarmonic(index, newValue, key) {
-      // Create a new harmonic object to preserve immutability.
-      const updated = { ...this.localHarmonics[index], [key]: newValue };
-      // Use Vue.set to ensure reactivity (required in Vue 2).
-      this.$set(this.localHarmonics, index, updated);
-      // Emit a new cloned harmonics array to the parent.
+
+    queueUpdate(index, key, value) {
+      const harmonicUpdates = this.updateQueue.get(index) || {};
+      harmonicUpdates[key] = value;
+      this.updateQueue.set(index, harmonicUpdates);
+
+      // Schedule emission of updates
+      this.debouncedEmitUpdates();
+    },
+
+    emitUpdates() {
+      if (this.isUpdating) return;
+      this.isUpdating = true;
+
+      const updatedHarmonics = [...this.localHarmonics];
+
+      for (const [index, updates] of this.updateQueue.entries()) {
+        updatedHarmonics[index] = {
+          ...updatedHarmonics[index],
+          ...updates,
+        };
+      }
+
+      this.updateQueue.clear();
+      this.localHarmonics = updatedHarmonics;
       this.$emit(
         'update:harmonics',
-        this.localHarmonics.map((h) => ({ ...h })),
+        updatedHarmonics.map((h) => ({ ...h })),
       );
+
+      this.isUpdating = false;
     },
   },
 };
@@ -98,6 +132,7 @@ export default {
   flex: 1;
   overflow-x: auto;
   white-space: nowrap;
+  contain: content; /* CSS containment for better performance */
 }
 
 .harmonic-container {
@@ -105,9 +140,16 @@ export default {
   margin: 0 4px;
   text-align: center;
   vertical-align: top;
+  contain: content;
 }
 
 .harmonic-label {
   font-size: 10px;
+}
+
+/* Use hardware acceleration */
+.harmonic-slider {
+  transform: translateZ(0);
+  will-change: transform;
 }
 </style>
