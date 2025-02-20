@@ -130,9 +130,9 @@ impl Lfo {
         }
     }
 
-    /// Advances the phase using the current frequency.
-    pub fn advance_phase(&mut self) {
-        self.advance_phase_with(self.frequency);
+    /// Advances the phase using the current frequency, equal to one bufferts worth.
+    pub fn advance_phase_one_buffer(&mut self) {
+        self.advance_phase_with(self.frequency * 128.0);
     }
 
     /// Advances the phase by the specified frequency (wrapping at 1.0).

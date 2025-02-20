@@ -195,7 +195,7 @@ impl Voice {
                 if lfo.trigger_mode == LfoTriggerMode::None {
                     // web_sys::console::log_1(&format!("LFO state advancing phase",).into());
                     // Only advance the phase
-                    lfo.advance_phase();
+                    lfo.advance_phase_one_buffer();
                 }
             }
         }

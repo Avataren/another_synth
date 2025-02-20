@@ -72,11 +72,14 @@ export default {
     // Create debounced update function
     this.debouncedUpdate = debounce(this.performUpdate, 16); // ~60fps
   },
-
+  mounted() {
+    this.scheduleUpdate(); // Schedule initial waveform update
+  },
   beforeUnmount() {
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
     }
+    window.removeEventListener('resize');
   },
 
   watch: {

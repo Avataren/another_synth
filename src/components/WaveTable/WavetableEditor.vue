@@ -239,33 +239,16 @@ export default {
   },
   mounted() {
     // Initialize keyframes with a sine wave
-    this.keyframes = [
-      {
-        time: 0,
-        harmonics: Array.from(
-          { length: this.selectedNumHarmonics },
-          (_, i) => ({
-            amplitude: i === 0 ? 1 : 0,
-            phase: 0,
-          }),
-        ),
-      },
-    ];
-
-    // Initialize wave warp keyframes
-    this.waveWarpKeyframes = [
-      {
-        time: 0,
-        params: {
-          xAmount: 0,
-          yAmount: 0,
-          asymmetric: false,
-        },
-      },
-    ];
-
-    this.selectedKeyframe = 0;
+    this.resetToSinewave();
     this.selectedWaveWarpKeyframe = 0;
+
+    // Give time for child components to mount
+    this.$nextTick(() => {
+      const refs = this.$refs as unknown as ComponentRefs;
+      if (refs.waveformPreview) {
+        refs.waveformPreview.scheduleUpdate();
+      }
+    });
   },
   emits: ['update:wavetable'],
   watch: {
@@ -730,7 +713,7 @@ export default {
         this.selectedKeyframe = 0;
       }
       // After applying a preset, update layouts and reset the preset selector.
-      this.$nextTick(this.updateLayouts);
+
       this.selectedPreset = 'custom';
     },
     updateHarmonics(newHarmonics: Keyframe['harmonics']): void {
