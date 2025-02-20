@@ -448,7 +448,7 @@ impl AudioEngine {
 
         self.voices = (0..num_voices).map(Voice::new).collect();
 
-        self.add_plate_reverb(2.9, 0.7).unwrap();
+        self.add_plate_reverb(1.0, 0.5).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
 
@@ -605,36 +605,36 @@ impl AudioEngine {
         }
         console::log_1(&format!("Generated impulse response length: {}", ir.len()).into());
         // Remove DC offset with division protection
-        // let sum: f32 = ir.iter().sum();
-        // if sum != 0.0 {
-        //     let dc_offset = sum / ir.len() as f32;
-        //     for sample in ir.iter_mut() {
-        //         *sample -= dc_offset;
-        //     }
-        // }
+        let sum: f32 = ir.iter().sum();
+        if sum != 0.0 {
+            let dc_offset = sum / ir.len() as f32;
+            for sample in ir.iter_mut() {
+                *sample -= dc_offset;
+            }
+        }
 
-        // // Energy normalization with zero check
-        // let energy: f32 = ir.iter().map(|x| x * x).sum();
-        // if energy > 0.0 {
-        //     let compensation = 1.0 / energy.sqrt();
-        //     for sample in ir.iter_mut() {
-        //         *sample *= compensation;
-        //     }
-        // }
+        // Energy normalization with zero check
+        let energy: f32 = ir.iter().map(|x| x * x).sum();
+        if energy > 0.0 {
+            let compensation = 1.0 / energy.sqrt();
+            for sample in ir.iter_mut() {
+                *sample *= compensation;
+            }
+        }
 
-        // // Safe peak normalization
-        // let max = ir
-        //     .iter()
-        //     .map(|x| x.abs())
-        //     .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        //     .unwrap_or(1.0);
+        // Safe peak normalization
+        let max = ir
+            .iter()
+            .map(|x| x.abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap_or(1.0);
 
-        // if max > 0.0 && max.is_finite() {
-        //     let scale = 1.0 / max;
-        //     for sample in ir.iter_mut() {
-        //         *sample *= scale;
-        //     }
-        // }
+        if max > 0.0 && max.is_finite() {
+            let scale = 1.0 / max;
+            for sample in ir.iter_mut() {
+                *sample *= scale;
+            }
+        }
 
         // Create convolver with bounds checking
         let mut convolver = Convolver::new(ir, 128);
