@@ -14,11 +14,30 @@
     >
       <q-card style="min-width: 1250px; max-height: 90vh; overflow-y: auto">
         <q-card-section>
-          <div class="text-h6">Wavetable Editor</div>
+          <!-- Header row with title and new dropdown for numHarmonics -->
+          <div class="row items-center q-gutter-md">
+            <div class="col-auto">
+              <div class="text-h4">Wavetable Editor</div>
+            </div>
+            <div class="col-auto">
+              <q-select
+                filled
+                v-model="selectedNumHarmonics"
+                :options="numHarmonicsOptions"
+                label="Number of Harmonics"
+                emit-value
+                map-options
+              />
+            </div>
+          </div>
 
           <!-- Harmonics Editor Component -->
           <HarmonicsEditor
-            v-if="keyframes[selectedKeyframe]"
+            :key="
+              selectedKeyframe +
+              '-' +
+              keyframes[selectedKeyframe]!.harmonics.length
+            "
             :harmonics="keyframes[selectedKeyframe]!.harmonics"
             :phase-min="phaseMin"
             :phase-max="phaseMax"
@@ -46,10 +65,12 @@
             :removeDC="removeDC"
             :normalize="normalize"
           />
+
           <MasterTimeline
             :scrub-position="scrubPosition"
             @update:scrub-position="updateMasterScrubPosition"
           />
+
           <!-- Timeline Component -->
           <WavetableTimeline
             :keyframes="keyframes"
@@ -166,6 +187,18 @@ export default {
   },
   data() {
     return {
+      // Use the prop as the initial value for the selectable number of harmonics
+      selectedNumHarmonics: this.numHarmonics,
+      numHarmonicsOptions: [
+        { label: '16', value: 16 },
+        { label: '32', value: 32 },
+        { label: '64', value: 64 },
+        { label: '128', value: 128 },
+        { label: '256', value: 256 },
+        { label: '512', value: 512 },
+        { label: '1024', value: 1024 },
+        { label: '2048', value: 2048 },
+      ],
       showEditor: false,
       keyframes: [] as Keyframe[],
       waveWarpKeyframes: [] as WaveWarpKeyframe[],
@@ -173,8 +206,16 @@ export default {
       // Preset selection
       selectedPreset: 'custom',
       presetOptions: [
-        { label: 'Custom', value: 'custom' },
+        { label: 'Sine', value: 'sine' },
         { label: 'Harmonic Series', value: 'harmonicSeries' },
+        { label: 'Square Wave', value: 'square' },
+        { label: 'Sawtooth Wave', value: 'sawtooth' },
+        { label: 'Triangle Wave', value: 'triangle' },
+        { label: 'Bright Brass', value: 'brightBrass' },
+        { label: 'Warm Pad', value: 'warmPad' },
+        { label: 'Vocal Formant', value: 'vocalFormant' },
+        { label: 'Metallic Bell', value: 'metallicBell' },
+        { label: 'Evolving Texture', value: 'evolvingTexture' },
       ],
       // DSP controls
       removeDC: true,
@@ -187,7 +228,7 @@ export default {
       // Wave Warp state
       selectedWaveWarpKeyframe: 0,
       warpMorphAmount: 0,
-      // Wave Warp types - Added this
+      // Wave Warp types
       waveWarpTypes: ['pow', 'sine', 'asym', 'bend'],
       generationProgress: 0,
       isGenerating: false,
@@ -201,18 +242,21 @@ export default {
     };
   },
   mounted() {
-    // Initial keyframe setup
+    // Initialize keyframes using the currently selected number of harmonics
     this.keyframes = [
       {
         time: 0,
-        harmonics: Array.from({ length: this.numHarmonics }, (_, i) => ({
-          amplitude: i === 0 ? 1 : 0,
-          phase: 0,
-        })),
+        harmonics: Array.from(
+          { length: this.selectedNumHarmonics },
+          (_, i) => ({
+            amplitude: i === 0 ? 1 : 0,
+            phase: 0,
+          }),
+        ),
       },
     ];
 
-    // Initial wave warp keyframe setup
+    // Initialize wave warp keyframes
     this.waveWarpKeyframes = [
       {
         time: 0,
@@ -229,25 +273,22 @@ export default {
   },
   emits: ['update:wavetable'],
   watch: {
-    // keyframes: {
-    //   deep: true,
-    //   handler() {
-    //     this.generateAndEmitWavetable();
-    //   },
-    // },
-    // waveWarpKeyframes: {
-    //   deep: true,
-    //   handler() {
-    //     this.generateAndEmitWavetable();
-    //   },
-    // },
+    // Watch the selected number of harmonics. When it changes, resample each keyframe.
+    selectedNumHarmonics(newVal: number) {
+      this.resampleKeyframes(newVal);
+      // Force an update on the waveform preview component
+      this.$nextTick(() => {
+        const refs = this.$refs as unknown as ComponentRefs;
+        if (refs.waveformPreview) {
+          refs.waveformPreview.updateWaveformPreview();
+        }
+      });
+    },
     showEditor: {
       immediate: true,
       handler(newVal) {
         if (newVal) {
-          // this.$nextTick(() => {
-          //   this.generateAndEmitWavetable();
-          // });
+          // Optionally trigger waveform generation here
         }
       },
     },
@@ -270,15 +311,60 @@ export default {
     },
   },
   methods: {
+    // This method updates every keyframe’s harmonics array to match the new length.
+    resampleKeyframes(newLengthRaw: number | string) {
+      // Ensure newLength is a number.
+      const newLength = Number(newLengthRaw);
+
+      this.keyframes = this.keyframes.map((kf, idx) => {
+        // Convert the reactive harmonics array to a plain array.
+        const oldHarmonics = Array.from(kf.harmonics || []);
+        const oldLength = oldHarmonics.length;
+
+        // If the keyframe's harmonics are missing or empty, reinitialize.
+        if (oldLength === 0) {
+          console.warn(
+            `[Parent] Keyframe at index ${idx} is empty. Re-initializing...`,
+          );
+          return {
+            time: kf?.time ?? 0,
+            harmonics: Array.from({ length: newLength }, (_, i) => ({
+              amplitude: i === 0 ? 1 : 0,
+              phase: 0,
+            })),
+          };
+        }
+
+        // If lengths match, keep the keyframe unchanged.
+        if (oldLength === newLength) return kf;
+
+        // Otherwise, build a new harmonics array with the proper length.
+        const newHarmonics = Array.from({ length: newLength }, (_, i) => {
+          if (i < oldLength) {
+            const oldH = oldHarmonics[i];
+            return {
+              amplitude: oldH!.amplitude ?? 0,
+              phase: oldH!.phase ?? 0,
+            };
+          } else {
+            return { amplitude: 0, phase: 0 };
+          }
+        });
+        return { time: kf.time, harmonics: newHarmonics };
+      });
+    },
     resetToSinewave() {
-      // Reset to initial single keyframe with pure sine
+      // Reset to initial keyframe with a pure sine wave using the current selectedNumHarmonics
       this.keyframes = [
         {
           time: 0,
-          harmonics: Array.from({ length: this.numHarmonics }, (_, i) => ({
-            amplitude: i === 0 ? 1 : 0,
-            phase: 0,
-          })),
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => ({
+              amplitude: i === 0 ? 1 : 0,
+              phase: 0,
+            }),
+          ),
         },
       ];
 
@@ -294,17 +380,16 @@ export default {
         },
       ];
 
-      // Reset selection and position states
       this.selectedKeyframe = 0;
       this.selectedWaveWarpKeyframe = 0;
       this.scrubPosition = 0;
       this.morphAmount = 0;
       this.warpMorphAmount = 0;
 
-      // Reset DSP controls
       this.removeDC = false;
       this.normalize = true;
     },
+
     generateAndEmitWavetable(): void {
       try {
         const wavetable = generateWavetable(
@@ -316,15 +401,14 @@ export default {
         console.error('Error generating wavetable:', error);
       }
     },
+
     updateMasterScrubPosition(newPosition: number) {
       this.scrubPosition = newPosition;
-
-      // Calculate morphs for both timelines
       this.updateHarmonicMorph(newPosition);
       this.updateWarpMorph(newPosition);
     },
+
     updateHarmonicMorph(position: number) {
-      // Find appropriate keyframe indices and calculate morph
       let currentIndex = 0;
       while (
         currentIndex < this.keyframes.length - 1 &&
@@ -339,20 +423,15 @@ export default {
         return;
       }
 
-      const current = this.keyframes[currentIndex];
-      const next = this.keyframes[currentIndex + 1];
-      const range = next!.time - current!.time;
+      const current = this.keyframes[currentIndex]!;
+      const next = this.keyframes[currentIndex + 1]!;
+      const range = next.time - current.time;
 
-      if (range === 0) {
-        this.morphAmount = 0;
-      } else {
-        this.morphAmount = (position - current!.time) / range;
-      }
-
+      this.morphAmount = range === 0 ? 0 : (position - current.time) / range;
       this.selectedKeyframe = currentIndex;
     },
+
     updateWarpMorph(position: number) {
-      // Similar logic for wave warp keyframes
       let currentIndex = 0;
       while (
         currentIndex < this.waveWarpKeyframes.length - 1 &&
@@ -367,22 +446,19 @@ export default {
         return;
       }
 
-      const current = this.waveWarpKeyframes[currentIndex];
-      const next = this.waveWarpKeyframes[currentIndex + 1];
-      const range = next!.time - current!.time;
+      const current = this.waveWarpKeyframes[currentIndex]!;
+      const next = this.waveWarpKeyframes[currentIndex + 1]!;
+      const range = next.time - current.time;
 
-      if (range === 0) {
-        this.warpMorphAmount = 0;
-      } else {
-        this.warpMorphAmount = (position - current!.time) / range;
-      }
-
+      this.warpMorphAmount =
+        range === 0 ? 0 : (position - current.time) / range;
       this.selectedWaveWarpKeyframe = currentIndex;
     },
+
     handleTransitionEnd() {
-      // Dialog is fully visible and transition is complete
       this.updateLayouts();
     },
+
     updateLayouts(): void {
       const refs = this.$refs as unknown as ComponentRefs;
       if (refs.wavetableTimeline) {
@@ -392,44 +468,310 @@ export default {
         refs.waveWarpTimeline.updateTimelineLayout();
       }
     },
+
     handlePresetChange(newVal: string) {
-      if (newVal === 'harmonicSeries') {
+      if (newVal === 'sine') {
+        this.keyframes = [
+          {
+            time: 0,
+            harmonics: Array.from(
+              { length: this.selectedNumHarmonics },
+              (_, i) => ({
+                amplitude: i === 0 ? 1 : 0,
+                phase: 0,
+              }),
+            ),
+          },
+        ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'harmonicSeries') {
         const totalKeyframes = 8;
         const newKeyframes = [];
-
         for (let i = 0; i < totalKeyframes; i++) {
           const time = (i / (totalKeyframes - 1)) * 100;
-          const harmonics = Array.from({ length: this.numHarmonics }, () => ({
-            amplitude: 0,
-            phase: 0,
-          }));
-          if (i < this.numHarmonics) {
+          const harmonics = Array.from(
+            { length: this.selectedNumHarmonics },
+            () => ({
+              amplitude: 0,
+              phase: 0,
+            }),
+          );
+          if (i < this.selectedNumHarmonics) {
             harmonics[i]!.amplitude = 1;
           }
           newKeyframes.push({ time, harmonics });
         }
-
+        this.keyframes = newKeyframes;
         this.scrubPosition = 0;
         this.selectedKeyframe = 0;
+      } else if (newVal === 'square') {
+        const keyframe = {
+          time: 0,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              const n = i + 1;
+              return {
+                amplitude: n % 2 === 1 ? 1 / n : 0,
+                phase: 0,
+              };
+            },
+          ),
+        };
+        this.keyframes = [keyframe];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'sawtooth') {
+        const keyframe = {
+          time: 0,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              const n = i + 1;
+              return {
+                amplitude: 1 / n,
+                phase: n % 2 === 0 ? Math.PI : 0,
+              };
+            },
+          ),
+        };
+        this.keyframes = [keyframe];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'triangle') {
+        const keyframe = {
+          time: 0,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              const n = i + 1;
+              if (n % 2 === 1) {
+                return {
+                  amplitude: 1 / (n * n),
+                  phase: n % 4 === 1 ? 0 : Math.PI,
+                };
+              } else {
+                return { amplitude: 0, phase: 0 };
+              }
+            },
+          ),
+        };
+        this.keyframes = [keyframe];
+        this.waveWarpKeyframes = [
+          {
+            time: 0,
+            params: {
+              xAmount: 0,
+              yAmount: 0,
+              asymmetric: false,
+            },
+          },
+        ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'brightBrass') {
+        const keyframe = {
+          time: 0,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              if (i === 0) {
+                return { amplitude: 0.5, phase: 0 };
+              } else if (i >= 1 && i <= 4) {
+                return { amplitude: 1.0, phase: 0 };
+              } else {
+                return { amplitude: 0.5 / (i + 1), phase: 0 };
+              }
+            },
+          ),
+        };
+        this.keyframes = [keyframe];
+        this.waveWarpKeyframes = [
+          {
+            time: 0,
+            params: {
+              xAmount: 0,
+              yAmount: 0,
+              asymmetric: false,
+            },
+          },
+        ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'warmPad') {
+        const totalKeyframes = 8;
+        const newKeyframes = [];
+        for (let i = 0; i < totalKeyframes; i++) {
+          const time = (i / (totalKeyframes - 1)) * 100;
+          const t = i / (totalKeyframes - 1);
+          const harmonics = Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, j) => {
+              if (j === 0) {
+                return { amplitude: 1, phase: 0 };
+              } else {
+                const target = 1 / (j + 1);
+                return { amplitude: t * target, phase: 0 };
+              }
+            },
+          );
+          newKeyframes.push({ time, harmonics });
+        }
         this.keyframes = newKeyframes;
-        this.selectedPreset = 'custom';
-
-        // Update layout after Vue has updated the DOM
-        this.$nextTick(this.updateLayouts);
+        this.waveWarpKeyframes = [
+          {
+            time: 0,
+            params: {
+              xAmount: 0,
+              yAmount: 0,
+              asymmetric: false,
+            },
+          },
+        ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'vocalFormant') {
+        const keyframes = [];
+        // Vowel A
+        keyframes.push({
+          time: 0,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              if (i === 0 || i === 1) {
+                return { amplitude: 1, phase: 0 };
+              } else if (i === 2 || i === 3) {
+                return { amplitude: 0.5, phase: 0 };
+              } else {
+                return { amplitude: 0, phase: 0 };
+              }
+            },
+          ),
+        });
+        // Vowel E
+        keyframes.push({
+          time: 50,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              if (i === 1 || i === 2) {
+                return { amplitude: 1, phase: 0 };
+              } else if (i === 0 || i === 3) {
+                return { amplitude: 0.5, phase: 0 };
+              } else {
+                return { amplitude: 0, phase: 0 };
+              }
+            },
+          ),
+        });
+        // Vowel I
+        keyframes.push({
+          time: 100,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              if (i === 2 || i === 3) {
+                return { amplitude: 1, phase: 0 };
+              } else if (i === 1 || i === 4) {
+                return { amplitude: 0.5, phase: 0 };
+              } else {
+                return { amplitude: 0, phase: 0 };
+              }
+            },
+          ),
+        });
+        this.keyframes = keyframes;
+        this.waveWarpKeyframes = [
+          {
+            time: 0,
+            params: {
+              xAmount: 0,
+              yAmount: 0,
+              asymmetric: false,
+            },
+          },
+        ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'metallicBell') {
+        const keyframe = {
+          time: 0,
+          harmonics: Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, i) => {
+              const n = i + 1;
+              return {
+                amplitude: 1 / n,
+                phase: Math.sin(i * 2.3) * 0.3,
+              };
+            },
+          ),
+        };
+        this.keyframes = [keyframe];
+        this.waveWarpKeyframes = [
+          {
+            time: 0,
+            params: {
+              xAmount: 0,
+              yAmount: 0,
+              asymmetric: false,
+            },
+          },
+        ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'evolvingTexture') {
+        const totalKeyframes = 8;
+        const newKeyframes = [];
+        for (let i = 0; i < totalKeyframes; i++) {
+          const time = (i / (totalKeyframes - 1)) * 100;
+          const harmonics = Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, j) => ({
+              amplitude:
+                0.5 +
+                0.5 *
+                  Math.sin(
+                    2 *
+                      Math.PI *
+                      (i / totalKeyframes + j / this.selectedNumHarmonics),
+                  ),
+              phase: 0,
+            }),
+          );
+          newKeyframes.push({ time, harmonics });
+        }
+        this.keyframes = newKeyframes;
+        this.waveWarpKeyframes = [
+          {
+            time: 0,
+            params: {
+              xAmount: 0,
+              yAmount: 0,
+              asymmetric: false,
+            },
+          },
+        ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
       }
+      // Reset preset selector to custom after applying the preset
+      this.$nextTick(this.updateLayouts);
+      this.selectedPreset = 'custom';
     },
+
     updateHarmonics(newHarmonics: Keyframe['harmonics']): void {
       const updatedKeyframes = [...this.keyframes];
       if (this.selectedKeyframe >= 0) {
+        const currentKeyframe = updatedKeyframes[this.selectedKeyframe]!;
         updatedKeyframes[this.selectedKeyframe] = {
-          ...updatedKeyframes[this.selectedKeyframe]!,
+          time: currentKeyframe.time!, // assert that time is defined
           harmonics: newHarmonics.map((h) => ({ ...h })),
         };
         this.keyframes = updatedKeyframes;
-        // this.generateAndEmitWavetable();
       }
     },
-
     selectKeyframe(index: number): void {
       this.selectedKeyframe = index;
       this.$nextTick(() => {
@@ -439,6 +781,7 @@ export default {
         }
       });
     },
+
     updateScrubPosition(position: number): void {
       this.scrubPosition = position;
       this.$nextTick(() => {
@@ -448,6 +791,7 @@ export default {
         }
       });
     },
+
     updateMorphAmount(amount: number): void {
       this.morphAmount = amount;
       this.$nextTick(() => {
@@ -464,7 +808,6 @@ export default {
 
     updateWaveWarpKeyframes(newKeyframes: WaveWarpKeyframe[]): void {
       this.waveWarpKeyframes = newKeyframes;
-      // this.generateAndEmitWavetable();
     },
 
     updateWarpMorphAmount(amount: number) {
@@ -474,32 +817,25 @@ export default {
     addKeyframe(targetTime: number) {
       const current = this.keyframes[this.selectedKeyframe];
       let newTime = targetTime ?? current!.time;
-
-      // Create new keyframe with proper harmonics data
       const newKeyframe = {
         time: newTime,
-        harmonics: Array.from({ length: this.numHarmonics }, (_, i) => ({
-          amplitude: current!.harmonics[i]?.amplitude || 0,
-          phase: current!.harmonics[i]?.phase || 0,
-        })),
+        harmonics: Array.from(
+          { length: this.selectedNumHarmonics },
+          (_, i) => ({
+            amplitude: current!.harmonics[i]?.amplitude || 0,
+            phase: current!.harmonics[i]?.phase || 0,
+          }),
+        ),
       };
 
-      // Create a new array reference to trigger reactivity
       const updatedKeyframes = [...this.keyframes, newKeyframe].sort(
         (a, b) => a.time - b.time,
       );
-
       this.keyframes = updatedKeyframes;
-
-      // Find and set the new keyframe index after sorting
       const newIndex = updatedKeyframes.findIndex((kf) => kf.time === newTime);
       this.selectedKeyframe = newIndex;
-
-      // Reset morph amount and scrub position to the new keyframe's time
       this.morphAmount = 0;
       this.scrubPosition = newTime;
-
-      // Ensure the waveform preview updates
       this.$nextTick(() => {
         const refs = this.$refs as unknown as ComponentRefs;
         if (refs.waveformPreview) {
@@ -516,9 +852,11 @@ export default {
         }
       }
     },
+
     updateKeyframes(newKeyframes: Keyframe[]): void {
       this.keyframes = newKeyframes;
     },
+
     sortKeyframes() {
       this.keyframes.sort((a, b) => a.time - b.time);
     },
@@ -528,22 +866,19 @@ export default {
       this.generationProgress = 0;
 
       try {
-        // Generate WAV file as ArrayBuffer with progress updates
         const wavBuffer = await exportWavetableToWav(
           this.keyframes,
           this.waveWarpKeyframes,
           256, // numWaveforms
           2048, // sampleLength
+          this.removeDC,
+          this.normalize,
           (progress) => {
-            console.log('progress', progress);
             this.generationProgress = progress;
           },
         );
 
-        // Convert ArrayBuffer to Uint8Array
         const wavData = new Uint8Array(wavBuffer);
-
-        // Emit the WAV data
         this.$emit('update:wavetable', wavData);
       } catch (error) {
         console.error('Error generating wavetable:', error);
@@ -554,7 +889,6 @@ export default {
     },
 
     cancel() {
-      // Just close without generating wavetable
       this.showEditor = false;
     },
   },

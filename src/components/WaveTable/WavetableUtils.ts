@@ -263,11 +263,24 @@ export const generateWavetable = (
         throw new Error('numWaveforms and fftSize must be positive integers');
     }
 
-    // const numFreqs = Math.floor(fftSize / 2) + 1;
+    // If there is only one keyframe for both harmonics and warp, compute once.
+    if (keyframes.length === 1 && waveWarpKeyframes.length === 1) {
+        console.log('only one keyframe');
+        const singleResult = generateWaveformAtPosition(0, keyframes, waveWarpKeyframes, fftSize);
+        const realArrays = new Array(numWaveforms).fill(singleResult.real);
+        const imagArrays = new Array(numWaveforms).fill(singleResult.imag);
+        return {
+            real: realArrays,
+            imag: imagArrays,
+            numWaveforms,
+            fftSize
+        };
+    }
+
     const realArrays: Float64Array[] = new Array(numWaveforms);
     const imagArrays: Float64Array[] = new Array(numWaveforms);
 
-    // Generate each waveform in the wavetable
+    // Otherwise, generate each waveform normally.
     for (let i = 0; i < numWaveforms; i++) {
         const position = (i / (numWaveforms - 1)) * 100;
         const { real, imag } = generateWaveformAtPosition(
@@ -294,25 +307,89 @@ interface WavetableWav {
     sampleLength: number;
 }
 
+const processWaveform = (
+    waveform: Float32Array,
+    removeDC: boolean,
+    normalize: boolean
+): Float32Array => {
+    // Create a copy to avoid mutating the original
+    const processed = new Float32Array(waveform);
+
+    if (removeDC) {
+        // Calculate the mean value (DC offset)
+        let sum = 0;
+        for (let i = 0; i < processed.length; i++) {
+            sum += processed[i]!;
+        }
+        const mean = sum / processed.length;
+        // Subtract the mean from every sample
+        for (let i = 0; i < processed.length; i++) {
+            processed[i]! -= mean;
+        }
+    }
+
+    if (normalize) {
+        // Find the maximum absolute value in the waveform
+        let max = 0;
+        for (let i = 0; i < processed.length; i++) {
+            const absVal = Math.abs(processed[i]!);
+            if (absVal > max) max = absVal;
+        }
+        // Avoid dividing by zero and scale samples so the max is 1
+        if (max > 0) {
+            for (let i = 0; i < processed.length; i++) {
+                processed[i]! /= max;
+            }
+        }
+    }
+
+    return processed;
+};
+
+
 const generateWavetableWav = (
     keyframes: Keyframe[],
     waveWarpKeyframes: WaveWarpKeyframe[],
     numWaveforms = 256,
     sampleLength = 2048,
-    onProgress?: (progress: number) => void
+    removeDC: boolean,
+    normalize: boolean,
+    onProgress?: (progress: number) => void,
 ): WavetableWav => {
-    // ... existing validation code ...
+    if (!keyframes.length || !waveWarpKeyframes.length) {
+        throw new Error('Keyframes arrays cannot be empty');
+    }
+
+    // If only one keyframe exists, process it once
+    if (keyframes.length === 1 && waveWarpKeyframes.length === 1) {
+        let singleWaveform = generateWaveformAtPositionForWav(0, keyframes, waveWarpKeyframes, sampleLength);
+        singleWaveform = processWaveform(singleWaveform, removeDC, normalize);
+        const samplesArray = new Array(numWaveforms).fill(singleWaveform);
+        if (onProgress) {
+            onProgress(1);
+        }
+        return {
+            samples: samplesArray,
+            numWaveforms,
+            sampleLength
+        };
+    }
 
     const samplesArray: Float32Array[] = new Array(numWaveforms);
 
     for (let i = 0; i < numWaveforms; i++) {
         const position = (i / (numWaveforms - 1)) * 100;
-        samplesArray[i] = generateWaveformAtPositionForWav(
+        // Generate raw waveform
+        let waveform = generateWaveformAtPositionForWav(
             position,
             keyframes,
             waveWarpKeyframes,
             sampleLength
         );
+        // Process waveform based on the settings
+        waveform = processWaveform(waveform, removeDC, normalize);
+
+        samplesArray[i] = waveform;
 
         if (onProgress) {
             onProgress(i / numWaveforms);
@@ -325,6 +402,8 @@ const generateWavetableWav = (
         sampleLength
     };
 };
+
+
 
 const generateWaveformAtPositionForWav = (
     position: number,
@@ -428,22 +507,27 @@ export const exportWavetableToWav = (
     waveWarpKeyframes: WaveWarpKeyframe[],
     numWaveforms = 256,
     sampleLength = 2048,
-    onProgress?: (progress: number) => void
+    removeDC: boolean,
+    normalize: boolean,
+    onProgress?: (progress: number) => void,
 ): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
         try {
-            // Generate wavetable with progress updates
+            // Generate wavetable with progress updates and processing
             const wavetable = generateWavetableWav(
                 keyframes,
                 waveWarpKeyframes,
                 numWaveforms,
                 sampleLength,
+                removeDC,
+                normalize,
                 (genProgress) => {
                     if (onProgress) {
                         // Generation is 80% of the process, encoding is 20%
                         onProgress(genProgress * 0.8);
                     }
-                }
+                },
+
             );
 
             // Encode to WAV with progress updates
@@ -457,6 +541,7 @@ export const exportWavetableToWav = (
         }
     });
 };
+
 
 // export const exportWavetableToWav = (
 //     keyframes: Keyframe[],

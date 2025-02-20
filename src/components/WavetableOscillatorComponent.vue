@@ -213,10 +213,6 @@ onMounted(() => {
   if (!wavetableOscillatorStates.value.has(props.nodeId)) {
     wavetableOscillatorStates.value.set(props.nodeId, oscillatorState.value);
   }
-  // store.currentInstrument?.updateOscillatorState(
-  //   props.oscIndex,
-  //   oscillatorStates.value!.get(props.oscIndex)!,
-  // );
 });
 
 const totalDetune = computed(() => {
@@ -253,24 +249,6 @@ const handleWavFileUpload = async (event: Event) => {
 };
 
 const handleWaveformChange = (newWaveform: number) => {
-  // let wf: Waveform = Waveform.Sine;
-  // switch (newWaveform) {
-  //   case 0:
-  //     wf = Waveform.Sine;
-  //     break;
-  //   case 1:
-  //     wf = Waveform.Triangle;
-  //     break;
-  //   case 2:
-  //     wf = Waveform.Saw;
-  //     break;
-  //   case 3:
-  //     wf = Waveform.Square;
-  //     break;
-  //   default:
-  //     break;
-  // }
-
   const currentState = {
     ...oscillatorState.value,
     waveform: newWaveform,
@@ -382,13 +360,6 @@ const handleDetuneChange = () => {
     detune: totalDetune.value,
   };
   store.wavetableOscillatorStates.set(props.nodeId, currentState);
-
-  // if (node.value instanceof OscillatorNode) {
-  //   node.value.detune.setValueAtTime(
-  //     totalDetune.value,
-  //     node.value.context.currentTime,
-  //   );
-  // }
 };
 
 // Watch the oscillator state
