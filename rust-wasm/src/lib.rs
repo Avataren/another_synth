@@ -1,7 +1,9 @@
 #![feature(portable_simd)]
 
 mod audio;
+mod effect_stack;
 mod graph;
+mod impulse_generator;
 mod macros;
 mod nodes;
 mod processing;
@@ -9,15 +11,17 @@ mod traits;
 mod utils;
 mod voice;
 
+use effect_stack::EffectStack;
 pub use graph::AudioGraph;
 use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
+use impulse_generator::ImpulseResponseGenerator;
 pub use macros::{MacroManager, ModulationTarget};
 use nodes::morph_wavetable::{
     cubic_interp, MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
 };
 use nodes::{
-    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Lfo,
+    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver, Lfo,
     LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform,
     Wavetable, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
@@ -312,6 +316,8 @@ pub struct AudioEngine {
     num_voices: usize,
     wavetable_synthbank: Rc<RefCell<WavetableSynthBank>>,
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
+    effect_stack: EffectStack,
+    ir_generator: ImpulseResponseGenerator,
 }
 
 #[wasm_bindgen]
@@ -388,6 +394,7 @@ impl AudioEngine {
     pub fn new(sample_rate: f32) -> Self {
         let num_voices = 8;
         let max_table_size = 2048;
+        let buffer_size = 128;
         console::log_1(&format!("INITIALIZING AUDIO ENGINE WITH {} VOICES", num_voices).into());
         console::log_1(&format!("Creating WavetableSynthBank").into());
         let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
@@ -429,6 +436,8 @@ impl AudioEngine {
             num_voices,
             wavetable_synthbank,
             wavetable_banks: Arc::new(banks),
+            effect_stack: EffectStack::new(buffer_size),
+            ir_generator: ImpulseResponseGenerator::new(sample_rate),
         }
     }
 
@@ -438,6 +447,9 @@ impl AudioEngine {
         self.num_voices = num_voices;
 
         self.voices = (0..num_voices).map(Voice::new).collect();
+
+        self.add_plate_reverb(2.9, 0.7).unwrap();
+        console::log_1(&format!("plate reverb added").into());
     }
 
     #[wasm_bindgen]
@@ -525,17 +537,15 @@ impl AudioEngine {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        output_left.fill(0.0);
-        output_right.fill(0.0);
+        // Create temporary buffers for voice mixing
+        let mut mix_left = vec![0.0; output_left.len()];
+        let mut mix_right = vec![0.0; output_right.len()];
 
         let mut voice_left = vec![0.0; output_left.len()];
         let mut voice_right = vec![0.0; output_right.len()];
 
+        // Process all voices and mix them
         for (i, voice) in self.voices.iter_mut().enumerate() {
-            // web_sys::console::log_1(
-            //     &format!("Processing voice {} - active: {}", i, voice.is_active()).into(),
-            // );
-
             let gate = gates.get(i).copied().unwrap_or(0.0);
             let frequency = frequencies.get(i).copied().unwrap_or(440.0);
             let gain = gains.get(i).copied().unwrap_or(1.0);
@@ -549,32 +559,27 @@ impl AudioEngine {
                 }
             }
 
-            // Update voice parameters
             voice.current_gate = gate;
             voice.current_frequency = frequency;
-
-            // Skip if voice is inactive and no new gate
-            // if !voice.is_active() && gate <= 0.0 {
-            //     continue;
-            // }
 
             voice_left.fill(0.0);
             voice_right.fill(0.0);
 
-            // Process voice and update its state
+            // Process voice audio
             voice.process_audio(&mut voice_left, &mut voice_right);
-            //voice.update_active_state();
 
-            // Mix if voice has gate or is still active
-            // if gate > 0.0 || voice.is_active() {
+            // Mix voice into main mix buffers with gain
             for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
-                output_left[i] += left * gain;
-                output_right[i] += right * gain;
+                mix_left[i] += left * gain;
+                mix_right[i] += right * gain;
             }
-            // }
         }
 
-        // Apply master gain
+        // Process through effect stack
+        self.effect_stack
+            .process_audio(&mix_left, &mix_right, output_left, output_right);
+
+        // Apply master gain after effects
         if master_gain != 1.0 {
             for sample in output_left.iter_mut() {
                 *sample *= master_gain;
@@ -584,6 +589,143 @@ impl AudioEngine {
             }
         }
     }
+
+    #[wasm_bindgen]
+    pub fn add_plate_reverb(&mut self, decay_time: f32, diffusion: f32) -> Result<usize, JsValue> {
+        // Validate parameters before processing
+        let decay_time = decay_time.clamp(0.1, 10.0);
+        let diffusion = diffusion.clamp(0.0, 1.0);
+
+        // Generate plate reverb impulse response
+        let mut ir = self.ir_generator.plate(decay_time, diffusion);
+
+        // Safety check for empty IR
+        if ir.is_empty() {
+            return Err(JsValue::from_str("Generated impulse response is empty"));
+        }
+        console::log_1(&format!("Generated impulse response length: {}", ir.len()).into());
+        // Remove DC offset with division protection
+        // let sum: f32 = ir.iter().sum();
+        // if sum != 0.0 {
+        //     let dc_offset = sum / ir.len() as f32;
+        //     for sample in ir.iter_mut() {
+        //         *sample -= dc_offset;
+        //     }
+        // }
+
+        // // Energy normalization with zero check
+        // let energy: f32 = ir.iter().map(|x| x * x).sum();
+        // if energy > 0.0 {
+        //     let compensation = 1.0 / energy.sqrt();
+        //     for sample in ir.iter_mut() {
+        //         *sample *= compensation;
+        //     }
+        // }
+
+        // // Safe peak normalization
+        // let max = ir
+        //     .iter()
+        //     .map(|x| x.abs())
+        //     .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        //     .unwrap_or(1.0);
+
+        // if max > 0.0 && max.is_finite() {
+        //     let scale = 1.0 / max;
+        //     for sample in ir.iter_mut() {
+        //         *sample *= scale;
+        //     }
+        // }
+
+        // Create convolver with bounds checking
+        let mut convolver = Convolver::new(ir, 128);
+
+        convolver.wet_level = 0.2;
+
+        Ok(self.effect_stack.add_effect(Box::new(convolver)))
+    }
+
+    #[wasm_bindgen]
+    pub fn reorder_effects(&mut self, from_idx: usize, to_idx: usize) -> Result<(), JsValue> {
+        self.effect_stack.reorder_effects(from_idx, to_idx);
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn remove_effect(&mut self, index: usize) -> Result<(), JsValue> {
+        self.effect_stack.remove_effect(index);
+        Ok(())
+    }
+
+    // #[wasm_bindgen]
+    // pub fn process_audio(
+    //     &mut self,
+    //     gates: &[f32],
+    //     frequencies: &[f32],
+    //     gains: &[f32],
+    //     macro_values: &[f32],
+    //     master_gain: f32,
+    //     output_left: &mut [f32],
+    //     output_right: &mut [f32],
+    // ) {
+    //     output_left.fill(0.0);
+    //     output_right.fill(0.0);
+
+    //     let mut voice_left = vec![0.0; output_left.len()];
+    //     let mut voice_right = vec![0.0; output_right.len()];
+
+    //     for (i, voice) in self.voices.iter_mut().enumerate() {
+    //         // web_sys::console::log_1(
+    //         //     &format!("Processing voice {} - active: {}", i, voice.is_active()).into(),
+    //         // );
+
+    //         let gate = gates.get(i).copied().unwrap_or(0.0);
+    //         let frequency = frequencies.get(i).copied().unwrap_or(440.0);
+    //         let gain = gains.get(i).copied().unwrap_or(1.0);
+
+    //         // Update macro values
+    //         for macro_idx in 0..4 {
+    //             let macro_start = i * 4 * 128 + (macro_idx * 128);
+    //             if macro_start + 128 <= macro_values.len() {
+    //                 let values = &macro_values[macro_start..macro_start + 128];
+    //                 let _ = voice.update_macro(macro_idx, values);
+    //             }
+    //         }
+
+    //         // Update voice parameters
+    //         voice.current_gate = gate;
+    //         voice.current_frequency = frequency;
+
+    //         // Skip if voice is inactive and no new gate
+    //         // if !voice.is_active() && gate <= 0.0 {
+    //         //     continue;
+    //         // }
+
+    //         voice_left.fill(0.0);
+    //         voice_right.fill(0.0);
+
+    //         // Process voice and update its state
+    //         voice.process_audio(&mut voice_left, &mut voice_right);
+    //         //voice.update_active_state();
+
+    //         // Mix if voice has gate or is still active
+    //         // if gate > 0.0 || voice.is_active() {
+    //         for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
+    //             output_left[i] += left * gain;
+    //             output_right[i] += right * gain;
+    //         }
+    //         // }
+    //     }
+
+    //     // Apply master gain
+    //     if master_gain != 1.0 {
+    //         for sample in output_left.iter_mut() {
+    //             *sample *= master_gain;
+    //         }
+    //         for sample in output_right.iter_mut() {
+    //             *sample *= master_gain;
+    //         }
+    //     }
+    // }
 
     #[wasm_bindgen]
     pub fn update_noise(
@@ -623,14 +765,6 @@ impl AudioEngine {
         release_curve: f32,
         active: bool,
     ) -> Result<(), JsValue> {
-        // console::log_1(
-        //     &format!(
-        //         "RUST: envelope curves: attack_curve={}, decay_curve={}, release_curve={}",
-        //         attack_curve, decay_curve, release_curve
-        //     )
-        //     .into(),
-        // );
-
         let mut errors: Vec<String> = Vec::new();
 
         // Iterate over all voices and attempt to update the envelope.
