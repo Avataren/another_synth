@@ -140,46 +140,56 @@ fn generate_full_spectrum(waveform: Waveform, table_size: usize) -> (Vec<f32>, V
     let mut freq_re = vec![0.0; table_size];
     let mut freq_im = vec![0.0; table_size];
 
-    // For a sine wave (and similarly for other waveforms), the proper Fourier series
-    // coefficients (assuming an inverse FFT scaling by 1/table_size) are:
-    //   X[1] = -i * table_size/2,  X[table_size-1] = i * table_size/2.
-    // This ensures that:
-    //   x[n] = 1/table_size * (X[1]*exp(i*2pi*n/table_size) + X[table_size-1]*exp(-i*2pi*n/table_size))
-    // equals sin(2pi*n/table_size) with peak amplitude ~1.
+    // We use a scale factor so that after the inverse FFT (which divides by table_size),
+    // the resulting waveform has a peak amplitude of ~1.
     let scale = table_size as f32 / 2.0;
+
+    // Helper to set a pair of symmetric Fourier coefficients with a consistent phase.
+    // This sets:
+    //   freq_im[n] = -scale * amplitude
+    //   freq_im[table_size - n] = scale * amplitude
+    fn set_coeff(freq_im: &mut [f32], table_size: usize, n: usize, amplitude: f32, scale: f32) {
+        let value = -scale * amplitude;
+        freq_im[n] = value;
+        freq_im[table_size - n] = -value;
+    }
 
     match waveform {
         Waveform::Sine => {
-            // Only one partial: n=1 (and its symmetric counterpart).
-            freq_im[1] = -scale;
-            freq_im[table_size - 1] = scale;
+            // Only one partial: n = 1 (the rest are zero)
+            set_coeff(&mut freq_im, table_size, 1, 1.0, scale);
         }
         Waveform::Saw => {
             // Sawtooth: all harmonics up to Nyquist with amplitude ~1/n.
             for n in 1..=(table_size >> 1) {
-                freq_im[n] = -scale / (n as f32);
-                freq_im[table_size - n] = scale / (n as f32);
+                set_coeff(&mut freq_im, table_size, n, 1.0 / (n as f32), scale);
             }
         }
         Waveform::Square => {
-            // Square: only odd harmonics.
+            // Square: only odd harmonics, but note that we now want the fundamental (n = 1)
+            // to match the sine’s phase. (We invert the sign relative to the original implementation.)
             for n in (1..=(table_size >> 1)).step_by(2) {
-                freq_im[n] = scale / (n as f32);
-                freq_im[table_size - n] = -scale / (n as f32);
+                set_coeff(&mut freq_im, table_size, n, 1.0 / (n as f32), scale);
             }
         }
         Waveform::Triangle => {
-            // Triangle: only odd harmonics with amplitudes decaying as 1/n².
+            // Triangle: only odd harmonics with amplitudes decaying as 1/n²,
+            // with an alternating sign. Use the same phase convention as the sine.
             let mut i = 0;
             for n in (1..=(table_size >> 1)).step_by(2) {
-                let amplitude = if i % 2 == 0 { scale } else { -scale };
-                freq_im[n] = amplitude / ((n * n) as f32);
-                freq_im[table_size - n] = -freq_im[n];
+                let factor = if i % 2 == 0 { 1.0 } else { -1.0 };
+                set_coeff(
+                    &mut freq_im,
+                    table_size,
+                    n,
+                    factor / ((n * n) as f32),
+                    scale,
+                );
                 i += 1;
             }
         }
         Waveform::Custom => {
-            // Implement your custom waveform coefficients here.
+            // todo: implement custom waveform coefficients here.
         }
     }
 
