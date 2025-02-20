@@ -288,6 +288,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.Mixer]: [],
             [VoiceNodeType.Noise]: [],
             [VoiceNodeType.GlobalFrequency]: [],
+            [VoiceNodeType.Convolver]: [],
           };
 
           // Define an interface for raw nodes.

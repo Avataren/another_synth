@@ -308,7 +308,9 @@ var PortId = Object.freeze({
   DetuneMod: 20,
   "20": "DetuneMod",
   WavetableIndex: 21,
-  "21": "WavetableIndex"
+  "21": "WavetableIndex",
+  WetDryMix: 22,
+  "22": "WetDryMix"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -1441,7 +1443,8 @@ var PORT_LABELS = {
   [PortId.StereoPan]: "Stereo Panning",
   [PortId.FeedbackMod]: "Feedback",
   [PortId.DetuneMod]: "Detune",
-  [PortId.WavetableIndex]: "Wavetable Index"
+  [PortId.WavetableIndex]: "Wavetable Index",
+  [PortId.WetDryMix]: "Mix"
 };
 function convertRawModulationType(raw) {
   switch (raw) {
@@ -1739,7 +1742,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["filter" /* Filter */]: [],
       ["mixer" /* Mixer */]: [],
       ["noise" /* Noise */]: [],
-      ["globalfrequency" /* GlobalFrequency */]: []
+      ["globalfrequency" /* GlobalFrequency */]: [],
+      ["convolver" /* Convolver */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;

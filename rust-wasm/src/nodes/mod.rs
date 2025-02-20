@@ -1,4 +1,5 @@
 pub mod analog_oscillator;
+pub mod convolver;
 pub mod envelope;
 pub mod global_frequency_node;
 pub mod lfo;
@@ -11,6 +12,7 @@ pub mod wavetable;
 pub mod wavetable_oscillator;
 
 pub use analog_oscillator::*;
+pub use convolver::*;
 pub use envelope::*;
 pub use global_frequency_node::*;
 pub use lfo::*;

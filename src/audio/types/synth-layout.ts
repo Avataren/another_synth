@@ -13,7 +13,8 @@ export enum VoiceNodeType {
   LFO = 'lfo',
   Mixer = 'mixer',
   Noise = 'noise',
-  GlobalFrequency = 'globalfrequency'
+  GlobalFrequency = 'globalfrequency',
+  Convolver = 'convolver'
 }
 
 export interface LfoState {
@@ -80,6 +81,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.FeedbackMod]: 'Feedback',
   [PortId.DetuneMod]: 'Detune',
   [PortId.WavetableIndex]: 'Wavetable Index',
+  [PortId.WetDryMix]: 'Mix',
 };
 
 export interface ModulationTargetOption {
@@ -274,8 +276,10 @@ export function getModulationTargetsForType(
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
       ];
-    case VoiceNodeType.GlobalFrequency:
-      return [{ value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] }];
+    case VoiceNodeType.Convolver:
+      return [{ value: PortId.WetDryMix, label: PORT_LABELS[PortId.WetDryMix] }];
+    //    case VoiceNodeType.GlobalFrequency:
+    //      return [{ value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] }];
     // case VoiceNodeType.Envelope:
     //   return [
     //     { value: PortId.GainMod, label: 'Gain' },

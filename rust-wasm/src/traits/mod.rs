@@ -30,6 +30,7 @@ pub enum PortId {
     FeedbackMod,
     DetuneMod,
     WavetableIndex,
+    WetDryMix,
 }
 
 impl Default for PortId {

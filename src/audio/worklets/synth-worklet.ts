@@ -431,6 +431,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Mixer]: [],
       [VoiceNodeType.Noise]: [],
       [VoiceNodeType.GlobalFrequency]: [],
+      [VoiceNodeType.Convolver]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {

@@ -212,7 +212,7 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -237,6 +237,7 @@ export const PortId = Object.freeze({
     FeedbackMod: 19, "19": "FeedbackMod",
     DetuneMod: 20, "20": "DetuneMod",
     WavetableIndex: 21, "21": "WavetableIndex",
+    WetDryMix: 22, "22": "WetDryMix",
 });
 /**
  * @enum {0 | 1 | 2}
