@@ -52,17 +52,6 @@
             :decimals="3"
             @update:modelValue="handleFeedbackChange"
           />
-
-          <audio-knob-component
-            v-model="waveform"
-            label="Waveform"
-            :min="0"
-            :max="3"
-            :step="1"
-            :decimals="0"
-            @update:modelValue="handleWaveformChange"
-          />
-
           <audio-knob-component
             v-model="oscillatorState.wave_index"
             label="WaveIndex"
@@ -158,12 +147,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import WavetableEditor from './WaveTable/WavetableEditor.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
-// import { type WaveformType } from 'src/audio/wavetable/wave-utils';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -181,8 +169,6 @@ const props = withDefaults(defineProps<Props>(), {
 
 const store = useAudioSystemStore();
 const { wavetableOscillatorStates } = storeToRefs(store);
-//const waveformCanvas = ref<HTMLCanvasElement | null>(null);
-const waveform = ref<number>(0);
 // Create a reactive reference to the oscillator state
 const oscillatorState = computed({
   get: () => {
@@ -247,17 +233,6 @@ const handleWavFileUpload = async (event: Event) => {
     console.error('Error reading WAV file:', err);
     alert(err);
   }
-};
-
-const handleWaveformChange = (newWaveform: number) => {
-  const currentState = {
-    ...oscillatorState.value,
-    waveform: newWaveform,
-  };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
 };
 
 const handleWavetableUpdate = (newWavetable: Uint8Array) => {
