@@ -6,12 +6,12 @@ use crate::{
 };
 
 pub struct Effect {
-    node: Box<dyn AudioNode>,
+    pub node: Box<dyn AudioNode>,
     enabled: bool,
 }
 
 pub struct EffectStack {
-    effects: Vec<Effect>,
+    pub effects: Vec<Effect>,
     buffer_pool: AudioBufferPool,
     buffer_size: usize,
     input_buffer_left: Vec<f32>,

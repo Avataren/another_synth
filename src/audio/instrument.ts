@@ -5,7 +5,7 @@ import { createStandardAudioWorklet } from './audio-processor-loader';
 // import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
-import type { EnvelopeConfig } from './types/synth-layout';
+import type { ConvolverState, EnvelopeConfig } from './types/synth-layout';
 import {
   type SynthLayout,
   // type NodeConnection,
@@ -114,6 +114,15 @@ export default class Instrument {
       }
     );
     console.log('Sent wavetable data to worklet');
+  }
+
+  public updateConvolverState(nodeId: number, newState: ConvolverState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateConvolverState',
+      nodeId: nodeId,
+      newState,
+    });
   }
 
   public updateWavetableOscillatorState(nodeId: number, newState: OscillatorState) {

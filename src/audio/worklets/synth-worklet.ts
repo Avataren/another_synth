@@ -436,7 +436,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type: VoiceNodeType;
-      switch (rawNode.node_type) {
+      console.log('## checking rawNode.node_type:', rawNode.node_type);
+      switch (rawNode.node_type.trim()) {
         case 'analog_oscillator':
           type = VoiceNodeType.Oscillator;
           break;
@@ -463,7 +464,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         case 'convolver':
           type = VoiceNodeType.Convolver;
         default:
-          console.warn('Unknown node type:', rawNode.node_type);
+          console.warn('##### Unknown node type:', rawNode.node_type);
           type = rawNode.node_type as VoiceNodeType;
       }
       nodesByType[type].push({ id: rawNode.id, type });

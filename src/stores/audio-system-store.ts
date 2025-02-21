@@ -92,6 +92,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           return state.filterStates.get(nodeId);
         case VoiceNodeType.LFO:
           return state.lfoStates.get(nodeId);
+        case VoiceNodeType.Convolver:
+          return state.convolverStates.get(nodeId);
         default:
           return null;
       }
@@ -320,7 +322,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.Convolver;
 
               default:
-                console.warn('Unknown node type:', raw);
+                console.warn('$$$ Unknown node type:', raw);
                 return raw as VoiceNodeType;
             }
           };

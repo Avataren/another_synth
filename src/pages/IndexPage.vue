@@ -63,6 +63,13 @@
           :node="destinationNode"
           :nodeId="filter.id"
         />
+
+        <convolver-component
+          v-for="conv in convolverNodes"
+          :key="conv.id"
+          :node="destinationNode"
+          :nodeId="conv.id"
+        />
       </div>
     </div>
 
@@ -86,6 +93,7 @@ import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
 import FilterComponent from 'src/components/FilterComponent.vue';
 import NoiseComponent from 'src/components/NoiseComponent.vue';
 import LfoComponent from 'src/components/LfoComponent.vue';
+import ConvolverComponent from 'src/components/ConvolverComponent.vue';
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -110,6 +118,9 @@ const filterNodes = computed(() =>
 
 const noiseNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Noise));
 const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
+const convolverNodes = computed(() =>
+  store.getVoiceNodes(0, VoiceNodeType.Convolver),
+);
 //const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 
 // For debugging - watch when nodes are available

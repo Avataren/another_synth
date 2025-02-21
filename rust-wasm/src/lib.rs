@@ -41,7 +41,7 @@ use web_sys::{console, js_sys};
 
 use hound;
 use std::error::Error;
-
+const EFFECT_NODE_ID_OFFSET: usize = 10_000;
 /// Convert integer samples of various bit depths to f32 in the range [-1.0, 1.0].
 /// Given a base waveform (one cycle) as a Vec<f32> of length `base_size`,
 /// build a mipmapped wavetable bank by generating a chain of band‑limited tables.
@@ -479,7 +479,7 @@ impl AudioEngine {
         if let Some(voice) = self.voices.get(0) {
             // Here we assume that the nodes vector was built by add_node
             // so the index matches the node's id.
-            let nodes: Vec<NodeState> = voice
+            let mut nodes: Vec<NodeState> = voice
                 .graph
                 .nodes
                 .iter()
@@ -492,6 +492,20 @@ impl AudioEngine {
                 })
                 .collect();
 
+            // Append the effect stack's nodes with an offset.
+            let effect_nodes: Vec<NodeState> = self
+                .effect_stack
+                .effects
+                .iter()
+                .enumerate()
+                .map(|(i, effect)| NodeState {
+                    id: EFFECT_NODE_ID_OFFSET + i, // ensure uniqueness by offsetting
+                    node_type: effect.node.node_type().to_string(),
+                })
+                .collect();
+            nodes.extend(effect_nodes);
+
+            // Collect the voice's connections as before.
             let connections: Vec<ConnectionState> = voice
                 .graph
                 .connections
