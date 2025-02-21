@@ -23,6 +23,7 @@ pub struct Convolver {
     pub wet_level: f32,
     /// Partition size used to initialize FFTConvolver (e.g. render quantum size * 8).
     partition_size: usize,
+    sample_rate: f32,
 }
 
 impl Convolver {
@@ -31,10 +32,10 @@ impl Convolver {
     ///
     /// * `impulse_response` - A mono impulse response as a Vec<f32>.
     /// * `partition_size` - The FFT block size (e.g. 128*8 = 1024).
-    pub fn new(impulse_response: Vec<f32>, partition_size: usize) -> Self {
+    pub fn new(impulse_response: Vec<f32>, partition_size: usize, sample_rate: f32) -> Self {
         // Compute equal‑power (RMS) normalization scale.
         let gain_calibration = 0.00125;
-        let gain_calibration_sample_rate = 44100.0;
+        let gain_calibration_sample_rate = sample_rate;
         let min_power = 0.000125;
         let length = impulse_response.len();
         let mut power: f32 = impulse_response.iter().map(|&s| s * s).sum::<f32>();
@@ -44,8 +45,7 @@ impl Convolver {
         }
         let mut scale = 1.0 / power;
         scale *= gain_calibration;
-        // For simplicity, assume IR sample rate is 44100.
-        scale *= gain_calibration_sample_rate / 44100.0;
+        scale *= gain_calibration_sample_rate / sample_rate;
 
         // Scale the impulse response.
         let mut scaled_ir = impulse_response.clone();
@@ -70,6 +70,7 @@ impl Convolver {
             tail_count: 0,
             wet_level: 0.2,
             partition_size,
+            sample_rate,
         }
     }
 
@@ -78,7 +79,11 @@ impl Convolver {
     ///
     /// * `impulse_response` - A vector of channels (each a Vec<f32>).
     /// * `partition_size` - The FFT block size.
-    pub fn new_multi_channel(impulse_response: Vec<Vec<f32>>, partition_size: usize) -> Self {
+    pub fn new_multi_channel(
+        impulse_response: Vec<Vec<f32>>,
+        partition_size: usize,
+        sample_rate: f32,
+    ) -> Self {
         let num_ir_channels = impulse_response.len();
         assert!(
             [1, 2, 4].contains(&num_ir_channels),
@@ -98,10 +103,10 @@ impl Convolver {
             power = min_power;
         }
         let gain_calibration = 0.00125;
-        let gain_calibration_sample_rate = 44100.0;
+        let gain_calibration_sample_rate = sample_rate;
         let mut scale = 1.0 / power;
         scale *= gain_calibration;
-        scale *= gain_calibration_sample_rate / 44100.0;
+        scale *= gain_calibration_sample_rate / sample_rate;
 
         // If IR is mono, duplicate it so we have two convolvers.
         let num_convolvers = if num_ir_channels == 1 {
@@ -129,6 +134,7 @@ impl Convolver {
             tail_count: 0,
             wet_level: 0.2,
             partition_size,
+            sample_rate,
         }
     }
 

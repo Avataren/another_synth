@@ -448,7 +448,7 @@ impl AudioEngine {
 
         self.voices = (0..num_voices).map(Voice::new).collect();
 
-        self.add_plate_reverb(1.0, 0.5).unwrap();
+        self.add_plate_reverb(1.0, 0.4, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
 
@@ -591,7 +591,12 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
-    pub fn add_plate_reverb(&mut self, decay_time: f32, diffusion: f32) -> Result<usize, JsValue> {
+    pub fn add_plate_reverb(
+        &mut self,
+        decay_time: f32,
+        diffusion: f32,
+        sample_rate: f32,
+    ) -> Result<usize, JsValue> {
         // Validate parameters before processing
         let decay_time = decay_time.clamp(0.1, 10.0);
         let diffusion = diffusion.clamp(0.0, 1.0);
@@ -637,9 +642,9 @@ impl AudioEngine {
         }
 
         // Create convolver with bounds checking
-        let mut convolver = Convolver::new(ir, 128);
+        let mut convolver = Convolver::new(ir, 128, sample_rate);
 
-        convolver.wet_level = 0.2;
+        convolver.wet_level = 0.45;
 
         Ok(self.effect_stack.add_effect(Box::new(convolver)))
     }

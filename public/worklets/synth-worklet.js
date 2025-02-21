@@ -565,10 +565,11 @@ var AudioEngine = class {
   /**
    * @param {number} decay_time
    * @param {number} diffusion
+   * @param {number} sample_rate
    * @returns {number}
    */
-  add_plate_reverb(decay_time, diffusion) {
-    const ret = wasm.audioengine_add_plate_reverb(this.__wbg_ptr, decay_time, diffusion);
+  add_plate_reverb(decay_time, diffusion, sample_rate) {
+    const ret = wasm.audioengine_add_plate_reverb(this.__wbg_ptr, decay_time, diffusion, sample_rate);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
