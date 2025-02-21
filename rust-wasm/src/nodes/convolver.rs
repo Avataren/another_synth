@@ -20,7 +20,7 @@ pub struct Convolver {
     /// Tail counter for output after input silence.
     tail_count: usize,
     /// Wet/dry mix level (0.0 = dry, 1.0 = fully wet).
-    pub wet_level: f32,
+    wet_level: f32,
     /// Partition size used to initialize FFTConvolver (e.g. render quantum size * 8).
     partition_size: usize,
     sample_rate: f32,
@@ -74,6 +74,9 @@ impl Convolver {
         }
     }
 
+    pub fn set_wet_level(&mut self, wet_level: f32) {
+        self.wet_level = wet_level;
+    }
     /// Create a new Convolver using a multi‑channel impulse response.
     /// The IR must have 1, 2, or 4 channels. If only one channel is provided, it will be duplicated for stereo output.
     ///

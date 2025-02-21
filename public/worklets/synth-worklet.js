@@ -1891,6 +1891,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "wavetable_oscillator":
           type = "wavetable_oscillator" /* WavetableOscillator */;
+        case "convolver":
+          type = "convolver" /* Convolver */;
         default:
           console.warn("Unknown node type:", rawNode.node_type);
           type = rawNode.node_type;

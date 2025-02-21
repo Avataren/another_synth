@@ -17,6 +17,12 @@ export enum VoiceNodeType {
   Convolver = 'convolver'
 }
 
+export interface ConvolverState {
+  id?: number;
+  wetMix: number;
+  active: boolean;
+}
+
 export interface LfoState {
   id?: number;
   frequency: number;
@@ -276,8 +282,6 @@ export function getModulationTargetsForType(
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
       ];
-    case VoiceNodeType.Convolver:
-      return [{ value: PortId.WetDryMix, label: PORT_LABELS[PortId.WetDryMix] }];
     //    case VoiceNodeType.GlobalFrequency:
     //      return [{ value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] }];
     // case VoiceNodeType.Envelope:

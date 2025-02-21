@@ -23,13 +23,13 @@ use nodes::morph_wavetable::{
 use nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver, Lfo,
     LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform,
-    Wavetable, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::rc::Rc;
 use std::{collections::HashMap, sync::Arc};
 pub use traits::{AudioNode, PortId};
@@ -448,7 +448,7 @@ impl AudioEngine {
 
         self.voices = (0..num_voices).map(Voice::new).collect();
 
-        self.add_plate_reverb(1.0, 0.4, sample_rate).unwrap();
+        self.add_plate_reverb(1.0, 0.5, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
 
@@ -600,52 +600,16 @@ impl AudioEngine {
         // Validate parameters before processing
         let decay_time = decay_time.clamp(0.1, 10.0);
         let diffusion = diffusion.clamp(0.0, 1.0);
-
         // Generate plate reverb impulse response
         let mut ir = self.ir_generator.plate(decay_time, diffusion);
 
-        // Safety check for empty IR
         if ir.is_empty() {
             return Err(JsValue::from_str("Generated impulse response is empty"));
-        }
-        console::log_1(&format!("Generated impulse response length: {}", ir.len()).into());
-        // Remove DC offset with division protection
-        let sum: f32 = ir.iter().sum();
-        if sum != 0.0 {
-            let dc_offset = sum / ir.len() as f32;
-            for sample in ir.iter_mut() {
-                *sample -= dc_offset;
-            }
-        }
-
-        // Energy normalization with zero check
-        let energy: f32 = ir.iter().map(|x| x * x).sum();
-        if energy > 0.0 {
-            let compensation = 1.0 / energy.sqrt();
-            for sample in ir.iter_mut() {
-                *sample *= compensation;
-            }
-        }
-
-        // Safe peak normalization
-        let max = ir
-            .iter()
-            .map(|x| x.abs())
-            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .unwrap_or(1.0);
-
-        if max > 0.0 && max.is_finite() {
-            let scale = 1.0 / max;
-            for sample in ir.iter_mut() {
-                *sample *= scale;
-            }
         }
 
         // Create convolver with bounds checking
         let mut convolver = Convolver::new(ir, 128, sample_rate);
-
-        convolver.wet_level = 0.45;
-
+        convolver.set_wet_level(0.1);
         Ok(self.effect_stack.add_effect(Box::new(convolver)))
     }
 

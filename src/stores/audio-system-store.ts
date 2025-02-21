@@ -3,7 +3,7 @@ import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import Instrument from 'src/audio/instrument';
 import type OscillatorState from 'src/audio/models/OscillatorState';
-import type { EnvelopeConfig } from 'src/audio/types/synth-layout';
+import type { ConvolverState, EnvelopeConfig } from 'src/audio/types/synth-layout';
 import {
   type SynthLayout,
   type NodeConnection,
@@ -52,6 +52,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     oscillatorStates: new Map<number, OscillatorState>(),
     wavetableOscillatorStates: new Map<number, OscillatorState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
+    convolverStates: new Map<number, ConvolverState>(),
     filterStates: new Map<number, FilterState>(),
     lfoStates: new Map<number, LfoState>(),
     isUpdatingFromWasm: false,
@@ -315,6 +316,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.GlobalFrequency;
               case 'wavetable_oscillator':
                 return VoiceNodeType.WavetableOscillator;
+              case 'convolver':
+                return VoiceNodeType.Convolver;
 
               default:
                 console.warn('Unknown node type:', raw);
@@ -338,6 +341,17 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       // Use the canonical voice (assumed to be voices[0]) to initialize state objects if missing.
       const canonicalVoice = layoutClone.voices[0];
       if (canonicalVoice && canonicalVoice.nodes) {
+
+        for (const conv of getNodesOfType(canonicalVoice, VoiceNodeType.Convolver) || []) {
+          if (!this.convolverStates.has(conv.id)) {
+            this.convolverStates.set(conv.id, {
+              id: conv.id,
+              wetMix: 0.1,
+              active: true
+            });
+          }
+        }
+
         // Initialize oscillator states.
         for (const osc of getNodesOfType(
           canonicalVoice,
