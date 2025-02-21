@@ -11,21 +11,15 @@
           label="Enabled"
           @update:modelValue="handleEnabledChange"
         />
-      </div>
-      <div class="knob-group">
         <audio-knob-component
           v-model="convolverState.wetMix"
           label="Mix"
           :min="0"
           :max="1"
           :step="0.001"
-          :decimals="0"
+          :decimals="3"
           @update:modelValue="handleWetMixChange"
         />
-      </div>
-
-      <div class="canvas-wrapper">
-        <canvas ref="frequencyCanvas" width="565" height="120"></canvas>
       </div>
     </q-card-section>
   </q-card>
@@ -87,10 +81,9 @@ const handleWetMixChange = (val: number) => {
 watch(
   () => convolverState.value,
   (newState) => {
-    store.currentInstrument?.updateConvolverState(
-      props.nodeId,
-      newState as ConvolverState,
-    );
+    store.currentInstrument?.updateConvolverState(props.nodeId, {
+      ...newState,
+    });
   },
   { deep: true, immediate: true },
 );

@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import './textencoder.js';
 
-import type { EnvelopeConfig, RawConnection, RawVoice, WasmState } from '../types/synth-layout';
+import type { ConvolverState, EnvelopeConfig, RawConnection, RawVoice, WasmState } from '../types/synth-layout';
 import {
   type SynthLayout,
   type VoiceLayout,
@@ -198,6 +198,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'importWavetable':
         this.handleImportWavetableData(event.data);
+        break;
+      case 'updateConvolverState':
+        this.handleUpdateConvolver(event.data);
         break;
     }
   }
@@ -633,6 +636,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.config.cutoff,
       data.config.resonance,
     );
+  }
+
+  private handleUpdateConvolver(data: {
+    type: string;
+    nodeId: number;
+    state: ConvolverState;
+  }) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix);
   }
 
   private handleUpdateModulation(data: {

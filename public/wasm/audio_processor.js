@@ -610,6 +610,13 @@ export class AudioEngine {
         }
     }
     /**
+     * @param {number} node_id
+     * @param {number} wet_mix
+     */
+    update_convolver(node_id, wet_mix) {
+        wasm.audioengine_update_convolver(this.__wbg_ptr, node_id, wet_mix);
+    }
+    /**
      * @returns {any}
      */
     create_envelope() {

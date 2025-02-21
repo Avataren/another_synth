@@ -448,7 +448,7 @@ impl AudioEngine {
 
         self.voices = (0..num_voices).map(Voice::new).collect();
 
-        self.add_plate_reverb(1.0, 0.5, sample_rate).unwrap();
+        self.add_plate_reverb(1.5, 0.7, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
 
@@ -995,6 +995,27 @@ impl AudioEngine {
             osc.update_params(params);
         }
         Ok(())
+    }
+
+    pub fn update_convolver(&mut self, node_id: usize, wet_mix: f32) {
+        // Calculate the effect index based on the provided node_id.
+        let effect_id = node_id - EFFECT_NODE_ID_OFFSET;
+
+        // Try to get a mutable reference to the effect at that index.
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_id) {
+            // Attempt to downcast the boxed AudioNode to a Convolver.
+            if let Some(convolver) = effect.node.as_any_mut().downcast_mut::<Convolver>() {
+                convolver.set_wet_level(wet_mix);
+            } else {
+                // Log a warning if the node at that index isn't a Convolver.
+                web_sys::console::log_1(
+                    &format!("Effect at index {} is not a Convolver", effect_id).into(),
+                );
+            }
+        } else {
+            // Log a warning if there is no effect at that index.
+            web_sys::console::log_1(&format!("No effect found at index {}", effect_id).into());
+        }
     }
 
     #[wasm_bindgen]

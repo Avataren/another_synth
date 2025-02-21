@@ -121,7 +121,7 @@ export default class Instrument {
     this.workletNode.port.postMessage({
       type: 'updateConvolverState',
       nodeId: nodeId,
-      newState,
+      state: newState,
     });
   }
 

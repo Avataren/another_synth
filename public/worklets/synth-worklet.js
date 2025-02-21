@@ -675,6 +675,13 @@ var AudioEngine = class {
     }
   }
   /**
+   * @param {number} node_id
+   * @param {number} wet_mix
+   */
+  update_convolver(node_id, wet_mix) {
+    wasm.audioengine_update_convolver(this.__wbg_ptr, node_id, wet_mix);
+  }
+  /**
    * @returns {any}
    */
   create_envelope() {
@@ -1702,6 +1709,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "importWavetable":
         this.handleImportWavetableData(event.data);
         break;
+      case "updateConvolverState":
+        this.handleUpdateConvolver(event.data);
+        break;
     }
   }
   handleImportWavetableData(data) {
@@ -2027,6 +2037,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.config.cutoff,
       data.config.resonance
     );
+  }
+  handleUpdateConvolver(data) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix);
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;
