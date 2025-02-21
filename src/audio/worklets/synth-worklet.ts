@@ -199,11 +199,27 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'importWavetable':
         this.handleImportWavetableData(event.data);
         break;
+      case 'importImpulseWaveform':
+        this.handleImportImpulseWaveformData(event.data);
+        break;
       case 'updateConvolverState':
         this.handleUpdateConvolver(event.data);
         break;
     }
   }
+
+
+
+  private handleImportImpulseWaveformData(data: {
+    type: string;
+    // Using wavData.buffer transfers the ArrayBuffer
+    nodeId: number,
+    data: Uint8Array;
+  }) {
+    const uint8Data = new Uint8Array(data.data);
+    this.audioEngine!.import_wave_impulse(data.nodeId, uint8Data);
+  }
+
 
   private handleImportWavetableData(data: {
     type: string;

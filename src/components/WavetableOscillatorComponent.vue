@@ -76,17 +76,18 @@
       </div>
       <q-card-section class="import-section">
         <div class="row">
-          <div class="col">
+          <div class="col-6">
             <div class="text-h6">Import Wavetable</div>
-          </div>
-          <div class="col">
+
             <input type="file" accept=".wav" @change="handleWavFileUpload" />
           </div>
+          <div class="col-6">
+            <WavetableEditor
+              :num-harmonics="32"
+              @update:wavetable="handleWavetableUpdate"
+            />
+          </div>
         </div>
-        <WavetableEditor
-          :num-harmonics="32"
-          @update:wavetable="handleWavetableUpdate"
-        />
       </q-card-section>
       <div class="detune-row">
         <div class="detune-group">

@@ -582,6 +582,18 @@ export class AudioEngine {
         }
     }
     /**
+     * @param {number} effect_id
+     * @param {Uint8Array} data
+     */
+    import_wave_impulse(effect_id, data) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.audioengine_import_wave_impulse(this.__wbg_ptr, effect_id, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Refactored import_wavetable function that uses the hound-based helper.
      * It accepts the WAV data as a byte slice, uses a Cursor to create a reader,
      * builds a new morph collection from the data, adds it to the synth bank under

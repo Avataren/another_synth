@@ -116,6 +116,25 @@ export default class Instrument {
     console.log('Sent wavetable data to worklet');
   }
 
+  public importImpulseWaveformData(nodeId: number, wavData: Uint8Array): void {
+    if (!this.ready || !this.workletNode) {
+      console.error('Audio system not ready for importing wavetable data');
+      return;
+    }
+    // Send the WAV data to the audio worklet.
+    // Transfer the underlying ArrayBuffer to avoid copying.
+    this.workletNode.port.postMessage(
+      {
+        type: 'importImpulseWaveform',
+        // Using wavData.buffer transfers the ArrayBuffer
+        nodeId,
+        data: wavData.buffer,
+      }
+    );
+    console.log('Sent wavetable data to worklet');
+  }
+
+
   public updateConvolverState(nodeId: number, newState: ConvolverState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({

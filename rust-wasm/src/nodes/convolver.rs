@@ -20,10 +20,10 @@ pub struct Convolver {
     /// Tail counter for output after input silence.
     tail_count: usize,
     /// Wet/dry mix level (0.0 = dry, 1.0 = fully wet).
-    wet_level: f32,
+    pub wet_level: f32,
     /// Partition size used to initialize FFTConvolver (e.g. render quantum size * 8).
-    partition_size: usize,
-    sample_rate: f32,
+    pub partition_size: usize,
+    pub sample_rate: f32,
 }
 
 impl Convolver {

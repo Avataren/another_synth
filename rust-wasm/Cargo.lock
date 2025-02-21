@@ -11,6 +11,7 @@ dependencies = [
  "hound",
  "once_cell",
  "rand",
+ "rubato",
  "rustfft",
  "serde",
  "serde-wasm-bindgen",
@@ -260,6 +261,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "390252372b7f2aac8360fc5e72eba10136b166d6faeed97e6d0c8324eb99b2b1"
 dependencies = [
  "rustfft",
+]
+
+[[package]]
+name = "rubato"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdd96992d7e24b3d7f35fdfe02af037a356ac90d41b466945cf3333525a86eea"
+dependencies = [
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "realfft",
 ]
 
 [[package]]

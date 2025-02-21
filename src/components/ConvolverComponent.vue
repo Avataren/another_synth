@@ -22,6 +22,15 @@
         />
       </div>
     </q-card-section>
+    <q-card-section class="import-section">
+      <div class="row">
+        <div class="col-6">
+          <div class="text-h6">Import Impulse Response</div>
+
+          <input type="file" accept=".wav" @change="handleWavFileUpload" />
+        </div>
+      </div>
+    </q-card-section>
   </q-card>
 </template>
 
@@ -42,6 +51,31 @@ const props = withDefaults(defineProps<Props>(), {
 
 const store = useAudioSystemStore();
 const { convolverStates } = storeToRefs(store);
+
+const handleWavFileUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length) return;
+  const file = input.files[0];
+  if (!file) {
+    console.error('No file selected');
+    return;
+  }
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const wavBytes = new Uint8Array(arrayBuffer);
+    console.log('WAV file loaded, size:', wavBytes.length);
+
+    if (store.currentInstrument) {
+      // Call the new import function on your instrument
+      store.currentInstrument.importImpulseWaveformData(props.nodeId, wavBytes);
+    } else {
+      console.error('Instrument instance not available');
+    }
+  } catch (err) {
+    console.error('Error reading WAV file:', err);
+    alert(err);
+  }
+};
 
 // Create a reactive reference to the oscillator state
 const convolverState = computed({

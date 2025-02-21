@@ -829,6 +829,176 @@ impl AudioEngine {
         Ok(())
     }
 
+    #[wasm_bindgen]
+    pub fn import_wave_impulse(&mut self, effect_id: usize, data: &[u8]) -> Result<(), JsValue> {
+        use rubato::{
+            Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType,
+            WindowFunction,
+        };
+        use std::io::Cursor;
+        use web_sys::console;
+
+        console::log_1(&"Starting import_wave_impulse".into());
+
+        // Create a hound reader from the data.
+        let cursor = Cursor::new(data);
+        let mut reader =
+            hound::WavReader::new(cursor).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let spec = reader.spec();
+        console::log_1(
+            &format!(
+                "WAV spec: sample_rate={}, channels={}, bits_per_sample={}, sample_format={:?}",
+                spec.sample_rate, spec.channels, spec.bits_per_sample, spec.sample_format
+            )
+            .into(),
+        );
+        let num_channels = spec.channels;
+
+        // Read the samples in f32 form.
+        let samples: Vec<f32> = match (spec.bits_per_sample, spec.sample_format) {
+            (32, hound::SampleFormat::Float) => {
+                reader.samples::<f32>().map(|s| s.unwrap()).collect()
+            }
+            (16, hound::SampleFormat::Int) => reader
+                .samples::<i16>()
+                .map(|s| s.unwrap() as f32 / i16::MAX as f32)
+                .collect(),
+            (24, hound::SampleFormat::Int) => {
+                let shift = 32 - 24;
+                reader
+                    .samples::<i32>()
+                    .map(|s| (s.unwrap() << shift >> shift) as f32 / 8_388_607.0)
+                    .collect()
+            }
+            (32, hound::SampleFormat::Int) => reader
+                .samples::<i32>()
+                .map(|s| s.unwrap() as f32 / i32::MAX as f32)
+                .collect(),
+            (bits, format) => {
+                return Err(JsValue::from_str(&format!(
+                    "Unsupported WAV format: bits_per_sample={} sample_format={:?}",
+                    bits, format
+                )))
+            }
+        };
+
+        console::log_1(&format!("Read {} samples", samples.len()).into());
+
+        // If the WAV is multi‑channel, average the channels to obtain a mono impulse response.
+        let mut ir = if num_channels == 1 {
+            samples
+        } else {
+            let mut mono = Vec::with_capacity(samples.len() / num_channels as usize);
+            for chunk in samples.chunks(num_channels as usize) {
+                let avg = chunk.iter().sum::<f32>() / (num_channels as f32);
+                mono.push(avg);
+            }
+            mono
+        };
+
+        console::log_1(&format!("Mono IR length: {}", ir.len()).into());
+        if ir.is_empty() {
+            return Err(JsValue::from_str("Impulse response is empty"));
+        }
+
+        // Locate the effect in the effect stack using the given id (subtracting the offset).
+        let index = effect_id
+            .checked_sub(EFFECT_NODE_ID_OFFSET)
+            .ok_or_else(|| JsValue::from_str("Invalid effect id"))?;
+        if index >= self.effect_stack.effects.len() {
+            return Err(JsValue::from_str("Effect id not found in effect stack"));
+        }
+
+        // Attempt to downcast the effect node to a Convolver.
+        let effect = &mut self.effect_stack.effects[index];
+        if let Some(convolver) = effect.node.as_any_mut().downcast_mut::<Convolver>() {
+            let partition_size = convolver.partition_size;
+            let target_sample_rate = convolver.sample_rate;
+            let wet_level = convolver.wet_level;
+            console::log_1(&format!("Convolver target sample rate: {}", target_sample_rate).into());
+
+            // If the IR's sample rate doesn't match the target sample rate, resample it.
+            if spec.sample_rate as f32 != target_sample_rate {
+                console::log_1(
+                    &format!(
+                        "Resampling needed: IR sample rate {} != target {}",
+                        spec.sample_rate, target_sample_rate
+                    )
+                    .into(),
+                );
+                let conversion_ratio = target_sample_rate as f64 / spec.sample_rate as f64;
+                console::log_1(&format!("Conversion ratio: {}", conversion_ratio).into());
+                let chunk_size = 1024; // fixed chunk size
+                console::log_1(&format!("Using chunk size: {}", chunk_size).into());
+
+                // Set up the interpolation parameters per the rubato example.
+                let params = SincInterpolationParameters {
+                    sinc_len: 256,
+                    f_cutoff: 0.95,
+                    interpolation: SincInterpolationType::Linear,
+                    oversampling_factor: 256,
+                    window: WindowFunction::BlackmanHarris2,
+                };
+
+                // Create a SincFixedIn resampler for 1 channel.
+                let mut resampler =
+                    SincFixedIn::<f64>::new(conversion_ratio, 2.0, params, chunk_size, 1).map_err(
+                        |e| JsValue::from_str(&format!("Resampler creation error: {:?}", e)),
+                    )?;
+
+                // Convert the IR to f64.
+                let ir_f64: Vec<f64> = ir.iter().map(|&x| x as f64).collect();
+                let mut resampled_output: Vec<f64> = Vec::new();
+
+                // Process the IR in blocks of `chunk_size`.
+                let mut pos = 0;
+                while pos < ir_f64.len() {
+                    let end = (pos + chunk_size).min(ir_f64.len());
+                    let mut block = ir_f64[pos..end].to_vec();
+                    if block.len() < chunk_size {
+                        // Pad with zeros to fill the chunk.
+                        block.resize(chunk_size, 0.0);
+                    }
+                    let input_block = vec![block]; // one channel
+                    console::log_1(&format!("Processing block: pos {} to {}", pos, end).into());
+                    let out = resampler.process(&input_block, None).map_err(|e| {
+                        JsValue::from_str(&format!("Resampling process error: {:?}", e))
+                    })?;
+                    // Append the output (first channel) to our accumulator.
+                    resampled_output.extend(out[0].iter());
+                    pos += chunk_size;
+                }
+
+                // Now flush any remaining samples using process_partial.
+                let partial = resampler
+                    .process_partial::<Vec<f64>>(None, None)
+                    .map_err(|e| JsValue::from_str(&format!("Resampler flush error: {:?}", e)))?;
+                resampled_output.extend(partial[0].iter());
+                console::log_1(
+                    &format!("Resampled output length: {}", resampled_output.len()).into(),
+                );
+
+                // Replace IR with the resampled output (convert back to f32).
+                ir = resampled_output.into_iter().map(|x| x as f32).collect();
+                console::log_1(&format!("Final IR length after resampling: {}", ir.len()).into());
+            } else {
+                console::log_1(&"No resampling needed".into());
+            }
+
+            // Create a new convolver using the (resampled) impulse response.
+            let new_convolver = Convolver::new(ir, partition_size, target_sample_rate);
+            effect.node = Box::new(new_convolver);
+            // Restore the original wet level.
+            if let Some(new_conv) = effect.node.as_any_mut().downcast_mut::<Convolver>() {
+                new_conv.set_wet_level(wet_level);
+            }
+            console::log_1(&"Impulse response imported successfully".into());
+            Ok(())
+        } else {
+            Err(JsValue::from_str("Effect is not a Convolver"))
+        }
+    }
+
     /// Refactored import_wavetable function that uses the hound-based helper.
     /// It accepts the WAV data as a byte slice, uses a Cursor to create a reader,
     /// builds a new morph collection from the data, adds it to the synth bank under
