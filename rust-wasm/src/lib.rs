@@ -94,6 +94,7 @@ const EFFECT_NODE_ID_OFFSET: usize = 10_000;
 /// 1. Resample (if needed) to `table_size`.
 /// 2. FFT the samples, zero out harmonics above `max_harmonic`,
 ///    then perform an inverse FFT and normalize.
+///
 fn generate_custom_table(
     base_samples: &Vec<f32>,
     base_size: usize,
