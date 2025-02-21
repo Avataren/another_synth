@@ -282,8 +282,8 @@ export function getModulationTargetsForType(
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
       ];
-    //    case VoiceNodeType.GlobalFrequency:
-    //      return [{ value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] }];
+    case VoiceNodeType.GlobalFrequency:
+      return [{ value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] }];
     // case VoiceNodeType.Envelope:
     //   return [
     //     { value: PortId.GainMod, label: 'Gain' },
