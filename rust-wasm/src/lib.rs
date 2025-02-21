@@ -448,7 +448,7 @@ impl AudioEngine {
 
         self.voices = (0..num_voices).map(Voice::new).collect();
 
-        self.add_plate_reverb(1.5, 0.7, sample_rate).unwrap();
+        self.add_plate_reverb(1.5, 0.5, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
 
