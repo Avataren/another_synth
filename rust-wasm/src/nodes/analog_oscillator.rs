@@ -253,25 +253,22 @@ impl AudioNode for AnalogOscillator {
                 // Sigma controls the spread of the Gaussian; adjust as needed.
                 let sigma = self.unison_voices as f32 / 4.0;
 
+                // Instead of accumulating with Gaussian weights, we now simply sum all voices equally.
+                let mut sample_sum = 0.0;
                 // Process each unison voice.
                 for voice in 0..self.unison_voices {
-                    let voice_f = voice as f32;
-                    // Compute a Gaussian weight (center voice will have the highest weight).
-                    let distance = (voice_f - center_index).abs();
-                    let weight = (-distance * distance / (2.0 * sigma * sigma)).exp();
-                    total_weight += weight;
-
-                    // Compute per-voice detune offset.
-                    // With a spread of 4 cents and 3 voices, this produces offsets of -4, 0, and 4 cents.
+                    // Compute a per-voice detune offset.
+                    // This produces a linear spread from -spread to +spread.
                     let voice_offset = if self.unison_voices > 1 {
-                        self.spread * (2.0 * (voice_f / ((self.unison_voices - 1) as f32)) - 1.0)
+                        self.spread
+                            * (2.0 * (voice as f32 / ((self.unison_voices - 1) as f32)) - 1.0)
                     } else {
                         0.0
                     };
 
-                    // Combine global detune and per-voice offset.
+                    // Combine the global detune with the per-voice offset.
                     let total_detune = self.detune + voice_offset;
-                    // Apply detune (convert cents to frequency multiplier).
+                    // Convert cents to a frequency multiplier.
                     let detuned_freq = freq_sample * 2.0_f32.powf(total_detune / 1200.0);
                     let effective_freq = detuned_freq * freq_mod_sample;
                     let phase_inc = effective_freq / self.sample_rate;
@@ -282,15 +279,13 @@ impl AudioNode for AnalogOscillator {
                         self.voice_phases[voice] -= 1.0;
                     }
 
-                    // Select the appropriate wavetable based on the effective frequency.
+                    // Select the appropriate wavetable.
                     let table = bank.select_table(effective_freq);
 
                     // Apply phase modulation and feedback.
-                    // Convert modulation from radians to cycles by dividing by 2π.
                     let external_phase_mod =
                         (phase_mod_sample * mod_index_sample) / (2.0 * std::f32::consts::PI);
                     let effective_feedback = self.feedback_amount * feedback_mod_sample;
-                    //                    let feedback_val = self.last_output * effective_feedback;
                     let feedback_val =
                         (self.last_output * effective_feedback) / (std::f32::consts::PI * 1.5);
 
@@ -300,11 +295,11 @@ impl AudioNode for AnalogOscillator {
                     let pos = normalized_phase * (table.table_size as f32);
                     let voice_sample = cubic_interp(&table.samples, pos);
 
-                    sample_sum += voice_sample * weight;
+                    sample_sum += voice_sample;
                 }
 
-                // Compute the weighted average so the center voice is emphasized.
-                let final_sample = sample_sum / total_weight;
+                // Simply average the sum over the number of voices.
+                let final_sample = sample_sum / self.unison_voices as f32;
                 output[i] = final_sample * self.gain * gain_mod_sample;
                 self.last_output = final_sample;
             }

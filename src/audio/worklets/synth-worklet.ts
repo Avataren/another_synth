@@ -1,6 +1,4 @@
-/// <reference lib="webworker" />
 import './textencoder.js';
-
 import type { ConvolverState, EnvelopeConfig, RawConnection, RawVoice, WasmState } from '../types/synth-layout';
 import {
   type SynthLayout,
@@ -208,8 +206,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-
-
   private handleImportImpulseWaveformData(data: {
     type: string;
     // Using wavData.buffer transfers the ArrayBuffer
@@ -219,7 +215,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const uint8Data = new Uint8Array(data.data);
     this.audioEngine!.import_wave_impulse(data.nodeId, uint8Data);
   }
-
 
   private handleImportWavetableData(data: {
     type: string;
@@ -272,10 +267,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       // Initialize all voices first
       this.createNodesAndSetupConnections();
       this.initializeVoices();
-      // const voiceLayout = this.initializeVoices();
-      // for (let i = 0; i < this.numVoices; i++) {
-      //   this.voiceLayouts.push({ ...voiceLayout, id: i });
-      // }
 
       // Initialize state
       this.initializeState();
@@ -335,9 +326,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) throw new Error('Audio engine not initialized');
 
     // Create noise generator.
-    //const noiseId = 
     this.audioEngine.create_noise();
-
     // Create mixer.
     const mixerId = this.audioEngine.create_mixer();
     console.log('#mixerID:', mixerId);
@@ -347,16 +336,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Create oscillators.
     const oscIds: number[] = [];
-    //for (let i = 0; i < this.maxOscillators; i++) {
-
     const wtoscId = this.audioEngine.create_wavetable_oscillator();
     oscIds.push(wtoscId);
 
     const oscId = this.audioEngine.create_oscillator();
-    //      console.log(`Created oscillator ${i} with id ${oscId}`);
     oscIds.push(oscId);
-
-    //  }
 
     // Create envelopes.
     const envelopeIds: number[] = [];
@@ -511,8 +495,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       this.voiceLayouts.push({ ...canonicalVoice, id: i });
     }
   }
-
-
 
   remove_specific_connection(
     from_node: number,
@@ -697,8 +679,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-
-
   private handleUpdateWavetableOscillator(data: {
     oscillatorId: number;
     newState: OscillatorState;
@@ -723,7 +703,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       console.error('Failed to update oscillator:', err);
     }
   }
-
 
   private handleUpdateOscillator(data: {
     oscillatorId: number;
@@ -829,8 +808,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
 
     try {
-      //for (let i = 0; i < this.numVoices; i++) {
-
       const lfoParams = new LfoUpdateParams(
         data.params.lfoId,
         data.params.frequency,
@@ -843,7 +820,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.params.active,
       );
       this.audioEngine.update_lfos(lfoParams);
-      //}
     } catch (err) {
       console.error('Error updating LFO:', err);
     }

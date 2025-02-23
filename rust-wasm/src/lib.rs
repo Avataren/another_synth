@@ -449,7 +449,8 @@ impl AudioEngine {
 
         self.voices = (0..num_voices).map(Voice::new).collect();
 
-        self.add_plate_reverb(1.5, 0.5, sample_rate).unwrap();
+        self.add_plate_reverb(2.0, 0.6, sample_rate).unwrap();
+        //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
 
@@ -603,6 +604,29 @@ impl AudioEngine {
                 *sample *= master_gain;
             }
         }
+    }
+
+    #[wasm_bindgen]
+    pub fn add_hall_reverb(
+        &mut self,
+        decay_time: f32,
+        room_size: f32,
+        sample_rate: f32,
+    ) -> Result<usize, JsValue> {
+        // Validate parameters before processing
+        let decay_time = decay_time.clamp(0.1, 10.0);
+        let rsize = room_size.clamp(0.0, 1.0);
+        // Generate hall reverb impulse response
+        let mut ir = self.ir_generator.hall(decay_time, rsize);
+
+        if ir.is_empty() {
+            return Err(JsValue::from_str("Generated impulse response is empty"));
+        }
+
+        // Create convolver with bounds checking
+        let mut convolver = Convolver::new(ir, 128, sample_rate);
+        convolver.set_wet_level(0.1);
+        Ok(self.effect_stack.add_effect(Box::new(convolver)))
     }
 
     #[wasm_bindgen]

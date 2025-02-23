@@ -564,6 +564,19 @@ var AudioEngine = class {
   }
   /**
    * @param {number} decay_time
+   * @param {number} room_size
+   * @param {number} sample_rate
+   * @returns {number}
+   */
+  add_hall_reverb(decay_time, room_size, sample_rate) {
+    const ret = wasm.audioengine_add_hall_reverb(this.__wbg_ptr, decay_time, room_size, sample_rate);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
+   * @param {number} decay_time
    * @param {number} diffusion
    * @param {number} sample_rate
    * @returns {number}
