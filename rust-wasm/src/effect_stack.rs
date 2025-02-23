@@ -12,7 +12,6 @@ pub struct Effect {
 
 pub struct EffectStack {
     pub effects: Vec<Effect>,
-    buffer_pool: AudioBufferPool,
     buffer_size: usize,
     input_buffer_left: Vec<f32>,
     input_buffer_right: Vec<f32>,
@@ -22,7 +21,6 @@ impl EffectStack {
     pub fn new(buffer_size: usize) -> Self {
         Self {
             effects: Vec::new(),
-            buffer_pool: AudioBufferPool::new(buffer_size, 32),
             buffer_size,
             input_buffer_left: vec![0.0; buffer_size],
             input_buffer_right: vec![0.0; buffer_size],
