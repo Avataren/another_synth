@@ -1,8 +1,14 @@
 import { createStandardAudioWorklet } from './audio-processor-loader';
-import { type EnvelopeConfig } from './dsp/envelope';
-import { type NoiseState } from './dsp/noise-generator';
+import { type EnvelopeConfig } from './types/envelope';
 import type OscillatorState from './models/OscillatorState';
 import { type FilterState } from './types/synth-layout';
+
+// Temporary type definition until it's moved to proper location
+interface NoiseState {
+  noiseType: number;
+  cutoff: number;
+  is_enabled: boolean;
+}
 
 export default class Voice {
   private active: boolean = false;
@@ -98,19 +104,13 @@ export default class Voice {
     if (gateParam) {
       gateParam.value = 0.0;
     }
-
   }
 
-  public isActive(): boolean {
+  public isActive() {
     return this.active;
   }
 
-  public getCurrentNote(): number {
-    return this.currentNote;
+  private midiNoteToFrequency(midiNote: number): number {
+    return 440 * Math.pow(2, (midiNote - 69) / 12);
   }
-
-  private midiNoteToFrequency(note: number): number {
-    return 440 * Math.pow(2, (note - 69) / 12);
-  };
-
 }

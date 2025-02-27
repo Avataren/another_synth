@@ -20,9 +20,6 @@
     "build:wasm": "node build-wasm.cjs",
     "build": "npm run build:wasm && npm run build:worklets && quasar build",
     "postinstall": "quasar prepare",
-    "asbuild:debug": "asc src/assembly/synth.ts --sharedMemory --maximumMemory 1024 --enable threads --importMemory --target debug",
-    "asbuild:release": "asc src/assembly/synth.ts --sharedMemory --maximumMemory 1024 --enable threads --importMemory --target release",
-    "asbuild": "npm run asbuild:debug && npm run asbuild:release",
     "start": "npx serve ."
   },
   "dependencies": {
