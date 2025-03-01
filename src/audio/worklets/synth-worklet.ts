@@ -77,6 +77,9 @@ export interface LfoUpdateData {
     triggerMode: number;
     gain: number;
     active: boolean;
+    loopMode: number,
+    loopStart: number,
+    loopEnd: number
   };
 }
 
@@ -818,6 +821,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.params.triggerMode,
         data.params.gain,
         data.params.active,
+        data.params.loopMode,
+        data.params.loopStart,
+        data.params.loopEnd
       );
       this.audioEngine.update_lfos(lfoParams);
     } catch (err) {

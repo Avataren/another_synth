@@ -212,6 +212,14 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
+ * @enum {0 | 1 | 2}
+ */
+export const LfoLoopMode = Object.freeze({
+    Off: 0, "0": "Off",
+    Loop: 1, "1": "Loop",
+    PingPong: 2, "2": "PingPong",
+});
+/**
  * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22}
  */
 export const PortId = Object.freeze({
@@ -1100,14 +1108,53 @@ export class LfoUpdateParams {
      * @returns {boolean}
      */
     get active() {
-        const ret = wasm.__wbg_get_lfoupdateparams_active(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_active(this.__wbg_ptr);
         return ret !== 0;
     }
     /**
      * @param {boolean} arg0
      */
     set active(arg0) {
-        wasm.__wbg_set_lfoupdateparams_active(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get loop_mode() {
+        const ret = wasm.__wbg_get_lfoupdateparams_loop_mode(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set loop_mode(arg0) {
+        wasm.__wbg_set_lfoupdateparams_loop_mode(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get loop_start() {
+        const ret = wasm.__wbg_get_envelopeconfig_decay_curve(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set loop_start(arg0) {
+        wasm.__wbg_set_envelopeconfig_decay_curve(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get loop_end() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_spread(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set loop_end(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
     }
     /**
      * @param {number} lfo_id
@@ -1119,9 +1166,12 @@ export class LfoUpdateParams {
      * @param {number} trigger_mode
      * @param {number} gain
      * @param {boolean} active
+     * @param {number} loop_mode
+     * @param {number} loop_start
+     * @param {number} loop_end
      */
-    constructor(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active) {
-        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active);
+    constructor(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end) {
+        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end);
         this.__wbg_ptr = ret >>> 0;
         LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
         return this;
@@ -1532,14 +1582,14 @@ export class WavetableOscillatorStateUpdate {
      * @returns {number}
      */
     get unison_voices() {
-        const ret = wasm.__wbg_get_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_lfoupdateparams_loop_mode(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
      * @param {number} arg0
      */
     set unison_voices(arg0) {
-        wasm.__wbg_set_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_lfoupdateparams_loop_mode(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}

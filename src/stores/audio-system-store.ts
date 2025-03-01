@@ -451,6 +451,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               triggerMode: 0, // None
               gain: 1.0,
               active: true,
+              loopMode: 0.0,
+              loopStart: 0.5,
+              loopEnd: 1.0
             });
           }
         }
@@ -481,6 +484,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         triggerMode: state.triggerMode,
         gain: state.gain,
         active: state.active,
+        loopMode: state.loopMode,
+        loopStart: state.loopStart,
+        loopEnd: state.loopEnd
       });
     },
 

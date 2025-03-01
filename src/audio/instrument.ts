@@ -183,6 +183,9 @@ export default class Instrument {
         triggerMode: state.triggerMode,
         gain: state.gain,
         active: state.active, // Add the active state
+        loopMode: state.loopMode,
+        loopStart: state.loopStart,
+        loopEnd: state.loopEnd
       },
     });
   }
@@ -195,7 +198,7 @@ export default class Instrument {
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => {}, 0);
+      let timeoutId = setTimeout(() => { }, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {

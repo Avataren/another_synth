@@ -33,6 +33,9 @@ export interface LfoState {
   triggerMode: number;
   gain: number;
   active: boolean;
+  loopMode: number,
+  loopStart: number,
+  loopEnd: number
 }
 
 export interface NodeConnectionUpdate {

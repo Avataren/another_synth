@@ -264,6 +264,14 @@ function getArrayF32FromWasm0(ptr, len) {
   ptr = ptr >>> 0;
   return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
+var LfoLoopMode = Object.freeze({
+  Off: 0,
+  "0": "Off",
+  Loop: 1,
+  "1": "Loop",
+  PingPong: 2,
+  "2": "PingPong"
+});
 var PortId = Object.freeze({
   AudioInput0: 0,
   "0": "AudioInput0",
@@ -982,14 +990,53 @@ var LfoUpdateParams = class {
    * @returns {boolean}
    */
   get active() {
-    const ret = wasm.__wbg_get_lfoupdateparams_active(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_envelopeconfig_active(this.__wbg_ptr);
     return ret !== 0;
   }
   /**
    * @param {boolean} arg0
    */
   set active(arg0) {
-    wasm.__wbg_set_lfoupdateparams_active(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get loop_mode() {
+    const ret = wasm.__wbg_get_lfoupdateparams_loop_mode(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set loop_mode(arg0) {
+    wasm.__wbg_set_lfoupdateparams_loop_mode(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get loop_start() {
+    const ret = wasm.__wbg_get_envelopeconfig_decay_curve(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set loop_start(arg0) {
+    wasm.__wbg_set_envelopeconfig_decay_curve(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  get loop_end() {
+    const ret = wasm.__wbg_get_analogoscillatorstateupdate_spread(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set loop_end(arg0) {
+    wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
   }
   /**
    * @param {number} lfo_id
@@ -1001,9 +1048,12 @@ var LfoUpdateParams = class {
    * @param {number} trigger_mode
    * @param {number} gain
    * @param {boolean} active
+   * @param {number} loop_mode
+   * @param {number} loop_start
+   * @param {number} loop_end
    */
-  constructor(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active) {
-    const ret = wasm.lfoupdateparams_new(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active);
+  constructor(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end) {
+    const ret = wasm.lfoupdateparams_new(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end);
     this.__wbg_ptr = ret >>> 0;
     LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
     return this;
@@ -1190,14 +1240,14 @@ var WavetableOscillatorStateUpdate = class {
    * @returns {number}
    */
   get unison_voices() {
-    const ret = wasm.__wbg_get_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_lfoupdateparams_loop_mode(this.__wbg_ptr);
     return ret >>> 0;
   }
   /**
    * @param {number} arg0
    */
   set unison_voices(arg0) {
-    wasm.__wbg_set_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_lfoupdateparams_loop_mode(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {number}
@@ -2213,7 +2263,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         data.params.useNormalized,
         data.params.triggerMode,
         data.params.gain,
-        data.params.active
+        data.params.active,
+        data.params.loopMode,
+        data.params.loopStart,
+        data.params.loopEnd
       );
       this.audioEngine.update_lfos(lfoParams);
     } catch (err) {

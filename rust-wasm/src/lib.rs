@@ -22,8 +22,8 @@ use nodes::morph_wavetable::{
 };
 use nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver, Lfo,
-    LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform,
-    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    LfoLoopMode, LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType,
+    NoiseUpdate, Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
@@ -332,6 +332,9 @@ pub struct LfoUpdateParams {
     pub trigger_mode: u8,
     pub gain: f32,
     pub active: bool,
+    pub loop_mode: usize,
+    pub loop_start: f32,
+    pub loop_end: f32,
 }
 
 #[derive(Serialize, Debug)]
@@ -374,6 +377,9 @@ impl LfoUpdateParams {
         trigger_mode: u8,
         gain: f32,
         active: bool,
+        loop_mode: usize,
+        loop_start: f32,
+        loop_end: f32,
     ) -> LfoUpdateParams {
         LfoUpdateParams {
             lfo_id,
@@ -385,6 +391,9 @@ impl LfoUpdateParams {
             trigger_mode,
             gain,
             active,
+            loop_mode,
+            loop_start,
+            loop_end,
         }
     }
 }
@@ -1326,12 +1335,21 @@ impl AudioEngine {
             if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
                 if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
                     // Convert u8 to LfoWaveform
+                    //console::log_1(&format!("waveform is {}", params.waveform).into());
                     let waveform = match params.waveform {
                         0 => LfoWaveform::Sine,
                         1 => LfoWaveform::Triangle,
                         2 => LfoWaveform::Square,
                         3 => LfoWaveform::Saw,
+                        4 => LfoWaveform::InverseSaw,
                         _ => LfoWaveform::Sine,
+                    };
+
+                    let loopmode = match params.loop_mode {
+                        0 => LfoLoopMode::Off,
+                        1 => LfoLoopMode::Loop,
+                        2 => LfoLoopMode::PingPong,
+                        _ => LfoLoopMode::Off,
                     };
 
                     lfo.set_gain(params.gain);
@@ -1342,6 +1360,9 @@ impl AudioEngine {
                     lfo.set_use_normalized(params.use_normalized);
                     lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
                     lfo.set_active(params.active);
+                    lfo.set_loop_mode(loopmode);
+                    lfo.set_loop_start(params.loop_start);
+                    lfo.set_loop_end(params.loop_end);
                 }
             }
         }
@@ -1359,6 +1380,7 @@ impl AudioEngine {
             1 => LfoWaveform::Triangle,
             2 => LfoWaveform::Square,
             3 => LfoWaveform::Saw,
+            4 => LfoWaveform::InverseSaw,
             _ => return Err(JsValue::from_str("Invalid waveform type")),
         };
 
