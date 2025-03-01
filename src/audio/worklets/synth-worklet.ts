@@ -764,7 +764,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleGetLfoWaveform(data: { waveform: number; phaseOffset: number, bufferSize: number }) {
+  private handleGetLfoWaveform(data: { waveform: number; phaseOffset: number, bufferSize: number, use_absolute: boolean, use_normalized: boolean }) {
     if (!this.audioEngine) return;
 
     try {
@@ -772,6 +772,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.waveform,
         data.phaseOffset,
         data.bufferSize,
+        data.use_absolute,
+        data.use_normalized
       );
 
       this.port.postMessage({

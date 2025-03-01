@@ -1374,6 +1374,8 @@ impl AudioEngine {
         waveform: u8,
         phase_offset: f32,
         buffer_size: usize,
+        use_absolute: bool,
+        use_normalized: bool,
     ) -> Result<Vec<f32>, JsValue> {
         let waveform = match waveform {
             0 => LfoWaveform::Sine,
@@ -1384,7 +1386,13 @@ impl AudioEngine {
             _ => return Err(JsValue::from_str("Invalid waveform type")),
         };
 
-        Ok(Lfo::get_waveform_data(waveform, phase_offset, buffer_size))
+        Ok(Lfo::get_waveform_data(
+            waveform,
+            phase_offset,
+            buffer_size,
+            use_absolute,
+            use_normalized,
+        ))
     }
 
     #[wasm_bindgen]

@@ -265,20 +265,24 @@ const handleActiveChange = (newValue: boolean) => {
   store.lfoStates.set(props.nodeId, currentState);
 };
 
-const handleAbsoluteChange = (newValue: boolean) => {
+const handleAbsoluteChange = async (newValue: boolean) => {
   const currentState = {
     ...lfoState.value,
     useAbsolute: newValue,
   };
   store.lfoStates.set(props.nodeId, currentState);
+  await updateCachedWaveform();
+  updateWaveformDisplay();
 };
 
-const handleNormalizedChange = (newValue: boolean) => {
+const handleNormalizedChange = async (newValue: boolean) => {
   const currentState = {
     ...lfoState.value,
     useNormalized: newValue,
   };
   store.lfoStates.set(props.nodeId, currentState);
+  await updateCachedWaveform();
+  updateWaveformDisplay();
 };
 
 const handleLoopModeChange = (newValue: number) => {
@@ -327,6 +331,8 @@ const updateCachedWaveform = async () => {
     lfoState.value.waveform,
     lfoState.value.phaseOffset,
     width,
+    lfoState.value.useAbsolute,
+    lfoState.value.useNormalized,
   );
 
   if (!waveformData) return;

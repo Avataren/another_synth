@@ -274,6 +274,8 @@ export default class Instrument {
     waveform: number,
     phaseOffset: number,
     bufferSize: number,
+    use_absolute: boolean,
+    use_normalized: boolean,
   ): Promise<Float32Array> {
     if (!this.ready || !this.workletNode) {
       throw new Error('Audio system not ready');
@@ -300,6 +302,8 @@ export default class Instrument {
         waveform,
         phaseOffset,
         bufferSize,
+        use_absolute,
+        use_normalized
       });
 
       // Add timeout to prevent hanging

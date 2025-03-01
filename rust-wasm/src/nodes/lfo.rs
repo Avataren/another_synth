@@ -342,10 +342,13 @@ impl Lfo {
     }
 
     /// Returns waveform data as a vector of samples using SIMD processing.
+    /// Now takes use_absolute and use_normalized into account
     pub fn get_waveform_data(
         waveform: LfoWaveform,
         phase_offset: f32,
         buffer_size: usize,
+        use_absolute: bool,
+        use_normalized: bool,
     ) -> Vec<f32> {
         let tables = LFO_TABLES.get_or_init(LfoTables::new);
         let table = tables.get_table(waveform);
@@ -377,10 +380,26 @@ impl Lfo {
             let i2_next = (i2 + 1) & TABLE_MASK;
             let i3_next = (i3 + 1) & TABLE_MASK;
 
-            let sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
-            let sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
-            let sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
-            let sample3 = table[i3] + (table[i3_next] - table[i3]) * fraction[3];
+            let mut sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
+            let mut sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
+            let mut sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
+            let mut sample3 = table[i3] + (table[i3_next] - table[i3]) * fraction[3];
+
+            // Apply absolute if needed
+            if use_absolute {
+                sample0 = sample0.abs();
+                sample1 = sample1.abs();
+                sample2 = sample2.abs();
+                sample3 = sample3.abs();
+            }
+
+            // Apply normalization if needed
+            if use_normalized {
+                sample0 = (sample0 + 1.0) * 0.5;
+                sample1 = (sample1 + 1.0) * 0.5;
+                sample2 = (sample2 + 1.0) * 0.5;
+                sample3 = (sample3 + 1.0) * 0.5;
+            }
 
             buffer[i] = sample0;
             buffer[i + 1] = sample1;
@@ -401,7 +420,20 @@ impl Lfo {
             let index = (table_index as usize) & TABLE_MASK;
             let index_next = (index + 1) & TABLE_MASK;
             let fraction = table_index - table_index.floor();
-            buffer[i] = table[index] + (table[index_next] - table[index]) * fraction;
+
+            let mut sample = table[index] + (table[index_next] - table[index]) * fraction;
+
+            // Apply absolute if needed
+            if use_absolute {
+                sample = sample.abs();
+            }
+
+            // Apply normalization if needed
+            if use_normalized {
+                sample = (sample + 1.0) * 0.5;
+            }
+
+            buffer[i] = sample;
             phase += phase_increment;
             if phase >= 1.0 {
                 phase -= 1.0;

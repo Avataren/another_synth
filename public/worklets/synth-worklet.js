@@ -809,10 +809,12 @@ var AudioEngine = class {
    * @param {number} waveform
    * @param {number} phase_offset
    * @param {number} buffer_size
+   * @param {boolean} use_absolute
+   * @param {boolean} use_normalized
    * @returns {Float32Array}
    */
-  get_lfo_waveform(waveform, phase_offset, buffer_size) {
-    const ret = wasm.audioengine_get_lfo_waveform(this.__wbg_ptr, waveform, phase_offset, buffer_size);
+  get_lfo_waveform(waveform, phase_offset, buffer_size, use_absolute, use_normalized) {
+    const ret = wasm.audioengine_get_lfo_waveform(this.__wbg_ptr, waveform, phase_offset, buffer_size, use_absolute, use_normalized);
     if (ret[3]) {
       throw takeFromExternrefTable0(ret[2]);
     }
@@ -2219,7 +2221,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       const waveformData = this.audioEngine.get_lfo_waveform(
         data.waveform,
         data.phaseOffset,
-        data.bufferSize
+        data.bufferSize,
+        data.use_absolute,
+        data.use_normalized
       );
       this.port.postMessage({
         type: "lfoWaveform",
