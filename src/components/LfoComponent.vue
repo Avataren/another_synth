@@ -338,12 +338,12 @@ const updateCachedWaveform = async () => {
   const offCtx = offscreen.getContext('2d');
   if (!offCtx) return;
 
-  // Draw background.
-  offCtx.fillStyle = '#f8f9fa';
+  // Draw background - dark navy background similar to frequency analyzer
+  offCtx.fillStyle = '#1e2a3a';
   offCtx.fillRect(0, 0, width, height);
 
-  // Draw grid lines.
-  offCtx.strokeStyle = 'rgba(33, 150, 243, 0.1)';
+  // Draw grid lines
+  offCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
   offCtx.lineWidth = 1;
   for (let x = 0; x < width; x += width / 8) {
     offCtx.beginPath();
@@ -358,42 +358,40 @@ const updateCachedWaveform = async () => {
     offCtx.stroke();
   }
 
-  // Draw waveform filled area.
+  // Draw center line (y = 0 axis)
+  offCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   offCtx.beginPath();
-  for (let i = 0; i < waveformData.length; i++) {
-    const x = i;
-    const y = ((1 - waveformData[i]!) * height) / 2;
-    if (i === 0) {
-      offCtx.moveTo(x, y);
-    } else {
-      offCtx.lineTo(x, y);
-    }
-  }
-  offCtx.lineTo(width, height);
-  offCtx.lineTo(0, height);
-  offCtx.closePath();
-  const gradient = offCtx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, 'rgba(33, 150, 243, 0.1)');
-  gradient.addColorStop(1, 'rgba(33, 150, 243, 0.3)');
-  offCtx.fillStyle = gradient;
-  offCtx.fill();
-
-  // Draw waveform outline.
-  offCtx.beginPath();
-  for (let i = 0; i < waveformData.length; i++) {
-    const x = i;
-    const y = ((1 - waveformData[i]!) * height) / 2;
-    if (i === 0) {
-      offCtx.moveTo(x, y);
-    } else {
-      offCtx.lineTo(x, y);
-    }
-  }
-  offCtx.strokeStyle = '#1976D2';
-  offCtx.lineWidth = 2;
+  offCtx.moveTo(0, height / 2);
+  offCtx.lineTo(width, height / 2);
   offCtx.stroke();
 
-  // Cache the offscreen canvas.
+  // Draw waveform bars with blue color like frequency analyzer
+  const barWidth = Math.max(1, Math.ceil(width / waveformData.length / 2));
+  const gap = Math.max(0, Math.floor(barWidth / 3));
+
+  // Create blue gradient for bars
+  const barGradient = offCtx.createLinearGradient(0, 0, 0, height);
+  barGradient.addColorStop(0, '#4fc3f7'); // Light blue at top
+  barGradient.addColorStop(1, '#0277bd'); // Darker blue at bottom
+  offCtx.fillStyle = barGradient;
+
+  for (let i = 0; i < waveformData.length; i++) {
+    const x = i * (barWidth + gap);
+    // Center the bars vertically
+    const normalizedValue = waveformData[i]!;
+    const barHeight = Math.abs(normalizedValue) * (height / 2);
+
+    // Draw bar at appropriate position based on waveform value
+    if (normalizedValue >= 0) {
+      // Positive values go up from center
+      offCtx.fillRect(x, height / 2 - barHeight, barWidth, barHeight);
+    } else {
+      // Negative values go down from center
+      offCtx.fillRect(x, height / 2, barWidth, barHeight);
+    }
+  }
+
+  // Cache the offscreen canvas
   cachedWaveformCanvas = offscreen;
 };
 
@@ -409,27 +407,84 @@ const updateWaveformDisplay = () => {
   const width = canvas.width;
   const height = canvas.height;
 
-  // Clear the canvas.
+  // Clear the canvas
   ctx.clearRect(0, 0, width, height);
 
-  // Draw the cached waveform image if available.
+  // Draw the cached waveform image if available
   if (cachedWaveformCanvas) {
     ctx.drawImage(cachedWaveformCanvas, 0, 0);
   }
 
-  // Overlay loop markers if looping is active.
+  // Overlay loop interval with translucent color if looping is active
   if (lfoState.value.loopMode !== 0) {
     const loopStartX = lfoState.value.loopStart * width;
     const loopEndX = lfoState.value.loopEnd * width;
-    ctx.strokeStyle = 'red';
+
+    // Draw translucent overlay for loop area
+    ctx.fillStyle = 'rgba(255, 193, 7, 0.2)'; // Translucent amber/gold
+    ctx.fillRect(loopStartX, 0, loopEndX - loopStartX, height);
+
+    // Draw loop markers
+    const handleRadius = 6;
+
+    // Loop start marker
+    ctx.strokeStyle = '#ffc107'; // Amber/gold
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(loopStartX, 0);
     ctx.lineTo(loopStartX, height);
     ctx.stroke();
+
+    // Loop start handle
+    const handleGradient = ctx.createRadialGradient(
+      loopStartX,
+      height - handleRadius * 2,
+      0,
+      loopStartX,
+      height - handleRadius * 2,
+      handleRadius,
+    );
+    handleGradient.addColorStop(0, '#ffecb3'); // Light amber
+    handleGradient.addColorStop(1, '#ff8f00'); // Dark amber
+    ctx.fillStyle = handleGradient;
+    ctx.beginPath();
+    ctx.arc(
+      loopStartX,
+      height - handleRadius * 2,
+      handleRadius,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.strokeStyle = '#ffa000';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Loop end marker
+    ctx.strokeStyle = '#ffc107'; // Amber/gold
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(loopEndX, 0);
     ctx.lineTo(loopEndX, height);
+    ctx.stroke();
+
+    // Loop end handle
+    const handleGradient2 = ctx.createRadialGradient(
+      loopEndX,
+      height - handleRadius * 2,
+      0,
+      loopEndX,
+      height - handleRadius * 2,
+      handleRadius,
+    );
+    handleGradient2.addColorStop(0, '#ffecb3'); // Light amber
+    handleGradient2.addColorStop(1, '#ff8f00'); // Dark amber
+    ctx.fillStyle = handleGradient2;
+    ctx.beginPath();
+    ctx.arc(loopEndX, height - handleRadius * 2, handleRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffa000';
+    ctx.lineWidth = 1;
     ctx.stroke();
   }
 };
@@ -451,16 +506,37 @@ const onCanvasMouseDown = (e: MouseEvent) => {
 };
 
 const onCanvasMouseMove = (e: MouseEvent) => {
-  if (!draggingHandle || !waveformCanvas.value) return;
+  if (!waveformCanvas.value) return;
+
+  // If already dragging, handle the drag operation
+  if (draggingHandle) {
+    const rect = waveformCanvas.value.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const newVal = Math.max(0, Math.min(1, x / waveformCanvas.value.width));
+    if (draggingHandle === 'start') {
+      handleLoopStartChange(newVal);
+    } else if (draggingHandle === 'end') {
+      handleLoopEndChange(newVal);
+    }
+    updateWaveformDisplay();
+    return;
+  }
+
+  // Otherwise check if hovering over a handle to change cursor
   const rect = waveformCanvas.value.getBoundingClientRect();
   const x = e.clientX - rect.left;
-  const newVal = Math.max(0, Math.min(1, x / waveformCanvas.value.width));
-  if (draggingHandle === 'start') {
-    handleLoopStartChange(newVal);
-  } else if (draggingHandle === 'end') {
-    handleLoopEndChange(newVal);
+  const threshold = 10; // slightly larger threshold for easier hovering
+  const loopStartX = lfoState.value.loopStart * waveformCanvas.value.width;
+  const loopEndX = lfoState.value.loopEnd * waveformCanvas.value.width;
+
+  if (
+    Math.abs(x - loopStartX) < threshold ||
+    Math.abs(x - loopEndX) < threshold
+  ) {
+    waveformCanvas.value.style.cursor = 'ew-resize'; // Horizontal resize cursor
+  } else {
+    waveformCanvas.value.style.cursor = 'default';
   }
-  updateWaveformDisplay();
 };
 
 const onCanvasMouseUp = () => {
@@ -499,15 +575,20 @@ watch(
 </script>
 
 <style scoped>
+/* Updated CSS for LFO component */
+
 .lfo-card {
   width: 600px;
   margin: 0.5rem auto;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .lfo-container {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  padding: 1rem;
 }
 
 /* Top row: toggles + main knobs (including waveform knob) */
@@ -522,6 +603,9 @@ watch(
   gap: 1rem;
   justify-content: space-around;
   align-items: center;
+  padding: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
 }
 
 .knob-group {
@@ -541,10 +625,15 @@ watch(
 .waveform-canvas-row canvas {
   width: 100%;
   height: 160px;
-  border: 1px solid #e0e0e0;
-  background-color: #f8f9fa;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background-color: #1e2a3a;
   border-radius: 4px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transition: box-shadow 0.2s ease;
+}
+
+.waveform-canvas-row canvas:hover {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
 }
 
 /* Bottom row: loop controls */
@@ -553,5 +642,21 @@ watch(
   gap: 1rem;
   justify-content: center;
   align-items: center;
+  padding: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+}
+
+/* Style the loop handle tooltips */
+.handle-tooltip {
+  position: absolute;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  transform: translateY(-100%);
+  white-space: nowrap;
 }
 </style>
