@@ -25,7 +25,7 @@ impl LfoWaveform {
     /// and 0.0 for pulse (Square), saw, and inverse saw.
     fn normalized_phase_offset(self) -> f32 {
         match self {
-            LfoWaveform::Sine => 0.25,
+            LfoWaveform::Sine => -0.25,
             LfoWaveform::Triangle => -0.25,
             _ => 0.0,
         }
@@ -83,7 +83,7 @@ impl LfoTables {
             let phase = 2.0 * std::f32::consts::PI * (i as f32) / (TABLE_SIZE as f32);
             let normalized_phase = i as f32 / (TABLE_SIZE as f32);
 
-            sine[i] = (phase + std::f32::consts::PI).sin();
+            sine[i] = phase.sin();
             triangle[i] = if normalized_phase < 0.25 {
                 4.0 * normalized_phase
             } else if normalized_phase < 0.75 {
