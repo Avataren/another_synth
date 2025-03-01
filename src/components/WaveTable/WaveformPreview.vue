@@ -79,7 +79,6 @@ export default {
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
     }
-    window.removeEventListener('resize');
   },
 
   watch: {
