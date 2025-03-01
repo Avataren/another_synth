@@ -161,7 +161,7 @@ impl Lfo {
             oneshot_final_sample: None,
             loop_mode: LfoLoopMode::Off,
             loop_start: 0.0,
-            loop_end: 1.0,
+            loop_end: 0.999,
             direction: 1.0,
         }
     }
@@ -275,7 +275,7 @@ impl Lfo {
     }
 
     pub fn set_loop_end(&mut self, end: f32) {
-        self.loop_end = end.clamp(0.0, 1.0);
+        self.loop_end = end.clamp(0.0, 0.999);
         if self.loop_end < self.loop_start {
             self.loop_start = self.loop_end;
         }
