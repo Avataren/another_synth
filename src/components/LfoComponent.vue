@@ -126,6 +126,7 @@ import { storeToRefs } from 'pinia';
 import { type LfoState } from 'src/audio/types/synth-layout';
 import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
+import { throttle } from 'src/utils/util';
 
 interface Props {
   node: AudioNode | null;
@@ -145,6 +146,10 @@ const triggerMode = ref<boolean>(false);
 
 // We'll cache the drawn waveform as an offscreen canvas.
 let cachedWaveformCanvas: HTMLCanvasElement | null = null;
+const throttledUpdateWaveformDisplay = throttle(async () => {
+  await updateCachedWaveform();
+  updateWaveformDisplay();
+}, 1000 / 60);
 
 // Create a reactive reference to the LFO state.
 const lfoState = computed({
@@ -227,8 +232,7 @@ const handlePhaseChange = async (newPhase: number) => {
     phaseOffset: newPhase,
   };
   store.lfoStates.set(props.nodeId, currentState);
-  await updateCachedWaveform();
-  updateWaveformDisplay();
+  await throttledUpdateWaveformDisplay();
 };
 
 const handleGainChange = (newGain: number) => {
