@@ -214,6 +214,9 @@ impl AudioNode for Delay {
 
     fn set_active(&mut self, active: bool) {
         self.enabled = active;
+        if active {
+            self.reset();
+        }
     }
 
     fn node_type(&self) -> &str {

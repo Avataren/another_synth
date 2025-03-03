@@ -64,6 +64,13 @@
           :nodeId="filter.id"
         />
 
+        <delay-component
+          v-for="delay in delayNodes"
+          :key="delay.id"
+          :node="destinationNode"
+          :nodeId="delay.id"
+        />
+
         <convolver-component
           v-for="conv in convolverNodes"
           :key="conv.id"
@@ -94,6 +101,7 @@ import FilterComponent from 'src/components/FilterComponent.vue';
 import NoiseComponent from 'src/components/NoiseComponent.vue';
 import LfoComponent from 'src/components/LfoComponent.vue';
 import ConvolverComponent from 'src/components/ConvolverComponent.vue';
+import DelayComponent from 'src/components/DelayComponent.vue';
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -115,7 +123,7 @@ const envelopeNodes = computed(() =>
 const filterNodes = computed(() =>
   store.getVoiceNodes(0, VoiceNodeType.Filter),
 );
-
+const delayNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Delay));
 const noiseNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Noise));
 const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
 const convolverNodes = computed(() =>

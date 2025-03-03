@@ -658,6 +658,16 @@ export class AudioEngine {
     }
     /**
      * @param {number} node_id
+     * @param {number} delay_ms
+     * @param {number} feedback
+     * @param {number} wet_mix
+     * @param {boolean} enabled
+     */
+    update_delay(node_id, delay_ms, feedback, wet_mix, enabled) {
+        wasm.audioengine_update_delay(this.__wbg_ptr, node_id, delay_ms, feedback, wet_mix, enabled);
+    }
+    /**
+     * @param {number} node_id
      * @param {number} wet_mix
      * @param {boolean} enabled
      */

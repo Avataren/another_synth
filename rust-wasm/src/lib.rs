@@ -1215,6 +1215,37 @@ impl AudioEngine {
         Ok(())
     }
 
+    pub fn update_delay(
+        &mut self,
+        node_id: usize,
+        delay_ms: f32,
+        feedback: f32,
+        wet_mix: f32,
+        enabled: bool,
+    ) {
+        // Calculate the effect index based on the provided node_id.
+        let effect_id = node_id - EFFECT_NODE_ID_OFFSET;
+
+        // Try to get a mutable reference to the effect at that index.
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_id) {
+            // Attempt to downcast the boxed AudioNode to a Convolver.
+            if let Some(delay) = effect.node.as_any_mut().downcast_mut::<Delay>() {
+                delay.set_delay_ms(delay_ms);
+                delay.set_feedback(feedback);
+                delay.set_mix(wet_mix);
+                delay.set_active(enabled);
+            } else {
+                // Log a warning if the node at that index isn't a Convolver.
+                web_sys::console::log_1(
+                    &format!("Effect at index {} is not a Delay", effect_id).into(),
+                );
+            }
+        } else {
+            // Log a warning if there is no effect at that index.
+            web_sys::console::log_1(&format!("No effect found at index {}", effect_id).into());
+        }
+    }
+
     pub fn update_convolver(&mut self, node_id: usize, wet_mix: f32, enabled: bool) {
         // Calculate the effect index based on the provided node_id.
         let effect_id = node_id - EFFECT_NODE_ID_OFFSET;

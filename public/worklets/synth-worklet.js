@@ -723,6 +723,16 @@ var AudioEngine = class {
   }
   /**
    * @param {number} node_id
+   * @param {number} delay_ms
+   * @param {number} feedback
+   * @param {number} wet_mix
+   * @param {boolean} enabled
+   */
+  update_delay(node_id, delay_ms, feedback, wet_mix, enabled) {
+    wasm.audioengine_update_delay(this.__wbg_ptr, node_id, delay_ms, feedback, wet_mix, enabled);
+  }
+  /**
+   * @param {number} node_id
    * @param {number} wet_mix
    * @param {boolean} enabled
    */
@@ -1807,6 +1817,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateConvolverState":
         this.handleUpdateConvolver(event.data);
         break;
+      case "updateDelayState":
+        this.handleUpdateDelay(event.data);
+        break;
     }
   }
   handleImportImpulseWaveformData(data) {
@@ -2146,6 +2159,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   handleUpdateConvolver(data) {
     if (!this.audioEngine) return;
     this.audioEngine.update_convolver(data.nodeId, data.state.wetMix, data.state.active);
+  }
+  handleUpdateDelay(data) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_delay(data.nodeId, data.state.delayMs, data.state.feedback, data.state.wetMix, data.state.active);
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;

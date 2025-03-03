@@ -25,10 +25,10 @@ export interface ConvolverState {
 }
 
 export interface DelayState {
-  id: number,
+  id?: number,
   delayMs: number,
   feedback: number,
-  wetmix: number,
+  wetMix: number,
   active: boolean,
 }
 

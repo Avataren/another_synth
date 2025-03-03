@@ -1,5 +1,5 @@
 import './textencoder.js';
-import type { ConvolverState, EnvelopeConfig, RawConnection, RawVoice, WasmState } from '../types/synth-layout';
+import type { ConvolverState, DelayState, EnvelopeConfig, RawConnection, RawVoice, WasmState } from '../types/synth-layout';
 import {
   type SynthLayout,
   type VoiceLayout,
@@ -205,6 +205,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'updateConvolverState':
         this.handleUpdateConvolver(event.data);
+        break;
+      case 'updateDelayState':
+        this.handleUpdateDelay(event.data);
         break;
     }
   }
@@ -653,6 +656,18 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
     this.audioEngine.update_convolver(data.nodeId, data.state.wetMix, data.state.active);
   }
+
+  private handleUpdateDelay(data: {
+    type: string;
+    nodeId: number;
+    state: DelayState;
+  }) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_delay(data.nodeId, data.state.delayMs, data.state.feedback, data.state.wetMix, data.state.active);
+  }
+
+
+
 
   private handleUpdateModulation(data: {
     connection: {

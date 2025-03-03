@@ -366,7 +366,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               id: delay.id,
               delayMs: 500,
               feedback: 0.5,
-              wetmix: 0.1,
+              wetMix: 0.1,
               active: true
             });
           }
