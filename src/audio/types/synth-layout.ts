@@ -14,13 +14,22 @@ export enum VoiceNodeType {
   Mixer = 'mixer',
   Noise = 'noise',
   GlobalFrequency = 'globalfrequency',
-  Convolver = 'convolver'
+  Convolver = 'convolver',
+  Delay = 'delay'
 }
 
 export interface ConvolverState {
   id?: number;
   wetMix: number;
   active: boolean;
+}
+
+export interface DelayState {
+  id: number,
+  delayMs: number,
+  feedback: number,
+  wetmix: number,
+  active: boolean,
 }
 
 export interface LfoState {

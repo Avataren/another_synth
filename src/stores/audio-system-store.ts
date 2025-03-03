@@ -3,7 +3,7 @@ import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import Instrument from 'src/audio/instrument';
 import type OscillatorState from 'src/audio/models/OscillatorState';
-import type { ConvolverState, EnvelopeConfig } from 'src/audio/types/synth-layout';
+import type { ConvolverState, DelayState, EnvelopeConfig } from 'src/audio/types/synth-layout';
 import {
   type SynthLayout,
   type NodeConnection,
@@ -53,6 +53,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     wavetableOscillatorStates: new Map<number, OscillatorState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
     convolverStates: new Map<number, ConvolverState>(),
+    delayStates: new Map<number, DelayState>(),
     filterStates: new Map<number, FilterState>(),
     lfoStates: new Map<number, LfoState>(),
     isUpdatingFromWasm: false,
@@ -94,6 +95,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           return state.lfoStates.get(nodeId);
         case VoiceNodeType.Convolver:
           return state.convolverStates.get(nodeId);
+        case VoiceNodeType.Delay:
+          return state.delayStates.get(nodeId);
         default:
           return null;
       }
@@ -292,6 +295,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.Noise]: [],
             [VoiceNodeType.GlobalFrequency]: [],
             [VoiceNodeType.Convolver]: [],
+            [VoiceNodeType.Delay]: [],
           };
 
           // Define an interface for raw nodes.
@@ -320,6 +324,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.WavetableOscillator;
               case 'convolver':
                 return VoiceNodeType.Convolver;
+              case 'delay':
+                return VoiceNodeType.Delay;
 
               default:
                 console.warn('$$$ Unknown node type:', raw);
@@ -349,6 +355,18 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             this.convolverStates.set(conv.id, {
               id: conv.id,
               wetMix: 0.1,
+              active: true
+            });
+          }
+        }
+
+        for (const delay of getNodesOfType(canonicalVoice, VoiceNodeType.Delay) || []) {
+          if (!this.delayStates.has(delay.id)) {
+            this.delayStates.set(delay.id, {
+              id: delay.id,
+              delayMs: 500,
+              feedback: 0.5,
+              wetmix: 0.1,
               active: true
             });
           }

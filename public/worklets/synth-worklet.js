@@ -571,6 +571,20 @@ var AudioEngine = class {
     wasm.audioengine_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, master_gain, ptr4, len4, output_left, ptr5, len5, output_right);
   }
   /**
+   * @param {number} max_delay_ms
+   * @param {number} delay_ms
+   * @param {number} feedback
+   * @param {number} mix
+   * @returns {number}
+   */
+  add_delay(max_delay_ms, delay_ms, feedback, mix) {
+    const ret = wasm.audioengine_add_delay(this.__wbg_ptr, max_delay_ms, delay_ms, feedback, mix);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
    * @param {number} decay_time
    * @param {number} room_size
    * @param {number} sample_rate
@@ -710,9 +724,10 @@ var AudioEngine = class {
   /**
    * @param {number} node_id
    * @param {number} wet_mix
+   * @param {boolean} enabled
    */
-  update_convolver(node_id, wet_mix) {
-    wasm.audioengine_update_convolver(this.__wbg_ptr, node_id, wet_mix);
+  update_convolver(node_id, wet_mix, enabled) {
+    wasm.audioengine_update_convolver(this.__wbg_ptr, node_id, wet_mix, enabled);
   }
   /**
    * @returns {any}
@@ -1957,7 +1972,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["mixer" /* Mixer */]: [],
       ["noise" /* Noise */]: [],
       ["globalfrequency" /* GlobalFrequency */]: [],
-      ["convolver" /* Convolver */]: []
+      ["convolver" /* Convolver */]: [],
+      ["delay" /* Delay */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;
@@ -1986,8 +2002,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "wavetable_oscillator":
           type = "wavetable_oscillator" /* WavetableOscillator */;
+          break;
         case "convolver":
           type = "convolver" /* Convolver */;
+          break;
+        case "delay":
+          type = "delay" /* Delay */;
+          break;
         default:
           console.warn("##### Unknown node type:", rawNode.node_type);
           type = rawNode.node_type;
@@ -2124,7 +2145,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleUpdateConvolver(data) {
     if (!this.audioEngine) return;
-    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix);
+    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix, data.state.active);
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;

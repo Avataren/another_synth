@@ -1,20 +1,17 @@
 use std::collections::HashMap;
 
 use crate::{
-    graph::{AudioBufferPool, ModulationSource, ModulationType},
+    graph::{ModulationSource, ModulationType},
     AudioNode, PortId,
 };
 
 pub struct Effect {
     pub node: Box<dyn AudioNode>,
-    enabled: bool,
 }
 
 pub struct EffectStack {
     pub effects: Vec<Effect>,
     buffer_size: usize,
-    input_buffer_left: Vec<f32>,
-    input_buffer_right: Vec<f32>,
 }
 
 impl EffectStack {
@@ -22,17 +19,12 @@ impl EffectStack {
         Self {
             effects: Vec::new(),
             buffer_size,
-            input_buffer_left: vec![0.0; buffer_size],
-            input_buffer_right: vec![0.0; buffer_size],
         }
     }
 
     pub fn add_effect(&mut self, effect: Box<dyn AudioNode>) -> usize {
         let index = self.effects.len();
-        self.effects.push(Effect {
-            node: effect,
-            enabled: true,
-        });
+        self.effects.push(Effect { node: effect });
         index
     }
 
@@ -51,7 +43,7 @@ impl EffectStack {
 
     pub fn set_effect_enabled(&mut self, index: usize, enabled: bool) {
         if let Some(effect) = self.effects.get_mut(index) {
-            effect.enabled = enabled;
+            effect.node.set_active(enabled);
         }
     }
 
@@ -66,54 +58,61 @@ impl EffectStack {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        // Skip processing if no effects
-        if self.effects.iter().all(|e| !e.enabled) {
-            output_left.copy_from_slice(input_left);
-            output_right.copy_from_slice(input_right);
+        // If all effects are disabled, bypass processing entirely.
+        if self.effects.iter().all(|e| !e.node.is_active()) {
+            output_left.copy_from_slice(&input_left);
+            output_right.copy_from_slice(&input_right);
             return;
         }
 
-        // First copy input to working buffers
-        self.input_buffer_left.copy_from_slice(input_left);
-        self.input_buffer_right.copy_from_slice(input_right);
+        // Start with the input signal in local working buffers.
+        let mut current_left = input_left.to_vec();
+        let mut current_right = input_right.to_vec();
 
-        // Process each effect
-        let mut current_left = &self.input_buffer_left[..];
-        let mut current_right = &self.input_buffer_right[..];
-
+        // Process each effect in order.
         for effect in &mut self.effects {
-            if !effect.enabled {
-                continue;
+            // Allocate temporary buffers for this effect’s output.
+            let mut next_left = vec![0.0; self.buffer_size];
+            let mut next_right = vec![0.0; self.buffer_size];
+
+            if effect.node.is_active() {
+                let mut inputs = HashMap::new();
+                inputs.insert(
+                    PortId::AudioInput0,
+                    vec![ModulationSource {
+                        buffer: current_left.clone(),
+                        amount: 1.0,
+                        mod_type: ModulationType::Additive,
+                    }],
+                );
+                inputs.insert(
+                    PortId::AudioInput1,
+                    vec![ModulationSource {
+                        buffer: current_right.clone(),
+                        amount: 1.0,
+                        mod_type: ModulationType::Additive,
+                    }],
+                );
+
+                let mut outputs = HashMap::new();
+                outputs.insert(PortId::AudioOutput0, next_left.as_mut_slice());
+                outputs.insert(PortId::AudioOutput1, next_right.as_mut_slice());
+
+                // Process the enabled effect.
+                effect.node.process(&inputs, &mut outputs, self.buffer_size);
+            } else {
+                // Bypass the disabled effect: simply copy the current signal.
+                next_left.copy_from_slice(&current_left);
+                next_right.copy_from_slice(&current_right);
             }
 
-            let mut inputs = HashMap::new();
-            inputs.insert(
-                PortId::AudioInput0,
-                vec![ModulationSource {
-                    buffer: current_left.to_vec(),
-                    amount: 1.0,
-                    mod_type: ModulationType::Additive,
-                }],
-            );
-            inputs.insert(
-                PortId::AudioInput1,
-                vec![ModulationSource {
-                    buffer: current_right.to_vec(),
-                    amount: 1.0,
-                    mod_type: ModulationType::Additive,
-                }],
-            );
-
-            let mut outputs = HashMap::new();
-            outputs.insert(PortId::AudioOutput0, &mut *output_left);
-            outputs.insert(PortId::AudioOutput1, &mut *output_right);
-
-            // Process the effect
-            effect.node.process(&inputs, &mut outputs, self.buffer_size);
-
-            // Update current buffers to read from outputs next time
-            current_left = output_left;
-            current_right = output_right;
+            // Use the output from this stage as the input to the next effect.
+            current_left = next_left;
+            current_right = next_right;
         }
+
+        // Finally, write the processed (or bypassed) signal to the output buffers.
+        output_left.copy_from_slice(&current_left);
+        output_right.copy_from_slice(&current_right);
     }
 }

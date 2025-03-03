@@ -1,4 +1,5 @@
 #![feature(portable_simd)]
+#![feature(map_many_mut)]
 
 mod audio;
 mod effect_stack;
@@ -21,9 +22,10 @@ use nodes::morph_wavetable::{
     cubic_interp, MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
 };
 use nodes::{
-    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver, Lfo,
-    LfoLoopMode, LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator, NoiseType,
-    NoiseUpdate, Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver,
+    Delay, Lfo, LfoLoopMode, LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator,
+    NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
+    WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
@@ -457,7 +459,7 @@ impl AudioEngine {
         self.num_voices = num_voices;
 
         self.voices = (0..num_voices).map(Voice::new).collect();
-
+        self.add_delay(2000.0, 500.0, 0.5, 0.1).unwrap();
         self.add_plate_reverb(2.0, 0.6, sample_rate).unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
@@ -616,6 +618,18 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
+    pub fn add_delay(
+        &mut self,
+        max_delay_ms: f32,
+        delay_ms: f32,
+        feedback: f32,
+        mix: f32,
+    ) -> Result<usize, JsValue> {
+        let delay = Delay::new(self.sample_rate, max_delay_ms, delay_ms, feedback, mix);
+        Ok(self.effect_stack.add_effect(Box::new(delay)))
+    }
+
+    #[wasm_bindgen]
     pub fn add_hall_reverb(
         &mut self,
         decay_time: f32,
@@ -626,7 +640,7 @@ impl AudioEngine {
         let decay_time = decay_time.clamp(0.1, 10.0);
         let rsize = room_size.clamp(0.0, 1.0);
         // Generate hall reverb impulse response
-        let mut ir = self.ir_generator.hall(decay_time, rsize);
+        let ir = self.ir_generator.hall(decay_time, rsize);
 
         if ir.is_empty() {
             return Err(JsValue::from_str("Generated impulse response is empty"));
@@ -1201,7 +1215,7 @@ impl AudioEngine {
         Ok(())
     }
 
-    pub fn update_convolver(&mut self, node_id: usize, wet_mix: f32) {
+    pub fn update_convolver(&mut self, node_id: usize, wet_mix: f32, enabled: bool) {
         // Calculate the effect index based on the provided node_id.
         let effect_id = node_id - EFFECT_NODE_ID_OFFSET;
 
@@ -1210,6 +1224,7 @@ impl AudioEngine {
             // Attempt to downcast the boxed AudioNode to a Convolver.
             if let Some(convolver) = effect.node.as_any_mut().downcast_mut::<Convolver>() {
                 convolver.set_wet_level(wet_mix);
+                convolver.set_enabled(enabled);
             } else {
                 // Log a warning if the node at that index isn't a Convolver.
                 web_sys::console::log_1(

@@ -438,6 +438,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Noise]: [],
       [VoiceNodeType.GlobalFrequency]: [],
       [VoiceNodeType.Convolver]: [],
+      [VoiceNodeType.Delay]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -467,8 +468,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'wavetable_oscillator':
           type = VoiceNodeType.WavetableOscillator;
+          break;
         case 'convolver':
           type = VoiceNodeType.Convolver;
+          break;
+        case 'delay':
+          type = VoiceNodeType.Delay;
+          break;
         default:
           console.warn('##### Unknown node type:', rawNode.node_type);
           type = rawNode.node_type as VoiceNodeType;
@@ -645,7 +651,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     state: ConvolverState;
   }) {
     if (!this.audioEngine) return;
-    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix);
+    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix, data.state.active);
   }
 
   private handleUpdateModulation(data: {
