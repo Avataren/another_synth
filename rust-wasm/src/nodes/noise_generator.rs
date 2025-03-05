@@ -5,7 +5,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::simd::f32x4;
 
-use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 
 /// The type of noise to generate

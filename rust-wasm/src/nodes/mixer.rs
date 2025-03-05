@@ -1,9 +1,8 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::simd::num::SimdFloat;
 use std::simd::{f32x4, StdFloat};
 
-use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 
 pub struct Mixer {

@@ -254,8 +254,8 @@ impl AudioNode for Convolver {
         let dry_right: &[f32] = &audio_in_r;
 
         // Remove mutable references from the HashMap to avoid double-borrow issues.
-        let mut out_l = outputs.remove(&PortId::AudioOutput0).unwrap();
-        let mut out_r = outputs.remove(&PortId::AudioOutput1).unwrap();
+        let out_l = outputs.remove(&PortId::AudioOutput0).unwrap();
+        let out_r = outputs.remove(&PortId::AudioOutput1).unwrap();
 
         {
             // Prepare a temporary mutable slice array for process_block.

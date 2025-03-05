@@ -1,5 +1,5 @@
 use crate::PortId;
-use std::{default, ops::Deref};
+use std::ops::Deref;
 use wasm_bindgen::prelude::*;
 
 #[derive(Clone)]

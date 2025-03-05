@@ -150,7 +150,7 @@ impl AudioNode for BiquadFilter {
         // - Cutoff modulation: multiplies base cutoff (default 1.0)
         // - Resonance modulation: adds to base resonance (default 0.0)
         let audio_in = self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
-        let cutoff_mod = self.process_modulations(buffer_size, inputs.get(&PortId::CutoffMod), 0.0);
+        let cutoff_mod = self.process_modulations(buffer_size, inputs.get(&PortId::CutoffMod), 1.0);
         let resonance_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::ResonanceMod), 0.0);
 

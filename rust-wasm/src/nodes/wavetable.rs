@@ -76,7 +76,7 @@ pub fn generate_mipmapped_bank_dynamic(
     let freq_im: Vec<f32> = spectrum.iter().map(|c| c.im).collect();
 
     // Determine the highest significant harmonic.
-    let mut max_harmonic = compute_max_harmonic(&freq_re, &freq_im, base_size);
+    let max_harmonic = compute_max_harmonic(&freq_re, &freq_im, base_size);
     if max_harmonic == 0 {
         return Err("No significant harmonics found in the waveform".into());
     }

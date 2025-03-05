@@ -2,7 +2,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
-use web_sys::console;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
@@ -246,8 +245,8 @@ impl AudioNode for AnalogOscillator {
                 let feedback_mod_sample = feedback_mod[i];
 
                 // Set up weighted sum variables.
-                let mut sample_sum = 0.0;
-                let mut total_weight = 0.0;
+                let sample_sum = 0.0;
+                let total_weight = 0.0;
                 // Use a Gaussian curve for voice weighting, centered on the middle voice.
                 let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
                 // Sigma controls the spread of the Gaussian; adjust as needed.

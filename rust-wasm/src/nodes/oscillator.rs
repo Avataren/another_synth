@@ -2,9 +2,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::simd::{f32x4, StdFloat};
 use wasm_bindgen::prelude::wasm_bindgen;
-use web_sys::console;
 
-use crate::graph::{ModulationProcessor, ModulationSource, ModulationType};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 
 #[wasm_bindgen]

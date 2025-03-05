@@ -665,7 +665,7 @@ impl AudioEngine {
         let decay_time = decay_time.clamp(0.1, 10.0);
         let diffusion = diffusion.clamp(0.0, 1.0);
         // Generate plate reverb impulse response
-        let mut ir = self.ir_generator.plate(decay_time, diffusion);
+        let ir = self.ir_generator.plate(decay_time, diffusion);
 
         if ir.is_empty() {
             return Err(JsValue::from_str("Generated impulse response is empty"));

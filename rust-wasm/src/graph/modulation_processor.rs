@@ -1,6 +1,6 @@
 use super::ModulationSource;
-use crate::{graph::ModulationType, PortId};
-use std::simd::{f32x4, StdFloat};
+use crate::graph::ModulationType;
+use std::simd::StdFloat;
 
 pub trait ModulationProcessor {
     fn process_modulations(
