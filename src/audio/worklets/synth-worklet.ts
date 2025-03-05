@@ -645,6 +645,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.filterId,
       data.config.cutoff,
       data.config.resonance,
+      data.config.filter_type,
+      data.config.filter_slope
     );
   }
 

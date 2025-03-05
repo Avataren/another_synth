@@ -44,7 +44,7 @@ impl Default for EnvelopeConfig {
             attack_curve: 0.0,
             decay_curve: 0.0,
             release_curve: 0.0,
-            attack_smoothing_samples: 16,
+            attack_smoothing_samples: 0,
             active: true,
         }
     }

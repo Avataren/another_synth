@@ -14,6 +14,8 @@ import {
   type NodeConnectionUpdate,
   type FilterState,
   type RawConnection,
+  FilterType,
+  FilterSlope,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import {
@@ -451,6 +453,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               id: filter.id,
               cutoff: 20000,
               resonance: 0,
+              filter_type: FilterType.LowPass,
+              filter_slope: FilterSlope.Db12,
               active: true,
             });
           }

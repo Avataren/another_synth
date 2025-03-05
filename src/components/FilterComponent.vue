@@ -34,6 +34,29 @@
           @update:modelValue="handleResonanceChange"
         />
       </div>
+      <!-- Dropdowns for filter type and slope -->
+      <div class="knob-group">
+        <q-select
+          v-model="filterState.filter_type"
+          label="Filter Type"
+          :options="filterTypeOptions"
+          @update:modelValue="handleFilterTypeChange"
+          dense
+          class="wide-select"
+          emit-value
+          map-options
+        />
+        <q-select
+          v-model="filterState.filter_slope"
+          label="Filter Slope"
+          :options="filterSlopeOptions"
+          @update:modelValue="handleFilterSlopeChange"
+          dense
+          class="wide-select"
+          emit-value
+          map-options
+        />
+      </div>
       <!-- Routing component so you can reassign connections -->
       <routing-component
         :source-id="props.nodeId"
@@ -49,14 +72,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch, toRaw } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
-import { type FilterState, VoiceNodeType } from 'src/audio/types/synth-layout';
-
-// Define the filter configuration type. Adjust as needed.
+import {
+  FilterSlope,
+  type FilterState,
+  FilterType,
+  VoiceNodeType,
+} from 'src/audio/types/synth-layout';
 
 interface Props {
   node: AudioNode | null;
@@ -68,16 +94,12 @@ const props = withDefaults(defineProps<Props>(), {
   nodeId: 0,
 });
 
-// Access the audio system store and extract filterStates.
-// (This works similarly to envelopeStates in your envelope component.)
 const store = useAudioSystemStore();
 const { filterStates } = storeToRefs(store);
 
-// A canvas ref to draw a simple filter response curve.
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 
-// Create a computed reference for the filter state.
-// If no state is stored yet for this node, we use default values.
+// Computed filter state with default values if not already in the store.
 const filterState = computed<FilterState>({
   get: () => {
     const state = filterStates.value.get(props.nodeId);
@@ -87,36 +109,61 @@ const filterState = computed<FilterState>({
         id: props.nodeId,
         cutoff: 20000,
         resonance: 0,
+        filter_type: FilterType.LowPass,
+        filter_slope: FilterSlope.Db12,
         active: true,
       } as FilterState;
     }
     return state;
   },
   set: (newState: FilterState) => {
-    store.filterStates.set(props.nodeId, { ...newState });
+    // Use toRaw to ensure we store a plain object
+    store.filterStates.set(props.nodeId, { ...toRaw(newState) });
   },
 });
 
-// Handler for toggling the filter active state.
+// Define options for filter type and slope dropdowns
+const filterTypeOptions = [
+  { label: 'Low Pass', value: FilterType.LowPass },
+  //{ label: 'Low Shelf', value: FilterType.LowShelf },
+  //{ label: 'Peaking', value: FilterType.Peaking },
+  //{ label: 'High Shelf', value: FilterType.HighShelf },
+  { label: 'Notch', value: FilterType.Notch },
+  { label: 'High Pass', value: FilterType.HighPass },
+];
+
+const filterSlopeOptions = [
+  { label: '12 dB/oct', value: FilterSlope.Db12 },
+  { label: '24 dB/oct', value: FilterSlope.Db24 },
+];
+
+// Handlers for updating state
 const handleActiveChange = (newValue: boolean) => {
   const currentState = { ...filterState.value, active: newValue };
-  store.filterStates.set(props.nodeId, currentState);
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };
 
-// Handler for cutoff changes.
 const handleCutoffChange = (newVal: number) => {
   const currentState = { ...filterState.value, cutoff: newVal };
-  store.filterStates.set(props.nodeId, currentState);
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };
 
-// Handler for resonance changes.
 const handleResonanceChange = (newVal: number) => {
   const currentState = { ...filterState.value, resonance: newVal };
-  store.filterStates.set(props.nodeId, currentState);
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };
 
-// Draw a basic filter response curve as a visual representation.
-// This is a placeholder that uses the current cutoff and resonance values.
+const handleFilterTypeChange = (newVal: FilterType) => {
+  const currentState = { ...filterState.value, filter_type: newVal };
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
+};
+
+const handleFilterSlopeChange = (newVal: FilterSlope) => {
+  const currentState = { ...filterState.value, filter_slope: newVal };
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
+};
+
+// Draw a basic filter response curve.
 const drawFilterCurve = () => {
   const canvas = waveformCanvas.value;
   if (!canvas) return;
@@ -134,8 +181,6 @@ const drawFilterCurve = () => {
   ctx.strokeStyle = '#FF9800';
   ctx.lineWidth = 2;
 
-  // For each pixel column, map to a frequency (logarithmically from 20 Hz to 20 kHz)
-  // and simulate a roll-off above the cutoff frequency.
   for (let x = 0; x <= width; x++) {
     const freq = 20 * Math.pow(20000 / 20, x / width);
     let gain;
@@ -145,7 +190,6 @@ const drawFilterCurve = () => {
       gain =
         1 / (1 + (freq - filterState.value.cutoff) / filterState.value.cutoff);
     }
-    // Map gain (from 0 to 1) to a y position (0 = top, height = bottom)
     const y = height - gain * height;
     if (x === 0) {
       ctx.moveTo(x, y);
@@ -156,18 +200,15 @@ const drawFilterCurve = () => {
   ctx.stroke();
 };
 
-// Watch for changes in the filter state and update the DSP node via messages.
-// This mimics the envelope component’s approach.
 watch(
   () => ({ ...filterStates.value.get(props.nodeId) }),
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
-        // Send the updated filter state via the instrument messaging system.
-        store.currentInstrument?.updateFilterState(
-          props.nodeId,
-          newState as FilterState,
-        );
+        // Pass a plain object to updateFilterState
+        store.currentInstrument?.updateFilterState(props.nodeId, {
+          ...toRaw(newState),
+        } as FilterState);
         drawFilterCurve();
       }
     }
@@ -175,16 +216,14 @@ watch(
   { deep: true, immediate: true },
 );
 
-// When the component mounts, initialize the filter state and start drawing.
 onMounted(() => {
   if (!filterStates.value.has(props.nodeId)) {
-    filterStates.value.set(props.nodeId, filterState.value);
+    store.filterStates.set(props.nodeId, { ...toRaw(filterState.value) });
   }
   drawFilterCurve();
   window.addEventListener('resize', drawFilterCurve);
 });
 
-// Clean up the resize listener on unmount.
 onUnmounted(() => {
   window.removeEventListener('resize', drawFilterCurve);
 });
@@ -219,5 +258,10 @@ canvas {
   border: 1px solid #ccc;
   background-color: rgb(200, 200, 200);
   border-radius: 4px;
+}
+
+/* Custom class to increase width of q-select */
+.wide-select {
+  width: 250px;
 }
 </style>

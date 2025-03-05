@@ -212,6 +212,26 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
+ * Enum for selecting the filter slope.
+ * @enum {0 | 1}
+ */
+export const FilterSlope = Object.freeze({
+    Db12: 0, "0": "Db12",
+    Db24: 1, "1": "Db24",
+});
+/**
+ * The supported filter types.
+ * @enum {0 | 1 | 2 | 3 | 4 | 5}
+ */
+export const FilterType = Object.freeze({
+    LowPass: 0, "0": "LowPass",
+    LowShelf: 1, "1": "LowShelf",
+    Peaking: 2, "2": "Peaking",
+    HighShelf: 3, "3": "HighShelf",
+    Notch: 4, "4": "Notch",
+    HighPass: 5, "5": "HighPass",
+});
+/**
  * @enum {0 | 1 | 2}
  */
 export const LfoLoopMode = Object.freeze({
@@ -748,9 +768,11 @@ export class AudioEngine {
      * @param {number} filter_id
      * @param {number} cutoff
      * @param {number} resonance
+     * @param {FilterType} filter_type
+     * @param {FilterSlope} filter_slope
      */
-    update_filters(filter_id, cutoff, resonance) {
-        const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance);
+    update_filters(filter_id, cutoff, resonance, filter_type, filter_slope) {
+        const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, filter_type, filter_slope);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

@@ -264,6 +264,26 @@ function getArrayF32FromWasm0(ptr, len) {
   ptr = ptr >>> 0;
   return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
+var FilterSlope = Object.freeze({
+  Db12: 0,
+  "0": "Db12",
+  Db24: 1,
+  "1": "Db24"
+});
+var FilterType = Object.freeze({
+  LowPass: 0,
+  "0": "LowPass",
+  LowShelf: 1,
+  "1": "LowShelf",
+  Peaking: 2,
+  "2": "Peaking",
+  HighShelf: 3,
+  "3": "HighShelf",
+  Notch: 4,
+  "4": "Notch",
+  HighPass: 5,
+  "5": "HighPass"
+});
 var LfoLoopMode = Object.freeze({
   Off: 0,
   "0": "Off",
@@ -813,9 +833,11 @@ var AudioEngine = class {
    * @param {number} filter_id
    * @param {number} cutoff
    * @param {number} resonance
+   * @param {FilterType} filter_type
+   * @param {FilterSlope} filter_slope
    */
-  update_filters(filter_id, cutoff, resonance) {
-    const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance);
+  update_filters(filter_id, cutoff, resonance, filter_type, filter_slope) {
+    const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, filter_type, filter_slope);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -2153,7 +2175,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     this.audioEngine.update_filters(
       data.filterId,
       data.config.cutoff,
-      data.config.resonance
+      data.config.resonance,
+      data.config.filter_type,
+      data.config.filter_slope
     );
   }
   handleUpdateConvolver(data) {

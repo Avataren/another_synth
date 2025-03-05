@@ -2,6 +2,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::simd::f32x4;
 
+use wasm_bindgen::prelude::wasm_bindgen;
+
 use crate::biquad::biquad::Filter;
 use crate::biquad::{Biquad, CascadedBiquad, FilterType};
 
@@ -10,6 +12,7 @@ use crate::traits::{AudioNode, PortId};
 
 /// Enum for selecting the filter slope.
 #[derive(Clone, Copy)]
+#[wasm_bindgen]
 pub enum FilterSlope {
     Db12,
     Db24,
@@ -24,7 +27,7 @@ fn normalized_resonance_to_q(normalized: f32) -> f32 {
 
 /// A biquad‑based filter node that reuses your biquad implementation.
 /// This node supports multiple filter types (LowPass, HighPass, etc.)
-/// and allows switching between a single-stage (12 dB/octave) and a
+/// and allows switching between a single‑stage (12 dB/octave) and a
 /// cascaded (24 dB/octave) filter response.
 pub struct BiquadFilter {
     // Audio processing parameters.
@@ -40,7 +43,7 @@ pub struct BiquadFilter {
     enabled: bool,
     // Filter slope: 12 dB (single stage) or 24 dB (cascaded).
     slope: FilterSlope,
-    // Single-stage biquad (12 dB/octave).
+    // Single‑stage biquad (12 dB/octave).
     biquad: Biquad,
     // Optional cascaded biquad for 24 dB/octave.
     cascaded: Option<CascadedBiquad>,
@@ -66,7 +69,7 @@ impl BiquadFilter {
             resonance,
             smoothing_factor: 0.1,
             enabled: true,
-            slope: FilterSlope::Db24, // default to 12 dB/octave
+            slope: FilterSlope::Db12,
             biquad,
             cascaded: None,
         }
@@ -96,7 +99,7 @@ impl BiquadFilter {
         self.base_gain_db = gain_db;
     }
 
-    /// Set the filter slope: 12 dB (single-stage) or 24 dB (cascaded).
+    /// Set the filter slope: 12 dB (single‑stage) or 24 dB (cascaded).
     pub fn set_filter_slope(&mut self, slope: FilterSlope) {
         self.slope = slope;
         match self.slope {
@@ -106,11 +109,14 @@ impl BiquadFilter {
             }
             FilterSlope::Db24 => {
                 if self.cascaded.is_none() {
+                    // Compute overall Q and derive a per‑stage Q.
+                    let overall_q = normalized_resonance_to_q(self.resonance);
+                    let stage_q = overall_q.sqrt();
                     self.cascaded = Some(CascadedBiquad::new(
                         self.filter_type,
                         self.sample_rate,
                         self.cutoff,
-                        normalized_resonance_to_q(self.resonance),
+                        stage_q,
                         self.base_gain_db,
                     ));
                 }
@@ -153,11 +159,14 @@ impl AudioNode for BiquadFilter {
             let cutoff_slice = &cutoff_mod[..];
             let resonance_slice = &resonance_mod[..];
 
-            // Process in blocks of 4 samples using SIMD to unpack modulation arrays.
+            // Process in blocks of 4 samples using SIMD.
+            // This optimized version computes an average modulation for each block,
+            // updates the filter coefficients once per block, and then processes the samples.
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
                 let block_len = end - i;
 
+                // Load modulation and audio data into SIMD registers.
                 let input_chunk = f32x4::from_array({
                     let mut arr = [0.0; 4];
                     arr[..block_len].copy_from_slice(&audio_in_slice[i..end]);
@@ -174,60 +183,69 @@ impl AudioNode for BiquadFilter {
                     arr
                 });
 
-                let input_arr = input_chunk.to_array();
+                // Compute horizontal sums for the modulation data.
+                // (Since block_len is at most 4, this overhead is minimal.)
                 let cutoff_arr = cutoff_chunk.to_array();
                 let resonance_arr = resonance_chunk.to_array();
-                let mut output_chunk = [0.0f32; 4];
-
+                let mut sum_cutoff = 0.0;
+                let mut sum_resonance = 0.0;
                 for j in 0..block_len {
-                    // Compute target cutoff and resonance per sample.
-                    let target_cutoff = self.base_cutoff * cutoff_arr[j];
-                    let target_resonance = self.base_resonance + resonance_arr[j];
+                    sum_cutoff += cutoff_arr[j];
+                    sum_resonance += resonance_arr[j];
+                }
+                let avg_cutoff = sum_cutoff / block_len as f32;
+                let avg_resonance = sum_resonance / block_len as f32;
 
-                    // Smooth the parameters.
-                    self.cutoff += self.smoothing_factor * (target_cutoff - self.cutoff);
-                    self.resonance += self.smoothing_factor * (target_resonance - self.resonance);
-                    self.cutoff = self.cutoff.clamp(0.0, 20000.0);
-                    self.resonance = self.resonance.clamp(0.0, 1.0);
+                // Update the smoothed parameters once per block.
+                let target_cutoff = self.base_cutoff * avg_cutoff;
+                let target_resonance = self.base_resonance + avg_resonance;
+                self.cutoff += self.smoothing_factor * (target_cutoff - self.cutoff);
+                self.resonance += self.smoothing_factor * (target_resonance - self.resonance);
+                self.cutoff = self.cutoff.clamp(20.0, 20000.0);
+                self.resonance = self.resonance.clamp(0.0, 1.0);
 
-                    let q = normalized_resonance_to_q(self.resonance);
+                // Compute overall Q and derive a per‑stage Q for cascaded mode.
+                let overall_q = normalized_resonance_to_q(self.resonance);
+                let stage_q = overall_q.sqrt();
 
-                    // Update single-stage biquad parameters.
-                    self.biquad.frequency = self.cutoff;
-                    self.biquad.Q = q;
-                    self.biquad.gain_db = self.base_gain_db;
-                    self.biquad.filter_type = self.filter_type;
-                    self.biquad.update_coefficients();
+                // Update single‑stage coefficients.
+                self.biquad.frequency = self.cutoff;
+                self.biquad.Q = overall_q;
+                self.biquad.gain_db = self.base_gain_db;
+                self.biquad.filter_type = self.filter_type;
+                self.biquad.update_coefficients();
 
+                // Update cascaded coefficients if needed.
+                if let Some(ref mut cascaded) = self.cascaded {
+                    cascaded.first.frequency = self.cutoff;
+                    cascaded.first.Q = stage_q;
+                    cascaded.first.gain_db = self.base_gain_db;
+                    cascaded.first.filter_type = self.filter_type;
+                    cascaded.first.update_coefficients();
+
+                    cascaded.second.frequency = self.cutoff;
+                    cascaded.second.Q = stage_q;
+                    cascaded.second.gain_db = self.base_gain_db;
+                    cascaded.second.filter_type = self.filter_type;
+                    cascaded.second.update_coefficients();
+                }
+
+                // Process each sample in the block with the updated coefficients.
+                let input_arr = input_chunk.to_array();
+                for j in 0..block_len {
                     let x = input_arr[j];
-                    // Process using the selected slope.
                     let y = match self.slope {
                         FilterSlope::Db12 => self.biquad.process(x),
                         FilterSlope::Db24 => {
                             if let Some(ref mut cascaded) = self.cascaded {
-                                // Update both stages' parameters.
-                                cascaded.first.frequency = self.cutoff;
-                                cascaded.first.Q = q;
-                                cascaded.first.gain_db = self.base_gain_db;
-                                cascaded.first.filter_type = self.filter_type;
-                                cascaded.first.update_coefficients();
-
-                                cascaded.second.frequency = self.cutoff;
-                                cascaded.second.Q = q;
-                                cascaded.second.gain_db = self.base_gain_db;
-                                cascaded.second.filter_type = self.filter_type;
-                                cascaded.second.update_coefficients();
-
                                 cascaded.process(x)
                             } else {
-                                // Fallback to single-stage.
                                 self.biquad.process(x)
                             }
                         }
                     };
-                    output_chunk[j] = y;
+                    out_buffer[i + j] = y;
                 }
-                out_buffer[i..end].copy_from_slice(&output_chunk[..block_len]);
             }
         }
     }

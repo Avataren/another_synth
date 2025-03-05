@@ -111,10 +111,27 @@ export interface FilterConfig {
   type: 'lowpass' | 'highpass' | 'bandpass';
 }
 
+
+export enum FilterType {
+  LowPass = 0,
+  //LowShelf = 1,
+  //Peaking = 2,
+  //HighShelf = 3,
+  Notch = 4,
+  HighPass = 5,
+}
+
+export enum FilterSlope {
+  Db12 = 0,
+  Db24,
+}
+
 export interface FilterState {
   id: number;
   cutoff: number;
   resonance: number;
+  filter_type: FilterType,
+  filter_slope: FilterSlope,
   active: boolean;
 }
 

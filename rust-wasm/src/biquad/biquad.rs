@@ -1,14 +1,17 @@
 use std::f32::consts::PI;
 
+use wasm_bindgen::prelude::wasm_bindgen;
+
 /// The supported filter types.
+#[wasm_bindgen]
 #[derive(Clone, Copy)]
 pub enum FilterType {
+    LowPass,
     LowShelf,
     Peaking,
     HighShelf,
     Notch,
     HighPass,
-    LowPass, // New lowpass filter type.
 }
 
 /// A trait defining the basic filter interface.
