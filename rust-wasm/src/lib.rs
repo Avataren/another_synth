@@ -2,6 +2,7 @@
 #![feature(map_many_mut)]
 
 mod audio;
+mod biquad;
 mod effect_stack;
 mod graph;
 mod impulse_generator;
@@ -22,8 +23,8 @@ use nodes::morph_wavetable::{
     cubic_interp, MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
 };
 use nodes::{
-    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver,
-    Delay, Lfo, LfoLoopMode, LfoTriggerMode, LfoWaveform, LpFilter, Mixer, NoiseGenerator,
+    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, BiquadFilter,
+    Convolver, Delay, Lfo, LfoLoopMode, LfoTriggerMode, LfoWaveform, Mixer, NoiseGenerator,
     NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
     WavetableOscillatorStateUpdate,
 };
@@ -1312,7 +1313,7 @@ impl AudioEngine {
         for voice in &mut self.voices {
             filter_id = voice
                 .graph
-                .add_node(Box::new(LpFilter::new(self.sample_rate)));
+                .add_node(Box::new(BiquadFilter::new(self.sample_rate)));
         }
         Ok(filter_id.0)
     }
@@ -1362,7 +1363,7 @@ impl AudioEngine {
     ) -> Result<(), JsValue> {
         for voice in &mut self.voices {
             if let Some(node) = voice.graph.get_node_mut(NodeId(filter_id)) {
-                if let Some(filter) = node.as_any_mut().downcast_mut::<LpFilter>() {
+                if let Some(filter) = node.as_any_mut().downcast_mut::<BiquadFilter>() {
                     filter.set_params(cutoff, resonance);
                 } else {
                     return Err(JsValue::from_str("Node is not a Filter"));

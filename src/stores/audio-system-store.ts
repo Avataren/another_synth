@@ -308,7 +308,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             switch (raw) {
               case 'analog_oscillator':
                 return VoiceNodeType.Oscillator;
-              case 'lpfilter':
+              case 'biquadfilter':
                 return VoiceNodeType.Filter;
               case 'envelope':
                 return VoiceNodeType.Envelope;

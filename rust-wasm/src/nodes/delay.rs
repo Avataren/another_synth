@@ -3,9 +3,8 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::simd::f32x4;
-use std::simd::prelude::*; // Imports SIMD helper traits (including SimdFloat)
 
-use crate::graph::{ModulationProcessor, ModulationSource};
+use crate::graph::ModulationSource;
 use crate::traits::{AudioNode, PortId};
 
 pub struct Delay {
@@ -68,7 +67,8 @@ impl Delay {
     }
 }
 
-impl ModulationProcessor for Delay {}
+// If the modulation trait is no longer required, you can remove this implementation.
+// impl ModulationProcessor for Delay {}
 
 impl AudioNode for Delay {
     fn get_ports(&self) -> HashMap<PortId, bool> {
@@ -90,9 +90,28 @@ impl AudioNode for Delay {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Process modulations for the stereo inputs.
-        let left_in = self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
-        let right_in = self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput1), 0.0);
+        // Instead of calling process_modulations we directly take the audio input from the
+        // first modulation source for each port.
+        // (It is assumed that each input port always provides at least one source.)
+        let left_in = inputs
+            .get(&PortId::AudioInput0)
+            .and_then(|sources| sources.first())
+            .map(|src| &src.buffer[..buffer_size])
+            .unwrap_or_else(|| {
+                // In a real-time context, try to avoid heap allocation on every call.
+                // Here we create a temporary zero-buffer if needed.
+                static ZERO_BUFFER: [f32; 1024] = [0.0; 1024];
+                &ZERO_BUFFER[..buffer_size.min(ZERO_BUFFER.len())]
+            });
+
+        let right_in = inputs
+            .get(&PortId::AudioInput1)
+            .and_then(|sources| sources.first())
+            .map(|src| &src.buffer[..buffer_size])
+            .unwrap_or_else(|| {
+                static ZERO_BUFFER: [f32; 1024] = [0.0; 1024];
+                &ZERO_BUFFER[..buffer_size.min(ZERO_BUFFER.len())]
+            });
 
         // Use get_many_mut to retrieve both outputs at once.
         let outs = outputs.get_many_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);

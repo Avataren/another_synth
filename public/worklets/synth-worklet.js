@@ -1995,7 +1995,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         case "analog_oscillator":
           type = "oscillator" /* Oscillator */;
           break;
-        case "lpfilter":
+        case "biquadfilter":
           type = "filter" /* Filter */;
           break;
         case "envelope":
