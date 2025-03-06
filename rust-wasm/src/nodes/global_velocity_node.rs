@@ -36,7 +36,7 @@ impl AudioNode for GlobalVelocityNode {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
         // This node outputs the global frequency signal.
-        ports.insert(PortId::GlobalVelocity, true);
+        ports.insert(PortId::AudioOutput0, true);
         ports
     }
 
@@ -48,8 +48,8 @@ impl AudioNode for GlobalVelocityNode {
     ) {
         // Get the output buffer for the global frequency.
         let output = outputs
-            .get_mut(&PortId::GlobalVelocity)
-            .expect("Expected GlobalVelocity output port");
+            .get_mut(&PortId::AudioOutput0)
+            .expect("Expected AudioOutput0 output port");
 
         // If no modulation is applied, we can optimize using SIMD.
         const LANES: usize = 4;

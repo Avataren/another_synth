@@ -2,10 +2,17 @@
   <q-page class="column">
     <!-- Top row with analyzers -->
     <div class="row q-col-gutter-md q-mb-md">
-      <div class="col-6">
+      <div class="col-4">
         <oscilloscope-component :node="destinationNode" />
       </div>
-      <div class="col-6">
+      <div class="col-4">
+        <velocity-component
+          v-for="vel in velocityNodes"
+          :key="vel.id"
+          :nodeId="vel.id"
+        />
+      </div>
+      <div class="col-4">
         <frequency-analyzer-component :node="destinationNode" />
       </div>
     </div>
@@ -102,6 +109,7 @@ import NoiseComponent from 'src/components/NoiseComponent.vue';
 import LfoComponent from 'src/components/LfoComponent.vue';
 import ConvolverComponent from 'src/components/ConvolverComponent.vue';
 import DelayComponent from 'src/components/DelayComponent.vue';
+import VelocityComponent from 'src/components/VelocityComponent.vue';
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -122,6 +130,9 @@ const envelopeNodes = computed(() =>
 );
 const filterNodes = computed(() =>
   store.getVoiceNodes(0, VoiceNodeType.Filter),
+);
+const velocityNodes = computed(() =>
+  store.getVoiceNodes(0, VoiceNodeType.GlobalVelocity),
 );
 const delayNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Delay));
 const noiseNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Noise));

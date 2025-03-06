@@ -71,6 +71,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       is_enabled: false,
     } as NoiseState,
 
+    velocityState: {
+      active: true
+    },
+
     wasmMemory: new WebAssembly.Memory({
       initial: 256,
       maximum: 1024,

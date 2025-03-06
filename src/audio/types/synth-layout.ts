@@ -128,6 +128,10 @@ export enum FilterSlope {
   Db24,
 }
 
+export interface VelocityState {
+  active: boolean;
+}
+
 export interface FilterState {
   id: number;
   cutoff: number;
