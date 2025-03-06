@@ -122,6 +122,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           maxValue: 1,
           automationRate: 'k-rate',
         },
+        {
+          name: `velocity_${i}`,
+          defaultValue: 1,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: 'k-rate',
+        },
       );
 
       // Macro parameters
@@ -440,6 +447,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Mixer]: [],
       [VoiceNodeType.Noise]: [],
       [VoiceNodeType.GlobalFrequency]: [],
+      [VoiceNodeType.GlobalVelocity]: [],
       [VoiceNodeType.Convolver]: [],
       [VoiceNodeType.Delay]: [],
     };
@@ -875,12 +883,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const gateArray = new Float32Array(this.numVoices);
     const freqArray = new Float32Array(this.numVoices);
     const gainArray = new Float32Array(this.numVoices);
+    const velocityArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
 
     for (let i = 0; i < this.numVoices; i++) {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
+      velocityArray[i] = parameters[`velocity_${i}`]?.[0] ?? 1;
 
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
@@ -898,6 +908,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       gateArray,
       freqArray,
       gainArray,
+      velocityArray,
       macroArray,
       masterGain,
       outputLeft,

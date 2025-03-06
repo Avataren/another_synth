@@ -14,6 +14,7 @@ pub struct Voice {
     // Voice state
     pub current_gate: f32,
     pub current_frequency: f32,
+    pub current_velocity: f32,
     pub active: bool,
     macro_manager: MacroManager,
     pub oscillators: Vec<NodeId>,
@@ -34,6 +35,7 @@ impl Voice {
             output_node,
             current_gate: 0.0,
             current_frequency: 440.0,
+            current_velocity: 1.0,
             active: false,
             macro_manager,
             oscillators: Vec::new(),
@@ -169,6 +171,7 @@ impl Voice {
             // Normal processing path for active voices
             self.graph.set_gate(&[self.current_gate]);
             self.graph.set_frequency(&[self.current_frequency]);
+            self.graph.set_velocity(&[self.current_velocity]);
             self.graph.process_audio_with_macros(
                 Some(&self.macro_manager),
                 output_left,

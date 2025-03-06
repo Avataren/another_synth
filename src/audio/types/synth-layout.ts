@@ -13,7 +13,8 @@ export enum VoiceNodeType {
   LFO = 'lfo',
   Mixer = 'mixer',
   Noise = 'noise',
-  GlobalFrequency = 'globalfrequency',
+  GlobalFrequency = 'global_frequency',
+  GlobalVelocity = 'global_velocity',
   Convolver = 'convolver',
   Delay = 'delay'
 }
@@ -87,6 +88,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.AudioOutput3]: 'Audio Output 4',
   [PortId.Gate]: 'Gate',
   [PortId.GlobalFrequency]: 'Global Frequency',
+  [PortId.GlobalVelocity]: 'Global Velocity',
   [PortId.Frequency]: 'Base Frequency',
   [PortId.FrequencyMod]: 'Frequency Mod',
   [PortId.PhaseMod]: 'Phase Mod',

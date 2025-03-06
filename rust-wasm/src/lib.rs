@@ -561,6 +561,7 @@ impl AudioEngine {
         gates: &[f32],
         frequencies: &[f32],
         gains: &[f32],
+        velocities: &[f32],
         macro_values: &[f32],
         master_gain: f32,
         output_left: &mut [f32],

@@ -313,32 +313,34 @@ var PortId = Object.freeze({
   "8": "Gate",
   GlobalFrequency: 9,
   "9": "GlobalFrequency",
-  Frequency: 10,
-  "10": "Frequency",
-  FrequencyMod: 11,
-  "11": "FrequencyMod",
-  PhaseMod: 12,
-  "12": "PhaseMod",
-  ModIndex: 13,
-  "13": "ModIndex",
-  CutoffMod: 14,
-  "14": "CutoffMod",
-  ResonanceMod: 15,
-  "15": "ResonanceMod",
-  GainMod: 16,
-  "16": "GainMod",
-  EnvelopeMod: 17,
-  "17": "EnvelopeMod",
-  StereoPan: 18,
-  "18": "StereoPan",
-  FeedbackMod: 19,
-  "19": "FeedbackMod",
-  DetuneMod: 20,
-  "20": "DetuneMod",
-  WavetableIndex: 21,
-  "21": "WavetableIndex",
-  WetDryMix: 22,
-  "22": "WetDryMix"
+  GlobalVelocity: 10,
+  "10": "GlobalVelocity",
+  Frequency: 11,
+  "11": "Frequency",
+  FrequencyMod: 12,
+  "12": "FrequencyMod",
+  PhaseMod: 13,
+  "13": "PhaseMod",
+  ModIndex: 14,
+  "14": "ModIndex",
+  CutoffMod: 15,
+  "15": "CutoffMod",
+  ResonanceMod: 16,
+  "16": "ResonanceMod",
+  GainMod: 17,
+  "17": "GainMod",
+  EnvelopeMod: 18,
+  "18": "EnvelopeMod",
+  StereoPan: 19,
+  "19": "StereoPan",
+  FeedbackMod: 20,
+  "20": "FeedbackMod",
+  DetuneMod: 21,
+  "21": "DetuneMod",
+  WavetableIndex: 22,
+  "22": "WavetableIndex",
+  WetDryMix: 23,
+  "23": "WetDryMix"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -570,25 +572,28 @@ var AudioEngine = class {
    * @param {Float32Array} gates
    * @param {Float32Array} frequencies
    * @param {Float32Array} gains
+   * @param {Float32Array} velocities
    * @param {Float32Array} macro_values
    * @param {number} master_gain
    * @param {Float32Array} output_left
    * @param {Float32Array} output_right
    */
-  process_audio(gates, frequencies, gains, macro_values, master_gain, output_left, output_right) {
+  process_audio(gates, frequencies, gains, velocities, macro_values, master_gain, output_left, output_right) {
     const ptr0 = passArrayF32ToWasm0(gates, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayF32ToWasm0(frequencies, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passArrayF32ToWasm0(gains, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    const ptr3 = passArrayF32ToWasm0(macro_values, wasm.__wbindgen_malloc);
+    const ptr3 = passArrayF32ToWasm0(velocities, wasm.__wbindgen_malloc);
     const len3 = WASM_VECTOR_LEN;
-    var ptr4 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
-    var len4 = WASM_VECTOR_LEN;
-    var ptr5 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+    const ptr4 = passArrayF32ToWasm0(macro_values, wasm.__wbindgen_malloc);
+    const len4 = WASM_VECTOR_LEN;
+    var ptr5 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
     var len5 = WASM_VECTOR_LEN;
-    wasm.audioengine_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, master_gain, ptr4, len4, output_left, ptr5, len5, output_right);
+    var ptr6 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+    var len6 = WASM_VECTOR_LEN;
+    wasm.audioengine_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, master_gain, ptr5, len5, output_left, ptr6, len6, output_right);
   }
   /**
    * @param {number} max_delay_ms
@@ -1658,6 +1663,7 @@ var PORT_LABELS = {
   [PortId.AudioOutput3]: "Audio Output 4",
   [PortId.Gate]: "Gate",
   [PortId.GlobalFrequency]: "Global Frequency",
+  [PortId.GlobalVelocity]: "Global Velocity",
   [PortId.Frequency]: "Base Frequency",
   [PortId.FrequencyMod]: "Frequency Mod",
   [PortId.PhaseMod]: "Phase Mod",
@@ -1739,6 +1745,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         },
         {
           name: `gain_${i}`,
+          defaultValue: 1,
+          minValue: 0,
+          maxValue: 1,
+          automationRate: "k-rate"
+        },
+        {
+          name: `velocity_${i}`,
           defaultValue: 1,
           minValue: 0,
           maxValue: 1,
@@ -1981,7 +1994,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["filter" /* Filter */]: [],
       ["mixer" /* Mixer */]: [],
       ["noise" /* Noise */]: [],
-      ["globalfrequency" /* GlobalFrequency */]: [],
+      ["global_frequency" /* GlobalFrequency */]: [],
+      ["global_velocity" /* GlobalVelocity */]: [],
       ["convolver" /* Convolver */]: [],
       ["delay" /* Delay */]: []
     };
@@ -2008,7 +2022,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           type = "noise" /* Noise */;
           break;
         case "global_frequency":
-          type = "globalfrequency" /* GlobalFrequency */;
+          type = "global_frequency" /* GlobalFrequency */;
           break;
         case "wavetable_oscillator":
           type = "wavetable_oscillator" /* WavetableOscillator */;
@@ -2324,11 +2338,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const gateArray = new Float32Array(this.numVoices);
     const freqArray = new Float32Array(this.numVoices);
     const gainArray = new Float32Array(this.numVoices);
+    const velocityArray = new Float32Array(this.numVoices);
     const macroArray = new Float32Array(this.numVoices * 4 * 128);
     for (let i = 0; i < this.numVoices; i++) {
       gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
+      velocityArray[i] = parameters[`velocity_${i}`]?.[0] ?? 1;
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;
@@ -2343,6 +2359,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       gateArray,
       freqArray,
       gainArray,
+      velocityArray,
       macroArray,
       masterGain,
       outputLeft,

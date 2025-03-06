@@ -38,7 +38,7 @@ use super::{
     types::{Connection, ConnectionKey, NodeId},
     ModulationSource,
 };
-use crate::{graph::ModulationType, nodes::GlobalFrequencyNode};
+use crate::{graph::ModulationType, nodes::GlobalFrequencyNode, nodes::GlobalVelocityNode};
 use crate::{AudioNode, MacroManager, PortId};
 use std::collections::HashMap;
 
@@ -53,9 +53,9 @@ pub struct AudioGraph {
     // We now include the source node in the tuple so we can identify which connection to remove.
     pub(crate) input_connections:
         HashMap<NodeId, Vec<(PortId, usize, f32, NodeId, ModulationType)>>,
-
     pub(crate) temp_buffer_indices: Vec<usize>,
     pub(crate) global_frequency_node: Option<NodeId>,
+    pub(crate) global_velocity_node: Option<NodeId>,
     pub(crate) output_node: Option<NodeId>,
 }
 
@@ -75,6 +75,7 @@ impl AudioGraph {
             input_connections: HashMap::new(),
             temp_buffer_indices: Vec::new(),
             global_frequency_node: None,
+            global_velocity_node: None,
             output_node: None,
         };
 
@@ -82,6 +83,10 @@ impl AudioGraph {
         let global_node = Box::new(GlobalFrequencyNode::new(440.0, buffer_size));
         let global_node_id = graph.add_node(global_node);
         graph.global_frequency_node = Some(global_node_id);
+        // Create and add the GlobalVelocityNode:
+        let global_velocity_node = Box::new(GlobalVelocityNode::new(1.0, buffer_size));
+        let global_velocity_node_id = graph.add_node(global_velocity_node);
+        graph.global_velocity_node = Some(global_velocity_node_id);
 
         graph
     }
@@ -501,6 +506,19 @@ impl AudioGraph {
             }
         }
     }
+
+    pub fn set_velocity(&mut self, velocity: &[f32]) {
+        if let Some(global_node_id) = self.global_frequency_node {
+            if let Some(node) = self.get_node_mut(global_node_id) {
+                if let Some(global_freq_node) =
+                    node.as_any_mut().downcast_mut::<GlobalVelocityNode>()
+                {
+                    global_freq_node.set_velocity(velocity);
+                }
+            }
+        }
+    }
+
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
         self.process_audio_with_macros(None, output_left, output_right);
     }

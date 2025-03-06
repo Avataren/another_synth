@@ -296,6 +296,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.Mixer]: [],
             [VoiceNodeType.Noise]: [],
             [VoiceNodeType.GlobalFrequency]: [],
+            [VoiceNodeType.GlobalVelocity]: [],
             [VoiceNodeType.Convolver]: [],
             [VoiceNodeType.Delay]: [],
           };
@@ -322,6 +323,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.Noise;
               case 'global_frequency':
                 return VoiceNodeType.GlobalFrequency;
+              case 'global_velocity':
+                return VoiceNodeType.GlobalVelocity;
               case 'wavetable_oscillator':
                 return VoiceNodeType.WavetableOscillator;
               case 'convolver':

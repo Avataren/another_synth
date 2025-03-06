@@ -18,6 +18,7 @@ pub enum PortId {
     AudioOutput3,
     Gate,
     GlobalFrequency,
+    GlobalVelocity,
     Frequency,
     FrequencyMod,
     PhaseMod,

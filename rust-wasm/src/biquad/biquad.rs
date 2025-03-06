@@ -201,12 +201,12 @@ impl CascadedBiquad {
         filter_type: FilterType,
         sample_rate: f32,
         frequency: f32,
-        Q: f32,
+        q: f32,
         gain_db: f32,
     ) -> Self {
         Self {
-            first: Biquad::new(filter_type, sample_rate, frequency, Q, gain_db),
-            second: Biquad::new(filter_type, sample_rate, frequency, Q, gain_db),
+            first: Biquad::new(filter_type, sample_rate, frequency, q, gain_db),
+            second: Biquad::new(filter_type, sample_rate, frequency, q, gain_db),
         }
     }
 }
