@@ -516,7 +516,9 @@ export default class Instrument {
       }
 
       if (velocityParam) {
-        velocityParam.setValueAtTime(velocity / 127.0, this.audioContext.currentTime);
+        const normVel = velocity / 127.0;
+        console.log('#setting velocity: ', normVel);
+        velocityParam.setValueAtTime(normVel, this.audioContext.currentTime);
       }
 
       this.activeNotes.set(midi_note, voiceIndex);

@@ -1,3 +1,5 @@
+use web_sys::console;
+
 use crate::{
     graph::ModulationType,
     nodes::{Lfo, LfoTriggerMode},

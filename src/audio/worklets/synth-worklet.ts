@@ -124,7 +124,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         },
         {
           name: `velocity_${i}`,
-          defaultValue: 1,
+          defaultValue: 0,
           minValue: 0,
           maxValue: 1,
           automationRate: 'k-rate',
@@ -891,7 +891,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
       gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
       velocityArray[i] = parameters[`velocity_${i}`]?.[0] ?? 1;
-
+      // if (parameters[`velocity_${i}`]?.[0] && parameters[`velocity_${i}`]?.[0]! > 0.0) {
+      //   console.log('####parameters[`velocity_${i}`]?.[0]', parameters[`velocity_${i}`]?.[0]);
+      // }
       const voiceOffset = i * 4 * 128;
       for (let m = 0; m < 4; m++) {
         const macroOffset = voiceOffset + m * 128;

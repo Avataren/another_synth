@@ -1752,7 +1752,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         },
         {
           name: `velocity_${i}`,
-          defaultValue: 1,
+          defaultValue: 0,
           minValue: 0,
           maxValue: 1,
           automationRate: "k-rate"

@@ -579,6 +579,11 @@ impl AudioEngine {
             let gate = gates.get(i).copied().unwrap_or(0.0);
             let frequency = frequencies.get(i).copied().unwrap_or(440.0);
             let gain = gains.get(i).copied().unwrap_or(1.0);
+            let velocity = velocities.get(i).copied().unwrap_or(0.0);
+
+            voice.current_gate = gate;
+            voice.current_frequency = frequency;
+            voice.current_velocity = velocity;
 
             // Update macro values
             for macro_idx in 0..4 {
@@ -588,9 +593,6 @@ impl AudioEngine {
                     let _ = voice.update_macro(macro_idx, values);
                 }
             }
-
-            voice.current_gate = gate;
-            voice.current_frequency = frequency;
 
             voice_left.fill(0.0);
             voice_right.fill(0.0);
