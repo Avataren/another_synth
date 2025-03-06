@@ -145,77 +145,63 @@ impl AudioNode for BiquadFilter {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Process modulation inputs:
-        // - Audio input: additive (default 0.0)
-        // - Cutoff modulation: multiplies base cutoff (default 1.0)
-        // - Resonance modulation: adds to base resonance (default 0.0)
+        // Process audio input as before (assumed to be additive).
+        // (For audio input, the neutral value is 0.0 so that the signals add up.)
         let audio_in = self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
-        let cutoff_mod = self.process_modulations(buffer_size, inputs.get(&PortId::CutoffMod), 1.0);
-        let resonance_mod =
-            self.process_modulations(buffer_size, inputs.get(&PortId::ResonanceMod), 0.0);
+
+        // For parameters like cutoff and resonance, use the extended modulation processor
+        // which returns separate additive and multiplicative components.
+        let mod_cut = self.process_modulations_ex(buffer_size, inputs.get(&PortId::CutoffMod));
+        let mod_res = self.process_modulations_ex(buffer_size, inputs.get(&PortId::ResonanceMod));
 
         if let Some(out_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
             let audio_in_slice = &audio_in[..];
-            let cutoff_slice = &cutoff_mod[..];
-            let resonance_slice = &resonance_mod[..];
 
-            // Process in blocks of 4 samples using SIMD.
-            // This optimized version computes an average modulation for each block,
-            // updates the filter coefficients once per block, and then processes the samples.
+            // Process samples in blocks of 4 using SIMD.
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
                 let block_len = end - i;
 
-                // Load modulation and audio data into SIMD registers.
+                // Load the audio input chunk.
                 let input_chunk = f32x4::from_array({
                     let mut arr = [0.0; 4];
                     arr[..block_len].copy_from_slice(&audio_in_slice[i..end]);
                     arr
                 });
-                let cutoff_chunk = f32x4::from_array({
-                    let mut arr = [1.0; 4];
-                    arr[..block_len].copy_from_slice(&cutoff_slice[i..end]);
-                    arr
-                });
-                let resonance_chunk = f32x4::from_array({
-                    let mut arr = [0.0; 4];
-                    arr[..block_len].copy_from_slice(&resonance_slice[i..end]);
-                    arr
-                });
 
-                // Compute horizontal sums for the modulation data.
-                // (Since block_len is at most 4, this overhead is minimal.)
-                let cutoff_arr = cutoff_chunk.to_array();
-                let resonance_arr = resonance_chunk.to_array();
-                let mut sum_cutoff = 0.0;
-                let mut sum_resonance = 0.0;
-                for j in 0..block_len {
-                    sum_cutoff += cutoff_arr[j];
-                    sum_resonance += resonance_arr[j];
-                }
-                let avg_cutoff = sum_cutoff / block_len as f32;
-                let avg_resonance = sum_resonance / block_len as f32;
+                // Compute the average additive and multiplicative contributions for cutoff.
+                let avg_cut_add: f32 =
+                    mod_cut.additive[i..end].iter().sum::<f32>() / block_len as f32;
+                let avg_cut_mult: f32 =
+                    mod_cut.multiplicative[i..end].iter().sum::<f32>() / block_len as f32;
+                // The final cutoff target: base plus additive, then scaled.
+                let target_cutoff = (self.base_cutoff + avg_cut_add) * avg_cut_mult;
 
-                // Update the smoothed parameters once per block.
-                let target_cutoff = self.base_cutoff * avg_cutoff;
-                let target_resonance = self.base_resonance + avg_resonance;
+                // Do the same for resonance.
+                let avg_res_add: f32 =
+                    mod_res.additive[i..end].iter().sum::<f32>() / block_len as f32;
+                let avg_res_mult: f32 =
+                    mod_res.multiplicative[i..end].iter().sum::<f32>() / block_len as f32;
+                let target_resonance = (self.base_resonance + avg_res_add) * avg_res_mult;
+
+                // Smooth the parameters.
                 self.cutoff += self.smoothing_factor * (target_cutoff - self.cutoff);
                 self.resonance += self.smoothing_factor * (target_resonance - self.resonance);
                 self.cutoff = self.cutoff.clamp(20.0, 20000.0);
                 self.resonance = self.resonance.clamp(0.0, 1.0);
 
-                // Compute overall Q and derive a per‑stage Q for cascaded mode.
+                // Compute Q values for the biquad(s).
                 let overall_q = normalized_resonance_to_q(self.resonance);
                 let stage_q = overall_q.sqrt();
 
-                // Update single‑stage coefficients.
+                // Update the single‑stage (12 dB/octave) coefficients.
                 self.biquad.frequency = self.cutoff;
                 self.biquad.Q = overall_q;
                 self.biquad.gain_db = self.base_gain_db;
                 self.biquad.filter_type = self.filter_type;
                 self.biquad.update_coefficients();
 
-                // Update cascaded coefficients if needed.
+                // Update cascaded coefficients if in 24 dB/octave mode.
                 if let Some(ref mut cascaded) = self.cascaded {
                     cascaded.first.frequency = self.cutoff;
                     cascaded.first.Q = stage_q;

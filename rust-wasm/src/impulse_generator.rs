@@ -192,7 +192,7 @@ impl ImpulseResponseGenerator {
             .map(|i| {
                 let t = i as f32 / sample_rate;
                 let envelope = (-4.0 * t / decay_time).exp();
-                envelope * rng.gen_range(-1.0_f32..1.0_f32)
+                envelope * rng.random_range(-1.0_f32..1.0_f32)
             })
             .collect();
 
