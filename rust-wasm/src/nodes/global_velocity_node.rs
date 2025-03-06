@@ -2,6 +2,8 @@ use core::simd::Simd;
 use std::any::Any;
 use std::collections::HashMap;
 
+use web_sys::console;
+
 use crate::graph::ModulationSource;
 use crate::{AudioNode, PortId}; // Assume this trait exists
 

@@ -1,3 +1,5 @@
+use web_sys::console;
+
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///
 /// Core concepts:
@@ -79,14 +81,14 @@ impl AudioGraph {
             output_node: None,
         };
 
-        // Create and add the GlobalFrequencyNode:
-        let global_node = Box::new(GlobalFrequencyNode::new(440.0, buffer_size));
-        let global_node_id = graph.add_node(global_node);
-        graph.global_frequency_node = Some(global_node_id);
         // Create and add the GlobalVelocityNode:
         let global_velocity_node = Box::new(GlobalVelocityNode::new(1.0, buffer_size));
         let global_velocity_node_id = graph.add_node(global_velocity_node);
         graph.global_velocity_node = Some(global_velocity_node_id);
+        // Create and add the GlobalFrequencyNode:
+        let global_node = Box::new(GlobalFrequencyNode::new(440.0, buffer_size));
+        let global_node_id = graph.add_node(global_node);
+        graph.global_frequency_node = Some(global_node_id);
 
         graph
     }
@@ -508,7 +510,7 @@ impl AudioGraph {
     }
 
     pub fn set_velocity(&mut self, velocity: &[f32]) {
-        if let Some(global_node_id) = self.global_frequency_node {
+        if let Some(global_node_id) = self.global_velocity_node {
             if let Some(node) = self.get_node_mut(global_node_id) {
                 if let Some(global_freq_node) =
                     node.as_any_mut().downcast_mut::<GlobalVelocityNode>()
