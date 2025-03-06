@@ -150,7 +150,7 @@ export const useKeyboardStore = defineStore('keyboard', {
     // --- MIDI listeners using WebMidi.js (npm-installed) ---
     setupMidiListeners() {
       console.log('# setupMidiListeners');
-      WebMidi.enable({ sysex: false })
+      WebMidi.enable({ sysex: true })
         .then(() => {
           console.log('# WebMidi enabled!');
           this.midiEnabled = true;

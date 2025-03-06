@@ -506,12 +506,17 @@ export default class Instrument {
       );
       const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
       const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+      const velocityParam = this.workletNode.parameters.get(`velocity_${voiceIndex}`);
 
       if (freqParam && gateParam && gainParam) {
         freqParam.setValueAtTime(frequency, this.audioContext.currentTime);
         gateParam.setValueAtTime(0.0, this.audioContext.currentTime);
         gateParam.setValueAtTime(1.0, this.audioContext.currentTime + 0.005);
-        gainParam.setValueAtTime(velocity / 127, this.audioContext.currentTime);
+        //gainParam.setValueAtTime(velocity / 127, this.audioContext.currentTime);
+      }
+
+      if (velocityParam) {
+        velocityParam.setValueAtTime(velocity / 127.0, this.audioContext.currentTime);
       }
 
       this.activeNotes.set(midi_note, voiceIndex);
