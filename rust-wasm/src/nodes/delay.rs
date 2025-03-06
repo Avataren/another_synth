@@ -1,5 +1,3 @@
-#![feature(hashmap_get_many_mut)]
-
 use std::any::Any;
 use std::collections::HashMap;
 use std::simd::f32x4;

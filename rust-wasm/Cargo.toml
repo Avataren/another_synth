@@ -14,15 +14,17 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2.99"
-web-sys = { version = "0.3.76", features = ["console"] }
+web-sys = { version = "0.3.76", features = ["Window", "Crypto", "console"] }
 serde = { version =  "1.0.216", features = ["derive"] }
 serde_json = "1.0.133"
 serde-wasm-bindgen = "0.6.5"
 once_cell = "1.20.3"
 rustfft = "6.2.0"
 hound = "3.5.1"
-rand = "0.8"
-getrandom = { version = "0.2", features = ["js"] }
+rand = "0.9"
+getrandom = { version = "0.3.1", features = ["wasm_js"] }
+
+
 fft-convolver = "0.2.0"
 rubato = "0.16.1"
 

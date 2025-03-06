@@ -85,7 +85,9 @@ export default defineConfig((/* ctx */) => {
               file.endsWith('.js') && file.includes('public/worklets');
 
             if (isWorkletFile) {
-              console.log(`Worklet file changed: ${file}, triggering full page reload`);
+              console.log(
+                `Worklet file changed: ${file}, triggering full page reload`,
+              );
               server.ws.send({
                 type: 'full-reload',
                 path: '*',
@@ -101,14 +103,16 @@ export default defineConfig((/* ctx */) => {
             const isWasmFile = file.includes('public/wasm');
 
             if (isWasmFile) {
-              console.log(`WASM file changed: ${file}, triggering full page reload`);
+              console.log(
+                `WASM file changed: ${file}, triggering full page reload`,
+              );
               server.ws.send({
                 type: 'full-reload',
                 path: '*',
               });
             }
           },
-        }
+        },
         // {
         //   name: 'watch-assemblyscript',
         //   enforce: 'pre',
@@ -187,7 +191,7 @@ export default defineConfig((/* ctx */) => {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
       },
-      // https: true
+      //https: true,
       open: true, // opens browser window automatically
     },
 

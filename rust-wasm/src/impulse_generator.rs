@@ -1,6 +1,44 @@
-use getrandom::getrandom;
+use getrandom::fill;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng}; // available on stable if you opt‑in to std::simd
+use rand::{Rng, SeedableRng};
+use web_sys::{console, js_sys};
+
+/// Fallback to JS crypto.getRandomValues if available, or use Math.random() as a last resort.
+fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
+    if let Some(window) = web_sys::window() {
+        if let Ok(crypto) = window.crypto() {
+            // Allocate a buffer of the same length as the seed.
+            let mut buf = vec![0u8; seed.len()];
+            // Pass the mutable slice of the buffer.
+            if crypto
+                .get_random_values_with_u8_array(buf.as_mut_slice())
+                .is_ok()
+            {
+                seed.copy_from_slice(&buf);
+                return Ok(());
+            }
+        }
+    }
+    // Fall back to Math.random() (insecure)
+    web_sys::console::warn_1(
+        &"Falling back to Math.random() for seed generation (insecure)".into(),
+    );
+    for byte in seed.iter_mut() {
+        *byte = (js_sys::Math::random() * 256.0) as u8;
+    }
+    Ok(())
+}
+
+/// Tries getrandom::fill first, then falls back to js_fallback_fill.
+fn fill_seed(seed: &mut [u8]) -> Result<(), String> {
+    match fill(seed) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            console::error_1(&format!("getrandom failed: {:?}", e).into());
+            js_fallback_fill(seed)
+        }
+    }
+}
 
 /// A biquad low‑pass filter with a Butterworth‑like Q (~0.707) for a natural spectral roll‑off.
 struct BiquadLPF {
@@ -58,7 +96,6 @@ impl AllPass {
     fn new(feedback: f32, delay_samples: usize) -> Self {
         Self {
             feedback,
-            // Ensure at least one sample of delay.
             buffer: vec![0.0; delay_samples.max(1)],
             index: 0,
         }
@@ -98,17 +135,13 @@ impl CombFilter {
 }
 
 /// Finalizes an impulse response by removing DC offset, energy normalization,
-/// and then peak normalization. The loops here are written in a vectorizable way,
-/// so that with the proper WASM/SIMD target the compiler can optimize them.
+/// and then peak normalization.
 fn finalize_ir(ir: &mut [f32]) {
-    // Remove DC offset.
     let sum: f32 = ir.iter().copied().sum();
     let dc_offset = sum / (ir.len() as f32);
     for sample in ir.iter_mut() {
         *sample -= dc_offset;
     }
-
-    // Energy normalization.
     let energy: f32 = ir.iter().map(|x| x * x).sum();
     if energy > 0.0 {
         let compensation = 1.0 / energy.sqrt();
@@ -116,8 +149,6 @@ fn finalize_ir(ir: &mut [f32]) {
             *sample *= compensation;
         }
     }
-
-    // Peak normalization.
     let max = ir.iter().map(|x| x.abs()).fold(0.0, f32::max);
     if max > 0.0 && max.is_finite() {
         let scale = 1.0 / max;
@@ -127,8 +158,7 @@ fn finalize_ir(ir: &mut [f32]) {
     }
 }
 
-/// A public utility function that takes an impulse response, processes it,
-/// and returns a new, normalized version.
+/// A public utility function that processes and normalizes an impulse response.
 pub fn process_impulse_response(mut ir: Vec<f32>) -> Vec<f32> {
     finalize_ir(&mut ir);
     ir
@@ -146,18 +176,18 @@ impl ImpulseResponseGenerator {
 
     /// Generate an enhanced plate reverb impulse response.
     pub fn plate(&self, decay_time: f32, diffusion: f32) -> Vec<f32> {
-        // Clamp parameters.
         let decay_time = decay_time.clamp(0.1, 10.0);
         let diffusion = diffusion.clamp(0.0, 1.0);
         let sample_rate = self.sample_rate.clamp(1.0, 192_000.0);
         let num_samples = ((decay_time * sample_rate) as usize).clamp(1, 60 * 48000);
 
-        // Initialize WASM‑friendly RNG.
         let mut seed = [0u8; 32];
-        let _ = getrandom(&mut seed);
+        if let Err(e) = fill_seed(&mut seed) {
+            console::error_1(&format!("failed to generate random seed: {}", e).into());
+            panic!("failed to generate random seed: {}", e);
+        }
         let mut rng = StdRng::from_seed(seed);
 
-        // Generate white noise modulated by an exponential decay envelope.
         let mut ir: Vec<f32> = (0..num_samples)
             .map(|i| {
                 let t = i as f32 / sample_rate;
@@ -166,16 +196,12 @@ impl ImpulseResponseGenerator {
             })
             .collect();
 
-        // --- Diffusion Stage: All‑Pass Filter Chain ---
         if diffusion > 0.0 {
-            // Use a chain of all‑pass filters with fixed delay times.
             let delay_times = [0.010, 0.012, 0.015, 0.017];
             let mut allpass_chain: Vec<AllPass> = delay_times
                 .iter()
                 .map(|&dt| AllPass::new(diffusion, (dt * sample_rate) as usize))
                 .collect();
-
-            // Process each sample through the all‑pass chain.
             for sample in ir.iter_mut() {
                 let mut processed = *sample;
                 for ap in allpass_chain.iter_mut() {
@@ -185,16 +211,12 @@ impl ImpulseResponseGenerator {
             }
         }
 
-        // --- Spectral Shaping: Biquad Low‑Pass Filter ---
-        // Choose a cutoff that decreases with higher diffusion.
         let cutoff = (5000.0 - 4500.0 * diffusion).clamp(20.0, 20000.0);
         let mut lpf = BiquadLPF::new(cutoff, sample_rate);
         for sample in ir.iter_mut() {
             *sample = lpf.process(*sample);
         }
 
-        // --- Early Reflection Simulation ---
-        // Add a few delayed copies of the IR to simulate early reflections.
         let early_reflections = [
             ((0.005 * sample_rate) as usize, 0.7 * diffusion),
             ((0.012 * sample_rate) as usize, 0.5 * diffusion),
@@ -206,15 +228,12 @@ impl ImpulseResponseGenerator {
             }
         }
 
-        // --- Tail Fade-Out ---
-        // Apply a linear fade to the final 10% of samples.
         let fade_len = (num_samples as f32 * 0.1) as usize;
         for i in (num_samples - fade_len)..num_samples {
             let fade = (num_samples - i) as f32 / fade_len as f32;
             ir[i] *= fade;
         }
 
-        // --- Final Processing ---
         finalize_ir(&mut ir);
         ir
     }
@@ -222,18 +241,18 @@ impl ImpulseResponseGenerator {
     /// Generate a hall reverb impulse response using parallel comb filters
     /// and a series all‑pass filter chain for diffusion.
     pub fn hall(&self, decay_time: f32, room_size: f32) -> Vec<f32> {
-        // Clamp parameters.
         let decay_time = decay_time.clamp(0.1, 10.0);
-        // room_size in [0.1, 1.0]: higher values mean a larger room.
         let room_size = room_size.clamp(0.1, 1.0);
         let sample_rate = self.sample_rate.clamp(1.0, 192_000.0);
         let num_samples = ((decay_time * sample_rate) as usize).clamp(1, 60 * 48000);
 
         let mut seed = [0u8; 32];
-        let _ = getrandom(&mut seed);
+        if let Err(e) = fill_seed(&mut seed) {
+            console::error_1(&format!("failed to generate random seed: {}", e).into());
+            panic!("failed to generate random seed: {}", e);
+        }
         let mut rng = StdRng::from_seed(seed);
 
-        // Generate noise input with an exponential decay envelope.
         let noise: Vec<f32> = (0..num_samples)
             .map(|i| {
                 let t = i as f32 / sample_rate;
@@ -242,26 +261,20 @@ impl ImpulseResponseGenerator {
             })
             .collect();
 
-        // --- Parallel Comb Filters ---
-        // Define base delay times (in seconds) typical for hall reverb.
         let base_delays = [0.0297, 0.0371, 0.0411, 0.0437];
-        // Scale delays by room_size.
         let comb_delays: Vec<usize> = base_delays
             .iter()
             .map(|&d| ((d * room_size) * sample_rate) as usize)
             .collect();
-        // Compute feedback for each comb filter using a T60 decay formula.
         let comb_filters: Vec<CombFilter> = comb_delays
             .iter()
             .map(|&delay_samples| {
                 let delay_secs = delay_samples as f32 / sample_rate;
-                // Feedback computed so that energy decays ~60 dB over decay_time.
                 let feedback = (-6.9078 * delay_secs / decay_time).exp();
                 CombFilter::new(delay_samples, feedback)
             })
             .collect();
 
-        // Process the noise through each comb filter in parallel and sum the outputs.
         let mut comb_outputs = vec![0.0_f32; num_samples];
         let mut combs: Vec<CombFilter> = comb_filters;
         for i in 0..num_samples {
@@ -273,8 +286,6 @@ impl ImpulseResponseGenerator {
             comb_outputs[i] = sum;
         }
 
-        // --- Diffusion Stage: Series All‑Pass Filter Chain ---
-        // Use a short all‑pass chain to smooth the comb output.
         let allpass_delays = [0.005, 0.007];
         let mut allpass_chain: Vec<AllPass> = allpass_delays
             .iter()
@@ -288,22 +299,18 @@ impl ImpulseResponseGenerator {
             *sample = processed;
         }
 
-        // --- Spectral Shaping: Biquad Low‑Pass Filter ---
-        // For hall reverb, a higher cutoff preserves more high frequencies.
         let cutoff = (7000.0 - 6000.0 * (room_size - 0.1) / 0.9).clamp(200.0, 20000.0);
         let mut lpf = BiquadLPF::new(cutoff, sample_rate);
         for sample in comb_outputs.iter_mut() {
             *sample = lpf.process(*sample);
         }
 
-        // --- Tail Fade-Out ---
         let fade_len = (num_samples as f32 * 0.1) as usize;
         for i in (num_samples - fade_len)..num_samples {
             let fade = (num_samples - i) as f32 / fade_len as f32;
             comb_outputs[i] *= fade;
         }
 
-        // --- Final Processing ---
         finalize_ir(&mut comb_outputs);
         comb_outputs
     }

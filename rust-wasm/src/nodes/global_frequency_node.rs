@@ -1,5 +1,3 @@
-#![feature(portable_simd)]
-
 use core::simd::Simd;
 use std::any::Any;
 use std::collections::HashMap;
