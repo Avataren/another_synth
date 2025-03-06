@@ -64,7 +64,7 @@ pub enum ModulationType {
 
 impl Default for ModulationType {
     fn default() -> Self {
-        ModulationType::Bipolar
+        ModulationType::Additive
     }
 }
 

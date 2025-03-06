@@ -124,6 +124,7 @@ impl Voice {
                 node_id: target_node,
                 port_id: target_port,
                 amount,
+                modulation_type: ModulationType::default(),
             },
         )?;
 
