@@ -1,9 +1,10 @@
 use core::simd::Simd;
 use std::any::Any;
 use std::collections::HashMap;
+use std::simd::StdFloat;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
-use crate::{AudioNode, PortId}; // Assume this trait exists
+use crate::{AudioNode, PortId};
 
 /// GlobalFrequencyNode encapsulates the s‑rate frequency buffer and applies a detune factor.
 /// The detune parameter (in cents) is modulated via the PortId::DetuneMod input.
@@ -30,13 +31,10 @@ impl GlobalFrequencyNode {
     /// Updates the base frequency buffer (for example, from host automation).
     pub fn set_base_frequency(&mut self, freq: &[f32]) {
         if freq.len() == 1 {
-            // Fill the entire buffer with the single frequency value.
             self.base_frequency.fill(freq[0]);
         } else if freq.len() == self.base_frequency.len() {
             self.base_frequency.copy_from_slice(freq);
         } else {
-            // Optionally, handle the case where a differently sized buffer is provided.
-            // For now, fill the existing buffer.
             self.base_frequency.fill(freq[0]);
         }
     }
@@ -58,20 +56,14 @@ impl AudioNode for GlobalFrequencyNode {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // Get the output buffer for the global frequency.
         let output = outputs
             .get_mut(&PortId::GlobalFrequency)
             .expect("Expected GlobalFrequency output port");
 
-        // Process the detune modulation using our dedicated modulation trait.
-        // This call returns a Vec<f32> of effective detune values (in cents) per sample.
-        let effective_detune =
-            self.process_modulations(buffer_size, inputs.get(&PortId::DetuneMod), self.detune);
-
-        // If no modulation is applied, we can optimize using SIMD.
+        // If no detune modulation is present, use the SIMD‑optimized branch.
         if inputs.get(&PortId::DetuneMod).is_none() {
-            let constant_detune = self.detune;
-            let detune_factor = 2.0_f32.powf(constant_detune / 1200.0);
+            // The static detune is in cents.
+            let detune_factor = 2.0_f32.powf(self.detune / 1200.0);
             const LANES: usize = 4;
             type Vf32 = Simd<f32, LANES>;
             let factor = Vf32::splat(detune_factor);
@@ -87,16 +79,44 @@ impl AudioNode for GlobalFrequencyNode {
                 output[j] = self.base_frequency[j] * detune_factor;
             }
         } else {
-            // When modulation is present, process sample-by-sample.
-            for i in 0..buffer_size {
-                let factor = 2.0_f32.powf(effective_detune[i] / 12.0); // modulate detune in semitones
-                output[i] = self.base_frequency[i] * factor;
+            // When modulation is present, process both additive and multiplicative modulations.
+            // The additive modulation is now in semitones.
+            let mod_result =
+                self.process_modulations_ex(buffer_size, inputs.get(&PortId::DetuneMod));
+            const LANES: usize = 4;
+            type Vf32 = Simd<f32, LANES>;
+
+            let mut i = 0;
+            while i + LANES <= buffer_size {
+                let additive = Vf32::from_slice(&mod_result.additive[i..i + LANES]);
+                let multiplicative = Vf32::from_slice(&mod_result.multiplicative[i..i + LANES]);
+                let base_freq = Vf32::from_slice(&self.base_frequency[i..i + LANES]);
+                let static_detune = Vf32::splat(self.detune);
+
+                // Convert additive (semitones) to cents by multiplying by 100.
+                let additive_in_cents = additive * Vf32::splat(100.0);
+                // Effective detune (in cents) is the static detune plus the additive modulation (converted to cents).
+                let effective_detune = static_detune + additive_in_cents;
+                // Convert effective detune (cents) to a scaling factor: factor = 2^(cents/1200)
+                let exp_arg = effective_detune / Vf32::splat(1200.0);
+                let detune_factor = exp_arg.exp2();
+                let final_factor = detune_factor * multiplicative;
+                let result = base_freq * final_factor;
+                output[i..i + LANES].copy_from_slice(&result.to_array());
+                i += LANES;
+            }
+            for j in i..buffer_size {
+                // Convert additive (semitones) to cents.
+                let additive_in_cents = mod_result.additive[j] * 100.0;
+                let effective_detune = self.detune + additive_in_cents;
+                let detune_factor = 2.0_f32.powf(effective_detune / 1200.0);
+                output[j] = self.base_frequency[j] * detune_factor * mod_result.multiplicative[j];
             }
         }
     }
 
     fn reset(&mut self) {
-        // No dynamic state to reset for this node.
+        // No dynamic state to reset.
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -116,5 +136,5 @@ impl AudioNode for GlobalFrequencyNode {
     }
 }
 
-/// Implement the modulation trait so we can use process_modulations
+/// Implement the modulation trait so we can use process_modulations_ex.
 impl ModulationProcessor for GlobalFrequencyNode {}
