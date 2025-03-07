@@ -4,7 +4,7 @@ use rand::{Rng, SeedableRng};
 use web_sys::{console, js_sys};
 
 /// Fallback to JS crypto.getRandomValues if available, or use Math.random() as a last resort.
-fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
+pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     if let Some(window) = web_sys::window() {
         if let Ok(crypto) = window.crypto() {
             // Allocate a buffer of the same length as the seed.
