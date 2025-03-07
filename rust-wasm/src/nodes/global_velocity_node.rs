@@ -1,6 +1,7 @@
 use core::simd::Simd;
 use std::any::Any;
 use std::collections::HashMap;
+use std::simd::num::SimdFloat;
 
 use crate::graph::ModulationSource;
 use crate::impulse_generator::js_fallback_fill;
@@ -10,8 +11,8 @@ use getrandom::fill;
 pub struct GlobalVelocityNode {
     base_velocity: Vec<f32>,
     sensitivity: f32,
-    /// Interpolation factor between base_velocity and the random value.
-    /// 0.0 means no randomization; 1.0 means fully using the random value.
+    /// Interpolation factor between the sensitivity-adjusted base value and the random value.
+    /// 0.0 means use only the sensitivity-adjusted value; 1.0 means fully using the random value.
     randomize: f32,
     /// Precomputed random numbers (each in [0, 1]).
     random_numbers: Vec<f32>,
@@ -73,6 +74,54 @@ impl GlobalVelocityNode {
     pub fn set_randomize(&mut self, randomize: f32) {
         self.randomize = randomize.clamp(0.0, 1.0);
     }
+
+    /// Processes a segment of the buffer [start, end) using SIMD.
+    fn process_segment(&self, start: usize, end: usize, exp: f32, output: &mut [f32]) {
+        // We use an 8-lane SIMD vector.
+        const LANES: usize = 8;
+        let rand_val = self.current_random_value;
+        let interp = Simd::splat(self.randomize);
+        let one_minus_interp = Simd::splat(1.0 - self.randomize);
+        let rand_simd = Simd::splat(rand_val);
+        let zero = Simd::splat(0.0);
+        let one = Simd::splat(1.0);
+        let mut i = start;
+        // Process in chunks of LANES.
+        while i + LANES <= end {
+            // Load a SIMD chunk from base_velocity.
+            let base_chunk = Simd::<f32, LANES>::from_slice(&self.base_velocity[i..i + LANES]);
+            // Apply sensitivity adjustment.
+            let adjusted = if (self.sensitivity - 1.0).abs() < 1e-5 {
+                base_chunk
+            } else {
+                let mut arr = base_chunk.to_array();
+                for x in &mut arr {
+                    *x = x.powf(exp);
+                }
+                Simd::from_array(arr)
+            };
+            // Interpolate between the sensitivity-adjusted value and the random value.
+            let mixed = one_minus_interp * adjusted + interp * rand_simd;
+            // Clamp to [0, 1].
+            let clamped = mixed.simd_clamp(zero, one);
+            // Instead of write_to_slice, convert to array and copy.
+            let arr = clamped.to_array();
+            output[i..i + LANES].copy_from_slice(&arr);
+            i += LANES;
+        }
+        // Process any remaining samples.
+        while i < end {
+            let base_val = self.base_velocity[i];
+            let adjusted = if (self.sensitivity - 1.0).abs() < 1e-5 {
+                base_val
+            } else {
+                base_val.powf(exp)
+            };
+            let mixed = (1.0 - self.randomize) * adjusted + self.randomize * rand_val;
+            output[i] = mixed.clamp(0.0, 1.0);
+            i += 1;
+        }
+    }
 }
 
 impl AudioNode for GlobalVelocityNode {
@@ -104,35 +153,32 @@ impl AudioNode for GlobalVelocityNode {
             }
         }
 
+        // Calculate the exponent for sensitivity adjustment.
         let exp = 1.0 / self.sensitivity;
         let rnd_len = self.random_numbers.len();
 
+        // Process the buffer in segments where the random value remains constant.
+        let mut seg_start = 0;
         for i in 0..buffer_size {
             let gate_val = gate_buffer[i];
-            // Determine if the gate is on (using 0.5 as threshold).
             let gate_on = gate_val > 0.5;
             let prev_gate_on = self.prev_gate_value > 0.5;
-            // Detect rising edge: current gate is on, but previous was off.
+            // Rising edge: current gate is on, previous was off.
             if gate_on && !prev_gate_on {
+                // Process the segment since the last random value update.
+                if seg_start < i {
+                    self.process_segment(seg_start, i, exp, output);
+                }
                 // Update the random value.
                 self.random_index = (self.random_index + 1) % rnd_len;
                 self.current_random_value = self.random_numbers[self.random_index];
+                seg_start = i;
             }
-            // Update previous gate value.
             self.prev_gate_value = gate_val;
-
-            let base_val = self.base_velocity[i];
-            // Interpolate between base velocity and the current random value.
-            let mixed =
-                (1.0 - self.randomize) * base_val + self.randomize * self.current_random_value;
-            // Apply the sensitivity curve if needed.
-            let result = if (self.sensitivity - 1.0).abs() < 1e-5 {
-                mixed
-            } else {
-                mixed.powf(exp)
-            };
-            // Clamp the output to guarantee the value stays in [0, 1].
-            output[i] = result.clamp(0.0, 1.0);
+        }
+        // Process any remaining samples.
+        if seg_start < buffer_size {
+            self.process_segment(seg_start, buffer_size, exp, output);
         }
     }
 
