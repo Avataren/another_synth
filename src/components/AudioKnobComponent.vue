@@ -136,7 +136,12 @@ const describeSemiCircle = computed((): string => {
   return describeArc(center, center, radius, START_ANGLE, END_ANGLE);
 });
 
+// Updated computed property: if modelValue is out of the defined range,
+// then we set the arc to full (i.e. END_ANGLE)
 const currentAngle = computed((): number => {
+  if (props.modelValue < props.min || props.modelValue > props.max) {
+    return END_ANGLE;
+  }
   const percentage = (props.modelValue - props.min) / (props.max - props.min);
   return START_ANGLE + percentage * RANGE;
 });
