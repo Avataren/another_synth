@@ -1,8 +1,5 @@
 // src/audio/types/synth-layout.ts
-import {
-  PortId,
-  WasmModulationType,
-} from 'app/public/wasm/audio_processor';
+import { PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
 
 // Define the types of nodes we can have in a voice
 export enum VoiceNodeType {
@@ -16,7 +13,7 @@ export enum VoiceNodeType {
   GlobalFrequency = 'global_frequency',
   GlobalVelocity = 'global_velocity',
   Convolver = 'convolver',
-  Delay = 'delay'
+  Delay = 'delay',
 }
 
 export interface ConvolverState {
@@ -26,11 +23,11 @@ export interface ConvolverState {
 }
 
 export interface DelayState {
-  id?: number,
-  delayMs: number,
-  feedback: number,
-  wetMix: number,
-  active: boolean,
+  id?: number;
+  delayMs: number;
+  feedback: number;
+  wetMix: number;
+  active: boolean;
 }
 
 export interface LfoState {
@@ -43,9 +40,9 @@ export interface LfoState {
   triggerMode: number;
   gain: number;
   active: boolean;
-  loopMode: number,
-  loopStart: number,
-  loopEnd: number
+  loopMode: number;
+  loopStart: number;
+  loopEnd: number;
 }
 
 export interface NodeConnectionUpdate {
@@ -113,7 +110,6 @@ export interface FilterConfig {
   type: 'lowpass' | 'highpass' | 'bandpass';
 }
 
-
 export enum FilterType {
   LowPass = 0,
   //LowShelf = 1,
@@ -129,6 +125,8 @@ export enum FilterSlope {
 }
 
 export interface VelocityState {
+  sensitivity: number;
+  randomize: number;
   active: boolean;
 }
 
@@ -136,8 +134,8 @@ export interface FilterState {
   id: number;
   cutoff: number;
   resonance: number;
-  filter_type: FilterType,
-  filter_slope: FilterSlope,
+  filter_type: FilterType;
+  filter_slope: FilterSlope;
   active: boolean;
 }
 
@@ -244,7 +242,6 @@ export function convertRawModulationType(raw: string): WasmModulationType {
   }
 }
 
-
 export function findModulationTargets(
   voice: VoiceLayout,
   sourceId: number,
@@ -284,7 +281,10 @@ export function getModulationTargetsForType(
         { value: PortId.ModIndex, label: PORT_LABELS[PortId.ModIndex] },
         { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
         { value: PortId.FeedbackMod, label: PORT_LABELS[PortId.FeedbackMod] },
-        { value: PortId.WavetableIndex, label: PORT_LABELS[PortId.WavetableIndex] },
+        {
+          value: PortId.WavetableIndex,
+          label: PORT_LABELS[PortId.WavetableIndex],
+        },
       ];
     case VoiceNodeType.Oscillator:
       return [
@@ -318,7 +318,9 @@ export function getModulationTargetsForType(
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
       ];
     case VoiceNodeType.GlobalFrequency:
-      return [{ value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] }];
+      return [
+        { value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] },
+      ];
     // case VoiceNodeType.Envelope:
     //   return [
     //     { value: PortId.GainMod, label: 'Gain' },

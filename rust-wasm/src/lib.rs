@@ -25,9 +25,9 @@ use nodes::morph_wavetable::{
 };
 use nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, BiquadFilter,
-    Convolver, Delay, FilterSlope, Lfo, LfoLoopMode, LfoTriggerMode, LfoWaveform, Mixer,
-    NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
-    WavetableOscillatorStateUpdate,
+    Convolver, Delay, FilterSlope, GlobalVelocityNode, Lfo, LfoLoopMode, LfoTriggerMode,
+    LfoWaveform, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
+    WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
@@ -692,77 +692,6 @@ impl AudioEngine {
         Ok(())
     }
 
-    // #[wasm_bindgen]
-    // pub fn process_audio(
-    //     &mut self,
-    //     gates: &[f32],
-    //     frequencies: &[f32],
-    //     gains: &[f32],
-    //     macro_values: &[f32],
-    //     master_gain: f32,
-    //     output_left: &mut [f32],
-    //     output_right: &mut [f32],
-    // ) {
-    //     output_left.fill(0.0);
-    //     output_right.fill(0.0);
-
-    //     let mut voice_left = vec![0.0; output_left.len()];
-    //     let mut voice_right = vec![0.0; output_right.len()];
-
-    //     for (i, voice) in self.voices.iter_mut().enumerate() {
-    //         // web_sys::console::log_1(
-    //         //     &format!("Processing voice {} - active: {}", i, voice.is_active()).into(),
-    //         // );
-
-    //         let gate = gates.get(i).copied().unwrap_or(0.0);
-    //         let frequency = frequencies.get(i).copied().unwrap_or(440.0);
-    //         let gain = gains.get(i).copied().unwrap_or(1.0);
-
-    //         // Update macro values
-    //         for macro_idx in 0..4 {
-    //             let macro_start = i * 4 * 128 + (macro_idx * 128);
-    //             if macro_start + 128 <= macro_values.len() {
-    //                 let values = &macro_values[macro_start..macro_start + 128];
-    //                 let _ = voice.update_macro(macro_idx, values);
-    //             }
-    //         }
-
-    //         // Update voice parameters
-    //         voice.current_gate = gate;
-    //         voice.current_frequency = frequency;
-
-    //         // Skip if voice is inactive and no new gate
-    //         // if !voice.is_active() && gate <= 0.0 {
-    //         //     continue;
-    //         // }
-
-    //         voice_left.fill(0.0);
-    //         voice_right.fill(0.0);
-
-    //         // Process voice and update its state
-    //         voice.process_audio(&mut voice_left, &mut voice_right);
-    //         //voice.update_active_state();
-
-    //         // Mix if voice has gate or is still active
-    //         // if gate > 0.0 || voice.is_active() {
-    //         for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
-    //             output_left[i] += left * gain;
-    //             output_right[i] += right * gain;
-    //         }
-    //         // }
-    //     }
-
-    //     // Apply master gain
-    //     if master_gain != 1.0 {
-    //         for sample in output_left.iter_mut() {
-    //             *sample *= master_gain;
-    //         }
-    //         for sample in output_right.iter_mut() {
-    //             *sample *= master_gain;
-    //         }
-    //     }
-    // }
-
     #[wasm_bindgen]
     pub fn update_noise(
         &mut self,
@@ -780,6 +709,28 @@ impl AudioEngine {
                     });
                 } else {
                     return Err(JsValue::from_str("Node is not a NoiseGenerator"));
+                }
+            } else {
+                return Err(JsValue::from_str("Node not found"));
+            }
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn update_velocity(
+        &mut self,
+        node_id: usize,
+        sensitivity: f32,
+        randomize: f32,
+    ) -> Result<(), JsValue> {
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+                if let Some(velocity) = node.as_any_mut().downcast_mut::<GlobalVelocityNode>() {
+                    velocity.set_sensitivity(sensitivity);
+                    velocity.set_randomize(randomize);
+                } else {
+                    return Err(JsValue::from_str("Node is not a GlobalVelocityNode"));
                 }
             } else {
                 return Err(JsValue::from_str("Node not found"));

@@ -5,7 +5,12 @@ import { createStandardAudioWorklet } from './audio-processor-loader';
 // import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
-import type { ConvolverState, DelayState, EnvelopeConfig } from './types/synth-layout';
+import type {
+  ConvolverState,
+  DelayState,
+  EnvelopeConfig,
+  VelocityState,
+} from './types/synth-layout';
 import {
   type SynthLayout,
   // type NodeConnection,
@@ -81,6 +86,19 @@ export default class Instrument {
   public updateLayout(layout: SynthLayout) {
     this.synthLayout = layout;
     console.log('Updated synth layout:', layout);
+  }
+
+  public updateVelocityState(nodeId: number, state: VelocityState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateVelocity',
+      noiseId: nodeId,
+      config: {
+        sensitivity: state.sensitivity,
+        randomize: state.randomize,
+        active: state.active,
+      } as VelocityState,
+    });
   }
 
   public updateNoiseState(nodeId: number, state: NoiseState) {
@@ -194,7 +212,7 @@ export default class Instrument {
         active: state.active, // Add the active state
         loopMode: state.loopMode,
         loopStart: state.loopStart,
-        loopEnd: state.loopEnd
+        loopEnd: state.loopEnd,
       },
     });
   }
@@ -207,7 +225,7 @@ export default class Instrument {
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => { }, 0);
+      let timeoutId = setTimeout(() => {}, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
@@ -312,7 +330,7 @@ export default class Instrument {
         phaseOffset,
         bufferSize,
         use_absolute,
-        use_normalized
+        use_normalized,
       });
 
       // Add timeout to prevent hanging
@@ -506,7 +524,9 @@ export default class Instrument {
       );
       const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
       const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
-      const velocityParam = this.workletNode.parameters.get(`velocity_${voiceIndex}`);
+      const velocityParam = this.workletNode.parameters.get(
+        `velocity_${voiceIndex}`,
+      );
 
       if (freqParam && gateParam && gainParam) {
         freqParam.setValueAtTime(frequency, this.audioContext.currentTime);

@@ -667,6 +667,17 @@ var AudioEngine = class {
   }
   /**
    * @param {number} node_id
+   * @param {number} sensitivity
+   * @param {number} randomize
+   */
+  update_velocity(node_id, sensitivity, randomize) {
+    const ret = wasm.audioengine_update_velocity(this.__wbg_ptr, node_id, sensitivity, randomize);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} node_id
    * @param {number} attack
    * @param {number} decay
    * @param {number} sustain
@@ -1830,6 +1841,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateDelayState":
         this.handleUpdateDelay(event.data);
         break;
+      case "updateVelocity":
+        this.handleUpdateVelocity(event.data);
+        break;
     }
   }
   handleImportImpulseWaveformData(data) {
@@ -2039,13 +2053,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       }
       nodesByType[type].push({ id: rawNode.id, type });
     }
-    const connections = rawCanonicalVoice.connections.map((rawConn) => ({
-      fromId: rawConn.from_id,
-      toId: rawConn.to_id,
-      target: rawConn.target,
-      amount: rawConn.amount,
-      modulationType: convertRawModulationType(rawConn.modulation_type)
-    }));
+    const connections = rawCanonicalVoice.connections.map(
+      (rawConn) => ({
+        fromId: rawConn.from_id,
+        toId: rawConn.to_id,
+        target: rawConn.target,
+        amount: rawConn.amount,
+        modulationType: convertRawModulationType(rawConn.modulation_type)
+      })
+    );
     const canonicalVoice = {
       id: rawCanonicalVoice.id,
       nodes: nodesByType,
@@ -2169,13 +2185,31 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.config.filter_slope
     );
   }
+  handleUpdateVelocity(data) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_velocity(
+      data.nodeId,
+      data.config.sensitivity,
+      data.config.randomize
+    );
+  }
   handleUpdateConvolver(data) {
     if (!this.audioEngine) return;
-    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix, data.state.active);
+    this.audioEngine.update_convolver(
+      data.nodeId,
+      data.state.wetMix,
+      data.state.active
+    );
   }
   handleUpdateDelay(data) {
     if (!this.audioEngine) return;
-    this.audioEngine.update_delay(data.nodeId, data.state.delayMs, data.state.feedback, data.state.wetMix, data.state.active);
+    this.audioEngine.update_delay(
+      data.nodeId,
+      data.state.delayMs,
+      data.state.feedback,
+      data.state.wetMix,
+      data.state.active
+    );
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;
@@ -2214,7 +2248,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.newState.wave_index
     );
     try {
-      this.audioEngine.update_wavetable_oscillator(data.oscillatorId, oscStateUpdate);
+      this.audioEngine.update_wavetable_oscillator(
+        data.oscillatorId,
+        oscStateUpdate
+      );
     } catch (err) {
       console.error("Failed to update oscillator:", err);
     }
@@ -2233,10 +2270,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.newState.spread
     );
     try {
-      this.audioEngine.update_oscillator(
-        data.oscillatorId,
-        oscStateUpdate
-      );
+      this.audioEngine.update_oscillator(data.oscillatorId, oscStateUpdate);
     } catch (err) {
       console.error("Failed to update oscillator:", err);
     }

@@ -12,38 +12,27 @@
           @update:modelValue="handleEnabledChange"
         /> -->
       </div>
-      <!-- <div class="knob-group">
+      <div class="knob-group">
         <audio-knob-component
-          v-model="noiseState.noiseType"
-          label="Noise type"
+          v-model="localVelocityState.sensitivity"
+          label="Sensitivity"
           :min="0"
           :max="2"
-          :step="1"
-          :decimals="0"
-          :unitFunc="parseNoiseUnit"
-          @update:modelValue="handleNoiseTypeChange"
+          :step="0.001"
+          :decimals="3"
+          @update:modelValue="handleSensitivityChange"
         />
 
         <audio-knob-component
-          v-model="noiseState.cutoff"
-          label="Cutoff"
+          v-model="localVelocityState.randomize"
+          label="Randomize"
           :min="0"
           :max="1"
           :step="0.001"
           :decimals="3"
-          @update:modelValue="handleCutoffChange"
+          @update:modelValue="handleRandomizeChange"
         />
-
-        <audio-knob-component
-          v-model="noiseState.gain"
-          label="Gain"
-          :min="0"
-          :max="1"
-          :step="0.001"
-          :decimals="3"
-          @update:modelValue="handleGainChange"
-        />
-      </div> -->
+      </div>
 
       <!-- Add the routing component -->
       <routing-component
@@ -56,11 +45,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
-// import AudioKnobComponent from './AudioKnobComponent.vue';
+import { computed, onMounted, watch } from 'vue';
+import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
-// import { useAudioSystemStore } from 'src/stores/audio-system-store';
-// import { storeToRefs } from 'pinia';
+import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { storeToRefs } from 'pinia';
+import type { VelocityState } from 'src/audio/types/synth-layout';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Props {
@@ -71,40 +61,42 @@ const props = withDefaults(defineProps<Props>(), {
 });
 //const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 
-// const store = useAudioSystemStore();
-// const { velocityStates } = storeToRefs(store);
+const store = useAudioSystemStore();
+const { velocityState } = storeToRefs(store);
 
 // Create a reactive reference to the oscillator state
-// const filterState = computed({
-//   get: () => {
-//     const state = velocityState.value;
-//     if (!state) {
-//       return {
-//         is_enabled: false,
-//       };
-//     }
-//     return state;
-//   },
-//   set: (newState: VelocityState) => {
-//     store.velocityState = { ...newState };
-//   },
-// });
+const localVelocityState = computed({
+  get: () => {
+    const state = velocityState.value;
+    if (!state) {
+      return {
+        sensitivity: 1.0,
+        randomize: 0.0,
+        active: false,
+      };
+    }
+    return state;
+  },
+  set: (newState: VelocityState) => {
+    store.velocityState = { ...newState };
+  },
+});
 
-// const handleResonanceChange = (val: number) => {
-//   const currentState = {
-//     ...filterState.value,
-//     resonance: val,
-//   };
-//   store.filterStates.set(props.Index, currentState);
-// };
+const handleSensitivityChange = (val: number) => {
+  const currentState = {
+    ...localVelocityState.value,
+    sensitivity: val,
+  };
+  localVelocityState.value = currentState;
+};
 
-// const handleEnabledChange = (val: boolean) => {
-//   const currentState = {
-//     ...filterState.value,
-//     is_enabled: val,
-//   };
-//   store.velocityState = currentState;
-// };
+const handleRandomizeChange = (val: number) => {
+  const currentState = {
+    ...localVelocityState.value,
+    randomize: val,
+  };
+  localVelocityState.value = currentState;
+};
 
 // const handleNoiseTypeChange = (val: number) => {
 //   const currentState = {
@@ -135,17 +127,17 @@ onMounted(() => {
   //noiseGenerator.setSeed(123); // to avoid linter error
 });
 
-// watch(
-//   () => filterState.value,
-//   (newState) => {
-//     console.log('todo: update velocityState in instrument.ts ', newState);
-//     // store.currentInstrument?.updateNoiseState(
-//     //   props.noiseId,
-//     //   newState as NoiseState,
-//     // );
-//   },
-//   { deep: true, immediate: true },
-// );
+watch(
+  () => localVelocityState.value,
+  (newState: VelocityState) => {
+    console.log('todo: update velocityState in instrument.ts ', newState);
+    store.currentInstrument?.updateVelocityState(
+      props.nodeId,
+      newState as VelocityState,
+    );
+  },
+  { deep: true, immediate: true },
+);
 </script>
 
 <style scoped>

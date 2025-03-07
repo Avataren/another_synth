@@ -3,7 +3,12 @@ import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
 import Instrument from 'src/audio/instrument';
 import type OscillatorState from 'src/audio/models/OscillatorState';
-import type { ConvolverState, DelayState, EnvelopeConfig } from 'src/audio/types/synth-layout';
+import type {
+  ConvolverState,
+  DelayState,
+  EnvelopeConfig,
+  VelocityState,
+} from 'src/audio/types/synth-layout';
 import {
   type SynthLayout,
   type NodeConnection,
@@ -72,8 +77,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     } as NoiseState,
 
     velocityState: {
-      active: true
-    },
+      sensitivity: 1.0,
+      randomize: 0.0,
+      active: true,
+    } as VelocityState,
 
     wasmMemory: new WebAssembly.Memory({
       initial: 256,
@@ -110,24 +117,24 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-        (voiceIndex: number, nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[voiceIndex];
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-          );
-        },
+      (voiceIndex: number, nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[voiceIndex];
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+        );
+      },
     getNodeConnections:
       (state) =>
-        (nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[0]; // Only look at voice 0
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
-          );
-        },
+      (nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[0]; // Only look at voice 0
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
+        );
+      },
 
     // getNodeConnections:
     //   (state) =>
@@ -358,25 +365,30 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       // Use the canonical voice (assumed to be voices[0]) to initialize state objects if missing.
       const canonicalVoice = layoutClone.voices[0];
       if (canonicalVoice && canonicalVoice.nodes) {
-
-        for (const conv of getNodesOfType(canonicalVoice, VoiceNodeType.Convolver) || []) {
+        for (const conv of getNodesOfType(
+          canonicalVoice,
+          VoiceNodeType.Convolver,
+        ) || []) {
           if (!this.convolverStates.has(conv.id)) {
             this.convolverStates.set(conv.id, {
               id: conv.id,
               wetMix: 0.1,
-              active: true
+              active: true,
             });
           }
         }
 
-        for (const delay of getNodesOfType(canonicalVoice, VoiceNodeType.Delay) || []) {
+        for (const delay of getNodesOfType(
+          canonicalVoice,
+          VoiceNodeType.Delay,
+        ) || []) {
           if (!this.delayStates.has(delay.id)) {
             this.delayStates.set(delay.id, {
               id: delay.id,
               delayMs: 500,
               feedback: 0.5,
               wetMix: 0.1,
-              active: true
+              active: true,
             });
           }
         }
@@ -402,7 +414,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               active: true,
               unison_voices: 1.0,
               spread: 0,
-              wave_index: 0.0
+              wave_index: 0.0,
             });
           }
         }
@@ -427,7 +439,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               active: true,
               unison_voices: 1.0,
               spread: 0,
-              wave_index: 0.0
+              wave_index: 0.0,
             });
           }
         }
@@ -482,7 +494,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               active: true,
               loopMode: 0.0,
               loopStart: 0.5,
-              loopEnd: 1.0
+              loopEnd: 1.0,
             });
           }
         }
@@ -515,7 +527,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         active: state.active,
         loopMode: state.loopMode,
         loopStart: state.loopStart,
-        loopEnd: state.loopEnd
+        loopEnd: state.loopEnd,
       });
     },
 

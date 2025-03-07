@@ -1,5 +1,13 @@
 import './textencoder.js';
-import type { ConvolverState, DelayState, EnvelopeConfig, RawConnection, RawVoice, WasmState } from '../types/synth-layout';
+import type {
+  ConvolverState,
+  DelayState,
+  EnvelopeConfig,
+  RawConnection,
+  RawVoice,
+  VelocityState,
+  WasmState,
+} from '../types/synth-layout';
 import {
   type SynthLayout,
   type VoiceLayout,
@@ -77,9 +85,9 @@ export interface LfoUpdateData {
     triggerMode: number;
     gain: number;
     active: boolean;
-    loopMode: number,
-    loopStart: number,
-    loopEnd: number
+    loopMode: number;
+    loopStart: number;
+    loopEnd: number;
   };
 }
 
@@ -216,13 +224,16 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'updateDelayState':
         this.handleUpdateDelay(event.data);
         break;
+      case 'updateVelocity':
+        this.handleUpdateVelocity(event.data);
+        break;
     }
   }
 
   private handleImportImpulseWaveformData(data: {
     type: string;
     // Using wavData.buffer transfers the ArrayBuffer
-    nodeId: number,
+    nodeId: number;
     data: Uint8Array;
   }) {
     const uint8Data = new Uint8Array(data.data);
@@ -232,7 +243,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleImportWavetableData(data: {
     type: string;
     // Using wavData.buffer transfers the ArrayBuffer
-    nodeId: number,
+    nodeId: number;
     data: Uint8Array;
   }) {
     const uint8Data = new Uint8Array(data.data);
@@ -383,7 +394,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         mixerId,
         PortId.AudioInput0,
         1.0,
-        WasmModulationType.Additive
+        WasmModulationType.Additive,
       );
 
       // Connect envelope to mixer's gain input.
@@ -393,7 +404,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         mixerId,
         PortId.GainMod,
         1.0,
-        WasmModulationType.VCA
+        WasmModulationType.VCA,
       );
 
       // Connect oscillator 1 to filter's audio input.
@@ -403,7 +414,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         filterId,
         PortId.AudioInput0,
         1.0,
-        WasmModulationType.Additive
+        WasmModulationType.Additive,
       );
 
       // Connect oscillator 2's output to oscillator 1's phase mod.
@@ -413,7 +424,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         oscIds[0]!,
         PortId.PhaseMod,
         1.0,
-        WasmModulationType.Additive
+        WasmModulationType.Additive,
       );
 
       // Request a state sync (if needed).
@@ -438,7 +449,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const rawCanonicalVoice: RawVoice = wasmState.voices[0]!;
 
     // Convert the raw nodes array into an object keyed by VoiceNodeType.
-    const nodesByType: { [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[] } = {
+    const nodesByType: {
+      [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[];
+    } = {
       [VoiceNodeType.Oscillator]: [],
       [VoiceNodeType.WavetableOscillator]: [],
       [VoiceNodeType.Envelope]: [],
@@ -494,13 +507,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     // Convert the raw connections into the expected format.
-    const connections = rawCanonicalVoice.connections.map((rawConn: RawConnection) => ({
-      fromId: rawConn.from_id,
-      toId: rawConn.to_id,
-      target: rawConn.target as PortId,
-      amount: rawConn.amount,
-      modulationType: convertRawModulationType(rawConn.modulation_type),
-    }));
+    const connections = rawCanonicalVoice.connections.map(
+      (rawConn: RawConnection) => ({
+        fromId: rawConn.from_id,
+        toId: rawConn.to_id,
+        target: rawConn.target as PortId,
+        amount: rawConn.amount,
+        modulationType: convertRawModulationType(rawConn.modulation_type),
+      }),
+    );
 
     // Build the canonical VoiceLayout.
     const canonicalVoice: VoiceLayout = {
@@ -654,7 +669,20 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.config.cutoff,
       data.config.resonance,
       data.config.filter_type,
-      data.config.filter_slope
+      data.config.filter_slope,
+    );
+  }
+
+  private handleUpdateVelocity(data: {
+    type: string;
+    nodeId: number;
+    config: VelocityState;
+  }) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_velocity(
+      data.nodeId,
+      data.config.sensitivity,
+      data.config.randomize,
     );
   }
 
@@ -664,7 +692,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     state: ConvolverState;
   }) {
     if (!this.audioEngine) return;
-    this.audioEngine.update_convolver(data.nodeId, data.state.wetMix, data.state.active);
+    this.audioEngine.update_convolver(
+      data.nodeId,
+      data.state.wetMix,
+      data.state.active,
+    );
   }
 
   private handleUpdateDelay(data: {
@@ -673,11 +705,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     state: DelayState;
   }) {
     if (!this.audioEngine) return;
-    this.audioEngine.update_delay(data.nodeId, data.state.delayMs, data.state.feedback, data.state.wetMix, data.state.active);
+    this.audioEngine.update_delay(
+      data.nodeId,
+      data.state.delayMs,
+      data.state.feedback,
+      data.state.wetMix,
+      data.state.active,
+    );
   }
-
-
-
 
   private handleUpdateModulation(data: {
     connection: {
@@ -728,11 +763,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.newState.feedback_amount,
       data.newState.unison_voices,
       data.newState.spread,
-      data.newState.wave_index
+      data.newState.wave_index,
     );
 
     try {
-      this.audioEngine.update_wavetable_oscillator(data.oscillatorId, oscStateUpdate);
+      this.audioEngine.update_wavetable_oscillator(
+        data.oscillatorId,
+        oscStateUpdate,
+      );
     } catch (err) {
       console.error('Failed to update oscillator:', err);
     }
@@ -753,14 +791,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.newState.feedback_amount,
       (data.newState.waveform >> 0) as unknown as Waveform,
       data.newState.unison_voices,
-      data.newState.spread
+      data.newState.spread,
     );
 
     try {
-      this.audioEngine.update_oscillator(
-        data.oscillatorId,
-        oscStateUpdate,
-      );
+      this.audioEngine.update_oscillator(data.oscillatorId, oscStateUpdate);
     } catch (err) {
       console.error('Failed to update oscillator:', err);
     }
@@ -795,7 +830,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleGetLfoWaveform(data: { waveform: number; phaseOffset: number, bufferSize: number, use_absolute: boolean, use_normalized: boolean }) {
+  private handleGetLfoWaveform(data: {
+    waveform: number;
+    phaseOffset: number;
+    bufferSize: number;
+    use_absolute: boolean;
+    use_normalized: boolean;
+  }) {
     if (!this.audioEngine) return;
 
     try {
@@ -804,7 +845,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.phaseOffset,
         data.bufferSize,
         data.use_absolute,
-        data.use_normalized
+        data.use_normalized,
       );
 
       this.port.postMessage({
@@ -856,7 +897,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.params.active,
         data.params.loopMode,
         data.params.loopStart,
-        data.params.loopEnd
+        data.params.loopEnd,
       );
       this.audioEngine.update_lfos(lfoParams);
     } catch (err) {

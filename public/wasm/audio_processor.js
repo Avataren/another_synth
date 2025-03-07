@@ -601,6 +601,17 @@ export class AudioEngine {
     }
     /**
      * @param {number} node_id
+     * @param {number} sensitivity
+     * @param {number} randomize
+     */
+    update_velocity(node_id, sensitivity, randomize) {
+        const ret = wasm.audioengine_update_velocity(this.__wbg_ptr, node_id, sensitivity, randomize);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} node_id
      * @param {number} attack
      * @param {number} decay
      * @param {number} sustain
