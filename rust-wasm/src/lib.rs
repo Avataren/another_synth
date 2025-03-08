@@ -24,8 +24,8 @@ use nodes::morph_wavetable::{
     cubic_interp, MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
 };
 use nodes::{
-    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, BiquadFilter,
-    Convolver, Delay, FilterSlope, GlobalVelocityNode, Lfo, LfoLoopMode, LfoTriggerMode,
+    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver,
+    Delay, FilterCollection, FilterSlope, GlobalVelocityNode, Lfo, LfoLoopMode, LfoTriggerMode,
     LfoWaveform, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
     WavetableOscillator, WavetableOscillatorStateUpdate,
 };
@@ -1043,112 +1043,6 @@ impl AudioEngine {
         Ok(())
     }
 
-    // #[wasm_bindgen]
-    // pub fn import_wavetable(
-    //     &mut self,
-    //     nodeId: usize,
-    //     data: &[u8],
-    //     base_size: usize,
-    // ) -> Result<(), JsValue> {
-    //     use web_sys::console;
-
-    //     console::log_1(&format!("import_wavetable: Received data length: {}", data.len()).into());
-
-    //     // Check that the data is at least 44 bytes for the header.
-    //     if data.len() < 44 {
-    //         console::log_1(&"Data too short to be a valid WAV file.".into());
-    //         return Err(JsValue::from_str("Data too short to be a valid WAV file"));
-    //     }
-
-    //     let mut cursor = std::io::Cursor::new(data);
-    //     let mut header = [0u8; 44];
-
-    //     console::log_1(&"Reading WAV header...".into());
-    //     match cursor.read_exact(&mut header) {
-    //         Ok(()) => console::log_1(&"Successfully read header.".into()),
-    //         Err(e) => {
-    //             console::log_1(&format!("Failed to read header: {}", e).into());
-    //             return Err(JsValue::from_str(&e.to_string()));
-    //         }
-    //     }
-
-    //     console::log_1(&format!("Header bytes: {:?}", &header).into());
-
-    //     // Verify the "RIFF" and "WAVE" markers.
-    //     if &header[0..4] != b"RIFF" || &header[8..12] != b"WAVE" {
-    //         console::log_1(&"Invalid WAV header markers.".into());
-    //         return Err(JsValue::from_str("Invalid WAV header"));
-    //     }
-    //     console::log_1(&"WAV header markers are valid.".into());
-
-    //     // Process the sample data.
-    //     let sample_bytes = &data[44..];
-    //     console::log_1(&format!("Sample bytes length: {}", sample_bytes.len()).into());
-    //     if sample_bytes.len() % 4 != 0 {
-    //         console::log_1(&"Sample bytes length is not a multiple of 4.".into());
-    //         return Err(JsValue::from_str("Corrupt WAV data"));
-    //     }
-    //     let total_samples = sample_bytes.len() / 4;
-    //     console::log_1(&format!("Total samples: {}", total_samples).into());
-
-    //     // Safety: We assume the WAV is in native-endian 32-bit float format.
-    //     let samples: &[f32] = unsafe {
-    //         std::slice::from_raw_parts(sample_bytes.as_ptr() as *const f32, total_samples)
-    //     };
-
-    //     // Ensure the total number of samples divides evenly into wavetables.
-    //     if total_samples % base_size != 0 {
-    //         console::log_1(
-    //             &format!(
-    //                 "Total samples {} is not a multiple of base_size {}.",
-    //                 total_samples, base_size
-    //             )
-    //             .into(),
-    //         );
-    //         return Err(JsValue::from_str(
-    //             "WAV length is not a multiple of base size",
-    //         ));
-    //     }
-    //     let num_tables = total_samples / base_size;
-    //     console::log_1(&format!("Number of wavetables: {}", num_tables).into());
-
-    //     // Create a new morph collection.
-    //     let mut collection = WavetableMorphCollection::new();
-    //     for i in 0..num_tables {
-    //         let start = i * base_size;
-    //         let end = start + base_size;
-    //         console::log_1(
-    //             &format!("Creating wavetable {}: samples {} to {}", i, start, end).into(),
-    //         );
-    //         let table_samples = samples[start..end].to_vec();
-    //         let wavetable = SynthWavetable::new(table_samples, base_size);
-    //         collection.add_wavetable(wavetable);
-    //     }
-
-    //     console::log_1(&"Adding imported collection to synthbank.".into());
-    //     self.wavetable_synthbank
-    //         .borrow_mut()
-    //         .add_collection("imported", collection);
-    //     console::log_1(&"Wavetable import complete.".into());
-
-    //     //update wavetable oscillator current wavetable
-    //     for voice in &mut self.voices {
-    //         let node = voice
-    //             .graph
-    //             .get_node_mut(NodeId(nodeId))
-    //             .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
-    //         let osc = node
-    //             .as_any_mut()
-    //             .downcast_mut::<WavetableOscillator>()
-    //             .ok_or_else(|| {
-    //                 JsValue::from_str("Node is not an AnalogOscillator in one of the voices")
-    //             })?;
-    //         osc.set_current_wavetable("imported");
-    //     }
-
-    //     Ok(())
-    // }
-
     #[wasm_bindgen]
     pub fn update_oscillator(
         &mut self,
@@ -1268,7 +1162,7 @@ impl AudioEngine {
         for voice in &mut self.voices {
             filter_id = voice
                 .graph
-                .add_node(Box::new(BiquadFilter::new(self.sample_rate)));
+                .add_node(Box::new(FilterCollection::new(self.sample_rate)));
         }
         Ok(filter_id.0)
     }
@@ -1320,7 +1214,7 @@ impl AudioEngine {
     ) -> Result<(), JsValue> {
         for voice in &mut self.voices {
             if let Some(node) = voice.graph.get_node_mut(NodeId(filter_id)) {
-                if let Some(filter) = node.as_any_mut().downcast_mut::<BiquadFilter>() {
+                if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
                     filter.set_params(cutoff, resonance);

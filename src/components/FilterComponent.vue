@@ -50,6 +50,7 @@
           v-model="filterState.filter_slope"
           label="Filter Slope"
           :options="filterSlopeOptions"
+          :disable="!slopeEnabled"
           @update:modelValue="handleFilterSlopeChange"
           dense
           class="wide-select"
@@ -93,7 +94,7 @@ const props = withDefaults(defineProps<Props>(), {
   node: null,
   nodeId: 0,
 });
-
+const slopeEnabled = ref(true);
 const store = useAudioSystemStore();
 const { filterStates } = storeToRefs(store);
 
@@ -130,6 +131,7 @@ const filterTypeOptions = [
   //{ label: 'High Shelf', value: FilterType.HighShelf },
   { label: 'Notch', value: FilterType.Notch },
   { label: 'High Pass', value: FilterType.HighPass },
+  { label: 'Ladder 24db', value: FilterType.Ladder },
 ];
 
 const filterSlopeOptions = [
@@ -154,6 +156,12 @@ const handleResonanceChange = (newVal: number) => {
 };
 
 const handleFilterTypeChange = (newVal: FilterType) => {
+  if (newVal === FilterType.Ladder) {
+    slopeEnabled.value = false;
+  } else {
+    slopeEnabled.value = true;
+  }
+
   const currentState = { ...filterState.value, filter_type: newVal };
   store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };

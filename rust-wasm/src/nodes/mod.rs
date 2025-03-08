@@ -1,9 +1,9 @@
 pub mod analog_oscillator;
-pub mod biquad_filter;
 pub mod convolver;
 pub mod delay;
 pub mod envelope;
 pub mod eq;
+pub mod filter_collection;
 pub mod global_frequency_node;
 pub mod global_velocity_node;
 pub mod ladder_filter;
@@ -17,10 +17,10 @@ pub mod wavetable;
 pub mod wavetable_oscillator;
 
 pub use analog_oscillator::*;
-pub use biquad_filter::*;
 pub use convolver::*;
 pub use delay::*;
 pub use envelope::*;
+pub use filter_collection::*;
 pub use global_frequency_node::*;
 pub use global_velocity_node::*;
 pub use ladder_filter::*;

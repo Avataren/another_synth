@@ -212,7 +212,7 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
- * Enum for selecting the filter slope.
+ * Biquad‑specific slope selection.
  * @enum {0 | 1}
  */
 export const FilterSlope = Object.freeze({
@@ -221,7 +221,7 @@ export const FilterSlope = Object.freeze({
 });
 /**
  * The supported filter types.
- * @enum {0 | 1 | 2 | 3 | 4 | 5}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6}
  */
 export const FilterType = Object.freeze({
     LowPass: 0, "0": "LowPass",
@@ -230,6 +230,7 @@ export const FilterType = Object.freeze({
     HighShelf: 3, "3": "HighShelf",
     Notch: 4, "4": "Notch",
     HighPass: 5, "5": "HighPass",
+    Ladder: 6, "6": "Ladder",
 });
 /**
  * @enum {0 | 1 | 2}

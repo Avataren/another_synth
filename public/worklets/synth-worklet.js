@@ -282,7 +282,9 @@ var FilterType = Object.freeze({
   Notch: 4,
   "4": "Notch",
   HighPass: 5,
-  "5": "HighPass"
+  "5": "HighPass",
+  Ladder: 6,
+  "6": "Ladder"
 });
 var LfoLoopMode = Object.freeze({
   Off: 0,
@@ -2020,7 +2022,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         case "analog_oscillator":
           type = "oscillator" /* Oscillator */;
           break;
-        case "biquadfilter":
+        case "filtercollection":
           type = "filter" /* Filter */;
           break;
         case "envelope":

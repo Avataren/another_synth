@@ -117,6 +117,7 @@ export enum FilterType {
   //HighShelf = 3,
   Notch = 4,
   HighPass = 5,
+  Ladder = 6
 }
 
 export enum FilterSlope {

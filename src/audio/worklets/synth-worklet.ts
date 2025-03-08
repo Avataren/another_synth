@@ -472,7 +472,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         case 'analog_oscillator':
           type = VoiceNodeType.Oscillator;
           break;
-        case 'biquadfilter':
+        case 'filtercollection':
           type = VoiceNodeType.Filter;
           break;
         case 'envelope':

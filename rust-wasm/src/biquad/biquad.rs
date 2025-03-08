@@ -11,6 +11,7 @@ pub enum FilterType {
     HighShelf,
     Notch,
     HighPass,
+    Ladder,
 }
 
 /// A trait defining the basic filter interface.
@@ -160,6 +161,7 @@ impl Biquad {
                 self.a1 = (-2.0 * cs) / a0;
                 self.a2 = (1.0 - alpha) / a0;
             }
+            _ => {} // other filter types handles elsewhere
         }
         // Apply gain normalization (ensuring unity gain at DC) for LowPass and Notch filters.
         match self.filter_type {
