@@ -357,6 +357,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Create filter.
     const filterId = this.audioEngine.create_filter();
+    this.audioEngine.create_filter();
 
     // Create oscillators.
     const oscIds: number[] = [];
@@ -396,6 +397,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         1.0,
         WasmModulationType.Additive,
       );
+
+      // this.audioEngine.connect_nodes(
+      //   filterId2,
+      //   PortId.AudioOutput0,
+      //   mixerId,
+      //   PortId.AudioInput0,
+      //   1.0,
+      //   WasmModulationType.Additive,
+      // );
 
       // Connect envelope to mixer's gain input.
       this.audioEngine.connect_nodes(

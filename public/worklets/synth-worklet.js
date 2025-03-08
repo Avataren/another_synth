@@ -1940,6 +1940,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const mixerId = this.audioEngine.create_mixer();
     console.log("#mixerID:", mixerId);
     const filterId = this.audioEngine.create_filter();
+    this.audioEngine.create_filter();
     const oscIds = [];
     const wtoscId = this.audioEngine.create_wavetable_oscillator();
     oscIds.push(wtoscId);

@@ -1,9 +1,9 @@
-<!-- AudioKnobComponent.vue -->
 <template>
   <div class="knob-wrapper">
     <div
       class="knob-container"
       :style="{ width: knobSize + 'px', height: knobSize + 'px' }"
+      :class="{ disabled: props.disable }"
       ref="knobRef"
     >
       <!-- Base Track -->
@@ -73,11 +73,11 @@ interface Props {
   unit?: string;
   color?: string;
   unitFunc?: (val: number) => string;
-  size?: number; // fallback if needed
+  size?: number;
   dragSensitivity?: number;
   thickness?: number;
-  // New prop to select a preset scale:
   scale?: 'full' | 'half' | 'mini';
+  disable?: boolean; // New prop for disabling interaction
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -89,7 +89,8 @@ const props = withDefaults(defineProps<Props>(), {
   size: 70,
   dragSensitivity: 0.5,
   thickness: 4,
-  scale: 'full', // default scale
+  scale: 'full',
+  disable: false, // Enabled by default
 });
 
 const emit = defineEmits<{
@@ -110,34 +111,25 @@ const knobSize = computed(() => {
   }
 });
 
-// Define a ref for the knob container so we can attach drag events.
 const knobRef = ref<HTMLElement | null>(null);
-
-// Local state for dragging
 const isDragging = ref(false);
 const pendingDrag = ref(false);
 const startX = ref(0);
 const startY = ref(0);
 const startValue = ref(props.modelValue);
 
-// We'll track the last ctrl-key state so that when it changes mid-drag we update our baseline.
-let lastCtrl = false;
-
-// ───── ARC CONSTANTS ─────
-// We want an arc that spans 260° (from -40° to 220°)
 const START_ANGLE = -40;
 const END_ANGLE = 220;
-const RANGE = END_ANGLE - START_ANGLE; // 260°
+const RANGE = END_ANGLE - START_ANGLE;
 
-// ─── COMPUTED PROPERTIES ───
+// Base track: always shows the full arc.
 const describeSemiCircle = computed((): string => {
   const radius = knobSize.value / 2 - 4;
   const center = knobSize.value / 2;
   return describeArc(center, center, radius, START_ANGLE, END_ANGLE);
 });
 
-// Updated computed property: if modelValue is out of the defined range,
-// then we set the arc to full (i.e. END_ANGLE)
+// When the modelValue is outside the legal range, show the full arc (END_ANGLE).
 const currentAngle = computed((): number => {
   if (props.modelValue < props.min || props.modelValue > props.max) {
     return END_ANGLE;
@@ -156,9 +148,6 @@ const displayUnit = computed((): string =>
   props.unitFunc ? props.unitFunc(props.modelValue) : props.unit || '',
 );
 
-// ─── HELPER FUNCTIONS ───
-
-// Converts polar coordinates to cartesian.
 function polarToCartesian(
   centerX: number,
   centerY: number,
@@ -172,7 +161,6 @@ function polarToCartesian(
   };
 }
 
-// Returns an SVG arc path.
 function describeArc(
   x: number,
   y: number,
@@ -182,9 +170,7 @@ function describeArc(
 ): string {
   const start = polarToCartesian(x, y, radius, startAngle);
   const end = polarToCartesian(x, y, radius, endAngle);
-  let diff = endAngle - startAngle;
-  if (diff < 0) diff += 360;
-  const largeArcFlag = diff <= 180 ? '0' : '1';
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
 }
 
@@ -192,14 +178,12 @@ const formatValue = (value: number): string => {
   return `${value.toFixed(props.decimals)}${props.unit || ''}`;
 };
 
-// ─── MANUAL INPUT STATE & METHODS ───
-
 const isEditing = ref(false);
 const inputValue = ref(String(props.modelValue));
 const inputRef = ref<HTMLInputElement | null>(null);
 
 function startEditing(e: MouseEvent) {
-  // Prevent any bubbling so that dragging isn't started.
+  if (props.disable) return;
   e.stopPropagation();
   isEditing.value = true;
   inputValue.value = String(props.modelValue);
@@ -210,73 +194,62 @@ function startEditing(e: MouseEvent) {
 }
 
 function commitEditing() {
+  if (props.disable) return;
   const newValue = parseFloat(inputValue.value);
   if (!isNaN(newValue)) {
-    // Do not clamp the value—allow numbers outside the min/max range.
+    // Allow custom values outside the legal range (no clamping here)
     emit('update:modelValue', Number(newValue.toFixed(props.decimals)));
   }
   isEditing.value = false;
 }
 
-// Prevent text selection when not editing.
 function handleValueMouseDown(e: MouseEvent) {
+  // Prevent text selection when not editing.
   if (!isEditing.value) {
     e.preventDefault();
   }
 }
 
-// ─── DRAG EVENT HANDLERS ───
-
 function onMouseDown(e: MouseEvent) {
-  // If the mousedown is on the value display (for editing) do nothing.
+  if (props.disable) return;
+  // Do not start a drag if clicking inside the value display.
   if ((e.target as HTMLElement).closest('.value-display')) return;
-  e.preventDefault(); // Prevent default text selection
+  e.preventDefault();
   startX.value = e.clientX;
   startY.value = e.clientY;
   startValue.value = props.modelValue;
-  lastCtrl = e.ctrlKey;
   pendingDrag.value = true;
-  // Add a class to disable text selection on the knob element only.
   knobRef.value?.classList.add('no-select');
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
 }
 
 function onMouseMove(e: MouseEvent) {
+  if (props.disable) return;
+  // Check if we've moved far enough to consider this a drag.
   const dx = e.clientX - startX.value;
   const dy = e.clientY - startY.value;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  // Begin dragging after a small movement threshold.
   if (pendingDrag.value && distance > 3) {
     isDragging.value = true;
     pendingDrag.value = false;
   }
-  if (isDragging.value) {
-    // If the ctrl key state has changed mid-drag, reset our starting point.
-    if (e.ctrlKey !== lastCtrl) {
-      startY.value = e.clientY;
-      startValue.value = props.modelValue;
-      lastCtrl = e.ctrlKey;
-    }
-    const deltaY = startY.value - e.clientY;
-    // Adjust sensitivity if ctrl is held.
-    const adjustedSensitivity = props.dragSensitivity * (e.ctrlKey ? 0.2 : 1);
-    const deltaValue =
-      (deltaY * adjustedSensitivity * (props.max - props.min)) / 200;
-    const newValue = startValue.value + deltaValue;
-    // For dragging we still clamp to min/max.
-    const clampedValue = Math.min(
-      props.max,
-      Math.max(props.min, Number(newValue.toFixed(props.decimals))),
-    );
-    if (clampedValue !== props.modelValue) {
-      emit('update:modelValue', clampedValue);
-    }
+  if (!isDragging.value) return;
+  const deltaY = startY.value - e.clientY;
+  const deltaValue =
+    (deltaY * props.dragSensitivity * (props.max - props.min)) / 200;
+  const newValue = startValue.value + deltaValue;
+  // For dragging, clamp the value to the legal range.
+  const clampedValue = Math.min(
+    props.max,
+    Math.max(props.min, Number(newValue.toFixed(props.decimals))),
+  );
+  if (clampedValue !== props.modelValue) {
+    emit('update:modelValue', clampedValue);
   }
 }
 
-function onMouseUp(_e: MouseEvent) {
-  // Remove the no-select class when dragging is complete.
+function onMouseUp() {
   knobRef.value?.classList.remove('no-select');
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('mouseup', onMouseUp);
@@ -287,7 +260,6 @@ function onMouseUp(_e: MouseEvent) {
 onMounted(() => {
   knobRef.value?.addEventListener('mousedown', onMouseDown);
 });
-
 onUnmounted(() => {
   knobRef.value?.removeEventListener('mousedown', onMouseDown);
   document.removeEventListener('mousemove', onMouseMove);
@@ -312,12 +284,8 @@ onUnmounted(() => {
   align-items: center;
 }
 
-/* Disable text selection on the knob element during dragging */
 .no-select {
   user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
 }
 
 .knob-track {
@@ -327,7 +295,6 @@ onUnmounted(() => {
   left: 0;
 }
 
-/* In non-editing mode, disable selection on the value display */
 .value-display {
   position: absolute;
   top: 50%;
@@ -350,7 +317,6 @@ onUnmounted(() => {
   outline: none;
   background: transparent;
   color: inherit;
-  user-select: text;
 }
 
 .knob-label {
@@ -363,5 +329,11 @@ onUnmounted(() => {
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
+}
+
+/* When disabled, reduce opacity and block pointer events */
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 </style>

@@ -112,9 +112,9 @@ export interface FilterConfig {
 
 export enum FilterType {
   LowPass = 0,
-  //LowShelf = 1,
-  //Peaking = 2,
-  //HighShelf = 3,
+  LowShelf = 1,
+  Peaking = 2,
+  HighShelf = 3,
   Notch = 4,
   HighPass = 5,
   Ladder = 6

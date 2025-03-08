@@ -36,6 +36,7 @@
         <audio-knob-component
           v-model="filterState.gain"
           label="Gain"
+          :disable="!gainEnabled"
           :min="0.0"
           :max="1.0"
           :step="0.001"
@@ -104,6 +105,7 @@ const props = withDefaults(defineProps<Props>(), {
   nodeId: 0,
 });
 const slopeEnabled = ref(true);
+const gainEnabled = ref(false);
 const store = useAudioSystemStore();
 const { filterStates } = storeToRefs(store);
 
@@ -135,12 +137,12 @@ const filterState = computed<FilterState>({
 // Define options for filter type and slope dropdowns
 const filterTypeOptions = [
   { label: 'Low Pass', value: FilterType.LowPass },
-  //{ label: 'Low Shelf', value: FilterType.LowShelf },
-  //{ label: 'Peaking', value: FilterType.Peaking },
-  //{ label: 'High Shelf', value: FilterType.HighShelf },
   { label: 'Notch', value: FilterType.Notch },
   { label: 'High Pass', value: FilterType.HighPass },
   { label: 'Ladder 24db', value: FilterType.Ladder },
+  { label: 'Low Shelf', value: FilterType.LowShelf },
+  { label: 'Peaking', value: FilterType.Peaking },
+  { label: 'High Shelf', value: FilterType.HighShelf },
 ];
 
 const filterSlopeOptions = [
@@ -174,6 +176,17 @@ const handleFilterTypeChange = (newVal: FilterType) => {
     slopeEnabled.value = false;
   } else {
     slopeEnabled.value = true;
+  }
+
+  switch (newVal) {
+    case FilterType.Ladder:
+    case FilterType.Peaking:
+    case FilterType.HighShelf:
+    case FilterType.LowShelf:
+      gainEnabled.value = true;
+      break;
+    default:
+      gainEnabled.value = false;
   }
 
   const currentState = { ...filterState.value, filter_type: newVal };

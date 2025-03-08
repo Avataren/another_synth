@@ -127,6 +127,12 @@ impl FilterCollection {
         self.base_gain_db = gain_db;
         // Compute the ladder gain from the dB value.
         self.ladder_gain = 10f32.powf(gain_db / 20.0);
+        self.biquad.gain_db = gain_db;
+        //set cascaded gain to match biquad gain
+        if let Some(cascaded) = &mut self.cascaded {
+            cascaded.first.gain_db = gain_db;
+            cascaded.second.gain_db = gain_db;
+        }
     }
 
     pub fn set_gain_normalized(&mut self, normalized: f32) {
