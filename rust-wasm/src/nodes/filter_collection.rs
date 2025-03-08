@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use std::any::Any;
 use std::collections::HashMap;
 use std::simd::f32x4;
@@ -19,6 +20,36 @@ pub enum FilterSlope {
 /// Helper: map a normalized resonance (0–1) to a Q factor.
 fn normalized_resonance_to_q(normalized: f32) -> f32 {
     0.707 + 9.293 * normalized
+}
+
+/// Fast tanh approximation using a precomputed lookup table with linear interpolation.
+/// The table spans from -5.0 to 5.0 (beyond which tanh saturates).
+static TANH_LUT: Lazy<[f32; 1024]> = Lazy::new(|| {
+    let mut lut = [0.0; 1024];
+    let x_min = -5.0;
+    let x_max = 5.0;
+    let step = (x_max - x_min) / 1023.0;
+    for i in 0..1024 {
+        let x = x_min + i as f32 * step;
+        lut[i] = x.tanh();
+    }
+    lut
+});
+
+fn fast_tanh(x: f32) -> f32 {
+    const LUT_SIZE: usize = 1024;
+    const X_MIN: f32 = -5.0;
+    const X_MAX: f32 = 5.0;
+    // Clamp x to the LUT range.
+    let clamped = x.clamp(X_MIN, X_MAX);
+    let normalized = (clamped - X_MIN) / (X_MAX - X_MIN) * (LUT_SIZE as f32 - 1.0);
+    let index = normalized.floor() as usize;
+    let frac = normalized - (index as f32);
+    if index < LUT_SIZE - 1 {
+        TANH_LUT[index] * (1.0 - frac) + TANH_LUT[index + 1] * frac
+    } else {
+        TANH_LUT[LUT_SIZE - 1]
+    }
 }
 
 /// A unified filter collection that supports both biquad‑based filters and an inline
@@ -43,13 +74,15 @@ pub struct FilterCollection {
     // Ladder filter state stored inline.
     ladder_stages: [f32; 4],
     ladder_gain: f32,
+    // New: oversampling factor (1 = no oversampling, 2 = 2x, 4 = 4x, etc.)
+    oversampling_factor: u32,
 }
 
 impl FilterCollection {
     pub fn new(sample_rate: f32) -> Self {
         let base_cutoff = 20000.0;
         let base_resonance = 0.0;
-        let base_gain_db = 6.0;
+        let base_gain_db = 4.8;
         let cutoff = base_cutoff;
         let resonance = base_resonance;
         // Default filter type is LowPass (a biquad‑style filter).
@@ -74,7 +107,13 @@ impl FilterCollection {
             // Initialize ladder filter state.
             ladder_stages: [0.0; 4],
             ladder_gain: 10f32.powf(base_gain_db / 20.0),
+            oversampling_factor: 1, // default: no oversampling
         }
+    }
+
+    /// Set the oversampling factor (1 = no oversampling, 2 = 2x, 4 = 4x, etc.)
+    pub fn set_oversampling_factor(&mut self, factor: u32) {
+        self.oversampling_factor = factor.max(1);
     }
 
     /// Set the base cutoff (Hz) and resonance (normalized 0–1) for all filters.
@@ -179,19 +218,17 @@ impl AudioNode for FilterCollection {
         if let Some(out_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
-                let block_len = end - i;
-
                 // Compute average modulation for cutoff and resonance.
                 let avg_cut_add: f32 =
-                    mod_cut.additive[i..end].iter().sum::<f32>() / block_len as f32;
+                    mod_cut.additive[i..end].iter().sum::<f32>() / block_len(end, i);
                 let avg_cut_mult: f32 =
-                    mod_cut.multiplicative[i..end].iter().sum::<f32>() / block_len as f32;
+                    mod_cut.multiplicative[i..end].iter().sum::<f32>() / block_len(end, i);
                 let target_cutoff = (self.base_cutoff + avg_cut_add) * avg_cut_mult;
 
                 let avg_res_add: f32 =
-                    mod_res.additive[i..end].iter().sum::<f32>() / block_len as f32;
+                    mod_res.additive[i..end].iter().sum::<f32>() / block_len(end, i);
                 let avg_res_mult: f32 =
-                    mod_res.multiplicative[i..end].iter().sum::<f32>() / block_len as f32;
+                    mod_res.multiplicative[i..end].iter().sum::<f32>() / block_len(end, i);
                 let target_resonance = (self.base_resonance + avg_res_add) * avg_res_mult;
 
                 // Smooth the parameters.
@@ -207,18 +244,23 @@ impl AudioNode for FilterCollection {
                         let p = f_norm * (1.8 - 0.8 * f_norm);
                         // Boost the feedback factor to help trigger self-oscillation.
                         let k = 8.0 * self.resonance * (1.0 - 0.5 * p);
-
+                        // For each sample in the current block:
                         for j in i..end {
-                            // Compute the input with feedback.
-                            let x = audio_in[j] - k * self.ladder_stages[3];
-                            // Apply tanh nonlinearity on each stage difference.
-                            self.ladder_stages[0] += p * (x.tanh() - self.ladder_stages[0]);
-                            self.ladder_stages[1] +=
-                                p * (self.ladder_stages[0].tanh() - self.ladder_stages[1]);
-                            self.ladder_stages[2] +=
-                                p * (self.ladder_stages[1].tanh() - self.ladder_stages[2]);
-                            self.ladder_stages[3] +=
-                                p * (self.ladder_stages[2].tanh() - self.ladder_stages[3]);
+                            // With oversampling, use substeps for integration.
+                            let os_factor = self.oversampling_factor.max(1);
+                            let inner_p = p / os_factor as f32;
+                            // Process oversampled substeps.
+                            for _ in 0..os_factor {
+                                let x = audio_in[j] - k * self.ladder_stages[3];
+                                self.ladder_stages[0] +=
+                                    inner_p * (fast_tanh(x) - self.ladder_stages[0]);
+                                self.ladder_stages[1] += inner_p
+                                    * (fast_tanh(self.ladder_stages[0]) - self.ladder_stages[1]);
+                                self.ladder_stages[2] += inner_p
+                                    * (fast_tanh(self.ladder_stages[1]) - self.ladder_stages[2]);
+                                self.ladder_stages[3] += inner_p
+                                    * (fast_tanh(self.ladder_stages[2]) - self.ladder_stages[3]);
+                            }
                             out_buffer[j] = self.ladder_stages[3] * self.ladder_gain;
                         }
                     }
@@ -294,4 +336,10 @@ impl AudioNode for FilterCollection {
     fn node_type(&self) -> &str {
         "filtercollection"
     }
+}
+
+/// Helper to calculate block length.
+#[inline(always)]
+fn block_len(end: usize, start: usize) -> f32 {
+    (end - start) as f32
 }

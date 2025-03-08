@@ -33,6 +33,15 @@
           :decimals="3"
           @update:modelValue="handleResonanceChange"
         />
+        <audio-knob-component
+          v-model="filterState.gain"
+          label="Gain"
+          :min="0.0"
+          :max="1.0"
+          :step="0.001"
+          :decimals="3"
+          @update:modelValue="handleGainChange"
+        />
       </div>
       <!-- Dropdowns for filter type and slope -->
       <div class="knob-group">
@@ -109,7 +118,7 @@ const filterState = computed<FilterState>({
       return {
         id: props.nodeId,
         cutoff: 20000,
-        resonance: 0,
+        resonance: 0.7,
         filter_type: FilterType.LowPass,
         filter_slope: FilterSlope.Db12,
         active: true,
@@ -142,6 +151,11 @@ const filterSlopeOptions = [
 // Handlers for updating state
 const handleActiveChange = (newValue: boolean) => {
   const currentState = { ...filterState.value, active: newValue };
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
+};
+
+const handleGainChange = (newVal: number) => {
+  const currentState = { ...filterState.value, gain: newVal };
   store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };
 

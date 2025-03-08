@@ -784,11 +784,12 @@ export class AudioEngine {
      * @param {number} filter_id
      * @param {number} cutoff
      * @param {number} resonance
+     * @param {number} gain
      * @param {FilterType} filter_type
      * @param {FilterSlope} filter_slope
      */
-    update_filters(filter_id, cutoff, resonance, filter_type, filter_slope) {
-        const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, filter_type, filter_slope);
+    update_filters(filter_id, cutoff, resonance, gain, filter_type, filter_slope) {
+        const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, filter_type, filter_slope);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

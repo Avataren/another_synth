@@ -472,6 +472,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               id: filter.id,
               cutoff: 20000,
               resonance: 0,
+              gain: 0.7,
               filter_type: FilterType.LowPass,
               filter_slope: FilterSlope.Db12,
               active: true,

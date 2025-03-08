@@ -135,6 +135,7 @@ export interface FilterState {
   id: number;
   cutoff: number;
   resonance: number;
+  gain: number;
   filter_type: FilterType;
   filter_slope: FilterSlope;
   active: boolean;

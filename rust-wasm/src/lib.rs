@@ -1209,6 +1209,7 @@ impl AudioEngine {
         filter_id: usize,
         cutoff: f32,
         resonance: f32,
+        gain: f32,
         filter_type: FilterType,
         filter_slope: FilterSlope,
     ) -> Result<(), JsValue> {
@@ -1218,6 +1219,7 @@ impl AudioEngine {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
                     filter.set_params(cutoff, resonance);
+                    filter.set_gain_normalized(gain);
                 } else {
                     return Err(JsValue::from_str("Node is not a Filter"));
                 }
