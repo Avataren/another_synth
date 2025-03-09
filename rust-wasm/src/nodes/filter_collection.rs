@@ -10,8 +10,8 @@ use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 
 /// Biquad‑specific slope selection.
-#[derive(Clone, Copy)]
 #[wasm_bindgen]
+#[derive(Clone, Copy)]
 pub enum FilterSlope {
     Db12,
     Db24,
@@ -74,7 +74,7 @@ pub struct FilterCollection {
     // Ladder filter state stored inline.
     ladder_stages: [f32; 4],
     ladder_gain: f32,
-    // New: oversampling factor (1 = no oversampling, 2 = 2x, 4 = 4x, etc.)
+    // Oversampling factor (1 = no oversampling, 2 = 2x, 4 = 4x, etc.)
     oversampling_factor: u32,
 }
 
@@ -107,7 +107,7 @@ impl FilterCollection {
             // Initialize ladder filter state.
             ladder_stages: [0.0; 4],
             ladder_gain: 10f32.powf(base_gain_db / 20.0),
-            oversampling_factor: 1, // default: no oversampling
+            oversampling_factor: 0, // default: no oversampling
         }
     }
 
@@ -128,7 +128,7 @@ impl FilterCollection {
         // Compute the ladder gain from the dB value.
         self.ladder_gain = 10f32.powf(gain_db / 20.0);
         self.biquad.gain_db = gain_db;
-        //set cascaded gain to match biquad gain
+        // Set cascaded gain to match biquad gain.
         if let Some(cascaded) = &mut self.cascaded {
             cascaded.first.gain_db = gain_db;
             cascaded.second.gain_db = gain_db;
@@ -137,7 +137,7 @@ impl FilterCollection {
 
     pub fn set_gain_normalized(&mut self, normalized: f32) {
         let norm = normalized.clamp(0.0, 1.0);
-        // Map normalized [0,1] to a dB range of [-12, +12]
+        // Map normalized [0,1] to a dB range of [-12, +12].
         let gain_db = norm * 24.0 - 12.0;
         self.set_gain_db(gain_db);
     }
@@ -255,7 +255,6 @@ impl AudioNode for FilterCollection {
                             // With oversampling, use substeps for integration.
                             let os_factor = self.oversampling_factor.max(1);
                             let inner_p = p / os_factor as f32;
-                            // Process oversampled substeps.
                             for _ in 0..os_factor {
                                 let x = audio_in[j] - k * self.ladder_stages[3];
                                 self.ladder_stages[0] +=
@@ -274,39 +273,97 @@ impl AudioNode for FilterCollection {
                     _ => {
                         let overall_q = normalized_resonance_to_q(self.resonance);
                         let stage_q = overall_q.sqrt();
-                        self.biquad.frequency = self.cutoff;
-                        self.biquad.Q = overall_q;
-                        self.biquad.gain_db = self.base_gain_db;
-                        self.biquad.filter_type = self.filter_type;
-                        self.biquad.update_coefficients();
-                        if let FilterSlope::Db24 = self.slope {
-                            if let Some(ref mut cascaded) = self.cascaded {
-                                cascaded.first.frequency = self.cutoff;
-                                cascaded.first.Q = stage_q;
-                                cascaded.first.gain_db = self.base_gain_db;
-                                cascaded.first.filter_type = self.filter_type;
-                                cascaded.first.update_coefficients();
+                        let os_factor = self.oversampling_factor.max(1);
+                        if os_factor == 1 {
+                            // Process normally without oversampling.
+                            self.biquad.frequency = self.cutoff;
+                            self.biquad.Q = overall_q;
+                            self.biquad.gain_db = self.base_gain_db;
+                            self.biquad.filter_type = self.filter_type;
+                            self.biquad.update_coefficients();
+                            if let FilterSlope::Db24 = self.slope {
+                                if let Some(ref mut cascaded) = self.cascaded {
+                                    cascaded.first.frequency = self.cutoff;
+                                    cascaded.first.Q = stage_q;
+                                    cascaded.first.gain_db = self.base_gain_db;
+                                    cascaded.first.filter_type = self.filter_type;
+                                    cascaded.first.update_coefficients();
 
-                                cascaded.second.frequency = self.cutoff;
-                                cascaded.second.Q = stage_q;
-                                cascaded.second.gain_db = self.base_gain_db;
-                                cascaded.second.filter_type = self.filter_type;
-                                cascaded.second.update_coefficients();
+                                    cascaded.second.frequency = self.cutoff;
+                                    cascaded.second.Q = stage_q;
+                                    cascaded.second.gain_db = self.base_gain_db;
+                                    cascaded.second.filter_type = self.filter_type;
+                                    cascaded.second.update_coefficients();
+                                }
                             }
-                        }
-                        for j in i..end {
-                            let x = audio_in[j];
-                            let y = match self.slope {
-                                FilterSlope::Db12 => self.biquad.process(x),
-                                FilterSlope::Db24 => {
-                                    if let Some(ref mut cascaded) = self.cascaded {
-                                        cascaded.process(x)
-                                    } else {
-                                        self.biquad.process(x)
+                            for j in i..end {
+                                let x = audio_in[j];
+                                let y = match self.slope {
+                                    FilterSlope::Db12 => self.biquad.process(x),
+                                    FilterSlope::Db24 => {
+                                        if let Some(ref mut cascaded) = self.cascaded {
+                                            cascaded.process(x)
+                                        } else {
+                                            self.biquad.process(x)
+                                        }
+                                    }
+                                };
+                                out_buffer[j] = y;
+                            }
+                        } else {
+                            // Oversampling branch for biquad.
+                            let effective_sr = self.sample_rate * os_factor as f32;
+                            let orig_sr = self.sample_rate;
+                            // Update coefficients for the oversampled filter.
+                            self.biquad.sample_rate = effective_sr;
+                            self.biquad.frequency = self.cutoff;
+                            self.biquad.Q = overall_q;
+                            self.biquad.gain_db = self.base_gain_db;
+                            self.biquad.filter_type = self.filter_type;
+                            self.biquad.update_coefficients();
+                            if let FilterSlope::Db24 = self.slope {
+                                if let Some(ref mut cascaded) = self.cascaded {
+                                    cascaded.first.sample_rate = effective_sr;
+                                    cascaded.first.frequency = self.cutoff;
+                                    cascaded.first.Q = stage_q;
+                                    cascaded.first.gain_db = self.base_gain_db;
+                                    cascaded.first.filter_type = self.filter_type;
+                                    cascaded.first.update_coefficients();
+
+                                    cascaded.second.sample_rate = effective_sr;
+                                    cascaded.second.frequency = self.cutoff;
+                                    cascaded.second.Q = stage_q;
+                                    cascaded.second.gain_db = self.base_gain_db;
+                                    cascaded.second.filter_type = self.filter_type;
+                                    cascaded.second.update_coefficients();
+                                }
+                            }
+                            // Process each sample by running os_factor substeps.
+                            for j in i..end {
+                                let x = audio_in[j];
+                                let mut y = 0.0;
+                                for _ in 0..os_factor {
+                                    y = match self.slope {
+                                        FilterSlope::Db12 => self.biquad.process(x),
+                                        FilterSlope::Db24 => {
+                                            if let Some(ref mut cascaded) = self.cascaded {
+                                                cascaded.process(x)
+                                            } else {
+                                                self.biquad.process(x)
+                                            }
+                                        }
                                     }
                                 }
-                            };
-                            out_buffer[j] = y;
+                                out_buffer[j] = y;
+                            }
+                            // Restore the original sample rate.
+                            self.biquad.sample_rate = orig_sr;
+                            if let FilterSlope::Db24 = self.slope {
+                                if let Some(ref mut cascaded) = self.cascaded {
+                                    cascaded.first.sample_rate = orig_sr;
+                                    cascaded.second.sample_rate = orig_sr;
+                                }
+                            }
                         }
                     }
                 }
