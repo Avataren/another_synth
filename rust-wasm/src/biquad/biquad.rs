@@ -22,6 +22,7 @@ pub trait Filter {
 }
 
 /// A second‑order (12 dB/octave) biquad filter.
+#[derive(Clone, Copy)]
 pub struct Biquad {
     pub filter_type: FilterType,
     pub sample_rate: f32,
@@ -194,6 +195,7 @@ impl Filter for Biquad {
 }
 
 /// A cascaded biquad filter (two biquad stages in series) for a steeper 24 dB/octave slope.
+#[derive(Clone, Copy)]
 pub struct CascadedBiquad {
     pub first: Biquad,
     pub second: Biquad,

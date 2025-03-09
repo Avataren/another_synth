@@ -63,7 +63,7 @@
           v-model="filterState.gain"
           label="Gain"
           :min="0.0"
-          :max="1.0"
+          :max="1.2"
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleGainChange"
