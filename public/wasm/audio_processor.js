@@ -221,7 +221,7 @@ export const FilterSlope = Object.freeze({
 });
 /**
  * The supported filter types.
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}
  */
 export const FilterType = Object.freeze({
     LowPass: 0, "0": "LowPass",
@@ -231,6 +231,7 @@ export const FilterType = Object.freeze({
     Notch: 4, "4": "Notch",
     HighPass: 5, "5": "HighPass",
     Ladder: 6, "6": "Ladder",
+    Comb: 7, "7": "Comb",
 });
 /**
  * @enum {0 | 1 | 2}
@@ -785,11 +786,15 @@ export class AudioEngine {
      * @param {number} cutoff
      * @param {number} resonance
      * @param {number} gain
+     * @param {number} key_tracking
+     * @param {number} comb_frequency
+     * @param {number} comb_dampening
+     * @param {number} oversampling
      * @param {FilterType} filter_type
      * @param {FilterSlope} filter_slope
      */
-    update_filters(filter_id, cutoff, resonance, gain, filter_type, filter_slope) {
-        const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, filter_type, filter_slope);
+    update_filters(filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, oversampling, filter_type, filter_slope) {
+        const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, oversampling, filter_type, filter_slope);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

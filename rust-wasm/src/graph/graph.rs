@@ -512,10 +512,10 @@ impl AudioGraph {
     pub fn set_velocity(&mut self, velocity: &[f32]) {
         if let Some(global_node_id) = self.global_velocity_node {
             if let Some(node) = self.get_node_mut(global_node_id) {
-                if let Some(global_freq_node) =
+                if let Some(global_vel_node) =
                     node.as_any_mut().downcast_mut::<GlobalVelocityNode>()
                 {
-                    global_freq_node.set_velocity(velocity);
+                    global_vel_node.set_velocity(velocity);
                 }
             }
         }

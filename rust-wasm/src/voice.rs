@@ -75,10 +75,69 @@ impl Voice {
         osc_id
     }
 
-    //todo: we'll still need to update some nodes I think, like LFOs without a trigger state
-    // as they should evolve independently of the gain amplitude
     pub fn update_active_state(&mut self) {
-        self.active = self.current_gate > 0.0 || self.has_active_envelopes();
+        // For physical modeling synths like Karplus-Strong:
+        // We need to keep processing even after envelopes finish
+        // as the resonant structures (comb filters, etc.) need to decay naturally
+
+        // A voice is active if:
+        // 1. Gate is currently on (note is being held), OR
+        // 2. There are active envelopes connected to the output path, OR
+        // 3. There is significant audio output from the voice (for decay tails)
+
+        let gate_active = self.current_gate > 0.0;
+        let has_active_envelopes = self.has_active_envelopes();
+        let has_audio_output = self.has_significant_audio_output();
+
+        self.active = gate_active || has_active_envelopes || has_audio_output;
+    }
+
+    // Simple check for active envelopes (same as your original implementation)
+    fn has_active_envelopes(&self) -> bool {
+        self.graph.nodes.iter().any(|node| {
+            if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
+                env.is_active()
+            } else {
+                false
+            }
+        })
+    }
+
+    // Check if the voice is still producing significant audio output
+    fn has_significant_audio_output(&self) -> bool {
+        // This is a new method to detect if the voice is still producing sound
+        // even after envelopes have completed
+
+        // If we don't have an output node, we can't check
+        if self.output_node == NodeId(0) {
+            return false;
+        }
+
+        // Get the output buffer indices
+        if let Some(&left_buffer_idx) = self
+            .graph
+            .node_buffers
+            .get(&(self.output_node, PortId::AudioOutput0))
+        {
+            // Analyze the buffer to see if it contains significant audio
+            let output_buffer = self.graph.buffer_pool.copy_out(left_buffer_idx);
+
+            // Check if the output has any significant audio content
+            // Using RMS to detect if there's still meaningful audio
+            let mut sum_squared = 0.0;
+            for &sample in output_buffer {
+                sum_squared += sample * sample;
+            }
+
+            let rms = (sum_squared / output_buffer.len() as f32).sqrt();
+
+            // -80dB threshold (very quiet but still audible)
+            const SILENCE_THRESHOLD: f32 = 0.0001; // approximately -80dB
+
+            return rms > SILENCE_THRESHOLD;
+        }
+
+        false
     }
 
     //this doesn't quite work yet, dont use
@@ -86,16 +145,6 @@ impl Voice {
         self.graph.nodes.iter().any(|node| {
             if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
                 lfo.is_active()
-            } else {
-                false
-            }
-        })
-    }
-
-    fn has_active_envelopes(&self) -> bool {
-        self.graph.nodes.iter().any(|node| {
-            if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
-                env.is_active()
             } else {
                 false
             }
@@ -165,11 +214,10 @@ impl Voice {
     }
 
     pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
-        // If the voice is inactive but has free-running LFOs, only update their phases
-        if !self.is_active() {
-            // && self.has_free_running_lfos() {
-            self.update_free_running_lfos();
-        } else if self.active {
+        // First, let's process the audio - we need to do this before checking
+        // has_significant_audio_output to have valid output buffers to analyze
+
+        if self.is_active() {
             // Normal processing path for active voices
             self.graph.set_gate(&[self.current_gate]);
             self.graph.set_frequency(&[self.current_frequency]);
@@ -179,9 +227,29 @@ impl Voice {
                 output_left,
                 output_right,
             );
+        } else {
+            // Only update free-running LFOs if we have them
+            if self.has_free_running_lfos() {
+                self.update_free_running_lfos();
+            }
+            // Clear the output
+            output_left.fill(0.0);
+            output_right.fill(0.0);
         }
 
+        // Update the active state for the next cycle
         self.update_active_state();
+
+        // Debug info can be helpful during development
+        // if self.is_active() {
+        //     web_sys::console::log_1(&format!(
+        //         "Voice {} active: gate={}, has_env={}, has_output={}",
+        //         self.id,
+        //         self.current_gate > 0.0,
+        //         self.has_active_envelopes(),
+        //         self.has_significant_audio_output()
+        //     ).into());
+        // }
     }
 
     fn has_free_running_lfos(&self) -> bool {

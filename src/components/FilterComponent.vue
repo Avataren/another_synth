@@ -13,9 +13,11 @@
           @update:modelValue="handleActiveChange"
         />
       </div>
-      <!-- Controls for cutoff and resonance -->
+      <!-- Controls for cutoff, comb and other knobs -->
       <div class="knob-group">
+        <!-- Show cutoff only if filter type is NOT Comb -->
         <audio-knob-component
+          v-if="filterState.filter_type !== FilterType.Comb"
           v-model="filterState.cutoff"
           label="Cutoff (Hz)"
           :min="20"
@@ -24,6 +26,18 @@
           :decimals="0"
           @update:modelValue="handleCutoffChange"
         />
+        <!-- Show comb frequency when filter type is Comb -->
+        <audio-knob-component
+          v-if="filterState.filter_type === FilterType.Comb"
+          v-model="filterState.comb_frequency"
+          label="Comb Frequency"
+          :min="55"
+          :max="880"
+          :step="1"
+          :decimals="0"
+          @update:modelValue="handleCombFrequencyChange"
+        />
+        <!-- Always show resonance -->
         <audio-knob-component
           v-model="filterState.resonance"
           label="Resonance"
@@ -33,18 +47,40 @@
           :decimals="3"
           @update:modelValue="handleResonanceChange"
         />
+        <!-- Always show KeyTracking -->
         <audio-knob-component
+          v-model="filterState.keytracking"
+          label="KeyTracking"
+          :min="0.0"
+          :max="1.0"
+          :step="0.001"
+          :decimals="3"
+          @update:modelValue="handleKeyTrackingChange"
+        />
+        <!-- Only show Gain knob if enabled -->
+        <audio-knob-component
+          v-if="gainEnabled"
           v-model="filterState.gain"
           label="Gain"
-          :disable="!gainEnabled"
           :min="0.0"
           :max="1.0"
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleGainChange"
         />
+        <!-- Show comb dampening when filter type is Comb -->
+        <audio-knob-component
+          v-if="filterState.filter_type === FilterType.Comb"
+          v-model="filterState.comb_dampening"
+          label="Comb Dampening"
+          :min="0.0"
+          :max="1.0"
+          :step="0.001"
+          :decimals="3"
+          @update:modelValue="handleCombDampeningChange"
+        />
       </div>
-      <!-- Dropdowns for filter type and slope -->
+      <!-- Dropdowns for filter type, slope and oversampling -->
       <div class="knob-group">
         <q-select
           v-model="filterState.filter_type"
@@ -62,6 +98,16 @@
           :options="filterSlopeOptions"
           :disable="!slopeEnabled"
           @update:modelValue="handleFilterSlopeChange"
+          dense
+          class="wide-select"
+          emit-value
+          map-options
+        />
+        <q-select
+          v-model="filterState.oversampling"
+          label="Oversampling"
+          :options="oversamplingOptions"
+          @update:modelValue="handleOversamplingChange"
           dense
           class="wide-select"
           emit-value
@@ -121,6 +167,10 @@ const filterState = computed<FilterState>({
         id: props.nodeId,
         cutoff: 20000,
         resonance: 0.7,
+        keytracking: 0,
+        comb_frequency: 220,
+        comb_dampening: 0.5,
+        oversampling: 0,
         filter_type: FilterType.LowPass,
         filter_slope: FilterSlope.Db12,
         active: true,
@@ -134,12 +184,13 @@ const filterState = computed<FilterState>({
   },
 });
 
-// Define options for filter type and slope dropdowns
+// Define options for filter type, slope and oversampling dropdowns
 const filterTypeOptions = [
   { label: 'Low Pass', value: FilterType.LowPass },
   { label: 'Notch', value: FilterType.Notch },
   { label: 'High Pass', value: FilterType.HighPass },
   { label: 'Ladder 24db', value: FilterType.Ladder },
+  { label: 'Comb', value: FilterType.Comb },
   { label: 'Low Shelf', value: FilterType.LowShelf },
   { label: 'Peaking', value: FilterType.Peaking },
   { label: 'High Shelf', value: FilterType.HighShelf },
@@ -148,6 +199,14 @@ const filterTypeOptions = [
 const filterSlopeOptions = [
   { label: '12 dB/oct', value: FilterSlope.Db12 },
   { label: '24 dB/oct', value: FilterSlope.Db24 },
+];
+
+const oversamplingOptions = [
+  { label: 'Off', value: 0 },
+  { label: '2x', value: 2 },
+  { label: '4x', value: 4 },
+  { label: '8x', value: 8 },
+  { label: '16x', value: 16 },
 ];
 
 // Handlers for updating state
@@ -171,8 +230,13 @@ const handleResonanceChange = (newVal: number) => {
   store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };
 
+const handleKeyTrackingChange = (newVal: number) => {
+  const currentState = { ...filterState.value, keytracking: newVal };
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
+};
+
 const handleFilterTypeChange = (newVal: FilterType) => {
-  if (newVal === FilterType.Ladder) {
+  if (newVal === FilterType.Ladder || newVal === FilterType.Comb) {
     slopeEnabled.value = false;
   } else {
     slopeEnabled.value = true;
@@ -195,6 +259,21 @@ const handleFilterTypeChange = (newVal: FilterType) => {
 
 const handleFilterSlopeChange = (newVal: FilterSlope) => {
   const currentState = { ...filterState.value, filter_slope: newVal };
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
+};
+
+const handleOversamplingChange = (newVal: number) => {
+  const currentState = { ...filterState.value, oversampling: newVal };
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
+};
+
+const handleCombFrequencyChange = (newVal: number) => {
+  const currentState = { ...filterState.value, comb_frequency: newVal };
+  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
+};
+
+const handleCombDampeningChange = (newVal: number) => {
+  const currentState = { ...filterState.value, comb_dampening: newVal };
   store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };
 

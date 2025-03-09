@@ -679,6 +679,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.config.cutoff,
       data.config.resonance,
       data.config.gain,
+      data.config.keytracking,
+      data.config.comb_frequency,
+      data.config.comb_dampening,
+      data.config.oversampling,
       data.config.filter_type,
       data.config.filter_slope,
     );

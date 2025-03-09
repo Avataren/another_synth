@@ -12,6 +12,7 @@ pub enum FilterType {
     Notch,
     HighPass,
     Ladder,
+    Comb,
 }
 
 /// A trait defining the basic filter interface.

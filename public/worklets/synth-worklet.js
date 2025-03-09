@@ -284,7 +284,9 @@ var FilterType = Object.freeze({
   HighPass: 5,
   "5": "HighPass",
   Ladder: 6,
-  "6": "Ladder"
+  "6": "Ladder",
+  Comb: 7,
+  "7": "Comb"
 });
 var LfoLoopMode = Object.freeze({
   Off: 0,
@@ -852,11 +854,15 @@ var AudioEngine = class {
    * @param {number} cutoff
    * @param {number} resonance
    * @param {number} gain
+   * @param {number} key_tracking
+   * @param {number} comb_frequency
+   * @param {number} comb_dampening
+   * @param {number} oversampling
    * @param {FilterType} filter_type
    * @param {FilterSlope} filter_slope
    */
-  update_filters(filter_id, cutoff, resonance, gain, filter_type, filter_slope) {
-    const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, filter_type, filter_slope);
+  update_filters(filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, oversampling, filter_type, filter_slope) {
+    const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, oversampling, filter_type, filter_slope);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -2186,6 +2192,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.config.cutoff,
       data.config.resonance,
       data.config.gain,
+      data.config.keytracking,
+      data.config.comb_frequency,
+      data.config.comb_dampening,
+      data.config.oversampling,
       data.config.filter_type,
       data.config.filter_slope
     );

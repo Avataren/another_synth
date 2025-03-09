@@ -117,7 +117,8 @@ export enum FilterType {
   HighShelf = 3,
   Notch = 4,
   HighPass = 5,
-  Ladder = 6
+  Ladder = 6,
+  Comb = 7
 }
 
 export enum FilterSlope {
@@ -135,6 +136,10 @@ export interface FilterState {
   id: number;
   cutoff: number;
   resonance: number;
+  keytracking: number;
+  comb_frequency: number;
+  comb_dampening: number;
+  oversampling: number;
   gain: number;
   filter_type: FilterType;
   filter_slope: FilterSlope;

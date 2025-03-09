@@ -964,7 +964,6 @@ impl AudioEngine {
                         block.resize(chunk_size, 0.0);
                     }
                     let input_block = vec![block]; // one channel
-                    console::log_1(&format!("Processing block: pos {} to {}", pos, end).into());
                     let out = resampler.process(&input_block, None).map_err(|e| {
                         JsValue::from_str(&format!("Resampling process error: {:?}", e))
                     })?;
@@ -1210,6 +1209,10 @@ impl AudioEngine {
         cutoff: f32,
         resonance: f32,
         gain: f32,
+        key_tracking: f32,
+        comb_frequency: f32,
+        comb_dampening: f32,
+        oversampling: u32,
         filter_type: FilterType,
         filter_slope: FilterSlope,
     ) -> Result<(), JsValue> {
@@ -1219,7 +1222,13 @@ impl AudioEngine {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
                     filter.set_params(cutoff, resonance);
+                    filter.set_comb_target_frequency(comb_frequency);
+                    filter.set_comb_dampening(comb_dampening);
                     filter.set_gain_normalized(gain);
+                    //log key_tracking
+                    console::log_1(&format!("key_tracking is {}", key_tracking).into());
+                    filter.set_keyboard_tracking_sensitivity(key_tracking);
+                    filter.set_oversampling_factor(oversampling);
                 } else {
                     return Err(JsValue::from_str("Node is not a Filter"));
                 }
