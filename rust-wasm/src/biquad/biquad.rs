@@ -13,6 +13,7 @@ pub enum FilterType {
     HighPass,
     Ladder,
     Comb,
+    BandPass,
 }
 
 /// A trait defining the basic filter interface.

@@ -1239,6 +1239,26 @@ impl AudioEngine {
         Ok(())
     }
 
+    #[wasm_bindgen]
+    pub fn get_filter_ir_waveform(
+        &mut self,
+        node_id: usize,
+        waveform_length: usize,
+    ) -> Result<Vec<f32>, JsValue> {
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+                if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
+                    return Ok(filter.generate_frequency_response(waveform_length));
+                } else {
+                    return Err(JsValue::from_str("Node is not a Filter"));
+                }
+            } else {
+                return Err(JsValue::from_str("Node not found"));
+            }
+        }
+        Ok(vec![])
+    }
+
     /// Update all LFOs across all   voices. This is called by the host when the user
     /// changes an LFO's settings.
     pub fn update_lfos(&mut self, params: LfoUpdateParams) {

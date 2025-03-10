@@ -212,6 +212,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'getEnvelopePreview':
         this.handleGetEnvelopePreview(event.data);
         break;
+      case 'getFilterIRWaveform':
+        this.handleGetFilterIrWaveform(event.data);
+        break;
       case 'importWavetable':
         this.handleImportWavetableData(event.data);
         break;
@@ -841,6 +844,27 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         messageId: data.messageId,
         message:
           err instanceof Error ? err.message : 'Failed to get node layout',
+      });
+    }
+  }
+
+  private handleGetFilterIrWaveform(data: { node_id: number; length: number }) {
+    if (!this.audioEngine) return;
+
+    try {
+      const waveformData = this.audioEngine.get_filter_ir_waveform(
+        data.node_id,
+        data.length,
+      );
+      this.port.postMessage({
+        type: 'FilterIrWaveform',
+        waveform: waveformData,
+      });
+    } catch (err) {
+      console.error('Error generating Filter IR waveform:', err);
+      this.port.postMessage({
+        type: 'error',
+        message: 'Failed to generate Filter IR waveform',
       });
     }
   }

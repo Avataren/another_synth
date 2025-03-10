@@ -221,7 +221,7 @@ export const FilterSlope = Object.freeze({
 });
 /**
  * The supported filter types.
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}
  */
 export const FilterType = Object.freeze({
     LowPass: 0, "0": "LowPass",
@@ -232,6 +232,7 @@ export const FilterType = Object.freeze({
     HighPass: 5, "5": "HighPass",
     Ladder: 6, "6": "Ladder",
     Comb: 7, "7": "Comb",
+    BandPass: 8, "8": "BandPass",
 });
 /**
  * @enum {0 | 1 | 2}
@@ -798,6 +799,20 @@ export class AudioEngine {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} waveform_length
+     * @returns {Float32Array}
+     */
+    get_filter_ir_waveform(node_id, waveform_length) {
+        const ret = wasm.audioengine_get_filter_ir_waveform(this.__wbg_ptr, node_id, waveform_length);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * Update all LFOs across all   voices. This is called by the host when the user

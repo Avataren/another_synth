@@ -286,7 +286,9 @@ var FilterType = Object.freeze({
   Ladder: 6,
   "6": "Ladder",
   Comb: 7,
-  "7": "Comb"
+  "7": "Comb",
+  BandPass: 8,
+  "8": "BandPass"
 });
 var LfoLoopMode = Object.freeze({
   Off: 0,
@@ -866,6 +868,20 @@ var AudioEngine = class {
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
+  }
+  /**
+   * @param {number} node_id
+   * @param {number} waveform_length
+   * @returns {Float32Array}
+   */
+  get_filter_ir_waveform(node_id, waveform_length) {
+    const ret = wasm.audioengine_get_filter_ir_waveform(this.__wbg_ptr, node_id, waveform_length);
+    if (ret[3]) {
+      throw takeFromExternrefTable0(ret[2]);
+    }
+    var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
   }
   /**
    * Update all LFOs across all   voices. This is called by the host when the user
@@ -1838,6 +1854,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "getEnvelopePreview":
         this.handleGetEnvelopePreview(event.data);
         break;
+      case "getFilterIRWaveform":
+        this.handleGetFilterIrWaveform(event.data);
+        break;
       case "importWavetable":
         this.handleImportWavetableData(event.data);
         break;
@@ -2312,6 +2331,25 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         type: "error",
         messageId: data.messageId,
         message: err instanceof Error ? err.message : "Failed to get node layout"
+      });
+    }
+  }
+  handleGetFilterIrWaveform(data) {
+    if (!this.audioEngine) return;
+    try {
+      const waveformData = this.audioEngine.get_filter_ir_waveform(
+        data.node_id,
+        data.length
+      );
+      this.port.postMessage({
+        type: "FilterIrWaveform",
+        waveform: waveformData
+      });
+    } catch (err) {
+      console.error("Error generating Filter IR waveform:", err);
+      this.port.postMessage({
+        type: "error",
+        message: "Failed to generate Filter IR waveform"
       });
     }
   }

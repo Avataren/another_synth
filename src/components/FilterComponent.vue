@@ -13,6 +13,10 @@
           @update:modelValue="handleActiveChange"
         />
       </div>
+      <!-- A canvas to display the filter response curve -->
+      <div class="canvas-wrapper">
+        <canvas ref="waveformCanvas"></canvas>
+      </div>
       <!-- Controls for cutoff, comb and other knobs -->
       <div class="knob-group">
         <!-- Show cutoff only if filter type is NOT Comb -->
@@ -120,10 +124,6 @@
         :source-type="VoiceNodeType.Filter"
         :debug="true"
       />
-      <!-- A canvas to display a simple filter response curve -->
-      <div class="canvas-wrapper">
-        <canvas ref="waveformCanvas"></canvas>
-      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -134,6 +134,7 @@ import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
+import { throttle } from 'src/utils/util';
 import {
   FilterSlope,
   type FilterState,
@@ -179,7 +180,6 @@ const filterState = computed<FilterState>({
     return state;
   },
   set: (newState: FilterState) => {
-    // Use toRaw to ensure we store a plain object
     store.filterStates.set(props.nodeId, { ...toRaw(newState) });
   },
 });
@@ -277,53 +277,118 @@ const handleCombDampeningChange = (newVal: number) => {
   store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
 };
 
-// Draw a basic filter response curve.
-const drawFilterCurve = () => {
+// -----------------------------------------------------------------
+// Throttled waveform update and caching logic for filter response
+// -----------------------------------------------------------------
+let cachedWaveformCanvas: HTMLCanvasElement | null = null;
+const throttledUpdateWaveformDisplay = throttle(async () => {
+  await updateCachedWaveform();
+  updateWaveformDisplay();
+}, 1000 / 10);
+
+const updateCachedWaveform = async () => {
+  if (!waveformCanvas.value) return;
+  const width = waveformCanvas.value.offsetWidth;
+  const height = waveformCanvas.value.offsetHeight;
+
+  // Only update actual canvas resolution if size has changed.
+  if (
+    waveformCanvas.value.width !== width ||
+    waveformCanvas.value.height !== height
+  ) {
+    waveformCanvas.value.width = width;
+    waveformCanvas.value.height = height;
+  }
+
+  // Create an offscreen canvas to cache the waveform image.
+  const offscreen = document.createElement('canvas');
+  offscreen.width = width;
+  offscreen.height = height;
+  const offCtx = offscreen.getContext('2d');
+  if (!offCtx) return;
+
+  // 1) Fill background
+  offCtx.fillStyle = '#1e2a3a';
+  offCtx.fillRect(0, 0, width, height);
+
+  // 2) Draw grid lines
+  offCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  offCtx.lineWidth = 1;
+  for (let x = 0; x < width; x += width / 8) {
+    offCtx.beginPath();
+    offCtx.moveTo(x, 0);
+    offCtx.lineTo(x, height);
+    offCtx.stroke();
+  }
+  for (let y = 0; y < height; y += height / 4) {
+    offCtx.beginPath();
+    offCtx.moveTo(0, y);
+    offCtx.lineTo(width, y);
+    offCtx.stroke();
+  }
+
+  // 3) Fetch the filter response data (same length as canvas width).
+  const filterData = await store.currentInstrument?.getFilterResponse(
+    props.nodeId,
+    width,
+  );
+  if (!filterData) return;
+
+  // 4) Build the filter response path from left to right,
+  //    starting at the bottom-left corner (0, height).
+  offCtx.beginPath();
+  offCtx.moveTo(0, height); // bottom-left
+  for (let i = 0; i < filterData.length; i++) {
+    // Each i is the x pixel, filterData[i] is normalized magnitude [0..1].
+    const x = i;
+    const y = height - filterData[i]! * height;
+    offCtx.lineTo(x, y);
+  }
+  // Then go straight down to the bottom at the last x (width-1).
+  //offCtx.lineTo(width - 1, height);
+  const lastX = filterData.length - 1;
+  //const lastY = height - filterData[lastX]! * height;
+  console.log('## filterData[lastX]', filterData[lastX]);
+  offCtx.lineTo(lastX, height);
+
+  offCtx.closePath();
+
+  // // 5) Fill under the curve
+  offCtx.fillStyle = 'rgba(255, 152, 0, 0.3)';
+  offCtx.fill();
+
+  // // 6) Draw the outline
+  offCtx.strokeStyle = '#FF9800';
+  offCtx.lineWidth = 2;
+  offCtx.stroke();
+
+  // Cache the offscreen canvas so we can quickly redraw later.
+  cachedWaveformCanvas = offscreen;
+};
+
+const updateWaveformDisplay = () => {
+  if (!waveformCanvas.value) return;
   const canvas = waveformCanvas.value;
-  if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-
-  const width = canvas.offsetWidth;
-  const height = canvas.offsetHeight;
-  canvas.width = width;
-  canvas.height = height;
-
-  ctx.clearRect(0, 0, width, height);
-
-  ctx.beginPath();
-  ctx.strokeStyle = '#FF9800';
-  ctx.lineWidth = 2;
-
-  for (let x = 0; x <= width; x++) {
-    const freq = 20 * Math.pow(20000 / 20, x / width);
-    let gain;
-    if (freq <= filterState.value.cutoff) {
-      gain = 1;
-    } else {
-      gain =
-        1 / (1 + (freq - filterState.value.cutoff) / filterState.value.cutoff);
-    }
-    const y = height - gain * height;
-    if (x === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
+  // Instead of clearing, we simply draw the cached image over the full canvas.
+  if (cachedWaveformCanvas) {
+    ctx.drawImage(cachedWaveformCanvas, 0, 0);
   }
-  ctx.stroke();
 };
+
+// -----------------------------------------------------------------
 
 watch(
   () => ({ ...filterStates.value.get(props.nodeId) }),
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
-        // Pass a plain object to updateFilterState
         store.currentInstrument?.updateFilterState(props.nodeId, {
           ...toRaw(newState),
         } as FilterState);
-        drawFilterCurve();
+        // Use the throttled waveform update instead of an immediate redraw.
+        throttledUpdateWaveformDisplay();
       }
     }
   },
@@ -334,12 +399,23 @@ onMounted(() => {
   if (!filterStates.value.has(props.nodeId)) {
     store.filterStates.set(props.nodeId, { ...toRaw(filterState.value) });
   }
-  drawFilterCurve();
-  window.addEventListener('resize', drawFilterCurve);
+  if (waveformCanvas.value) {
+    const canvas = waveformCanvas.value;
+    const width = canvas.offsetWidth;
+    const height = canvas.offsetHeight;
+    canvas.width = width;
+    canvas.height = height;
+    // Small delay to ensure the instrument is ready.
+    setTimeout(async () => {
+      await updateCachedWaveform();
+      updateWaveformDisplay();
+    }, 25);
+  }
+  window.addEventListener('resize', throttledUpdateWaveformDisplay);
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', drawFilterCurve);
+  window.removeEventListener('resize', throttledUpdateWaveformDisplay);
 });
 </script>
 
@@ -370,7 +446,7 @@ canvas {
   width: 100%;
   height: 100%;
   border: 1px solid #ccc;
-  background-color: rgb(200, 200, 200);
+  background-color: #1e2a3a; /* match the offscreen background */
   border-radius: 4px;
 }
 

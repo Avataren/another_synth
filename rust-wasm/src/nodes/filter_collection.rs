@@ -1,7 +1,10 @@
 use once_cell::sync::Lazy;
+use rustfft::num_complex::Complex;
+use rustfft::{FftPlanner, FftPlannerWasmSimd};
 use std::any::Any;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
+use web_sys::console;
 
 // Import the biquad types (including FilterType) without redefining them.
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
@@ -634,9 +637,6 @@ fn block_len(end: usize, start: usize) -> f32 {
     (end - start) as f32
 }
 
-// --------------------------------------------------------------------
-// New methods to avoid code duplication when generating an impulse response.
-
 impl FilterCollection {
     /// Process a single sample through the filter using the current settings.
     fn process_sample(&mut self, input: f32) -> f32 {
@@ -732,36 +732,124 @@ impl FilterCollection {
         }
     }
 
-    /// Generates an impulse response of the given length without duplicating code.
-    pub fn generate_impulse_response(&self, length: usize) -> Vec<f32> {
-        let mut temp = self.clone_reset();
+    pub fn generate_frequency_response(&self, requested_length: usize) -> Vec<f32> {
+        // Generate impulse response
+        let impulse_length = 2048;
+        let impulse = self.create_impulse_response(impulse_length);
+
+        // Calculate FFT magnitude (in dB), truncated to 0..Nyquist.
+        let fft_magnitude_db = self.calculate_fft_magnitude(impulse);
+
+        // Nyquist frequency is sample_rate / 2.
+        let nyquist_hz = self.sample_rate * 0.5;
+        // Clamp to 20 kHz or Nyquist, whichever is smaller.
+        let max_freq = 20_000.0_f32.min(nyquist_hz);
+        let min_freq = 20.0;
+
+        // Determine FFT bin indices corresponding to min_freq and max_freq.
+        // (Note: FFT bins are linearly spaced, but we want a log–spaced frequency axis.)
+        let bin_min = min_freq * (impulse_length as f32) / self.sample_rate;
+        // Ensure we never go out-of-bounds by subtracting a small amount.
+        let bin_max = (max_freq * (impulse_length as f32) / self.sample_rate)
+            .min(fft_magnitude_db.len() as f32 - 1.0);
+
+        let points = requested_length; //.min(512);
+        let mut response_db = Vec::with_capacity(points);
+
+        // Logarithmically sample from bin_min to bin_max.
+        // This guarantees that the frequencies used are strictly between min_freq and max_freq.
+        for i in 0..points {
+            let t = i as f32 / (points - 1) as f32;
+            // Compute the bin index on a logarithmic scale.
+            let bin = bin_min * (bin_max / bin_min).powf(t);
+            let bin_floor = bin.floor() as usize;
+            let bin_ceil = (bin_floor + 1).min(fft_magnitude_db.len() - 1);
+            let frac = bin - bin_floor as f32;
+            let db_val =
+                fft_magnitude_db[bin_floor] * (1.0 - frac) + fft_magnitude_db[bin_ceil] * frac;
+            response_db.push(db_val);
+        }
+
+        // Normalize the dB values to a 0–1 range for UI.
+        self.normalize_for_display_range(response_db, -40.0, 40.0)
+    }
+
+    // Example of a specialized normalization that uses a given dB range.
+    fn normalize_for_display_range(
+        &self,
+        mut data: Vec<f32>,
+        db_floor: f32,
+        db_ceiling: f32,
+    ) -> Vec<f32> {
+        for value in &mut data {
+            let clamped_db = value.clamp(db_floor, db_ceiling);
+            let ratio = (clamped_db - db_floor) / (db_ceiling - db_floor);
+            // Typically, 0 dB is near the top, so we might NOT invert it:
+            *value = ratio;
+        }
+        data
+    }
+
+    // Create impulse response with a completely new filter
+    fn create_impulse_response(&self, length: usize) -> Vec<f32> {
+        // Create an entirely new filter with the same settings
+        let mut new_filter = FilterCollection::new(self.sample_rate);
+
+        // Copy only necessary parameters, avoid any shared references
+        new_filter.base_cutoff = self.base_cutoff;
+        new_filter.base_resonance = self.base_resonance;
+        new_filter.base_gain_db = self.base_gain_db;
+        new_filter.cutoff = self.base_cutoff;
+        new_filter.resonance = self.base_resonance;
+        new_filter.filter_type = self.filter_type;
+        new_filter.slope = self.slope;
+        new_filter.oversampling_factor = self.oversampling_factor;
+        new_filter.ladder_gain = 10f32.powf(self.base_gain_db / 20.0);
+        new_filter.comb_target_frequency = self.comb_target_frequency;
+        new_filter.comb_dampening = self.comb_dampening;
+
+        // Explicitly initialize filter settings
+        new_filter.set_filter_type(self.filter_type);
+        new_filter.set_filter_slope(self.slope);
+
+        // Generate impulse response
         let mut response = Vec::with_capacity(length);
         for i in 0..length {
-            // Use an impulse: first sample is 1.0, the rest are 0.0.
             let input = if i == 0 { 1.0 } else { 0.0 };
-            response.push(temp.process_sample(input));
+            response.push(new_filter.process_sample(input));
         }
+
         response
     }
 
-    /// Create a temporary copy of the filter with reset internal state.
-    fn clone_reset(&self) -> Self {
-        let mut temp = FilterCollection::new(self.sample_rate);
-        temp.base_cutoff = self.base_cutoff;
-        temp.base_resonance = self.base_resonance;
-        temp.base_gain_db = self.base_gain_db;
-        temp.cutoff = self.cutoff;
-        temp.resonance = self.resonance;
-        temp.smoothing_factor = self.smoothing_factor;
-        temp.enabled = self.enabled;
-        temp.filter_type = self.filter_type;
-        temp.slope = self.slope;
-        temp.oversampling_factor = self.oversampling_factor;
-        temp.keyboard_tracking_sensitivity = self.keyboard_tracking_sensitivity;
-        temp.biquad = self.biquad.clone();
-        temp.cascaded = self.cascaded.clone();
-        temp.ladder_gain = self.ladder_gain;
-        // Other internal states remain at their default (reset) values.
-        temp
+    // Separate function to calculate FFT magnitudes from impulse response
+    fn calculate_fft_magnitude(&self, impulse_response: Vec<f32>) -> Vec<f32> {
+        let fft_length = impulse_response.len();
+
+        // Create the standard FFT planner.
+        let mut planner = rustfft::FftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(fft_length);
+
+        // Convert impulse response to complex numbers.
+        let mut buffer: Vec<rustfft::num_complex::Complex<f32>> = impulse_response
+            .into_iter()
+            .map(|x| rustfft::num_complex::Complex { re: x, im: 0.0 })
+            .collect();
+
+        // Process the FFT.
+        fft.process(&mut buffer);
+
+        // Calculate magnitude in dB for all bins.
+        let epsilon = 1e-10;
+        let mut result: Vec<f32> = buffer
+            .into_iter()
+            .map(|c| 20.0 * ((c.norm() + epsilon).log10()))
+            .collect();
+
+        // Truncate to the first half (0..Nyquist). For a 2048 sample FFT, that's indices [0..1024].
+        let half_len = fft_length / 2;
+        result.truncate(half_len);
+
+        result
     }
 }

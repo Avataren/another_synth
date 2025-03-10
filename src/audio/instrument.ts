@@ -297,6 +297,43 @@ export default class Instrument {
     });
   }
 
+  public async getFilterResponse(
+    node_id: number,
+    length: number,
+  ): Promise<Float32Array> {
+    if (!this.ready || !this.workletNode) {
+      throw new Error('Audio system not ready');
+    }
+    return new Promise<Float32Array>((resolve, reject) => {
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.type === 'FilterIrWaveform') {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(e.data.waveform));
+        } else if (
+          e.data.type === 'error' &&
+          e.data.source === 'getLfoWaveform'
+        ) {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      this.workletNode?.port.addEventListener('message', handleMessage);
+      console.log('## requesting IR waveform for node', node_id);
+      this.workletNode?.port.postMessage({
+        type: 'getFilterIRWaveform',
+        node_id,
+        length,
+      });
+
+      // Add timeout to prevent hanging
+      setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for waveform data'));
+      }, 5000);
+    });
+  }
+
   public async getLfoWaveform(
     waveform: number,
     phaseOffset: number,
@@ -337,7 +374,7 @@ export default class Instrument {
       setTimeout(() => {
         this.workletNode?.port.removeEventListener('message', handleMessage);
         reject(new Error('Timeout waiting for waveform data'));
-      }, 1000);
+      }, 5000);
     });
   }
 
