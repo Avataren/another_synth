@@ -28,7 +28,7 @@ pub struct Biquad {
     pub filter_type: FilterType,
     pub sample_rate: f32,
     pub frequency: f32,
-    pub Q: f32,
+    pub q: f32,
     pub gain_db: f32,
     // Filter coefficients.
     pub b0: f32,
@@ -49,14 +49,14 @@ impl Biquad {
         filter_type: FilterType,
         sample_rate: f32,
         frequency: f32,
-        Q: f32,
+        q: f32,
         gain_db: f32,
     ) -> Self {
         let mut filter = Self {
             filter_type,
             sample_rate,
             frequency,
-            Q,
+            q,
             gain_db,
             b0: 0.0,
             b1: 0.0,
@@ -105,40 +105,40 @@ impl Biquad {
         let sn = omega.sin();
         let cs = omega.cos();
         // For most filters (except peaking low/high-shelf) compute alpha as:
-        let alpha = sn / (2.0 * self.Q);
+        let alpha = sn / (2.0 * self.q);
 
         match self.filter_type {
             FilterType::LowShelf => {
-                let A = 10f32.powf(self.gain_db / 40.0);
-                let sqrtA = A.sqrt();
+                let a = 10f32.powf(self.gain_db / 40.0);
+                let sqrt_a = a.sqrt();
                 let shelf_alpha = sn / 2.0 * (2.0f32).sqrt(); // Using S = 1.0 for shelf slope.
-                let a0 = (A + 1.0) + (A - 1.0) * cs + 2.0 * sqrtA * shelf_alpha;
-                self.b0 = A * ((A + 1.0) - (A - 1.0) * cs + 2.0 * sqrtA * shelf_alpha) / a0;
-                self.b1 = 2.0 * A * ((A - 1.0) - (A + 1.0) * cs) / a0;
-                self.b2 = A * ((A + 1.0) - (A - 1.0) * cs - 2.0 * sqrtA * shelf_alpha) / a0;
-                self.a1 = -2.0 * ((A - 1.0) + (A + 1.0) * cs) / a0;
-                self.a2 = ((A + 1.0) + (A - 1.0) * cs - 2.0 * sqrtA * shelf_alpha) / a0;
+                let a0 = (a + 1.0) + (a - 1.0) * cs + 2.0 * sqrt_a * shelf_alpha;
+                self.b0 = a * ((a + 1.0) - (a - 1.0) * cs + 2.0 * sqrt_a * shelf_alpha) / a0;
+                self.b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cs) / a0;
+                self.b2 = a * ((a + 1.0) - (a - 1.0) * cs - 2.0 * sqrt_a * shelf_alpha) / a0;
+                self.a1 = -2.0 * ((a - 1.0) + (a + 1.0) * cs) / a0;
+                self.a2 = ((a + 1.0) + (a - 1.0) * cs - 2.0 * sqrt_a * shelf_alpha) / a0;
             }
             FilterType::HighShelf => {
-                let A = 10f32.powf(self.gain_db / 40.0);
-                let sqrtA = A.sqrt();
+                let a: f32 = 10f32.powf(self.gain_db / 40.0);
+                let sqrt_a = a.sqrt();
                 let shelf_alpha = sn / 2.0 * (2.0f32).sqrt();
-                let a0 = (A + 1.0) - (A - 1.0) * cs + 2.0 * sqrtA * shelf_alpha;
-                self.b0 = A * ((A + 1.0) + (A - 1.0) * cs + 2.0 * sqrtA * shelf_alpha) / a0;
-                self.b1 = -2.0 * A * ((A - 1.0) + (A + 1.0) * cs) / a0;
-                self.b2 = A * ((A + 1.0) + (A - 1.0) * cs - 2.0 * sqrtA * shelf_alpha) / a0;
-                self.a1 = 2.0 * ((A - 1.0) - (A + 1.0) * cs) / a0;
-                self.a2 = ((A + 1.0) - (A - 1.0) * cs - 2.0 * sqrtA * shelf_alpha) / a0;
+                let a0 = (a + 1.0) - (a - 1.0) * cs + 2.0 * sqrt_a * shelf_alpha;
+                self.b0 = a * ((a + 1.0) + (a - 1.0) * cs + 2.0 * sqrt_a * shelf_alpha) / a0;
+                self.b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cs) / a0;
+                self.b2 = a * ((a + 1.0) + (a - 1.0) * cs - 2.0 * sqrt_a * shelf_alpha) / a0;
+                self.a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cs) / a0;
+                self.a2 = ((a + 1.0) - (a - 1.0) * cs - 2.0 * sqrt_a * shelf_alpha) / a0;
             }
             FilterType::Peaking => {
-                let A = 10f32.powf(self.gain_db / 40.0);
-                let alpha = sn / (2.0 * self.Q);
-                let a0 = 1.0 + alpha / A;
-                self.b0 = (1.0 + alpha * A) / a0;
+                let a: f32 = 10f32.powf(self.gain_db / 40.0);
+                let alpha = sn / (2.0 * self.q);
+                let a0 = 1.0 + alpha / a;
+                self.b0 = (1.0 + alpha * a) / a0;
                 self.b1 = -2.0 * cs / a0;
-                self.b2 = (1.0 - alpha * A) / a0;
+                self.b2 = (1.0 - alpha * a) / a0;
                 self.a1 = -2.0 * cs / a0;
-                self.a2 = (1.0 - alpha / A) / a0;
+                self.a2 = (1.0 - alpha / a) / a0;
             }
             FilterType::Notch => {
                 let a0 = 1.0 + alpha;

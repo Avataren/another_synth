@@ -23,7 +23,6 @@ pub use envelope::*;
 pub use filter_collection::*;
 pub use global_frequency_node::*;
 pub use global_velocity_node::*;
-pub use ladder_filter::*;
 pub use lfo::*;
 pub use mixer::*;
 pub use noise_generator::*;

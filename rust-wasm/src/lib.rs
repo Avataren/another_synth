@@ -1009,7 +1009,7 @@ impl AudioEngine {
     #[wasm_bindgen]
     pub fn import_wavetable(
         &mut self,
-        nodeId: usize,
+        node_id: usize,
         data: &[u8],
         base_size: usize,
     ) -> Result<(), JsValue> {
@@ -1028,7 +1028,7 @@ impl AudioEngine {
         for voice in &mut self.voices {
             let node = voice
                 .graph
-                .get_node_mut(NodeId(nodeId))
+                .get_node_mut(NodeId(node_id))
                 .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
             let osc = node
                 .as_any_mut()

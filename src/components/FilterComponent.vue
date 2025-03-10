@@ -345,10 +345,7 @@ const updateCachedWaveform = async () => {
     offCtx.lineTo(x, y);
   }
   // Then go straight down to the bottom at the last x (width-1).
-  //offCtx.lineTo(width - 1, height);
   const lastX = filterData.length - 1;
-  //const lastY = height - filterData[lastX]! * height;
-  console.log('## filterData[lastX]', filterData[lastX]);
   offCtx.lineTo(lastX, height);
 
   offCtx.closePath();

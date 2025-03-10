@@ -1,7 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
 
-use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};

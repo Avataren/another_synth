@@ -671,14 +671,14 @@ export class AudioEngine {
      * It accepts the WAV data as a byte slice, uses a Cursor to create a reader,
      * builds a new morph collection from the data, adds it to the synth bank under
      * the name "imported", and then updates all wavetable oscillators to use it.
-     * @param {number} nodeId
+     * @param {number} node_id
      * @param {Uint8Array} data
      * @param {number} base_size
      */
-    import_wavetable(nodeId, data, base_size) {
+    import_wavetable(node_id, data, base_size) {
         const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.audioengine_import_wavetable(this.__wbg_ptr, nodeId, ptr0, len0, base_size);
+        const ret = wasm.audioengine_import_wavetable(this.__wbg_ptr, node_id, ptr0, len0, base_size);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

@@ -1,4 +1,3 @@
-use web_sys::console;
 
 use crate::{
     graph::ModulationType,

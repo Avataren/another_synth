@@ -1,10 +1,7 @@
 use once_cell::sync::Lazy;
-use rustfft::num_complex::Complex;
-use rustfft::{FftPlanner, FftPlannerWasmSimd};
 use std::any::Any;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
-use web_sys::console;
 
 // Import the biquad types (including FilterType) without redefining them.
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
@@ -322,7 +319,7 @@ impl FilterCollection {
         let w = c + v;
         let a = w + v + (x2 - x0) * 0.5;
         let b_neg = w + a;
-        ((((a * frac) - b_neg) * frac + c) * frac + x0)
+        (((a * frac) - b_neg) * frac + c) * frac + x0
     }
 
     /// Get a delayed sample using Hermite interpolation.
@@ -514,19 +511,19 @@ impl AudioNode for FilterCollection {
                     _ => {
                         let os_factor = self.oversampling_factor.max(1);
                         self.biquad.frequency = self.cutoff;
-                        self.biquad.Q = normalized_resonance_to_q(self.resonance);
+                        self.biquad.q = normalized_resonance_to_q(self.resonance);
                         self.biquad.gain_db = self.base_gain_db;
                         self.biquad.filter_type = self.filter_type;
                         self.biquad.update_coefficients();
                         if let FilterSlope::Db24 = self.slope {
                             if let Some(ref mut cascaded) = self.cascaded {
                                 cascaded.first.frequency = self.cutoff;
-                                cascaded.first.Q = normalized_resonance_to_q(self.resonance).sqrt();
+                                cascaded.first.q = normalized_resonance_to_q(self.resonance).sqrt();
                                 cascaded.first.gain_db = self.base_gain_db;
                                 cascaded.first.filter_type = self.filter_type;
                                 cascaded.first.update_coefficients();
                                 cascaded.second.frequency = self.cutoff;
-                                cascaded.second.Q =
+                                cascaded.second.q =
                                     normalized_resonance_to_q(self.resonance).sqrt();
                                 cascaded.second.gain_db = self.base_gain_db;
                                 cascaded.second.filter_type = self.filter_type;
@@ -689,7 +686,7 @@ impl FilterCollection {
             _ => {
                 let os_factor = self.oversampling_factor.max(1);
                 self.biquad.frequency = self.cutoff;
-                self.biquad.Q = normalized_resonance_to_q(self.resonance);
+                self.biquad.q = normalized_resonance_to_q(self.resonance);
                 self.biquad.gain_db = self.base_gain_db;
                 self.biquad.filter_type = self.filter_type;
                 self.biquad.update_coefficients();
