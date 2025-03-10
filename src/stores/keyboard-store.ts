@@ -1,4 +1,3 @@
-// src/stores/keyboard-store.ts
 import { defineStore } from 'pinia';
 import { WebMidi } from 'webmidi';
 
@@ -12,6 +11,8 @@ export const useKeyboardStore = defineStore('keyboard', {
   state: () => ({
     activeNotes: new Set<number>(),
     noteEvents: [] as NoteEvent[],
+    // New property to track only the latest event (for performance)
+    latestEvent: null as NoteEvent | null,
     keyMap: {
       // Lower octave - white keys
       'KeyZ': 48, // C3
@@ -76,31 +77,34 @@ export const useKeyboardStore = defineStore('keyboard', {
     noteOn(note: number, velocity = 127) {
       if (!this.activeNotes.has(note)) {
         this.activeNotes.add(note);
-        this.noteEvents.push({
+        const event: NoteEvent = {
           note,
           velocity,
           timestamp: performance.now(),
-        });
+        };
+        this.noteEvents.push(event);
+        this.latestEvent = event; // update only the latest event
       }
     },
 
     noteOff(note: number) {
       this.activeNotes.delete(note);
-      this.noteEvents.push({
+      const event: NoteEvent = {
         note,
         velocity: 0,
         timestamp: performance.now(),
-      });
+      };
+      this.noteEvents.push(event);
+      this.latestEvent = event; // update only the latest event
     },
 
     clearAllNotes() {
       this.activeNotes.clear();
     },
 
-    // --- Keyboard-only listeners (original code) ---
+    // --- Keyboard-only listeners ---
     setupGlobalKeyboardListeners() {
       const handleKeyDown = (event: KeyboardEvent) => {
-        // Ignore if we're in an input element or keyboard is disabled
         if (!this.isEnabled || this.isInputElement(event.target)) {
           return;
         }
@@ -136,9 +140,7 @@ export const useKeyboardStore = defineStore('keyboard', {
     },
 
     isInputElement(element: EventTarget | null): boolean {
-      if (!element || !(element instanceof HTMLElement)) {
-        return false;
-      }
+      if (!element || !(element instanceof HTMLElement)) return false;
       const tagName = element.tagName.toLowerCase();
       return (
         tagName === 'input' ||
@@ -147,66 +149,46 @@ export const useKeyboardStore = defineStore('keyboard', {
       );
     },
 
-    // --- MIDI listeners using WebMidi.js (npm-installed) ---
+    // --- MIDI listeners using WebMidi.js ---
     setupMidiListeners() {
       console.log('# setupMidiListeners');
       WebMidi.enable({ sysex: true })
         .then(() => {
           console.log('# WebMidi enabled!');
           this.midiEnabled = true;
-
-          // Log total number of MIDI inputs detected
           console.log('# Total MIDI inputs:', WebMidi.inputs.length);
 
-          // Iterate over available MIDI inputs
           WebMidi.inputs.forEach((input) => {
             console.log('# MIDI Input:', input.name);
 
-            // Attach a generic listener for all MIDI messages (for debugging)
-            // input.addListener('midimessage', (e) => {
-            //   console.log('# Generic MIDI message received:', e);
-            // });
-
-            // Attach a noteon listener
             input.addListener('noteon', (e) => {
               if (!e.data || e.data.length < 3) {
-                console.error('# Incomplete MIDI noteon message received:', e.data);
+                console.error(
+                  '# Incomplete MIDI noteon message received:',
+                  e.data
+                );
                 return;
               }
-              const status = e.data[0];
-              const note = e.data[1];
-              const velocity = e.data[2];
-
-              if (status === undefined || note === undefined || velocity === undefined) {
-                console.error('# MIDI noteon values undefined:', { status, note, velocity });
-                return;
-              }
-
-              // console.log(`# MIDI noteon - Status: 0x${status.toString(16)} | Note: ${note} | Velocity: ${velocity}`);
-
-              // Treat a noteon with velocity 0 as noteoff
-              if (velocity > 0) {
-                this.noteOn(note, velocity);
+              // Destructure and ignore the first byte (status)
+              const [, note, velocity] = e.data;
+              if (velocity && velocity > 0) {
+                this.noteOn(note!, velocity);
               } else {
-                this.noteOff(note);
+                this.noteOff(note!);
               }
             });
 
-            // Attach a noteoff listener
             input.addListener('noteoff', (e) => {
               if (!e.data || e.data.length < 3) {
-                console.error('# Incomplete MIDI noteoff message received:', e.data);
+                console.error(
+                  '# Incomplete MIDI noteoff message received:',
+                  e.data
+                );
                 return;
               }
-              const status = e.data[0];
-              const note = e.data[1];
-              if (status === undefined || note === undefined) {
-                console.error('# MIDI noteoff values undefined:', { status, note });
-                return;
-              }
-
-              // console.log(`# MIDI noteoff - Status: 0x${status.toString(16)} | Note: ${note}`);
-              this.noteOff(note);
+              // Destructure with status and note
+              const [, note] = e.data;
+              this.noteOff(note!);
             });
           });
         })

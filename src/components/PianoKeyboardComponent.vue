@@ -15,7 +15,6 @@
         :data-note="note.midiNote"
       >
         <span class="note-label">{{ note.label }}</span>
-        <!-- <span class="key-binding">{{ getKeyBinding(note.midiNote) }}</span> -->
       </div>
     </div>
   </div>
@@ -31,10 +30,10 @@ interface PianoKey {
   label: string;
   type: 'white' | 'black';
 }
+
 const { currentInstrument } = useAudioSystemStore();
 const keyboardStore = useKeyboardStore();
 
-// Define two octaves of piano keys
 const keyboardNotes: PianoKey[] = [
   { midiNote: 48, label: 'C3', type: 'white' },
   { midiNote: 49, label: 'C#3', type: 'black' },
@@ -72,43 +71,17 @@ const keyboardNotes: PianoKey[] = [
   { midiNote: 81, label: 'A5', type: 'white' },
 ];
 
-// function getKeyBinding(midiNote: number): string {
-//   const keyMap = keyboardStore.$state.keyMap;
-//   return (
-//     Object.entries(keyMap).find(([_, note]) => note === midiNote)?.[0] || ''
-//   );
-// }
-
-const setupKeyboardListener = () => {
-  const keyboardStore = useKeyboardStore();
-
-  watch(
-    () => keyboardStore.noteEvents,
-    (events) => {
-      if (!events.length) return;
-
-      const latestEvent = events[events.length - 1];
-      if (!latestEvent) return;
-      //console.log('watch trigger on note event! ', latestEvent.note);
-      if (latestEvent.velocity < 0.0001) {
-        currentInstrument?.note_off(latestEvent.note);
-      } else {
-        //const gain = latestEvent.velocity / 127;
-
-        currentInstrument?.note_on(latestEvent.note, latestEvent.velocity);
-      }
-      // Update audio parameters
-      // const freqParam = this.workletNode.parameters.get('frequency');
-      // const gainParam = this.workletNode.parameters.get('gain');
-
-      // if (freqParam && gainParam) {
-      //   freqParam.setValueAtTime(frequency, this.audioContext.currentTime);
-      //   gainParam.setValueAtTime(gain, this.audioContext.currentTime);
-      // }
-    },
-    { deep: true },
-  );
-};
+watch(
+  () => keyboardStore.latestEvent,
+  (event) => {
+    if (!event) return;
+    if (event.velocity < 0.0001) {
+      currentInstrument?.note_off(event.note);
+    } else {
+      currentInstrument?.note_on(event.note, event.velocity);
+    }
+  },
+);
 
 function handleNoteOn(note: number) {
   keyboardStore.noteOn(note);
@@ -119,9 +92,9 @@ function handleNoteOff(note: number) {
 }
 
 onMounted(() => {
+  console.log('Component mounted, setting up listeners.');
   keyboardStore.setupGlobalKeyboardListeners();
   keyboardStore.setupMidiListeners();
-  setupKeyboardListener();
 });
 
 onUnmounted(() => {
@@ -133,8 +106,8 @@ onUnmounted(() => {
 <style scoped>
 .piano-keyboard {
   width: 100%;
-  max-width: 600px; /* Reduced from 800px */
-  height: 180px; /* Slightly reduced height */
+  max-width: 600px;
+  height: 180px;
   position: relative;
   margin: 20px auto;
   user-select: none;
@@ -172,9 +145,9 @@ onUnmounted(() => {
 
 .black {
   background: #333;
-  width: 24px; /* Reduced from 30px */
+  width: 24px;
   height: 60%;
-  margin: 0 -12px; /* Adjusted margin to match new width */
+  margin: 0 -12px;
   z-index: 2;
   border-radius: 0 0 4px 4px;
 }
@@ -216,7 +189,7 @@ onUnmounted(() => {
 
 .piano-key,
 .note-label,
-.key-binding {
+key-binding {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
