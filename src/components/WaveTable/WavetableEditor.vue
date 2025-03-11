@@ -200,6 +200,8 @@ export default {
       selectedKeyframe: 0,
       selectedPreset: 'custom',
       presetOptions: [
+        { label: 'Analog PWM', value: 'analogPWM' },
+        { label: 'Pulse PWM', value: 'pulsePWM' },
         { label: 'Sine', value: 'sine' },
         { label: 'Harmonic Series', value: 'harmonicSeries' },
         { label: 'Square Wave', value: 'square' },
@@ -527,6 +529,68 @@ export default {
             },
           },
         ];
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'pulsePWM') {
+        // Generate 256 keyframes for a proper square wave PWM preset that evolves from even to a sliver pulse.
+        const totalKeyframes = 256;
+        const newKeyframes = [];
+        const deltaStart = Math.PI; // 50% duty cycle (even square wave)
+        const deltaEnd = Math.PI / 50; // Very narrow pulse at the end
+        for (let i = 0; i < totalKeyframes; i++) {
+          // Normalized time from 0 to 1
+          const t = i / (totalKeyframes - 1);
+          // Linearly interpolate delta between deltaStart and deltaEnd
+          const delta = deltaStart * (1 - t) + deltaEnd * t;
+          // For each harmonic, compute Fourier coefficients for the difference of two sawtooths.
+          // This yields a pulse wave with duty cycle D = delta/(2π).
+          const harmonics = Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, j) => {
+              const n = j + 1;
+              // Compute the complex difference: 1 - exp(i * n * delta)
+              const real = 1 - Math.cos(n * delta);
+              const imag = -Math.sin(n * delta);
+              // Magnitude: (1/n)*sqrt(real^2 + imag^2) = (2/n)*|sin(n*delta/2)|
+              const amplitude = Math.sqrt(real * real + imag * imag) / n;
+              // Phase: the argument of (1 - exp(i * n * delta))
+              const phase = Math.atan2(imag, real);
+              return { amplitude, phase };
+            },
+          );
+          // Spread time linearly from 0 to 100.
+          const time = t * 100;
+          newKeyframes.push({ time, harmonics });
+        }
+        this.keyframes = newKeyframes;
+        this.scrubPosition = 0;
+        this.selectedKeyframe = 0;
+      } else if (newVal === 'analogPWM') {
+        // We want 256 keyframes to let the pulse “move” across the wavetable.
+        const totalKeyframes = 256;
+        const newKeyframes = [];
+        for (let i = 0; i < totalKeyframes; i++) {
+          // Set the time linearly over 0 to 100 (consistent with other presets)
+          const time = (i / (totalKeyframes - 1)) * 100;
+          // Compute a duty cycle that oscillates over the wavetable.
+          // Here the duty goes from ~0.1 to ~0.9 (centered at 0.5); adjust the multiplier if needed.
+          const duty = 0.5 + 0.4 * Math.sin((2 * Math.PI * i) / totalKeyframes);
+          // For each harmonic (using the current selected number of bands), calculate:
+          // amplitude = (2 * sin(n * π * duty)) / (n * π)
+          // phase = -n * π * duty
+          const harmonics = Array.from(
+            { length: this.selectedNumHarmonics },
+            (_, j) => {
+              const n = j + 1;
+              const amplitude =
+                (2 * Math.sin(n * Math.PI * duty)) / (n * Math.PI);
+              const phase = -n * Math.PI * duty;
+              return { amplitude, phase };
+            },
+          );
+          newKeyframes.push({ time, harmonics });
+        }
+        this.keyframes = newKeyframes;
         this.scrubPosition = 0;
         this.selectedKeyframe = 0;
       } else if (newVal === 'brightBrass') {
