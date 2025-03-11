@@ -566,18 +566,20 @@ export default {
         this.scrubPosition = 0;
         this.selectedKeyframe = 0;
       } else if (newVal === 'analogPWM') {
-        // We want 256 keyframes to let the pulse “move” across the wavetable.
+        // Generate 256 keyframes for an analog PWM preset that transitions linearly
+        // from an even square wave (50% duty) to a narrow pulse (e.g., 5% duty).
         const totalKeyframes = 256;
         const newKeyframes = [];
+        const dutyStart = 0.5; // Even square wave (50% duty)
+        const dutyEnd = 0.01; // Very narrow pulse (~1% duty)
         for (let i = 0; i < totalKeyframes; i++) {
-          // Set the time linearly over 0 to 100 (consistent with other presets)
-          const time = (i / (totalKeyframes - 1)) * 100;
-          // Compute a duty cycle that oscillates over the wavetable.
-          // Here the duty goes from ~0.1 to ~0.9 (centered at 0.5); adjust the multiplier if needed.
-          const duty = 0.5 + 0.4 * Math.sin((2 * Math.PI * i) / totalKeyframes);
-          // For each harmonic (using the current selected number of bands), calculate:
-          // amplitude = (2 * sin(n * π * duty)) / (n * π)
-          // phase = -n * π * duty
+          // Normalize time t from 0 to 1.
+          const t = i / (totalKeyframes - 1);
+          // Linearly interpolate the duty cycle.
+          const duty = dutyStart * (1 - t) + dutyEnd * t;
+          // For each harmonic, compute Fourier coefficients for a rectangular pulse wave.
+          // Fourier series for a pulse wave: amplitude = (2 * sin(n * π * duty)) / (n * π)
+          // and phase = -n * π * duty.
           const harmonics = Array.from(
             { length: this.selectedNumHarmonics },
             (_, j) => {
@@ -588,6 +590,8 @@ export default {
               return { amplitude, phase };
             },
           );
+          // Spread time linearly from 0 to 100.
+          const time = t * 100;
           newKeyframes.push({ time, harmonics });
         }
         this.keyframes = newKeyframes;
