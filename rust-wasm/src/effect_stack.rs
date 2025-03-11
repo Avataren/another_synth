@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    graph::{ModulationSource, ModulationType},
+    graph::{ModulationSource, ModulationTransformation, ModulationType},
     AudioNode, PortId,
 };
 
@@ -83,6 +83,7 @@ impl EffectStack {
                         buffer: current_left.clone(),
                         amount: 1.0,
                         mod_type: ModulationType::Additive,
+                        transformation: ModulationTransformation::None,
                     }],
                 );
                 inputs.insert(
@@ -91,6 +92,7 @@ impl EffectStack {
                         buffer: current_right.clone(),
                         amount: 1.0,
                         mod_type: ModulationType::Additive,
+                        transformation: ModulationTransformation::None,
                     }],
                 );
 

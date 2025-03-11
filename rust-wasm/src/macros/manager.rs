@@ -175,11 +175,6 @@ impl MacroManager {
                             ModulationType::Bipolar => {
                                 current_simd * (f32x4::splat(1.0) + macro_values_simd * amount_simd)
                             }
-                            ModulationType::FrequencyCents => {
-                                let cents_simd =
-                                    macro_values_simd * amount_simd * f32x4::splat(100.0);
-                                current_simd * Self::cents_to_factor_simd(cents_simd)
-                            }
                         };
 
                         output_buffer[i..i + out_chunk_size]

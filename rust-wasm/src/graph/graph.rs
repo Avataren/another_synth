@@ -1,4 +1,3 @@
-
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///
 /// Core concepts:
@@ -36,7 +35,7 @@
 ///
 use super::{
     buffer_pool::AudioBufferPool,
-    types::{Connection, ConnectionKey, NodeId},
+    types::{Connection, ConnectionKey, ModulationTransformation, NodeId},
     ModulationSource,
 };
 use crate::{graph::ModulationType, nodes::GlobalFrequencyNode, nodes::GlobalVelocityNode};
@@ -52,8 +51,17 @@ pub struct AudioGraph {
     pub(crate) node_buffers: HashMap<(NodeId, PortId), usize>,
     pub(crate) gate_buffer_idx: usize,
     // We now include the source node in the tuple so we can identify which connection to remove.
-    pub(crate) input_connections:
-        HashMap<NodeId, Vec<(PortId, usize, f32, NodeId, ModulationType)>>,
+    pub(crate) input_connections: HashMap<
+        NodeId,
+        Vec<(
+            PortId,
+            usize,
+            f32,
+            NodeId,
+            ModulationType,
+            ModulationTransformation,
+        )>,
+    >,
     pub(crate) temp_buffer_indices: Vec<usize>,
     pub(crate) global_frequency_node: Option<NodeId>,
     pub(crate) global_velocity_node: Option<NodeId>,
@@ -130,6 +138,7 @@ impl AudioGraph {
                         to_port: PortId::GlobalFrequency,
                         amount: 1.0,
                         modulation_type: ModulationType::Additive,
+                        modulation_transform: ModulationTransformation::None,
                     });
                 }
             }
@@ -172,6 +181,7 @@ impl AudioGraph {
             amount,
             connection.from_node,
             connection.modulation_type,
+            connection.modulation_transform,
         ));
 
         self.update_processing_order();
@@ -223,11 +233,13 @@ impl AudioGraph {
 
         // Update input_connections by removing entries matching the criteria.
         if let Some(inputs) = self.input_connections.get_mut(&to_node) {
-            inputs.retain(|(port, buffer_idx, _amount, src_node, _mod_type)| {
-                !(*port == to_port
-                    && *src_node == from_node
-                    && from_node_buffer_indices.contains(buffer_idx))
-            });
+            inputs.retain(
+                |(port, buffer_idx, _amount, src_node, _mod_type, _mod_transform)| {
+                    !(*port == to_port
+                        && *src_node == from_node
+                        && from_node_buffer_indices.contains(buffer_idx))
+                },
+            );
             if inputs.is_empty() {
                 self.input_connections.remove(&to_node);
             }
@@ -273,11 +285,13 @@ impl AudioGraph {
 
         // Update input_connections accordingly.
         if let Some(inputs) = self.input_connections.get_mut(&connection.to_node) {
-            inputs.retain(|(port, buffer_idx, _amount, src_node, _mod_type)| {
-                !(*port == connection.to_port
-                    && *src_node == connection.from_node
-                    && from_node_buffer_indices.contains(buffer_idx))
-            });
+            inputs.retain(
+                |(port, buffer_idx, _amount, src_node, _mod_type, _mod_transform)| {
+                    !(*port == connection.to_port
+                        && *src_node == connection.from_node
+                        && from_node_buffer_indices.contains(buffer_idx))
+                },
+            );
             if inputs.is_empty() {
                 self.input_connections.remove(&connection.to_node);
             }
@@ -322,7 +336,7 @@ impl AudioGraph {
             .or_default();
 
         // Update an existing connection if one exists.
-        let existing_idx = inputs.iter().position(|(port, _, _, src_node, _)| {
+        let existing_idx = inputs.iter().position(|(port, _, _, src_node, _, _)| {
             *port == connection.to_port && *src_node == connection.from_node
         });
 
@@ -333,6 +347,7 @@ impl AudioGraph {
                 connection.amount,
                 connection.from_node,
                 connection.modulation_type,
+                connection.modulation_transform,
             );
         } else {
             inputs.push((
@@ -341,6 +356,7 @@ impl AudioGraph {
                 connection.amount,
                 connection.from_node,
                 connection.modulation_type,
+                connection.modulation_transform,
             ));
         }
 
@@ -561,6 +577,7 @@ impl AudioGraph {
                         buffer: self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
                         amount: 1.0,
                         mod_type: ModulationType::Additive,
+                        transformation: ModulationTransformation::None,
                     });
             }
             // if ports.contains_key(&PortId::GlobalFrequency) {
@@ -576,12 +593,13 @@ impl AudioGraph {
 
             // Process all connections.
             if let Some(connections) = self.input_connections.get(&node_id) {
-                for &(port, source_idx, amount, _src_node, mod_type) in connections {
+                for &(port, source_idx, amount, _src_node, mod_type, mod_transform) in connections {
                     let buffer = self.buffer_pool.copy_out(source_idx).to_vec();
                     inputs.entry(port).or_default().push(ModulationSource {
                         buffer,
                         amount,
                         mod_type,
+                        transformation: mod_transform,
                     });
                 }
             }

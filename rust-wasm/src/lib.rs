@@ -16,8 +16,8 @@ mod voice;
 use biquad::FilterType;
 use effect_stack::EffectStack;
 pub use graph::AudioGraph;
-use graph::ModulationType;
 pub use graph::{Connection, ConnectionId, NodeId};
+use graph::{ModulationTransformation, ModulationType};
 use impulse_generator::ImpulseResponseGenerator;
 pub use macros::{MacroManager, ModulationTarget};
 use nodes::morph_wavetable::{
@@ -366,6 +366,7 @@ struct ConnectionState {
     target: u32,
     amount: f32,
     modulation_type: WasmModulationType,
+    modulation_transform: ModulationTransformation,
 }
 
 #[wasm_bindgen]
@@ -483,6 +484,7 @@ impl AudioEngine {
                 to_port,
                 amount: 0.0, // The amount doesn't matter for removal
                 modulation_type: ModulationType::VCA, // neither does modulation_type
+                modulation_transform: ModulationTransformation::None,
             });
         }
         Ok(())
@@ -535,6 +537,7 @@ impl AudioEngine {
                         ModulationType::Bipolar => WasmModulationType::Bipolar,
                         ModulationType::Additive | _ => WasmModulationType::Additive,
                     },
+                    modulation_transform: conn.modulation_transform,
                 })
                 .collect();
 
@@ -1335,6 +1338,7 @@ impl AudioEngine {
         to_port: PortId,
         amount: f32,
         modulation_type: Option<WasmModulationType>,
+        modulation_transform: ModulationTransformation,
     ) -> Result<(), JsValue> {
         // console::log_1(
         //     &format!(
@@ -1352,6 +1356,7 @@ impl AudioEngine {
             modulation_type: modulation_type
                 .map(ModulationType::from)
                 .unwrap_or_default(),
+            modulation_transform,
         };
 
         for voice in &mut self.voices {

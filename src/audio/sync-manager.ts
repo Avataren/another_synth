@@ -5,7 +5,7 @@ import {
     type NodeConnection,
 } from './types/synth-layout';
 import { useAudioSystemStore } from '../stores/audio-system-store';
-import { PortId, type WasmModulationType } from 'app/public/wasm/audio_processor';
+import { type ModulationTransformation, PortId, type WasmModulationType } from 'app/public/wasm/audio_processor';
 
 interface WasmVoice {
     id: number;
@@ -22,6 +22,7 @@ export interface WasmConnection {
     target: PortId;
     amount: number;
     modulationType: WasmModulationType;
+    modulationTransform: ModulationTransformation
 }
 
 interface WasmNode {
@@ -131,6 +132,7 @@ export class AudioSyncManager {
                         target: conn.target, // PortId is used directly
                         amount: conn.amount,
                         modulationType: conn.modulationType,
+                        modulationTransformation: conn.modulationTransform
                     }));
 
                     voice.connections = newConnections;
@@ -241,6 +243,7 @@ export class AudioSyncManager {
                 target: target as PortId,
                 amount: Number(connection.amount),
                 isRemoving: Boolean(connection.isRemoving),
+                modulationTransformation: connection.modulationTransformation,
             };
 
             console.log('Processing validated connection:', {
@@ -317,6 +320,7 @@ export class AudioSyncManager {
                                 target: conn.target,
                                 amount: conn.amount,
                                 modulationType: conn.modulationType,
+                                modulationTransformation: conn.modulationTransform
                             }));
                         }
                     });

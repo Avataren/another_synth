@@ -225,7 +225,7 @@ export default class Instrument {
     return new Promise<string>((resolve, reject) => {
       const messageId = Date.now().toString();
       // Initialize with a dummy value that we'll clear later
-      let timeoutId = setTimeout(() => {}, 0);
+      let timeoutId = setTimeout(() => { }, 0);
 
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
@@ -439,6 +439,7 @@ export default class Instrument {
       target: connection.target,
       amount: Number(connection.amount) || 0,
       modulationType: connection.modulationType,
+      modulationTransformation: connection.modulationTransformation,
       isRemoving: Boolean(connection.isRemoving),
     };
 

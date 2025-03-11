@@ -209,6 +209,7 @@ export class ModulationRouteManager {
       console.log('ModulationRouteManager handling connection:', {
         original: connection,
         modType: connection.modulationType,
+        modTransform: connection.modulationTransformation,
       });
 
       await this.store.updateConnection(connection);

@@ -27,7 +27,7 @@
           >
             <div class="row q-col-gutter-sm items-center">
               <!-- Target Node Selection -->
-              <div class="col-4">
+              <div class="col-3">
                 <q-select
                   v-model="route.targetNode"
                   :options="getAvailableTargets()"
@@ -41,7 +41,7 @@
               </div>
 
               <!-- Parameter Selection -->
-              <div class="col-4">
+              <div class="col-3">
                 <q-select
                   :model-value="
                     getAvailableParams(route.targetId).find(
@@ -62,7 +62,7 @@
               <!-- Amount Knob -->
               <div class="col-1">
                 <audio-knob-component
-                  v-model="route.amount!"
+                  v-model="route.amount"
                   label=""
                   :min="0"
                   :max="100"
@@ -86,6 +86,22 @@
                   filled
                   option-label="label"
                   @update:model-value="(val) => handleModTypeChange(index, val)"
+                />
+              </div>
+
+              <!-- Modulation Transformation Selection -->
+              <div class="col-2">
+                <q-select
+                  v-model="route.modulationTransformation"
+                  :options="modulationTransformations"
+                  label="Transformation"
+                  dense
+                  dark
+                  filled
+                  option-label="label"
+                  @update:model-value="
+                    (val) => handleTransformationChange(index, val)
+                  "
                 />
               </div>
 
@@ -122,6 +138,7 @@ import {
   type NodeConnectionUpdate,
 } from 'src/audio/types/synth-layout';
 import {
+  ModulationTransformation,
   WasmModulationType,
   type PortId,
 } from 'app/public/wasm/audio_processor';
@@ -143,6 +160,16 @@ const routeManager = new ModulationRouteManager(
 
 const isExpanded = ref<boolean>(true);
 
+interface ModulationTypeOption {
+  value: WasmModulationType;
+  label: string;
+}
+
+interface ModulationTransformationOption {
+  value: ModulationTransformation;
+  label: string;
+}
+
 interface RouteConfig {
   targetId: number;
   targetNode: TargetNode;
@@ -150,11 +177,7 @@ interface RouteConfig {
   targetLabel: string;
   amount: number;
   modulationType: ModulationTypeOption;
-}
-
-interface ModulationTypeOption {
-  value: WasmModulationType;
-  label: string;
+  modulationTransformation: ModulationTransformation;
 }
 
 const activeRoutes = ref<RouteConfig[]>([]);
@@ -170,6 +193,19 @@ const getAvailableTargets = (): TargetNode[] => {
 const getAvailableParams = (targetId: number): ModulationTargetOption[] => {
   return routeManager.getAvailableParams(targetId);
 };
+
+const modulationTypes = ref<ModulationTypeOption[]>([
+  { value: WasmModulationType.VCA, label: 'VCA' },
+  { value: WasmModulationType.Bipolar, label: 'Bipolar' },
+  { value: WasmModulationType.Additive, label: 'Add' },
+]);
+
+const modulationTransformations = ref<ModulationTransformationOption[]>([
+  { value: ModulationTransformation.None, label: 'None' },
+  { value: ModulationTransformation.Invert, label: 'Invert' },
+  { value: ModulationTransformation.Square, label: 'Square' },
+  { value: ModulationTransformation.Cube, label: 'Cube' },
+]);
 
 const addNewRoute = async (): Promise<void> => {
   const availableTargets = routeManager.getAvailableTargets();
@@ -197,6 +233,8 @@ const addNewRoute = async (): Promise<void> => {
       value: defaultModType,
       label: getModulationTypeLabel(defaultModType),
     },
+    // Set default modulation transformation to "None"
+    modulationTransformation: ModulationTransformation.None,
   };
 
   try {
@@ -206,18 +244,13 @@ const addNewRoute = async (): Promise<void> => {
       target: newRoute.target,
       amount: newRoute.amount,
       modulationType: defaultModType,
+      modulationTransformation: newRoute.modulationTransformation,
     });
     activeRoutes.value.push(newRoute);
   } catch (error) {
     console.error('Failed to add new route:', error);
   }
 };
-
-const modulationTypes = ref<ModulationTypeOption[]>([
-  { value: WasmModulationType.VCA, label: 'VCA' },
-  { value: WasmModulationType.Bipolar, label: 'Bipolar' },
-  { value: WasmModulationType.Additive, label: 'Add' },
-]);
 
 const handleModTypeChange = async (
   index: number,
@@ -233,6 +266,7 @@ const handleModTypeChange = async (
       target: route.target,
       amount: route.amount,
       modulationType: route.modulationType.value,
+      modulationTransformation: route.modulationTransformation,
       isRemoving: true,
     });
 
@@ -242,11 +276,50 @@ const handleModTypeChange = async (
       target: route.target,
       amount: route.amount,
       modulationType: newType.value,
+      modulationTransformation: route.modulationTransformation,
     });
 
     route.modulationType = newType;
   } catch (error) {
     console.error('Failed to update modulation type:', error);
+  }
+};
+
+interface ModulationTransformationOption {
+  value: ModulationTransformation;
+  label: string;
+}
+
+const handleTransformationChange = async (
+  index: number,
+  newTransformationOption: ModulationTransformationOption,
+): Promise<void> => {
+  const newTransformation = newTransformationOption.value;
+  console.log('newTransformation:', newTransformation);
+  const route = activeRoutes.value[index];
+  if (!route) return;
+
+  try {
+    await routeManager.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: route.amount,
+      modulationType: route.modulationType.value,
+      modulationTransformation: route.modulationTransformation,
+      isRemoving: true,
+    });
+    await routeManager.updateConnection({
+      fromId: props.sourceId,
+      toId: route.targetId,
+      target: route.target,
+      amount: route.amount,
+      modulationType: route.modulationType.value,
+      modulationTransformation: newTransformation,
+    });
+    route.modulationTransformation = newTransformation;
+  } catch (error) {
+    console.error('Failed to update modulation transformation:', error);
   }
 };
 
@@ -268,6 +341,7 @@ const handleTargetChange = async (
       target: route.target,
       amount: route.amount,
       isRemoving: true,
+      modulationTransformation: route.modulationTransformation,
     });
 
     await routeManager.updateConnection({
@@ -276,6 +350,7 @@ const handleTargetChange = async (
       target: defaultParam.value,
       amount: route.amount,
       modulationType: routeManager.getDefaultModulationType(defaultParam.value),
+      modulationTransformation: route.modulationTransformation,
     });
 
     route.targetId = newTarget.id;
@@ -304,6 +379,7 @@ const handleParamChange = async (
       target: oldTarget,
       amount: route.amount,
       modulationType: currentModType.value,
+      modulationTransformation: route.modulationTransformation,
       isRemoving: true,
     };
 
@@ -315,6 +391,7 @@ const handleParamChange = async (
       target: newParam.value as PortId,
       amount: route.amount,
       modulationType: currentModType.value,
+      modulationTransformation: route.modulationTransformation,
     };
 
     await routeManager.updateConnection(newConnection);
@@ -337,6 +414,7 @@ const removeRoute = async (index: number): Promise<void> => {
       target: Number(route.target) as PortId,
       amount: Number(route.amount),
       isRemoving: true,
+      modulationTransformation: route.modulationTransformation,
     };
 
     await routeManager.updateConnection(removeConnection);
@@ -347,7 +425,6 @@ const removeRoute = async (index: number): Promise<void> => {
 };
 
 // --- Throttling via Periodic Update ---
-// For each route index, we keep a throttle state containing an interval, a pending value, and a timeout.
 interface ThrottleState {
   intervalId: ReturnType<typeof setInterval> | null;
   pending: number | null;
@@ -355,13 +432,6 @@ interface ThrottleState {
 }
 const throttleStates = new Map<number, ThrottleState>();
 
-/**
- * Throttled handler for amount changes.
- * When the knob value changes, we update a pending value.
- * If no interval is active, we start one that fires every 100ms.
- * The interval checks for a pending update and sends it via executeAmountUpdate.
- * We also schedule a timeout (150ms) that clears the interval if no new events occur.
- */
 const handleAmountChangeThrottled = (
   index: number,
   newAmount: number,
@@ -375,9 +445,7 @@ const handleAmountChangeThrottled = (
     };
     throttleStates.set(index, state);
   }
-  // Update the pending value with the latest knob value.
   state.pending = newAmount;
-  // If no interval is active, start one.
   if (!state.intervalId) {
     state.intervalId = setInterval(() => {
       if (state!.pending !== null) {
@@ -386,7 +454,6 @@ const handleAmountChangeThrottled = (
       }
     }, 100);
   }
-  // Reset the timeout so that the interval is cleared after 150ms of inactivity.
   if (state.timeoutId) {
     clearTimeout(state.timeoutId);
   }
@@ -407,22 +474,22 @@ const executeAmountUpdate = async (
   if (!route) return;
 
   try {
-    // Remove the old connection...
     await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
       target: route.target,
       amount: route.amount,
       modulationType: route.modulationType.value,
+      modulationTransformation: route.modulationTransformation,
       isRemoving: true,
     });
-    // ...and add the new connection with the updated amount.
     await routeManager.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
       target: route.target,
       amount: amount,
       modulationType: route.modulationType.value,
+      modulationTransformation: route.modulationTransformation,
     });
 
     route.amount = amount;
@@ -485,7 +552,6 @@ const initializeRoutes = (): void => {
           console.warn('Target node not found for id: ' + conn.toId);
           return null;
         }
-        // Construct a full TargetNode with a 'name' property.
         const targetNode: TargetNode = {
           id: conn.toId,
           name: getNodeName(conn.toId),
@@ -502,6 +568,7 @@ const initializeRoutes = (): void => {
             value: conn.modulationType,
             label: getModulationTypeLabel(conn.modulationType),
           },
+          modulationTransformation: conn.modulationTransformation,
         };
 
         return route;

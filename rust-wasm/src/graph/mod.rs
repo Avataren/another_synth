@@ -8,4 +8,6 @@ mod types;
 pub use buffer_pool::AudioBufferPool;
 pub use graph::AudioGraph;
 pub use modulation_processor::ModulationProcessor;
-pub use types::{Connection, ConnectionId, ModulationSource, ModulationType, NodeId};
+pub use types::{
+    Connection, ConnectionId, ModulationSource, ModulationTransformation, ModulationType, NodeId,
+};

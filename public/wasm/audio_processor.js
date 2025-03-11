@@ -243,6 +243,15 @@ export const LfoLoopMode = Object.freeze({
     PingPong: 2, "2": "PingPong",
 });
 /**
+ * @enum {0 | 1 | 2 | 3}
+ */
+export const ModulationTransformation = Object.freeze({
+    None: 0, "0": "None",
+    Invert: 1, "1": "Invert",
+    Square: 2, "2": "Square",
+    Cube: 3, "3": "Cube",
+});
+/**
  * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23}
  */
 export const PortId = Object.freeze({
@@ -847,10 +856,11 @@ export class AudioEngine {
      * @param {number} to_node
      * @param {PortId} to_port
      * @param {number} amount
-     * @param {WasmModulationType | null} [modulation_type]
+     * @param {WasmModulationType | null | undefined} modulation_type
+     * @param {ModulationTransformation} modulation_transform
      */
-    connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type) {
-        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
+    connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type, modulation_transform) {
+        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type, modulation_transform);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

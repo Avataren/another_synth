@@ -298,6 +298,16 @@ var LfoLoopMode = Object.freeze({
   PingPong: 2,
   "2": "PingPong"
 });
+var ModulationTransformation = Object.freeze({
+  None: 0,
+  "0": "None",
+  Invert: 1,
+  "1": "Invert",
+  Square: 2,
+  "2": "Square",
+  Cube: 3,
+  "3": "Cube"
+});
 var PortId = Object.freeze({
   AudioInput0: 0,
   "0": "AudioInput0",
@@ -916,10 +926,11 @@ var AudioEngine = class {
    * @param {number} to_node
    * @param {PortId} to_port
    * @param {number} amount
-   * @param {WasmModulationType | null} [modulation_type]
+   * @param {WasmModulationType | null | undefined} modulation_type
+   * @param {ModulationTransformation} modulation_transform
    */
-  connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type) {
-    const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type);
+  connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type, modulation_transform) {
+    const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type, modulation_transform);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -1990,7 +2001,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         mixerId,
         PortId.AudioInput0,
         1,
-        WasmModulationType.Additive
+        WasmModulationType.Additive,
+        ModulationTransformation.None
       );
       this.audioEngine.connect_nodes(
         envelopeIds[0],
@@ -1998,7 +2010,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         mixerId,
         PortId.GainMod,
         1,
-        WasmModulationType.VCA
+        WasmModulationType.VCA,
+        ModulationTransformation.None
       );
       this.audioEngine.connect_nodes(
         oscIds[0],
@@ -2006,7 +2019,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         filterId,
         PortId.AudioInput0,
         1,
-        WasmModulationType.Additive
+        WasmModulationType.Additive,
+        ModulationTransformation.None
       );
       this.audioEngine.connect_nodes(
         oscIds[1],
@@ -2014,7 +2028,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         oscIds[0],
         PortId.PhaseMod,
         1,
-        WasmModulationType.Additive
+        WasmModulationType.Additive,
+        ModulationTransformation.None
       );
       this.handleRequestSync();
     } else {
@@ -2088,7 +2103,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         toId: rawConn.to_id,
         target: rawConn.target,
         amount: rawConn.amount,
-        modulationType: convertRawModulationType(rawConn.modulation_type)
+        modulationType: convertRawModulationType(rawConn.modulation_type),
+        modulationTransformation: rawConn.modulation_transformation
       })
     );
     const canonicalVoice = {
@@ -2148,7 +2164,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         to: connection.toId,
         target: connection.target,
         amount: connection.amount,
-        modulationType: connection.modulationType
+        modulationType: connection.modulationType,
+        modulationTransformation: connection.modulationTransformation
       });
       this.audioEngine.connect_nodes(
         connection.fromId,
@@ -2156,7 +2173,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         connection.toId,
         connection.target,
         connection.amount,
-        connection.modulationType
+        connection.modulationType,
+        connection.modulationTransformation
       );
       this.handleRequestSync();
     } catch (err) {
@@ -2261,7 +2279,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           data.connection.toId,
           data.connection.target,
           data.connection.amount,
-          WasmModulationType.VCA
+          WasmModulationType.VCA,
+          ModulationTransformation.None
         );
       }
     } catch (err) {

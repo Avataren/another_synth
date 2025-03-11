@@ -283,6 +283,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 toId: rawConn.to_id,
                 target: rawConn.target as PortId, // explicit cast
                 amount: rawConn.amount,
+                modulationTransformation: rawConn.modulation_transformation,
                 modulationType: this.convertModulationType(
                   rawConn.modulation_type,
                 ),
@@ -572,6 +573,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             amount: Number(connection.amount),
             isRemoving: Boolean(connection.isRemoving),
             modulationType: connection.modulationType,
+            modulationTransformation: connection.modulationTransformation,
           } as NodeConnectionUpdate;
 
           if (!this.currentInstrument) throw new Error('No instrument');
@@ -604,6 +606,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                   toId: plainConnection.toId,
                   target: plainConnection.target,
                   amount: plainConnection.amount,
+                  modulationTransformation: plainConnection.modulationTransformation,
                   modulationType:
                     plainConnection.modulationType !== undefined
                       ? plainConnection.modulationType

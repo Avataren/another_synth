@@ -1,4 +1,5 @@
 use crate::PortId;
+use serde::Serialize;
 use std::ops::Deref;
 use wasm_bindgen::prelude::*;
 
@@ -7,6 +8,7 @@ pub struct ModulationSource {
     pub buffer: Vec<f32>,
     pub amount: f32,
     pub mod_type: ModulationType,
+    pub transformation: ModulationTransformation,
 }
 
 #[wasm_bindgen]
@@ -59,12 +61,33 @@ pub enum ModulationType {
     VCA = 0,
     Bipolar = 1,
     Additive = 2,
-    FrequencyCents = 3,
 }
 
 impl Default for ModulationType {
     fn default() -> Self {
         ModulationType::Additive
+    }
+}
+
+#[derive(Copy, Clone, Debug, Serialize)]
+#[wasm_bindgen]
+#[repr(u32)]
+pub enum ModulationTransformation {
+    None,
+    Invert,
+    Square,
+    Cube,
+}
+
+impl ModulationTransformation {
+    #[inline]
+    pub fn apply(&self, x: f32) -> f32 {
+        match self {
+            ModulationTransformation::None => x,
+            ModulationTransformation::Invert => 1.0 - x,
+            ModulationTransformation::Square => x * x,
+            ModulationTransformation::Cube => x * x * x,
+        }
     }
 }
 
@@ -76,6 +99,7 @@ pub struct Connection {
     pub to_port: PortId,
     pub amount: f32,
     pub modulation_type: ModulationType,
+    pub modulation_transform: ModulationTransformation,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

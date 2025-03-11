@@ -22,6 +22,7 @@ import {
   AudioEngine,
   initSync,
   LfoUpdateParams,
+  ModulationTransformation,
   NoiseUpdateParams,
   PortId,
   WasmModulationType,
@@ -399,6 +400,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioInput0,
         1.0,
         WasmModulationType.Additive,
+        ModulationTransformation.None
       );
 
       // this.audioEngine.connect_nodes(
@@ -418,6 +420,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.GainMod,
         1.0,
         WasmModulationType.VCA,
+        ModulationTransformation.None
       );
 
       // Connect oscillator 1 to filter's audio input.
@@ -428,6 +431,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioInput0,
         1.0,
         WasmModulationType.Additive,
+        ModulationTransformation.None
       );
 
       // Connect oscillator 2's output to oscillator 1's phase mod.
@@ -438,6 +442,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.PhaseMod,
         1.0,
         WasmModulationType.Additive,
+        ModulationTransformation.None
       );
 
       // Request a state sync (if needed).
@@ -527,6 +532,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         target: rawConn.target as PortId,
         amount: rawConn.amount,
         modulationType: convertRawModulationType(rawConn.modulation_type),
+        modulationTransformation: rawConn.modulation_transformation,
       }),
     );
 
@@ -607,6 +613,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         target: connection.target,
         amount: connection.amount,
         modulationType: connection.modulationType,
+        modulationTransformation: connection.modulationTransformation,
       });
 
       this.audioEngine.connect_nodes(
@@ -616,6 +623,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         connection.target,
         connection.amount,
         connection.modulationType,
+        connection.modulationTransformation
       );
 
       // Verify connection was added
@@ -759,6 +767,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           data.connection.target,
           data.connection.amount,
           WasmModulationType.VCA,
+          ModulationTransformation.None
         );
       }
     } catch (err) {

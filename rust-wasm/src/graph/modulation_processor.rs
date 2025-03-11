@@ -19,26 +19,17 @@ pub trait ModulationProcessor {
 
         if let Some(sources) = sources {
             for source in sources {
-                match source.mod_type {
-                    ModulationType::VCA => {
-                        for i in 0..buffer_size {
-                            mult[i] *= source.buffer[i] * source.amount;
+                for i in 0..buffer_size {
+                    let value = source.transformation.apply(source.buffer[i]);
+                    match source.mod_type {
+                        ModulationType::VCA => {
+                            mult[i] *= value * source.amount;
                         }
-                    }
-                    ModulationType::Bipolar => {
-                        for i in 0..buffer_size {
-                            mult[i] *= 1.0 + source.buffer[i] * source.amount;
+                        ModulationType::Bipolar => {
+                            mult[i] *= 1.0 + value * source.amount;
                         }
-                    }
-                    ModulationType::Additive => {
-                        for i in 0..buffer_size {
-                            add[i] += source.buffer[i] * source.amount;
-                        }
-                    }
-                    ModulationType::FrequencyCents => {
-                        for i in 0..buffer_size {
-                            let cents = source.buffer[i] * source.amount * 100.0;
-                            mult[i] *= (cents / 1200.0).exp2();
+                        ModulationType::Additive => {
+                            add[i] += value * source.amount;
                         }
                     }
                 }
@@ -62,26 +53,17 @@ pub trait ModulationProcessor {
 
         if let Some(sources) = sources {
             for source in sources {
-                match source.mod_type {
-                    ModulationType::VCA => {
-                        for i in 0..buffer_size {
-                            multiplicative[i] *= source.buffer[i] * source.amount;
+                for i in 0..buffer_size {
+                    let value = source.transformation.apply(source.buffer[i]);
+                    match source.mod_type {
+                        ModulationType::VCA => {
+                            multiplicative[i] *= value * source.amount;
                         }
-                    }
-                    ModulationType::Bipolar => {
-                        for i in 0..buffer_size {
-                            multiplicative[i] *= 1.0 + source.buffer[i] * source.amount;
+                        ModulationType::Bipolar => {
+                            multiplicative[i] *= 1.0 + value * source.amount;
                         }
-                    }
-                    ModulationType::Additive => {
-                        for i in 0..buffer_size {
-                            additive[i] += source.buffer[i] * source.amount;
-                        }
-                    }
-                    ModulationType::FrequencyCents => {
-                        for i in 0..buffer_size {
-                            let cents = source.buffer[i] * source.amount * 100.0;
-                            multiplicative[i] *= (cents / 1200.0).exp2();
+                        ModulationType::Additive => {
+                            additive[i] += value * source.amount;
                         }
                     }
                 }

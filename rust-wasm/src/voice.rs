@@ -1,6 +1,5 @@
-
 use crate::{
-    graph::ModulationType,
+    graph::{ModulationTransformation, ModulationType},
     nodes::{Lfo, LfoTriggerMode},
     AudioGraph, AudioNode, Envelope, MacroManager, ModulatableOscillator, ModulationTarget, NodeId,
     PortId,
@@ -197,7 +196,8 @@ impl Voice {
                 buffer_idx,
                 amount,
                 NodeId(usize::MAX),
-                ModulationType::VCA, // or whichever default is appropriate for macros
+                ModulationType::VCA,
+                ModulationTransformation::None,
             ));
 
         Ok(())
