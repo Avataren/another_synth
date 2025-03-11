@@ -101,6 +101,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.DetuneMod]: 'Detune',
   [PortId.WavetableIndex]: 'Wavetable Index',
   [PortId.WetDryMix]: 'Mix',
+  [PortId.AttackMod]: 'Attack',
 };
 
 export interface ModulationTargetOption {
@@ -269,16 +270,6 @@ export function findModulationTargets(
     }));
 }
 
-// export function isModulationPort(port: PortId): boolean {
-//     return port === PortId.FrequencyMod ||
-//         port === PortId.PhaseMod ||
-//         port === PortId.ModIndex ||
-//         port === PortId.CutoffMod ||
-//         port === PortId.ResonanceMod ||
-//         port === PortId.GainMod ||
-//         port === PortId.EnvelopeMod ||
-//         port === PortId.StereoPan;
-// }
 
 export function getModulationTargetsForType(
   type: VoiceNodeType,
@@ -312,8 +303,8 @@ export function getModulationTargetsForType(
       ];
     case VoiceNodeType.Noise:
       return [
-        { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
         { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
+        { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
       ];
     case VoiceNodeType.Mixer:
       return [
@@ -326,6 +317,11 @@ export function getModulationTargetsForType(
         { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
+      ];
+    case VoiceNodeType.Envelope:
+      return [
+        { value: PortId.AttackMod, label: PORT_LABELS[PortId.AttackMod] },
+        { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
       ];
     case VoiceNodeType.GlobalFrequency:
       return [

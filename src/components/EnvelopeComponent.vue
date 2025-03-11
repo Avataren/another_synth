@@ -107,6 +107,7 @@ import { storeToRefs } from 'pinia';
 import RoutingComponent from './RoutingComponent.vue';
 import type { EnvelopeConfig } from 'src/audio/types/synth-layout';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
+import { throttle } from 'quasar';
 
 interface Props {
   node: AudioNode | null;
@@ -224,6 +225,10 @@ const updateEnvelopePreview = () => {
       //console.error('Failed to get envelope preview:', err);
     });
 };
+const throttledUpdateEnvelopePreview = throttle(
+  updateEnvelopePreview,
+  1000 / 60,
+);
 
 const drawEnvelopePreviewWithData = (previewData: Float32Array) => {
   const canvas = waveformCanvas.value;
@@ -267,24 +272,24 @@ onMounted(() => {
   setTimeout(updateEnvelopePreview, 250);
 
   // Add resize listener
-  window.addEventListener('resize', updateEnvelopePreview);
+  window.addEventListener('resize', throttledUpdateEnvelopePreview);
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateEnvelopePreview);
+  window.removeEventListener('resize', throttledUpdateEnvelopePreview);
 });
 
 // Watch for changes in the envelope state
 watch(
   () => ({ ...envelopeStates.value.get(props.nodeId) }),
-  (newState, oldState) => {
+  async (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
-        store.currentInstrument?.updateEnvelopeState(
+        await store.currentInstrument?.updateEnvelopeState(
           props.nodeId,
           newState as EnvelopeConfig,
         );
-        updateEnvelopePreview();
+        throttledUpdateEnvelopePreview();
       }
     }
   },

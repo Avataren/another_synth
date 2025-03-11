@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
+use web_sys::console;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
@@ -87,10 +88,12 @@ pub struct Envelope {
     smoothing_counter: usize,
     pre_attack_value: f32,
     active: bool,
-    // Lookup tables for the three phases:
+    // Lookup tables for the curves.
     attack_table: Vec<f32>,
     decay_table: Vec<f32>,
     release_table: Vec<f32>,
+    // Debug flag to avoid spamming the console during attack.
+    debug_logged_attack: bool,
 }
 
 impl Envelope {
@@ -109,6 +112,7 @@ impl Envelope {
             attack_table: Vec::with_capacity(CURVE_TABLE_SIZE),
             decay_table: Vec::with_capacity(CURVE_TABLE_SIZE),
             release_table: Vec::with_capacity(CURVE_TABLE_SIZE),
+            debug_logged_attack: false,
         };
         if env.config.attack <= 0.0005 {
             env.config.attack = 0.0005;
@@ -125,10 +129,10 @@ impl Envelope {
 
         for i in 0..CURVE_TABLE_SIZE {
             let pos = i as f32 / (CURVE_TABLE_SIZE - 1) as f32;
-            // For attack, we directly store the curved value.
+            // For attack, store the curved value.
             self.attack_table
                 .push(get_curved_value(pos, self.config.attack_curve));
-            // For decay and release, we store the raw curved value. (For decay we later scale by (1 - sustain).)
+            // For decay and release, store the raw curved value.
             self.decay_table
                 .push(get_curved_value(pos, self.config.decay_curve));
             self.release_table
@@ -141,7 +145,6 @@ impl Envelope {
         if self.config.attack <= 0.0005 {
             self.config.attack = 0.0005;
         }
-
         self.smoothing_counter = 0;
         self.update_lookup_tables();
     }
@@ -162,16 +165,33 @@ impl Envelope {
     }
 
     /// Process one sample by stepping the envelope state machine.
-    fn process_sample(&mut self, increment: f32) -> f32 {
+    /// Now accepts separate additive and multiplicative modulation parameters for the attack phase.
+    fn process_sample(&mut self, increment: f32, attack_mod_add: f32, attack_mod_mul: f32) -> f32 {
         match self.phase {
             EnvelopePhase::Attack => {
-                let attack_time = self.config.attack.max(0.0001);
-                self.position += increment / attack_time;
+                let base_attack_time = self.config.attack;
+                // First add the additive modulation, then scale by the multiplicative modulation.
+                let modulated_attack_time =
+                    ((base_attack_time + attack_mod_add).max(0.0001)) * attack_mod_mul;
+                self.position += increment / modulated_attack_time;
+
+                // Log once per attack phase.
+                if !self.debug_logged_attack {
+                    console::log_1(
+                        &format!(
+                            "Attack Phase: additive: {:.3}, multiplicative: {:.3}, modulated_attack_time: {:.3}, position: {:.3}",
+                            attack_mod_add, attack_mod_mul, modulated_attack_time, self.position
+                        )
+                        .into(),
+                    );
+                    self.debug_logged_attack = true;
+                }
 
                 if self.position >= 1.0 {
                     self.position = 0.0;
                     self.value = 1.0;
                     self.phase = EnvelopePhase::Decay;
+                    self.debug_logged_attack = false; // reset for next attack
                     1.0
                 } else {
                     let curve_value = Self::lookup_value(&self.attack_table, self.position);
@@ -231,13 +251,14 @@ impl Envelope {
     /// Respond to gate changes.
     fn trigger(&mut self, gate: f32) {
         if gate > 0.0 && self.last_gate_value <= 0.0 {
-            // Gate on – start attack
+            console::log_1(&"Gate on detected, starting attack".into());
+            self.debug_logged_attack = false;
             self.pre_attack_value = self.value;
             self.phase = EnvelopePhase::Attack;
             self.smoothing_counter = self.config.attack_smoothing_samples;
             self.position = 0.0;
         } else if gate <= 0.0 && self.last_gate_value > 0.0 {
-            // Gate off – start release
+            console::log_1(&"Gate off detected, starting release".into());
             self.phase = EnvelopePhase::Release;
             self.release_level = self.value; // store current value for release
             self.position = 0.0;
@@ -246,19 +267,11 @@ impl Envelope {
     }
 
     /// Generate a preview buffer of envelope values for visualization.
-    ///
-    /// The preview simulates:
-    /// - A gate-on event at t = 0 (triggering attack and then decay),
-    /// - A hold of the sustain phase (for one second after attack + decay),
-    /// - And finally a gate-off event so the release phase is simulated.
-    ///
-    /// `preview_duration` is in seconds.
     pub fn preview(&self, preview_duration: f32) -> Vec<f32> {
         let total_samples = (self.sample_rate * preview_duration).ceil() as usize;
         let mut preview_values = Vec::with_capacity(total_samples);
-        // Create a temporary envelope instance so that preview simulation does not affect real-time processing.
+        // Use a temporary envelope instance so that preview simulation does not affect real-time processing.
         let mut sim_env = Envelope::new(self.sample_rate, self.config.clone());
-        // Start with a gate-on event.
         sim_env.trigger(1.0);
 
         for i in 0..total_samples {
@@ -270,7 +283,8 @@ impl Envelope {
                 sim_env.trigger(0.0);
             }
             let increment = 1.0 / self.sample_rate;
-            let value = sim_env.process_sample(increment);
+            // For preview, use zero additive and unity multiplicative modulation.
+            let value = sim_env.process_sample(increment, 0.0, 1.0);
             preview_values.push(value);
         }
 
@@ -286,6 +300,8 @@ impl AudioNode for Envelope {
         let mut ports = HashMap::new();
         ports.insert(PortId::Gate, false);
         ports.insert(PortId::AudioOutput0, true);
+        // Added AttackMod port for modulation of the attack phase.
+        ports.insert(PortId::AttackMod, false);
         ports
     }
 
@@ -297,8 +313,11 @@ impl AudioNode for Envelope {
     ) {
         use std::simd::f32x4;
 
-        // Combine all gate sources using the modulation processor.
+        // Process gate modulations.
         let gate_buffer = self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0);
+        // Use process_modulations_ex to separate additive and multiplicative modulation for attack.
+        let modulation_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::AttackMod));
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
             for i in (0..buffer_size).step_by(4) {
@@ -323,7 +342,11 @@ impl AudioNode for Envelope {
                     self.last_gate_value = current_gate;
 
                     let increment = 1.0 / self.sample_rate;
-                    values[j] = self.process_sample(increment);
+                    // Retrieve additive and multiplicative attack modulation values.
+                    let attack_mod_add = modulation_result.additive[i + j];
+                    let attack_mod_mul = modulation_result.multiplicative[i + j];
+
+                    values[j] = self.process_sample(increment, attack_mod_add, attack_mod_mul);
                 }
 
                 let values_simd = f32x4::from_array(values);

@@ -378,19 +378,45 @@ export default class Instrument {
     });
   }
 
-  public updateEnvelopeState(nodeId: number, newState: EnvelopeConfig) {
-    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+  public updateEnvelopeState(nodeId: number, newState: EnvelopeConfig): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.ready || !this.workletNode || !this.synthLayout) {
+        //reject(new Error('Audio system not ready'));
+        resolve();
+        return;
+      }
 
-    //const voiceIndex = this.findVoiceForNode(nodeId);
-    //if (voiceIndex === -1) return;
+      // Generate a unique message ID. Here we use the current time plus a random number.
+      const messageId = `${Date.now()}_${Math.random()}`;
 
-    this.workletNode.port.postMessage({
-      type: 'updateEnvelope',
-      //      voiceIndex,
-      envelopeId: nodeId,
-      config: newState,
+      // Define a listener that waits for the confirmation message.
+      const listener = (event: MessageEvent) => {
+        const data = event.data;
+        if (data && data.type === 'updateEnvelopeProcessed' && data.messageId === messageId) {
+          // Remove the listener and resolve the promise.
+          this.workletNode?.port.removeEventListener('message', listener);
+          resolve();
+        }
+      };
+
+      // Attach the listener.
+      this.workletNode.port.addEventListener('message', listener);
+
+      setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', listener);
+        reject(new Error('Timeout waiting for envelope update confirmation'));
+      }, 2000);
+
+      // Post the message to update the envelope state.
+      this.workletNode.port.postMessage({
+        type: 'updateEnvelope',
+        envelopeId: nodeId,
+        config: newState,
+        messageId: messageId,
+      });
     });
   }
+
 
   public updateWavetable(nodeId: number, newWavetable: Wavetable) {
     console.log('### instrument got wavetable:', newWavetable);

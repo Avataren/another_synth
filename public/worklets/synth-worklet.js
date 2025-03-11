@@ -356,7 +356,9 @@ var PortId = Object.freeze({
   WavetableIndex: 22,
   "22": "WavetableIndex",
   WetDryMix: 23,
-  "23": "WetDryMix"
+  "23": "WetDryMix",
+  AttackMod: 24,
+  "24": "AttackMod"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -1723,7 +1725,8 @@ var PORT_LABELS = {
   [PortId.FeedbackMod]: "Feedback",
   [PortId.DetuneMod]: "Detune",
   [PortId.WavetableIndex]: "Wavetable Index",
-  [PortId.WetDryMix]: "Mix"
+  [PortId.WetDryMix]: "Mix",
+  [PortId.AttackMod]: "Attack"
 };
 function convertRawModulationType(raw) {
   switch (raw) {
@@ -2121,16 +2124,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
     this.audioEngine.remove_specific_connection(from_node, to_node, to_port);
   }
-  /**
-   * Port mapping check/verification:
-   * PortId.PhaseMod = 12
-   * PortId.ModIndex = 13
-   * PortId.FrequencyMod = 11
-   * PortId.GainMod = 16
-   * PortId.CutoffMod = 14
-   * PortId.ResonanceMod = 15
-   * PortId.AudioOutput0 = 4
-   */
   handleUpdateConnection(data) {
     const { connection } = data;
     if (!this.audioEngine) return;
@@ -2191,24 +2184,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         version: this.stateVersion,
         state: this.audioEngine.get_current_state()
       });
-    }
-  }
-  wasmTargetToPortId(wasmTarget) {
-    switch (wasmTarget) {
-      case 11:
-        return PortId.FrequencyMod;
-      case 12:
-        return PortId.PhaseMod;
-      case 13:
-        return PortId.ModIndex;
-      case 14:
-        return PortId.CutoffMod;
-      case 15:
-        return PortId.ResonanceMod;
-      case 16:
-        return PortId.GainMod;
-      default:
-        throw new Error(`Invalid WASM target: ${wasmTarget}`);
     }
   }
   handleNoiseUpdate(data) {
@@ -2408,6 +2383,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         data.config.releaseCurve,
         data.config.active
       );
+      this.port.postMessage({ type: "updateEnvelopeProcessed", messageId: data.messageId });
     } catch (err) {
       console.error("Error updating LFO:", err);
     }

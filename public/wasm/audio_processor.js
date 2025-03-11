@@ -252,7 +252,7 @@ export const ModulationTransformation = Object.freeze({
     Cube: 3, "3": "Cube",
 });
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -279,6 +279,7 @@ export const PortId = Object.freeze({
     DetuneMod: 21, "21": "DetuneMod",
     WavetableIndex: 22, "22": "WavetableIndex",
     WetDryMix: 23, "23": "WetDryMix",
+    AttackMod: 24, "24": "AttackMod",
 });
 /**
  * @enum {0 | 1 | 2}

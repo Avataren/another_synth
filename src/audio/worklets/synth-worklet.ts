@@ -33,6 +33,7 @@ import type OscillatorState from '../models/OscillatorState.js';
 interface EnvelopeUpdate {
   config: EnvelopeConfig;
   envelopeId: number;
+  messageId: string;
 }
 
 declare const sampleRate: number;
@@ -559,16 +560,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.audioEngine.remove_specific_connection(from_node, to_node, to_port);
   }
 
-  /**
-   * Port mapping check/verification:
-   * PortId.PhaseMod = 12
-   * PortId.ModIndex = 13
-   * PortId.FrequencyMod = 11
-   * PortId.GainMod = 16
-   * PortId.CutoffMod = 14
-   * PortId.ResonanceMod = 15
-   * PortId.AudioOutput0 = 4
-   */
 
   private handleUpdateConnection(data: { connection: NodeConnectionUpdate }) {
     const { connection } = data;
@@ -646,24 +637,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private wasmTargetToPortId(wasmTarget: number): PortId {
-    switch (wasmTarget) {
-      case 11:
-        return PortId.FrequencyMod;
-      case 12:
-        return PortId.PhaseMod;
-      case 13:
-        return PortId.ModIndex;
-      case 14:
-        return PortId.CutoffMod;
-      case 15:
-        return PortId.ResonanceMod;
-      case 16:
-        return PortId.GainMod;
-      default:
-        throw new Error(`Invalid WASM target: ${wasmTarget}`);
-    }
-  }
 
   private handleNoiseUpdate(data: { noiseId: number; config: NoiseUpdate }) {
     if (!this.audioEngine) return;
@@ -924,6 +897,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.config.releaseCurve,
         data.config.active,
       );
+      this.port.postMessage({ type: 'updateEnvelopeProcessed', messageId: data.messageId });
     } catch (err) {
       console.error('Error updating LFO:', err);
     }
