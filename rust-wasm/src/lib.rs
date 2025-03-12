@@ -46,52 +46,6 @@ use web_sys::{console, js_sys};
 use hound;
 use std::error::Error;
 const EFFECT_NODE_ID_OFFSET: usize = 10_000;
-/// Convert integer samples of various bit depths to f32 in the range [-1.0, 1.0].
-/// Given a base waveform (one cycle) as a Vec<f32> of length `base_size`,
-/// build a mipmapped wavetable bank by generating a chain of band‑limited tables.
-/// This mimics your earlier mipmapping code (e.g. in wavetable.rs) but for a custom waveform.
-// fn generate_custom_wavetable_bank(
-//     base_samples: Vec<f32>,
-//     base_size: usize,
-//     sample_rate: f32,
-//     lowest_top_freq_hz: f32,
-//     min_table_size: usize,
-//     n_tables: usize,
-// ) -> Result<WavetableBank, Box<dyn Error>> {
-//     let mut tables = Vec::new();
-//     let mut table_size = base_size;
-//     let mut top_freq_hz = lowest_top_freq_hz;
-
-//     for _ in 0..n_tables {
-//         if table_size < min_table_size {
-//             table_size = min_table_size;
-//         }
-//         // Compute the maximum harmonic that can be represented
-//         // (roughly, partial_limit = floor((Nyquist) / top_freq_hz)).
-//         //let partial_limit = ((sample_rate * 0.5) / top_freq_hz).floor() as usize;
-//         // Optionally lower the effective partial limit
-//         //let partial_limit = (((sample_rate * 0.5) / top_freq_hz).floor() as f32 * 0.7).floor() as usize;
-//         let partial_limit =
-//             (((sample_rate * 0.5) / top_freq_hz).floor() as f32 * 0.7).floor() as usize;
-
-//         // Generate the band-limited table from the base_samples.
-//         let table_samples =
-//             generate_custom_table(&base_samples, base_size, table_size, partial_limit)?;
-//         // Create a Wavetable (as defined in your mipmapping module).
-//         let wavetable = Wavetable {
-//             samples: table_samples,
-//             table_size,
-//             top_freq_hz,
-//         };
-//         tables.push(wavetable);
-//         // Prepare for the next mip level.
-//         table_size /= 2;
-//         top_freq_hz *= 2.0;
-//     }
-//     // Reverse the tables so that table[0] covers the lowest frequencies.
-//     tables.reverse();
-//     Ok(WavetableBank { tables })
-// }
 
 /// Given the base waveform (one cycle) in `base_samples` (length = base_size),
 /// generate a band-limited table of length `table_size` by FFT–processing:
