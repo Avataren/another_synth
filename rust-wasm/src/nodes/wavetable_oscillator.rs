@@ -165,6 +165,7 @@ impl AudioNode for WavetableOscillator {
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::FeedbackMod, false);
         ports.insert(PortId::AudioOutput0, true);
+        ports.insert(PortId::DetuneMod, true);
         ports.insert(PortId::Gate, false);
         ports
     }
@@ -175,23 +176,58 @@ impl AudioNode for WavetableOscillator {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // --- 1) Process modulations ---
-        let freq_mod =
-            self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
-        let phase_mod = self.process_modulations(buffer_size, inputs.get(&PortId::PhaseMod), 0.0);
-        let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
-        let feedback_mod =
-            self.process_modulations(buffer_size, inputs.get(&PortId::FeedbackMod), 1.0);
-        let mod_index = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::ModIndex),
-            self.phase_mod_amount,
-        );
-        let wavetable_index_mod = self.process_modulations(
-            buffer_size,
-            inputs.get(&PortId::WavetableIndex),
-            self.wavetable_index,
-        );
+        // Precompute constant factors.
+        let two_pi = 2.0 * PI;
+        let feedback_divisor = PI * 1.5;
+
+        // --- 1) Process modulations using process_modulations_ex ---
+        let freq_mod_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::FrequencyMod));
+        let phase_mod_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::PhaseMod));
+        let gain_mod_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::GainMod));
+        let feedback_mod_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::FeedbackMod));
+        let mod_index_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::ModIndex));
+        let wavetable_index_mod_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::WavetableIndex));
+        let detune_mod_result =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::DetuneMod));
+
+        let freq_mod: Vec<f32> = (0..buffer_size)
+            .map(|i| (1.0 + freq_mod_result.additive[i]) * freq_mod_result.multiplicative[i])
+            .collect();
+        let phase_mod: Vec<f32> = (0..buffer_size)
+            .map(|i| (0.0 + phase_mod_result.additive[i]) * phase_mod_result.multiplicative[i])
+            .collect();
+        let gain_mod: Vec<f32> = (0..buffer_size)
+            .map(|i| (1.0 + gain_mod_result.additive[i]) * gain_mod_result.multiplicative[i])
+            .collect();
+        let feedback_mod: Vec<f32> = (0..buffer_size)
+            .map(|i| {
+                (1.0 + feedback_mod_result.additive[i]) * feedback_mod_result.multiplicative[i]
+            })
+            .collect();
+        let mod_index: Vec<f32> = (0..buffer_size)
+            .map(|i| {
+                (self.phase_mod_amount + mod_index_result.additive[i])
+                    * mod_index_result.multiplicative[i]
+            })
+            .collect();
+        let wavetable_index_mod: Vec<f32> = (0..buffer_size)
+            .map(|i| {
+                (self.wavetable_index + wavetable_index_mod_result.additive[i])
+                    * wavetable_index_mod_result.multiplicative[i]
+            })
+            .collect();
+
+        let detune_mod: Vec<f32> = (0..buffer_size)
+            .map(|i| {
+                (self.detune + detune_mod_result.additive[i]) * detune_mod_result.multiplicative[i]
+            })
+            .collect();
 
         // --- 2) Prepare gate buffer ---
         if self.gate_buffer.len() < buffer_size {
@@ -222,7 +258,24 @@ impl AudioNode for WavetableOscillator {
         // --- 4) Get the active mipmapped wavetable collection ---
         let collection = get_collection_from_bank(&self.wavetable_bank, &self.collection_name);
 
-        // --- 5) Main synthesis loop (without oversampling) ---
+        // --- 5) Precompute unison voice weights and offsets ---
+        let mut voice_weights = Vec::with_capacity(self.unison_voices);
+        let mut voice_offsets = Vec::with_capacity(self.unison_voices);
+        let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
+        let sigma = self.unison_voices as f32 / 4.0;
+        for voice in 0..self.unison_voices {
+            let voice_f = voice as f32;
+            let weight = (-((voice_f - center_index).powi(2)) / (2.0 * sigma * sigma)).exp();
+            voice_weights.push(weight);
+            let offset = if self.unison_voices > 1 {
+                self.spread * (2.0 * (voice_f / ((self.unison_voices - 1) as f32)) - 1.0)
+            } else {
+                0.0
+            };
+            voice_offsets.push(offset);
+        }
+
+        // --- 6) Main synthesis loop ---
         for i in 0..buffer_size {
             // Check for hard sync via the gate.
             self.check_gate(self.gate_buffer[i]);
@@ -236,39 +289,36 @@ impl AudioNode for WavetableOscillator {
             let mod_index_sample = mod_index[i];
 
             // Compute external phase modulation and feedback.
-            let ext_phase = (phase_mod_sample * mod_index_sample) / (2.0 * PI);
-            let fb = (self.last_output * self.feedback_amount * feedback_mod_sample) / (PI * 1.5);
+            let ext_phase = (phase_mod_sample * mod_index_sample) / two_pi;
+            let fb =
+                (self.last_output * self.feedback_amount * feedback_mod_sample) / feedback_divisor;
 
             let mut sample_sum = 0.0;
             let mut total_weight = 0.0;
 
             // Sum contributions from all unison voices.
             for voice in 0..self.unison_voices {
-                let voice_f = voice as f32;
-                let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
-                let sigma = self.unison_voices as f32 / 4.0;
-                let weight = (-((voice_f - center_index).powi(2)) / (2.0 * sigma * sigma)).exp();
+                let weight = voice_weights[voice];
                 total_weight += weight;
 
-                // Compute detune for this voice.
-                let voice_offset = if self.unison_voices > 1 {
-                    self.spread * (2.0 * (voice_f / ((self.unison_voices - 1) as f32)) - 1.0)
-                } else {
-                    0.0
-                };
-                let total_detune = self.detune + voice_offset;
-                let detuned_freq = freq_sample * 2.0_f32.powf(total_detune / 1200.0);
-                let effective_freq = detuned_freq * freq_mod[i];
+                // Calculate base frequency with frequency modulation first
+                let modulated_freq = freq_sample * freq_mod[i];
+
+                // Compute effective detune for this voice.
+                let total_detune = detune_mod[i] + voice_offsets[voice];
+                // Apply the detune (given in semitones) to the modulated frequency.
+                // A semitone is 2^(1/12)
+                let effective_freq = modulated_freq * 2.0_f32.powf(total_detune / 12.0);
 
                 // Compute current phase (including external modulation and feedback).
                 let phase = (self.voice_phases[voice] + ext_phase + fb).rem_euclid(1.0);
 
-                // --- Lookup sample using mipmapped wavetable lookup ---
+                // Lookup sample from the wavetable.
                 let wv_sample =
                     collection.lookup_sample(phase, wavetable_index_sample, effective_freq);
                 sample_sum += wv_sample * weight;
 
-                // Update voice’s stored phase.
+                // Update voice phase.
                 let phase_inc = effective_freq / self.sample_rate;
                 self.voice_phases[voice] = (self.voice_phases[voice] + phase_inc).rem_euclid(1.0);
             }

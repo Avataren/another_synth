@@ -1,5 +1,9 @@
 // src/audio/types/synth-layout.ts
-import { type ModulationTransformation, PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
+import {
+  type ModulationTransformation,
+  PortId,
+  WasmModulationType,
+} from 'app/public/wasm/audio_processor';
 
 // Define the types of nodes we can have in a voice
 export enum VoiceNodeType {
@@ -50,7 +54,7 @@ export interface NodeConnectionUpdate {
   toId: number;
   target: PortId;
   amount: number;
-  modulationTransformation: ModulationTransformation,
+  modulationTransformation: ModulationTransformation;
   isRemoving?: boolean;
   modulationType?: WasmModulationType;
 }
@@ -121,7 +125,7 @@ export enum FilterType {
   Notch = 4,
   HighPass = 5,
   Ladder = 6,
-  Comb = 7
+  Comb = 7,
 }
 
 export enum FilterSlope {
@@ -270,22 +274,22 @@ export function findModulationTargets(
     }));
 }
 
-
 export function getModulationTargetsForType(
   type: VoiceNodeType,
 ): ModulationTargetOption[] {
   switch (type) {
     case VoiceNodeType.WavetableOscillator:
       return [
-        { value: PortId.PhaseMod, label: PORT_LABELS[PortId.PhaseMod] },
-        { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
-        { value: PortId.ModIndex, label: PORT_LABELS[PortId.ModIndex] },
-        { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
-        { value: PortId.FeedbackMod, label: PORT_LABELS[PortId.FeedbackMod] },
+        { value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] },
         {
           value: PortId.WavetableIndex,
           label: PORT_LABELS[PortId.WavetableIndex],
         },
+        { value: PortId.ModIndex, label: PORT_LABELS[PortId.ModIndex] },
+        { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
+        { value: PortId.PhaseMod, label: PORT_LABELS[PortId.PhaseMod] },
+        { value: PortId.FeedbackMod, label: PORT_LABELS[PortId.FeedbackMod] },
+        { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
       ];
     case VoiceNodeType.Oscillator:
       return [
@@ -343,7 +347,14 @@ export function createNodeConnection(
   target: PortId,
   amount: number,
   modulationType: WasmModulationType,
-  modulationTransformation: ModulationTransformation
+  modulationTransformation: ModulationTransformation,
 ): NodeConnection {
-  return { fromId, toId, target, amount, modulationType, modulationTransformation };
+  return {
+    fromId,
+    toId,
+    target,
+    amount,
+    modulationType,
+    modulationTransformation,
+  };
 }
