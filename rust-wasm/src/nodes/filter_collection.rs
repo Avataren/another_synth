@@ -1,6 +1,9 @@
 use once_cell::sync::Lazy;
 use std::any::Any;
 use std::collections::HashMap;
+use std::f32::consts::PI;
+use std::simd::num::SimdFloat;
+use std::simd::Simd;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 // Import the biquad types (including FilterType) without redefining them.
@@ -19,6 +22,26 @@ pub enum FilterSlope {
 /// Helper: map a normalized resonance (0–1) to a Q factor.
 fn normalized_resonance_to_q(normalized: f32) -> f32 {
     0.707 + 9.293 * normalized
+}
+
+/// SIMD‑accelerated summation helper for f32 slices.
+/// Processes 4–element chunks at a time.
+#[inline(always)]
+fn simd_sum(slice: &[f32]) -> f32 {
+    // Explicitly specify 4 lanes.
+    let mut sum: Simd<f32, 4> = Simd::splat(0.0);
+    let chunks = slice.chunks_exact(4);
+    let remainder = chunks.remainder();
+    for chunk in chunks {
+        // Each chunk is exactly 4 elements.
+        let vec = Simd::from_slice(chunk);
+        sum += vec;
+    }
+    let mut total = sum.reduce_sum();
+    for &v in remainder {
+        total += v;
+    }
+    total
 }
 
 /// Fast tanh approximation using a precomputed lookup table with linear interpolation.
@@ -75,7 +98,7 @@ struct AntiAliasingFilter {
 impl AntiAliasingFilter {
     fn new(cutoff_normalized: f32) -> Self {
         // Design a 2nd-order Butterworth lowpass filter.
-        let c = 1.0 / (cutoff_normalized * std::f32::consts::PI).tan();
+        let c = 1.0 / (cutoff_normalized * PI).tan();
         let csq = c * c;
         let scale = 1.0 / (1.0 + std::f32::consts::SQRT_2 * c + csq);
 
@@ -425,6 +448,7 @@ impl AudioNode for FilterCollection {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
+        // Process modulations (assumed to return a struct with additive and multiplicative fields).
         let audio_in = self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
         let mod_cut = self.process_modulations_ex(buffer_size, inputs.get(&PortId::CutoffMod));
         let mod_res = self.process_modulations_ex(buffer_size, inputs.get(&PortId::ResonanceMod));
@@ -433,16 +457,13 @@ impl AudioNode for FilterCollection {
             self.process_modulations_ex(buffer_size, inputs.get(&PortId::GlobalFrequency));
 
         if let Some(out_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
+            // Process in blocks of 4 samples using SIMD for summing modulation values.
             for i in (0..buffer_size).step_by(4) {
                 let end = (i + 4).min(buffer_size);
-                let avg_cut_add: f32 =
-                    mod_cut.additive[i..end].iter().sum::<f32>() / (end - i) as f32;
-                let avg_cut_mult: f32 =
-                    mod_cut.multiplicative[i..end].iter().sum::<f32>() / (end - i) as f32;
-                let avg_keyboard: f32 =
-                    mod_keyboard.additive[i..end].iter().sum::<f32>() / (end - i) as f32;
-                let avg_global: f32 =
-                    mod_global.additive[i..end].iter().sum::<f32>() / (end - i) as f32;
+                let avg_cut_add = simd_sum(&mod_cut.additive[i..end]) / (end - i) as f32;
+                let avg_cut_mult = simd_sum(&mod_cut.multiplicative[i..end]) / (end - i) as f32;
+                let avg_keyboard = simd_sum(&mod_keyboard.additive[i..end]) / (end - i) as f32;
+                let avg_global = simd_sum(&mod_global.additive[i..end]) / (end - i) as f32;
 
                 let mut target_cutoff = (self.base_cutoff + avg_cut_add) * avg_cut_mult;
                 let global_factor = if avg_global > 0.0 {
@@ -461,10 +482,8 @@ impl AudioNode for FilterCollection {
                 }
                 let target_cutoff = target_cutoff.clamp(20.0, 20000.0);
 
-                let avg_res_add: f32 =
-                    mod_res.additive[i..end].iter().sum::<f32>() / (end - i) as f32;
-                let avg_res_mult: f32 =
-                    mod_res.multiplicative[i..end].iter().sum::<f32>() / (end - i) as f32;
+                let avg_res_add = simd_sum(&mod_res.additive[i..end]) / (end - i) as f32;
+                let avg_res_mult = simd_sum(&mod_res.multiplicative[i..end]) / (end - i) as f32;
                 let target_resonance = (self.base_resonance + avg_res_add) * avg_res_mult;
 
                 self.cutoff += self.smoothing_factor * (target_cutoff - self.cutoff);
@@ -628,7 +647,6 @@ impl AudioNode for FilterCollection {
     }
 }
 
-/// Helper to calculate block length.
 #[inline(always)]
 fn block_len(end: usize, start: usize) -> f32 {
     (end - start) as f32
@@ -670,10 +688,9 @@ impl FilterCollection {
                     let delayed_sample = self.get_delay_sample(delay);
                     self.comb_last_output = (1.0 - self.comb_dampening) * delayed_sample
                         + self.comb_dampening * self.comb_last_output;
-                    let new_val = filtered_input
-                        + self.resonance.powf(1.0 / (os_factor as f32)) * self.comb_last_output;
                     let buf_len = self.comb_buffer.len();
-                    self.comb_buffer[self.comb_buffer_index] = new_val;
+                    self.comb_buffer[self.comb_buffer_index] = filtered_input
+                        + self.resonance.powf(1.0 / (os_factor as f32)) * self.comb_last_output;
                     self.comb_buffer_index = (self.comb_buffer_index + 1) % buf_len;
                     last_output = delayed_sample;
                 }
@@ -744,20 +761,16 @@ impl FilterCollection {
         let min_freq = 20.0;
 
         // Determine FFT bin indices corresponding to min_freq and max_freq.
-        // (Note: FFT bins are linearly spaced, but we want a log–spaced frequency axis.)
         let bin_min = min_freq * (impulse_length as f32) / self.sample_rate;
-        // Ensure we never go out-of-bounds by subtracting a small amount.
         let bin_max = (max_freq * (impulse_length as f32) / self.sample_rate)
             .min(fft_magnitude_db.len() as f32 - 1.0);
 
-        let points = requested_length; //.min(512);
+        let points = requested_length;
         let mut response_db = Vec::with_capacity(points);
 
         // Logarithmically sample from bin_min to bin_max.
-        // This guarantees that the frequencies used are strictly between min_freq and max_freq.
         for i in 0..points {
             let t = i as f32 / (points - 1) as f32;
-            // Compute the bin index on a logarithmic scale.
             let bin = bin_min * (bin_max / bin_min).powf(t);
             let bin_floor = bin.floor() as usize;
             let bin_ceil = (bin_floor + 1).min(fft_magnitude_db.len() - 1);
@@ -767,11 +780,9 @@ impl FilterCollection {
             response_db.push(db_val);
         }
 
-        // Normalize the dB values to a 0–1 range for UI.
         self.normalize_for_display_range(response_db, -40.0, 40.0)
     }
 
-    // Example of a specialized normalization that uses a given dB range.
     fn normalize_for_display_range(
         &self,
         mut data: Vec<f32>,
@@ -781,18 +792,13 @@ impl FilterCollection {
         for value in &mut data {
             let clamped_db = value.clamp(db_floor, db_ceiling);
             let ratio = (clamped_db - db_floor) / (db_ceiling - db_floor);
-            // Typically, 0 dB is near the top, so we might NOT invert it:
             *value = ratio;
         }
         data
     }
 
-    // Create impulse response with a completely new filter
     fn create_impulse_response(&self, length: usize) -> Vec<f32> {
-        // Create an entirely new filter with the same settings
         let mut new_filter = FilterCollection::new(self.sample_rate);
-
-        // Copy only necessary parameters, avoid any shared references
         new_filter.base_cutoff = self.base_cutoff;
         new_filter.base_resonance = self.base_resonance;
         new_filter.base_gain_db = self.base_gain_db;
@@ -805,11 +811,9 @@ impl FilterCollection {
         new_filter.comb_target_frequency = self.comb_target_frequency;
         new_filter.comb_dampening = self.comb_dampening;
 
-        // Explicitly initialize filter settings
         new_filter.set_filter_type(self.filter_type);
         new_filter.set_filter_slope(self.slope);
 
-        // Generate impulse response
         let mut response = Vec::with_capacity(length);
         for i in 0..length {
             let input = if i == 0 { 1.0 } else { 0.0 };
@@ -819,34 +823,22 @@ impl FilterCollection {
         response
     }
 
-    // Separate function to calculate FFT magnitudes from impulse response
     fn calculate_fft_magnitude(&self, impulse_response: Vec<f32>) -> Vec<f32> {
         let fft_length = impulse_response.len();
-
-        // Create the standard FFT planner.
         let mut planner = rustfft::FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(fft_length);
-
-        // Convert impulse response to complex numbers.
         let mut buffer: Vec<rustfft::num_complex::Complex<f32>> = impulse_response
             .into_iter()
             .map(|x| rustfft::num_complex::Complex { re: x, im: 0.0 })
             .collect();
-
-        // Process the FFT.
         fft.process(&mut buffer);
-
-        // Calculate magnitude in dB for all bins.
         let epsilon = 1e-10;
         let mut result: Vec<f32> = buffer
             .into_iter()
             .map(|c| 20.0 * ((c.norm() + epsilon).log10()))
             .collect();
-
-        // Truncate to the first half (0..Nyquist). For a 2048 sample FFT, that's indices [0..1024].
         let half_len = fft_length / 2;
         result.truncate(half_len);
-
         result
     }
 }
