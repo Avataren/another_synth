@@ -66,7 +66,7 @@ pub trait ModulationProcessor {
         (add, mult)
     }
 
-    // This helper computes the transformation in SIMD.
+    // SIMD transformation function remains unchanged.
     #[inline(always)]
     fn transform_simd<const LANES: usize>(
         x: Simd<f32, LANES>,
@@ -95,10 +95,9 @@ pub trait ModulationProcessor {
         }
     }
 
-    // Generic SIMD loop helper that processes LANES samples at a time,
-    // then processes any remainder scalarly.
+    // Unsafe SIMD loop that uses pointer arithmetic and replaces write_to_slice with copy_from_slice.
     #[inline(always)]
-    fn simd_process<const LANES: usize, F, FS>(
+    unsafe fn simd_process_unchecked<const LANES: usize, F, FS>(
         source: &[f32],
         target: &mut [f32],
         amt: f32,
@@ -112,25 +111,60 @@ pub trait ModulationProcessor {
     {
         let simd_amt = Simd::<f32, LANES>::splat(amt);
         let simd_one = Simd::<f32, LANES>::splat(1.0);
+        let len = source.len();
+        let chunks = len / LANES;
+        let remainder = len % LANES;
 
-        for (src_chunk, tgt_chunk) in source
-            .chunks_exact(LANES)
-            .zip(target.chunks_exact_mut(LANES))
-        {
-            let src = Simd::<f32, LANES>::from_slice(src_chunk);
-            let weighted = Self::transform_simd(src, transform, simd_one) * simd_amt;
-            let mut tgt = Simd::<f32, LANES>::from_slice(tgt_chunk);
-            tgt = update(tgt, weighted, simd_one);
-            tgt_chunk.copy_from_slice(&tgt.to_array());
+        let src_ptr = source.as_ptr();
+        let tgt_ptr = target.as_mut_ptr();
+
+        for i in 0..chunks {
+            let offset = i * LANES;
+            let src_chunk = std::slice::from_raw_parts(src_ptr.add(offset), LANES);
+            let tgt_chunk = std::slice::from_raw_parts_mut(tgt_ptr.add(offset), LANES);
+            let src_simd = Simd::<f32, LANES>::from_slice(src_chunk);
+            let weighted = Self::transform_simd(src_simd, transform, simd_one) * simd_amt;
+            let mut tgt_simd = Simd::<f32, LANES>::from_slice(tgt_chunk);
+            tgt_simd = update(tgt_simd, weighted, simd_one);
+            // Replace write_to_slice with a conversion to array and copy_from_slice.
+            tgt_chunk.copy_from_slice(&tgt_simd.to_array());
         }
 
-        // Process the remainder scalarly.
-        let remainder = source.chunks_exact(LANES).remainder();
-        let start = source.len() - remainder.len();
-        for i in 0..remainder.len() {
-            let s = source[start + i];
-            let weighted = Self::transform_scalar(s, transform) * amt;
-            target[start + i] = update_scalar(target[start + i], weighted, 1.0);
+        // Process any remaining elements scalarly.
+        if remainder > 0 {
+            let start = len - remainder;
+            for i in 0..remainder {
+                let s = *src_ptr.add(start + i);
+                let weighted = Self::transform_scalar(s, transform) * amt;
+                let old = *tgt_ptr.add(start + i);
+                *tgt_ptr.add(start + i) = update_scalar(old, weighted, 1.0);
+            }
+        }
+    }
+
+    // Safe wrapper that calls the unsafe version.
+    #[inline(always)]
+    fn simd_process<const LANES: usize, F, FS>(
+        source: &[f32],
+        target: &mut [f32],
+        amt: f32,
+        transform: ModulationTransformation,
+        update: F,
+        update_scalar: FS,
+    ) where
+        F: Fn(Simd<f32, LANES>, Simd<f32, LANES>, Simd<f32, LANES>) -> Simd<f32, LANES>,
+        FS: Fn(f32, f32, f32) -> f32,
+        LaneCount<LANES>: SupportedLaneCount,
+    {
+        unsafe {
+            Self::simd_process_unchecked::<LANES, F, FS>(
+                source,
+                target,
+                amt,
+                transform,
+                update,
+                update_scalar,
+            )
         }
     }
 
