@@ -306,7 +306,7 @@ const handleTransformationChange = async (
       target: route.target,
       amount: route.amount,
       modulationType: route.modulationType.value,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: newTransformation,
       isRemoving: true,
     });
     await routeManager.updateConnection({
