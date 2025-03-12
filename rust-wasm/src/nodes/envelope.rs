@@ -177,13 +177,13 @@ impl Envelope {
 
                 // Log once per attack phase.
                 if !self.debug_logged_attack {
-                    console::log_1(
-                        &format!(
-                            "Attack Phase: additive: {:.3}, multiplicative: {:.3}, modulated_attack_time: {:.3}, position: {:.3}",
-                            attack_mod_add, attack_mod_mul, modulated_attack_time, self.position
-                        )
-                        .into(),
-                    );
+                    // console::log_1(
+                    //     &format!(
+                    //         "Attack Phase: additive: {:.3}, multiplicative: {:.3}, modulated_attack_time: {:.3}, position: {:.3}",
+                    //         attack_mod_add, attack_mod_mul, modulated_attack_time, self.position
+                    //     )
+                    //     .into(),
+                    // );
                     self.debug_logged_attack = true;
                 }
 
@@ -251,14 +251,14 @@ impl Envelope {
     /// Respond to gate changes.
     fn trigger(&mut self, gate: f32) {
         if gate > 0.0 && self.last_gate_value <= 0.0 {
-            console::log_1(&"Gate on detected, starting attack".into());
+            // console::log_1(&"Gate on detected, starting attack".into());
             self.debug_logged_attack = false;
             self.pre_attack_value = self.value;
             self.phase = EnvelopePhase::Attack;
             self.smoothing_counter = self.config.attack_smoothing_samples;
             self.position = 0.0;
         } else if gate <= 0.0 && self.last_gate_value > 0.0 {
-            console::log_1(&"Gate off detected, starting release".into());
+            // console::log_1(&"Gate off detected, starting release".into());
             self.phase = EnvelopePhase::Release;
             self.release_level = self.value; // store current value for release
             self.position = 0.0;

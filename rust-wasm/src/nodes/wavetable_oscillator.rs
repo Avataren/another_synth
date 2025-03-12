@@ -9,7 +9,6 @@ use wasm_bindgen::prelude::*;
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
 
-// Use the new morph collection which now holds mipmapped wavetables.
 use super::morph_wavetable::{WavetableMorphCollection, WavetableSynthBank};
 
 use std::f32::consts::PI;
@@ -18,7 +17,7 @@ use std::f32::consts::PI;
 #[derive(Debug, Clone, Copy)]
 pub struct WavetableOscillatorStateUpdate {
     pub phase_mod_amount: f32,
-    pub detune: f32,
+    pub detune: f32, // In cents
     pub hard_sync: bool,
     pub gain: f32,
     pub active: bool,
@@ -33,7 +32,7 @@ impl WavetableOscillatorStateUpdate {
     #[wasm_bindgen(constructor)]
     pub fn new(
         phase_mod_amount: f32,
-        detune: f32,
+        detune: f32, // In cents
         hard_sync: bool,
         gain: f32,
         active: bool,
@@ -56,8 +55,6 @@ impl WavetableOscillatorStateUpdate {
     }
 }
 
-/// The wavetable oscillator now uses precomputed mipmapped wavetables for band limiting.
-/// (All anti-aliasing is done ahead of time.)
 pub struct WavetableOscillator {
     sample_rate: f32,
     gain: f32,
@@ -70,7 +67,7 @@ pub struct WavetableOscillator {
     gate_buffer: Vec<f32>,
     // Modulation parameters.
     phase_mod_amount: f32,
-    detune: f32,
+    detune: f32, // In cents
     // Unison parameters.
     unison_voices: usize,
     spread: f32,
@@ -87,13 +84,13 @@ pub struct WavetableOscillator {
     // Constants precalculated
     two_pi: f32,
     feedback_divisor: f32,
-    semitone_ratio: f32, // 2^(1/12)
+    cent_ratio: f32,     // 2^(1/1200) for cents calculation
+    semitone_ratio: f32, // 2^(1/12) for semitone calculation
 }
 
 impl ModulationProcessor for WavetableOscillator {}
 
 impl WavetableOscillator {
-    /// Create a new oscillator.
     pub fn new(sample_rate: f32, bank: Rc<RefCell<WavetableSynthBank>>) -> Self {
         Self {
             sample_rate,
@@ -106,17 +103,18 @@ impl WavetableOscillator {
             frequency: 440.0,
             gate_buffer: Vec::with_capacity(1024),
             phase_mod_amount: 0.0,
-            detune: 0.0,
+            detune: 0.0, // In cents
             unison_voices: 1,
             spread: 0.1,
             voice_phases: vec![0.0; 1],
-            voice_weights: Vec::with_capacity(16), // Pre-allocate for reasonable max voices
-            voice_offsets: Vec::with_capacity(16), // Pre-allocate for reasonable max voices
+            voice_weights: Vec::with_capacity(16),
+            voice_offsets: Vec::with_capacity(16),
             wavetable_index: 0.0,
             collection_name: "default".to_string(),
             wavetable_bank: bank,
             two_pi: 2.0 * PI,
             feedback_divisor: PI * 1.5,
+            cent_ratio: 2.0_f32.powf(1.0 / 1200.0),
             semitone_ratio: 2.0_f32.powf(1.0 / 12.0),
         }
     }
@@ -125,14 +123,13 @@ impl WavetableOscillator {
         self.collection_name = collection_name.to_string();
     }
 
-    /// Update oscillator parameters.
     pub fn update_params(&mut self, params: &WavetableOscillatorStateUpdate) {
         self.gain = params.gain;
         self.feedback_amount = params.feedback_amount;
         self.hard_sync = params.hard_sync;
         self.active = params.active;
         self.phase_mod_amount = params.phase_mod_amount;
-        self.detune = params.detune;
+        self.detune = params.detune; // In cents
         self.spread = params.spread;
         self.wavetable_index = params.wavetable_index;
         let new_voice_count = if params.unison_voices == 0 {
@@ -151,7 +148,6 @@ impl WavetableOscillator {
         }
     }
 
-    /// Pre-calculate unison voice weights and offsets
     fn update_voice_unison_values(&mut self) {
         self.voice_weights.clear();
         self.voice_offsets.clear();
@@ -176,7 +172,6 @@ impl WavetableOscillator {
         }
     }
 
-    /// Check the gate for hard sync.
     #[inline(always)]
     fn check_gate(&mut self, gate: f32) {
         if self.hard_sync && gate > 0.0 && self.last_gate_value <= 0.0 {
@@ -187,39 +182,6 @@ impl WavetableOscillator {
         self.last_gate_value = gate;
     }
 
-    /// Apply frequency modulation using portable SIMD
-    #[inline(always)]
-    fn apply_frequency_mod(
-        &self,
-        buffer_size: usize,
-        freq_mod: &[f32],
-        base_freq: &[f32],
-    ) -> Vec<f32> {
-        let mut result = Vec::with_capacity(buffer_size);
-
-        // Process in chunks of 4 using portable SIMD
-        let chunks = buffer_size / 4;
-        for c in 0..chunks {
-            let i = c * 4;
-            let freq_simd = f32x4::from_slice(&base_freq[i..i + 4]);
-            let mod_simd = f32x4::from_slice(&freq_mod[i..i + 4]);
-            let res_simd = freq_simd * mod_simd;
-
-            // Convert back to slice and extend result
-            let mut arr = [0.0f32; 4];
-            res_simd.copy_to_slice(&mut arr);
-            result.extend_from_slice(&arr);
-        }
-
-        // Handle remaining elements
-        for i in (chunks * 4)..buffer_size {
-            result.push(base_freq[i] * freq_mod[i]);
-        }
-
-        result
-    }
-
-    /// Process a set of modulation values using SIMD
     #[inline(always)]
     fn process_modulation_simd(
         &self,
@@ -253,13 +215,6 @@ impl WavetableOscillator {
         }
 
         result
-    }
-
-    /// Calculate detune in semitones
-    #[inline(always)]
-    fn calculate_detuned_frequency(&self, base_freq: f32, semitones: f32) -> f32 {
-        // Optimization: Use precomputed semitone ratio (2^(1/12)) and pow
-        base_freq * self.semitone_ratio.powf(semitones)
     }
 }
 
@@ -321,12 +276,9 @@ impl AudioNode for WavetableOscillator {
             self.process_modulations_ex(buffer_size, inputs.get(&PortId::DetuneMod));
 
         // Use SIMD-optimized modulation processing
-        let freq_mod = self.process_modulation_simd(
-            buffer_size,
-            1.0,
-            &freq_mod_result.additive,
-            &freq_mod_result.multiplicative,
-        );
+        // For frequency modulation, we'll handle the additive and multiplicative components separately
+        let freq_mod_add = freq_mod_result.additive.clone();
+        let freq_mod_mul = freq_mod_result.multiplicative.clone();
 
         let phase_mod = self.process_modulation_simd(
             buffer_size,
@@ -342,9 +294,10 @@ impl AudioNode for WavetableOscillator {
             &gain_mod_result.multiplicative,
         );
 
+        // Fix for feedback modulation
         let feedback_mod = self.process_modulation_simd(
             buffer_size,
-            1.0,
+            self.feedback_amount,
             &feedback_mod_result.additive,
             &feedback_mod_result.multiplicative,
         );
@@ -365,7 +318,7 @@ impl AudioNode for WavetableOscillator {
 
         let detune_mod = self.process_modulation_simd(
             buffer_size,
-            self.detune,
+            0.0, // Base for detune mod is 0.0 semitones (property is separate)
             &detune_mod_result.additive,
             &detune_mod_result.multiplicative,
         );
@@ -408,7 +361,7 @@ impl AudioNode for WavetableOscillator {
         }
 
         // --- 3) Base frequency (from GlobalFrequency or default) ---
-        let base_freq = if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
+        let mut base_freq = if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
             if !freq_sources.is_empty() && !freq_sources[0].buffer.is_empty() {
                 freq_sources[0].buffer.clone()
             } else {
@@ -417,9 +370,6 @@ impl AudioNode for WavetableOscillator {
         } else {
             vec![self.frequency; buffer_size]
         };
-
-        // Apply frequency modulation using SIMD
-        let modulated_freqs = self.apply_frequency_mod(buffer_size, &freq_mod, &base_freq);
 
         // --- 4) Get the active mipmapped wavetable collection ---
         let collection = get_collection_from_bank(&self.wavetable_bank, &self.collection_name);
@@ -442,6 +392,9 @@ impl AudioNode for WavetableOscillator {
         // Calculate lookup values for all samples in advance when possible
         let sample_rate_recip = 1.0 / self.sample_rate;
 
+        // Precalculate cents factor for the detune property (in cents)
+        let cents_factor = self.cent_ratio.powf(self.detune);
+
         // --- 6) Main synthesis loop ---
         for i in 0..buffer_size {
             // Check for hard sync via the gate.
@@ -452,8 +405,15 @@ impl AudioNode for WavetableOscillator {
 
             // Compute external phase modulation and feedback
             let ext_phase = (phase_mod[i] * mod_index[i]) / self.two_pi;
-            let fb =
-                (self.last_output * self.feedback_amount * feedback_mod[i]) / self.feedback_divisor;
+
+            // Use the modulated feedback value directly
+            let fb = (self.last_output * feedback_mod[i]) / self.feedback_divisor;
+
+            // Apply frequency modulation to base frequency
+            // First add the additive component
+            let modulated_freq = base_freq[i] + freq_mod_add[i];
+            // Then multiply by the multiplicative component
+            let modulated_freq = modulated_freq * freq_mod_mul[i];
 
             let mut sample_sum = 0.0;
 
@@ -461,12 +421,13 @@ impl AudioNode for WavetableOscillator {
             for voice in 0..self.unison_voices {
                 let weight = self.voice_weights[voice];
 
-                // Get the modulated frequency for this sample
-                let modulated_freq = modulated_freqs[i];
+                // Apply cents-based detune from property
+                let freq_with_cents = modulated_freq * cents_factor;
 
-                // Apply detune for this voice
-                let total_detune = detune_mod[i] + self.voice_offsets[voice];
-                let effective_freq = self.calculate_detuned_frequency(modulated_freq, total_detune);
+                // Apply semitone-based detune from modulation and voice spread
+                let voice_detune_semitones = detune_mod[i] + self.voice_offsets[voice];
+                let semitones_factor = self.semitone_ratio.powf(voice_detune_semitones);
+                let effective_freq = freq_with_cents * semitones_factor;
 
                 // Compute current phase (including external modulation and feedback)
                 let phase = (self.voice_phases[voice] + ext_phase + fb).rem_euclid(1.0);
