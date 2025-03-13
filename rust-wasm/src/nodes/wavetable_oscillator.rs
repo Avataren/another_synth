@@ -1,4 +1,3 @@
-// wavetable_oscillator.rs
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -72,7 +71,7 @@ pub struct WavetableOscillator {
     unison_voices: usize,
     spread: f32,
     voice_phases: Vec<f32>,
-    // Avoid reallocation with cached vectors
+    // Cached vectors to avoid reallocation
     voice_weights: Vec<f32>,
     voice_offsets: Vec<f32>,
     // Morph parameter.
@@ -81,11 +80,11 @@ pub struct WavetableOscillator {
     collection_name: String,
     // The bank of wavetable morph collections.
     wavetable_bank: Rc<RefCell<WavetableSynthBank>>,
-    // Constants precalculated
+    // Precalculated constants.
     two_pi: f32,
     feedback_divisor: f32,
-    cent_ratio: f32,     // 2^(1/1200) for cents calculation
-    semitone_ratio: f32, // 2^(1/12) for semitone calculation
+    cent_ratio: f32,     // 2^(1/1200)
+    semitone_ratio: f32, // 2^(1/12)
 }
 
 impl ModulationProcessor for WavetableOscillator {}
@@ -103,7 +102,7 @@ impl WavetableOscillator {
             frequency: 440.0,
             gate_buffer: Vec::with_capacity(1024),
             phase_mod_amount: 0.0,
-            detune: 0.0, // In cents
+            detune: 0.0,
             unison_voices: 1,
             spread: 0.1,
             voice_phases: vec![0.0; 1],
@@ -129,7 +128,7 @@ impl WavetableOscillator {
         self.hard_sync = params.hard_sync;
         self.active = params.active;
         self.phase_mod_amount = params.phase_mod_amount;
-        self.detune = params.detune; // In cents
+        self.detune = params.detune;
         self.spread = params.spread;
         self.wavetable_index = params.wavetable_index;
 
@@ -141,8 +140,6 @@ impl WavetableOscillator {
 
         if new_voice_count != self.unison_voices {
             self.unison_voices = new_voice_count;
-            // If spread is zero, set all voice phases equal (e.g. 0.0)
-            // Otherwise, distribute them evenly over [0, 1)
             if self.spread == 0.0 {
                 self.voice_phases = vec![0.0; new_voice_count];
             } else {
@@ -151,7 +148,6 @@ impl WavetableOscillator {
                     .collect();
             }
         } else if self.spread == 0.0 {
-            // Even if voice count didn't change, if spread goes to 0 force phases to be identical.
             let common_phase = self.voice_phases[0];
             for phase in self.voice_phases.iter_mut() {
                 *phase = common_phase;
@@ -165,17 +161,13 @@ impl WavetableOscillator {
         self.voice_offsets.clear();
 
         for voice in 0..self.unison_voices {
-            // Use uniform weight for each voice.
             self.voice_weights.push(1.0);
-
             let voice_f = voice as f32;
             let offset = if self.unison_voices > 1 {
-                // Compute a value in cents ranging from -spread to +spread.
                 self.spread * (2.0 * (voice_f / ((self.unison_voices - 1) as f32)) - 1.0)
             } else {
                 0.0
             };
-            // Convert cents to semitones.
             self.voice_offsets.push(offset * 0.01);
         }
     }
@@ -190,6 +182,30 @@ impl WavetableOscillator {
         self.last_gate_value = gate;
     }
 
+    // SIMD modulation processing: process into an output buffer in place.
+    #[inline(always)]
+    fn process_modulation_simd_in_place(
+        &self,
+        output: &mut [f32],
+        base: f32,
+        additive: &[f32],
+        multiplicative: &[f32],
+    ) {
+        let len = output.len();
+        let base_simd = f32x4::splat(base);
+        let chunks = len / 4;
+        for c in 0..chunks {
+            let idx = c * 4;
+            let add_simd = f32x4::from_slice(&additive[idx..idx + 4]);
+            let mul_simd = f32x4::from_slice(&multiplicative[idx..idx + 4]);
+            let combined = (base_simd + add_simd) * mul_simd;
+            combined.copy_to_slice(&mut output[idx..idx + 4]);
+        }
+        for i in (chunks * 4)..len {
+            output[i] = (base + additive[i]) * multiplicative[i];
+        }
+    }
+
     #[inline(always)]
     fn process_modulation_simd(
         &self,
@@ -198,30 +214,8 @@ impl WavetableOscillator {
         additive: &[f32],
         multiplicative: &[f32],
     ) -> Vec<f32> {
-        let mut result = Vec::with_capacity(buffer_size);
-        let base_simd = Simd::splat(base);
-
-        // Process in chunks of 4
-        let chunks = buffer_size / 4;
-        for c in 0..chunks {
-            let i = c * 4;
-            let add_simd = f32x4::from_slice(&additive[i..i + 4]);
-            let mul_simd = f32x4::from_slice(&multiplicative[i..i + 4]);
-
-            // (base + add) * mul
-            let combined = (base_simd + add_simd) * mul_simd;
-
-            // Store results
-            let mut arr = [0.0f32; 4];
-            combined.copy_to_slice(&mut arr);
-            result.extend_from_slice(&arr);
-        }
-
-        // Handle remaining elements
-        for i in (chunks * 4)..buffer_size {
-            result.push((base + additive[i]) * multiplicative[i]);
-        }
-
+        let mut result = vec![0.0; buffer_size];
+        self.process_modulation_simd_in_place(&mut result, base, additive, multiplicative);
         result
     }
 }
@@ -230,7 +224,6 @@ fn get_collection_from_bank(
     bank: &RefCell<WavetableSynthBank>,
     name: &str,
 ) -> Rc<WavetableMorphCollection> {
-    // Borrow the bank once and use result
     let borrowed = bank.borrow();
     borrowed
         .get_collection(name)
@@ -267,7 +260,7 @@ impl AudioNode for WavetableOscillator {
             return;
         }
 
-        // --- 1) Process modulations using process_modulations_ex ---
+        // --- 1) Process modulations ---
         let freq_mod_result =
             self.process_modulations_ex(buffer_size, inputs.get(&PortId::FrequencyMod));
         let phase_mod_result =
@@ -283,8 +276,6 @@ impl AudioNode for WavetableOscillator {
         let detune_mod_result =
             self.process_modulations_ex(buffer_size, inputs.get(&PortId::DetuneMod));
 
-        // Use SIMD-optimized modulation processing
-        // For frequency modulation, we'll handle the additive and multiplicative components separately
         let freq_mod_add = freq_mod_result.additive.clone();
         let freq_mod_mul = freq_mod_result.multiplicative.clone();
 
@@ -294,39 +285,33 @@ impl AudioNode for WavetableOscillator {
             &phase_mod_result.additive,
             &phase_mod_result.multiplicative,
         );
-
         let gain_mod = self.process_modulation_simd(
             buffer_size,
             1.0,
             &gain_mod_result.additive,
             &gain_mod_result.multiplicative,
         );
-
-        // Fix for feedback modulation
         let feedback_mod = self.process_modulation_simd(
             buffer_size,
             self.feedback_amount,
             &feedback_mod_result.additive,
             &feedback_mod_result.multiplicative,
         );
-
         let mod_index = self.process_modulation_simd(
             buffer_size,
             self.phase_mod_amount,
             &mod_index_result.additive,
             &mod_index_result.multiplicative,
         );
-
         let wavetable_index_mod = self.process_modulation_simd(
             buffer_size,
             self.wavetable_index,
             &wavetable_index_mod_result.additive,
             &wavetable_index_mod_result.multiplicative,
         );
-
         let detune_mod = self.process_modulation_simd(
             buffer_size,
-            0.0, // Base for detune mod is 0.0 semitones (property is separate)
+            0.0,
             &detune_mod_result.additive,
             &detune_mod_result.multiplicative,
         );
@@ -335,34 +320,29 @@ impl AudioNode for WavetableOscillator {
         if self.gate_buffer.len() < buffer_size {
             self.gate_buffer.resize(buffer_size, 0.0);
         } else {
-            self.gate_buffer
+            self.gate_buffer[..buffer_size]
                 .iter_mut()
-                .take(buffer_size)
                 .for_each(|v| *v = 0.0);
         }
 
         if let Some(sources) = inputs.get(&PortId::Gate) {
             for source in sources {
-                // SIMD processing for gate buffer
-                let chunks = std::cmp::min(buffer_size, source.buffer.len()) / 4;
-                let amount_simd = Simd::splat(source.amount);
-
-                for c in 0..chunks {
-                    let i = c * 4;
-                    // Load gate and source values
-                    let mut gate_values = [0.0f32; 4];
-                    gate_values.copy_from_slice(&self.gate_buffer[i..i + 4]);
-                    let gate_simd = f32x4::from_slice(&gate_values);
-
-                    let src_simd = f32x4::from_slice(&source.buffer[i..i + 4]);
-                    let result = gate_simd + (src_simd * amount_simd);
-
-                    // Store results back
-                    result.copy_to_slice(&mut self.gate_buffer[i..i + 4]);
-                }
-
-                // Handle remaining elements
-                for i in (chunks * 4)..std::cmp::min(buffer_size, source.buffer.len()) {
+                let min_len = std::cmp::min(buffer_size, source.buffer.len());
+                let amount_simd = f32x4::splat(source.amount);
+                self.gate_buffer[..min_len]
+                    .chunks_exact_mut(4)
+                    .enumerate()
+                    .for_each(|(i, chunk)| {
+                        let idx = i * 4;
+                        let src_chunk = &source.buffer[idx..idx + 4];
+                        let gate_simd = f32x4::from_slice(chunk);
+                        let src_simd = f32x4::from_slice(src_chunk);
+                        let result = gate_simd + (src_simd * amount_simd);
+                        result.copy_to_slice(chunk);
+                    });
+                let remainder = min_len % 4;
+                let start = min_len - remainder;
+                for i in start..min_len {
                     self.gate_buffer[i] += source.buffer[i] * source.amount;
                 }
             }
@@ -379,78 +359,50 @@ impl AudioNode for WavetableOscillator {
             vec![self.frequency; buffer_size]
         };
 
-        // --- 4) Get the active mipmapped wavetable collection ---
+        // --- 4) Get the active wavetable collection ---
         let collection = get_collection_from_bank(&self.wavetable_bank, &self.collection_name);
 
-        // Ensure unison values are updated
         if self.voice_weights.len() != self.unison_voices {
             self.update_voice_unison_values();
         }
-
-        // Calculate total weight once upfront
         let total_weight: f32 = self.voice_weights.iter().sum();
         let total_weight_recip = 1.0 / total_weight;
 
-        // Get output buffer or return early
         let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
             Some(buffer) => buffer,
             None => return,
         };
 
-        // Calculate lookup values for all samples in advance when possible
+        // --- 5) Precalculate constants ---
         let sample_rate_recip = 1.0 / self.sample_rate;
-
-        // Precalculate cents factor for the detune property (in cents)
         let cents_factor = self.cent_ratio.powf(self.detune);
 
         // --- 6) Main synthesis loop ---
         for i in 0..buffer_size {
-            // Check for hard sync via the gate.
             self.check_gate(self.gate_buffer[i]);
 
-            // Per-sample modulation values
-            let wavetable_index_sample = wavetable_index_mod[i].clamp(0.0, 1.0); // Clamp to valid range
-
-            // Compute external phase modulation and feedback
+            let wavetable_index_sample = wavetable_index_mod[i].clamp(0.0, 1.0);
             let ext_phase = (phase_mod[i] * mod_index[i]) / self.two_pi;
-
-            // Use the modulated feedback value directly
             let fb = (self.last_output * feedback_mod[i]) / self.feedback_divisor;
-
-            // Apply frequency modulation to base frequency
-            // First add the additive component
-            let modulated_freq = base_freq[i] + freq_mod_add[i];
-            // Then multiply by the multiplicative component
-            let modulated_freq = modulated_freq * freq_mod_mul[i];
+            let modulated_freq = (base_freq[i] + freq_mod_add[i]) * freq_mod_mul[i];
 
             let mut sample_sum = 0.0;
-
-            // Sum contributions from all unison voices
             for voice in 0..self.unison_voices {
                 let weight = self.voice_weights[voice];
-
-                // Apply cents-based detune from property
                 let freq_with_cents = modulated_freq * cents_factor;
-
-                // Apply semitone-based detune from modulation and voice spread
                 let voice_detune_semitones = detune_mod[i] + self.voice_offsets[voice];
                 let semitones_factor = self.semitone_ratio.powf(voice_detune_semitones);
                 let effective_freq = freq_with_cents * semitones_factor;
 
-                // Compute current phase (including external modulation and feedback)
                 let phase = (self.voice_phases[voice] + ext_phase + fb).rem_euclid(1.0);
-
-                // Lookup sample from the wavetable
                 let wv_sample =
                     collection.lookup_sample(phase, wavetable_index_sample, effective_freq);
                 sample_sum += wv_sample * weight;
 
-                // Update voice phase using precalculated phase increment
                 let phase_inc = effective_freq * sample_rate_recip;
                 self.voice_phases[voice] = (self.voice_phases[voice] + phase_inc).rem_euclid(1.0);
             }
 
-            // Apply total weight scaling, gain, and gain modulation
             let final_sample = (sample_sum * total_weight_recip) * self.gain * gain_mod[i];
             output_buffer[i] = final_sample;
             self.last_output = final_sample;
