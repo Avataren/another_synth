@@ -132,43 +132,51 @@ impl WavetableOscillator {
         self.detune = params.detune; // In cents
         self.spread = params.spread;
         self.wavetable_index = params.wavetable_index;
+
         let new_voice_count = if params.unison_voices == 0 {
             1
         } else {
             params.unison_voices as usize
         };
+
         if new_voice_count != self.unison_voices {
             self.unison_voices = new_voice_count;
-            // Reuse the first phase when changing voice count
-            let first_phase = self.voice_phases[0];
-            self.voice_phases.resize(new_voice_count, first_phase);
-
-            // Pre-calculate voice weights and offsets since they only change when unison voice count changes
-            self.update_voice_unison_values();
+            // If spread is zero, set all voice phases equal (e.g. 0.0)
+            // Otherwise, distribute them evenly over [0, 1)
+            if self.spread == 0.0 {
+                self.voice_phases = vec![0.0; new_voice_count];
+            } else {
+                self.voice_phases = (0..new_voice_count)
+                    .map(|i| i as f32 / new_voice_count as f32)
+                    .collect();
+            }
+        } else if self.spread == 0.0 {
+            // Even if voice count didn't change, if spread goes to 0 force phases to be identical.
+            let common_phase = self.voice_phases[0];
+            for phase in self.voice_phases.iter_mut() {
+                *phase = common_phase;
+            }
         }
+        self.update_voice_unison_values();
     }
 
     fn update_voice_unison_values(&mut self) {
         self.voice_weights.clear();
         self.voice_offsets.clear();
 
-        let center_index = (self.unison_voices as f32 - 1.0) / 2.0;
-        let sigma = self.unison_voices as f32 / 4.0;
-        let sigma_2x = 2.0 * sigma * sigma;
-
         for voice in 0..self.unison_voices {
-            let voice_f = voice as f32;
-            // Gaussian distribution for weights
-            let weight = (-((voice_f - center_index).powi(2)) / sigma_2x).exp();
-            self.voice_weights.push(weight);
+            // Use uniform weight for each voice.
+            self.voice_weights.push(1.0);
 
-            // Calculate stereo spread offsets
+            let voice_f = voice as f32;
             let offset = if self.unison_voices > 1 {
+                // Compute a value in cents ranging from -spread to +spread.
                 self.spread * (2.0 * (voice_f / ((self.unison_voices - 1) as f32)) - 1.0)
             } else {
                 0.0
             };
-            self.voice_offsets.push(offset);
+            // Convert cents to semitones.
+            self.voice_offsets.push(offset * 0.01);
         }
     }
 
