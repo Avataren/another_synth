@@ -284,7 +284,7 @@ let cachedWaveformCanvas: HTMLCanvasElement | null = null;
 const throttledUpdateWaveformDisplay = throttle(async () => {
   await updateCachedWaveform();
   updateWaveformDisplay();
-}, 1000 / 10);
+}, 1000 / 60);
 
 const updateCachedWaveform = async () => {
   if (!waveformCanvas.value) return;
