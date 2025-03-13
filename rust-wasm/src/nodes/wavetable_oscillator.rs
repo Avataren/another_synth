@@ -361,7 +361,7 @@ impl AudioNode for WavetableOscillator {
         }
 
         // --- 3) Base frequency (from GlobalFrequency or default) ---
-        let mut base_freq = if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
+        let base_freq = if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
             if !freq_sources.is_empty() && !freq_sources[0].buffer.is_empty() {
                 freq_sources[0].buffer.clone()
             } else {
