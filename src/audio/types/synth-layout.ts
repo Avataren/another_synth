@@ -331,11 +331,6 @@ export function getModulationTargetsForType(
       return [
         { value: PortId.DetuneMod, label: PORT_LABELS[PortId.DetuneMod] },
       ];
-    // case VoiceNodeType.Envelope:
-    //   return [
-    //     { value: PortId.GainMod, label: 'Gain' },
-    //     // ... any other valid envelope targets
-    //   ];
     default:
       return [];
   }
