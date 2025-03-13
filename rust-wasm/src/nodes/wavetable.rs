@@ -29,12 +29,14 @@ pub struct WavetableBank {
 
 /// Helper: Given frequency–domain arrays, find the highest harmonic that exceeds a small threshold.
 fn compute_max_harmonic(freq_re: &[f32], freq_im: &[f32], num_samples: usize) -> usize {
-    let min_val = 0.000001; // threshold (–120 dB)
+    let min_val = 0.0001; // threshold (–80 dB), as low as we can go with f32
     let mut max_harmonic = num_samples / 2; // Nyquist index
     while max_harmonic > 0 && (freq_re[max_harmonic].abs() + freq_im[max_harmonic].abs() < min_val)
     {
         max_harmonic -= 1;
     }
+    console::log_1(&format!("Computed max_harmonic {}", max_harmonic).into());
+
     max_harmonic
 }
 
