@@ -6,6 +6,15 @@ use std::simd::StdFloat;
 use crate::graph::ModulationSource;
 use crate::{AudioNode, PortId};
 
+/// A single step in the arpeggiator pattern.
+#[derive(Clone, Copy)]
+pub struct PatternStep {
+    /// The modulation value (in cents) for this step.
+    pub value: f32,
+    /// Whether this step is active (i.e. should trigger the gate).
+    pub active: bool,
+}
+
 /// Modes for the arpeggiator.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ArpeggiatorMode {
@@ -18,21 +27,21 @@ pub enum ArpeggiatorMode {
 }
 
 /// A generator node that produces a modulation signal (in cents) according to an arpeggiator pattern.
-/// This output can be routed (for example) to modulate an oscillator’s detune parameter.
-/// In Trigger mode, a gate input (PortId::Gate) is used to reset the progression on a rising edge.
-/// Optionally, it can output a gate signal (via PortId::GateOut) that can be used to trigger envelopes.
+/// In Trigger mode, a gate input is used to reset the progression on a rising edge.
+/// If gate output is enabled, it writes a gate signal that is high for active steps (except during a brief gap)
+/// and low for skipped steps.
 pub struct ArpeggiatorGenerator {
     /// Whether the arpeggiator is enabled.
     enabled: bool,
-    /// The arpeggiator pattern (values in cents).
-    pattern: Vec<f32>,
+    /// The arpeggiator pattern (each step holds a modulation value and active flag).
+    pattern: Vec<PatternStep>,
     /// Number of samples per arpeggiator step.
     step_samples: usize,
     /// A counter tracking the current sample position.
     sample_counter: usize,
     /// The selected arpeggiator mode.
     mode: ArpeggiatorMode,
-    /// The previous gate state (for trigger mode edge detection).
+    /// The previous gate state (for Trigger mode edge detection).
     prev_gate_active: bool,
     /// Flag to control whether the node writes a gate signal.
     gate_output_enabled: bool,
@@ -55,8 +64,8 @@ impl ArpeggiatorGenerator {
         }
     }
 
-    /// Enable the arpeggiator with a given pattern (in cents) and step duration (in samples).
-    pub fn enable(&mut self, pattern: Vec<f32>, step_samples: usize) {
+    /// Enable the arpeggiator with a given pattern and step duration (in samples).
+    pub fn enable(&mut self, pattern: Vec<PatternStep>, step_samples: usize) {
         self.enabled = true;
         self.pattern = pattern;
         self.step_samples = step_samples;
@@ -75,7 +84,7 @@ impl ArpeggiatorGenerator {
     }
 
     /// Set the arpeggiator pattern and reset the progression.
-    pub fn set_pattern(&mut self, pattern: Vec<f32>) {
+    pub fn set_pattern(&mut self, pattern: Vec<PatternStep>) {
         self.pattern = pattern;
         self.sample_counter = 0;
         self.prev_step = 0;
@@ -94,26 +103,38 @@ impl ArpeggiatorGenerator {
     }
 
     /// Computes the modulation value (in cents) for the given sample index.
+    /// If the corresponding pattern step is inactive, it returns 0.0.
     #[inline]
     fn modulation_value(&self, sample_index: usize) -> f32 {
         if !self.enabled || self.pattern.is_empty() || self.step_samples == 0 {
             return 0.0;
         }
-        match self.mode {
+        let step_index = match self.mode {
             ArpeggiatorMode::FreeRunning | ArpeggiatorMode::Trigger => {
-                let step = (sample_index / self.step_samples) % self.pattern.len();
-                self.pattern[step]
+                (sample_index / self.step_samples) % self.pattern.len()
             }
             ArpeggiatorMode::PingPong => {
                 let n = self.pattern.len();
                 if n == 1 {
-                    return self.pattern[0];
+                    0
+                } else {
+                    let period = 2 * n - 2;
+                    let pos = (sample_index / self.step_samples) % period;
+                    if pos < n {
+                        pos
+                    } else {
+                        period - pos
+                    }
                 }
-                let period = 2 * n - 2;
-                let pos = (sample_index / self.step_samples) % period;
-                let step = if pos < n { pos } else { period - pos };
-                self.pattern[step]
             }
+        };
+
+        let step = self.pattern[step_index];
+        if step.active {
+            step.value
+        } else {
+            // For a skipped step, output zero modulation.
+            0.0
         }
     }
 
@@ -193,9 +214,8 @@ impl ArpeggiatorGenerator {
 
     /// Process the node while optionally writing a gate signal.
     ///
-    /// This method routes the modulation output as usual, and if the gate output is enabled,
-    /// writes a gate signal on PortId::GateOut. In this example, the gate signal is high (1.0)
-    /// during most of a step and goes low (0.0) for a brief gap at the end of the step.
+    /// For each step, if the step is active the gate output is high (except for a brief gap at the end of the step);
+    /// if the step is skipped, the gate output remains low (0.0) for the entire duration.
     fn process_with_optional_gate(
         &mut self,
         inputs: &HashMap<PortId, Vec<ModulationSource>>,
@@ -212,19 +232,26 @@ impl ArpeggiatorGenerator {
         // If gate output is enabled, write the gate signal.
         if self.gate_output_enabled {
             if let Some(gate_output) = outputs.get_mut(&PortId::ArpGate) {
-                // Define a gap duration (in samples) at the end of each step.
+                // Define a gap duration (in samples) at the end of an active step.
                 let gap_samples = 2;
                 // Compute the starting index for the current block.
                 let block_start = self.sample_counter - buffer_size;
                 for j in 0..buffer_size {
                     let global_index = block_start + j;
                     let relative = global_index % self.step_samples;
-                    // Output 0.0 (gate off) during the gap, 1.0 otherwise.
-                    gate_output[j] = if relative >= self.step_samples - gap_samples {
-                        0.0
+                    let step_index = (global_index / self.step_samples) % self.pattern.len();
+                    let pattern_step = self.pattern[step_index];
+                    // If the step is inactive, the gate remains off.
+                    if !pattern_step.active {
+                        gate_output[j] = 0.0;
                     } else {
-                        1.0
-                    };
+                        // Otherwise, gate is high for most of the step except during the gap.
+                        gate_output[j] = if relative >= self.step_samples - gap_samples {
+                            0.0
+                        } else {
+                            1.0
+                        };
+                    }
                 }
             }
         }
@@ -235,14 +262,13 @@ impl AudioNode for ArpeggiatorGenerator {
     /// Define the node's ports.
     ///
     /// - PortId::AudioOutput0: modulation output (in cents).
-    /// - PortId::Gate: optional gate input (for Trigger mode).
-    /// - PortId::GateOut: optional gate trigger output.
+    /// - PortId::GlobalGate: optional gate input (for Trigger mode).
+    /// - PortId::ArpGate: optional gate trigger output.
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
         ports.insert(PortId::AudioOutput0, true);
         ports.insert(PortId::GlobalGate, false);
         ports.insert(PortId::ArpGate, true);
-
         ports
     }
 
