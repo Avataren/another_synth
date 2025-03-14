@@ -129,7 +129,7 @@ impl AudioNode for GlobalVelocityNode {
         let mut ports = HashMap::new();
         ports.insert(PortId::AudioOutput0, true);
         // Declare a gate port. The false value indicates it isn't an audio output.
-        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::GlobalGate, false);
         ports
     }
 
@@ -145,7 +145,7 @@ impl AudioNode for GlobalVelocityNode {
 
         // Build the gate buffer from all gate sources.
         let mut gate_buffer = vec![0.0; buffer_size];
-        if let Some(sources) = inputs.get(&PortId::Gate) {
+        if let Some(sources) = inputs.get(&PortId::GlobalGate) {
             for source in sources {
                 for (dest, &src) in gate_buffer.iter_mut().zip(source.buffer.iter()) {
                     *dest += src * source.amount;

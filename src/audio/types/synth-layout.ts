@@ -18,6 +18,7 @@ export enum VoiceNodeType {
   GlobalVelocity = 'global_velocity',
   Convolver = 'convolver',
   Delay = 'delay',
+  GateMixer = 'gatemixer',
 }
 
 export interface ConvolverState {
@@ -89,7 +90,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.AudioOutput1]: 'Audio Output 2',
   [PortId.AudioOutput2]: 'Audio Output 3',
   [PortId.AudioOutput3]: 'Audio Output 4',
-  [PortId.Gate]: 'Gate',
+  [PortId.GlobalGate]: 'Gate',
   [PortId.GlobalFrequency]: 'Global Frequency',
   [PortId.GlobalVelocity]: 'Global Velocity',
   [PortId.Frequency]: 'Base Frequency',
@@ -107,6 +108,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.WetDryMix]: 'Mix',
   [PortId.AttackMod]: 'Attack',
   [PortId.ArpGate]: 'Arpeggio gate',
+  [PortId.CombinedGate]: 'Combined gate',
 };
 
 export interface ModulationTargetOption {

@@ -401,7 +401,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioInput0,
         1.0,
         WasmModulationType.Additive,
-        ModulationTransformation.None
+        ModulationTransformation.None,
       );
 
       // this.audioEngine.connect_nodes(
@@ -421,7 +421,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.GainMod,
         1.0,
         WasmModulationType.VCA,
-        ModulationTransformation.None
+        ModulationTransformation.None,
       );
 
       // Connect oscillator 1 to filter's audio input.
@@ -432,7 +432,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.AudioInput0,
         1.0,
         WasmModulationType.Additive,
-        ModulationTransformation.None
+        ModulationTransformation.None,
       );
 
       // Connect oscillator 2's output to oscillator 1's phase mod.
@@ -443,7 +443,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         PortId.PhaseMod,
         1.0,
         WasmModulationType.Additive,
-        ModulationTransformation.None
+        ModulationTransformation.None,
       );
 
       // Request a state sync (if needed).
@@ -482,6 +482,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.GlobalVelocity]: [],
       [VoiceNodeType.Convolver]: [],
       [VoiceNodeType.Delay]: [],
+      [VoiceNodeType.GateMixer]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -517,6 +518,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'delay':
           type = VoiceNodeType.Delay;
+          break;
+        case 'gatemixer':
+          type = VoiceNodeType.GateMixer;
           break;
         default:
           console.warn('##### Unknown node type:', rawNode.node_type);
@@ -559,7 +563,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
     this.audioEngine.remove_specific_connection(from_node, to_node, to_port);
   }
-
 
   private handleUpdateConnection(data: { connection: NodeConnectionUpdate }) {
     const { connection } = data;
@@ -614,7 +617,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         connection.target,
         connection.amount,
         connection.modulationType,
-        connection.modulationTransformation
+        connection.modulationTransformation,
       );
 
       // Verify connection was added
@@ -636,7 +639,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       });
     }
   }
-
 
   private handleNoiseUpdate(data: { noiseId: number; config: NoiseUpdate }) {
     if (!this.audioEngine) return;
@@ -740,7 +742,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           data.connection.target,
           data.connection.amount,
           WasmModulationType.VCA,
-          ModulationTransformation.None
+          ModulationTransformation.None,
         );
       }
     } catch (err) {
@@ -897,7 +899,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.config.releaseCurve,
         data.config.active,
       );
-      this.port.postMessage({ type: 'updateEnvelopeProcessed', messageId: data.messageId });
+      this.port.postMessage({
+        type: 'updateEnvelopeProcessed',
+        messageId: data.messageId,
+      });
     } catch (err) {
       console.error('Error updating LFO:', err);
     }

@@ -179,7 +179,7 @@ impl ArpeggiatorGenerator {
         let output = outputs
             .get_mut(&PortId::AudioOutput0)
             .expect("Expected AudioOutput0 output port");
-        let gate_mod = self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0);
+        let gate_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GlobalGate), 0.0);
         for j in 0..buffer_size {
             let current_gate = gate_mod[j] > 0.5;
             if !self.prev_gate_active && current_gate {
@@ -240,7 +240,7 @@ impl AudioNode for ArpeggiatorGenerator {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
         ports.insert(PortId::AudioOutput0, true);
-        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::GlobalGate, false);
         ports.insert(PortId::ArpGate, true);
 
         ports

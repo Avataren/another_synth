@@ -325,8 +325,8 @@ var PortId = Object.freeze({
   "6": "AudioOutput2",
   AudioOutput3: 7,
   "7": "AudioOutput3",
-  Gate: 8,
-  "8": "Gate",
+  GlobalGate: 8,
+  "8": "GlobalGate",
   GlobalFrequency: 9,
   "9": "GlobalFrequency",
   GlobalVelocity: 10,
@@ -360,7 +360,9 @@ var PortId = Object.freeze({
   AttackMod: 24,
   "24": "AttackMod",
   ArpGate: 25,
-  "25": "ArpGate"
+  "25": "ArpGate",
+  CombinedGate: 26,
+  "26": "CombinedGate"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -695,6 +697,13 @@ var AudioEngine = class {
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
+  }
+  /**
+   * @returns {NodeId}
+   */
+  get_gate_mixer_node_id() {
+    const ret = wasm.audioengine_get_gate_mixer_node_id(this.__wbg_ptr);
+    return NodeId.__wrap(ret);
   }
   /**
    * @param {number} node_id
@@ -1167,6 +1176,53 @@ var LfoUpdateParams = class {
 var NodeIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_nodeid_free(ptr >>> 0, 1));
+var NodeId = class _NodeId {
+  static __wrap(ptr) {
+    ptr = ptr >>> 0;
+    const obj = Object.create(_NodeId.prototype);
+    obj.__wbg_ptr = ptr;
+    NodeIdFinalization.register(obj, obj.__wbg_ptr, obj);
+    return obj;
+  }
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    NodeIdFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_nodeid_free(ptr, 0);
+  }
+  /**
+   * @returns {number}
+   */
+  get 0() {
+    const ret = wasm.__wbg_get_connectionid_0(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} arg0
+   */
+  set 0(arg0) {
+    wasm.__wbg_set_connectionid_0(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @returns {number}
+   */
+  as_number() {
+    const ret = wasm.nodeid_as_number(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} value
+   * @returns {NodeId}
+   */
+  static from_number(value) {
+    const ret = wasm.nodeid_from_number(value);
+    return _NodeId.__wrap(ret);
+  }
+};
 var NoiseUpdateParamsFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_noiseupdateparams_free(ptr >>> 0, 1));
@@ -1712,7 +1768,7 @@ var PORT_LABELS = {
   [PortId.AudioOutput1]: "Audio Output 2",
   [PortId.AudioOutput2]: "Audio Output 3",
   [PortId.AudioOutput3]: "Audio Output 4",
-  [PortId.Gate]: "Gate",
+  [PortId.GlobalGate]: "Gate",
   [PortId.GlobalFrequency]: "Global Frequency",
   [PortId.GlobalVelocity]: "Global Velocity",
   [PortId.Frequency]: "Base Frequency",
@@ -1729,7 +1785,8 @@ var PORT_LABELS = {
   [PortId.WavetableIndex]: "Wavetable Index",
   [PortId.WetDryMix]: "Mix",
   [PortId.AttackMod]: "Attack",
-  [PortId.ArpGate]: "Arpeggio gate"
+  [PortId.ArpGate]: "Arpeggio gate",
+  [PortId.CombinedGate]: "Combined gate"
 };
 function convertRawModulationType(raw) {
   switch (raw) {
@@ -2061,7 +2118,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["global_frequency" /* GlobalFrequency */]: [],
       ["global_velocity" /* GlobalVelocity */]: [],
       ["convolver" /* Convolver */]: [],
-      ["delay" /* Delay */]: []
+      ["delay" /* Delay */]: [],
+      ["gatemixer" /* GateMixer */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;
@@ -2096,6 +2154,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "delay":
           type = "delay" /* Delay */;
+          break;
+        case "gatemixer":
+          type = "gatemixer" /* GateMixer */;
           break;
         default:
           console.warn("##### Unknown node type:", rawNode.node_type);
@@ -2386,7 +2447,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         data.config.releaseCurve,
         data.config.active
       );
-      this.port.postMessage({ type: "updateEnvelopeProcessed", messageId: data.messageId });
+      this.port.postMessage({
+        type: "updateEnvelopeProcessed",
+        messageId: data.messageId
+      });
     } catch (err) {
       console.error("Error updating LFO:", err);
     }

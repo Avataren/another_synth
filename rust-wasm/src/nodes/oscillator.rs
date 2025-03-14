@@ -120,7 +120,7 @@ impl AudioNode for ModulatableOscillator {
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::FeedbackMod, false);
         ports.insert(PortId::AudioOutput0, true);
-        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::GlobalGate, false);
         ports
     }
 
@@ -143,7 +143,7 @@ impl AudioNode for ModulatableOscillator {
 
         // Process gate input for hard sync
         let mut gate_buffer = vec![0.0; buffer_size];
-        if let Some(sources) = inputs.get(&PortId::Gate) {
+        if let Some(sources) = inputs.get(&PortId::GlobalGate) {
             for source in sources {
                 for (dest, &src) in gate_buffer.iter_mut().zip(source.buffer.iter()) {
                     *dest += src * source.amount;

@@ -297,7 +297,7 @@ impl ModulationProcessor for Envelope {}
 impl AudioNode for Envelope {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
-        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::CombinedGate, false);
         ports.insert(PortId::AudioOutput0, true);
         // Added AttackMod port for modulation of the attack phase.
         ports.insert(PortId::AttackMod, false);
@@ -313,7 +313,8 @@ impl AudioNode for Envelope {
         use std::simd::f32x4;
 
         // Process gate modulations.
-        let gate_buffer = self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0);
+        let gate_buffer =
+            self.process_modulations(buffer_size, inputs.get(&PortId::CombinedGate), 0.0);
         // Use process_modulations_ex to separate additive and multiplicative modulation for attack.
         let modulation_result =
             self.process_modulations_ex(buffer_size, inputs.get(&PortId::AttackMod));

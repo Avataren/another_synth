@@ -174,7 +174,7 @@ impl AudioNode for AnalogOscillator {
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::FeedbackMod, false);
         ports.insert(PortId::AudioOutput0, true);
-        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::GlobalGate, false);
         ports
     }
 
@@ -204,7 +204,7 @@ impl AudioNode for AnalogOscillator {
         for v in self.gate_buffer.iter_mut().take(buffer_size) {
             *v = 0.0;
         }
-        if let Some(sources) = inputs.get(&PortId::Gate) {
+        if let Some(sources) = inputs.get(&PortId::GlobalGate) {
             for source in sources {
                 for (i, &src) in source.buffer.iter().enumerate().take(buffer_size) {
                     self.gate_buffer[i] += src * source.amount;

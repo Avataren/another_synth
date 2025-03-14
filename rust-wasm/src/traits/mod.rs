@@ -16,7 +16,7 @@ pub enum PortId {
     AudioOutput1,
     AudioOutput2,
     AudioOutput3,
-    Gate,
+    GlobalGate,
     GlobalFrequency,
     GlobalVelocity,
     Frequency,
@@ -34,6 +34,7 @@ pub enum PortId {
     WetDryMix,
     AttackMod,
     ArpGate,
+    CombinedGate,
 }
 
 impl Default for PortId {

@@ -242,7 +242,7 @@ impl AudioNode for WavetableOscillator {
         ports.insert(PortId::FeedbackMod, false);
         ports.insert(PortId::AudioOutput0, true);
         ports.insert(PortId::DetuneMod, true);
-        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::GlobalGate, false);
         ports
     }
 
@@ -325,7 +325,7 @@ impl AudioNode for WavetableOscillator {
                 .for_each(|v| *v = 0.0);
         }
 
-        if let Some(sources) = inputs.get(&PortId::Gate) {
+        if let Some(sources) = inputs.get(&PortId::GlobalGate) {
             for source in sources {
                 let min_len = std::cmp::min(buffer_size, source.buffer.len());
                 let amount_simd = f32x4::splat(source.amount);

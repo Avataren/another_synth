@@ -697,6 +697,14 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
+    pub fn get_gate_mixer_node_id(&mut self) -> NodeId {
+        for voice in &mut self.voices {
+            return voice.graph.global_gatemixer_node.unwrap();
+        }
+        NodeId(0)
+    }
+
+    #[wasm_bindgen]
     pub fn update_envelope(
         &mut self,
         node_id: usize,

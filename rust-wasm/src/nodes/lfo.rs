@@ -466,7 +466,7 @@ impl AudioNode for Lfo {
     fn get_ports(&self) -> HashMap<PortId, bool> {
         let mut ports = HashMap::new();
         ports.insert(PortId::FrequencyMod, false);
-        ports.insert(PortId::Gate, false);
+        ports.insert(PortId::CombinedGate, false);
         ports.insert(PortId::GainMod, false);
         ports.insert(PortId::AudioOutput0, true);
         ports
@@ -480,7 +480,8 @@ impl AudioNode for Lfo {
     ) {
         let freq_mod =
             self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
-        let gate_mod = self.process_modulations(buffer_size, inputs.get(&PortId::Gate), 0.0);
+        let gate_mod =
+            self.process_modulations(buffer_size, inputs.get(&PortId::CombinedGate), 0.0);
         let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
 
         if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {

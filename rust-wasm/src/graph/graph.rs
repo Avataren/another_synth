@@ -38,7 +38,10 @@ use super::{
     types::{Connection, ConnectionKey, ModulationTransformation, NodeId},
     ModulationSource,
 };
-use crate::{graph::ModulationType, nodes::GlobalFrequencyNode, nodes::GlobalVelocityNode};
+use crate::{
+    graph::ModulationType,
+    nodes::{GateMixer, GlobalFrequencyNode, GlobalVelocityNode},
+};
 use crate::{AudioNode, MacroManager, PortId};
 use std::collections::HashMap;
 
@@ -65,6 +68,7 @@ pub struct AudioGraph {
     pub(crate) temp_buffer_indices: Vec<usize>,
     pub(crate) global_frequency_node: Option<NodeId>,
     pub(crate) global_velocity_node: Option<NodeId>,
+    pub(crate) global_gatemixer_node: Option<NodeId>,
     pub(crate) output_node: Option<NodeId>,
 }
 
@@ -85,6 +89,7 @@ impl AudioGraph {
             temp_buffer_indices: Vec::new(),
             global_frequency_node: None,
             global_velocity_node: None,
+            global_gatemixer_node: None,
             output_node: None,
         };
 
@@ -97,6 +102,9 @@ impl AudioGraph {
         let global_node_id = graph.add_node(global_node);
         graph.global_frequency_node = Some(global_node_id);
 
+        let gate_mixer = Box::new(GateMixer::new());
+        let gate_mixer_id = graph.add_node(gate_mixer);
+        graph.global_gatemixer_node = Some(gate_mixer_id);
         graph
     }
 
@@ -136,6 +144,21 @@ impl AudioGraph {
                         from_port: PortId::GlobalFrequency,
                         to_node: id,
                         to_port: PortId::GlobalFrequency,
+                        amount: 1.0,
+                        modulation_type: ModulationType::Additive,
+                        modulation_transform: ModulationTransformation::None,
+                    });
+                }
+            }
+
+            // Auto-connect the GateMixer node if the new node accepts CombinedGate.
+            if ports.contains_key(&PortId::CombinedGate) {
+                if let Some(gate_mixer_node_id) = self.global_gatemixer_node {
+                    self.add_connection(Connection {
+                        from_node: gate_mixer_node_id,
+                        from_port: PortId::CombinedGate,
+                        to_node: id,
+                        to_port: PortId::CombinedGate,
                         amount: 1.0,
                         modulation_type: ModulationType::Additive,
                         modulation_transform: ModulationTransformation::None,
@@ -569,9 +592,9 @@ impl AudioGraph {
             let mut inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
 
             // Handle gate and frequency inputs.
-            if ports.contains_key(&PortId::Gate) {
+            if ports.contains_key(&PortId::GlobalGate) {
                 inputs
-                    .entry(PortId::Gate)
+                    .entry(PortId::GlobalGate)
                     .or_default()
                     .push(ModulationSource {
                         buffer: self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
@@ -580,6 +603,7 @@ impl AudioGraph {
                         transformation: ModulationTransformation::None,
                     });
             }
+
             // if ports.contains_key(&PortId::GlobalFrequency) {
             //     inputs
             //         .entry(PortId::GlobalFrequency)

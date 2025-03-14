@@ -252,7 +252,7 @@ export const ModulationTransformation = Object.freeze({
     Cube: 3, "3": "Cube",
 });
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -263,7 +263,7 @@ export const PortId = Object.freeze({
     AudioOutput1: 5, "5": "AudioOutput1",
     AudioOutput2: 6, "6": "AudioOutput2",
     AudioOutput3: 7, "7": "AudioOutput3",
-    Gate: 8, "8": "Gate",
+    GlobalGate: 8, "8": "GlobalGate",
     GlobalFrequency: 9, "9": "GlobalFrequency",
     GlobalVelocity: 10, "10": "GlobalVelocity",
     Frequency: 11, "11": "Frequency",
@@ -281,6 +281,7 @@ export const PortId = Object.freeze({
     WetDryMix: 23, "23": "WetDryMix",
     AttackMod: 24, "24": "AttackMod",
     ArpGate: 25, "25": "ArpGate",
+    CombinedGate: 26, "26": "CombinedGate",
 });
 /**
  * @enum {0 | 1 | 2}
@@ -623,6 +624,13 @@ export class AudioEngine {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @returns {NodeId}
+     */
+    get_gate_mixer_node_id() {
+        const ret = wasm.audioengine_get_gate_mixer_node_id(this.__wbg_ptr);
+        return NodeId.__wrap(ret);
     }
     /**
      * @param {number} node_id
