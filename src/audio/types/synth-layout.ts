@@ -106,6 +106,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.WavetableIndex]: 'Wavetable Index',
   [PortId.WetDryMix]: 'Mix',
   [PortId.AttackMod]: 'Attack',
+  [PortId.ArpGate]: 'Arpeggio gate',
 };
 
 export interface ModulationTargetOption {

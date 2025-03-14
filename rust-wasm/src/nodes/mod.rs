@@ -1,4 +1,5 @@
 pub mod analog_oscillator;
+pub mod arpeggiator;
 pub mod convolver;
 pub mod delay;
 pub mod envelope;
@@ -17,6 +18,7 @@ pub mod wavetable;
 pub mod wavetable_oscillator;
 
 pub use analog_oscillator::*;
+pub use arpeggiator::*;
 pub use convolver::*;
 pub use delay::*;
 pub use envelope::*;

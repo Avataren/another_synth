@@ -358,7 +358,9 @@ var PortId = Object.freeze({
   WetDryMix: 23,
   "23": "WetDryMix",
   AttackMod: 24,
-  "24": "AttackMod"
+  "24": "AttackMod",
+  ArpGate: 25,
+  "25": "ArpGate"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -1726,7 +1728,8 @@ var PORT_LABELS = {
   [PortId.DetuneMod]: "Detune",
   [PortId.WavetableIndex]: "Wavetable Index",
   [PortId.WetDryMix]: "Mix",
-  [PortId.AttackMod]: "Attack"
+  [PortId.AttackMod]: "Attack",
+  [PortId.ArpGate]: "Arpeggio gate"
 };
 function convertRawModulationType(raw) {
   switch (raw) {

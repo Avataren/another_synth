@@ -33,6 +33,7 @@ pub enum PortId {
     WavetableIndex,
     WetDryMix,
     AttackMod,
+    ArpGate,
 }
 
 impl Default for PortId {
