@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::simd::{f32x4, Simd};
 use wasm_bindgen::prelude::*;
+use web_sys::console;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};

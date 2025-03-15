@@ -817,6 +817,16 @@ var AudioEngine = class {
   /**
    * @returns {any}
    */
+  create_arpeggiator() {
+    const ret = wasm.audioengine_create_arpeggiator(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * @returns {any}
+   */
   create_mixer() {
     const ret = wasm.audioengine_create_mixer(this.__wbg_ptr);
     if (ret[2]) {
@@ -2038,6 +2048,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     this.audioEngine.create_noise();
     const mixerId = this.audioEngine.create_mixer();
     console.log("#mixerID:", mixerId);
+    const arpId = this.audioEngine.create_arpeggiator();
+    console.log("#arpID:", arpId);
     const filterId = this.audioEngine.create_filter();
     this.audioEngine.create_filter();
     const oscIds = [];
@@ -2058,6 +2070,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       lfoIds.push(result.lfoId);
     }
     if (envelopeIds.length > 0 && oscIds.length >= 2) {
+      this.audioEngine.connect_nodes(
+        arpId,
+        PortId.AudioOutput0,
+        oscIds[0],
+        PortId.DetuneMod,
+        1,
+        WasmModulationType.Additive,
+        ModulationTransformation.None
+      );
       this.audioEngine.connect_nodes(
         filterId,
         PortId.AudioOutput0,
@@ -2119,7 +2140,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["global_velocity" /* GlobalVelocity */]: [],
       ["convolver" /* Convolver */]: [],
       ["delay" /* Delay */]: [],
-      ["gatemixer" /* GateMixer */]: []
+      ["gatemixer" /* GateMixer */]: [],
+      ["arpeggiator_generator" /* ArpeggiatorGenerator */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;
@@ -2157,6 +2179,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "gatemixer":
           type = "gatemixer" /* GateMixer */;
+          break;
+        case "arpeggiator_generator":
+          type = "arpeggiator_generator" /* ArpeggiatorGenerator */;
           break;
         default:
           console.warn("##### Unknown node type:", rawNode.node_type);

@@ -744,6 +744,16 @@ export class AudioEngine {
     /**
      * @returns {any}
      */
+    create_arpeggiator() {
+        const ret = wasm.audioengine_create_arpeggiator(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
     create_mixer() {
         const ret = wasm.audioengine_create_mixer(this.__wbg_ptr);
         if (ret[2]) {

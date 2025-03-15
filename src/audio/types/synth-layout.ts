@@ -19,6 +19,7 @@ export enum VoiceNodeType {
   Convolver = 'convolver',
   Delay = 'delay',
   GateMixer = 'gatemixer',
+  ArpeggiatorGenerator = 'arpeggiator_generator',
 }
 
 export interface ConvolverState {

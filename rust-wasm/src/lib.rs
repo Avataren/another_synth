@@ -24,10 +24,10 @@ use nodes::morph_wavetable::{
     cubic_interp, MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
 };
 use nodes::{
-    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate, Convolver,
-    Delay, FilterCollection, FilterSlope, GlobalVelocityNode, Lfo, LfoLoopMode, LfoTriggerMode,
-    LfoWaveform, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
-    WavetableOscillator, WavetableOscillatorStateUpdate,
+    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
+    ArpeggiatorGenerator, Convolver, Delay, FilterCollection, FilterSlope, GlobalVelocityNode, Lfo,
+    LfoLoopMode, LfoTriggerMode, LfoWaveform, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
+    Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
 use serde::Deserialize;
@@ -1095,6 +1095,17 @@ impl AudioEngine {
         js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
 
         Ok(obj.into())
+    }
+
+    #[wasm_bindgen]
+    pub fn create_arpeggiator(&mut self) -> Result<JsValue, JsValue> {
+        let mut arp_id = NodeId(0);
+        for voice in &mut self.voices {
+            let mut arp = ArpeggiatorGenerator::new();
+            arp.create_full_prelude();
+            arp_id = voice.graph.add_node(Box::new(arp));
+        }
+        Ok(JsValue::from(arp_id.0))
     }
 
     #[wasm_bindgen]

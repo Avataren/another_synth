@@ -360,6 +360,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const mixerId = this.audioEngine.create_mixer();
     console.log('#mixerID:', mixerId);
 
+
+    const arpId = this.audioEngine.create_arpeggiator();
+    console.log('#arpID:', arpId);
     // Create filter.
     const filterId = this.audioEngine.create_filter();
     this.audioEngine.create_filter();
@@ -393,6 +396,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // --- Set up initial connections (as in your original code) ---
     if (envelopeIds.length > 0 && oscIds.length >= 2) {
+
+      this.audioEngine.connect_nodes(
+        arpId!,
+        PortId.AudioOutput0,
+        oscIds[0]!,
+        PortId.DetuneMod,
+        1,
+        WasmModulationType.Additive,
+        ModulationTransformation.None,
+      );
+
       // Connect filter to mixer's audio input.
       this.audioEngine.connect_nodes(
         filterId,
@@ -446,6 +460,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         ModulationTransformation.None,
       );
 
+
+
+
       // Request a state sync (if needed).
       this.handleRequestSync();
     } else {
@@ -483,6 +500,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Convolver]: [],
       [VoiceNodeType.Delay]: [],
       [VoiceNodeType.GateMixer]: [],
+      [VoiceNodeType.ArpeggiatorGenerator]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -522,6 +540,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         case 'gatemixer':
           type = VoiceNodeType.GateMixer;
           break;
+        case 'arpeggiator_generator':
+          type = VoiceNodeType.ArpeggiatorGenerator;
+          break;
+
         default:
           console.warn('##### Unknown node type:', rawNode.node_type);
           type = rawNode.node_type as VoiceNodeType;

@@ -3,6 +3,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::simd::StdFloat;
 
+use web_sys::console;
+
 use crate::graph::ModulationSource;
 use crate::{AudioNode, PortId};
 
@@ -90,6 +92,112 @@ impl ArpeggiatorGenerator {
         self.prev_step = 0;
     }
 
+    /// Creates a single-measure arpeggio approximating the full passage in your snippet (measure 3).
+    /// It contains 32 notes in total, grouped into four sets of 8 ascending notes:
+    ///   - Groups 1 & 2: G->A->...->G in the lower octave (repeated twice)
+    ///   - Groups 3 & 4: the same pattern an octave higher (8va).
+    ///
+    /// All steps are active, so each note will trigger the gate output if enabled.
+    pub fn create_full_prelude(&mut self) {
+        // Helper to avoid retyping the diatonic G->G scale in cents:
+        // G=0, A=200, B=400, C=500, D=700, E=900, F=1000, G=1200
+        let lower_octave = vec![
+            PatternStep {
+                value: 0.0,
+                active: true,
+            }, // G
+            PatternStep {
+                value: 3.0,
+                active: true,
+            }, // A
+            PatternStep {
+                value: 5.0,
+                active: true,
+            }, // B
+               // PatternStep {
+               //     value: 5.0,
+               //     active: true,
+               // }, // C
+               // PatternStep {
+               //     value: 7.0,
+               //     active: true,
+               // }, // D
+               // PatternStep {
+               //     value: 9.0,
+               //     active: true,
+               // }, // E
+               // PatternStep {
+               //     value: 10.0,
+               //     active: true,
+               // }, // F
+               // PatternStep {
+               //     value: 12.0,
+               //     active: true,
+               // }, // G
+        ];
+
+        // Same scale shifted one octave higher (+1200 cents):
+        let upper_octave = vec![
+            PatternStep {
+                value: 12.0,
+                active: true,
+            }, // G (one octave above base)
+            PatternStep {
+                value: 14.0,
+                active: true,
+            }, // A
+            PatternStep {
+                value: 16.0,
+                active: true,
+            }, // B
+            PatternStep {
+                value: 17.0,
+                active: true,
+            }, // C
+            PatternStep {
+                value: 19.0,
+                active: true,
+            }, // D
+            PatternStep {
+                value: 21.0,
+                active: true,
+            }, // E
+            PatternStep {
+                value: 22.0,
+                active: true,
+            }, // F
+            PatternStep {
+                value: 24.0,
+                active: true,
+            }, // G (two octaves above base G)
+        ];
+
+        // Put it all together:
+        // - Groups 1 & 2: two repeats of the lower octave
+        // - Groups 3 & 4: two repeats of the upper octave
+        let mut full_pattern = Vec::new();
+        full_pattern.extend_from_slice(&lower_octave);
+        // full_pattern.extend_from_slice(&lower_octave);
+        // full_pattern.extend_from_slice(&upper_octave);
+        // full_pattern.extend_from_slice(&upper_octave);
+
+        // Create the arpeggiator and load the pattern.
+
+        // Choose a step duration that fits your tempo:
+        // For example, at 44,100 Hz, 300 samples is ~6.8ms per step (fast arpeggio).
+        // Increase this if you want it slower.
+        let step_samples = 1000; //48000 / 6;
+
+        self.enable(full_pattern, step_samples);
+
+        // We’ll use FreeRunning mode so it loops the measure repeatedly.
+        // (PingPong would cause it to reverse direction automatically, which
+        //  is not how this measure is notated in most sheet music.)
+        self.set_mode(ArpeggiatorMode::FreeRunning);
+        // Enable gate output to generate a high gate signal for each active note.
+        self.set_gate_output_enabled(true);
+    }
+
     /// Set the delay time between steps (in samples) and reset the progression.
     pub fn set_delay_time(&mut self, delay_samples: usize) {
         self.step_samples = delay_samples;
@@ -169,9 +277,9 @@ impl ArpeggiatorGenerator {
         while i + LANES <= buffer_size {
             let global_index = self.sample_counter + i;
             let global_index_end = self.sample_counter + i + LANES - 1;
-            // Check if all samples in this block fall into the same arpeggiator step.
-            let step_start = (global_index / self.step_samples) as usize;
-            let step_end = (global_index_end / self.step_samples) as usize;
+            // Determine if the entire SIMD block falls within the same arpeggiator step.
+            let step_start = global_index / self.step_samples;
+            let step_end = global_index_end / self.step_samples;
             if self.enabled && step_start == step_end {
                 let value = self.modulation_value(global_index);
                 let modulation_vec = Vf32::splat(value);
@@ -187,10 +295,41 @@ impl ArpeggiatorGenerator {
         for j in i..buffer_size {
             output[j] = self.modulation_value(self.sample_counter + j);
         }
+
+        // --- Debug Logging ---
+        let num_debug_samples = std::cmp::min(buffer_size, 8);
+        let debug_samples = &output[0..num_debug_samples];
+        // console::log_1(
+        //     &format!(
+        //         "Arpeggiator SIMD Debug: sample_counter = {}, first {} mod values = {:?}",
+        //         self.sample_counter, num_debug_samples, debug_samples
+        //     )
+        //     .into(),
+        // );
+
+        // // Build a vector of unique modulation values (using an epsilon comparison).
+        // {
+        //     let mut unique_values: Vec<f32> = Vec::new();
+        //     for &val in &output[..buffer_size] {
+        //         if !unique_values
+        //             .iter()
+        //             .any(|&x| (x - val).abs() < std::f32::EPSILON)
+        //         {
+        //             unique_values.push(val);
+        //         }
+        //     }
+        //     console::log_1(
+        //         &format!(
+        //             "Arpeggiator SIMD Debug: unique modulation values in buffer: {:?}",
+        //             unique_values
+        //         )
+        //         .into(),
+        //     );
+        // }
+
         self.sample_counter += buffer_size;
     }
 
-    /// Process the node in Trigger mode (sample-by-sample) to detect gate edges.
     fn process_trigger_mode(
         &mut self,
         inputs: &HashMap<PortId, Vec<ModulationSource>>,
@@ -204,12 +343,50 @@ impl ArpeggiatorGenerator {
         for j in 0..buffer_size {
             let current_gate = gate_mod[j] > 0.5;
             if !self.prev_gate_active && current_gate {
+                console::log_1(
+                    &format!(
+                        "Arpeggiator Trigger Debug: Rising edge detected at sample {}",
+                        self.sample_counter + j
+                    )
+                    .into(),
+                );
                 self.sample_counter = 0;
             }
             self.prev_gate_active = current_gate;
             output[j] = self.modulation_value(self.sample_counter);
             self.sample_counter += 1;
         }
+
+        // // --- Debug Logging ---
+        // let num_debug_samples = std::cmp::min(buffer_size, 8);
+        // let debug_samples = &output[0..num_debug_samples];
+        // console::log_1(
+        //     &format!(
+        //         "Arpeggiator Trigger Debug: sample_counter = {}, first {} mod values = {:?}",
+        //         self.sample_counter, num_debug_samples, debug_samples
+        //     )
+        //     .into(),
+        // );
+
+        // // Build a vector of unique modulation values using an epsilon comparison.
+        // {
+        //     let mut unique_values: Vec<f32> = Vec::new();
+        //     for &val in &output[..buffer_size] {
+        //         if !unique_values
+        //             .iter()
+        //             .any(|&x| (x - val).abs() < std::f32::EPSILON)
+        //         {
+        //             unique_values.push(val);
+        //         }
+        //     }
+        //     console::log_1(
+        //         &format!(
+        //             "Arpeggiator Trigger Debug: unique modulation values in buffer: {:?}",
+        //             unique_values
+        //         )
+        //         .into(),
+        //     );
+        // }
     }
 
     /// Process the node while optionally writing a gate signal.
