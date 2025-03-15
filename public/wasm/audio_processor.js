@@ -304,9 +304,9 @@ export const WasmNoiseType = Object.freeze({
  */
 export const Waveform = Object.freeze({
     Sine: 0, "0": "Sine",
-    Saw: 1, "1": "Saw",
-    Square: 2, "2": "Square",
-    Triangle: 3, "3": "Triangle",
+    Triangle: 1, "1": "Triangle",
+    Saw: 2, "2": "Saw",
+    Square: 3, "3": "Square",
     Custom: 4, "4": "Custom",
 });
 
@@ -314,7 +314,8 @@ const AnalogOscillatorStateUpdateFinalization = (typeof FinalizationRegistry ===
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_analogoscillatorstateupdate_free(ptr >>> 0, 1));
 /**
- * This struct now includes unison parameters: the number of voices and the spread (in cents).
+ * AnalogOscillatorStateUpdate: State update parameters for the oscillator.
+ * It contains modulation parameters (phase_mod_amount, detune, etc.) and unison settings.
  */
 export class AnalogOscillatorStateUpdate {
 

@@ -9,9 +9,9 @@ use web_sys::console;
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Waveform {
     Sine = 0,
-    Saw = 1,
-    Square = 2,
-    Triangle = 3,
+    Triangle = 1,
+    Saw = 2,
+    Square = 3,
     Custom = 4,
 }
 

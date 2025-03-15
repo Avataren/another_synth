@@ -59,7 +59,7 @@ impl ArpeggiatorGenerator {
             pattern: Vec::new(),
             step_samples: 0,
             sample_counter: 0,
-            mode: ArpeggiatorMode::FreeRunning,
+            mode: ArpeggiatorMode::Trigger,
             prev_gate_active: false,
             gate_output_enabled: false,
             prev_step: 0,
@@ -98,102 +98,53 @@ impl ArpeggiatorGenerator {
     ///   - Groups 3 & 4: the same pattern an octave higher (8va).
     ///
     /// All steps are active, so each note will trigger the gate output if enabled.
-    pub fn create_full_prelude(&mut self) {
+    pub fn create_test_pattern(&mut self) {
         // Helper to avoid retyping the diatonic G->G scale in cents:
         // G=0, A=200, B=400, C=500, D=700, E=900, F=1000, G=1200
         let lower_octave = vec![
             PatternStep {
                 value: 0.0,
                 active: true,
-            }, // G
+            },
             PatternStep {
-                value: 3.0,
+                value: 0.0,
                 active: true,
-            }, // A
-            PatternStep {
-                value: 5.0,
-                active: true,
-            }, // B
-               // PatternStep {
-               //     value: 5.0,
-               //     active: true,
-               // }, // C
-               // PatternStep {
-               //     value: 7.0,
-               //     active: true,
-               // }, // D
-               // PatternStep {
-               //     value: 9.0,
-               //     active: true,
-               // }, // E
-               // PatternStep {
-               //     value: 10.0,
-               //     active: true,
-               // }, // F
-               // PatternStep {
-               //     value: 12.0,
-               //     active: true,
-               // }, // G
-        ];
-
-        // Same scale shifted one octave higher (+1200 cents):
-        let upper_octave = vec![
+            },
             PatternStep {
                 value: 12.0,
                 active: true,
-            }, // G (one octave above base)
+            },
             PatternStep {
-                value: 14.0,
+                value: 0.0,
                 active: true,
-            }, // A
+            },
             PatternStep {
-                value: 16.0,
+                value: 12.0,
                 active: true,
-            }, // B
+            },
             PatternStep {
-                value: 17.0,
+                value: 12.0,
                 active: true,
-            }, // C
+            },
             PatternStep {
-                value: 19.0,
+                value: 0.0,
                 active: true,
-            }, // D
+            },
             PatternStep {
-                value: 21.0,
+                value: 12.0,
                 active: true,
-            }, // E
-            PatternStep {
-                value: 22.0,
-                active: true,
-            }, // F
-            PatternStep {
-                value: 24.0,
-                active: true,
-            }, // G (two octaves above base G)
+            },
         ];
 
-        // Put it all together:
-        // - Groups 1 & 2: two repeats of the lower octave
-        // - Groups 3 & 4: two repeats of the upper octave
         let mut full_pattern = Vec::new();
         full_pattern.extend_from_slice(&lower_octave);
-        // full_pattern.extend_from_slice(&lower_octave);
-        // full_pattern.extend_from_slice(&upper_octave);
-        // full_pattern.extend_from_slice(&upper_octave);
 
-        // Create the arpeggiator and load the pattern.
-
-        // Choose a step duration that fits your tempo:
-        // For example, at 44,100 Hz, 300 samples is ~6.8ms per step (fast arpeggio).
-        // Increase this if you want it slower.
-        let step_samples = 1000; //48000 / 6;
+        let step_samples = 48000 / 6;
+        self.set_gate_output_enabled(true);
 
         self.enable(full_pattern, step_samples);
 
-        // We’ll use FreeRunning mode so it loops the measure repeatedly.
-        // (PingPong would cause it to reverse direction automatically, which
-        //  is not how this measure is notated in most sheet music.)
-        self.set_mode(ArpeggiatorMode::FreeRunning);
+        self.set_mode(ArpeggiatorMode::Trigger);
         // Enable gate output to generate a high gate signal for each active note.
         self.set_gate_output_enabled(true);
     }
@@ -351,6 +302,7 @@ impl ArpeggiatorGenerator {
                     .into(),
                 );
                 self.sample_counter = 0;
+                self.prev_step = 0;
             }
             self.prev_gate_active = current_gate;
             output[j] = self.modulation_value(self.sample_counter);

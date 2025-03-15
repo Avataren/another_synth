@@ -407,6 +407,16 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         ModulationTransformation.None,
       );
 
+      this.audioEngine.connect_nodes(
+        arpId!,
+        PortId.AudioOutput0,
+        oscIds[1]!,
+        PortId.DetuneMod,
+        1,
+        WasmModulationType.Additive,
+        ModulationTransformation.None,
+      );
+
       // Connect filter to mixer's audio input.
       this.audioEngine.connect_nodes(
         filterId,

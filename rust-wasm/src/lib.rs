@@ -1100,11 +1100,23 @@ impl AudioEngine {
     #[wasm_bindgen]
     pub fn create_arpeggiator(&mut self) -> Result<JsValue, JsValue> {
         let mut arp_id = NodeId(0);
+        let mut gate_mixer_id = NodeId(0);
         for voice in &mut self.voices {
             let mut arp = ArpeggiatorGenerator::new();
-            arp.create_full_prelude();
+            arp.create_test_pattern();
             arp_id = voice.graph.add_node(Box::new(arp));
+            gate_mixer_id = voice.graph.global_gatemixer_node.unwrap();
         }
+        self.connect_nodes(
+            arp_id.0,
+            PortId::ArpGate,
+            gate_mixer_id.0,
+            PortId::ArpGate,
+            1.0,
+            Some(WasmModulationType::VCA),
+            ModulationTransformation::None,
+        )
+        .unwrap();
         Ok(JsValue::from(arp_id.0))
     }
 

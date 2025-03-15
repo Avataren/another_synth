@@ -383,12 +383,12 @@ var WasmNoiseType = Object.freeze({
 var Waveform = Object.freeze({
   Sine: 0,
   "0": "Sine",
-  Saw: 1,
-  "1": "Saw",
-  Square: 2,
-  "2": "Square",
-  Triangle: 3,
-  "3": "Triangle",
+  Triangle: 1,
+  "1": "Triangle",
+  Saw: 2,
+  "2": "Saw",
+  Square: 3,
+  "3": "Square",
   Custom: 4,
   "4": "Custom"
 });
@@ -2074,6 +2074,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         arpId,
         PortId.AudioOutput0,
         oscIds[0],
+        PortId.DetuneMod,
+        1,
+        WasmModulationType.Additive,
+        ModulationTransformation.None
+      );
+      this.audioEngine.connect_nodes(
+        arpId,
+        PortId.AudioOutput0,
+        oscIds[1],
         PortId.DetuneMod,
         1,
         WasmModulationType.Additive,
