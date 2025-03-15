@@ -1103,7 +1103,7 @@ impl AudioEngine {
         let mut gate_mixer_id = NodeId(0);
         for voice in &mut self.voices {
             let mut arp = ArpeggiatorGenerator::new();
-            arp.create_test_pattern();
+            arp.create_test_pattern(self.sample_rate, 0.2);
             arp_id = voice.graph.add_node(Box::new(arp));
             gate_mixer_id = voice.graph.global_gatemixer_node.unwrap();
         }

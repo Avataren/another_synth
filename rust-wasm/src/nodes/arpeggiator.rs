@@ -92,60 +92,77 @@ impl ArpeggiatorGenerator {
         self.prev_step = 0;
     }
 
-    /// Creates a single-measure arpeggio approximating the full passage in your snippet (measure 3).
-    /// It contains 32 notes in total, grouped into four sets of 8 ascending notes:
-    ///   - Groups 1 & 2: G->A->...->G in the lower octave (repeated twice)
-    ///   - Groups 3 & 4: the same pattern an octave higher (8va).
-    ///
-    /// All steps are active, so each note will trigger the gate output if enabled.
-    pub fn create_test_pattern(&mut self) {
-        // Helper to avoid retyping the diatonic G->G scale in cents:
-        // G=0, A=200, B=400, C=500, D=700, E=900, F=1000, G=1200
-        let lower_octave = vec![
-            PatternStep {
-                value: 0.0,
-                active: true,
-            },
-            PatternStep {
-                value: 0.0,
-                active: true,
-            },
-            PatternStep {
-                value: 12.0,
-                active: true,
-            },
-            PatternStep {
-                value: 0.0,
-                active: true,
-            },
-            PatternStep {
-                value: 12.0,
-                active: true,
-            },
-            PatternStep {
-                value: 12.0,
-                active: true,
-            },
-            PatternStep {
-                value: 0.0,
-                active: true,
-            },
-            PatternStep {
-                value: 12.0,
-                active: true,
-            },
+    pub fn create_test_pattern(&mut self, sample_rate: f32, arp_delay: f32) {
+        // Two measures, each 16 notes, for a total of 32 steps.
+        // Measure 1: a-c-f-g-a-c-f-g-a (up), then g-f-c-a-g-f-c (down)
+        // Measure 2: f-a-d-e-f-a-d-e-f (up), then e-d-a-f-e-d-a (down)
+        //
+        // Offsets are relative to the FIRST A = 0 semitones.
+
+        // Measure 1 (16 steps):
+        let measure1 = vec![
+            // Up (9)
+            0.0,  // A
+            3.0,  // C
+            8.0,  // F
+            10.0, // G
+            12.0, // A (1 octave up)
+            15.0, // C
+            20.0, // F
+            22.0, // G
+            24.0, // A (2 octaves above the start)
+            // Down (7)
+            22.0, // G
+            20.0, // F
+            15.0, // C
+            12.0, // A
+            10.0, // G
+            8.0,  // F
+            3.0,  // C
         ];
 
-        let mut full_pattern = Vec::new();
-        full_pattern.extend_from_slice(&lower_octave);
+        // Measure 2 (16 steps):
+        let measure2 = vec![
+            // Up (9)
+            8.0,  // F
+            12.0, // A
+            17.0, // D
+            19.0, // E
+            20.0, // F
+            24.0, // A
+            29.0, // D
+            31.0, // E
+            32.0, // F (top)
+            // Down (7)
+            31.0, // E
+            29.0, // D
+            24.0, // A
+            20.0, // F
+            19.0, // E
+            17.0, // D
+            12.0, // A
+        ];
 
-        let step_samples = 48000 / 6;
+        // Convert them to PatternStep structs with `active: true`
+        let mut pattern = Vec::with_capacity(measure1.len() + measure2.len());
+        for semitone in measure1.iter().chain(measure2.iter()) {
+            pattern.push(PatternStep {
+                value: *semitone,
+                active: true,
+            });
+        }
+
+        // Determine how many samples each note should last
+        let step_samples = (sample_rate * arp_delay) as usize;
+
+        // Enable the gate so the notes sound
         self.set_gate_output_enabled(true);
 
-        self.enable(full_pattern, step_samples);
+        // Load the combined pattern (32 steps)
+        self.enable(pattern, step_samples);
 
+        // Cycle through them
         self.set_mode(ArpeggiatorMode::Trigger);
-        // Enable gate output to generate a high gate signal for each active note.
         self.set_gate_output_enabled(true);
     }
 
