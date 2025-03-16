@@ -42,6 +42,12 @@
           :node="destinationNode"
           :noiseId="noise.id"
         />
+        <arpeggiator-component
+          v-for="arp in arpeggiatorNodes"
+          :key="arp.id"
+          :node="destinationNode"
+          :nodeId="arp.id"
+        />
       </div>
 
       <!-- Modulators column -->
@@ -113,7 +119,7 @@ import VelocityComponent from 'src/components/VelocityComponent.vue';
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
-
+import ArpeggiatorComponent from 'src/components/ArpeggiatorComponent.vue';
 const store = useAudioSystemStore();
 const { destinationNode } = storeToRefs(store);
 
@@ -134,6 +140,10 @@ const filterNodes = computed(() =>
 const velocityNodes = computed(() =>
   store.getVoiceNodes(0, VoiceNodeType.GlobalVelocity),
 );
+const arpeggiatorNodes = computed(() =>
+  store.getVoiceNodes(0, VoiceNodeType.ArpeggiatorGenerator),
+);
+
 const delayNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Delay));
 const noiseNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Noise));
 const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));

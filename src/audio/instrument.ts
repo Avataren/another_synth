@@ -417,6 +417,23 @@ export default class Instrument {
     });
   }
 
+  public updateArpeggiatorPattern(nodeId: number, pattern: { value: number; active: boolean }[]) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateArpeggiatorPattern',
+      nodeId,
+      pattern,
+    });
+  }
+
+  public updateArpeggiatorStepDuration(nodeId: number, stepDurationMs: number) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateArpeggiatorStepDuration',
+      nodeId,
+      stepDurationMs,
+    });
+  }
 
   public updateWavetable(nodeId: number, newWavetable: Wavetable) {
     console.log('### instrument got wavetable:', newWavetable);

@@ -361,8 +361,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     console.log('#mixerID:', mixerId);
 
 
-    const arpId = this.audioEngine.create_arpeggiator();
-    console.log('#arpID:', arpId);
+    // const arpId = this.audioEngine.create_arpeggiator();
     // Create filter.
     const filterId = this.audioEngine.create_filter();
     this.audioEngine.create_filter();
@@ -397,25 +396,25 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     // --- Set up initial connections (as in your original code) ---
     if (envelopeIds.length > 0 && oscIds.length >= 2) {
 
-      this.audioEngine.connect_nodes(
-        arpId!,
-        PortId.AudioOutput0,
-        oscIds[0]!,
-        PortId.DetuneMod,
-        1,
-        WasmModulationType.Additive,
-        ModulationTransformation.None,
-      );
+      // this.audioEngine.connect_nodes(
+      //   arpId!,
+      //   PortId.AudioOutput0,
+      //   oscIds[0]!,
+      //   PortId.DetuneMod,
+      //   1,
+      //   WasmModulationType.Additive,
+      //   ModulationTransformation.None,
+      // );
 
-      this.audioEngine.connect_nodes(
-        arpId!,
-        PortId.AudioOutput0,
-        oscIds[1]!,
-        PortId.DetuneMod,
-        1,
-        WasmModulationType.Additive,
-        ModulationTransformation.None,
-      );
+      // this.audioEngine.connect_nodes(
+      //   arpId!,
+      //   PortId.AudioOutput0,
+      //   oscIds[1]!,
+      //   PortId.DetuneMod,
+      //   1,
+      //   WasmModulationType.Additive,
+      //   ModulationTransformation.None,
+      // );
 
       // Connect filter to mixer's audio input.
       this.audioEngine.connect_nodes(

@@ -2048,8 +2048,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     this.audioEngine.create_noise();
     const mixerId = this.audioEngine.create_mixer();
     console.log("#mixerID:", mixerId);
-    const arpId = this.audioEngine.create_arpeggiator();
-    console.log("#arpID:", arpId);
     const filterId = this.audioEngine.create_filter();
     this.audioEngine.create_filter();
     const oscIds = [];
@@ -2070,24 +2068,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       lfoIds.push(result.lfoId);
     }
     if (envelopeIds.length > 0 && oscIds.length >= 2) {
-      this.audioEngine.connect_nodes(
-        arpId,
-        PortId.AudioOutput0,
-        oscIds[0],
-        PortId.DetuneMod,
-        1,
-        WasmModulationType.Additive,
-        ModulationTransformation.None
-      );
-      this.audioEngine.connect_nodes(
-        arpId,
-        PortId.AudioOutput0,
-        oscIds[1],
-        PortId.DetuneMod,
-        1,
-        WasmModulationType.Additive,
-        ModulationTransformation.None
-      );
       this.audioEngine.connect_nodes(
         filterId,
         PortId.AudioOutput0,
