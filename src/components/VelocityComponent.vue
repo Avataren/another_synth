@@ -143,29 +143,17 @@ watch(
 <style scoped>
 .filter-card {
   width: 600px;
-  margin: 0.5rem auto;
+  margin: 0.25rem auto; /* Reduced vertical margin */
 }
 
 .filter-container {
-  padding: 1rem;
+  padding: 0.5rem; /* Reduced padding */
 }
 
 .knob-group {
   display: flex;
   justify-content: space-around;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-}
-
-.canvas-wrapper {
-  width: 100%;
-  height: 120px;
-  margin-top: 1rem;
-}
-
-canvas {
-  border: 1px solid #ccc;
-  background-color: rgb(200, 200, 200);
-  border-radius: 4px;
+  align-items: center; /* Center items to reduce extra top space */
+  margin-bottom: 0.5rem; /* Reduced bottom margin */
 }
 </style>
