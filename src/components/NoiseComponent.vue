@@ -47,7 +47,7 @@
 
       <!-- Add the routing component -->
       <routing-component
-        :source-id="noiseId"
+        :source-id="nodeId"
         :source-type="VoiceNodeType.Noise"
         :debug="true"
       />
@@ -69,10 +69,10 @@ import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 
 interface Props {
-  noiseId: number;
+  nodeId: number;
 }
 const props = withDefaults(defineProps<Props>(), {
-  noiseId: 0,
+  nodeId: 0,
 });
 //const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 const frequencyCanvas = ref<HTMLCanvasElement | null>(null);
@@ -162,7 +162,7 @@ watch(
   (newState) => {
     console.log('todo: update noisestate in instrument.ts ', newState);
     store.currentInstrument?.updateNoiseState(
-      props.noiseId,
+      props.nodeId,
       newState as NoiseState,
     );
   },
