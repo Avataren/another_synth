@@ -18,24 +18,30 @@
     <div v-else class="tab-placeholder"></div>
 
     <!-- Panels to display the corresponding DSP component -->
-    <q-tab-panels
-      v-model="currentTab"
-      animated
-      class="no-margin no-padding no-background"
-    >
-      <q-tab-panel
-        v-for="node in nodes"
-        :key="node.id"
-        :name="node.id.toString()"
-        class="no-margin no-padding"
+    <div class="tabs-container">
+      <!-- your tab header logic -->
+      <q-tab-panels
+        v-model="currentTab"
+        animated
+        transition-prev="fade"
+        transition-next="fade"
+        class="no-margin no-padding no-background"
       >
-        <component
-          :is="componentName"
-          :node="destinationNode"
-          :nodeId="node.id"
-        />
-      </q-tab-panel>
-    </q-tab-panels>
+        <q-tab-panel
+          v-for="node in nodes"
+          :key="node.id"
+          :name="node.id.toString()"
+          class="no-margin no-padding"
+          style="overflow: hidden"
+        >
+          <component
+            :is="componentName"
+            :node="destinationNode"
+            :nodeId="node.id"
+          />
+        </q-tab-panel>
+      </q-tab-panels>
+    </div>
   </div>
 </template>
 
