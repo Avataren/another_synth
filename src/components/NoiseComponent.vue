@@ -1,10 +1,18 @@
 <template>
   <q-card class="filter-card">
-    <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Noise</div>
-    </q-card-section>
+    <!-- Header: forward events to container -->
+    <audio-card-header
+      title="Noise"
+      :isMinimized="props.isMinimized"
+      @plusClicked="forwardPlus"
+      @minimizeClicked="forwardMinimize"
+      @closeClicked="forwardClose"
+    />
+
     <q-separator />
-    <q-card-section class="filter-container">
+
+    <!-- Main content is shown only when not minimized -->
+    <q-card-section class="filter-container" v-show="!props.isMinimized">
       <div class="knob-group">
         <q-toggle
           v-model="filterState.is_enabled"
@@ -12,6 +20,7 @@
           @update:modelValue="handleEnabledChange"
         />
       </div>
+
       <div class="knob-group">
         <audio-knob-component
           v-model="noiseState.noiseType"
@@ -45,22 +54,18 @@
         />
       </div>
 
-      <!-- Add the routing component -->
       <routing-component
-        :source-id="nodeId"
+        :source-id="props.nodeId"
         :source-type="VoiceNodeType.Noise"
         :debug="true"
       />
-
-      <div class="canvas-wrapper">
-        <canvas ref="frequencyCanvas" width="565" height="120"></canvas>
-      </div>
     </q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, watch } from 'vue';
+import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
@@ -68,18 +73,33 @@ import { storeToRefs } from 'pinia';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 
+// Define component props (do not destructure to preserve reactivity)
 interface Props {
   nodeId: number;
+  isMinimized?: boolean;
 }
 const props = withDefaults(defineProps<Props>(), {
-  nodeId: 0,
+  isMinimized: false,
 });
-//const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
-const frequencyCanvas = ref<HTMLCanvasElement | null>(null);
 
+// Define emit to forward events upward
+const emit = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);
+
+function forwardPlus() {
+  emit('plusClicked', VoiceNodeType.Noise);
+}
+function forwardMinimize() {
+  emit('minimizeClicked');
+}
+function forwardClose() {
+  emit('closeClicked', props.nodeId);
+}
+
+// Audio system store for managing the noise state.
 const store = useAudioSystemStore();
 const { noiseState } = storeToRefs(store);
 
+// Utility function for noise type display.
 const parseNoiseUnit = (val: number) => {
   switch (val as NoiseType) {
     case NoiseType.White:
@@ -93,7 +113,7 @@ const parseNoiseUnit = (val: number) => {
   }
 };
 
-// Create a reactive reference to the oscillator state
+// Computed property for noise state.
 const filterState = computed({
   get: () => {
     const state = noiseState.value;
@@ -112,59 +132,36 @@ const filterState = computed({
   },
 });
 
-// const handleResonanceChange = (val: number) => {
-//   const currentState = {
-//     ...filterState.value,
-//     resonance: val,
-//   };
-//   store.filterStates.set(props.Index, currentState);
-// };
-
-const handleEnabledChange = (val: boolean) => {
-  const currentState = {
-    ...filterState.value,
-    is_enabled: val,
-  };
+// Handlers for toggle and knob changes.
+function handleEnabledChange(val: boolean) {
+  const currentState = { ...filterState.value, is_enabled: val };
   store.noiseState = currentState;
-};
+}
 
-const handleNoiseTypeChange = (val: number) => {
-  const currentState = {
-    ...filterState.value,
-    noiseType: val as NoiseType,
-  };
+function handleNoiseTypeChange(val: number) {
+  const currentState = { ...filterState.value, noiseType: val as NoiseType };
   store.noiseState = currentState;
-};
+}
 
-const handleCutoffChange = (val: number) => {
-  const currentState = {
-    ...filterState.value,
-    cutoff: val,
-  };
+function handleCutoffChange(val: number) {
+  const currentState = { ...filterState.value, cutoff: val };
   store.noiseState = currentState;
-};
+}
 
-const handleGainChange = (val: number) => {
-  const currentState = {
-    ...filterState.value,
-    gain: val,
-  };
+function handleGainChange(val: number) {
+  const currentState = { ...filterState.value, gain: val };
   store.noiseState = currentState;
-};
+}
 
 onMounted(() => {
-  //computeFrequencyResponse();
-  //noiseGenerator.setSeed(123); // to avoid linter error
+  console.log('NoiseFilter mounted for node', props.nodeId);
 });
 
 watch(
   () => filterState.value,
   (newState) => {
-    console.log('todo: update noisestate in instrument.ts ', newState);
-    store.currentInstrument?.updateNoiseState(
-      props.nodeId,
-      newState as NoiseState,
-    );
+    console.log('NoiseFilter: updating noise state', newState);
+    store.currentInstrument?.updateNoiseState(props.nodeId, newState);
   },
   { deep: true, immediate: true },
 );
@@ -185,17 +182,5 @@ watch(
   justify-content: space-around;
   align-items: flex-start;
   margin-bottom: 1rem;
-}
-
-.canvas-wrapper {
-  width: 100%;
-  height: 120px;
-  margin-top: 1rem;
-}
-
-canvas {
-  border: 1px solid #ccc;
-  background-color: rgb(200, 200, 200);
-  border-radius: 4px;
 }
 </style>

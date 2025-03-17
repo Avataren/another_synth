@@ -1,9 +1,9 @@
 <template>
-  <q-card class="frequency-card">
-    <q-card-section class="bg-primary text-white">
+  <q-card flat class="frequency-card">
+    <!-- <q-card-section class="bg-primary text-white">
       <div class="text-h6">Frequency Analyzer</div>
     </q-card-section>
-    <q-separator />
+    <q-separator /> -->
     <q-card-section class="frequency-container">
       <canvas ref="canvasRef"></canvas>
     </q-card-section>
@@ -28,7 +28,7 @@ const attachAnalyzer = (audioNode: AudioNode) => {
   if (!analyser) {
     const audioContext = audioNode.context;
     analyser = audioContext.createAnalyser();
-    analyser.fftSize = 1024; // Smaller FFT size for frequency data
+    analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.8; // Smooth transitions
     dataArray = new Uint8Array(analyser.frequencyBinCount);
   }

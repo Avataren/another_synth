@@ -1,10 +1,18 @@
 <template>
   <q-card class="oscillator-card">
-    <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Oscillator {{ nodeId }}</div>
-    </q-card-section>
+    <!-- Header: forward events to container -->
+    <audio-card-header
+      :title="`Oscillator ${props.nodeId}`"
+      :isMinimized="props.isMinimized"
+      @plusClicked="forwardPlus"
+      @minimizeClicked="forwardMinimize"
+      @closeClicked="forwardClose"
+    />
+
     <q-separator />
-    <q-card-section class="oscillator-container">
+
+    <!-- Main content is shown only when not minimized -->
+    <q-card-section class="oscillator-container" v-show="!props.isMinimized">
       <div class="top-row">
         <div class="toggle-group">
           <q-toggle
@@ -12,7 +20,6 @@
             label="Active"
             @update:modelValue="handleActiveChange"
           />
-
           <q-toggle
             v-model="oscillatorState.hard_sync"
             label="Hard Sync"
@@ -125,7 +132,7 @@
       </div>
 
       <routing-component
-        :source-id="nodeId"
+        :source-id="props.nodeId"
         :source-type="VoiceNodeType.Oscillator"
         :debug="true"
       />
@@ -135,32 +142,46 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import AudioCardHeader from './AudioCardHeader.vue'; // New header component
 import AudioKnobComponent from './AudioKnobComponent.vue';
+import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
-// import { type WaveformType } from 'src/audio/wavetable/wave-utils';
-import type OscillatorState from 'src/audio/models/OscillatorState';
-import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
-// import { Waveform } from 'app/public/wasm/audio_processor';
+import type OscillatorState from 'src/audio/models/OscillatorState';
 
 interface Props {
-  node: AudioNode | null;
   nodeId: number;
+  isMinimized?: boolean;
 }
 
+// Default isMinimized to false
 const props = withDefaults(defineProps<Props>(), {
-  node: null,
-  nodeId: 0,
+  isMinimized: false,
 });
-//const node = computed(() => props.node);
 
+// Define events we want to forward to the parent
+const emit = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);
+
+function forwardPlus() {
+  emit('plusClicked', VoiceNodeType.Oscillator);
+}
+function forwardMinimize() {
+  emit('minimizeClicked');
+}
+function forwardClose() {
+  emit('closeClicked', props.nodeId);
+}
+
+// Reference to the audio system store
 const store = useAudioSystemStore();
 const { oscillatorStates } = storeToRefs(store);
-//const waveformCanvas = ref<HTMLCanvasElement | null>(null);
+
+// Local reference for waveform (for your wave knob)
 const waveform = ref<number>(0);
-// Create a reactive reference to the oscillator state
-const oscillatorState = computed({
+
+// Computed oscillator state
+const oscillatorState = computed<OscillatorState>({
   get: () => {
     const state = oscillatorStates.value.get(props.nodeId);
     if (!state) {
@@ -176,6 +197,8 @@ const oscillatorState = computed({
         active: false,
         unison_voices: 1,
         spread: 0,
+        hard_sync: false,
+        waveform: 0, // if you need to store waveform here
       } as OscillatorState;
     }
     return state;
@@ -186,13 +209,10 @@ const oscillatorState = computed({
 });
 
 onMounted(() => {
+  // Ensure an oscillator state exists for this node
   if (!oscillatorStates.value.has(props.nodeId)) {
     oscillatorStates.value.set(props.nodeId, oscillatorState.value);
   }
-  // store.currentInstrument?.updateOscillatorState(
-  //   props.oscIndex,
-  //   oscillatorStates.value!.get(props.oscIndex)!,
-  // );
 });
 
 const totalDetune = computed(() => {
@@ -203,118 +223,57 @@ const totalDetune = computed(() => {
   );
 });
 
-const handleWaveformChange = (newWaveform: number) => {
-  // let wf: Waveform = Waveform.Sine;
-  // switch (newWaveform) {
-  //   case 0:
-  //     wf = Waveform.Sine;
-  //     break;
-  //   case 1:
-  //     wf = Waveform.Triangle;
-  //     break;
-  //   case 2:
-  //     wf = Waveform.Saw;
-  //     break;
-  //   case 3:
-  //     wf = Waveform.Square;
-  //     break;
-  //   default:
-  //     break;
-  // }
-
-  const currentState = {
-    ...oscillatorState.value,
-    waveform: newWaveform,
-  };
-  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
-};
-
-const handleUnisonVoicesChange = (newValue: number) => {
-  const currentState = {
-    ...oscillatorState.value,
-    unison_voices: newValue,
-  };
-  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
-};
-
-const handleUnisonSpreadChange = (newValue: number) => {
-  const currentState = {
-    ...oscillatorState.value,
-    spread: newValue,
-  };
-  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
-};
-
-const handleHardSyncChange = (newValue: boolean) => {
-  const currentState = {
-    ...oscillatorState.value,
-    hardsync: newValue,
-  };
-  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
-};
-
-const handleModIndexChange = (newValue: number) => {
-  const currentState = {
-    ...oscillatorState.value,
-    phase_mod_amount: newValue,
-  };
-  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
-};
-
-const handleFeedbackChange = (newValue: number) => {
-  const currentState = {
-    ...oscillatorState.value,
-    feedback_amount: newValue,
-  };
-  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
-};
-
-const handleActiveChange = (newValue: boolean) => {
-  const currentState = {
-    ...oscillatorState.value,
-    active: newValue,
-  };
-  store.oscillatorStates.set(props.nodeId, currentState as OscillatorState);
-};
-
-// Handle gain changes
-const handleGainChange = (newValue: number) => {
-  // Create a completely new state object
-  const currentState = {
-    ...oscillatorState.value,
-    gain: newValue,
-  };
-  // Update the store with the new object
+/** Knob handlers below **/
+function handleActiveChange(newValue: boolean) {
+  const currentState = { ...oscillatorState.value, active: newValue };
   store.oscillatorStates.set(props.nodeId, currentState);
-};
-
-// Handle any detune changes
-const handleDetuneChange = () => {
-  // Create a new state object with updated detune
+}
+function handleHardSyncChange(newValue: boolean) {
+  const currentState = { ...oscillatorState.value, hard_sync: newValue };
+  store.oscillatorStates.set(props.nodeId, currentState);
+}
+function handleWaveformChange(newValue: number) {
+  const currentState = { ...oscillatorState.value, waveform: newValue };
+  store.oscillatorStates.set(props.nodeId, currentState);
+}
+function handleUnisonVoicesChange(newValue: number) {
+  const currentState = { ...oscillatorState.value, unison_voices: newValue };
+  store.oscillatorStates.set(props.nodeId, currentState);
+}
+function handleUnisonSpreadChange(newValue: number) {
+  const currentState = { ...oscillatorState.value, spread: newValue };
+  store.oscillatorStates.set(props.nodeId, currentState);
+}
+function handleModIndexChange(newValue: number) {
+  const currentState = { ...oscillatorState.value, phase_mod_amount: newValue };
+  store.oscillatorStates.set(props.nodeId, currentState);
+}
+function handleFeedbackChange(newValue: number) {
+  const currentState = { ...oscillatorState.value, feedback_amount: newValue };
+  store.oscillatorStates.set(props.nodeId, currentState);
+}
+function handleGainChange(newValue: number) {
+  const currentState = { ...oscillatorState.value, gain: newValue };
+  store.oscillatorStates.set(props.nodeId, currentState);
+}
+function handleDetuneChange() {
   const currentState = {
     ...oscillatorState.value,
     detune: totalDetune.value,
   };
   store.oscillatorStates.set(props.nodeId, currentState);
+}
 
-  // if (node.value instanceof OscillatorNode) {
-  //   node.value.detune.setValueAtTime(
-  //     totalDetune.value,
-  //     node.value.context.currentTime,
-  //   );
-  // }
-};
-
-// Watch the oscillator state
+// Watch the oscillator state in the store and notify the current instrument
+// Watch the oscillator state in the store
 watch(
-  () => ({ ...oscillatorStates.value.get(props.nodeId) }), // Create new reference
+  () => ({ ...oscillatorStates.value.get(props.nodeId) }),
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
-      if (newState.id === props.nodeId) {
-        // console.log('state changed!');
+      if (newState && newState.id === props.nodeId) {
         store.currentInstrument?.updateOscillatorState(
           props.nodeId,
-          newState as OscillatorState,
+          newState as OscillatorState, // <-- cast here
         );
       }
     }
@@ -357,9 +316,6 @@ watch(
 .detune-row {
   display: flex;
   justify-content: center;
-  /* gap: 0.25rem; */
-  /* justify-content: flex-end; */
-  /* margin-bottom: 1rem; */
 }
 
 .detune-group {

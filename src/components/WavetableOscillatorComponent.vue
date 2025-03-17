@@ -1,10 +1,18 @@
 <template>
   <q-card class="oscillator-card">
-    <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Wavetable Oscillator {{ nodeId }}</div>
-    </q-card-section>
+    <!-- Header: forward events to parent -->
+    <audio-card-header
+      :title="`Wavetable Oscillator ${props.nodeId}`"
+      :isMinimized="props.isMinimized"
+      @plusClicked="forwardPlus"
+      @minimizeClicked="forwardMinimize"
+      @closeClicked="forwardClose"
+    />
+
     <q-separator />
-    <q-card-section class="oscillator-container">
+
+    <!-- Main content shown only when not minimized -->
+    <q-card-section class="oscillator-container" v-show="!props.isMinimized">
       <div class="top-row">
         <div class="toggle-group">
           <q-toggle
@@ -52,6 +60,7 @@
             :decimals="3"
             @update:modelValue="handleFeedbackChange"
           />
+
           <audio-knob-component
             v-model="oscillatorState.wave_index"
             label="WaveIndex"
@@ -63,11 +72,11 @@
           />
         </div>
       </div>
+
       <q-card-section class="import-section">
         <div class="row">
           <div class="col-6">
             <div class="text-h6">Import Wavetable</div>
-
             <input type="file" accept=".wav" @change="handleWavFileUpload" />
           </div>
           <div class="col-6">
@@ -78,6 +87,7 @@
           </div>
         </div>
       </q-card-section>
+
       <div class="detune-row">
         <div class="detune-group">
           <audio-knob-component
@@ -138,7 +148,7 @@
       </div>
 
       <routing-component
-        :source-id="nodeId"
+        :source-id="props.nodeId"
         :source-type="VoiceNodeType.Oscillator"
         :debug="true"
       />
@@ -148,6 +158,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue';
+import AudioCardHeader from './AudioCardHeader.vue'; // <-- Make sure to import this
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import WavetableEditor from './WaveTable/WavetableEditor.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
@@ -156,21 +167,39 @@ import type OscillatorState from 'src/audio/models/OscillatorState';
 import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
+// Define props
 interface Props {
   node: AudioNode | null;
   nodeId: number;
+  isMinimized?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   node: null,
   nodeId: 0,
+  isMinimized: false,
 });
-//const node = computed(() => props.node);
 
+// Define emits for forwarding events
+const emit = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);
+
+// Forwarding methods
+function forwardPlus() {
+  emit('plusClicked', VoiceNodeType.WavetableOscillator);
+}
+function forwardMinimize() {
+  emit('minimizeClicked');
+}
+function forwardClose() {
+  emit('closeClicked', props.nodeId);
+}
+
+// Access the store
 const store = useAudioSystemStore();
 const { wavetableOscillatorStates } = storeToRefs(store);
-// Create a reactive reference to the oscillator state
-const oscillatorState = computed({
+
+// Computed for oscillator state
+const oscillatorState = computed<OscillatorState>({
   get: () => {
     const state = wavetableOscillatorStates.value.get(props.nodeId);
     if (!state) {
@@ -210,6 +239,7 @@ const totalDetune = computed(() => {
   );
 });
 
+// File upload handler
 const handleWavFileUpload = async (event: Event) => {
   const input = event.target as HTMLInputElement;
   if (!input.files?.length) return;
@@ -224,7 +254,6 @@ const handleWavFileUpload = async (event: Event) => {
     console.log('WAV file loaded, size:', wavBytes.length);
 
     if (store.currentInstrument) {
-      // Call the new import function on your instrument
       store.currentInstrument.importWavetableData(props.nodeId, wavBytes);
     } else {
       console.error('Instrument instance not available');
@@ -235,20 +264,19 @@ const handleWavFileUpload = async (event: Event) => {
   }
 };
 
+// Wavetable editor callback
 const handleWavetableUpdate = (newWavetable: Uint8Array) => {
-  console.log('###got wavetable:', newWavetable);
+  console.log('### got wavetable:', newWavetable);
   store.currentInstrument?.importWavetableData(props.nodeId, newWavetable);
 };
 
+// Various knob and toggle handlers
 const handleWaveformIndexChange = (newValue: number) => {
   const currentState = {
     ...oscillatorState.value,
     wave_index: newValue,
   };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
+  store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleUnisonVoicesChange = (newValue: number) => {
@@ -256,10 +284,7 @@ const handleUnisonVoicesChange = (newValue: number) => {
     ...oscillatorState.value,
     unison_voices: newValue,
   };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
+  store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleUnisonSpreadChange = (newValue: number) => {
@@ -267,10 +292,7 @@ const handleUnisonSpreadChange = (newValue: number) => {
     ...oscillatorState.value,
     spread: newValue,
   };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
+  store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleHardSyncChange = (newValue: boolean) => {
@@ -278,10 +300,7 @@ const handleHardSyncChange = (newValue: boolean) => {
     ...oscillatorState.value,
     hardsync: newValue,
   };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
+  store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleModIndexChange = (newValue: number) => {
@@ -289,10 +308,7 @@ const handleModIndexChange = (newValue: number) => {
     ...oscillatorState.value,
     phase_mod_amount: newValue,
   };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
+  store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleFeedbackChange = (newValue: number) => {
@@ -300,10 +316,7 @@ const handleFeedbackChange = (newValue: number) => {
     ...oscillatorState.value,
     feedback_amount: newValue,
   };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
+  store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleActiveChange = (newValue: boolean) => {
@@ -311,26 +324,18 @@ const handleActiveChange = (newValue: boolean) => {
     ...oscillatorState.value,
     active: newValue,
   };
-  store.wavetableOscillatorStates.set(
-    props.nodeId,
-    currentState as OscillatorState,
-  );
+  store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
-// Handle gain changes
 const handleGainChange = (newValue: number) => {
-  // Create a completely new state object
   const currentState = {
     ...oscillatorState.value,
     gain: newValue,
   };
-  // Update the store with the new object
   store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
-// Handle any detune changes
 const handleDetuneChange = () => {
-  // Create a new state object with updated detune
   const currentState = {
     ...oscillatorState.value,
     detune: totalDetune.value,
@@ -338,13 +343,12 @@ const handleDetuneChange = () => {
   store.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
-// Watch the oscillator state
+// Watch for changes and notify the instrument
 watch(
-  () => ({ ...wavetableOscillatorStates.value.get(props.nodeId) }), // Create new reference
+  () => ({ ...wavetableOscillatorStates.value.get(props.nodeId) }),
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
-        // console.log('state changed!');
         store.currentInstrument?.updateWavetableOscillatorState(
           props.nodeId,
           newState as OscillatorState,
@@ -359,7 +363,7 @@ watch(
 <style scoped>
 .oscillator-card {
   width: 600px;
-  margin: 0.5rem auto;
+  margin: 0 auto;
 }
 
 .oscillator-container {
@@ -390,9 +394,6 @@ watch(
 .detune-row {
   display: flex;
   justify-content: center;
-  /* gap: 0.25rem; */
-  /* justify-content: flex-end; */
-  /* margin-bottom: 1rem; */
 }
 
 .detune-group {

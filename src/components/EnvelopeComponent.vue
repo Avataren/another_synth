@@ -1,10 +1,18 @@
 <template>
   <q-card class="envelope-card">
-    <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Envelope {{ nodeId }}</div>
-    </q-card-section>
+    <!-- Replaced the old <q-card-section> header with AudioCardHeader -->
+    <audio-card-header
+      title="Envelope"
+      :isMinimized="props.isMinimized"
+      @plusClicked="forwardPlus"
+      @minimizeClicked="forwardMinimize"
+      @closeClicked="forwardClose"
+    />
+
     <q-separator />
-    <q-card-section class="envelope-container">
+
+    <!-- Main content is shown only when not minimized -->
+    <q-card-section class="envelope-container" v-show="!props.isMinimized">
       <div class="knob-group">
         <q-toggle
           v-model="envelopeState.active"
@@ -12,6 +20,7 @@
           @update:modelValue="handleActiveChange"
         />
       </div>
+
       <div class="canvas-wrapper">
         <canvas ref="waveformCanvas"></canvas>
       </div>
@@ -79,6 +88,7 @@
           :decimals="2"
           @update:modelValue="handleReleaseCoeffChange"
         />
+
         <audio-knob-component
           v-model="envelopeState.release"
           label="Release"
@@ -101,30 +111,50 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+
+// New header component for consistent styling and event handling
+import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
+import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
-import RoutingComponent from './RoutingComponent.vue';
-import type { EnvelopeConfig } from 'src/audio/types/synth-layout';
-import { VoiceNodeType } from 'src/audio/types/synth-layout';
+import {
+  VoiceNodeType,
+  type EnvelopeConfig,
+} from 'src/audio/types/synth-layout';
 import { throttle } from 'quasar';
 
 interface Props {
-  node: AudioNode | null;
   nodeId: number;
+  isMinimized?: boolean; // default: false
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  node: null,
-  nodeId: 0,
+  isMinimized: false,
 });
 
+// Forward events to parent, matching the style of your Noise/Oscillator components
+const emit = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);
+
+function forwardPlus() {
+  emit('plusClicked', VoiceNodeType.Envelope);
+}
+function forwardMinimize() {
+  emit('minimizeClicked');
+}
+function forwardClose() {
+  emit('closeClicked', props.nodeId);
+}
+
+// Audio store & references
 const store = useAudioSystemStore();
 const { envelopeStates } = storeToRefs(store);
+
+// Canvas ref for envelope preview
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 
-// Create a reactive reference to the envelope state
-const envelopeState = computed({
+// Envelope state computed
+const envelopeState = computed<EnvelopeConfig>({
   get: () => {
     const state = envelopeStates.value.get(props.nodeId);
     if (!state) {
@@ -148,71 +178,65 @@ const envelopeState = computed({
   },
 });
 
-const handleActiveChange = (newValue: boolean) => {
-  const currentState = {
+/** Envelope event handlers **/
+function handleActiveChange(newValue: boolean) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     active: newValue,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const handleAttackCoeffChange = (envVal: number) => {
-  const currentState = {
+function handleAttackCoeffChange(envVal: number) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     attackCurve: envVal,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const handleDecayCoeffChange = (envVal: number) => {
-  const currentState = {
+function handleDecayCoeffChange(envVal: number) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     decayCurve: envVal,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const handleReleaseCoeffChange = (envVal: number) => {
-  const currentState = {
+function handleReleaseCoeffChange(envVal: number) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     releaseCurve: envVal,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const handleAttackChange = (envVal: number) => {
-  const currentState = {
+function handleAttackChange(envVal: number) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     attack: envVal,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const handleDecayChange = (envVal: number) => {
-  const currentState = {
+function handleDecayChange(envVal: number) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     decay: envVal,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const handleSustainChange = (envVal: number) => {
-  const currentState = {
+function handleSustainChange(envVal: number) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     sustain: envVal,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const handleReleaseChange = (envVal: number) => {
-  const currentState = {
+function handleReleaseChange(envVal: number) {
+  store.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     release: envVal,
-  };
-  store.envelopeStates.set(props.nodeId, currentState);
-};
+  });
+}
 
-const updateEnvelopePreview = () => {
+/** Envelope preview drawing logic **/
+function updateEnvelopePreview() {
   const config = envelopeState.value;
   const previewDuration = config.attack + config.decay + 1 + config.release;
 
@@ -221,31 +245,32 @@ const updateEnvelopePreview = () => {
     .then((previewData) => {
       drawEnvelopePreviewWithData(previewData);
     })
-    .catch((_err) => {
-      //console.error('Failed to get envelope preview:', err);
+    .catch(() => {
+      // Silently fail or handle error
     });
-};
+}
+
 const throttledUpdateEnvelopePreview = throttle(
   updateEnvelopePreview,
   1000 / 60,
 );
 
-const drawEnvelopePreviewWithData = (previewData: Float32Array) => {
+function drawEnvelopePreviewWithData(previewData: Float32Array) {
   const canvas = waveformCanvas.value;
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Set canvas dimensions
   const width = canvas.offsetWidth;
   const height = canvas.offsetHeight;
   canvas.width = width;
   canvas.height = height;
 
+  // Background
   ctx.fillStyle = 'rgb(32, 45, 66)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, width, height);
 
-  // Downsample the preview data to match the canvas width.
+  // Downsample to fit canvas width
   const totalSamples = previewData.length;
   const step = totalSamples / width;
 
@@ -253,25 +278,26 @@ const drawEnvelopePreviewWithData = (previewData: Float32Array) => {
   ctx.strokeStyle = 'rgb(160, 190, 225)';
   ctx.lineWidth = 2;
 
-  // Map the envelope value (0 to 1) to canvas y-coordinate.
   ctx.moveTo(0, height - previewData[0]! * height);
-
   for (let x = 1; x < width; x++) {
     const sampleIndex = Math.floor(x * step);
     const value = previewData[sampleIndex];
-    const y = height - value! * height;
+    const y = height - (value ?? 0) * height;
     ctx.lineTo(x, y);
   }
   ctx.stroke();
-};
+}
 
 onMounted(() => {
+  // Ensure an EnvelopeState entry exists for this node
   if (!envelopeStates.value.has(props.nodeId)) {
     envelopeStates.value.set(props.nodeId, envelopeState.value);
   }
+
+  // Delay the initial draw a bit
   setTimeout(updateEnvelopePreview, 250);
 
-  // Add resize listener
+  // Listen for window resize to re-draw
   window.addEventListener('resize', throttledUpdateEnvelopePreview);
 });
 
@@ -279,12 +305,13 @@ onUnmounted(() => {
   window.removeEventListener('resize', throttledUpdateEnvelopePreview);
 });
 
-// Watch for changes in the envelope state
+/** Watch for changes in the store's envelope state **/
 watch(
   () => ({ ...envelopeStates.value.get(props.nodeId) }),
   async (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
-      if (newState.id === props.nodeId) {
+      if (newState && newState.id === props.nodeId) {
+        // Cast to EnvelopeConfig if needed for strict type checks
         await store.currentInstrument?.updateEnvelopeState(
           props.nodeId,
           newState as EnvelopeConfig,
@@ -325,6 +352,5 @@ canvas {
   height: 100%;
   border: none;
   background-color: rgb(200, 200, 200);
-  /* border-radius: 4px; */
 }
 </style>

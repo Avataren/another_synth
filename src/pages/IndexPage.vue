@@ -189,10 +189,10 @@ const convolverNodes = computed(() =>
 
 /* Fixed height for bottom row with scrolling overflow */
 .bottom-row {
-  flex: 0 0 300px; /* Prevents flex shrink/grow and sets a fixed basis */
+  flex: 0 0 260px; /* Prevents flex shrink/grow and sets a fixed basis */
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 1rem 0 0 0;
+  padding: 0.2rem 0 0 0;
   margin: 0;
   background-color: #1d2023;
   border-top: 1px solid #444;

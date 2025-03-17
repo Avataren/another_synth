@@ -1,9 +1,9 @@
 <template>
-  <q-card class="oscillator-card">
-    <q-card-section class="bg-primary text-white">
+  <q-card flat class="oscillator-card">
+    <!-- <q-card-section class="bg-primary text-white">
       <div class="text-h6">Oscilloscope</div>
-    </q-card-section>
-    <q-separator />
+    </q-card-section> -->
+    <!-- <q-separator /> -->
     <q-card-section class="oscilloscope-container">
       <canvas ref="canvasRef"></canvas>
     </q-card-section>

@@ -13,13 +13,11 @@
       </q-tabs>
     </div>
 
-    <!-- If there is only one node, show an empty placeholder 
-           that takes up the same height as the tab bar would -->
+    <!-- If there is only one node, show an empty placeholder that takes up the same height as the tab bar would -->
     <div v-else class="tab-placeholder"></div>
 
     <!-- Panels to display the corresponding DSP component -->
     <div class="tabs-container">
-      <!-- your tab header logic -->
       <q-tab-panels
         v-model="currentTab"
         animated
@@ -34,10 +32,19 @@
           class="no-margin no-padding"
           style="overflow: hidden"
         >
+          <!--
+            The child component is passed the global minimize state,
+            and events from its header (bubbled up from the DSP component)
+            are handled by the container.
+          -->
           <component
             :is="componentName"
             :node="destinationNode"
             :nodeId="node.id"
+            :isMinimized="isMinimized"
+            @plusClicked="handlePlus"
+            @minimizeClicked="handleMinimize"
+            @closeClicked="handleClose"
           />
         </q-tab-panel>
       </q-tab-panels>
@@ -46,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+import { type VoiceNodeType } from 'src/audio/types/synth-layout';
 import { ref, watch, defineProps, type Component } from 'vue';
 
 interface Node {
@@ -74,20 +82,49 @@ watch(
     }
   },
 );
+
+// Global minimize state shared by all child components
+const isMinimized = ref(false);
+
+/**
+ * Handle the plus click signal from any component.
+ */
+function handlePlus(nodeType: VoiceNodeType) {
+  console.log('Container received plus click:', nodeType);
+  // Place any container-level logic for the plus button here.
+}
+
+/**
+ * Toggle the global minimize state when any child emits a minimize event.
+ */
+function handleMinimize() {
+  isMinimized.value = !isMinimized.value;
+  console.log('Container toggled minimize state to', isMinimized.value);
+  // Optionally, you could broadcast this state to other parts of your app.
+}
+
+/**
+ * Handle the close signal from a child component.
+ */
+function handleClose(node_id: number) {
+  console.log('Container received close click:', node_id);
+  // Handle closing the component. For example, you might remove the node from the list.
+}
 </script>
 
 <style scoped>
 .tabs-container {
   margin: 0;
   padding: 0;
+  margin-bottom: 1rem;
 }
 
-/* If you want a bit of spacing between tabs themselves: */
+/* Spacing between tabs */
 .tab + .tab {
   margin-left: 1rem;
 }
 
-/* Eliminate Quasar’s default margin/padding for tight alignment */
+/* Remove default margin/padding */
 .no-margin {
   margin: 0 !important;
 }
@@ -98,16 +135,13 @@ watch(
   background: none;
 }
 
-/* A bit of extra bottom spacing for the tab row (optional) */
+/* Extra bottom spacing for the tab row */
 .tabs-with-spacing {
   margin-bottom: 0.5rem;
 }
 
-/* 
-    This placeholder occupies the same vertical space 
-    as a dense QTabs bar. Adjust to match your actual QTabs height. 
-  */
+/* Placeholder height for a single tab scenario */
 .tab-placeholder {
-  min-height: 34px;
+  min-height: 44px;
 }
 </style>

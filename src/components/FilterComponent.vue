@@ -1,10 +1,18 @@
 <template>
   <q-card class="filter-card">
-    <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Filter {{ props.nodeId }}</div>
-    </q-card-section>
+    <!-- Replaced the old header with the AudioCardHeader component -->
+    <audio-card-header
+      :title="`Filter ${props.nodeId}`"
+      :isMinimized="props.isMinimized"
+      @plusClicked="forwardPlus"
+      @minimizeClicked="forwardMinimize"
+      @closeClicked="forwardClose"
+    />
+
     <q-separator />
-    <q-card-section class="filter-container">
+
+    <!-- Main content is only displayed if not minimized -->
+    <q-card-section class="filter-container" v-show="!props.isMinimized">
       <!-- Toggle for filter active state -->
       <div class="knob-group">
         <q-toggle
@@ -13,13 +21,14 @@
           @update:modelValue="handleActiveChange"
         />
       </div>
+
       <!-- A canvas to display the filter response curve -->
       <div class="canvas-wrapper">
         <canvas ref="waveformCanvas"></canvas>
       </div>
+
       <!-- Controls for cutoff, comb and other knobs -->
       <div class="knob-group">
-        <!-- Show cutoff only if filter type is NOT Comb -->
         <audio-knob-component
           v-if="filterState.filter_type !== FilterType.Comb"
           v-model="filterState.cutoff"
@@ -30,7 +39,6 @@
           :decimals="0"
           @update:modelValue="handleCutoffChange"
         />
-        <!-- Show comb frequency when filter type is Comb -->
         <audio-knob-component
           v-if="filterState.filter_type === FilterType.Comb"
           v-model="filterState.comb_frequency"
@@ -41,7 +49,6 @@
           :decimals="0"
           @update:modelValue="handleCombFrequencyChange"
         />
-        <!-- Always show resonance -->
         <audio-knob-component
           v-model="filterState.resonance"
           label="Resonance"
@@ -51,7 +58,6 @@
           :decimals="3"
           @update:modelValue="handleResonanceChange"
         />
-        <!-- Always show KeyTracking -->
         <audio-knob-component
           v-model="filterState.keytracking"
           label="KeyTracking"
@@ -61,7 +67,6 @@
           :decimals="3"
           @update:modelValue="handleKeyTrackingChange"
         />
-        <!-- Only show Gain knob if enabled -->
         <audio-knob-component
           v-if="gainEnabled"
           v-model="filterState.gain"
@@ -72,7 +77,6 @@
           :decimals="3"
           @update:modelValue="handleGainChange"
         />
-        <!-- Show comb dampening when filter type is Comb -->
         <audio-knob-component
           v-if="filterState.filter_type === FilterType.Comb"
           v-model="filterState.comb_dampening"
@@ -84,6 +88,7 @@
           @update:modelValue="handleCombDampeningChange"
         />
       </div>
+
       <!-- Dropdowns for filter type, slope and oversampling -->
       <div class="knob-group">
         <q-select
@@ -118,7 +123,8 @@
           map-options
         />
       </div>
-      <!-- Routing component so you can reassign connections -->
+
+      <!-- Routing component -->
       <routing-component
         :source-id="props.nodeId"
         :source-type="VoiceNodeType.Filter"
@@ -130,6 +136,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, toRaw } from 'vue';
+import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
@@ -143,22 +150,36 @@ import {
 } from 'src/audio/types/synth-layout';
 
 interface Props {
-  node: AudioNode | null;
   nodeId: number;
+  isMinimized?: boolean;
 }
 
+// Default isMinimized to false
 const props = withDefaults(defineProps<Props>(), {
-  node: null,
-  nodeId: 0,
+  isMinimized: false,
 });
+
+// Define events we want to forward
+const emit = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);
+function forwardPlus() {
+  emit('plusClicked', VoiceNodeType.Filter);
+}
+function forwardMinimize() {
+  emit('minimizeClicked');
+}
+function forwardClose() {
+  emit('closeClicked', props.nodeId);
+}
+
+// Slope/gain toggles for certain filter types
 const slopeEnabled = ref(true);
 const gainEnabled = ref(false);
+
 const store = useAudioSystemStore();
 const { filterStates } = storeToRefs(store);
-
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 
-// Computed filter state with default values if not already in the store.
+// Computed filter state with default values
 const filterState = computed<FilterState>({
   get: () => {
     const state = filterStates.value.get(props.nodeId);
@@ -184,7 +205,7 @@ const filterState = computed<FilterState>({
   },
 });
 
-// Define options for filter type, slope and oversampling dropdowns
+// Select option definitions
 const filterTypeOptions = [
   { label: 'Low Pass', value: FilterType.LowPass },
   { label: 'Notch', value: FilterType.Notch },
@@ -195,12 +216,10 @@ const filterTypeOptions = [
   { label: 'Peaking', value: FilterType.Peaking },
   { label: 'High Shelf', value: FilterType.HighShelf },
 ];
-
 const filterSlopeOptions = [
   { label: '12 dB/oct', value: FilterSlope.Db12 },
   { label: '24 dB/oct', value: FilterSlope.Db24 },
 ];
-
 const oversamplingOptions = [
   { label: 'Off', value: 0 },
   { label: '2x', value: 2 },
@@ -209,39 +228,44 @@ const oversamplingOptions = [
   { label: '16x', value: 16 },
 ];
 
-// Handlers for updating state
-const handleActiveChange = (newValue: boolean) => {
-  const currentState = { ...filterState.value, active: newValue };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
+// Handlers for state changes
+function handleActiveChange(newValue: boolean) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    active: newValue,
+  });
+}
+function handleGainChange(newVal: number) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    gain: newVal,
+  });
+}
+function handleCutoffChange(newVal: number) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    cutoff: newVal,
+  });
+}
+function handleResonanceChange(newVal: number) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    resonance: newVal,
+  });
+}
+function handleKeyTrackingChange(newVal: number) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    keytracking: newVal,
+  });
+}
+function handleFilterTypeChange(newVal: FilterType) {
+  // Decide if slope is enabled
+  slopeEnabled.value = !(
+    newVal === FilterType.Ladder || newVal === FilterType.Comb
+  );
 
-const handleGainChange = (newVal: number) => {
-  const currentState = { ...filterState.value, gain: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-const handleCutoffChange = (newVal: number) => {
-  const currentState = { ...filterState.value, cutoff: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-const handleResonanceChange = (newVal: number) => {
-  const currentState = { ...filterState.value, resonance: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-const handleKeyTrackingChange = (newVal: number) => {
-  const currentState = { ...filterState.value, keytracking: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-const handleFilterTypeChange = (newVal: FilterType) => {
-  if (newVal === FilterType.Ladder || newVal === FilterType.Comb) {
-    slopeEnabled.value = false;
-  } else {
-    slopeEnabled.value = true;
-  }
-
+  // Decide if gain is enabled
   switch (newVal) {
     case FilterType.Ladder:
     case FilterType.Peaking:
@@ -253,45 +277,52 @@ const handleFilterTypeChange = (newVal: FilterType) => {
       gainEnabled.value = false;
   }
 
-  const currentState = { ...filterState.value, filter_type: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    filter_type: newVal,
+  });
+}
+function handleFilterSlopeChange(newVal: FilterSlope) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    filter_slope: newVal,
+  });
+}
+function handleOversamplingChange(newVal: number) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    oversampling: newVal,
+  });
+}
+function handleCombFrequencyChange(newVal: number) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    comb_frequency: newVal,
+  });
+}
+function handleCombDampeningChange(newVal: number) {
+  store.filterStates.set(props.nodeId, {
+    ...toRaw(filterState.value),
+    comb_dampening: newVal,
+  });
+}
 
-const handleFilterSlopeChange = (newVal: FilterSlope) => {
-  const currentState = { ...filterState.value, filter_slope: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-const handleOversamplingChange = (newVal: number) => {
-  const currentState = { ...filterState.value, oversampling: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-const handleCombFrequencyChange = (newVal: number) => {
-  const currentState = { ...filterState.value, comb_frequency: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-const handleCombDampeningChange = (newVal: number) => {
-  const currentState = { ...filterState.value, comb_dampening: newVal };
-  store.filterStates.set(props.nodeId, { ...toRaw(currentState) });
-};
-
-// -----------------------------------------------------------------
-// Throttled waveform update and caching logic for filter response
-// -----------------------------------------------------------------
+// -----------------------------------------------------
+// Throttled waveform update and caching logic
+// -----------------------------------------------------
 let cachedWaveformCanvas: HTMLCanvasElement | null = null;
+
 const throttledUpdateWaveformDisplay = throttle(async () => {
   await updateCachedWaveform();
   updateWaveformDisplay();
 }, 1000 / 60);
 
-const updateCachedWaveform = async () => {
+async function updateCachedWaveform() {
   if (!waveformCanvas.value) return;
   const width = waveformCanvas.value.offsetWidth;
   const height = waveformCanvas.value.offsetHeight;
 
-  // Only update actual canvas resolution if size has changed.
+  // Ensure the actual canvas resolution matches offset sizes
   if (
     waveformCanvas.value.width !== width ||
     waveformCanvas.value.height !== height
@@ -300,7 +331,7 @@ const updateCachedWaveform = async () => {
     waveformCanvas.value.height = height;
   }
 
-  // Create an offscreen canvas to cache the waveform image.
+  // Create an offscreen canvas to cache the waveform image
   const offscreen = document.createElement('canvas');
   offscreen.width = width;
   offscreen.height = height;
@@ -327,55 +358,48 @@ const updateCachedWaveform = async () => {
     offCtx.stroke();
   }
 
-  // 3) Fetch the filter response data (same length as canvas width).
+  // 3) Fetch the filter response data (same length as canvas width)
   const filterData = await store.currentInstrument?.getFilterResponse(
     props.nodeId,
     width,
   );
   if (!filterData) return;
 
-  // 4) Build the filter response path from left to right,
-  //    starting at the bottom-left corner (0, height).
+  // 4) Draw the filter response path
   offCtx.beginPath();
   offCtx.moveTo(0, height); // bottom-left
   for (let i = 0; i < filterData.length; i++) {
-    // Each i is the x pixel, filterData[i] is normalized magnitude [0..1].
     const x = i;
     const y = height - filterData[i]! * height;
     offCtx.lineTo(x, y);
   }
-  // Then go straight down to the bottom at the last x (width-1).
-  const lastX = filterData.length - 1;
-  offCtx.lineTo(lastX, height);
-
+  offCtx.lineTo(filterData.length - 1, height); // bottom at last x
   offCtx.closePath();
 
-  // // 5) Fill under the curve
+  // 5) Fill under the curve
   offCtx.fillStyle = 'rgba(255, 152, 0, 0.3)';
   offCtx.fill();
 
-  // // 6) Draw the outline
+  // 6) Draw the outline
   offCtx.strokeStyle = '#FF9800';
   offCtx.lineWidth = 2;
   offCtx.stroke();
 
-  // Cache the offscreen canvas so we can quickly redraw later.
+  // Cache the offscreen canvas for fast redraw
   cachedWaveformCanvas = offscreen;
-};
+}
 
-const updateWaveformDisplay = () => {
+function updateWaveformDisplay() {
   if (!waveformCanvas.value) return;
-  const canvas = waveformCanvas.value;
-  const ctx = canvas.getContext('2d');
+  const ctx = waveformCanvas.value.getContext('2d');
   if (!ctx) return;
-  // Instead of clearing, we simply draw the cached image over the full canvas.
   if (cachedWaveformCanvas) {
     ctx.drawImage(cachedWaveformCanvas, 0, 0);
   }
-};
+}
+// -----------------------------------------------------
 
-// -----------------------------------------------------------------
-
+// Watch the filter state in the store
 watch(
   () => ({ ...filterStates.value.get(props.nodeId) }),
   (newState, oldState) => {
@@ -384,7 +408,6 @@ watch(
         store.currentInstrument?.updateFilterState(props.nodeId, {
           ...toRaw(newState),
         } as FilterState);
-        // Use the throttled waveform update instead of an immediate redraw.
         throttledUpdateWaveformDisplay();
       }
     }
@@ -393,21 +416,26 @@ watch(
 );
 
 onMounted(() => {
+  // Ensure there's a FilterState entry in the store for this node
   if (!filterStates.value.has(props.nodeId)) {
     store.filterStates.set(props.nodeId, { ...toRaw(filterState.value) });
   }
+
+  // Set up initial canvas size
   if (waveformCanvas.value) {
     const canvas = waveformCanvas.value;
     const width = canvas.offsetWidth;
     const height = canvas.offsetHeight;
     canvas.width = width;
     canvas.height = height;
-    // Small delay to ensure the instrument is ready.
+
+    // Delay slightly before first update
     setTimeout(async () => {
       await updateCachedWaveform();
       updateWaveformDisplay();
     }, 25);
   }
+
   window.addEventListener('resize', throttledUpdateWaveformDisplay);
 });
 

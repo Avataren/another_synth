@@ -1,10 +1,18 @@
 <template>
   <q-card class="lfo-card">
-    <q-card-section class="bg-primary text-white">
-      <div class="text-h6">LFO {{ nodeId }}</div>
-    </q-card-section>
+    <!-- Header: forwards events to parent -->
+    <audio-card-header
+      :title="`LFO ${props.nodeId}`"
+      :isMinimized="props.isMinimized"
+      @plusClicked="forwardPlus"
+      @minimizeClicked="forwardMinimize"
+      @closeClicked="forwardClose"
+    />
+
     <q-separator />
-    <q-card-section class="lfo-container">
+
+    <!-- Main LFO content, shown only when not minimized -->
+    <q-card-section class="lfo-container" v-show="!props.isMinimized">
       <!-- Top row: Toggles and Main Knobs (including Waveform knob) -->
       <div class="top-row">
         <div class="toggle-group">
@@ -29,6 +37,7 @@
             @update:modelValue="handleTriggerModeChange"
           />
         </div>
+
         <div class="knob-group">
           <audio-knob-component
             v-model="lfoState.gain"
@@ -120,6 +129,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
+import AudioCardHeader from './AudioCardHeader.vue'; // <-- be sure to import
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { storeToRefs } from 'pinia';
@@ -128,16 +138,33 @@ import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import { throttle } from 'src/utils/util';
 
+// Define props
 interface Props {
   node: AudioNode | null;
   nodeId: number;
+  isMinimized?: boolean;
 }
-
 const props = withDefaults(defineProps<Props>(), {
   node: null,
   nodeId: 0,
+  isMinimized: false,
 });
 
+// Define emits for forwarding events
+const emit = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);
+
+// Forwarding methods: simply log and emit
+function forwardPlus() {
+  emit('plusClicked', VoiceNodeType.LFO);
+}
+function forwardMinimize() {
+  emit('minimizeClicked');
+}
+function forwardClose() {
+  emit('closeClicked', props.nodeId);
+}
+
+// Store references and local refs
 const store = useAudioSystemStore();
 const { lfoStates } = storeToRefs(store);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
@@ -151,8 +178,8 @@ const throttledUpdateWaveformDisplay = throttle(async () => {
   updateWaveformDisplay();
 }, 1000 / 60);
 
-// Create a reactive reference to the LFO state.
-const lfoState = computed({
+// Create a reactive reference to the LFO state
+const lfoState = computed<LfoState>({
   get: () => {
     const state = lfoStates.value.get(props.nodeId);
     if (!state) {
@@ -178,7 +205,6 @@ const lfoState = computed({
   },
 });
 
-// Loop mode options: Off = 0, Loop = 1, PingPong = 2.
 const loopModeOptions = [
   { label: 'Off', value: 0 },
   { label: 'Loop', value: 1 },
@@ -192,19 +218,19 @@ onMounted(async () => {
 
   if (waveformCanvas.value) {
     const canvas = waveformCanvas.value;
-    // Set canvas resolution based on its displayed size.
+    // Set canvas resolution based on displayed size
     const width = canvas.offsetWidth;
     const height = canvas.offsetHeight;
     canvas.width = width;
     canvas.height = height;
 
-    // Make sure the instrument is ready before drawing:
+    // Delay a bit to ensure instrument is ready
     setTimeout(async () => {
       await updateCachedWaveform();
       updateWaveformDisplay();
     }, 25);
 
-    // Add mouse listeners for draggable loop markers.
+    // Add mouse listeners for draggable loop markers
     canvas.addEventListener('mousedown', onCanvasMouseDown);
     canvas.addEventListener('mousemove', onCanvasMouseMove);
   }
@@ -218,119 +244,88 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', onCanvasMouseUp);
 });
 
-const handleFrequencyChange = (newFrequency: number) => {
-  const currentState = {
+// Handler methods
+function handleFrequencyChange(newFrequency: number) {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     frequency: newFrequency,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
-};
-
-const handlePhaseChange = async (newPhase: number) => {
-  const currentState = {
+  });
+}
+async function handlePhaseChange(newPhase: number) {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     phaseOffset: newPhase,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
+  });
   await throttledUpdateWaveformDisplay();
-};
-
-const handleGainChange = (newGain: number) => {
-  const currentState = {
-    ...lfoState.value,
-    gain: newGain,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
-};
-
-const handleWaveformChange = async (newWaveform: number) => {
-  const currentState = {
+}
+function handleGainChange(newGain: number) {
+  store.lfoStates.set(props.nodeId, { ...lfoState.value, gain: newGain });
+}
+async function handleWaveformChange(newWaveform: number) {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     waveform: newWaveform,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
+  });
   await updateCachedWaveform();
   updateWaveformDisplay();
-};
-
-const handleTriggerModeChange = (newTriggerMode: boolean) => {
-  const currentState = {
+}
+function handleTriggerModeChange(newTriggerMode: boolean) {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     triggerMode: newTriggerMode ? 1 : 0,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
-};
-
-const handleActiveChange = (newValue: boolean) => {
-  const currentState = {
-    ...lfoState.value,
-    active: newValue,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
-};
-
-const handleAbsoluteChange = async (newValue: boolean) => {
-  const currentState = {
+  });
+}
+function handleActiveChange(newValue: boolean) {
+  store.lfoStates.set(props.nodeId, { ...lfoState.value, active: newValue });
+}
+async function handleAbsoluteChange(newValue: boolean) {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     useAbsolute: newValue,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
+  });
   await updateCachedWaveform();
   updateWaveformDisplay();
-};
-
-const handleNormalizedChange = async (newValue: boolean) => {
-  const currentState = {
+}
+async function handleNormalizedChange(newValue: boolean) {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     useNormalized: newValue,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
+  });
   await updateCachedWaveform();
   updateWaveformDisplay();
-};
-
-const handleLoopModeChange = (newValue: number) => {
-  const currentState = {
-    ...lfoState.value,
-    loopMode: newValue,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
+}
+function handleLoopModeChange(newValue: number) {
+  store.lfoStates.set(props.nodeId, { ...lfoState.value, loopMode: newValue });
   updateWaveformDisplay();
-};
-
-const handleLoopStartChange = (newLoopStart: number) => {
+}
+function handleLoopStartChange(newLoopStart: number) {
   const loopEnd = Math.max(newLoopStart, lfoState.value.loopEnd);
-  const currentState = {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     loopStart: newLoopStart,
     loopEnd,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
+  });
   updateWaveformDisplay();
-};
-
-const handleLoopEndChange = (newLoopEnd: number) => {
+}
+function handleLoopEndChange(newLoopEnd: number) {
   const loopStart = Math.min(newLoopEnd, lfoState.value.loopStart);
-  const currentState = {
+  store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     loopEnd: newLoopEnd,
     loopStart,
-  };
-  store.lfoStates.set(props.nodeId, currentState);
+  });
   updateWaveformDisplay();
-};
+}
 
 /**
- * Creates an offscreen canvas of the same size as the visible canvas,
- * draws the background grids, waveform fill and outline, and caches it.
+ * Creates an offscreen canvas with the waveform, grids, etc.
  */
-const updateCachedWaveform = async () => {
+async function updateCachedWaveform() {
   if (!waveformCanvas.value) return;
   const width = waveformCanvas.value.width;
   const height = waveformCanvas.value.height;
 
-  // Get the waveform data from the Rust (or wherever) side.
-  // Ensure your store.currentInstrument is ready before calling this.
+  // Acquire waveform data from the instrument
   const waveformData = await store.currentInstrument?.getLfoWaveform(
     lfoState.value.waveform,
     lfoState.value.phaseOffset,
@@ -338,21 +333,20 @@ const updateCachedWaveform = async () => {
     lfoState.value.useAbsolute,
     lfoState.value.useNormalized,
   );
-
   if (!waveformData) return;
 
-  // Create an offscreen canvas.
+  // Create an offscreen canvas
   const offscreen = document.createElement('canvas');
   offscreen.width = width;
   offscreen.height = height;
   const offCtx = offscreen.getContext('2d');
   if (!offCtx) return;
 
-  // Draw background - dark navy background similar to frequency analyzer
+  // Background fill
   offCtx.fillStyle = '#1e2a3a';
   offCtx.fillRect(0, 0, width, height);
 
-  // Draw grid lines
+  // Grid lines
   offCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
   offCtx.lineWidth = 1;
   for (let x = 0; x < width; x += width / 8) {
@@ -368,48 +362,42 @@ const updateCachedWaveform = async () => {
     offCtx.stroke();
   }
 
-  // Draw center line (y = 0 axis)
+  // Center line
   offCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   offCtx.beginPath();
   offCtx.moveTo(0, height / 2);
   offCtx.lineTo(width, height / 2);
   offCtx.stroke();
 
-  // Draw waveform bars with blue color like frequency analyzer
+  // Bars
   const barWidth = Math.max(1, Math.ceil(width / waveformData.length / 2));
   const gap = Math.max(0, Math.floor(barWidth / 3));
 
-  // Create blue gradient for bars
   const barGradient = offCtx.createLinearGradient(0, 0, 0, height);
-  barGradient.addColorStop(0, '#4fc3f7'); // Light blue at top
-  barGradient.addColorStop(1, '#0277bd'); // Darker blue at bottom
+  barGradient.addColorStop(0, '#4fc3f7');
+  barGradient.addColorStop(1, '#0277bd');
   offCtx.fillStyle = barGradient;
 
   for (let i = 0; i < waveformData.length; i++) {
     const x = i * (barWidth + gap);
-    // Center the bars vertically
     const normalizedValue = waveformData[i]!;
     const barHeight = Math.abs(normalizedValue) * (height / 2);
 
-    // Draw bar at appropriate position based on waveform value
     if (normalizedValue >= 0) {
-      // Positive values go up from center
       offCtx.fillRect(x, height / 2 - barHeight, barWidth, barHeight);
     } else {
-      // Negative values go down from center
       offCtx.fillRect(x, height / 2, barWidth, barHeight);
     }
   }
 
-  // Cache the offscreen canvas
+  // Store offscreen canvas for blitting
   cachedWaveformCanvas = offscreen;
-};
+}
 
 /**
- * Redraws the visible canvas by blitting the cached waveform image
- * and then drawing loop markers on top.
+ * Blits cached waveform, draws loop markers if active
  */
-const updateWaveformDisplay = () => {
+function updateWaveformDisplay() {
   if (!waveformCanvas.value) return;
   const canvas = waveformCanvas.value;
   const ctx = canvas.getContext('2d');
@@ -417,29 +405,29 @@ const updateWaveformDisplay = () => {
   const width = canvas.width;
   const height = canvas.height;
 
-  // Clear the canvas
+  // Clear visible canvas
   ctx.clearRect(0, 0, width, height);
 
-  // Draw the cached waveform image if available
+  // Draw cached waveform
   if (cachedWaveformCanvas) {
     ctx.drawImage(cachedWaveformCanvas, 0, 0);
   }
 
-  // Overlay loop interval with translucent color if looping is active
+  // Loop overlay
   if (lfoState.value.loopMode !== 0) {
     const loopStartX = lfoState.value.loopStart * width;
     const loopEndX = lfoState.value.loopEnd * width;
 
-    // Draw translucent overlay for loop area
-    ctx.fillStyle = 'rgba(255, 193, 7, 0.2)'; // Translucent amber/gold
+    // Translucent overlay
+    ctx.fillStyle = 'rgba(255, 193, 7, 0.2)';
     ctx.fillRect(loopStartX, 0, loopEndX - loopStartX, height);
 
-    // Draw loop markers
+    // Markers
     const handleRadius = 6;
-
-    // Loop start marker
-    ctx.strokeStyle = '#ffc107'; // Amber/gold
+    ctx.strokeStyle = '#ffc107';
     ctx.lineWidth = 2;
+
+    // Loop start line
     ctx.beginPath();
     ctx.moveTo(loopStartX, 0);
     ctx.lineTo(loopStartX, height);
@@ -454,8 +442,8 @@ const updateWaveformDisplay = () => {
       height - handleRadius * 2,
       handleRadius,
     );
-    handleGradient.addColorStop(0, '#ffecb3'); // Light amber
-    handleGradient.addColorStop(1, '#ff8f00'); // Dark amber
+    handleGradient.addColorStop(0, '#ffecb3');
+    handleGradient.addColorStop(1, '#ff8f00');
     ctx.fillStyle = handleGradient;
     ctx.beginPath();
     ctx.arc(
@@ -470,8 +458,8 @@ const updateWaveformDisplay = () => {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Loop end marker
-    ctx.strokeStyle = '#ffc107'; // Amber/gold
+    // Loop end line
+    ctx.strokeStyle = '#ffc107';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(loopEndX, 0);
@@ -487,8 +475,8 @@ const updateWaveformDisplay = () => {
       height - handleRadius * 2,
       handleRadius,
     );
-    handleGradient2.addColorStop(0, '#ffecb3'); // Light amber
-    handleGradient2.addColorStop(1, '#ff8f00'); // Dark amber
+    handleGradient2.addColorStop(0, '#ffecb3');
+    handleGradient2.addColorStop(1, '#ff8f00');
     ctx.fillStyle = handleGradient2;
     ctx.beginPath();
     ctx.arc(loopEndX, height - handleRadius * 2, handleRadius, 0, Math.PI * 2);
@@ -497,28 +485,27 @@ const updateWaveformDisplay = () => {
     ctx.lineWidth = 1;
     ctx.stroke();
   }
-};
+}
 
+// Mouse dragging logic for loop markers
 let draggingHandle: 'start' | 'end' | null = null;
-
-const onCanvasMouseDown = (e: MouseEvent) => {
+function onCanvasMouseDown(e: MouseEvent) {
   if (!waveformCanvas.value) return;
   const rect = waveformCanvas.value.getBoundingClientRect();
   const x = e.clientX - rect.left;
-  const threshold = 5; // pixels
+  const threshold = 5;
   const loopStartX = lfoState.value.loopStart * waveformCanvas.value.width;
   const loopEndX = lfoState.value.loopEnd * waveformCanvas.value.width;
+
   if (Math.abs(x - loopStartX) < threshold) {
     draggingHandle = 'start';
   } else if (Math.abs(x - loopEndX) < threshold) {
     draggingHandle = 'end';
   }
-};
+}
 
-const onCanvasMouseMove = (e: MouseEvent) => {
+function onCanvasMouseMove(e: MouseEvent) {
   if (!waveformCanvas.value) return;
-
-  // If already dragging, handle the drag operation
   if (draggingHandle) {
     const rect = waveformCanvas.value.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -532,10 +519,10 @@ const onCanvasMouseMove = (e: MouseEvent) => {
     return;
   }
 
-  // Otherwise check if hovering over a handle to change cursor
+  // Check hover cursor
   const rect = waveformCanvas.value.getBoundingClientRect();
   const x = e.clientX - rect.left;
-  const threshold = 10; // slightly larger threshold for easier hovering
+  const threshold = 10;
   const loopStartX = lfoState.value.loopStart * waveformCanvas.value.width;
   const loopEndX = lfoState.value.loopEnd * waveformCanvas.value.width;
 
@@ -543,19 +530,18 @@ const onCanvasMouseMove = (e: MouseEvent) => {
     Math.abs(x - loopStartX) < threshold ||
     Math.abs(x - loopEndX) < threshold
   ) {
-    waveformCanvas.value.style.cursor = 'ew-resize'; // Horizontal resize cursor
+    waveformCanvas.value.style.cursor = 'ew-resize';
   } else {
     waveformCanvas.value.style.cursor = 'default';
   }
-};
+}
 
-const onCanvasMouseUp = () => {
+function onCanvasMouseUp() {
   draggingHandle = null;
-};
-
+}
 window.addEventListener('mouseup', onCanvasMouseUp);
 
-// Watch for changes in LFO state and update the instrument.
+// Watch store changes -> notify instrument
 watch(
   () => ({ ...lfoStates.value.get(props.nodeId) }),
   (newState, oldState) => {
@@ -574,7 +560,6 @@ watch(
         loopStart: newState?.loopStart ?? 0.0,
         loopEnd: newState?.loopEnd ?? 1.0,
       };
-
       if (completeState.id === props.nodeId) {
         store.currentInstrument?.updateLfoState(props.nodeId, completeState);
       }
@@ -585,11 +570,9 @@ watch(
 </script>
 
 <style scoped>
-/* Updated CSS for LFO component */
-
 .lfo-card {
   width: 600px;
-  margin: 0.5rem auto;
+  margin: 0rem auto;
   border-radius: 8px;
   overflow: hidden;
 }
@@ -601,7 +584,6 @@ watch(
   padding: 1rem;
 }
 
-/* Top row: toggles + main knobs (including waveform knob) */
 .top-row {
   display: flex;
   flex-direction: column;
@@ -625,7 +607,6 @@ watch(
   align-items: center;
 }
 
-/* Middle row: waveform canvas */
 .waveform-canvas-row {
   display: flex;
   justify-content: center;
@@ -646,7 +627,6 @@ watch(
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
 }
 
-/* Bottom row: loop controls */
 .loop-controls-row {
   display: flex;
   gap: 1rem;
@@ -657,7 +637,6 @@ watch(
   border-radius: 6px;
 }
 
-/* Style the loop handle tooltips */
 .handle-tooltip {
   position: absolute;
   background-color: rgba(0, 0, 0, 0.8);

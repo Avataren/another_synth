@@ -3,7 +3,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::simd::StdFloat;
 use std::sync::Arc;
-use wasm_bindgen::prelude::*; // Needed for SIMD types and .floor()
+use wasm_bindgen::prelude::*;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
