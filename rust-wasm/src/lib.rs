@@ -17,7 +17,7 @@ use biquad::FilterType;
 use effect_stack::EffectStack;
 pub use graph::AudioGraph;
 pub use graph::{Connection, ConnectionId, NodeId};
-use graph::{ModulationTransformation, ModulationType};
+use graph::{ConnectionKey, ModulationTransformation, ModulationType};
 use impulse_generator::ImpulseResponseGenerator;
 pub use macros::{MacroManager, ModulationTarget};
 use nodes::morph_wavetable::{
@@ -646,6 +646,266 @@ impl AudioEngine {
     #[wasm_bindgen]
     pub fn remove_effect(&mut self, index: usize) -> Result<(), JsValue> {
         self.effect_stack.remove_effect(index);
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn delete_node(&mut self, node_id: usize) -> Result<(), JsValue> {
+        let node_id = NodeId(node_id);
+
+        console::log_1(&format!("Attempting to delete node with ID: {}", node_id.0).into());
+
+        // Check if this is a special node that shouldn't be deleted
+        if let Some(voice) = self.voices.first() {
+            // Log the global node IDs for debugging
+            console::log_1(
+                &format!(
+                    "Global node IDs - Frequency: {:?}, Velocity: {:?}, GateMixer: {:?}",
+                    voice.graph.global_frequency_node.map(|n| n.0),
+                    voice.graph.global_velocity_node.map(|n| n.0),
+                    voice.graph.global_gatemixer_node.map(|n| n.0)
+                )
+                .into(),
+            );
+
+            if voice.graph.global_frequency_node == Some(node_id)
+                || voice.graph.global_velocity_node == Some(node_id)
+                || voice.graph.global_gatemixer_node == Some(node_id)
+            {
+                return Err(JsValue::from_str(&format!(
+                    "Cannot delete node {} as it is a system node",
+                    node_id.0
+                )));
+            }
+
+            // Check if this is the output node
+            if voice.graph.output_node == Some(node_id) {
+                return Err(JsValue::from_str(&format!(
+                    "Cannot delete node {} as it is the output node",
+                    node_id.0
+                )));
+            }
+        }
+
+        // Check if it's an effect node (if node_id >= EFFECT_NODE_ID_OFFSET)
+        if node_id.0 >= EFFECT_NODE_ID_OFFSET {
+            let effect_index = node_id.0 - EFFECT_NODE_ID_OFFSET;
+            if effect_index < self.effect_stack.effects.len() {
+                self.effect_stack.remove_effect(effect_index);
+                console::log_1(&format!("Effect {} successfully removed", node_id.0).into());
+                return Ok(());
+            } else {
+                return Err(JsValue::from_str(&format!(
+                    "Effect with id {} not found",
+                    node_id.0
+                )));
+            }
+        }
+
+        // Log node type information for debugging
+        if let Some(voice) = self.voices.first() {
+            if let Some(node) = voice.graph.get_node(node_id) {
+                console::log_1(
+                    &format!(
+                        "Node {} is of type: {}, with {} connections",
+                        node_id.0,
+                        node.node_type(),
+                        voice
+                            .graph
+                            .connections
+                            .values()
+                            .filter(|conn| conn.from_node == node_id || conn.to_node == node_id)
+                            .count()
+                    )
+                    .into(),
+                );
+            }
+        }
+
+        // Find what connections need to be removed across all voices
+        let mut connections_to_remove = Vec::new();
+        if let Some(voice) = self.voices.first() {
+            connections_to_remove = voice
+                .graph
+                .connections
+                .iter()
+                .filter(|(_, conn)| conn.from_node == node_id || conn.to_node == node_id)
+                .map(|(key, _)| key.clone())
+                .collect();
+        }
+
+        // Stage 1: Remove connections in all voices
+        for voice in &mut self.voices {
+            for key in &connections_to_remove {
+                voice.graph.connections.remove(key);
+            }
+            voice.graph.input_connections.remove(&node_id);
+            for inputs in voice.graph.input_connections.values_mut() {
+                inputs.retain(|(_, _, _, from_node, _, _)| *from_node != node_id);
+            }
+        }
+
+        // Stage 2: Release buffers and remove the node itself
+        for (voice_idx, voice) in self.voices.iter_mut().enumerate() {
+            // Skip if node doesn't exist in this voice
+            if node_id.0 >= voice.graph.nodes.len() {
+                console::log_1(
+                    &format!("Node {} does not exist in voice {}", node_id.0, voice_idx).into(),
+                );
+                continue;
+            }
+
+            let buffers_to_release: Vec<_> = voice
+                .graph
+                .node_buffers
+                .iter()
+                .filter_map(|((id, port), &buffer_idx)| {
+                    if *id == node_id {
+                        Some((buffer_idx, *port))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for (buffer_idx, _) in &buffers_to_release {
+                voice.graph.buffer_pool.release(*buffer_idx);
+            }
+
+            voice.graph.node_buffers.retain(|(id, _), _| *id != node_id);
+            voice.graph.processing_order.retain(|&idx| idx != node_id.0);
+
+            // Remove the node
+            if node_id.0 < voice.graph.nodes.len() {
+                voice.graph.nodes.remove(node_id.0);
+            }
+        }
+
+        // Stage 3: Update all node references consistently across all voices
+        for (voice_idx, voice) in self.voices.iter_mut().enumerate() {
+            console::log_1(&format!("Updating references in voice {}", voice_idx).into());
+
+            // Update connections with new node IDs
+            let updated_connections: HashMap<_, _> = voice
+                .graph
+                .connections
+                .iter()
+                .map(|(key, conn)| {
+                    let mut new_conn = conn.clone();
+
+                    if new_conn.from_node.0 > node_id.0 {
+                        new_conn.from_node = NodeId(new_conn.from_node.0 - 1);
+                    }
+                    if new_conn.to_node.0 > node_id.0 {
+                        new_conn.to_node = NodeId(new_conn.to_node.0 - 1);
+                    }
+
+                    // Create a completely new key using the ConnectionKey::new constructor
+                    let new_key = ConnectionKey::new(
+                        new_conn.from_node,
+                        new_conn.from_port,
+                        new_conn.to_node,
+                        new_conn.to_port,
+                    );
+
+                    (new_key, new_conn)
+                })
+                .collect();
+
+            voice.graph.connections.clear();
+            voice.graph.connections.extend(updated_connections);
+
+            // Update node buffers
+            let updated_buffers: HashMap<_, _> = voice
+                .graph
+                .node_buffers
+                .iter()
+                .filter_map(|((id, port), &buffer_idx)| {
+                    if id.0 > node_id.0 {
+                        Some(((NodeId(id.0 - 1), *port), buffer_idx))
+                    } else if id.0 != node_id.0 {
+                        Some(((*id, *port), buffer_idx))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            voice.graph.node_buffers.clear();
+            voice.graph.node_buffers.extend(updated_buffers);
+
+            // Update processing order
+            for idx in &mut voice.graph.processing_order {
+                if *idx > node_id.0 {
+                    *idx -= 1;
+                }
+            }
+
+            // Update input_connections
+            let mut updated_inputs = HashMap::new();
+            for (target, inputs) in &voice.graph.input_connections {
+                let new_target = if target.0 > node_id.0 {
+                    NodeId(target.0 - 1)
+                } else {
+                    *target
+                };
+
+                let new_inputs: Vec<_> = inputs
+                    .iter()
+                    .map(
+                        |(port, buffer, amount, from_node, mod_type, mod_transform)| {
+                            let new_from = if from_node.0 > node_id.0 {
+                                NodeId(from_node.0 - 1)
+                            } else {
+                                *from_node
+                            };
+
+                            (*port, *buffer, *amount, new_from, *mod_type, *mod_transform)
+                        },
+                    )
+                    .collect();
+
+                if new_target != *target {
+                    console::log_1(
+                        &format!(
+                            "Updating input connections: {} -> {}",
+                            target.0, new_target.0
+                        )
+                        .into(),
+                    );
+                }
+
+                updated_inputs.insert(new_target, new_inputs);
+            }
+
+            voice.graph.input_connections = updated_inputs;
+
+            // Update special node references
+            if let Some(output_id) = voice.graph.output_node {
+                if output_id.0 > node_id.0 {
+                    let new_id = NodeId(output_id.0 - 1);
+                    console::log_1(
+                        &format!("Updating output node: {} -> {}", output_id.0, new_id.0).into(),
+                    );
+                    voice.graph.output_node = Some(new_id);
+                }
+            }
+
+            // Also update the voice's output_node if needed
+            if voice.output_node.0 > node_id.0 {
+                let old_id = voice.output_node.0;
+                voice.output_node = NodeId(voice.output_node.0 - 1);
+                console::log_1(
+                    &format!(
+                        "Updating voice output node: {} -> {}",
+                        old_id, voice.output_node.0
+                    )
+                    .into(),
+                );
+            }
+        }
+
+        console::log_1(&format!("Node {} successfully deleted from all voices", node_id.0).into());
         Ok(())
     }
 

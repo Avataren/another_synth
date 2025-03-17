@@ -677,6 +677,15 @@ var AudioEngine = class {
     }
   }
   /**
+   * @param {number} node_id
+   */
+  delete_node(node_id) {
+    const ret = wasm.audioengine_delete_node(this.__wbg_ptr, node_id);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
    * @param {number} noise_id
    * @param {NoiseUpdateParams} params
    */
@@ -1956,7 +1965,14 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateVelocity":
         this.handleUpdateVelocity(event.data);
         break;
+      case "deleteNode":
+        this.handleDeleteNode(event.data);
+        break;
     }
+  }
+  handleDeleteNode(data) {
+    this.audioEngine.delete_node(data.nodeId);
+    this.handleRequestSync();
   }
   handleImportImpulseWaveformData(data) {
     const uint8Data = new Uint8Array(data.data);

@@ -605,6 +605,15 @@ export class AudioEngine {
         }
     }
     /**
+     * @param {number} node_id
+     */
+    delete_node(node_id) {
+        const ret = wasm.audioengine_delete_node(this.__wbg_ptr, node_id);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {number} noise_id
      * @param {NoiseUpdateParams} params
      */

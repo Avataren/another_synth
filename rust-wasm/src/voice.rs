@@ -1,5 +1,5 @@
 use crate::{
-    graph::{ModulationTransformation, ModulationType},
+    graph::{ConnectionKey, ModulationTransformation, ModulationType},
     nodes::{Lfo, LfoTriggerMode},
     AudioGraph, AudioNode, Envelope, MacroManager, ModulatableOscillator, ModulationTarget, NodeId,
     PortId,
@@ -17,8 +17,6 @@ pub struct Voice {
     pub current_velocity: f32,
     pub active: bool,
     macro_manager: MacroManager,
-    pub oscillators: Vec<NodeId>,
-    pub envelope: NodeId,
 }
 
 impl Voice {
@@ -38,8 +36,6 @@ impl Voice {
             current_velocity: 1.0,
             active: false,
             macro_manager,
-            oscillators: Vec::new(),
-            envelope: NodeId(0),
         }
     }
 
@@ -48,8 +44,6 @@ impl Voice {
         self.graph.clear();
 
         // Clear stored node references
-        self.oscillators.clear();
-        self.envelope = NodeId(0);
         self.output_node = NodeId(0);
 
         // Reset state
@@ -66,12 +60,12 @@ impl Voice {
         self.graph.set_output_node(node);
     }
 
-    pub fn add_oscillator(&mut self, sample_rate: f32) -> NodeId {
-        let osc = ModulatableOscillator::new(sample_rate);
-        let osc_id = self.graph.add_node(Box::new(osc));
-        self.oscillators.push(osc_id);
-        osc_id
-    }
+    // pub fn add_oscillator(&mut self, sample_rate: f32) -> NodeId {
+    //     let osc = ModulatableOscillator::new(sample_rate);
+    //     let osc_id = self.graph.add_node(Box::new(osc));
+    //     self.oscillators.push(osc_id);
+    //     osc_id
+    // }
 
     pub fn update_active_state(&mut self) {
         // For physical modeling synths like Karplus-Strong:

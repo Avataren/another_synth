@@ -54,7 +54,10 @@
 
 <script setup lang="ts">
 import { type VoiceNodeType } from 'src/audio/types/synth-layout';
+import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { ref, watch, defineProps, type Component } from 'vue';
+
+const store = useAudioSystemStore();
 
 interface Node {
   id: number;
@@ -108,6 +111,7 @@ function handleMinimize() {
  */
 function handleClose(node_id: number) {
   console.log('Container received close click:', node_id);
+  store.currentInstrument?.deleteNode(node_id);
   // Handle closing the component. For example, you might remove the node from the list.
 }
 </script>

@@ -232,7 +232,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'updateVelocity':
         this.handleUpdateVelocity(event.data);
         break;
+      case 'deleteNode':
+        this.handleDeleteNode(event.data);
+        break;
     }
+  }
+
+  private handleDeleteNode(data: { nodeId: number }) {
+    this.audioEngine!.delete_node(data.nodeId);
+    this.handleRequestSync();
   }
 
   private handleImportImpulseWaveformData(data: {

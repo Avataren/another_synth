@@ -88,6 +88,14 @@ export default class Instrument {
     console.log('Updated synth layout:', layout);
   }
 
+  public deleteNode(nodeId: number) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'deleteNode',
+      nodeId: nodeId,
+    });
+  }
+
   public updateVelocityState(nodeId: number, state: VelocityState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
@@ -425,6 +433,7 @@ export default class Instrument {
       pattern,
     });
   }
+
 
   public updateArpeggiatorStepDuration(nodeId: number, stepDurationMs: number) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;

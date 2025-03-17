@@ -9,5 +9,6 @@ pub use buffer_pool::AudioBufferPool;
 pub use graph::AudioGraph;
 pub use modulation_processor::ModulationProcessor;
 pub use types::{
-    Connection, ConnectionId, ModulationSource, ModulationTransformation, ModulationType, NodeId,
+    Connection, ConnectionId, ConnectionKey, ModulationSource, ModulationTransformation,
+    ModulationType, NodeId,
 };
