@@ -125,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import {
   ModulationRouteManager,
   type TargetNode,
@@ -206,6 +206,18 @@ const modulationTransformations = ref<ModulationTransformationOption[]>([
   { value: ModulationTransformation.Square, label: 'Square' },
   { value: ModulationTransformation.Cube, label: 'Cube' },
 ]);
+
+// Add a watch on props.sourceId
+// Add this watch in RoutingComponent.vue
+watch(
+  [() => props.sourceId, () => store.synthLayout?.metadata?.stateVersion],
+  () => {
+    console.log('Source ID or synth state changed, reinitializing routes');
+    nextTick(() => {
+      initializeRoutes();
+    });
+  },
+);
 
 const addNewRoute = async (): Promise<void> => {
   const availableTargets = routeManager.getAvailableTargets();

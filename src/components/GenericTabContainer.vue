@@ -27,7 +27,7 @@
       >
         <q-tab-panel
           v-for="node in nodes"
-          :key="node.id"
+          :key="`${nodeLabel}-${node.id}-${nodes.length}`"
           :name="node.id.toString()"
           class="no-margin no-padding"
           style="overflow: hidden"
@@ -112,6 +112,7 @@ function handleMinimize() {
 function handleClose(node_id: number) {
   console.log('Container received close click:', node_id);
   store.currentInstrument?.deleteNode(node_id);
+  store.deleteNodeCleanup(node_id);
   // Handle closing the component. For example, you might remove the node from the list.
 }
 </script>

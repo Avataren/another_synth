@@ -645,7 +645,123 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     }) {
       this.processUpdateQueue();
     }, 100),
+    // Add to audio-system-store.ts in the actions section
+    deleteNodeCleanup(nodeId: number) {
+      // Get the list of all nodes before processing
+      const allNodeIds = new Set<number>();
 
+      // Collect all node IDs from the existing states
+      for (const id of this.oscillatorStates.keys()) allNodeIds.add(id);
+      for (const id of this.wavetableOscillatorStates.keys()) allNodeIds.add(id);
+      for (const id of this.envelopeStates.keys()) allNodeIds.add(id);
+      for (const id of this.filterStates.keys()) allNodeIds.add(id);
+      for (const id of this.lfoStates.keys()) allNodeIds.add(id);
+      for (const id of this.delayStates.keys()) allNodeIds.add(id);
+      for (const id of this.convolverStates.keys()) allNodeIds.add(id);
+
+      // First, create temporary storage for shifted states
+      const newOscillatorStates = new Map(this.oscillatorStates);
+      const newWavetableOscillatorStates = new Map(this.wavetableOscillatorStates);
+      const newEnvelopeStates = new Map(this.envelopeStates);
+      const newFilterStates = new Map(this.filterStates);
+      const newLfoStates = new Map(this.lfoStates);
+      const newDelayStates = new Map(this.delayStates);
+      const newConvolverStates = new Map(this.convolverStates);
+
+      // Remove the deleted node from all maps
+      newOscillatorStates.delete(nodeId);
+      newWavetableOscillatorStates.delete(nodeId);
+      newEnvelopeStates.delete(nodeId);
+      newFilterStates.delete(nodeId);
+      newLfoStates.delete(nodeId);
+      newDelayStates.delete(nodeId);
+      newConvolverStates.delete(nodeId);
+
+      // Shift all nodes with IDs higher than the deleted node 
+      for (const id of Array.from(allNodeIds)) {
+        if (id > nodeId) {
+          // The new ID for this node
+          const newId = id - 1;
+
+          // Move states to their new IDs
+          if (this.oscillatorStates.has(id)) {
+            const state = this.oscillatorStates.get(id)!;
+            newOscillatorStates.set(newId, { ...state, id: newId });
+            newOscillatorStates.delete(id);
+          }
+
+          if (this.wavetableOscillatorStates.has(id)) {
+            const state = this.wavetableOscillatorStates.get(id)!;
+            newWavetableOscillatorStates.set(newId, { ...state, id: newId });
+            newWavetableOscillatorStates.delete(id);
+          }
+
+          if (this.envelopeStates.has(id)) {
+            const state = this.envelopeStates.get(id)!;
+            newEnvelopeStates.set(newId, { ...state, id: newId });
+            newEnvelopeStates.delete(id);
+          }
+
+          if (this.filterStates.has(id)) {
+            const state = this.filterStates.get(id)!;
+            newFilterStates.set(newId, { ...state, id: newId });
+            newFilterStates.delete(id);
+          }
+
+          if (this.lfoStates.has(id)) {
+            const state = this.lfoStates.get(id)!;
+            newLfoStates.set(newId, { ...state, id: newId });
+            newLfoStates.delete(id);
+          }
+
+          if (this.delayStates.has(id)) {
+            const state = this.delayStates.get(id)!;
+            newDelayStates.set(newId, { ...state, id: newId });
+            newDelayStates.delete(id);
+          }
+
+          if (this.convolverStates.has(id)) {
+            const state = this.convolverStates.get(id)!;
+            newConvolverStates.set(newId, { ...state, id: newId });
+            newConvolverStates.delete(id);
+          }
+        }
+      }
+
+      // Replace the old states with the remapped ones
+      this.oscillatorStates = newOscillatorStates;
+      this.wavetableOscillatorStates = newWavetableOscillatorStates;
+      this.envelopeStates = newEnvelopeStates;
+      this.filterStates = newFilterStates;
+      this.lfoStates = newLfoStates;
+      this.delayStates = newDelayStates;
+      this.convolverStates = newConvolverStates;
+
+      // Force UI update by reassigning the synthLayout
+      if (this.synthLayout) {
+        this.synthLayout = { ...this.synthLayout };
+
+        // Log current node IDs for debugging
+        console.log('After node deletion, remaining node IDs:');
+        this.synthLayout.voices.forEach((voice, idx) => {
+          console.log(`Voice ${idx} nodes:`,
+            Object.entries(voice.nodes)
+              .filter(([_, nodes]) => nodes.length > 0)
+              .map(([type, nodes]) => `${type}: ${nodes.map(n => n.id).join(', ')}`)
+          );
+        });
+      }
+
+      console.log('State maps after remapping:', {
+        oscillators: Array.from(this.oscillatorStates.keys()),
+        wavetables: Array.from(this.wavetableOscillatorStates.keys()),
+        envelopes: Array.from(this.envelopeStates.keys()),
+        filters: Array.from(this.filterStates.keys()),
+        lfos: Array.from(this.lfoStates.keys()),
+        delays: Array.from(this.delayStates.keys()),
+        convolvers: Array.from(this.convolverStates.keys())
+      });
+    },
     async setupAudio() {
       if (this.audioSystem) {
         this.currentInstrument = new Instrument(
