@@ -36,7 +36,7 @@ export class ModulationRouteManager {
       // case VoiceNodeType.GlobalFrequency:
       //   return `Global Frequency ${index + 1}`;
       default:
-        return `${type} ${index + 1}`;
+        return `${type} ${index}`;
     }
   }
 
@@ -155,7 +155,7 @@ export class ModulationRouteManager {
       if (!voice.nodes[type]) continue;
 
       const typeNodes = voice.nodes[type];
-      typeNodes.forEach((node, index) => {
+      typeNodes.forEach((node, _index) => {
         // Skip self-modulation and nodes that would create feedback
         if (
           node.id === this.sourceId ||
@@ -169,7 +169,7 @@ export class ModulationRouteManager {
         if (params.length > 0) {
           nodes.push({
             id: node.id,
-            name: this.getNodeName(type, index),
+            name: this.getNodeName(type, node.id),
             type: type,
           });
         }
