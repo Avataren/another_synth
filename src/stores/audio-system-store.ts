@@ -37,6 +37,46 @@ interface AudioParamDescriptor {
   automationRate?: 'a-rate' | 'k-rate';
 }
 
+// Shift keys in a Map: for each key > deletedId, subtract 1 and update the state's id.
+function shiftMapKeys<T>(map: Map<number, T>, deletedId: number): Map<number, T> {
+  const newMap = new Map<number, T>();
+  map.forEach((state, key) => {
+    if (key === deletedId) {
+      // Skip deleted key.
+    } else if (key > deletedId) {
+      const newKey = key - 1;
+      newMap.set(newKey, { ...state, id: newKey } as T);
+    } else {
+      newMap.set(key, state);
+    }
+  });
+  return newMap;
+}
+
+// Merge old state with a new node list based on their order.
+// newNodes is assumed to be in the correct order.
+// For each node, if there is an old state in the same order (by sorted key order),
+// we reuse that state (updating its id); otherwise, we create a default.
+function mergeState<T>(
+  oldMap: Map<number, T>,
+  newNodes: { id: number; type: VoiceNodeType }[],
+  defaultState: (id: number) => T
+): Map<number, T> {
+  const newMap = new Map<number, T>();
+  // Get the old state entries sorted by their key.
+  const oldEntries = Array.from(oldMap.entries()).sort((a, b) => a[0] - b[0]);
+  newNodes.forEach((node, index) => {
+    if (index < oldEntries.length) {
+      const [, oldState] = oldEntries[index]!;
+      newMap.set(node.id, { ...oldState, id: node.id });
+    } else {
+      newMap.set(node.id, defaultState(node.id));
+    }
+  });
+  return newMap;
+}
+
+
 function debounce<T extends (...args: unknown[]) => void>(
   func: T,
   wait: number,
@@ -67,7 +107,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     isUpdating: false,
     updateQueue: [] as NodeConnectionUpdate[],
     lastUpdateError: null as Error | null,
-
+    deletedNodeIds: new Set<number>(),
     // Global states
     noiseState: {
       noiseType: NoiseType.White,
@@ -160,10 +200,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
 
     maxVoices: (state) => state.synthLayout?.metadata?.maxVoices ?? 8,
-    maxOscillators: (state) => state.synthLayout?.metadata?.maxOscillators ?? 2,
-    maxEnvelopes: (state) => state.synthLayout?.metadata?.maxEnvelopes ?? 2,
-    maxLFOs: (state) => state.synthLayout?.metadata?.maxLFOs ?? 2,
-    maxFilters: (state) => state.synthLayout?.metadata?.maxFilters ?? 1,
+    maxOscillators: (state) => state.synthLayout?.metadata?.maxOscillators ?? 4,
+    maxEnvelopes: (state) => state.synthLayout?.metadata?.maxEnvelopes ?? 4,
+    maxLFOs: (state) => state.synthLayout?.metadata?.maxLFOs ?? 4,
+    maxFilters: (state) => state.synthLayout?.metadata?.maxFilters ?? 4,
 
     parameterDescriptors(): AudioParamDescriptor[] {
       return [
@@ -249,16 +289,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           console.warn('Unknown modulation type:', raw);
           return WasmModulationType.Additive;
       }
-    },
-    updateSynthLayout(layout: SynthLayout) {
+    }, updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout with:', layout);
 
       // Validate that we have at least one voice.
-      if (
-        !layout.voices ||
-        !Array.isArray(layout.voices) ||
-        layout.voices.length === 0
-      ) {
+      if (!layout.voices || !Array.isArray(layout.voices) || layout.voices.length === 0) {
         console.warn('Received invalid synth layout (no voices).');
         return;
       }
@@ -266,40 +301,27 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       // Deep clone the layout so we can modify it safely.
       const layoutClone = JSON.parse(JSON.stringify(layout)) as SynthLayout;
 
-      // Process each voice.
+      // Process each voice: convert raw connections and raw node arrays.
       layoutClone.voices = layoutClone.voices.map((voice) => {
         // --- Convert Connections ---
         if (Array.isArray(voice.connections) && voice.connections.length > 0) {
-          // Check if the connections are in raw format by testing for "from_id".
           const firstConn = voice.connections[0]!;
           if ('from_id' in firstConn) {
-            // Define an interface for raw connections.
-
-            const rawConnections =
-              voice.connections as unknown as RawConnection[];
-            voice.connections = rawConnections.map(
-              (rawConn: RawConnection): NodeConnection => ({
-                fromId: rawConn.from_id,
-                toId: rawConn.to_id,
-                target: rawConn.target as PortId, // explicit cast
-                amount: rawConn.amount,
-                modulationTransformation: rawConn.modulation_transformation,
-                modulationType: this.convertModulationType(
-                  rawConn.modulation_type,
-                ),
-              }),
-            );
+            const rawConnections = voice.connections as unknown as RawConnection[];
+            voice.connections = rawConnections.map((rawConn: RawConnection): NodeConnection => ({
+              fromId: rawConn.from_id,
+              toId: rawConn.to_id,
+              target: rawConn.target as PortId,
+              amount: rawConn.amount,
+              modulationTransformation: rawConn.modulation_transformation,
+              modulationType: this.convertModulationType(rawConn.modulation_type),
+            }));
           }
-          // Otherwise, assume it's already in the correct format.
         }
 
         // --- Convert Nodes ---
-        // If nodes are given as an array, convert them into an object keyed by VoiceNodeType.
         if (Array.isArray(voice.nodes)) {
-          // Create an object with empty arrays for each node type.
-          const nodesByType: {
-            [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[];
-          } = {
+          const nodesByType: { [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[] } = {
             [VoiceNodeType.Oscillator]: [],
             [VoiceNodeType.WavetableOscillator]: [],
             [VoiceNodeType.Filter]: [],
@@ -315,12 +337,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.ArpeggiatorGenerator]: [],
           };
 
-          // Define an interface for raw nodes.
           interface RawNode {
             id: number;
             node_type: string;
           }
-          // Helper: convert raw node_type string into our enum.
           const convertNodeType = (raw: string): VoiceNodeType => {
             switch (raw) {
               case 'analog_oscillator':
@@ -361,159 +381,152 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
           voice.nodes = nodesByType;
         }
-
         return voice;
       });
 
-      // Now that we've converted the incoming layout, update our store.
-      this.synthLayout = layoutClone;
-
-      // Use the canonical voice (assumed to be voices[0]) to initialize state objects if missing.
+      // Use the canonical voice (assumed to be voices[0]) as our reference.
       const canonicalVoice = layoutClone.voices[0];
-      if (canonicalVoice && canonicalVoice.nodes) {
-        for (const conv of getNodesOfType(
-          canonicalVoice,
-          VoiceNodeType.Convolver,
-        ) || []) {
-          if (!this.convolverStates.has(conv.id)) {
-            this.convolverStates.set(conv.id, {
-              id: conv.id,
-              wetMix: 0.1,
-              active: true,
-            });
-          }
-        }
-
-        for (const delay of getNodesOfType(
-          canonicalVoice,
-          VoiceNodeType.Delay,
-        ) || []) {
-          if (!this.delayStates.has(delay.id)) {
-            this.delayStates.set(delay.id, {
-              id: delay.id,
-              delayMs: 500,
-              feedback: 0.5,
-              wetMix: 0.1,
-              active: true,
-            });
-          }
-        }
-
-        // Initialize oscillator states.
-        for (const osc of getNodesOfType(
-          canonicalVoice,
-          VoiceNodeType.Oscillator,
-        ) || []) {
-          if (!this.oscillatorStates.has(osc.id)) {
-            this.oscillatorStates.set(osc.id, {
-              id: osc.id,
-              phase_mod_amount: 0,
-              freq_mod_amount: 0,
-              detune_oct: 0,
-              detune_semi: 0,
-              detune_cents: 0,
-              detune: 0,
-              hard_sync: false,
-              gain: 1,
-              feedback_amount: 0,
-              waveform: 0,
-              active: true,
-              unison_voices: 1.0,
-              spread: 0,
-              wave_index: 0.0,
-            });
-          }
-        }
-
-        for (const osc of getNodesOfType(
-          canonicalVoice,
-          VoiceNodeType.WavetableOscillator,
-        ) || []) {
-          if (!this.wavetableOscillatorStates.has(osc.id)) {
-            this.wavetableOscillatorStates.set(osc.id, {
-              id: osc.id,
-              phase_mod_amount: 0,
-              freq_mod_amount: 0,
-              detune_oct: 0,
-              detune_semi: 0,
-              detune_cents: 0,
-              detune: 0,
-              hard_sync: false,
-              gain: 1,
-              feedback_amount: 0,
-              waveform: 0,
-              active: true,
-              unison_voices: 1.0,
-              spread: 0,
-              wave_index: 0.0,
-            });
-          }
-        }
-        // Initialize envelope states.
-        for (const env of getNodesOfType(
-          canonicalVoice,
-          VoiceNodeType.Envelope,
-        ) || []) {
-          if (!this.envelopeStates.has(env.id)) {
-            this.envelopeStates.set(env.id, {
-              id: env.id,
-              attack: 0.0,
-              decay: 0.1,
-              sustain: 0.5,
-              release: 0.1,
-              active: true,
-              attackCurve: 0,
-              decayCurve: 0,
-              releaseCurve: 0,
-            });
-          }
-        }
-        // Initialize filter states.
-        for (const filter of getNodesOfType(
-          canonicalVoice,
-          VoiceNodeType.Filter,
-        ) || []) {
-          if (!this.filterStates.has(filter.id)) {
-            this.filterStates.set(filter.id, {
-              id: filter.id,
-              cutoff: 20000,
-              resonance: 0,
-              keytracking: 0,
-              comb_frequency: 220,
-              comb_dampening: 0.5,
-              oversampling: 0,
-              gain: 0.7,
-              filter_type: FilterType.LowPass,
-              filter_slope: FilterSlope.Db12,
-              active: true,
-            });
-          }
-        }
-        // Initialize LFO states.
-        for (const lfo of getNodesOfType(canonicalVoice, VoiceNodeType.LFO) ||
-          []) {
-          if (!this.lfoStates.has(lfo.id)) {
-            this.lfoStates.set(lfo.id, {
-              id: lfo.id,
-              frequency: 1.0,
-              waveform: 0, // e.g., sine waveform
-              phaseOffset: 0.0,
-              useAbsolute: false,
-              useNormalized: false,
-              triggerMode: 0, // None
-              gain: 1.0,
-              active: true,
-              loopMode: 0.0,
-              loopStart: 0.5,
-              loopEnd: 1.0,
-            });
-          }
-        }
+      if (!canonicalVoice || !canonicalVoice.nodes) {
+        console.warn('Canonical voice or its nodes missing in layout');
+        return;
       }
 
-      // Force Vue reactivity by reassigning a shallow copy.
-      this.synthLayout = { ...this.synthLayout };
-    },
+      // (Optional) Log valid node IDs from the canonical voice.
+      const validIds = new Set<number>();
+      Object.values(canonicalVoice.nodes).forEach((nodeArray) => {
+        nodeArray.forEach((node) => validIds.add(node.id));
+      });
+      console.log(`Valid node IDs from canonical voice: ${Array.from(validIds).sort().join(', ')}`);
+
+      // --- Merge Incoming Layout with Existing State Maps ---
+      // For each node type, we reuse state from our current maps if available.
+      this.oscillatorStates = mergeState(
+        this.oscillatorStates,
+        getNodesOfType(canonicalVoice, VoiceNodeType.Oscillator) || [],
+        (id) => ({
+          id,
+          phase_mod_amount: 0,
+          freq_mod_amount: 0,
+          detune_oct: 0,
+          detune_semi: 0,
+          detune_cents: 0,
+          detune: 0,
+          hard_sync: false,
+          gain: 1,
+          feedback_amount: 0,
+          waveform: 0,
+          active: true,
+          unison_voices: 1.0,
+          spread: 0,
+          wave_index: 0.0,
+        })
+      );
+
+      this.wavetableOscillatorStates = mergeState(
+        this.wavetableOscillatorStates,
+        getNodesOfType(canonicalVoice, VoiceNodeType.WavetableOscillator) || [],
+        (id) => ({
+          id,
+          phase_mod_amount: 0,
+          freq_mod_amount: 0,
+          detune_oct: 0,
+          detune_semi: 0,
+          detune_cents: 0,
+          detune: 0,
+          hard_sync: false,
+          gain: 1,
+          feedback_amount: 0,
+          waveform: 0,
+          active: true,
+          unison_voices: 1.0,
+          spread: 0,
+          wave_index: 0.0,
+        })
+      );
+
+      this.envelopeStates = mergeState(
+        this.envelopeStates,
+        getNodesOfType(canonicalVoice, VoiceNodeType.Envelope) || [],
+        (id) => ({
+          id,
+          attack: 0.0,
+          decay: 0.1,
+          sustain: 0.5,
+          release: 0.1,
+          active: true,
+          attackCurve: 0,
+          decayCurve: 0,
+          releaseCurve: 0,
+        })
+      );
+
+      this.filterStates = mergeState(
+        this.filterStates,
+        getNodesOfType(canonicalVoice, VoiceNodeType.Filter) || [],
+        (id) => ({
+          id,
+          cutoff: 20000,
+          resonance: 0,
+          keytracking: 0,
+          comb_frequency: 220,
+          comb_dampening: 0.5,
+          oversampling: 0,
+          gain: 0.7,
+          filter_type: FilterType.LowPass,
+          filter_slope: FilterSlope.Db12,
+          active: true,
+        })
+      );
+
+      this.lfoStates = mergeState(
+        this.lfoStates,
+        getNodesOfType(canonicalVoice, VoiceNodeType.LFO) || [],
+        (id) => ({
+          id,
+          frequency: 1.0,
+          waveform: 0,
+          phaseOffset: 0.0,
+          useAbsolute: false,
+          useNormalized: false,
+          triggerMode: 0,
+          gain: 1.0,
+          active: true,
+          loopMode: 0.0,
+          loopStart: 0.5,
+          loopEnd: 1.0,
+        })
+      );
+
+      this.delayStates = mergeState(
+        this.delayStates,
+        getNodesOfType(canonicalVoice, VoiceNodeType.Delay) || [],
+        (id) => ({
+          id,
+          delayMs: 500,
+          feedback: 0.5,
+          wetMix: 0.1,
+          active: true,
+        })
+      );
+
+      this.convolverStates = mergeState(
+        this.convolverStates,
+        getNodesOfType(canonicalVoice, VoiceNodeType.Convolver) || [],
+        (id) => ({
+          id,
+          wetMix: 0.1,
+          active: true,
+        })
+      );
+
+      // --- Trigger Vue Reactivity ---
+      this.synthLayout = { ...layoutClone };
+
+      // Clear any deletion markers since the WASM layout is now definitive.
+      this.deletedNodeIds.clear();
+    }
+
+    ,
     updateOscillator(nodeId: number, state: OscillatorState) {
       this.oscillatorStates.set(nodeId, state);
       this.currentInstrument?.updateOscillatorState(nodeId, state);
@@ -646,122 +659,38 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.processUpdateQueue();
     }, 100),
     // Add to audio-system-store.ts in the actions section
-    deleteNodeCleanup(nodeId: number) {
-      // Get the list of all nodes before processing
-      const allNodeIds = new Set<number>();
+    // In audio-system-store.ts
+    // In audio-system-store.ts
 
-      // Collect all node IDs from the existing states
-      for (const id of this.oscillatorStates.keys()) allNodeIds.add(id);
-      for (const id of this.wavetableOscillatorStates.keys()) allNodeIds.add(id);
-      for (const id of this.envelopeStates.keys()) allNodeIds.add(id);
-      for (const id of this.filterStates.keys()) allNodeIds.add(id);
-      for (const id of this.lfoStates.keys()) allNodeIds.add(id);
-      for (const id of this.delayStates.keys()) allNodeIds.add(id);
-      for (const id of this.convolverStates.keys()) allNodeIds.add(id);
+    deleteNodeCleanup(deletedNodeId: number) {
+      console.log(`Starting node cleanup for deleted node ${deletedNodeId}`);
 
-      // First, create temporary storage for shifted states
-      const newOscillatorStates = new Map(this.oscillatorStates);
-      const newWavetableOscillatorStates = new Map(this.wavetableOscillatorStates);
-      const newEnvelopeStates = new Map(this.envelopeStates);
-      const newFilterStates = new Map(this.filterStates);
-      const newLfoStates = new Map(this.lfoStates);
-      const newDelayStates = new Map(this.delayStates);
-      const newConvolverStates = new Map(this.convolverStates);
-
-      // Remove the deleted node from all maps
-      newOscillatorStates.delete(nodeId);
-      newWavetableOscillatorStates.delete(nodeId);
-      newEnvelopeStates.delete(nodeId);
-      newFilterStates.delete(nodeId);
-      newLfoStates.delete(nodeId);
-      newDelayStates.delete(nodeId);
-      newConvolverStates.delete(nodeId);
-
-      // Shift all nodes with IDs higher than the deleted node 
-      for (const id of Array.from(allNodeIds)) {
-        if (id > nodeId) {
-          // The new ID for this node
-          const newId = id - 1;
-
-          // Move states to their new IDs
-          if (this.oscillatorStates.has(id)) {
-            const state = this.oscillatorStates.get(id)!;
-            newOscillatorStates.set(newId, { ...state, id: newId });
-            newOscillatorStates.delete(id);
-          }
-
-          if (this.wavetableOscillatorStates.has(id)) {
-            const state = this.wavetableOscillatorStates.get(id)!;
-            newWavetableOscillatorStates.set(newId, { ...state, id: newId });
-            newWavetableOscillatorStates.delete(id);
-          }
-
-          if (this.envelopeStates.has(id)) {
-            const state = this.envelopeStates.get(id)!;
-            newEnvelopeStates.set(newId, { ...state, id: newId });
-            newEnvelopeStates.delete(id);
-          }
-
-          if (this.filterStates.has(id)) {
-            const state = this.filterStates.get(id)!;
-            newFilterStates.set(newId, { ...state, id: newId });
-            newFilterStates.delete(id);
-          }
-
-          if (this.lfoStates.has(id)) {
-            const state = this.lfoStates.get(id)!;
-            newLfoStates.set(newId, { ...state, id: newId });
-            newLfoStates.delete(id);
-          }
-
-          if (this.delayStates.has(id)) {
-            const state = this.delayStates.get(id)!;
-            newDelayStates.set(newId, { ...state, id: newId });
-            newDelayStates.delete(id);
-          }
-
-          if (this.convolverStates.has(id)) {
-            const state = this.convolverStates.get(id)!;
-            newConvolverStates.set(newId, { ...state, id: newId });
-            newConvolverStates.delete(id);
-          }
-        }
+      // Add to the deleted marker set (for temporary ignoring if needed).
+      if (!this.deletedNodeIds) {
+        this.deletedNodeIds = new Set<number>();
       }
+      this.deletedNodeIds.add(deletedNodeId);
 
-      // Replace the old states with the remapped ones
-      this.oscillatorStates = newOscillatorStates;
-      this.wavetableOscillatorStates = newWavetableOscillatorStates;
-      this.envelopeStates = newEnvelopeStates;
-      this.filterStates = newFilterStates;
-      this.lfoStates = newLfoStates;
-      this.delayStates = newDelayStates;
-      this.convolverStates = newConvolverStates;
+      // Shift keys in every per-node state map.
+      this.oscillatorStates = shiftMapKeys(this.oscillatorStates, deletedNodeId);
+      this.wavetableOscillatorStates = shiftMapKeys(this.wavetableOscillatorStates, deletedNodeId);
+      this.envelopeStates = shiftMapKeys(this.envelopeStates, deletedNodeId);
+      this.filterStates = shiftMapKeys(this.filterStates, deletedNodeId);
+      this.lfoStates = shiftMapKeys(this.lfoStates, deletedNodeId);
+      this.delayStates = shiftMapKeys(this.delayStates, deletedNodeId);
+      this.convolverStates = shiftMapKeys(this.convolverStates, deletedNodeId);
 
-      // Force UI update by reassigning the synthLayout
-      if (this.synthLayout) {
-        this.synthLayout = { ...this.synthLayout };
+      // Force a reactivity update.
+      this.synthLayout = { ...this.synthLayout } as SynthLayout;
 
-        // Log current node IDs for debugging
-        console.log('After node deletion, remaining node IDs:');
-        this.synthLayout.voices.forEach((voice, idx) => {
-          console.log(`Voice ${idx} nodes:`,
-            Object.entries(voice.nodes)
-              .filter(([_, nodes]) => nodes.length > 0)
-              .map(([type, nodes]) => `${type}: ${nodes.map(n => n.id).join(', ')}`)
-          );
-        });
-      }
+      // Remove the deleted marker after a delay.
+      setTimeout(() => {
+        this.deletedNodeIds.delete(deletedNodeId);
+      }, 1000);
+    }
 
-      console.log('State maps after remapping:', {
-        oscillators: Array.from(this.oscillatorStates.keys()),
-        wavetables: Array.from(this.wavetableOscillatorStates.keys()),
-        envelopes: Array.from(this.envelopeStates.keys()),
-        filters: Array.from(this.filterStates.keys()),
-        lfos: Array.from(this.lfoStates.keys()),
-        delays: Array.from(this.delayStates.keys()),
-        convolvers: Array.from(this.convolverStates.keys())
-      });
-    },
+
+    ,
     async setupAudio() {
       if (this.audioSystem) {
         this.currentInstrument = new Instrument(

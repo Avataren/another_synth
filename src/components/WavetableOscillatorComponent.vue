@@ -169,7 +169,7 @@ import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 // Define props
 interface Props {
-  node: AudioNode | null;
+  node: AudioNode | null | undefined;
   nodeId: number;
   isMinimized?: boolean;
 }
@@ -203,7 +203,7 @@ const oscillatorState = computed<OscillatorState>({
   get: () => {
     const state = wavetableOscillatorStates.value.get(props.nodeId);
     if (!state) {
-      console.warn(`No state found for oscillator ${props.nodeId}`);
+      // Provide a complete fallback default with all required numeric properties.
       return {
         phase_mod_amount: 0,
         freq_mod_amount: 0,
@@ -212,6 +212,9 @@ const oscillatorState = computed<OscillatorState>({
         detune_cents: 0,
         detune: 0,
         gain: 1,
+        feedback_amount: 0,
+        hard_sync: false,
+        waveform: 0,
         active: false,
         unison_voices: 1,
         spread: 0,

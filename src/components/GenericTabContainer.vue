@@ -93,8 +93,7 @@ const isMinimized = ref(false);
  * Handle the plus click signal from any component.
  */
 function handlePlus(nodeType: VoiceNodeType) {
-  console.log('Container received plus click:', nodeType);
-  // Place any container-level logic for the plus button here.
+  store.currentInstrument?.createNode(nodeType);
 }
 
 /**
@@ -102,8 +101,6 @@ function handlePlus(nodeType: VoiceNodeType) {
  */
 function handleMinimize() {
   isMinimized.value = !isMinimized.value;
-  console.log('Container toggled minimize state to', isMinimized.value);
-  // Optionally, you could broadcast this state to other parts of your app.
 }
 
 /**

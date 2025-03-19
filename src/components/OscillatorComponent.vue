@@ -193,13 +193,15 @@ const oscillatorState = computed<OscillatorState>({
         detune_semi: 0,
         detune_cents: 0,
         detune: 0,
+        hard_sync: false,
         gain: 1,
+        feedback_amount: 0,
+        waveform: 0,
         active: false,
         unison_voices: 1,
         spread: 0,
-        hard_sync: false,
-        waveform: 0, // if you need to store waveform here
-      } as OscillatorState;
+        wave_index: 0,
+      };
     }
     return state;
   },

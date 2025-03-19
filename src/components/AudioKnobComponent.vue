@@ -174,8 +174,19 @@ function describeArc(
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
 }
 
-const formatValue = (value: number): string => {
-  return `${value.toFixed(props.decimals)}${props.unit || ''}`;
+const formatValue = (value: number | null | undefined) => {
+  // Add comprehensive null/undefined check
+  if (value === undefined || value === null || isNaN(value)) {
+    return '0'; // Return a safe default
+  }
+
+  // Try-catch to prevent any potential errors with toFixed
+  try {
+    return value.toFixed(props.decimals);
+  } catch (e) {
+    console.warn('Error formatting value', e);
+    return '0';
+  }
 };
 
 const isEditing = ref(false);

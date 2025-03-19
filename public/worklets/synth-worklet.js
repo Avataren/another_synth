@@ -1841,10 +1841,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "ready", false);
     __publicField(this, "audioEngine", null);
     __publicField(this, "numVoices", 8);
-    __publicField(this, "maxOscillators", 2);
-    __publicField(this, "maxEnvelopes", 2);
-    __publicField(this, "maxLFOs", 2);
-    __publicField(this, "maxFilters", 1);
+    __publicField(this, "maxOscillators", 4);
+    __publicField(this, "maxEnvelopes", 4);
+    __publicField(this, "maxLFOs", 4);
+    __publicField(this, "maxFilters", 4);
     __publicField(this, "voiceLayouts", []);
     __publicField(this, "nextNodeId", 0);
     __publicField(this, "stateVersion", 0);
@@ -1968,10 +1968,37 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "deleteNode":
         this.handleDeleteNode(event.data);
         break;
+      case "createNode":
+        this.handleCreateNode(event.data);
+        break;
     }
   }
   handleDeleteNode(data) {
     this.audioEngine.delete_node(data.nodeId);
+    this.handleRequestSync();
+  }
+  handleCreateNode(data) {
+    console.log("handleCreateNode: ", data.node);
+    switch (data.node) {
+      case "oscillator" /* Oscillator */:
+        this.audioEngine.create_oscillator();
+        break;
+      case "filter" /* Filter */:
+        this.audioEngine.create_filter();
+        break;
+      case "lfo" /* LFO */:
+        this.audioEngine.create_lfo();
+        break;
+      case "wavetable_oscillator" /* WavetableOscillator */:
+        this.audioEngine.create_wavetable_oscillator();
+        break;
+      case "noise" /* Noise */:
+        this.audioEngine.create_noise();
+        break;
+      default:
+        console.error("Missing creation case for: ", data.node);
+        break;
+    }
     this.handleRequestSync();
   }
   handleImportImpulseWaveformData(data) {

@@ -96,6 +96,14 @@ export default class Instrument {
     });
   }
 
+  public createNode(node: VoiceNodeType) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'createNode',
+      node: node,
+    });
+  }
+
   public updateVelocityState(nodeId: number, state: VelocityState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({

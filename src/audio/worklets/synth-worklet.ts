@@ -97,10 +97,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private audioEngine: AudioEngine | null = null;
   private readonly numVoices: number = 8;
-  private readonly maxOscillators: number = 2;
-  private readonly maxEnvelopes: number = 2;
-  private readonly maxLFOs: number = 2;
-  private readonly maxFilters: number = 1;
+  private readonly maxOscillators: number = 4;
+  private readonly maxEnvelopes: number = 4;
+  private readonly maxLFOs: number = 4;
+  private readonly maxFilters: number = 4;
   private voiceLayouts: VoiceLayout[] = [];
   private nextNodeId: number = 0;
   private stateVersion: number = 0;
@@ -235,11 +235,39 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'deleteNode':
         this.handleDeleteNode(event.data);
         break;
+      case 'createNode':
+        this.handleCreateNode(event.data);
+        break;
     }
   }
 
   private handleDeleteNode(data: { nodeId: number }) {
     this.audioEngine!.delete_node(data.nodeId);
+    this.handleRequestSync();
+  }
+
+  private handleCreateNode(data: { node: VoiceNodeType }) {
+    console.log('handleCreateNode: ', data.node);
+    switch (data.node) {
+      case VoiceNodeType.Oscillator:
+        this.audioEngine!.create_oscillator();
+        break;
+      case VoiceNodeType.Filter:
+        this.audioEngine!.create_filter();
+        break;
+      case VoiceNodeType.LFO:
+        this.audioEngine!.create_lfo();
+        break
+      case VoiceNodeType.WavetableOscillator:
+        this.audioEngine!.create_wavetable_oscillator();
+        break;
+      case VoiceNodeType.Noise:
+        this.audioEngine!.create_noise();
+        break;
+      default:
+        console.error('Missing creation case for: ', data.node);
+        break;
+    }
     this.handleRequestSync();
   }
 
