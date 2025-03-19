@@ -264,6 +264,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case VoiceNodeType.Noise:
         this.audioEngine!.create_noise();
         break;
+      case VoiceNodeType.Envelope:
+        this.audioEngine!.create_envelope();
+        break;
       default:
         console.error('Missing creation case for: ', data.node);
         break;
@@ -400,7 +403,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     // const arpId = this.audioEngine.create_arpeggiator();
     // Create filter.
     const filterId = this.audioEngine.create_filter();
-    this.audioEngine.create_filter();
+    // this.audioEngine.create_filter();
 
     // Create oscillators.
     const oscIds: number[] = [];
@@ -412,7 +415,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Create envelopes.
     const envelopeIds: number[] = [];
-    for (let i = 0; i < this.maxEnvelopes; i++) {
+    for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_envelope();
       console.log(`Created envelope ${i} with id ${result.envelopeId}`);
       envelopeIds.push(result.envelopeId);
@@ -420,7 +423,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Create LFOs.
     const lfoIds: number[] = [];
-    for (let i = 0; i < this.maxLFOs; i++) {
+    for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_lfo();
       console.log(`Created LFO ${i} with id ${result.lfoId}`);
       lfoIds.push(result.lfoId);
