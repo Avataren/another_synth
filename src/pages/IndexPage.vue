@@ -12,7 +12,6 @@
             :destinationNode="destinationNode"
             :componentName="WavetableOscillatorComponent"
             nodeLabel="WtOsc"
-            :key="`wavetable-container-${wavetableOscillatorNodes.length}`"
           />
           <generic-tab-container
             v-if="oscillatorNodes.length"

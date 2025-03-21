@@ -75,13 +75,13 @@ const currentTab = ref(props.nodes.length ? props.nodes[0]!.id.toString() : '');
 
 // Adjust current tab if nodes update
 watch(
-  () => props.nodes,
-  (newNodes) => {
-    if (
-      newNodes.length &&
-      !newNodes.find((n) => n.id.toString() === currentTab.value)
-    ) {
-      currentTab.value = newNodes[0]!.id.toString();
+  () => props.nodes.length,
+  (newLength, oldLength) => {
+    if (oldLength && newLength > oldLength) {
+      // Set currentTab to the newly added node (last in the array)
+      currentTab.value = props.nodes[newLength - 1]!.id.toString();
+    } else {
+      currentTab.value = props.nodes[0]!.id.toString();
     }
   },
 );
