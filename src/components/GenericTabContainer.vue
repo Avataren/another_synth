@@ -1,23 +1,30 @@
 <template>
-  <div class="tabs-container">
-    <!-- Show real tabs only if there is more than one node -->
-    <div v-if="nodes.length > 1">
-      <q-tabs v-model="currentTab" dense class="tabs-with-spacing q-mb-none">
-        <q-tab
-          v-for="node in nodes"
-          :key="node.id"
-          :name="node.id.toString()"
-          :label="`${nodeLabel} ${node.id}`"
-          class="tab"
-        />
-      </q-tabs>
+  <div class="tabs-outer-wrapper">
+    <!-- Tabs Wrapper with dynamic max-width -->
+    <div class="tabs-wrapper" :style="{ maxWidth: contentWidth + 'px' }">
+      <!-- Show real tabs only if there is more than one node -->
+      <div v-if="nodes.length > 1">
+        <q-tabs
+          v-model="currentTab"
+          dense
+          scrollable
+          class="tabs-with-spacing q-mb-none"
+        >
+          <q-tab
+            v-for="node in nodes"
+            :key="node.id"
+            :name="node.id.toString()"
+            :label="`${nodeLabel} ${node.id}`"
+            class="tab"
+          />
+        </q-tabs>
+      </div>
+      <!-- If there is only one node, show an empty placeholder that takes up the same height as the tab bar would -->
+      <div v-else class="tab-placeholder"></div>
     </div>
 
-    <!-- If there is only one node, show an empty placeholder that takes up the same height as the tab bar would -->
-    <div v-else class="tab-placeholder"></div>
-
-    <!-- Panels to display the corresponding DSP component -->
-    <div class="tabs-container">
+    <!-- Panels Wrapper with ref to measure its width -->
+    <div class="panels-wrapper" ref="panelWrapper">
       <q-tab-panels
         v-model="currentTab"
         animated
@@ -32,11 +39,6 @@
           class="no-margin no-padding"
           style="overflow: hidden"
         >
-          <!--
-            The child component is passed the global minimize state,
-            and events from its header (bubbled up from the DSP component)
-            are handled by the container.
-          -->
           <component
             :is="componentName"
             :node="destinationNode"
@@ -53,11 +55,10 @@
 </template>
 
 <script setup lang="ts">
-import { type VoiceNodeType } from 'src/audio/types/synth-layout';
+import { ref, onMounted, watch, nextTick, defineProps } from 'vue';
+import { type Component } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
-import { ref, watch, defineProps, type Component } from 'vue';
-
-const store = useAudioSystemStore();
+import type { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Node {
   id: number;
@@ -70,24 +71,35 @@ const props = defineProps<{
   nodeLabel: string;
 }>();
 
-// Set initial tab to the first node (if available)
-const currentTab = ref(props.nodes.length ? props.nodes[0]!.id.toString() : '');
+const store = useAudioSystemStore();
 
-// Adjust current tab if nodes update
+const currentTab = ref(props.nodes.length ? props.nodes[0]!.id.toString() : '');
+const isMinimized = ref(false);
+
+// Reactive variable to store the width of the panel content
+const contentWidth = ref(0);
+const panelWrapper = ref<HTMLElement | null>(null);
+
+// After mounting, measure the width of the panel wrapper
+onMounted(() => {
+  nextTick(() => {
+    if (panelWrapper.value) {
+      contentWidth.value = panelWrapper.value.offsetWidth;
+    }
+  });
+});
+
+// Adjust current tab when nodes update
 watch(
   () => props.nodes.length,
   (newLength, oldLength) => {
     if (oldLength && newLength > oldLength) {
-      // Set currentTab to the newly added node (last in the array)
       currentTab.value = props.nodes[newLength - 1]!.id.toString();
     } else {
       currentTab.value = props.nodes[0]!.id.toString();
     }
   },
 );
-
-// Global minimize state shared by all child components
-const isMinimized = ref(false);
 
 /**
  * Handle the plus click signal from any component.
@@ -110,40 +122,46 @@ function handleClose(node_id: number) {
   console.log('Container received close click:', node_id);
   store.currentInstrument?.deleteNode(node_id);
   store.deleteNodeCleanup(node_id);
-  // Handle closing the component. For example, you might remove the node from the list.
 }
 </script>
-
 <style scoped>
-.tabs-container {
-  margin: 0;
-  padding: 0;
-  margin-bottom: 1rem;
+.tabs-outer-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* centers children horizontally */
 }
 
-/* Spacing between tabs */
+.tabs-wrapper {
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
 .tab + .tab {
   margin-left: 1rem;
 }
 
-/* Remove default margin/padding */
 .no-margin {
   margin: 0 !important;
 }
+
 .no-padding {
   padding: 0 !important;
 }
+
 .no-background {
   background: none;
 }
 
-/* Extra bottom spacing for the tab row */
 .tabs-with-spacing {
   margin-bottom: 0.5rem;
 }
 
-/* Placeholder height for a single tab scenario */
 .tab-placeholder {
   min-height: 44px;
+}
+
+/* Ensure the panels-wrapper does not stretch unnecessarily */
+.panels-wrapper {
+  display: inline-block;
 }
 </style>
