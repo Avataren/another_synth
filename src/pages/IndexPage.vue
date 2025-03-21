@@ -332,14 +332,14 @@ function addConvolver() {
 .page-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 96vh;
   overflow: hidden;
 }
 
 /* Fixed height for bottom row with scrolling overflow */
 .bottom-row {
-  flex: 0 0 260px; /* Prevents flex shrink/grow and sets a fixed basis */
-  overflow-y: auto;
+  flex: 0 0 220px; /* Prevents flex shrink/grow and sets a fixed basis */
+  overflow-y: hidden;
   box-sizing: border-box;
   padding: 0.2rem 0 0 0;
   margin: 0;

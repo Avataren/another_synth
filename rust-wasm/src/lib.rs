@@ -663,6 +663,7 @@ impl AudioEngine {
         // Create convolver with bounds checking
         let mut convolver = Convolver::new(ir, 128, sample_rate);
         convolver.set_wet_level(0.1);
+        convolver.set_enabled(false);
         Ok(self.effect_stack.add_effect(Box::new(convolver)))
     }
 
