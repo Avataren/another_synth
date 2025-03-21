@@ -11,7 +11,7 @@
             :nodes="wavetableOscillatorNodes"
             :destinationNode="destinationNode"
             :componentName="WavetableOscillatorComponent"
-            nodeLabel="Wavetable Osc"
+            nodeLabel="WtOsc"
             :key="`wavetable-container-${wavetableOscillatorNodes.length}`"
           />
           <generic-tab-container
@@ -19,7 +19,7 @@
             :nodes="oscillatorNodes"
             :destinationNode="destinationNode"
             :componentName="OscillatorComponent"
-            nodeLabel="Oscillator"
+            nodeLabel="Osc"
           />
           <generic-tab-container
             v-if="noiseNodes.length"
@@ -33,7 +33,7 @@
             :nodes="arpeggiatorNodes"
             :destinationNode="destinationNode"
             :componentName="ArpeggiatorComponent"
-            nodeLabel="Arpeggiator"
+            nodeLabel="Arp"
           />
           <generic-tab-container
             v-if="velocityNodes.length"
@@ -59,7 +59,7 @@
             :nodes="envelopeNodes"
             :destinationNode="destinationNode"
             :componentName="EnvelopeComponent"
-            nodeLabel="Envelope"
+            nodeLabel="Env"
           />
         </div>
 
