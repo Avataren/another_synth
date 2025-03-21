@@ -176,6 +176,7 @@ watch(
 const isExpanded = ref<boolean>(true);
 
 //–––––– Route Configuration ––––––
+// Note: modulationTransformation is now stored as an object.
 interface RouteConfig {
   id: string;
   targetId: number;
@@ -184,7 +185,7 @@ interface RouteConfig {
   targetLabel: string;
   amount: number;
   modulationType: { value: WasmModulationType; label: string };
-  modulationTransformation: ModulationTransformation;
+  modulationTransformation: { value: ModulationTransformation; label: string };
 }
 const activeRoutes = ref<RouteConfig[]>([]);
 const isLocalUpdate = ref<boolean>(false);
@@ -290,7 +291,7 @@ async function addNewRoute(): Promise<void> {
   const availableTargets = routeManager.value.getAvailableTargets();
   if (availableTargets.length === 0) return;
   const defaultTarget = availableTargets[0]!;
-  const params = routeManager.value.getAvailableParams(defaultTarget!.id);
+  const params = routeManager.value.getAvailableParams(defaultTarget.id);
   if (params.length === 0) return;
   const defaultParam = params[0]!;
   const defaultModType = routeManager.value.getDefaultModulationType(
@@ -298,7 +299,7 @@ async function addNewRoute(): Promise<void> {
   );
   const newRoute: RouteConfig = {
     id: generateUniqueId(),
-    targetId: defaultTarget!.id,
+    targetId: defaultTarget.id,
     targetNode: defaultTarget,
     target: defaultParam.value,
     targetLabel: defaultParam.label,
@@ -307,7 +308,10 @@ async function addNewRoute(): Promise<void> {
       value: defaultModType,
       label: getModulationTypeLabel(defaultModType),
     },
-    modulationTransformation: ModulationTransformation.None,
+    modulationTransformation: {
+      value: ModulationTransformation.None,
+      label: 'None',
+    },
   };
   try {
     await routeManager.value.updateConnection({
@@ -316,7 +320,7 @@ async function addNewRoute(): Promise<void> {
       target: newRoute.target as PortId,
       amount: newRoute.amount,
       modulationType: defaultModType,
-      modulationTransformation: newRoute.modulationTransformation,
+      modulationTransformation: newRoute.modulationTransformation.value,
     });
     isLocalUpdate.value = true;
     activeRoutes.value.push(newRoute);
@@ -342,7 +346,7 @@ async function handleModTypeChange(
       target: route.target as PortId,
       amount: route.amount,
       modulationType: route.modulationType.value,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
       isRemoving: true,
     });
     await routeManager.value!.updateConnection({
@@ -351,7 +355,7 @@ async function handleModTypeChange(
       target: route.target as PortId,
       amount: route.amount,
       modulationType: newType.value,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
     });
     activeRoutes.value[index]!.modulationType = newType;
   } catch (error) {
@@ -367,6 +371,8 @@ async function handleTransformationChange(
   if (index === -1) return;
   const route = activeRoutes.value[index]!;
   try {
+    isLocalUpdate.value = true;
+    // Remove the existing connection with the new transformation value
     await routeManager.value!.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
@@ -376,6 +382,7 @@ async function handleTransformationChange(
       modulationTransformation: newTransformation.value,
       isRemoving: true,
     });
+    // Add the new connection with the updated transformation
     await routeManager.value!.updateConnection({
       fromId: props.sourceId,
       toId: route.targetId,
@@ -384,8 +391,11 @@ async function handleTransformationChange(
       modulationType: route.modulationType.value,
       modulationTransformation: newTransformation.value,
     });
-    activeRoutes.value[index]!.modulationTransformation =
-      newTransformation.value;
+    // Update the local state with the full object
+    activeRoutes.value[index]!.modulationTransformation = newTransformation;
+    setTimeout(() => {
+      isLocalUpdate.value = false;
+    }, 300);
   } catch (error) {
     console.error('Failed to update modulation transformation:', error);
   }
@@ -408,7 +418,7 @@ async function handleTargetChange(
       target: route.target as PortId,
       amount: route.amount,
       isRemoving: true,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
     });
     await routeManager.value.updateConnection({
       fromId: props.sourceId,
@@ -418,7 +428,7 @@ async function handleTargetChange(
       modulationType: routeManager.value.getDefaultModulationType(
         defaultParam.value,
       ),
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
     });
     // Update while preserving the same id
     activeRoutes.value[index] = {
@@ -449,7 +459,7 @@ async function handleParamChange(
       target: oldTarget as PortId,
       amount: route.amount,
       modulationType: currentModType.value,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
       isRemoving: true,
     });
     await routeManager.value.updateConnection({
@@ -458,7 +468,7 @@ async function handleParamChange(
       target: newParam.value as PortId,
       amount: route.amount,
       modulationType: currentModType.value,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
     });
     activeRoutes.value[index]!.target = newParam.value;
     activeRoutes.value[index]!.targetLabel = newParam.label;
@@ -478,7 +488,7 @@ async function removeRoute(id: string): Promise<void> {
       target: route.target as PortId,
       amount: route.amount,
       isRemoving: true,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
     });
     isLocalUpdate.value = true;
     activeRoutes.value.splice(index, 1);
@@ -534,7 +544,7 @@ async function executeAmountUpdate(id: string, amount: number): Promise<void> {
       target: route.target as PortId,
       amount: route.amount,
       modulationType: route.modulationType.value,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
       isRemoving: true,
     });
     await routeManager.value.updateConnection({
@@ -543,7 +553,7 @@ async function executeAmountUpdate(id: string, amount: number): Promise<void> {
       target: route.target as PortId,
       amount: amount,
       modulationType: route.modulationType.value,
-      modulationTransformation: route.modulationTransformation,
+      modulationTransformation: route.modulationTransformation.value,
     });
     activeRoutes.value[index]!.amount = amount;
   } catch (error) {
@@ -628,8 +638,17 @@ function initializeRoutes(): void {
                 conn.modulationType ?? WasmModulationType.Additive,
               ),
             },
-            modulationTransformation:
-              conn.modulationTransformation || ModulationTransformation.None,
+            modulationTransformation: {
+              value:
+                conn.modulationTransformation || ModulationTransformation.None,
+              label:
+                modulationTransformations.value.find(
+                  (opt) =>
+                    opt.value ===
+                    (conn.modulationTransformation ||
+                      ModulationTransformation.None),
+                )?.label || 'None',
+            },
           } as RouteConfig;
         } catch (error) {
           console.error('Error mapping connection to route:', error);
