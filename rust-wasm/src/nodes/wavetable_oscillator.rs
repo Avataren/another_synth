@@ -72,6 +72,8 @@ pub struct WavetableOscillator {
     unison_voices: usize,
     spread: f32,
     voice_phases: Vec<f32>,
+    // NEW: Per-voice feedback state.
+    voice_last_outputs: Vec<f32>,
     // Cached vectors to avoid reallocation
     voice_weights: Vec<f32>,
     voice_offsets: Vec<f32>,
@@ -116,6 +118,7 @@ impl WavetableOscillator {
             unison_voices: 1,
             spread: 0.1,
             voice_phases: vec![0.0; 1],
+            voice_last_outputs: vec![0.0; 1], // Initialize per-voice feedback state.
             voice_weights: Vec::with_capacity(16),
             voice_offsets: Vec::with_capacity(16),
             wavetable_index: 0.0,
@@ -175,6 +178,8 @@ impl WavetableOscillator {
                     .map(|i| i as f32 / new_voice_count as f32)
                     .collect();
             }
+            // Update per-voice feedback state vector.
+            self.voice_last_outputs = vec![0.0; new_voice_count];
         } else if self.spread == 0.0 {
             let common_phase = self.voice_phases[0];
             for phase in self.voice_phases.iter_mut() {
@@ -291,27 +296,6 @@ impl AudioNode for WavetableOscillator {
 
         {
             // --- 2) Prepare scratch buffers and update them within this inner scope.
-            // Self::ensure_buffer(&mut self.scratch_phase_mod, buffer_size, 0.0);
-            // Self::ensure_buffer(&mut self.scratch_gain_mod, buffer_size, 1.0);
-            // Self::ensure_buffer(
-            //     &mut self.scratch_feedback_mod,
-            //     buffer_size,
-            //     self.feedback_amount,
-            // );
-            // Self::ensure_buffer(
-            //     &mut self.scratch_mod_index,
-            //     buffer_size,
-            //     self.phase_mod_amount,
-            // );
-            // Self::ensure_buffer(
-            //     &mut self.scratch_wavetable_index,
-            //     buffer_size,
-            //     self.wavetable_index,
-            // );
-            // Self::ensure_buffer(&mut self.scratch_detune_mod, buffer_size, 0.0);
-            // Self::ensure_buffer(&mut self.gate_buffer, buffer_size, 0.0);
-            // Self::ensure_buffer(&mut self.scratch_freq, buffer_size, self.frequency);
-
             Self::process_modulation_simd_in_place(
                 &mut self.scratch_phase_mod[..buffer_size],
                 0.0,
@@ -386,7 +370,7 @@ impl AudioNode for WavetableOscillator {
             } else {
                 self.scratch_freq[..buffer_size].fill(self.frequency);
             }
-        } // <-- End of inner scope; no mutable borrows are active now.
+        } // <-- End of inner scope.
 
         // --- 3) Pre-loop updates ---
         if self.voice_weights.len() != self.unison_voices {
@@ -404,11 +388,10 @@ impl AudioNode for WavetableOscillator {
 
         // --- 4) Main synthesis loop ---
         for i in 0..buffer_size {
-            // Each field is accessed directly (creating only a temporary borrow), so there are no long-lived borrows.
             self.check_gate(self.gate_buffer[i]);
             let wavetable_index_sample = self.scratch_wavetable_index[i].clamp(0.0, 1.0);
             let ext_phase = (self.scratch_phase_mod[i] * self.scratch_mod_index[i]) / self.two_pi;
-            let fb = (self.last_output * self.scratch_feedback_mod[i]) / self.feedback_divisor;
+            // Removed global feedback calculation.
             let modulated_freq = (self.scratch_freq[i] + freq_mod_result.additive[i])
                 * freq_mod_result.multiplicative[i];
 
@@ -419,12 +402,17 @@ impl AudioNode for WavetableOscillator {
                 let voice_detune_semitones = self.scratch_detune_mod[i] + self.voice_offsets[voice];
                 let semitones_factor = self.semitone_ratio.powf(voice_detune_semitones);
                 let effective_freq = freq_with_cents * semitones_factor;
-                let phase = (self.voice_phases[voice] + ext_phase + fb).rem_euclid(1.0);
+                // Compute per-voice feedback.
+                let voice_fb = (self.voice_last_outputs[voice] * self.scratch_feedback_mod[i])
+                    / self.feedback_divisor;
+                let phase = (self.voice_phases[voice] + ext_phase + voice_fb).rem_euclid(1.0);
                 let wv_sample =
                     collection.lookup_sample(phase, wavetable_index_sample, effective_freq);
                 sample_sum += wv_sample * weight;
                 let phase_inc = effective_freq * sample_rate_recip;
                 self.voice_phases[voice] = (self.voice_phases[voice] + phase_inc).rem_euclid(1.0);
+                // Update the per-voice feedback state.
+                self.voice_last_outputs[voice] = wv_sample;
             }
 
             let final_sample =
