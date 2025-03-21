@@ -313,10 +313,7 @@ export const Waveform = Object.freeze({
 const AnalogOscillatorStateUpdateFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_analogoscillatorstateupdate_free(ptr >>> 0, 1));
-/**
- * AnalogOscillatorStateUpdate: State update parameters for the oscillator.
- * It contains modulation parameters (phase_mod_amount, detune, etc.) and unison settings.
- */
+
 export class AnalogOscillatorStateUpdate {
 
     __destroy_into_raw() {

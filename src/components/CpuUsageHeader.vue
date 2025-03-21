@@ -68,7 +68,7 @@ export default defineComponent({
 }
 .label {
   font-size: 0.8rem;
-  color: #333;
+  color: #e0e0e2;
   text-align: center;
   margin-bottom: 3px;
 }
