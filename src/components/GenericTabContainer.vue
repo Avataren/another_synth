@@ -3,7 +3,7 @@
     <!-- Tabs Wrapper with dynamic max-width -->
     <div class="tabs-wrapper" :style="{ maxWidth: contentWidth + 'px' }">
       <!-- Show real tabs only if there is more than one node -->
-      <div v-if="nodes.length > 1">
+      <div v-if="props.nodes.length > 1">
         <q-tabs
           v-model="currentTab"
           dense
@@ -11,7 +11,7 @@
           class="tabs-with-spacing q-mb-none"
         >
           <q-tab
-            v-for="node in nodes"
+            v-for="node in props.nodes"
             :key="node.id"
             :name="node.id.toString()"
             :label="`${nodeLabel} ${node.id}`"
@@ -33,8 +33,8 @@
         class="no-margin no-padding no-background"
       >
         <q-tab-panel
-          v-for="node in nodes"
-          :key="`${nodeLabel}-${node.id}-${nodes.length}`"
+          v-for="node in props.nodes"
+          :key="`${nodeLabel}-${node.id}-${props.nodes.length}`"
           :name="node.id.toString()"
           class="no-margin no-padding"
           style="overflow: hidden"
@@ -56,21 +56,22 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick, defineProps } from 'vue';
-import { type Component } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
-import type { VoiceNodeType } from 'src/audio/types/synth-layout';
+import { type VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Node {
   id: number;
+  type?: VoiceNodeType;
 }
 
-const props = defineProps<{
+interface Props {
   nodes: Node[];
   destinationNode: AudioNode | null;
-  componentName: Component;
+  componentName: unknown;
   nodeLabel: string;
-}>();
+}
 
+const props = defineProps<Props>();
 const store = useAudioSystemStore();
 
 const currentTab = ref(props.nodes.length ? props.nodes[0]!.id.toString() : '');
@@ -93,37 +94,79 @@ onMounted(() => {
 watch(
   () => props.nodes.length,
   (newLength, oldLength) => {
-    if (oldLength && newLength > oldLength) {
+    if (newLength === 0) {
+      // Handle the case where all nodes are deleted
+      currentTab.value = '';
+    } else if (oldLength && newLength > oldLength) {
+      // New node added - select it
       currentTab.value = props.nodes[newLength - 1]!.id.toString();
-    } else {
-      currentTab.value = props.nodes[0]!.id.toString();
+    } else if (newLength > 0) {
+      // Check if current tab exists in the new nodes array
+      const tabExists = props.nodes.some(
+        (node) => node.id.toString() === currentTab.value,
+      );
+      if (!tabExists) {
+        // Current tab no longer exists, select the first available node
+        currentTab.value = props.nodes[0]!.id.toString();
+      }
+      // If current tab still exists, keep it selected
     }
   },
+  { immediate: true },
 );
 
 /**
  * Handle the plus click signal from any component.
  */
-function handlePlus(nodeType: VoiceNodeType) {
+function handlePlus(nodeType: VoiceNodeType): void {
   store.currentInstrument?.createNode(nodeType);
 }
 
 /**
  * Toggle the global minimize state when any child emits a minimize event.
  */
-function handleMinimize() {
+function handleMinimize(): void {
   isMinimized.value = !isMinimized.value;
 }
 
 /**
  * Handle the close signal from a child component.
  */
-function handleClose(node_id: number) {
-  console.log('Container received close click:', node_id);
-  store.currentInstrument?.deleteNode(node_id);
-  store.deleteNodeCleanup(node_id);
+function handleClose(nodeId: number): void {
+  console.log('Container received close click:', nodeId);
+
+  // Find the index of the node being deleted
+  const nodeIndex = props.nodes.findIndex((node) => node.id === nodeId);
+
+  // Get the ID of a different node to select if this is the currently selected tab
+  let nextTabId = '';
+  if (currentTab.value === nodeId.toString() && props.nodes.length > 1) {
+    // Prefer the next node if available, otherwise the previous one
+    const nextNodeIndex = (nodeIndex + 1) % props.nodes.length;
+    const nextNode =
+      props.nodes[
+        nextNodeIndex !== nodeIndex
+          ? nextNodeIndex
+          : nodeIndex > 0
+            ? nodeIndex - 1
+            : 0
+      ];
+    nextTabId = nextNode!.id.toString();
+  }
+
+  // Delete the node
+  store.currentInstrument?.deleteNode(nodeId);
+  store.deleteNodeCleanup(nodeId);
+
+  // Switch to another tab if needed
+  if (nextTabId && nextTabId !== currentTab.value) {
+    nextTick(() => {
+      currentTab.value = nextTabId;
+    });
+  }
 }
 </script>
+
 <style scoped>
 .tabs-outer-wrapper {
   display: flex;

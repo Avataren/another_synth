@@ -6,6 +6,8 @@
         <!-- Generators Column -->
         <div class="node-bg column">
           <div class="header">Generators</div>
+
+          <!-- Wavetable Oscillator -->
           <generic-tab-container
             v-if="wavetableOscillatorNodes.length"
             :nodes="wavetableOscillatorNodes"
@@ -13,6 +15,16 @@
             :componentName="WavetableOscillatorComponent"
             nodeLabel="WtOsc"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Wavetable Oscillator"
+              @click="addWavetableOscillator"
+              icon="add"
+            />
+          </div>
+
+          <!-- Oscillator -->
           <generic-tab-container
             v-if="oscillatorNodes.length"
             :nodes="oscillatorNodes"
@@ -20,6 +32,16 @@
             :componentName="OscillatorComponent"
             nodeLabel="Osc"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Oscillator"
+              @click="addOscillator"
+              icon="add"
+            />
+          </div>
+
+          <!-- Noise -->
           <generic-tab-container
             v-if="noiseNodes.length"
             :nodes="noiseNodes"
@@ -27,6 +49,16 @@
             :componentName="NoiseComponent"
             nodeLabel="Noise"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Noise Generator"
+              @click="addNoise"
+              icon="add"
+            />
+          </div>
+
+          <!-- Arpeggiator -->
           <generic-tab-container
             v-if="arpeggiatorNodes.length"
             :nodes="arpeggiatorNodes"
@@ -34,6 +66,17 @@
             :componentName="ArpeggiatorComponent"
             nodeLabel="Arp"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Arpeggiator"
+              :disable="true"
+              @click="addArpeggiator"
+              icon="add"
+            />
+          </div>
+
+          <!-- Velocity -->
           <generic-tab-container
             v-if="velocityNodes.length"
             :nodes="velocityNodes"
@@ -46,6 +89,8 @@
         <!-- Modulators Column -->
         <div class="node-bg column">
           <div class="header">Modulators</div>
+
+          <!-- LFO -->
           <generic-tab-container
             v-if="lfoNodes.length"
             :nodes="lfoNodes"
@@ -53,6 +98,11 @@
             :componentName="LfoComponent"
             nodeLabel="LFO"
           />
+          <div v-else class="empty-state">
+            <q-btn color="primary" label="Add LFO" @click="addLfo" icon="add" />
+          </div>
+
+          <!-- Envelope -->
           <generic-tab-container
             v-if="envelopeNodes.length"
             :nodes="envelopeNodes"
@@ -60,11 +110,21 @@
             :componentName="EnvelopeComponent"
             nodeLabel="Env"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Envelope"
+              @click="addEnvelope"
+              icon="add"
+            />
+          </div>
         </div>
 
         <!-- Effects Column -->
         <div class="node-bg column">
           <div class="header">Filters</div>
+
+          <!-- Filter -->
           <generic-tab-container
             v-if="filterNodes.length"
             :nodes="filterNodes"
@@ -72,7 +132,18 @@
             :componentName="FilterComponent"
             nodeLabel="Filter"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Filter"
+              @click="addFilter"
+              icon="add"
+            />
+          </div>
+
           <div class="header" style="margin-top: 4rem">Effects</div>
+
+          <!-- Delay -->
           <generic-tab-container
             v-if="delayNodes.length"
             :nodes="delayNodes"
@@ -80,6 +151,16 @@
             :componentName="DelayComponent"
             nodeLabel="Delay"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Delay"
+              @click="addDelay"
+              icon="add"
+            />
+          </div>
+
+          <!-- Convolver -->
           <generic-tab-container
             v-if="convolverNodes.length"
             :nodes="convolverNodes"
@@ -87,6 +168,14 @@
             :componentName="ConvolverComponent"
             nodeLabel="Convolver"
           />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Convolver"
+              @click="addConvolver"
+              icon="add"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -145,37 +234,97 @@ import { VoiceNodeType } from 'src/audio/types/synth-layout';
 const store = useAudioSystemStore();
 const { destinationNode } = storeToRefs(store);
 
+// Improved computed properties with proper safeguards
 // Velocity (only one instance)
-const velocityNodes = computed(() =>
-  store.getVoiceNodes(0, VoiceNodeType.GlobalVelocity),
-);
+const velocityNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.GlobalVelocity);
+  return Array.isArray(nodes) ? nodes : [];
+});
 
 // Generators DSP nodes
-const oscillatorNodes = computed(() =>
-  store.getVoiceNodes(0, VoiceNodeType.Oscillator),
-);
-const wavetableOscillatorNodes = computed(() =>
-  store.getVoiceNodes(0, VoiceNodeType.WavetableOscillator),
-);
-const noiseNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Noise));
-const arpeggiatorNodes = computed(() =>
-  store.getVoiceNodes(0, VoiceNodeType.ArpeggiatorGenerator),
-);
+const oscillatorNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Oscillator);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const wavetableOscillatorNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.WavetableOscillator);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const noiseNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Noise);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const arpeggiatorNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.ArpeggiatorGenerator);
+  return Array.isArray(nodes) ? nodes : [];
+});
 
 // Modulators DSP nodes
-const lfoNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.LFO));
-const envelopeNodes = computed(() =>
-  store.getVoiceNodes(0, VoiceNodeType.Envelope),
-);
+const lfoNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.LFO);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const envelopeNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Envelope);
+  return Array.isArray(nodes) ? nodes : [];
+});
 
 // Filters DSP nodes
-const filterNodes = computed(() =>
-  store.getVoiceNodes(0, VoiceNodeType.Filter),
-);
-const delayNodes = computed(() => store.getVoiceNodes(0, VoiceNodeType.Delay));
-const convolverNodes = computed(() =>
-  store.getVoiceNodes(0, VoiceNodeType.Convolver),
-);
+const filterNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Filter);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const delayNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Delay);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const convolverNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Convolver);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+// Node creation functions
+function addWavetableOscillator() {
+  store.currentInstrument?.createNode(VoiceNodeType.WavetableOscillator);
+}
+
+function addOscillator() {
+  store.currentInstrument?.createNode(VoiceNodeType.Oscillator);
+}
+
+function addNoise() {
+  store.currentInstrument?.createNode(VoiceNodeType.Noise);
+}
+
+function addArpeggiator() {
+  store.currentInstrument?.createNode(VoiceNodeType.ArpeggiatorGenerator);
+}
+
+function addLfo() {
+  store.currentInstrument?.createNode(VoiceNodeType.LFO);
+}
+
+function addEnvelope() {
+  store.currentInstrument?.createNode(VoiceNodeType.Envelope);
+}
+
+function addFilter() {
+  store.currentInstrument?.createNode(VoiceNodeType.Filter);
+}
+
+function addDelay() {
+  store.currentInstrument?.createNode(VoiceNodeType.Delay);
+}
+
+function addConvolver() {
+  store.currentInstrument?.createNode(VoiceNodeType.Convolver);
+}
 </script>
 
 <style scoped>
@@ -238,13 +387,26 @@ const convolverNodes = computed(() =>
 /* Allow multiple DSP components per column */
 .column {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 1rem;
 }
 
 /* Fix each generic-tab-container's width to 600px */
 .generic-tab-container {
   flex: 0 0 auto;
+  width: 600px;
+}
+
+/* Empty state styling */
+.empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  margin: 0 auto;
   width: 600px;
 }
 </style>
