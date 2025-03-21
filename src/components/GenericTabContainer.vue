@@ -96,8 +96,10 @@ watch(
   (newLength, oldLength) => {
     if (newLength === 0) {
       // Handle the case where all nodes are deleted
+      console.log('## all nodes deleted');
       currentTab.value = '';
     } else if (oldLength && newLength > oldLength) {
+      console.log('## New node added - select it');
       // New node added - select it
       currentTab.value = props.nodes[newLength - 1]!.id.toString();
     } else if (newLength > 0) {
@@ -106,13 +108,18 @@ watch(
         (node) => node.id.toString() === currentTab.value,
       );
       if (!tabExists) {
+        console.log(
+          '## Current tab no longer exists, select the first available node',
+        );
         // Current tab no longer exists, select the first available node
         currentTab.value = props.nodes[0]!.id.toString();
       }
       // If current tab still exists, keep it selected
+    } else {
+      console.log('## All nodes deleted, no tab to select');
     }
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 );
 
 /**

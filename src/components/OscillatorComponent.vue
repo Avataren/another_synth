@@ -61,7 +61,7 @@
           />
 
           <audio-knob-component
-            v-model="waveform"
+            v-model="oscillatorState.waveform"
             label="Waveform"
             :min="0"
             :max="3"
@@ -141,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue'; // New header component
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
@@ -176,9 +176,6 @@ function forwardClose() {
 // Reference to the audio system store
 const store = useAudioSystemStore();
 const { oscillatorStates } = storeToRefs(store);
-
-// Local reference for waveform (for your wave knob)
-const waveform = ref<number>(0);
 
 // Computed oscillator state
 const oscillatorState = computed<OscillatorState>({

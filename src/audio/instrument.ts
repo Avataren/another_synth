@@ -199,7 +199,7 @@ export default class Instrument {
 
   public updateOscillatorState(nodeId: number, newState: OscillatorState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
-
+    console.log('### updateOscillatorState', nodeId, newState);
     // Find which voice this oscillator belongs to
     // const voiceIndex = this.findVoiceForNode(nodeId);
     this.workletNode.port.postMessage({
