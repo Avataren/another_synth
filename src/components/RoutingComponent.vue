@@ -593,11 +593,13 @@ function initializeRoutes(): void {
       connections: connections?.length ?? 0,
     });
     if (!connections || connections.length === 0) return;
-    const filteredConnections = connections.filter(
-      (conn) =>
-        conn.fromId === props.sourceId &&
-        store.findNodeById(conn.toId) !== null,
-    );
+    const filteredConnections = connections
+      .filter(
+        (conn) =>
+          conn.fromId === props.sourceId &&
+          store.findNodeById(conn.toId) !== null,
+      )
+      .reverse();
     if (filteredConnections.length === 0) return;
     const newRoutes: RouteConfig[] = filteredConnections
       .filter((conn) => conn.fromId === props.sourceId)
@@ -621,9 +623,9 @@ function initializeRoutes(): void {
             targetLabel: PORT_LABELS[conn.target] || 'Unknown Parameter',
             amount: typeof conn.amount === 'number' ? conn.amount : 1.0,
             modulationType: {
-              value: conn.modulationType || WasmModulationType.Additive,
+              value: conn.modulationType ?? WasmModulationType.Additive,
               label: getModulationTypeLabel(
-                conn.modulationType || WasmModulationType.Additive,
+                conn.modulationType ?? WasmModulationType.Additive,
               ),
             },
             modulationTransformation:
