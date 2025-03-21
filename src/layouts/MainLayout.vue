@@ -12,6 +12,7 @@
         /> -->
 
         <q-toolbar-title> Synthesizer </q-toolbar-title>
+        <div class="cpu"><CpuUsageHeader /></div>
       </q-toolbar>
     </q-header>
 
@@ -41,4 +42,11 @@
   </q-layout>
 </template>
 
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
+</script>
+<style scoped>
+.cpu {
+  width: 250px;
+}
+</style>

@@ -546,6 +546,13 @@ export class AudioEngine {
         wasm.audioengine_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, master_gain, ptr5, len5, output_left, ptr6, len6, output_right);
     }
     /**
+     * @returns {number}
+     */
+    get_cpu_usage() {
+        const ret = wasm.audioengine_get_cpu_usage(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @param {number} max_delay_ms
      * @param {number} delay_ms
      * @param {number} feedback
@@ -1888,6 +1895,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_newwithlength_5a5efe313cfd59f1 = function(arg0) {
         const ret = new Float32Array(arg0 >>> 0);
+        return ret;
+    };
+    imports.wbg.__wbg_now_807e54c39636c349 = function() {
+        const ret = Date.now();
         return ret;
     };
     imports.wbg.__wbg_random_3ad904d98382defe = function() {

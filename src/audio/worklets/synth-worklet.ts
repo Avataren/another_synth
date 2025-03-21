@@ -238,7 +238,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'createNode':
         this.handleCreateNode(event.data);
         break;
+      case 'cpuUsage':
+        this.handleCpuUsage();
+        break;
     }
+  }
+
+  private handleCpuUsage() {
+    this.port.postMessage({
+      type: 'cpuUsage',
+      cpu: this.audioEngine!.get_cpu_usage()
+    });
   }
 
   private handleDeleteNode(data: { nodeId: number }) {

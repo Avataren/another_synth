@@ -277,6 +277,9 @@ pub struct AudioEngine {
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
     effect_stack: EffectStack,
     ir_generator: ImpulseResponseGenerator,
+    cpu_time_accum: f64,   // accumulated processing time (seconds)
+    audio_time_accum: f64, // accumulated quantum time (seconds)
+    last_cpu_usage: f32,   // last computed average (%)
 }
 
 #[wasm_bindgen]
@@ -407,6 +410,9 @@ impl AudioEngine {
             wavetable_banks: Arc::new(banks),
             effect_stack: EffectStack::new(buffer_size),
             ir_generator: ImpulseResponseGenerator::new(sample_rate),
+            cpu_time_accum: 0.0,
+            audio_time_accum: 0.0,
+            last_cpu_usage: 0.0,
         }
     }
 
@@ -524,6 +530,8 @@ impl AudioEngine {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
+        // Begin CPU measurement:
+        let start = js_sys::Date::now();
         // Create temporary buffers for voice mixing
         let mut mix_left = vec![0.0; output_left.len()];
         let mut mix_right = vec![0.0; output_right.len()];
@@ -577,6 +585,27 @@ impl AudioEngine {
                 *sample *= master_gain;
             }
         }
+
+        // // End CPU measurement:
+        let end = js_sys::Date::now();
+        let elapsed_ms = end - start;
+        let elapsed_sec = elapsed_ms / 1000.0;
+        // The available time per quantum (128 samples) is:
+        let quantum_sec = 128.0 / self.sample_rate as f64;
+        // Accumulate processing and quantum times:
+        self.cpu_time_accum += elapsed_sec;
+        self.audio_time_accum += quantum_sec;
+        // Update average once enough quantum time has passed (e.g. 100ms):
+        if self.audio_time_accum >= 0.1 {
+            self.last_cpu_usage = ((self.cpu_time_accum / self.audio_time_accum) * 100.0) as f32;
+            self.cpu_time_accum = 0.0;
+            self.audio_time_accum = 0.0;
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn get_cpu_usage(&self) -> f32 {
+        self.last_cpu_usage
     }
 
     #[wasm_bindgen]
