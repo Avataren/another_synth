@@ -936,6 +936,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleGetLfoWaveform(data: {
     waveform: number;
     phaseOffset: number;
+    frequency: number;
     bufferSize: number;
     use_absolute: boolean;
     use_normalized: boolean;
@@ -946,6 +947,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       const waveformData = this.audioEngine.get_lfo_waveform(
         data.waveform,
         data.phaseOffset,
+        data.frequency,
         data.bufferSize,
         data.use_absolute,
         data.use_normalized,

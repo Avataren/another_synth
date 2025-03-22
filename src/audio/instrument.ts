@@ -353,6 +353,7 @@ export default class Instrument {
   public async getLfoWaveform(
     waveform: number,
     phaseOffset: number,
+    frequency: number,
     bufferSize: number,
     use_absolute: boolean,
     use_normalized: boolean,
@@ -381,6 +382,7 @@ export default class Instrument {
         type: 'getLfoWaveform',
         waveform,
         phaseOffset,
+        frequency,
         bufferSize,
         use_absolute,
         use_normalized,

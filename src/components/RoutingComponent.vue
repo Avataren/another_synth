@@ -682,6 +682,8 @@ function getNodeName(nodeId: number): string {
       return `Envelope ${nodeId}`;
     case VoiceNodeType.LFO:
       return `LFO ${nodeId}`;
+    case VoiceNodeType.Noise:
+      return `Noise ${nodeId}`;
     case VoiceNodeType.Mixer:
       return 'Mixer';
     default:

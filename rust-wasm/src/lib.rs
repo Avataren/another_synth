@@ -1582,6 +1582,7 @@ impl AudioEngine {
         &mut self,
         waveform: u8,
         phase_offset: f32,
+        frequency: f32,
         buffer_size: usize,
         use_absolute: bool,
         use_normalized: bool,
@@ -1598,6 +1599,7 @@ impl AudioEngine {
         Ok(Lfo::get_waveform_data(
             waveform,
             phase_offset,
+            frequency,
             buffer_size,
             use_absolute,
             use_normalized,

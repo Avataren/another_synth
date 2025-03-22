@@ -353,6 +353,7 @@ impl Lfo {
     pub fn get_waveform_data(
         waveform: LfoWaveform,
         phase_offset: f32,
+        frequency: f32, // Interpreted as cycles per buffer.
         buffer_size: usize,
         use_absolute: bool,
         use_normalized: bool,
@@ -360,11 +361,14 @@ impl Lfo {
         let tables = LFO_TABLES.get_or_init(LfoTables::new);
         let table = tables.get_table(waveform);
         let mut buffer = vec![0.0; buffer_size];
-        let phase_increment = 1.0 / buffer_size as f32;
+        // For visualization, each sample represents a fraction of the cycle.
+        // frequency cycles will be shown over the buffer.
+        let phase_increment = frequency / (buffer_size as f32);
         let mut phase = 0.0;
         let table_size_f = TABLE_SIZE as f32;
         let mut i = 0;
 
+        // SIMD loop for processing 4 samples at a time.
         while i + 4 <= buffer_size {
             let phases = f32x4::from_array([
                 phase,
@@ -422,6 +426,7 @@ impl Lfo {
             i += 4;
         }
 
+        // Process any remaining samples using scalar code.
         while i < buffer_size {
             let extra_phase = if use_normalized {
                 waveform.normalized_phase_offset()

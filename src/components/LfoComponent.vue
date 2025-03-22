@@ -245,11 +245,12 @@ onBeforeUnmount(() => {
 });
 
 // Handler methods
-function handleFrequencyChange(newFrequency: number) {
+async function handleFrequencyChange(newFrequency: number) {
   store.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     frequency: newFrequency,
   });
+  await throttledUpdateWaveformDisplay();
 }
 async function handlePhaseChange(newPhase: number) {
   store.lfoStates.set(props.nodeId, {
@@ -329,6 +330,7 @@ async function updateCachedWaveform() {
   const waveformData = await store.currentInstrument?.getLfoWaveform(
     lfoState.value.waveform,
     lfoState.value.phaseOffset,
+    lfoState.value.frequency,
     width,
     lfoState.value.useAbsolute,
     lfoState.value.useNormalized,

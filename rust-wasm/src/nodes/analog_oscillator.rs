@@ -1,9 +1,9 @@
-use core::simd::Simd;
 use std::any::Any;
 use std::collections::HashMap;
-use std::simd::StdFloat;
+use std::simd::{f32x4, Simd};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
+use web_sys::console;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
@@ -20,8 +20,8 @@ pub struct AnalogOscillatorStateUpdate {
     pub active: bool,
     pub feedback_amount: f32,
     pub waveform: Waveform,
-    pub unison_voices: u32, // number of voices in unison
-    pub spread: f32,        // spread in cents (maximum additional detune per voice)
+    pub unison_voices: u32,
+    pub spread: f32,
 }
 
 #[wasm_bindgen]
@@ -52,8 +52,13 @@ impl AnalogOscillatorStateUpdate {
     }
 }
 
-/// AnalogOscillator: Implements an analog-style oscillator with unison, modulation,
-/// and scratch-pad buffers for modulation signals.
+/// Helper struct that holds both an additive and a multiplicative modulation buffer.
+pub struct ModulationEx {
+    pub additive: Vec<f32>,
+    pub multiplicative: Vec<f32>,
+}
+
+/// AnalogOscillator implements an analog‑style oscillator with unison and modulation.
 pub struct AnalogOscillator {
     // Core oscillator state.
     phase: f32,
@@ -75,12 +80,12 @@ pub struct AnalogOscillator {
     unison_voices: usize,
     spread: f32,
     voice_phases: Vec<f32>,
-    // NEW: Per-voice feedback state.
+    // Per-voice feedback state.
     voice_last_outputs: Vec<f32>,
 
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 
-    // === Scratch buffers for modulations (allocated once) ===
+    // Scratch buffers for modulation processing.
     scratch_global_freq: Vec<f32>,  // For GlobalFrequency
     scratch_freq_mod: Vec<f32>,     // For FrequencyMod
     scratch_phase_mod: Vec<f32>,    // For PhaseMod
@@ -130,21 +135,27 @@ impl AnalogOscillator {
         }
     }
 
-    /// Static helper to process modulation sources into the given output slice.
-    /// (Note: no &self needed here, which avoids conflicts with mutable borrows.)
-    fn process_modulations_in_place(
+    /// SIMD-accelerated helper that combines a base value with additive and multiplicative buffers.
+    /// It computes (base + additive) * multiplicative for each sample.
+    #[inline(always)]
+    fn process_modulation_simd_in_place(
         output: &mut [f32],
-        sources: Option<&Vec<ModulationSource>>,
-        default: f32,
+        base: f32,
+        additive: &[f32],
+        multiplicative: &[f32],
     ) {
-        output.fill(default);
-        if let Some(sources) = sources {
-            for source in sources {
-                let min_len = std::cmp::min(output.len(), source.buffer.len());
-                for i in 0..min_len {
-                    output[i] += source.buffer[i] * source.amount;
-                }
-            }
+        let len = output.len();
+        let base_simd = f32x4::splat(base);
+        let chunks = len / 4;
+        for c in 0..chunks {
+            let idx = c * 4;
+            let add_simd = f32x4::from_slice(&additive[idx..idx + 4]);
+            let mul_simd = f32x4::from_slice(&multiplicative[idx..idx + 4]);
+            let combined = (base_simd + add_simd) * mul_simd;
+            combined.copy_to_slice(&mut output[idx..idx + 4]);
+        }
+        for i in (chunks * 4)..len {
+            output[i] = (base + additive[i]) * multiplicative[i];
         }
     }
 
@@ -180,7 +191,7 @@ impl AnalogOscillator {
     }
 }
 
-/// Cubic interpolation for improved wavetable quality.
+/// Cubic interpolation for wavetable lookup.
 fn cubic_interp(samples: &[f32], pos: f32) -> f32 {
     let n = samples.len();
     let i = pos.floor() as isize;
@@ -221,7 +232,7 @@ impl AudioNode for AnalogOscillator {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // --- 1) Gate Processing ---
+        // --- 1) Process Gate Input ---
         if self.gate_buffer.len() < buffer_size {
             self.gate_buffer.resize(buffer_size, 0.0);
         } else {
@@ -229,70 +240,84 @@ impl AudioNode for AnalogOscillator {
         }
         if let Some(gate_sources) = inputs.get(&PortId::GlobalGate) {
             for source in gate_sources {
-                for (i, &val) in source.buffer.iter().take(buffer_size).enumerate() {
-                    self.gate_buffer[i] += val * source.amount;
+                let min_len = std::cmp::min(buffer_size, source.buffer.len());
+                for i in 0..min_len {
+                    self.gate_buffer[i] += source.buffer[i] * source.amount;
                 }
             }
         }
 
-        // --- 2) Update Scratch Buffers ---
-        {
-            if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
-                if !freq_sources.is_empty() && !freq_sources[0].buffer.is_empty() {
-                    let src = &freq_sources[0].buffer;
-                    let len = std::cmp::min(buffer_size, src.len());
-                    self.scratch_global_freq[..len].copy_from_slice(&src[..len]);
-                    if len < buffer_size {
-                        self.scratch_global_freq[len..buffer_size].fill(self.frequency);
-                    }
-                } else {
-                    self.scratch_global_freq[..buffer_size].fill(self.frequency);
+        // --- 2) Process GlobalFrequency Input ---
+        if let Some(freq_sources) = inputs.get(&PortId::GlobalFrequency) {
+            if !freq_sources.is_empty() && !freq_sources[0].buffer.is_empty() {
+                let src = &freq_sources[0].buffer;
+                let len = std::cmp::min(buffer_size, src.len());
+                self.scratch_global_freq[..len].copy_from_slice(&src[..len]);
+                if len < buffer_size {
+                    self.scratch_global_freq[len..buffer_size].fill(self.frequency);
                 }
             } else {
                 self.scratch_global_freq[..buffer_size].fill(self.frequency);
             }
-
-            Self::process_modulations_in_place(
-                &mut self.scratch_freq_mod[..buffer_size],
-                inputs.get(&PortId::FrequencyMod),
-                1.0,
-            );
-            Self::process_modulations_in_place(
-                &mut self.scratch_phase_mod[..buffer_size],
-                inputs.get(&PortId::PhaseMod),
-                0.0,
-            );
-            Self::process_modulations_in_place(
-                &mut self.scratch_gain_mod[..buffer_size],
-                inputs.get(&PortId::GainMod),
-                1.0,
-            );
-            Self::process_modulations_in_place(
-                &mut self.scratch_mod_index[..buffer_size],
-                inputs.get(&PortId::ModIndex),
-                self.phase_mod_amount,
-            );
-            Self::process_modulations_in_place(
-                &mut self.scratch_feedback_mod[..buffer_size],
-                inputs.get(&PortId::FeedbackMod),
-                1.0,
-            );
-            Self::process_modulations_in_place(
-                &mut self.scratch_detune_mod[..buffer_size],
-                inputs.get(&PortId::DetuneMod),
-                0.0,
-            );
+        } else {
+            self.scratch_global_freq[..buffer_size].fill(self.frequency);
         }
 
-        // --- 3) Main Synthesis Loop ---
-        let sample_rate_recip = 1.0 / self.sample_rate;
-        let semitone_ratio = 2.0_f32.powf(1.0 / 12.0);
-        let cent_factor = 2.0_f32.powf(self.detune / 1200.0);
+        // --- 3) Process Modulation Inputs with SIMD ---
+        let freq_mod = self.process_modulations_ex(buffer_size, inputs.get(&PortId::FrequencyMod));
+        let phase_mod = self.process_modulations_ex(buffer_size, inputs.get(&PortId::PhaseMod));
+        let gain_mod = self.process_modulations_ex(buffer_size, inputs.get(&PortId::GainMod));
+        let mod_index = self.process_modulations_ex(buffer_size, inputs.get(&PortId::ModIndex));
+        let feedback_mod =
+            self.process_modulations_ex(buffer_size, inputs.get(&PortId::FeedbackMod));
+        let detune_mod = self.process_modulations_ex(buffer_size, inputs.get(&PortId::DetuneMod));
 
+        // Combine both additive and multiplicative parts.
+        Self::process_modulation_simd_in_place(
+            &mut self.scratch_freq_mod[..buffer_size],
+            1.0,
+            &freq_mod.additive,
+            &freq_mod.multiplicative,
+        );
+        Self::process_modulation_simd_in_place(
+            &mut self.scratch_phase_mod[..buffer_size],
+            0.0,
+            &phase_mod.additive,
+            &phase_mod.multiplicative,
+        );
+        Self::process_modulation_simd_in_place(
+            &mut self.scratch_gain_mod[..buffer_size],
+            self.gain,
+            &gain_mod.additive,
+            &gain_mod.multiplicative,
+        );
+        Self::process_modulation_simd_in_place(
+            &mut self.scratch_mod_index[..buffer_size],
+            self.phase_mod_amount,
+            &mod_index.additive,
+            &mod_index.multiplicative,
+        );
+        Self::process_modulation_simd_in_place(
+            &mut self.scratch_feedback_mod[..buffer_size],
+            self.feedback_amount,
+            &feedback_mod.additive,
+            &feedback_mod.multiplicative,
+        );
+        Self::process_modulation_simd_in_place(
+            &mut self.scratch_detune_mod[..buffer_size],
+            0.0,
+            &detune_mod.additive,
+            &detune_mod.multiplicative,
+        );
+
+        // --- 4) Main Synthesis Loop ---
         let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
             Some(buf) => buf,
             None => return,
         };
+        let sample_rate_recip = 1.0 / self.sample_rate;
+        let semitone_ratio = 2.0_f32.powf(1.0 / 12.0);
+        let cent_factor = 2.0_f32.powf(self.detune / 1200.0);
 
         for i in 0..buffer_size {
             self.check_gate(self.gate_buffer[i]);
@@ -313,7 +338,6 @@ impl AudioNode for AnalogOscillator {
 
             let mut sample_sum = 0.0;
 
-            // Process each unison voice with its own feedback state.
             for v in 0..self.unison_voices {
                 let voice_offset = if self.unison_voices > 1 {
                     (self.spread * (2.0 * (v as f32 / ((self.unison_voices - 1) as f32)) - 1.0))
@@ -327,7 +351,6 @@ impl AudioNode for AnalogOscillator {
                 let phase_inc = effective_freq * sample_rate_recip;
                 self.voice_phases[v] = (self.voice_phases[v] + phase_inc).rem_euclid(1.0);
 
-                // Use per-voice feedback.
                 let voice_feedback_val = (self.voice_last_outputs[v] * effective_feedback)
                     / (std::f32::consts::PI * 1.5);
 
@@ -341,14 +364,12 @@ impl AudioNode for AnalogOscillator {
                 let pos = normalized_phase * (table.table_size as f32);
                 let voice_sample = cubic_interp(&table.samples, pos);
 
-                // Update the per-voice feedback state.
                 self.voice_last_outputs[v] = voice_sample;
-
                 sample_sum += voice_sample;
             }
 
-            let final_sample =
-                (sample_sum / self.unison_voices as f32) * self.gain * gain_mod_sample;
+            // Corrected final sample calculation:
+            let final_sample = (sample_sum / self.unison_voices as f32) * gain_mod_sample;
             output_buffer[i] = final_sample;
             self.last_output = final_sample;
         }

@@ -304,7 +304,7 @@ impl AudioNode for WavetableOscillator {
             );
             Self::process_modulation_simd_in_place(
                 &mut self.scratch_gain_mod[..buffer_size],
-                1.0,
+                self.gain,
                 &gain_mod_result.additive,
                 &gain_mod_result.multiplicative,
             );
@@ -415,8 +415,7 @@ impl AudioNode for WavetableOscillator {
                 self.voice_last_outputs[voice] = wv_sample;
             }
 
-            let final_sample =
-                (sample_sum * total_weight_recip) * self.gain * self.scratch_gain_mod[i];
+            let final_sample = (sample_sum * total_weight_recip) * self.scratch_gain_mod[i];
             output_buffer[i] = final_sample;
             self.last_output = final_sample;
         }
