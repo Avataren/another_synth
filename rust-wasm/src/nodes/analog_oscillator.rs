@@ -334,7 +334,7 @@ impl AudioNode for AnalogOscillator {
             let freq_with_cents = modulated_freq * cent_factor;
             let ext_phase_mod =
                 (phase_mod_sample * mod_index_sample) / (2.0 * std::f32::consts::PI);
-            let effective_feedback = self.feedback_amount * feedback_mod_sample;
+            let effective_feedback = feedback_mod_sample;
 
             let mut sample_sum = 0.0;
 
