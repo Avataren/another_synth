@@ -26,10 +26,10 @@ use nodes::morph_wavetable::{
 use nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
     ArpeggiatorGenerator, Convolver, Delay, FilterCollection, FilterSlope, GlobalVelocityNode, Lfo,
-    LfoLoopMode, LfoTriggerMode, LfoWaveform, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
+    LfoLoopMode, LfoRetriggerMode, LfoWaveform, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
     Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
-pub use nodes::{Envelope, EnvelopeConfig, ModulatableOscillator, OscillatorStateUpdate};
+pub use nodes::{Envelope, EnvelopeConfig};
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -1499,10 +1499,14 @@ impl AudioEngine {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
-                    filter.set_params(cutoff, resonance);
-                    filter.set_comb_target_frequency(comb_frequency);
+                    if (cutoff > 0.01) {
+                        filter.set_params(cutoff, resonance);
+                    } else {
+                        filter.set_params(comb_frequency, resonance);
+                    }
+                    // filter.set_comb_target_frequency(comb_frequency);
                     filter.set_comb_dampening(comb_dampening);
-                    filter.set_gain_normalized(gain);
+                    filter.set_gain_db(gain * 24.0 - 12.0);
                     //log key_tracking
                     console::log_1(&format!("key_tracking is {}", key_tracking).into());
                     filter.set_keyboard_tracking_sensitivity(key_tracking);
@@ -1567,7 +1571,7 @@ impl AudioEngine {
                     lfo.set_waveform(waveform);
                     lfo.set_use_absolute(params.use_absolute);
                     lfo.set_use_normalized(params.use_normalized);
-                    lfo.set_trigger_mode(LfoTriggerMode::from_u8(params.trigger_mode));
+                    lfo.set_retrigger_mode(LfoRetriggerMode::from_u8(params.trigger_mode));
                     lfo.set_active(params.active);
                     lfo.set_loop_mode(loopmode);
                     lfo.set_loop_start(params.loop_start);

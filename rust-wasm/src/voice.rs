@@ -1,8 +1,7 @@
 use crate::{
     graph::{ConnectionKey, ModulationTransformation, ModulationType},
-    nodes::{Lfo, LfoTriggerMode},
-    AudioGraph, AudioNode, Envelope, MacroManager, ModulatableOscillator, ModulationTarget, NodeId,
-    PortId,
+    nodes::{EnvelopePhase, Lfo, LfoRetriggerMode},
+    AudioGraph, AudioNode, Envelope, MacroManager, ModulationTarget, NodeId, PortId,
 };
 
 #[derive(Debug)]
@@ -88,7 +87,7 @@ impl Voice {
     fn has_active_envelopes(&self) -> bool {
         self.graph.nodes.iter().any(|node| {
             if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
-                env.is_active()
+                env.is_active() && env.get_phase() == EnvelopePhase::Release
             } else {
                 false
             }
@@ -123,8 +122,8 @@ impl Voice {
 
             let rms = (sum_squared / output_buffer.len() as f32).sqrt();
 
-            // -80dB threshold (very quiet but still audible)
-            const SILENCE_THRESHOLD: f32 = 0.0001; // approximately -80dB
+            // -60dB threshold (very quiet but still audible)
+            const SILENCE_THRESHOLD: f32 = 0.001; // approximately -60dB
 
             return rms > SILENCE_THRESHOLD;
         }
@@ -248,7 +247,7 @@ impl Voice {
     fn has_free_running_lfos(&self) -> bool {
         self.graph.nodes.iter().any(|node| {
             if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
-                lfo.trigger_mode == LfoTriggerMode::None
+                lfo.retrigger_mode == LfoRetriggerMode::FreeRunning
             } else {
                 false
             }
@@ -259,10 +258,10 @@ impl Voice {
     fn update_free_running_lfos(&mut self) {
         for node in &mut self.graph.nodes {
             if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
-                if lfo.trigger_mode == LfoTriggerMode::None {
+                if lfo.retrigger_mode == LfoRetriggerMode::FreeRunning {
                     // web_sys::console::log_1(&format!("LFO state advancing phase",).into());
                     // Only advance the phase
-                    lfo.advance_phase_one_buffer();
+                    lfo.advance_phase_for_buffer(128);
                 }
             }
         }

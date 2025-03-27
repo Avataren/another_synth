@@ -247,7 +247,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleCpuUsage() {
     this.port.postMessage({
       type: 'cpuUsage',
-      cpu: this.audioEngine!.get_cpu_usage()
+      cpu: this.audioEngine!.get_cpu_usage(),
     });
   }
 
@@ -267,7 +267,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case VoiceNodeType.LFO:
         this.audioEngine!.create_lfo();
-        break
+        break;
       case VoiceNodeType.WavetableOscillator:
         this.audioEngine!.create_wavetable_oscillator();
         break;
@@ -344,6 +344,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
       // Initialize all voices first
       this.createNodesAndSetupConnections();
+      //const mixerId = this.audioEngine.create_mixer();
       this.initializeVoices();
 
       // Initialize state
@@ -404,11 +405,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) throw new Error('Audio engine not initialized');
 
     // Create noise generator.
-    this.audioEngine.create_noise();
+    //this.audioEngine.create_noise();
     // Create mixer.
     const mixerId = this.audioEngine.create_mixer();
     console.log('#mixerID:', mixerId);
-
 
     // const arpId = this.audioEngine.create_arpeggiator();
     // Create filter.
@@ -444,7 +444,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // --- Set up initial connections (as in your original code) ---
     if (envelopeIds.length > 0 && oscIds.length >= 2) {
-
       // this.audioEngine.connect_nodes(
       //   arpId!,
       //   PortId.AudioOutput0,
@@ -517,9 +516,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         WasmModulationType.Additive,
         ModulationTransformation.None,
       );
-
-
-
 
       // Request a state sync (if needed).
       this.handleRequestSync();
@@ -600,6 +596,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'arpeggiator_generator':
           type = VoiceNodeType.ArpeggiatorGenerator;
+          break;
+        case 'global_velocity':
+          type = VoiceNodeType.GlobalVelocity;
           break;
 
         default:

@@ -1,13 +1,16 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::simd::{f32x4, StdFloat};
+use std::simd::{f32x4, Simd, StdFloat};
 use std::sync::OnceLock;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::graph::{ModulationProcessor, ModulationSource};
+use crate::graph::{
+    ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
+};
 use crate::traits::{AudioNode, PortId};
 
+// --- Enums, LfoTables, Constants remain the same ---
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoWaveform {
     Sine,
@@ -16,46 +19,31 @@ pub enum LfoWaveform {
     Saw,
     InverseSaw,
 }
-
 impl LfoWaveform {
-    /// Returns the waveform‑specific normalized phase offset.
-    /// For normalized mode, we want –0.25 for sine/triangle,
-    /// and 0.0 for pulse (Square), saw, and inverse saw.
+    #[inline(always)]
     fn normalized_phase_offset(self) -> f32 {
         match self {
-            LfoWaveform::Sine => -0.25,
-            LfoWaveform::Triangle => -0.25,
+            LfoWaveform::Sine | LfoWaveform::Triangle => -0.25,
             _ => 0.0,
         }
     }
 }
-
-struct LfoTables {
-    sine: Vec<f32>,
-    triangle: Vec<f32>,
-    square: Vec<f32>,
-    saw: Vec<f32>,
-    inverse_saw: Vec<f32>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LfoTriggerMode {
-    None,     // LFO runs freely (loops continuously)
-    Envelope, // Trigger LFO on gate (repeats waveform)
-    OneShot,  // Trigger LFO on gate, play once, then hold the final sample
+pub enum LfoRetriggerMode {
+    FreeRunning,
+    Retrigger,
+    OneShot,
 }
-
-impl LfoTriggerMode {
+impl LfoRetriggerMode {
     pub fn from_u8(value: u8) -> Self {
         match value {
-            0 => LfoTriggerMode::None,
-            1 => LfoTriggerMode::Envelope,
-            2 => LfoTriggerMode::OneShot,
-            _ => LfoTriggerMode::None,
+            0 => LfoRetriggerMode::FreeRunning,
+            1 => LfoRetriggerMode::Retrigger,
+            2 => LfoRetriggerMode::OneShot,
+            _ => LfoRetriggerMode::FreeRunning,
         }
     }
 }
-
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoLoopMode {
@@ -63,12 +51,17 @@ pub enum LfoLoopMode {
     Loop = 1,
     PingPong = 2,
 }
-
-static LFO_TABLES: OnceLock<LfoTables> = OnceLock::new();
-
+struct LfoTables {
+    /* ... fields ... */ sine: Vec<f32>,
+    triangle: Vec<f32>,
+    square: Vec<f32>,
+    saw: Vec<f32>,
+    inverse_saw: Vec<f32>,
+}
 const TABLE_SIZE: usize = 1024;
 const TABLE_MASK: usize = TABLE_SIZE - 1;
-
+const TABLE_SIZE_F32: f32 = TABLE_SIZE as f32;
+static LFO_TABLES: OnceLock<LfoTables> = OnceLock::new();
 impl LfoTables {
     fn new() -> Self {
         let mut sine = vec![0.0; TABLE_SIZE];
@@ -78,23 +71,14 @@ impl LfoTables {
         let mut inverse_saw = vec![0.0; TABLE_SIZE];
 
         for i in 0..TABLE_SIZE {
-            let phase = 2.0 * std::f32::consts::PI * (i as f32) / (TABLE_SIZE as f32);
-            let normalized_phase = i as f32 / (TABLE_SIZE as f32);
+            let phase_rad = 2.0 * std::f32::consts::PI * (i as f32) / TABLE_SIZE_F32;
+            let phase_norm = i as f32 / TABLE_SIZE_F32;
 
-            sine[i] = phase.sin();
-            triangle[i] = if normalized_phase < 0.25 {
-                4.0 * normalized_phase
-            } else if normalized_phase < 0.75 {
-                2.0 - 4.0 * normalized_phase
-            } else {
-                -4.0 + 4.0 * normalized_phase
-            };
-
-            square[i] = if normalized_phase < 0.5 { 1.0 } else { -1.0 };
-
-            let saw_phase = i as f32 / (TABLE_SIZE as f32);
-            saw[i] = -1.0 + 2.0 * saw_phase;
-            inverse_saw[i] = saw[i] * -1.0;
+            sine[i] = phase_rad.sin();
+            triangle[i] = 2.0 * (2.0 * (phase_norm + 0.25).fract() - 1.0).abs() - 1.0;
+            square[i] = if phase_norm < 0.5 { 1.0 } else { -1.0 };
+            saw[i] = 2.0 * phase_norm - 1.0;
+            inverse_saw[i] = 1.0 - 2.0 * phase_norm;
         }
 
         Self {
@@ -105,7 +89,7 @@ impl LfoTables {
             inverse_saw,
         }
     }
-
+    #[inline(always)]
     fn get_table(&self, waveform: LfoWaveform) -> &[f32] {
         match waveform {
             LfoWaveform::Sine => &self.sine,
@@ -117,329 +101,304 @@ impl LfoTables {
     }
 }
 
+// --- LFO Node Struct ---
 pub struct Lfo {
-    phase: f32,
-    frequency: f32,
-    gain: f32,
+    // Parameters
+    sample_rate: f32,
+    base_frequency: f32,
+    base_gain: f32,
     waveform: LfoWaveform,
     phase_offset: f32,
-    sample_rate: f32,
     use_absolute: bool,
     use_normalized: bool,
-    pub trigger_mode: LfoTriggerMode,
-    last_gate: f32,
+    pub retrigger_mode: LfoRetriggerMode,
+    loop_mode: LfoLoopMode,
+    loop_start: f32,
+    loop_end: f32,
     active: bool,
-    /// In OneShot mode, once the cycle completes (phase reaches 1.0)
-    /// we store the final sample here to hold it for subsequent calls.
-    oneshot_final_sample: Option<f32>,
 
-    // New fields for loop control.
-    pub loop_mode: LfoLoopMode,
-    pub loop_start: f32, // valid range: 0.0 to 1.0
-    pub loop_end: f32,   // valid range: loop_start to 1.0
-    pub direction: f32,  // Used in pingpong mode; 1.0 for forward, -1.0 for reverse
+    // State
+    phase: f32,
+    direction: f32,
+    last_gate: f32,   // Stores the gate value from the *previous sample* processed
+    is_running: bool, // Tracks if phase should advance (esp. for OneShot completion)
+    oneshot_held_value: f32,
+
+    // === Scratch Buffers ===
+    mod_scratch_add: Vec<f32>,
+    mod_scratch_mult: Vec<f32>,
+    gate_buffer: Vec<f32>,
+    scratch_freq_add: Vec<f32>,
+    scratch_freq_mult: Vec<f32>,
+    scratch_gain_add: Vec<f32>,
+    scratch_gain_mult: Vec<f32>,
 }
 
 impl Lfo {
     pub fn new(sample_rate: f32) -> Self {
         LFO_TABLES.get_or_init(LfoTables::new);
+        let initial_capacity = 128;
 
         Self {
-            phase: 0.0,
-            frequency: 1.0,
-            gain: 1.0,
+            sample_rate,
+            base_frequency: 1.0,
+            base_gain: 1.0,
             waveform: LfoWaveform::Sine,
             phase_offset: 0.0,
-            sample_rate,
             use_absolute: false,
             use_normalized: false,
-            trigger_mode: LfoTriggerMode::None,
-            last_gate: 0.0,
-            active: true,
-            oneshot_final_sample: None,
-            loop_mode: LfoLoopMode::Off,
+            retrigger_mode: LfoRetriggerMode::FreeRunning,
+            loop_mode: LfoLoopMode::Loop,
             loop_start: 0.0,
-            loop_end: 0.999,
+            loop_end: 1.0,
+            active: true,
+            phase: 0.0,
             direction: 1.0,
+            last_gate: 0.0,   // Initialize gate as low
+            is_running: true, // Start running in FreeRunning mode
+            oneshot_held_value: 0.0,
+            mod_scratch_add: vec![0.0; initial_capacity],
+            mod_scratch_mult: vec![1.0; initial_capacity],
+            gate_buffer: vec![0.0; initial_capacity],
+            scratch_freq_add: vec![0.0; initial_capacity],
+            scratch_freq_mult: vec![1.0; initial_capacity],
+            scratch_gain_add: vec![0.0; initial_capacity],
+            scratch_gain_mult: vec![1.0; initial_capacity],
         }
     }
 
-    /// Advances the phase for free‑running voices (even when inactive).
-    pub fn advance_phase_one_buffer(&mut self) {
-        let phase_increment = (self.frequency * 128.0) / self.sample_rate;
-        self.phase = (self.phase + phase_increment) % 1.0;
+    fn ensure_scratch_buffers(&mut self, size: usize) {
+        let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
+            if buf.len() < size {
+                buf.resize(size, default_val);
+            }
+        };
+        resize_if_needed(&mut self.mod_scratch_add, 0.0);
+        resize_if_needed(&mut self.mod_scratch_mult, 1.0);
+        resize_if_needed(&mut self.gate_buffer, 0.0);
+        resize_if_needed(&mut self.scratch_freq_add, 0.0);
+        resize_if_needed(&mut self.scratch_freq_mult, 1.0);
+        resize_if_needed(&mut self.scratch_gain_add, 0.0);
+        resize_if_needed(&mut self.scratch_gain_mult, 1.0);
     }
 
-    /// Advances the phase by the specified frequency.
-    fn advance_phase_with(&mut self, current_freq: f32) {
-        let phase_increment = current_freq / self.sample_rate;
-
-        if self.trigger_mode == LfoTriggerMode::Envelope {
-            if self.loop_mode == LfoLoopMode::PingPong {
-                if self.phase < self.loop_start {
-                    self.phase += phase_increment;
-                    if self.phase >= self.loop_end {
-                        self.phase = self.loop_end;
-                        self.direction = -1.0;
-                    }
-                    return;
-                } else {
-                    let new_phase = self.phase + phase_increment * self.direction;
-                    if new_phase >= self.loop_end {
-                        self.phase = self.loop_end;
-                        self.direction = -1.0;
-                    } else if new_phase <= self.loop_start {
-                        self.phase = self.loop_start;
-                        self.direction = 1.0;
-                    } else {
-                        self.phase = new_phase;
-                    }
-                    return;
-                }
-            } else {
-                self.phase += phase_increment;
-                if self.loop_mode == LfoLoopMode::Loop && self.phase >= self.loop_end {
-                    self.phase = self.loop_start + (self.phase - self.loop_end);
-                } else {
-                    self.phase %= 1.0;
-                }
-                return;
-            }
-        }
-
-        match self.loop_mode {
-            LfoLoopMode::Off => {
-                self.phase = (self.phase + phase_increment) % 1.0;
-            }
-            LfoLoopMode::Loop => {
-                self.phase += phase_increment;
-                if self.phase >= self.loop_end {
-                    self.phase = self.loop_start + (self.phase - self.loop_end);
-                }
-            }
-            LfoLoopMode::PingPong => {
-                let new_phase = self.phase + phase_increment * self.direction;
-                if new_phase >= self.loop_end {
-                    self.phase = self.loop_end;
-                    self.direction = -1.0;
-                } else if new_phase <= self.loop_start {
-                    self.phase = self.loop_start;
-                    self.direction = 1.0;
-                } else {
-                    self.phase = new_phase;
-                }
-            }
-        }
-    }
-
+    // --- Parameter Setters ---
     pub fn set_gain(&mut self, gain: f32) {
-        self.gain = gain;
+        self.base_gain = gain.max(0.0);
     }
-
     pub fn set_frequency(&mut self, freq: f32) {
-        self.frequency = freq.max(0.0);
+        self.base_frequency = freq.max(0.0);
     }
-
     pub fn set_waveform(&mut self, waveform: LfoWaveform) {
         self.waveform = waveform;
     }
-
     pub fn set_phase_offset(&mut self, offset: f32) {
         self.phase_offset = offset;
     }
-
     pub fn set_use_absolute(&mut self, use_absolute: bool) {
         self.use_absolute = use_absolute;
     }
-
     pub fn set_use_normalized(&mut self, use_normalized: bool) {
         self.use_normalized = use_normalized;
     }
 
-    pub fn set_trigger_mode(&mut self, mode: LfoTriggerMode) {
-        self.trigger_mode = mode;
-        self.reset();
+    pub fn set_retrigger_mode(&mut self, mode: LfoRetriggerMode) {
+        if mode != self.retrigger_mode {
+            self.retrigger_mode = mode;
+            self.reset_state_for_mode(self.last_gate > 0.0); // Pass current gate state
+        }
     }
 
     pub fn set_loop_mode(&mut self, loop_mode: LfoLoopMode) {
-        self.loop_mode = loop_mode;
+        if loop_mode != self.loop_mode {
+            self.loop_mode = loop_mode;
+            if loop_mode != LfoLoopMode::PingPong {
+                self.direction = 1.0;
+            }
+            // Optionally reset phase when loop mode changes? Depends on desired behavior.
+            // self.reset_state_for_mode(self.last_gate > 0.0);
+        }
     }
-
     pub fn set_loop_start(&mut self, start: f32) {
-        self.loop_start = start.clamp(0.0, 1.0);
-        if self.loop_end < self.loop_start {
-            self.loop_end = self.loop_start;
-        }
+        self.loop_start = start.clamp(0.0, 1.0).min(self.loop_end);
+        // Clamp current phase if it falls outside new range
+        self.phase = self.phase.clamp(self.loop_start, self.loop_end);
     }
-
     pub fn set_loop_end(&mut self, end: f32) {
-        self.loop_end = end.clamp(0.0, 0.999);
-        if self.loop_end < self.loop_start {
-            self.loop_start = self.loop_end;
-        }
+        self.loop_end = end.clamp(self.loop_start, 1.0); // Ensure end >= start
+                                                         // Clamp current phase if it falls outside new range
+        self.phase = self.phase.clamp(self.loop_start, self.loop_end);
     }
 
-    /// Returns a sample and advances the phase.
-    /// This version wraps the phase (used in free‑running and envelope modes).
-    fn get_sample(&mut self, current_freq: f32) -> f32 {
-        let tables = LFO_TABLES.get().unwrap();
-        let table = tables.get_table(self.waveform);
+    /// Internal state reset logic. Sets phase, direction, and initial running state.
+    /// `should_run_now` indicates if the LFO should start in a running state immediately
+    /// (e.g., for FreeRunning, or if gate is high for Retrigger/OneShot).
+    fn reset_state_for_mode(&mut self, should_run_now: bool) {
+        self.phase = self.loop_start;
+        self.direction = 1.0;
+        self.is_running = match self.retrigger_mode {
+            // FreeRunning always starts (or continues) running
+            LfoRetriggerMode::FreeRunning => true,
+            // Retrigger/OneShot start running only if told to
+            LfoRetriggerMode::Retrigger | LfoRetriggerMode::OneShot => should_run_now,
+        };
+        // Resetting oneshot_held_value on any reset seems reasonable
+        self.oneshot_held_value = 0.0;
+    }
 
-        // Use waveform-specific normalized phase offset if requested.
+    #[inline(always)]
+    fn lookup_sample_at_phase(&self, phase_value: f32) -> f32 {
+        // ... (lookup_sample_at_phase remains the same) ...
+        let tables = LFO_TABLES.get().expect("LFO tables not initialized");
+        let table = tables.get_table(self.waveform);
         let extra_phase = if self.use_normalized {
             self.waveform.normalized_phase_offset()
         } else {
             0.0
         };
-        let effective_phase = (self.phase + self.phase_offset + extra_phase).rem_euclid(1.0);
-        let table_index = effective_phase * TABLE_SIZE as f32;
-        let index1 = (table_index as usize) & TABLE_MASK;
+        let effective_phase = (phase_value + self.phase_offset + extra_phase).rem_euclid(1.0);
+        let table_index_f = effective_phase * TABLE_SIZE_F32;
+        let index1 = (table_index_f as usize) & TABLE_MASK;
         let index2 = (index1 + 1) & TABLE_MASK;
-        let fraction = table_index - table_index.floor();
-
-        let mut sample = table[index1] + (table[index2] - table[index1]) * fraction;
+        let fraction = table_index_f - table_index_f.floor();
+        let sample1 = table[index1];
+        let sample2 = table[index2];
+        let mut sample = sample1 + (sample2 - sample1) * fraction;
         if self.use_absolute {
             sample = sample.abs();
         }
         if self.use_normalized {
             sample = (sample + 1.0) * 0.5;
         }
-
-        self.advance_phase_with(current_freq);
         sample
     }
 
-    /// In OneShot mode, the LFO runs from phase 0 to 1 once.
-    /// Once 1.0 is reached, the final sample is stored and held.
-    fn get_sample_one_shot(&mut self, current_freq: f32) -> f32 {
-        if let Some(final_sample) = self.oneshot_final_sample {
-            return final_sample;
-        }
-        let phase_increment = current_freq / self.sample_rate;
-        let tables = LFO_TABLES.get().unwrap();
-        let table = tables.get_table(self.waveform);
-        let extra_phase = if self.use_normalized {
-            self.waveform.normalized_phase_offset()
-        } else {
-            0.0
-        };
-        let effective_phase = (self.phase + self.phase_offset + extra_phase).rem_euclid(1.0);
-        let table_index = effective_phase * ((TABLE_SIZE - 1) as f32);
-        let index1 = table_index.floor() as usize;
-        let index2 = if index1 + 1 < TABLE_SIZE {
-            index1 + 1
-        } else {
-            index1
-        };
-        let fraction = table_index - table_index.floor();
+    /// Advances phase for one sample based on mode. Manages `is_running` for OneShot.
+    #[inline(always)]
+    fn internal_advance_phase(&mut self, phase_increment: f32) {
+        if !self.is_running {
+            return;
+        } // Don't advance if stopped
 
-        let mut sample = table[index1] + (table[index2] - table[index1]) * fraction;
-        if self.use_absolute {
-            sample = sample.abs();
+        match self.loop_mode {
+            LfoLoopMode::Off => {
+                // Only advance if running (relevant for OneShot)
+                self.phase += phase_increment * self.direction; // Direction should be 1.0
+                if self.phase >= self.loop_end {
+                    self.phase = self.loop_end; // Clamp at end
+                    self.is_running = false; // Stop running
+                    self.oneshot_held_value = self.lookup_sample_at_phase(self.phase);
+                    // Store final value
+                }
+            }
+            LfoLoopMode::Loop => {
+                self.phase += phase_increment * self.direction;
+                let loop_width = (self.loop_end - self.loop_start).max(1e-9);
+                if self.phase >= self.loop_end {
+                    let overflow = self.phase - self.loop_end;
+                    self.phase = self.loop_start + overflow % loop_width;
+                } else if self.phase < self.loop_start {
+                    let underflow = self.loop_start - self.phase;
+                    self.phase = self.loop_end - underflow % loop_width;
+                }
+            }
+            LfoLoopMode::PingPong => {
+                self.phase += phase_increment * self.direction;
+                if self.direction > 0.0 && self.phase >= self.loop_end {
+                    self.phase = self.loop_end - (self.phase - self.loop_end);
+                    self.direction = -1.0;
+                } else if self.direction < 0.0 && self.phase <= self.loop_start {
+                    self.phase = self.loop_start + (self.loop_start - self.phase);
+                    self.direction = 1.0;
+                }
+                self.phase = self.phase.clamp(self.loop_start, self.loop_end);
+            }
         }
-        if self.use_normalized {
-            sample = (sample + 1.0) * 0.5;
-        }
-
-        self.phase = (self.phase + phase_increment).min(1.0);
-        if self.phase >= 1.0 {
-            self.oneshot_final_sample = Some(sample);
-        }
-        sample
     }
 
-    /// Returns waveform data as a vector of samples using SIMD processing.
-    /// Now takes use_absolute and use_normalized into account.
+    /// Public method to advance phase for a buffer when inactive (FreeRunning only).
+    pub fn advance_phase_for_buffer(&mut self, buffer_size: usize) {
+        if self.retrigger_mode != LfoRetriggerMode::FreeRunning || !self.is_running {
+            return;
+        }
+        // Use base frequency - modulation isn't available here
+        let total_phase_increment = (self.base_frequency * buffer_size as f32) / self.sample_rate;
+
+        // --- Simulate advancement using loop logic (approximated) ---
+        match self.loop_mode {
+            LfoLoopMode::Off => { /* Should not be running if Off and FreeRunning? Logic error? Ignore for now. */
+            }
+            LfoLoopMode::Loop => {
+                let loop_width = (self.loop_end - self.loop_start).max(1e-9);
+                self.phase = self.loop_start
+                    + (self.phase - self.loop_start + total_phase_increment * self.direction)
+                        .rem_euclid(loop_width);
+            }
+            LfoLoopMode::PingPong => {
+                let loop_width = (self.loop_end - self.loop_start).max(1e-9);
+                let num_half_cycles = (total_phase_increment / loop_width).floor();
+                let remainder_inc = total_phase_increment.rem_euclid(loop_width);
+
+                if num_half_cycles % 2.0 != 0.0 {
+                    self.direction *= -1.0;
+                }
+
+                let effective_start_phase = if self.direction > 0.0 {
+                    self.loop_start
+                } else {
+                    self.loop_end
+                };
+                self.phase = effective_start_phase + remainder_inc * self.direction;
+
+                if self.direction > 0.0 && self.phase >= self.loop_end {
+                    self.phase = self.loop_end - (self.phase - self.loop_end);
+                    self.direction = -1.0;
+                } else if self.direction < 0.0 && self.phase <= self.loop_start {
+                    self.phase = self.loop_start + (self.loop_start - self.phase);
+                    self.direction = 1.0;
+                }
+                self.phase = self.phase.clamp(self.loop_start, self.loop_end);
+            }
+        }
+    }
+
     pub fn get_waveform_data(
         waveform: LfoWaveform,
         phase_offset: f32,
-        frequency: f32, // Interpreted as cycles per buffer.
+        cycles_per_buffer: f32, // Frequency interpretation for visualization
         buffer_size: usize,
         use_absolute: bool,
         use_normalized: bool,
     ) -> Vec<f32> {
+        // Ensure tables are initialized
         let tables = LFO_TABLES.get_or_init(LfoTables::new);
         let table = tables.get_table(waveform);
         let mut buffer = vec![0.0; buffer_size];
-        // For visualization, each sample represents a fraction of the cycle.
-        // frequency cycles will be shown over the buffer.
-        let phase_increment = frequency / (buffer_size as f32);
-        let mut phase = 0.0;
-        let table_size_f = TABLE_SIZE as f32;
-        let mut i = 0;
+        if buffer_size == 0 {
+            return buffer;
+        } // Handle zero size
 
-        // SIMD loop for processing 4 samples at a time.
-        while i + 4 <= buffer_size {
-            let phases = f32x4::from_array([
-                phase,
-                phase + phase_increment,
-                phase + 2.0 * phase_increment,
-                phase + 3.0 * phase_increment,
-            ]);
-            let extra_phase = if use_normalized {
-                waveform.normalized_phase_offset()
-            } else {
-                0.0
-            };
-            let effective_phases = (phases + f32x4::splat(phase_offset + extra_phase))
-                - (phases + f32x4::splat(phase_offset + extra_phase)).floor();
-            let table_indices = effective_phases * f32x4::splat(table_size_f);
-            let index_f = table_indices.floor();
-            let fraction = table_indices - index_f;
-            let i0 = (index_f[0] as usize) & TABLE_MASK;
-            let i1 = (index_f[1] as usize) & TABLE_MASK;
-            let i2 = (index_f[2] as usize) & TABLE_MASK;
-            let i3 = (index_f[3] as usize) & TABLE_MASK;
-            let i0_next = (i0 + 1) & TABLE_MASK;
-            let i1_next = (i1 + 1) & TABLE_MASK;
-            let i2_next = (i2 + 1) & TABLE_MASK;
-            let i3_next = (i3 + 1) & TABLE_MASK;
+        // Calculate phase increment per sample for visualization
+        let phase_increment = cycles_per_buffer / (buffer_size as f32);
+        let mut current_phase = 0.0;
 
-            let mut sample0 = table[i0] + (table[i0_next] - table[i0]) * fraction[0];
-            let mut sample1 = table[i1] + (table[i1_next] - table[i1]) * fraction[1];
-            let mut sample2 = table[i2] + (table[i2_next] - table[i2]) * fraction[2];
-            let mut sample3 = table[i3] + (table[i3_next] - table[i3]) * fraction[3];
+        let extra_phase_offset = if use_normalized {
+            waveform.normalized_phase_offset()
+        } else {
+            0.0
+        } + phase_offset;
 
-            if use_absolute {
-                sample0 = sample0.abs();
-                sample1 = sample1.abs();
-                sample2 = sample2.abs();
-                sample3 = sample3.abs();
-            }
+        // Could use SIMD here as in original, but scalar is simpler for clarity
+        for i in 0..buffer_size {
+            let effective_phase = (current_phase + extra_phase_offset).rem_euclid(1.0);
+            let table_index_f = effective_phase * TABLE_SIZE_F32;
+            let index1 = (table_index_f as usize) & TABLE_MASK;
+            let index2 = (index1 + 1) & TABLE_MASK;
+            let fraction = table_index_f - table_index_f.floor();
 
-            if use_normalized {
-                sample0 = (sample0 + 1.0) * 0.5;
-                sample1 = (sample1 + 1.0) * 0.5;
-                sample2 = (sample2 + 1.0) * 0.5;
-                sample3 = (sample3 + 1.0) * 0.5;
-            }
-
-            buffer[i] = sample0;
-            buffer[i + 1] = sample1;
-            buffer[i + 2] = sample2;
-            buffer[i + 3] = sample3;
-
-            phase += 4.0 * phase_increment;
-            if phase >= 1.0 {
-                phase -= 1.0;
-            }
-            i += 4;
-        }
-
-        // Process any remaining samples using scalar code.
-        while i < buffer_size {
-            let extra_phase = if use_normalized {
-                waveform.normalized_phase_offset()
-            } else {
-                0.0
-            };
-            let effective_phase = (phase + phase_offset + extra_phase).rem_euclid(1.0);
-            let table_index = effective_phase * table_size_f;
-            let index = (table_index as usize) & TABLE_MASK;
-            let index_next = (index + 1) & TABLE_MASK;
-            let fraction = table_index - table_index.floor();
-
-            let mut sample = table[index] + (table[index_next] - table[index]) * fraction;
+            let sample1 = table[index1];
+            let sample2 = table[index2];
+            let mut sample = sample1 + (sample2 - sample1) * fraction;
 
             if use_absolute {
                 sample = sample.abs();
@@ -449,32 +408,29 @@ impl Lfo {
             }
 
             buffer[i] = sample;
-            phase += phase_increment;
-            if phase >= 1.0 {
-                phase -= 1.0;
-            }
-            i += 1;
+
+            current_phase += phase_increment;
+            // No need to wrap current_phase here, rem_euclid handles it
         }
         buffer
     }
-}
+} // End impl Lfo
 
-//
-// === ModulationProcessor Implementation ===
-//
+// --- ModulationProcessor Implementation ---
 impl ModulationProcessor for Lfo {}
 
-//
-// === AudioNode Implementation ===
-//
+// --- AudioNode Implementation ---
 impl AudioNode for Lfo {
     fn get_ports(&self) -> HashMap<PortId, bool> {
-        let mut ports = HashMap::new();
-        ports.insert(PortId::FrequencyMod, false);
-        ports.insert(PortId::CombinedGate, false);
-        ports.insert(PortId::GainMod, false);
-        ports.insert(PortId::AudioOutput0, true);
-        ports
+        [
+            (PortId::FrequencyMod, false), // Modulation for frequency
+            (PortId::GainMod, false),      // Modulation for output gain/amplitude
+            (PortId::CombinedGate, false), // Gate input for retriggering/one-shot
+            (PortId::AudioOutput0, true),  // LFO output signal
+        ]
+        .iter()
+        .cloned()
+        .collect()
     }
 
     fn process(
@@ -483,81 +439,193 @@ impl AudioNode for Lfo {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        let freq_mod =
-            self.process_modulations(buffer_size, inputs.get(&PortId::FrequencyMod), 1.0);
-        let gate_mod =
-            self.process_modulations(buffer_size, inputs.get(&PortId::CombinedGate), 0.0);
-        let gain_mod = self.process_modulations(buffer_size, inputs.get(&PortId::GainMod), 1.0);
+        // --- 0) Early exit and Buffer Preparation ---
+        if !self.active {
+            if let Some(output_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
+                output_buffer[..buffer_size].fill(0.0);
+            }
+            if self.retrigger_mode == LfoRetriggerMode::FreeRunning {
+                // Ensure free-running LFOs advance phase even when node is inactive
+                self.advance_phase_for_buffer(buffer_size);
+            }
+            return;
+        }
+        self.ensure_scratch_buffers(buffer_size);
+        let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
+            Some(buffer) => buffer,
+            None => return,
+        };
 
-        if let Some(output) = outputs.get_mut(&PortId::AudioOutput0) {
-            if self.trigger_mode == LfoTriggerMode::None {
-                for i in 0..buffer_size {
-                    let effective_freq = self.frequency * freq_mod[i];
-                    let sample = self.get_sample(effective_freq);
-                    let effective_gain = self.gain * gain_mod[i];
-                    output[i] = sample * effective_gain;
-                }
-            } else if self.trigger_mode == LfoTriggerMode::Envelope {
-                for i in 0..buffer_size {
-                    if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
-                        self.reset();
-                    }
-                    self.last_gate = gate_mod[i];
-                    let effective_freq = self.frequency * freq_mod[i];
-                    let sample = self.get_sample(effective_freq);
-                    let effective_gain = self.gain * gain_mod[i];
-                    output[i] = sample * effective_gain;
-                }
-            } else if self.trigger_mode == LfoTriggerMode::OneShot {
-                for i in 0..buffer_size {
-                    if gate_mod[i] > 0.0 && self.last_gate <= 0.0 {
-                        self.reset();
-                    }
-                    self.last_gate = gate_mod[i];
-                    let effective_freq = self.frequency * freq_mod[i];
-                    let effective_gain = self.gain * gain_mod[i];
-                    let sample = self.get_sample_one_shot(effective_freq);
-                    output[i] = sample * effective_gain;
-                }
+        // --- 1) Process Modulation Inputs ---
+        // ... (gate, freq, gain modulation processing unchanged) ...
+        self.gate_buffer[..buffer_size].fill(0.0);
+        if let Some(gate_sources) = inputs.get(&PortId::CombinedGate) {
+            for source in gate_sources {
+                Self::apply_add(
+                    &source.buffer,
+                    &mut self.gate_buffer[..buffer_size],
+                    source.amount,
+                    source.transformation,
+                );
             }
         }
-    }
+        let mut process_mod_input = |port_id: PortId,
+                                     target_add: &mut [f32],
+                                     target_mult: &mut [f32],
+                                     default_add: f32,
+                                     default_mult: f32| {
+            let sources = inputs.get(&port_id);
+            if sources.map_or(false, |s| !s.is_empty()) {
+                Self::accumulate_modulations_inplace(
+                    buffer_size,
+                    sources.map(|v| v.as_slice()),
+                    &mut self.mod_scratch_add,
+                    &mut self.mod_scratch_mult,
+                );
+                target_add[..buffer_size].copy_from_slice(&self.mod_scratch_add[..buffer_size]);
+                target_mult[..buffer_size].copy_from_slice(&self.mod_scratch_mult[..buffer_size]);
+            } else {
+                target_add[..buffer_size].fill(default_add);
+                target_mult[..buffer_size].fill(default_mult);
+            }
+        };
+        process_mod_input(
+            PortId::FrequencyMod,
+            &mut self.scratch_freq_add,
+            &mut self.scratch_freq_mult,
+            0.0,
+            1.0,
+        );
+        process_mod_input(
+            PortId::GainMod,
+            &mut self.scratch_gain_add,
+            &mut self.scratch_gain_mult,
+            0.0,
+            1.0,
+        );
 
+        // --- 2) Main Processing Loop (Sample by Sample) ---
+        for i in 0..buffer_size {
+            // --- Handle Gate Input & Retriggering ---
+            let current_gate = self.gate_buffer[i];
+            let is_gate_high = current_gate > 0.0;
+            let rising_edge = is_gate_high && self.last_gate <= 0.0;
+
+            if rising_edge {
+                match self.retrigger_mode {
+                    LfoRetriggerMode::Retrigger | LfoRetriggerMode::OneShot => {
+                        self.phase = self.loop_start;
+                        self.direction = 1.0;
+                        self.is_running = true; // Start/Restart running on rising edge
+                        self.oneshot_held_value = 0.0; // Clear potential held value on new trigger
+                    }
+                    LfoRetriggerMode::FreeRunning => {} // No action needed
+                }
+            }
+            // Update last_gate for next sample's edge detection
+            self.last_gate = current_gate;
+
+            // --- Determine if LFO should run *this sample* ---
+            // This check combines activation state and gate state for relevant modes
+            let run_this_sample = match self.retrigger_mode {
+                LfoRetriggerMode::FreeRunning => true, // Always runs if active
+                LfoRetriggerMode::Retrigger => is_gate_high, // Runs only if gate is high
+                LfoRetriggerMode::OneShot => self.is_running, // Runs if flag is set (until completion)
+            };
+
+            // --- Calculate Per-Sample Parameters ---
+            let current_freq =
+                (self.base_frequency + self.scratch_freq_add[i]) * self.scratch_freq_mult[i];
+            let current_gain =
+                (self.base_gain + self.scratch_gain_add[i]) * self.scratch_gain_mult[i];
+
+            // --- Calculate Output Sample ---
+            let output_sample = if run_this_sample {
+                let value = self.lookup_sample_at_phase(self.phase);
+                // Advance phase if we are supposed to be running
+                let phase_increment = (current_freq / self.sample_rate).max(0.0);
+                self.internal_advance_phase(phase_increment);
+                value
+            } else {
+                // Not running this sample
+                if self.retrigger_mode == LfoRetriggerMode::OneShot && !self.is_running {
+                    // OneShot finished, hold value
+                    self.oneshot_held_value
+                } else {
+                    // Retrigger mode when gate is low, or other stopped states
+                    // Output value at loop_start
+                    self.lookup_sample_at_phase(self.loop_start)
+                }
+            };
+
+            // Apply final gain and write to output
+            output_buffer[i] = output_sample * current_gain.max(0.0);
+        }
+    } // End process
+
+    // --- reset and other trait methods ---
+    fn reset(&mut self) {
+        // Reset state based on mode, assume gate is low initially
+        self.reset_state_for_mode(false);
+        self.last_gate = 0.0;
+    }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
-
     fn is_active(&self) -> bool {
         self.active
     }
-
     fn set_active(&mut self, active: bool) {
-        self.active = active;
-    }
-
-    fn should_process(&self) -> bool {
-        self.active
-    }
-
-    /// Resets the LFO phase.
-    /// In OneShot mode, also clears the stored final sample.
-    fn reset(&mut self) {
-        if self.trigger_mode == LfoTriggerMode::Envelope {
-            self.phase = 0.0;
-        } else if self.loop_mode != LfoLoopMode::Off {
-            self.phase = self.loop_start;
-        } else {
-            self.phase = 0.0;
+        if active == self.active {
+            return; // No change
         }
-        self.direction = 1.0;
-        self.oneshot_final_sample = None;
-    }
+        self.active = active;
 
+        if active {
+            // --- LFO is becoming ACTIVE ---
+            // We need to ensure `is_running` is correctly set.
+            // Option 1: Always restart based on mode (simplest)
+            // self.reset_state_for_mode(self.last_gate > 0.0); // Reset based on *last known* gate
+
+            // Option 2: More robust - set running based on mode only, let `process` handle gate state
+            self.is_running = match self.retrigger_mode {
+                LfoRetriggerMode::FreeRunning => true, // FreeRunning should always run if active
+                LfoRetriggerMode::Retrigger => self.last_gate > 0.0, // Start running only if gate was high
+                LfoRetriggerMode::OneShot => {
+                    // If OneShot was already finished, activating shouldn't restart it without a new trigger.
+                    // If it wasn't finished, it should continue.
+                    // This logic is tricky. Let's reset based on last known gate, assuming activation
+                    // should behave like a trigger if gate is high.
+                    if self.last_gate > 0.0 {
+                        // Treat activation like a trigger if gate is high
+                        self.phase = self.loop_start;
+                        self.direction = 1.0;
+                        true // Start running
+                    } else {
+                        // Gate is low, remain stopped until next trigger
+                        false
+                    }
+                }
+            };
+            // Don't reset phase here unless explicitly desired when activating while gate high.
+            // The logic above restarts OneShot/Retrigger if gate was high.
+        } else {
+            // --- LFO is becoming INACTIVE ---
+            // No state change needed usually, `process` handles the early exit.
+            // `advance_phase_for_buffer` will handle FreeRunning.
+            // We could optionally reset phase here if desired when stopping.
+            // self.reset();
+        }
+    }
+    // fn reset(&mut self) {
+    //     // Reset state based on mode, assume gate is low initially for a full reset
+    //     self.reset_state_for_mode(false); // Pass false, requires trigger to start if not FreeRunning
+    //     self.last_gate = 0.0; // Reset gate memory
+    // }
     fn node_type(&self) -> &str {
         "lfo"
     }
-}
+} // End impl AudioNode for Lfo

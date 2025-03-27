@@ -3,15 +3,27 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::simd::StdFloat;
 
-use crate::graph::{ModulationProcessor, ModulationSource};
+// Import necessary types
+use crate::graph::{
+    ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
+};
 use crate::{AudioNode, PortId};
 
-/// GlobalFrequencyNode encapsulates the s‑rate frequency buffer and applies a detune factor.
+/// GlobalFrequencyNode encapsulates the base frequency buffer and applies a detune factor.
+/// The base frequency can be updated externally.
 /// The detune parameter (in cents) is modulated via the PortId::DetuneMod input.
+/// Additive modulation on DetuneMod is interpreted in *semitones*.
 pub struct GlobalFrequencyNode {
     base_frequency: Vec<f32>,
     /// Base detune value in cents.
     detune: f32,
+
+    // === Scratch Buffers ===
+    mod_scratch_add: Vec<f32>,
+    mod_scratch_mult: Vec<f32>,
+    // Final modulation results per sample
+    scratch_detune_add_semitones: Vec<f32>,
+    scratch_detune_mult: Vec<f32>,
 }
 
 impl GlobalFrequencyNode {
@@ -20,7 +32,32 @@ impl GlobalFrequencyNode {
         Self {
             base_frequency: vec![initial_freq; buffer_size],
             detune: 0.0,
+            // Initialize scratch buffers
+            mod_scratch_add: vec![0.0; buffer_size],
+            mod_scratch_mult: vec![1.0; buffer_size],
+            scratch_detune_add_semitones: vec![0.0; buffer_size],
+            scratch_detune_mult: vec![1.0; buffer_size],
         }
+    }
+
+    /// Ensure all scratch buffers have at least `size` capacity.
+    fn ensure_scratch_buffers(&mut self, size: usize) {
+        let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
+            if buf.len() < size {
+                buf.resize(size, default_val);
+            }
+        };
+        // Check base frequency buffer size as well
+        if self.base_frequency.len() < size {
+            // If resizing base_frequency, decide how to fill new elements (e.g., last value)
+            let last_val = self.base_frequency.last().cloned().unwrap_or(440.0);
+            self.base_frequency.resize(size, last_val);
+        }
+
+        resize_if_needed(&mut self.mod_scratch_add, 0.0);
+        resize_if_needed(&mut self.mod_scratch_mult, 1.0);
+        resize_if_needed(&mut self.scratch_detune_add_semitones, 0.0);
+        resize_if_needed(&mut self.scratch_detune_mult, 1.0);
     }
 
     /// Sets the base (static) detune parameter in cents.
@@ -28,26 +65,38 @@ impl GlobalFrequencyNode {
         self.detune = detune;
     }
 
-    /// Updates the base frequency buffer (for example, from host automation).
+    /// Updates the base frequency buffer (e.g., from host).
     pub fn set_base_frequency(&mut self, freq: &[f32]) {
+        let current_len = self.base_frequency.len();
+        if freq.is_empty() {
+            // Maybe log a warning or keep current values? For now, do nothing.
+            return;
+        }
+
         if freq.len() == 1 {
+            // Fill entire buffer with the single value
             self.base_frequency.fill(freq[0]);
-        } else if freq.len() == self.base_frequency.len() {
-            self.base_frequency.copy_from_slice(freq);
+        } else if freq.len() >= current_len {
+            // If input is same size or larger, copy the relevant part
+            self.base_frequency.copy_from_slice(&freq[..current_len]);
         } else {
-            self.base_frequency.fill(freq[0]);
+            // If input is smaller, copy what's provided and fill rest with last value
+            self.base_frequency[..freq.len()].copy_from_slice(freq);
+            let last_val = freq[freq.len() - 1];
+            self.base_frequency[freq.len()..].fill(last_val);
         }
     }
 }
 
 impl AudioNode for GlobalFrequencyNode {
     fn get_ports(&self) -> HashMap<PortId, bool> {
-        let mut ports = HashMap::new();
-        // This node outputs the global frequency signal.
-        ports.insert(PortId::GlobalFrequency, true);
-        // And it accepts modulation on its detune parameter.
-        ports.insert(PortId::DetuneMod, false);
-        ports
+        [
+            (PortId::GlobalFrequency, true), // Output: The calculated frequency signal
+            (PortId::DetuneMod, false),      // Input: Modulation for detune (additive in semitones)
+        ]
+        .iter()
+        .cloned()
+        .collect()
     }
 
     fn process(
@@ -56,67 +105,89 @@ impl AudioNode for GlobalFrequencyNode {
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        let output = outputs
-            .get_mut(&PortId::GlobalFrequency)
-            .expect("Expected GlobalFrequency output port");
+        // --- 0) Buffer Prep ---
+        self.ensure_scratch_buffers(buffer_size);
 
-        // If no detune modulation is present, use the SIMD‑optimized branch.
-        if inputs.get(&PortId::DetuneMod).is_none() {
-            // The static detune is in cents.
-            let detune_factor = 2.0_f32.powf(self.detune / 1200.0);
-            const LANES: usize = 4;
-            type Vf32 = Simd<f32, LANES>;
-            let factor = Vf32::splat(detune_factor);
+        let output = match outputs.get_mut(&PortId::GlobalFrequency) {
+            Some(buf) => buf,
+            None => return, // No output requested
+        };
 
-            let mut i = 0;
-            while i + LANES <= buffer_size {
-                let freqs = Vf32::from_slice(&self.base_frequency[i..i + LANES]);
-                let result = freqs * factor;
-                output[i..i + LANES].copy_from_slice(&result.to_array());
-                i += LANES;
-            }
-            for j in i..buffer_size {
-                output[j] = self.base_frequency[j] * detune_factor;
-            }
+        // --- 1) Process Detune Modulation ---
+        let detune_mod_sources = inputs.get(&PortId::DetuneMod);
+        if detune_mod_sources.map_or(false, |s| !s.is_empty()) {
+            // Accumulate modulation into shared scratch buffers
+            Self::accumulate_modulations_inplace(
+                buffer_size,
+                detune_mod_sources.map(|v| v.as_slice()),
+                &mut self.mod_scratch_add, // Holds additive part (semitones)
+                &mut self.mod_scratch_mult, // Holds multiplicative part (factor)
+            );
+            // Copy results to dedicated scratch buffers. No base value combination needed here,
+            // as the modulation inputs start from 0 (add) and 1 (mult).
+            self.scratch_detune_add_semitones[..buffer_size]
+                .copy_from_slice(&self.mod_scratch_add[..buffer_size]);
+            self.scratch_detune_mult[..buffer_size]
+                .copy_from_slice(&self.mod_scratch_mult[..buffer_size]);
         } else {
-            // When modulation is present, process both additive and multiplicative modulations.
-            // The additive modulation is now in semitones.
-            let mod_result =
-                self.process_modulations_ex(buffer_size, inputs.get(&PortId::DetuneMod));
-            const LANES: usize = 4;
-            type Vf32 = Simd<f32, LANES>;
+            // No modulation, set defaults
+            self.scratch_detune_add_semitones[..buffer_size].fill(0.0);
+            self.scratch_detune_mult[..buffer_size].fill(1.0);
+        }
 
-            let mut i = 0;
-            while i + LANES <= buffer_size {
-                let additive = Vf32::from_slice(&mod_result.additive[i..i + LANES]);
-                let multiplicative = Vf32::from_slice(&mod_result.multiplicative[i..i + LANES]);
-                let base_freq = Vf32::from_slice(&self.base_frequency[i..i + LANES]);
-                let static_detune = Vf32::splat(self.detune);
+        // --- 2) Calculate Output Frequency (SIMD) ---
+        const LANES: usize = 4; // Use f32x4
+        type Vf32 = Simd<f32, LANES>;
 
-                // Convert additive (semitones) to cents by multiplying by 100.
-                let additive_in_cents = additive * Vf32::splat(100.0);
-                // Effective detune (in cents) is the static detune plus the additive modulation (converted to cents).
-                let effective_detune = static_detune + additive_in_cents;
-                // Convert effective detune (cents) to a scaling factor: factor = 2^(cents/1200)
-                let exp_arg = effective_detune / Vf32::splat(1200.0);
-                let detune_factor = exp_arg.exp2();
-                let final_factor = detune_factor * multiplicative;
-                let result = base_freq * final_factor;
-                output[i..i + LANES].copy_from_slice(&result.to_array());
-                i += LANES;
-            }
-            for j in i..buffer_size {
-                // Convert additive (semitones) to cents.
-                let additive_in_cents = mod_result.additive[j] * 100.0;
-                let effective_detune = self.detune + additive_in_cents;
-                let detune_factor = 2.0_f32.powf(effective_detune / 1200.0);
-                output[j] = self.base_frequency[j] * detune_factor * mod_result.multiplicative[j];
-            }
+        // Pre-splat constants
+        let static_detune_cents_simd = Vf32::splat(self.detune);
+        let cents_per_semitone_simd = Vf32::splat(100.0);
+        let inv_cents_per_octave_simd = Vf32::splat(1.0 / 1200.0);
+
+        let chunks = buffer_size / LANES;
+        for i in 0..chunks {
+            let offset = i * LANES;
+
+            // Load base frequency and modulation values for the chunk
+            let base_freq_simd = Vf32::from_slice(&self.base_frequency[offset..offset + LANES]);
+            let mod_add_semitones_simd =
+                Vf32::from_slice(&self.scratch_detune_add_semitones[offset..offset + LANES]);
+            let mod_mult_simd = Vf32::from_slice(&self.scratch_detune_mult[offset..offset + LANES]);
+
+            // Calculate total detune in cents
+            let mod_add_cents_simd = mod_add_semitones_simd * cents_per_semitone_simd;
+            let total_detune_cents_simd = static_detune_cents_simd + mod_add_cents_simd;
+
+            // Calculate detune factor: 2^(total_cents / 1200)
+            let exp_arg_simd = total_detune_cents_simd * inv_cents_per_octave_simd;
+            let detune_factor_simd = exp_arg_simd.exp2(); // Use SIMD exp2
+
+            // Apply factors
+            let final_factor_simd = detune_factor_simd * mod_mult_simd;
+            let result_simd = base_freq_simd * final_factor_simd;
+
+            // Store result
+            result_simd.copy_to_slice(&mut output[offset..offset + LANES]);
+        }
+
+        // --- 3) Scalar Remainder ---
+        let remainder_start = chunks * LANES;
+        for i in remainder_start..buffer_size {
+            let base_freq = self.base_frequency[i];
+            let mod_add_semitones = self.scratch_detune_add_semitones[i];
+            let mod_mult = self.scratch_detune_mult[i];
+
+            let total_detune_cents = self.detune + mod_add_semitones * 100.0;
+            let detune_factor = 2.0f32.powf(total_detune_cents / 1200.0);
+            let final_factor = detune_factor * mod_mult;
+
+            output[i] = base_freq * final_factor;
         }
     }
 
     fn reset(&mut self) {
-        // No dynamic state to reset.
+        // No dynamic state directly within this node (base_frequency is managed externally).
+        // Scratch buffers are overwritten each process call.
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -125,16 +196,20 @@ impl AudioNode for GlobalFrequencyNode {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
     fn is_active(&self) -> bool {
+        // This node is typically always active as it provides a fundamental signal.
         true
     }
+
     fn set_active(&mut self, _active: bool) {
-        // Always active.
+        // Activation state typically doesn't apply or is ignored.
     }
+
     fn node_type(&self) -> &str {
         "global_frequency"
     }
 }
 
-/// Implement the modulation trait so we can use process_modulations_ex.
+// Implement the modulation trait to use its helpers
 impl ModulationProcessor for GlobalFrequencyNode {}

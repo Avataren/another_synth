@@ -308,6 +308,14 @@ var ModulationTransformation = Object.freeze({
   Cube: 3,
   "3": "Cube"
 });
+var NoiseType = Object.freeze({
+  White: 0,
+  "0": "White",
+  Pink: 1,
+  "1": "Pink",
+  Brownian: 2,
+  "2": "Brownian"
+});
 var PortId = Object.freeze({
   AudioInput0: 0,
   "0": "AudioInput0",
@@ -1250,6 +1258,9 @@ var NodeId = class _NodeId {
     return _NodeId.__wrap(ret);
   }
 };
+var NoiseUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_noiseupdate_free(ptr >>> 0, 1));
 var NoiseUpdateParamsFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_noiseupdateparams_free(ptr >>> 0, 1));
@@ -1268,14 +1279,14 @@ var NoiseUpdateParams = class {
    * @returns {WasmNoiseType}
    */
   get noise_type() {
-    const ret = wasm.__wbg_get_noiseupdateparams_noise_type(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_noiseupdate_noise_type(this.__wbg_ptr);
     return ret;
   }
   /**
    * @param {WasmNoiseType} arg0
    */
   set noise_type(arg0) {
-    wasm.__wbg_set_noiseupdateparams_noise_type(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_noiseupdate_noise_type(this.__wbg_ptr, arg0);
   }
   /**
    * @returns {number}
@@ -1307,14 +1318,14 @@ var NoiseUpdateParams = class {
    * @returns {boolean}
    */
   get enabled() {
-    const ret = wasm.__wbg_get_noiseupdateparams_enabled(this.__wbg_ptr);
+    const ret = wasm.__wbg_get_noiseupdate_enabled(this.__wbg_ptr);
     return ret !== 0;
   }
   /**
    * @param {boolean} arg0
    */
   set enabled(arg0) {
-    wasm.__wbg_set_noiseupdateparams_enabled(this.__wbg_ptr, arg0);
+    wasm.__wbg_set_noiseupdate_enabled(this.__wbg_ptr, arg0);
   }
   /**
    * @param {WasmNoiseType} noise_type
@@ -1329,9 +1340,6 @@ var NoiseUpdateParams = class {
     return this;
   }
 };
-var OscillatorStateUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
-}, unregister: () => {
-} } : new FinalizationRegistry((ptr) => wasm.__wbg_oscillatorstateupdate_free(ptr >>> 0, 1));
 var WavetableOscillatorStateUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_wavetableoscillatorstateupdate_free(ptr >>> 0, 1));
@@ -2112,7 +2120,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   createNodesAndSetupConnections() {
     if (!this.audioEngine) throw new Error("Audio engine not initialized");
-    this.audioEngine.create_noise();
     const mixerId = this.audioEngine.create_mixer();
     console.log("#mixerID:", mixerId);
     const filterId = this.audioEngine.create_filter();
@@ -2237,6 +2244,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "arpeggiator_generator":
           type = "arpeggiator_generator" /* ArpeggiatorGenerator */;
+          break;
+        case "global_velocity":
+          type = "global_velocity" /* GlobalVelocity */;
           break;
         default:
           console.warn("##### Unknown node type:", rawNode.node_type);

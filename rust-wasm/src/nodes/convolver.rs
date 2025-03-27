@@ -241,12 +241,12 @@ impl AudioNode for Convolver {
             return;
         }
         // Process modulation sources to obtain audio input buffers.
-        let audio_in_l =
-            self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
-        let audio_in_r =
-            self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput1), 0.0);
-        let wet_mod =
-            self.process_modulations(buffer_size, inputs.get(&PortId::WetDryMix), self.wet_level);
+        let audio_in_l = &inputs.get(&PortId::AudioInput0).unwrap()[0].buffer;
+        //self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput0), 0.0);
+        let audio_in_r = &inputs.get(&PortId::AudioInput1).unwrap()[0].buffer;
+        //self.process_modulations(buffer_size, inputs.get(&PortId::AudioInput1), 0.0);
+        let wet_mod = &inputs.get(&PortId::WetDryMix).unwrap()[0].buffer;
+        //self.process_modulations(buffer_size, inputs.get(&PortId::WetDryMix), self.wet_level);
 
         let input_left: &[f32] = &audio_in_l;
         let input_right: &[f32] = &audio_in_r;
