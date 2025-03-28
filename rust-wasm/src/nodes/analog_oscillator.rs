@@ -1,30 +1,31 @@
+use rustfft::num_traits::Float;
 use std::any::Any;
 use std::collections::HashMap;
-use std::simd::{f32x4, Simd}; // Import Simd
+use std::f32::consts::{E, PI};
+use std::simd::{f32x4, Simd};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-// Import necessary items from modulation processor and graph types
 use crate::graph::{
     ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
 };
 use crate::{AudioNode, PortId};
 
-use super::{Waveform, Wavetable, WavetableBank}; // Assuming Wavetable struct exists
+use super::{Waveform, Wavetable, WavetableBank};
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy)]
 pub struct AnalogOscillatorStateUpdate {
     pub phase_mod_amount: f32,
-    pub detune: f32, // Base detune in cents
+    pub detune: f32, // Base detune offset in cents
     pub hard_sync: bool,
     pub gain: f32,
     pub active: bool,
     pub feedback_amount: f32,
     pub waveform: Waveform,
     pub unison_voices: u32,
-    pub spread: f32, // Spread in semitones
+    pub spread: f32, // Maximum total detuning width for unison voices, in cents
 }
 
 #[wasm_bindgen]
@@ -32,14 +33,14 @@ impl AnalogOscillatorStateUpdate {
     #[wasm_bindgen(constructor)]
     pub fn new(
         phase_mod_amount: f32,
-        detune: f32, // In cents
+        detune: f32,
         hard_sync: bool,
         gain: f32,
         active: bool,
         feedback_amount: f32,
         waveform: Waveform,
         unison_voices: u32,
-        spread: f32, // In semitones
+        spread: f32, // In cents (total width, e.g., 20 means voices range +/- 10 cents)
     ) -> Self {
         Self {
             phase_mod_amount,
@@ -55,30 +56,45 @@ impl AnalogOscillatorStateUpdate {
     }
 }
 
-/// AnalogOscillator implements an analog‑style oscillator with unison and modulation.
 pub struct AnalogOscillator {
-    // Core oscillator state.
     sample_rate: f32,
+    smoothing_coeff: f32,
+
+    // Parameter Targets
+    target_gain: f32,
+    target_feedback_amount: f32,
+    target_phase_mod_amount: f32,
+    target_detune: f32, // Base detune offset in cents
+    target_spread: f32, // Max total detuning width in cents
+    target_frequency: f32,
+
+    // Smoothed Parameters
+    smoothed_gain: f32,
+    smoothed_feedback_amount: f32,
+    smoothed_phase_mod_amount: f32,
+    smoothed_detune: f32, // Base detune offset in cents
+    smoothed_spread: f32, // Max total detuning width in cents
+    smoothed_frequency: f32,
+
+    // Core state (partially mirrored)
     gain: f32,
     active: bool,
     feedback_amount: f32,
     hard_sync: bool,
     last_gate_value: f32,
-    frequency: f32, // Base frequency if GlobalFrequency not connected
+    frequency: f32,
     waveform: Waveform,
-
-    // Modulation parameters.
     phase_mod_amount: f32,
-    detune: f32, // Base detune in cents
+    detune: f32, // Cents
+    spread: f32, // Cents
 
-    // Unison parameters.
+    // Unison state
     unison_voices: usize,
-    spread: f32, // Spread in semitones
     voice_phases: Vec<f32>,
-    voice_last_outputs: Vec<f32>, // Per-voice feedback state.
-    voice_offsets: Vec<f32>,      // Cached unison offsets in semitones
+    voice_last_outputs: Vec<f32>,
+    voice_offsets: Vec<f32>, // Cached unison offsets relative to base detune, in SEMITONES
 
-    // Wavetable data access.
+    // Wavetable data
     wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
 
     // Precalculated constants
@@ -88,7 +104,7 @@ pub struct AnalogOscillator {
     two_pi_recip: f32,
     feedback_divisor: f32,
 
-    // === Scratch buffers to avoid repeated allocations ===
+    // Scratch buffers
     mod_scratch_add: Vec<f32>,
     mod_scratch_mult: Vec<f32>,
     gate_buffer: Vec<f32>,
@@ -97,7 +113,7 @@ pub struct AnalogOscillator {
     scratch_gain_mod: Vec<f32>,
     scratch_mod_index: Vec<f32>,
     scratch_feedback_mod: Vec<f32>,
-    scratch_detune_mod: Vec<f32>,
+    scratch_detune_mod: Vec<f32>, // Modulation offset in SEMITONES
     global_freq_buffer: Vec<f32>,
 }
 
@@ -109,41 +125,75 @@ impl AnalogOscillator {
         waveform: Waveform,
         wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
     ) -> Self {
-        let initial_capacity = 128; // Default buffer size
+        let initial_capacity = 128;
         let initial_voice_count = 1;
+        let initial_frequency = 440.0;
+        let initial_gain = 1.0;
+        let initial_feedback = 0.0;
+        let initial_phase_mod = 0.0;
+        let initial_detune = 0.0; // Cents
+        let initial_spread = 10.0; // Cents (e.g., +/- 5 cents range)
+        let max_spread_cents = 100.0; // Limit total spread to 1 semitone
+
+        let smoothing_time_ms = 5.0;
+        let smoothing_time_samples = sample_rate * (smoothing_time_ms / 1000.0);
+        let smoothing_coeff = if smoothing_time_samples > 0.0 {
+            1.0 - (-1.0 / smoothing_time_samples).exp()
+        } else {
+            1.0
+        };
 
         Self {
             sample_rate,
-            gain: 1.0,
+            smoothing_coeff,
+
+            target_gain: initial_gain,
+            target_feedback_amount: initial_feedback,
+            target_phase_mod_amount: initial_phase_mod,
+            target_detune: initial_detune,
+            target_spread: initial_spread.clamp(0.0, max_spread_cents),
+            target_frequency: initial_frequency,
+
+            smoothed_gain: initial_gain,
+            smoothed_feedback_amount: initial_feedback,
+            smoothed_phase_mod_amount: initial_phase_mod,
+            smoothed_detune: initial_detune,
+            smoothed_spread: initial_spread.clamp(0.0, max_spread_cents),
+            smoothed_frequency: initial_frequency,
+
+            gain: initial_gain,
             active: true,
-            feedback_amount: 0.0,
+            feedback_amount: initial_feedback,
             hard_sync: false,
             last_gate_value: 0.0,
-            frequency: 440.0,
+            frequency: initial_frequency,
             waveform,
-            phase_mod_amount: 0.0,
-            detune: 0.0,
+            phase_mod_amount: initial_phase_mod,
+            detune: initial_detune,
+            spread: initial_spread.clamp(0.0, max_spread_cents),
+
             unison_voices: initial_voice_count,
-            spread: 0.1,
             voice_phases: vec![0.0; initial_voice_count],
             voice_last_outputs: vec![0.0; initial_voice_count],
-            voice_offsets: Vec::with_capacity(16),
+            voice_offsets: Vec::with_capacity(16), // Will be calculated as semitones
+
             wavetable_banks,
             sample_rate_recip: 1.0 / sample_rate,
             semitone_ratio: 2.0_f32.powf(1.0 / 12.0),
             cent_ratio: 2.0_f32.powf(1.0 / 1200.0),
-            two_pi_recip: 1.0 / (2.0 * std::f32::consts::PI),
-            feedback_divisor: std::f32::consts::PI * 1.5,
+            two_pi_recip: 1.0 / (PI * 2.0),
+            feedback_divisor: PI * 1.5,
+
             mod_scratch_add: vec![0.0; initial_capacity],
             mod_scratch_mult: vec![1.0; initial_capacity],
             gate_buffer: vec![0.0; initial_capacity],
-            scratch_freq: vec![440.0; initial_capacity],
+            scratch_freq: vec![initial_frequency; initial_capacity],
             scratch_phase_mod: vec![0.0; initial_capacity],
-            scratch_gain_mod: vec![1.0; initial_capacity],
-            scratch_mod_index: vec![0.0; initial_capacity],
-            scratch_feedback_mod: vec![0.0; initial_capacity],
-            scratch_detune_mod: vec![0.0; initial_capacity],
-            global_freq_buffer: vec![440.0; initial_capacity],
+            scratch_gain_mod: vec![initial_gain; initial_capacity],
+            scratch_mod_index: vec![initial_phase_mod; initial_capacity],
+            scratch_feedback_mod: vec![initial_feedback; initial_capacity],
+            scratch_detune_mod: vec![0.0; initial_capacity], // Semitones modulation
+            global_freq_buffer: vec![initial_frequency; initial_capacity],
         }
     }
 
@@ -156,24 +206,31 @@ impl AnalogOscillator {
         resize_if_needed(&mut self.mod_scratch_add, 0.0);
         resize_if_needed(&mut self.mod_scratch_mult, 1.0);
         resize_if_needed(&mut self.gate_buffer, 0.0);
-        resize_if_needed(&mut self.scratch_freq, self.frequency);
+        resize_if_needed(&mut self.scratch_freq, self.smoothed_frequency);
         resize_if_needed(&mut self.scratch_phase_mod, 0.0);
-        resize_if_needed(&mut self.scratch_gain_mod, self.gain);
-        resize_if_needed(&mut self.scratch_mod_index, self.phase_mod_amount);
-        resize_if_needed(&mut self.scratch_feedback_mod, self.feedback_amount);
-        resize_if_needed(&mut self.scratch_detune_mod, 0.0);
-        resize_if_needed(&mut self.global_freq_buffer, self.frequency);
+        resize_if_needed(&mut self.scratch_gain_mod, self.smoothed_gain);
+        resize_if_needed(&mut self.scratch_mod_index, self.smoothed_phase_mod_amount);
+        resize_if_needed(
+            &mut self.scratch_feedback_mod,
+            self.smoothed_feedback_amount,
+        );
+        resize_if_needed(&mut self.scratch_detune_mod, 0.0); // Default detune mod is 0 semitones
+        resize_if_needed(&mut self.global_freq_buffer, self.smoothed_frequency);
     }
 
     pub fn update_params(&mut self, params: &AnalogOscillatorStateUpdate) {
-        self.gain = params.gain;
-        self.feedback_amount = params.feedback_amount;
+        self.target_gain = params.gain;
+        self.target_feedback_amount = params.feedback_amount;
+        self.target_phase_mod_amount = params.phase_mod_amount;
+        self.target_detune = params.detune; // Base detune in cents
+
+        // Spread is max total width in cents, clamp it reasonably (e.g., 0-100 cents = 1 semitone)
+        let max_spread_cents = 100.0;
+        self.target_spread = params.spread.clamp(0.0, max_spread_cents);
+
         self.hard_sync = params.hard_sync;
         self.active = params.active;
         self.waveform = params.waveform;
-        self.phase_mod_amount = params.phase_mod_amount;
-        self.detune = params.detune;
-        self.spread = params.spread;
 
         let new_voice_count = if params.unison_voices == 0 {
             1
@@ -186,44 +243,31 @@ impl AnalogOscillator {
             self.voice_phases.resize(new_voice_count, 0.0);
             self.voice_last_outputs.resize(new_voice_count, 0.0);
             self.voice_offsets.reserve(new_voice_count);
+            // Update offsets immediately based on TARGET spread when count changes
+            self.update_voice_unison_offsets(self.target_spread);
         }
-        self.update_voice_unison_offsets();
     }
 
-    fn update_voice_unison_offsets(&mut self) {
+    // Calculates unison offsets in SEMITONES based on current spread (total width in CENTS)
+    fn update_voice_unison_offsets(&mut self, current_spread_cents: f32) {
         self.voice_offsets.clear();
         let num_voices = self.unison_voices;
+        let half_spread_cents = current_spread_cents / 2.0;
 
         for voice in 0..num_voices {
-            let offset = if num_voices > 1 {
-                let normalized_pos = if num_voices > 1 {
-                    voice as f32 / (num_voices - 1) as f32
-                } else {
-                    0.5
-                }; // Center if only one voice exists in calculation logic
-                self.spread * (normalized_pos - 0.5)
+            let offset_semitones = if num_voices > 1 {
+                // Map voice index [0 .. num_voices-1] to normalized position [-1 .. 1]
+                let normalized_pos_sym = (voice as f32 / (num_voices - 1) as f32) * 2.0 - 1.0;
+                // Calculate offset in cents: [-half_spread .. +half_spread]
+                let offset_cents = normalized_pos_sym * half_spread_cents;
+                // Convert cents offset to semitones offset
+                offset_cents / 100.0
             } else {
-                0.0
+                0.0 // No offset for single voice
             };
-            self.voice_offsets.push(offset);
-        }
-        // Ensure offsets always match voice count, even if count is 1
-        if self.voice_offsets.len() != num_voices {
-            self.voice_offsets.resize(num_voices, 0.0); // Should not happen with clear/push logic, but safe
+            self.voice_offsets.push(offset_semitones);
         }
     }
-
-    // --- Removed check_gate method ---
-    // /// Reset voice phases on a rising gate edge if hard_sync is enabled.
-    // #[inline(always)]
-    // fn check_gate(&mut self, gate: f32) {
-    //     if self.hard_sync && gate > 0.0 && self.last_gate_value <= 0.0 {
-    //         for phase in self.voice_phases.iter_mut() {
-    //             *phase = 0.0;
-    //         }
-    //     }
-    //     self.last_gate_value = gate;
-    // }
 }
 
 #[inline(always)]
@@ -232,11 +276,14 @@ fn cubic_interp(samples: &[f32], pos: f32) -> f32 {
     if n == 0 {
         return 0.0;
     }
-    let n_f32 = n as f32;
-    let wrapped_pos = pos * n_f32;
 
-    let i = wrapped_pos.floor() as isize;
-    let frac = wrapped_pos - (i as f32);
+    let n_f32 = n as f32;
+    // Ensure position wraps correctly for interpolation indexing
+    let wrapped_phase = pos.rem_euclid(1.0);
+    let actual_pos = wrapped_phase * n_f32;
+
+    let i = actual_pos.floor() as isize;
+    let frac = actual_pos - (i as f32);
 
     let idx = |j: isize| -> f32 {
         let index = (i + j).rem_euclid(n as isize) as usize;
@@ -250,8 +297,8 @@ fn cubic_interp(samples: &[f32], pos: f32) -> f32 {
 
     0.5 * ((2.0 * p1)
         + (-p0 + p2) * frac
-        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * frac * frac
-        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * frac * frac * frac)
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * frac.powi(2)
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * frac.powi(3))
 }
 
 impl AudioNode for AnalogOscillator {
@@ -261,7 +308,7 @@ impl AudioNode for AnalogOscillator {
             (PortId::FrequencyMod, false),
             (PortId::PhaseMod, false),
             (PortId::ModIndex, false),
-            (PortId::DetuneMod, false),
+            (PortId::DetuneMod, false), // Mod offset in SEMITONES
             (PortId::GainMod, false),
             (PortId::FeedbackMod, false),
             (PortId::GlobalGate, false),
@@ -292,7 +339,24 @@ impl AudioNode for AnalogOscillator {
             None => return,
         };
 
-        // --- 1) Process Modulation Inputs ---
+        let alpha = self.smoothing_coeff * buffer_size as f32;
+        let effective_alpha = alpha.min(1.0);
+
+        self.smoothed_gain += effective_alpha * (self.target_gain - self.smoothed_gain);
+        self.smoothed_feedback_amount +=
+            effective_alpha * (self.target_feedback_amount - self.smoothed_feedback_amount);
+        self.smoothed_phase_mod_amount +=
+            effective_alpha * (self.target_phase_mod_amount - self.smoothed_phase_mod_amount);
+        self.smoothed_detune += effective_alpha * (self.target_detune - self.smoothed_detune); // Cents
+        let previous_smoothed_spread = self.smoothed_spread;
+        self.smoothed_spread += effective_alpha * (self.target_spread - self.smoothed_spread); // Cents
+
+        if (self.smoothed_spread - previous_smoothed_spread).abs() > 1e-4
+            || self.voice_offsets.len() != self.unison_voices
+        {
+            self.update_voice_unison_offsets(self.smoothed_spread); // Pass spread in CENTS
+        }
+
         let mut process_mod_input =
             |port_id: PortId, base_value: f32, target_scratch: &mut [f32]| {
                 let sources = inputs.get(&port_id);
@@ -316,20 +380,24 @@ impl AudioNode for AnalogOscillator {
             };
 
         process_mod_input(PortId::PhaseMod, 0.0, &mut self.scratch_phase_mod);
-        process_mod_input(PortId::GainMod, self.gain, &mut self.scratch_gain_mod);
+        process_mod_input(
+            PortId::GainMod,
+            self.smoothed_gain,
+            &mut self.scratch_gain_mod,
+        );
         process_mod_input(
             PortId::FeedbackMod,
-            self.feedback_amount,
+            self.smoothed_feedback_amount,
             &mut self.scratch_feedback_mod,
         );
         process_mod_input(
             PortId::ModIndex,
-            self.phase_mod_amount,
+            self.smoothed_phase_mod_amount,
             &mut self.scratch_mod_index,
         );
+        // DetuneMod provides an offset in SEMITONES, additive from 0
         process_mod_input(PortId::DetuneMod, 0.0, &mut self.scratch_detune_mod);
 
-        // --- 2) Handle Gate Input ---
         self.gate_buffer[..buffer_size].fill(0.0);
         if let Some(gate_sources) = inputs.get(&PortId::GlobalGate) {
             for source in gate_sources {
@@ -342,7 +410,6 @@ impl AudioNode for AnalogOscillator {
             }
         }
 
-        // --- 3) Handle Frequency Input ---
         let freq_mod_sources = inputs.get(&PortId::FrequencyMod);
         let has_freq_mod = freq_mod_sources.map_or(false, |s| !s.is_empty());
 
@@ -358,59 +425,70 @@ impl AudioNode for AnalogOscillator {
             self.mod_scratch_mult[..buffer_size].fill(1.0);
         }
 
-        if let Some(global_freq_sources) = inputs.get(&PortId::GlobalFrequency) {
-            if !global_freq_sources.is_empty() && !global_freq_sources[0].buffer.is_empty() {
-                let src_buf = &global_freq_sources[0].buffer;
-                let len_to_copy = std::cmp::min(buffer_size, src_buf.len());
-                self.global_freq_buffer[..len_to_copy].copy_from_slice(&src_buf[..len_to_copy]);
-                if len_to_copy < buffer_size {
-                    let last_val = src_buf.last().cloned().unwrap_or(self.frequency);
-                    self.global_freq_buffer[len_to_copy..buffer_size].fill(last_val);
+        let base_freq_for_mod =
+            if let Some(global_freq_sources) = inputs.get(&PortId::GlobalFrequency) {
+                if !global_freq_sources.is_empty() && !global_freq_sources[0].buffer.is_empty() {
+                    let src_buf = &global_freq_sources[0].buffer;
+                    let len_to_copy = std::cmp::min(buffer_size, src_buf.len());
+                    self.global_freq_buffer[..len_to_copy].copy_from_slice(&src_buf[..len_to_copy]);
+                    if len_to_copy < buffer_size {
+                        let last_val = src_buf.last().cloned().unwrap_or(self.smoothed_frequency);
+                        self.global_freq_buffer[len_to_copy..buffer_size].fill(last_val);
+                    }
+                    Self::combine_modulation_inplace_varying_base(
+                        &mut self.scratch_freq[..buffer_size],
+                        buffer_size,
+                        &self.global_freq_buffer,
+                        &self.mod_scratch_add,
+                        &self.mod_scratch_mult,
+                    );
+                    self.smoothed_frequency
+                } else {
+                    self.smoothed_frequency
                 }
-                Self::combine_modulation_inplace_varying_base(
-                    &mut self.scratch_freq[..buffer_size],
-                    buffer_size,
-                    &self.global_freq_buffer,
-                    &self.mod_scratch_add,
-                    &self.mod_scratch_mult,
-                );
             } else {
-                Self::combine_modulation_inplace(
-                    &mut self.scratch_freq[..buffer_size],
-                    buffer_size,
-                    self.frequency,
-                    &self.mod_scratch_add,
-                    &self.mod_scratch_mult,
-                );
-            }
-        } else {
+                self.smoothed_frequency
+            };
+
+        if inputs
+            .get(&PortId::GlobalFrequency)
+            .map_or(true, |gfs| gfs.is_empty() || gfs[0].buffer.is_empty())
+        {
             Self::combine_modulation_inplace(
                 &mut self.scratch_freq[..buffer_size],
                 buffer_size,
-                self.frequency,
+                base_freq_for_mod,
                 &self.mod_scratch_add,
                 &self.mod_scratch_mult,
             );
         }
 
-        // --- 4) Pre-loop Setup ---
         if self.voice_offsets.len() != self.unison_voices {
-            // This should ideally not happen if update_params is called correctly,
-            // but it's a safeguard.
-            console::warn_1(&"Warning: Voice offsets recalculated in process loop.".into());
-            self.update_voice_unison_offsets();
+            console::warn_1(
+                &format!(
+                    "Warning: Correcting voice offset count mismatch ({} vs {}) before loop.",
+                    self.voice_offsets.len(),
+                    self.unison_voices
+                )
+                .into(),
+            );
+            self.update_voice_unison_offsets(self.smoothed_spread);
+            if self.voice_offsets.len() != self.unison_voices {
+                console::error_1(
+                    &"Error: Failed to correct voice offset count. Aborting process.".into(),
+                );
+                output_buffer[..buffer_size].fill(0.0);
+                return;
+            }
         }
 
-        let base_detune_factor = self.cent_ratio.powf(self.detune);
+        // Base detune factor from smoothed_detune (in cents)
+        let base_detune_factor = self.cent_ratio.powf(self.smoothed_detune);
         let current_bank = match self.wavetable_banks.get(&self.waveform) {
             Some(bank) => bank,
             None => {
                 console::error_1(
-                    &format!(
-                        "Error: Wavetable bank not found for waveform {:?}",
-                        self.waveform
-                    )
-                    .into(),
+                    &format!("Error: Wavetable bank missing for {:?}.", self.waveform).into(),
                 );
                 output_buffer[..buffer_size].fill(0.0);
                 return;
@@ -422,94 +500,64 @@ impl AudioNode for AnalogOscillator {
         let two_pi_recip = self.two_pi_recip;
         let feedback_divisor = self.feedback_divisor;
         let unison_voices_f32 = self.unison_voices as f32;
+        let inv_unison_voices = if unison_voices_f32 > 0.0 {
+            1.0 / unison_voices_f32
+        } else {
+            1.0
+        };
 
-        // --- 5) Main Synthesis Loop ---
         for i in 0..buffer_size {
-            // --- Gate Check (Inlined) ---
             let current_gate = self.gate_buffer[i];
             let is_rising_edge = current_gate > 0.0 && self.last_gate_value <= 0.0;
 
             if self.hard_sync && is_rising_edge {
-                // Phase reset requires mutable borrow of self.voice_phases
                 for phase in self.voice_phases.iter_mut() {
                     *phase = 0.0;
                 }
             }
-            // Update last_gate_value requires mutable borrow of self.last_gate_value
-            // This happens *after* the check and potential mutation above.
             self.last_gate_value = current_gate;
-            // --- End Gate Check ---
 
-            // Get per-sample modulated values (immutable borrows of self fields)
             let current_freq = self.scratch_freq[i];
             let phase_mod_signal = self.scratch_phase_mod[i];
             let phase_mod_index = self.scratch_mod_index[i];
             let current_feedback = self.scratch_feedback_mod[i];
             let current_gain = self.scratch_gain_mod[i];
-            let detune_mod_sample = self.scratch_detune_mod[i]; // In semitones
+            let detune_mod_sample = self.scratch_detune_mod[i]; // Modulation offset in SEMITONES
 
-            let base_freq_detuned = current_freq * base_detune_factor;
+            let base_freq = current_freq; // Already includes global/internal base + freq mod
             let ext_phase_offset = (phase_mod_signal * phase_mod_index) * two_pi_recip;
 
             let mut sample_sum = 0.0;
 
-            // Optimize for single voice case
-            if self.unison_voices == 1 {
-                let voice_detune_semitones = detune_mod_sample + self.voice_offsets[0]; // Offset is 0
-                let semitone_factor = semitone_ratio.powf(voice_detune_semitones);
-                let effective_freq = base_freq_detuned * semitone_factor;
+            for v in 0..self.unison_voices {
+                // 1. Get unison offset (calculated from spread in cents, stored as semitones)
+                let unison_offset_semitones = self.voice_offsets[v];
+
+                // 2. Combine unison offset (semitones) with detune modulation (semitones)
+                let total_semitone_offset = unison_offset_semitones + detune_mod_sample;
+
+                // 3. Calculate multiplicative factor for the total semitone offset
+                let semitone_factor = semitone_ratio.powf(total_semitone_offset);
+
+                // 4. Apply base detune (cents) factor AND semitone factor to base frequency
+                let effective_freq = base_freq * base_detune_factor * semitone_factor;
+
                 let phase_inc = effective_freq * sample_rate_recip;
 
-                // Mutable borrows for feedback/phase update happen here, scoped per-voice
-                let voice_fb = (self.voice_last_outputs[0] * current_feedback) / feedback_divisor;
-                // Note: voice_phases[0] might have been reset just above by the gate check
-                let phase = (self.voice_phases[0] + ext_phase_offset + voice_fb).rem_euclid(1.0);
+                let voice_fb = (self.voice_last_outputs[v] * current_feedback) / feedback_divisor;
+                let phase_before_update = self.voice_phases[v];
+                let phase = (phase_before_update + ext_phase_offset + voice_fb).rem_euclid(1.0);
 
                 let table = current_bank.select_table(effective_freq);
                 let voice_sample = cubic_interp(&table.samples, phase);
 
-                // Update state requires mutable borrows
-                self.voice_phases[0] = (self.voice_phases[0] + phase_inc).rem_euclid(1.0);
-                self.voice_last_outputs[0] = voice_sample;
-                sample_sum = voice_sample;
-            } else {
-                // Multiple voices
-                // Ensure voice_offsets has the correct length before accessing
-                if self.voice_offsets.len() < self.unison_voices {
-                    // This indicates a logic error somewhere, potentially in update_params
-                    // or how unison_voices is managed. Log an error and skip processing
-                    // for this sample to avoid panic.
-                    console::error_1(&format!("Error: Mismatch between unison_voices ({}) and voice_offsets length ({}). Skipping sample.", self.unison_voices, self.voice_offsets.len()).into());
-                    output_buffer[i] = 0.0; // Output silence for this sample
-                    continue; // Skip to the next sample
-                }
+                self.voice_phases[v] = (phase_before_update + phase_inc).rem_euclid(1.0);
+                self.voice_last_outputs[v] = voice_sample;
 
-                for v in 0..self.unison_voices {
-                    // Immutable borrow for voice_offsets
-                    let voice_detune_semitones = detune_mod_sample + self.voice_offsets[v];
-                    let semitone_factor = semitone_ratio.powf(voice_detune_semitones);
-                    let effective_freq = base_freq_detuned * semitone_factor;
-                    let phase_inc = effective_freq * sample_rate_recip;
-
-                    // Mutable borrows for feedback/phase update, scoped per-voice iteration
-                    let voice_fb =
-                        (self.voice_last_outputs[v] * current_feedback) / feedback_divisor;
-                    // Note: voice_phases[v] might have been reset just above by the gate check
-                    let phase =
-                        (self.voice_phases[v] + ext_phase_offset + voice_fb).rem_euclid(1.0);
-
-                    let table = current_bank.select_table(effective_freq);
-                    let voice_sample = cubic_interp(&table.samples, phase);
-
-                    // Update state requires mutable borrows
-                    self.voice_phases[v] = (self.voice_phases[v] + phase_inc).rem_euclid(1.0);
-                    self.voice_last_outputs[v] = voice_sample;
-
-                    sample_sum += voice_sample;
-                }
+                sample_sum += voice_sample;
             }
 
-            let final_sample = (sample_sum / unison_voices_f32) * current_gain;
+            let final_sample = (sample_sum * inv_unison_voices) * current_gain;
             output_buffer[i] = final_sample;
         }
     }
@@ -522,6 +570,31 @@ impl AudioNode for AnalogOscillator {
         for output in self.voice_last_outputs.iter_mut() {
             *output = 0.0;
         }
+
+        let initial_frequency = self.frequency;
+        let initial_gain = 1.0;
+        let initial_feedback = 0.0;
+        let initial_phase_mod = 0.0;
+        let initial_detune = 0.0; // Cents
+        let initial_spread = 10.0; // Cents
+        let max_spread_cents = 100.0;
+
+        self.target_gain = initial_gain;
+        self.target_feedback_amount = initial_feedback;
+        self.target_phase_mod_amount = initial_phase_mod;
+        self.target_detune = initial_detune;
+        self.target_spread = initial_spread.clamp(0.0, max_spread_cents);
+        self.target_frequency = initial_frequency;
+
+        self.smoothed_gain = initial_gain;
+        self.smoothed_feedback_amount = initial_feedback;
+        self.smoothed_phase_mod_amount = initial_phase_mod;
+        self.smoothed_detune = initial_detune;
+        self.smoothed_spread = initial_spread.clamp(0.0, max_spread_cents);
+        self.smoothed_frequency = initial_frequency;
+
+        // Update offsets based on reset smoothed spread (in CENTS)
+        self.update_voice_unison_offsets(self.smoothed_spread);
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

@@ -43,6 +43,10 @@ impl WavetableMorphCollection {
         }
     }
 
+    pub fn num_tables(&self) -> usize {
+        self.wavetables.len()
+    }
+
     /// Add a new mipmapped wavetable to the collection.
     pub fn add_wavetable(&mut self, wavetable: MipmappedWavetable) {
         self.wavetables.push(wavetable);

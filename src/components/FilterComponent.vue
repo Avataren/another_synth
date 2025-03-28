@@ -72,7 +72,7 @@
           v-model="filterState.gain"
           label="Gain"
           :min="0.0"
-          :max="1.5"
+          :max="2.0"
           :step="0.001"
           :decimals="3"
           @update:modelValue="handleGainChange"
@@ -173,7 +173,7 @@ function forwardClose() {
 
 // Slope/gain toggles for certain filter types
 const slopeEnabled = ref(true);
-const gainEnabled = ref(false);
+const gainEnabled = ref(true);
 
 const store = useAudioSystemStore();
 const { filterStates } = storeToRefs(store);
@@ -274,7 +274,7 @@ function handleFilterTypeChange(newVal: FilterType) {
       gainEnabled.value = true;
       break;
     default:
-      gainEnabled.value = false;
+      gainEnabled.value = true;
   }
 
   store.filterStates.set(props.nodeId, {

@@ -212,7 +212,6 @@ function getArrayF32FromWasm0(ptr, len) {
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
- * Biquad‑specific slope selection.
  * @enum {0 | 1}
  */
 export const FilterSlope = Object.freeze({
