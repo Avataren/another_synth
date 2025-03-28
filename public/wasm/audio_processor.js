@@ -220,7 +220,6 @@ export const FilterSlope = Object.freeze({
     Db24: 1, "1": "Db24",
 });
 /**
- * FilterType enum, trait, and biquad implementations follow below.
  * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}
  */
 export const FilterType = Object.freeze({

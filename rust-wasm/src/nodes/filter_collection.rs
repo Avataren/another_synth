@@ -1,18 +1,16 @@
-#![allow(clippy::excessive_precision)] // Allow high precision constants
-#![allow(clippy::inline_always)] // Allow inline(always) where used intentionally
+#![allow(clippy::excessive_precision)]
+#![allow(clippy::inline_always)]
 
 use once_cell::sync::Lazy;
+use rustfft::num_traits::Float;
+use rustfft::{num_complex::Complex, FftPlanner}; // Still needed for frequency response
 use std::any::Any;
 use std::collections::HashMap;
 use std::f32::consts::PI;
-// SIMD not used in the per-sample processing logic directly anymore
-// use std::simd::num::SimdFloat;
-// use std::simd::Simd;
-use rustfft::{num_complex::Complex, FftPlanner}; // Ensure FFT is imported
+use std::f64::consts::PI as PI64; // Use f64 PI for coefficient calculation
 use wasm_bindgen::prelude::wasm_bindgen;
-// use web_sys::console; // For debugging
 
-// Import the biquad types and modulation processing traits
+// Import necessary items from other modules (adjust paths as needed)
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
 use crate::graph::{
     ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
@@ -30,9 +28,6 @@ pub enum FilterSlope {
 /// Helper: map a normalized resonance (0–1) to a Q factor for Biquad filters.
 #[inline(always)]
 fn normalized_resonance_to_q(normalized: f32) -> f32 {
-    // Adjust Q mapping for better feel (subjective)
-    // Example: 0 -> 0.707, 0.5 -> ~2.5, 1.0 -> ~10
-    // Clamp input just in case
     let norm_clamped = normalized.clamp(0.0, 1.0);
     0.707 + norm_clamped.powf(1.5) * 9.3
 }
@@ -61,239 +56,120 @@ fn fast_tanh(x: f32) -> f32 {
     let clamped = x.clamp(X_MIN, X_MAX);
     let normalized = (clamped - X_MIN) * INV_RANGE * LUT_SIZE_MINUS_1_F;
     let index_f = normalized.floor();
-    let index = index_f as usize; // Cast is safe due to clamp and range
+    let index = index_f as usize;
     let frac = normalized - index_f;
 
-    // Use safe indexing, performance difference is likely negligible
     let y0 = TANH_LUT[index];
     if index < LUT_SIZE_MINUS_1_U {
         let y1 = TANH_LUT[index + 1];
-        // Linear interpolation: y0 * (1.0 - frac) + y1 * frac
         y0 + (y1 - y0) * frac
     } else {
-        // At the very end of the LUT (index == 1023)
         y0
     }
 }
 
-/// Maximum allowed oversampling factor.
-static MAX_OVERSAMPLING: Lazy<u32> = Lazy::new(|| 16); // e.g., 16x
+// Removed MAX_OVERSAMPLING
 
 /// Precomputed maximum delay line length for the comb filter.
-/// Increased margin slightly for safety with interpolation.
+/// Adjusted to not depend on oversampling. Uses a reasonable max sample rate.
 static MAX_COMB_BUFFER_SIZE: Lazy<usize> = Lazy::new(|| {
-    let sample_rate = 48000.0; // Assume a common rate for sizing
-    let min_freq = 10.0; // Lower min frequency for safety with longer delays
-                         // Calculate max delay in samples = max_effective_sr / min_freq
-    ((sample_rate * (*MAX_OVERSAMPLING as f32)) / min_freq).ceil() as usize + 8 // Add margin for interpolation & safety
+    let sample_rate = 96000.0; // Assume a max practical sample rate for sizing
+    let min_freq = 10.0;
+    (sample_rate / min_freq).ceil() as usize + 8 // Removed os_factor multiplication
 });
 
-// --- Fixed Anti-Aliasing / Decimation Filter ---
-/// A 6th-order Butterworth lowpass filter implemented as 3 cascaded Biquads.
-/// Used for anti-aliasing during downsampling in oversampling.
-#[derive(Clone, Debug)]
-struct DecimationFilter {
-    sections: [Biquad; 3],
-    os_factor: u32,
-    sample_rate: f32,
-}
+// --- Removed DecimationFilter ---
+// --- Removed Upsampler ---
 
-impl DecimationFilter {
-    /// Creates a new 6th order Butterworth anti-aliasing filter.
-    /// `sample_rate`: The *original* sample rate (before oversampling).
-    /// `os_factor`: The oversampling factor (e.g., 2, 4, 8).
-    fn new(sample_rate: f32, os_factor: u32) -> Self {
-        let os_factor = os_factor.max(1);
-        let effective_sr = sample_rate * os_factor as f32;
-
-        // Target cutoff frequency: slightly below original Nyquist
-        // Ensure cutoff is well below effective Nyquist / 2
-        let target_cutoff = (sample_rate * 0.5 * 0.9).min(effective_sr * 0.49);
-
-        // Butterworth Q factors for 3 cascaded 2nd-order sections (6th order total)
-        // Q values for sqrt(2) normalization at cutoff
-        let q_factors = [0.517_638_1, 0.707_106_8, 1.931_851_7];
-
-        let mut sections = [
-            Biquad::new(
-                FilterType::LowPass,
-                effective_sr,
-                target_cutoff,
-                q_factors[0],
-                0.0,
-            ),
-            Biquad::new(
-                FilterType::LowPass,
-                effective_sr,
-                target_cutoff,
-                q_factors[1],
-                0.0,
-            ),
-            Biquad::new(
-                FilterType::LowPass,
-                effective_sr,
-                target_cutoff,
-                q_factors[2],
-                0.0,
-            ),
-        ];
-
-        // Ensure coefficients are calculated
-        for section in &mut sections {
-            section.update_coefficients();
-        }
-
-        Self {
-            sections,
-            os_factor,
-            sample_rate,
-        }
-    }
-
-    /// Updates the filter coefficients if the sample rate or OS factor changes.
-    fn update(&mut self, sample_rate: f32, os_factor: u32) {
-        let os_factor = os_factor.max(1);
-        if self.sample_rate == sample_rate && self.os_factor == os_factor {
-            return; // No change needed
-        }
-        self.sample_rate = sample_rate;
-        self.os_factor = os_factor;
-
-        let effective_sr = sample_rate * os_factor as f32;
-        let target_cutoff = (sample_rate * 0.5 * 0.9).min(effective_sr * 0.49);
-        let q_factors = [0.517_638_1, 0.707_106_8, 1.931_851_7];
-
-        for (i, section) in self.sections.iter_mut().enumerate() {
-            section.sample_rate = effective_sr;
-            section.frequency = target_cutoff;
-            section.q = q_factors[i];
-            section.gain_db = 0.0; // AA filter shouldn't add gain
-            section.filter_type = FilterType::LowPass;
-            section.update_coefficients();
-        }
-        self.reset(); // Reset state after changing coefficients
-    }
-
-    /// Process a single sample through the 3 cascaded sections.
-    #[inline(always)]
-    fn process(&mut self, mut input: f32) -> f32 {
-        // Process through each biquad section
-        input = self.sections[0].process(input);
-        input = self.sections[1].process(input);
-        input = self.sections[2].process(input);
-        input
-    }
-
-    /// Reset the internal state of all biquad sections.
-    fn reset(&mut self) {
-        for section in &mut self.sections {
-            section.reset();
-        }
-    }
-}
-
-/// A unified filter collection supporting Biquad, Ladder, and Comb filters.
-#[derive(Clone)] // Note: Cloning is potentially expensive due to Vecs/filters
+// --- Filter Collection (Simplified) ---
+#[derive(Clone)]
 pub struct FilterCollection {
-    // Parameters
     sample_rate: f32,
-    base_cutoff: f32,                   // Base cutoff for Biquad/Ladder (Hz)
-    base_resonance: f32,                // Base resonance for all types (normalized 0–1+)
-    base_gain_db: f32,                  // Base gain for Biquad/Ladder
-    comb_base_frequency: f32,           // Base frequency for Comb filter (Hz) <--- ADDED
-    comb_dampening: f32,                // Comb specific dampening (0-1, 0=bright, 1=dull)
-    keyboard_tracking_sensitivity: f32, // Cutoff/Freq tracking sensitivity (0=none, 1=full)
-    filter_type: FilterType,            // Current active filter type
-    slope: FilterSlope,                 // Slope for Biquad types (Db12/Db24)
-    oversampling_factor: u32,           // Oversampling multiplier (1, 2, 4, ...)
-    enabled: bool,                      // Is the filter active?
+    base_cutoff: f32,
+    base_resonance: f32,
+    base_gain_db: f32,
+    comb_base_frequency: f32,
+    comb_dampening: f32,
+    keyboard_tracking_sensitivity: f32,
+    filter_type: FilterType,
+    slope: FilterSlope,
+    // Removed oversampling_factor
+    // Removed use_linear_upsampling
+    enabled: bool,
 
-    // Smoothed parameters (internal state)
-    smoothed_cutoff: f32,    // Smoothed cutoff for Biquad/Ladder
-    smoothed_resonance: f32, // Smoothed resonance for all types
-    smoothing_factor: f32,   // Smoothing coefficient (e.g., 0.05)
+    smoothed_cutoff: f32,
+    smoothed_resonance: f32,
+    smoothing_factor: f32,
 
-    // Filter implementations (internal state)
-    biquad: Biquad,                   // For Db12 or fallback
-    cascaded: Option<CascadedBiquad>, // For Db24
-    ladder_stages: [f32; 4],          // Moog Ladder state
-    // Comb filter state
-    comb_buffer: Vec<f32>,    // Delay line buffer
-    comb_buffer_index: usize, // Current write index
-    comb_last_output: f32,    // State for dampening filter feedback
-    comb_dc_prev: f32,        // DC blocker state (previous input)
-    comb_dc_state: f32,       // DC blocker state (previous output)
+    biquad: Biquad,
+    cascaded: Option<CascadedBiquad>,
+    ladder_stages: [f32; 4],
 
-    // --- Fixed Oversampling filters (internal state) ---
-    aa_downsampling_filter: DecimationFilter,
-    // Optional: AA for upsampling, often less critical for ZOH/linear but good practice
-    // aa_upsampling_filter: DecimationFilter,
+    comb_buffer: Vec<f32>,
+    comb_buffer_index: usize,
+    comb_last_output: f32,
+    comb_dc_prev: f32,
+    comb_dc_state: f32,
 
-    // === Scratch Buffers (internal state) ===
-    // These hold per-sample modulation values for the current block
-    mod_scratch_add: Vec<f32>, // General purpose scratch for modulation accumulation
-    mod_scratch_mult: Vec<f32>, // General purpose scratch for modulation accumulation
-    audio_in_buffer: Vec<f32>, // Combined audio input for the block
-    scratch_cutoff_add: Vec<f32>, // Additive cutoff modulation
-    scratch_cutoff_mult: Vec<f32>, // Multiplicative cutoff modulation
-    scratch_res_add: Vec<f32>, // Additive resonance modulation
-    scratch_res_mult: Vec<f32>, // Multiplicative resonance modulation
-    scratch_freq_add: Vec<f32>, // Base frequency from Keyboard tracking input (Hz)
-    scratch_freq_mult: Vec<f32>, // Multiplicative modulation on Keyboard tracking (unused?)
-    scratch_global_freq_add: Vec<f32>, // Base frequency from Global tuning input (Hz)
-    scratch_global_freq_mult: Vec<f32>, // Multiplicative modulation on Global tuning (unused?)
+    // Removed aa_downsampling_filter
+    // Removed upsampler_state
+    mod_scratch_add: Vec<f32>,
+    mod_scratch_mult: Vec<f32>,
+    audio_in_buffer: Vec<f32>,
+    scratch_cutoff_add: Vec<f32>,
+    scratch_cutoff_mult: Vec<f32>,
+    scratch_res_add: Vec<f32>,
+    scratch_res_mult: Vec<f32>,
+    scratch_freq_add: Vec<f32>,
+    scratch_freq_mult: Vec<f32>,
+    scratch_global_freq_add: Vec<f32>,
+    scratch_global_freq_mult: Vec<f32>,
 }
 
 impl FilterCollection {
     pub fn new(sample_rate: f32) -> Self {
-        let initial_capacity = 128; // Default buffer size, will resize if needed
+        let initial_capacity = 128;
         let base_cutoff = 20000.0;
         let base_resonance = 0.0;
-        let base_gain_db = 0.0; // Default to 0dB gain
-        let comb_base_frequency = 220.0; // Default to A3 for comb <--- ADDED Default
+        let base_gain_db = 0.0;
+        let comb_base_frequency = 220.0;
         let filter_type = FilterType::LowPass;
         let slope = FilterSlope::Db12;
         let initial_q = normalized_resonance_to_q(base_resonance);
-        let initial_os_factor = 1; // Start with no oversampling
 
         Self {
             sample_rate,
             base_cutoff,
             base_resonance,
             base_gain_db,
-            comb_base_frequency, // <--- ADDED Init
+            comb_base_frequency,
             comb_dampening: 0.5,
             keyboard_tracking_sensitivity: 0.0,
             filter_type,
             slope,
-            oversampling_factor: initial_os_factor,
+            // Removed oversampling_factor
+            // Removed use_linear_upsampling
             enabled: true,
-
-            smoothed_cutoff: base_cutoff,       // Init smoothed value
-            smoothed_resonance: base_resonance, // Init smoothed value
-            smoothing_factor: 0.05,             // Adjust for desired smoothing speed
-
+            smoothed_cutoff: base_cutoff,
+            smoothed_resonance: base_resonance,
+            smoothing_factor: 0.05,
+            // Initialize biquad directly with base sample_rate
             biquad: Biquad::new(
                 filter_type,
-                sample_rate, // Initial SR, will be updated if OS > 1
+                sample_rate, // Use base sample rate
                 base_cutoff,
                 initial_q,
                 base_gain_db,
             ),
-            cascaded: None, // Initialize Db24 only when needed
+            cascaded: None, // Cascaded filter setup happens later if needed
             ladder_stages: [0.0; 4],
-
             comb_buffer: vec![0.0; *MAX_COMB_BUFFER_SIZE],
             comb_buffer_index: 0,
             comb_last_output: 0.0,
             comb_dc_prev: 0.0,
             comb_dc_state: 0.0,
-
-            // Initialize AA filters for the initial OS factor
-            aa_downsampling_filter: DecimationFilter::new(sample_rate, initial_os_factor),
-            // aa_upsampling_filter: DecimationFilter::new(sample_rate, initial_os_factor),
-
-            // Init scratch buffers
+            // Removed aa_downsampling_filter initialization
+            // Removed upsampler_state initialization
             mod_scratch_add: vec![0.0; initial_capacity],
             mod_scratch_mult: vec![1.0; initial_capacity],
             audio_in_buffer: vec![0.0; initial_capacity],
@@ -301,21 +177,18 @@ impl FilterCollection {
             scratch_cutoff_mult: vec![1.0; initial_capacity],
             scratch_res_add: vec![0.0; initial_capacity],
             scratch_res_mult: vec![1.0; initial_capacity],
-            scratch_freq_add: vec![440.0; initial_capacity], // Default A4
+            scratch_freq_add: vec![440.0; initial_capacity],
             scratch_freq_mult: vec![1.0; initial_capacity],
-            scratch_global_freq_add: vec![440.0; initial_capacity], // Default A4
+            scratch_global_freq_add: vec![440.0; initial_capacity],
             scratch_global_freq_mult: vec![1.0; initial_capacity],
         }
     }
 
-    /// Ensure all scratch buffers have at least `size` capacity.
+    // Ensure scratch buffers are large enough
     fn ensure_scratch_buffers(&mut self, size: usize) {
-        // Helper closure to resize vectors
         let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
             if buf.len() < size {
-                // Use resize_with for potentially better efficiency if growing significantly,
-                // but resize is simpler here. Add some extra capacity to avoid frequent reallocs.
-                let new_size = size.next_power_of_two(); // Grow to next power of 2
+                let new_size = size.next_power_of_two();
                 buf.resize(new_size, default_val);
             }
         };
@@ -332,91 +205,68 @@ impl FilterCollection {
         resize_if_needed(&mut self.scratch_global_freq_mult, 1.0);
     }
 
-    /// Update AA filters based on current oversampling factor.
-    fn update_aa_filters(&mut self) {
-        self.aa_downsampling_filter
-            .update(self.sample_rate, self.oversampling_factor);
-        // self.aa_upsampling_filter.update(self.sample_rate, self.oversampling_factor);
-    }
+    // Removed update_aa_filters
+    // Removed set_oversampling_factor
+    // Removed set_linear_upsampling
 
-    pub fn set_oversampling_factor(&mut self, factor: u32) {
-        let new_factor = factor.clamp(1, *MAX_OVERSAMPLING);
-        if new_factor != self.oversampling_factor {
-            self.oversampling_factor = new_factor;
-            self.update_aa_filters(); // Update and reset AA filters
-                                      // Reset filter state as effective sample rate changed for internal filters
-            self.reset_filter_state();
-            // Biquad/Cascaded sample rates will be updated within process loop
-        }
-    }
-
-    /// Sets the base cutoff frequency (for Biquad/Ladder) and base resonance (for all).
+    // Updates base filter parameters
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        // Clamp base cutoff for Biquad/Ladder
-        self.base_cutoff = cutoff.clamp(10.0, self.sample_rate * 0.499);
-        // Allow resonance potentially > 1.0 for comb self-oscillation, clamp base if desired for UI
-        self.base_resonance = resonance.max(0.0); // Ensure non-negative
-                                                  // Smoothed values will catch up in the process loop
+        // Clamp cutoff to base sample rate Nyquist limit
+        self.base_cutoff = cutoff.clamp(10.0, self.sample_rate * 0.4999);
+        self.base_resonance = resonance.max(0.0);
     }
 
-    /// Sets the base gain in dB (primarily for Biquad/Ladder).
     pub fn set_gain_db(&mut self, gain_db: f32) {
         self.base_gain_db = gain_db;
-        // Gain applied per-sample in Ladder, updated in Biquad coeffs
     }
 
-    /// Sets the keyboard tracking sensitivity (0=none, 1=full).
     pub fn set_keyboard_tracking_sensitivity(&mut self, sensitivity: f32) {
         self.keyboard_tracking_sensitivity = sensitivity.clamp(0.0, 1.0);
     }
 
-    /// Sets the active filter type.
+    // Sets the core filter algorithm type
     pub fn set_filter_type(&mut self, filter_type: FilterType) {
         if filter_type != self.filter_type {
             self.filter_type = filter_type;
-            self.reset_filter_state(); // Reset state when type changes significantly
-                                       // Setup cascaded if needed for the new type (will be updated in process)
+            self.reset_filter_state(); // Reset state when type changes
+                                       // Re-setup cascaded if needed for the new type and current slope
             if filter_type != FilterType::Ladder
                 && filter_type != FilterType::Comb
                 && self.slope == FilterSlope::Db24
             {
-                // Re-create cascaded filter for the new type if necessary
                 self.setup_cascaded_filter();
             } else {
-                self.cascaded = None; // Not needed or handled differently
+                self.cascaded = None; // Not applicable or handled differently
             }
         }
     }
 
-    /// Sets the filter slope (only affects Biquad types).
+    // Sets the filter slope (12dB or 24dB)
     pub fn set_filter_slope(&mut self, slope: FilterSlope) {
         if slope != self.slope {
             let old_slope = self.slope;
             self.slope = slope;
-            // Don't necessarily reset state just for slope change if type is the same,
-            // but update cascaded setup.
+            // Only manage cascaded biquad setup if NOT Ladder or Comb
             if self.filter_type != FilterType::Ladder && self.filter_type != FilterType::Comb {
                 if slope == FilterSlope::Db24 && old_slope == FilterSlope::Db12 {
-                    // Switching from 12 to 24: Setup cascaded
-                    self.setup_cascaded_filter();
-                    // Copy state from single biquad to first stage? Optional, reset might be safer.
+                    self.setup_cascaded_filter(); // Create cascaded for 24dB
                     if let Some(ref mut c) = self.cascaded {
-                        c.reset();
+                        c.reset(); // Reset the new cascaded filter state
                     }
                 } else if slope == FilterSlope::Db12 && old_slope == FilterSlope::Db24 {
-                    // Switching from 24 to 12: Remove cascaded
-                    self.cascaded = None;
-                    // Reset single biquad state? Optional.
-                    self.biquad.reset();
+                    self.cascaded = None; // Remove cascaded for 12dB
+                    self.biquad.reset(); // Reset the single biquad state
                 }
-                // If slope changes but stays Db24, setup_cascaded_filter will handle updates if needed.
             }
+            // If type is Ladder or Comb, slope might be ignored or handled internally,
+            // but we still reset state for consistency if slope changes.
+            self.reset_filter_state();
         }
     }
 
-    /// Helper to initialize or update the cascaded filter instance for 24dB Biquad modes.
+    // Sets up the cascaded biquad filter for 24dB slope (if applicable)
     fn setup_cascaded_filter(&mut self) {
-        // Ensure this is only called for relevant filter types and slope
+        // Only setup if 24dB slope AND not Ladder/Comb type
         if self.slope != FilterSlope::Db24
             || self.filter_type == FilterType::Ladder
             || self.filter_type == FilterType::Comb
@@ -425,255 +275,245 @@ impl FilterCollection {
             return;
         }
 
-        let effective_sr = self.sample_rate * self.oversampling_factor as f32;
-        // Use smoothed parameters for initialization, they will be updated per-sample anyway
+        // Use base sample rate directly
+        let sr = self.sample_rate;
         let q_overall = normalized_resonance_to_q(self.smoothed_resonance);
-        let stage_q = q_overall.sqrt().max(0.501); // Ensure Q slightly > 0.5 for stability
+        // Calculate Q for each stage (sqrt of overall Q, minimum value for stability)
+        let stage_q = q_overall.sqrt().max(0.501);
 
-        // If cascaded exists, update it; otherwise create new.
         if let Some(ref mut cascaded) = self.cascaded {
-            // Update existing cascaded filter
-            cascaded.first.sample_rate = effective_sr;
-            cascaded.second.sample_rate = effective_sr;
-            cascaded.first.frequency = self.smoothed_cutoff; // Use smoothed value
+            // Update existing cascaded filter parameters
+            cascaded.first.sample_rate = sr;
+            cascaded.second.sample_rate = sr;
+            cascaded.first.frequency = self.smoothed_cutoff;
             cascaded.second.frequency = self.smoothed_cutoff;
             cascaded.first.q = stage_q;
             cascaded.second.q = stage_q;
-            cascaded.first.gain_db = 0.0; // No gain on first stage
-            cascaded.second.gain_db = self.base_gain_db; // Full gain on second stage
+            cascaded.first.gain_db = 0.0; // Gain usually applied on the second stage
+            cascaded.second.gain_db = self.base_gain_db;
             cascaded.first.filter_type = self.filter_type;
             cascaded.second.filter_type = self.filter_type;
             cascaded.first.update_coefficients();
             cascaded.second.update_coefficients();
         } else {
-            // Create a new cascaded filter instance
+            // Create a new cascaded filter
             self.cascaded = Some(CascadedBiquad::new_with_gain_split(
                 self.filter_type,
-                effective_sr,
-                self.smoothed_cutoff, // Use smoothed value for init
+                sr,
+                self.smoothed_cutoff,
                 stage_q,
                 0.0,               // Gain on first stage
                 self.base_gain_db, // Gain on second stage
             ));
-            // Ensure coefficients are calculated and state reset for new instance
+            // Ensure the new filter starts clean
             if let Some(ref mut c) = self.cascaded {
-                // new_with_gain_split already updates coefficients
-                c.reset(); // Reset state of new filter
+                c.reset();
             }
         }
     }
 
-    /// Sets the base frequency (Hz) specifically for the Comb filter. <--- ADDED
+    // Set parameters specific to the Comb filter
     pub fn set_comb_target_frequency(&mut self, freq: f32) {
-        // Clamp to a reasonable audio range, ensure positive
         self.comb_base_frequency = freq.clamp(10.0, self.sample_rate * 0.499);
     }
 
-    /// Sets the dampening factor for the Comb filter's feedback loop.
-    /// `dampening`: 0 = no dampening (bright), 1 = max dampening (dull).
     pub fn set_comb_dampening(&mut self, dampening: f32) {
         self.comb_dampening = dampening.clamp(0.0, 1.0);
     }
 
-    /// Reset internal filter state (delays, feedback paths etc.)
+    // Resets the internal state of all active filter components
     fn reset_filter_state(&mut self) {
         self.biquad.reset();
         if let Some(ref mut cascaded) = self.cascaded {
             cascaded.reset();
         }
         self.ladder_stages = [0.0; 4];
-        self.comb_buffer.fill(0.0); // Zero out delay line
+        self.comb_buffer.fill(0.0);
         self.comb_buffer_index = 0;
         self.comb_last_output = 0.0;
         self.comb_dc_prev = 0.0;
         self.comb_dc_state = 0.0;
-        self.aa_downsampling_filter.reset();
-        // self.aa_upsampling_filter.reset();
+        // Removed reset calls for aa_downsampling_filter and upsampler_state
     }
 
-    // --- Per-Sample Processing Logic ---
-
-    /// Process one sample using the Ladder filter implementation.
+    // Process a single sample using the Ladder filter algorithm
     #[inline(always)]
     fn process_ladder_sample(
         &mut self,
         input: f32,
         cutoff: f32,
-        resonance_norm: f32, // 0-1+ range typical
-        effective_sr: f32,
-        // os_factor: u32 // Not strictly needed if g is calculated correctly
+        resonance_norm: f32,
+        sample_rate: f32, // Use base sample rate
     ) -> f32 {
-        // Calculate ladder parameters based on effective sample rate
-        // Use frequency warping approximation for g
-        let g = (PI * cutoff / effective_sr).tan(); // Frequency coefficient (pole position)
-        let g_inv = 1.0 / (1.0 + g); // Normalization factor for feedback stage (stability)
+        // Moog Ladder Filter calculation (simplified)
+        let g = (PI * cutoff / sample_rate).tan(); // Use base sample rate
+        let g_inv = 1.0 / (1.0 + g);
+        let k = resonance_norm.max(0.0) * 4.0; // Resonance feedback gain
 
-        // Map normalized resonance (0-1+) to feedback amount (0-4 typical, allow higher)
-        let k = resonance_norm.max(0.0) * 4.0; // Feedback amount
+        // Calculate stage input with feedback
+        let stage_input = input - k * self.ladder_stages[3]; // Feedback from the last stage
 
-        // 4-Stage Moog Ladder Algorithm (Direct Form / simplified)
-        // Input with feedback from the last stage
-        let stage_input = input - k * self.ladder_stages[3];
-
-        // Calculate voltage differences across stages, apply non-linearity (tanh)
+        // Apply tanh approximation (non-linearity)
         let v0 = fast_tanh(stage_input);
         let v1 = fast_tanh(self.ladder_stages[0]);
         let v2 = fast_tanh(self.ladder_stages[1]);
         let v3 = fast_tanh(self.ladder_stages[2]);
-        let v4 = fast_tanh(self.ladder_stages[3]); // Last stage tanh for state update
+        let v4 = fast_tanh(self.ladder_stages[3]);
 
-        // Update stage values using one-pole filters (implicit Euler integration, adjusted)
-        // Formula: y[n] = y[n-1] + 2 * g * (input_tanh - y_tanh[n-1]) / (1 + g)
+        // Update stages using one-pole filters
         self.ladder_stages[0] += 2.0 * g * (v0 - v1) * g_inv;
         self.ladder_stages[1] += 2.0 * g * (v1 - v2) * g_inv;
         self.ladder_stages[2] += 2.0 * g * (v2 - v3) * g_inv;
-        self.ladder_stages[3] += 2.0 * g * (v3 - v4) * g_inv; // Last stage updates based on v3 -> v4
+        self.ladder_stages[3] += 2.0 * g * (v3 - v4) * g_inv;
 
-        // Output is typically the last stage state
+        // Output is the final stage
         let output = self.ladder_stages[3];
 
-        // Apply output gain (convert dB gain to linear multiplier)
+        // Apply overall gain
         output * 10f32.powf(self.base_gain_db / 20.0)
     }
 
-    /// Process one sample using the Comb filter implementation. Corrected for oversampling.
+    // Process a single sample using the Comb filter algorithm
     #[inline(always)]
     fn process_comb_sample(
         &mut self,
         input: f32,
-        freq: f32, // Target frequency (derived from comb_base_frequency + tracking)
-        resonance_norm: f32, // Smoothed, modulated resonance (0-1+, allows >1 for self-oscillation)
-        effective_sr: f32,
-        os_factor: u32, // Pass the oversampling factor
+        freq: f32,
+        resonance_norm: f32,
+        sample_rate: f32, // Use base sample rate
+                          // Removed os_factor parameter
     ) -> f32 {
-        // Calculate delay length in samples based on frequency at the effective sample rate
-        // Ensure freq > 0, delay >= 2 (minimum delay for interpolation)
-        let delay_samples = (effective_sr / freq.max(1.0)).max(2.0);
+        // Calculate delay time in samples based on frequency
+        let delay_samples = (sample_rate / freq.max(1.0)).max(2.0); // Use base sample rate
 
-        // --- Calculate per-oversampling-step parameters ---
-        let os_factor_f = os_factor as f32;
+        let clamped_res = resonance_norm.max(0.0);
+        // Removed substep_resonance calculation
 
-        // Apply resonance proportionally per step. Allow resonance > 1 for self-oscillation.
-        let clamped_res = resonance_norm.max(0.0); // Ensure non-negative
-        let substep_resonance = clamped_res.powf(1.0 / os_factor_f);
-
-        // Dampening: 0 = bright/no dampening, 1 = max dampening (dull)
-        // Map comb_dampening to the feedback filter coefficient (alpha).
         let clamped_dampening = self.comb_dampening.clamp(0.0, 1.0);
-        let substep_dampening_coeff = clamped_dampening.powf(1.0 / os_factor_f);
-        // One-pole lowpass: y[n] = alpha * y[n-1] + (1 - alpha) * x[n]
-        let alpha = substep_dampening_coeff; // Alpha for the dampening filter
+        // Removed substep_dampening_coeff calculation
 
-        // --- Read Delayed Sample (Linear Interpolation) ---
+        let alpha = clamped_dampening; // Damping filter coefficient
+
+        // Calculate read indices for fractional delay interpolation
         let delay_floor = delay_samples.floor();
         let delay_frac = delay_samples - delay_floor;
         let delay_int = delay_floor as usize;
 
         let buf_len = self.comb_buffer.len();
-        // Calculate read indices, ensuring they wrap correctly within the buffer length
-        // Index for the integer part of the delay
         let read_idx0 = (self.comb_buffer_index + buf_len - delay_int) % buf_len;
-        // Index for the sample before that (for interpolation)
         let read_idx1 = (self.comb_buffer_index + buf_len - (delay_int + 1)) % buf_len;
 
-        // Read samples using safe indexing
+        // Linear interpolation for fractional delay
         let y0 = self.comb_buffer[read_idx0];
         let y1 = self.comb_buffer[read_idx1];
-
-        // Linear interpolation
         let delayed_sample = y0 + (y1 - y0) * delay_frac;
 
-        // --- Apply Dampening Filter to the delayed signal ---
-        // This filters the signal before it's used in the feedback loop.
+        // Apply damping (low-pass filtering) to the delayed signal before feedback
         self.comb_last_output = alpha * self.comb_last_output + (1.0 - alpha) * delayed_sample;
 
-        // --- Calculate Feedback Signal ---
-        // Use the dampened signal and per-step resonance.
-        let feedback = self.comb_last_output * substep_resonance;
+        // Calculate feedback amount
+        let feedback = self.comb_last_output * clamped_res; // Use direct resonance
 
-        // --- Calculate Sample to Write to Buffer ---
-        // Standard feedback comb: y[n] = x[n] + feedback_signal
+        // Calculate value to write into the buffer (input + feedback)
         let buffer_write_val = input + feedback;
-        // Optional: Clamp output before writing to buffer to prevent potential explosion
-        // let buffer_write_val = buffer_write_val.clamp(-2.0, 2.0);
 
-        // --- Write to Delay Buffer ---
+        // Write to comb buffer and advance write index
         self.comb_buffer[self.comb_buffer_index] = buffer_write_val;
-
-        // --- Increment Write Index ---
         self.comb_buffer_index = (self.comb_buffer_index + 1) % buf_len;
 
-        // --- DC Blocker ---
-        // The output *before* DC blocking is the value written to the buffer
+        // Output of the comb filter is the value just written (can be configured differently)
         let comb_output = buffer_write_val;
-        // Simple 1st order highpass DC blocker: y[n] = x[n] - x[n-1] + R * y[n-1]
-        let filtered_output = comb_output - self.comb_dc_prev + 0.995 * self.comb_dc_state;
-        self.comb_dc_prev = comb_output; // Store current output as previous input for next step
-        self.comb_dc_state = filtered_output; // Store current filtered output for next step
 
-        filtered_output // Return the DC-blocked signal
+        // Simple DC blocking filter on the output
+        let filtered_output = comb_output - self.comb_dc_prev + 0.995 * self.comb_dc_state;
+        self.comb_dc_prev = comb_output;
+        self.comb_dc_state = filtered_output;
+
+        filtered_output
     }
 
-    /// Process one sample using the Biquad filter implementation (12dB or 24dB).
+    // Process a single sample using the Biquad or Cascaded Biquad filter
     #[inline(always)]
     fn process_biquad_sample(
         &mut self,
         input: f32,
         cutoff: f32,
-        resonance_norm: f32, // 0-1+ range (will be clamped for Q calc)
-        effective_sr: f32,
-        // os_factor: u32 // Not needed directly, handled by effective_sr
+        resonance_norm: f32,
+        sample_rate: f32, // Use base sample rate
     ) -> f32 {
-        // Update Biquad coefficients only if parameters or sample rate changed significantly
-        // Clamp resonance for Q calculation if it can exceed 1.0
         let q = normalized_resonance_to_q(resonance_norm.clamp(0.0, 1.0));
 
-        // Update primary biquad state if needed
-        let biquad_needs_update = self.biquad.sample_rate != effective_sr
-            || (self.biquad.frequency - cutoff).abs() > 1e-3 // Tolerate small float differences
+        // Check if the main biquad parameters need updating
+        let biquad_needs_update = self.biquad.sample_rate != sample_rate
+            || (self.biquad.frequency - cutoff).abs() > 1e-3
             || (self.biquad.q - q).abs() > 1e-3
-            || self.biquad.gain_db != self.base_gain_db
+            || self.biquad.gain_db != self.base_gain_db // Gain check needed for 12dB mode
             || self.biquad.filter_type != self.filter_type;
 
+        // Update the single biquad if needed (always used as fallback or for 12dB)
         if biquad_needs_update {
-            self.biquad.sample_rate = effective_sr;
+            self.biquad.sample_rate = sample_rate;
             self.biquad.frequency = cutoff;
             self.biquad.q = q;
-            self.biquad.gain_db = self.base_gain_db; // Apply full gain for 12dB mode
+            // Gain applied differently depending on slope
+            self.biquad.gain_db = if self.slope == FilterSlope::Db12 {
+                self.base_gain_db // Apply full gain on single biquad for 12dB
+            } else {
+                0.0 // No gain if it's the first stage of a (potential) 24dB filter
+            };
             self.biquad.filter_type = self.filter_type;
             self.biquad.update_coefficients();
         }
 
         match self.slope {
-            FilterSlope::Db12 => self.biquad.process(input),
+            FilterSlope::Db12 => {
+                // Use the single biquad for 12dB slope
+                self.biquad.process(input)
+            }
             FilterSlope::Db24 => {
-                // Ensure cascaded filter exists and is up-to-date
-                let stage_q = q.sqrt().max(0.501); // Q for each stage, ensure > 0.5
+                // Use cascaded biquad for 24dB slope
+                let stage_q = q.sqrt().max(0.501); // Q for each of the two stages
 
-                // Check if cascaded needs setup or update
+                // Check if cascaded filter needs setup or update
                 let needs_setup_or_update = match self.cascaded {
                     None => true, // Needs setup if it doesn't exist
                     Some(ref c) => {
-                        c.first.sample_rate != effective_sr
-                                || (c.first.frequency - cutoff).abs() > 1e-3
-                                || (c.first.q - stage_q).abs() > 1e-3
-                                || c.second.gain_db != self.base_gain_db // Check gain on second stage
-                                || c.first.filter_type != self.filter_type
+                        // Check if parameters differ significantly
+                        c.first.sample_rate != sample_rate
+                            || (c.first.frequency - cutoff).abs() > 1e-3
+                            || (c.first.q - stage_q).abs() > 1e-3
+                            || c.second.gain_db != self.base_gain_db // Gain is on second stage
+                            || c.first.filter_type != self.filter_type
                     }
                 };
 
                 if needs_setup_or_update {
-                    // This will create or update the cascaded filter
+                    // Use setup_cascaded_filter which uses smoothed parameters initially
                     self.setup_cascaded_filter();
+
+                    // Explicitly update the cascaded filter with current (non-smoothed) values
+                    if let Some(ref mut cascaded) = self.cascaded {
+                        cascaded.first.sample_rate = sample_rate;
+                        cascaded.second.sample_rate = sample_rate;
+                        cascaded.first.frequency = cutoff;
+                        cascaded.second.frequency = cutoff;
+                        cascaded.first.q = stage_q;
+                        cascaded.second.q = stage_q;
+                        cascaded.first.gain_db = 0.0; // No gain on first stage
+                        cascaded.second.gain_db = self.base_gain_db; // Full gain on second stage
+                        cascaded.first.filter_type = self.filter_type;
+                        cascaded.second.filter_type = self.filter_type;
+                        cascaded.first.update_coefficients();
+                        cascaded.second.update_coefficients();
+                    }
                 }
 
-                // Process through the cascaded filter
+                // Process through the cascaded filter if available, otherwise fallback (shouldn't happen if setup is correct)
                 if let Some(ref mut cascaded) = self.cascaded {
                     cascaded.process(input)
                 } else {
-                    // Fallback to 12dB if cascaded somehow failed to initialize (should not happen)
-                    // Log error maybe?
-                    // web_sys::console::error_1(&"Cascaded filter missing in Db24 mode!".into());
+                    // Fallback to single biquad process - indicates an issue in logic if reached in 24dB mode
+                    // For safety, process using the single biquad (effectively 12dB)
                     self.biquad.process(input)
                 }
             }
@@ -681,32 +521,32 @@ impl FilterCollection {
     }
 }
 
-// Implement the modulation processor trait helper functions
 impl ModulationProcessor for FilterCollection {}
 
 impl AudioNode for FilterCollection {
+    // Define input and output ports
     fn get_ports(&self) -> HashMap<PortId, bool> {
         [
-            (PortId::AudioInput0, false),     // Input audio signal
-            (PortId::CutoffMod, false),       // Modulation for Biquad/Ladder cutoff frequency
-            (PortId::ResonanceMod, false),    // Modulation for resonance (0-1+) for all types
-            (PortId::Frequency, false), // Keyboard tracking base frequency (Hz) -> affects Cutoff & Comb Freq
-            (PortId::GlobalFrequency, false), // Global tuning base frequency (Hz) -> affects Cutoff & Comb Freq
-            (PortId::AudioOutput0, true),     // Output filtered audio
-                                              // Potential future ports: CombFreqMod, CombDampMod, GainMod, etc.
+            (PortId::AudioInput0, false),     // Input, not an output
+            (PortId::CutoffMod, false),       // Input
+            (PortId::ResonanceMod, false),    // Input
+            (PortId::Frequency, false),       // Input (for key tracking)
+            (PortId::GlobalFrequency, false), // Input (for global pitch)
+            (PortId::AudioOutput0, true),     // Output
         ]
         .iter()
         .cloned()
         .collect()
     }
 
+    // Main audio processing block
     fn process(
         &mut self,
         inputs: &HashMap<PortId, Vec<ModulationSource>>,
         outputs: &mut HashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // --- 0) Early exit and Buffer Preparation ---
+        // If the filter is disabled, output silence and return
         if !self.enabled {
             if let Some(output_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
                 output_buffer[..buffer_size].fill(0.0);
@@ -714,202 +554,181 @@ impl AudioNode for FilterCollection {
             return;
         }
 
+        // Make sure internal scratch buffers are large enough
         self.ensure_scratch_buffers(buffer_size);
 
+        // Get the output buffer slice
         let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
             Some(buffer) => buffer,
-            None => return, // No output buffer provided
+            None => return, // No output buffer provided, nothing to do
         };
 
-        // --- 1) Process Modulation Inputs ---
-
-        // Audio Input (assuming simple additive combination)
-        self.audio_in_buffer[..buffer_size].fill(0.0); // Reset input buffer
+        // --- 1. Prepare Input Audio Buffer ---
+        // Clear or fill with input audio
+        self.audio_in_buffer[..buffer_size].fill(0.0); // Start with silence
         if let Some(audio_sources) = inputs.get(&PortId::AudioInput0) {
+            // Accumulate audio from all connected sources
             for source in audio_sources {
                 Self::apply_add(
-                    &source.buffer,
-                    &mut self.audio_in_buffer[..buffer_size],
-                    source.amount,
-                    source.transformation,
+                    &source.buffer,                           // Source audio buffer
+                    &mut self.audio_in_buffer[..buffer_size], // Target buffer
+                    source.amount,         // Modulation amount (usually 1.0 for audio)
+                    source.transformation, // Transformation (usually None for audio)
                 );
             }
         }
 
-        // Generic modulation input processing helper
+        // --- 2. Prepare Modulation Buffers ---
+        // Helper function to process modulation inputs for a given port
         let mut process_mod_input = |port_id: PortId,
                                      target_add: &mut [f32],
                                      target_mult: &mut [f32],
                                      default_add: f32,
                                      default_mult: f32| {
             let sources = inputs.get(&port_id);
-            // Check if there are actually sources connected
+            // If there are modulation sources connected to this port
             if sources.map_or(false, |s| !s.is_empty()) {
-                // Use the ModulationProcessor helper to combine sources
+                // Accumulate modulation values into temporary scratch buffers
                 Self::accumulate_modulations_inplace(
                     buffer_size,
-                    sources.map(|v| v.as_slice()),
-                    &mut self.mod_scratch_add, // Use general scratch buffers
-                    &mut self.mod_scratch_mult,
+                    sources.map(|v| v.as_slice()), // Get sources as slice if present
+                    &mut self.mod_scratch_add,     // Temp buffer for additive mods
+                    &mut self.mod_scratch_mult,    // Temp buffer for multiplicative mods
                 );
-                // Copy results to specific scratch buffers for this parameter
+                // Copy results to the specific target buffers for this parameter
                 target_add[..buffer_size].copy_from_slice(&self.mod_scratch_add[..buffer_size]);
                 target_mult[..buffer_size].copy_from_slice(&self.mod_scratch_mult[..buffer_size]);
             } else {
-                // No sources connected, fill with default values
+                // No sources connected, fill with default values (no modulation)
                 target_add[..buffer_size].fill(default_add);
                 target_mult[..buffer_size].fill(default_mult);
             }
         };
 
-        // Process modulation for each parameter
+        // Process modulation for Cutoff, Resonance, and Frequency (for tracking)
         process_mod_input(
-            PortId::CutoffMod, // Affects Biquad/Ladder cutoff
-            &mut self.scratch_cutoff_add,
-            &mut self.scratch_cutoff_mult,
-            0.0, // Default additive cutoff mod
-            1.0, // Default multiplicative cutoff mod
+            PortId::CutoffMod,             // Port ID
+            &mut self.scratch_cutoff_add,  // Target additive buffer
+            &mut self.scratch_cutoff_mult, // Target multiplicative buffer
+            0.0,                           // Default add value
+            1.0,                           // Default mult value
         );
         process_mod_input(
-            PortId::ResonanceMod, // Affects all filter types
+            PortId::ResonanceMod,
             &mut self.scratch_res_add,
             &mut self.scratch_res_mult,
-            0.0, // Default additive resonance mod
-            1.0, // Default multiplicative resonance mod
+            0.0,
+            1.0,
         );
-        // For frequency inputs, we primarily care about the additive part as the base frequency
         process_mod_input(
-            PortId::Frequency, // Keyboard tracking
+            PortId::Frequency, // For per-voice key tracking
             &mut self.scratch_freq_add,
-            &mut self.scratch_freq_mult, // Multiplicative part usually unused for base freq
-            440.0,                       // Default base frequency (A4)
+            &mut self.scratch_freq_mult,
+            440.0, // Default frequency (A4)
             1.0,
         );
         process_mod_input(
-            PortId::GlobalFrequency, // Global tuning
+            PortId::GlobalFrequency, // For global pitch/tuning affecting tracking
             &mut self.scratch_global_freq_add,
-            &mut self.scratch_global_freq_mult, // Multiplicative part usually unused for base freq
-            440.0,                              // Default base frequency (A4)
+            &mut self.scratch_global_freq_mult,
+            440.0, // Default global frequency (A4)
             1.0,
         );
 
-        // --- 2) Main Processing Loop (Sample by Sample) ---
-        let os_factor = self.oversampling_factor.max(1);
-        let effective_sr = self.sample_rate * os_factor as f32;
+        // --- 3. Process Audio Samples ---
+        // Removed os_factor and effective_sr calculation
+        let sample_rate = self.sample_rate;
         let base_440_hz = 440.0; // Reference frequency for tracking calculations
-        let smoothing_factor = self.smoothing_factor; // Cache smoothing factor
+        let smoothing_factor = self.smoothing_factor; // Parameter smoothing coefficient
 
+        // Removed upsample_fn
+
+        // Process each sample in the buffer
         for i in 0..buffer_size {
-            // --- Calculate Target Parameters for this Sample ---
-            // Cutoff for Biquad/Ladder (base + modulation)
+            // --- Calculate Target Parameters for this sample ---
+            // Apply modulation to base cutoff and resonance
             let target_cutoff_base =
                 (self.base_cutoff + self.scratch_cutoff_add[i]) * self.scratch_cutoff_mult[i];
-            // Resonance for all types (base + modulation)
             let target_resonance_norm =
                 (self.base_resonance + self.scratch_res_add[i]) * self.scratch_res_mult[i];
 
-            // --- Apply Keyboard & Global Frequency Tracking ---
-            // Note: Using ADDITIVE scratch buffers as the source frequency value (Hz)
-            let key_freq = self.scratch_freq_add[i].max(10.0); // Ensure positive frequency
-            let global_freq = self.scratch_global_freq_add[i].max(10.0);
-
-            // Calculate frequency ratios relative to A440
-            let key_ratio = key_freq / base_440_hz;
-            let global_ratio = global_freq / base_440_hz;
-
-            // Apply sensitivity. Sensitivity=1 means ratio^1, Sensitivity=0 means ratio^0=1 (no tracking)
-            // Global tracking is usually full (sensitivity=1 implicitly).
+            // Calculate keyboard tracking multiplier
+            let key_freq = self.scratch_freq_add[i].max(10.0); // Per-voice frequency
+            let global_freq = self.scratch_global_freq_add[i].max(10.0); // Global reference freq
+            let key_ratio = key_freq / base_440_hz; // Ratio relative to A4
+            let global_ratio = global_freq / base_440_hz; // Global ratio relative to A4
+                                                          // Combine ratios based on sensitivity
             let tracking_multiplier =
                 key_ratio.powf(self.keyboard_tracking_sensitivity) * global_ratio;
 
-            // --- Calculate final effective parameters for this sample ---
-            let max_freq_limit = effective_sr * 0.495; // Clamp slightly below Nyquist of effective SR
-
-            // Effective Biquad/Ladder Cutoff (apply tracking, clamp)
+            // Calculate final target cutoff and clamp to Nyquist limit
+            // Use base sample rate Nyquist limit
+            let max_freq_limit = sample_rate * 0.499;
             let target_cutoff =
                 (target_cutoff_base * tracking_multiplier).clamp(10.0, max_freq_limit);
 
-            // Effective Comb Frequency (use comb_base_frequency, apply tracking, clamp) <--- MODIFIED
+            // Calculate target frequency for Comb filter (if used)
             let target_comb_freq =
                 (self.comb_base_frequency * tracking_multiplier).clamp(10.0, max_freq_limit);
 
-            // Effective Resonance (clamp, allow slightly > 1.0 for comb self-resonance)
+            // Clamp resonance (allow slightly above 1.0 for potential extreme effects)
             let target_resonance_clamped = target_resonance_norm.clamp(0.0, 1.05);
 
-            // --- Apply Parameter Smoothing (One-Pole LPF) ---
-            // Smooth cutoff for Biquad/Ladder
+            // --- Smooth Parameters ---
+            // Apply simple one-pole smoothing to cutoff and resonance
             self.smoothed_cutoff += smoothing_factor * (target_cutoff - self.smoothed_cutoff);
             self.smoothed_cutoff = self.smoothed_cutoff.clamp(10.0, max_freq_limit); // Re-clamp after smoothing
 
-            // Smooth resonance for all types
             self.smoothed_resonance +=
                 smoothing_factor * (target_resonance_clamped - self.smoothed_resonance);
-            self.smoothed_resonance = self.smoothed_resonance.clamp(0.0, 1.05); // Re-clamp after smoothing
-                                                                                // Note: target_comb_freq is NOT smoothed, using the directly calculated value
+            self.smoothed_resonance = self.smoothed_resonance.clamp(0.0, 1.05); // Re-clamp
 
-            // --- Process Audio Sample(s) with Oversampling ---
+            // --- Process Single Sample ---
             let input_sample = self.audio_in_buffer[i];
+            // Removed oversampling loop
+            // Removed call to upsample_fn
 
-            // --- Upsample Input ---
-            // Simple Zero-Order Hold: Use the same input sample for all oversampling steps.
-            // Optional: Apply aa_upsampling_filter here if implemented and desired.
-            // let upsampled_input = self.aa_upsampling_filter.process(input_sample);
-            let upsampled_input = input_sample; // ZOH
+            // Call the appropriate filter processing function based on type
+            let current_output = match self.filter_type {
+                FilterType::Ladder => self.process_ladder_sample(
+                    input_sample,
+                    self.smoothed_cutoff,
+                    self.smoothed_resonance,
+                    sample_rate, // Pass base sample rate
+                ),
+                FilterType::Comb => self.process_comb_sample(
+                    input_sample,
+                    target_comb_freq, // Comb uses target freq directly (less sensitive to smoothing artifacts)
+                    self.smoothed_resonance,
+                    sample_rate, // Pass base sample rate
+                ),
+                _ => self.process_biquad_sample(
+                    // Handles LowPass, HighPass, etc.
+                    input_sample,
+                    self.smoothed_cutoff,
+                    self.smoothed_resonance,
+                    sample_rate, // Pass base sample rate
+                ),
+            };
 
-            let mut current_output = 0.0;
-            // --- Oversampling Loop ---
-            for _k in 0..os_factor {
-                // Loop variable k not needed inside
-                // Process one sub-sample at the effective sample rate using calculated parameters
-                current_output = match self.filter_type {
-                    FilterType::Ladder => self.process_ladder_sample(
-                        upsampled_input,         // Use ZOH input for all steps
-                        self.smoothed_cutoff,    // Use smoothed B/L cutoff
-                        self.smoothed_resonance, // Use smoothed resonance
-                        effective_sr,
-                    ),
-                    FilterType::Comb => self.process_comb_sample(
-                        upsampled_input,         // Use ZOH input for all steps
-                        target_comb_freq, // Use directly calculated (tracked, unsmoothed) comb freq <--- MODIFIED
-                        self.smoothed_resonance, // Use smoothed resonance
-                        effective_sr,
-                        os_factor, // Pass os_factor for correct param handling
-                    ),
-                    // All other types use the Biquad/Cascaded logic
-                    _ => self.process_biquad_sample(
-                        upsampled_input,         // Use ZOH input for all steps
-                        self.smoothed_cutoff,    // Use smoothed B/L cutoff
-                        self.smoothed_resonance, // Use smoothed resonance
-                        effective_sr,
-                    ),
-                };
+            // --- Final Output ---
+            // Removed decimation filter processing
+            let final_output = current_output; // No downsampling needed
 
-                // If not using ZOH, update upsampled_input for next step
-                // e.g., for impulse train: if k == 0 { upsampled_input *= os_factor_f } else { upsampled_input = 0.0; }
-                // Or use polyphase FIR for better quality upsampling.
-            } // End of oversampling loop
-
-            // --- Downsample Output ---
-            // Apply the decimation filter before writing to the output buffer.
-            let final_output = self.aa_downsampling_filter.process(current_output);
-
-            // Write final processed sample to the output buffer
+            // Write the final processed sample to the output buffer
             output_buffer[i] = final_output;
-        } // End of main processing loop (per sample)
+        }
     }
 
-    /// Resets filter state and smoothed parameters.
+    // Reset filter state and smoothed parameters
     fn reset(&mut self) {
-        // Reset internal state like delays, feedback paths etc.
-        self.reset_filter_state();
-        // Reset smoothed parameters back to base values
+        self.reset_filter_state(); // Reset internal filter states (biquad, ladder, comb)
+                                   // Reset smoothed parameters to base values
         self.smoothed_cutoff = self.base_cutoff;
         self.smoothed_resonance = self.base_resonance;
-        // Reset AA filters too
-        self.aa_downsampling_filter.reset();
-        // self.aa_upsampling_filter.reset();
     }
 
+    // --- Boilerplate for AudioNode trait ---
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -921,7 +740,7 @@ impl AudioNode for FilterCollection {
     }
     fn set_active(&mut self, active: bool) {
         if !active && self.enabled {
-            // Reset state only when turning off
+            // If becoming inactive, reset state
             self.reset();
         }
         self.enabled = active;
@@ -931,65 +750,62 @@ impl AudioNode for FilterCollection {
     }
 }
 
-// --- Frequency Response Generation Methods ---
-// Updated create_impulse_response to handle comb_base_frequency
-
+// --- Frequency Response Generation Methods (Simplified) ---
 impl FilterCollection {
-    /// Generates the frequency response of the filter with current settings.
+    // Generates a frequency response curve for visualization
     pub fn generate_frequency_response(&self, requested_length: usize) -> Vec<f32> {
-        // Generate impulse response using a temporary instance with current base settings
-        let impulse_length = 4096.max(requested_length * 4); // Ensure enough FFT resolution
+        // 1. Get Impulse Response
+        // Use a sufficient length for FFT resolution, max with requested * 4
+        let impulse_length = 4096.max(requested_length * 4);
         let impulse = self.create_impulse_response(impulse_length);
 
-        // Calculate FFT magnitude (in dB)
+        // 2. Calculate FFT Magnitude Spectrum
         let fft_magnitude_db = self.calculate_fft_magnitude(impulse);
 
-        // Frequency range for display (logarithmic)
+        // 3. Interpolate FFT results onto a Logarithmic Scale for display
         let nyquist_hz = self.sample_rate * 0.5;
-        let max_freq_hz = 20_000.0_f32.min(nyquist_hz);
-        let min_freq_hz = 20.0_f32;
+        let max_freq_hz = 20_000.0_f32.min(nyquist_hz); // Display up to 20kHz or Nyquist
+        let min_freq_hz = 20.0_f32; // Start display from 20Hz
+        let fft_bins = fft_magnitude_db.len(); // Number of bins (FFT length / 2)
 
-        // Map frequency range to FFT bin indices
-        let fft_bins = fft_magnitude_db.len(); // Number of bins in the half-spectrum
-                                               // Index corresponding to max frequency (ensure it's within bounds)
-                                               // Bin index = Freq * FFT_Size / SampleRate. FFT_Size = impulse_length = fft_bins * 2
+        // Calculate corresponding FFT bin indices for min/max display frequencies
         let bin_max =
             (max_freq_hz * (fft_bins as f32 * 2.0) / self.sample_rate).min(fft_bins as f32 - 1.0);
-        // Index corresponding to min frequency (ensure >= 0)
         let bin_min = (min_freq_hz * (fft_bins as f32 * 2.0) / self.sample_rate).max(0.0);
 
-        let points = requested_length;
+        let points = requested_length; // Number of points for the final response curve
         let mut response_db_interpolated = Vec::with_capacity(points);
 
-        // Logarithmic sampling of FFT bins for better visualization
-        // Handle edge case where bin_min or bin_max might be 0
-        let log_bin_min = (bin_min.max(0.0) + 1.0).ln(); // Add 1 to handle bin 0 -> ln(1)=0
+        // Calculate logarithmic range for interpolation
+        let log_bin_min = (bin_min.max(0.0) + 1.0).ln(); // Add 1 to avoid log(0)
         let log_bin_max = (bin_max.max(0.0) + 1.0).ln();
-        let log_range = (log_bin_max - log_bin_min).max(0.0); // Avoid negative range if min > max
+        let log_range = (log_bin_max - log_bin_min).max(0.0);
 
+        // Interpolate magnitude values at logarithmically spaced points
         for i in 0..points {
-            // Calculate interpolation factor (0.0 to 1.0)
+            // Determine position on the logarithmic scale (0.0 to 1.0)
             let factor = if points > 1 {
                 i as f32 / (points - 1) as f32
             } else {
-                0.0
+                0.0 // Avoid division by zero if only one point requested
             };
-            // Find the target bin index on a logarithmic scale
+            // Map log factor back to linear bin index
             let log_bin = log_bin_min + log_range * factor;
-            // Convert back to linear bin index
-            let bin = log_bin.exp() - 1.0;
+            let bin = log_bin.exp() - 1.0; // Subtract 1 back
 
-            // Linear interpolation between adjacent FFT magnitude bins
+            // Find surrounding FFT bins and interpolation fraction
             let bin_floor = (bin.floor().max(0.0) as usize).min(fft_bins.saturating_sub(1));
             let bin_ceil = (bin_floor + 1).min(fft_bins.saturating_sub(1));
             let frac = bin - bin_floor as f32;
 
+            // Perform linear interpolation between dB magnitudes of surrounding bins
             let db_val =
                 if bin_floor >= fft_magnitude_db.len() || bin_ceil >= fft_magnitude_db.len() {
-                    // Safety check for out-of-bounds, return floor value?
-                    *fft_magnitude_db.last().unwrap_or(&-120.0) // Default to very low dB if empty
+                    // Handle edge case where calculated bin is out of bounds
+                    *fft_magnitude_db.last().unwrap_or(&-120.0) // Default to last value or silence
                 } else if bin_floor == bin_ceil {
-                    fft_magnitude_db[bin_floor] // Avoid interpolation if frac is 0 or at the end
+                    // If bin falls exactly on an index
+                    fft_magnitude_db[bin_floor]
                 } else {
                     // Linear interpolation
                     fft_magnitude_db[bin_floor] * (1.0 - frac) + fft_magnitude_db[bin_ceil] * frac
@@ -997,11 +813,11 @@ impl FilterCollection {
             response_db_interpolated.push(db_val);
         }
 
-        // Normalize the dB values to a 0.0-1.0 range for display purposes
-        self.normalize_for_display_range(response_db_interpolated, -60.0, 18.0) // Adjust dB range as needed
+        // 4. Normalize the interpolated dB values to a 0.0-1.0 range for display
+        self.normalize_for_display_range(response_db_interpolated, -60.0, 18.0) // e.g., -60dB to +18dB range
     }
 
-    /// Normalizes dB values to a 0.0-1.0 range for display.
+    // Normalizes dB values to a 0.0-1.0 range based on floor and ceiling
     fn normalize_for_display_range(
         &self,
         mut data: Vec<f32>,
@@ -1010,126 +826,314 @@ impl FilterCollection {
     ) -> Vec<f32> {
         let range = (db_ceiling - db_floor).max(1e-6); // Avoid division by zero
         for value in &mut data {
+            // Clamp dB value to the display range
             let clamped_db = value.clamp(db_floor, db_ceiling);
-            // Map clamped value to 0.0-1.0 range
+            // Normalize to 0.0 - 1.0
             *value = (clamped_db - db_floor) / range;
         }
         data
     }
 
-    /// Creates an impulse response for the current filter settings using a temporary instance.
+    // Creates the impulse response of the filter with current settings
     fn create_impulse_response(&self, length: usize) -> Vec<f32> {
-        // Create a temporary filter instance configured with current BASE settings
-        // This reflects the "target" response, not the potentially smoothed real-time response.
+        // Create a temporary copy of the filter to avoid modifying the main state
         let mut temp_filter = FilterCollection::new(self.sample_rate);
-        // Copy base parameters
         temp_filter.base_cutoff = self.base_cutoff;
         temp_filter.base_resonance = self.base_resonance;
         temp_filter.base_gain_db = self.base_gain_db;
-        temp_filter.comb_base_frequency = self.comb_base_frequency; // <<< COPY COMB FREQ
+        temp_filter.comb_base_frequency = self.comb_base_frequency;
         temp_filter.comb_dampening = self.comb_dampening;
         temp_filter.filter_type = self.filter_type;
         temp_filter.slope = self.slope;
-        temp_filter.oversampling_factor = self.oversampling_factor; // Use current OS factor
         temp_filter.keyboard_tracking_sensitivity = self.keyboard_tracking_sensitivity;
-        // Set smoothed params directly to base values for impulse response (no smoothing)
+        // Set smoothed params directly to base values for impulse response generation
         temp_filter.smoothed_cutoff = self.base_cutoff;
         temp_filter.smoothed_resonance = self.base_resonance;
+        // No oversampling params to set
+        // No aa_filters to update
 
-        // Ensure internal state matches settings (AA filters, cascaded setup)
-        temp_filter.update_aa_filters(); // Initialize AA filters correctly
-        temp_filter.set_filter_type(self.filter_type); // Setup cascaded if needed
-        temp_filter.set_filter_slope(self.slope); // Redundant if type was set, but safe
+        // Ensure filter type and slope (and potentially cascaded setup) are correct
+        temp_filter.set_filter_type(self.filter_type);
+        temp_filter.set_filter_slope(self.slope); // This will handle cascaded setup if needed
+        temp_filter.reset_filter_state(); // Start from a clean state
 
         let mut response = Vec::with_capacity(length);
-        let os_factor = temp_filter.oversampling_factor.max(1);
-        let effective_sr = temp_filter.sample_rate * os_factor as f32;
+        let sample_rate = temp_filter.sample_rate; // Use base sample rate
+        let impulse_comb_freq = temp_filter.comb_base_frequency; // Use base comb freq
 
-        // Determine comb frequency for impulse (use base freq, no tracking/modulation for IR)
-        let impulse_comb_freq = temp_filter.comb_base_frequency; // <<< USE BASE COMB FREQ
+        // Removed os_factor, effective_sr, upsample_fn
 
-        // --- Generate Impulse Response ---
+        // Generate response by processing an impulse
         for i in 0..length {
-            // Create impulse: 1.0 at sample 0, 0.0 otherwise
-            let input = if i == 0 { 1.0 } else { 0.0 };
+            let input = if i == 0 { 1.0 } else { 0.0 }; // Impulse at time 0
 
-            // --- Apply Oversampling for Impulse Response ---
-            // Upsample (ZOH)
-            let upsampled_input = input;
-            // Optional: Use AA upsampling filter
-            // let upsampled_input = temp_filter.aa_upsampling_filter.process(input);
+            // Removed oversampling loop
+            // Removed upsampling call
 
-            let mut current_output = 0.0;
-            // --- Oversampling Loop ---
-            for _k in 0..os_factor {
-                // Loop var k not needed
-                // Process sub-sample using BASE parameters (already set in smoothed vars)
-                current_output = match temp_filter.filter_type {
-                    FilterType::Ladder => temp_filter.process_ladder_sample(
-                        upsampled_input,                // Use ZOH input
-                        temp_filter.smoothed_cutoff,    // Use base cutoff
-                        temp_filter.smoothed_resonance, // Use base resonance
-                        effective_sr,
-                    ),
-                    FilterType::Comb => temp_filter.process_comb_sample(
-                        upsampled_input,                // Use ZOH input
-                        impulse_comb_freq,              // <<< USE BASE COMB FREQ FOR IMPULSE
-                        temp_filter.smoothed_resonance, // Use base resonance
-                        effective_sr,
-                        os_factor, // Pass OS factor
-                    ),
-                    _ => temp_filter.process_biquad_sample(
-                        upsampled_input,                // Use ZOH input
-                        temp_filter.smoothed_cutoff,    // Use base cutoff
-                        temp_filter.smoothed_resonance, // Use base resonance
-                        effective_sr,
-                    ),
-                };
-                // If not ZOH: update upsampled_input for next step (e.g., set to 0.0)
-            } // End OS loop
+            // Process the single sample directly
+            let current_output = match temp_filter.filter_type {
+                FilterType::Ladder => temp_filter.process_ladder_sample(
+                    input,
+                    temp_filter.smoothed_cutoff, // Use non-modulated cutoff
+                    temp_filter.smoothed_resonance, // Use non-modulated resonance
+                    sample_rate,                 // Pass base sample rate
+                ),
+                FilterType::Comb => temp_filter.process_comb_sample(
+                    input,
+                    impulse_comb_freq, // Use non-modulated comb freq
+                    temp_filter.smoothed_resonance,
+                    sample_rate, // Pass base sample rate
+                ),
+                _ => temp_filter.process_biquad_sample(
+                    input,
+                    temp_filter.smoothed_cutoff,
+                    temp_filter.smoothed_resonance,
+                    sample_rate, // Pass base sample rate
+                ),
+            };
 
-            // Downsample using the AA filter
-            let final_output = temp_filter.aa_downsampling_filter.process(current_output);
+            // Removed decimation filter call
+            let final_output = current_output;
             response.push(final_output);
         }
         response
     }
 
-    /// Calculates the FFT magnitude spectrum (in dB) from an impulse response.
+    // Calculates the FFT magnitude spectrum (in dB) from an impulse response
     fn calculate_fft_magnitude(&self, impulse_response: Vec<f32>) -> Vec<f32> {
         let fft_length = impulse_response.len();
         if fft_length == 0 {
-            return vec![];
+            return vec![]; // Handle empty input
         }
 
+        // Setup FFT planner
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(fft_length);
 
-        // Convert impulse response to complex buffer
+        // Prepare buffer for FFT (convert real impulse response to complex)
         let mut buffer: Vec<Complex<f32>> = impulse_response
             .into_iter()
             .map(|x| Complex { re: x, im: 0.0 })
             .collect();
 
-        // Perform FFT in-place
+        // Perform FFT
         fft.process(&mut buffer);
 
         // Calculate magnitude in dB for the first half of the spectrum (positive frequencies)
         let half_len = fft_length / 2;
-        let epsilon = 1e-10; // Small value to prevent log10(0)
-
+        let epsilon = 1e-10; // Small value to avoid log10(0)
         let magnitude_db: Vec<f32> = buffer
             .iter()
-            .take(half_len) // Only take the first half (0 to Nyquist)
+            .take(half_len) // Only need the first half (up to Nyquist)
             .map(|c| {
-                let norm_sq = c.norm_sqr(); // Power = magnitude squared
-                                            // Convert power to dB: 10 * log10(power)
-                10.0 * (norm_sq + epsilon).log10()
-                // Or convert amplitude to dB: 20 * log10(amplitude)
-                // 20.0 * (c.norm() + epsilon).log10()
+                let norm_sq = c.norm_sqr(); // Magnitude squared (re*re + im*im)
+                10.0 * (norm_sq + epsilon).log10() // Convert to dB: 10 * log10(magnitude^2)
             })
             .collect();
 
         magnitude_db
     }
+}
+
+// =======================================================================
+// Unit Tests (Adjusted for Non-Oversampled Filter)
+// =======================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustfft::{num_complex::Complex, FftPlanner};
+    use std::f32::consts::PI;
+
+    const TEST_SAMPLE_RATE: f32 = 48000.0;
+    const FFT_LEN: usize = 8192; // Good resolution for FFT tests
+
+    // Helper to get magnitude at a specific frequency from FFT results (linear interpolation)
+    fn get_fft_magnitude_at_freq(
+        fft_magnitudes_db: &[f32],
+        freq_hz: f32,
+        sample_rate: f32,
+        fft_len: usize,
+    ) -> Option<f32> {
+        if fft_magnitudes_db.is_empty() {
+            return None;
+        }
+        let bin_index_f = freq_hz * fft_len as f32 / sample_rate;
+        let bin_index0 = bin_index_f.floor() as usize;
+        // Ensure indices are within bounds
+        let bin_index1 = (bin_index0 + 1).min(fft_magnitudes_db.len() - 1);
+        let bin_index0 = bin_index0.min(fft_magnitudes_db.len() - 1); // Clamp lower bound too
+
+        let frac = bin_index_f - bin_index0 as f32;
+
+        // Linear interpolation between bins
+        let mag0 = fft_magnitudes_db[bin_index0];
+        let mag1 = fft_magnitudes_db[bin_index1];
+        Some(mag0 + (mag1 - mag0) * frac)
+    }
+
+    #[test]
+    fn test_filter_collection_lowpass_response_12db() {
+        let cutoff_hz = 1000.0;
+        let resonance_norm = 0.0; // Q = 0.707
+
+        // --- Create Filter ---
+        let mut fc = FilterCollection::new(TEST_SAMPLE_RATE);
+        // fc.set_oversampling_factor(1); // Not needed anymore
+        fc.set_filter_type(FilterType::LowPass);
+        fc.set_filter_slope(FilterSlope::Db12);
+        fc.set_params(cutoff_hz, resonance_norm);
+        fc.set_gain_db(0.0);
+        fc.reset(); // Ensure smoothed params match base params immediately
+        fc.smoothed_cutoff = cutoff_hz;
+        fc.smoothed_resonance = resonance_norm;
+
+        // --- Get Frequency Response ---
+        let ir = fc.create_impulse_response(FFT_LEN);
+        let mag_db = fc.calculate_fft_magnitude(ir);
+
+        // --- Frequencies to Check ---
+        let freq_passband = cutoff_hz * 0.1; // 100 Hz
+        let freq_cutoff = cutoff_hz; // 1000 Hz
+        let freq_stopband1 = cutoff_hz * 2.0; // 2000 Hz (1 octave above cutoff)
+        let freq_stopband2 = cutoff_hz * 4.0; // 4000 Hz (2 octaves above cutoff)
+
+        // --- Get Magnitudes at Check Frequencies ---
+        let mag_pass =
+            get_fft_magnitude_at_freq(&mag_db, freq_passband, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_cutoff =
+            get_fft_magnitude_at_freq(&mag_db, freq_cutoff, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_stop1 =
+            get_fft_magnitude_at_freq(&mag_db, freq_stopband1, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_stop2 =
+            get_fft_magnitude_at_freq(&mag_db, freq_stopband2, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+
+        println!(
+            "LPF 12dB Response @{:.1}Hz Res={:.2}: Pass={:.2}dB, Cutoff={:.2}dB, Stop1={:.2}dB, Stop2={:.2}dB",
+            cutoff_hz, resonance_norm, mag_pass, mag_cutoff, mag_stop1, mag_stop2
+        );
+
+        // --- Assertions ---
+        // Passband should be close to 0dB gain
+        assert!(
+            mag_pass.abs() < 1.0,
+            "Passband gain ({:.2}dB) should be close to 0dB",
+            mag_pass
+        );
+
+        // Cutoff frequency should be around -3dB for Q=0.707 (Butterworth)
+        assert!(
+            (mag_cutoff - -3.0).abs() < 1.0,
+            "Cutoff gain ({:.2}dB) should be near -3dB",
+            mag_cutoff
+        );
+
+        // Stopband attenuation should be approx -12dB per octave
+        let attenuation1 = mag_pass - mag_stop1; // Attenuation from passband to 1 octave above cutoff
+        assert!(
+            (attenuation1 - 12.0).abs() < 2.0, // Allow some tolerance
+            "Attenuation at 1 octave ({:.2}dB) should be near 12dB",
+            attenuation1
+        );
+
+        let attenuation2 = mag_pass - mag_stop2; // Attenuation from passband to 2 octaves above cutoff
+        assert!(
+            (attenuation2 - 24.0).abs() < 3.0, // Allow slightly more tolerance further out
+            "Attenuation at 2 octaves ({:.2}dB) should be near 24dB",
+            attenuation2
+        );
+    }
+
+    #[test]
+    fn test_filter_collection_lowpass_response_24db_resonance() {
+        let cutoff_hz = 1000.0;
+        let resonance_norm = 0.7; // Higher resonance -> peak near cutoff
+                                  // Calculate expected Q values based on helper function
+        let q_overall = normalized_resonance_to_q(resonance_norm); // Approx 0.707 + 0.7^1.5 * 9.3 = 6.2
+        let stage_q = q_overall.sqrt().max(0.501); // Approx 2.49
+
+        // --- Create Filter ---
+        let mut fc = FilterCollection::new(TEST_SAMPLE_RATE);
+        fc.set_filter_type(FilterType::LowPass);
+        fc.set_filter_slope(FilterSlope::Db24); // Use cascaded filter
+        fc.set_params(cutoff_hz, resonance_norm);
+        fc.set_gain_db(0.0); // Gain is applied internally in cascaded setup
+        fc.reset();
+        fc.smoothed_cutoff = cutoff_hz;
+        fc.smoothed_resonance = resonance_norm;
+        // Make sure cascaded filter is set up correctly after reset and setting params
+        fc.setup_cascaded_filter();
+
+        // --- Get Frequency Response ---
+        let ir = fc.create_impulse_response(FFT_LEN);
+        let mag_db = fc.calculate_fft_magnitude(ir);
+
+        // --- Frequencies to Check ---
+        let freq_passband = cutoff_hz * 0.1; // 100 Hz
+        let freq_peak_near_cutoff = cutoff_hz * 0.95; // Check slightly below cutoff for peak
+        let freq_cutoff = cutoff_hz; // 1000 Hz
+        let freq_stopband1 = cutoff_hz * 2.0; // 2000 Hz (1 octave above cutoff)
+        let freq_stopband2 = cutoff_hz * 4.0; // 4000 Hz (2 octaves above cutoff)
+
+        // --- Get Magnitudes ---
+        let mag_pass =
+            get_fft_magnitude_at_freq(&mag_db, freq_passband, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_peak =
+            get_fft_magnitude_at_freq(&mag_db, freq_peak_near_cutoff, TEST_SAMPLE_RATE, FFT_LEN)
+                .unwrap();
+        let mag_cutoff =
+            get_fft_magnitude_at_freq(&mag_db, freq_cutoff, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_stop1 =
+            get_fft_magnitude_at_freq(&mag_db, freq_stopband1, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_stop2 =
+            get_fft_magnitude_at_freq(&mag_db, freq_stopband2, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+
+        println!(
+            "LPF 24dB Response @{:.1}Hz Res={:.2}: Pass={:.2}dB, Peak={:.2}dB, Cutoff={:.2}dB, Stop1={:.2}dB, Stop2={:.2}dB",
+            cutoff_hz, resonance_norm, mag_pass, mag_peak, mag_cutoff, mag_stop1, mag_stop2
+        );
+
+        // --- Assertions ---
+        // Passband still near 0dB
+        assert!(
+            mag_pass.abs() < 1.5, // Allow slightly more deviation due to resonance influence
+            "Passband gain ({:.2}dB) should be close to 0dB",
+            mag_pass
+        );
+
+        // Should be a peak near the cutoff due to high resonance
+        // Theoretical peak for Q=6.2 is > 15dB. Let's check it's significantly positive.
+        assert!(
+            mag_peak > 10.0,
+            "Expected resonant peak near cutoff ({:.2}dB), but peak is too low",
+            mag_peak
+        );
+
+        // Magnitude AT cutoff frequency will be lower than the peak for high Q
+        assert!(
+            mag_cutoff < mag_peak,
+            "Magnitude at cutoff ({:.2}dB) should be lower than peak ({:.2}dB)",
+            mag_cutoff,
+            mag_peak
+        );
+
+        // Stopband attenuation should be approx -24dB per octave
+        // Measure attenuation from the peak for a more robust check with resonance
+        let attenuation1 = mag_peak - mag_stop1;
+        assert!(
+            attenuation1 > 20.0, // Should be significantly more than 24dB below the *peak* 1 octave away
+            "Attenuation at 1 octave below peak ({:.2}dB) is too low",
+            attenuation1
+        );
+
+        let attenuation2 = mag_peak - mag_stop2;
+        assert!(
+            attenuation2 > 40.0, // Should be > 48dB below peak 2 octaves away
+            "Attenuation at 2 octaves below peak ({:.2}dB) is too low",
+            attenuation2
+        );
+    }
+
+    // Add more tests for other filter types (HPF, BPF, Notch, Ladder, Comb)
+    // Add tests for parameter smoothing, modulation, keyboard tracking if desired.
 }

@@ -1,9 +1,9 @@
 use std::f32::consts::PI;
+use std::f64::consts::PI as PI64;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-/// FilterType enum, trait, and biquad implementations follow below.
 #[wasm_bindgen]
-#[derive(Clone, Copy, Debug, PartialEq)] // Added Debug for easier printing if needed
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FilterType {
     LowPass,
     LowShelf,
@@ -11,46 +11,35 @@ pub enum FilterType {
     HighShelf,
     Notch,
     HighPass,
-    Ladder, // Note: Biquad coefficients are not calculated for Ladder/Comb
-    Comb,   // Note: Biquad coefficients are not calculated for Ladder/Comb
+    Ladder,
+    Comb,
     BandPass,
 }
 
-/// Trait defining the basic filter interface.
 pub trait Filter {
     fn process(&mut self, input: f32) -> f32;
     fn reset(&mut self);
-    // Optional: Add methods for setting parameters if needed outside direct struct access
-    // fn set_frequency(&mut self, freq: f32);
-    // fn set_q(&mut self, q: f32);
-    // fn set_gain_db(&mut self, gain: f32);
-    // fn set_type(&mut self, filter_type: FilterType);
 }
 
-/// A second‑order (12 dB/octave) biquad filter using Direct Form I.
-#[derive(Clone, Copy, Debug)] // Added Debug
+#[derive(Clone, Copy, Debug)]
 pub struct Biquad {
-    // Parameters
     pub filter_type: FilterType,
     pub sample_rate: f32,
     pub frequency: f32,
     pub q: f32,
     pub gain_db: f32,
-    // Coefficients
     b0: f32,
     b1: f32,
     b2: f32,
-    a1: f32, // Note: a0 is normalized to 1
+    a1: f32,
     a2: f32,
-    // State variables (Direct Form I)
-    x1: f32, // Input delay 1
-    x2: f32, // Input delay 2
-    y1: f32, // Output delay 1
-    y2: f32, // Output delay 2
+    x1: f32,
+    x2: f32,
+    y1: f32,
+    y2: f32,
 }
 
 impl Biquad {
-    /// Creates a new Biquad filter instance.
     pub fn new(
         filter_type: FilterType,
         sample_rate: f32,
@@ -60,42 +49,33 @@ impl Biquad {
     ) -> Self {
         let mut filter = Self {
             filter_type,
-            sample_rate: sample_rate.max(1.0), // Ensure positive sample rate
-            frequency: frequency.clamp(10.0, sample_rate * 0.499), // Clamp freq
-            q: q.max(0.01),                    // Ensure positive Q
+            sample_rate: sample_rate.max(1.0),
+            frequency: frequency.clamp(10.0, sample_rate * 0.4999),
+            q: q.max(0.01),
             gain_db,
-            b0: 1.0, // Initialize coeffs to pass-through-ish (b0=1, others=0)
+            b0: 1.0,
             b1: 0.0,
             b2: 0.0,
             a1: 0.0,
             a2: 0.0,
-            x1: 0.0, // Initialize state to zero
+            x1: 0.0,
             x2: 0.0,
             y1: 0.0,
             y2: 0.0,
         };
-        filter.update_coefficients(); // Calculate initial coefficients
+        filter.update_coefficients();
         filter
     }
 
-    /// Normalizes filter coefficients for certain types to ensure unity gain at DC or Nyquist.
-    /// This is often unnecessary if coefficients are derived correctly, but can help stability.
-    /// RBJ cookbook coefficients generally don't require this if implemented carefully.
-    #[allow(dead_code)] // Keep for reference, but RBJ coeffs are often pre-normalized
+    #[allow(dead_code)]
     fn normalize_coeffs(&mut self) {
-        // Normalization factor (denominator of transfer function H(z) at z=1 or z=-1)
         let norm_factor = match self.filter_type {
-            // Normalize LowPass/Notch gain at DC (z=1)
             FilterType::LowPass | FilterType::Notch => {
                 (self.b0 + self.b1 + self.b2) / (1.0 + self.a1 + self.a2)
             }
-            // Normalize HighPass gain at Nyquist (z=-1)
             FilterType::HighPass => (self.b0 - self.b1 + self.b2) / (1.0 - self.a1 + self.a2),
-            // Other types (Shelving, Peaking, Bandpass) have gain defined by gain_db
-            _ => 1.0, // No normalization needed
+            _ => 1.0,
         };
-
-        // Avoid division by zero or near-zero
         if norm_factor.abs() > 1e-8 {
             self.b0 /= norm_factor;
             self.b1 /= norm_factor;
@@ -103,155 +83,180 @@ impl Biquad {
         }
     }
 
-    /// Recalculates the filter coefficients based on current parameters.
-    /// Uses formulas from the Audio EQ Cookbook by Robert Bristow-Johnson.
     pub fn update_coefficients(&mut self) {
-        // Pre-calculations
-        let a = 10f32.powf(self.gain_db / 40.0); // Amplitude for Shelving/Peaking
-        let omega = 2.0 * PI * self.frequency / self.sample_rate;
-        let sn = omega.sin();
-        let cs = omega.cos();
-        let alpha = sn / (2.0 * self.q); // Q related term
+        let sr64 = self.sample_rate as f64;
+        let freq64 = self.frequency.clamp(1.0, self.sample_rate * 0.49999) as f64;
+        let q64 = self.q.max(0.001) as f64;
+        let gain_db64 = self.gain_db as f64;
+        let a_lin64 = 10.0_f64.powf(gain_db64 / 20.0);
+        let a_sqrt64 = 10.0_f64.powf(gain_db64 / 40.0);
 
-        // Temporary coefficient variables
-        let mut b0 = 1.0;
-        let mut b1 = 0.0;
-        let mut b2 = 0.0;
-        let mut a0 = 1.0; // a0 is the normalization factor
-        let mut a1 = 0.0;
-        let mut a2 = 0.0;
+        let omega64 = 2.0 * PI64 * freq64 / sr64;
+        let sn64 = omega64.sin();
+        let cs64 = omega64.cos();
+        let alpha64 = sn64 / (2.0 * q64);
+        let two_cs64 = 2.0 * cs64;
+
+        // Initialize f64 temp variables to satisfy the compiler
+        let mut b0_64: f64 = 0.0;
+        let mut b1_64: f64 = 0.0;
+        let mut b2_64: f64 = 0.0;
+        let mut a0_64: f64 = 1.0; // Initialize a0 to 1.0 to avoid division by zero if path not taken
+        let mut a1_64: f64 = 0.0;
+        let mut a2_64: f64 = 0.0;
+
+        let mut use_direct_assignment = false;
 
         match self.filter_type {
             FilterType::LowPass => {
-                a0 = 1.0 + alpha;
-                b0 = (1.0 - cs) / 2.0;
-                b1 = 1.0 - cs;
-                b2 = (1.0 - cs) / 2.0;
-                a1 = -2.0 * cs;
-                a2 = 1.0 - alpha;
+                let omega_half64 = omega64 / 2.0;
+                let sn_half64 = omega_half64.sin();
+                let a0_val = 1.0 + alpha64; // Calculate a0 for normalization factor
+                if a0_val.abs() < 1e-12 {
+                    // Handle error case directly, maybe set to pass-through
+                    self.b0 = 1.0;
+                    self.b1 = 0.0;
+                    self.b2 = 0.0;
+                    self.a1 = 0.0;
+                    self.a2 = 0.0;
+                } else {
+                    let scale = 1.0 / a0_val;
+                    let sn_half_sq = sn_half64 * sn_half64;
+                    self.b0 = (sn_half_sq * scale) as f32;
+                    self.b1 = (2.0 * sn_half_sq * scale) as f32;
+                    self.b2 = (sn_half_sq * scale) as f32;
+                    self.a1 = ((-two_cs64) * scale) as f32;
+                    self.a2 = ((1.0 - alpha64) * scale) as f32;
+                }
+                use_direct_assignment = true;
             }
             FilterType::HighPass => {
-                a0 = 1.0 + alpha;
-                b0 = (1.0 + cs) / 2.0;
-                b1 = -(1.0 + cs);
-                b2 = (1.0 + cs) / 2.0;
-                a1 = -2.0 * cs;
-                a2 = 1.0 - alpha;
+                let omega_half64 = omega64 / 2.0;
+                let cs_half64 = omega_half64.cos();
+                let a0_val = 1.0 + alpha64; // Calculate a0 for normalization factor
+                if a0_val.abs() < 1e-12 {
+                    // Handle error case directly
+                    self.b0 = 1.0;
+                    self.b1 = 0.0;
+                    self.b2 = 0.0;
+                    self.a1 = 0.0;
+                    self.a2 = 0.0;
+                } else {
+                    let scale = 1.0 / a0_val;
+                    let cs_half_sq = cs_half64 * cs_half64;
+                    self.b0 = (cs_half_sq * scale) as f32;
+                    self.b1 = (-2.0 * cs_half_sq * scale) as f32;
+                    self.b2 = (cs_half_sq * scale) as f32;
+                    self.a1 = ((-two_cs64) * scale) as f32;
+                    self.a2 = ((1.0 - alpha64) * scale) as f32;
+                }
+                use_direct_assignment = true;
             }
             FilterType::BandPass => {
-                // Constant skirt gain, peak gain = Q
-                a0 = 1.0 + alpha;
-                b0 = alpha; // Or sn / 2.0 or self.q * alpha ? RBJ: alpha
-                b1 = 0.0;
-                b2 = -alpha; // Or -sn / 2.0 or -self.q * alpha ? RBJ: -alpha
-                a1 = -2.0 * cs;
-                a2 = 1.0 - alpha;
+                b0_64 = alpha64;
+                b1_64 = 0.0;
+                b2_64 = -alpha64;
+                a0_64 = 1.0 + alpha64;
+                a1_64 = -two_cs64;
+                a2_64 = 1.0 - alpha64;
             }
-            // FilterType::BandPass => { // Constant peak gain 0dB
-            //     a0 = 1.0 + alpha;
-            //     b0 = sn / 2.0; // Q value affects bandwidth here
-            //     b1 = 0.0;
-            //     b2 = -sn / 2.0;
-            //     a1 = -2.0 * cs;
-            //     a2 = 1.0 - alpha;
-            // }
             FilterType::Notch => {
-                a0 = 1.0 + alpha;
-                b0 = 1.0;
-                b1 = -2.0 * cs;
-                b2 = 1.0;
-                a1 = -2.0 * cs;
-                a2 = 1.0 - alpha;
+                b0_64 = 1.0;
+                b1_64 = -two_cs64;
+                b2_64 = 1.0;
+                a0_64 = 1.0 + alpha64;
+                a1_64 = -two_cs64;
+                a2_64 = 1.0 - alpha64;
             }
             FilterType::Peaking => {
-                a0 = 1.0 + alpha / a;
-                b0 = 1.0 + alpha * a;
-                b1 = -2.0 * cs;
-                b2 = 1.0 - alpha * a;
-                a1 = -2.0 * cs;
-                a2 = 1.0 - alpha / a;
+                b0_64 = 1.0 + alpha64 * a_lin64;
+                b1_64 = -two_cs64;
+                b2_64 = 1.0 - alpha64 * a_lin64;
+                a0_64 = 1.0 + alpha64 / a_lin64;
+                a1_64 = -two_cs64;
+                a2_64 = 1.0 - alpha64 / a_lin64;
             }
             FilterType::LowShelf => {
-                let sqrt_a = a.sqrt();
-                let beta = 2.0 * sqrt_a * alpha; // Term based on sqrt(A) and alpha
-                a0 = (a + 1.0) + (a - 1.0) * cs + beta;
-                b0 = a * ((a + 1.0) - (a - 1.0) * cs + beta);
-                b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cs);
-                b2 = a * ((a + 1.0) - (a - 1.0) * cs - beta);
-                a1 = -2.0 * ((a - 1.0) + (a + 1.0) * cs);
-                a2 = (a + 1.0) + (a - 1.0) * cs - beta;
+                let beta64 = 2.0 * a_sqrt64 * alpha64;
+                let a_plus_1 = a_lin64 + 1.0;
+                let a_minus_1 = a_lin64 - 1.0;
+
+                b0_64 = a_lin64 * (a_plus_1 - a_minus_1 * cs64 + beta64);
+                b1_64 = 2.0 * a_lin64 * (a_minus_1 - a_plus_1 * cs64);
+                b2_64 = a_lin64 * (a_plus_1 - a_minus_1 * cs64 - beta64);
+                a0_64 = a_plus_1 + a_minus_1 * cs64 + beta64;
+                a1_64 = -2.0 * (a_minus_1 + a_plus_1 * cs64);
+                a2_64 = a_plus_1 + a_minus_1 * cs64 - beta64;
             }
             FilterType::HighShelf => {
-                let sqrt_a = a.sqrt();
-                let beta = 2.0 * sqrt_a * alpha;
-                a0 = (a + 1.0) - (a - 1.0) * cs + beta;
-                b0 = a * ((a + 1.0) + (a - 1.0) * cs + beta);
-                b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cs);
-                b2 = a * ((a + 1.0) + (a - 1.0) * cs - beta);
-                a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cs);
-                a2 = (a + 1.0) - (a - 1.0) * cs - beta;
+                let beta64 = 2.0 * a_sqrt64 * alpha64;
+                let a_plus_1 = a_lin64 + 1.0;
+                let a_minus_1 = a_lin64 - 1.0;
+
+                b0_64 = a_lin64 * (a_plus_1 + a_minus_1 * cs64 + beta64);
+                b1_64 = -2.0 * a_lin64 * (a_minus_1 + a_plus_1 * cs64);
+                b2_64 = a_lin64 * (a_plus_1 + a_minus_1 * cs64 - beta64);
+                a0_64 = a_plus_1 - a_minus_1 * cs64 + beta64;
+                a1_64 = 2.0 * (a_minus_1 - a_plus_1 * cs64);
+                a2_64 = a_plus_1 - a_minus_1 * cs64 - beta64;
             }
             FilterType::Ladder | FilterType::Comb => {
-                // Biquad coefficients are not used for these types in FilterCollection
-                // Set to pass-through state
-                b0 = 1.0;
-                b1 = 0.0;
-                b2 = 0.0;
-                a0 = 1.0;
-                a1 = 0.0;
-                a2 = 0.0;
+                // Set to pass-through (will be handled by the final check anyway)
+                self.b0 = 1.0;
+                self.b1 = 0.0;
+                self.b2 = 0.0;
+                self.a1 = 0.0;
+                self.a2 = 0.0;
+                use_direct_assignment = true; // Skip normalization path for these
             }
         }
 
-        // Normalize coefficients by a0
-        // Avoid division by zero, though a0 should generally be > 0 for stable filters
-        if a0.abs() > 1e-8 {
-            self.b0 = b0 / a0;
-            self.b1 = b1 / a0;
-            self.b2 = b2 / a0;
-            self.a1 = a1 / a0;
-            self.a2 = a2 / a0;
-        } else {
-            // Handle potential error case: set to pass-through
+        if !use_direct_assignment {
+            if a0_64.abs() < 1e-12 {
+                self.b0 = 1.0;
+                self.b1 = 0.0;
+                self.b2 = 0.0;
+                self.a1 = 0.0;
+                self.a2 = 0.0;
+            } else {
+                let a0_inv = 1.0 / a0_64;
+                self.b0 = (b0_64 * a0_inv) as f32;
+                self.b1 = (b1_64 * a0_inv) as f32;
+                self.b2 = (b2_64 * a0_inv) as f32;
+                self.a1 = (a1_64 * a0_inv) as f32;
+                self.a2 = (a2_64 * a0_inv) as f32;
+            }
+        }
+
+        // Final safety check applies to all paths
+        if !self.b0.is_finite()
+            || !self.b1.is_finite()
+            || !self.b2.is_finite()
+            || !self.a1.is_finite()
+            || !self.a2.is_finite()
+        {
             self.b0 = 1.0;
             self.b1 = 0.0;
             self.b2 = 0.0;
             self.a1 = 0.0;
             self.a2 = 0.0;
-            // Log error?
-            // web_sys::console::error_1(&"Biquad coefficient calculation resulted in a0 near zero!".into());
         }
-
-        // Optional: Apply explicit normalization (usually not needed with RBJ)
-        // self.normalize_coeffs();
     }
-}
 
-impl Filter for Biquad {
-    /// Processes one sample using Direct Form I.
     #[inline(always)]
-    fn process(&mut self, input: f32) -> f32 {
-        // Calculate output: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
+    pub fn process(&mut self, input: f32) -> f32 {
         let output = self.b0 * input + self.b1 * self.x1 + self.b2 * self.x2
             - self.a1 * self.y1
             - self.a2 * self.y2;
 
-        // Update state variables for next sample
-        self.x2 = self.x1; // x[n-2] = x[n-1]
-        self.x1 = input; // x[n-1] = x[n]
-        self.y2 = self.y1; // y[n-2] = y[n-1]
-        self.y1 = output; // y[n-1] = y[n]
+        self.x2 = self.x1;
+        self.x1 = input;
+        self.y2 = self.y1;
+        self.y1 = if output.abs() < 1e-18 { 0.0 } else { output };
 
-        // Return potentially denormal-clipped output
-        // Avoids performance issues on some platforms if output becomes extremely small
-        if output.abs() < 1e-18 {
-            0.0
-        } else {
-            output
-        }
+        self.y1
     }
 
-    /// Resets the filter's internal state variables to zero.
     fn reset(&mut self) {
         self.x1 = 0.0;
         self.x2 = 0.0;
@@ -260,65 +265,200 @@ impl Filter for Biquad {
     }
 }
 
-/// A cascaded biquad filter (two biquad stages in series) for a steeper 24 dB/octave slope.
-#[derive(Clone, Copy, Debug)] // Added Debug
+impl Filter for Biquad {
+    #[inline(always)]
+    fn process(&mut self, input: f32) -> f32 {
+        self.process(input)
+    }
+    fn reset(&mut self) {
+        self.reset()
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct CascadedBiquad {
     pub first: Biquad,
     pub second: Biquad,
 }
 
 impl CascadedBiquad {
-    /// Creates a new CascadedBiquad with the same parameters for both stages.
     pub fn new(
         filter_type: FilterType,
         sample_rate: f32,
         frequency: f32,
-        q: f32,       // Q per stage
-        gain_db: f32, // Total gain, usually applied to one stage or split
+        q: f32,
+        gain_db: f32,
     ) -> Self {
-        // Default: Apply full gain to the second stage for simplicity
-        let q_stage = q.max(0.501); // Ensure Q slightly > 0.5 for stability
+        let q_stage = q.max(0.501);
         Self {
-            first: Biquad::new(filter_type, sample_rate, frequency, q_stage, 0.0), // First stage no gain
-            second: Biquad::new(filter_type, sample_rate, frequency, q_stage, gain_db), // Second stage full gain
+            first: Biquad::new(filter_type, sample_rate, frequency, q_stage, 0.0),
+            second: Biquad::new(filter_type, sample_rate, frequency, q_stage, gain_db),
         }
     }
 
-    /// Creates a new CascadedBiquad allowing different gain settings per stage.
-    /// **This function is moved here from impl Biquad.**
     pub fn new_with_gain_split(
         filter_type: FilterType,
         sample_rate: f32,
         frequency: f32,
-        q: f32,        // Q per stage
-        gain_db1: f32, // Gain for first stage
-        gain_db2: f32, // Gain for second stage
+        q: f32,
+        gain_db1: f32,
+        gain_db2: f32,
     ) -> Self {
-        // Ensure Q is stable for each stage
         let q_stage = q.max(0.501);
-        // Create the two biquad instances
-        let first = Biquad::new(filter_type, sample_rate, frequency, q_stage, gain_db1);
-        let second = Biquad::new(filter_type, sample_rate, frequency, q_stage, gain_db2);
-        // Coefficients are calculated inside Biquad::new
-
-        // Return the CascadedBiquad struct
-        Self { first, second }
+        Self {
+            first: Biquad::new(filter_type, sample_rate, frequency, q_stage, gain_db1),
+            second: Biquad::new(filter_type, sample_rate, frequency, q_stage, gain_db2),
+        }
     }
 }
 
 impl Filter for CascadedBiquad {
-    /// Processes one sample through both stages sequentially.
     #[inline(always)]
     fn process(&mut self, input: f32) -> f32 {
-        // Process through the first stage
-        let temp = self.first.process(input);
-        // Process the result through the second stage
-        self.second.process(temp)
+        self.second.process(self.first.process(input))
     }
-
-    /// Resets the state variables of both internal biquad stages.
     fn reset(&mut self) {
         self.first.reset();
         self.second.reset();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::PI;
+
+    const TEST_SAMPLE_RATE: f32 = 48000.0;
+    const F32_EPSILON: f32 = 1e-6;
+
+    #[test]
+    fn test_biquad_coeff_update_precision() {
+        let freq = 1000.0;
+        let q = 0.707;
+        let gain = 0.0;
+        let os_factor = 16;
+        let effective_sr = TEST_SAMPLE_RATE * os_factor as f32;
+
+        let mut bq1 = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, freq, q, gain);
+        bq1.sample_rate = TEST_SAMPLE_RATE;
+        bq1.frequency = freq;
+        bq1.q = q;
+        bq1.gain_db = gain;
+        bq1.update_coefficients();
+
+        println!(
+            "Base SR ({:.1} Hz) Coeffs for {} Hz:",
+            TEST_SAMPLE_RATE, freq
+        );
+        println!(
+            "  b0={}, b1={}, b2={}, a1={}, a2={}",
+            bq1.b0, bq1.b1, bq1.b2, bq1.a1, bq1.a2
+        );
+
+        assert!(bq1.b0.is_finite(), "Base b0 NaN/Inf");
+        assert!(bq1.b1.is_finite(), "Base b1 NaN/Inf");
+        assert!(bq1.b2.is_finite(), "Base b2 NaN/Inf");
+        assert!(bq1.a1.is_finite(), "Base a1 NaN/Inf");
+        assert!(bq1.a2.is_finite(), "Base a2 NaN/Inf");
+        let dc_gain = (bq1.b0 + bq1.b1 + bq1.b2) / (1.0 + bq1.a1 + bq1.a2);
+        assert!(
+            (dc_gain - 1.0).abs() < 0.01,
+            "Base DC gain not close to 1: {}",
+            dc_gain
+        );
+
+        let mut bq_os = Biquad::new(FilterType::LowPass, effective_sr, freq, q, gain);
+        bq_os.sample_rate = effective_sr;
+        bq_os.frequency = freq;
+        bq_os.q = q;
+        bq_os.gain_db = gain;
+        bq_os.update_coefficients();
+
+        println!(
+            "Effective SR ({:.1} Hz) Coeffs for {} Hz:",
+            effective_sr, freq
+        );
+        println!(
+            "  b0={}, b1={}, b2={}, a1={}, a2={}",
+            bq_os.b0, bq_os.b1, bq_os.b2, bq_os.a1, bq_os.a2
+        );
+
+        assert!(bq_os.b0.is_finite(), "OS b0 NaN/Inf");
+        assert!(bq_os.b1.is_finite(), "OS b1 NaN/Inf");
+        assert!(bq_os.b2.is_finite(), "OS b2 NaN/Inf");
+        assert!(bq_os.a1.is_finite(), "OS a1 NaN/Inf");
+        assert!(bq_os.a2.is_finite(), "OS a2 NaN/Inf");
+
+        assert!(
+            (bq1.b0 - bq_os.b0).abs() > F32_EPSILON,
+            "b0 coeffs are unexpectedly the same"
+        );
+        assert!(
+            (bq1.a1 - bq_os.a1).abs() > F32_EPSILON,
+            "a1 coeffs are unexpectedly the same"
+        );
+        assert!(
+            (bq1.a2 - bq_os.a2).abs() > F32_EPSILON,
+            "a2 coeffs are unexpectedly the same"
+        );
+
+        let os_dc_gain = (bq_os.b0 + bq_os.b1 + bq_os.b2) / (1.0 + bq_os.a1 + bq_os.a2);
+        assert!(
+            (os_dc_gain - 1.0).abs() < 0.01,
+            "OS DC gain not close to 1: {}",
+            os_dc_gain
+        );
+
+        // Updated expected values for LPF, 768kHz SR, 1kHz F, 0.707 Q using new formulas
+        // Expected approx: b0=2.64e-5, b1=5.28e-5, b2=2.64e-5, a1=-1.999861..., a2=0.999893...
+        assert!(
+            bq_os.b0 > 2.5e-5 && bq_os.b0 < 2.7e-5,
+            "OS b0 unexpected value: {}",
+            bq_os.b0
+        );
+        assert!(
+            bq_os.b1 > 5.1e-5 && bq_os.b1 < 5.4e-5,
+            "OS b1 unexpected value: {}",
+            bq_os.b1
+        );
+        assert!(
+            bq_os.a1 < -1.9998 && bq_os.a1 > -1.9999,
+            "OS a1 unexpected value: {}",
+            bq_os.a1
+        );
+        assert!(
+            bq_os.a2 > 0.9998 && bq_os.a2 < 0.99999, // Allow slightly wider range
+            "OS a2 unexpected value: {}",
+            bq_os.a2
+        );
+    }
+
+    #[test]
+    fn test_biquad_process_impulse() {
+        let freq = 1000.0;
+        let q = 0.707;
+        let mut bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, freq, q, 0.0);
+
+        let impulse = [1.0, 0.0, 0.0, 0.0, 0.0];
+        let mut output = [0.0; 5];
+
+        for i in 0..impulse.len() {
+            output[i] = bq.process(impulse[i]);
+        }
+
+        println!("Impulse Response (first 5): {:?}", output);
+
+        assert!(
+            (output[0] - bq.b0).abs() < F32_EPSILON,
+            "First output sample mismatch"
+        );
+        assert!(
+            output[1].abs() > F32_EPSILON,
+            "Second output sample is zero"
+        );
+        assert!(
+            (output[1] - output[0]).abs() > F32_EPSILON,
+            "Second sample same as first"
+        );
     }
 }

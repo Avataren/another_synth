@@ -1510,7 +1510,7 @@ impl AudioEngine {
                     //log key_tracking
                     console::log_1(&format!("key_tracking is {}", key_tracking).into());
                     filter.set_keyboard_tracking_sensitivity(key_tracking);
-                    filter.set_oversampling_factor(oversampling);
+                    //filter.set_oversampling_factor(oversampling);
                 } else {
                     return Err(JsValue::from_str("Node is not a Filter"));
                 }
