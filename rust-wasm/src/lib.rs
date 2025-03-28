@@ -1499,12 +1499,12 @@ impl AudioEngine {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
-                    if (cutoff > 0.01) {
-                        filter.set_params(cutoff, resonance);
-                    } else {
-                        filter.set_params(comb_frequency, resonance);
-                    }
-                    // filter.set_comb_target_frequency(comb_frequency);
+                    //if (cutoff > 0.01) {
+                    filter.set_params(cutoff, resonance);
+                    //} else {
+                    //filter.set_params(comb_frequency, resonance);
+                    //}
+                    filter.set_comb_target_frequency(comb_frequency);
                     filter.set_comb_dampening(comb_dampening);
                     filter.set_gain_db(gain * 24.0 - 12.0);
                     //log key_tracking
