@@ -1056,7 +1056,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             comb_frequency: 220,
             comb_dampening: 0.5,
             oversampling: 0,
-            gain: 0.7,
+            gain: 0.5,
             filter_type: FilterType.LowPass,
             filter_slope: FilterSlope.Db12,
             active: true,

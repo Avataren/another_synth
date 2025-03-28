@@ -112,7 +112,7 @@
           emit-value
           map-options
         />
-        <q-select
+        <!-- <q-select
           v-model="filterState.oversampling"
           label="Oversampling"
           :options="oversamplingOptions"
@@ -121,7 +121,7 @@
           class="wide-select"
           emit-value
           map-options
-        />
+        /> -->
       </div>
 
       <!-- Routing component -->
@@ -192,6 +192,7 @@ const filterState = computed<FilterState>({
         keytracking: 0,
         comb_frequency: 220,
         comb_dampening: 0.5,
+        gain: 0.5,
         oversampling: 0,
         filter_type: FilterType.LowPass,
         filter_slope: FilterSlope.Db12,
@@ -220,13 +221,13 @@ const filterSlopeOptions = [
   { label: '12 dB/oct', value: FilterSlope.Db12 },
   { label: '24 dB/oct', value: FilterSlope.Db24 },
 ];
-const oversamplingOptions = [
-  { label: 'Off', value: 0 },
-  { label: '2x', value: 2 },
-  { label: '4x', value: 4 },
-  { label: '8x', value: 8 },
-  { label: '16x', value: 16 },
-];
+// const oversamplingOptions = [
+//   { label: 'Off', value: 0 },
+//   { label: '2x', value: 2 },
+//   { label: '4x', value: 4 },
+//   { label: '8x', value: 8 },
+//   { label: '16x', value: 16 },
+// ];
 
 // Handlers for state changes
 function handleActiveChange(newValue: boolean) {
@@ -288,12 +289,12 @@ function handleFilterSlopeChange(newVal: FilterSlope) {
     filter_slope: newVal,
   });
 }
-function handleOversamplingChange(newVal: number) {
-  store.filterStates.set(props.nodeId, {
-    ...toRaw(filterState.value),
-    oversampling: newVal,
-  });
-}
+// function handleOversamplingChange(newVal: number) {
+//   store.filterStates.set(props.nodeId, {
+//     ...toRaw(filterState.value),
+//     oversampling: newVal,
+//   });
+// }
 function handleCombFrequencyChange(newVal: number) {
   store.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
