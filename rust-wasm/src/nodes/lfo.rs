@@ -1,3 +1,4 @@
+// --- IMPORTS and other parts remain the same ---
 use std::any::Any;
 use std::collections::HashMap;
 use std::simd::{f32x4, Simd, StdFloat};
@@ -47,12 +48,12 @@ impl LfoRetriggerMode {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoLoopMode {
-    Off = 0,
-    Loop = 1,
-    PingPong = 2,
+    Off = 0,      // Repeats full 0..1 waveform (unless OneShot)
+    Loop = 1,     // Starts at 0.0, runs to loop_end, then loops between loop_start and loop_end
+    PingPong = 2, // Starts at 0.0, runs to loop_end, then bounces between loop_start and loop_end
 }
 struct LfoTables {
-    /* ... fields ... */ sine: Vec<f32>,
+    sine: Vec<f32>,
     triangle: Vec<f32>,
     square: Vec<f32>,
     saw: Vec<f32>,
@@ -108,21 +109,23 @@ pub struct Lfo {
     base_frequency: f32,
     base_gain: f32,
     waveform: LfoWaveform,
-    phase_offset: f32,
+    phase_offset: f32, // Applied *before* table lookup
     use_absolute: bool,
     use_normalized: bool,
     pub retrigger_mode: LfoRetriggerMode,
     loop_mode: LfoLoopMode,
-    loop_start: f32,
-    loop_end: f32,
+    loop_start: f32, // Normalized phase [0.0, 1.0) - Target after first loop_end hit
+    loop_end: f32,   // Normalized phase (0.0, 1.0] - Point where looping begins
     active: bool,
 
     // State
-    phase: f32,
-    direction: f32,
-    last_gate: f32,   // Stores the gate value from the *previous sample* processed
-    is_running: bool, // Tracks if phase should advance (esp. for OneShot completion)
-    oneshot_held_value: f32,
+    phase: f32,              // Current phase [0.0, 1.0)
+    direction: f32,          // 1.0 or -1.0 (only for PingPong *after* initial run)
+    last_gate: f32,          // Stores the gate value from the *previous sample* processed
+    is_running: bool, // Tracks if phase should advance (esp. for OneShot completion/Retrigger gating)
+    oneshot_held_value: f32, // Value held after OneShot completes
+    // NEW state: Tracks if the initial run from 0.0 up to loop_end has completed
+    has_reached_loop_end_once: bool,
 
     // === Scratch Buffers ===
     mod_scratch_add: Vec<f32>,
@@ -137,7 +140,7 @@ pub struct Lfo {
 impl Lfo {
     pub fn new(sample_rate: f32) -> Self {
         LFO_TABLES.get_or_init(LfoTables::new);
-        let initial_capacity = 128;
+        let initial_capacity = 128; // Default buffer size
 
         Self {
             sample_rate,
@@ -148,15 +151,17 @@ impl Lfo {
             use_absolute: false,
             use_normalized: false,
             retrigger_mode: LfoRetriggerMode::FreeRunning,
-            loop_mode: LfoLoopMode::Loop,
+            loop_mode: LfoLoopMode::Off, // Default to Off
             loop_start: 0.0,
             loop_end: 1.0,
             active: true,
-            phase: 0.0,
-            direction: 1.0,
-            last_gate: 0.0,   // Initialize gate as low
+            phase: 0.0,     // Always start at 0.0 initially
+            direction: 1.0, // Always start going forwards
+            last_gate: 0.0,
             is_running: true, // Start running in FreeRunning mode
             oneshot_held_value: 0.0,
+            has_reached_loop_end_once: false, // Start before the loop point is hit
+            // Initialize scratch buffers
             mod_scratch_add: vec![0.0; initial_capacity],
             mod_scratch_mult: vec![1.0; initial_capacity],
             gate_buffer: vec![0.0; initial_capacity],
@@ -205,163 +210,291 @@ impl Lfo {
     pub fn set_retrigger_mode(&mut self, mode: LfoRetriggerMode) {
         if mode != self.retrigger_mode {
             self.retrigger_mode = mode;
-            self.reset_state_for_mode(self.last_gate > 0.0); // Pass current gate state
+            // Reset state based on new mode and current gate, always starting at phase 0
+            self.reset_state_for_mode(self.last_gate > 0.0);
         }
     }
 
     pub fn set_loop_mode(&mut self, loop_mode: LfoLoopMode) {
         if loop_mode != self.loop_mode {
             self.loop_mode = loop_mode;
-            if loop_mode != LfoLoopMode::PingPong {
-                self.direction = 1.0;
-            }
-            // Optionally reset phase when loop mode changes? Depends on desired behavior.
-            // self.reset_state_for_mode(self.last_gate > 0.0);
+            // Changing loop mode forces a restart from phase 0.0 and resets the loop flag
+            // Determine initial running state based on current gate and new mode.
+            self.reset_state_for_mode(self.last_gate > 0.0);
         }
     }
+
     pub fn set_loop_start(&mut self, start: f32) {
-        self.loop_start = start.clamp(0.0, 1.0).min(self.loop_end);
-        // Clamp current phase if it falls outside new range
-        self.phase = self.phase.clamp(self.loop_start, self.loop_end);
-    }
-    pub fn set_loop_end(&mut self, end: f32) {
-        self.loop_end = end.clamp(self.loop_start, 1.0); // Ensure end >= start
-                                                         // Clamp current phase if it falls outside new range
-        self.phase = self.phase.clamp(self.loop_start, self.loop_end);
+        let clamped_start = start.clamp(0.0, 1.0);
+        // Ensure start <= end, cannot be exactly equal if loop_end is 0.0
+        self.loop_start = clamped_start.min(self.loop_end);
+        // Clamp current phase ONLY if we are *already* in the looping segment (past the initial run)
+        if self.has_reached_loop_end_once && self.loop_mode != LfoLoopMode::Off {
+            self.phase = self.phase.clamp(self.loop_start, self.loop_end);
+        }
     }
 
-    /// Internal state reset logic. Sets phase, direction, and initial running state.
-    /// `should_run_now` indicates if the LFO should start in a running state immediately
-    /// (e.g., for FreeRunning, or if gate is high for Retrigger/OneShot).
+    pub fn set_loop_end(&mut self, end: f32) {
+        let clamped_end = end.clamp(0.0, 1.0);
+        // Ensure end >= start
+        self.loop_end = clamped_end.max(self.loop_start);
+        // If loop_start == loop_end, looping behavior might be static or jumpy, ensure loop_end > 0 if loop_start is 0?
+        // Current logic handles loop_start == loop_end (results in static phase or immediate jump/reflection).
+
+        // Clamp current phase ONLY if we are *already* in the looping segment
+        if self.has_reached_loop_end_once && self.loop_mode != LfoLoopMode::Off {
+            self.phase = self.phase.clamp(self.loop_start, self.loop_end);
+        }
+        // If we haven't reached loop end yet, changing loop_end could affect when the transition happens.
+        // If the new loop_end is now *below* the current phase during the initial run, we should arguably
+        // trigger the loop transition immediately.
+        else if !self.has_reached_loop_end_once
+            && self.loop_mode != LfoLoopMode::Off
+            && self.phase >= self.loop_end
+        {
+            // Trigger the first loop transition manually
+            self.trigger_first_loop_transition(0.0); // Assume zero overflow/overshoot for simplicity
+        }
+    }
+
+    /// Internal helper to handle the transition logic when phase first reaches loop_end.
+    /// `overflow_or_overshoot` is the amount phase went past loop_end.
+    #[inline(always)]
+    fn trigger_first_loop_transition(&mut self, overflow_or_overshoot: f32) {
+        if self.has_reached_loop_end_once {
+            return;
+        } // Should not happen, but safety check
+
+        let loop_width = (self.loop_end - self.loop_start).max(f32::EPSILON);
+        self.has_reached_loop_end_once = true; // Engage looping behavior
+
+        match self.loop_mode {
+            LfoLoopMode::Loop => {
+                // Jump to loop_start + overflow within the loop segment
+                self.phase = self.loop_start + overflow_or_overshoot.rem_euclid(loop_width);
+                // Ensure phase is clamped within loop bounds after the jump
+                self.phase = self.phase.clamp(self.loop_start, self.loop_end);
+            }
+            LfoLoopMode::PingPong => {
+                // Reflect back from loop_end
+                self.phase = self.loop_end - overflow_or_overshoot.rem_euclid(loop_width); // Use rem_euclid for safety
+                self.direction = -1.0; // Start moving backwards
+                                       // Clamp in case of large overshoot or loop_width issues
+                self.phase = self.phase.max(self.loop_start);
+            }
+            LfoLoopMode::Off => {
+                // This function shouldn't be called for Off mode, but handle defensively
+                self.has_reached_loop_end_once = false; // Reset flag for Off mode
+            }
+        }
+    }
+
+    /// Internal state reset logic. Sets phase to 0, resets flags, and sets initial running state.
+    /// `should_run_now` indicates if the LFO should start in a running state immediately.
     fn reset_state_for_mode(&mut self, should_run_now: bool) {
-        self.phase = self.loop_start;
-        self.direction = 1.0;
+        self.phase = 0.0; // ALWAYS reset phase to 0.0
+        self.direction = 1.0; // Always start going forwards
+        self.has_reached_loop_end_once = false; // Reset the loop detection flag
         self.is_running = match self.retrigger_mode {
-            // FreeRunning always starts (or continues) running
             LfoRetriggerMode::FreeRunning => true,
-            // Retrigger/OneShot start running only if told to
             LfoRetriggerMode::Retrigger | LfoRetriggerMode::OneShot => should_run_now,
         };
-        // Resetting oneshot_held_value on any reset seems reasonable
         self.oneshot_held_value = 0.0;
     }
 
     #[inline(always)]
     fn lookup_sample_at_phase(&self, phase_value: f32) -> f32 {
-        // ... (lookup_sample_at_phase remains the same) ...
+        // ... (lookup remains the same) ...
         let tables = LFO_TABLES.get().expect("LFO tables not initialized");
         let table = tables.get_table(self.waveform);
+
         let extra_phase = if self.use_normalized {
             self.waveform.normalized_phase_offset()
         } else {
             0.0
         };
+
+        // Apply phase offset and wrap phase to [0.0, 1.0) for table lookup
         let effective_phase = (phase_value + self.phase_offset + extra_phase).rem_euclid(1.0);
+
         let table_index_f = effective_phase * TABLE_SIZE_F32;
         let index1 = (table_index_f as usize) & TABLE_MASK;
         let index2 = (index1 + 1) & TABLE_MASK;
         let fraction = table_index_f - table_index_f.floor();
+
+        // Linear interpolation
         let sample1 = table[index1];
         let sample2 = table[index2];
         let mut sample = sample1 + (sample2 - sample1) * fraction;
+
         if self.use_absolute {
             sample = sample.abs();
         }
         if self.use_normalized {
+            // Assuming bipolar input [-1, 1] -> unipolar [0, 1]
             sample = (sample + 1.0) * 0.5;
         }
         sample
     }
 
-    /// Advances phase for one sample based on mode. Manages `is_running` for OneShot.
+    /// Advances phase for one sample based on mode. Manages loop transitions and OneShot.
     #[inline(always)]
     fn internal_advance_phase(&mut self, phase_increment: f32) {
         if !self.is_running {
             return;
-        } // Don't advance if stopped
+        }
 
+        let loop_width = (self.loop_end - self.loop_start).max(f32::EPSILON);
+
+        // --- Check for initial transition ---
+        if !self.has_reached_loop_end_once && self.loop_mode != LfoLoopMode::Off {
+            let next_phase = self.phase + phase_increment; // Calculate potential next phase
+            if next_phase >= self.loop_end {
+                // Reached or exceeded loop_end on this step
+                let overflow_or_overshoot = next_phase - self.loop_end;
+                self.trigger_first_loop_transition(overflow_or_overshoot);
+                // Phase is now set correctly for the start of the loop/pingpong segment, exit advance logic for this sample
+                return;
+            } else {
+                // Still in the initial run phase, just update phase
+                self.phase = next_phase;
+                // Phase might need clamping to 1.0 if loop_end is 1.0? No, rem_euclid handles it later if needed.
+                return; // Finished advancing for this sample
+            }
+        }
+
+        // --- Apply standard phase advancement based on current state ---
+        // (Either LoopMode::Off, or already past the initial run for Loop/PingPong)
         match self.loop_mode {
             LfoLoopMode::Off => {
-                // Only advance if running (relevant for OneShot)
-                self.phase += phase_increment * self.direction; // Direction should be 1.0
-                if self.phase >= self.loop_end {
-                    self.phase = self.loop_end; // Clamp at end
-                    self.is_running = false; // Stop running
-                    self.oneshot_held_value = self.lookup_sample_at_phase(self.phase);
-                    // Store final value
+                // Standard 0..1 behavior (wrap or stop)
+                if self.retrigger_mode == LfoRetriggerMode::OneShot {
+                    self.phase += phase_increment;
+                    if self.phase >= 1.0 {
+                        self.phase = 1.0; // Clamp at end
+                        self.is_running = false; // Stop
+                        self.oneshot_held_value = self.lookup_sample_at_phase(self.phase);
+                        // Hold final value
+                    }
+                } else {
+                    // Continuous wrap 0..1
+                    self.phase = (self.phase + phase_increment).rem_euclid(1.0);
                 }
             }
+
             LfoLoopMode::Loop => {
-                self.phase += phase_increment * self.direction;
-                let loop_width = (self.loop_end - self.loop_start).max(1e-9);
+                // Assumes has_reached_loop_end_once is true here
+                self.phase += phase_increment; // Direction is always 1.0 for Loop
                 if self.phase >= self.loop_end {
                     let overflow = self.phase - self.loop_end;
                     self.phase = self.loop_start + overflow % loop_width;
                 } else if self.phase < self.loop_start {
+                    // Handle negative freq mod during loop
                     let underflow = self.loop_start - self.phase;
                     self.phase = self.loop_end - underflow % loop_width;
+                    // Clamp just in case
+                    self.phase = self.phase.clamp(self.loop_start, self.loop_end);
                 }
+                // Final clamp might be redundant but safe
+                // self.phase = self.phase.clamp(self.loop_start, self.loop_end);
             }
+
             LfoLoopMode::PingPong => {
+                // Assumes has_reached_loop_end_once is true here
                 self.phase += phase_increment * self.direction;
                 if self.direction > 0.0 && self.phase >= self.loop_end {
-                    self.phase = self.loop_end - (self.phase - self.loop_end);
+                    let overshoot = self.phase - self.loop_end;
+                    self.phase = self.loop_end - overshoot; // Reflect
                     self.direction = -1.0;
+                    self.phase = self.phase.max(self.loop_start); // Clamp after reflection
                 } else if self.direction < 0.0 && self.phase <= self.loop_start {
-                    self.phase = self.loop_start + (self.loop_start - self.phase);
+                    let undershoot = self.loop_start - self.phase;
+                    self.phase = self.loop_start + undershoot; // Reflect
                     self.direction = 1.0;
+                    self.phase = self.phase.min(self.loop_end); // Clamp after reflection
                 }
-                self.phase = self.phase.clamp(self.loop_start, self.loop_end);
+                // Final clamp just to be safe
+                // self.phase = self.phase.clamp(self.loop_start, self.loop_end);
             }
         }
     }
 
     /// Public method to advance phase for a buffer when inactive (FreeRunning only).
+    /// NOTE: Approximation accuracy for the new "start at 0" logic is limited.
     pub fn advance_phase_for_buffer(&mut self, buffer_size: usize) {
         if self.retrigger_mode != LfoRetriggerMode::FreeRunning || !self.is_running {
             return;
         }
-        // Use base frequency - modulation isn't available here
         let total_phase_increment = (self.base_frequency * buffer_size as f32) / self.sample_rate;
 
-        // --- Simulate advancement using loop logic (approximated) ---
         match self.loop_mode {
-            LfoLoopMode::Off => { /* Should not be running if Off and FreeRunning? Logic error? Ignore for now. */
+            LfoLoopMode::Off => {
+                // Simple wrap for Off mode
+                self.phase = (self.phase + total_phase_increment).rem_euclid(1.0);
             }
-            LfoLoopMode::Loop => {
-                let loop_width = (self.loop_end - self.loop_start).max(1e-9);
-                self.phase = self.loop_start
-                    + (self.phase - self.loop_start + total_phase_increment * self.direction)
-                        .rem_euclid(loop_width);
-            }
-            LfoLoopMode::PingPong => {
-                let loop_width = (self.loop_end - self.loop_start).max(1e-9);
-                let num_half_cycles = (total_phase_increment / loop_width).floor();
-                let remainder_inc = total_phase_increment.rem_euclid(loop_width);
-
-                if num_half_cycles % 2.0 != 0.0 {
-                    self.direction *= -1.0;
-                }
-
-                let effective_start_phase = if self.direction > 0.0 {
-                    self.loop_start
+            LfoLoopMode::Loop | LfoLoopMode::PingPong => {
+                if !self.has_reached_loop_end_once {
+                    // --- Approximating initial run ---
+                    let phase_after_inc = self.phase + total_phase_increment;
+                    if phase_after_inc >= self.loop_end {
+                        // We likely crossed the loop_end threshold during this buffer
+                        // Trigger the transition based on estimated overflow
+                        let overflow = phase_after_inc - self.loop_end;
+                        self.trigger_first_loop_transition(overflow);
+                        // Note: This assumes the buffer didn't also cross loop_start going backwards in PingPong mode,
+                        // which is unlikely but possible with large increments. The approximation is limited here.
+                    } else {
+                        // Didn't reach loop_end yet
+                        self.phase = phase_after_inc;
+                    }
                 } else {
-                    self.loop_end
-                };
-                self.phase = effective_start_phase + remainder_inc * self.direction;
+                    // --- Approximating behavior *within* the loop segment ---
+                    let loop_width = (self.loop_end - self.loop_start).max(f32::EPSILON);
+                    if self.loop_mode == LfoLoopMode::Loop {
+                        // Standard loop approximation
+                        self.phase = self.loop_start
+                            + (self.phase - self.loop_start + total_phase_increment)
+                                .rem_euclid(loop_width);
+                    } else {
+                        // PingPong approximation
+                        if loop_width <= f32::EPSILON {
+                            return;
+                        } // Avoid div by zero
 
-                if self.direction > 0.0 && self.phase >= self.loop_end {
-                    self.phase = self.loop_end - (self.phase - self.loop_end);
-                    self.direction = -1.0;
-                } else if self.direction < 0.0 && self.phase <= self.loop_start {
-                    self.phase = self.loop_start + (self.loop_start - self.phase);
-                    self.direction = 1.0;
+                        let mut remaining_increment = total_phase_increment;
+                        let mut current_phase = self.phase;
+                        let mut current_direction = self.direction;
+
+                        // Estimate traversals - this is complex to get perfect
+                        while remaining_increment > 0.0 {
+                            let distance_to_boundary = if current_direction > 0.0 {
+                                (self.loop_end - current_phase).max(0.0)
+                            } else {
+                                (current_phase - self.loop_start).max(0.0)
+                            };
+
+                            let increment_this_step = remaining_increment.min(distance_to_boundary);
+                            current_phase += increment_this_step * current_direction;
+                            remaining_increment -= increment_this_step;
+
+                            if remaining_increment > f32::EPSILON {
+                                // Hit a boundary, reverse direction
+                                current_direction *= -1.0;
+                                // Consume tiny amount to avoid infinite loops at boundary
+                                remaining_increment -= f32::EPSILON;
+                            }
+                        }
+                        self.phase = current_phase.clamp(self.loop_start, self.loop_end);
+                        self.direction = current_direction;
+                    }
                 }
-                self.phase = self.phase.clamp(self.loop_start, self.loop_end);
             }
         }
+        // Final safety clamp? Might hide bugs in approximation.
+        // self.phase = self.phase.clamp(0.0, 1.0);
     }
 
+    // --- get_waveform_data remains the same ---
     pub fn get_waveform_data(
         waveform: LfoWaveform,
         phase_offset: f32,
@@ -388,8 +521,8 @@ impl Lfo {
             0.0
         } + phase_offset;
 
-        // Could use SIMD here as in original, but scalar is simpler for clarity
         for i in 0..buffer_size {
+            // Use the standard lookup function which handles phase offset and wrapping
             let effective_phase = (current_phase + extra_phase_offset).rem_euclid(1.0);
             let table_index_f = effective_phase * TABLE_SIZE_F32;
             let index1 = (table_index_f as usize) & TABLE_MASK;
@@ -416,7 +549,7 @@ impl Lfo {
     }
 } // End impl Lfo
 
-// --- ModulationProcessor Implementation ---
+// --- ModulationProcessor Implementation remains the same ---
 impl ModulationProcessor for Lfo {}
 
 // --- AudioNode Implementation ---
@@ -442,22 +575,23 @@ impl AudioNode for Lfo {
         // --- 0) Early exit and Buffer Preparation ---
         if !self.active {
             if let Some(output_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
+                // Fill with value at phase 0 when inactive? Or just 0.0? Let's use 0.0 for simplicity.
                 output_buffer[..buffer_size].fill(0.0);
+                // Alternative: Fill with lookup_sample_at_phase(0.0) * base_gain
+                // let inactive_val = self.lookup_sample_at_phase(0.0) * self.base_gain.max(0.0);
+                // output_buffer[..buffer_size].fill(inactive_val);
             }
-            if self.retrigger_mode == LfoRetriggerMode::FreeRunning {
-                // Ensure free-running LFOs advance phase even when node is inactive
-                self.advance_phase_for_buffer(buffer_size);
-            }
+            self.advance_phase_for_buffer(buffer_size); // Still advance FreeRunning LFOs
             return;
         }
         self.ensure_scratch_buffers(buffer_size);
         let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
             Some(buffer) => buffer,
-            None => return,
+            None => return, // No output connected
         };
 
-        // --- 1) Process Modulation Inputs ---
-        // ... (gate, freq, gain modulation processing unchanged) ...
+        // --- 1) Process Modulation Inputs (gate, freq, gain) ---
+        // --- (Identical modulation processing) ---
         self.gate_buffer[..buffer_size].fill(0.0);
         if let Some(gate_sources) = inputs.get(&PortId::CombinedGate) {
             for source in gate_sources {
@@ -476,6 +610,9 @@ impl AudioNode for Lfo {
                                      default_mult: f32| {
             let sources = inputs.get(&port_id);
             if sources.map_or(false, |s| !s.is_empty()) {
+                // Reset scratch buffers for accumulation
+                self.mod_scratch_add[..buffer_size].fill(default_add);
+                self.mod_scratch_mult[..buffer_size].fill(default_mult);
                 Self::accumulate_modulations_inplace(
                     buffer_size,
                     sources.map(|v| v.as_slice()),
@@ -503,6 +640,7 @@ impl AudioNode for Lfo {
             0.0,
             1.0,
         );
+        // --- End Modulation Input Processing ---
 
         // --- 2) Main Processing Loop (Sample by Sample) ---
         for i in 0..buffer_size {
@@ -514,48 +652,63 @@ impl AudioNode for Lfo {
             if rising_edge {
                 match self.retrigger_mode {
                     LfoRetriggerMode::Retrigger | LfoRetriggerMode::OneShot => {
-                        self.phase = self.loop_start;
-                        self.direction = 1.0;
-                        self.is_running = true; // Start/Restart running on rising edge
-                        self.oneshot_held_value = 0.0; // Clear potential held value on new trigger
+                        // Reset state: phase 0.0, clear loop flag, set running=true
+                        self.reset_state_for_mode(true);
                     }
-                    LfoRetriggerMode::FreeRunning => {} // No action needed
+                    LfoRetriggerMode::FreeRunning => {} // No action on gate
                 }
             }
-            // Update last_gate for next sample's edge detection
-            self.last_gate = current_gate;
 
             // --- Determine if LFO should run *this sample* ---
-            // This check combines activation state and gate state for relevant modes
-            let run_this_sample = match self.retrigger_mode {
-                LfoRetriggerMode::FreeRunning => true, // Always runs if active
-                LfoRetriggerMode::Retrigger => is_gate_high, // Runs only if gate is high
-                LfoRetriggerMode::OneShot => self.is_running, // Runs if flag is set (until completion)
+            let should_advance_phase = match self.retrigger_mode {
+                LfoRetriggerMode::FreeRunning => self.is_running,
+                LfoRetriggerMode::Retrigger => is_gate_high,
+                LfoRetriggerMode::OneShot => self.is_running,
             };
+
+            // Update internal `is_running` state for Retrigger when gate goes low
+            if self.retrigger_mode == LfoRetriggerMode::Retrigger && !is_gate_high {
+                self.is_running = false;
+                // When gate goes low in retrigger, should it reset has_reached_loop_end_once?
+                // Let's keep the current behavior: it pauses and resumes. If restart from 0 is needed, send a new trigger.
+            }
+
+            // Update last_gate *after* using it
+            self.last_gate = current_gate;
 
             // --- Calculate Per-Sample Parameters ---
             let current_freq =
                 (self.base_frequency + self.scratch_freq_add[i]) * self.scratch_freq_mult[i];
             let current_gain =
                 (self.base_gain + self.scratch_gain_add[i]) * self.scratch_gain_mult[i];
+            let phase_increment = (current_freq / self.sample_rate).max(0.0);
 
-            // --- Calculate Output Sample ---
-            let output_sample = if run_this_sample {
-                let value = self.lookup_sample_at_phase(self.phase);
-                // Advance phase if we are supposed to be running
-                let phase_increment = (current_freq / self.sample_rate).max(0.0);
+            // --- Calculate Output Sample AND Advance Phase ---
+            // We need the value *before* advancing the phase
+            let current_phase_value = self.phase;
+
+            if should_advance_phase {
+                // Advance phase *before* lookup? No, lookup should use current phase.
+                // Advance phase state for the *next* sample calculation.
                 self.internal_advance_phase(phase_increment);
-                value
+            }
+
+            // Now lookup the value based on the phase *before* advancement this tick
+            let output_sample = if !should_advance_phase
+                && self.retrigger_mode == LfoRetriggerMode::OneShot
+                && !self.is_running
+            {
+                // OneShot has finished, hold the last value
+                self.oneshot_held_value
+            } else if !should_advance_phase {
+                // LFO is paused (Retrigger gate low, or stopped OneShot before end?)
+                // Output the value at the universal start phase: 0.0
+                self.lookup_sample_at_phase(0.0)
+                // Alternative: Output value at the phase where it stopped?
+                // self.lookup_sample_at_phase(current_phase_value) // Use phase before potential advance
             } else {
-                // Not running this sample
-                if self.retrigger_mode == LfoRetriggerMode::OneShot && !self.is_running {
-                    // OneShot finished, hold value
-                    self.oneshot_held_value
-                } else {
-                    // Retrigger mode when gate is low, or other stopped states
-                    // Output value at loop_start
-                    self.lookup_sample_at_phase(self.loop_start)
-                }
+                // LFO is running, use the phase value from the start of this sample's processing
+                self.lookup_sample_at_phase(current_phase_value)
             };
 
             // Apply final gain and write to output
@@ -563,12 +716,12 @@ impl AudioNode for Lfo {
         }
     } // End process
 
-    // --- reset and other trait methods ---
     fn reset(&mut self) {
         // Reset state based on mode, assume gate is low initially
-        self.reset_state_for_mode(false);
+        self.reset_state_for_mode(false); // Pass false, requires trigger if not FreeRunning
         self.last_gate = 0.0;
     }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -578,53 +731,27 @@ impl AudioNode for Lfo {
     fn is_active(&self) -> bool {
         self.active
     }
+
     fn set_active(&mut self, active: bool) {
         if active == self.active {
-            return; // No change
+            return;
         }
         self.active = active;
 
         if active {
             // --- LFO is becoming ACTIVE ---
-            // We need to ensure `is_running` is correctly set.
-            // Option 1: Always restart based on mode (simplest)
-            // self.reset_state_for_mode(self.last_gate > 0.0); // Reset based on *last known* gate
-
-            // Option 2: More robust - set running based on mode only, let `process` handle gate state
-            self.is_running = match self.retrigger_mode {
-                LfoRetriggerMode::FreeRunning => true, // FreeRunning should always run if active
-                LfoRetriggerMode::Retrigger => self.last_gate > 0.0, // Start running only if gate was high
-                LfoRetriggerMode::OneShot => {
-                    // If OneShot was already finished, activating shouldn't restart it without a new trigger.
-                    // If it wasn't finished, it should continue.
-                    // This logic is tricky. Let's reset based on last known gate, assuming activation
-                    // should behave like a trigger if gate is high.
-                    if self.last_gate > 0.0 {
-                        // Treat activation like a trigger if gate is high
-                        self.phase = self.loop_start;
-                        self.direction = 1.0;
-                        true // Start running
-                    } else {
-                        // Gate is low, remain stopped until next trigger
-                        false
-                    }
-                }
-            };
-            // Don't reset phase here unless explicitly desired when activating while gate high.
-            // The logic above restarts OneShot/Retrigger if gate was high.
+            // Reset state based on mode and *last known* gate state.
+            // reset_state_for_mode now correctly sets phase=0.0 and resets the flag.
+            self.reset_state_for_mode(self.last_gate > 0.0);
         } else {
             // --- LFO is becoming INACTIVE ---
-            // No state change needed usually, `process` handles the early exit.
-            // `advance_phase_for_buffer` will handle FreeRunning.
-            // We could optionally reset phase here if desired when stopping.
-            // self.reset();
+            // No state change needed other than setting self.active.
+            // Phase advancement for FreeRunning is handled in process().
+            // Optionally reset state completely when deactivated?
+            // self.reset(); // Uncomment to fully reset LFO when deactivated
         }
     }
-    // fn reset(&mut self) {
-    //     // Reset state based on mode, assume gate is low initially for a full reset
-    //     self.reset_state_for_mode(false); // Pass false, requires trigger to start if not FreeRunning
-    //     self.last_gate = 0.0; // Reset gate memory
-    // }
+
     fn node_type(&self) -> &str {
         "lfo"
     }
