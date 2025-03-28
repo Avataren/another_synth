@@ -72,7 +72,7 @@ pub struct AnalogOscillator {
     smoothed_gain: f32,
     smoothed_feedback_amount: f32,
     smoothed_phase_mod_amount: f32,
-    smoothed_detune: f32, // Base detune offset in cents
+    // smoothed_detune: f32, // Base detune offset in cents
     smoothed_spread: f32, // Max total detuning width in cents
     smoothed_frequency: f32,
 
@@ -135,7 +135,7 @@ impl AnalogOscillator {
         let initial_spread = 10.0; // Cents (e.g., +/- 5 cents range)
         let max_spread_cents = 100.0; // Limit total spread to 1 semitone
 
-        let smoothing_time_ms = 5.0;
+        let smoothing_time_ms = 1.0;
         let smoothing_time_samples = sample_rate * (smoothing_time_ms / 1000.0);
         let smoothing_coeff = if smoothing_time_samples > 0.0 {
             1.0 - (-1.0 / smoothing_time_samples).exp()
@@ -157,7 +157,7 @@ impl AnalogOscillator {
             smoothed_gain: initial_gain,
             smoothed_feedback_amount: initial_feedback,
             smoothed_phase_mod_amount: initial_phase_mod,
-            smoothed_detune: initial_detune,
+            // smoothed_detune: initial_detune,
             smoothed_spread: initial_spread.clamp(0.0, max_spread_cents),
             smoothed_frequency: initial_frequency,
 
@@ -347,7 +347,7 @@ impl AudioNode for AnalogOscillator {
             effective_alpha * (self.target_feedback_amount - self.smoothed_feedback_amount);
         self.smoothed_phase_mod_amount +=
             effective_alpha * (self.target_phase_mod_amount - self.smoothed_phase_mod_amount);
-        self.smoothed_detune += effective_alpha * (self.target_detune - self.smoothed_detune); // Cents
+        // self.smoothed_detune += effective_alpha * (self.target_detune - self.smoothed_detune); // Cents
         let previous_smoothed_spread = self.smoothed_spread;
         self.smoothed_spread += effective_alpha * (self.target_spread - self.smoothed_spread); // Cents
 
@@ -483,7 +483,7 @@ impl AudioNode for AnalogOscillator {
         }
 
         // Base detune factor from smoothed_detune (in cents)
-        let base_detune_factor = self.cent_ratio.powf(self.smoothed_detune);
+        let base_detune_factor = self.cent_ratio.powf(self.target_detune);
         let current_bank = match self.wavetable_banks.get(&self.waveform) {
             Some(bank) => bank,
             None => {
@@ -589,7 +589,7 @@ impl AudioNode for AnalogOscillator {
         self.smoothed_gain = initial_gain;
         self.smoothed_feedback_amount = initial_feedback;
         self.smoothed_phase_mod_amount = initial_phase_mod;
-        self.smoothed_detune = initial_detune;
+        // self.smoothed_detune = initial_detune;
         self.smoothed_spread = initial_spread.clamp(0.0, max_spread_cents);
         self.smoothed_frequency = initial_frequency;
 
