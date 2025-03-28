@@ -950,7 +950,7 @@ impl AudioEngine {
                 if let Some(noise) = node.as_any_mut().downcast_mut::<NoiseGenerator>() {
                     noise.update(NoiseUpdate {
                         noise_type: params.noise_type.into(),
-                        cutoff: params.cutoff,
+                        cutoff: params.cutoff * self.sample_rate,
                         gain: params.gain,
                         enabled: params.enabled,
                     });

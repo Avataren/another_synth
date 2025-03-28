@@ -1393,7 +1393,6 @@ export class NoiseUpdate {
         wasm.__wbg_noiseupdate_free(ptr, 0);
     }
     /**
-     * The desired noise type.
      * @returns {NoiseType}
      */
     get noise_type() {
@@ -1401,14 +1400,12 @@ export class NoiseUpdate {
         return ret;
     }
     /**
-     * The desired noise type.
      * @param {NoiseType} arg0
      */
     set noise_type(arg0) {
         wasm.__wbg_set_noiseupdate_noise_type(this.__wbg_ptr, arg0);
     }
     /**
-     * Base cutoff frequency (Hz) for the lowpass filter.
      * @returns {number}
      */
     get cutoff() {
@@ -1416,14 +1413,12 @@ export class NoiseUpdate {
         return ret;
     }
     /**
-     * Base cutoff frequency (Hz) for the lowpass filter.
      * @param {number} arg0
      */
     set cutoff(arg0) {
         wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
     }
     /**
-     * Base amplitude gain (0.0 to 1.0 typical).
      * @returns {number}
      */
     get gain() {
@@ -1431,14 +1426,12 @@ export class NoiseUpdate {
         return ret;
     }
     /**
-     * Base amplitude gain (0.0 to 1.0 typical).
      * @param {number} arg0
      */
     set gain(arg0) {
         wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
     }
     /**
-     * Whether the node is enabled.
      * @returns {boolean}
      */
     get enabled() {
@@ -1446,7 +1439,6 @@ export class NoiseUpdate {
         return ret !== 0;
     }
     /**
-     * Whether the node is enabled.
      * @param {boolean} arg0
      */
     set enabled(arg0) {

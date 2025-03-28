@@ -122,8 +122,8 @@ impl Voice {
 
             let rms = (sum_squared / output_buffer.len() as f32).sqrt();
 
-            // -60dB threshold (very quiet but still audible)
-            const SILENCE_THRESHOLD: f32 = 0.001; // approximately -60dB
+            // -80dB threshold (very quiet but still audible)
+            const SILENCE_THRESHOLD: f32 = 0.0001; // approximately -80dB
 
             return rms > SILENCE_THRESHOLD;
         }
