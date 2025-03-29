@@ -32,6 +32,7 @@ impl LfoWaveform {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoRetriggerMode {
     FreeRunning,
+    StartOnGate,
     Retrigger,
     OneShot,
 }
@@ -39,8 +40,9 @@ impl LfoRetriggerMode {
     pub fn from_u8(value: u8) -> Self {
         match value {
             0 => LfoRetriggerMode::FreeRunning,
-            1 => LfoRetriggerMode::Retrigger,
-            2 => LfoRetriggerMode::OneShot,
+            1 => LfoRetriggerMode::StartOnGate,
+            2 => LfoRetriggerMode::Retrigger,
+            3 => LfoRetriggerMode::OneShot,
             _ => LfoRetriggerMode::FreeRunning,
         }
     }
@@ -296,10 +298,20 @@ impl Lfo {
         self.direction = 1.0; // Always start going forwards
         self.has_reached_loop_end_once = false; // Reset the loop detection flag
         self.is_running = match self.retrigger_mode {
-            LfoRetriggerMode::FreeRunning => true,
-            LfoRetriggerMode::Retrigger | LfoRetriggerMode::OneShot => should_run_now,
+            LfoRetriggerMode::FreeRunning => true, // Always running
+            LfoRetriggerMode::Retrigger | LfoRetriggerMode::OneShot => should_run_now, // Run only if triggered now
+            LfoRetriggerMode::StartOnGate => should_run_now, // Start running if triggered now (and will stay running)
         };
-        self.oneshot_held_value = 0.0;
+        // For OneShot, calculate initial value in case it finishes immediately (e.g., freq=0)
+        if self.retrigger_mode == LfoRetriggerMode::OneShot && !self.is_running {
+            self.oneshot_held_value = self.lookup_sample_at_phase(0.0); // Or calculate based on phase=1.0? Let's stick to 0.0 for consistency.
+        } else if self.retrigger_mode == LfoRetriggerMode::OneShot && self.is_running {
+            // Reset held value when triggered
+            self.oneshot_held_value = 0.0; // Or maybe lookup_sample_at_phase(1.0)? Holding 0 seems safer until it finishes.
+        }
+
+        // NOTE: For OneShot, the held value is calculated *when it stops* inside internal_advance_phase.
+        // This setup ensures `is_running` is correct initially.
     }
 
     #[inline(always)]
@@ -651,7 +663,10 @@ impl AudioNode for Lfo {
 
             if rising_edge {
                 match self.retrigger_mode {
-                    LfoRetriggerMode::Retrigger | LfoRetriggerMode::OneShot => {
+                    // Modes that reset on rising edge:
+                    LfoRetriggerMode::Retrigger
+                    | LfoRetriggerMode::OneShot
+                    | LfoRetriggerMode::StartOnGate => {
                         // Reset state: phase 0.0, clear loop flag, set running=true
                         self.reset_state_for_mode(true);
                     }
@@ -660,20 +675,24 @@ impl AudioNode for Lfo {
             }
 
             // --- Determine if LFO should run *this sample* ---
+            // This now depends more complexly on the mode and potentially the gate.
             let should_advance_phase = match self.retrigger_mode {
-                LfoRetriggerMode::FreeRunning => self.is_running,
-                LfoRetriggerMode::Retrigger => is_gate_high,
-                LfoRetriggerMode::OneShot => self.is_running,
+                LfoRetriggerMode::FreeRunning => true, // Always advances if active
+                LfoRetriggerMode::Retrigger => is_gate_high, // Advances only when gate is high
+                LfoRetriggerMode::OneShot => self.is_running, // Advances only if the one-shot cycle hasn't completed
+                LfoRetriggerMode::StartOnGate => self.is_running, // Advances if it has been triggered at least once
             };
 
-            // Update internal `is_running` state for Retrigger when gate goes low
+            // --- Update internal `is_running` state specifically for modes that can stop ---
+            // Retrigger stops when gate goes low.
             if self.retrigger_mode == LfoRetriggerMode::Retrigger && !is_gate_high {
                 self.is_running = false;
-                // When gate goes low in retrigger, should it reset has_reached_loop_end_once?
-                // Let's keep the current behavior: it pauses and resumes. If restart from 0 is needed, send a new trigger.
             }
+            // OneShot stops itself via internal_advance_phase when phase >= 1.0 (or loop_end?). Let's assume 1.0 for now.
+            // StartOnGate never stops itself based on the gate signal after the initial trigger.
+            // FreeRunning never stops itself.
 
-            // Update last_gate *after* using it
+            // Store the gate value for the next sample's rising edge detection
             self.last_gate = current_gate;
 
             // --- Calculate Per-Sample Parameters ---
@@ -684,37 +703,45 @@ impl AudioNode for Lfo {
             let phase_increment = (current_freq / self.sample_rate).max(0.0);
 
             // --- Calculate Output Sample AND Advance Phase ---
-            // We need the value *before* advancing the phase
+            // Get the phase value *before* any potential advancement this sample.
             let current_phase_value = self.phase;
+            let mut output_sample;
 
             if should_advance_phase {
-                // Advance phase *before* lookup? No, lookup should use current phase.
-                // Advance phase state for the *next* sample calculation.
-                self.internal_advance_phase(phase_increment);
-            }
+                // LFO is running/advancing this sample.
+                output_sample = self.lookup_sample_at_phase(current_phase_value);
 
-            // Now lookup the value based on the phase *before* advancement this tick
-            let output_sample = if !should_advance_phase
-                && self.retrigger_mode == LfoRetriggerMode::OneShot
-                && !self.is_running
-            {
-                // OneShot has finished, hold the last value
-                self.oneshot_held_value
-            } else if !should_advance_phase {
-                // LFO is paused (Retrigger gate low, or stopped OneShot before end?)
-                // Output the value at the universal start phase: 0.0
-                self.lookup_sample_at_phase(0.0)
-                // Alternative: Output value at the phase where it stopped?
-                // self.lookup_sample_at_phase(current_phase_value) // Use phase before potential advance
+                // Advance the phase state for the *next* sample.
+                // This also handles OneShot stopping by setting self.is_running = false internally.
+                self.internal_advance_phase(phase_increment);
             } else {
-                // LFO is running, use the phase value from the start of this sample's processing
-                self.lookup_sample_at_phase(current_phase_value)
-            };
+                // LFO is NOT advancing phase this sample.
+                if self.retrigger_mode == LfoRetriggerMode::OneShot
+                /* && !self.is_running is implied by should_advance_phase being false */
+                {
+                    // OneShot has finished and is holding its final value.
+                    output_sample = self.oneshot_held_value;
+                } else if self.retrigger_mode == LfoRetriggerMode::Retrigger
+                /* && !is_gate_high is implied */
+                {
+                    // Retrigger mode is paused (gate is low). Hold the value at the paused phase.
+                    output_sample = self.lookup_sample_at_phase(current_phase_value);
+                } else {
+                    // Default case for not advancing (e.g., StartOnGate before first trigger,
+                    // or potentially FreeRunning if somehow self.is_running became false externally?)
+                    // Output the value at the current phase (which isn't changing).
+                    output_sample = self.lookup_sample_at_phase(current_phase_value);
+                    // Could also output 0.0 or lookup_sample_at_phase(0.0) if preferred for pre-trigger state.
+                    // Let's stick to current_phase_value for consistency.
+                    // output_sample = self.lookup_sample_at_phase(0.0); // Alternative if you want 0 before first trigger
+                }
+                // Do NOT call internal_advance_phase here.
+            }
 
             // Apply final gain and write to output
             output_buffer[i] = output_sample * current_gain.max(0.0);
         }
-    } // End process
+    }
 
     fn reset(&mut self) {
         // Reset state based on mode, assume gate is low initially
