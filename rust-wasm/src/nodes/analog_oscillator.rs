@@ -1,6 +1,6 @@
+use rustc_hash::FxHashMap;
 use rustfft::num_traits::Float;
 use std::any::Any;
-use std::collections::HashMap;
 use std::f32::consts::{E, PI};
 use std::simd::{f32x4, Simd};
 use std::sync::Arc;
@@ -95,7 +95,7 @@ pub struct AnalogOscillator {
     voice_offsets: Vec<f32>, // Cached unison offsets relative to base detune, in SEMITONES
 
     // Wavetable data
-    wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
+    wavetable_banks: Arc<FxHashMap<Waveform, Arc<WavetableBank>>>,
 
     // Precalculated constants
     sample_rate_recip: f32,
@@ -123,7 +123,7 @@ impl AnalogOscillator {
     pub fn new(
         sample_rate: f32,
         waveform: Waveform,
-        wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
+        wavetable_banks: Arc<FxHashMap<Waveform, Arc<WavetableBank>>>,
     ) -> Self {
         let initial_capacity = 128;
         let initial_voice_count = 1;
@@ -302,7 +302,7 @@ fn cubic_interp(samples: &[f32], pos: f32) -> f32 {
 }
 
 impl AudioNode for AnalogOscillator {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::GlobalFrequency, false),
             (PortId::FrequencyMod, false),
@@ -321,8 +321,8 @@ impl AudioNode for AnalogOscillator {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         if !self.active {

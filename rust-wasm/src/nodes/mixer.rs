@@ -1,7 +1,8 @@
 use std::any::Any;
-use std::collections::HashMap;
 use std::simd::num::SimdFloat;
 use std::simd::{f32x4, Simd, StdFloat}; // Import Simd explicitly, StdFloat for sqrt
+
+use rustc_hash::FxHashMap;
 
 // Import necessary types
 use crate::graph::{
@@ -79,7 +80,7 @@ impl Mixer {
 impl ModulationProcessor for Mixer {}
 
 impl AudioNode for Mixer {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::AudioInput0, false), // Mono audio input
             (PortId::GainMod, false),     // Modulation for gain
@@ -94,8 +95,8 @@ impl AudioNode for Mixer {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>, // Still takes mutable HashMap
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>, // Still takes mutable FxHashMap
         buffer_size: usize,
     ) {
         // --- 0) Early exit and Buffer Preparation ---

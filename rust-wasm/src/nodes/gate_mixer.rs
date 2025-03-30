@@ -1,7 +1,8 @@
+use rustc_hash::FxHashMap;
+
 use crate::graph::ModulationSource;
 use crate::{AudioNode, PortId};
 use std::any::Any;
-use std::collections::HashMap;
 
 pub struct GateMixer {}
 
@@ -29,8 +30,8 @@ impl GateMixer {
 }
 
 impl AudioNode for GateMixer {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
-        let mut ports = HashMap::new();
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
+        let mut ports = FxHashMap::default();
         // Define two inputs and one output.
         ports.insert(PortId::GlobalGate, false);
         ports.insert(PortId::ArpGate, false);
@@ -40,8 +41,8 @@ impl AudioNode for GateMixer {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // If an input is missing, default to 1.0 (neutral for multiplication).

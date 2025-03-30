@@ -1,12 +1,12 @@
 use core::simd::Simd;
 use std::any::Any;
-use std::collections::HashMap;
 use std::simd::num::SimdFloat;
 
 use crate::graph::ModulationSource;
 use crate::impulse_generator::js_fallback_fill;
 use crate::{AudioNode, PortId};
 use getrandom::fill;
+use rustc_hash::FxHashMap;
 
 pub struct GlobalVelocityNode {
     base_velocity: Vec<f32>,
@@ -125,8 +125,8 @@ impl GlobalVelocityNode {
 }
 
 impl AudioNode for GlobalVelocityNode {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
-        let mut ports = HashMap::new();
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
+        let mut ports = FxHashMap::default();
         ports.insert(PortId::AudioOutput0, true);
         // Declare a gate port. The false value indicates it isn't an audio output.
         ports.insert(PortId::GlobalGate, false);
@@ -135,8 +135,8 @@ impl AudioNode for GlobalVelocityNode {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         let output = outputs

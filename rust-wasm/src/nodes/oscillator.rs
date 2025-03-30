@@ -1,5 +1,5 @@
 // use std::any::Any;
-// use std::collections::HashMap;
+// use std::collections::FxHashMap;
 // use std::simd::{f32x4, StdFloat};
 // use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -111,8 +111,8 @@
 // impl ModulationProcessor for ModulatableOscillator {}
 
 // impl AudioNode for ModulatableOscillator {
-//     fn get_ports(&self) -> HashMap<PortId, bool> {
-//         let mut ports = HashMap::new();
+//     fn get_ports(&self) -> FxHashMap<PortId, bool> {
+//         let mut ports = FxHashMap::new();
 //         ports.insert(PortId::GlobalFrequency, false);
 //         ports.insert(PortId::FrequencyMod, false);
 //         ports.insert(PortId::PhaseMod, false);
@@ -126,8 +126,8 @@
 
 //     fn process(
 //         &mut self,
-//         inputs: &std::collections::HashMap<PortId, Vec<ModulationSource>>,
-//         outputs: &mut std::collections::HashMap<PortId, &mut [f32]>,
+//         inputs: &std::collections::FxHashMap<PortId, Vec<ModulationSource>>,
+//         outputs: &mut std::collections::FxHashMap<PortId, &mut [f32]>,
 //         buffer_size: usize,
 //     ) {
 //         const TWO_PI: f32 = 2.0 * std::f32::consts::PI;

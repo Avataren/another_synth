@@ -1,9 +1,9 @@
 // convolver.rs
 
 use fft_convolver::FFTConvolver;
+use rustc_hash::FxHashMap;
 use std::any::Any;
 use std::borrow::Cow;
-use std::collections::HashMap;
 
 // Removed: use web_sys::console; // No longer needed
 
@@ -195,7 +195,7 @@ impl Convolver {
 // ============================================================
 impl AudioNode for Convolver {
     // --- get_ports (Cleaned) ---
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::AudioInput0, false),
             (PortId::AudioInput1, false),
@@ -210,8 +210,8 @@ impl AudioNode for Convolver {
     // --- process (Cleaned) ---
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // Removed size check log

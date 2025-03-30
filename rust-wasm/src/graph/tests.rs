@@ -1,17 +1,17 @@
 // use super::graph::AudioGraph;
 // use super::types::Connection;
 // use crate::{AudioNode, PortId};
-// use std::{any::Any, collections::HashMap};
+// use std::{any::Any, collections::FxHashMap};
 
 // // Mock AudioNode implementation for testing
 // struct MockNode {
-//     ports: HashMap<PortId, bool>,
+//     ports: FxHashMap<PortId, bool>,
 //     id: usize,
 // }
 
 // impl MockNode {
 //     fn new(id: usize, inputs: Vec<PortId>, outputs: Vec<PortId>) -> Self {
-//         let mut ports = HashMap::new();
+//         let mut ports = FxHashMap::new();
 //         for port in inputs {
 //             ports.insert(port, false);
 //         }
@@ -23,14 +23,14 @@
 // }
 
 // impl AudioNode for MockNode {
-//     fn get_ports(&self) -> HashMap<PortId, bool> {
+//     fn get_ports(&self) -> FxHashMap<PortId, bool> {
 //         self.ports.clone()
 //     }
 
 //     fn process(
 //         &mut self,
-//         inputs: &HashMap<PortId, &[f32]>,
-//         outputs: &mut HashMap<PortId, &mut [f32]>,
+//         inputs: &FxHashMap<PortId, &[f32]>,
+//         outputs: &mut FxHashMap<PortId, &mut [f32]>,
 //         _buffer_size: usize,
 //     ) {
 //         // Copy gate to output for test

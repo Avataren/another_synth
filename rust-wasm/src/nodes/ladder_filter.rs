@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::collections::HashMap;
 use std::f32::consts::PI; // Import PI for calculations
 
 // Import necessary types
@@ -13,6 +12,7 @@ use crate::traits::{AudioNode, PortId};
 
 // If fast_tanh is not in utils, define it here (copy from filter_collection example)
 use once_cell::sync::Lazy;
+use rustc_hash::FxHashMap;
 static TANH_LUT: Lazy<[f32; 1024]> = Lazy::new(|| {
     let mut lut = [0.0; 1024];
     let x_min = -5.0;
@@ -206,7 +206,7 @@ impl LadderFilter {
 impl ModulationProcessor for LadderFilter {}
 
 impl AudioNode for LadderFilter {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::AudioInput0, false),  // Input audio signal
             (PortId::CutoffMod, false),    // Modulation for cutoff frequency
@@ -221,8 +221,8 @@ impl AudioNode for LadderFilter {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // --- 0) Early exit and Buffer Preparation ---

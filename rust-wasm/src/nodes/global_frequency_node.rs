@@ -1,7 +1,8 @@
 use core::simd::Simd;
 use std::any::Any;
-use std::collections::HashMap;
 use std::simd::StdFloat;
+
+use rustc_hash::FxHashMap;
 
 // Import necessary types
 use crate::graph::{
@@ -89,7 +90,7 @@ impl GlobalFrequencyNode {
 }
 
 impl AudioNode for GlobalFrequencyNode {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::GlobalFrequency, true), // Output: The calculated frequency signal
             (PortId::DetuneMod, false),      // Input: Modulation for detune (additive in semitones)
@@ -101,8 +102,8 @@ impl AudioNode for GlobalFrequencyNode {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // --- 0) Buffer Prep ---

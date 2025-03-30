@@ -1,8 +1,8 @@
 use core::simd::Simd;
 use std::any::Any;
-use std::collections::HashMap;
 use std::simd::StdFloat;
 
+use rustc_hash::FxHashMap;
 use web_sys::console;
 
 use crate::graph::ModulationSource;
@@ -235,7 +235,7 @@ impl ArpeggiatorGenerator {
     }
 
     /// Process the arpeggiator in modes that use SIMD block processing.
-    fn process_simd(&mut self, outputs: &mut HashMap<PortId, &mut [f32]>, buffer_size: usize) {
+    fn process_simd(&mut self, outputs: &mut FxHashMap<PortId, &mut [f32]>, buffer_size: usize) {
         let output = outputs
             .get_mut(&PortId::AudioOutput0)
             .expect("Expected AudioOutput0 output port");
@@ -300,8 +300,8 @@ impl ArpeggiatorGenerator {
 
     fn process_trigger_mode(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         let output = outputs
@@ -364,8 +364,8 @@ impl ArpeggiatorGenerator {
     /// if the step is skipped, the gate output remains low (0.0) for the entire duration.
     fn process_with_optional_gate(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // Process modulation output according to mode.
@@ -410,8 +410,8 @@ impl AudioNode for ArpeggiatorGenerator {
     /// - PortId::AudioOutput0: modulation output (in cents).
     /// - PortId::GlobalGate: optional gate input (for Trigger mode).
     /// - PortId::ArpGate: optional gate trigger output.
-    fn get_ports(&self) -> HashMap<PortId, bool> {
-        let mut ports = HashMap::new();
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
+        let mut ports = FxHashMap::default();
         ports.insert(PortId::AudioOutput0, true);
         ports.insert(PortId::GlobalGate, false);
         ports.insert(PortId::ArpGate, true);
@@ -420,8 +420,8 @@ impl AudioNode for ArpeggiatorGenerator {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         self.process_with_optional_gate(inputs, outputs, buffer_size);

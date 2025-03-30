@@ -2,8 +2,8 @@
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 use core::simd::{f32x4, Simd};
+use rustc_hash::FxHashMap;
 use std::any::Any;
-use std::collections::HashMap;
 use std::simd::num::SimdFloat;
 use std::simd::StdFloat;
 use wasm_bindgen::prelude::wasm_bindgen; // Already used, keep
@@ -339,7 +339,7 @@ impl NoiseGenerator {
 // --- AudioNode Implementation ---
 
 impl AudioNode for NoiseGenerator {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::AudioOutput0, true),
             (PortId::CutoffMod, false),
@@ -352,8 +352,8 @@ impl AudioNode for NoiseGenerator {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // --- 0) Early exit & Buffer Preparation ---
@@ -542,7 +542,6 @@ impl AudioNode for NoiseGenerator {
 mod tests {
     use super::*;
     use crate::traits::AudioNode;
-    use std::collections::HashMap;
 
     const TEST_SAMPLE_RATE: f32 = 44100.0;
     const TEST_BUFFER_SIZE: usize = 1024;
@@ -560,18 +559,18 @@ mod tests {
         gen.set_active(true);
 
         let mut output_buffer = vec![0.0f32; TEST_BUFFER_SIZE];
-        let inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
-        // Removed HashMap declaration from here
+        let inputs: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
+        // Removed FxHashMap declaration from here
 
         let mut max_abs_peak = 0.0f32;
 
         for _ in 0..NUM_BUFFERS_TO_PROCESS {
-            // --- FIX: Recreate the HashMap inside the loop ---
-            // This ensures the HashMap and its contained borrow only live for one iteration.
-            let mut outputs: HashMap<PortId, &mut [f32]> = HashMap::new();
+            // --- FIX: Recreate the FxHashMap inside the loop ---
+            // This ensures the FxHashMap and its contained borrow only live for one iteration.
+            let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
             outputs.insert(PortId::AudioOutput0, &mut output_buffer);
 
-            // Pass the locally scoped HashMap to process
+            // Pass the locally scoped FxHashMap to process
             gen.process(&inputs, &mut outputs, TEST_BUFFER_SIZE);
 
             // Read from output_buffer after process is done (immutable borrow is fine)
@@ -633,13 +632,13 @@ mod tests {
         gen.set_active(true);
 
         let mut output_buffer = vec![0.0f32; TEST_BUFFER_SIZE];
-        let inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
-        // Removed HashMap declaration from here
+        let inputs: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
+        // Removed FxHashMap declaration from here
         let mut max_abs_peak = 0.0f32;
 
         for _ in 0..NUM_BUFFERS_TO_PROCESS {
-            // --- FIX: Apply the same fix here - recreate HashMap ---
-            let mut outputs: HashMap<PortId, &mut [f32]> = HashMap::new();
+            // --- FIX: Apply the same fix here - recreate FxHashMap ---
+            let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
             outputs.insert(PortId::AudioOutput0, &mut output_buffer);
 
             gen.process(&inputs, &mut outputs, TEST_BUFFER_SIZE);

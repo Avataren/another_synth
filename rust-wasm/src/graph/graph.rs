@@ -1,4 +1,4 @@
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///
@@ -45,18 +45,17 @@ use crate::{
     nodes::{GateMixer, GlobalFrequencyNode, GlobalVelocityNode},
 };
 use crate::{AudioNode, MacroManager, PortId};
-use std::collections::HashMap;
 
 pub struct AudioGraph {
     pub(crate) nodes: Vec<Box<dyn AudioNode>>,
-    pub(crate) connections: HashMap<ConnectionKey, Connection>,
+    pub(crate) connections: FxHashMap<ConnectionKey, Connection>,
     pub(crate) processing_order: Vec<usize>,
     pub(crate) buffer_size: usize,
     pub(crate) buffer_pool: AudioBufferPool,
-    pub(crate) node_buffers: HashMap<(NodeId, PortId), usize>,
+    pub(crate) node_buffers: FxHashMap<(NodeId, PortId), usize>,
     pub(crate) gate_buffer_idx: usize,
     // We now include the source node in the tuple so we can identify which connection to remove.
-    pub(crate) input_connections: HashMap<
+    pub(crate) input_connections: FxHashMap<
         NodeId,
         Vec<(
             PortId,
@@ -81,13 +80,13 @@ impl AudioGraph {
 
         let mut graph = Self {
             nodes: Vec::new(),
-            connections: HashMap::new(),
+            connections: FxHashMap::default(),
             processing_order: Vec::new(),
             buffer_size,
             buffer_pool,
-            node_buffers: HashMap::new(),
+            node_buffers: FxHashMap::default(),
             gate_buffer_idx,
-            input_connections: HashMap::new(),
+            input_connections: FxHashMap::default(),
             temp_buffer_indices: Vec::new(),
             global_frequency_node: None,
             global_velocity_node: None,
@@ -577,9 +576,9 @@ impl AudioGraph {
             self.buffer_pool.clear(buffer_idx);
         }
 
-        // Use FxHashMap if you added the dependency and want the potential speedup
-        type InputsMap = HashMap<PortId, Vec<ModulationSource>>;
-        type OutputsMap<'a> = HashMap<PortId, &'a mut [f32]>;
+        // Use FxFxHashMap if you added the dependency and want the potential speedup
+        type InputsMap = FxHashMap<PortId, Vec<ModulationSource>>;
+        type OutputsMap<'a> = FxHashMap<PortId, &'a mut [f32]>;
 
         'node_loop: for &node_idx in &self.processing_order {
             // Added optional loop label
@@ -600,7 +599,7 @@ impl AudioGraph {
             let node_ports = self.nodes[node_idx].get_ports().clone();
 
             // --- Input Gathering and Copying ---
-            let mut inputs: InputsMap = HashMap::default(); // Or FxHashMap::default()
+            let mut inputs: InputsMap = FxHashMap::default(); // Or FxFxHashMap::default()
             let mut required_input_indices = FxHashSet::default(); // Use FxHashSet for uniqueness
 
             // Collect required input indices
@@ -616,7 +615,7 @@ impl AudioGraph {
             }
 
             // Temporary map to hold immutable slices before copying
-            let mut temp_input_slices = HashMap::new(); // Can be std HashMap
+            let mut temp_input_slices = FxHashMap::default();
             if !required_input_indices.is_empty() {
                 let indices_vec: Vec<usize> = required_input_indices.iter().copied().collect();
                 // Get immutable slices (immutable borrow of self.buffer_pool starts here)
@@ -672,18 +671,22 @@ impl AudioGraph {
             drop(temp_input_slices);
 
             // --- Output Gathering ---
-            let output_indices_map: HashMap<PortId, usize> = node_ports // Can be FxHashMap
+            let output_indices_map: FxHashMap<PortId, usize> = node_ports // Use FxHashMap if desired
                 .iter()
-                .filter(|(_, &is_output)| is_output)
+                // First, filter only the ports marked as outputs
+                .filter(|(_, &is_output)| is_output) // Use *is_output to dereference
+                // Then, filter_map: try to find the buffer index and create the (PortId, usize) pair
                 .filter_map(|(&port, _)| {
+                    // Closure returns Option<(PortId, usize)>
                     self.node_buffers
-                        .get(&(node_id, port))
-                        .map(|&idx| (port, idx))
+                        .get(&(node_id, port)) // This returns Option<&usize>
+                        .map(|&idx| (port, idx)) // This transforms it into Option<(PortId, usize)>
+                                                 // No outer Some(...) needed! Return the Option directly.
                 })
-                .collect();
+                .collect(); // collect now receives items of type (PortId, usize)
 
             let output_indices: Vec<usize> = output_indices_map.values().copied().collect();
-            let mut outputs: OutputsMap = HashMap::default(); // Or FxHashMap::default()
+            let mut outputs: OutputsMap = FxHashMap::default();
 
             if !output_indices.is_empty() {
                 // Now it's safe to get mutable buffers because the immutable borrow for inputs is finished.
@@ -723,7 +726,7 @@ impl AudioGraph {
             } else {
                 // Node has no outputs, just process it (might have side effects?)
                 // Need an empty mutable map for the process call signature
-                let mut empty_outputs: OutputsMap = HashMap::default(); // Or FxHashMap::default()
+                let mut empty_outputs: OutputsMap = FxHashMap::default();
                 self.nodes[node_idx].process(&inputs, &mut empty_outputs, self.buffer_size);
                 // Macros cannot be applied if there are no output buffers
             }

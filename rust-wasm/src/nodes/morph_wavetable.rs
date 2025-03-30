@@ -1,6 +1,7 @@
 // morph_wavetable.rs
 
-use std::{collections::HashMap, rc::Rc};
+use rustc_hash::FxHashMap;
+use std::rc::Rc;
 use web_sys::console;
 
 use super::{Waveform, WavetableBank};
@@ -120,13 +121,13 @@ impl WavetableMorphCollection {
 
 /// A bank of wavetable morph collections, keyed by a name.
 pub struct WavetableSynthBank {
-    pub collections: HashMap<String, Rc<WavetableMorphCollection>>,
+    pub collections: FxHashMap<String, Rc<WavetableMorphCollection>>,
 }
 
 impl WavetableSynthBank {
     pub fn new(sample_rate: f32) -> Self {
         let collection = WavetableMorphCollection::generate_test_collection(sample_rate);
-        let mut collections = HashMap::new();
+        let mut collections = FxHashMap::default();
         collections.insert("default".to_string(), Rc::new(collection));
         Self { collections }
     }

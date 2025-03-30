@@ -1,5 +1,5 @@
+use rustc_hash::FxHashMap;
 use std::any::Any;
-use std::collections::HashMap;
 // src/traits/mod.rs
 use wasm_bindgen::prelude::*;
 
@@ -117,12 +117,12 @@ impl PortId {
 }
 
 pub trait AudioNode: Any {
-    fn get_ports(&self) -> HashMap<PortId, bool>;
+    fn get_ports(&self) -> FxHashMap<PortId, bool>;
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>, // Or FxHashMap
-        outputs: &mut HashMap<PortId, &mut [f32]>,       // Or FxHashMap
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>, // Or FxFxHashMap
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,       // Or FxFxHashMap
         buffer_size: usize,
     );
 

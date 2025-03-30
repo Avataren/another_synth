@@ -1,7 +1,7 @@
+use rustc_hash::FxHashMap;
 use rustfft::num_traits::Float;
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::f32::consts::{E, PI};
 use std::rc::Rc;
 use std::simd::{f32x4, LaneCount, Simd, SupportedLaneCount};
@@ -309,7 +309,7 @@ fn get_collection_from_bank<'a>(
 }
 
 impl AudioNode for WavetableOscillator {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::GlobalFrequency, false),
             (PortId::FrequencyMod, false),
@@ -329,8 +329,8 @@ impl AudioNode for WavetableOscillator {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         if !self.active {

@@ -1,7 +1,8 @@
+use rustc_hash::FxHashMap;
+
 use super::types::{ModulationMacro, ModulationTarget};
 use crate::graph::{AudioBufferPool, ModulationType};
 use crate::PortId;
-use std::collections::HashMap;
 use std::simd::{f32x4, StdFloat};
 
 #[derive(Debug)]
@@ -133,7 +134,7 @@ impl MacroManager {
         &self,
         offset: usize,
         macro_data: &MacroData,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
     ) {
         let block_size = macro_data.buffer_size;
         if offset >= block_size {

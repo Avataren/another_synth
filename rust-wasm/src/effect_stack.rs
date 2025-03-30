@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::{
     graph::{ModulationSource, ModulationTransformation, ModulationType},
@@ -76,7 +76,7 @@ impl EffectStack {
             let mut next_right = vec![0.0; self.buffer_size];
 
             if effect.node.is_active() {
-                let mut inputs = HashMap::new();
+                let mut inputs = FxHashMap::default();
                 inputs.insert(
                     PortId::AudioInput0,
                     vec![ModulationSource {
@@ -96,7 +96,7 @@ impl EffectStack {
                     }],
                 );
 
-                let mut outputs = HashMap::new();
+                let mut outputs = FxHashMap::default();
                 outputs.insert(PortId::AudioOutput0, next_left.as_mut_slice());
                 outputs.insert(PortId::AudioOutput1, next_right.as_mut_slice());
 

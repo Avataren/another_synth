@@ -1,5 +1,5 @@
 // use std::any::Any;
-// use std::collections::HashMap;
+// use std::collections::FxHashMap;
 
 // use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
 // use crate::graph::ModulationSource;
@@ -143,8 +143,8 @@
 // }
 
 // impl AudioNode for Equalizer {
-//     fn get_ports(&self) -> HashMap<PortId, bool> {
-//         let mut ports = HashMap::new();
+//     fn get_ports(&self) -> FxHashMap<PortId, bool> {
+//         let mut ports = FxHashMap::new();
 //         // Stereo audio inputs.
 //         ports.insert(PortId::AudioInput0, false);
 //         ports.insert(PortId::AudioInput1, false);
@@ -156,8 +156,8 @@
 
 //     fn process(
 //         &mut self,
-//         inputs: &HashMap<PortId, Vec<ModulationSource>>,
-//         outputs: &mut HashMap<PortId, &mut [f32]>,
+//         inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+//         outputs: &mut FxHashMap<PortId, &mut [f32]>,
 //         buffer_size: usize,
 //     ) {
 //         // Retrieve input buffers.
@@ -255,8 +255,8 @@
 // }
 
 // impl AudioNode for NotchFilter {
-//     fn get_ports(&self) -> HashMap<PortId, bool> {
-//         let mut ports = HashMap::new();
+//     fn get_ports(&self) -> FxHashMap<PortId, bool> {
+//         let mut ports = FxHashMap::new();
 //         ports.insert(PortId::AudioInput0, false);
 //         ports.insert(PortId::AudioInput1, false);
 //         ports.insert(PortId::AudioOutput0, true);
@@ -266,8 +266,8 @@
 
 //     fn process(
 //         &mut self,
-//         inputs: &HashMap<PortId, Vec<ModulationSource>>,
-//         outputs: &mut HashMap<PortId, &mut [f32]>,
+//         inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+//         outputs: &mut FxHashMap<PortId, &mut [f32]>,
 //         buffer_size: usize,
 //     ) {
 //         let left_in = inputs.get(&PortId::AudioInput0).unwrap()[0]

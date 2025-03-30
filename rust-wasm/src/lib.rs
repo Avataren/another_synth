@@ -30,12 +30,13 @@ use nodes::{
     Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig};
+use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::io::Cursor;
 use std::rc::Rc;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 pub use traits::{AudioNode, PortId};
 pub use utils::*;
 pub use voice::Voice;
@@ -274,7 +275,7 @@ pub struct AudioEngine {
     sample_rate: f32,
     num_voices: usize,
     wavetable_synthbank: Rc<RefCell<WavetableSynthBank>>,
-    wavetable_banks: Arc<HashMap<Waveform, Arc<WavetableBank>>>,
+    wavetable_banks: Arc<FxHashMap<Waveform, Arc<WavetableBank>>>,
     effect_stack: EffectStack,
     ir_generator: ImpulseResponseGenerator,
     cpu_time_accum: f64,   // accumulated processing time (seconds)
@@ -370,7 +371,7 @@ impl AudioEngine {
         console::log_1(&format!("INITIALIZING AUDIO ENGINE WITH {} VOICES", num_voices).into());
         console::log_1(&format!("Creating WavetableSynthBank").into());
         let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
-        let mut banks = HashMap::new();
+        let mut banks = FxHashMap::default();
         console::log_1(&format!("Creating Sine").into());
         banks.insert(
             Waveform::Sine,
@@ -816,7 +817,7 @@ impl AudioEngine {
             console::log_1(&format!("Updating references in voice {}", voice_idx).into());
 
             // Update connections with new node IDs
-            let updated_connections: HashMap<_, _> = voice
+            let updated_connections: FxHashMap<_, _> = voice
                 .graph
                 .connections
                 .iter()
@@ -846,7 +847,7 @@ impl AudioEngine {
             voice.graph.connections.extend(updated_connections);
 
             // Update node buffers
-            let updated_buffers: HashMap<_, _> = voice
+            let updated_buffers: FxHashMap<_, _> = voice
                 .graph
                 .node_buffers
                 .iter()
@@ -872,7 +873,7 @@ impl AudioEngine {
             }
 
             // Update input_connections
-            let mut updated_inputs = HashMap::new();
+            let mut updated_inputs = FxHashMap::default();
             for (target, inputs) in &voice.graph.input_connections {
                 let new_target = if target.0 > node_id.0 {
                     NodeId(target.0 - 1)

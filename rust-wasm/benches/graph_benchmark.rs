@@ -468,7 +468,7 @@
 //     });
 // }
 
-// // Test HashMap lookup overhead
+// // Test FxHashMap lookup overhead
 // #[bench]
 // fn bench_node_lookup(b: &mut Bencher) {
 //     // Create graph with nodes once, outside the benchmark loop

@@ -1,6 +1,7 @@
 use std::any::Any;
-use std::collections::HashMap;
 use std::simd::f32x4;
+
+use rustc_hash::FxHashMap;
 
 use crate::graph::ModulationSource;
 use crate::traits::{AudioNode, PortId};
@@ -69,8 +70,8 @@ impl Delay {
 // impl ModulationProcessor for Delay {}
 
 impl AudioNode for Delay {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
-        let mut ports = HashMap::new();
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
+        let mut ports = FxHashMap::default();
         // Stereo inputs:
         ports.insert(PortId::AudioInput0, false); // Left input
         ports.insert(PortId::AudioInput1, false); // Right input
@@ -84,8 +85,8 @@ impl AudioNode for Delay {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // Instead of calling process_modulations we directly take the audio input from the

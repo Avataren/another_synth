@@ -1,6 +1,7 @@
+use rustc_hash::FxHashMap;
 use std::any::Any;
-use std::collections::HashMap;
-use std::simd::{f32x4, Simd}; // Keep for potential output writing optimization
+use std::simd::{f32x4, Simd};
+// Keep for potential output writing optimization
 use wasm_bindgen::prelude::wasm_bindgen;
 // use web_sys::console; // Uncomment for debugging
 
@@ -389,7 +390,7 @@ impl Envelope {
 impl ModulationProcessor for Envelope {}
 
 impl AudioNode for Envelope {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::CombinedGate, false), // Input for gate signal
             (PortId::AttackMod, false),    // Input for attack time modulation
@@ -402,8 +403,8 @@ impl AudioNode for Envelope {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // --- 0) Early exit and Buffer Preparation ---

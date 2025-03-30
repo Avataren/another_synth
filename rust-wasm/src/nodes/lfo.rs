@@ -1,9 +1,9 @@
 // --- IMPORTS and other parts remain the same ---
 use std::any::Any;
-use std::collections::HashMap;
 use std::simd::{f32x4, Simd, StdFloat};
 use std::sync::OnceLock;
 
+use rustc_hash::FxHashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::graph::{
@@ -566,7 +566,7 @@ impl ModulationProcessor for Lfo {}
 
 // --- AudioNode Implementation ---
 impl AudioNode for Lfo {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::FrequencyMod, false), // Modulation for frequency
             (PortId::GainMod, false),      // Modulation for output gain/amplitude
@@ -580,8 +580,8 @@ impl AudioNode for Lfo {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // --- 0) Early exit and Buffer Preparation ---

@@ -3,10 +3,10 @@
 // #![warn(unused_variables)] // Uncomment temporarily to help find unused variables
 
 use once_cell::sync::Lazy;
+use rustc_hash::FxHashMap;
 use rustfft::num_traits::Float;
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::any::Any;
-use std::collections::HashMap;
 use std::f32::consts::PI;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -681,7 +681,7 @@ impl ModulationProcessor for FilterCollection {}
 // AudioNode Implementation
 // =======================================================================
 impl AudioNode for FilterCollection {
-    fn get_ports(&self) -> HashMap<PortId, bool> {
+    fn get_ports(&self) -> FxHashMap<PortId, bool> {
         // (Implementation unchanged)
         [
             (PortId::AudioInput0, false),
@@ -698,8 +698,8 @@ impl AudioNode for FilterCollection {
 
     fn process(
         &mut self,
-        inputs: &HashMap<PortId, Vec<ModulationSource>>,
-        outputs: &mut HashMap<PortId, &mut [f32]>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         if !self.enabled {
@@ -1066,7 +1066,7 @@ mod tests {
 
         let buffer_size = 512;
         let mut output_buffer = vec![0.0; buffer_size];
-        let mut outputs = HashMap::new();
+        let mut outputs = FxHashMap::default();
         outputs.insert(PortId::AudioOutput0, output_buffer.as_mut_slice());
 
         let audio_input_data = vec![0.0; buffer_size];
@@ -1076,7 +1076,7 @@ mod tests {
             mod_type: ModulationType::Additive,
             transformation: ModulationTransformation::None,
         };
-        let mut inputs = HashMap::new();
+        let mut inputs = FxHashMap::default();
         inputs.insert(PortId::AudioInput0, vec![audio_source]);
 
         for _ in 0..5 {
@@ -1125,8 +1125,8 @@ mod tests {
 
         let mut output_low = vec![0.0; buffer_size];
         let mut output_high = vec![0.0; buffer_size];
-        let mut outputs_low = HashMap::new();
-        let mut outputs_high = HashMap::new();
+        let mut outputs_low = FxHashMap::default();
+        let mut outputs_high = FxHashMap::default();
         outputs_low.insert(PortId::AudioOutput0, output_low.as_mut_slice());
         outputs_high.insert(PortId::AudioOutput0, output_high.as_mut_slice());
 
@@ -1136,7 +1136,7 @@ mod tests {
             mod_type: ModulationType::Additive,
             transformation: ModulationTransformation::None,
         };
-        let mut inputs = HashMap::new();
+        let mut inputs = FxHashMap::default();
         inputs.insert(PortId::AudioInput0, vec![audio_source]);
 
         fc_low_drive.process(&inputs, &mut outputs_low, buffer_size);
