@@ -531,8 +531,8 @@ impl Chorus {
                 let current_upsampled_in_r = upsampled_r[i];
                 let feedback_term_l = feedback * delayed_left;
                 let feedback_term_r = feedback * delayed_right;
-                let write_val_left = (current_upsampled_in_l + feedback_term_l).clamp(-1.0, 1.0);
-                let write_val_right = (current_upsampled_in_r + feedback_term_r).clamp(-1.0, 1.0);
+                let write_val_left = (current_upsampled_in_l + feedback_term_l); //.clamp(-1.0, 1.0);
+                let write_val_right = (current_upsampled_in_r + feedback_term_r); //.clamp(-1.0, 1.0);
 
                 delay_buf_l[current_write_index] = write_val_left;
                 delay_buf_r[current_write_index] = write_val_right;
