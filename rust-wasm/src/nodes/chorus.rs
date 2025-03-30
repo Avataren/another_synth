@@ -206,7 +206,7 @@ impl Chorus {
         let initial_mix = mix.clamp(0.0, 1.0);
         let initial_lfo_stereo_phase_offset_rad = stereo_phase_offset_deg.to_radians();
 
-        let smoothing_time_ms = 20.0;
+        let smoothing_time_ms = 3.0;
         let smoothing_time_samples_internal = smoothing_time_ms * 0.001 * internal_sample_rate;
         let param_smooth_coeff = if smoothing_time_samples_internal > 1.0 {
             (-TWO_PI / smoothing_time_samples_internal).exp()

@@ -1383,7 +1383,7 @@ impl AudioEngine {
             self.sample_rate,
             // max_base_delay_ms: Needs to accommodate the base delay + depth.
             // max base delay in ms:
-            60.0,
+            65.0,
             // base_delay_ms: The central delay time. 20-30ms is typical for chorus.
             15.0,
             // depth_ms: How much the delay time varies. 2-7ms is a common range.

@@ -18,7 +18,7 @@
           v-model="chorusState.baseDelayMs"
           label="Delay"
           :min="0.1"
-          :max="50"
+          :max="65"
           :step="0.1"
           :decimals="1"
           unit="ms"
