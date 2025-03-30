@@ -41,6 +41,64 @@ impl AudioBufferPool {
         index
     }
 
+    pub fn get_multiple_buffers<'a>(
+        &'a self,
+        indices: &[usize],
+    ) -> Result<Vec<(usize, &'a [f32])>, String> {
+        let mut result = Vec::with_capacity(indices.len());
+        let mut requested_indices = HashSet::new(); // To check for duplicates if necessary, though not strictly needed for immutable borrows
+
+        for &idx in indices {
+            if idx >= self.buffers.len() {
+                return Err(format!(
+                    "Immutable buffer index {} out of bounds (total: {})",
+                    idx,
+                    self.buffers.len()
+                ));
+            }
+            if !requested_indices.insert(idx) {
+                // Allow duplicate requests for immutable slices if needed,
+                // or return error: return Err(format!("Duplicate index requested: {}", idx));
+            }
+            // Safety: Bounds check done above. Multiple immutable borrows are safe.
+            result.push((idx, self.buffers[idx].as_slice()));
+        }
+        Ok(result)
+    }
+
+    pub fn get_multiple_buffers_mut<'a>(
+        &'a mut self,
+        indices: &[usize],
+    ) -> Result<Vec<(usize, &'a mut [f32])>, String> {
+        // Return Result for consistency
+        let mut result = Vec::new();
+        let mut requested_indices = HashSet::new(); // Check for duplicates is crucial here
+
+        for &idx in indices {
+            if idx >= self.buffers.len() {
+                return Err(format!(
+                    "Mutable buffer index {} out of bounds (total: {})",
+                    idx,
+                    self.buffers.len()
+                ));
+            }
+            if !requested_indices.insert(idx) {
+                // Cannot provide multiple mutable references to the same buffer
+                return Err(format!("Duplicate mutable index requested: {}", idx));
+            }
+        }
+
+        // All indices unique and bounds checked. Now get references using unsafe.
+        for &idx in indices {
+            // Safety: We checked for duplicates and bounds above.
+            unsafe {
+                let buffer = &mut *self.buffers.as_mut_ptr().add(idx);
+                result.push((idx, buffer.as_mut_slice()));
+            }
+        }
+        Ok(result)
+    }
+
     pub fn release(&mut self, index: usize) {
         if self.in_use.remove(&index) {
             self.available.push(index);
@@ -71,53 +129,5 @@ impl AudioBufferPool {
         for i in 0..self.buffers.len() {
             self.available.push(i);
         }
-    }
-
-    pub fn get_multiple_buffers_mut<'a>(
-        &'a mut self,
-        indices: &[usize],
-    ) -> Vec<(usize, &'a mut [f32])> {
-        let mut result = Vec::new();
-
-        // Handle the simple case - just one buffer
-        if indices.len() == 1 {
-            let idx = indices[0];
-            if idx >= self.buffers.len() {
-                panic!(
-                    "Buffer index {} out of bounds (total: {})",
-                    idx,
-                    self.buffers.len()
-                );
-            }
-            result.push((idx, self.buffers[idx].as_mut_slice()));
-            return result;
-        }
-
-        // For multiple buffers, check if any are repeated
-        for (i, &idx1) in indices.iter().enumerate() {
-            for &idx2 in indices.iter().skip(i + 1) {
-                if idx1 == idx2 {
-                    panic!("Cannot get multiple mutable references to the same buffer");
-                }
-            }
-        }
-
-        // All indices are unique, we can get them one by one
-        for &idx in indices {
-            if idx >= self.buffers.len() {
-                panic!(
-                    "Buffer index {} out of bounds (total: {})",
-                    idx,
-                    self.buffers.len()
-                );
-            }
-            // Safety: we checked for duplicates above, so this won't create aliasing refs
-            unsafe {
-                let buffer = &mut *self.buffers.as_mut_ptr().add(idx);
-                result.push((idx, buffer.as_mut_slice()));
-            }
-        }
-
-        result
     }
 }

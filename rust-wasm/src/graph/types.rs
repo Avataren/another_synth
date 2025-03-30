@@ -3,9 +3,10 @@ use serde::Serialize;
 use std::ops::Deref;
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone)] // Clone might not be possible/needed anymore if nodes don't own it
+                 // Let's keep it for now but review if it causes issues later.
 pub struct ModulationSource {
-    pub buffer: Vec<f32>,
+    pub buffer: Vec<f32>, // Owned Vec<f32>
     pub amount: f32,
     pub mod_type: ModulationType,
     pub transformation: ModulationTransformation,

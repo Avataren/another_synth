@@ -23,7 +23,7 @@ rustfft = { version = "6.2.0", features = ["wasm_simd"] }
 hound = "3.5.1"
 rand = "0.9"
 getrandom = { version = "0.3.1", features = ["wasm_js"] }
-
+rustc-hash = "2.1.1"
 
 fft-convolver = "0.2.0"
 rubato = "0.16.1"

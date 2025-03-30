@@ -1,3 +1,5 @@
+use rustc_hash::FxHashSet;
+
 /// AudioGraph is a flexible audio processing system that manages interconnected audio nodes and their buffer routing.
 ///
 /// Core concepts:
@@ -569,123 +571,222 @@ impl AudioGraph {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        // Prepare macro data once at the start.
-        let macro_data = macro_manager.map(|m| m.prepare_macro_data(&mut self.buffer_pool));
-        // Clear all node buffers at the start of processing.
+        let macro_data = macro_manager.map(|m| m.prepare_macro_data(&self.buffer_pool));
+
         for &buffer_idx in self.node_buffers.values() {
             self.buffer_pool.clear(buffer_idx);
         }
-        // Process each node in topological order.
-        for &node_idx in &self.processing_order {
+
+        // Use FxHashMap if you added the dependency and want the potential speedup
+        type InputsMap = HashMap<PortId, Vec<ModulationSource>>;
+        type OutputsMap<'a> = HashMap<PortId, &'a mut [f32]>;
+
+        'node_loop: for &node_idx in &self.processing_order {
+            // Added optional loop label
             let node_id = NodeId(node_idx);
-            // Skip processing for nodes that shouldn’t process.
+
             if !self.nodes[node_idx].should_process() {
-                for (&(id, port), &buffer_idx) in self.node_buffers.iter() {
-                    if id == node_id && port.is_audio_output() {
-                        self.buffer_pool.clear(buffer_idx);
+                let node_ports = self.nodes[node_idx].get_ports();
+                for (port, is_output) in node_ports.iter() {
+                    if *is_output {
+                        if let Some(buffer_idx) = self.node_buffers.get(&(node_id, *port)) {
+                            self.buffer_pool.clear(*buffer_idx);
+                        }
                     }
                 }
                 continue;
             }
 
-            let ports = self.nodes[node_idx].get_ports().clone();
-            let mut inputs: HashMap<PortId, Vec<ModulationSource>> = HashMap::new();
+            let node_ports = self.nodes[node_idx].get_ports().clone();
 
-            // Handle gate and frequency inputs.
-            if ports.contains_key(&PortId::GlobalGate) {
-                inputs
-                    .entry(PortId::GlobalGate)
-                    .or_default()
-                    .push(ModulationSource {
-                        buffer: self.buffer_pool.copy_out(self.gate_buffer_idx).to_vec(),
-                        amount: 1.0,
-                        mod_type: ModulationType::Additive,
-                        transformation: ModulationTransformation::None,
-                    });
+            // --- Input Gathering and Copying ---
+            let mut inputs: InputsMap = HashMap::default(); // Or FxHashMap::default()
+            let mut required_input_indices = FxHashSet::default(); // Use FxHashSet for uniqueness
+
+            // Collect required input indices
+            if node_ports.contains_key(&PortId::GlobalGate) {
+                required_input_indices.insert(self.gate_buffer_idx);
             }
-
-            // if ports.contains_key(&PortId::GlobalFrequency) {
-            //     inputs
-            //         .entry(PortId::GlobalFrequency)
-            //         .or_default()
-            //         .push(ModulationSource {
-            //             buffer: self.buffer_pool.copy_out(self.freq_buffer_idx).to_vec(),
-            //             amount: 1.0,
-            //             mod_type: ModulationType::Additive,
-            //         });
-            // }
-
-            // Process all connections.
             if let Some(connections) = self.input_connections.get(&node_id) {
-                for &(port, source_idx, amount, _src_node, mod_type, mod_transform) in connections {
-                    let buffer = self.buffer_pool.copy_out(source_idx).to_vec();
-                    inputs.entry(port).or_default().push(ModulationSource {
-                        buffer,
-                        amount,
-                        mod_type,
-                        transformation: mod_transform,
-                    });
+                for &(_port, source_idx, _amount, _src_node, _mod_type, _mod_transform) in
+                    connections
+                {
+                    required_input_indices.insert(source_idx);
                 }
             }
 
-            // Get output buffers.
-            let output_indices: Vec<usize> = ports
-                .iter()
-                .filter(|(_, &is_output)| is_output)
-                .filter_map(|(&port, _)| self.node_buffers.get(&(node_id, port)).copied())
-                .collect();
-
-            let mut output_buffers = self.buffer_pool.get_multiple_buffers_mut(&output_indices);
-            let mut outputs = HashMap::new();
-            for (buffer_idx, buffer) in output_buffers.iter_mut() {
-                if let Some(((node_id_key, port), _)) = self
-                    .node_buffers
-                    .iter()
-                    .find(|((n, _), &idx)| idx == *buffer_idx && n.0 == node_idx)
-                {
-                    if ports.get(port) == Some(&true) {
-                        outputs.insert(*port, &mut **buffer);
+            // Temporary map to hold immutable slices before copying
+            let mut temp_input_slices = HashMap::new(); // Can be std HashMap
+            if !required_input_indices.is_empty() {
+                let indices_vec: Vec<usize> = required_input_indices.iter().copied().collect();
+                // Get immutable slices (immutable borrow of self.buffer_pool starts here)
+                match self.buffer_pool.get_multiple_buffers(&indices_vec) {
+                    Ok(slices_vec) => {
+                        // Populate temp map
+                        for (idx, slice) in slices_vec {
+                            temp_input_slices.insert(idx, slice);
+                        }
+                    }
+                    Err(e) => {
+                        web_sys::console::error_1(
+                            &format!("Error getting input buffers for node {}: {}", node_idx, e)
+                                .into(),
+                        );
+                        continue 'node_loop; // Skip node if inputs can't be retrieved
                     }
                 }
             }
+            // Immutable borrow of self.buffer_pool via get_multiple_buffers ends when slices_vec goes out of scope here.
+            // temp_input_slices now holds references (&[f32]) that are still valid.
 
-            // Process the node.
-            self.nodes[node_idx].process(&inputs, &mut outputs, self.buffer_size);
+            // Now, populate the 'inputs' map by *copying* data from temp_input_slices
+            // Global Gate
+            if node_ports.contains_key(&PortId::GlobalGate) {
+                if let Some(slice) = temp_input_slices.get(&self.gate_buffer_idx) {
+                    inputs
+                        .entry(PortId::GlobalGate)
+                        .or_default()
+                        .push(ModulationSource {
+                            buffer: slice.to_vec(), // *** COPY ***
+                            amount: 1.0,
+                            mod_type: ModulationType::Additive,
+                            transformation: ModulationTransformation::None,
+                        });
+                } // else: Error should have been caught above
+            }
 
-            // Apply macro modulation if available.
-            if let (Some(mgr), Some(ref data)) = (macro_manager, &macro_data) {
-                for offset in (0..self.buffer_size).step_by(4) {
-                    mgr.apply_modulation(offset, data, &mut outputs);
+            // Connection Inputs
+            if let Some(connections) = self.input_connections.get(&node_id) {
+                for &(port, source_idx, amount, _src_node, mod_type, mod_transform) in connections {
+                    if let Some(slice) = temp_input_slices.get(&source_idx) {
+                        inputs.entry(port).or_default().push(ModulationSource {
+                            buffer: slice.to_vec(), // *** COPY ***
+                            amount,
+                            mod_type,
+                            transformation: mod_transform,
+                        });
+                    } // else: Error should have been caught above
                 }
             }
-            drop(output_buffers);
-        }
+            // Drop the temporary slice map explicitly if needed, though scope should handle it.
+            drop(temp_input_slices);
 
-        // Handle final output.
-        if let Some(output_node) = self.output_node {
-            if let Some(node) = self.nodes.get(output_node.0) {
-                if node.is_active() {
-                    if let Some(&left_buffer_idx) =
-                        self.node_buffers.get(&(output_node, PortId::AudioOutput0))
+            // --- Output Gathering ---
+            let output_indices_map: HashMap<PortId, usize> = node_ports // Can be FxHashMap
+                .iter()
+                .filter(|(_, &is_output)| is_output)
+                .filter_map(|(&port, _)| {
+                    self.node_buffers
+                        .get(&(node_id, port))
+                        .map(|&idx| (port, idx))
+                })
+                .collect();
+
+            let output_indices: Vec<usize> = output_indices_map.values().copied().collect();
+            let mut outputs: OutputsMap = HashMap::default(); // Or FxHashMap::default()
+
+            if !output_indices.is_empty() {
+                // Now it's safe to get mutable buffers because the immutable borrow for inputs is finished.
+                match self.buffer_pool.get_multiple_buffers_mut(&output_indices) {
+                    Ok(mut output_buffers_vec) => {
+                        // Populate the 'outputs' map
+                        for (buffer_idx, buffer_slice) in output_buffers_vec.iter_mut() {
+                            // Find the PortId corresponding to this index for this node
+                            if let Some((port, _)) = output_indices_map
+                                .iter()
+                                .find(|(_, &idx)| idx == *buffer_idx)
+                            {
+                                outputs.insert(*port, *buffer_slice);
+                            }
+                        }
+
+                        // --- Process Node ---
+                        // Pass copied inputs (Vec<f32>) and mutable output slices (&mut [f32])
+                        self.nodes[node_idx].process(&inputs, &mut outputs, self.buffer_size);
+
+                        // --- Apply Macro Modulation ---
+                        if let (Some(mgr), Some(ref data)) = (macro_manager, &macro_data) {
+                            if mgr.has_active_macros() {
+                                mgr.apply_modulation(0, data, &mut outputs);
+                            }
+                        }
+                        // Mutable borrow of output_buffers_vec ends here.
+                    }
+                    Err(e) => {
+                        web_sys::console::error_1(
+                            &format!("Error getting output buffers for node {}: {}", node_idx, e)
+                                .into(),
+                        );
+                        continue 'node_loop; // Skip node if outputs can't be retrieved
+                    }
+                }
+            } else {
+                // Node has no outputs, just process it (might have side effects?)
+                // Need an empty mutable map for the process call signature
+                let mut empty_outputs: OutputsMap = HashMap::default(); // Or FxHashMap::default()
+                self.nodes[node_idx].process(&inputs, &mut empty_outputs, self.buffer_size);
+                // Macros cannot be applied if there are no output buffers
+            }
+        } // End node processing loop ('node_loop)
+
+        // --- Final Output ---
+        // (This part remains largely the same, using copy_out)
+        if let Some(output_node_id) = self.output_node {
+            // Check if the output node itself was processed (i.e., is active)
+            let output_node_active = self
+                .nodes
+                .get(output_node_id.0)
+                .map_or(false, |n| n.is_active());
+
+            if output_node_active {
+                if let Some(&left_buffer_idx) = self
+                    .node_buffers
+                    .get(&(output_node_id, PortId::AudioOutput0))
+                {
+                    // Use copy_out which returns a slice - no allocation needed here either
+                    let left_buffer = self.buffer_pool.copy_out(left_buffer_idx);
+                    // Ensure slice lengths match before copying
+                    let len = output_left.len().min(left_buffer.len());
+                    output_left[..len].copy_from_slice(&left_buffer[..len]);
+                    // Zero out remaining part if output buffer is shorter
+                    for sample in output_left[len..].iter_mut() {
+                        *sample = 0.0;
+                    }
+
+                    if let Some(&right_buffer_idx) = self
+                        .node_buffers
+                        .get(&(output_node_id, PortId::AudioOutput1))
                     {
-                        let left_buffer = self.buffer_pool.copy_out(left_buffer_idx);
-                        output_left.copy_from_slice(left_buffer);
-                        if let Some(&right_buffer_idx) =
-                            self.node_buffers.get(&(output_node, PortId::AudioOutput1))
-                        {
-                            let right_buffer = self.buffer_pool.copy_out(right_buffer_idx);
-                            output_right.copy_from_slice(right_buffer);
-                        } else {
-                            output_right.copy_from_slice(left_buffer);
+                        let right_buffer = self.buffer_pool.copy_out(right_buffer_idx);
+                        let len = output_right.len().min(right_buffer.len());
+                        output_right[..len].copy_from_slice(&right_buffer[..len]);
+                        for sample in output_right[len..].iter_mut() {
+                            *sample = 0.0;
+                        }
+                    } else {
+                        // Mono output case: copy left to right
+                        let len = output_right.len().min(left_buffer.len());
+                        output_right[..len].copy_from_slice(&left_buffer[..len]);
+                        for sample in output_right[len..].iter_mut() {
+                            *sample = 0.0;
                         }
                     }
                 } else {
+                    // Output node active but required buffer not found? Fill with silence.
                     output_left.fill(0.0);
                     output_right.fill(0.0);
                 }
+            } else {
+                // Output node is not active, fill with silence
+                output_left.fill(0.0);
+                output_right.fill(0.0);
             }
+        } else {
+            // No output node set, fill with silence
+            output_left.fill(0.0);
+            output_right.fill(0.0);
         }
-    }
+    } // End process_audio_with_macros
 }
 
 impl Drop for AudioGraph {
