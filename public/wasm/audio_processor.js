@@ -753,6 +753,29 @@ export class AudioEngine {
         wasm.audioengine_update_convolver(this.__wbg_ptr, node_id, wet_mix, enabled);
     }
     /**
+     * @returns {number}
+     */
+    add_chorus() {
+        const ret = wasm.audioengine_add_chorus(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @param {number} node_id
+     * @param {boolean} active
+     * @param {number} base_delay_ms
+     * @param {number} depth_ms
+     * @param {number} lfo_rate_hz
+     * @param {number} feedback
+     * @param {number} mix
+     * @param {number} stereo_phase_offset_deg
+     */
+    update_chorus(node_id, active, base_delay_ms, depth_ms, lfo_rate_hz, feedback, mix, stereo_phase_offset_deg) {
+        wasm.audioengine_update_chorus(this.__wbg_ptr, node_id, active, base_delay_ms, depth_ms, lfo_rate_hz, feedback, mix, stereo_phase_offset_deg);
+    }
+    /**
      * @returns {any}
      */
     create_envelope() {

@@ -143,6 +143,22 @@
 
           <div class="header" style="margin-top: 4rem">Effects</div>
 
+          <generic-tab-container
+            v-if="chorusNodes.length"
+            :nodes="chorusNodes"
+            :destinationNode="destinationNode"
+            :componentName="ChorusComponent"
+            nodeLabel="Chorus"
+          />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Delay"
+              @click="addChorus"
+              icon="add"
+            />
+          </div>
+
           <!-- Delay -->
           <generic-tab-container
             v-if="delayNodes.length"
@@ -230,6 +246,7 @@ import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 
 // Node type definitions
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
+import ChorusComponent from 'src/components/ChorusComponent.vue';
 
 const store = useAudioSystemStore();
 const { destinationNode } = storeToRefs(store);
@@ -284,6 +301,11 @@ const delayNodes = computed(() => {
   return Array.isArray(nodes) ? nodes : [];
 });
 
+const chorusNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Chorus);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
 const convolverNodes = computed(() => {
   const nodes = store.getVoiceNodes(0, VoiceNodeType.Convolver);
   return Array.isArray(nodes) ? nodes : [];
@@ -320,6 +342,10 @@ function addFilter() {
 
 function addDelay() {
   store.currentInstrument?.createNode(VoiceNodeType.Delay);
+}
+
+function addChorus() {
+  store.currentInstrument?.createNode(VoiceNodeType.Chorus);
 }
 
 function addConvolver() {

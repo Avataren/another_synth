@@ -20,6 +20,26 @@ export enum VoiceNodeType {
   Delay = 'delay',
   GateMixer = 'gatemixer',
   ArpeggiatorGenerator = 'arpeggiator_generator',
+  Chorus = 'chorus',
+}
+
+export interface ChorusState {
+  /** Unique identifier for this chorus node instance. */
+  id: number;
+  /** Whether the chorus effect is currently active/enabled. */
+  active: boolean;
+  /** The base delay time in milliseconds around which the LFO modulates. */
+  baseDelayMs: number;
+  /** The depth of the LFO modulation in milliseconds (how far the delay swings). */
+  depthMs: number;
+  /** The frequency of the Low-Frequency Oscillator (LFO) in Hertz. */
+  lfoRateHz: number;
+  /** The amount of the delayed signal fed back into the input (0.0 to ~0.98). */
+  feedback: number;
+  /** The balance between the original (dry) and processed (wet) signal (0.0 = dry, 1.0 = wet). */
+  mix: number;
+  /** The phase difference in degrees between the LFOs for the left and right channels (0 to 360). */
+  stereoPhaseOffsetDeg: number;
 }
 
 export interface ConvolverState {

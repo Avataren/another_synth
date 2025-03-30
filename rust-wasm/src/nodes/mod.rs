@@ -1,5 +1,6 @@
 pub mod analog_oscillator;
 pub mod arpeggiator;
+pub mod chorus;
 pub mod convolver;
 pub mod delay;
 pub mod envelope;
@@ -13,13 +14,13 @@ pub mod lfo;
 pub mod mixer;
 pub mod morph_wavetable;
 pub mod noise_generator;
-pub mod oscillator;
 pub mod saturation;
 pub mod wavetable;
 pub mod wavetable_oscillator;
 
 pub use analog_oscillator::*;
 pub use arpeggiator::*;
+pub use chorus::*;
 pub use convolver::*;
 pub use delay::*;
 pub use envelope::*;
@@ -30,6 +31,5 @@ pub use global_velocity_node::*;
 pub use lfo::*;
 pub use mixer::*;
 pub use noise_generator::*;
-pub use oscillator::*;
 pub use wavetable::*;
 pub use wavetable_oscillator::*;

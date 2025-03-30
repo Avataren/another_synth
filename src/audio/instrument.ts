@@ -6,6 +6,7 @@ import { createStandardAudioWorklet } from './audio-processor-loader';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
 import type {
+  ChorusState,
   ConvolverState,
   DelayState,
   EnvelopeConfig,
@@ -101,6 +102,16 @@ export default class Instrument {
     this.workletNode.port.postMessage({
       type: 'createNode',
       node: node,
+    });
+  }
+
+
+  public updateChorusState(nodeId: number, state: ChorusState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateChorus',
+      nodeId: nodeId,
+      state: state,
     });
   }
 

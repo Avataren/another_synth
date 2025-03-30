@@ -4,6 +4,7 @@ import AudioSystem from 'src/audio/AudioSystem';
 import Instrument from 'src/audio/instrument';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import type {
+  ChorusState,
   ConvolverState,
   DelayState,
   EnvelopeConfig,
@@ -104,6 +105,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     delayStates: new Map<number, DelayState>(),
     filterStates: new Map<number, FilterState>(),
     lfoStates: new Map<number, LfoState>(),
+    chorusStates: new Map<number, ChorusState>(),
     isUpdatingFromWasm: false,
     isUpdating: false,
     updateQueue: [] as NodeConnectionUpdate[],
@@ -160,6 +162,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           return state.convolverStates.get(nodeId);
         case VoiceNodeType.Delay:
           return state.delayStates.get(nodeId);
+        case VoiceNodeType.Chorus:
+          return state.chorusStates.get(nodeId);
         default:
           return null;
       }
@@ -346,6 +350,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.Delay]: [],
             [VoiceNodeType.GateMixer]: [],
             [VoiceNodeType.ArpeggiatorGenerator]: [],
+            [VoiceNodeType.Chorus]: [],
           };
 
           interface RawNode {
@@ -380,6 +385,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.GateMixer;
               case 'arpeggiator_generator':
                 return VoiceNodeType.ArpeggiatorGenerator;
+              case 'chorus':
+                return VoiceNodeType.Chorus;
+
               default:
                 console.warn('$$$ Unknown node type:', raw);
                 return raw as VoiceNodeType;
@@ -655,6 +663,12 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               )
             );
 
+            const savedChorusStates = new Map(
+              Array.from(this.chorusStates.entries()).map(
+                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
+              )
+            )
+
             // DEBUG: Check saved oscillator states
             console.log('BEFORE SHIFTING: Saved oscillator states:');
             savedOscillatorStates.forEach((state, id) => {
@@ -767,6 +781,17 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               }
             });
 
+            const shiftedChorusStates = new Map<number, ChorusState>();
+            savedChorusStates.forEach((state, id) => {
+              if (id !== deletedNodeId) {
+                const newId = shiftNodeId(id);
+                shiftedChorusStates.set(newId, {
+                  ...state,
+                  id: newId
+                });
+              }
+            });
+
             const shiftedConvolverStates = new Map<number, ConvolverState>();
             savedConvolverStates.forEach((state, id) => {
               if (id !== deletedNodeId) {
@@ -801,7 +826,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               this.filterStates = shiftedFilterStates;
               this.delayStates = shiftedDelayStates;
               this.convolverStates = shiftedConvolverStates;
-
+              this.chorusStates = shiftedChorusStates;
               // Initialize default states only for nodes that don't have state yet
               this.initializeDefaultStates();
 
@@ -949,6 +974,16 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           });
         }
       });
+
+      this.chorusStates.forEach((state, nodeId) => {
+        console.log('Reapplying chorus state for node', nodeId, state);
+        if (this.currentInstrument?.updateChorusState) {
+          this.currentInstrument.updateChorusState(nodeId, {
+            ...state,
+            id: nodeId
+          });
+        }
+      })
     },
     // Add this method to initialize default states
     initializeDefaultStates() {

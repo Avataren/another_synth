@@ -25,9 +25,10 @@ use nodes::morph_wavetable::{
 };
 use nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
-    ArpeggiatorGenerator, Convolver, Delay, FilterCollection, FilterSlope, GlobalVelocityNode, Lfo,
-    LfoLoopMode, LfoRetriggerMode, LfoWaveform, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
-    Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    ArpeggiatorGenerator, Chorus, Convolver, Delay, FilterCollection, FilterSlope,
+    GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform, Mixer, NoiseGenerator,
+    NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
+    WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig};
 use rustc_hash::FxHashMap;
@@ -423,8 +424,10 @@ impl AudioEngine {
         self.num_voices = num_voices;
 
         self.voices = (0..num_voices).map(Voice::new).collect();
+        self.add_chorus().unwrap();
         self.add_delay(2000.0, 500.0, 0.5, 0.1).unwrap();
         self.add_plate_reverb(2.0, 0.6, sample_rate).unwrap();
+
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
@@ -1365,6 +1368,70 @@ impl AudioEngine {
                 // Log a warning if the node at that index isn't a Convolver.
                 web_sys::console::log_1(
                     &format!("Effect at index {} is not a Convolver", effect_id).into(),
+                );
+            }
+        } else {
+            // Log a warning if there is no effect at that index.
+            web_sys::console::log_1(&format!("No effect found at index {}", effect_id).into());
+        }
+    }
+
+    #[wasm_bindgen]
+
+    pub fn add_chorus(&mut self) -> Result<usize, JsValue> {
+        let mut chorus = Chorus::new(
+            self.sample_rate,
+            // max_base_delay_ms: Needs to accommodate the base delay + depth.
+            // max base delay in ms:
+            60.0,
+            // base_delay_ms: The central delay time. 20-30ms is typical for chorus.
+            15.0,
+            // depth_ms: How much the delay time varies. 2-7ms is a common range.
+            5.0,
+            // lfo_rate_hz: Speed of the warble. Slow rates are classic chorus.
+            // 0.3 - 0.8 Hz is a good starting range.
+            0.5,
+            // feedback: Usually low or zero for standard chorus. High feedback -> flanger.
+            0.3,
+            // mix: 0.5 gives an equal blend of dry and wet signal. Standard starting point.
+            0.5,
+            // stereo_phase_offset_deg: Creates stereo width. 90 degrees is common
+            // and effective. 0 would be mono LFO. 180 is also common.
+            90.0,
+        );
+        chorus.set_active(false);
+        Ok(self.effect_stack.add_effect(Box::new(chorus)))
+    }
+
+    #[wasm_bindgen]
+    pub fn update_chorus(
+        &mut self,
+        node_id: usize,
+        active: bool,
+        base_delay_ms: f32,
+        depth_ms: f32,
+        lfo_rate_hz: f32,
+        feedback: f32,
+        mix: f32,
+        stereo_phase_offset_deg: f32,
+    ) {
+        let effect_id = node_id - EFFECT_NODE_ID_OFFSET;
+
+        // Try to get a mutable reference to the effect at that index.
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_id) {
+            // Attempt to downcast the boxed AudioNode to a Convolver.
+            if let Some(chorus) = effect.node.as_any_mut().downcast_mut::<Chorus>() {
+                chorus.set_base_delay_ms(base_delay_ms);
+                chorus.set_depth_ms(depth_ms);
+                chorus.set_rate_hz(lfo_rate_hz);
+                chorus.set_feedback(feedback);
+                chorus.set_mix(mix);
+                chorus.set_stereo_phase_offset_deg(stereo_phase_offset_deg);
+                chorus.set_active(active);
+            } else {
+                // Log a warning if the node at that index isn't a Convolver.
+                web_sys::console::log_1(
+                    &format!("Effect at index {} is not a Delay", effect_id).into(),
                 );
             }
         } else {

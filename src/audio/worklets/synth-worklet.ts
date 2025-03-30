@@ -1,5 +1,6 @@
 import './textencoder.js';
 import type {
+  ChorusState,
   ConvolverState,
   DelayState,
   EnvelopeConfig,
@@ -237,6 +238,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'createNode':
         this.handleCreateNode(event.data);
+        break;
+      case 'updateChorus':
+        this.handleUpdateChorus(event.data);
         break;
       case 'cpuUsage':
         this.handleCpuUsage();
@@ -555,6 +559,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Delay]: [],
       [VoiceNodeType.GateMixer]: [],
       [VoiceNodeType.ArpeggiatorGenerator]: [],
+      [VoiceNodeType.Chorus]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -599,6 +604,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'global_velocity':
           type = VoiceNodeType.GlobalVelocity;
+          break;
+        case 'chorus':
+          type = VoiceNodeType.Chorus;
           break;
 
         default:
@@ -731,6 +739,24 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     );
 
     this.audioEngine.update_noise(data.noiseId, params);
+  }
+
+  private handleUpdateChorus(data: {
+    type: string;
+    nodeId: number;
+    state: ChorusState;
+  }) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_chorus(
+      data.nodeId,
+      data.state.active,
+      data.state.baseDelayMs,
+      data.state.depthMs,
+      data.state.lfoRateHz,
+      data.state.feedback,
+      data.state.mix,
+      data.state.stereoPhaseOffsetDeg
+    );
   }
 
   private handleUpdateFilter(data: {
