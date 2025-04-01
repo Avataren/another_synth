@@ -42,7 +42,7 @@ pub struct EnvelopeConfig {
 impl Default for EnvelopeConfig {
     fn default() -> Self {
         Self {
-            attack: 0.005, // Slightly more than 0 to avoid clicks/pops
+            attack: 0.001, // Slightly more than 0 to avoid clicks/pops
             decay: 0.1,
             sustain: 0.8,
             release: 0.2,
@@ -132,7 +132,7 @@ impl Envelope {
             sample_rate_recip: 1.0 / sample_rate,
             // Ensure minimum attack time on initial config
             config: EnvelopeConfig {
-                attack: config.attack.max(0.0001),
+                attack: config.attack.max(0.001),
                 ..config
             },
             attack_table: Vec::with_capacity(CURVE_TABLE_SIZE),
@@ -188,7 +188,7 @@ impl Envelope {
     /// Update the envelope's configuration.
     pub fn update_config(&mut self, config: EnvelopeConfig) {
         self.config = EnvelopeConfig {
-            attack: config.attack.max(0.0001), // Enforce minimum attack time
+            attack: config.attack.max(0.001), // Enforce minimum attack time
             ..config
         };
         // Reset smoothing if config changes during attack? Or let it finish? Let it finish.
