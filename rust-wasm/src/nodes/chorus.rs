@@ -686,8 +686,11 @@ impl Chorus {
 
                 // Calculate value to write into delay line (input + feedback)
                 // Optional: apply soft clipping here if feedback can cause overload
-                let write_val_left = (current_input_l + feedback_term_l).tanh(); // Example soft clip
-                let write_val_right = (current_input_r + feedback_term_r).tanh(); // Example soft clip
+                // let write_val_left = (current_input_l + feedback_term_l).tanh();
+                // let write_val_right = (current_input_r + feedback_term_r).tanh();
+
+                let write_val_left = current_input_l + feedback_term_l;
+                let write_val_right = current_input_r + feedback_term_r;
 
                 delay_buf_l[current_write_index] = write_val_left;
                 delay_buf_r[current_write_index] = write_val_right;
@@ -768,10 +771,10 @@ impl Chorus {
 
             // --- Final Clipping (Optional but Recommended) ---
             // Prevent hard clips if processing introduced large values
-            for i in 0..process_len {
-                out_left[i] = out_left[i].clamp(-1.0, 1.0);
-                out_right[i] = out_right[i].clamp(-1.0, 1.0);
-            }
+            // for i in 0..process_len {
+            //     out_left[i] = out_left[i].clamp(-1.0, 1.0);
+            //     out_right[i] = out_right[i].clamp(-1.0, 1.0);
+            // }
 
             // Zero any remaining part of the output buffers if they were larger than process_len
             // This is needed if the input buffers were shorter than the output buffers
