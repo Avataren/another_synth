@@ -272,7 +272,7 @@ impl Chorus {
         let initial_lfo_stereo_phase_offset_rad = stereo_phase_offset_deg.to_radians();
 
         // Parameter smoothing coefficient calculation
-        let smoothing_time_ms = 2.0;
+        let smoothing_time_ms = 0.1;
         let param_smooth_coeff = if internal_sample_rate > 0.0 {
             let smoothing_time_samples_internal = smoothing_time_ms * 0.001 * internal_sample_rate;
             if smoothing_time_samples_internal > 1.0 {
