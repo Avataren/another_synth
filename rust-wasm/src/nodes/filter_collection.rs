@@ -346,47 +346,57 @@ impl FilterCollection {
         res_comp: f32,
         sample_rate: f32,
     ) -> f32 {
-        // --- Drive ---
+        // --- Aggressive Drive Saturation ---
+        // Apply a gain and then saturate the input with tanh.
         let drive_gain = 1.0 + drive * 4.0;
-        let driven_input = input * drive_gain; // Optional: fast_tanh(input * drive_gain);
+        let driven_input = fast_tanh(input * drive_gain);
 
-        // --- Parameters ---
+        // --- Parameter Calculation ---
         let effective_cutoff = cutoff.clamp(10.0, sample_rate * SAFE_NYQUIST_FACTOR);
         let wc = PI * effective_cutoff / sample_rate;
         let g = (wc * 0.5).tan(); // TPT pre-warping
 
         // --- Resonance & Compensation ---
+        // Optionally, curve the resonance parameter (exponent 1.5) for a steeper response.
         let k_resonance = resonance_norm.clamp(0.0, 1.0);
-        // Optional: curve let k_resonance_curved = k_resonance.powf(1.5);
-        let k = k_resonance * 4.0; // Max feedback factor
+        let k = k_resonance.powf(1.5) * 4.0; // Enhanced resonance scaling
         let comp_gain = 1.0 / (1.0 + res_comp * k);
 
         // --- State & Feedback ---
+        // Retrieve the current states of the four ladder stages.
         let s0 = self.ladder_stages[0];
         let s1 = self.ladder_stages[1];
         let s2 = self.ladder_stages[2];
         let s3 = self.ladder_stages[3];
-        let feedback = k * fast_tanh(s3); // Feedback with saturation
+
+        // Apply saturation to the feedback path.
+        let feedback = k * fast_tanh(s3);
 
         // --- Input to First Stage ---
-        let stage_input = (driven_input * comp_gain) - feedback;
+        // Combine the driven input (with gain compensation) with the feedback,
+        // then saturate the resulting signal.
+        let stage_input = fast_tanh((driven_input * comp_gain) - feedback);
 
-        // --- TPT Stage Calculation ---
-        // Calculate intermediate stage outputs (y_n) with tanh non-linearity on stage inputs
+        // --- TPT Stage Calculations with Additional Nonlinearity ---
+        // Each stage uses tanh nonlinearity to emulate the soft clipping
+        // inherent in the original Moog design.
         let y0 = (s0 + g * fast_tanh(stage_input)) / (1.0 + g);
-        let y1 = (s1 + g * fast_tanh(y0)) / (1.0 + g); // Input to stage 1 is output of stage 0
-        let y2 = (s2 + g * fast_tanh(y1)) / (1.0 + g); // Input to stage 2 is output of stage 1
-        let y3 = (s3 + g * fast_tanh(y2)) / (1.0 + g); // Input to stage 3 is output of stage 2
+        let y1 = (s1 + g * fast_tanh(y0)) / (1.0 + g);
+        let y2 = (s2 + g * fast_tanh(y1)) / (1.0 + g);
+        let y3 = (s3 + g * fast_tanh(y2)) / (1.0 + g);
+
+        // Optionally, apply one more saturation to the final output.
+        let output = fast_tanh(y3);
 
         // --- Update Stage States (Integrators) ---
-        // s_n_new = 2.0 * y_n - s_n
+        // New state is computed using the trapezoidal (TPT) method.
         self.ladder_stages[0] = 2.0 * y0 - s0;
         self.ladder_stages[1] = 2.0 * y1 - s1;
         self.ladder_stages[2] = 2.0 * y2 - s2;
         self.ladder_stages[3] = 2.0 * y3 - s3;
 
-        // --- Output ---
-        y3 // Output of the last stage
+        // --- Return Filter Output ---
+        output
     }
 
     #[inline(always)]
