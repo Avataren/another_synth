@@ -755,6 +755,16 @@ export class AudioEngine {
     /**
      * @returns {number}
      */
+    add_limiter() {
+        const ret = wasm.audioengine_add_limiter(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
     add_chorus() {
         const ret = wasm.audioengine_add_chorus(this.__wbg_ptr);
         if (ret[2]) {

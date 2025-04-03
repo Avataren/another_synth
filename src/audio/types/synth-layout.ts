@@ -21,6 +21,7 @@ export enum VoiceNodeType {
   GateMixer = 'gatemixer',
   ArpeggiatorGenerator = 'arpeggiator_generator',
   Chorus = 'chorus',
+  Limiter = 'limiter'
 }
 
 export interface ChorusState {

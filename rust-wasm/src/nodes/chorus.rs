@@ -400,16 +400,17 @@ impl Chorus {
     #[inline(always)]
     fn read_cubic_interpolated(
         buffer: &[f32],
-        delay_samples: f32,       // Desired delay in samples (can be fractional)
-        write_index: usize,       // Current write position in the buffer
+        delay_samples: f32, // Desired delay in samples (already clamped outside)
+        write_index: usize, // Current write position in the buffer
         max_delay_samples: usize, // Total size of the delay buffer
-        max_safe_read_delay: f32, // Max delay readable without hitting interpolation margin
+                            // --- CHANGE: Removed max_safe_read_delay parameter ---
     ) -> f32 {
-        // Clamp delay to ensure we don't read too close to the write head where interpolation fails
-        let clamped_delay = delay_samples.clamp(0.0, max_safe_read_delay);
+        // --- CHANGE: Removed internal clamping ---
+        // let clamped_delay = delay_samples.clamp(0.0, max_safe_read_delay); // Clamping now done externally
 
         // Calculate the floating point read position, wrapping around the buffer
-        let read_pos_float = (write_index as f32 - clamped_delay + max_delay_samples as f32)
+        // Use the delay_samples directly as it's guaranteed to be >= MIN_DELAY_SAMPLES_CUBIC
+        let read_pos_float = (write_index as f32 - delay_samples + max_delay_samples as f32)
             % max_delay_samples as f32;
 
         let index_frac = read_pos_float.fract(); // Fractional part for interpolation (t)
@@ -422,6 +423,7 @@ impl Chorus {
         let i2 = (index_int + 2) % max_delay_samples; // y2
 
         // Get the sample values at these points
+        // Bounds checks are implicitly handled by modulo arithmetic assuming buffer.len() == max_delay_samples
         let p0 = buffer[i_1]; // y-1
         let p1 = buffer[i0]; // y0
         let p2 = buffer[i1]; // y1
@@ -640,40 +642,62 @@ impl Chorus {
             let mut lfo_phase_left = self.lfo_phase_left;
             let mut lfo_phase_right = self.lfo_phase_right;
             let phase_inc = self.current_lfo_phase_increment;
-            let base_delay = self.current_base_delay_samples;
-            let depth = self.current_depth_samples;
+            let base_delay = self.current_base_delay_samples; // Get CURRENT smoothed base
+            let depth = self.current_depth_samples; // Get CURRENT smoothed depth
             let feedback = self.current_feedback;
             let mix = self.current_mix;
             let dry_level = 1.0 - mix;
             let wet_level = mix;
-            let max_delay_samples = self.max_delay_samples;
-            let max_safe_read_delay = self.max_safe_read_delay;
-            let mut current_write_index = self.write_index;
+            let max_delay_samples = self.max_delay_samples; // Cache from self
+            let max_safe_read_delay = self.max_safe_read_delay; // Cache from self
+            let mut current_write_index = self.write_index; // Cache from self
             let delay_buf_l = &mut self.delay_buffer_left; // Mutable borrow
             let delay_buf_r = &mut self.delay_buffer_right; // Mutable borrow
+
+            const MIN_DELAY_SAMPLES_CUBIC: f32 = 2.0; // Minimum delay for 4-point cubic
+
+            // Calculate effective base delay to prevent LFO clamp at the minimum
+            let min_target_delay_this_block = base_delay - depth; // Lowest point LFO tries to reach
+            let effective_base_delay = if min_target_delay_this_block < MIN_DELAY_SAMPLES_CUBIC {
+                // The range dips below the minimum interpolator delay.
+                // Calculate how much we need to shift the base up.
+                let offset = MIN_DELAY_SAMPLES_CUBIC - min_target_delay_this_block;
+                base_delay + offset // Shift the effective center up
+            } else {
+                // The entire modulation range is already safe
+                base_delay
+            };
 
             for i in 0..internal_buffer_len {
                 // Calculate LFO modulation for delay times
                 let lfo_val_left = lfo_phase_left.sin();
                 let lfo_val_right = lfo_phase_right.sin();
 
-                let delay_smpls_left = base_delay + lfo_val_left * depth;
-                let delay_smpls_right = base_delay + lfo_val_right * depth;
+                // Calculate the target delay using the adjusted base
+                let target_delay_l = effective_base_delay + lfo_val_left * depth;
+                let target_delay_r = effective_base_delay + lfo_val_right * depth;
+
+                // Clamp only to the maximum safe delay now
+                let delay_smpls_left = target_delay_l.min(max_safe_read_delay);
+                let delay_smpls_right = target_delay_r.min(max_safe_read_delay);
+                // Minimum is handled by the effective_base_delay calculation
+
+                // Ensure delay isn't negative JUST IN CASE of float issues
+                let delay_smpls_left = delay_smpls_left.max(0.0);
+                let delay_smpls_right = delay_smpls_right.max(0.0);
 
                 // Read delayed samples using interpolation
                 let delayed_left = Self::read_cubic_interpolated(
-                    delay_buf_l, // Pass borrowed slice
-                    delay_smpls_left,
+                    delay_buf_l,      // Pass borrowed slice
+                    delay_smpls_left, // Pass the calculated delay
                     current_write_index,
-                    max_delay_samples,
-                    max_safe_read_delay,
+                    max_delay_samples, // Pass cached total buffer size
                 );
                 let delayed_right = Self::read_cubic_interpolated(
-                    delay_buf_r, // Pass borrowed slice
-                    delay_smpls_right,
+                    delay_buf_r,       // Pass borrowed slice
+                    delay_smpls_right, // Pass the calculated delay
                     current_write_index,
-                    max_delay_samples,
-                    max_safe_read_delay,
+                    max_delay_samples, // Pass cached total buffer size
                 );
 
                 // Get current input sample (already upsampled)
@@ -685,29 +709,27 @@ impl Chorus {
                 let feedback_term_r = feedback * delayed_right;
 
                 // Calculate value to write into delay line (input + feedback)
-                // Optional: apply soft clipping here if feedback can cause overload
-                // let write_val_left = (current_input_l + feedback_term_l).tanh();
-                // let write_val_right = (current_input_r + feedback_term_r).tanh();
-
                 let write_val_left = current_input_l + feedback_term_l;
                 let write_val_right = current_input_r + feedback_term_r;
 
+                // --- Write to delay buffer ---
+                // Bounds check is implicit due to modulo arithmetic later
                 delay_buf_l[current_write_index] = write_val_left;
                 delay_buf_r[current_write_index] = write_val_right;
 
-                // Calculate output sample (dry/wet mix)
+                // --- Calculate output sample (dry/wet mix) ---
                 processed_l[i] = current_input_l * dry_level + delayed_left * wet_level;
                 processed_r[i] = current_input_r * dry_level + delayed_right * wet_level;
 
-                // Advance LFO phases
+                // --- Advance LFO phases ---
                 lfo_phase_left = (lfo_phase_left + phase_inc).rem_euclid(TAU);
                 lfo_phase_right = (lfo_phase_right + phase_inc).rem_euclid(TAU);
 
-                // Advance write index
+                // --- Advance write index ---
                 current_write_index = (current_write_index + 1) % max_delay_samples;
-            }
+            } // end for i
 
-            // Write back updated state to self
+            // Write back updated state (LFO phases, write index) to self
             self.lfo_phase_left = lfo_phase_left;
             self.lfo_phase_right = lfo_phase_right;
             self.write_index = current_write_index;
@@ -768,13 +790,6 @@ impl Chorus {
                     out_right[i] = self.output_dc_blocker_r.process(out_right[i]);
                 }
             }
-
-            // --- Final Clipping (Optional but Recommended) ---
-            // Prevent hard clips if processing introduced large values
-            // for i in 0..process_len {
-            //     out_left[i] = out_left[i].clamp(-1.0, 1.0);
-            //     out_right[i] = out_right[i].clamp(-1.0, 1.0);
-            // }
 
             // Zero any remaining part of the output buffers if they were larger than process_len
             // This is needed if the input buffers were shorter than the output buffers

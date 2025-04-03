@@ -560,6 +560,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.GateMixer]: [],
       [VoiceNodeType.ArpeggiatorGenerator]: [],
       [VoiceNodeType.Chorus]: [],
+      [VoiceNodeType.Limiter]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {

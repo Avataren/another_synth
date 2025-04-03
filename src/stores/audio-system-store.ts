@@ -351,6 +351,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.GateMixer]: [],
             [VoiceNodeType.ArpeggiatorGenerator]: [],
             [VoiceNodeType.Chorus]: [],
+            [VoiceNodeType.Limiter]: [],
           };
 
           interface RawNode {
@@ -387,7 +388,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.ArpeggiatorGenerator;
               case 'chorus':
                 return VoiceNodeType.Chorus;
-
+              case 'limiter':
+                return VoiceNodeType.Limiter;
               default:
                 console.warn('$$$ Unknown node type:', raw);
                 return raw as VoiceNodeType;

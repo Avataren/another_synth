@@ -26,8 +26,8 @@ use nodes::morph_wavetable::{
 use nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
     ArpeggiatorGenerator, Chorus, Convolver, Delay, FilterCollection, FilterSlope,
-    GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform, Mixer, NoiseGenerator,
-    NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
+    GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform, Limiter, Mixer,
+    NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
     WavetableOscillatorStateUpdate,
 };
 pub use nodes::{Envelope, EnvelopeConfig};
@@ -427,7 +427,7 @@ impl AudioEngine {
         self.add_chorus().unwrap();
         self.add_delay(2000.0, 500.0, 0.5, 0.1).unwrap();
         self.add_plate_reverb(2.0, 0.6, sample_rate).unwrap();
-
+        self.add_limiter().unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         console::log_1(&format!("plate reverb added").into());
     }
@@ -1374,6 +1374,13 @@ impl AudioEngine {
             // Log a warning if there is no effect at that index.
             web_sys::console::log_1(&format!("No effect found at index {}", effect_id).into());
         }
+    }
+    #[wasm_bindgen]
+
+    pub fn add_limiter(&mut self) -> Result<usize, JsValue> {
+        let mut limiter = Limiter::new(self.sample_rate, -0.1, 0.1, 50.0, 1.5, true);
+        limiter.set_active(false);
+        Ok(self.effect_stack.add_effect(Box::new(limiter)))
     }
 
     #[wasm_bindgen]

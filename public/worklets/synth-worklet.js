@@ -831,6 +831,16 @@ var AudioEngine = class {
   /**
    * @returns {number}
    */
+  add_limiter() {
+    const ret = wasm.audioengine_add_limiter(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
   add_chorus() {
     const ret = wasm.audioengine_add_chorus(this.__wbg_ptr);
     if (ret[2]) {
@@ -2230,7 +2240,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["delay" /* Delay */]: [],
       ["gatemixer" /* GateMixer */]: [],
       ["arpeggiator_generator" /* ArpeggiatorGenerator */]: [],
-      ["chorus" /* Chorus */]: []
+      ["chorus" /* Chorus */]: [],
+      ["limiter" /* Limiter */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;
