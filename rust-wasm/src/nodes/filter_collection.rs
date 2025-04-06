@@ -349,6 +349,7 @@ impl FilterCollection {
         // --- Aggressive Drive Saturation ---
         // Apply a gain and then saturate the input with tanh.
         let drive_gain = 1.0 + drive * 4.0;
+        // KEEP saturation here for input drive character
         let driven_input = fast_tanh(input * drive_gain);
 
         // --- Parameter Calculation ---
@@ -369,24 +370,25 @@ impl FilterCollection {
         let s2 = self.ladder_stages[2];
         let s3 = self.ladder_stages[3];
 
-        // Apply saturation to the feedback path.
+        // Apply saturation ONLY to the feedback signal source (s3).
+        // KEEP saturation here for feedback loop nonlinearity
         let feedback = k * fast_tanh(s3);
 
         // --- Input to First Stage ---
-        // Combine the driven input (with gain compensation) with the feedback,
-        // then saturate the resulting signal.
-        let stage_input = fast_tanh((driven_input * comp_gain) - feedback);
+        // Combine the driven input (with gain compensation) with the feedback.
+        // REMOVED tanh from here: No longer saturating the combined input signal.
+        let stage_input = (driven_input * comp_gain) - feedback;
 
-        // --- TPT Stage Calculations with Additional Nonlinearity ---
-        // Each stage uses tanh nonlinearity to emulate the soft clipping
-        // inherent in the original Moog design.
-        let y0 = (s0 + g * fast_tanh(stage_input)) / (1.0 + g);
-        let y1 = (s1 + g * fast_tanh(y0)) / (1.0 + g);
-        let y2 = (s2 + g * fast_tanh(y1)) / (1.0 + g);
-        let y3 = (s3 + g * fast_tanh(y2)) / (1.0 + g);
+        // --- TPT Stage Calculations WITHOUT Additional Nonlinearity ---
+        // REMOVED tanh from the input to each stage calculation (stage_input, y0, y1, y2).
+        // The filtering action itself is now linear, relying on the TPT structure.
+        let y0 = (s0 + g * stage_input) / (1.0 + g);
+        let y1 = (s1 + g * y0) / (1.0 + g);
+        let y2 = (s2 + g * y1) / (1.0 + g);
+        let y3 = (s3 + g * y2) / (1.0 + g);
 
-        // Optionally, apply one more saturation to the final output.
-        let output = fast_tanh(y3);
+        // REMOVED final output tanh. The output is the direct result of the last stage.
+        let output = y3;
 
         // --- Update Stage States (Integrators) ---
         // New state is computed using the trapezoidal (TPT) method.
