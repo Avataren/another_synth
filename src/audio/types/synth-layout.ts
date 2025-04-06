@@ -237,7 +237,7 @@ export interface RawConnection {
   target: number;
   amount: number;
   modulation_type: string;
-  modulation_transformation: ModulationTransformation;
+  modulation_transform: ModulationTransformation;
 }
 
 export interface RawVoice {

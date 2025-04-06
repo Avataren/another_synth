@@ -609,7 +609,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         case 'chorus':
           type = VoiceNodeType.Chorus;
           break;
-
+        case 'limiter':
+          type = VoiceNodeType.Limiter;
+          break;
         default:
           console.warn('##### Unknown node type:', rawNode.node_type);
           type = rawNode.node_type as VoiceNodeType;
@@ -625,7 +627,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         target: rawConn.target as PortId,
         amount: rawConn.amount,
         modulationType: convertRawModulationType(rawConn.modulation_type),
-        modulationTransformation: rawConn.modulation_transformation,
+        modulationTransformation: rawConn.modulation_transform,
       }),
     );
 
@@ -696,6 +698,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         amount: connection.amount,
         modulationType: connection.modulationType,
         modulationTransformation: connection.modulationTransformation,
+      });
+
+      const numericTransformValue = connection.modulationTransformation; // It's already a number (e.g., 1)
+
+      console.log('Adding new connection (sending numeric transform):', {
+        from: connection.fromId,
+        to: connection.toId,
+        target: connection.target,
+        amount: connection.amount,
+        modulationType: connection.modulationType, // Check type consistency here too
+        modulationTransformation: numericTransformValue // Log the number (e.g., 1)
       });
 
       this.audioEngine.connect_nodes(

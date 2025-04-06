@@ -25,6 +25,7 @@ import {
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import {
+  ModulationTransformation,
   WasmModulationType,
   type PortId,
 } from 'app/public/wasm/audio_processor';
@@ -304,6 +305,134 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           return WasmModulationType.Additive;
       }
     },
+    // updateSynthLayout(layout: SynthLayout) {
+    //   console.log('Updating synth layout with:', layout);
+
+    //   // Validate that we have at least one voice
+    //   if (!layout.voices || !Array.isArray(layout.voices) || layout.voices.length === 0) {
+    //     console.warn('Received invalid synth layout (no voices).');
+    //     return;
+    //   }
+
+    //   // Deep clone the layout so we can modify it safely
+    //   const layoutClone = JSON.parse(JSON.stringify(layout)) as SynthLayout;
+
+    //   // Process each voice: convert raw connections and raw node arrays
+    //   layoutClone.voices = layoutClone.voices.map((voice) => {
+    //     // --- Convert Connections ---
+    //     if (Array.isArray(voice.connections) && voice.connections.length > 0) {
+    //       const firstConn = voice.connections[0]!;
+    //       if ('from_id' in firstConn) {
+
+    //         const rawConnections = voice.connections as unknown as RawConnection[];
+
+    //         voice.connections = rawConnections.map((rawConn: RawConnection): NodeConnection => ({
+    //           fromId: rawConn.from_id,
+    //           toId: rawConn.to_id,
+    //           target: rawConn.target as PortId,
+    //           amount: rawConn.amount,
+    //           modulationTransformation: rawConn.modulation_transform,
+    //           modulationType: this.convertModulationType(rawConn.modulation_type),
+    //         }));
+    //       }
+    //     }
+
+    //     // --- Convert Nodes ---
+    //     if (Array.isArray(voice.nodes)) {
+    //       const nodesByType: { [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[] } = {
+    //         [VoiceNodeType.Oscillator]: [],
+    //         [VoiceNodeType.WavetableOscillator]: [],
+    //         [VoiceNodeType.Filter]: [],
+    //         [VoiceNodeType.Envelope]: [],
+    //         [VoiceNodeType.LFO]: [],
+    //         [VoiceNodeType.Mixer]: [],
+    //         [VoiceNodeType.Noise]: [],
+    //         [VoiceNodeType.GlobalFrequency]: [],
+    //         [VoiceNodeType.GlobalVelocity]: [],
+    //         [VoiceNodeType.Convolver]: [],
+    //         [VoiceNodeType.Delay]: [],
+    //         [VoiceNodeType.GateMixer]: [],
+    //         [VoiceNodeType.ArpeggiatorGenerator]: [],
+    //         [VoiceNodeType.Chorus]: [],
+    //         [VoiceNodeType.Limiter]: [],
+    //       };
+
+    //       interface RawNode {
+    //         id: number;
+    //         node_type: string;
+    //       }
+    //       const convertNodeType = (raw: string): VoiceNodeType => {
+    //         switch (raw) {
+    //           case 'analog_oscillator':
+    //             return VoiceNodeType.Oscillator;
+    //           case 'filtercollection':
+    //             return VoiceNodeType.Filter;
+    //           case 'envelope':
+    //             return VoiceNodeType.Envelope;
+    //           case 'lfo':
+    //             return VoiceNodeType.LFO;
+    //           case 'mixer':
+    //             return VoiceNodeType.Mixer;
+    //           case 'noise_generator':
+    //             return VoiceNodeType.Noise;
+    //           case 'global_frequency':
+    //             return VoiceNodeType.GlobalFrequency;
+    //           case 'global_velocity':
+    //             return VoiceNodeType.GlobalVelocity;
+    //           case 'wavetable_oscillator':
+    //             return VoiceNodeType.WavetableOscillator;
+    //           case 'convolver':
+    //             return VoiceNodeType.Convolver;
+    //           case 'delay':
+    //             return VoiceNodeType.Delay;
+    //           case 'gatemixer':
+    //             return VoiceNodeType.GateMixer;
+    //           case 'arpeggiator_generator':
+    //             return VoiceNodeType.ArpeggiatorGenerator;
+    //           case 'chorus':
+    //             return VoiceNodeType.Chorus;
+    //           case 'limiter':
+    //             return VoiceNodeType.Limiter;
+    //           default:
+    //             console.warn('$$$ Unknown node type:', raw);
+    //             return raw as VoiceNodeType;
+    //         }
+    //       };
+
+    //       for (const rawNode of voice.nodes as RawNode[]) {
+    //         const type = convertNodeType(rawNode.node_type);
+    //         nodesByType[type].push({ id: rawNode.id, type });
+    //       }
+    //       voice.nodes = nodesByType;
+    //     }
+    //     return voice;
+    //   });
+
+    //   // Use the canonical voice (assumed to be voices[0]) as our reference
+    //   const canonicalVoice = layoutClone.voices[0];
+    //   if (!canonicalVoice || !canonicalVoice.nodes) {
+    //     console.warn('Canonical voice or its nodes missing in layout');
+    //     return;
+    //   }
+
+    //   // Log valid node IDs from the canonical voice
+    //   const validIds = new Set<number>();
+    //   Object.values(canonicalVoice.nodes).forEach((nodeArray) => {
+    //     nodeArray.forEach((node) => validIds.add(node.id));
+    //   });
+    //   console.log(`Valid node IDs from canonical voice: ${Array.from(validIds).sort().join(', ')}`);
+
+    //   // --- Trigger Vue Reactivity ---
+    //   this.synthLayout = { ...layoutClone };
+
+    //   // Initialize default states for all nodes
+    //   this.initializeDefaultStates();
+
+    //   // Clear any deletion markers since the WASM layout is now definitive
+    //   this.deletedNodeIds.clear();
+    //   console.log('--------- LAYOUT UPDATE FINISHED ---------');
+    //   console.log('synthLayout:', this.synthLayout);
+    // }
     updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout with:', layout);
 
@@ -321,21 +450,92 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         // --- Convert Connections ---
         if (Array.isArray(voice.connections) && voice.connections.length > 0) {
           const firstConn = voice.connections[0]!;
-          if ('from_id' in firstConn) {
+          // Check if it's in the raw format (snake_case keys) coming from WASM/JSON
+          if (typeof firstConn === 'object' && firstConn !== null && 'from_id' in firstConn) {
+
             const rawConnections = voice.connections as unknown as RawConnection[];
-            voice.connections = rawConnections.map((rawConn: RawConnection): NodeConnection => ({
-              fromId: rawConn.from_id,
-              toId: rawConn.to_id,
-              target: rawConn.target as PortId,
-              amount: rawConn.amount,
-              modulationTransformation: rawConn.modulation_transformation,
-              modulationType: this.convertModulationType(rawConn.modulation_type),
+            console.log(`updateSynthLayout: Processing ${rawConnections.length} raw connections for voice ${voice.id}`);
+
+            voice.connections = rawConnections.map((rawConn: RawConnection): NodeConnection => {
+              // --- Explicit Numeric Conversions ---
+
+              // Modulation Transformation
+              const transformRaw = rawConn.modulation_transform;
+              let fixedTransform: ModulationTransformation = ModulationTransformation.None;
+              // Default to 0 (ModulationTransformation.None) if null, undefined, or NaN
+              if (transformRaw != null || isNaN(transformRaw)) {
+                console.log('WTF:', transformRaw);
+                fixedTransform = ModulationTransformation.None;
+              }
+
+              // Amount
+              const amountRaw = rawConn.amount;
+              let amountNum = Number(amountRaw);
+              // Default amount to 1.0 if conversion fails
+              if (amountRaw == null || isNaN(amountNum)) {
+                if (amountRaw != null) {
+                  console.warn(`updateSynthLayout: Invalid amount "${amountRaw}", defaulting to 1.0. RawConn:`, rawConn);
+                }
+                amountNum = 1.0;
+              }
+
+              // Target (PortId)
+              const targetRaw = rawConn.target;
+              let targetNum = Number(targetRaw);
+              // Default target to 0 if conversion fails (though this might be risky depending on PortId 0 meaning)
+              if (targetRaw == null || isNaN(targetNum)) {
+                if (targetRaw != null) {
+                  console.warn('updateSynthLayout: Invalid target "${targetRaw}", defaulting to 0. RawConn:', rawConn);
+                }
+                targetNum = 0;
+              }
+
+              // IDs
+              const fromIdNum = Number(rawConn.from_id);
+              const toIdNum = Number(rawConn.to_id);
+              if (isNaN(fromIdNum) || isNaN(toIdNum)) {
+                console.error('updateSynthLayout: Invalid from_id or to_id! Skipping connection. RawConn:', rawConn);
+                // Returning null and filtering later might be safer, but for now let's log and provide potentially invalid IDs
+                // Or consider throwing an error if IDs are critical
+              }
+              // --- End Numeric Conversions ---
+
+
+              const newNodeConnection: NodeConnection = {
+                fromId: fromIdNum, // Use converted number
+                toId: toIdNum,     // Use converted number
+                target: targetNum as PortId, // Use converted number, assert type
+                amount: amountNum,     // Use converted number
+                modulationTransformation: fixedTransform, // Use converted number
+                modulationType: this.convertModulationType(rawConn.modulation_type),
+              };
+
+              // console.log('Converted connection:', newNodeConnection); // Optional: Log each conversion result
+              return newNodeConnection;
+            });
+          } else {
+            // Optional: Add checks here if connections might already be in the correct format
+            // to ensure numeric types if they come from other sources (e.g., loading presets)
+            // For now, assume if it doesn't have 'from_id', it's already correct.
+            console.log(`updateSynthLayout: Connections for voice ${voice.id} appear to be in correct format already.`);
+            /// HERE conn.modulationTransformation appears to sometimes be a string???
+            voice.connections = voice.connections.map(conn => ({
+              ...conn,
+              fromId: Number(conn.fromId),
+              toId: Number(conn.toId),
+              target: Number(conn.target) as PortId,
+              amount: Number(conn.amount),
+              modulationTransformation: isNaN(conn.modulationTransformation) ? ModulationTransformation.None : conn.modulationTransformation,
+              // modulationType should already be correct enum value if not raw
             }));
+
           }
         }
 
         // --- Convert Nodes ---
+        // (Node conversion logic remains the same as before)
         if (Array.isArray(voice.nodes)) {
+          // ... existing node conversion logic ...
           const nodesByType: { [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[] } = {
             [VoiceNodeType.Oscillator]: [],
             [VoiceNodeType.WavetableOscillator]: [],
@@ -360,45 +560,41 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
           const convertNodeType = (raw: string): VoiceNodeType => {
             switch (raw) {
-              case 'analog_oscillator':
-                return VoiceNodeType.Oscillator;
-              case 'filtercollection':
-                return VoiceNodeType.Filter;
-              case 'envelope':
-                return VoiceNodeType.Envelope;
-              case 'lfo':
-                return VoiceNodeType.LFO;
-              case 'mixer':
-                return VoiceNodeType.Mixer;
-              case 'noise_generator':
-                return VoiceNodeType.Noise;
-              case 'global_frequency':
-                return VoiceNodeType.GlobalFrequency;
-              case 'global_velocity':
-                return VoiceNodeType.GlobalVelocity;
-              case 'wavetable_oscillator':
-                return VoiceNodeType.WavetableOscillator;
-              case 'convolver':
-                return VoiceNodeType.Convolver;
-              case 'delay':
-                return VoiceNodeType.Delay;
-              case 'gatemixer':
-                return VoiceNodeType.GateMixer;
-              case 'arpeggiator_generator':
-                return VoiceNodeType.ArpeggiatorGenerator;
-              case 'chorus':
-                return VoiceNodeType.Chorus;
-              case 'limiter':
-                return VoiceNodeType.Limiter;
+              case 'analog_oscillator': return VoiceNodeType.Oscillator;
+              case 'filtercollection': return VoiceNodeType.Filter;
+              case 'envelope': return VoiceNodeType.Envelope;
+              case 'lfo': return VoiceNodeType.LFO;
+              case 'mixer': return VoiceNodeType.Mixer;
+              case 'noise_generator': return VoiceNodeType.Noise;
+              case 'global_frequency': return VoiceNodeType.GlobalFrequency;
+              case 'global_velocity': return VoiceNodeType.GlobalVelocity;
+              case 'wavetable_oscillator': return VoiceNodeType.WavetableOscillator;
+              case 'convolver': return VoiceNodeType.Convolver;
+              case 'delay': return VoiceNodeType.Delay;
+              case 'gatemixer': return VoiceNodeType.GateMixer;
+              case 'arpeggiator_generator': return VoiceNodeType.ArpeggiatorGenerator;
+              case 'chorus': return VoiceNodeType.Chorus;
+              case 'limiter': return VoiceNodeType.Limiter;
               default:
-                console.warn('$$$ Unknown node type:', raw);
-                return raw as VoiceNodeType;
+                console.warn('$$$ Unknown node type in updateSynthLayout:', raw);
+                return raw as VoiceNodeType; // Fallback, might cause issues
             }
           };
 
           for (const rawNode of voice.nodes as RawNode[]) {
+            // Ensure node ID is also a number
+            const nodeIdNum = Number(rawNode.id);
+            if (isNaN(nodeIdNum)) {
+              console.error(`updateSynthLayout: Invalid node ID "${rawNode.id}" found. Skipping node.`);
+              continue;
+            }
             const type = convertNodeType(rawNode.node_type);
-            nodesByType[type].push({ id: rawNode.id, type });
+            // Check if type is valid before pushing
+            if (nodesByType[type]) {
+              nodesByType[type].push({ id: nodeIdNum, type });
+            } else {
+              console.warn(`updateSynthLayout: Node type "${type}" derived from "${rawNode.node_type}" is not tracked in nodesByType. Skipping node.`);
+            }
           }
           voice.nodes = nodesByType;
         }
@@ -417,7 +613,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       Object.values(canonicalVoice.nodes).forEach((nodeArray) => {
         nodeArray.forEach((node) => validIds.add(node.id));
       });
-      console.log(`Valid node IDs from canonical voice: ${Array.from(validIds).sort().join(', ')}`);
+      // console.log(`Valid node IDs from canonical voice: ${Array.from(validIds).sort((a, b) => a - b).join(', ')}`);
 
       // --- Trigger Vue Reactivity ---
       this.synthLayout = { ...layoutClone };
@@ -427,6 +623,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // Clear any deletion markers since the WASM layout is now definitive
       this.deletedNodeIds.clear();
+      console.log('--------- updateSynthLayout FINISHED ---------');
+      // console.log('Processed synthLayout:', this.synthLayout); // Log final result if needed
     }
     ,
     updateOscillator(nodeId: number, state: OscillatorState) {
