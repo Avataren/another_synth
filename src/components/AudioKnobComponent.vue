@@ -1,3 +1,4 @@
+```vue
 <template>
   <div class="knob-wrapper">
     <div
@@ -6,7 +7,6 @@
       :class="{ disabled: props.disable }"
       ref="knobRef"
     >
-      <!-- Base Track -->
       <svg
         class="knob-track"
         :width="knobSize"
@@ -20,7 +20,6 @@
           fill="none"
           stroke-linecap="round"
         />
-        <!-- Value Track -->
         <path
           :d="describeValueArc"
           :stroke="props.color"
@@ -29,8 +28,6 @@
           stroke-linecap="round"
         />
       </svg>
-
-      <!-- Center Value Display / Input (double-click to edit) -->
       <div
         class="value-display"
         @dblclick.stop="startEditing"
@@ -56,8 +53,6 @@
           </div>
         </template>
       </div>
-
-      <!-- Label -->
       <div class="knob-label">{{ props.label }}</div>
     </div>
   </div>
@@ -115,21 +110,18 @@ const knobSize = computed(() => {
 const knobRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
 const pendingDrag = ref(false);
-const startX = ref(0); // Initial mouse X on mousedown
-const startY = ref(0); // Initial mouse Y on mousedown
-const lastX = ref(0); // Last known mouse X during move
-const lastY = ref(0); // Last known mouse Y during move
-// startValue is no longer the primary base for calculation during move,
-// but we keep it to know the value when drag started if needed elsewhere.
-const startValue = ref(props.modelValue);
+const startX = ref(0);
+const startY = ref(0);
+const lastX = ref(0);
+const lastY = ref(0);
+const dragValue = ref(props.modelValue);
 
-const START_ANGLE = 210; // Visual start angle (bottom-left quadrant)
-const SWEEP_ANGLE = 300; // Total degrees of rotation for the knob
-const END_ANGLE = START_ANGLE + SWEEP_ANGLE; // = 510 degrees. SVG handles angles > 360
-const RANGE = SWEEP_ANGLE; // The range used for value calculation is the sweep angle
-const FINE_TUNE_FACTOR = 0.1; // How much Ctrl reduces sensitivity
+const START_ANGLE = 210;
+const SWEEP_ANGLE = 300;
+const END_ANGLE = START_ANGLE + SWEEP_ANGLE;
+const RANGE = SWEEP_ANGLE;
+const FINE_TUNE_FACTOR = 0.1;
 
-// --- Arc Calculation Helpers  ---
 const describeSemiCircle = computed((): string => {
   const radius = knobSize.value / 2 - props.thickness / 2;
   const center = knobSize.value / 2;
@@ -142,7 +134,7 @@ const currentAngle = computed((): number => {
     Math.max(props.min, props.modelValue),
   );
   const valueRange = props.max - props.min;
-  if (valueRange === 0) return START_ANGLE; // Avoid division by zero
+  if (valueRange === 0) return START_ANGLE;
   const percentage = (clampedValue - props.min) / valueRange;
   return START_ANGLE + percentage * RANGE;
 });
@@ -151,7 +143,6 @@ const describeValueArc = computed((): string => {
   const radius = knobSize.value / 2 - props.thickness / 2;
   const center = knobSize.value / 2;
   const effectiveEndAngle = Math.max(START_ANGLE, currentAngle.value);
-  // Prevent tiny negative arcs if value is slightly below min due to precision
   if (effectiveEndAngle <= START_ANGLE)
     return describeArc(center, center, radius, START_ANGLE, START_ANGLE);
   return describeArc(center, center, radius, START_ANGLE, effectiveEndAngle);
@@ -178,49 +169,42 @@ function describeArc(
   endAngle: number,
 ): string {
   if (endAngle <= startAngle + 1e-6) {
-    // Handle precision issues or zero arc
     const start = polarToCartesian(x, y, radius, startAngle);
-    // Draw a tiny line or just the start point to avoid errors
-    // A simple 'M' command is often sufficient if no visible arc needed
     return `M ${start.x} ${start.y}`;
   }
-
   const start = polarToCartesian(x, y, radius, startAngle);
   const end = polarToCartesian(x, y, radius, endAngle);
   const angleDiff = endAngle - startAngle;
   const largeArcFlag = angleDiff > 180 ? '1' : '0';
-
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
 }
-// --- End Arc Calculation Helpers ---
 
-// --- Value Formatting and Editing ---
 const displayUnit = computed((): string =>
   props.unitFunc ? props.unitFunc(props.modelValue) : props.unit || '',
 );
 
 const formatValue = (value: number | null | undefined) => {
   if (value === undefined || value === null || isNaN(value)) {
-    return Number(props.min).toFixed(props.decimals); // Default to min formatted
+    return Number(props.min).toFixed(props.decimals);
   }
   try {
     return value.toFixed(props.decimals);
   } catch (e) {
     console.warn('Error formatting value', value, e);
-    return Number(props.min).toFixed(props.decimals); // Fallback
+    return Number(props.min).toFixed(props.decimals);
   }
 };
 
 const isEditing = ref(false);
 const inputValue = ref(String(formatValue(props.modelValue)));
 const inputRef = ref<HTMLInputElement | null>(null);
-const inputStep = computed(() => 1 / Math.pow(10, props.decimals)); // Step for number input
+const inputStep = computed(() => 1 / Math.pow(10, props.decimals));
 
 function startEditing(e: MouseEvent) {
   if (props.disable) return;
   e.stopPropagation();
   isEditing.value = true;
-  inputValue.value = String(formatValue(props.modelValue)); // Use formatted value
+  inputValue.value = String(formatValue(props.modelValue));
   nextTick(() => {
     inputRef.value?.focus();
     inputRef.value?.select();
@@ -231,11 +215,9 @@ function commitEditing() {
   if (props.disable) return;
   const newValueRaw = parseFloat(inputValue.value);
   if (!isNaN(newValueRaw)) {
-    // Keep current behavior: allow out-of-range input, but format decimals
     const newValue = Number(newValueRaw.toFixed(props.decimals));
     emit('update:modelValue', newValue);
   } else {
-    // Reset input if invalid
     inputValue.value = String(formatValue(props.modelValue));
   }
   isEditing.value = false;
@@ -243,106 +225,77 @@ function commitEditing() {
 
 function handleValueMouseDown(e: MouseEvent) {
   if (!isEditing.value) {
-    e.preventDefault(); // Prevent text selection on value display when not editing
+    e.preventDefault();
   }
 }
-// --- End Value Formatting and Editing ---
 
-// --- Drag Handling ---
 function onMouseDown(e: MouseEvent) {
   if (props.disable || isEditing.value) return;
-  // Prevent drag start if clicking the text input area itself
   if ((e.target as HTMLElement).closest('.value-display')) return;
-
   e.preventDefault();
   startX.value = e.clientX;
   startY.value = e.clientY;
-  startValue.value = props.modelValue; // Store value at drag start
+  dragValue.value = props.modelValue;
   lastX.value = e.clientX;
   lastY.value = e.clientY;
-  pendingDrag.value = true; // Flag that drag might start if mouse moves enough
-  knobRef.value?.classList.add('no-select'); // Prevent text selection during drag
+  pendingDrag.value = true;
+  knobRef.value?.classList.add('no-select');
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
 }
 
 function onMouseMove(e: MouseEvent) {
-  if (props.disable) return; // Should not happen if listener is removed, but safe check
-
-  // Check if minimum drag distance threshold is met
+  if (props.disable) return;
   if (pendingDrag.value) {
     const dx = e.clientX - startX.value;
     const dy = e.clientY - startY.value;
     const distance = Math.sqrt(dx * dx + dy * dy);
     if (distance > 3) {
-      // Threshold = 3 pixels
       isDragging.value = true;
       pendingDrag.value = false;
-      // Optional: Set cursor to grabbing if needed via CSS or JS
     } else {
-      return; // Not dragging yet
+      return;
     }
   }
-
-  if (!isDragging.value) return; // Exit if not actively dragging
-
-  const deltaY = lastY.value - e.clientY; // Vertical movement delta since last event
-
-  // Check if the Ctrl key is pressed for fine-tuning
+  if (!isDragging.value) return;
   const isFineTuning = e.ctrlKey;
   const effectiveSensitivity = isFineTuning
     ? props.dragSensitivity * FINE_TUNE_FACTOR
     : props.dragSensitivity;
-
   const valueRange = props.max - props.min;
-  if (valueRange <= 0) return; // Avoid division by zero/negative range
-
-  // Calculate the *change* in value based on the mouse delta and sensitivity
-  const deltaValue = (deltaY * effectiveSensitivity * valueRange) / 200; // Normalize sensitivity (adjust 200 if needed)
-
-  // Apply the calculated change to the *current* modelValue
-  const newValue = props.modelValue + deltaValue;
-
-  // Clamp the value to the defined min/max range
-  const clampedValue = Math.min(props.max, Math.max(props.min, newValue));
-
-  // Round the final clamped value according to decimals *before* emitting
+  if (valueRange <= 0) return;
+  const deltaY = lastY.value - e.clientY;
+  const deltaValue = (deltaY * effectiveSensitivity * valueRange) / 200;
+  dragValue.value += deltaValue;
+  const clampedValue = Math.min(
+    props.max,
+    Math.max(props.min, dragValue.value),
+  );
   const roundedClampedValue = Number(clampedValue.toFixed(props.decimals));
-
-  // Emit only if the rounded value has actually changed
   if (roundedClampedValue !== props.modelValue) {
     emit('update:modelValue', roundedClampedValue);
+    dragValue.value = roundedClampedValue;
   }
-
   lastX.value = e.clientX;
   lastY.value = e.clientY;
 }
 
 function onMouseUp() {
-  // Clean up regardless of whether a drag actually occurred
   knobRef.value?.classList.remove('no-select');
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('mouseup', onMouseUp);
   isDragging.value = false;
   pendingDrag.value = false;
-  // Optional: Reset cursor if changed during drag
 }
-// --- End Drag Handling ---
 
-// --- Lifecycle Hooks ---
 onMounted(() => {
-  // Use capture phase? Generally not needed unless preventing child handlers
   knobRef.value?.addEventListener('mousedown', onMouseDown);
 });
 
 onUnmounted(() => {
-  // Crucial: Remove global listeners when component is destroyed
-  // to prevent memory leaks and errors, especially if unmounted mid-drag.
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('mouseup', onMouseUp);
-  // No need to remove listener from knobRef itself if it's being destroyed
 });
-// --- End Lifecycle Hooks ---
 </script>
 
 <style scoped>
@@ -352,65 +305,56 @@ onUnmounted(() => {
   align-items: center;
   padding: 0.5rem;
   color: #ffffff;
-  min-width: 80px; /* Ensure minimum width */
+  min-width: 80px;
 }
-
 .knob-container {
   position: relative;
   cursor: grab;
-  display: flex; /* Aligns SVG and text box */
-  justify-content: center; /* Center SVG horizontally */
-  align-items: center; /* Center SVG vertically */
-  /* width/height set by :style */
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 .knob-container:active {
   cursor: grabbing;
 }
-
 .no-select {
-  user-select: none; /* Standard */
-  -webkit-user-select: none; /* Safari */
-  -moz-user-select: none; /* Firefox */
-  -ms-user-select: none; /* IE/Edge */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
-
 .knob-track {
   position: absolute;
   top: 0;
   left: 0;
-  pointer-events: none; /* SVG shouldn't block mouse events for the container */
+  pointer-events: none;
 }
-
 .value-display {
   position: absolute;
-  /* Centering is handled by parent flexbox, transform might interfere */
-  /* top: 50%; left: 50%; transform: translate(-50%, -50%); */
   min-width: 40px;
-  max-width: 90%; /* Prevent overflow on small knobs */
+  max-width: 90%;
   padding: 2px 4px;
   text-align: center;
   z-index: 1;
   font-size: 0.9rem;
   color: #ffffff;
-  cursor: text; /* Indicate text input possibility */
-  user-select: none; /* Default to no selection */
+  cursor: text;
+  user-select: none;
   background-color: rgba(0, 0, 0, 0.1);
   border-radius: 3px;
   box-sizing: border-box;
 }
-
 .value-input {
   width: 100%;
   box-sizing: border-box;
   text-align: center;
-  font-size: inherit; /* Match parent font size */
+  font-size: inherit;
   border: none;
   outline: none;
   background: transparent;
-  color: inherit; /* Match parent text color */
+  color: inherit;
   padding: 0;
   margin: 0;
-  /* Remove spinner arrows on number input */
   -moz-appearance: textfield;
 }
 .value-input::-webkit-outer-spin-button,
@@ -418,28 +362,24 @@ onUnmounted(() => {
   -webkit-appearance: none;
   margin: 0;
 }
-
 .knob-label {
-  margin-top: 0.5rem; /* Space between knob and label */
+  margin-top: 0.5rem;
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.7);
   text-align: center;
-  /* Positioning relative to wrapper might be better if wrapper controls layout */
   position: absolute;
-  bottom: -20px; /* Adjust as needed */
+  bottom: -20px;
   left: 50%;
   transform: translateX(-50%);
-  white-space: nowrap; /* Prevent label wrapping */
+  white-space: nowrap;
   user-select: none;
   pointer-events: none;
 }
-
 .disabled {
   opacity: 0.5;
-  cursor: not-allowed !important; /* Override grab cursor */
-  pointer-events: none; /* Block all interactions */
+  cursor: not-allowed !important;
+  pointer-events: none;
 }
-/* Ensure children of disabled also look disabled */
 .disabled .value-display {
   cursor: not-allowed;
 }
