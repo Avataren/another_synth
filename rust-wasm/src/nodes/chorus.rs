@@ -1,6 +1,8 @@
 use rustc_hash::FxHashMap;
 use std::any::Any;
 use std::f32::consts::{PI, TAU};
+use std::simd::num::SimdFloat;
+use std::simd::Simd;
 
 // Parameter Clamp Constants
 const MIN_ALPHA: f32 = 0.9;
@@ -16,64 +18,75 @@ use crate::traits::{AudioNode, PortId};
 const MAX_PROCESS_BUFFER_SIZE: usize = 128;
 // Note: ZERO_BUFFER is a static fallback buffer. Be cautious if MAX_PROCESS_BUFFER_SIZE changes.
 static ZERO_BUFFER: [f32; MAX_PROCESS_BUFFER_SIZE] = [0.0; MAX_PROCESS_BUFFER_SIZE];
+const SIMD_WIDTH: usize = 8; // Choose an appropriate width for your target (e.g., 8 lanes)
 
 #[derive(Clone)]
 struct FirFilter {
     coefficients: Vec<f32>,
+    /// A double–sized buffer so that the FIR window is always contiguous.
     buffer: Vec<f32>,
     buffer_pos: usize,
+    taps: usize,
 }
 
 impl FirFilter {
     fn new(coefficients: Vec<f32>) -> Self {
-        let buffer_len = coefficients.len();
-        assert!(buffer_len > 0, "FIR filter must have at least one tap.");
+        let taps = coefficients.len();
+        assert!(taps > 0, "FIR filter must have at least one tap.");
+        // Create a buffer with double the taps. (Initialize to 0.)
         Self {
             coefficients,
-            buffer: vec![0.0; buffer_len],
+            buffer: vec![0.0; 2 * taps],
             buffer_pos: 0,
+            taps,
         }
     }
 
+    /// Process one input sample and return the FIR output.
+    /// This version uses SIMD (with a fallback loop over any remainder).
     #[inline(always)]
     fn process(&mut self, input: f32) -> f32 {
-        let buffer_len = self.buffer.len();
-        // Changed to a runtime assertion to catch any mismatch regardless of build mode.
-        assert_eq!(
-            self.coefficients.len(),
-            buffer_len,
-            "FIR coeff/buffer length mismatch"
-        );
+        // Write the new input sample at the current write position...
         self.buffer[self.buffer_pos] = input;
-        let mut output = 0.0;
-        let current_pos = self.buffer_pos;
-        let mut read_pos = current_pos;
-        // NOTE: Consider optimizing with a SIMD-accelerated path if performance becomes a bottleneck.
-        for &coeff in &self.coefficients {
-            output += coeff * self.buffer[read_pos];
-            read_pos = if read_pos == 0 {
-                buffer_len - 1
-            } else {
-                read_pos - 1
-            };
+        // Also duplicate the sample to the mirror position to guarantee contiguity.
+        self.buffer[self.buffer_pos + self.taps] = input;
+
+        // The contiguous segment for the FIR is now at:
+        //   self.buffer[self.buffer_pos .. self.buffer_pos + self.taps]
+        let slice = &self.buffer[self.buffer_pos..self.buffer_pos + self.taps];
+        let coeffs = &self.coefficients;
+
+        // SIMD dot–product on the contiguous slice.
+        let mut acc = Simd::<f32, SIMD_WIDTH>::splat(0.0);
+        let chunk_count = self.taps / SIMD_WIDTH;
+        let remainder = self.taps % SIMD_WIDTH;
+
+        // Process full SIMD chunks.
+        for i in 0..chunk_count {
+            let start = i * SIMD_WIDTH;
+            let sample_vec = Simd::from_slice(&slice[start..start + SIMD_WIDTH]);
+            let coeff_vec = Simd::from_slice(&coeffs[start..start + SIMD_WIDTH]);
+            acc += sample_vec * coeff_vec;
         }
-        self.buffer_pos = (self.buffer_pos + 1) % buffer_len;
-        output
+        let mut result = acc.reduce_sum();
+
+        // Process any remaining coefficients.
+        if remainder != 0 {
+            let start = chunk_count * SIMD_WIDTH;
+            for j in 0..remainder {
+                result += slice[start + j] * coeffs[start + j];
+            }
+        }
+
+        // Advance the circular pointer.
+        self.buffer_pos = (self.buffer_pos + 1) % self.taps;
+        result
     }
 
+    /// Reset the filter state.
     fn reset(&mut self) {
         self.buffer.fill(0.0);
         self.buffer_pos = 0;
-    }
-
-    #[inline(always)]
-    #[allow(dead_code)]
-    fn process_zeros(&mut self, count: usize) -> Vec<f32> {
-        let mut outputs = Vec::with_capacity(count);
-        for _ in 0..count {
-            outputs.push(self.process(0.0));
-        }
-        outputs
     }
 }
 
