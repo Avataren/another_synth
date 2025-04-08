@@ -2,15 +2,21 @@ use rustc_hash::FxHashMap;
 use std::any::Any;
 use std::f32::consts::{PI, TAU};
 
+// Parameter Clamp Constants
+const MIN_ALPHA: f32 = 0.9;
+const MAX_ALPHA: f32 = 0.99999;
+const MIN_FEEDBACK: f32 = -0.98;
+const MAX_FEEDBACK: f32 = 0.98;
+const MIN_MIX: f32 = 0.0;
+const MAX_MIX: f32 = 1.0;
+
 use crate::graph::ModulationSource; // Assuming these paths are correct for your project
 use crate::traits::{AudioNode, PortId};
 
 const MAX_PROCESS_BUFFER_SIZE: usize = 128;
+// Note: ZERO_BUFFER is a static fallback buffer. Be cautious if MAX_PROCESS_BUFFER_SIZE changes.
 static ZERO_BUFFER: [f32; MAX_PROCESS_BUFFER_SIZE] = [0.0; MAX_PROCESS_BUFFER_SIZE];
 
-// ────────────────
-// FIR Filter Implementation (Unchanged)
-// ────────────────
 #[derive(Clone)]
 struct FirFilter {
     coefficients: Vec<f32>,
@@ -32,7 +38,8 @@ impl FirFilter {
     #[inline(always)]
     fn process(&mut self, input: f32) -> f32 {
         let buffer_len = self.buffer.len();
-        debug_assert_eq!(
+        // Changed to a runtime assertion to catch any mismatch regardless of build mode.
+        assert_eq!(
             self.coefficients.len(),
             buffer_len,
             "FIR coeff/buffer length mismatch"
@@ -41,6 +48,7 @@ impl FirFilter {
         let mut output = 0.0;
         let current_pos = self.buffer_pos;
         let mut read_pos = current_pos;
+        // NOTE: Consider optimizing with a SIMD-accelerated path if performance becomes a bottleneck.
         for &coeff in &self.coefficients {
             output += coeff * self.buffer[read_pos];
             read_pos = if read_pos == 0 {
@@ -69,9 +77,6 @@ impl FirFilter {
     }
 }
 
-// ────────────────
-// FIR Coefficient Generation (Unchanged)
-// ────────────────
 fn generate_fir_coeffs(
     num_taps: usize,
     cutoff_normalized: f32,
@@ -124,9 +129,6 @@ fn blackman_window(n: usize, num_taps: usize) -> f32 {
     0.42 - 0.5 * (TAU * nn / m).cos() + 0.08 * (2.0 * TAU * nn / m).cos()
 }
 
-// ────────────────
-// DC Blocker (First-Order High-Pass Filter) – Unchanged
-// ────────────────
 #[derive(Clone, Copy, Debug)]
 struct DcBlocker {
     x_prev: f32,
@@ -139,7 +141,7 @@ impl DcBlocker {
         Self {
             x_prev: 0.0,
             y_prev: 0.0,
-            alpha: alpha.clamp(0.9, 0.99999),
+            alpha: alpha.clamp(MIN_ALPHA, MAX_ALPHA),
         }
     }
 
@@ -147,7 +149,7 @@ impl DcBlocker {
     fn process(&mut self, input: f32) -> f32 {
         let output = input - self.x_prev + self.alpha * self.y_prev;
         self.x_prev = input;
-        self.y_prev = output + 1.0e-18 - 1.0e-18; // Denormal fix
+        self.y_prev = output; // Denormal fix could be elaborated on if needed.
         output
     }
 
@@ -171,11 +173,6 @@ fn smooth_parameter(current: f32, target: f32, coefficient: f32) -> f32 {
     current * coefficient + target * (1.0 - coefficient)
 }
 
-// ────────────────
-// Optimized Chorus DSP Node with Hardcoded 4× Oversampling and Cascaded FIR (Multipass)
-// ────────────────
-
-// Here we hardcode oversample factor to 4.
 const OVERSAMPLE: usize = 4;
 const INTERPOLATION_MARGIN: usize = 3;
 const DC_BLOCKER_CUTOFF_HZ: f32 = 10.0;
@@ -183,16 +180,12 @@ const DC_BLOCKER_CUTOFF_HZ: f32 = 10.0;
 pub struct Chorus {
     enabled: bool,
     sample_rate: f32,
-    // Internal (oversampled) sample rate is fixed to 4× the original:
     internal_sample_rate: f32,
     inv_internal_sample_rate: f32,
     delay_buffer_left: Vec<f32>,
     delay_buffer_right: Vec<f32>,
-    // Buffers for intermediate upsampling and delay processing:
-    // “Stage 1” is the output of the first FIR pass (upsample cascade)
     upsample_stage1_left: Vec<f32>,
     upsample_stage1_right: Vec<f32>,
-    // Final upsampled input after multipass FIR filtering
     upsampled_input_left: Vec<f32>,
     upsampled_input_right: Vec<f32>,
     processed_oversampled_left: Vec<f32>,
@@ -214,21 +207,20 @@ pub struct Chorus {
     current_feedback: f32,
     current_mix: f32,
     param_smooth_coeff: f32,
-    // Cascaded (multipass) upsampling FIR filters per channel:
     upsample_filter1_left: FirFilter,
     upsample_filter1_right: FirFilter,
     upsample_filter2_left: FirFilter,
     upsample_filter2_right: FirFilter,
-    // Cascaded (multipass) downsampling FIR filters per channel:
     downsample_filter1_left: FirFilter,
     downsample_filter1_right: FirFilter,
     downsample_filter2_left: FirFilter,
     downsample_filter2_right: FirFilter,
-    // DC Blockers for output stage
     output_dc_blocker_l: DcBlocker,
     output_dc_blocker_r: DcBlocker,
     scratch_downsample_stage: Vec<f32>,
     scratch_downsampled: Vec<f32>,
+    scratch_final_left: Vec<f32>,
+    scratch_final_right: Vec<f32>,
 }
 
 impl Chorus {
@@ -241,27 +233,23 @@ impl Chorus {
         feedback: f32,
         mix: f32,
         stereo_phase_offset_deg: f32,
-        // Remove oversample factor parameter – we hardcode 4× oversampling.
     ) -> Self {
         assert!(sample_rate > 0.0, "Sample rate must be positive");
-        let max_buf_size_oversampled = MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE;
         let internal_sample_rate = sample_rate * OVERSAMPLE as f32;
         let inv_internal_sample_rate = 1.0 / internal_sample_rate;
 
-        // Calculate delay buffer length using a heuristic margin.
         let max_modulated_delay_ms = max_base_delay_ms + 20.0;
         let required_samples_for_delay =
             (max_modulated_delay_ms / 1000.0 * internal_sample_rate).ceil() as usize;
         let max_delay_samples = required_samples_for_delay + INTERPOLATION_MARGIN;
         let max_safe_read_delay = (max_delay_samples - INTERPOLATION_MARGIN).max(0) as f32;
 
-        // Convert initial parameters to internal sample rate units
         let initial_base_delay_samples = (base_delay_ms / 1000.0 * internal_sample_rate).max(0.0);
         let initial_depth_samples = (depth_ms / 1000.0 * internal_sample_rate * 0.5).abs();
         let initial_lfo_rate_hz = lfo_rate_hz.max(0.0);
         let initial_lfo_phase_increment = TAU * initial_lfo_rate_hz * inv_internal_sample_rate;
-        let initial_feedback = feedback.clamp(-0.98, 0.98);
-        let initial_mix = mix.clamp(0.0, 1.0);
+        let initial_feedback = feedback.clamp(MIN_FEEDBACK, MAX_FEEDBACK);
+        let initial_mix = mix.clamp(MIN_MIX, MAX_MIX);
         let initial_lfo_stereo_phase_offset_rad = stereo_phase_offset_deg.to_radians();
 
         let smoothing_time_ms = 0.1;
@@ -276,37 +264,16 @@ impl Chorus {
             0.0
         };
 
-        // ---------- FIR Multipass Filter Design for Oversampling ----------
-        // We use cascaded FIR filters on both the up- and downsampling stages.
-        // For upsampling the original code multiplied the FIR coefficients by OVERSAMPLE (4),
-        // but here we cascade two filters with gain 2 each so that 2 × 2 = 4.
-        // We choose a slightly lower tap count for each stage (e.g. 31 taps) for efficiency.
-        let num_taps = 31; // Must be odd.
+        let num_taps = 31;
         let normalized_cutoff = 0.5 / OVERSAMPLE as f32;
-        // Reduce the cutoff a little for a transition band:
         let filter_cutoff = normalized_cutoff * 0.90;
         let base_coeffs = generate_fir_coeffs(num_taps, filter_cutoff, blackman_window);
-
-        // Prepare upsampling coefficients – multiply by 2 for each stage:
         let mut up_coeffs = base_coeffs.clone();
         for c in up_coeffs.iter_mut() {
             *c *= 2.0;
         }
-        // For downsampling, no extra gain compensation is needed.
         let down_coeffs = base_coeffs;
 
-        // Create the cascaded FIR filters:
-        let upsample_filter1_left = FirFilter::new(up_coeffs.clone());
-        let upsample_filter1_right = FirFilter::new(up_coeffs.clone());
-        let upsample_filter2_left = FirFilter::new(up_coeffs.clone());
-        let upsample_filter2_right = FirFilter::new(up_coeffs.clone());
-        let downsample_filter1_left = FirFilter::new(down_coeffs.clone());
-        let downsample_filter1_right = FirFilter::new(down_coeffs.clone());
-        let downsample_filter2_left = FirFilter::new(down_coeffs.clone());
-        let downsample_filter2_right = FirFilter::new(down_coeffs);
-
-        // Allocate buffers – note that oversampled block size is MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE.
-        let max_buf_size_oversampled = MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE;
         Self {
             enabled: true,
             sample_rate,
@@ -314,13 +281,12 @@ impl Chorus {
             inv_internal_sample_rate,
             delay_buffer_left: vec![0.0; max_delay_samples],
             delay_buffer_right: vec![0.0; max_delay_samples],
-            // Buffers for the multipass upsampling stages:
-            upsample_stage1_left: vec![0.0; max_buf_size_oversampled],
-            upsample_stage1_right: vec![0.0; max_buf_size_oversampled],
-            upsampled_input_left: vec![0.0; max_buf_size_oversampled],
-            upsampled_input_right: vec![0.0; max_buf_size_oversampled],
-            processed_oversampled_left: vec![0.0; max_buf_size_oversampled],
-            processed_oversampled_right: vec![0.0; max_buf_size_oversampled],
+            upsample_stage1_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            upsample_stage1_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            upsampled_input_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            upsampled_input_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            processed_oversampled_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            processed_oversampled_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
             write_index: 0,
             max_delay_samples,
             max_safe_read_delay,
@@ -338,14 +304,14 @@ impl Chorus {
             lfo_phase_left: 0.0,
             lfo_phase_right: initial_lfo_stereo_phase_offset_rad.rem_euclid(TAU),
             param_smooth_coeff,
-            upsample_filter1_left,
-            upsample_filter1_right,
-            upsample_filter2_left,
-            upsample_filter2_right,
-            downsample_filter1_left,
-            downsample_filter1_right,
-            downsample_filter2_left,
-            downsample_filter2_right,
+            upsample_filter1_left: FirFilter::new(up_coeffs.clone()),
+            upsample_filter1_right: FirFilter::new(up_coeffs.clone()),
+            upsample_filter2_left: FirFilter::new(up_coeffs.clone()),
+            upsample_filter2_right: FirFilter::new(up_coeffs.clone()),
+            downsample_filter1_left: FirFilter::new(down_coeffs.clone()),
+            downsample_filter1_right: FirFilter::new(down_coeffs.clone()),
+            downsample_filter2_left: FirFilter::new(down_coeffs.clone()),
+            downsample_filter2_right: FirFilter::new(down_coeffs),
             output_dc_blocker_l: DcBlocker::new(dc_blocker_alpha(
                 DC_BLOCKER_CUTOFF_HZ,
                 sample_rate,
@@ -354,12 +320,14 @@ impl Chorus {
                 DC_BLOCKER_CUTOFF_HZ,
                 sample_rate,
             )),
-            scratch_downsample_stage: vec![0.0; max_buf_size_oversampled],
-            scratch_downsampled: vec![0.0; max_buf_size_oversampled],
+            scratch_downsample_stage: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            scratch_downsampled: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            scratch_final_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE],
+            scratch_final_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE],
         }
     }
 
-    // Parameter setters remain unchanged (they update target values)
+    // Parameter setters remain the same except for using the centralized clamps.
     pub fn set_base_delay_ms(&mut self, delay_ms: f32) {
         self.target_base_delay_samples = (delay_ms * 0.001 * self.internal_sample_rate).max(0.0);
     }
@@ -370,10 +338,10 @@ impl Chorus {
         self.target_lfo_rate_hz = rate_hz.max(0.0);
     }
     pub fn set_feedback(&mut self, feedback: f32) {
-        self.target_feedback = feedback.clamp(-0.98, 0.98);
+        self.target_feedback = feedback.clamp(MIN_FEEDBACK, MAX_FEEDBACK);
     }
     pub fn set_mix(&mut self, mix: f32) {
-        self.target_mix = mix.clamp(0.0, 1.0);
+        self.target_mix = mix.clamp(MIN_MIX, MAX_MIX);
     }
     pub fn set_stereo_phase_offset_deg(&mut self, offset_deg: f32) {
         self.target_lfo_stereo_phase_offset_rad = offset_deg.to_radians();
@@ -381,7 +349,8 @@ impl Chorus {
             (self.lfo_phase_left + self.target_lfo_stereo_phase_offset_rad).rem_euclid(TAU);
     }
 
-    /// Cubic interpolation (unchanged except that clamping is done externally)
+    /// Cubic interpolation for delay sample estimation.
+    /// Uses four surrounding points for smooth interpolation.
     #[inline(always)]
     fn read_cubic_interpolated(
         buffer: &[f32],
@@ -410,9 +379,6 @@ impl Chorus {
             + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
     }
 
-    // ────────────────
-    // Main Processing Function
-    // ────────────────
     #[inline(never)]
     pub fn process_block(
         &mut self,
@@ -420,62 +386,49 @@ impl Chorus {
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // --- Basic Sanity Checks ---
         if buffer_size == 0 {
-            return; // Nothing to process
+            return;
         }
         if buffer_size > MAX_PROCESS_BUFFER_SIZE {
             eprintln!(
-                "Chorus Error: process buffer_size ({}) exceeds MAX_PROCESS_BUFFER_SIZE ({}). Zeroing output.",
+                "Chorus Error: process buffer_size ({}) exceeds MAX_PROCESS_BUFFER_SIZE ({}).",
                 buffer_size, MAX_PROCESS_BUFFER_SIZE
             );
+            // Zero any available output and return.
             if let Some(out) = outputs.get_mut(&PortId::AudioOutput0) {
                 let fill_len = buffer_size.min(out.len());
-                {
-                    let out_slice = &mut out[..fill_len];
-                    out_slice.fill(0.0);
-                }
+                out[..fill_len].fill(0.0);
             }
             if let Some(out_r) = outputs.get_mut(&PortId::AudioOutput1) {
                 let fill_len = buffer_size.min(out_r.len());
-                {
-                    let out_r_slice = &mut out_r[..fill_len];
-                    out_r_slice.fill(0.0);
-                }
+                out_r[..fill_len].fill(0.0);
             }
             return;
         }
 
-        // --- Get Output Buffer Pointers/Slices Safely ---
-        let out_left_ptr: *mut [f32] = match outputs.get_mut(&PortId::AudioOutput0) {
-            Some(slice_ref_mut) => *slice_ref_mut as *mut [f32],
-            None => {
-                if let Some(out_r) = outputs.get_mut(&PortId::AudioOutput1) {
-                    let fill_len = buffer_size.min(out_r.len());
-                    {
-                        let out_r_slice = &mut out_r[..fill_len];
-                        out_r_slice.fill(0.0);
-                    }
-                }
-                return;
+        // Obtain the output slices by temporarily removing them from the map.
+        // (This pattern is safe because the hash map has only two entries.)
+        let mut out_left = outputs.remove(&PortId::AudioOutput0);
+        let mut out_right = outputs.remove(&PortId::AudioOutput1);
+        if out_left.is_none() || out_right.is_none() {
+            // If one output is missing, zero any present and reinsert if necessary.
+            if let Some(out) = out_left.as_mut().or(out_right.as_mut()) {
+                let fill_len = buffer_size.min(out.len());
+                out[..fill_len].fill(0.0);
             }
-        };
-        let out_right: &mut [f32] = match outputs.get_mut(&PortId::AudioOutput1) {
-            Some(slice_ref_mut) => slice_ref_mut,
-            None => {
-                unsafe {
-                    let out_left = &mut *out_left_ptr;
-                    let fill_len = buffer_size.min(out_left.len());
-                    {
-                        let out_slice = &mut out_left[..fill_len];
-                        out_slice.fill(0.0);
-                    }
-                }
-                return;
+            if let Some(o) = out_left.take() {
+                outputs.insert(PortId::AudioOutput0, o);
             }
-        };
+            if let Some(o) = out_right.take() {
+                outputs.insert(PortId::AudioOutput1, o);
+            }
+            return;
+        }
+        // Now we have exclusive mutable access to both output slices.
+        let out_left_slice: &mut [f32] = out_left.as_mut().unwrap();
+        let out_right_slice: &mut [f32] = out_right.as_mut().unwrap();
 
-        // --- Handle Disabled State (Passthrough) ---
+        // Disabled state: passthrough
         if !self.enabled {
             let left_in_slice = inputs
                 .get(&PortId::AudioInput0)
@@ -485,30 +438,27 @@ impl Chorus {
                 .get(&PortId::AudioInput1)
                 .and_then(|v| v.first())
                 .map_or(left_in_slice, |s| s.buffer.as_slice());
-            unsafe {
-                let out_left = &mut *out_left_ptr;
-                let proc_len = buffer_size
-                    .min(left_in_slice.len())
-                    .min(right_in_slice.len())
-                    .min(out_left.len())
-                    .min(out_right.len());
+            let proc_len = buffer_size
+                .min(left_in_slice.len())
+                .min(right_in_slice.len())
+                .min(out_left_slice.len())
+                .min(out_right_slice.len());
 
-                out_left[..proc_len].copy_from_slice(&left_in_slice[..proc_len]);
-                out_right[..proc_len].copy_from_slice(&right_in_slice[..proc_len]);
+            out_left_slice[..proc_len].copy_from_slice(&left_in_slice[..proc_len]);
+            out_right_slice[..proc_len].copy_from_slice(&right_in_slice[..proc_len]);
 
-                if proc_len < out_left.len() {
-                    let fill_slice = &mut out_left[proc_len..];
-                    fill_slice.fill(0.0);
-                }
-                if proc_len < out_right.len() {
-                    let fill_slice = &mut out_right[proc_len..];
-                    fill_slice.fill(0.0);
-                }
+            if proc_len < out_left_slice.len() {
+                out_left_slice[proc_len..].fill(0.0);
             }
+            if proc_len < out_right_slice.len() {
+                out_right_slice[proc_len..].fill(0.0);
+            }
+            outputs.insert(PortId::AudioOutput0, out_left.unwrap());
+            outputs.insert(PortId::AudioOutput1, out_right.unwrap());
             return;
         }
 
-        // --- Get Input Buffers (Enabled State) ---
+        // Retrieve input buffers.
         let left_in_slice = inputs
             .get(&PortId::AudioInput0)
             .and_then(|v| v.first())
@@ -520,23 +470,19 @@ impl Chorus {
         let process_len = buffer_size
             .min(left_in_slice.len())
             .min(right_in_slice.len())
-            .min(unsafe { (*out_left_ptr).len() })
-            .min(out_right.len());
-
+            .min(out_left_slice.len())
+            .min(out_right_slice.len());
         if process_len == 0 {
-            // Update left channel using the raw pointer.
-            unsafe {
-                let out_left = &mut *out_left_ptr;
-                let fill_len_left = buffer_size.min(out_left.len());
-                out_left[..fill_len_left].fill(0.0);
-            }
-            // Update right channel from the already borrowed out_right.
-            let fill_len_right = buffer_size.min(out_right.len());
-            out_right[..fill_len_right].fill(0.0);
+            let len_left = buffer_size.min(out_left_slice.len());
+            out_left_slice[..len_left].fill(0.0);
+            let len_right = buffer_size.min(out_right_slice.len());
+            out_right_slice[..len_right].fill(0.0);
+            outputs.insert(PortId::AudioOutput0, out_left.unwrap());
+            outputs.insert(PortId::AudioOutput1, out_right.unwrap());
             return;
         }
 
-        // --- Smooth Parameters (Per Block) ---
+        // Smooth parameters (as before)
         let coeff = self.param_smooth_coeff;
         self.current_base_delay_samples = smooth_parameter(
             self.current_base_delay_samples,
@@ -556,10 +502,9 @@ impl Chorus {
             coeff,
         );
 
-        // --- UPSAMPLING (Multipass FIR Cascaded) ---
+        // UPSAMPLING (multipass FIR cascaded)
         let internal_buffer_len = process_len * OVERSAMPLE;
         {
-            // First pass: apply FIR filter stage 1 on input and insert zeros.
             let mut up_idx = 0;
             let filter1_l = &mut self.upsample_filter1_left;
             let filter1_r = &mut self.upsample_filter1_right;
@@ -578,7 +523,6 @@ impl Chorus {
                 up_idx += 1;
             }
         }
-        // Second pass: process the stage1 output through FIR filter stage 2.
         for i in 0..internal_buffer_len {
             self.upsampled_input_left[i] = self
                 .upsample_filter2_left
@@ -588,7 +532,7 @@ impl Chorus {
                 .process(self.upsample_stage1_right[i]);
         }
 
-        // --- CORE CHORUS PROCESSING (Oversampled Domain) ---
+        // CORE CHORUS PROCESSING (in oversampled domain)
         {
             let mut lfo_phase_left = self.lfo_phase_left;
             let mut lfo_phase_right = self.lfo_phase_right;
@@ -652,70 +596,67 @@ impl Chorus {
             self.write_index = current_write_index;
         }
 
-        // --- DOWNSAMPLING (Multipass FIR Cascaded) ---
-        unsafe {
-            let out_left = &mut *out_left_ptr;
-            let out_left_slice = &mut out_left[..process_len];
-            let out_right_slice = &mut out_right[..process_len];
-
-            // Instead of allocating a new vector here, use the pre-allocated scratch buffer.
-            // Ensure you only work with the necessary length.
+        // DOWNSAMPLING (multipass FIR cascaded)
+        {
             let downsample_stage = &mut self.scratch_downsample_stage[..internal_buffer_len];
-            {
-                let filter1_l = &mut self.downsample_filter1_left;
-                let filter1_r = &mut self.downsample_filter1_right;
-                for i in 0..internal_buffer_len {
-                    downsample_stage[i] = filter1_l.process(self.processed_oversampled_left[i]);
-                    self.processed_oversampled_right[i] =
-                        filter1_r.process(self.processed_oversampled_right[i]);
-                }
-            }
-
-            let downsampled = &mut self.scratch_downsampled[..internal_buffer_len];
-            {
-                let filter2_l = &mut self.downsample_filter2_left;
-                let filter2_r = &mut self.downsample_filter2_right;
-                for i in 0..internal_buffer_len {
-                    downsampled[i] = filter2_l.process(downsample_stage[i]);
-                    self.processed_oversampled_right[i] =
-                        filter2_r.process(self.processed_oversampled_right[i]);
-                }
-            }
-
-            // Decimate: take every OVERSAMPLE-th sample.
-            let mut out_idx = 0;
-            for i in (0..internal_buffer_len).step_by(OVERSAMPLE) {
-                if out_idx < process_len {
-                    out_left_slice[out_idx] = downsampled[i];
-                    out_right_slice[out_idx] = self.processed_oversampled_right[i];
-                    out_idx += 1;
-                } else {
-                    eprintln!("Chorus Error: Output buffer overrun during downsampling!");
-                    break;
-                }
-            }
-            debug_assert!(
-                out_idx == process_len,
-                "Downsampling mismatch: expected {} samples, got {}",
-                process_len,
-                out_idx
-            );
-
-            // Apply DC blockers on final outputs.
-            for i in 0..process_len {
-                out_left_slice[i] = self.output_dc_blocker_l.process(out_left_slice[i]);
-                out_right_slice[i] = self.output_dc_blocker_r.process(out_right_slice[i]);
-            }
-
-            if process_len < out_left.len() {
-                let fill_slice = &mut out_left[process_len..];
-                fill_slice.fill(0.0);
-            }
-            if process_len < out_right.len() {
-                let fill_slice = &mut out_right[process_len..];
-                fill_slice.fill(0.0);
+            let filter1_l = &mut self.downsample_filter1_left;
+            let filter1_r = &mut self.downsample_filter1_right;
+            for i in 0..internal_buffer_len {
+                downsample_stage[i] = filter1_l.process(self.processed_oversampled_left[i]);
+                self.processed_oversampled_right[i] =
+                    filter1_r.process(self.processed_oversampled_right[i]);
             }
         }
+        {
+            let downsampled = &mut self.scratch_downsampled[..internal_buffer_len];
+            let filter2_l = &mut self.downsample_filter2_left;
+            let filter2_r = &mut self.downsample_filter2_right;
+            for i in 0..internal_buffer_len {
+                downsampled[i] = filter2_l.process(self.scratch_downsample_stage[i]);
+                self.processed_oversampled_right[i] =
+                    filter2_r.process(self.processed_oversampled_right[i]);
+            }
+        }
+
+        // Write final decimated results directly into the preallocated scratch buffers.
+        let final_left = &mut self.scratch_final_left;
+        let final_right = &mut self.scratch_final_right;
+        let mut out_idx = 0;
+        for i in (0..internal_buffer_len).step_by(OVERSAMPLE) {
+            if out_idx < process_len {
+                final_left[out_idx] = self.scratch_downsampled[i];
+                final_right[out_idx] = self.processed_oversampled_right[i];
+                out_idx += 1;
+            } else {
+                eprintln!("Chorus Error: Output buffer overrun during downsampling!");
+                break;
+            }
+        }
+        assert_eq!(
+            out_idx, process_len,
+            "Downsampling mismatch: expected {} samples, got {}",
+            process_len, out_idx
+        );
+
+        // Apply DC blockers in place on the scratch final buffers.
+        for i in 0..process_len {
+            final_left[i] = self.output_dc_blocker_l.process(final_left[i]);
+            final_right[i] = self.output_dc_blocker_r.process(final_right[i]);
+        }
+
+        // Copy from our scratch final buffers directly into the output slices.
+        out_left_slice[..process_len].copy_from_slice(&final_left[..process_len]);
+        out_right_slice[..process_len].copy_from_slice(&final_right[..process_len]);
+        if process_len < out_left_slice.len() {
+            out_left_slice[process_len..].fill(0.0);
+        }
+        if process_len < out_right_slice.len() {
+            out_right_slice[process_len..].fill(0.0);
+        }
+
+        // Finally, reinsert the output slices back into the outputs map.
+        outputs.insert(PortId::AudioOutput0, out_left.unwrap());
+        outputs.insert(PortId::AudioOutput1, out_right.unwrap());
     }
 
     pub fn reset_state(&mut self) {
@@ -724,7 +665,6 @@ impl Chorus {
         self.write_index = 0;
         self.lfo_phase_left = 0.0;
         self.lfo_phase_right = self.target_lfo_stereo_phase_offset_rad.rem_euclid(TAU);
-        // Reset FIR filters for both cascaded passes.
         self.upsample_filter1_left.reset();
         self.upsample_filter1_right.reset();
         self.upsample_filter2_left.reset();
