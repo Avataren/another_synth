@@ -149,6 +149,8 @@ struct DcBlocker {
     alpha: f32,
 }
 
+const DENORMAL_PREVENTION: f32 = 1.0e-20;
+
 impl DcBlocker {
     fn new(alpha: f32) -> Self {
         Self {
@@ -162,7 +164,8 @@ impl DcBlocker {
     fn process(&mut self, input: f32) -> f32 {
         let output = input - self.x_prev + self.alpha * self.y_prev;
         self.x_prev = input;
-        self.y_prev = output; // Denormal fix could be elaborated on if needed.
+        // Add tiny value to prevent denormals
+        self.y_prev = output + DENORMAL_PREVENTION;
         output
     }
 
