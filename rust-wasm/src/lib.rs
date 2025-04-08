@@ -1405,7 +1405,6 @@ impl AudioEngine {
             // stereo_phase_offset_deg: Creates stereo width. 90 degrees is common
             // and effective. 0 would be mono LFO. 180 is also common.
             90.0,
-            4,
         );
         chorus.set_active(false);
         Ok(self.effect_stack.add_effect(Box::new(chorus)))
