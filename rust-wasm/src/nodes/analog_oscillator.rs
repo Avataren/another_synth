@@ -1,18 +1,16 @@
 use rustc_hash::FxHashMap;
 use rustfft::num_traits::Float;
 use std::any::Any;
-use std::f32::consts::{E, PI};
-use std::simd::{f32x4, Simd};
+use std::f32::consts::PI;
+use std::simd::f32x4;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-use crate::graph::{
-    ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
-};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
 
-use super::{Waveform, Wavetable, WavetableBank};
+use super::{Waveform, WavetableBank};
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy)]
@@ -40,7 +38,7 @@ impl AnalogOscillatorStateUpdate {
         feedback_amount: f32,
         waveform: Waveform,
         unison_voices: u32,
-        spread: f32, // In cents (total width, e.g., 20 means voices range +/- 10 cents)
+        spread: f32,
     ) -> Self {
         Self {
             phase_mod_amount,
@@ -60,23 +58,19 @@ pub struct AnalogOscillator {
     sample_rate: f32,
     smoothing_coeff: f32,
 
-    // Parameter Targets
     target_gain: f32,
     target_feedback_amount: f32,
     target_phase_mod_amount: f32,
-    target_detune: f32, // Base detune offset in cents
-    target_spread: f32, // Max total detuning width in cents
+    target_detune: f32,
+    target_spread: f32,
     target_frequency: f32,
 
-    // Smoothed Parameters
     smoothed_gain: f32,
     smoothed_feedback_amount: f32,
     smoothed_phase_mod_amount: f32,
-    // smoothed_detune: f32, // Base detune offset in cents
-    smoothed_spread: f32, // Max total detuning width in cents
+    smoothed_spread: f32,
     smoothed_frequency: f32,
 
-    // Core state (partially mirrored)
     gain: f32,
     active: bool,
     feedback_amount: f32,
@@ -85,26 +79,22 @@ pub struct AnalogOscillator {
     frequency: f32,
     waveform: Waveform,
     phase_mod_amount: f32,
-    detune: f32, // Cents
-    spread: f32, // Cents
+    detune: f32,
+    spread: f32,
 
-    // Unison state
     unison_voices: usize,
     voice_phases: Vec<f32>,
     voice_last_outputs: Vec<f32>,
-    voice_offsets: Vec<f32>, // Cached unison offsets relative to base detune, in SEMITONES
+    voice_offsets: Vec<f32>,
 
-    // Wavetable data
     wavetable_banks: Arc<FxHashMap<Waveform, Arc<WavetableBank>>>,
 
-    // Precalculated constants
     sample_rate_recip: f32,
     semitone_ratio: f32,
     cent_ratio: f32,
     two_pi_recip: f32,
     feedback_divisor: f32,
 
-    // Scratch buffers
     mod_scratch_add: Vec<f32>,
     mod_scratch_mult: Vec<f32>,
     gate_buffer: Vec<f32>,
@@ -113,7 +103,7 @@ pub struct AnalogOscillator {
     scratch_gain_mod: Vec<f32>,
     scratch_mod_index: Vec<f32>,
     scratch_feedback_mod: Vec<f32>,
-    scratch_detune_mod: Vec<f32>, // Modulation offset in SEMITONES
+    scratch_detune_mod: Vec<f32>,
     global_freq_buffer: Vec<f32>,
 }
 
@@ -131,9 +121,9 @@ impl AnalogOscillator {
         let initial_gain = 1.0;
         let initial_feedback = 0.0;
         let initial_phase_mod = 0.0;
-        let initial_detune = 0.0; // Cents
-        let initial_spread = 10.0; // Cents (e.g., +/- 5 cents range)
-        let max_spread_cents = 100.0; // Limit total spread to 1 semitone
+        let initial_detune = 0.0;
+        let initial_spread = 10.0;
+        let max_spread_cents = 100.0;
 
         let smoothing_time_ms = 1.0;
         let smoothing_time_samples = sample_rate * (smoothing_time_ms / 1000.0);
@@ -157,7 +147,6 @@ impl AnalogOscillator {
             smoothed_gain: initial_gain,
             smoothed_feedback_amount: initial_feedback,
             smoothed_phase_mod_amount: initial_phase_mod,
-            // smoothed_detune: initial_detune,
             smoothed_spread: initial_spread.clamp(0.0, max_spread_cents),
             smoothed_frequency: initial_frequency,
 
@@ -175,7 +164,7 @@ impl AnalogOscillator {
             unison_voices: initial_voice_count,
             voice_phases: vec![0.0; initial_voice_count],
             voice_last_outputs: vec![0.0; initial_voice_count],
-            voice_offsets: Vec::with_capacity(16), // Will be calculated as semitones
+            voice_offsets: Vec::with_capacity(16),
 
             wavetable_banks,
             sample_rate_recip: 1.0 / sample_rate,
@@ -192,7 +181,7 @@ impl AnalogOscillator {
             scratch_gain_mod: vec![initial_gain; initial_capacity],
             scratch_mod_index: vec![initial_phase_mod; initial_capacity],
             scratch_feedback_mod: vec![initial_feedback; initial_capacity],
-            scratch_detune_mod: vec![0.0; initial_capacity], // Semitones modulation
+            scratch_detune_mod: vec![0.0; initial_capacity],
             global_freq_buffer: vec![initial_frequency; initial_capacity],
         }
     }
@@ -214,7 +203,7 @@ impl AnalogOscillator {
             &mut self.scratch_feedback_mod,
             self.smoothed_feedback_amount,
         );
-        resize_if_needed(&mut self.scratch_detune_mod, 0.0); // Default detune mod is 0 semitones
+        resize_if_needed(&mut self.scratch_detune_mod, 0.0);
         resize_if_needed(&mut self.global_freq_buffer, self.smoothed_frequency);
     }
 
@@ -222,9 +211,7 @@ impl AnalogOscillator {
         self.target_gain = params.gain;
         self.target_feedback_amount = params.feedback_amount;
         self.target_phase_mod_amount = params.phase_mod_amount;
-        self.target_detune = params.detune; // Base detune in cents
-
-        // Spread is max total width in cents, clamp it reasonably (e.g., 0-100 cents = 1 semitone)
+        self.target_detune = params.detune;
         let max_spread_cents = 100.0;
         self.target_spread = params.spread.clamp(0.0, max_spread_cents);
 
@@ -243,27 +230,21 @@ impl AnalogOscillator {
             self.voice_phases.resize(new_voice_count, 0.0);
             self.voice_last_outputs.resize(new_voice_count, 0.0);
             self.voice_offsets.reserve(new_voice_count);
-            // Update offsets immediately based on TARGET spread when count changes
             self.update_voice_unison_offsets(self.target_spread);
         }
     }
 
-    // Calculates unison offsets in SEMITONES based on current spread (total width in CENTS)
     fn update_voice_unison_offsets(&mut self, current_spread_cents: f32) {
         self.voice_offsets.clear();
         let num_voices = self.unison_voices;
         let half_spread_cents = current_spread_cents / 2.0;
-
         for voice in 0..num_voices {
             let offset_semitones = if num_voices > 1 {
-                // Map voice index [0 .. num_voices-1] to normalized position [-1 .. 1]
                 let normalized_pos_sym = (voice as f32 / (num_voices - 1) as f32) * 2.0 - 1.0;
-                // Calculate offset in cents: [-half_spread .. +half_spread]
                 let offset_cents = normalized_pos_sym * half_spread_cents;
-                // Convert cents offset to semitones offset
                 offset_cents / 100.0
             } else {
-                0.0 // No offset for single voice
+                0.0
             };
             self.voice_offsets.push(offset_semitones);
         }
@@ -276,29 +257,38 @@ fn cubic_interp(samples: &[f32], pos: f32) -> f32 {
     if n == 0 {
         return 0.0;
     }
-
     let n_f32 = n as f32;
-    // Ensure position wraps correctly for interpolation indexing
     let wrapped_phase = pos.rem_euclid(1.0);
     let actual_pos = wrapped_phase * n_f32;
-
     let i = actual_pos.floor() as isize;
     let frac = actual_pos - (i as f32);
-
     let idx = |j: isize| -> f32 {
         let index = (i + j).rem_euclid(n as isize) as usize;
         samples[index]
     };
-
     let p0 = idx(-1);
     let p1 = idx(0);
     let p2 = idx(1);
     let p3 = idx(2);
-
     0.5 * ((2.0 * p1)
         + (-p0 + p2) * frac
         + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * frac.powi(2)
         + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * frac.powi(3))
+}
+
+#[inline(always)]
+fn simd_exp(v: f32x4) -> f32x4 {
+    f32x4::from_array([v[0].exp(), v[1].exp(), v[2].exp(), v[3].exp()])
+}
+
+#[inline(always)]
+fn simd_rem_euclid(v: f32x4, divisor: f32) -> f32x4 {
+    f32x4::from_array([
+        v[0].rem_euclid(divisor),
+        v[1].rem_euclid(divisor),
+        v[2].rem_euclid(divisor),
+        v[3].rem_euclid(divisor),
+    ])
 }
 
 impl AudioNode for AnalogOscillator {
@@ -308,7 +298,7 @@ impl AudioNode for AnalogOscillator {
             (PortId::FrequencyMod, false),
             (PortId::PhaseMod, false),
             (PortId::ModIndex, false),
-            (PortId::DetuneMod, false), // Mod offset in SEMITONES
+            (PortId::DetuneMod, false),
             (PortId::GainMod, false),
             (PortId::FeedbackMod, false),
             (PortId::GlobalGate, false),
@@ -331,9 +321,7 @@ impl AudioNode for AnalogOscillator {
             }
             return;
         }
-
         self.ensure_scratch_buffers(buffer_size);
-
         let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
             Some(buffer) => buffer,
             None => return,
@@ -341,20 +329,17 @@ impl AudioNode for AnalogOscillator {
 
         let alpha = self.smoothing_coeff * buffer_size as f32;
         let effective_alpha = alpha.min(1.0);
-
         self.smoothed_gain += effective_alpha * (self.target_gain - self.smoothed_gain);
         self.smoothed_feedback_amount +=
             effective_alpha * (self.target_feedback_amount - self.smoothed_feedback_amount);
         self.smoothed_phase_mod_amount +=
             effective_alpha * (self.target_phase_mod_amount - self.smoothed_phase_mod_amount);
-        // self.smoothed_detune += effective_alpha * (self.target_detune - self.smoothed_detune); // Cents
         let previous_smoothed_spread = self.smoothed_spread;
-        self.smoothed_spread += effective_alpha * (self.target_spread - self.smoothed_spread); // Cents
-
+        self.smoothed_spread += effective_alpha * (self.target_spread - self.smoothed_spread);
         if (self.smoothed_spread - previous_smoothed_spread).abs() > 1e-4
             || self.voice_offsets.len() != self.unison_voices
         {
-            self.update_voice_unison_offsets(self.smoothed_spread); // Pass spread in CENTS
+            self.update_voice_unison_offsets(self.smoothed_spread);
         }
 
         let mut process_mod_input =
@@ -395,7 +380,6 @@ impl AudioNode for AnalogOscillator {
             self.smoothed_phase_mod_amount,
             &mut self.scratch_mod_index,
         );
-        // DetuneMod provides an offset in SEMITONES, additive from 0
         process_mod_input(PortId::DetuneMod, 0.0, &mut self.scratch_detune_mod);
 
         self.gate_buffer[..buffer_size].fill(0.0);
@@ -412,7 +396,6 @@ impl AudioNode for AnalogOscillator {
 
         let freq_mod_sources = inputs.get(&PortId::FrequencyMod);
         let has_freq_mod = freq_mod_sources.map_or(false, |s| !s.is_empty());
-
         if has_freq_mod {
             Self::accumulate_modulations_inplace(
                 buffer_size,
@@ -482,7 +465,10 @@ impl AudioNode for AnalogOscillator {
             }
         }
 
-        // Base detune factor from smoothed_detune (in cents)
+        let sample_rate_recip = self.sample_rate_recip;
+        let semitone_ratio = self.semitone_ratio;
+        let two_pi_recip = self.two_pi_recip;
+        let feedback_divisor = self.feedback_divisor;
         let base_detune_factor = self.cent_ratio.powf(self.target_detune);
         let current_bank = match self.wavetable_banks.get(&self.waveform) {
             Some(bank) => bank,
@@ -495,21 +481,18 @@ impl AudioNode for AnalogOscillator {
             }
         };
 
-        let sample_rate_recip = self.sample_rate_recip;
-        let semitone_ratio = self.semitone_ratio;
-        let two_pi_recip = self.two_pi_recip;
-        let feedback_divisor = self.feedback_divisor;
-        let unison_voices_f32 = self.unison_voices as f32;
-        let inv_unison_voices = if unison_voices_f32 > 0.0 {
-            1.0 / unison_voices_f32
+        let unison = self.unison_voices;
+        let unison_f32 = unison as f32;
+        let inv_unison = if unison_f32 > 0.0 {
+            1.0 / unison_f32
         } else {
             1.0
         };
+        let ln_semitone_ratio = semitone_ratio.ln();
 
         for i in 0..buffer_size {
             let current_gate = self.gate_buffer[i];
             let is_rising_edge = current_gate > 0.0 && self.last_gate_value <= 0.0;
-
             if self.hard_sync && is_rising_edge {
                 for phase in self.voice_phases.iter_mut() {
                     *phase = 0.0;
@@ -522,57 +505,83 @@ impl AudioNode for AnalogOscillator {
             let phase_mod_index = self.scratch_mod_index[i];
             let current_feedback = self.scratch_feedback_mod[i];
             let current_gain = self.scratch_gain_mod[i];
-            let detune_mod_sample = self.scratch_detune_mod[i]; // Modulation offset in SEMITONES
-
-            // Global (or base) phase modulation offset, scaled into cycles:
+            let detune_mod_sample = self.scratch_detune_mod[i];
             let ext_phase_offset = (phase_mod_signal * phase_mod_index) * two_pi_recip;
-
-            // This is the base frequency to use (it already includes any frequency modulations)
             let base_freq = current_freq;
-
             let mut sample_sum = 0.0;
 
-            for v in 0..self.unison_voices {
-                // 1. Compute unison detune: calculate offset (in semitones)
-                let unison_offset_semitones = self.voice_offsets[v];
-                // 2. Combine the unison offset with any additional detune modulation (in semitones)
-                let total_semitone_offset = unison_offset_semitones + detune_mod_sample;
-                // 3. Convert the total semitone offset to a multiplicative frequency factor.
+            let num_groups = unison / 4;
+            let remainder = unison % 4;
+
+            for g in 0..num_groups {
+                let idx = g * 4;
+                let voice_offsets_vec = f32x4::from_array([
+                    self.voice_offsets[idx],
+                    self.voice_offsets[idx + 1],
+                    self.voice_offsets[idx + 2],
+                    self.voice_offsets[idx + 3],
+                ]);
+                let detune_mod_vec = f32x4::splat(detune_mod_sample);
+                let total_semitone_offset = voice_offsets_vec + detune_mod_vec;
+                let exp_arg = total_semitone_offset * f32x4::splat(ln_semitone_ratio);
+                let semitone_factor = simd_exp(exp_arg);
+                let effective_freq = semitone_factor * f32x4::splat(base_freq * base_detune_factor);
+                let phase_inc = effective_freq * f32x4::splat(sample_rate_recip);
+                let old_phase = f32x4::from_array([
+                    self.voice_phases[idx],
+                    self.voice_phases[idx + 1],
+                    self.voice_phases[idx + 2],
+                    self.voice_phases[idx + 3],
+                ]);
+                let new_phase = simd_rem_euclid(old_phase + phase_inc, 1.0);
+                let last_outputs = f32x4::from_array([
+                    self.voice_last_outputs[idx],
+                    self.voice_last_outputs[idx + 1],
+                    self.voice_last_outputs[idx + 2],
+                    self.voice_last_outputs[idx + 3],
+                ]);
+                let voice_fb = last_outputs * f32x4::splat(current_feedback / feedback_divisor);
+                let lookup_phase =
+                    simd_rem_euclid(new_phase + f32x4::splat(ext_phase_offset) + voice_fb, 1.0);
+
+                let effective_freq_arr = effective_freq.to_array();
+                let lookup_phase_arr = lookup_phase.to_array();
+                let mut voice_samples = [0.0f32; 4];
+                for lane in 0..4 {
+                    let table = current_bank.select_table(effective_freq_arr[lane]);
+                    voice_samples[lane] = cubic_interp(&table.samples, lookup_phase_arr[lane]);
+                }
+
+                let new_phase_arr = new_phase.to_array();
+                self.voice_phases[idx] = new_phase_arr[0];
+                self.voice_phases[idx + 1] = new_phase_arr[1];
+                self.voice_phases[idx + 2] = new_phase_arr[2];
+                self.voice_phases[idx + 3] = new_phase_arr[3];
+                self.voice_last_outputs[idx] = voice_samples[0];
+                self.voice_last_outputs[idx + 1] = voice_samples[1];
+                self.voice_last_outputs[idx + 2] = voice_samples[2];
+                self.voice_last_outputs[idx + 3] = voice_samples[3];
+                sample_sum += voice_samples.iter().sum::<f32>();
+            }
+
+            for v in (num_groups * 4)..unison {
+                let voice_offset = self.voice_offsets[v];
+                let total_semitone_offset = voice_offset + detune_mod_sample;
                 let semitone_factor = semitone_ratio.powf(total_semitone_offset);
-                // 4. Apply the base detune (in cents) and the semitone factor.
                 let effective_freq = base_freq * base_detune_factor * semitone_factor;
-                // 5. Calculate the phase increment based on the effective frequency.
                 let phase_inc = effective_freq * sample_rate_recip;
-
-                // Get the old phase accumulator value:
                 let old_phase = self.voice_phases[v];
-                // Update the internal phase accumulator with just the phase increment (do not add modulation here).
-                let new_phase_acc = (old_phase + phase_inc).rem_euclid(1.0);
-
-                // Compute the instantaneous feedback offset from the previous output:
+                let new_phase = (old_phase + phase_inc).rem_euclid(1.0);
                 let voice_fb = (self.voice_last_outputs[v] * current_feedback) / feedback_divisor;
-
-                // Derive a lookup phase by adding the instantaneous modulation offset and feedback offset.
-                let lookup_phase = (new_phase_acc + ext_phase_offset + voice_fb).rem_euclid(1.0);
-
-                // Use the lookup phase to read the wavetable via cubic interpolation.
+                let lookup_phase = (new_phase + ext_phase_offset + voice_fb).rem_euclid(1.0);
                 let table = current_bank.select_table(effective_freq);
                 let voice_sample = cubic_interp(&table.samples, lookup_phase);
-
-                // Save the updated phase accumulator and the last output sample.
-                self.voice_phases[v] = new_phase_acc;
+                self.voice_phases[v] = new_phase;
                 self.voice_last_outputs[v] = voice_sample;
-
                 sample_sum += voice_sample;
             }
 
-            let inv_unison_voices = if self.unison_voices > 0 {
-                1.0 / (self.unison_voices as f32)
-            } else {
-                1.0
-            };
-            // Normalize the sum of unison voices and apply current gain.
-            let final_sample = (sample_sum * inv_unison_voices) * current_gain;
+            let final_sample = (sample_sum * inv_unison) * current_gain;
             output_buffer[i] = final_sample;
         }
     }
@@ -585,30 +594,24 @@ impl AudioNode for AnalogOscillator {
         for output in self.voice_last_outputs.iter_mut() {
             *output = 0.0;
         }
-
         let initial_frequency = self.frequency;
         let initial_gain = 1.0;
         let initial_feedback = 0.0;
         let initial_phase_mod = 0.0;
-        let initial_detune = 0.0; // Cents
-        let initial_spread = 10.0; // Cents
+        let initial_detune = 0.0;
+        let initial_spread = 10.0;
         let max_spread_cents = 100.0;
-
         self.target_gain = initial_gain;
         self.target_feedback_amount = initial_feedback;
         self.target_phase_mod_amount = initial_phase_mod;
         self.target_detune = initial_detune;
         self.target_spread = initial_spread.clamp(0.0, max_spread_cents);
         self.target_frequency = initial_frequency;
-
         self.smoothed_gain = initial_gain;
         self.smoothed_feedback_amount = initial_feedback;
         self.smoothed_phase_mod_amount = initial_phase_mod;
-        // self.smoothed_detune = initial_detune;
         self.smoothed_spread = initial_spread.clamp(0.0, max_spread_cents);
         self.smoothed_frequency = initial_frequency;
-
-        // Update offsets based on reset smoothed spread (in CENTS)
         self.update_voice_unison_offsets(self.smoothed_spread);
     }
 
