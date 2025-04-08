@@ -1,4 +1,3 @@
-```vue
 <template>
   <div class="knob-wrapper">
     <div
@@ -305,7 +304,6 @@ onUnmounted(() => {
   align-items: center;
   padding: 0.5rem;
   color: #ffffff;
-  min-width: 80px;
 }
 .knob-container {
   position: relative;

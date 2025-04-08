@@ -98,22 +98,24 @@
                 </div>
 
                 <!-- Modulation Transformation Selection -->
-                <q-select
-                  :model-value="route.modulationTransformation.value"
-                  @update:model-value="
-                    (newValueEnum) =>
-                      handleTransformationChange(route.id, newValueEnum)
-                  "
-                  :options="modulationTransformations"
-                  label="Transformation"
-                  dense
-                  dark
-                  filled
-                  option-value="value"
-                  option-label="label"
-                  emit-value
-                  map-options
-                />
+                <div class="col-2">
+                  <q-select
+                    :model-value="route.modulationTransformation.value"
+                    @update:model-value="
+                      (newValueEnum) =>
+                        handleTransformationChange(route.id, newValueEnum)
+                    "
+                    :options="modulationTransformations"
+                    label="Transformation"
+                    dense
+                    dark
+                    filled
+                    option-value="value"
+                    option-label="label"
+                    emit-value
+                    map-options
+                  />
+                </div>
                 <!-- <div class="col-2">
                   <q-select
                     v-model="route.modulationTransformation"

@@ -528,52 +528,66 @@ impl AudioNode for WavetableOscillator {
             let base_freq = current_freq;
             let ext_phase_offset = (phase_mod_signal * phase_mod_index) * two_pi_recip;
 
-            let final_sample = if self.unison_voices == 1 {
-                let unison_offset_semitones = self.voice_offsets[0]; // Is 0.0 for single voice
+            let mut final_sample = 0.0;
+            // ... inside your per-sample loop ...
+
+            if self.unison_voices == 1 {
+                let unison_offset_semitones = self.voice_offsets[0]; // For a single voice, usually 0.0
                 let total_semitone_offset = unison_offset_semitones + detune_mod_sample;
                 let semitone_factor = semitone_ratio.powf(total_semitone_offset);
                 let effective_freq = base_freq * base_detune_factor * semitone_factor;
-
                 let phase_inc = effective_freq * sample_rate_recip;
+
+                let old_phase = self.voice_phases[0];
+                // Update the internal phase accumulator with only the phase increment:
+                let new_phase_acc = (old_phase + phase_inc).rem_euclid(1.0);
+
+                // Compute the instantaneous offsets:
+                // - ext_phase_offset comes from your phase modulation input,
+                // - voice_fb is computed from the previous output sample with the current feedback factor.
                 let voice_fb = (self.voice_last_outputs[0] * current_feedback) / feedback_divisor;
-                let phase_before_update = self.voice_phases[0];
-                let phase = (phase_before_update + ext_phase_offset + voice_fb).rem_euclid(1.0);
 
-                let wv_sample = collection.lookup_sample(phase, wt_index_sample, effective_freq);
+                // The lookup phase is the internal phase plus the instantaneous offsets,
+                // but these offsets are not accumulated.
+                let lookup_phase = (new_phase_acc + ext_phase_offset + voice_fb).rem_euclid(1.0);
 
-                self.voice_phases[0] = (phase_before_update + phase_inc).rem_euclid(1.0);
+                let wv_sample =
+                    collection.lookup_sample(lookup_phase, wt_index_sample, effective_freq);
+
+                self.voice_phases[0] = new_phase_acc;
                 self.voice_last_outputs[0] = wv_sample;
 
-                wv_sample * current_gain // Apply gain (already includes base + mod)
+                final_sample = wv_sample * current_gain;
             } else {
                 let mut sample_sum = 0.0;
                 for voice in 0..self.unison_voices {
-                    let unison_offset_semitones = self.voice_offsets[voice]; // From spread (cents) -> semitones
-                    let total_semitone_offset = unison_offset_semitones + detune_mod_sample; // Add mod (semitones)
+                    let unison_offset_semitones = self.voice_offsets[voice];
+                    let total_semitone_offset = unison_offset_semitones + detune_mod_sample;
                     let semitone_factor = semitone_ratio.powf(total_semitone_offset);
-
-                    // Apply base detune (cents) factor AND semitone factor
                     let effective_freq = base_freq * base_detune_factor * semitone_factor;
-
                     let phase_inc = effective_freq * sample_rate_recip;
+                    let old_phase = self.voice_phases[voice];
 
+                    // Update the phase accumulator without the feedback offset:
+                    let new_phase_acc = (old_phase + phase_inc).rem_euclid(1.0);
+                    // Compute the instantaneous feedback offset:
                     let voice_fb =
                         (self.voice_last_outputs[voice] * current_feedback) / feedback_divisor;
-                    let phase_before_update = self.voice_phases[voice];
-                    let phase = (phase_before_update + ext_phase_offset + voice_fb).rem_euclid(1.0);
+                    // Derive the lookup phase by adding the modulation offset and feedback offset to the new phase.
+                    let lookup_phase =
+                        (new_phase_acc + ext_phase_offset + voice_fb).rem_euclid(1.0);
 
                     let wv_sample =
-                        collection.lookup_sample(phase, wt_index_sample, effective_freq);
+                        collection.lookup_sample(lookup_phase, wt_index_sample, effective_freq);
 
-                    // Accumulate using weights (currently all 1.0)
                     sample_sum += wv_sample * self.voice_weights[voice];
 
-                    self.voice_phases[voice] = (phase_before_update + phase_inc).rem_euclid(1.0);
+                    self.voice_phases[voice] = new_phase_acc;
                     self.voice_last_outputs[voice] = wv_sample;
                 }
-                // Normalize by total weight and apply gain
-                (sample_sum * total_weight_recip) * current_gain
-            };
+
+                final_sample = (sample_sum * total_weight_recip) * current_gain;
+            }
 
             output_buffer[i] = final_sample;
         }

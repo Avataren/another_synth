@@ -524,39 +524,54 @@ impl AudioNode for AnalogOscillator {
             let current_gain = self.scratch_gain_mod[i];
             let detune_mod_sample = self.scratch_detune_mod[i]; // Modulation offset in SEMITONES
 
-            let base_freq = current_freq; // Already includes global/internal base + freq mod
+            // Global (or base) phase modulation offset, scaled into cycles:
             let ext_phase_offset = (phase_mod_signal * phase_mod_index) * two_pi_recip;
+
+            // This is the base frequency to use (it already includes any frequency modulations)
+            let base_freq = current_freq;
 
             let mut sample_sum = 0.0;
 
             for v in 0..self.unison_voices {
-                // 1. Get unison offset (calculated from spread in cents, stored as semitones)
+                // 1. Compute unison detune: calculate offset (in semitones)
                 let unison_offset_semitones = self.voice_offsets[v];
-
-                // 2. Combine unison offset (semitones) with detune modulation (semitones)
+                // 2. Combine the unison offset with any additional detune modulation (in semitones)
                 let total_semitone_offset = unison_offset_semitones + detune_mod_sample;
-
-                // 3. Calculate multiplicative factor for the total semitone offset
+                // 3. Convert the total semitone offset to a multiplicative frequency factor.
                 let semitone_factor = semitone_ratio.powf(total_semitone_offset);
-
-                // 4. Apply base detune (cents) factor AND semitone factor to base frequency
+                // 4. Apply the base detune (in cents) and the semitone factor.
                 let effective_freq = base_freq * base_detune_factor * semitone_factor;
-
+                // 5. Calculate the phase increment based on the effective frequency.
                 let phase_inc = effective_freq * sample_rate_recip;
 
+                // Get the old phase accumulator value:
+                let old_phase = self.voice_phases[v];
+                // Update the internal phase accumulator with just the phase increment (do not add modulation here).
+                let new_phase_acc = (old_phase + phase_inc).rem_euclid(1.0);
+
+                // Compute the instantaneous feedback offset from the previous output:
                 let voice_fb = (self.voice_last_outputs[v] * current_feedback) / feedback_divisor;
-                let phase_before_update = self.voice_phases[v];
-                let phase = (phase_before_update + ext_phase_offset + voice_fb).rem_euclid(1.0);
 
+                // Derive a lookup phase by adding the instantaneous modulation offset and feedback offset.
+                let lookup_phase = (new_phase_acc + ext_phase_offset + voice_fb).rem_euclid(1.0);
+
+                // Use the lookup phase to read the wavetable via cubic interpolation.
                 let table = current_bank.select_table(effective_freq);
-                let voice_sample = cubic_interp(&table.samples, phase);
+                let voice_sample = cubic_interp(&table.samples, lookup_phase);
 
-                self.voice_phases[v] = (phase_before_update + phase_inc).rem_euclid(1.0);
+                // Save the updated phase accumulator and the last output sample.
+                self.voice_phases[v] = new_phase_acc;
                 self.voice_last_outputs[v] = voice_sample;
 
                 sample_sum += voice_sample;
             }
 
+            let inv_unison_voices = if self.unison_voices > 0 {
+                1.0 / (self.unison_voices as f32)
+            } else {
+                1.0
+            };
+            // Normalize the sum of unison voices and apply current gain.
             let final_sample = (sample_sum * inv_unison_voices) * current_gain;
             output_buffer[i] = final_sample;
         }
