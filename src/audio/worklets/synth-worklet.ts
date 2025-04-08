@@ -708,7 +708,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         target: connection.target,
         amount: connection.amount,
         modulationType: connection.modulationType, // Check type consistency here too
-        modulationTransformation: numericTransformValue // Log the number (e.g., 1)
+        modulationTransformation: numericTransformValue, // Log the number (e.g., 1)
       });
 
       this.audioEngine.connect_nodes(
@@ -768,8 +768,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.state.depthMs,
       data.state.lfoRateHz,
       data.state.feedback,
+      data.state.feedback_filter,
       data.state.mix,
-      data.state.stereoPhaseOffsetDeg
+      data.state.stereoPhaseOffsetDeg,
     );
   }
 

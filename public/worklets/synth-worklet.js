@@ -855,11 +855,12 @@ var AudioEngine = class {
    * @param {number} depth_ms
    * @param {number} lfo_rate_hz
    * @param {number} feedback
+   * @param {number} feedback_filter
    * @param {number} mix
    * @param {number} stereo_phase_offset_deg
    */
-  update_chorus(node_id, active, base_delay_ms, depth_ms, lfo_rate_hz, feedback, mix, stereo_phase_offset_deg) {
-    wasm.audioengine_update_chorus(this.__wbg_ptr, node_id, active, base_delay_ms, depth_ms, lfo_rate_hz, feedback, mix, stereo_phase_offset_deg);
+  update_chorus(node_id, active, base_delay_ms, depth_ms, lfo_rate_hz, feedback, feedback_filter, mix, stereo_phase_offset_deg) {
+    wasm.audioengine_update_chorus(this.__wbg_ptr, node_id, active, base_delay_ms, depth_ms, lfo_rate_hz, feedback, feedback_filter, mix, stereo_phase_offset_deg);
   }
   /**
    * @returns {any}
@@ -2415,6 +2416,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.state.depthMs,
       data.state.lfoRateHz,
       data.state.feedback,
+      data.state.feedback_filter,
       data.state.mix,
       data.state.stereoPhaseOffsetDeg
     );

@@ -18,7 +18,29 @@ use crate::traits::{AudioNode, PortId};
 const MAX_PROCESS_BUFFER_SIZE: usize = 128;
 // Note: ZERO_BUFFER is a static fallback buffer. Be cautious if MAX_PROCESS_BUFFER_SIZE changes.
 static ZERO_BUFFER: [f32; MAX_PROCESS_BUFFER_SIZE] = [0.0; MAX_PROCESS_BUFFER_SIZE];
-const SIMD_WIDTH: usize = 8; // Choose an appropriate width for your target (e.g., 8 lanes)
+const SIMD_WIDTH: usize = 4; // web wasm guaranteed supported
+
+struct FeedbackFilter {
+    state: f32,
+    alpha: f32, // coefficient between 0 and 1, where smaller values mean more low-pass effect
+}
+
+impl FeedbackFilter {
+    fn new(alpha: f32) -> Self {
+        Self { state: 0.0, alpha }
+    }
+
+    #[inline]
+    fn process(&mut self, input: f32) -> f32 {
+        // Simple one-pole filter: y[n] = (1 - alpha) * input + alpha * y[n - 1]
+        self.state = (1.0 - self.alpha) * input + self.alpha * self.state;
+        self.state
+    }
+
+    fn reset(&mut self) {
+        self.state = 0.0;
+    }
+}
 
 #[derive(Clone)]
 struct FirFilter {
@@ -237,6 +259,10 @@ pub struct Chorus {
     scratch_downsampled: Vec<f32>,
     scratch_final_left: Vec<f32>,
     scratch_final_right: Vec<f32>,
+    feedback_filter_l: FeedbackFilter,
+    feedback_filter_r: FeedbackFilter,
+    target_feedback_filter_cutoff: f32,
+    current_feedback_filter_cutoff: f32,
 }
 
 impl Chorus {
@@ -340,6 +366,10 @@ impl Chorus {
             scratch_downsampled: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
             scratch_final_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE],
             scratch_final_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE],
+            feedback_filter_l: FeedbackFilter::new(0.5),
+            feedback_filter_r: FeedbackFilter::new(0.5),
+            target_feedback_filter_cutoff: 10000.0,
+            current_feedback_filter_cutoff: 10000.0,
         }
     }
 
@@ -364,7 +394,11 @@ impl Chorus {
         self.lfo_phase_right =
             (self.lfo_phase_left + self.target_lfo_stereo_phase_offset_rad).rem_euclid(TAU);
     }
-
+    pub fn set_feedback_filter_cutoff(&mut self, cutoff_hz: f32) {
+        // You might want to clamp the cutoff between some reasonable min/max values.
+        // Here we assume a minimum of 20 Hz and maximum of, say, 20000 Hz.
+        self.target_feedback_filter_cutoff = cutoff_hz.clamp(20.0, 20000.0);
+    }
     /// Cubic interpolation for delay sample estimation.
     /// Uses four surrounding points for smooth interpolation.
     #[inline(always)]
@@ -393,6 +427,12 @@ impl Chorus {
             + (-p0 + p2) * t
             + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
             + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+    }
+
+    #[inline(always)]
+    fn calculate_filter_alpha(cutoff: f32, sample_rate: f32) -> f32 {
+        // A typical relationship is: alpha = exp(-2π * cutoff / sample_rate)
+        (-2.0 * PI * cutoff / sample_rate).exp()
     }
 
     #[inline(never)]
@@ -518,6 +558,21 @@ impl Chorus {
             coeff,
         );
 
+        self.current_feedback_filter_cutoff = smooth_parameter(
+            self.current_feedback_filter_cutoff,
+            self.target_feedback_filter_cutoff,
+            self.param_smooth_coeff,
+        );
+        // Update the filter’s alpha for tone shaping.
+        self.feedback_filter_l.alpha = Self::calculate_filter_alpha(
+            self.current_feedback_filter_cutoff,
+            self.internal_sample_rate,
+        );
+        self.feedback_filter_r.alpha = Self::calculate_filter_alpha(
+            self.current_feedback_filter_cutoff,
+            self.internal_sample_rate,
+        );
+
         // UPSAMPLING (multipass FIR cascaded)
         let internal_buffer_len = process_len * OVERSAMPLE;
         {
@@ -539,6 +594,7 @@ impl Chorus {
                 up_idx += 1;
             }
         }
+
         for i in 0..internal_buffer_len {
             self.upsampled_input_left[i] = self
                 .upsample_filter2_left
@@ -579,6 +635,19 @@ impl Chorus {
                 let target_delay_r = effective_base_delay + lfo_val_right * depth;
                 let delay_smpls_left = target_delay_l.min(max_safe_read_delay).max(0.0);
                 let delay_smpls_right = target_delay_r.min(max_safe_read_delay).max(0.0);
+                // let delayed_left = Self::read_cubic_interpolated(
+                //     delay_buf_l,
+                //     delay_smpls_left,
+                //     current_write_index,
+                //     max_delay_samples,
+                // );
+                // let delayed_right = Self::read_cubic_interpolated(
+                //     delay_buf_r,
+                //     delay_smpls_right,
+                //     current_write_index,
+                //     max_delay_samples,
+                // );
+                // Read the delayed values
                 let delayed_left = Self::read_cubic_interpolated(
                     delay_buf_l,
                     delay_smpls_left,
@@ -591,10 +660,14 @@ impl Chorus {
                     current_write_index,
                     max_delay_samples,
                 );
+                // Process through the feedback filter
+                let filtered_left = self.feedback_filter_l.process(delayed_left);
+                let filtered_right = self.feedback_filter_r.process(delayed_right);
+                // Compute the feedback terms using the filtered signals
+                let feedback_term_l = feedback * filtered_left;
+                let feedback_term_r = feedback * filtered_right;
                 let current_input_l = self.upsampled_input_left[i];
                 let current_input_r = self.upsampled_input_right[i];
-                let feedback_term_l = feedback * delayed_left;
-                let feedback_term_r = feedback * delayed_right;
                 let write_val_left = current_input_l + feedback_term_l;
                 let write_val_right = current_input_r + feedback_term_r;
                 delay_buf_l[current_write_index] = write_val_left;
@@ -703,6 +776,8 @@ impl Chorus {
         self.upsampled_input_right.fill(0.0);
         self.processed_oversampled_left.fill(0.0);
         self.processed_oversampled_right.fill(0.0);
+        self.feedback_filter_l.reset();
+        self.feedback_filter_r.reset();
     }
 
     fn node_type_str(&self) -> &str {

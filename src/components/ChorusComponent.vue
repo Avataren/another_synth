@@ -44,6 +44,8 @@
           unit="Hz"
           @update:modelValue="handleRateChange"
         />
+      </div>
+      <div class="knob-group">
         <audio-knob-component
           v-model="chorusState.feedback"
           label="Feedback"
@@ -52,6 +54,15 @@
           :step="0.01"
           :decimals="2"
           @update:modelValue="handleFeedbackChange"
+        />
+        <audio-knob-component
+          v-model="chorusState.feedback_filter"
+          label="Filter"
+          :min="0"
+          :max="1"
+          :step="0.01"
+          :decimals="2"
+          @update:modelValue="handleFeedbackFilterChange"
         />
         <audio-knob-component
           v-model="chorusState.mix"
@@ -108,6 +119,7 @@ const chorusState = computed({
         depthMs: 5.0, // Default depth
         lfoRateHz: 0.5, // Default LFO rate
         feedback: 0.3, // Default feedback
+        feedback_filter: 0.5,
         mix: 0.5, // Default mix
         stereoPhaseOffsetDeg: 90.0, // Default stereo phase
       };
@@ -142,6 +154,10 @@ const handleRateChange = (val: number) => {
 
 const handleFeedbackChange = (val: number) => {
   chorusState.value = { ...chorusState.value, feedback: val };
+};
+
+const handleFeedbackFilterChange = (val: number) => {
+  chorusState.value = { ...chorusState.value, feedback_filter: val };
 };
 
 const handleMixChange = (val: number) => {

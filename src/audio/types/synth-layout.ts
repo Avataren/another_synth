@@ -21,7 +21,7 @@ export enum VoiceNodeType {
   GateMixer = 'gatemixer',
   ArpeggiatorGenerator = 'arpeggiator_generator',
   Chorus = 'chorus',
-  Limiter = 'limiter'
+  Limiter = 'limiter',
 }
 
 export interface ChorusState {
@@ -37,6 +37,8 @@ export interface ChorusState {
   lfoRateHz: number;
   /** The amount of the delayed signal fed back into the input (0.0 to ~0.98). */
   feedback: number;
+  /** feedback lowpass filter cutoff (0 to 1) */
+  feedback_filter: number;
   /** The balance between the original (dry) and processed (wet) signal (0.0 = dry, 1.0 = wet). */
   mix: number;
   /** The phase difference in degrees between the LFOs for the left and right channels (0 to 360). */

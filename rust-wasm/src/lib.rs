@@ -1419,6 +1419,7 @@ impl AudioEngine {
         depth_ms: f32,
         lfo_rate_hz: f32,
         feedback: f32,
+        feedback_filter: f32,
         mix: f32,
         stereo_phase_offset_deg: f32,
     ) {
@@ -1434,6 +1435,7 @@ impl AudioEngine {
                 chorus.set_feedback(feedback);
                 chorus.set_mix(mix);
                 chorus.set_stereo_phase_offset_deg(stereo_phase_offset_deg);
+                chorus.set_feedback_filter_cutoff(feedback_filter * self.sample_rate);
                 chorus.set_active(active);
             } else {
                 // Log a warning if the node at that index isn't a Convolver.
