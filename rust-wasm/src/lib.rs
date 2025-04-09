@@ -1378,8 +1378,8 @@ impl AudioEngine {
     #[wasm_bindgen]
 
     pub fn add_limiter(&mut self) -> Result<usize, JsValue> {
-        let mut limiter = Limiter::new(self.sample_rate, -0.1, 0.1, 50.0, 1.5, true);
-        limiter.set_active(false);
+        let mut limiter = Limiter::new(self.sample_rate, -0.5, 0.1, 50.0, 1.5, true);
+        limiter.set_active(true);
         Ok(self.effect_stack.add_effect(Box::new(limiter)))
     }
 
