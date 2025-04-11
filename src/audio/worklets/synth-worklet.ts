@@ -561,6 +561,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.ArpeggiatorGenerator]: [],
       [VoiceNodeType.Chorus]: [],
       [VoiceNodeType.Limiter]: [],
+      [VoiceNodeType.Reverb]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -612,6 +613,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         case 'limiter':
           type = VoiceNodeType.Limiter;
           break;
+        case 'freeverb':
+          type = VoiceNodeType.Reverb;
+          break;
+
         default:
           console.warn('##### Unknown node type:', rawNode.node_type);
           type = rawNode.node_type as VoiceNodeType;

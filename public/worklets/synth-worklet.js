@@ -647,6 +647,21 @@ var AudioEngine = class {
     return ret[0] >>> 0;
   }
   /**
+   * @param {number} room_size
+   * @param {number} damp
+   * @param {number} wet
+   * @param {number} dry
+   * @param {number} width
+   * @returns {number}
+   */
+  add_freeverb(room_size, damp, wet, dry, width) {
+    const ret = wasm.audioengine_add_freeverb(this.__wbg_ptr, room_size, damp, wet, dry, width);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
    * @param {number} decay_time
    * @param {number} room_size
    * @param {number} sample_rate
@@ -2242,7 +2257,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["gatemixer" /* GateMixer */]: [],
       ["arpeggiator_generator" /* ArpeggiatorGenerator */]: [],
       ["chorus" /* Chorus */]: [],
-      ["limiter" /* Limiter */]: []
+      ["limiter" /* Limiter */]: [],
+      ["freeverb" /* Reverb */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;
@@ -2292,6 +2308,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "limiter":
           type = "limiter" /* Limiter */;
+          break;
+        case "freeverb":
+          type = "freeverb" /* Reverb */;
           break;
         default:
           console.warn("##### Unknown node type:", rawNode.node_type);

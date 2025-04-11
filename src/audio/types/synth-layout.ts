@@ -22,6 +22,7 @@ export enum VoiceNodeType {
   ArpeggiatorGenerator = 'arpeggiator_generator',
   Chorus = 'chorus',
   Limiter = 'limiter',
+  Reverb = 'freeverb',
 }
 
 export interface ChorusState {

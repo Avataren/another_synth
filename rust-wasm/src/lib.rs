@@ -25,7 +25,7 @@ use nodes::morph_wavetable::{
 };
 use nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
-    ArpeggiatorGenerator, Chorus, Convolver, Delay, FilterCollection, FilterSlope,
+    ArpeggiatorGenerator, Chorus, Convolver, Delay, FilterCollection, FilterSlope, Freeverb,
     GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform, Limiter, Mixer,
     NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank, WavetableOscillator,
     WavetableOscillatorStateUpdate,
@@ -426,6 +426,7 @@ impl AudioEngine {
         self.voices = (0..num_voices).map(Voice::new).collect();
         self.add_chorus().unwrap();
         self.add_delay(2000.0, 500.0, 0.5, 0.1).unwrap();
+        self.add_freeverb(0.8, 0.5, 0.3, 0.7, 1.0).unwrap();
         self.add_plate_reverb(2.0, 0.6, sample_rate).unwrap();
         self.add_limiter().unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
@@ -622,6 +623,19 @@ impl AudioEngine {
     ) -> Result<usize, JsValue> {
         let delay = Delay::new(self.sample_rate, max_delay_ms, delay_ms, feedback, mix);
         Ok(self.effect_stack.add_effect(Box::new(delay)))
+    }
+
+    #[wasm_bindgen]
+    pub fn add_freeverb(
+        &mut self,
+        room_size: f32,
+        damp: f32,
+        wet: f32,
+        dry: f32,
+        width: f32,
+    ) -> Result<usize, JsValue> {
+        let reverb = Freeverb::new(self.sample_rate, room_size, damp, wet, dry, width);
+        Ok(self.effect_stack.add_effect(Box::new(reverb)))
     }
 
     #[wasm_bindgen]

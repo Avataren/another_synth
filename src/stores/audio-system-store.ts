@@ -79,7 +79,6 @@ interface AudioParamDescriptor {
 //   return newMap;
 // }
 
-
 function debounce<T extends (...args: unknown[]) => void>(
   func: T,
   wait: number,
@@ -143,9 +142,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       const nodes = getNodesOfType(voice, nodeType) || [];
 
       // This is critical - add the type information to each node
-      return nodes.map(node => ({
+      return nodes.map((node) => ({
         ...node,
-        type: nodeType
+        type: nodeType,
       }));
     },
 
@@ -172,24 +171,24 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-        (voiceIndex: number, nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[voiceIndex];
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-          );
-        },
+      (voiceIndex: number, nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[voiceIndex];
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+        );
+      },
     getNodeConnections:
       (state) =>
-        (nodeId: number): NodeConnection[] => {
-          if (!state.synthLayout) return [];
-          const voice = state.synthLayout.voices[0]; // Only look at voice 0
-          if (!voice) return [];
-          return voice.connections.filter(
-            (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
-          );
-        },
+      (nodeId: number): NodeConnection[] => {
+        if (!state.synthLayout) return [];
+        const voice = state.synthLayout.voices[0]; // Only look at voice 0
+        if (!voice) return [];
+        return voice.connections.filter(
+          (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
+        );
+      },
 
     // getNodeConnections:
     //   (state) =>
@@ -437,7 +436,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       console.log('Updating synth layout with:', layout);
 
       // Validate that we have at least one voice
-      if (!layout.voices || !Array.isArray(layout.voices) || layout.voices.length === 0) {
+      if (
+        !layout.voices ||
+        !Array.isArray(layout.voices) ||
+        layout.voices.length === 0
+      ) {
         console.warn('Received invalid synth layout (no voices).');
         return;
       }
@@ -451,84 +454,106 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         if (Array.isArray(voice.connections) && voice.connections.length > 0) {
           const firstConn = voice.connections[0]!;
           // Check if it's in the raw format (snake_case keys) coming from WASM/JSON
-          if (typeof firstConn === 'object' && firstConn !== null && 'from_id' in firstConn) {
+          if (
+            typeof firstConn === 'object' &&
+            firstConn !== null &&
+            'from_id' in firstConn
+          ) {
+            const rawConnections =
+              voice.connections as unknown as RawConnection[];
+            console.log(
+              `updateSynthLayout: Processing ${rawConnections.length} raw connections for voice ${voice.id}`,
+            );
 
-            const rawConnections = voice.connections as unknown as RawConnection[];
-            console.log(`updateSynthLayout: Processing ${rawConnections.length} raw connections for voice ${voice.id}`);
+            voice.connections = rawConnections.map(
+              (rawConn: RawConnection): NodeConnection => {
+                // --- Explicit Numeric Conversions ---
 
-            voice.connections = rawConnections.map((rawConn: RawConnection): NodeConnection => {
-              // --- Explicit Numeric Conversions ---
-
-              // Modulation Transformation
-              const transformRaw = rawConn.modulation_transform;
-              let fixedTransform: ModulationTransformation = ModulationTransformation.None;
-              // Default to 0 (ModulationTransformation.None) if null, undefined, or NaN
-              if (transformRaw != null || isNaN(transformRaw)) {
-                console.log('WTF:', transformRaw);
-                fixedTransform = ModulationTransformation.None;
-              }
-
-              // Amount
-              const amountRaw = rawConn.amount;
-              let amountNum = Number(amountRaw);
-              // Default amount to 1.0 if conversion fails
-              if (amountRaw == null || isNaN(amountNum)) {
-                if (amountRaw != null) {
-                  console.warn(`updateSynthLayout: Invalid amount "${amountRaw}", defaulting to 1.0. RawConn:`, rawConn);
+                // Modulation Transformation
+                const transformRaw = rawConn.modulation_transform;
+                let fixedTransform: ModulationTransformation =
+                  ModulationTransformation.None;
+                // Default to 0 (ModulationTransformation.None) if null, undefined, or NaN
+                if (transformRaw != null || isNaN(transformRaw)) {
+                  console.log('WTF:', transformRaw);
+                  fixedTransform = ModulationTransformation.None;
                 }
-                amountNum = 1.0;
-              }
 
-              // Target (PortId)
-              const targetRaw = rawConn.target;
-              let targetNum = Number(targetRaw);
-              // Default target to 0 if conversion fails (though this might be risky depending on PortId 0 meaning)
-              if (targetRaw == null || isNaN(targetNum)) {
-                if (targetRaw != null) {
-                  console.warn('updateSynthLayout: Invalid target "${targetRaw}", defaulting to 0. RawConn:', rawConn);
+                // Amount
+                const amountRaw = rawConn.amount;
+                let amountNum = Number(amountRaw);
+                // Default amount to 1.0 if conversion fails
+                if (amountRaw == null || isNaN(amountNum)) {
+                  if (amountRaw != null) {
+                    console.warn(
+                      `updateSynthLayout: Invalid amount "${amountRaw}", defaulting to 1.0. RawConn:`,
+                      rawConn,
+                    );
+                  }
+                  amountNum = 1.0;
                 }
-                targetNum = 0;
-              }
 
-              // IDs
-              const fromIdNum = Number(rawConn.from_id);
-              const toIdNum = Number(rawConn.to_id);
-              if (isNaN(fromIdNum) || isNaN(toIdNum)) {
-                console.error('updateSynthLayout: Invalid from_id or to_id! Skipping connection. RawConn:', rawConn);
-                // Returning null and filtering later might be safer, but for now let's log and provide potentially invalid IDs
-                // Or consider throwing an error if IDs are critical
-              }
-              // --- End Numeric Conversions ---
+                // Target (PortId)
+                const targetRaw = rawConn.target;
+                let targetNum = Number(targetRaw);
+                // Default target to 0 if conversion fails (though this might be risky depending on PortId 0 meaning)
+                if (targetRaw == null || isNaN(targetNum)) {
+                  if (targetRaw != null) {
+                    console.warn(
+                      'updateSynthLayout: Invalid target "${targetRaw}", defaulting to 0. RawConn:',
+                      rawConn,
+                    );
+                  }
+                  targetNum = 0;
+                }
 
+                // IDs
+                const fromIdNum = Number(rawConn.from_id);
+                const toIdNum = Number(rawConn.to_id);
+                if (isNaN(fromIdNum) || isNaN(toIdNum)) {
+                  console.error(
+                    'updateSynthLayout: Invalid from_id or to_id! Skipping connection. RawConn:',
+                    rawConn,
+                  );
+                  // Returning null and filtering later might be safer, but for now let's log and provide potentially invalid IDs
+                  // Or consider throwing an error if IDs are critical
+                }
+                // --- End Numeric Conversions ---
 
-              const newNodeConnection: NodeConnection = {
-                fromId: fromIdNum, // Use converted number
-                toId: toIdNum,     // Use converted number
-                target: targetNum as PortId, // Use converted number, assert type
-                amount: amountNum,     // Use converted number
-                modulationTransformation: fixedTransform, // Use converted number
-                modulationType: this.convertModulationType(rawConn.modulation_type),
-              };
+                const newNodeConnection: NodeConnection = {
+                  fromId: fromIdNum, // Use converted number
+                  toId: toIdNum, // Use converted number
+                  target: targetNum as PortId, // Use converted number, assert type
+                  amount: amountNum, // Use converted number
+                  modulationTransformation: fixedTransform, // Use converted number
+                  modulationType: this.convertModulationType(
+                    rawConn.modulation_type,
+                  ),
+                };
 
-              // console.log('Converted connection:', newNodeConnection); // Optional: Log each conversion result
-              return newNodeConnection;
-            });
+                // console.log('Converted connection:', newNodeConnection); // Optional: Log each conversion result
+                return newNodeConnection;
+              },
+            );
           } else {
             // Optional: Add checks here if connections might already be in the correct format
             // to ensure numeric types if they come from other sources (e.g., loading presets)
             // For now, assume if it doesn't have 'from_id', it's already correct.
-            console.log(`updateSynthLayout: Connections for voice ${voice.id} appear to be in correct format already.`);
+            console.log(
+              `updateSynthLayout: Connections for voice ${voice.id} appear to be in correct format already.`,
+            );
             /// HERE conn.modulationTransformation appears to sometimes be a string???
-            voice.connections = voice.connections.map(conn => ({
+            voice.connections = voice.connections.map((conn) => ({
               ...conn,
               fromId: Number(conn.fromId),
               toId: Number(conn.toId),
               target: Number(conn.target) as PortId,
               amount: Number(conn.amount),
-              modulationTransformation: isNaN(conn.modulationTransformation) ? ModulationTransformation.None : conn.modulationTransformation,
+              modulationTransformation: isNaN(conn.modulationTransformation)
+                ? ModulationTransformation.None
+                : conn.modulationTransformation,
               // modulationType should already be correct enum value if not raw
             }));
-
           }
         }
 
@@ -536,7 +561,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         // (Node conversion logic remains the same as before)
         if (Array.isArray(voice.nodes)) {
           // ... existing node conversion logic ...
-          const nodesByType: { [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[] } = {
+          const nodesByType: {
+            [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[];
+          } = {
             [VoiceNodeType.Oscillator]: [],
             [VoiceNodeType.WavetableOscillator]: [],
             [VoiceNodeType.Filter]: [],
@@ -552,6 +579,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.ArpeggiatorGenerator]: [],
             [VoiceNodeType.Chorus]: [],
             [VoiceNodeType.Limiter]: [],
+            [VoiceNodeType.Reverb]: [],
           };
 
           interface RawNode {
@@ -560,23 +588,43 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
           const convertNodeType = (raw: string): VoiceNodeType => {
             switch (raw) {
-              case 'analog_oscillator': return VoiceNodeType.Oscillator;
-              case 'filtercollection': return VoiceNodeType.Filter;
-              case 'envelope': return VoiceNodeType.Envelope;
-              case 'lfo': return VoiceNodeType.LFO;
-              case 'mixer': return VoiceNodeType.Mixer;
-              case 'noise_generator': return VoiceNodeType.Noise;
-              case 'global_frequency': return VoiceNodeType.GlobalFrequency;
-              case 'global_velocity': return VoiceNodeType.GlobalVelocity;
-              case 'wavetable_oscillator': return VoiceNodeType.WavetableOscillator;
-              case 'convolver': return VoiceNodeType.Convolver;
-              case 'delay': return VoiceNodeType.Delay;
-              case 'gatemixer': return VoiceNodeType.GateMixer;
-              case 'arpeggiator_generator': return VoiceNodeType.ArpeggiatorGenerator;
-              case 'chorus': return VoiceNodeType.Chorus;
-              case 'limiter': return VoiceNodeType.Limiter;
+              case 'analog_oscillator':
+                return VoiceNodeType.Oscillator;
+              case 'filtercollection':
+                return VoiceNodeType.Filter;
+              case 'envelope':
+                return VoiceNodeType.Envelope;
+              case 'lfo':
+                return VoiceNodeType.LFO;
+              case 'mixer':
+                return VoiceNodeType.Mixer;
+              case 'noise_generator':
+                return VoiceNodeType.Noise;
+              case 'global_frequency':
+                return VoiceNodeType.GlobalFrequency;
+              case 'global_velocity':
+                return VoiceNodeType.GlobalVelocity;
+              case 'wavetable_oscillator':
+                return VoiceNodeType.WavetableOscillator;
+              case 'convolver':
+                return VoiceNodeType.Convolver;
+              case 'delay':
+                return VoiceNodeType.Delay;
+              case 'gatemixer':
+                return VoiceNodeType.GateMixer;
+              case 'arpeggiator_generator':
+                return VoiceNodeType.ArpeggiatorGenerator;
+              case 'chorus':
+                return VoiceNodeType.Chorus;
+              case 'limiter':
+                return VoiceNodeType.Limiter;
+              case 'freeverb':
+                return VoiceNodeType.Reverb;
               default:
-                console.warn('$$$ Unknown node type in updateSynthLayout:', raw);
+                console.warn(
+                  '$$$ Unknown node type in updateSynthLayout:',
+                  raw,
+                );
                 return raw as VoiceNodeType; // Fallback, might cause issues
             }
           };
@@ -585,7 +633,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             // Ensure node ID is also a number
             const nodeIdNum = Number(rawNode.id);
             if (isNaN(nodeIdNum)) {
-              console.error(`updateSynthLayout: Invalid node ID "${rawNode.id}" found. Skipping node.`);
+              console.error(
+                `updateSynthLayout: Invalid node ID "${rawNode.id}" found. Skipping node.`,
+              );
               continue;
             }
             const type = convertNodeType(rawNode.node_type);
@@ -593,7 +643,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             if (nodesByType[type]) {
               nodesByType[type].push({ id: nodeIdNum, type });
             } else {
-              console.warn(`updateSynthLayout: Node type "${type}" derived from "${rawNode.node_type}" is not tracked in nodesByType. Skipping node.`);
+              console.warn(
+                `updateSynthLayout: Node type "${type}" derived from "${rawNode.node_type}" is not tracked in nodesByType. Skipping node.`,
+              );
             }
           }
           voice.nodes = nodesByType;
@@ -625,8 +677,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.deletedNodeIds.clear();
       console.log('--------- updateSynthLayout FINISHED ---------');
       // console.log('Processed synthLayout:', this.synthLayout); // Log final result if needed
-    }
-    ,
+    },
     updateOscillator(nodeId: number, state: OscillatorState) {
       this.oscillatorStates.set(nodeId, state);
       this.currentInstrument?.updateOscillatorState(nodeId, state);
@@ -665,20 +716,32 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       console.log('Current node state:');
 
       // For each node type, log the node IDs and their corresponding state
-      Object.values(VoiceNodeType).forEach(type => {
+      Object.values(VoiceNodeType).forEach((type) => {
         const nodes = getNodesOfType(voice, type) || [];
-        console.log(`${type} nodes:`, nodes.map(n => n.id));
+        console.log(
+          `${type} nodes:`,
+          nodes.map((n) => n.id),
+        );
 
         // Check if each node has corresponding state
         switch (type) {
           case VoiceNodeType.Oscillator:
-            console.log(`${type} states:`, Array.from(this.oscillatorStates.keys()));
+            console.log(
+              `${type} states:`,
+              Array.from(this.oscillatorStates.keys()),
+            );
             break;
           case VoiceNodeType.WavetableOscillator:
-            console.log(`${type} states:`, Array.from(this.wavetableOscillatorStates.keys()));
+            console.log(
+              `${type} states:`,
+              Array.from(this.wavetableOscillatorStates.keys()),
+            );
             break;
           case VoiceNodeType.Envelope:
-            console.log(`${type} states:`, Array.from(this.envelopeStates.keys()));
+            console.log(
+              `${type} states:`,
+              Array.from(this.envelopeStates.keys()),
+            );
             break;
           case VoiceNodeType.LFO:
             console.log(`${type} states:`, Array.from(this.lfoStates.keys()));
@@ -809,11 +872,12 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         // this.verifyOscillatorStates();
 
         // Wait for the WebAssembly to complete the deletion
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Force a sync with WebAssembly to get the latest state
         if (this.currentInstrument) {
-          const wasmStateJson = await this.currentInstrument.getWasmNodeConnections();
+          const wasmStateJson =
+            await this.currentInstrument.getWasmNodeConnections();
 
           if (wasmStateJson) {
             // Parse the WebAssembly state
@@ -822,57 +886,66 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             // IMPORTANT: Create deep clones of all state maps
             // Use JSON methods to ensure complete decoupling from original objects
             const savedOscillatorStates = new Map(
-              Array.from(this.oscillatorStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
+              Array.from(this.oscillatorStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
             );
 
             const savedWavetableOscillatorStates = new Map(
               Array.from(this.wavetableOscillatorStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
+                ([id, state]) => [id, JSON.parse(JSON.stringify(state))],
+              ),
             );
 
             const savedEnvelopeStates = new Map(
-              Array.from(this.envelopeStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
+              Array.from(this.envelopeStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
             );
 
             const savedLfoStates = new Map(
-              Array.from(this.lfoStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
+              Array.from(this.lfoStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
             );
 
             const savedFilterStates = new Map(
-              Array.from(this.filterStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
+              Array.from(this.filterStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
             );
 
             const savedDelayStates = new Map(
-              Array.from(this.delayStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
+              Array.from(this.delayStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
             );
 
             const savedConvolverStates = new Map(
-              Array.from(this.convolverStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
+              Array.from(this.convolverStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
             );
 
             const savedChorusStates = new Map(
-              Array.from(this.chorusStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))]
-              )
-            )
+              Array.from(this.chorusStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
+            );
 
             // DEBUG: Check saved oscillator states
             console.log('BEFORE SHIFTING: Saved oscillator states:');
             savedOscillatorStates.forEach((state, id) => {
-              console.log(`Oscillator ${id}: waveform=${state.waveform}, gain=${state.gain}`);
+              console.log(
+                `Oscillator ${id}: waveform=${state.waveform}, gain=${state.gain}`,
+              );
             });
 
             // Helper function to handle ID shifting
@@ -902,16 +975,21 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                   active: state.active,
                   unison_voices: state.unison_voices,
                   spread: state.spread,
-                  wave_index: state.wave_index
+                  wave_index: state.wave_index,
                 };
                 shiftedOscillatorStates.set(newId, newState);
-                console.log(`Shifted oscillator ${id} → ${newId}, waveform=${state.waveform} → ${newState.waveform}`);
+                console.log(
+                  `Shifted oscillator ${id} → ${newId}, waveform=${state.waveform} → ${newState.waveform}`,
+                );
               }
             });
 
             // Repeat pattern for each state type
             // Wavetable oscillators
-            const shiftedWavetableOscillatorStates = new Map<number, OscillatorState>();
+            const shiftedWavetableOscillatorStates = new Map<
+              number,
+              OscillatorState
+            >();
             savedWavetableOscillatorStates.forEach((state, id) => {
               if (id !== deletedNodeId) {
                 const newId = shiftNodeId(id);
@@ -930,7 +1008,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                   active: state.active,
                   unison_voices: state.unison_voices,
                   spread: state.spread,
-                  wave_index: state.wave_index
+                  wave_index: state.wave_index,
                 };
                 shiftedWavetableOscillatorStates.set(newId, newState);
               }
@@ -943,7 +1021,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 const newId = shiftNodeId(id);
                 shiftedEnvelopeStates.set(newId, {
                   ...state,
-                  id: newId
+                  id: newId,
                 });
               }
             });
@@ -954,7 +1032,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 const newId = shiftNodeId(id);
                 shiftedLfoStates.set(newId, {
                   ...state,
-                  id: newId
+                  id: newId,
                 });
               }
             });
@@ -965,7 +1043,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 const newId = shiftNodeId(id);
                 shiftedFilterStates.set(newId, {
                   ...state,
-                  id: newId
+                  id: newId,
                 });
               }
             });
@@ -976,7 +1054,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 const newId = shiftNodeId(id);
                 shiftedDelayStates.set(newId, {
                   ...state,
-                  id: newId
+                  id: newId,
                 });
               }
             });
@@ -987,7 +1065,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 const newId = shiftNodeId(id);
                 shiftedChorusStates.set(newId, {
                   ...state,
-                  id: newId
+                  id: newId,
                 });
               }
             });
@@ -998,7 +1076,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 const newId = shiftNodeId(id);
                 shiftedConvolverStates.set(newId, {
                   ...state,
-                  id: newId
+                  id: newId,
                 });
               }
             });
@@ -1006,7 +1084,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             // DEBUG: Check shifted oscillator states
             console.log('AFTER SHIFTING: New oscillator states:');
             shiftedOscillatorStates.forEach((state, id) => {
-              console.log(`Oscillator ${id}: waveform=${state.waveform}, gain=${state.gain}`);
+              console.log(
+                `Oscillator ${id}: waveform=${state.waveform}, gain=${state.gain}`,
+              );
             });
 
             // Temporarily set synthLayout to null to force reactivity
@@ -1064,16 +1144,23 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
 
       // Get all oscillator nodes from the layout
-      const analogOscillators = getNodesOfType(voice, VoiceNodeType.Oscillator) || [];
+      const analogOscillators =
+        getNodesOfType(voice, VoiceNodeType.Oscillator) || [];
 
-      console.log(`Found ${analogOscillators.length} analog oscillators in layout`);
-      console.log(`Found ${this.oscillatorStates.size} oscillator states in store`);
+      console.log(
+        `Found ${analogOscillators.length} analog oscillators in layout`,
+      );
+      console.log(
+        `Found ${this.oscillatorStates.size} oscillator states in store`,
+      );
 
       // Check each oscillator node against its stored state
-      analogOscillators.forEach(osc => {
+      analogOscillators.forEach((osc) => {
         const state = this.oscillatorStates.get(osc.id);
         if (state) {
-          console.log(`Oscillator ${osc.id}: waveform=${state.waveform}, gain=${state.gain}`);
+          console.log(
+            `Oscillator ${osc.id}: waveform=${state.waveform}, gain=${state.gain}`,
+          );
         } else {
           console.log(`Oscillator ${osc.id}: NO STATE FOUND`);
         }
@@ -1081,9 +1168,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // Check for any orphaned states (states without nodes)
       this.oscillatorStates.forEach((state, id) => {
-        const node = analogOscillators.find(n => n.id === id);
+        const node = analogOscillators.find((n) => n.id === id);
         if (!node) {
-          console.log(`Orphaned state for oscillator ${id}: waveform=${state.waveform}`);
+          console.log(
+            `Orphaned state for oscillator ${id}: waveform=${state.waveform}`,
+          );
         }
       });
     },
@@ -1094,25 +1183,34 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       // Apply analog oscillator states
       // In applyPreservedStatesToWasm
       this.oscillatorStates.forEach((state, nodeId) => {
-        console.log('Reapplying analog oscillator state for node', nodeId, state);
+        console.log(
+          'Reapplying analog oscillator state for node',
+          nodeId,
+          state,
+        );
         // Log the specific waveform value to verify it's being passed correctly
-        console.log(`## Oscillator ${nodeId} waveform value being reapplied: ${state.waveform}`);
+        console.log(
+          `## Oscillator ${nodeId} waveform value being reapplied: ${state.waveform}`,
+        );
         this.currentInstrument?.updateOscillatorState(nodeId, {
           ...state,
           id: nodeId,
           // Explicitly ensure waveform is preserved
-          waveform: state.waveform
+          waveform: state.waveform,
         });
-
       });
 
       // Apply wavetable oscillator states (with proper type conversion)
       this.wavetableOscillatorStates.forEach((state, nodeId) => {
-        console.log('Reapplying wavetable oscillator state for node', nodeId, state);
+        console.log(
+          'Reapplying wavetable oscillator state for node',
+          nodeId,
+          state,
+        );
         this.currentInstrument?.updateWavetableOscillatorState(nodeId, {
           ...state,
           // Ensure ID is consistent
-          id: nodeId
+          id: nodeId,
         });
       });
 
@@ -1121,7 +1219,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         console.log('Reapplying envelope state for node', nodeId, state);
         this.currentInstrument?.updateEnvelopeState(nodeId, {
           ...state,
-          id: nodeId
+          id: nodeId,
         });
       });
 
@@ -1149,7 +1247,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         console.log('Reapplying filter state for node', nodeId, state);
         this.currentInstrument?.updateFilterState(nodeId, {
           ...state,
-          id: nodeId
+          id: nodeId,
         });
       });
 
@@ -1159,7 +1257,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         if (this.currentInstrument?.updateConvolverState) {
           this.currentInstrument.updateConvolverState(nodeId, {
             ...state,
-            id: nodeId
+            id: nodeId,
           });
         }
       });
@@ -1170,7 +1268,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         if (this.currentInstrument?.updateDelayState) {
           this.currentInstrument.updateDelayState(nodeId, {
             ...state,
-            id: nodeId
+            id: nodeId,
           });
         }
       });
@@ -1180,10 +1278,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         if (this.currentInstrument?.updateChorusState) {
           this.currentInstrument.updateChorusState(nodeId, {
             ...state,
-            id: nodeId
+            id: nodeId,
           });
         }
-      })
+      });
     },
     // Add this method to initialize default states
     initializeDefaultStates() {
@@ -1193,8 +1291,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       if (!voice) return;
 
       // Initialize oscillator states
-      const analogOscillators = getNodesOfType(voice, VoiceNodeType.Oscillator) || [];
-      analogOscillators.forEach(osc => {
+      const analogOscillators =
+        getNodesOfType(voice, VoiceNodeType.Oscillator) || [];
+      analogOscillators.forEach((osc) => {
         if (!this.oscillatorStates.has(osc.id)) {
           this.oscillatorStates.set(osc.id, {
             id: osc.id,
@@ -1217,8 +1316,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       });
 
       // Initialize wavetable oscillator states
-      const wavetableOscillators = getNodesOfType(voice, VoiceNodeType.WavetableOscillator) || [];
-      wavetableOscillators.forEach(osc => {
+      const wavetableOscillators =
+        getNodesOfType(voice, VoiceNodeType.WavetableOscillator) || [];
+      wavetableOscillators.forEach((osc) => {
         if (!this.wavetableOscillatorStates.has(osc.id)) {
           this.wavetableOscillatorStates.set(osc.id, {
             id: osc.id,
@@ -1242,7 +1342,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // Initialize envelope states
       const envelopes = getNodesOfType(voice, VoiceNodeType.Envelope) || [];
-      envelopes.forEach(env => {
+      envelopes.forEach((env) => {
         if (!this.envelopeStates.has(env.id)) {
           this.envelopeStates.set(env.id, {
             id: env.id,
@@ -1260,7 +1360,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // Initialize LFO states
       const lfos = getNodesOfType(voice, VoiceNodeType.LFO) || [];
-      lfos.forEach(lfo => {
+      lfos.forEach((lfo) => {
         if (!this.lfoStates.has(lfo.id)) {
           this.lfoStates.set(lfo.id, {
             id: lfo.id,
@@ -1281,7 +1381,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // First, add the filter initialization to the initializeDefaultStates method
       const filters = getNodesOfType(voice, VoiceNodeType.Filter) || [];
-      filters.forEach(filter => {
+      filters.forEach((filter) => {
         if (!this.filterStates.has(filter.id)) {
           this.filterStates.set(filter.id, {
             id: filter.id,
@@ -1298,9 +1398,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           });
         }
       });
-
-    }
-    ,
+    },
     async setupAudio() {
       if (this.audioSystem) {
         this.currentInstrument = new Instrument(
