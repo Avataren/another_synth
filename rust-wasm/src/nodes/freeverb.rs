@@ -37,7 +37,7 @@ impl CombFilter {
     pub fn process(&mut self, input: f32) -> f32 {
         let output = self.buffer[self.index];
         // One-pole lowpass for internal damping.
-        self.filter_store = output * self.damp1 + self.filter_store * self.damp2;
+        self.filter_store = output * self.damp2 + self.filter_store * self.damp1;
         // Write back new input plus feedback.
         self.buffer[self.index] = input + self.filter_store * self.feedback;
         self.index = (self.index + 1) % self.buffer_size;
@@ -296,26 +296,27 @@ impl AudioNode for Freeverb {
         let out_left: &mut [f32] = *out_left;
         let out_right: &mut [f32] = *out_right;
 
-        // Choose a block size (must be <= 4 to match our SIMD vector width).
+        // Fixed gain constant to scale down each channel.
+        let fixed_gain = 0.015;
+
         let simd_block = 4;
         let mut i = 0;
         while i < buffer_size {
-            // Process either a full block or the remaining samples.
             let block_size = if buffer_size - i >= simd_block {
                 simd_block
             } else {
                 buffer_size - i
             };
 
-            // Temporary storage for each block’s reverb outputs.
             let mut temp_reverb_l = [0.0f32; 4];
             let mut temp_reverb_r = [0.0f32; 4];
 
-            // Process each sample in this block (filters must be updated sequentially)
+            // Process per sample in the current block.
             for j in 0..block_size {
                 let idx = i + j;
-                let input_l = left_in[idx];
-                let input_r = right_in[idx];
+                // Apply fixed gain to each channel separately.
+                let input_l = left_in[idx] * fixed_gain;
+                let input_r = right_in[idx] * fixed_gain;
 
                 // --- Comb Filter Processing for Left Channel ---
                 let c0 = self.comb_filters_l[0].process(input_l);
@@ -352,35 +353,31 @@ impl AudioNode for Freeverb {
                 for ap in self.allpass_filters_r.iter_mut() {
                     reverb_r = ap.process(reverb_r);
                 }
-                temp_reverb_l[j] = reverb_l;
-                temp_reverb_r[j] = reverb_r;
+
+                // --- Apply phase decorrelation to the reverb outputs ---
+                let phase_shift = 0.02;
+                let new_reverb_r = reverb_r + reverb_l * phase_shift;
+                let new_reverb_l = reverb_l - new_reverb_r * phase_shift;
+                temp_reverb_l[j] = new_reverb_l;
+                temp_reverb_r[j] = new_reverb_r;
             }
 
-            // --- Final Mixing using SIMD if we processed a full block ---
+            // --- Final Mixing of Dry and Wet Signals ---
             if block_size == simd_block {
-                // Load the block of input (dry) samples using `from_slice`
                 let in_left_block = f32x4::from_slice(&left_in[i..i + simd_block]);
                 let in_right_block = f32x4::from_slice(&right_in[i..i + simd_block]);
                 let dry_left = in_left_block * f32x4::splat(self.dry);
                 let dry_right = in_right_block * f32x4::splat(self.dry);
-
-                // Load the temporary reverb block into SIMD vectors.
                 let reverb_l_vec = f32x4::from_array(temp_reverb_l);
                 let reverb_r_vec = f32x4::from_array(temp_reverb_r);
                 let wet1_vec = f32x4::splat(self.wet1);
                 let wet2_vec = f32x4::splat(self.wet2);
 
-                // Compute the mixed outputs:
-                // Left: dry + wet1*reverb_left + wet2*reverb_right
-                // Right: dry + wet1*reverb_right + wet2*reverb_left
                 let mixed_left = dry_left + wet1_vec * reverb_l_vec + wet2_vec * reverb_r_vec;
                 let mixed_right = dry_right + wet1_vec * reverb_r_vec + wet2_vec * reverb_l_vec;
-
-                // Store the results back to the output slices.
                 mixed_left.copy_to_slice(&mut out_left[i..i + simd_block]);
                 mixed_right.copy_to_slice(&mut out_right[i..i + simd_block]);
             } else {
-                // For a partial (tail) block, do scalar mixing.
                 for j in 0..block_size {
                     let idx = i + j;
                     let dry_l = left_in[idx] * self.dry;
