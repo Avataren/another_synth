@@ -866,6 +866,18 @@ var AudioEngine = class {
   /**
    * @param {number} node_id
    * @param {boolean} active
+   * @param {number} room_size
+   * @param {number} damp
+   * @param {number} wet
+   * @param {number} dry
+   * @param {number} width
+   */
+  update_reverb(node_id, active, room_size, damp, wet, dry, width) {
+    wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
+  }
+  /**
+   * @param {number} node_id
+   * @param {boolean} active
    * @param {number} base_delay_ms
    * @param {number} depth_ms
    * @param {number} lfo_rate_hz
@@ -2043,6 +2055,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateChorus":
         this.handleUpdateChorus(event.data);
         break;
+      case "updateReverb":
+        this.handleUpdateReverb(event.data);
+        break;
       case "cpuUsage":
         this.handleCpuUsage();
         break;
@@ -2438,6 +2453,18 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.state.feedback_filter,
       data.state.mix,
       data.state.stereoPhaseOffsetDeg
+    );
+  }
+  handleUpdateReverb(data) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_reverb(
+      data.nodeId,
+      data.state.active,
+      data.state.room_size,
+      data.state.damp,
+      data.state.wet,
+      data.state.dry,
+      data.state.width
     );
   }
   handleUpdateFilter(data) {

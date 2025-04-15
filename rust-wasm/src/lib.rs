@@ -426,7 +426,7 @@ impl AudioEngine {
         self.voices = (0..num_voices).map(Voice::new).collect();
         self.add_chorus().unwrap();
         self.add_delay(2000.0, 500.0, 0.5, 0.1).unwrap();
-        self.add_freeverb(0.8, 0.5, 0.3, 0.7, 1.0).unwrap();
+        self.add_freeverb(0.95, 0.5, 0.3, 0.7, 1.0).unwrap();
         self.add_plate_reverb(2.0, 0.6, sample_rate).unwrap();
         self.add_limiter().unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
@@ -1425,6 +1425,41 @@ impl AudioEngine {
     }
 
     #[wasm_bindgen]
+    pub fn update_reverb(
+        &mut self,
+        node_id: usize,
+        active: bool,
+        room_size: f32,
+        damp: f32,
+        wet: f32,
+        dry: f32,
+        width: f32,
+    ) {
+        let effect_id = node_id - EFFECT_NODE_ID_OFFSET;
+
+        // Try to get a mutable reference to the effect at that index.
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_id) {
+            // Attempt to downcast the boxed AudioNode to a Convolver.
+            if let Some(reverb) = effect.node.as_any_mut().downcast_mut::<Freeverb>() {
+                reverb.set_room_size(room_size);
+                reverb.set_damp(damp);
+                reverb.set_wet(wet);
+                reverb.set_dry(dry);
+                reverb.set_width(width);
+                reverb.set_active(active);
+            } else {
+                // Log a warning if the node at that index isn't a Convolver.
+                web_sys::console::log_1(
+                    &format!("Effect at index {} is not a reverb", effect_id).into(),
+                );
+            }
+        } else {
+            // Log a warning if there is no effect at that index.
+            web_sys::console::log_1(&format!("No effect found at index {}", effect_id).into());
+        }
+    }
+
+    #[wasm_bindgen]
     pub fn update_chorus(
         &mut self,
         node_id: usize,
@@ -1454,7 +1489,7 @@ impl AudioEngine {
             } else {
                 // Log a warning if the node at that index isn't a Convolver.
                 web_sys::console::log_1(
-                    &format!("Effect at index {} is not a Delay", effect_id).into(),
+                    &format!("Effect at index {} is not a chorus", effect_id).into(),
                 );
             }
         } else {

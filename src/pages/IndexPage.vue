@@ -176,6 +176,14 @@
             />
           </div>
 
+          <generic-tab-container
+            v-if="reverbNodes.length"
+            :nodes="reverbNodes"
+            :destinationNode="destinationNode"
+            :componentName="ReverbComponent"
+            nodeLabel="CReverb"
+          />
+
           <!-- Convolver -->
           <generic-tab-container
             v-if="convolverNodes.length"
@@ -240,7 +248,7 @@ import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
 import FilterComponent from 'src/components/FilterComponent.vue';
 import DelayComponent from 'src/components/DelayComponent.vue';
 import ConvolverComponent from 'src/components/ConvolverComponent.vue';
-
+import ReverbComponent from 'src/components/ReverbComponent.vue';
 // Generic Tab Container
 import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 
@@ -303,6 +311,11 @@ const delayNodes = computed(() => {
 
 const chorusNodes = computed(() => {
   const nodes = store.getVoiceNodes(0, VoiceNodeType.Chorus);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const reverbNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Reverb);
   return Array.isArray(nodes) ? nodes : [];
 });
 

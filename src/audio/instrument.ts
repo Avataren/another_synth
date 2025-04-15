@@ -10,6 +10,7 @@ import type {
   ConvolverState,
   DelayState,
   EnvelopeConfig,
+  ReverbState,
   VelocityState,
 } from './types/synth-layout';
 import {
@@ -105,6 +106,14 @@ export default class Instrument {
     });
   }
 
+  public updateReverbState(nodeId: number, state: ReverbState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateReverb',
+      nodeId: nodeId,
+      state: state,
+    });
+  }
 
   public updateChorusState(nodeId: number, state: ChorusState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;

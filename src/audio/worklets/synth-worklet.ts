@@ -6,6 +6,7 @@ import type {
   EnvelopeConfig,
   RawConnection,
   RawVoice,
+  ReverbState,
   VelocityState,
   WasmState,
 } from '../types/synth-layout';
@@ -241,6 +242,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'updateChorus':
         this.handleUpdateChorus(event.data);
+        break;
+      case 'updateReverb':
+        this.handleUpdateReverb(event.data);
         break;
       case 'cpuUsage':
         this.handleCpuUsage();
@@ -776,6 +780,23 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.state.feedback_filter,
       data.state.mix,
       data.state.stereoPhaseOffsetDeg,
+    );
+  }
+
+  private handleUpdateReverb(data: {
+    type: string;
+    nodeId: number;
+    state: ReverbState;
+  }) {
+    if (!this.audioEngine) return;
+    this.audioEngine.update_reverb(
+      data.nodeId,
+      data.state.active,
+      data.state.room_size,
+      data.state.damp,
+      data.state.wet,
+      data.state.dry,
+      data.state.width
     );
   }
 

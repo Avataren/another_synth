@@ -790,6 +790,18 @@ export class AudioEngine {
     /**
      * @param {number} node_id
      * @param {boolean} active
+     * @param {number} room_size
+     * @param {number} damp
+     * @param {number} wet
+     * @param {number} dry
+     * @param {number} width
+     */
+    update_reverb(node_id, active, room_size, damp, wet, dry, width) {
+        wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
+    }
+    /**
+     * @param {number} node_id
+     * @param {boolean} active
      * @param {number} base_delay_ms
      * @param {number} depth_ms
      * @param {number} lfo_rate_hz

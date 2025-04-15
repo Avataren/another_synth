@@ -25,6 +25,16 @@ export enum VoiceNodeType {
   Reverb = 'freeverb',
 }
 
+export interface ReverbState {
+  id: number;
+  active: boolean;
+  room_size: number,
+  damp: number,
+  wet: number,
+  dry: number,
+  width: number,
+}
+
 export interface ChorusState {
   /** Unique identifier for this chorus node instance. */
   id: number;

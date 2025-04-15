@@ -8,6 +8,7 @@ import type {
   ConvolverState,
   DelayState,
   EnvelopeConfig,
+  ReverbState,
   VelocityState,
 } from 'src/audio/types/synth-layout';
 import {
@@ -106,6 +107,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     filterStates: new Map<number, FilterState>(),
     lfoStates: new Map<number, LfoState>(),
     chorusStates: new Map<number, ChorusState>(),
+    reverbStates: new Map<number, ReverbState>(),
     isUpdatingFromWasm: false,
     isUpdating: false,
     updateQueue: [] as NodeConnectionUpdate[],
@@ -171,24 +173,24 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-      (voiceIndex: number, nodeId: number): NodeConnection[] => {
-        if (!state.synthLayout) return [];
-        const voice = state.synthLayout.voices[voiceIndex];
-        if (!voice) return [];
-        return voice.connections.filter(
-          (conn) => conn.fromId === nodeId || conn.toId === nodeId,
-        );
-      },
+        (voiceIndex: number, nodeId: number): NodeConnection[] => {
+          if (!state.synthLayout) return [];
+          const voice = state.synthLayout.voices[voiceIndex];
+          if (!voice) return [];
+          return voice.connections.filter(
+            (conn) => conn.fromId === nodeId || conn.toId === nodeId,
+          );
+        },
     getNodeConnections:
       (state) =>
-      (nodeId: number): NodeConnection[] => {
-        if (!state.synthLayout) return [];
-        const voice = state.synthLayout.voices[0]; // Only look at voice 0
-        if (!voice) return [];
-        return voice.connections.filter(
-          (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
-        );
-      },
+        (nodeId: number): NodeConnection[] => {
+          if (!state.synthLayout) return [];
+          const voice = state.synthLayout.voices[0]; // Only look at voice 0
+          if (!voice) return [];
+          return voice.connections.filter(
+            (conn) => conn.fromId === nodeId || conn.toId === nodeId, // Show both incoming and outgoing
+          );
+        },
 
     // getNodeConnections:
     //   (state) =>
