@@ -424,7 +424,7 @@ mod tests {
         });
         let mut buf = vec![0.0f32; BS];
         let inputs = FxHashMap::default();
-        let mut peak = 0.0;
+        let mut peak: f32 = 0.0;
         for _ in 0..LOOPS {
             let mut outs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
             outs.insert(PortId::AudioOutput0, &mut buf);

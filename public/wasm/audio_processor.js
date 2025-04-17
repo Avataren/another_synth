@@ -1436,7 +1436,7 @@ const NoiseUpdateFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_noiseupdate_free(ptr >>> 0, 1));
 /**
- * Structure for external updates (e.g., from UI or automation).
+ * External update struct (e.g. from UI).
  */
 export class NoiseUpdate {
 
