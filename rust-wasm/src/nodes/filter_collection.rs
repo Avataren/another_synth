@@ -100,6 +100,7 @@ pub struct FilterCollection {
     biquad: Biquad,
     cascaded: Option<CascadedBiquad>,
     ladder_stages: [f32; 4],
+    ladder_outputs: [f32; 4],
 
     comb_buffer: Vec<f32>,
     comb_buffer_index: usize,
@@ -159,6 +160,7 @@ impl FilterCollection {
             ),
             cascaded: None,
             ladder_stages: [0.0; 4],
+            ladder_outputs: [0.0; 4],
             comb_buffer: vec![0.0; *MAX_COMB_BUFFER_SIZE],
             comb_buffer_index: 0,
             comb_last_output: 0.0,
@@ -328,6 +330,7 @@ impl FilterCollection {
         if let Some(ref mut cascaded) = self.cascaded {
             cascaded.reset();
         }
+        self.ladder_outputs.fill(0.0);
         self.ladder_stages.fill(0.0);
         self.comb_buffer.fill(0.0);
         self.comb_buffer_index = 0;
@@ -346,59 +349,66 @@ impl FilterCollection {
         res_comp: f32,
         sample_rate: f32,
     ) -> f32 {
-        // --- Aggressive Drive Saturation ---
-        // Apply a gain and then saturate the input with tanh.
-        let drive_gain = 1.0 + drive * 4.0;
-        // KEEP saturation here for input drive character
-        let driven_input = fast_tanh(input * drive_gain);
-
         // --- Parameter Calculation ---
         let effective_cutoff = cutoff.clamp(10.0, sample_rate * SAFE_NYQUIST_FACTOR);
         let wc = PI * effective_cutoff / sample_rate;
         let g = (wc * 0.5).tan(); // TPT pre-warping
 
         // --- Resonance & Compensation ---
-        // Optionally, curve the resonance parameter (exponent 1.5) for a steeper response.
         let k_resonance = resonance_norm.clamp(0.0, 1.0);
+        // Moog resonance often goes up to 4x feedback
         let k = k_resonance.powf(1.5) * 4.0; // Enhanced resonance scaling
+                                             // Compensation applied to the input signal path
         let comp_gain = 1.0 / (1.0 + res_comp * k);
 
+        // --- Drive ---
+        // Drive is applied as a gain *before* the tanh per stage
+        let drive_gain = 1.0 + drive * 4.0; // Scaling for drive
+
         // --- State & Feedback ---
-        // Retrieve the current states of the four ladder stages.
+        // Get previous saturated outputs
         let s0 = self.ladder_stages[0];
         let s1 = self.ladder_stages[1];
         let s2 = self.ladder_stages[2];
         let s3 = self.ladder_stages[3];
 
-        // Apply saturation ONLY to the feedback signal source (s3).
-        // KEEP saturation here for feedback loop nonlinearity
-        let feedback = k * fast_tanh(s3);
+        // Feedback comes from the previous sample's *saturated output* of the last stage
+        let feedback = k * self.ladder_outputs[3]; // Use ladder_outputs[3]
 
-        // --- Input to First Stage ---
-        // Combine the driven input (with gain compensation) with the feedback.
-        // REMOVED tanh from here: No longer saturating the combined input signal.
-        let stage_input = (driven_input * comp_gain) - feedback;
+        // --- Per-Stage Processing with Saturation ---
 
-        // --- TPT Stage Calculations WITHOUT Additional Nonlinearity ---
-        // REMOVED tanh from the input to each stage calculation (stage_input, y0, y1, y2).
-        // The filtering action itself is now linear, relying on the TPT structure.
-        let y0 = (s0 + g * stage_input) / (1.0 + g);
-        let y1 = (s1 + g * y0) / (1.0 + g);
-        let y2 = (s2 + g * y1) / (1.0 + g);
-        let y3 = (s3 + g * y2) / (1.0 + g);
+        // Stage 0
+        let input0 = input * comp_gain - feedback; // Input signal * compensation - feedback
+        let v0_linear_out = (s0 + g * input0) / (1.0 + g); // Linear TPT calculation
+        let y0_saturated = fast_tanh(v0_linear_out * drive_gain); // Saturate and apply drive
+        self.ladder_stages[0] = 2.0 * v0_linear_out - s0; // Update state based on linear output
 
-        // REMOVED final output tanh. The output is the direct result of the last stage.
-        let output = y3;
+        // Stage 1
+        let input1 = y0_saturated; // Input is the saturated output of the previous stage
+        let v1_linear_out = (s1 + g * input1) / (1.0 + g);
+        let y1_saturated = fast_tanh(v1_linear_out * drive_gain);
+        self.ladder_stages[1] = 2.0 * v1_linear_out - s1;
 
-        // --- Update Stage States (Integrators) ---
-        // New state is computed using the trapezoidal (TPT) method.
-        self.ladder_stages[0] = 2.0 * y0 - s0;
-        self.ladder_stages[1] = 2.0 * y1 - s1;
-        self.ladder_stages[2] = 2.0 * y2 - s2;
-        self.ladder_stages[3] = 2.0 * y3 - s3;
+        // Stage 2
+        let input2 = y1_saturated;
+        let v2_linear_out = (s2 + g * input2) / (1.0 + g);
+        let y2_saturated = fast_tanh(v2_linear_out * drive_gain);
+        self.ladder_stages[2] = 2.0 * v2_linear_out - s2;
+
+        // Stage 3
+        let input3 = y2_saturated;
+        let v3_linear_out = (s3 + g * input3) / (1.0 + g);
+        let y3_saturated = fast_tanh(v3_linear_out * drive_gain); // Final stage output
+        self.ladder_stages[3] = 2.0 * v3_linear_out - s3;
+
+        // --- Store Saturated Outputs for Next Sample ---
+        // self.ladder_outputs[0] = y0_saturated; // Only need the last one for feedback
+        // self.ladder_outputs[1] = y1_saturated;
+        // self.ladder_outputs[2] = y2_saturated;
+        self.ladder_outputs[3] = y3_saturated; // Store the final saturated output
 
         // --- Return Filter Output ---
-        output
+        y3_saturated // Output is the saturated result of the last stage
     }
 
     #[inline(always)]
