@@ -289,7 +289,7 @@ impl AudioNode for Freeverb {
                 static ZERO_BUFFER: [f32; 1024] = [0.0; 1024];
                 &ZERO_BUFFER[..buffer_size.min(ZERO_BUFFER.len())]
             });
-        let outs = outputs.get_many_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);
+        let outs = outputs.get_disjoint_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);
         let [Some(out_left), Some(out_right)] = outs else {
             panic!("Missing stereo output buffers");
         };

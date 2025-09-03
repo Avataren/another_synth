@@ -147,271 +147,208 @@ impl Limiter {
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        // --- Basic Sanity Checks & Output Buffer Handling ---
         if buffer_size == 0 {
             return;
         }
+
+        // Borrow both outputs at once (non-overlapping)
+        let [mut l_opt, mut r_opt] =
+            outputs.get_disjoint_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);
+
+        // Handle missing outputs with early returns (reborrow via as_deref_mut)
+        if l_opt.is_none() && r_opt.is_none() {
+            eprintln!("Limiter Error: Missing both outputs");
+            return;
+        }
+        if let (Some(l), None) = (l_opt.as_deref_mut(), r_opt.as_deref_mut()) {
+            eprintln!("Limiter Error: Missing AudioOutput1");
+            let fill_len = buffer_size.min(l.len());
+            l[..fill_len].fill(0.0);
+            return;
+        }
+        if let (None, Some(r)) = (l_opt.as_deref_mut(), r_opt.as_deref_mut()) {
+            eprintln!("Limiter Error: Missing AudioOutput0");
+            let fill_len = buffer_size.min(r.len());
+            r[..fill_len].fill(0.0);
+            return;
+        }
+
+        // From here both exist; reborrow as &mut [f32] without moving
+        let out_left_full:  &mut [f32] = l_opt.as_deref_mut().unwrap();
+        let out_right_full: &mut [f32] = r_opt.as_deref_mut().unwrap();
+
+
+        // Guard: oversize buffer_size → zero the available and bail
         if buffer_size > MAX_PROCESS_BUFFER_SIZE {
             eprintln!(
                 "Limiter Error: process buffer_size ({}) exceeds MAX_PROCESS_BUFFER_SIZE ({}). Zeroing output.",
                 buffer_size, MAX_PROCESS_BUFFER_SIZE
             );
-            // --- FIX 1 & 2 Applied ---
-            if let Some(out_l) = outputs.get_mut(&PortId::AudioOutput0) {
-                let len = out_l.len(); // Calculate len first
-                let fill_len = buffer_size.min(len);
-                out_l[..fill_len].fill(0.0); // Use calculated len
-            }
-            if let Some(out_r) = outputs.get_mut(&PortId::AudioOutput1) {
-                let len = out_r.len(); // Calculate len first
-                let fill_len = buffer_size.min(len);
-                out_r[..fill_len].fill(0.0); // Use calculated len
-            }
+            let fill_l = buffer_size.min(out_left_full.len());
+            let fill_r = buffer_size.min(out_right_full.len());
+            out_left_full[..fill_l].fill(0.0);
+            out_right_full[..fill_r].fill(0.0);
             return;
         }
 
-        let out_left_ptr: *mut [f32] = match outputs.get_mut(&PortId::AudioOutput0) {
-            Some(slice_ref_mut) => *slice_ref_mut as *mut [f32],
-            None => {
-                eprintln!("Limiter Error: Missing AudioOutput0");
-                // --- FIX 3 Applied ---
-                if let Some(out_r) = outputs.get_mut(&PortId::AudioOutput1) {
-                    let len = out_r.len(); // Calculate len first
-                    let fill_len = buffer_size.min(len);
-                    out_r[..fill_len].fill(0.0); // Use calculated len
-                }
-                return;
-            }
-        };
-        let out_right: &mut [f32] = match outputs.get_mut(&PortId::AudioOutput1) {
-            Some(slice_ref_mut) => slice_ref_mut,
-            None => {
-                eprintln!("Limiter Error: Missing AudioOutput1");
-                // --- FIX 4 Applied ---
-                unsafe {
-                    let out_left_slice = &mut *out_left_ptr;
-                    let len = out_left_slice.len(); // Calculate len first
-                    let fill_len = buffer_size.min(len);
-                    out_left_slice[..fill_len].fill(0.0); // Use calculated len
-                }
-                return;
-            }
-        };
-
-        // --- Handle Disabled State (Passthrough) ---
-        if !self.enabled {
-            let left_in_slice = inputs
-                .get(&PortId::AudioInput0)
-                .and_then(|v| v.first())
-                .map_or(&ZERO_BUFFER[..buffer_size], |s| s.buffer.as_slice());
-            let right_in_slice = inputs
-                .get(&PortId::AudioInput1)
-                .and_then(|v| v.first())
-                .map_or(left_in_slice, |s| s.buffer.as_slice());
-            unsafe {
-                let out_left = &mut *out_left_ptr;
-                // Calculate lengths first
-                let len_l = out_left.len();
-                let len_r = out_right.len();
-                let in_len_l = left_in_slice.len();
-                let in_len_r = right_in_slice.len();
-                let proc_len = buffer_size
-                    .min(in_len_l)
-                    .min(in_len_r)
-                    .min(len_l)
-                    .min(len_r);
-
-                if proc_len > 0 {
-                    out_left[..proc_len].copy_from_slice(&left_in_slice[..proc_len]);
-                    out_right[..proc_len].copy_from_slice(&right_in_slice[..proc_len]);
-                }
-                // Zero remaining parts using calculated lengths
-                if proc_len < len_l {
-                    out_left[proc_len..len_l].fill(0.0);
-                }
-                if proc_len < len_r {
-                    out_right[proc_len..len_r].fill(0.0);
-                }
-            }
-            return;
-        }
-
-        // --- Get Input Buffers & Determine Process Length ---
+        // Inputs
         let left_in_slice = inputs
             .get(&PortId::AudioInput0)
             .and_then(|v| v.first())
             .map_or(&ZERO_BUFFER[..buffer_size], |s| s.buffer.as_slice());
+
         let right_in_slice = inputs
             .get(&PortId::AudioInput1)
             .and_then(|v| v.first())
             .map_or(left_in_slice, |s| s.buffer.as_slice());
-        let process_len = {
-            let len_l = unsafe { (*out_left_ptr).len() };
-            let len_r = out_right.len();
-            let in_len_l = left_in_slice.len();
-            let in_len_r = right_in_slice.len();
-            buffer_size
-                .min(len_l)
-                .min(len_r)
-                .min(in_len_l)
-                .min(in_len_r)
-        };
-        if process_len == 0 {
-            // Zero outputs safely if process_len is 0
-            unsafe {
-                let out_left = &mut *out_left_ptr;
-                let len_l = out_left.len();
-                let fill_len_l = len_l.min(buffer_size); // Recalculate fill length based on buffer_size request
-                out_left[..fill_len_l].fill(0.0);
 
-                let len_r = out_right.len();
-                let fill_len_r = len_r.min(buffer_size);
-                out_right[..fill_len_r].fill(0.0);
+        // Work length
+        let process_len = buffer_size
+            .min(out_left_full.len())
+            .min(out_right_full.len())
+            .min(left_in_slice.len())
+            .min(right_in_slice.len());
+
+        // Disabled passthrough: copy in→out, zero tail if any
+        if !self.enabled {
+            if process_len > 0 {
+                out_left_full[..process_len].copy_from_slice(&left_in_slice[..process_len]);
+                out_right_full[..process_len].copy_from_slice(&right_in_slice[..process_len]);
+            }
+            if process_len < out_left_full.len() {
+                out_left_full[process_len..].fill(0.0);
+            }
+            if process_len < out_right_full.len() {
+                out_right_full[process_len..].fill(0.0);
             }
             return;
         }
+
+        if process_len == 0 {
+            // Nothing to do; zero up to requested buffer_size if there’s space
+            let fill_l = buffer_size.min(out_left_full.len());
+            let fill_r = buffer_size.min(out_right_full.len());
+            if fill_l > 0 { out_left_full[..fill_l].fill(0.0); }
+            if fill_r > 0 { out_right_full[..fill_r].fill(0.0); }
+            return;
+        }
+
         let left_in = &left_in_slice[..process_len];
         let right_in = &right_in_slice[..process_len];
+        let (out_left, out_right) = (
+            &mut out_left_full[..process_len],
+            &mut out_right_full[..process_len],
+        );
 
-        // --- Get Output Slices ---
-        let (out_left, out_right) = unsafe {
-            (
-                &mut (*out_left_ptr)[..process_len],
-                &mut out_right[..process_len],
-            )
-        };
+        // --- Core limiter state pulled into locals ---
+        let threshold_lin = self.current_threshold_linear;
+        let attack_c = self.attack_coeff;
+        let release_c = self.release_coeff;
+        let stereo_link = self.target_stereo_link;
 
-        // --- Core Limiter Processing Loop ---
-        {
-            // ... (Core limiter logic remains the same) ...
-            let threshold_lin = self.current_threshold_linear;
-            let attack_c = self.attack_coeff;
-            let release_c = self.release_coeff;
-            let stereo_link = self.target_stereo_link;
+        let mut envelope_l = self.envelope_l;
+        let mut envelope_r = self.envelope_r;
+        let mut gain_reduction_l = self.gain_reduction_l;
+        let mut gain_reduction_r = self.gain_reduction_r;
 
-            let mut envelope_l = self.envelope_l;
-            let mut envelope_r = self.envelope_r;
-            let mut gain_reduction_l = self.gain_reduction_l;
-            let mut gain_reduction_r = self.gain_reduction_r;
+        let lookahead_buf_l = &mut self.lookahead_buffer_l;
+        let lookahead_buf_r = &mut self.lookahead_buffer_r;
+        let lookahead_buf_len = lookahead_buf_l.len();
+        let mut write_idx = self.lookahead_write_index;
+        let read_delay = self.lookahead_read_delay;
+        let has_lookahead = read_delay > 0 && lookahead_buf_len > 1;
 
-            let lookahead_buf_l = &mut self.lookahead_buffer_l;
-            let lookahead_buf_r = &mut self.lookahead_buffer_r;
-            let lookahead_buf_len = lookahead_buf_l.len();
-            let mut write_idx = self.lookahead_write_index;
-            let read_delay = self.lookahead_read_delay;
-            let has_lookahead = read_delay > 0 && lookahead_buf_len > 1;
+        for i in 0..process_len {
+            let input_l = left_in[i];
+            let input_r = right_in[i];
 
-            for i in 0..process_len {
-                let input_l = left_in[i];
-                let input_r = right_in[i];
+            // Lookahead
+            let (delayed_l, delayed_r) = if has_lookahead {
+                let read_idx = (write_idx + lookahead_buf_len - read_delay) % lookahead_buf_len;
+                let dl = lookahead_buf_l[read_idx];
+                let dr = lookahead_buf_r[read_idx];
+                lookahead_buf_l[write_idx] = input_l;
+                lookahead_buf_r[write_idx] = input_r;
+                write_idx = (write_idx + 1) % lookahead_buf_len;
+                (dl, dr)
+            } else {
+                (input_l, input_r)
+            };
 
-                // --- Lookahead Handling ---
-                let (delayed_l, delayed_r) = if has_lookahead {
-                    let read_idx = (write_idx + lookahead_buf_len - read_delay) % lookahead_buf_len;
-                    let dl = lookahead_buf_l[read_idx];
-                    let dr = lookahead_buf_r[read_idx];
-                    lookahead_buf_l[write_idx] = input_l;
-                    lookahead_buf_r[write_idx] = input_r;
-                    write_idx = (write_idx + 1) % lookahead_buf_len;
-                    (dl, dr)
+            // Peak envelope
+            let peak_l = input_l.abs();
+            let peak_r = input_r.abs();
+
+            if peak_l > envelope_l {
+                envelope_l = peak_l * (1.0 - attack_c) + envelope_l * attack_c;
+            } else {
+                envelope_l = peak_l * (1.0 - release_c) + envelope_l * release_c;
+            }
+            envelope_l += f32::EPSILON * 0.1;
+
+            if peak_r > envelope_r {
+                envelope_r = peak_r * (1.0 - attack_c) + envelope_r * attack_c;
+            } else {
+                envelope_r = peak_r * (1.0 - release_c) + envelope_r * release_c;
+            }
+            envelope_r += f32::EPSILON * 0.1;
+
+            // Target gain(s)
+            let (target_gain_l, target_gain_r) = if stereo_link {
+                let max_env = envelope_l.max(envelope_r);
+                if max_env > threshold_lin {
+                    let g = (threshold_lin / max_env).min(1.0);
+                    (g, g)
                 } else {
-                    (input_l, input_r)
-                };
-
-                // --- Envelope Detection (Peak) ---
-                let peak_l = input_l.abs();
-                let peak_r = input_r.abs();
-
-                if peak_l > envelope_l {
-                    envelope_l = peak_l * (1.0 - attack_c) + envelope_l * attack_c;
-                } else {
-                    envelope_l = peak_l * (1.0 - release_c) + envelope_l * release_c;
+                    (1.0, 1.0)
                 }
-                envelope_l += f32::EPSILON * 0.1; // Denormal prevention
+            } else {
+                let gl = if envelope_l > threshold_lin {
+                    (threshold_lin / envelope_l).min(1.0)
+                } else { 1.0 };
+                let gr = if envelope_r > threshold_lin {
+                    (threshold_lin / envelope_r).min(1.0)
+                } else { 1.0 };
+                (gl, gr)
+            };
 
-                if peak_r > envelope_r {
-                    envelope_r = peak_r * (1.0 - attack_c) + envelope_r * attack_c;
-                } else {
-                    envelope_r = peak_r * (1.0 - release_c) + envelope_r * release_c;
-                }
-                envelope_r += f32::EPSILON * 0.1; // Denormal prevention
-
-                // --- Gain Calculation ---
-                let (target_gain_l, target_gain_r) = if stereo_link {
-                    let max_envelope = envelope_l.max(envelope_r);
-                    if max_envelope > threshold_lin {
-                        let gain = (threshold_lin / max_envelope).min(1.0); // Ensure gain <= 1.0
-                        (gain, gain)
-                    } else {
-                        (1.0, 1.0)
-                    }
-                } else {
-                    let gain_l = if envelope_l > threshold_lin {
-                        (threshold_lin / envelope_l).min(1.0)
-                    } else {
-                        1.0
-                    };
-                    let gain_r = if envelope_r > threshold_lin {
-                        (threshold_lin / envelope_r).min(1.0)
-                    } else {
-                        1.0
-                    };
-                    (gain_l, gain_r)
-                };
-
-                // --- Apply Gain Reduction Smoothing ---
-                if target_gain_l < gain_reduction_l {
-                    gain_reduction_l =
-                        target_gain_l * (1.0 - attack_c) + gain_reduction_l * attack_c;
-                } else {
-                    gain_reduction_l =
-                        target_gain_l * (1.0 - release_c) + gain_reduction_l * release_c;
-                }
-
-                if target_gain_r < gain_reduction_r {
-                    gain_reduction_r =
-                        target_gain_r * (1.0 - attack_c) + gain_reduction_r * attack_c;
-                } else {
-                    gain_reduction_r =
-                        target_gain_r * (1.0 - release_c) + gain_reduction_r * release_c;
-                }
-
-                // Prevent gain from exceeding 1.0 due to smoothing overshoot
-                gain_reduction_l = gain_reduction_l.min(1.0);
-                gain_reduction_r = gain_reduction_r.min(1.0);
-
-                // --- Apply Gain ---
-                out_left[i] = delayed_l * gain_reduction_l;
-                out_right[i] = delayed_r * gain_reduction_r;
+            // Smooth gain
+            if target_gain_l < gain_reduction_l {
+                gain_reduction_l = target_gain_l * (1.0 - attack_c) + gain_reduction_l * attack_c;
+            } else {
+                gain_reduction_l = target_gain_l * (1.0 - release_c) + gain_reduction_l * release_c;
+            }
+            if target_gain_r < gain_reduction_r {
+                gain_reduction_r = target_gain_r * (1.0 - attack_c) + gain_reduction_r * attack_c;
+            } else {
+                gain_reduction_r = target_gain_r * (1.0 - release_c) + gain_reduction_r * release_c;
             }
 
-            // Write back final state to self
-            self.envelope_l = envelope_l;
-            self.envelope_r = envelope_r;
-            self.gain_reduction_l = gain_reduction_l;
-            self.gain_reduction_r = gain_reduction_r;
-            if has_lookahead {
-                self.lookahead_write_index = write_idx;
-            }
-        } // End inner scope
+            gain_reduction_l = gain_reduction_l.min(1.0);
+            gain_reduction_r = gain_reduction_r.min(1.0);
 
-        // --- Zero remaining output buffer parts ---
-        // Also apply fix here for consistency, using full buffer lengths
-        unsafe {
-            let out_left_full = &mut *out_left_ptr;
-            let len_l = out_left_full.len();
-            if process_len < len_l {
-                out_left_full[process_len..len_l].fill(0.0);
-            }
-            // out_right is already the full slice from the map
-            if let Some(full_out_right) = outputs.get_mut(&PortId::AudioOutput1) {
-                let full_len_r = full_out_right.len();
-                if process_len < full_len_r {
-                    full_out_right[process_len..full_len_r].fill(0.0);
-                }
-            }
+            // Apply
+            out_left[i] = delayed_l * gain_reduction_l;
+            out_right[i] = delayed_r * gain_reduction_r;
         }
-    } // end process_block
+
+        // Write back state
+        self.envelope_l = envelope_l;
+        self.envelope_r = envelope_r;
+        self.gain_reduction_l = gain_reduction_l;
+        self.gain_reduction_r = gain_reduction_r;
+        if has_lookahead {
+            self.lookahead_write_index = write_idx;
+        }
+
+        // Zero any remaining tail past process_len
+        if process_len < out_left_full.len() {
+            out_left_full[process_len..].fill(0.0);
+        }
+        if process_len < out_right_full.len() {
+            out_right_full[process_len..].fill(0.0);
+        }
+    }
 
     /// Resets the internal state of the Limiter node.
     pub fn reset_state(&mut self) {

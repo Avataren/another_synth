@@ -112,8 +112,8 @@ impl AudioNode for Delay {
                 &ZERO_BUFFER[..buffer_size.min(ZERO_BUFFER.len())]
             });
 
-        // Use get_many_mut to retrieve both outputs at once.
-        let outs = outputs.get_many_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);
+        // Use get_disjoint_mut to retrieve both outputs at once.
+        let outs = outputs.get_disjoint_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);
         let [Some(out_left), Some(out_right)] = outs else {
             panic!("Missing stereo output buffers");
         };

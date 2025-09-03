@@ -178,6 +178,12 @@ function takeFromExternrefTable0(idx) {
     return value;
 }
 
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
+}
+
 let cachedFloat32ArrayMemory0 = null;
 
 function getFloat32ArrayMemory0() {
@@ -194,10 +200,9 @@ function passArrayF32ToWasm0(arg, malloc) {
     return ptr;
 }
 
-function _assertClass(instance, klass) {
-    if (!(instance instanceof klass)) {
-        throw new Error(`expected instance of ${klass.name}`);
-    }
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 
 function passArray8ToWasm0(arg, malloc) {
@@ -205,11 +210,6 @@ function passArray8ToWasm0(arg, malloc) {
     getUint8ArrayMemory0().set(arg, ptr / 1);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
-}
-
-function getArrayF32FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
  * @enum {0 | 1}
@@ -488,38 +488,153 @@ export class AudioEngine {
         wasm.__wbg_audioengine_free(ptr, 0);
     }
     /**
-     * @param {number} sample_rate
+     * @returns {number}
      */
-    constructor(sample_rate) {
-        const ret = wasm.audioengine_new(sample_rate);
-        this.__wbg_ptr = ret >>> 0;
-        AudioEngineFinalization.register(this, this.__wbg_ptr, this);
-        return this;
+    add_chorus() {
+        const ret = wasm.audioengine_add_chorus(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
     /**
-     * @param {number} sample_rate
-     * @param {number} num_voices
+     * @returns {any}
      */
-    init(sample_rate, num_voices) {
-        wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
+    create_lfo() {
+        const ret = wasm.audioengine_create_lfo(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {number}
+     */
+    add_limiter() {
+        const ret = wasm.audioengine_add_limiter(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @param {number} node_id
+     */
+    delete_node(node_id) {
+        const ret = wasm.audioengine_delete_node(this.__wbg_ptr, node_id);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Update all LFOs across all   voices. This is called by the host when the user
+     * changes an LFO's settings.
+     * @param {LfoUpdateParams} params
+     */
+    update_lfos(params) {
+        _assertClass(params, LfoUpdateParams);
+        var ptr0 = params.__destroy_into_raw();
+        wasm.audioengine_update_lfos(this.__wbg_ptr, ptr0);
+    }
+    /**
+     * @param {number} room_size
+     * @param {number} damp
+     * @param {number} wet
+     * @param {number} dry
+     * @param {number} width
+     * @returns {number}
+     */
+    add_freeverb(room_size, damp, wet, dry, width) {
+        const ret = wasm.audioengine_add_freeverb(this.__wbg_ptr, room_size, damp, wet, dry, width);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @returns {any}
+     */
+    create_mixer() {
+        const ret = wasm.audioengine_create_mixer(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {number}
+     */
+    create_noise() {
+        const ret = wasm.audioengine_create_noise(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} delay_ms
+     * @param {number} feedback
+     * @param {number} wet_mix
+     * @param {boolean} enabled
+     */
+    update_delay(node_id, delay_ms, feedback, wet_mix, enabled) {
+        wasm.audioengine_update_delay(this.__wbg_ptr, node_id, delay_ms, feedback, wet_mix, enabled);
+    }
+    /**
+     * @param {number} noise_id
+     * @param {NoiseUpdateParams} params
+     */
+    update_noise(noise_id, params) {
+        _assertClass(params, NoiseUpdateParams);
+        const ret = wasm.audioengine_update_noise(this.__wbg_ptr, noise_id, params.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} voice_index
+     * @param {number} macro_index
+     * @param {number} target_node
+     * @param {PortId} target_port
+     * @param {number} amount
+     */
+    connect_macro(voice_index, macro_index, target_node, target_port, amount) {
+        const ret = wasm.audioengine_connect_macro(this.__wbg_ptr, voice_index, macro_index, target_node, target_port, amount);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * @param {number} from_node
      * @param {PortId} from_port
      * @param {number} to_node
      * @param {PortId} to_port
+     * @param {number} amount
+     * @param {WasmModulationType | null | undefined} modulation_type
+     * @param {ModulationTransformation} modulation_transform
      */
-    remove_connection(from_node, from_port, to_node, to_port) {
-        const ret = wasm.audioengine_remove_connection(this.__wbg_ptr, from_node, from_port, to_node, to_port);
+    connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type, modulation_transform) {
+        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type, modulation_transform);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
     }
     /**
-     * @returns {any}
+     * @returns {number}
      */
-    get_current_state() {
-        const ret = wasm.audioengine_get_current_state(this.__wbg_ptr);
+    create_filter() {
+        const ret = wasm.audioengine_create_filter(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get_cpu_usage() {
+        const ret = wasm.audioengine_get_cpu_usage(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -550,78 +665,6 @@ export class AudioEngine {
         wasm.audioengine_process_audio(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, master_gain, ptr5, len5, output_left, ptr6, len6, output_right);
     }
     /**
-     * @returns {number}
-     */
-    get_cpu_usage() {
-        const ret = wasm.audioengine_get_cpu_usage(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @param {number} max_delay_ms
-     * @param {number} delay_ms
-     * @param {number} feedback
-     * @param {number} mix
-     * @returns {number}
-     */
-    add_delay(max_delay_ms, delay_ms, feedback, mix) {
-        const ret = wasm.audioengine_add_delay(this.__wbg_ptr, max_delay_ms, delay_ms, feedback, mix);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @param {number} room_size
-     * @param {number} damp
-     * @param {number} wet
-     * @param {number} dry
-     * @param {number} width
-     * @returns {number}
-     */
-    add_freeverb(room_size, damp, wet, dry, width) {
-        const ret = wasm.audioengine_add_freeverb(this.__wbg_ptr, room_size, damp, wet, dry, width);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @param {number} decay_time
-     * @param {number} room_size
-     * @param {number} sample_rate
-     * @returns {number}
-     */
-    add_hall_reverb(decay_time, room_size, sample_rate) {
-        const ret = wasm.audioengine_add_hall_reverb(this.__wbg_ptr, decay_time, room_size, sample_rate);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @param {number} decay_time
-     * @param {number} diffusion
-     * @param {number} sample_rate
-     * @returns {number}
-     */
-    add_plate_reverb(decay_time, diffusion, sample_rate) {
-        const ret = wasm.audioengine_add_plate_reverb(this.__wbg_ptr, decay_time, diffusion, sample_rate);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @param {number} from_idx
-     * @param {number} to_idx
-     */
-    reorder_effects(from_idx, to_idx) {
-        const ret = wasm.audioengine_reorder_effects(this.__wbg_ptr, from_idx, to_idx);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
      * @param {number} index
      */
     remove_effect(index) {
@@ -629,175 +672,6 @@ export class AudioEngine {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
-    }
-    /**
-     * @param {number} node_id
-     */
-    delete_node(node_id) {
-        const ret = wasm.audioengine_delete_node(this.__wbg_ptr, node_id);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} noise_id
-     * @param {NoiseUpdateParams} params
-     */
-    update_noise(noise_id, params) {
-        _assertClass(params, NoiseUpdateParams);
-        const ret = wasm.audioengine_update_noise(this.__wbg_ptr, noise_id, params.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} node_id
-     * @param {number} sensitivity
-     * @param {number} randomize
-     */
-    update_velocity(node_id, sensitivity, randomize) {
-        const ret = wasm.audioengine_update_velocity(this.__wbg_ptr, node_id, sensitivity, randomize);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @returns {NodeId}
-     */
-    get_gate_mixer_node_id() {
-        const ret = wasm.audioengine_get_gate_mixer_node_id(this.__wbg_ptr);
-        return NodeId.__wrap(ret);
-    }
-    /**
-     * @param {number} node_id
-     * @param {number} attack
-     * @param {number} decay
-     * @param {number} sustain
-     * @param {number} release
-     * @param {number} attack_curve
-     * @param {number} decay_curve
-     * @param {number} release_curve
-     * @param {boolean} active
-     */
-    update_envelope(node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active) {
-        const ret = wasm.audioengine_update_envelope(this.__wbg_ptr, node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} sample_rate
-     * @param {any} js_config
-     * @param {number} preview_duration
-     * @returns {Float32Array}
-     */
-    static get_envelope_preview(sample_rate, js_config, preview_duration) {
-        const ret = wasm.audioengine_get_envelope_preview(sample_rate, js_config, preview_duration);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @param {number} oscillator_id
-     * @param {WavetableOscillatorStateUpdate} params
-     */
-    update_wavetable_oscillator(oscillator_id, params) {
-        _assertClass(params, WavetableOscillatorStateUpdate);
-        const ret = wasm.audioengine_update_wavetable_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} effect_id
-     * @param {Uint8Array} data
-     */
-    import_wave_impulse(effect_id, data) {
-        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.audioengine_import_wave_impulse(this.__wbg_ptr, effect_id, ptr0, len0);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * Refactored import_wavetable function that uses the hound-based helper.
-     * It accepts the WAV data as a byte slice, uses a Cursor to create a reader,
-     * builds a new morph collection from the data, adds it to the synth bank under
-     * the name "imported", and then updates all wavetable oscillators to use it.
-     * @param {number} node_id
-     * @param {Uint8Array} data
-     * @param {number} base_size
-     */
-    import_wavetable(node_id, data, base_size) {
-        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.audioengine_import_wavetable(this.__wbg_ptr, node_id, ptr0, len0, base_size);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} oscillator_id
-     * @param {AnalogOscillatorStateUpdate} params
-     */
-    update_oscillator(oscillator_id, params) {
-        _assertClass(params, AnalogOscillatorStateUpdate);
-        const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
-    }
-    /**
-     * @param {number} node_id
-     * @param {number} delay_ms
-     * @param {number} feedback
-     * @param {number} wet_mix
-     * @param {boolean} enabled
-     */
-    update_delay(node_id, delay_ms, feedback, wet_mix, enabled) {
-        wasm.audioengine_update_delay(this.__wbg_ptr, node_id, delay_ms, feedback, wet_mix, enabled);
-    }
-    /**
-     * @param {number} node_id
-     * @param {number} wet_mix
-     * @param {boolean} enabled
-     */
-    update_convolver(node_id, wet_mix, enabled) {
-        wasm.audioengine_update_convolver(this.__wbg_ptr, node_id, wet_mix, enabled);
-    }
-    /**
-     * @returns {number}
-     */
-    add_limiter() {
-        const ret = wasm.audioengine_add_limiter(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    add_chorus() {
-        const ret = wasm.audioengine_add_chorus(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @param {number} node_id
-     * @param {boolean} active
-     * @param {number} room_size
-     * @param {number} damp
-     * @param {number} wet
-     * @param {number} dry
-     * @param {number} width
-     */
-    update_reverb(node_id, active, room_size, damp, wet, dry, width) {
-        wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
     }
     /**
      * @param {number} node_id
@@ -814,84 +688,16 @@ export class AudioEngine {
         wasm.audioengine_update_chorus(this.__wbg_ptr, node_id, active, base_delay_ms, depth_ms, lfo_rate_hz, feedback, feedback_filter, mix, stereo_phase_offset_deg);
     }
     /**
-     * @returns {any}
+     * @param {number} node_id
+     * @param {boolean} active
+     * @param {number} room_size
+     * @param {number} damp
+     * @param {number} wet
+     * @param {number} dry
+     * @param {number} width
      */
-    create_envelope() {
-        const ret = wasm.audioengine_create_envelope(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {any}
-     */
-    create_arpeggiator() {
-        const ret = wasm.audioengine_create_arpeggiator(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {any}
-     */
-    create_mixer() {
-        const ret = wasm.audioengine_create_mixer(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {any}
-     */
-    create_lfo() {
-        const ret = wasm.audioengine_create_lfo(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
-     * @returns {number}
-     */
-    create_filter() {
-        const ret = wasm.audioengine_create_filter(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    create_noise() {
-        const ret = wasm.audioengine_create_noise(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    create_oscillator() {
-        const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    create_wavetable_oscillator() {
-        const ret = wasm.audioengine_create_wavetable_oscillator(this.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return ret[0] >>> 0;
+    update_reverb(node_id, active, room_size, damp, wet, dry, width) {
+        wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
     }
     /**
      * @param {number} filter_id
@@ -912,28 +718,78 @@ export class AudioEngine {
         }
     }
     /**
-     * @param {number} node_id
-     * @param {number} waveform_length
-     * @returns {Float32Array}
+     * @param {number} decay_time
+     * @param {number} room_size
+     * @param {number} sample_rate
+     * @returns {number}
      */
-    get_filter_ir_waveform(node_id, waveform_length) {
-        const ret = wasm.audioengine_get_filter_ir_waveform(this.__wbg_ptr, node_id, waveform_length);
-        if (ret[3]) {
-            throw takeFromExternrefTable0(ret[2]);
+    add_hall_reverb(decay_time, room_size, sample_rate) {
+        const ret = wasm.audioengine_add_hall_reverb(this.__wbg_ptr, decay_time, room_size, sample_rate);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
         }
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
+        return ret[0] >>> 0;
     }
     /**
-     * Update all LFOs across all   voices. This is called by the host when the user
-     * changes an LFO's settings.
-     * @param {LfoUpdateParams} params
+     * @returns {any}
      */
-    update_lfos(params) {
-        _assertClass(params, LfoUpdateParams);
-        var ptr0 = params.__destroy_into_raw();
-        wasm.audioengine_update_lfos(this.__wbg_ptr, ptr0);
+    create_envelope() {
+        const ret = wasm.audioengine_create_envelope(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {number} from_idx
+     * @param {number} to_idx
+     */
+    reorder_effects(from_idx, to_idx) {
+        const ret = wasm.audioengine_reorder_effects(this.__wbg_ptr, from_idx, to_idx);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} attack
+     * @param {number} decay
+     * @param {number} sustain
+     * @param {number} release
+     * @param {number} attack_curve
+     * @param {number} decay_curve
+     * @param {number} release_curve
+     * @param {boolean} active
+     */
+    update_envelope(node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active) {
+        const ret = wasm.audioengine_update_envelope(this.__wbg_ptr, node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} sensitivity
+     * @param {number} randomize
+     */
+    update_velocity(node_id, sensitivity, randomize) {
+        const ret = wasm.audioengine_update_velocity(this.__wbg_ptr, node_id, sensitivity, randomize);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} decay_time
+     * @param {number} diffusion
+     * @param {number} sample_rate
+     * @returns {number}
+     */
+    add_plate_reverb(decay_time, diffusion, sample_rate) {
+        const ret = wasm.audioengine_add_plate_reverb(this.__wbg_ptr, decay_time, diffusion, sample_rate);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
     /**
      * @param {number} waveform
@@ -954,19 +810,125 @@ export class AudioEngine {
         return v1;
     }
     /**
+     * Refactored import_wavetable function that uses the hound-based helper.
+     * It accepts the WAV data as a byte slice, uses a Cursor to create a reader,
+     * builds a new morph collection from the data, adds it to the synth bank under
+     * the name "imported", and then updates all wavetable oscillators to use it.
+     * @param {number} node_id
+     * @param {Uint8Array} data
+     * @param {number} base_size
+     */
+    import_wavetable(node_id, data, base_size) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.audioengine_import_wavetable(this.__wbg_ptr, node_id, ptr0, len0, base_size);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} wet_mix
+     * @param {boolean} enabled
+     */
+    update_convolver(node_id, wet_mix, enabled) {
+        wasm.audioengine_update_convolver(this.__wbg_ptr, node_id, wet_mix, enabled);
+    }
+    /**
+     * @returns {number}
+     */
+    create_oscillator() {
+        const ret = wasm.audioengine_create_oscillator(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @returns {any}
+     */
+    get_current_state() {
+        const ret = wasm.audioengine_get_current_state(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @param {number} from_node
      * @param {PortId} from_port
      * @param {number} to_node
      * @param {PortId} to_port
-     * @param {number} amount
-     * @param {WasmModulationType | null | undefined} modulation_type
-     * @param {ModulationTransformation} modulation_transform
      */
-    connect_nodes(from_node, from_port, to_node, to_port, amount, modulation_type, modulation_transform) {
-        const ret = wasm.audioengine_connect_nodes(this.__wbg_ptr, from_node, from_port, to_node, to_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type, modulation_transform);
+    remove_connection(from_node, from_port, to_node, to_port) {
+        const ret = wasm.audioengine_remove_connection(this.__wbg_ptr, from_node, from_port, to_node, to_port);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {number} oscillator_id
+     * @param {AnalogOscillatorStateUpdate} params
+     */
+    update_oscillator(oscillator_id, params) {
+        _assertClass(params, AnalogOscillatorStateUpdate);
+        const ret = wasm.audioengine_update_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @returns {any}
+     */
+    create_arpeggiator() {
+        const ret = wasm.audioengine_create_arpeggiator(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {number} effect_id
+     * @param {Uint8Array} data
+     */
+    import_wave_impulse(effect_id, data) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.audioengine_import_wave_impulse(this.__wbg_ptr, effect_id, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} sample_rate
+     * @param {any} js_config
+     * @param {number} preview_duration
+     * @returns {Float32Array}
+     */
+    static get_envelope_preview(sample_rate, js_config, preview_duration) {
+        const ret = wasm.audioengine_get_envelope_preview(sample_rate, js_config, preview_duration);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} waveform_length
+     * @returns {Float32Array}
+     */
+    get_filter_ir_waveform(node_id, waveform_length) {
+        const ret = wasm.audioengine_get_filter_ir_waveform(this.__wbg_ptr, node_id, waveform_length);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {NodeId}
+     */
+    get_gate_mixer_node_id() {
+        const ret = wasm.audioengine_get_gate_mixer_node_id(this.__wbg_ptr);
+        return NodeId.__wrap(ret);
     }
     /**
      * @param {number} from_node
@@ -980,20 +942,58 @@ export class AudioEngine {
         }
     }
     /**
-     * @param {number} voice_index
-     * @param {number} macro_index
-     * @param {number} target_node
-     * @param {PortId} target_port
-     * @param {number} amount
+     * @returns {number}
      */
-    connect_macro(voice_index, macro_index, target_node, target_port, amount) {
-        const ret = wasm.audioengine_connect_macro(this.__wbg_ptr, voice_index, macro_index, target_node, target_port, amount);
+    create_wavetable_oscillator() {
+        const ret = wasm.audioengine_create_wavetable_oscillator(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
+     * @param {number} oscillator_id
+     * @param {WavetableOscillatorStateUpdate} params
+     */
+    update_wavetable_oscillator(oscillator_id, params) {
+        _assertClass(params, WavetableOscillatorStateUpdate);
+        const ret = wasm.audioengine_update_wavetable_oscillator(this.__wbg_ptr, oscillator_id, params.__wbg_ptr);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
     }
+    /**
+     * @param {number} sample_rate
+     */
+    constructor(sample_rate) {
+        const ret = wasm.audioengine_new(sample_rate);
+        this.__wbg_ptr = ret >>> 0;
+        AudioEngineFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {number} sample_rate
+     * @param {number} num_voices
+     */
+    init(sample_rate, num_voices) {
+        wasm.audioengine_init(this.__wbg_ptr, sample_rate, num_voices);
+    }
     reset() {
         wasm.audioengine_reset(this.__wbg_ptr);
+    }
+    /**
+     * @param {number} max_delay_ms
+     * @param {number} delay_ms
+     * @param {number} feedback
+     * @param {number} mix
+     * @returns {number}
+     */
+    add_delay(max_delay_ms, delay_ms, feedback, mix) {
+        const ret = wasm.audioengine_add_delay(this.__wbg_ptr, max_delay_ms, delay_ms, feedback, mix);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
 }
 
@@ -1045,6 +1045,23 @@ export class EnvelopeConfig {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_envelopeconfig_free(ptr, 0);
+    }
+    /**
+     * @param {number} attack
+     * @param {number} decay
+     * @param {number} sustain
+     * @param {number} release
+     * @param {number} attack_curve
+     * @param {number} decay_curve
+     * @param {number} release_curve
+     * @param {number} attack_smoothing_samples
+     * @param {boolean} active
+     */
+    constructor(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active) {
+        const ret = wasm.envelopeconfig_new(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active);
+        this.__wbg_ptr = ret >>> 0;
+        EnvelopeConfigFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
     /**
      * @returns {number}
@@ -1163,23 +1180,6 @@ export class EnvelopeConfig {
     set active(arg0) {
         wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
     }
-    /**
-     * @param {number} attack
-     * @param {number} decay
-     * @param {number} sustain
-     * @param {number} release
-     * @param {number} attack_curve
-     * @param {number} decay_curve
-     * @param {number} release_curve
-     * @param {number} attack_smoothing_samples
-     * @param {boolean} active
-     */
-    constructor(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active) {
-        const ret = wasm.envelopeconfig_new(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active);
-        this.__wbg_ptr = ret >>> 0;
-        EnvelopeConfigFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
 }
 
 const LfoUpdateParamsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1198,6 +1198,26 @@ export class LfoUpdateParams {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_lfoupdateparams_free(ptr, 0);
+    }
+    /**
+     * @param {number} lfo_id
+     * @param {number} frequency
+     * @param {number} phase_offset
+     * @param {number} waveform
+     * @param {boolean} use_absolute
+     * @param {boolean} use_normalized
+     * @param {number} trigger_mode
+     * @param {number} gain
+     * @param {boolean} active
+     * @param {number} loop_mode
+     * @param {number} loop_start
+     * @param {number} loop_end
+     */
+    constructor(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end) {
+        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end);
+        this.__wbg_ptr = ret >>> 0;
+        LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
     /**
      * @returns {number}
@@ -1355,26 +1375,6 @@ export class LfoUpdateParams {
     set loop_end(arg0) {
         wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
     }
-    /**
-     * @param {number} lfo_id
-     * @param {number} frequency
-     * @param {number} phase_offset
-     * @param {number} waveform
-     * @param {boolean} use_absolute
-     * @param {boolean} use_normalized
-     * @param {number} trigger_mode
-     * @param {number} gain
-     * @param {boolean} active
-     * @param {number} loop_mode
-     * @param {number} loop_start
-     * @param {number} loop_end
-     */
-    constructor(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end) {
-        const ret = wasm.lfoupdateparams_new(lfo_id, frequency, phase_offset, waveform, use_absolute, use_normalized, trigger_mode, gain, active, loop_mode, loop_start, loop_end);
-        this.__wbg_ptr = ret >>> 0;
-        LfoUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
 }
 
 const NodeIdFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1416,19 +1416,19 @@ export class NodeId {
         wasm.__wbg_set_connectionid_0(this.__wbg_ptr, arg0);
     }
     /**
-     * @returns {number}
-     */
-    as_number() {
-        const ret = wasm.nodeid_as_number(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
      * @param {number} value
      * @returns {NodeId}
      */
     static from_number(value) {
         const ret = wasm.nodeid_from_number(value);
         return NodeId.__wrap(ret);
+    }
+    /**
+     * @returns {number}
+     */
+    as_number() {
+        const ret = wasm.nodeid_as_number(this.__wbg_ptr);
+        return ret >>> 0;
     }
 }
 
@@ -1523,6 +1523,18 @@ export class NoiseUpdateParams {
         wasm.__wbg_noiseupdateparams_free(ptr, 0);
     }
     /**
+     * @param {WasmNoiseType} noise_type
+     * @param {number} cutoff
+     * @param {number} gain
+     * @param {boolean} enabled
+     */
+    constructor(noise_type, cutoff, gain, enabled) {
+        const ret = wasm.noiseupdateparams_new(noise_type, cutoff, gain, enabled);
+        this.__wbg_ptr = ret >>> 0;
+        NoiseUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
      * @returns {WasmNoiseType}
      */
     get noise_type() {
@@ -1573,18 +1585,6 @@ export class NoiseUpdateParams {
      */
     set enabled(arg0) {
         wasm.__wbg_set_noiseupdate_enabled(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @param {WasmNoiseType} noise_type
-     * @param {number} cutoff
-     * @param {number} gain
-     * @param {boolean} enabled
-     */
-    constructor(noise_type, cutoff, gain, enabled) {
-        const ret = wasm.noiseupdateparams_new(noise_type, cutoff, gain, enabled);
-        this.__wbg_ptr = ret >>> 0;
-        NoiseUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
-        return this;
     }
 }
 
