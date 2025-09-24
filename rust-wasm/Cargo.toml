@@ -13,20 +13,20 @@ simd = []
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-wasm-bindgen = "0.2.99"
-web-sys = { version = "0.3.76", features = ["Window", "Crypto", "console", "Performance"] }
-serde = { version =  "1.0.216", features = ["derive"] }
-serde_json = "1.0.133"
+wasm-bindgen = "0.2.104"
+web-sys = { version = "0.3.81", features = ["Window", "Crypto", "console", "Performance"] }
+serde = { version =  "1.0.226", features = ["derive"] }
+serde_json = "1.0.145"
 serde-wasm-bindgen = "0.6.5"
-once_cell = "1.20.3"
-rustfft = { version = "6.2.0", features = ["wasm_simd"] }
+once_cell = "1.21.3"
+rustfft = { version = "6.4.1", features = ["wasm_simd"] }
 hound = "3.5.1"
 rand = "0.9"
-getrandom = { version = "0.3.1", features = ["wasm_js"] }
+getrandom = { version = "0.3.3", features = ["wasm_js"] }
 rustc-hash = "2.1.1"
 
 fft-convolver = "0.2.0"
-rubato = "0.16.1"
+rubato = "0.16.2"
 
 [profile.release]
 opt-level = 3
