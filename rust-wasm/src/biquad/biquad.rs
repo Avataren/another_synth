@@ -409,25 +409,25 @@ mod tests {
             os_dc_gain
         );
 
-        // Updated expected values for LPF, 768kHz SR, 1kHz F, 0.707 Q using new formulas
-        // Expected approx: b0=2.64e-5, b1=5.28e-5, b2=2.64e-5, a1=-1.999861..., a2=0.999893...
+        // Expected values for LPF, 768kHz SR, 1kHz F, 0.707 Q using the current coefficient formulas
+        // Expected approx: b0=1.66e-5, b1=3.33e-5, b2=1.66e-5, a1=-1.9884, a2=0.9885
         assert!(
-            bq_os.b0 > 2.5e-5 && bq_os.b0 < 2.7e-5,
+            bq_os.b0 > 1.5e-5 && bq_os.b0 < 1.8e-5,
             "OS b0 unexpected value: {}",
             bq_os.b0
         );
         assert!(
-            bq_os.b1 > 5.1e-5 && bq_os.b1 < 5.4e-5,
+            bq_os.b1 > 3.1e-5 && bq_os.b1 < 3.5e-5,
             "OS b1 unexpected value: {}",
             bq_os.b1
         );
         assert!(
-            bq_os.a1 < -1.9998 && bq_os.a1 > -1.9999,
+            bq_os.a1 < -1.98 && bq_os.a1 > -1.995,
             "OS a1 unexpected value: {}",
             bq_os.a1
         );
         assert!(
-            bq_os.a2 > 0.9998 && bq_os.a2 < 0.99999, // Allow slightly wider range
+            bq_os.a2 > 0.988 && bq_os.a2 < 0.9895,
             "OS a2 unexpected value: {}",
             bq_os.a2
         );

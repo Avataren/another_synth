@@ -9,6 +9,7 @@ dependencies = [
  "fft-convolver",
  "getrandom",
  "hound",
+ "js-sys",
  "once_cell",
  "rand",
  "rubato",

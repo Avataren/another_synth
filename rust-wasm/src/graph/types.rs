@@ -70,7 +70,7 @@ impl Default for ModulationType {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, PartialEq)]
 #[wasm_bindgen]
 #[repr(u32)]
 pub enum ModulationTransformation {
