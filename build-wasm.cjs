@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const chokidar = require('chokidar');
@@ -6,10 +6,81 @@ const chokidar = require('chokidar');
 const RUST_DIR = path.join(__dirname, 'rust-wasm');
 const WASM_DIST = path.join(__dirname, 'public', 'wasm');
 
+const WASM_PACK_VERSION = '0.13.1';
+
+function getLocalWasmPackCandidates() {
+  const candidates = [];
+  const binName = process.platform === 'win32' ? 'wasm-pack.cmd' : 'wasm-pack';
+
+  // Prefer a project-local installation if it exists
+  candidates.push(path.join(__dirname, 'node_modules', '.bin', binName));
+
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
+  if (homeDir) {
+    const cargoBin =
+      process.platform === 'win32'
+        ? path.join(homeDir, '.cargo', 'bin', 'wasm-pack.exe')
+        : path.join(homeDir, '.cargo', 'bin', 'wasm-pack');
+    candidates.push(cargoBin);
+  }
+
+  // Finally rely on PATH resolution as a fallback
+  candidates.push('wasm-pack');
+
+  return candidates;
+}
+
+function ensureWasmPack() {
+  for (const candidate of getLocalWasmPackCandidates()) {
+    try {
+      execFileSync(candidate, ['--version'], { stdio: 'ignore' });
+      return candidate;
+    } catch (error) {
+      // Ignore resolution errors and keep looking.
+    }
+  }
+
+  console.log('⬇️  Installing wasm-pack via cargo...');
+  try {
+    execFileSync('cargo', ['install', 'wasm-pack', '--version', WASM_PACK_VERSION], {
+      stdio: 'inherit',
+    });
+  } catch (installError) {
+    throw new Error(
+      'Failed to install wasm-pack automatically. Please install it manually (https://rustwasm.github.io/wasm-pack/installer/) and retry.',
+    );
+  }
+
+  // After installing, try to find it again so we can return the concrete path.
+  for (const candidate of getLocalWasmPackCandidates()) {
+    try {
+      execFileSync(candidate, ['--version'], { stdio: 'ignore' });
+      return candidate;
+    } catch (error) {
+      // Ignore and continue – the installation should have created one of these.
+    }
+  }
+
+  throw new Error('wasm-pack installation succeeded but the binary could not be located.');
+}
+
 function buildWasm() {
   try {
     console.log('🦀 Building Rust WebAssembly...');
-    execSync('wasm-pack build --target web --release .', {
+    const wasmPackBinary = ensureWasmPack();
+    const enableWasmOpt = Boolean(
+      process.env.ENABLE_WASM_OPT && !['0', 'false', 'no'].includes(process.env.ENABLE_WASM_OPT.toLowerCase()),
+    );
+
+    const wasmPackArgs = ['build'];
+    if (!enableWasmOpt) {
+      console.log('⚙️  Skipping wasm-opt (set ENABLE_WASM_OPT=1 to enable).');
+      wasmPackArgs.push('--no-opt');
+    }
+
+    wasmPackArgs.push('--target', 'web', '--release', '.');
+
+    execFileSync(wasmPackBinary, wasmPackArgs, {
       cwd: RUST_DIR,
       stdio: 'inherit',
     });

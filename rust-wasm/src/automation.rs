@@ -277,13 +277,13 @@ impl ModulationEndpoint for AudioEngine {
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectionUpdate {
-    pub from_id: usize,
-    pub to_id: usize,
-    pub target: PortId,
-    pub amount: f32,
-    pub modulation_transformation: ModulationTransformation,
-    pub is_removing: bool,
-    pub modulation_type: Option<WasmModulationType>,
+    from_id: usize,
+    to_id: usize,
+    target: PortId,
+    amount: f32,
+    modulation_transformation: ModulationTransformation,
+    is_removing: bool,
+    modulation_type: Option<WasmModulationType>,
 }
 
 impl ConnectionUpdate {
