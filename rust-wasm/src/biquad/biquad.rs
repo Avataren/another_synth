@@ -1,8 +1,9 @@
 use std::f32::consts::PI;
 use std::f64::consts::PI as PI64;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FilterType {
     LowPass,

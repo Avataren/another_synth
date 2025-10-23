@@ -1,11 +1,13 @@
 use rustc_hash::FxHashMap;
 use std::any::Any;
 // src/traits/mod.rs
+
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
 use crate::graph::ModulationSource;
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PortId {
     AudioInput0,

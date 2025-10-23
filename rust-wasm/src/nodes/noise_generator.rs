@@ -5,10 +5,11 @@ use std::any::Any;
 use std::simd::num::SimdFloat;
 use std::simd::StdFloat;
 use std::simd::{f32x4, Simd};
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// The type of noise to generate.
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NoiseType {
     White = 0,
@@ -17,7 +18,7 @@ pub enum NoiseType {
 }
 
 /// External update struct (e.g. from UI).
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NoiseUpdate {
     pub noise_type: NoiseType,

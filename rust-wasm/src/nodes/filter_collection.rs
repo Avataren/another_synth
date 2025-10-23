@@ -8,6 +8,7 @@ use rustfft::num_traits::Float;
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::any::Any;
 use std::f32::consts::PI;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 // Import necessary items from other modules (adjust paths as needed)
@@ -17,7 +18,7 @@ use crate::graph::{
 };
 use crate::traits::{AudioNode, PortId};
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FilterSlope {
     Db12,

@@ -5,14 +5,16 @@ use std::cell::RefCell;
 use std::f32::consts::PI;
 use std::rc::Rc;
 use std::simd::Simd;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
+#[cfg(feature = "wasm")]
 use web_sys::console;
 
 use super::morph_wavetable::{WavetableMorphCollection, WavetableSynthBank};
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy)]
 pub struct WavetableOscillatorStateUpdate {
     pub phase_mod_amount: f32,
@@ -26,9 +28,10 @@ pub struct WavetableOscillatorStateUpdate {
     pub wavetable_index: f32,
 }
 
-#[wasm_bindgen]
+#[cfg(feature = "wasm")]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl WavetableOscillatorStateUpdate {
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(
         phase_mod_amount: f32,
         detune: f32,
@@ -574,6 +577,7 @@ impl WavetableOscillator {
 
         // Correct unison if mismatched
         if self.voice_offsets.len() != self.unison_voices {
+            #[cfg(feature = "wasm")]
             console::warn_1(
                 &format!(
                     "Correcting voice offset count ({} vs {})",
@@ -581,6 +585,12 @@ impl WavetableOscillator {
                     self.unison_voices
                 )
                 .into(),
+            );
+            #[cfg(not(feature = "wasm"))]
+            eprintln!(
+                "Correcting voice offset count ({} vs {})",
+                self.voice_offsets.len(),
+                self.unison_voices
             );
             self.update_voice_unison_values(self.smoothed_spread);
         }

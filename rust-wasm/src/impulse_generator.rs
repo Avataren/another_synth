@@ -1,15 +1,25 @@
 use getrandom::fill;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+#[cfg(feature = "wasm")]
 use web_sys::{console, js_sys};
 
+#[cfg(feature = "wasm")]
+fn log_error(message: &str) {
+    console::error_1(&message.into());
+}
+
+#[cfg(not(feature = "wasm"))]
+fn log_error(message: &str) {
+    eprintln!("{message}");
+}
+
 /// Fallback to JS crypto.getRandomValues if available, or use Math.random() as a last resort.
+#[cfg(feature = "wasm")]
 pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     if let Some(window) = web_sys::window() {
         if let Ok(crypto) = window.crypto() {
-            // Allocate a buffer of the same length as the seed.
             let mut buf = vec![0u8; seed.len()];
-            // Pass the mutable slice of the buffer.
             if crypto
                 .get_random_values_with_u8_array(buf.as_mut_slice())
                 .is_ok()
@@ -19,7 +29,6 @@ pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
             }
         }
     }
-    // Fall back to Math.random() (insecure)
     web_sys::console::warn_1(
         &"Falling back to Math.random() for seed generation (insecure)".into(),
     );
@@ -29,12 +38,21 @@ pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(feature = "wasm"))]
+pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
+    let mut rng = rand::thread_rng();
+    for byte in seed.iter_mut() {
+        *byte = rng.gen();
+    }
+    Ok(())
+}
+
 /// Tries getrandom::fill first, then falls back to js_fallback_fill.
 fn fill_seed(seed: &mut [u8]) -> Result<(), String> {
     match fill(seed) {
         Ok(()) => Ok(()),
         Err(e) => {
-            console::error_1(&format!("getrandom failed: {:?}", e).into());
+            log_error(&format!("getrandom failed: {:?}", e));
             js_fallback_fill(seed)
         }
     }
@@ -183,7 +201,7 @@ impl ImpulseResponseGenerator {
 
         let mut seed = [0u8; 32];
         if let Err(e) = fill_seed(&mut seed) {
-            console::error_1(&format!("failed to generate random seed: {}", e).into());
+            log_error(&format!("failed to generate random seed: {}", e));
             panic!("failed to generate random seed: {}", e);
         }
         let mut rng = StdRng::from_seed(seed);
@@ -248,7 +266,7 @@ impl ImpulseResponseGenerator {
 
         let mut seed = [0u8; 32];
         if let Err(e) = fill_seed(&mut seed) {
-            console::error_1(&format!("failed to generate random seed: {}", e).into());
+            log_error(&format!("failed to generate random seed: {}", e));
             panic!("failed to generate random seed: {}", e);
         }
         let mut rng = StdRng::from_seed(seed);
