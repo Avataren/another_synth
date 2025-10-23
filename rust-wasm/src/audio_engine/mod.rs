@@ -1,3 +1,4 @@
+use crate::automation::AutomationFrame;
 use crate::biquad::FilterType;
 use crate::effect_stack::EffectStack;
 use crate::graph::{
@@ -612,6 +613,26 @@ impl AudioEngine {
             self.cpu_time_accum = 0.0;
             self.audio_time_accum = 0.0;
         }
+    }
+
+    #[wasm_bindgen]
+    pub fn process_with_frame(
+        &mut self,
+        frame: &AutomationFrame,
+        master_gain: f32,
+        output_left: &mut [f32],
+        output_right: &mut [f32],
+    ) {
+        self.process_audio(
+            frame.gates(),
+            frame.frequencies(),
+            frame.gains(),
+            frame.velocities(),
+            frame.macro_buffers(),
+            master_gain,
+            output_left,
+            output_right,
+        );
     }
 
     #[wasm_bindgen]

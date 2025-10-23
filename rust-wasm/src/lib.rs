@@ -3,6 +3,7 @@
 
 mod audio;
 mod audio_engine;
+mod automation;
 mod biquad;
 mod effect_stack;
 mod graph;
@@ -14,6 +15,12 @@ mod traits;
 mod utils;
 mod voice;
 
+pub use automation::{
+    apply_connection_update as apply_modulation_update,
+    AutomationAdapter,
+    AutomationFrame,
+    ConnectionUpdate,
+};
 pub use graph::AudioGraph;
 pub use graph::{Connection, ConnectionId, NodeId};
 pub use macros::{MacroManager, ModulationTarget};

@@ -358,8 +358,8 @@ impl FilterCollection {
         let k_resonance = resonance_norm.clamp(0.0, 1.0);
         // Moog resonance often goes up to 4x feedback
         let k = k_resonance.powf(1.5) * 4.0; // Enhanced resonance scaling
-                                             // Compensation applied to the input signal path
-        let comp_gain = 1.0 / (1.0 + res_comp * k);
+                                             // Compensation boosts the input signal path
+        let comp_gain = (1.0 + res_comp * k).max(0.0);
 
         // --- Drive ---
         // Drive is applied as a gain *before* the tanh per stage
