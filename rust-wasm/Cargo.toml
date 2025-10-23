@@ -9,6 +9,7 @@ edition = "2021"
 [features]
 default = ["wasm"]
 simd = []
+# Enables the WebAssembly build with JavaScript bindings for the web app.
 wasm = [
     "dep:wasm-bindgen",
     "dep:web-sys",
@@ -16,6 +17,8 @@ wasm = [
     "dep:serde-wasm-bindgen",
     "getrandom/wasm_js",
 ]
+# Enables the native audio host required for the demo binary while retaining the wasm bindings it depends on.
+native-host = ["dep:cpal", "wasm"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -33,6 +36,7 @@ hound = "3.5.1"
 rand = "0.9"
 getrandom = "0.3.3"
 rustc-hash = "2.1.1"
+cpal = { version = "0.15.3", optional = true }
 
 fft-convolver = "0.2.0"
 rubato = "0.16.2"
