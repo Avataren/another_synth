@@ -2,6 +2,7 @@ use rustc_hash::FxHashMap;
 use std::any::Any;
 use std::simd::{f32x4, Simd};
 // Keep for potential output writing optimization
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 // use web_sys::console; // Uncomment for debugging
 
@@ -24,7 +25,7 @@ pub enum EnvelopePhase {
     Release,
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone)]
 pub struct EnvelopeConfig {
     pub attack: f32,  // Time in seconds
@@ -55,9 +56,10 @@ impl Default for EnvelopeConfig {
     }
 }
 
-#[wasm_bindgen]
+#[cfg(feature = "wasm")]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl EnvelopeConfig {
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(
         attack: f32,
         decay: f32,

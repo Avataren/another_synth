@@ -4,6 +4,7 @@ use std::simd::{f32x4, Simd, StdFloat};
 use std::sync::OnceLock;
 
 use rustc_hash::FxHashMap;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::graph::{
@@ -47,7 +48,7 @@ impl LfoRetriggerMode {
         }
     }
 }
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LfoLoopMode {
     Off = 0,      // Repeats full 0..1 waveform (unless OneShot)

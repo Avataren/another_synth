@@ -40,6 +40,26 @@ use super::{
     types::{Connection, ConnectionKey, ModulationTransformation, NodeId},
     ModulationSource,
 };
+#[cfg(feature = "wasm")]
+use web_sys::console;
+
+#[cfg(feature = "wasm")]
+fn log_console(message: &str) {
+    console::log_1(&message.into());
+}
+
+#[cfg(not(feature = "wasm"))]
+fn log_console(_message: &str) {}
+
+#[cfg(feature = "wasm")]
+fn log_error(message: &str) {
+    console::error_1(&message.into());
+}
+
+#[cfg(not(feature = "wasm"))]
+fn log_error(message: &str) {
+    eprintln!("{message}");
+}
 use crate::{
     graph::ModulationType,
     nodes::{GateMixer, GlobalFrequencyNode, GlobalVelocityNode},
@@ -336,13 +356,10 @@ impl AudioGraph {
     }
 
     pub fn connect(&mut self, connection: Connection) -> ConnectionKey {
-        web_sys::console::log_1(
-            &format!(
-                "connect - Before connect: connections={:?}, inputs={:?}",
-                self.connections, self.input_connections
-            )
-            .into(),
-        );
+        log_console(&format!(
+            "connect - Before connect: connections={:?}, inputs={:?}",
+            self.connections, self.input_connections
+        ));
 
         let key = ConnectionKey::new(
             connection.from_node,
@@ -418,13 +435,10 @@ impl AudioGraph {
         //     ));
         // }
 
-        web_sys::console::log_1(
-            &format!(
-                "connect - After connect: connections={:?}, inputs={:?}",
-                self.connections, self.input_connections
-            )
-            .into(),
-        );
+        log_console(&format!(
+            "connect - After connect: connections={:?}, inputs={:?}",
+            self.connections, self.input_connections
+        ));
 
         self.update_processing_order();
         key
@@ -627,10 +641,10 @@ impl AudioGraph {
                         }
                     }
                     Err(e) => {
-                        web_sys::console::error_1(
-                            &format!("Error getting input buffers for node {}: {}", node_idx, e)
-                                .into(),
-                        );
+                        log_error(&format!(
+                            "Error getting input buffers for node {}: {}",
+                            node_idx, e
+                        ));
                         continue 'node_loop; // Skip node if inputs can't be retrieved
                     }
                 }
@@ -716,10 +730,10 @@ impl AudioGraph {
                         // Mutable borrow of output_buffers_vec ends here.
                     }
                     Err(e) => {
-                        web_sys::console::error_1(
-                            &format!("Error getting output buffers for node {}: {}", node_idx, e)
-                                .into(),
-                        );
+                        log_error(&format!(
+                            "Error getting output buffers for node {}: {}",
+                            node_idx, e
+                        ));
                         continue 'node_loop; // Skip node if outputs can't be retrieved
                     }
                 }

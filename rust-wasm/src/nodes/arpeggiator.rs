@@ -3,7 +3,16 @@ use std::any::Any;
 use std::simd::StdFloat;
 
 use rustc_hash::FxHashMap;
+#[cfg(feature = "wasm")]
 use web_sys::console;
+
+#[cfg(feature = "wasm")]
+fn log_console(message: &str) {
+    console::log_1(&message.into());
+}
+
+#[cfg(not(feature = "wasm"))]
+fn log_console(_message: &str) {}
 
 use crate::graph::ModulationSource;
 use crate::{AudioNode, PortId};
@@ -311,13 +320,10 @@ impl ArpeggiatorGenerator {
         for j in 0..buffer_size {
             let current_gate = gate_mod[j] > 0.5;
             if !self.prev_gate_active && current_gate {
-                console::log_1(
-                    &format!(
-                        "Arpeggiator Trigger Debug: Rising edge detected at sample {}",
-                        self.sample_counter + j
-                    )
-                    .into(),
-                );
+                log_console(&format!(
+                    "Arpeggiator Trigger Debug: Rising edge detected at sample {}",
+                    self.sample_counter + j
+                ));
                 self.sample_counter = 0;
                 self.prev_step = 0;
             }

@@ -30,7 +30,9 @@ use std::f32::consts::PI;
 use std::simd::num::SimdFloat;
 use std::simd::{LaneCount, Simd, SupportedLaneCount};
 use std::sync::Arc;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
+#[cfg(feature = "wasm")]
 use web_sys::console;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
@@ -42,7 +44,7 @@ use super::{Waveform, WavetableBank};
 // Public state‑update struct
 // ------------------------------------------------------------------------------------------------------------------
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy)]
 pub struct AnalogOscillatorStateUpdate {
     pub phase_mod_amount: f32,
@@ -56,9 +58,10 @@ pub struct AnalogOscillatorStateUpdate {
     pub spread: f32, // Total width in cents (peak‑to‑peak)
 }
 
-#[wasm_bindgen]
+#[cfg(feature = "wasm")]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl AnalogOscillatorStateUpdate {
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(
         phase_mod_amount: f32,
         detune: f32,
@@ -621,7 +624,10 @@ impl AudioNode for AnalogOscillator {
         let bank = match self.wavetable_banks.get(&self.waveform) {
             Some(b) => b.clone(),
             None => {
+                #[cfg(feature = "wasm")]
                 console::error_1(&format!("Wavetable bank missing for {:?}", self.waveform).into());
+                #[cfg(not(feature = "wasm"))]
+                eprintln!("Wavetable bank missing for {:?}", self.waveform);
                 out[..buffer_size].fill(0.0);
                 return;
             }

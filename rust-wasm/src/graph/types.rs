@@ -1,6 +1,7 @@
 use crate::PortId;
 use serde::Serialize;
 use std::ops::Deref;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
 #[derive(Clone)] // Clone might not be possible/needed anymore if nodes don't own it
@@ -12,7 +13,7 @@ pub struct ModulationSource {
     pub transformation: ModulationTransformation,
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub usize);
 
@@ -42,7 +43,8 @@ impl Deref for NodeId {
     }
 }
 
-#[wasm_bindgen]
+#[cfg(feature = "wasm")]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl NodeId {
     pub fn as_number(&self) -> usize {
         self.0
@@ -52,7 +54,7 @@ impl NodeId {
     }
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConnectionId(pub usize);
 
@@ -71,7 +73,7 @@ impl Default for ModulationType {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, PartialEq)]
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[repr(u32)]
 pub enum ModulationTransformation {
     None,
