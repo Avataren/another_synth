@@ -22,6 +22,9 @@ import { type NoiseUpdate } from '../types/noise.js';
 import {
   AnalogOscillatorStateUpdate,
   AudioEngine,
+  AutomationAdapter,
+  ConnectionUpdate,
+  apply_modulation_update,
   initSync,
   LfoUpdateParams,
   ModulationTransformation,
@@ -103,9 +106,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private readonly maxEnvelopes: number = 4;
   private readonly maxLFOs: number = 4;
   private readonly maxFilters: number = 4;
+  private readonly macroCount: number = 4;
+  private readonly macroBufferSize: number = 128;
   private voiceLayouts: VoiceLayout[] = [];
   private nextNodeId: number = 0;
   private stateVersion: number = 0;
+  private automationAdapter: AutomationAdapter | null = null;
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -349,6 +355,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       console.log('SAMPLERATE: ', sampleRate);
       this.audioEngine = new AudioEngine(sampleRate);
       this.audioEngine.init(sampleRate, this.numVoices);
+      this.automationAdapter = new AutomationAdapter(
+        this.numVoices,
+        this.macroCount,
+        this.macroBufferSize,
+      );
 
       // Initialize all voices first
       this.createNodesAndSetupConnections();
@@ -862,34 +873,29 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleUpdateModulation(data: {
-    connection: {
-      fromId: number;
-      toId: number;
-      target: PortId;
-      amount: number;
-      isRemoving?: boolean;
-    };
+    connection: NodeConnectionUpdate;
     messageId: string;
   }) {
     if (!this.audioEngine) return;
 
+    const { connection } = data;
+    const transformation =
+      connection.modulationTransformation ?? ModulationTransformation.None;
+    const update = new ConnectionUpdate(
+      connection.fromId,
+      connection.toId,
+      connection.target,
+      connection.amount,
+      transformation,
+      connection.isRemoving ?? false,
+      connection.modulationType ?? null,
+    );
+
     try {
-      if (data.connection.isRemoving) {
-        this.audioEngine.remove_specific_connection(
-          data.connection.fromId,
-          data.connection.toId,
-          data.connection.target,
-        );
+      if (this.automationAdapter) {
+        this.automationAdapter.applyConnectionUpdate(this.audioEngine, update);
       } else {
-        this.audioEngine.connect_nodes(
-          data.connection.fromId,
-          PortId.AudioOutput0,
-          data.connection.toId,
-          data.connection.target,
-          data.connection.amount,
-          WasmModulationType.VCA,
-          ModulationTransformation.None,
-        );
+        apply_modulation_update(this.audioEngine, update);
       }
     } catch (err) {
       console.error('Error updating modulation:', err);
@@ -1095,41 +1101,30 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     if (!outputLeft || !outputRight) return true;
 
-    // Create parameter arrays
-    const gateArray = new Float32Array(this.numVoices);
-    const freqArray = new Float32Array(this.numVoices);
-    const gainArray = new Float32Array(this.numVoices);
-    const velocityArray = new Float32Array(this.numVoices);
-    const macroArray = new Float32Array(this.numVoices * 4 * 128);
-
-    for (let i = 0; i < this.numVoices; i++) {
-      gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
-      freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
-      gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
-      velocityArray[i] = parameters[`velocity_${i}`]?.[0] ?? 0;
-
-      const voiceOffset = i * 4 * 128;
-      for (let m = 0; m < 4; m++) {
-        const macroOffset = voiceOffset + m * 128;
-        const macroValue = parameters[`macro_${i}_${m}`]?.[0] ?? 0;
-        for (let j = 0; j < 128; j++) {
-          macroArray[macroOffset + j] = macroValue;
-        }
-      }
-    }
-
     const masterGain = parameters.master_gain?.[0] ?? 1;
 
-    this.audioEngine.process_audio(
-      gateArray,
-      freqArray,
-      gainArray,
-      velocityArray,
-      macroArray,
-      masterGain,
-      outputLeft,
-      outputRight,
-    );
+    if (!this.automationAdapter) {
+      this.automationAdapter = new AutomationAdapter(
+        this.numVoices,
+        this.macroCount,
+        this.macroBufferSize,
+      );
+    }
+
+    const adapter = this.automationAdapter;
+    if (!adapter) return true;
+
+    try {
+      adapter.processBlock(
+        this.audioEngine!,
+        parameters,
+        masterGain,
+        outputLeft,
+        outputRight,
+      );
+    } catch (err) {
+      console.error('Error processing automation block:', err);
+    }
 
     return true;
   }
