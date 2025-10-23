@@ -1,3 +1,4 @@
+use crate::automation::AutomationFrame;
 use crate::effect_stack::EffectStack;
 use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::WavetableSynthBank;
@@ -7,11 +8,12 @@ use crate::nodes::{
 use crate::traits::AudioNode;
 use crate::voice::Voice;
 use rustc_hash::FxHashMap;
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
 const DEFAULT_NUM_VOICES: usize = 8;
 const MAX_TABLE_SIZE: usize = 2048;
 const BUFFER_SIZE: usize = 128;
+const MACRO_COUNT: usize = 4;
 
 pub struct AudioEngine {
     voices: Vec<Voice>,
@@ -162,15 +164,131 @@ impl AudioEngine {
         self.effect_stack.add_effect(Box::new(limiter));
     }
 
-    pub fn process_with_frame(
+    pub fn process_audio(
         &mut self,
-        _frame: &crate::automation::AutomationFrame,
-        _master_gain: f32,
+        gates: &[f32],
+        frequencies: &[f32],
+        gains: &[f32],
+        velocities: &[f32],
+        macro_values: &[f32],
+        master_gain: f32,
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        output_left.fill(0.0);
-        output_right.fill(0.0);
+        let voice_macro_span = self.voices.len().saturating_mul(MACRO_COUNT);
+        let macro_buffer_len = if voice_macro_span == 0 {
+            0
+        } else {
+            macro_values.len() / voice_macro_span
+        };
+        self.process_audio_internal(
+            gates,
+            frequencies,
+            gains,
+            velocities,
+            macro_values,
+            macro_buffer_len,
+            master_gain,
+            output_left,
+            output_right,
+        );
+    }
+
+    fn process_audio_internal(
+        &mut self,
+        gates: &[f32],
+        frequencies: &[f32],
+        gains: &[f32],
+        velocities: &[f32],
+        macro_values: &[f32],
+        macro_buffer_len: usize,
+        master_gain: f32,
+        output_left: &mut [f32],
+        output_right: &mut [f32],
+    ) {
+        let start = Instant::now();
+
+        let mut mix_left = vec![0.0; output_left.len()];
+        let mut mix_right = vec![0.0; output_right.len()];
+        let mut voice_left = vec![0.0; output_left.len()];
+        let mut voice_right = vec![0.0; output_right.len()];
+
+        let voice_macro_stride = MACRO_COUNT * macro_buffer_len;
+
+        for (i, voice) in self.voices.iter_mut().enumerate() {
+            let gate = gates.get(i).copied().unwrap_or(0.0);
+            let frequency = frequencies.get(i).copied().unwrap_or(440.0);
+            let gain = gains.get(i).copied().unwrap_or(1.0);
+            let velocity = velocities.get(i).copied().unwrap_or(0.0);
+
+            voice.current_gate = gate;
+            voice.current_frequency = frequency;
+            voice.current_velocity = velocity;
+
+            if macro_buffer_len > 0 {
+                for macro_idx in 0..MACRO_COUNT {
+                    let macro_start = i * voice_macro_stride + macro_idx * macro_buffer_len;
+                    if macro_start + macro_buffer_len <= macro_values.len() {
+                        let values = &macro_values[macro_start..macro_start + macro_buffer_len];
+                        let _ = voice.update_macro(macro_idx, values);
+                    }
+                }
+            }
+
+            voice_left.fill(0.0);
+            voice_right.fill(0.0);
+
+            voice.process_audio(&mut voice_left, &mut voice_right);
+
+            for (sample_idx, (left, right)) in
+                voice_left.iter().zip(voice_right.iter()).enumerate()
+            {
+                mix_left[sample_idx] += left * gain;
+                mix_right[sample_idx] += right * gain;
+            }
+        }
+
+        self.effect_stack
+            .process_audio(&mix_left, &mix_right, output_left, output_right);
+
+        if master_gain != 1.0 {
+            for sample in output_left.iter_mut() {
+                *sample *= master_gain;
+            }
+            for sample in output_right.iter_mut() {
+                *sample *= master_gain;
+            }
+        }
+
+        let elapsed_sec = start.elapsed().as_secs_f64();
+        let quantum_sec = 128.0 / self.sample_rate as f64;
+        self.cpu_time_accum += elapsed_sec;
+        self.audio_time_accum += quantum_sec;
+        if self.audio_time_accum >= 0.1 {
+            self.last_cpu_usage = ((self.cpu_time_accum / self.audio_time_accum) * 100.0) as f32;
+            self.cpu_time_accum = 0.0;
+            self.audio_time_accum = 0.0;
+        }
+    }
+
+    pub fn process_with_frame(
+        &mut self,
+        frame: &AutomationFrame,
+        master_gain: f32,
+        output_left: &mut [f32],
+        output_right: &mut [f32],
+    ) {
+        self.process_audio_internal(
+            frame.gates(),
+            frame.frequencies(),
+            frame.gains(),
+            frame.velocities(),
+            frame.macro_buffers(),
+            frame.macro_buffer_len(),
+            master_gain,
+            output_left,
+            output_right,
+        );
     }
 
     pub fn sample_rate(&self) -> f32 {
@@ -179,5 +297,56 @@ impl AudioEngine {
 
     pub fn num_voices(&self) -> usize {
         self.num_voices
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Connection, ModulationTransformation, ModulationType};
+    use crate::nodes::{AnalogOscillator, Mixer};
+    use crate::PortId;
+
+    #[cfg(not(feature = "wasm"))]
+    #[test]
+    fn process_with_frame_outputs_audio_when_gate_is_active() {
+        let sample_rate = 48_000.0;
+        let mut engine = AudioEngine::new(sample_rate, 1);
+        engine.init(sample_rate, 1);
+
+        let voice = engine.voices.get_mut(0).expect("voice should exist");
+        let osc_id = voice.graph.add_node(Box::new(AnalogOscillator::new(
+            sample_rate,
+            Waveform::Sine,
+            engine.wavetable_banks.clone(),
+        )));
+        let mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
+        voice.graph.set_output_node(mixer_id);
+
+        voice.graph.add_connection(Connection {
+            from_node: osc_id,
+            from_port: PortId::AudioOutput0,
+            to_node: mixer_id,
+            to_port: PortId::AudioInput0,
+            amount: 1.0,
+            modulation_type: ModulationType::Additive,
+            modulation_transform: ModulationTransformation::None,
+        });
+
+        let mut frame = AutomationFrame::with_dimensions(engine.num_voices(), MACRO_COUNT, 64);
+        frame.set_voice_values(0, 1.0, 440.0, 1.0, 1.0);
+
+        let mut left = [0.0f32; 128];
+        let mut right = [0.0f32; 128];
+
+        engine.process_with_frame(&frame, 1.0, &mut left, &mut right);
+        engine.process_with_frame(&frame, 1.0, &mut left, &mut right);
+
+        let has_signal = left
+            .iter()
+            .chain(right.iter())
+            .any(|&sample| sample.abs() > 1e-6);
+
+        assert!(has_signal, "expected audio output after gate activation");
     }
 }
