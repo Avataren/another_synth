@@ -13,6 +13,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 const DEFAULT_NUM_VOICES: usize = 8;
 const MAX_TABLE_SIZE: usize = 2048;
 const BUFFER_SIZE: usize = 128;
+const MACRO_COUNT: usize = 4;
 
 pub struct AudioEngine {
     voices: Vec<Voice>,
@@ -174,12 +175,45 @@ impl AudioEngine {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
+        let voice_macro_span = self.voices.len().saturating_mul(MACRO_COUNT);
+        let macro_buffer_len = if voice_macro_span == 0 {
+            0
+        } else {
+            macro_values.len() / voice_macro_span
+        };
+        self.process_audio_internal(
+            gates,
+            frequencies,
+            gains,
+            velocities,
+            macro_values,
+            macro_buffer_len,
+            master_gain,
+            output_left,
+            output_right,
+        );
+    }
+
+    fn process_audio_internal(
+        &mut self,
+        gates: &[f32],
+        frequencies: &[f32],
+        gains: &[f32],
+        velocities: &[f32],
+        macro_values: &[f32],
+        macro_buffer_len: usize,
+        master_gain: f32,
+        output_left: &mut [f32],
+        output_right: &mut [f32],
+    ) {
         let start = Instant::now();
 
         let mut mix_left = vec![0.0; output_left.len()];
         let mut mix_right = vec![0.0; output_right.len()];
         let mut voice_left = vec![0.0; output_left.len()];
         let mut voice_right = vec![0.0; output_right.len()];
+
+        let voice_macro_stride = MACRO_COUNT * macro_buffer_len;
 
         for (i, voice) in self.voices.iter_mut().enumerate() {
             let gate = gates.get(i).copied().unwrap_or(0.0);
@@ -191,11 +225,13 @@ impl AudioEngine {
             voice.current_frequency = frequency;
             voice.current_velocity = velocity;
 
-            for macro_idx in 0..4 {
-                let macro_start = i * 4 * 128 + (macro_idx * 128);
-                if macro_start + 128 <= macro_values.len() {
-                    let values = &macro_values[macro_start..macro_start + 128];
-                    let _ = voice.update_macro(macro_idx, values);
+            if macro_buffer_len > 0 {
+                for macro_idx in 0..MACRO_COUNT {
+                    let macro_start = i * voice_macro_stride + macro_idx * macro_buffer_len;
+                    if macro_start + macro_buffer_len <= macro_values.len() {
+                        let values = &macro_values[macro_start..macro_start + macro_buffer_len];
+                        let _ = voice.update_macro(macro_idx, values);
+                    }
                 }
             }
 
@@ -242,12 +278,13 @@ impl AudioEngine {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        self.process_audio(
+        self.process_audio_internal(
             frame.gates(),
             frame.frequencies(),
             frame.gains(),
             frame.velocities(),
             frame.macro_buffers(),
+            frame.macro_buffer_len(),
             master_gain,
             output_left,
             output_right,
@@ -296,7 +333,7 @@ mod tests {
             modulation_transform: ModulationTransformation::None,
         });
 
-        let mut frame = AutomationFrame::with_dimensions(engine.num_voices(), 4, 128);
+        let mut frame = AutomationFrame::with_dimensions(engine.num_voices(), MACRO_COUNT, 64);
         frame.set_voice_values(0, 1.0, 440.0, 1.0, 1.0);
 
         let mut left = [0.0f32; 128];
