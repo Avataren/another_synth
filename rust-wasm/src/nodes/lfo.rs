@@ -1,6 +1,5 @@
 // --- IMPORTS and other parts remain the same ---
 use std::any::Any;
-use std::simd::{f32x4, Simd, StdFloat};
 use std::sync::OnceLock;
 
 use rustc_hash::FxHashMap;
@@ -8,7 +7,7 @@ use rustc_hash::FxHashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::graph::{
-    ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
+    ModulationProcessor, ModulationSource,
 };
 use crate::traits::{AudioNode, PortId};
 
@@ -176,7 +175,7 @@ impl Lfo {
     }
 
     fn ensure_scratch_buffers(&mut self, size: usize) {
-        let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
+        let resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
             if buf.len() < size {
                 buf.resize(size, default_val);
             }
@@ -706,7 +705,7 @@ impl AudioNode for Lfo {
             // --- Calculate Output Sample AND Advance Phase ---
             // Get the phase value *before* any potential advancement this sample.
             let current_phase_value = self.phase;
-            let mut output_sample;
+            let output_sample;
 
             if should_advance_phase {
                 // LFO is running/advancing this sample.

@@ -43,13 +43,6 @@ dasp_sample = "0.11.0"
 fft-convolver = "0.2.0"
 rubato = "0.16.2"
 
-[target.'cfg(any(feature = "wasm", target_arch = "wasm32"))'.dependencies]
-wasm-bindgen = { version = "0.2.104", optional = true }
-js-sys = { version = "0.3.81", optional = true }
-web-sys = { version = "0.3.81", features = ["Window", "Crypto", "console", "Performance"], optional = true }
-serde-wasm-bindgen = { version = "0.6.5", optional = true }
-getrandom = { version = "0.3.3", features = ["wasm_js"] }
-
 [profile.release]
 opt-level = 3
 lto = true
@@ -69,3 +62,8 @@ wasm-opt = ['-O3', '--enable-simd']
 [[bench]]
 name = "graph_benchmark"
 harness = true
+
+[[bin]]
+name = "native_demo"
+path = "src/bin/native_demo.rs"
+required-features = ["native-host"]

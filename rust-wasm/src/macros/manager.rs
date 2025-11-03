@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use super::types::{ModulationMacro, ModulationTarget};
 use crate::graph::{AudioBufferPool, ModulationType};
 use crate::PortId;
-use std::simd::{f32x4, StdFloat};
+use std::simd::f32x4;
 
 #[derive(Debug)]
 pub struct MacroManager {
@@ -120,13 +120,6 @@ impl MacroManager {
             macros: macros_data,
             buffer_size: self.buffer_size,
         }
-    }
-
-    // Helper function for converting cents to a frequency factor using SIMD.
-    // Note: using exp() instead of exp2() as requested.
-    #[inline(always)]
-    fn cents_to_factor_simd(cents: f32x4) -> f32x4 {
-        (cents / f32x4::splat(1200.0)).exp2()
     }
 
     /// Apply modulation for the entire block starting at `offset`, processing in chunks of 4 samples.

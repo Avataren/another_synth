@@ -37,7 +37,6 @@ pub struct Limiter {
     target_threshold_db: f32,
     target_attack_ms: f32,
     target_release_ms: f32,
-    target_lookahead_ms: f32, // Optional lookahead time
     target_stereo_link: bool, // Apply same gain reduction to L/R?
 
     // --- Parameters (Internal/Smoothed) ---
@@ -54,7 +53,6 @@ pub struct Limiter {
     // --- Lookahead ---
     lookahead_buffer_l: Vec<f32>,
     lookahead_buffer_r: Vec<f32>,
-    lookahead_samples: usize,
     lookahead_write_index: usize,
     lookahead_read_delay: usize, // How many samples behind write index to read
 }
@@ -92,7 +90,6 @@ impl Limiter {
             target_threshold_db: threshold_db,
             target_attack_ms: attack_ms,
             target_release_ms: release_ms,
-            target_lookahead_ms: lookahead_ms,
             target_stereo_link: stereo_link,
             current_threshold_linear,
             attack_coeff,
@@ -103,7 +100,6 @@ impl Limiter {
             gain_reduction_r: 1.0,
             lookahead_buffer_l: vec![0.0; lookahead_buffer_size],
             lookahead_buffer_r: vec![0.0; lookahead_buffer_size],
-            lookahead_samples,
             lookahead_write_index: 0,
             lookahead_read_delay,
         }

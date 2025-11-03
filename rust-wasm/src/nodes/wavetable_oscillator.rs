@@ -58,7 +58,6 @@ impl WavetableOscillatorStateUpdate {
 }
 
 pub struct WavetableOscillator {
-    sample_rate: f32,
     smoothing_coeff: f32,
 
     // smoothed parameters
@@ -76,16 +75,10 @@ pub struct WavetableOscillator {
     smoothed_wavetable_index: f32,
 
     // live state
-    gain: f32,
     active: bool,
-    feedback_amount: f32,
     hard_sync: bool,
     last_gate_value: f32,
     frequency: f32,
-    phase_mod_amount: f32,
-    detune: f32,
-    spread: f32,
-    wavetable_index: f32,
 
     // unison
     unison_voices: usize,
@@ -142,7 +135,6 @@ impl WavetableOscillator {
         };
 
         let mut osc = Self {
-            sample_rate,
             smoothing_coeff,
 
             target_gain: initial_gain,
@@ -158,16 +150,10 @@ impl WavetableOscillator {
             smoothed_spread: initial_spread.clamp(0.0, max_spread_cents),
             smoothed_wavetable_index: initial_wt_index,
 
-            gain: initial_gain,
             active: true,
-            feedback_amount: initial_feedback,
             hard_sync: false,
             last_gate_value: 0.0,
             frequency: initial_frequency,
-            phase_mod_amount: initial_phase_mod,
-            detune: initial_detune,
-            spread: initial_spread.clamp(0.0, max_spread_cents),
-            wavetable_index: initial_wt_index,
 
             unison_voices: 1,
             voice_phases: vec![0.0; 1],
@@ -202,7 +188,7 @@ impl WavetableOscillator {
     }
 
     fn ensure_scratch_buffers(&mut self, size: usize) {
-        let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
+        let resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
             if buf.len() < size {
                 buf.resize(size, default_val);
             }
@@ -720,18 +706,6 @@ impl WavetableOscillator {
     fn node_type(&self) -> &str {
         "wavetable_oscillator"
     }
-}
-
-#[inline(always)]
-fn get_collection_from_bank<'a>(
-    bank: &'a RefCell<WavetableSynthBank>,
-    name: &str,
-) -> Rc<WavetableMorphCollection> {
-    let borrowed = bank.borrow();
-    borrowed
-        .get_collection(name)
-        .unwrap_or_else(|| panic!("Wavetable collection '{}' not found", name))
-        .clone()
 }
 
 impl AudioNode for WavetableOscillator {

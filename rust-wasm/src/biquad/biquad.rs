@@ -1,4 +1,3 @@
-use std::f32::consts::PI;
 use std::f64::consts::PI as PI64;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;

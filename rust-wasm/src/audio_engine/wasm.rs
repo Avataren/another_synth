@@ -10,7 +10,6 @@ use crate::graph::{
 };
 use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::{
-    cubic_interp,
     MipmappedWavetable,
     WavetableMorphCollection,
     WavetableSynthBank,
@@ -66,74 +65,6 @@ fn log_console(message: &str) {
 #[cfg(not(feature = "wasm"))]
 fn log_console(_message: &str) {}
 
-/// Given the base waveform (one cycle) in `base_samples` (length = base_size),
-/// generate a band-limited table of length `table_size` by FFT–processing:
-/// 1. Resample (if needed) to `table_size`.
-/// 2. FFT the samples, zero out harmonics above `max_harmonic`,
-///    then perform an inverse FFT and normalize.
-///
-fn generate_custom_table(
-    base_samples: &Vec<f32>,
-    base_size: usize,
-    table_size: usize,
-    max_harmonic: usize,
-) -> Result<Vec<f32>, Box<dyn Error>> {
-    use rustfft::{num_complex::Complex, FftPlanner};
-
-    // If the desired table size differs from base_size, resample using cubic interpolation.
-    let resampled: Vec<f32> = if table_size != base_size {
-        (0..table_size)
-            .map(|i| {
-                let pos = i as f32 * base_size as f32 / table_size as f32;
-                cubic_interp(&base_samples, pos)
-            })
-            .collect()
-    } else {
-        base_samples.clone()
-    };
-
-    // Convert to complex numbers.
-    let mut spectrum: Vec<Complex<f32>> = resampled
-        .iter()
-        .map(|&s| Complex { re: s, im: 0.0 })
-        .collect();
-
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(table_size);
-    fft.process(&mut spectrum);
-
-    // Zero out all harmonics above max_harmonic.
-    // (Assumes spectrum[0] is DC; we keep indices 1..=max_harmonic and the symmetric ones.)
-    for i in (max_harmonic + 1)..(table_size - max_harmonic) {
-        spectrum[i] = Complex { re: 0.0, im: 0.0 };
-    }
-
-    // Inverse FFT.
-    let ifft = planner.plan_fft_inverse(table_size);
-    ifft.process(&mut spectrum);
-
-    // Normalize and extract real part.
-    let mut samples_out: Vec<f32> = spectrum.iter().map(|c| c.re / table_size as f32).collect();
-
-    // Optional amplitude normalization.
-    if let Some(peak) = samples_out
-        .iter()
-        .map(|s| s.abs())
-        .max_by(|a, b| a.partial_cmp(b).unwrap())
-    {
-        if peak > 1e-12 {
-            for s in samples_out.iter_mut() {
-                *s /= peak;
-            }
-        }
-    }
-    // Append a wrap-around sample.
-    samples_out.push(samples_out[0]);
-    Ok(samples_out)
-}
-
-/// Convert a WAV file (via a hound reader) into a WavetableMorphCollection that contains
-/// one mipmapped wavetable per complete cycle (of length `base_size`) found in the file.
 fn import_wav_hound_reader<R: std::io::Read>(
     reader: R,
     base_size: usize,
@@ -218,15 +149,17 @@ impl From<WasmNoiseType> for NoiseType {
 
 #[derive(Deserialize)]
 struct JsEnvelopeConfig {
-    id: Option<u32>,
     active: bool,
     attack: f32,
     decay: f32,
     sustain: f32,
     release: f32,
-    attackCurve: f32,
-    decayCurve: f32,
-    releaseCurve: f32,
+    #[serde(rename = "attackCurve")]
+    attack_curve: f32,
+    #[serde(rename = "decayCurve")]
+    decay_curve: f32,
+    #[serde(rename = "releaseCurve")]
+    release_curve: f32,
 }
 impl From<JsEnvelopeConfig> for EnvelopeConfig {
     fn from(js_conf: JsEnvelopeConfig) -> Self {
@@ -235,9 +168,9 @@ impl From<JsEnvelopeConfig> for EnvelopeConfig {
             decay: js_conf.decay,
             sustain: js_conf.sustain,
             release: js_conf.release,
-            attack_curve: js_conf.attackCurve,
-            decay_curve: js_conf.decayCurve,
-            release_curve: js_conf.releaseCurve,
+            attack_curve: js_conf.attack_curve,
+            decay_curve: js_conf.decay_curve,
+            release_curve: js_conf.release_curve,
             attack_smoothing_samples: 16, // a sensible default
             active: js_conf.active,
         }
@@ -458,7 +391,7 @@ impl AudioEngine {
         to_node: usize,
         to_port: PortId,
     ) -> Result<(), JsValue> {
-        for (i, voice) in self.voices.iter_mut().enumerate() {
+        for (_i, voice) in self.voices.iter_mut().enumerate() {
             voice.graph.remove_connection(&Connection {
                 from_node: NodeId(from_node),
                 from_port,
@@ -518,7 +451,7 @@ impl AudioEngine {
                     modulation_type: match conn.modulation_type {
                         ModulationType::VCA => WasmModulationType::VCA,
                         ModulationType::Bipolar => WasmModulationType::Bipolar,
-                        ModulationType::Additive | _ => WasmModulationType::Additive,
+                        ModulationType::Additive => WasmModulationType::Additive,
                     },
                     modulation_transform: conn.modulation_transform,
                 })
@@ -878,7 +811,7 @@ impl AudioEngine {
                 .graph
                 .connections
                 .iter()
-                .map(|(key, conn)| {
+                .map(|(_key, conn)| {
                     let mut new_conn = conn.clone();
 
                     if new_conn.from_node.0 > node_id.0 {
@@ -1637,7 +1570,7 @@ impl AudioEngine {
         key_tracking: f32,
         comb_frequency: f32,
         comb_dampening: f32,
-        oversampling: u32,
+        _oversampling: u32,
         filter_type: FilterType,
         filter_slope: FilterSlope,
     ) -> Result<(), JsValue> {

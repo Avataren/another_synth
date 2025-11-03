@@ -1,12 +1,12 @@
 use std::any::Any;
 use std::simd::num::SimdFloat;
-use std::simd::{f32x4, Simd, StdFloat}; // Import Simd explicitly, StdFloat for sqrt
+use std::simd::{Simd, StdFloat}; // Import Simd explicitly, StdFloat for sqrt
 
 use rustc_hash::FxHashMap;
 
 // Import necessary types
 use crate::graph::{
-    ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
+    ModulationProcessor, ModulationSource,
 };
 use crate::traits::{AudioNode, PortId};
 
@@ -54,7 +54,7 @@ impl Mixer {
 
     /// Ensure all scratch buffers and temp output buffers have at least `size` capacity.
     fn ensure_buffers(&mut self, size: usize) {
-        let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
+        let resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
             if buf.len() < size {
                 buf.resize(size, default_val);
             }

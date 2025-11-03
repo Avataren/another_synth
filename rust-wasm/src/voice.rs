@@ -1,5 +1,5 @@
 use crate::{
-    graph::{ConnectionKey, ModulationTransformation, ModulationType},
+    graph::{ModulationTransformation, ModulationType},
     nodes::{EnvelopePhase, Lfo, LfoRetriggerMode},
     AudioGraph, AudioNode, Envelope, MacroManager, ModulationTarget, NodeId, PortId,
 };

@@ -259,6 +259,14 @@ function passArrayF32ToWasm0(arg, malloc) {
   WASM_VECTOR_LEN = arg.length;
   return ptr;
 }
+function apply_modulation_update(engine, update) {
+  _assertClass(engine, AudioEngine);
+  _assertClass(update, ConnectionUpdate);
+  const ret = wasm.apply_modulation_update(engine.__wbg_ptr, update.__wbg_ptr);
+  if (ret[1]) {
+    throw takeFromExternrefTable0(ret[0]);
+  }
+}
 function getArrayF32FromWasm0(ptr, len) {
   ptr = ptr >>> 0;
   return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
@@ -789,12 +797,12 @@ var AudioEngine = class {
    * @param {number} key_tracking
    * @param {number} comb_frequency
    * @param {number} comb_dampening
-   * @param {number} oversampling
+   * @param {number} _oversampling
    * @param {FilterType} filter_type
    * @param {FilterSlope} filter_slope
    */
-  update_filters(filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, oversampling, filter_type, filter_slope) {
-    const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, oversampling, filter_type, filter_slope);
+  update_filters(filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, _oversampling, filter_type, filter_slope) {
+    const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, _oversampling, filter_type, filter_slope);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -967,6 +975,20 @@ var AudioEngine = class {
     return takeFromExternrefTable0(ret[0]);
   }
   /**
+   * @param {AutomationFrame} frame
+   * @param {number} master_gain
+   * @param {Float32Array} output_left
+   * @param {Float32Array} output_right
+   */
+  process_with_frame(frame, master_gain, output_left, output_right) {
+    _assertClass(frame, AutomationFrame);
+    var ptr0 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    wasm.audioengine_process_with_frame(this.__wbg_ptr, frame.__wbg_ptr, master_gain, ptr0, len0, output_left, ptr1, len1, output_right);
+  }
+  /**
    * @param {number} effect_id
    * @param {Uint8Array} data
    */
@@ -1079,6 +1101,99 @@ var AudioEngine = class {
   }
 };
 if (Symbol.dispose) AudioEngine.prototype[Symbol.dispose] = AudioEngine.prototype.free;
+var AutomationAdapterFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_automationadapter_free(ptr >>> 0, 1));
+var AutomationAdapter = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    AutomationAdapterFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_automationadapter_free(ptr, 0);
+  }
+  /**
+   * @param {AudioEngine} engine
+   * @param {any} parameters
+   * @param {number} master_gain
+   * @param {Float32Array} output_left
+   * @param {Float32Array} output_right
+   */
+  processBlock(engine, parameters, master_gain, output_left, output_right) {
+    _assertClass(engine, AudioEngine);
+    var ptr0 = passArrayF32ToWasm0(output_left, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = passArrayF32ToWasm0(output_right, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.automationadapter_processBlock(this.__wbg_ptr, engine.__wbg_ptr, parameters, master_gain, ptr0, len0, output_left, ptr1, len1, output_right);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {AudioEngine} engine
+   * @param {ConnectionUpdate} update
+   */
+  applyConnectionUpdate(engine, update) {
+    _assertClass(engine, AudioEngine);
+    _assertClass(update, ConnectionUpdate);
+    const ret = wasm.automationadapter_applyConnectionUpdate(this.__wbg_ptr, engine.__wbg_ptr, update.__wbg_ptr);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} num_voices
+   * @param {number} macro_count
+   * @param {number} macro_buffer_len
+   */
+  constructor(num_voices, macro_count, macro_buffer_len) {
+    const ret = wasm.automationadapter_new(num_voices, macro_count, macro_buffer_len);
+    this.__wbg_ptr = ret >>> 0;
+    AutomationAdapterFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+};
+if (Symbol.dispose) AutomationAdapter.prototype[Symbol.dispose] = AutomationAdapter.prototype.free;
+var AutomationFrameFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_automationframe_free(ptr >>> 0, 1));
+var AutomationFrame = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    AutomationFrameFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_automationframe_free(ptr, 0);
+  }
+  /**
+   * @param {any} parameters
+   */
+  populateFromParameters(parameters) {
+    const ret = wasm.automationframe_populateFromParameters(this.__wbg_ptr, parameters);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} num_voices
+   * @param {number} macro_count
+   * @param {number} macro_buffer_len
+   */
+  constructor(num_voices, macro_count, macro_buffer_len) {
+    const ret = wasm.automationadapter_new(num_voices, macro_count, macro_buffer_len);
+    this.__wbg_ptr = ret >>> 0;
+    AutomationFrameFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+};
+if (Symbol.dispose) AutomationFrame.prototype[Symbol.dispose] = AutomationFrame.prototype.free;
 var ConnectionIdFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_connectionid_free(ptr >>> 0, 1));
@@ -1108,6 +1223,86 @@ var ConnectionId = class {
   }
 };
 if (Symbol.dispose) ConnectionId.prototype[Symbol.dispose] = ConnectionId.prototype.free;
+var ConnectionUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_connectionupdate_free(ptr >>> 0, 1));
+var ConnectionUpdate = class {
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    ConnectionUpdateFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_connectionupdate_free(ptr, 0);
+  }
+  /**
+   * @returns {boolean}
+   */
+  get isRemoving() {
+    const ret = wasm.connectionupdate_isRemoving(this.__wbg_ptr);
+    return ret !== 0;
+  }
+  /**
+   * @returns {WasmModulationType | undefined}
+   */
+  get modulationType() {
+    const ret = wasm.connectionupdate_modulationType(this.__wbg_ptr);
+    return ret === 3 ? void 0 : ret;
+  }
+  /**
+   * @returns {ModulationTransformation}
+   */
+  get modulationTransformation() {
+    const ret = wasm.connectionupdate_modulationTransformation(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @returns {number}
+   */
+  get toId() {
+    const ret = wasm.connectionupdate_toId(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @returns {number}
+   */
+  get amount() {
+    const ret = wasm.connectionupdate_amount(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @returns {PortId}
+   */
+  get target() {
+    const ret = wasm.connectionupdate_target(this.__wbg_ptr);
+    return ret;
+  }
+  /**
+   * @returns {number}
+   */
+  get fromId() {
+    const ret = wasm.connectionupdate_fromId(this.__wbg_ptr);
+    return ret >>> 0;
+  }
+  /**
+   * @param {number} from_id
+   * @param {number} to_id
+   * @param {PortId} target
+   * @param {number} amount
+   * @param {ModulationTransformation} modulation_transformation
+   * @param {boolean} is_removing
+   * @param {WasmModulationType | null} [modulation_type]
+   */
+  constructor(from_id, to_id, target, amount, modulation_transformation, is_removing, modulation_type) {
+    const ret = wasm.connectionupdate_new_wasm(from_id, to_id, target, amount, modulation_transformation, is_removing, isLikeNone(modulation_type) ? 3 : modulation_type);
+    this.__wbg_ptr = ret >>> 0;
+    ConnectionUpdateFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
+};
+if (Symbol.dispose) ConnectionUpdate.prototype[Symbol.dispose] = ConnectionUpdate.prototype.free;
 var EnvelopeConfigFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_envelopeconfig_free(ptr >>> 0, 1));
@@ -1832,10 +2027,6 @@ function __wbg_get_imports() {
     const ret = Error(getStringFromWasm0(arg0, arg1));
     return ret;
   };
-  imports.wbg.__wbg_Number_998bea33bd87c3e0 = function(arg0) {
-    const ret = Number(arg0);
-    return ret;
-  };
   imports.wbg.__wbg_String_8f0eb39a4a4c2f66 = function(arg0, arg1) {
     const ret = String(arg1);
     const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -1869,6 +2060,16 @@ function __wbg_get_imports() {
       return ret;
     }, arguments);
   };
+  imports.wbg.__wbg_get_458e874b43b18b25 = function() {
+    return handleError(function(arg0, arg1) {
+      const ret = Reflect.get(arg0, arg1);
+      return ret;
+    }, arguments);
+  };
+  imports.wbg.__wbg_getindex_4e77f71a06df6a25 = function(arg0, arg1) {
+    const ret = arg0[arg1 >>> 0];
+    return ret;
+  };
   imports.wbg.__wbg_getwithrefkey_1dc361bd10053bfe = function(arg0, arg1) {
     const ret = arg0[arg1];
     return ret;
@@ -1877,6 +2078,26 @@ function __wbg_get_imports() {
     let result;
     try {
       result = arg0 instanceof ArrayBuffer;
+    } catch (_) {
+      result = false;
+    }
+    const ret = result;
+    return ret;
+  };
+  imports.wbg.__wbg_instanceof_Float32Array_7d3bcffee607cdf7 = function(arg0) {
+    let result;
+    try {
+      result = arg0 instanceof Float32Array;
+    } catch (_) {
+      result = false;
+    }
+    const ret = result;
+    return ret;
+  };
+  imports.wbg.__wbg_instanceof_Object_fbf5fef4952ff29b = function(arg0) {
+    let result;
+    try {
+      result = arg0 instanceof Object;
     } catch (_) {
       result = false;
     }
@@ -1903,11 +2124,11 @@ function __wbg_get_imports() {
     const ret = result;
     return ret;
   };
-  imports.wbg.__wbg_isSafeInteger_1c0d1af5542e102a = function(arg0) {
-    const ret = Number.isSafeInteger(arg0);
+  imports.wbg.__wbg_length_6bb7e81f9d7713e4 = function(arg0) {
+    const ret = arg0.length;
     return ret;
   };
-  imports.wbg.__wbg_length_6bb7e81f9d7713e4 = function(arg0) {
+  imports.wbg.__wbg_length_a8cca01d07ea9653 = function(arg0) {
     const ret = arg0.length;
     return ret;
   };
@@ -1996,6 +2217,10 @@ function __wbg_get_imports() {
   };
   imports.wbg.__wbg_wbindgenin_d7a1ee10933d2d55 = function(arg0, arg1) {
     const ret = arg0 in arg1;
+    return ret;
+  };
+  imports.wbg.__wbg_wbindgenisnull_f3037694abe4d97a = function(arg0) {
+    const ret = arg0 === null;
     return ret;
   };
   imports.wbg.__wbg_wbindgenisobject_307a53c6bd97fbf8 = function(arg0) {
@@ -2169,9 +2394,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "maxEnvelopes", 4);
     __publicField(this, "maxLFOs", 4);
     __publicField(this, "maxFilters", 4);
+    __publicField(this, "macroCount", 4);
+    __publicField(this, "macroBufferSize", 128);
     __publicField(this, "voiceLayouts", []);
     __publicField(this, "nextNodeId", 0);
     __publicField(this, "stateVersion", 0);
+    __publicField(this, "automationAdapter", null);
     this.port.onmessage = (event) => {
       this.handleMessage(event);
     };
@@ -2383,6 +2611,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       console.log("SAMPLERATE: ", sampleRate);
       this.audioEngine = new AudioEngine(sampleRate);
       this.audioEngine.init(sampleRate, this.numVoices);
+      this.automationAdapter = new AutomationAdapter(
+        this.numVoices,
+        this.macroCount,
+        this.macroBufferSize
+      );
       this.createNodesAndSetupConnections();
       this.initializeVoices();
       this.initializeState();
@@ -2753,23 +2986,22 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleUpdateModulation(data) {
     if (!this.audioEngine) return;
+    const { connection } = data;
+    const transformation = connection.modulationTransformation ?? ModulationTransformation.None;
+    const update = new ConnectionUpdate(
+      connection.fromId,
+      connection.toId,
+      connection.target,
+      connection.amount,
+      transformation,
+      connection.isRemoving ?? false,
+      connection.modulationType ?? null
+    );
     try {
-      if (data.connection.isRemoving) {
-        this.audioEngine.remove_specific_connection(
-          data.connection.fromId,
-          data.connection.toId,
-          data.connection.target
-        );
+      if (this.automationAdapter) {
+        this.automationAdapter.applyConnectionUpdate(this.audioEngine, update);
       } else {
-        this.audioEngine.connect_nodes(
-          data.connection.fromId,
-          PortId.AudioOutput0,
-          data.connection.toId,
-          data.connection.target,
-          data.connection.amount,
-          WasmModulationType.VCA,
-          ModulationTransformation.None
-        );
+        apply_modulation_update(this.audioEngine, update);
       }
     } catch (err) {
       console.error("Error updating modulation:", err);
@@ -2934,36 +3166,27 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const outputLeft = output[0];
     const outputRight = output[1];
     if (!outputLeft || !outputRight) return true;
-    const gateArray = new Float32Array(this.numVoices);
-    const freqArray = new Float32Array(this.numVoices);
-    const gainArray = new Float32Array(this.numVoices);
-    const velocityArray = new Float32Array(this.numVoices);
-    const macroArray = new Float32Array(this.numVoices * 4 * 128);
-    for (let i = 0; i < this.numVoices; i++) {
-      gateArray[i] = parameters[`gate_${i}`]?.[0] ?? 0;
-      freqArray[i] = parameters[`frequency_${i}`]?.[0] ?? 440;
-      gainArray[i] = parameters[`gain_${i}`]?.[0] ?? 1;
-      velocityArray[i] = parameters[`velocity_${i}`]?.[0] ?? 0;
-      const voiceOffset = i * 4 * 128;
-      for (let m = 0; m < 4; m++) {
-        const macroOffset = voiceOffset + m * 128;
-        const macroValue = parameters[`macro_${i}_${m}`]?.[0] ?? 0;
-        for (let j = 0; j < 128; j++) {
-          macroArray[macroOffset + j] = macroValue;
-        }
-      }
-    }
     const masterGain = parameters.master_gain?.[0] ?? 1;
-    this.audioEngine.process_audio(
-      gateArray,
-      freqArray,
-      gainArray,
-      velocityArray,
-      macroArray,
-      masterGain,
-      outputLeft,
-      outputRight
-    );
+    if (!this.automationAdapter) {
+      this.automationAdapter = new AutomationAdapter(
+        this.numVoices,
+        this.macroCount,
+        this.macroBufferSize
+      );
+    }
+    const adapter = this.automationAdapter;
+    if (!adapter) return true;
+    try {
+      adapter.processBlock(
+        this.audioEngine,
+        parameters,
+        masterGain,
+        outputLeft,
+        outputRight
+      );
+    } catch (err) {
+      console.error("Error processing automation block:", err);
+    }
     return true;
   }
 };

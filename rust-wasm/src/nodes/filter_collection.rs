@@ -14,7 +14,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 // Import necessary items from other modules (adjust paths as needed)
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
 use crate::graph::{
-    ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
+    ModulationProcessor, ModulationSource,
 };
 use crate::traits::{AudioNode, PortId};
 
@@ -183,7 +183,7 @@ impl FilterCollection {
 
     fn ensure_scratch_buffers(&mut self, size: usize) {
         // (Implementation unchanged)
-        let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
+        let resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
             if buf.len() < size {
                 let new_size = size.next_power_of_two();
                 buf.resize(new_size, default_val);

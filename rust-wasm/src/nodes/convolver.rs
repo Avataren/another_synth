@@ -25,7 +25,6 @@ fn ensure_buffer_size_and_fill(buffer: &mut Vec<f32>, required_size: usize, fill
 pub struct Convolver {
     enabled: bool,
     convolvers: Vec<FFTConvolver<f32>>,
-    impulse_length: usize,
     tail_count: usize,
     pub wet_level: f32,
     pub partition_size: usize,
@@ -118,7 +117,6 @@ impl Convolver {
         Self {
             enabled: true,
             convolvers,
-            impulse_length: length,
             tail_count: 0,
             wet_level: 0.2,
             partition_size,

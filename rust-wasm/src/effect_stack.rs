@@ -11,14 +11,12 @@ pub struct Effect {
 
 pub struct EffectStack {
     pub effects: Vec<Effect>,
-    buffer_size: usize, // Keep for reference but use actual buffer sizes in processing
 }
 
 impl EffectStack {
-    pub fn new(buffer_size: usize) -> Self {
+    pub fn new(_buffer_size: usize) -> Self {
         Self {
             effects: Vec::new(),
-            buffer_size,
         }
     }
 

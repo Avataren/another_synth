@@ -452,31 +452,6 @@ impl AudioGraph {
         self.nodes.get_mut(node_id.0)
     }
 
-    fn has_inputs(&self, node_id: NodeId) -> bool {
-        self.connections
-            .values()
-            .any(|conn| conn.to_node == node_id)
-    }
-
-    fn is_connected_to_output(
-        &self,
-        node_id: NodeId,
-        output_node: NodeId,
-        visited: &mut Vec<bool>,
-    ) -> bool {
-        if node_id == output_node {
-            return true;
-        }
-        if visited[node_id.0] {
-            return false;
-        }
-        visited[node_id.0] = true;
-        self.connections
-            .values()
-            .filter(|conn| conn.from_node == node_id)
-            .any(|conn| self.is_connected_to_output(conn.to_node, output_node, visited))
-    }
-
     fn update_processing_order(&mut self) {
         let num_nodes = self.nodes.len();
         let mut in_degree = vec![0; num_nodes];
@@ -519,27 +494,6 @@ impl AudioGraph {
                 }
             }
         }
-    }
-
-    fn visit_node(&mut self, index: usize, visited: &mut [bool]) {
-        if visited[index] {
-            return;
-        }
-        visited[index] = true;
-        let node_id = NodeId(index);
-        // Visit all upstream nodes first.
-        let upstream_nodes: Vec<usize> = self
-            .connections
-            .values()
-            .filter(|conn| conn.to_node == node_id)
-            .map(|conn| conn.from_node.0)
-            .collect();
-        for &next_node in &upstream_nodes {
-            if !visited[next_node] {
-                self.visit_node(next_node, visited);
-            }
-        }
-        self.processing_order.push(index);
     }
 
     pub fn set_gate(&mut self, gate: &[f32]) {

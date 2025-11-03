@@ -91,7 +91,6 @@ impl AllpassFilter {
 /// The Freeverb reverb node.
 pub struct Freeverb {
     enabled: bool,
-    sample_rate: f32,
 
     // Parameters
     room_size: f32, // 0..1; controls comb filter feedback.
@@ -178,7 +177,6 @@ impl Freeverb {
 
         Self {
             enabled: true,
-            sample_rate,
             room_size,
             damp,
             wet,

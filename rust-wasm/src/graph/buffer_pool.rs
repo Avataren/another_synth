@@ -25,10 +25,6 @@ impl AudioBufferPool {
         }
     }
 
-    pub(crate) fn get_buffer_mut(&mut self, index: usize) -> &mut Vec<f32> {
-        &mut self.buffers[index]
-    }
-
     pub fn acquire(&mut self, buffer_size: usize) -> usize {
         let index = if let Some(index) = self.available.pop() {
             index

@@ -1,5 +1,4 @@
 #![feature(portable_simd)]
-#![feature(map_many_mut)]
 
 pub mod audio;
 pub mod audio_engine;

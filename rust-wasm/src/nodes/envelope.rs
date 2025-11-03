@@ -1,6 +1,5 @@
 use rustc_hash::FxHashMap;
 use std::any::Any;
-use std::simd::{f32x4, Simd};
 // Keep for potential output writing optimization
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -8,7 +7,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 // Import necessary types
 use crate::graph::{
-    ModulationProcessor, ModulationSource, ModulationTransformation, ModulationType,
+    ModulationProcessor, ModulationSource,
 };
 use crate::traits::{AudioNode, PortId};
 use crate::utils::curves::get_curved_value;
@@ -154,7 +153,7 @@ impl Envelope {
 
     /// Ensure all scratch buffers have at least `size` capacity.
     fn ensure_scratch_buffers(&mut self, size: usize) {
-        let mut resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
+        let resize_if_needed = |buf: &mut Vec<f32>, default_val: f32| {
             if buf.len() < size {
                 buf.resize(size, default_val);
             }

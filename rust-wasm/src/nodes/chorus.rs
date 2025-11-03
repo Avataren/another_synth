@@ -217,7 +217,6 @@ const DC_BLOCKER_CUTOFF_HZ: f32 = 10.0;
 
 pub struct Chorus {
     enabled: bool,
-    sample_rate: f32,
     internal_sample_rate: f32,
     inv_internal_sample_rate: f32,
     delay_buffer_left: Vec<f32>,
@@ -318,7 +317,6 @@ impl Chorus {
 
         Self {
             enabled: true,
-            sample_rate,
             internal_sample_rate,
             inv_internal_sample_rate,
             delay_buffer_left: vec![0.0; max_delay_samples],

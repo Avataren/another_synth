@@ -1,6 +1,5 @@
 use core::simd::Simd;
 use std::any::Any;
-use std::simd::StdFloat;
 
 use rustc_hash::FxHashMap;
 #[cfg(feature = "wasm")]
@@ -275,7 +274,7 @@ impl ArpeggiatorGenerator {
 
         // --- Debug Logging ---
         let num_debug_samples = std::cmp::min(buffer_size, 8);
-        let debug_samples = &output[0..num_debug_samples];
+        let _debug_samples = &output[0..num_debug_samples];
         // console::log_1(
         //     &format!(
         //         "Arpeggiator SIMD Debug: sample_counter = {}, first {} mod values = {:?}",

@@ -127,7 +127,6 @@ where
 
 pub struct AnalogOscillator {
     // --- static params -------------------------------------------------------------------
-    sample_rate: f32,
     sample_rate_recip: f32,
     cent_ratio: f32,
     semitone_ratio: f32,
@@ -215,7 +214,6 @@ impl AnalogOscillator {
 
         let mut osc = Self {
             // static
-            sample_rate,
             sample_rate_recip: 1.0 / sample_rate,
             cent_ratio: 2.0_f32.powf(1.0 / 1200.0),
             semitone_ratio: 2.0_f32.powf(1.0 / 12.0),
@@ -352,7 +350,7 @@ impl AnalogOscillator {
     where
         LaneCount<LANES>: SupportedLaneCount,
     {
-        let lanes = LANES;
+        let _lanes = LANES;
         let idx0 = i;
         let phase_mod = self.phase_mod_buf[idx0];
         let mod_index = self.mod_index_buf[idx0];
