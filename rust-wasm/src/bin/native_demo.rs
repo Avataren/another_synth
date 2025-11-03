@@ -10,27 +10,29 @@ use audio_processor::traits::PortId;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, Sample, SampleFormat, SizedSample, StreamConfig};
 use dasp_sample::FromSample;
+
 const BLOCK_SIZE: usize = 128;
 const MACRO_COUNT: usize = 4;
 const MACRO_BUFFER_LEN: usize = 64;
+
 const SEQUENCE: [NoteStep; 4] = [
     NoteStep {
-        frequency: 261.63,
+        frequency: 261.63, // C4
         velocity: 0.9,
         macro_value: 0.2,
     },
     NoteStep {
-        frequency: 329.63,
+        frequency: 329.63, // E4
         velocity: 0.8,
         macro_value: 0.6,
     },
     NoteStep {
-        frequency: 392.0,
+        frequency: 392.0, // G4
         velocity: 0.85,
         macro_value: 0.4,
     },
     NoteStep {
-        frequency: 523.25,
+        frequency: 523.25, // C5
         velocity: 0.95,
         macro_value: 0.75,
     },
@@ -67,7 +69,7 @@ fn main() -> anyhow::Result<()> {
     let mut engine = AudioEngine::new(sample_rate, num_voices);
     engine.init(sample_rate, num_voices);
 
-    // Create nodes and setup connections (matching web worklet)
+    // Create nodes and setup connections
     setup_synth_patch(&mut engine)?;
 
     let frame = AutomationFrame::with_dimensions(num_voices, MACRO_COUNT, MACRO_BUFFER_LEN);
@@ -79,7 +81,7 @@ fn main() -> anyhow::Result<()> {
         right: vec![0.0; BLOCK_SIZE],
         step: 0,
         block_progress: 0,
-        blocks_per_step: 6,
+        blocks_per_step: 20, // Increased to ~51ms per note for more musical timing
     };
 
     let stream = match sample_format {
@@ -95,6 +97,7 @@ fn main() -> anyhow::Result<()> {
         "Streaming audio on host '{host_label}' using '{device_name}' at {sample_rate} Hz with block size {BLOCK_SIZE}."
     );
     println!("Playing sequence of 4 notes...");
+    println!("Press Ctrl+C to stop.");
 
     loop {
         std::thread::sleep(Duration::from_secs(1));
@@ -117,16 +120,34 @@ fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
         .map_err(|e| anyhow!("Failed to create filter: {}", e))?;
     println!("Created filter: {}", filter_id);
 
-    // Create oscillators
+    // Configure filter with reasonable settings
+    engine
+        .update_filters(
+            filter_id,
+            2000.0,                                       // cutoff: 2kHz
+            0.3,                                          // resonance: moderate
+            0.0,                                          // gain: 0dB
+            0.0,                                          // key_tracking: off
+            220.0,                                        // comb_frequency
+            0.5,                                          // comb_dampening
+            1,                                            // oversampling
+            audio_processor::biquad::FilterType::LowPass, // filter_type
+            audio_processor::nodes::FilterSlope::Db24,    // filter_slope
+        )
+        .map_err(|e| anyhow!("Failed to configure filter: {}", e))?;
+    println!("Configured filter");
+
+    // Create wavetable oscillator
     let wt_osc_id = engine
         .create_wavetable_oscillator()
         .map_err(|e| anyhow!("Failed to create wavetable oscillator: {}", e))?;
     println!("Created wavetable oscillator: {}", wt_osc_id);
 
+    // Create analog oscillator (for FM)
     let osc_id = engine
         .create_oscillator()
         .map_err(|e| anyhow!("Failed to create oscillator: {}", e))?;
-    println!("Created oscillator: {}", osc_id);
+    println!("Created analog oscillator: {}", osc_id);
 
     // Create envelope
     let envelope_id = engine
@@ -134,7 +155,23 @@ fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
         .map_err(|e| anyhow!("Failed to create envelope: {}", e))?;
     println!("Created envelope: {}", envelope_id);
 
-    // Create LFO (optional)
+    // Configure envelope with proper ADSR
+    engine
+        .update_envelope(
+            envelope_id,
+            0.005, // attack: 5ms (fast attack)
+            0.1,   // decay: 100ms
+            0.7,   // sustain: 70%
+            0.1,   // release: 100ms
+            0.0,   // attack_curve: linear
+            0.0,   // decay_curve: linear
+            0.0,   // release_curve: linear
+            true,  // active
+        )
+        .map_err(|e| anyhow!("Failed to configure envelope: {}", e))?;
+    println!("Configured envelope");
+
+    // Create LFO (optional - not connected in this demo)
     let _lfo_id = engine
         .create_lfo()
         .map_err(|e| anyhow!("Failed to create LFO: {}", e))?;
@@ -183,18 +220,19 @@ fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
     println!("Connected oscillator -> filter");
 
     // Connect analog oscillator to wavetable oscillator's phase mod (FM)
+    // FIXED: Reduced FM amount from 1.0 to 0.02 for subtle modulation
     engine
         .connect_nodes(
             osc_id,
             PortId::AudioOutput0,
             wt_osc_id,
             PortId::PhaseMod,
-            1.0,
+            0.02, // FIXED: Much lower FM amount to avoid harsh distortion
             ModulationType::Additive,
             ModulationTransformation::None,
         )
         .map_err(|e| anyhow!("Failed to connect oscillator FM: {}", e))?;
-    println!("Connected analog osc -> wavetable osc phase mod");
+    println!("Connected analog osc -> wavetable osc phase mod (amount: 0.02)");
 
     println!("Synth patch setup complete!");
     Ok(())
@@ -292,19 +330,29 @@ where
 
     let step = &SEQUENCE[state.step];
 
+    // FIXED: Proper gate envelope - on for most of the note, off for the last block
+    // This allows the envelope to properly attack and release
+    let gate = if state.block_progress < state.blocks_per_step - 2 {
+        1.0 // Note on
+    } else {
+        0.0 // Note off - trigger release
+    };
+
     // Set voice parameters
     state
         .frame
-        .set_voice_values(0, 1.0, step.frequency, step.velocity, 1.0);
+        .set_voice_values(0, gate, step.frequency, step.velocity, 1.0);
+
+    // Set macro values for modulation
     state.frame.set_macro_value(0, 0, step.macro_value);
     state
         .frame
         .set_macro_value(0, 1, 1.0 - step.macro_value.clamp(0.0, 1.0));
 
-    // Process audio
+    // Process audio - FIXED: Reduced master gain from 0.8 to 0.5 for more headroom
     state
         .engine
-        .process_with_frame(&state.frame, 0.8, &mut state.left, &mut state.right);
+        .process_with_frame(&state.frame, 0.5, &mut state.left, &mut state.right);
 
     // Interleave output
     for (frame_index, sample_chunk) in output.chunks_mut(channels).enumerate() {
