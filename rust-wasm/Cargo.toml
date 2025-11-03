@@ -18,7 +18,7 @@ wasm = [
     "getrandom/wasm_js",
 ]
 # Enables the native audio host required for the demo binary while retaining the wasm bindings it depends on.
-native-host = ["dep:cpal", "wasm"]
+native-host = ["dep:cpal"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

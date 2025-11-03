@@ -5,10 +5,11 @@ use std::time::Duration;
 use anyhow::anyhow;
 use audio_processor::audio_engine::native::AudioEngine;
 use audio_processor::automation::AutomationFrame;
+use audio_processor::graph::{ModulationTransformation, ModulationType};
+use audio_processor::traits::PortId;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, Sample, SampleFormat, SizedSample, StreamConfig};
 use dasp_sample::FromSample;
-
 const BLOCK_SIZE: usize = 128;
 const MACRO_COUNT: usize = 4;
 const MACRO_BUFFER_LEN: usize = 64;
@@ -58,7 +59,6 @@ fn main() -> anyhow::Result<()> {
     config.buffer_size = BufferSize::Fixed(BLOCK_SIZE as u32);
 
     let sample_rate = config.sample_rate.0 as f32;
-
     let device_name = device
         .name()
         .unwrap_or_else(|_| "Unknown device".to_string());
@@ -66,6 +66,9 @@ fn main() -> anyhow::Result<()> {
     let num_voices = 1;
     let mut engine = AudioEngine::new(sample_rate, num_voices);
     engine.init(sample_rate, num_voices);
+
+    // Create nodes and setup connections (matching web worklet)
+    setup_synth_patch(&mut engine)?;
 
     let frame = AutomationFrame::with_dimensions(num_voices, MACRO_COUNT, MACRO_BUFFER_LEN);
 
@@ -91,10 +94,110 @@ fn main() -> anyhow::Result<()> {
     println!(
         "Streaming audio on host '{host_label}' using '{device_name}' at {sample_rate} Hz with block size {BLOCK_SIZE}."
     );
+    println!("Playing sequence of 4 notes...");
 
     loop {
         std::thread::sleep(Duration::from_secs(1));
     }
+}
+
+/// Setup a basic synth patch matching the web worklet initialization
+fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
+    println!("Setting up synth patch...");
+
+    // Create mixer (output node)
+    let mixer_id = engine
+        .create_mixer()
+        .map_err(|e| anyhow!("Failed to create mixer: {}", e))?;
+    println!("Created mixer: {}", mixer_id);
+
+    // Create filter
+    let filter_id = engine
+        .create_filter()
+        .map_err(|e| anyhow!("Failed to create filter: {}", e))?;
+    println!("Created filter: {}", filter_id);
+
+    // Create oscillators
+    let wt_osc_id = engine
+        .create_wavetable_oscillator()
+        .map_err(|e| anyhow!("Failed to create wavetable oscillator: {}", e))?;
+    println!("Created wavetable oscillator: {}", wt_osc_id);
+
+    let osc_id = engine
+        .create_oscillator()
+        .map_err(|e| anyhow!("Failed to create oscillator: {}", e))?;
+    println!("Created oscillator: {}", osc_id);
+
+    // Create envelope
+    let envelope_id = engine
+        .create_envelope()
+        .map_err(|e| anyhow!("Failed to create envelope: {}", e))?;
+    println!("Created envelope: {}", envelope_id);
+
+    // Create LFO (optional)
+    let _lfo_id = engine
+        .create_lfo()
+        .map_err(|e| anyhow!("Failed to create LFO: {}", e))?;
+    println!("Created LFO: {}", _lfo_id);
+
+    // Connect filter to mixer's audio input
+    engine
+        .connect_nodes(
+            filter_id,
+            PortId::AudioOutput0,
+            mixer_id,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .map_err(|e| anyhow!("Failed to connect filter to mixer: {}", e))?;
+    println!("Connected filter -> mixer");
+
+    // Connect envelope to mixer's gain input
+    engine
+        .connect_nodes(
+            envelope_id,
+            PortId::AudioOutput0,
+            mixer_id,
+            PortId::GainMod,
+            1.0,
+            ModulationType::VCA,
+            ModulationTransformation::None,
+        )
+        .map_err(|e| anyhow!("Failed to connect envelope to mixer gain: {}", e))?;
+    println!("Connected envelope -> mixer gain");
+
+    // Connect wavetable oscillator to filter
+    engine
+        .connect_nodes(
+            wt_osc_id,
+            PortId::AudioOutput0,
+            filter_id,
+            PortId::AudioInput0,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .map_err(|e| anyhow!("Failed to connect oscillator to filter: {}", e))?;
+    println!("Connected oscillator -> filter");
+
+    // Connect analog oscillator to wavetable oscillator's phase mod (FM)
+    engine
+        .connect_nodes(
+            osc_id,
+            PortId::AudioOutput0,
+            wt_osc_id,
+            PortId::PhaseMod,
+            1.0,
+            ModulationType::Additive,
+            ModulationTransformation::None,
+        )
+        .map_err(|e| anyhow!("Failed to connect oscillator FM: {}", e))?;
+    println!("Connected analog osc -> wavetable osc phase mod");
+
+    println!("Synth patch setup complete!");
+    Ok(())
 }
 
 fn build_stream<T>(
@@ -106,7 +209,6 @@ where
     T: Sample + SizedSample + FromSample<f32>,
 {
     let channels = config.channels as usize;
-
     let mut error_reported = false;
 
     let stream = device.build_output_stream(
@@ -190,12 +292,7 @@ where
 
     let step = &SEQUENCE[state.step];
 
-    state.frame.gates_mut().fill(0.0);
-    state.frame.frequencies_mut().fill(step.frequency);
-    state.frame.velocities_mut().fill(0.0);
-    state.frame.gains_mut().fill(1.0);
-    state.frame.macro_buffers_mut().fill(0.0);
-
+    // Set voice parameters
     state
         .frame
         .set_voice_values(0, 1.0, step.frequency, step.velocity, 1.0);
@@ -204,10 +301,12 @@ where
         .frame
         .set_macro_value(0, 1, 1.0 - step.macro_value.clamp(0.0, 1.0));
 
+    // Process audio
     state
         .engine
         .process_with_frame(&state.frame, 0.8, &mut state.left, &mut state.right);
 
+    // Interleave output
     for (frame_index, sample_chunk) in output.chunks_mut(channels).enumerate() {
         let left_sample = state.left.get(frame_index).copied().unwrap_or(0.0);
         let right_sample = state.right.get(frame_index).copied().unwrap_or(left_sample);
@@ -222,6 +321,7 @@ where
         }
     }
 
+    // Advance sequence
     state.block_progress += 1;
     if state.block_progress >= state.blocks_per_step {
         state.block_progress = 0;

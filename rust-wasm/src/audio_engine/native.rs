@@ -1,12 +1,18 @@
 use crate::automation::AutomationFrame;
+use crate::biquad::FilterType;
 use crate::effect_stack::EffectStack;
+use crate::graph::{Connection, ModulationTransformation, ModulationType};
 use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::WavetableSynthBank;
 use crate::nodes::{
-    Chorus, Convolver, Delay, Freeverb, Limiter, Waveform, WavetableBank,
+    AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Convolver, Delay, Envelope,
+    EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, Lfo, Limiter, Mixer, Waveform,
+    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
-use crate::traits::AudioNode;
+//NoiseGenerator, NoiseUpdate,
+use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
+use crate::NodeId;
 use rustc_hash::FxHashMap;
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
@@ -134,16 +140,7 @@ impl AudioEngine {
         self.effect_stack = EffectStack::new(BUFFER_SIZE);
         self.ir_generator = ImpulseResponseGenerator::new(sample_rate);
 
-        let mut chorus = Chorus::new(
-            sample_rate,
-            65.0,
-            15.0,
-            5.0,
-            0.5,
-            0.3,
-            0.5,
-            90.0,
-        );
+        let mut chorus = Chorus::new(sample_rate, 65.0, 15.0, 5.0, 0.5, 0.3, 0.5, 90.0);
         chorus.set_active(false);
         self.effect_stack.add_effect(Box::new(chorus));
 
@@ -240,8 +237,7 @@ impl AudioEngine {
 
             voice.process_audio(&mut voice_left, &mut voice_right);
 
-            for (sample_idx, (left, right)) in
-                voice_left.iter().zip(voice_right.iter()).enumerate()
+            for (sample_idx, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate()
             {
                 mix_left[sample_idx] += left * gain;
                 mix_right[sample_idx] += right * gain;
@@ -298,6 +294,250 @@ impl AudioEngine {
     pub fn num_voices(&self) -> usize {
         self.num_voices
     }
+
+    // Node creation methods
+    pub fn create_oscillator(&mut self) -> Result<usize, String> {
+        let mut osc_id = NodeId(0);
+        for voice in &mut self.voices {
+            osc_id = voice.graph.add_node(Box::new(AnalogOscillator::new(
+                self.sample_rate,
+                Waveform::Sine,
+                self.wavetable_banks.clone(),
+            )));
+        }
+        Ok(osc_id.0)
+    }
+
+    pub fn create_wavetable_oscillator(&mut self) -> Result<usize, String> {
+        let mut osc_id = NodeId(0);
+        for voice in &mut self.voices {
+            osc_id = voice.graph.add_node(Box::new(WavetableOscillator::new(
+                self.sample_rate,
+                self.wavetable_synthbank.clone(),
+            )));
+        }
+        Ok(osc_id.0)
+    }
+
+    pub fn create_mixer(&mut self) -> Result<usize, String> {
+        let mut mixer_id = NodeId(0);
+        for voice in &mut self.voices {
+            mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
+            voice.graph.set_output_node(mixer_id);
+        }
+        Ok(mixer_id.0)
+    }
+
+    pub fn create_envelope(&mut self) -> Result<usize, String> {
+        let mut envelope_id = NodeId(0);
+        for voice in &mut self.voices {
+            envelope_id = voice.graph.add_node(Box::new(Envelope::new(
+                self.sample_rate,
+                EnvelopeConfig::default(),
+            )));
+        }
+        Ok(envelope_id.0)
+    }
+
+    pub fn create_lfo(&mut self) -> Result<usize, String> {
+        let mut lfo_id = NodeId(0);
+        for voice in &mut self.voices {
+            lfo_id = voice.graph.add_node(Box::new(Lfo::new(self.sample_rate)));
+        }
+        Ok(lfo_id.0)
+    }
+
+    pub fn create_filter(&mut self) -> Result<usize, String> {
+        let mut filter_id = NodeId(0);
+        for voice in &mut self.voices {
+            filter_id = voice
+                .graph
+                .add_node(Box::new(FilterCollection::new(self.sample_rate)));
+        }
+        Ok(filter_id.0)
+    }
+
+    // pub fn create_noise(&mut self) -> Result<usize, String> {
+    //     let mut noise_id = NodeId(0);
+    //     for voice in &mut self.voices {
+    //         noise_id = voice
+    //             .graph
+    //             .add_node(Box::new(NoiseGenerator::new(self.sample_rate)));
+    //     }
+    //     Ok(noise_id.0)
+    // }
+
+    // Connection methods
+    pub fn connect_nodes(
+        &mut self,
+        from_node: usize,
+        from_port: PortId,
+        to_node: usize,
+        to_port: PortId,
+        amount: f32,
+        modulation_type: ModulationType,
+        modulation_transform: ModulationTransformation,
+    ) -> Result<(), String> {
+        let connection = Connection {
+            from_node: NodeId(from_node),
+            from_port,
+            to_node: NodeId(to_node),
+            to_port,
+            amount,
+            modulation_type,
+            modulation_transform,
+        };
+
+        for voice in &mut self.voices {
+            voice.graph.add_connection(connection.clone());
+        }
+        Ok(())
+    }
+
+    // Parameter update methods
+    pub fn update_oscillator(
+        &mut self,
+        oscillator_id: usize,
+        params: &AnalogOscillatorStateUpdate,
+    ) -> Result<(), String> {
+        for voice in &mut self.voices {
+            let node = voice
+                .graph
+                .get_node_mut(NodeId(oscillator_id))
+                .ok_or_else(|| "Node not found in one of the voices".to_string())?;
+            let osc = node
+                .as_any_mut()
+                .downcast_mut::<AnalogOscillator>()
+                .ok_or_else(|| {
+                    "Node is not an AnalogOscillator in one of the voices".to_string()
+                })?;
+            osc.update_params(params);
+        }
+        Ok(())
+    }
+
+    pub fn update_wavetable_oscillator(
+        &mut self,
+        oscillator_id: usize,
+        params: &WavetableOscillatorStateUpdate,
+    ) -> Result<(), String> {
+        for voice in &mut self.voices {
+            let node = voice
+                .graph
+                .get_node_mut(NodeId(oscillator_id))
+                .ok_or_else(|| "Node not found in one of the voices".to_string())?;
+            let osc = node
+                .as_any_mut()
+                .downcast_mut::<WavetableOscillator>()
+                .ok_or_else(|| {
+                    "Node is not a WavetableOscillator in one of the voices".to_string()
+                })?;
+            osc.update_params(params);
+        }
+        Ok(())
+    }
+
+    pub fn update_envelope(
+        &mut self,
+        node_id: usize,
+        attack: f32,
+        decay: f32,
+        sustain: f32,
+        release: f32,
+        attack_curve: f32,
+        decay_curve: f32,
+        release_curve: f32,
+        active: bool,
+    ) -> Result<(), String> {
+        let mut errors: Vec<String> = Vec::new();
+
+        for (i, voice) in self.voices.iter_mut().enumerate() {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+                if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
+                    let config = EnvelopeConfig {
+                        attack,
+                        decay,
+                        sustain,
+                        release,
+                        attack_curve,
+                        decay_curve,
+                        release_curve,
+                        attack_smoothing_samples: 16,
+                        active,
+                    };
+                    env.update_config(config);
+                    env.set_active(active);
+                } else {
+                    errors.push(format!("Voice {}: Node is not an Envelope", i));
+                }
+            } else {
+                errors.push(format!("Voice {}: Node not found", i));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
+    pub fn update_filters(
+        &mut self,
+        filter_id: usize,
+        cutoff: f32,
+        resonance: f32,
+        gain: f32,
+        key_tracking: f32,
+        comb_frequency: f32,
+        comb_dampening: f32,
+        _oversampling: u32,
+        filter_type: FilterType,
+        filter_slope: FilterSlope,
+    ) -> Result<(), String> {
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(filter_id)) {
+                if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
+                    filter.set_filter_type(filter_type);
+                    filter.set_filter_slope(filter_slope);
+                    filter.set_params(cutoff, resonance);
+                    filter.set_comb_target_frequency(comb_frequency);
+                    filter.set_comb_dampening(comb_dampening);
+                    filter.set_gain_db(gain * 24.0 - 12.0);
+                    filter.set_keyboard_tracking_sensitivity(key_tracking);
+                } else {
+                    return Err("Node is not a Filter".to_string());
+                }
+            } else {
+                return Err("Node not found".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    // pub fn update_noise(
+    //     &mut self,
+    //     noise_id: usize,
+    //     params: &NoiseUpdateParams,
+    // ) -> Result<(), String> {
+    //     for voice in &mut self.voices {
+    //         if let Some(node) = voice.graph.get_node_mut(NodeId(noise_id)) {
+    //             if let Some(noise) = node.as_any_mut().downcast_mut::<NoiseGenerator>() {
+    //                 noise.update(NoiseUpdate {
+    //                     noise_type: params.noise_type.into(),
+    //                     cutoff: params.cutoff * self.sample_rate,
+    //                     gain: params.gain,
+    //                     enabled: params.enabled,
+    //                 });
+    //             } else {
+    //                 return Err("Node is not a NoiseGenerator".to_string());
+    //             }
+    //         } else {
+    //             return Err("Node not found".to_string());
+    //         }
+    //     }
+    //     Ok(())
+    // }
 }
 
 #[cfg(test)]
