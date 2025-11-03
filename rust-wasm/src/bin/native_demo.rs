@@ -49,10 +49,13 @@ struct DemoState {
     frame: AutomationFrame,
     left: Vec<f32>,
     right: Vec<f32>,
+    carry_left: Vec<f32>,
+    carry_right: Vec<f32>,
+    carry_available: usize,
     step: usize,
     block_progress: usize,
     blocks_per_step: usize,
-    call_count: usize, // For periodic logging
+    call_count: usize,
 }
 
 unsafe impl Send for DemoState {}
@@ -92,6 +95,9 @@ fn main() -> anyhow::Result<()> {
         frame,
         left: vec![0.0; BLOCK_SIZE],
         right: vec![0.0; BLOCK_SIZE],
+        carry_left: vec![0.0; BLOCK_SIZE],
+        carry_right: vec![0.0; BLOCK_SIZE],
+        carry_available: 0,
         step: 0,
         block_progress: 0,
         blocks_per_step: 120,
@@ -163,7 +169,6 @@ fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
         .create_lfo()
         .map_err(|e| anyhow!("Failed to create LFO: {}", e))?;
 
-    // FIXED: Add .map_err() for all connect_nodes calls
     engine
         .connect_nodes(
             filter_id,
@@ -223,7 +228,7 @@ fn build_stream<T>(
 ) -> Result<cpal::Stream, cpal::BuildStreamError>
 where
     T: Sample + SizedSample + FromSample<f32>,
-    f32: FromSample<T>, // Add this line
+    f32: FromSample<T>,
 {
     let channels = config.channels as usize;
     let mut error_reported = false;
@@ -311,17 +316,16 @@ fn process_block<T>(
 ) -> Result<(), &'static str>
 where
     T: Sample + FromSample<f32>,
-    f32: FromSample<T>, // Add this trait bound
+    f32: FromSample<T>,
 {
     state.call_count += 1;
 
-    // Log every 100 calls
     if state.call_count % 100 == 0 {
         println!("\n=== PROCESS_BLOCK (call {}) ===", state.call_count);
         println!("output buffer: {} samples", output.len());
         println!("channels: {}", channels);
         println!("frames requested: {}", output.len() / channels);
-        println!("our buffer size: {} frames", state.left.len());
+        println!("carry available: {} frames", state.carry_available);
     }
 
     if channels == 0 {
@@ -333,16 +337,37 @@ where
     }
 
     let total_frames = output.len() / channels;
-    let chunk_size = state.left.len(); // 128 frames
+    let mut frames_written = 0;
 
-    let mut frames_processed = 0;
+    while frames_written < total_frames {
+        // First, consume any carried-over samples
+        if state.carry_available > 0 {
+            let frames_to_copy = (total_frames - frames_written).min(state.carry_available);
+            let carry_start = BLOCK_SIZE - state.carry_available;
 
-    // Process audio in 128-frame chunks
-    while frames_processed < total_frames {
-        let frames_remaining = total_frames - frames_processed;
-        let frames_this_chunk = frames_remaining.min(chunk_size);
+            for i in 0..frames_to_copy {
+                let output_pos = (frames_written + i) * channels;
+                let carry_pos = carry_start + i;
 
-        // Get current note parameters
+                for ch in 0..channels {
+                    let value = match ch {
+                        0 => state.carry_left[carry_pos],
+                        1 => state.carry_right[carry_pos],
+                        _ => 0.0,
+                    };
+                    output[output_pos + ch] = T::from_sample::<f32>(value);
+                }
+            }
+
+            frames_written += frames_to_copy;
+            state.carry_available -= frames_to_copy;
+
+            if frames_written >= total_frames {
+                break;
+            }
+        }
+
+        // Generate a new 128-frame block
         let step = &SEQUENCE[state.step];
         let gate = if state.block_progress < state.blocks_per_step - 2 {
             1.0
@@ -350,7 +375,6 @@ where
             0.0
         };
 
-        // Set voice parameters for this chunk
         state
             .frame
             .set_voice_values(0, gate, step.frequency, step.velocity, 1.0);
@@ -359,59 +383,58 @@ where
             .frame
             .set_macro_value(0, 1, 1.0 - step.macro_value.clamp(0.0, 1.0));
 
-        // Process this chunk
+        state.left.fill(0.0);
+        state.right.fill(0.0);
+
         state
             .engine
             .process_with_frame(&state.frame, 0.5, &mut state.left, &mut state.right);
 
-        // Interleave this chunk into the output buffer
-        let output_start = frames_processed * channels;
-        for frame_idx in 0..frames_this_chunk {
-            let left_sample = state.left[frame_idx];
-            let right_sample = state.right[frame_idx];
-
-            let output_frame_start = output_start + (frame_idx * channels);
-
-            for ch in 0..channels {
-                let value = match ch {
-                    0 => left_sample,
-                    1 => right_sample,
-                    _ => 0.0,
-                };
-                output[output_frame_start + ch] = T::from_sample::<f32>(value);
-            }
-        }
-
-        frames_processed += frames_this_chunk;
-
-        // Advance sequence state only once per 128-frame chunk
+        // Advance sequence state once per generated block
         state.block_progress += 1;
         if state.block_progress >= state.blocks_per_step {
             state.block_progress = 0;
             state.step = (state.step + 1) % SEQUENCE.len();
         }
+
+        // Copy what we need from this block
+        let frames_needed = total_frames - frames_written;
+        let frames_to_copy = frames_needed.min(BLOCK_SIZE);
+
+        for i in 0..frames_to_copy {
+            let output_pos = (frames_written + i) * channels;
+
+            for ch in 0..channels {
+                let value = match ch {
+                    0 => state.left[i],
+                    1 => state.right[i],
+                    _ => 0.0,
+                };
+                output[output_pos + ch] = T::from_sample::<f32>(value);
+            }
+        }
+
+        frames_written += frames_to_copy;
+
+        // Store any unused samples for next callback
+        if frames_to_copy < BLOCK_SIZE {
+            let unused = BLOCK_SIZE - frames_to_copy;
+            state.carry_left.copy_from_slice(&state.left);
+            state.carry_right.copy_from_slice(&state.right);
+            state.carry_available = unused;
+        }
     }
 
-    // Debug logging
     if state.call_count % 100 == 0 {
-        // FIXED: Use to_sample method on the sample itself
         let max_val = output
             .iter()
-            .take(total_frames * channels)
             .map(|s| {
                 let f: f32 = s.to_sample();
                 f.abs()
             })
             .fold(0.0f32, |max, val| max.max(val));
-        println!(
-            "Processed {} frames in {} chunks",
-            total_frames,
-            (total_frames + chunk_size - 1) / chunk_size
-        );
+        println!("Processed {} frames", total_frames);
         println!("Peak output level: {:.4}", max_val);
-        if max_val > 1.0 {
-            println!("!!! CLIPPING DETECTED !!!");
-        }
     }
 
     Ok(())
