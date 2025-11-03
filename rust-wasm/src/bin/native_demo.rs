@@ -11,7 +11,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, Sample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
 use dasp_sample::FromSample;
 
-const DEFAULT_BLOCK_SIZE: usize = 128;
+const ENGINE_BLOCK_SIZE: usize = 128;
 const MACRO_COUNT: usize = 4;
 const MACRO_BUFFER_LEN: usize = 128;
 const DEFAULT_BLOCKS_PER_STEP: usize = 120;
@@ -112,7 +112,7 @@ unsafe impl Send for DemoState {}
 fn choose_buffer_size(supported: SupportedBufferSize) -> (BufferSize, Option<(u32, u32)>, usize) {
     match supported {
         SupportedBufferSize::Range { min, max } => {
-            let desired = DEFAULT_BLOCK_SIZE as u32;
+            let desired = ENGINE_BLOCK_SIZE as u32;
             let clamped = desired.clamp(min, max);
             (
                 BufferSize::Fixed(clamped),
@@ -121,9 +121,9 @@ fn choose_buffer_size(supported: SupportedBufferSize) -> (BufferSize, Option<(u3
             )
         }
         SupportedBufferSize::Unknown => (
-            BufferSize::Fixed(DEFAULT_BLOCK_SIZE as u32),
+            BufferSize::Fixed(ENGINE_BLOCK_SIZE as u32),
             None,
-            DEFAULT_BLOCK_SIZE,
+            ENGINE_BLOCK_SIZE,
         ),
     }
 }
@@ -133,33 +133,18 @@ fn main() -> anyhow::Result<()> {
         select_output_device()?;
 
     println!("=== INITIAL CONFIG ===");
-    let target_frames = block_size_hint as u32;
     if let Some((min, max)) = buffer_range {
         println!("Device reports buffer size range: {}..={} frames", min, max);
-        println!("Target buffer size: {} frames", target_frames);
+        println!(
+            "Target buffer size: {} frames (may be adjusted by backend)",
+            block_size_hint
+        );
     } else {
         println!(
-            "Device did not report a buffer range; requesting {} frames",
-            target_frames
+            "Backend will determine buffer size (hint: {} frames)",
+            block_size_hint
         );
     }
-
-    let configured_frames = match config.buffer_size {
-        BufferSize::Fixed(actual) => {
-            println!("Configured CPAL buffer size: {} frames", actual);
-            if actual != target_frames {
-                println!(
-                    "Adjusted from target {} frames to comply with device limits",
-                    target_frames
-                );
-            }
-            actual as usize
-        }
-        BufferSize::Default => {
-            println!("Configured CPAL buffer size: default");
-            block_size_hint
-        }
-    };
 
     let sample_rate = config.sample_rate.0 as f32;
     let device_name = device
@@ -170,9 +155,15 @@ fn main() -> anyhow::Result<()> {
     println!("Channels: {}", config.channels);
 
     let num_voices = 1;
-    let engine_block_size = configured_frames
-        .max(DEFAULT_BLOCK_SIZE)
-        .max(MACRO_BUFFER_LEN);
+    // Use fixed 128-frame engine block size for consistent internal processing
+    let engine_block_size = ENGINE_BLOCK_SIZE;
+
+    println!("\n=== ENGINE CONFIGURATION ===");
+    println!(
+        "Engine block size: {} frames (fixed internal processing)",
+        engine_block_size
+    );
+
     let mut engine = AudioEngine::new_with_block_size(sample_rate, num_voices, engine_block_size);
     engine.init(sample_rate, num_voices);
 
@@ -180,13 +171,21 @@ fn main() -> anyhow::Result<()> {
 
     let frame = AutomationFrame::with_dimensions(num_voices, MACRO_COUNT, MACRO_BUFFER_LEN);
 
+    // Host buffer size (will be confirmed in first audio callback)
+    let configured_frames = block_size_hint;
+
+    println!(
+        "Expected host buffer: {} frames (actual size confirmed at runtime)",
+        configured_frames
+    );
+
     println!("=== BUFFER ALLOCATION ===");
     println!(
         "Host buffer size: {} frames, engine block size: {} frames",
         configured_frames, engine_block_size
     );
 
-    let total_frames_per_step = DEFAULT_BLOCK_SIZE * DEFAULT_BLOCKS_PER_STEP;
+    let total_frames_per_step = ENGINE_BLOCK_SIZE * DEFAULT_BLOCKS_PER_STEP;
     let mut blocks_per_step = (total_frames_per_step + engine_block_size - 1) / engine_block_size;
     if blocks_per_step == 0 {
         blocks_per_step = 1;
@@ -374,11 +373,69 @@ fn select_output_device() -> anyhow::Result<(
     Option<(u32, u32)>,
     usize,
 )> {
+    println!("=== AVAILABLE AUDIO HOSTS ===");
+    for host_id in cpal::available_hosts() {
+        println!("  - {}", host_id.name());
+    }
+    println!();
+
+    // On Linux, prefer JACK for deterministic buffer delivery
+    #[cfg(target_os = "linux")]
+    {
+        use cpal::HostId;
+
+        println!("Attempting JACK backend (recommended for Linux)...");
+        match cpal::host_from_id(HostId::Jack) {
+            Ok(host) => {
+                if let Some(device) = host.default_output_device() {
+                    match device.default_output_config() {
+                        Ok(supported) => {
+                            let sample_format = supported.sample_format();
+                            let (buffer_size, range, block_size) =
+                                choose_buffer_size(supported.buffer_size().clone());
+                            let mut config = supported.config();
+                            config.buffer_size = buffer_size;
+                            println!("✓ Using JACK backend");
+                            return Ok((
+                                device,
+                                config,
+                                sample_format,
+                                "JACK".to_string(),
+                                range,
+                                block_size,
+                            ));
+                        }
+                        Err(e) => {
+                            eprintln!("JACK device found but configuration failed: {}", e);
+                        }
+                    }
+                } else {
+                    eprintln!("JACK backend available but no default device found");
+                }
+            }
+            Err(e) => {
+                eprintln!("JACK backend not available: {}", e);
+                eprintln!(
+                    "Falling back to ALSA (may experience glitches with variable buffer sizes)"
+                );
+            }
+        }
+    }
+
+    // Fallback: iterate through all available hosts
     let mut last_error: Option<anyhow::Error> = None;
 
     for host_id in cpal::available_hosts() {
         let host = cpal::host_from_id(host_id)?;
         let host_name = host_id.name().to_string();
+
+        // Skip JACK since we already tried it above
+        #[cfg(target_os = "linux")]
+        if host_name == "JACK" {
+            continue;
+        }
+
+        println!("Trying host: {}", host_name);
 
         let Some(device) = host.default_output_device() else {
             last_error = Some(anyhow!("host {host_name} has no default output device"));
@@ -392,30 +449,23 @@ fn select_output_device() -> anyhow::Result<(
                     choose_buffer_size(supported.buffer_size().clone());
                 let mut config = supported.config();
                 config.buffer_size = buffer_size;
+
+                println!("✓ Selected host: {}", host_name);
+
+                // Warn if using ALSA on Linux
+                #[cfg(target_os = "linux")]
+                if host_name == "ALSA" {
+                    eprintln!("\n⚠️  WARNING: Using ALSA backend");
+                    eprintln!("   ALSA may deliver variable buffer sizes causing audio glitches.");
+                    eprintln!("   For best results, install JACK or PipeWire-JACK:");
+                    eprintln!("   sudo pacman -S pipewire-jack\n");
+                }
+
                 return Ok((device, config, sample_format, host_name, range, block_size));
             }
             Err(err) => {
                 last_error = Some(anyhow!(
                     "failed to query default output config for host {host_name}: {err}"
-                ));
-            }
-        }
-
-        match device.supported_output_configs() {
-            Ok(mut configs) => {
-                if let Some(supported) = configs.next() {
-                    let sample_format = supported.sample_format();
-                    let supported_config = supported.with_max_sample_rate();
-                    let (buffer_size, range, block_size) =
-                        choose_buffer_size(supported_config.buffer_size().clone());
-                    let mut config = supported_config.config();
-                    config.buffer_size = buffer_size;
-                    return Ok((device, config, sample_format, host_name, range, block_size));
-                }
-            }
-            Err(err) => {
-                last_error = Some(anyhow!(
-                    "failed to enumerate output configs for host {host_name}: {err}"
                 ));
             }
         }
