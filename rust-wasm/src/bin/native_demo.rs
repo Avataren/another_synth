@@ -1,107 +1,41 @@
 #![cfg(feature = "native-host")]
 
+mod composition;
+
 use std::time::Duration;
 
 use anyhow::anyhow;
-use audio_processor::audio_engine::native::AudioEngine;
-use audio_processor::automation::AutomationFrame;
-use audio_processor::graph::{ModulationTransformation, ModulationType};
-use audio_processor::traits::PortId;
+use composition::Composition;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, Sample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
 use dasp_sample::FromSample;
 
-const ENGINE_BLOCK_SIZE: usize = 128;
-const MACRO_COUNT: usize = 4;
-const MACRO_BUFFER_LEN: usize = 128;
-const DEFAULT_BLOCKS_PER_STEP: usize = 120;
-
-const SEQUENCE: [NoteStep; 4] = [
-    NoteStep {
-        frequency: 261.63,
-        velocity: 0.9,
-        macro_value: 0.2,
-    },
-    NoteStep {
-        frequency: 329.63,
-        velocity: 0.8,
-        macro_value: 0.6,
-    },
-    NoteStep {
-        frequency: 392.0,
-        velocity: 0.85,
-        macro_value: 0.4,
-    },
-    NoteStep {
-        frequency: 523.25,
-        velocity: 0.95,
-        macro_value: 0.75,
-    },
-];
-
-struct NoteStep {
-    frequency: f32,
-    velocity: f32,
-    macro_value: f32,
-}
+const DEFAULT_BLOCK_SIZE: usize = 128;
 
 struct DemoState {
-    engine: AudioEngine,
-    frame: AutomationFrame,
-    left: Vec<f32>,
-    right: Vec<f32>,
+    composition: Composition,
     engine_block_size: usize,
     host_block_size: usize,
     carry_left: Vec<f32>,
     carry_right: Vec<f32>,
     carry_available: usize,
     carry_index: usize,
-    step: usize,
-    block_progress: usize,
-    blocks_per_step: usize,
     call_count: usize,
 }
 
 impl DemoState {
-    fn new(
-        engine: AudioEngine,
-        frame: AutomationFrame,
-        engine_block_size: usize,
-        host_block_size: usize,
-        blocks_per_step: usize,
-    ) -> Self {
+    fn new(composition: Composition, engine_block_size: usize, host_block_size: usize) -> Self {
         let engine_block_size = engine_block_size.max(1);
         let host_block_size = host_block_size.max(1);
 
-        if engine_block_size < host_block_size {
-            eprintln!(
-                "⚠️  WARNING: Engine block size ({}) is smaller than host block size ({})!",
-                engine_block_size, host_block_size
-            );
-            eprintln!(
-                "    This may cause buffer underruns. Consider increasing engine block size."
-            );
-        }
-
-        debug_assert_eq!(
-            engine.block_size(),
-            engine_block_size,
-            "Engine block size mismatch with demo state configuration"
-        );
         Self {
-            engine,
-            frame,
-            left: vec![0.0; engine_block_size],
-            right: vec![0.0; engine_block_size],
+            composition,
             engine_block_size,
             host_block_size,
             carry_left: vec![0.0; engine_block_size],
             carry_right: vec![0.0; engine_block_size],
             carry_available: 0,
             carry_index: 0,
-            step: 0,
-            block_progress: 0,
-            blocks_per_step,
             call_count: 0,
         }
     }
@@ -112,7 +46,7 @@ unsafe impl Send for DemoState {}
 fn choose_buffer_size(supported: SupportedBufferSize) -> (BufferSize, Option<(u32, u32)>, usize) {
     match supported {
         SupportedBufferSize::Range { min, max } => {
-            let desired = ENGINE_BLOCK_SIZE as u32;
+            let desired = DEFAULT_BLOCK_SIZE as u32;
             let clamped = desired.clamp(min, max);
             (
                 BufferSize::Fixed(clamped),
@@ -121,9 +55,9 @@ fn choose_buffer_size(supported: SupportedBufferSize) -> (BufferSize, Option<(u3
             )
         }
         SupportedBufferSize::Unknown => (
-            BufferSize::Fixed(ENGINE_BLOCK_SIZE as u32),
+            BufferSize::Fixed(DEFAULT_BLOCK_SIZE as u32),
             None,
-            ENGINE_BLOCK_SIZE,
+            DEFAULT_BLOCK_SIZE,
         ),
     }
 }
@@ -132,19 +66,34 @@ fn main() -> anyhow::Result<()> {
     let (device, config, sample_format, host_label, buffer_range, block_size_hint) =
         select_output_device()?;
 
-    println!("=== INITIAL CONFIG ===");
+    println!("=== AUDIO CONFIGURATION ===");
+    let target_frames = block_size_hint as u32;
     if let Some((min, max)) = buffer_range {
-        println!("Device reports buffer size range: {}..={} frames", min, max);
-        println!(
-            "Target buffer size: {} frames (may be adjusted by backend)",
-            block_size_hint
-        );
+        println!("Device buffer size range: {}..={} frames", min, max);
+        println!("Target buffer size: {} frames", target_frames);
     } else {
         println!(
-            "Backend will determine buffer size (hint: {} frames)",
-            block_size_hint
+            "Device did not report buffer range; requesting {} frames",
+            target_frames
         );
     }
+
+    let configured_frames = match config.buffer_size {
+        BufferSize::Fixed(actual) => {
+            println!("Configured CPAL buffer size: {} frames", actual);
+            if actual != target_frames {
+                println!(
+                    "Adjusted from target {} frames to comply with device limits",
+                    target_frames
+                );
+            }
+            actual as usize
+        }
+        BufferSize::Default => {
+            println!("Configured CPAL buffer size: default");
+            block_size_hint
+        }
+    };
 
     let sample_rate = config.sample_rate.0 as f32;
     let device_name = device
@@ -154,52 +103,21 @@ fn main() -> anyhow::Result<()> {
     println!("Sample rate: {}", sample_rate);
     println!("Channels: {}", config.channels);
 
-    let num_voices = 1;
-    // Use fixed 128-frame engine block size for consistent internal processing
-    let engine_block_size = ENGINE_BLOCK_SIZE;
+    let engine_block_size = configured_frames.max(DEFAULT_BLOCK_SIZE);
 
-    println!("\n=== ENGINE CONFIGURATION ===");
-    println!(
-        "Engine block size: {} frames (fixed internal processing)",
-        engine_block_size
-    );
-
-    let mut engine = AudioEngine::new_with_block_size(sample_rate, num_voices, engine_block_size);
-    engine.init(sample_rate, num_voices);
-
-    setup_synth_patch(&mut engine)?;
-
-    let frame = AutomationFrame::with_dimensions(num_voices, MACRO_COUNT, MACRO_BUFFER_LEN);
-
-    // Host buffer size (will be confirmed in first audio callback)
-    let configured_frames = block_size_hint;
+    println!("\n=== CREATING COMPOSITION ===");
+    let composition =
+        Composition::new(sample_rate, engine_block_size).map_err(|e| anyhow!("{}", e))?;
 
     println!(
-        "Expected host buffer: {} frames (actual size confirmed at runtime)",
-        configured_frames
+        "Composition created with {} tracks:",
+        composition.tracks.len()
     );
-
-    println!("=== BUFFER ALLOCATION ===");
-    println!(
-        "Host buffer size: {} frames, engine block size: {} frames",
-        configured_frames, engine_block_size
-    );
-
-    let total_frames_per_step = ENGINE_BLOCK_SIZE * DEFAULT_BLOCKS_PER_STEP;
-    let mut blocks_per_step = (total_frames_per_step + engine_block_size - 1) / engine_block_size;
-    if blocks_per_step == 0 {
-        blocks_per_step = 1;
+    for track in &composition.tracks {
+        println!("  - {}", track.name);
     }
 
-    println!("Blocks per step (scaled): {}", blocks_per_step);
-
-    let state = DemoState::new(
-        engine,
-        frame,
-        engine_block_size,
-        configured_frames,
-        blocks_per_step,
-    );
+    let state = DemoState::new(composition, engine_block_size, configured_frames);
 
     let stream = match sample_format {
         SampleFormat::F32 => build_stream::<f32>(device, config, state)?,
@@ -210,112 +128,22 @@ fn main() -> anyhow::Result<()> {
 
     stream.play()?;
 
-    println!("\n=== STREAMING STARTED ===");
+    println!("\n=== NOW PLAYING ===");
     println!(
-        "Host: '{}', Device: '{}', Sample Rate: {} Hz, Host Block: {}, Engine Block: {}",
-        host_label, device_name, sample_rate, configured_frames, engine_block_size
+        "Host: '{}', Device: '{}', Sample Rate: {} Hz",
+        host_label, device_name, sample_rate
     );
-    println!("Playing sequence of 4 notes...");
-    println!("Watch for buffer size mismatches below...\n");
+    println!(
+        "Host Block: {}, Engine Block: {}",
+        configured_frames, engine_block_size
+    );
+    println!("\n🎵 Musical composition in A minor");
+    println!("   4 tracks: Bass, Pads, Lead, Arpeggio");
+    println!("   Press Ctrl+C to stop\n");
 
     loop {
         std::thread::sleep(Duration::from_secs(1));
     }
-}
-
-fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
-    println!("Setting up synth patch...");
-
-    let mixer_id = engine
-        .create_mixer()
-        .map_err(|e| anyhow!("Failed to create mixer: {}", e))?;
-    let filter_id = engine
-        .create_filter()
-        .map_err(|e| anyhow!("Failed to create filter: {}", e))?;
-
-    engine
-        .update_filters(
-            filter_id,
-            2000.0,
-            0.3,
-            0.0,
-            0.0,
-            220.0,
-            0.5,
-            1,
-            audio_processor::biquad::FilterType::LowPass,
-            audio_processor::nodes::FilterSlope::Db24,
-        )
-        .map_err(|e| anyhow!("Failed to configure filter: {}", e))?;
-
-    let wt_osc_id = engine
-        .create_wavetable_oscillator()
-        .map_err(|e| anyhow!("Failed to create wavetable oscillator: {}", e))?;
-    let osc_id = engine
-        .create_oscillator()
-        .map_err(|e| anyhow!("Failed to create oscillator: {}", e))?;
-    let envelope_id = engine
-        .create_envelope()
-        .map_err(|e| anyhow!("Failed to create envelope: {}", e))?;
-
-    engine
-        .update_envelope(envelope_id, 0.005, 0.1, 0.7, 0.1, 0.0, 0.0, 0.0, true)
-        .map_err(|e| anyhow!("Failed to configure envelope: {}", e))?;
-
-    let _lfo_id = engine
-        .create_lfo()
-        .map_err(|e| anyhow!("Failed to create LFO: {}", e))?;
-
-    engine
-        .connect_nodes(
-            filter_id,
-            PortId::AudioOutput0,
-            mixer_id,
-            PortId::AudioInput0,
-            1.0,
-            ModulationType::Additive,
-            ModulationTransformation::None,
-        )
-        .map_err(|e| anyhow!("Failed to connect filter to mixer: {}", e))?;
-
-    engine
-        .connect_nodes(
-            envelope_id,
-            PortId::AudioOutput0,
-            mixer_id,
-            PortId::GainMod,
-            1.0,
-            ModulationType::VCA,
-            ModulationTransformation::None,
-        )
-        .map_err(|e| anyhow!("Failed to connect envelope to mixer: {}", e))?;
-
-    engine
-        .connect_nodes(
-            wt_osc_id,
-            PortId::AudioOutput0,
-            filter_id,
-            PortId::AudioInput0,
-            1.0,
-            ModulationType::Additive,
-            ModulationTransformation::None,
-        )
-        .map_err(|e| anyhow!("Failed to connect oscillator to filter: {}", e))?;
-
-    engine
-        .connect_nodes(
-            osc_id,
-            PortId::AudioOutput0,
-            wt_osc_id,
-            PortId::PhaseMod,
-            0.02,
-            ModulationType::Additive,
-            ModulationTransformation::None,
-        )
-        .map_err(|e| anyhow!("Failed to connect oscillator FM: {}", e))?;
-
-    println!("Synth patch setup complete!");
-    Ok(())
 }
 
 fn build_stream<T>(
@@ -334,30 +162,26 @@ where
     let stream = device.build_output_stream(
         &config,
         move |data: &mut [T], _| {
-            for sample in data.iter_mut() {
-                *sample = T::from_sample(0.0f32);
-            }
             if first_call {
                 println!("\n=== FIRST AUDIO CALLBACK ===");
                 println!(
-                    "CPAL buffer size: {} samples ({} frames)",
+                    "CPAL buffer: {} samples ({} frames)",
                     data.len(),
                     data.len() / channels
                 );
                 println!("Channels: {}", channels);
-                println!("Our left/right buffer size: {}", state.left.len());
                 first_call = false;
             }
 
             if let Err(err) = process_block(data, channels, &mut state) {
                 if !error_reported {
-                    eprintln!("audio callback error: {err}");
+                    eprintln!("Audio callback error: {err}");
                     error_reported = true;
                 }
             }
         },
         move |err| {
-            eprintln!("stream error: {err}");
+            eprintln!("Stream error: {err}");
         },
         None,
     )?;
@@ -373,69 +197,11 @@ fn select_output_device() -> anyhow::Result<(
     Option<(u32, u32)>,
     usize,
 )> {
-    println!("=== AVAILABLE AUDIO HOSTS ===");
-    for host_id in cpal::available_hosts() {
-        println!("  - {}", host_id.name());
-    }
-    println!();
-
-    // On Linux, prefer JACK for deterministic buffer delivery
-    #[cfg(target_os = "linux")]
-    {
-        use cpal::HostId;
-
-        println!("Attempting JACK backend (recommended for Linux)...");
-        match cpal::host_from_id(HostId::Jack) {
-            Ok(host) => {
-                if let Some(device) = host.default_output_device() {
-                    match device.default_output_config() {
-                        Ok(supported) => {
-                            let sample_format = supported.sample_format();
-                            let (buffer_size, range, block_size) =
-                                choose_buffer_size(supported.buffer_size().clone());
-                            let mut config = supported.config();
-                            config.buffer_size = buffer_size;
-                            println!("✓ Using JACK backend");
-                            return Ok((
-                                device,
-                                config,
-                                sample_format,
-                                "JACK".to_string(),
-                                range,
-                                block_size,
-                            ));
-                        }
-                        Err(e) => {
-                            eprintln!("JACK device found but configuration failed: {}", e);
-                        }
-                    }
-                } else {
-                    eprintln!("JACK backend available but no default device found");
-                }
-            }
-            Err(e) => {
-                eprintln!("JACK backend not available: {}", e);
-                eprintln!(
-                    "Falling back to ALSA (may experience glitches with variable buffer sizes)"
-                );
-            }
-        }
-    }
-
-    // Fallback: iterate through all available hosts
     let mut last_error: Option<anyhow::Error> = None;
 
     for host_id in cpal::available_hosts() {
         let host = cpal::host_from_id(host_id)?;
         let host_name = host_id.name().to_string();
-
-        // Skip JACK since we already tried it above
-        #[cfg(target_os = "linux")]
-        if host_name == "JACK" {
-            continue;
-        }
-
-        println!("Trying host: {}", host_name);
 
         let Some(device) = host.default_output_device() else {
             last_error = Some(anyhow!("host {host_name} has no default output device"));
@@ -449,23 +215,30 @@ fn select_output_device() -> anyhow::Result<(
                     choose_buffer_size(supported.buffer_size().clone());
                 let mut config = supported.config();
                 config.buffer_size = buffer_size;
-
-                println!("✓ Selected host: {}", host_name);
-
-                // Warn if using ALSA on Linux
-                #[cfg(target_os = "linux")]
-                if host_name == "ALSA" {
-                    eprintln!("\n⚠️  WARNING: Using ALSA backend");
-                    eprintln!("   ALSA may deliver variable buffer sizes causing audio glitches.");
-                    eprintln!("   For best results, install JACK or PipeWire-JACK:");
-                    eprintln!("   sudo pacman -S pipewire-jack\n");
-                }
-
                 return Ok((device, config, sample_format, host_name, range, block_size));
             }
             Err(err) => {
                 last_error = Some(anyhow!(
                     "failed to query default output config for host {host_name}: {err}"
+                ));
+            }
+        }
+
+        match device.supported_output_configs() {
+            Ok(mut configs) => {
+                if let Some(supported) = configs.next() {
+                    let sample_format = supported.sample_format();
+                    let supported_config = supported.with_max_sample_rate();
+                    let (buffer_size, range, block_size) =
+                        choose_buffer_size(supported_config.buffer_size().clone());
+                    let mut config = supported_config.config();
+                    config.buffer_size = buffer_size;
+                    return Ok((device, config, sample_format, host_name, range, block_size));
+                }
+            }
+            Err(err) => {
+                last_error = Some(anyhow!(
+                    "failed to enumerate output configs for host {host_name}: {err}"
                 ));
             }
         }
@@ -486,35 +259,8 @@ where
     state.call_count += 1;
     let total_frames = output.len() / channels;
 
-    // Add diagnostic logging for buffer mismatches (every 1000 calls, not every call)
-    // Add diagnostic logging for buffer mismatches
     if state.call_count % 1000 == 0 {
-        println!("\n=== PROCESS_BLOCK (call {}) ===", state.call_count);
-        println!("output buffer: {} samples", output.len());
-        println!("channels: {}", channels);
-        println!("frames requested: {}", total_frames);
-        println!("carry available: {} frames", state.carry_available);
-        println!("carry index: {}", state.carry_index);
-        println!(
-            "engine block size: {}, host block size (observed): {}",
-            state.engine_block_size, total_frames
-        );
-
-        // Check for buffer size variability (this is expected on Linux/ALSA)
-        if total_frames != state.host_block_size && state.call_count > 1000 {
-            println!(
-                "⚠️  Host buffer size changed from {} to {} frames (this is normal on ALSA)",
-                state.host_block_size, total_frames
-            );
-        }
-
-        // Verify carry buffer integrity
-        if state.carry_index + state.carry_available != state.engine_block_size {
-            println!(
-                "❌ ERROR: Carry buffer accounting error! index={}, available={}, should sum to {}",
-                state.carry_index, state.carry_available, state.engine_block_size
-            );
-        }
+        println!("♪ Processing... (call {})", state.call_count);
     }
 
     if channels == 0 {
@@ -531,111 +277,29 @@ where
 
     state.host_block_size = total_frames;
 
-    // Removed the problematic check:
-    // if total_frames > state.engine_block_size {
-    //     return Err("requested frames exceed engine block size");
-    // }
-
     let mut frames_written = 0;
 
     while frames_written < total_frames {
         if state.carry_available == 0 {
-            // Produce a fresh block from the engine and stage it in the carry buffers.
-            let step = &SEQUENCE[state.step];
-            let gate = if state.block_progress < state.blocks_per_step - 2 {
-                1.0
-            } else {
-                0.0
-            };
+            // Generate a fresh block from the composition
+            state.carry_left.fill(0.0);
+            state.carry_right.fill(0.0);
 
             state
-                .frame
-                .set_voice_values(0, gate, step.frequency, step.velocity, 1.0);
-            state.frame.set_macro_value(0, 0, step.macro_value);
-            state
-                .frame
-                .set_macro_value(0, 1, 1.0 - step.macro_value.clamp(0.0, 1.0));
+                .composition
+                .process_block(&mut state.carry_left, &mut state.carry_right);
 
-            state.left.fill(0.0);
-            state.right.fill(0.0);
-
-            // CRITICAL: The engine always processes at block_size (128 frames)
-            // regardless of what the host requests
-            state
-                .engine
-                .process_with_frame(&state.frame, 0.5, &mut state.left, &mut state.right);
-
-            // Verify the engine produced the expected amount
-            debug_assert_eq!(
-                state.left.len(),
-                state.engine_block_size,
-                "Engine produced wrong buffer size!"
-            );
-            debug_assert_eq!(
-                state.right.len(),
-                state.engine_block_size,
-                "Engine produced wrong buffer size!"
-            );
-
-            state.carry_left.copy_from_slice(&state.left);
-            state.carry_right.copy_from_slice(&state.right);
             state.carry_index = 0;
             state.carry_available = state.engine_block_size;
-
-            // Advance sequence state once per generated block
-            state.block_progress += 1;
-            if state.block_progress >= state.blocks_per_step {
-                state.block_progress = 0;
-                state.step = (state.step + 1) % SEQUENCE.len();
-            }
 
             continue;
         }
 
-        // Calculate safe copy size with explicit bounds checking
-        let frames_remaining = total_frames - frames_written;
-        let frames_in_carry = state.carry_available;
-        let frames_until_buffer_end = state.engine_block_size.saturating_sub(state.carry_index);
+        let frames_to_copy = (total_frames - frames_written).min(state.carry_available);
 
-        let frames_to_copy = frames_remaining
-            .min(frames_in_carry)
-            .min(frames_until_buffer_end);
-
-        // Safety check - this should never trigger with above logic
-        if frames_to_copy == 0 {
-            eprintln!(
-                "ERROR: frames_to_copy is 0! remaining={}, in_carry={}, until_end={}",
-                frames_remaining, frames_in_carry, frames_until_buffer_end
-            );
-            return Err("zero frames to copy");
-        }
-
-        if state.carry_index + frames_to_copy > state.engine_block_size {
-            eprintln!(
-                "ERROR: Carry buffer overflow! carry_index={}, frames_to_copy={}, buffer_size={}",
-                state.carry_index, frames_to_copy, state.engine_block_size
-            );
-            return Err("carry buffer overflow detected");
-        }
-
-        // Copy from carry buffer to output
         for i in 0..frames_to_copy {
             let output_pos = (frames_written + i) * channels;
             let carry_pos = state.carry_index + i;
-
-            // Additional bounds check
-            debug_assert!(
-                carry_pos < state.carry_left.len(),
-                "carry_pos {} exceeds buffer size {}",
-                carry_pos,
-                state.carry_left.len()
-            );
-            debug_assert!(
-                output_pos + channels <= output.len(),
-                "output_pos {} exceeds output buffer size {}",
-                output_pos,
-                output.len()
-            );
 
             for ch in 0..channels {
                 let value = match ch {
@@ -650,35 +314,6 @@ where
         frames_written += frames_to_copy;
         state.carry_index += frames_to_copy;
         state.carry_available -= frames_to_copy;
-
-        // Verify consistency
-        debug_assert_eq!(
-            state.carry_index + state.carry_available,
-            state.engine_block_size,
-            "Carry buffer accounting error!"
-        );
-    }
-
-    // Validate we filled the entire output buffer
-    if state.call_count % 1000 == 0 {
-        let max_val = output
-            .iter()
-            .map(|s| {
-                let f: f32 = s.to_sample();
-                f.abs()
-            })
-            .fold(0.0f32, |max, val| max.max(val));
-
-        println!("✓ Processed {} frames successfully", frames_written);
-        println!("  Peak output level: {:.4}", max_val);
-
-        // Check for incomplete fills
-        if frames_written < total_frames {
-            println!(
-                "⚠️  WARNING: Only filled {}/{} frames!",
-                frames_written, total_frames
-            );
-        }
     }
 
     Ok(())

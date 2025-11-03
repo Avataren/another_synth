@@ -1,0 +1,621 @@
+use audio_processor::audio_engine::native::AudioEngine;
+use audio_processor::automation::AutomationFrame;
+use audio_processor::biquad::FilterType;
+use audio_processor::graph::{ModulationTransformation, ModulationType};
+use audio_processor::nodes::FilterSlope;
+use audio_processor::traits::PortId;
+
+const MACRO_COUNT: usize = 4;
+const MACRO_BUFFER_LEN: usize = 128;
+
+/// Represents a single note in a sequence
+#[derive(Debug, Clone, Copy)]
+pub struct Note {
+    pub frequency: f32,
+    pub velocity: f32,
+    pub duration_blocks: usize, // How many blocks this note lasts
+}
+
+impl Note {
+    pub fn new(midi_note: u8, velocity: f32, duration_blocks: usize) -> Self {
+        let frequency = 440.0 * 2f32.powf((midi_note as f32 - 69.0) / 12.0);
+        Self {
+            frequency,
+            velocity,
+            duration_blocks,
+        }
+    }
+
+    pub fn rest(duration_blocks: usize) -> Self {
+        Self {
+            frequency: 0.0,
+            velocity: 0.0,
+            duration_blocks,
+        }
+    }
+}
+
+/// A sequence of notes with timing information
+pub struct NoteSequence {
+    notes: Vec<Note>,
+    current_index: usize,
+    blocks_into_current_note: usize,
+}
+
+impl NoteSequence {
+    pub fn new(notes: Vec<Note>) -> Self {
+        Self {
+            notes,
+            current_index: 0,
+            blocks_into_current_note: 0,
+        }
+    }
+
+    pub fn advance(&mut self) -> (f32, f32) {
+        if self.notes.is_empty() {
+            return (0.0, 0.0);
+        }
+
+        let current_note = &self.notes[self.current_index];
+
+        // Gate should be on for most of the note, off near the end for articulation
+        let gate = if current_note.frequency > 0.0
+            && self.blocks_into_current_note < current_note.duration_blocks.saturating_sub(1)
+        {
+            1.0
+        } else {
+            0.0
+        };
+
+        let frequency = current_note.frequency;
+
+        self.blocks_into_current_note += 1;
+
+        if self.blocks_into_current_note >= current_note.duration_blocks {
+            self.blocks_into_current_note = 0;
+            self.current_index = (self.current_index + 1) % self.notes.len();
+        }
+
+        (gate, frequency)
+    }
+}
+
+/// A single track with its own synth engine and sequence
+pub struct Track {
+    pub name: String,
+    pub engine: AudioEngine,
+    pub frame: AutomationFrame,
+    pub sequence: NoteSequence,
+    pub gain: f32,
+    left_buffer: Vec<f32>,
+    right_buffer: Vec<f32>,
+}
+
+impl Track {
+    pub fn new(
+        name: String,
+        engine: AudioEngine,
+        sequence: NoteSequence,
+        gain: f32,
+        block_size: usize,
+    ) -> Self {
+        let frame = AutomationFrame::with_dimensions(1, MACRO_COUNT, MACRO_BUFFER_LEN);
+        Self {
+            name,
+            engine,
+            frame,
+            sequence,
+            gain,
+            left_buffer: vec![0.0; block_size],
+            right_buffer: vec![0.0; block_size],
+        }
+    }
+
+    pub fn process_block(&mut self) {
+        let (gate, frequency) = self.sequence.advance();
+
+        self.frame.set_voice_values(0, gate, frequency, 0.8, 1.0);
+
+        self.left_buffer.fill(0.0);
+        self.right_buffer.fill(0.0);
+
+        self.engine.process_with_frame(
+            &self.frame,
+            self.gain,
+            &mut self.left_buffer,
+            &mut self.right_buffer,
+        );
+    }
+
+    pub fn get_output(&self) -> (&[f32], &[f32]) {
+        (&self.left_buffer, &self.right_buffer)
+    }
+}
+
+/// Main composition with multiple tracks
+pub struct Composition {
+    pub tracks: Vec<Track>,
+    pub master_gain: f32,
+}
+
+impl Composition {
+    pub fn new(sample_rate: f32, block_size: usize) -> Result<Self, String> {
+        let mut tracks = Vec::new();
+
+        // BASS TRACK - Deep, punchy bass
+        let bass_sequence = create_bass_sequence();
+        let bass_engine = create_bass_synth(sample_rate, block_size)?;
+        tracks.push(Track::new(
+            "Bass".to_string(),
+            bass_engine,
+            bass_sequence,
+            0.9, // Boosted from 0.6 to make it more audible
+            block_size,
+        ));
+
+        // PAD TRACK - Atmospheric chords
+        let pad_sequence = create_pad_sequence();
+        let pad_engine = create_pad_synth(sample_rate, block_size)?;
+        tracks.push(Track::new(
+            "Pad".to_string(),
+            pad_engine,
+            pad_sequence,
+            0.35,
+            block_size,
+        ));
+
+        // LEAD TRACK - Melodic lead
+        let lead_sequence = create_lead_sequence();
+        let lead_engine = create_lead_synth(sample_rate, block_size)?;
+        tracks.push(Track::new(
+            "Lead".to_string(),
+            lead_engine,
+            lead_sequence,
+            0.5,
+            block_size,
+        ));
+
+        // ARPEGGIO TRACK - Rhythmic texture
+        let arp_sequence = create_arp_sequence();
+        let arp_engine = create_arp_synth(sample_rate, block_size)?;
+        tracks.push(Track::new(
+            "Arp".to_string(),
+            arp_engine,
+            arp_sequence,
+            0.3, // Resonance
+            block_size,
+        ));
+
+        Ok(Self {
+            tracks,
+            master_gain: 0.4,
+        })
+    }
+
+    pub fn process_block(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
+        output_left.fill(0.0);
+        output_right.fill(0.0);
+
+        for track in &mut self.tracks {
+            track.process_block();
+            let (left, right) = track.get_output();
+
+            for (i, (out_l, out_r)) in output_left
+                .iter_mut()
+                .zip(output_right.iter_mut())
+                .enumerate()
+            {
+                if i < left.len() {
+                    *out_l += left[i] * self.master_gain;
+                    *out_r += right[i] * self.master_gain;
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// SYNTH PATCH CREATORS
+// ============================================================================
+
+fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, String> {
+    let mut engine = AudioEngine::new_with_block_size(sample_rate, 1, block_size);
+    engine.init(sample_rate, 1);
+
+    // Create nodes - Note: these return usize directly in native builds
+    let mixer_id = engine.create_mixer()?;
+    let filter_id = engine.create_filter()?;
+    let osc1_id = engine.create_oscillator()?;
+    let osc2_id = engine.create_oscillator()?;
+    let env_id = engine.create_envelope()?;
+
+    println!(
+        "🎸 Bass synth nodes - Mixer: {}, Filter: {}, Osc1: {}, Osc2: {}, Env: {}",
+        mixer_id, filter_id, osc1_id, osc2_id, env_id
+    );
+
+    // Configure envelope - punchy attack, moderate release
+    engine.update_envelope(env_id, 0.001, 0.05, 0.8, 0.2, 0.0, 0.0, 0.0, true)?;
+
+    // Configure filter - OPEN IT UP for more bass presence
+    engine.update_filters(
+        filter_id,
+        1200.0, // Higher cutoff
+        0.4,    // Less resonance
+        1.0,
+        0.0,
+        220.0,
+        0.5,
+        1, // gain=1.0 is critical!
+        FilterType::LowPass,
+        FilterSlope::Db24,
+    )?;
+
+    // Connect oscillators to filter - BOOST THE MIX
+    engine.connect_nodes(
+        osc1_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::AudioInput0,
+        0.9, // Higher - was 0.7
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    engine.connect_nodes(
+        osc2_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::AudioInput0,
+        0.9, // Higher - was 0.7
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Slight detune on second oscillator
+    engine.connect_nodes(
+        osc2_id,
+        PortId::AudioOutput0,
+        osc2_id,
+        PortId::FrequencyMod,
+        0.005,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Connect filter to mixer
+    engine.connect_nodes(
+        filter_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::AudioInput0,
+        1.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Envelope controls mixer gain
+    engine.connect_nodes(
+        env_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::GainMod,
+        1.0,
+        ModulationType::VCA,
+        ModulationTransformation::None,
+    )?;
+
+    Ok(engine)
+}
+
+fn create_pad_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, String> {
+    let mut engine = AudioEngine::new_with_block_size(sample_rate, 1, block_size);
+    engine.init(sample_rate, 1);
+
+    let mixer_id = engine.create_mixer()?;
+    let filter_id = engine.create_filter()?;
+    let osc1_id = engine.create_wavetable_oscillator()?;
+    let osc2_id = engine.create_wavetable_oscillator()?;
+    let osc3_id = engine.create_wavetable_oscillator()?;
+    let env_id = engine.create_envelope()?;
+
+    // Slow, evolving envelope for pads
+    engine.update_envelope(env_id, 0.3, 0.5, 0.7, 1.5, 0.0, 0.0, 0.0, true)?;
+
+    // Warm filter
+    engine.update_filters(
+        filter_id,
+        2500.0, // Cutoff
+        0.3,    // Resonance
+        1.0,
+        0.0,
+        220.0,
+        0.5,
+        1, // gain=1.0 is critical!
+        FilterType::LowPass,
+        FilterSlope::Db12,
+    )?;
+
+    // Three oscillators for richness
+    engine.connect_nodes(
+        osc1_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::AudioInput0,
+        0.4,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    engine.connect_nodes(
+        osc2_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::AudioInput0,
+        0.4,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    engine.connect_nodes(
+        osc3_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::AudioInput0,
+        0.4,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Filter to mixer
+    engine.connect_nodes(
+        filter_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::AudioInput0,
+        1.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Envelope on mixer
+    engine.connect_nodes(
+        env_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::GainMod,
+        1.0,
+        ModulationType::VCA,
+        ModulationTransformation::None,
+    )?;
+
+    Ok(engine)
+}
+
+fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, String> {
+    let mut engine = AudioEngine::new_with_block_size(sample_rate, 1, block_size);
+    engine.init(sample_rate, 1);
+
+    let mixer_id = engine.create_mixer()?;
+    let filter_id = engine.create_filter()?;
+    let osc_id = engine.create_wavetable_oscillator()?;
+    let mod_osc_id = engine.create_oscillator()?;
+    let env_id = engine.create_envelope()?;
+    let filter_env_id = engine.create_envelope()?;
+
+    // Plucky envelope
+    engine.update_envelope(env_id, 0.005, 0.1, 0.5, 0.3, 0.0, 0.0, 0.0, true)?;
+
+    // Filter envelope
+    engine.update_envelope(filter_env_id, 0.01, 0.2, 0.3, 0.2, 0.0, 0.0, 0.0, true)?;
+
+    // Bright filter that's modulated
+    engine.update_filters(
+        filter_id,
+        3500.0,
+        0.5,
+        1.0,
+        0.0,
+        220.0,
+        0.5,
+        1, // gain=1.0 is critical!
+        FilterType::LowPass,
+        FilterSlope::Db24,
+    )?;
+
+    // FM modulation for brightness
+    engine.connect_nodes(
+        mod_osc_id,
+        PortId::AudioOutput0,
+        osc_id,
+        PortId::PhaseMod,
+        0.5,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Oscillator to filter
+    engine.connect_nodes(
+        osc_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::AudioInput0,
+        1.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Filter to mixer
+    engine.connect_nodes(
+        filter_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::AudioInput0,
+        1.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Amplitude envelope
+    engine.connect_nodes(
+        env_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::GainMod,
+        1.0,
+        ModulationType::VCA,
+        ModulationTransformation::None,
+    )?;
+
+    // Filter envelope to cutoff
+    engine.connect_nodes(
+        filter_env_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::CutoffMod,
+        0.6,
+        ModulationType::VCA,
+        ModulationTransformation::None,
+    )?;
+
+    Ok(engine)
+}
+
+fn create_arp_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, String> {
+    let mut engine = AudioEngine::new_with_block_size(sample_rate, 1, block_size);
+    engine.init(sample_rate, 1);
+
+    let mixer_id = engine.create_mixer()?;
+    let filter_id = engine.create_filter()?;
+    let osc_id = engine.create_oscillator()?;
+    let env_id = engine.create_envelope()?;
+
+    // Short, percussive envelope
+    engine.update_envelope(env_id, 0.001, 0.02, 0.0, 0.05, 0.0, 0.0, 0.0, true)?;
+
+    // Bright filter
+    engine.update_filters(
+        filter_id,
+        4000.0,
+        0.4,
+        1.0,
+        0.0,
+        220.0,
+        0.5,
+        1, // gain=1.0 is critical!
+        FilterType::LowPass,
+        FilterSlope::Db12,
+    )?;
+
+    engine.connect_nodes(
+        osc_id,
+        PortId::AudioOutput0,
+        filter_id,
+        PortId::AudioInput0,
+        1.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    engine.connect_nodes(
+        filter_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::AudioInput0,
+        1.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    engine.connect_nodes(
+        env_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::GainMod,
+        1.0,
+        ModulationType::VCA,
+        ModulationTransformation::None,
+    )?;
+
+    Ok(engine)
+}
+
+// ============================================================================
+// NOTE SEQUENCES
+// ============================================================================
+
+fn create_bass_sequence() -> NoteSequence {
+    // Key: A minor
+    // Bassline: A - C - D - E pattern
+    // Raised one octave (A3-E4 instead of A2-E3) for better audibility
+    let notes = vec![
+        Note::new(57, 0.9, 16),  // A3 (was A2)
+        Note::new(57, 0.85, 16), // A3
+        Note::new(60, 0.88, 16), // C4 (was C3)
+        Note::new(60, 0.85, 16), // C4
+        Note::new(62, 0.87, 16), // D4 (was D3)
+        Note::new(62, 0.84, 16), // D4
+        Note::new(64, 0.89, 16), // E4 (was E3)
+        Note::new(64, 0.86, 8),  // E4
+        Note::new(62, 0.87, 8),  // D4 (passing)
+    ];
+    NoteSequence::new(notes)
+}
+
+fn create_pad_sequence() -> NoteSequence {
+    // Long, sustained chords in A minor
+    let notes = vec![
+        Note::new(57, 0.6, 64), // A3 (Am chord root)
+        Note::new(60, 0.6, 64), // C4 (Am to C progression)
+        Note::new(62, 0.6, 64), // D4
+        Note::new(64, 0.6, 64), // E4
+    ];
+    NoteSequence::new(notes)
+}
+
+fn create_lead_sequence() -> NoteSequence {
+    // Melodic phrase in A minor
+    let notes = vec![
+        Note::rest(32),          // Start with silence
+        Note::new(69, 0.8, 8),   // A4
+        Note::new(72, 0.82, 8),  // C5
+        Note::new(76, 0.85, 12), // E5
+        Note::new(74, 0.8, 4),   // D5
+        Note::new(72, 0.82, 16), // C5
+        Note::rest(8),
+        Note::new(69, 0.8, 8),   // A4
+        Note::new(67, 0.78, 8),  // G4
+        Note::new(69, 0.85, 24), // A4
+        Note::rest(16),
+        Note::new(72, 0.8, 8),   // C5
+        Note::new(74, 0.82, 8),  // D5
+        Note::new(76, 0.85, 16), // E5
+        Note::new(77, 0.83, 16), // F5
+        Note::new(76, 0.8, 24),  // E5
+    ];
+    NoteSequence::new(notes)
+}
+
+fn create_arp_sequence() -> NoteSequence {
+    // Fast arpeggios
+    let notes = vec![
+        Note::new(69, 0.5, 4), // A4
+        Note::new(72, 0.5, 4), // C5
+        Note::new(76, 0.5, 4), // E5
+        Note::new(72, 0.5, 4), // C5
+        Note::new(69, 0.5, 4), // A4
+        Note::new(72, 0.5, 4), // C5
+        Note::new(76, 0.5, 4), // E5
+        Note::new(81, 0.5, 4), // A5
+        // Variation
+        Note::new(72, 0.5, 4), // C5
+        Note::new(76, 0.5, 4), // E5
+        Note::new(79, 0.5, 4), // G5
+        Note::new(76, 0.5, 4), // E5
+        Note::new(72, 0.5, 4), // C5
+        Note::new(76, 0.5, 4), // E5
+        Note::new(79, 0.5, 4), // G5
+        Note::new(84, 0.5, 4), // C6
+    ];
+    NoteSequence::new(notes)
+}
