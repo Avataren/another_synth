@@ -11,7 +11,7 @@ pub struct Effect {
 
 pub struct EffectStack {
     pub effects: Vec<Effect>,
-    buffer_size: usize,
+    buffer_size: usize, // Keep for reference but use actual buffer sizes in processing
 }
 
 impl EffectStack {
@@ -58,22 +58,34 @@ impl EffectStack {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
+        // FIXED: Use actual buffer lengths instead of self.buffer_size
+        let actual_buffer_size = input_left
+            .len()
+            .min(input_right.len())
+            .min(output_left.len())
+            .min(output_right.len());
+
+        if actual_buffer_size == 0 {
+            return;
+        }
+
         // If all effects are disabled, bypass processing entirely.
         if self.effects.iter().all(|e| !e.node.is_active()) {
-            output_left.copy_from_slice(&input_left);
-            output_right.copy_from_slice(&input_right);
+            output_left[..actual_buffer_size].copy_from_slice(&input_left[..actual_buffer_size]);
+            output_right[..actual_buffer_size].copy_from_slice(&input_right[..actual_buffer_size]);
             return;
         }
 
         // Start with the input signal in local working buffers.
-        let mut current_left = input_left.to_vec();
-        let mut current_right = input_right.to_vec();
+        // FIXED: Use actual_buffer_size instead of self.buffer_size
+        let mut current_left = input_left[..actual_buffer_size].to_vec();
+        let mut current_right = input_right[..actual_buffer_size].to_vec();
 
         // Process each effect in order.
         for effect in &mut self.effects {
-            // Allocate temporary buffers for this effect’s output.
-            let mut next_left = vec![0.0; self.buffer_size];
-            let mut next_right = vec![0.0; self.buffer_size];
+            // FIXED: Allocate buffers with actual_buffer_size
+            let mut next_left = vec![0.0; actual_buffer_size];
+            let mut next_right = vec![0.0; actual_buffer_size];
 
             if effect.node.is_active() {
                 let mut inputs = FxHashMap::default();
@@ -100,8 +112,10 @@ impl EffectStack {
                 outputs.insert(PortId::AudioOutput0, next_left.as_mut_slice());
                 outputs.insert(PortId::AudioOutput1, next_right.as_mut_slice());
 
-                // Process the enabled effect.
-                effect.node.process(&inputs, &mut outputs, self.buffer_size);
+                // FIXED: Pass actual_buffer_size to the effect
+                effect
+                    .node
+                    .process(&inputs, &mut outputs, actual_buffer_size);
             } else {
                 // Bypass the disabled effect: simply copy the current signal.
                 next_left.copy_from_slice(&current_left);
@@ -114,7 +128,7 @@ impl EffectStack {
         }
 
         // Finally, write the processed (or bypassed) signal to the output buffers.
-        output_left.copy_from_slice(&current_left);
-        output_right.copy_from_slice(&current_right);
+        output_left[..actual_buffer_size].copy_from_slice(&current_left);
+        output_right[..actual_buffer_size].copy_from_slice(&current_right);
     }
 }

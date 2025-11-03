@@ -17,22 +17,22 @@ const MACRO_BUFFER_LEN: usize = 64;
 
 const SEQUENCE: [NoteStep; 4] = [
     NoteStep {
-        frequency: 261.63, // C4
+        frequency: 261.63,
         velocity: 0.9,
         macro_value: 0.2,
     },
     NoteStep {
-        frequency: 329.63, // E4
+        frequency: 329.63,
         velocity: 0.8,
         macro_value: 0.6,
     },
     NoteStep {
-        frequency: 392.0, // G4
+        frequency: 392.0,
         velocity: 0.85,
         macro_value: 0.4,
     },
     NoteStep {
-        frequency: 523.25, // C5
+        frequency: 523.25,
         velocity: 0.95,
         macro_value: 0.75,
     },
@@ -52,27 +52,40 @@ struct DemoState {
     step: usize,
     block_progress: usize,
     blocks_per_step: usize,
+    call_count: usize, // For periodic logging
 }
 
 unsafe impl Send for DemoState {}
 
 fn main() -> anyhow::Result<()> {
     let (device, mut config, sample_format, host_label) = select_output_device()?;
+
+    println!("=== INITIAL CONFIG ===");
+    println!("Requested buffer size: Fixed({})", BLOCK_SIZE);
+    println!("Config before modification: {:?}", config.buffer_size);
+
     config.buffer_size = BufferSize::Fixed(BLOCK_SIZE as u32);
+
+    println!("Config after modification: {:?}", config.buffer_size);
 
     let sample_rate = config.sample_rate.0 as f32;
     let device_name = device
         .name()
         .unwrap_or_else(|_| "Unknown device".to_string());
 
+    println!("Sample rate: {}", sample_rate);
+    println!("Channels: {}", config.channels);
+
     let num_voices = 1;
     let mut engine = AudioEngine::new(sample_rate, num_voices);
     engine.init(sample_rate, num_voices);
 
-    // Create nodes and setup connections
     setup_synth_patch(&mut engine)?;
 
     let frame = AutomationFrame::with_dimensions(num_voices, MACRO_COUNT, MACRO_BUFFER_LEN);
+
+    println!("=== BUFFER ALLOCATION ===");
+    println!("Allocating left/right buffers of size: {}", BLOCK_SIZE);
 
     let state = DemoState {
         engine,
@@ -81,7 +94,8 @@ fn main() -> anyhow::Result<()> {
         right: vec![0.0; BLOCK_SIZE],
         step: 0,
         block_progress: 0,
-        blocks_per_step: 20, // Increased to ~51ms per note for more musical timing
+        blocks_per_step: 120,
+        call_count: 0,
     };
 
     let stream = match sample_format {
@@ -93,91 +107,63 @@ fn main() -> anyhow::Result<()> {
 
     stream.play()?;
 
+    println!("\n=== STREAMING STARTED ===");
     println!(
-        "Streaming audio on host '{host_label}' using '{device_name}' at {sample_rate} Hz with block size {BLOCK_SIZE}."
+        "Host: '{}', Device: '{}', Sample Rate: {} Hz, Block Size: {}",
+        host_label, device_name, sample_rate, BLOCK_SIZE
     );
     println!("Playing sequence of 4 notes...");
-    println!("Press Ctrl+C to stop.");
+    println!("Watch for buffer size mismatches below...\n");
 
     loop {
         std::thread::sleep(Duration::from_secs(1));
     }
 }
 
-/// Setup a basic synth patch matching the web worklet initialization
 fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
     println!("Setting up synth patch...");
 
-    // Create mixer (output node)
     let mixer_id = engine
         .create_mixer()
         .map_err(|e| anyhow!("Failed to create mixer: {}", e))?;
-    println!("Created mixer: {}", mixer_id);
-
-    // Create filter
     let filter_id = engine
         .create_filter()
         .map_err(|e| anyhow!("Failed to create filter: {}", e))?;
-    println!("Created filter: {}", filter_id);
 
-    // Configure filter with reasonable settings
     engine
         .update_filters(
             filter_id,
-            2000.0,                                       // cutoff: 2kHz
-            0.3,                                          // resonance: moderate
-            0.0,                                          // gain: 0dB
-            0.0,                                          // key_tracking: off
-            220.0,                                        // comb_frequency
-            0.5,                                          // comb_dampening
-            1,                                            // oversampling
-            audio_processor::biquad::FilterType::LowPass, // filter_type
-            audio_processor::nodes::FilterSlope::Db24,    // filter_slope
+            2000.0,
+            0.3,
+            0.0,
+            0.0,
+            220.0,
+            0.5,
+            1,
+            audio_processor::biquad::FilterType::LowPass,
+            audio_processor::nodes::FilterSlope::Db24,
         )
         .map_err(|e| anyhow!("Failed to configure filter: {}", e))?;
-    println!("Configured filter");
 
-    // Create wavetable oscillator
     let wt_osc_id = engine
         .create_wavetable_oscillator()
         .map_err(|e| anyhow!("Failed to create wavetable oscillator: {}", e))?;
-    println!("Created wavetable oscillator: {}", wt_osc_id);
-
-    // Create analog oscillator (for FM)
     let osc_id = engine
         .create_oscillator()
         .map_err(|e| anyhow!("Failed to create oscillator: {}", e))?;
-    println!("Created analog oscillator: {}", osc_id);
-
-    // Create envelope
     let envelope_id = engine
         .create_envelope()
         .map_err(|e| anyhow!("Failed to create envelope: {}", e))?;
-    println!("Created envelope: {}", envelope_id);
 
-    // Configure envelope with proper ADSR
     engine
-        .update_envelope(
-            envelope_id,
-            0.005, // attack: 5ms (fast attack)
-            0.1,   // decay: 100ms
-            0.7,   // sustain: 70%
-            0.1,   // release: 100ms
-            0.0,   // attack_curve: linear
-            0.0,   // decay_curve: linear
-            0.0,   // release_curve: linear
-            true,  // active
-        )
+        .update_envelope(envelope_id, 0.005, 0.1, 0.7, 0.1, 0.0, 0.0, 0.0, true)
         .map_err(|e| anyhow!("Failed to configure envelope: {}", e))?;
-    println!("Configured envelope");
 
-    // Create LFO (optional - not connected in this demo)
     let _lfo_id = engine
         .create_lfo()
         .map_err(|e| anyhow!("Failed to create LFO: {}", e))?;
-    println!("Created LFO: {}", _lfo_id);
 
-    // Connect filter to mixer's audio input
+    // FIXED: Add .map_err() for all connect_nodes calls
     engine
         .connect_nodes(
             filter_id,
@@ -189,9 +175,7 @@ fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
             ModulationTransformation::None,
         )
         .map_err(|e| anyhow!("Failed to connect filter to mixer: {}", e))?;
-    println!("Connected filter -> mixer");
 
-    // Connect envelope to mixer's gain input
     engine
         .connect_nodes(
             envelope_id,
@@ -202,10 +186,8 @@ fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
             ModulationType::VCA,
             ModulationTransformation::None,
         )
-        .map_err(|e| anyhow!("Failed to connect envelope to mixer gain: {}", e))?;
-    println!("Connected envelope -> mixer gain");
+        .map_err(|e| anyhow!("Failed to connect envelope to mixer: {}", e))?;
 
-    // Connect wavetable oscillator to filter
     engine
         .connect_nodes(
             wt_osc_id,
@@ -217,22 +199,18 @@ fn setup_synth_patch(engine: &mut AudioEngine) -> anyhow::Result<()> {
             ModulationTransformation::None,
         )
         .map_err(|e| anyhow!("Failed to connect oscillator to filter: {}", e))?;
-    println!("Connected oscillator -> filter");
 
-    // Connect analog oscillator to wavetable oscillator's phase mod (FM)
-    // FIXED: Reduced FM amount from 1.0 to 0.02 for subtle modulation
     engine
         .connect_nodes(
             osc_id,
             PortId::AudioOutput0,
             wt_osc_id,
             PortId::PhaseMod,
-            0.02, // FIXED: Much lower FM amount to avoid harsh distortion
+            0.02,
             ModulationType::Additive,
             ModulationTransformation::None,
         )
         .map_err(|e| anyhow!("Failed to connect oscillator FM: {}", e))?;
-    println!("Connected analog osc -> wavetable osc phase mod (amount: 0.02)");
 
     println!("Synth patch setup complete!");
     Ok(())
@@ -245,13 +223,27 @@ fn build_stream<T>(
 ) -> Result<cpal::Stream, cpal::BuildStreamError>
 where
     T: Sample + SizedSample + FromSample<f32>,
+    f32: FromSample<T>, // Add this line
 {
     let channels = config.channels as usize;
     let mut error_reported = false;
+    let mut first_call = true;
 
     let stream = device.build_output_stream(
         &config,
         move |data: &mut [T], _| {
+            if first_call {
+                println!("\n=== FIRST AUDIO CALLBACK ===");
+                println!(
+                    "CPAL buffer size: {} samples ({} frames)",
+                    data.len(),
+                    data.len() / channels
+                );
+                println!("Channels: {}", channels);
+                println!("Our left/right buffer size: {}", state.left.len());
+                first_call = false;
+            }
+
             if let Err(err) = process_block(data, channels, &mut state) {
                 if !error_reported {
                     eprintln!("audio callback error: {err}");
@@ -319,7 +311,19 @@ fn process_block<T>(
 ) -> Result<(), &'static str>
 where
     T: Sample + FromSample<f32>,
+    f32: FromSample<T>, // Add this trait bound
 {
+    state.call_count += 1;
+
+    // Log every 100 calls
+    if state.call_count % 100 == 0 {
+        println!("\n=== PROCESS_BLOCK (call {}) ===", state.call_count);
+        println!("output buffer: {} samples", output.len());
+        println!("channels: {}", channels);
+        println!("frames requested: {}", output.len() / channels);
+        println!("our buffer size: {} frames", state.left.len());
+    }
+
     if channels == 0 {
         return Err("no output channels available");
     }
@@ -328,52 +332,86 @@ where
         return Err("output buffer length not divisible by channel count");
     }
 
-    let step = &SEQUENCE[state.step];
+    let total_frames = output.len() / channels;
+    let chunk_size = state.left.len(); // 128 frames
 
-    // FIXED: Proper gate envelope - on for most of the note, off for the last block
-    // This allows the envelope to properly attack and release
-    let gate = if state.block_progress < state.blocks_per_step - 2 {
-        1.0 // Note on
-    } else {
-        0.0 // Note off - trigger release
-    };
+    let mut frames_processed = 0;
 
-    // Set voice parameters
-    state
-        .frame
-        .set_voice_values(0, gate, step.frequency, step.velocity, 1.0);
+    // Process audio in 128-frame chunks
+    while frames_processed < total_frames {
+        let frames_remaining = total_frames - frames_processed;
+        let frames_this_chunk = frames_remaining.min(chunk_size);
 
-    // Set macro values for modulation
-    state.frame.set_macro_value(0, 0, step.macro_value);
-    state
-        .frame
-        .set_macro_value(0, 1, 1.0 - step.macro_value.clamp(0.0, 1.0));
+        // Get current note parameters
+        let step = &SEQUENCE[state.step];
+        let gate = if state.block_progress < state.blocks_per_step - 2 {
+            1.0
+        } else {
+            0.0
+        };
 
-    // Process audio - FIXED: Reduced master gain from 0.8 to 0.5 for more headroom
-    state
-        .engine
-        .process_with_frame(&state.frame, 0.5, &mut state.left, &mut state.right);
+        // Set voice parameters for this chunk
+        state
+            .frame
+            .set_voice_values(0, gate, step.frequency, step.velocity, 1.0);
+        state.frame.set_macro_value(0, 0, step.macro_value);
+        state
+            .frame
+            .set_macro_value(0, 1, 1.0 - step.macro_value.clamp(0.0, 1.0));
 
-    // Interleave output
-    for (frame_index, sample_chunk) in output.chunks_mut(channels).enumerate() {
-        let left_sample = state.left.get(frame_index).copied().unwrap_or(0.0);
-        let right_sample = state.right.get(frame_index).copied().unwrap_or(left_sample);
+        // Process this chunk
+        state
+            .engine
+            .process_with_frame(&state.frame, 0.5, &mut state.left, &mut state.right);
 
-        for (channel_index, slot) in sample_chunk.iter_mut().enumerate() {
-            let value = match channel_index {
-                0 => left_sample,
-                1 => right_sample,
-                _ => 0.0,
-            };
-            *slot = T::from_sample::<f32>(value);
+        // Interleave this chunk into the output buffer
+        let output_start = frames_processed * channels;
+        for frame_idx in 0..frames_this_chunk {
+            let left_sample = state.left[frame_idx];
+            let right_sample = state.right[frame_idx];
+
+            let output_frame_start = output_start + (frame_idx * channels);
+
+            for ch in 0..channels {
+                let value = match ch {
+                    0 => left_sample,
+                    1 => right_sample,
+                    _ => 0.0,
+                };
+                output[output_frame_start + ch] = T::from_sample::<f32>(value);
+            }
+        }
+
+        frames_processed += frames_this_chunk;
+
+        // Advance sequence state only once per 128-frame chunk
+        state.block_progress += 1;
+        if state.block_progress >= state.blocks_per_step {
+            state.block_progress = 0;
+            state.step = (state.step + 1) % SEQUENCE.len();
         }
     }
 
-    // Advance sequence
-    state.block_progress += 1;
-    if state.block_progress >= state.blocks_per_step {
-        state.block_progress = 0;
-        state.step = (state.step + 1) % SEQUENCE.len();
+    // Debug logging
+    if state.call_count % 100 == 0 {
+        // FIXED: Use to_sample method on the sample itself
+        let max_val = output
+            .iter()
+            .take(total_frames * channels)
+            .map(|s| {
+                let f: f32 = s.to_sample();
+                f.abs()
+            })
+            .fold(0.0f32, |max, val| max.max(val));
+        println!(
+            "Processed {} frames in {} chunks",
+            total_frames,
+            (total_frames + chunk_size - 1) / chunk_size
+        );
+        println!("Peak output level: {:.4}", max_val);
+        if max_val > 1.0 {
+            println!("!!! CLIPPING DETECTED !!!");
+        }
     }
 
     Ok(())
