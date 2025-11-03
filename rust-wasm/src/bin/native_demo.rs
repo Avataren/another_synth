@@ -72,6 +72,17 @@ impl DemoState {
     ) -> Self {
         let engine_block_size = engine_block_size.max(1);
         let host_block_size = host_block_size.max(1);
+
+        if engine_block_size < host_block_size {
+            eprintln!(
+                "⚠️  WARNING: Engine block size ({}) is smaller than host block size ({})!",
+                engine_block_size, host_block_size
+            );
+            eprintln!(
+                "    This may cause buffer underruns. Consider increasing engine block size."
+            );
+        }
+
         debug_assert_eq!(
             engine.block_size(),
             engine_block_size,
@@ -324,6 +335,9 @@ where
     let stream = device.build_output_stream(
         &config,
         move |data: &mut [T], _| {
+            for sample in data.iter_mut() {
+                *sample = T::from_sample(0.0f32);
+            }
             if first_call {
                 println!("\n=== FIRST AUDIO CALLBACK ===");
                 println!(
@@ -422,16 +436,26 @@ where
     state.call_count += 1;
     let total_frames = output.len() / channels;
 
+    // Add diagnostic logging for buffer mismatches (every 1000 calls, not every call)
     if state.call_count % 1000 == 0 {
         println!("\n=== PROCESS_BLOCK (call {}) ===", state.call_count);
         println!("output buffer: {} samples", output.len());
         println!("channels: {}", channels);
         println!("frames requested: {}", total_frames);
         println!("carry available: {} frames", state.carry_available);
+        println!("carry index: {}", state.carry_index);
         println!(
             "engine block size: {}, host block size (observed): {}",
             state.engine_block_size, total_frames
         );
+
+        // NEW: Check for buffer size variability
+        if total_frames != state.host_block_size && state.call_count > 1000 {
+            println!(
+                "⚠️  WARNING: Host buffer size changed from {} to {} frames!",
+                state.host_block_size, total_frames
+            );
+        }
     }
 
     if channels == 0 {
@@ -495,7 +519,21 @@ where
             continue;
         }
 
-        let frames_to_copy = (total_frames - frames_written).min(state.carry_available);
+        // Calculate safe copy size with explicit bounds checking
+        let frames_remaining = total_frames - frames_written;
+        let frames_in_carry = state.carry_available;
+        let frames_until_buffer_end = state.engine_block_size.saturating_sub(state.carry_index);
+
+        let frames_to_copy = frames_remaining
+            .min(frames_in_carry)
+            .min(frames_until_buffer_end);
+
+        // Safety check - this should never trigger with above logic, but helps catch bugs
+        if state.carry_index + frames_to_copy > state.engine_block_size {
+            eprintln!("ERROR: Carry buffer overflow prevented! carry_index={}, frames_to_copy={}, buffer_size={}",
+              state.carry_index, frames_to_copy, state.engine_block_size);
+            return Err("carry buffer overflow detected");
+        }
 
         for i in 0..frames_to_copy {
             let output_pos = (frames_written + i) * channels;
@@ -516,7 +554,8 @@ where
         state.carry_available -= frames_to_copy;
     }
 
-    if state.call_count % 100 == 0 {
+    // Validate we filled the entire output buffer
+    if state.call_count % 1000 == 0 {
         let max_val = output
             .iter()
             .map(|s| {
@@ -524,8 +563,17 @@ where
                 f.abs()
             })
             .fold(0.0f32, |max, val| max.max(val));
-        println!("Processed {} frames", total_frames);
-        println!("Peak output level: {:.4}", max_val);
+
+        println!("✓ Processed {} frames successfully", frames_written);
+        println!("  Peak output level: {:.4}", max_val);
+
+        // Check for incomplete fills
+        if frames_written < total_frames {
+            println!(
+                "⚠️  WARNING: Only filled {}/{} frames!",
+                frames_written, total_frames
+            );
+        }
     }
 
     Ok(())

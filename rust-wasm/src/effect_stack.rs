@@ -128,5 +128,13 @@ impl EffectStack {
         // Finally, write the processed (or bypassed) signal to the output buffers.
         output_left[..actual_buffer_size].copy_from_slice(&current_left);
         output_right[..actual_buffer_size].copy_from_slice(&current_right);
+
+        // CRITICAL: Zero out any remaining samples to prevent garbage data
+        if actual_buffer_size < output_left.len() {
+            output_left[actual_buffer_size..].fill(0.0);
+        }
+        if actual_buffer_size < output_right.len() {
+            output_right[actual_buffer_size..].fill(0.0);
+        }
     }
 }

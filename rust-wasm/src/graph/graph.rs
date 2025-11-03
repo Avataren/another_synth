@@ -701,7 +701,6 @@ impl AudioGraph {
         } // End node processing loop ('node_loop)
 
         // --- Final Output ---
-        // (This part remains largely the same, using copy_out)
         if let Some(output_node_id) = self.output_node {
             // Check if the output node itself was processed (i.e., is active)
             let output_node_active = self
@@ -714,14 +713,15 @@ impl AudioGraph {
                     .node_buffers
                     .get(&(output_node_id, PortId::AudioOutput0))
                 {
-                    // Use copy_out which returns a slice - no allocation needed here either
                     let left_buffer = self.buffer_pool.copy_out(left_buffer_idx);
-                    // Ensure slice lengths match before copying
                     let len = output_left.len().min(left_buffer.len());
+
+                    // Copy valid data
                     output_left[..len].copy_from_slice(&left_buffer[..len]);
-                    // Zero out remaining part if output buffer is shorter
-                    for sample in output_left[len..].iter_mut() {
-                        *sample = 0.0;
+
+                    // IMPROVED: Use fill instead of loop for remainder
+                    if len < output_left.len() {
+                        output_left[len..].fill(0.0);
                     }
 
                     if let Some(&right_buffer_idx) = self
@@ -730,16 +730,19 @@ impl AudioGraph {
                     {
                         let right_buffer = self.buffer_pool.copy_out(right_buffer_idx);
                         let len = output_right.len().min(right_buffer.len());
+
                         output_right[..len].copy_from_slice(&right_buffer[..len]);
-                        for sample in output_right[len..].iter_mut() {
-                            *sample = 0.0;
+
+                        if len < output_right.len() {
+                            output_right[len..].fill(0.0);
                         }
                     } else {
                         // Mono output case: copy left to right
                         let len = output_right.len().min(left_buffer.len());
                         output_right[..len].copy_from_slice(&left_buffer[..len]);
-                        for sample in output_right[len..].iter_mut() {
-                            *sample = 0.0;
+
+                        if len < output_right.len() {
+                            output_right[len..].fill(0.0);
                         }
                     }
                 } else {

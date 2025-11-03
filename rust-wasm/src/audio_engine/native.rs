@@ -78,11 +78,7 @@ impl AudioEngine {
         Self::new_with_block_size(sample_rate, num_voices, DEFAULT_BLOCK_SIZE)
     }
 
-    pub fn new_with_block_size(
-        sample_rate: f32,
-        num_voices: usize,
-        block_size: usize,
-    ) -> Self {
+    pub fn new_with_block_size(sample_rate: f32, num_voices: usize, block_size: usize) -> Self {
         let block_size = block_size.max(1);
         let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
 
@@ -223,6 +219,28 @@ impl AudioEngine {
         let mut mix_right = vec![0.0; output_right.len()];
         let mut voice_left = vec![0.0; output_left.len()];
         let mut voice_right = vec![0.0; output_right.len()];
+
+        if output_left.len() != output_right.len() {
+            eprintln!(
+                "ERROR: Output buffer size mismatch! left={}, right={}",
+                output_left.len(),
+                output_right.len()
+            );
+            output_left.fill(0.0);
+            output_right.fill(0.0);
+            return;
+        }
+
+        if output_left.len() > self.block_size * 4 {
+            eprintln!(
+                "ERROR: Output buffer too large! requested={}, block_size={}",
+                output_left.len(),
+                self.block_size
+            );
+            output_left.fill(0.0);
+            output_right.fill(0.0);
+            return;
+        }
 
         let voice_macro_stride = MACRO_COUNT * macro_buffer_len;
 
