@@ -213,34 +213,30 @@ impl AudioEngine {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
+        // DEBUG: Check what we're actually receiving
+        static mut CALL_COUNT: usize = 0;
+        unsafe {
+            CALL_COUNT += 1;
+            if CALL_COUNT % 1000 == 0 {
+                eprintln!("ENGINE process_audio_internal call {}:", CALL_COUNT);
+                eprintln!(
+                    "  output_left.len()={}, output_right.len()={}",
+                    output_left.len(),
+                    output_right.len()
+                );
+                eprintln!("  self.block_size={}", self.block_size);
+            }
+        }
+
         let start = Instant::now();
 
-        let mut mix_left = vec![0.0; output_left.len()];
-        let mut mix_right = vec![0.0; output_right.len()];
-        let mut voice_left = vec![0.0; output_left.len()];
-        let mut voice_right = vec![0.0; output_right.len()];
-
-        if output_left.len() != output_right.len() {
-            eprintln!(
-                "ERROR: Output buffer size mismatch! left={}, right={}",
-                output_left.len(),
-                output_right.len()
-            );
-            output_left.fill(0.0);
-            output_right.fill(0.0);
-            return;
-        }
-
-        if output_left.len() > self.block_size * 4 {
-            eprintln!(
-                "ERROR: Output buffer too large! requested={}, block_size={}",
-                output_left.len(),
-                self.block_size
-            );
-            output_left.fill(0.0);
-            output_right.fill(0.0);
-            return;
-        }
+        // CRITICAL FIX: Always allocate buffers at the engine's block_size,
+        // not the requested output size. This ensures the graph's buffer pool
+        // and all node processing work with consistent buffer sizes.
+        let mut mix_left = vec![0.0; self.block_size];
+        let mut mix_right = vec![0.0; self.block_size];
+        let mut voice_left = vec![0.0; self.block_size];
+        let mut voice_right = vec![0.0; self.block_size];
 
         let voice_macro_stride = MACRO_COUNT * macro_buffer_len;
 
@@ -267,8 +263,10 @@ impl AudioEngine {
             voice_left.fill(0.0);
             voice_right.fill(0.0);
 
+            // Process the full block_size
             voice.process_audio(&mut voice_left, &mut voice_right);
 
+            // Mix voices together
             for (sample_idx, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate()
             {
                 mix_left[sample_idx] += left * gain;
@@ -276,16 +274,35 @@ impl AudioEngine {
             }
         }
 
-        self.effect_stack
-            .process_audio(&mix_left, &mix_right, output_left, output_right);
+        // Process effects with full block_size buffers
+        // Allocate temporary output buffers at block_size
+        let mut effect_left = vec![0.0; self.block_size];
+        let mut effect_right = vec![0.0; self.block_size];
 
+        self.effect_stack
+            .process_audio(&mix_left, &mix_right, &mut effect_left, &mut effect_right);
+
+        // Apply master gain
         if master_gain != 1.0 {
-            for sample in output_left.iter_mut() {
+            for sample in effect_left.iter_mut() {
                 *sample *= master_gain;
             }
-            for sample in output_right.iter_mut() {
+            for sample in effect_right.iter_mut() {
                 *sample *= master_gain;
             }
+        }
+
+        // CRITICAL: Only copy the requested number of samples to the output
+        let copy_len = output_left.len().min(self.block_size);
+        output_left[..copy_len].copy_from_slice(&effect_left[..copy_len]);
+        output_right[..copy_len].copy_from_slice(&effect_right[..copy_len]);
+
+        // Zero any remaining output if output buffers are longer than what we produced
+        if copy_len < output_left.len() {
+            output_left[copy_len..].fill(0.0);
+        }
+        if copy_len < output_right.len() {
+            output_right[copy_len..].fill(0.0);
         }
 
         let elapsed_sec = start.elapsed().as_secs_f64();

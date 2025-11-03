@@ -437,6 +437,7 @@ where
     let total_frames = output.len() / channels;
 
     // Add diagnostic logging for buffer mismatches (every 1000 calls, not every call)
+    // Add diagnostic logging for buffer mismatches
     if state.call_count % 1000 == 0 {
         println!("\n=== PROCESS_BLOCK (call {}) ===", state.call_count);
         println!("output buffer: {} samples", output.len());
@@ -449,11 +450,19 @@ where
             state.engine_block_size, total_frames
         );
 
-        // NEW: Check for buffer size variability
+        // Check for buffer size variability (this is expected on Linux/ALSA)
         if total_frames != state.host_block_size && state.call_count > 1000 {
             println!(
-                "⚠️  WARNING: Host buffer size changed from {} to {} frames!",
+                "⚠️  Host buffer size changed from {} to {} frames (this is normal on ALSA)",
                 state.host_block_size, total_frames
+            );
+        }
+
+        // Verify carry buffer integrity
+        if state.carry_index + state.carry_available != state.engine_block_size {
+            println!(
+                "❌ ERROR: Carry buffer accounting error! index={}, available={}, should sum to {}",
+                state.carry_index, state.carry_available, state.engine_block_size
             );
         }
     }
@@ -500,9 +509,23 @@ where
             state.left.fill(0.0);
             state.right.fill(0.0);
 
+            // CRITICAL: The engine always processes at block_size (128 frames)
+            // regardless of what the host requests
             state
                 .engine
                 .process_with_frame(&state.frame, 0.5, &mut state.left, &mut state.right);
+
+            // Verify the engine produced the expected amount
+            debug_assert_eq!(
+                state.left.len(),
+                state.engine_block_size,
+                "Engine produced wrong buffer size!"
+            );
+            debug_assert_eq!(
+                state.right.len(),
+                state.engine_block_size,
+                "Engine produced wrong buffer size!"
+            );
 
             state.carry_left.copy_from_slice(&state.left);
             state.carry_right.copy_from_slice(&state.right);
@@ -528,16 +551,41 @@ where
             .min(frames_in_carry)
             .min(frames_until_buffer_end);
 
-        // Safety check - this should never trigger with above logic, but helps catch bugs
+        // Safety check - this should never trigger with above logic
+        if frames_to_copy == 0 {
+            eprintln!(
+                "ERROR: frames_to_copy is 0! remaining={}, in_carry={}, until_end={}",
+                frames_remaining, frames_in_carry, frames_until_buffer_end
+            );
+            return Err("zero frames to copy");
+        }
+
         if state.carry_index + frames_to_copy > state.engine_block_size {
-            eprintln!("ERROR: Carry buffer overflow prevented! carry_index={}, frames_to_copy={}, buffer_size={}",
-              state.carry_index, frames_to_copy, state.engine_block_size);
+            eprintln!(
+                "ERROR: Carry buffer overflow! carry_index={}, frames_to_copy={}, buffer_size={}",
+                state.carry_index, frames_to_copy, state.engine_block_size
+            );
             return Err("carry buffer overflow detected");
         }
 
+        // Copy from carry buffer to output
         for i in 0..frames_to_copy {
             let output_pos = (frames_written + i) * channels;
             let carry_pos = state.carry_index + i;
+
+            // Additional bounds check
+            debug_assert!(
+                carry_pos < state.carry_left.len(),
+                "carry_pos {} exceeds buffer size {}",
+                carry_pos,
+                state.carry_left.len()
+            );
+            debug_assert!(
+                output_pos + channels <= output.len(),
+                "output_pos {} exceeds output buffer size {}",
+                output_pos,
+                output.len()
+            );
 
             for ch in 0..channels {
                 let value = match ch {
@@ -552,6 +600,13 @@ where
         frames_written += frames_to_copy;
         state.carry_index += frames_to_copy;
         state.carry_available -= frames_to_copy;
+
+        // Verify consistency
+        debug_assert_eq!(
+            state.carry_index + state.carry_available,
+            state.engine_block_size,
+            "Carry buffer accounting error!"
+        );
     }
 
     // Validate we filled the entire output buffer
