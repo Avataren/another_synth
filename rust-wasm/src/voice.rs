@@ -11,6 +11,7 @@ pub struct Voice {
     pub output_node: NodeId,
 
     // Voice state
+    buffer_size: usize,
     pub current_gate: f32,
     pub current_frequency: f32,
     pub current_velocity: f32,
@@ -19,8 +20,8 @@ pub struct Voice {
 }
 
 impl Voice {
-    pub fn new(id: usize) -> Self {
-        let buffer_size = 128;
+    pub fn new(id: usize, buffer_size: usize) -> Self {
+        let buffer_size = buffer_size.max(1);
         let mut graph = AudioGraph::new(buffer_size);
         let macro_manager = MacroManager::new(4, &mut graph.buffer_pool, buffer_size);
         let output_node = NodeId(0);
@@ -30,6 +31,7 @@ impl Voice {
             id,
             graph,
             output_node,
+            buffer_size,
             current_gate: 0.0,
             current_frequency: 440.0,
             current_velocity: 1.0,
@@ -261,9 +263,13 @@ impl Voice {
                 if lfo.retrigger_mode == LfoRetriggerMode::FreeRunning {
                     // web_sys::console::log_1(&format!("LFO state advancing phase",).into());
                     // Only advance the phase
-                    lfo.advance_phase_for_buffer(128);
+                    lfo.advance_phase_for_buffer(self.buffer_size);
                 }
             }
         }
+    }
+
+    pub fn buffer_size(&self) -> usize {
+        self.buffer_size
     }
 }

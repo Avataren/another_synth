@@ -5,9 +5,6 @@ use std::f32; // Use f32::EPSILON if needed for comparisons
 use crate::graph::ModulationSource;
 use crate::traits::{AudioNode, PortId};
 
-const MAX_PROCESS_BUFFER_SIZE: usize = 128;
-static ZERO_BUFFER: [f32; MAX_PROCESS_BUFFER_SIZE] = [0.0; MAX_PROCESS_BUFFER_SIZE];
-
 // --- Helper Functions ---
 #[inline(always)]
 fn db_to_linear(db: f32) -> f32 {
@@ -174,24 +171,30 @@ impl Limiter {
         let out_right_full: &mut [f32] = r_opt.as_deref_mut().unwrap();
 
 
-        // Guard: oversize buffer_size → zero the available and bail
-        if buffer_size > MAX_PROCESS_BUFFER_SIZE {
-            eprintln!(
-                "Limiter Error: process buffer_size ({}) exceeds MAX_PROCESS_BUFFER_SIZE ({}). Zeroing output.",
-                buffer_size, MAX_PROCESS_BUFFER_SIZE
-            );
-            let fill_l = buffer_size.min(out_left_full.len());
-            let fill_r = buffer_size.min(out_right_full.len());
-            out_left_full[..fill_l].fill(0.0);
-            out_right_full[..fill_r].fill(0.0);
-            return;
-        }
-
         // Inputs
-        let left_in_slice = inputs
+        let left_source = match inputs
             .get(&PortId::AudioInput0)
             .and_then(|v| v.first())
-            .map_or(&ZERO_BUFFER[..buffer_size], |s| s.buffer.as_slice());
+        {
+            Some(src) => src,
+            None => {
+                let fill_len = buffer_size
+                    .min(out_left_full.len())
+                    .min(out_right_full.len());
+                if fill_len > 0 {
+                    out_left_full[..fill_len].fill(0.0);
+                    out_right_full[..fill_len].fill(0.0);
+                }
+                if fill_len < out_left_full.len() {
+                    out_left_full[fill_len..].fill(0.0);
+                }
+                if fill_len < out_right_full.len() {
+                    out_right_full[fill_len..].fill(0.0);
+                }
+                return;
+            }
+        };
+        let left_in_slice = left_source.buffer.as_slice();
 
         let right_in_slice = inputs
             .get(&PortId::AudioInput1)

@@ -15,9 +15,6 @@ const MAX_MIX: f32 = 1.0;
 use crate::graph::ModulationSource; // Assuming these paths are correct for your project
 use crate::traits::{AudioNode, PortId};
 
-const MAX_PROCESS_BUFFER_SIZE: usize = 128;
-// Note: ZERO_BUFFER is a static fallback buffer. Be cautious if MAX_PROCESS_BUFFER_SIZE changes.
-static ZERO_BUFFER: [f32; MAX_PROCESS_BUFFER_SIZE] = [0.0; MAX_PROCESS_BUFFER_SIZE];
 const SIMD_WIDTH: usize = 4; // web wasm guaranteed supported
 
 struct FeedbackFilter {
@@ -265,6 +262,28 @@ pub struct Chorus {
 }
 
 impl Chorus {
+    #[inline]
+    fn ensure_len(buf: &mut Vec<f32>, len: usize) {
+        if buf.len() < len {
+            buf.resize(len, 0.0);
+        }
+    }
+
+    fn ensure_buffer_capacity(&mut self, buffer_size: usize) {
+        let oversampled = buffer_size * OVERSAMPLE;
+
+        Self::ensure_len(&mut self.upsample_stage1_left, oversampled);
+        Self::ensure_len(&mut self.upsample_stage1_right, oversampled);
+        Self::ensure_len(&mut self.upsampled_input_left, oversampled);
+        Self::ensure_len(&mut self.upsampled_input_right, oversampled);
+        Self::ensure_len(&mut self.processed_oversampled_left, oversampled);
+        Self::ensure_len(&mut self.processed_oversampled_right, oversampled);
+        Self::ensure_len(&mut self.scratch_downsample_stage, oversampled);
+        Self::ensure_len(&mut self.scratch_downsampled, oversampled);
+        Self::ensure_len(&mut self.scratch_final_left, buffer_size);
+        Self::ensure_len(&mut self.scratch_final_right, buffer_size);
+    }
+
     pub fn new(
         sample_rate: f32,
         max_base_delay_ms: f32,
@@ -315,18 +334,21 @@ impl Chorus {
         }
         let down_coeffs = base_coeffs;
 
+        const INITIAL_CAPACITY: usize = 128;
+        let initial_oversampled = INITIAL_CAPACITY * OVERSAMPLE;
+
         Self {
             enabled: true,
             internal_sample_rate,
             inv_internal_sample_rate,
             delay_buffer_left: vec![0.0; max_delay_samples],
             delay_buffer_right: vec![0.0; max_delay_samples],
-            upsample_stage1_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
-            upsample_stage1_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
-            upsampled_input_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
-            upsampled_input_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
-            processed_oversampled_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
-            processed_oversampled_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
+            upsample_stage1_left: vec![0.0; initial_oversampled],
+            upsample_stage1_right: vec![0.0; initial_oversampled],
+            upsampled_input_left: vec![0.0; initial_oversampled],
+            upsampled_input_right: vec![0.0; initial_oversampled],
+            processed_oversampled_left: vec![0.0; initial_oversampled],
+            processed_oversampled_right: vec![0.0; initial_oversampled],
             write_index: 0,
             max_delay_samples,
             max_safe_read_delay,
@@ -360,10 +382,10 @@ impl Chorus {
                 DC_BLOCKER_CUTOFF_HZ,
                 sample_rate,
             )),
-            scratch_downsample_stage: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
-            scratch_downsampled: vec![0.0; MAX_PROCESS_BUFFER_SIZE * OVERSAMPLE],
-            scratch_final_left: vec![0.0; MAX_PROCESS_BUFFER_SIZE],
-            scratch_final_right: vec![0.0; MAX_PROCESS_BUFFER_SIZE],
+            scratch_downsample_stage: vec![0.0; initial_oversampled],
+            scratch_downsampled: vec![0.0; initial_oversampled],
+            scratch_final_left: vec![0.0; INITIAL_CAPACITY],
+            scratch_final_right: vec![0.0; INITIAL_CAPACITY],
             feedback_filter_l: FeedbackFilter::new(0.5),
             feedback_filter_r: FeedbackFilter::new(0.5),
             target_feedback_filter_cutoff: 10000.0,
@@ -443,22 +465,8 @@ impl Chorus {
         if buffer_size == 0 {
             return;
         }
-        if buffer_size > MAX_PROCESS_BUFFER_SIZE {
-            eprintln!(
-                "Chorus Error: process buffer_size ({}) exceeds MAX_PROCESS_BUFFER_SIZE ({}).",
-                buffer_size, MAX_PROCESS_BUFFER_SIZE
-            );
-            // Zero any available output and return.
-            if let Some(out) = outputs.get_mut(&PortId::AudioOutput0) {
-                let fill_len = buffer_size.min(out.len());
-                out[..fill_len].fill(0.0);
-            }
-            if let Some(out_r) = outputs.get_mut(&PortId::AudioOutput1) {
-                let fill_len = buffer_size.min(out_r.len());
-                out_r[..fill_len].fill(0.0);
-            }
-            return;
-        }
+
+        self.ensure_buffer_capacity(buffer_size);
 
         // Obtain the output slices by temporarily removing them from the map.
         // (This pattern is safe because the hash map has only two entries.)
@@ -482,16 +490,36 @@ impl Chorus {
         let out_left_slice: &mut [f32] = out_left.as_mut().unwrap();
         let out_right_slice: &mut [f32] = out_right.as_mut().unwrap();
 
+        // Retrieve input buffers.
+        let left_in_slice = match inputs
+            .get(&PortId::AudioInput0)
+            .and_then(|v| v.first())
+        {
+            Some(src) => src.buffer.as_slice(),
+            None => {
+                let fill_len = buffer_size.min(out_left_slice.len()).min(out_right_slice.len());
+                if fill_len > 0 {
+                    out_left_slice[..fill_len].fill(0.0);
+                    out_right_slice[..fill_len].fill(0.0);
+                }
+                if fill_len < out_left_slice.len() {
+                    out_left_slice[fill_len..].fill(0.0);
+                }
+                if fill_len < out_right_slice.len() {
+                    out_right_slice[fill_len..].fill(0.0);
+                }
+                outputs.insert(PortId::AudioOutput0, out_left.unwrap());
+                outputs.insert(PortId::AudioOutput1, out_right.unwrap());
+                return;
+            }
+        };
+        let right_in_slice = inputs
+            .get(&PortId::AudioInput1)
+            .and_then(|v| v.first())
+            .map_or(left_in_slice, |s| s.buffer.as_slice());
+
         // Disabled state: passthrough
         if !self.enabled {
-            let left_in_slice = inputs
-                .get(&PortId::AudioInput0)
-                .and_then(|v| v.first())
-                .map_or(&ZERO_BUFFER[..buffer_size], |s| s.buffer.as_slice());
-            let right_in_slice = inputs
-                .get(&PortId::AudioInput1)
-                .and_then(|v| v.first())
-                .map_or(left_in_slice, |s| s.buffer.as_slice());
             let proc_len = buffer_size
                 .min(left_in_slice.len())
                 .min(right_in_slice.len())
@@ -511,16 +539,6 @@ impl Chorus {
             outputs.insert(PortId::AudioOutput1, out_right.unwrap());
             return;
         }
-
-        // Retrieve input buffers.
-        let left_in_slice = inputs
-            .get(&PortId::AudioInput0)
-            .and_then(|v| v.first())
-            .map_or(&ZERO_BUFFER[..buffer_size], |s| s.buffer.as_slice());
-        let right_in_slice = inputs
-            .get(&PortId::AudioInput1)
-            .and_then(|v| v.first())
-            .map_or(left_in_slice, |s| s.buffer.as_slice());
         let process_len = buffer_size
             .min(left_in_slice.len())
             .min(right_in_slice.len())

@@ -232,6 +232,7 @@ pub struct AudioEngine {
     cpu_time_accum: f64,   // accumulated processing time (seconds)
     audio_time_accum: f64, // accumulated quantum time (seconds)
     last_cpu_usage: f32,   // last computed average (%)
+    block_size: usize,
 }
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -365,6 +366,7 @@ impl AudioEngine {
             cpu_time_accum: 0.0,
             audio_time_accum: 0.0,
             last_cpu_usage: 0.0,
+            block_size: buffer_size,
         }
     }
 
@@ -373,7 +375,9 @@ impl AudioEngine {
         self.sample_rate = sample_rate;
         self.num_voices = num_voices;
 
-        self.voices = (0..num_voices).map(Voice::new).collect();
+        self.voices = (0..num_voices)
+            .map(|id| Voice::new(id, self.block_size))
+            .collect();
         self.add_chorus().unwrap();
         self.add_delay(2000.0, 500.0, 0.5, 0.1).unwrap();
         self.add_freeverb(0.95, 0.5, 0.3, 0.7, 1.0).unwrap();

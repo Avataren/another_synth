@@ -18,7 +18,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
 const DEFAULT_NUM_VOICES: usize = 8;
 const MAX_TABLE_SIZE: usize = 2048;
-const BUFFER_SIZE: usize = 128;
+const DEFAULT_BLOCK_SIZE: usize = 128;
 const MACRO_COUNT: usize = 4;
 
 pub struct AudioEngine {
@@ -32,6 +32,7 @@ pub struct AudioEngine {
     cpu_time_accum: f64,
     audio_time_accum: f64,
     last_cpu_usage: f32,
+    block_size: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +75,15 @@ pub struct LfoUpdateParams {
 
 impl AudioEngine {
     pub fn new(sample_rate: f32, num_voices: usize) -> Self {
+        Self::new_with_block_size(sample_rate, num_voices, DEFAULT_BLOCK_SIZE)
+    }
+
+    pub fn new_with_block_size(
+        sample_rate: f32,
+        num_voices: usize,
+        block_size: usize,
+    ) -> Self {
+        let block_size = block_size.max(1);
         let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
 
         let mut banks = FxHashMap::default();
@@ -118,11 +128,12 @@ impl AudioEngine {
             num_voices: initial_voice_count,
             wavetable_synthbank,
             wavetable_banks: Arc::new(banks),
-            effect_stack: EffectStack::new(BUFFER_SIZE),
+            effect_stack: EffectStack::new(block_size),
             ir_generator: ImpulseResponseGenerator::new(sample_rate),
             cpu_time_accum: 0.0,
             audio_time_accum: 0.0,
             last_cpu_usage: 0.0,
+            block_size,
         }
     }
 
@@ -135,9 +146,11 @@ impl AudioEngine {
 
         self.sample_rate = sample_rate;
         self.num_voices = voice_count;
-        self.voices = (0..voice_count).map(Voice::new).collect();
+        self.voices = (0..voice_count)
+            .map(|id| Voice::new(id, self.block_size))
+            .collect();
 
-        self.effect_stack = EffectStack::new(BUFFER_SIZE);
+        self.effect_stack = EffectStack::new(self.block_size);
         self.ir_generator = ImpulseResponseGenerator::new(sample_rate);
 
         let mut chorus = Chorus::new(sample_rate, 65.0, 15.0, 5.0, 0.5, 0.3, 0.5, 90.0);
@@ -151,7 +164,8 @@ impl AudioEngine {
         self.effect_stack.add_effect(Box::new(reverb));
 
         let plate_ir = self.ir_generator.plate(2.0, 0.6);
-        let mut plate = Convolver::new(plate_ir, BUFFER_SIZE, sample_rate);
+        let partition_size = self.block_size.next_power_of_two().max(32);
+        let mut plate = Convolver::new(plate_ir, partition_size, sample_rate);
         plate.set_wet_level(0.1);
         plate.set_enabled(false);
         self.effect_stack.add_effect(Box::new(plate));
@@ -257,7 +271,7 @@ impl AudioEngine {
         }
 
         let elapsed_sec = start.elapsed().as_secs_f64();
-        let quantum_sec = 128.0 / self.sample_rate as f64;
+        let quantum_sec = self.block_size as f64 / self.sample_rate as f64;
         self.cpu_time_accum += elapsed_sec;
         self.audio_time_accum += quantum_sec;
         if self.audio_time_accum >= 0.1 {
@@ -265,6 +279,10 @@ impl AudioEngine {
             self.cpu_time_accum = 0.0;
             self.audio_time_accum = 0.0;
         }
+    }
+
+    pub fn block_size(&self) -> usize {
+        self.block_size
     }
 
     pub fn process_with_frame(
