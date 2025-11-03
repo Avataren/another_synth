@@ -235,13 +235,13 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     );
 
     // Configure envelope - punchy attack, moderate release
-    engine.update_envelope(env_id, 0.001, 0.05, 0.8, 0.2, 0.0, 0.0, 0.0, true)?;
+    engine.update_envelope(env_id, 0.001, 0.05, 0.2, 0.2, 1.0, 1.0, 1.0, true)?;
 
     // Configure filter - OPEN IT UP for more bass presence
     engine.update_filters(
         filter_id,
-        1200.0, // Higher cutoff
-        0.4,    // Less resonance
+        500.0, // Higher cutoff
+        0.4,   // Less resonance
         1.0,
         0.0,
         220.0,
@@ -262,21 +262,21 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
         ModulationTransformation::None,
     )?;
 
-    engine.connect_nodes(
-        osc2_id,
-        PortId::AudioOutput0,
-        filter_id,
-        PortId::AudioInput0,
-        0.9, // Higher - was 0.7
-        ModulationType::Additive,
-        ModulationTransformation::None,
-    )?;
+    // engine.connect_nodes(
+    //     osc2_id,
+    //     PortId::AudioOutput0,
+    //     filter_id,
+    //     PortId::AudioInput0,
+    //     0.9, // Higher - was 0.7
+    //     ModulationType::Additive,
+    //     ModulationTransformation::None,
+    // )?;
 
-    // Slight detune on second oscillator
+    //Slight detune on second oscillator
     engine.connect_nodes(
         osc2_id,
         PortId::AudioOutput0,
-        osc2_id,
+        osc1_id,
         PortId::FrequencyMod,
         0.005,
         ModulationType::Additive,
@@ -302,6 +302,16 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
         PortId::GainMod,
         1.0,
         ModulationType::VCA,
+        ModulationTransformation::None,
+    )?;
+
+    engine.connect_nodes(
+        filter_id,
+        PortId::AudioOutput0,
+        mixer_id,
+        PortId::AudioInput0,
+        1.0,
+        ModulationType::Additive,
         ModulationTransformation::None,
     )?;
 
@@ -549,15 +559,15 @@ fn create_bass_sequence() -> NoteSequence {
     // Bassline: A - C - D - E pattern
     // Raised one octave (A3-E4 instead of A2-E3) for better audibility
     let notes = vec![
-        Note::new(57, 0.9, 16),  // A3 (was A2)
-        Note::new(57, 0.85, 16), // A3
-        Note::new(60, 0.88, 16), // C4 (was C3)
-        Note::new(60, 0.85, 16), // C4
-        Note::new(62, 0.87, 16), // D4 (was D3)
-        Note::new(62, 0.84, 16), // D4
-        Note::new(64, 0.89, 16), // E4 (was E3)
-        Note::new(64, 0.86, 8),  // E4
-        Note::new(62, 0.87, 8),  // D4 (passing)
+        Note::new(57 - 12, 0.9, 16),  // A3 (was A2)
+        Note::new(57, 0.85, 16),      // A3
+        Note::new(60 - 12, 0.88, 16), // C4 (was C3)
+        Note::new(60, 0.85, 16),      // C4
+        Note::new(62 - 12, 0.87, 16), // D4 (was D3)
+        Note::new(62, 0.84, 16),      // D4
+        Note::new(64 - 12, 0.89, 16), // E4 (was E3)
+        Note::new(64, 0.86, 8),       // E4
+        Note::new(62 - 12, 0.87, 8),  // D4 (passing)
     ];
     NoteSequence::new(notes)
 }
