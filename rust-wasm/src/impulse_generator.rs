@@ -40,9 +40,9 @@ pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
 
 #[cfg(not(feature = "wasm"))]
 pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for byte in seed.iter_mut() {
-        *byte = rng.gen();
+        *byte = rng.random();
     }
     Ok(())
 }

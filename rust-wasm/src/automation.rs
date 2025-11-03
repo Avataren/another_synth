@@ -139,6 +139,7 @@ impl AutomationFrame {
         (voice_index * self.macro_count + macro_index) * self.macro_buffer_len
     }
 
+    #[cfg(feature = "wasm")]
     fn reset_defaults(&mut self) {
         self.gates.fill(DEFAULT_GATE);
         self.frequencies.fill(DEFAULT_FREQUENCY);
