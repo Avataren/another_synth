@@ -1,0 +1,31 @@
+warning: Found `feature = ...` in `target.'cfg(...)'.dependencies`. This key is not supported for selecting dependencies and will not work as expected. Use the [features] section instead: https://doc.rust-lang.org/cargo/reference/features.html
+   0.092354600s  INFO prepare_target{force=false package_id=audio_processor v0.1.0 (C:\src\misc\another_synth\rust-wasm) target="native_demo"}: cargo::core::compiler::fingerprint: fingerprint error for audio_processor v0.1.0 (C:\src\misc\another_synth\rust-wasm)/Check { test: false }/TargetInner { name: "native_demo", doc: true, ..: with_path("C:\\src\\misc\\another_synth\\rust-wasm\\src\\bin\\native_demo.rs", Edition2021) }
+   0.092384400s  INFO prepare_target{force=false package_id=audio_processor v0.1.0 (C:\src\misc\another_synth\rust-wasm) target="native_demo"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\src\misc\another_synth\rust-wasm\target\debug\.fingerprint\audio_processor-f04c08f40c77d782\bin-native_demo`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+    Checking audio_processor v0.1.0 (C:\src\misc\another_synth\rust-wasm)
+error: could not compile `audio_processor` (bin "native_demo") due to 1 previous error
