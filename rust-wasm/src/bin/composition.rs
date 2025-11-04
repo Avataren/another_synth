@@ -141,6 +141,11 @@ pub struct Track {
     pub gain: f32,
     left_buffer: Vec<f32>,
     right_buffer: Vec<f32>,
+    num_voices: usize,
+    current_voice: usize,
+    last_gate: f32,
+    last_frequency: f32,
+    voice_frequencies: Vec<f32>, // Track last frequency for each voice
 }
 
 impl Track {
@@ -150,8 +155,10 @@ impl Track {
         sequence: NoteSequence,
         gain: f32,
         block_size: usize,
+        num_voices: usize,
     ) -> Self {
-        let frame = AutomationFrame::with_dimensions(1, MACRO_COUNT, MACRO_BUFFER_LEN);
+        let num_voices = num_voices.max(1);
+        let frame = AutomationFrame::with_dimensions(num_voices, MACRO_COUNT, MACRO_BUFFER_LEN);
         Self {
             name,
             engine,
@@ -160,13 +167,40 @@ impl Track {
             gain,
             left_buffer: vec![0.0; block_size],
             right_buffer: vec![0.0; block_size],
+            num_voices,
+            current_voice: 0,
+            last_gate: 0.0,
+            last_frequency: 0.0,
+            voice_frequencies: vec![0.0; num_voices],
         }
     }
 
     pub fn process_block(&mut self) {
         let (gate, frequency) = self.sequence.advance();
 
-        self.frame.set_voice_values(0, gate, frequency, 0.8, 1.0);
+        // Detect new note trigger: gate goes from 0 to 1, or frequency changes significantly while gate is high
+        let gate_triggered = gate > 0.5 && self.last_gate < 0.5;
+        let frequency_changed = (frequency - self.last_frequency).abs() > 1.0 && gate > 0.5;
+
+        if gate_triggered || frequency_changed {
+            // Move to next voice for polyphonic overlap
+            self.current_voice = (self.current_voice + 1) % self.num_voices;
+        }
+
+        // Update all voices in the frame
+        for voice_idx in 0..self.num_voices {
+            if voice_idx == self.current_voice {
+                // Active voice: use gate and frequency from sequence
+                self.frame.set_voice_values(voice_idx, gate, frequency, 0.8, 1.0);
+                self.voice_frequencies[voice_idx] = frequency;
+            } else {
+                // Inactive voices: gate off (releasing), keep last frequency
+                self.frame.set_voice_values(voice_idx, 0.0, self.voice_frequencies[voice_idx], 0.8, 1.0);
+            }
+        }
+
+        self.last_gate = gate;
+        self.last_frequency = frequency;
 
         self.left_buffer.fill(0.0);
         self.right_buffer.fill(0.0);
@@ -206,17 +240,19 @@ impl Composition {
             bass_sequence,
             0.5,
             timing.block_size(),
+            1, // Monophonic
         ));
 
-        // PAD TRACK - Atmospheric chords
+        // PAD TRACK - Atmospheric chords with voice rotation
         let pad_sequence = create_pad_sequence(&timing);
         let pad_engine = create_pad_synth(sample_rate, timing.block_size())?;
         tracks.push(Track::new(
             "Pad".to_string(),
             pad_engine,
             pad_sequence,
-            0.35,
+            0.22, // Reduced from 0.35
             timing.block_size(),
+            6, // 6 voices for overlapping pad notes
         ));
 
         // LEAD TRACK - Melodic lead
@@ -228,6 +264,7 @@ impl Composition {
             lead_sequence,
             0.5,
             timing.block_size(),
+            1, // Monophonic
         ));
 
         // ARPEGGIO TRACK - Rhythmic texture
@@ -239,6 +276,7 @@ impl Composition {
             arp_sequence,
             0.3, // Resonance
             timing.block_size(),
+            1, // Monophonic
         ));
 
         Ok(Self {
@@ -397,8 +435,8 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
 }
 
 fn create_pad_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, String> {
-    let mut engine = AudioEngine::new_with_block_size(sample_rate, 1, block_size);
-    engine.init(sample_rate, 1);
+    let mut engine = AudioEngine::new_with_block_size(sample_rate, 6, block_size);
+    engine.init(sample_rate, 6);
 
     let mixer_id = engine.create_mixer()?;
     let filter_id = engine.create_filter()?;
@@ -407,8 +445,57 @@ fn create_pad_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
     let osc3_id = engine.create_wavetable_oscillator()?;
     let env_id = engine.create_envelope()?;
 
-    // Slow, evolving envelope for pads
-    engine.update_envelope(env_id, 0.3, 0.5, 0.7, 1.5, 0.0, 0.0, 0.0, true)?;
+    // Enable chorus for wider, more lush pad sound
+    engine.set_chorus_active(true);
+
+    // Slow, evolving envelope for pads with longer attack
+    engine.update_envelope(env_id, 1.5, 0.5, 0.7, 2.0, 0.0, 0.0, 0.0, true)?;
+
+    // Configure oscillators with detuning for richer sound
+    engine.update_wavetable_oscillator(
+        osc1_id,
+        &WavetableOscillatorStateUpdate {
+            phase_mod_amount: 0.0,
+            detune: -10.0,  // 10 cents flat
+            hard_sync: false,
+            gain: 1.0,
+            active: true,
+            feedback_amount: 0.0,
+            unison_voices: 3,
+            spread: 15.0,
+            wavetable_index: 0.0,  // Sine-ish for smooth pads
+        },
+    )?;
+
+    engine.update_wavetable_oscillator(
+        osc2_id,
+        &WavetableOscillatorStateUpdate {
+            phase_mod_amount: 0.0,
+            detune: 0.0,  // At pitch
+            hard_sync: false,
+            gain: 1.0,
+            active: true,
+            feedback_amount: 0.0,
+            unison_voices: 3,
+            spread: 15.0,
+            wavetable_index: 1.0,  // Triangle for warmth
+        },
+    )?;
+
+    engine.update_wavetable_oscillator(
+        osc3_id,
+        &WavetableOscillatorStateUpdate {
+            phase_mod_amount: 0.0,
+            detune: 10.0,  // 10 cents sharp
+            hard_sync: false,
+            gain: 1.0,
+            active: true,
+            feedback_amount: 0.0,
+            unison_voices: 3,
+            spread: 15.0,
+            wavetable_index: 2.0,  // Saw for brightness
+        },
+    )?;
 
     // Warm filter
     engine.update_filters(
@@ -684,12 +771,14 @@ fn create_bass_sequence(timing: &TimingConfig) -> NoteSequence {
 }
 
 fn create_pad_sequence(timing: &TimingConfig) -> NoteSequence {
-    // Long, sustained chords in A minor
+    // Slow, evolving pads - longer durations to allow full envelope development
+    // With 1.5s attack and 2.0s release, each note needs time to breathe
+    // Note: Currently all voices share voice 0, so notes retrigger instead of overlapping
     let notes = vec![
-        Note::new(57, 0.6, 128), // A3 (Am chord root) - doubled duration
-        Note::new(60, 0.6, 128), // C4 (Am to C progression)
-        Note::new(62, 0.6, 128), // D4
-        Note::new(64, 0.6, 128), // E4
+        Note::new(57, 0.6, 256), // A3 (Am chord root) - much longer
+        Note::new(60, 0.6, 256), // C4 (Am to C progression)
+        Note::new(62, 0.6, 256), // D4
+        Note::new(64, 0.6, 256), // E4
     ];
     NoteSequence::new(notes, timing)
 }
