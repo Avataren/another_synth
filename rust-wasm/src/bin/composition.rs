@@ -191,11 +191,18 @@ impl Track {
         for voice_idx in 0..self.num_voices {
             if voice_idx == self.current_voice {
                 // Active voice: use gate and frequency from sequence
-                self.frame.set_voice_values(voice_idx, gate, frequency, 0.8, 1.0);
+                self.frame
+                    .set_voice_values(voice_idx, gate, frequency, 0.8, 1.0);
                 self.voice_frequencies[voice_idx] = frequency;
             } else {
                 // Inactive voices: gate off (releasing), keep last frequency
-                self.frame.set_voice_values(voice_idx, 0.0, self.voice_frequencies[voice_idx], 0.8, 1.0);
+                self.frame.set_voice_values(
+                    voice_idx,
+                    0.0,
+                    self.voice_frequencies[voice_idx],
+                    0.8,
+                    1.0,
+                );
             }
         }
 
@@ -334,7 +341,7 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     // Configure envelope - punchy attack, moderate release
     engine.update_envelope(env_id, 0.001, 0.05, 0.2, 0.2, 1.0, 1.0, 1.0, true)?;
     // Modulation envelope: slower ramp then settles low for continued movement
-    engine.update_envelope(mod_env_id, 0.05, 0.7, 0.5, 0.2, 1.0, -2.3, 1.0, true)?;
+    engine.update_envelope(mod_env_id, 0.05, 0.7, 0.25, 0.2, 1.0, -2.3, 1.0, true)?;
 
     // Lower oscillator 2 by two octaves to act as the modulator
     engine.update_oscillator(
@@ -345,7 +352,7 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
             hard_sync: false,
             gain: 1.0,
             active: true,
-            feedback_amount: 0.0,
+            feedback_amount: 0.25,
             waveform: Waveform::Sine,
             unison_voices: 1,
             spread: 10.0,
@@ -355,8 +362,8 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     // Configure filter - OPEN IT UP for more bass presence
     engine.update_filters(
         filter_id,
-        500.0, // Higher cutoff
-        0.4,   // Less resonance
+        1500.0,
+        0.4, // Less resonance
         1.0,
         0.0,
         220.0,
@@ -456,14 +463,14 @@ fn create_pad_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
         osc1_id,
         &WavetableOscillatorStateUpdate {
             phase_mod_amount: 0.0,
-            detune: -10.0,  // 10 cents flat
+            detune: -10.0, // 10 cents flat
             hard_sync: false,
             gain: 1.0,
             active: true,
             feedback_amount: 0.0,
             unison_voices: 3,
             spread: 15.0,
-            wavetable_index: 0.0,  // Sine-ish for smooth pads
+            wavetable_index: 0.0, // Sine-ish for smooth pads
         },
     )?;
 
@@ -471,14 +478,14 @@ fn create_pad_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
         osc2_id,
         &WavetableOscillatorStateUpdate {
             phase_mod_amount: 0.0,
-            detune: 0.0,  // At pitch
+            detune: 0.0, // At pitch
             hard_sync: false,
             gain: 1.0,
             active: true,
             feedback_amount: 0.0,
             unison_voices: 3,
             spread: 15.0,
-            wavetable_index: 1.0,  // Triangle for warmth
+            wavetable_index: 1.0, // Triangle for warmth
         },
     )?;
 
@@ -486,14 +493,14 @@ fn create_pad_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
         osc3_id,
         &WavetableOscillatorStateUpdate {
             phase_mod_amount: 0.0,
-            detune: 10.0,  // 10 cents sharp
+            detune: 10.0, // 10 cents sharp
             hard_sync: false,
             gain: 1.0,
             active: true,
             feedback_amount: 0.0,
             unison_voices: 3,
             spread: 15.0,
-            wavetable_index: 2.0,  // Saw for brightness
+            wavetable_index: 2.0, // Saw for brightness
         },
     )?;
 
@@ -586,10 +593,10 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
             hard_sync: false,
             gain: 1.0,
             active: true,
-            feedback_amount: 0.0,
+            feedback_amount: 0.75,
             unison_voices: 1,
             spread: 0.0,
-            wavetable_index: 2.0, // Saw slot in default bank
+            wavetable_index: 0.75,
         },
     )?;
 
