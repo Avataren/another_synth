@@ -4,6 +4,7 @@ use audio_processor::biquad::FilterType;
 use audio_processor::graph::{ModulationTransformation, ModulationType};
 use audio_processor::nodes::FilterSlope;
 use audio_processor::traits::PortId;
+use rayon::prelude::*;
 
 const MACRO_COUNT: usize = 4;
 const MACRO_BUFFER_LEN: usize = 128;
@@ -181,6 +182,8 @@ impl Track {
     }
 }
 
+unsafe impl Send for Track {}
+
 /// Main composition with multiple tracks
 pub struct Composition {
     pub tracks: Vec<Track>,
@@ -246,8 +249,11 @@ impl Composition {
         output_left.fill(0.0);
         output_right.fill(0.0);
 
-        for track in &mut self.tracks {
+        self.tracks.par_iter_mut().for_each(|track| {
             track.process_block();
+        });
+
+        for track in &self.tracks {
             let (left, right) = track.get_output();
 
             for (i, (out_l, out_r)) in output_left

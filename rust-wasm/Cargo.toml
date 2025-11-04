@@ -18,7 +18,7 @@ wasm = [
     "getrandom/wasm_js",
 ]
 # Enables the native audio host required for the demo binary while retaining the wasm bindings it depends on.
-native-host = ["dep:cpal"]
+native-host = ["dep:cpal", "dep:rayon"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -39,6 +39,7 @@ rustc-hash = "2.1.1"
 cpal = { version = "0.16.0", optional = true, features = ["jack"] }
 anyhow = "1.0.93"
 dasp_sample = "0.11.0"
+rayon = { version = "1.10.0", optional = true }
 
 fft-convolver = "0.2.0"
 rubato = "0.16.2"

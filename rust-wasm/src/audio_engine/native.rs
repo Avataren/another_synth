@@ -593,6 +593,8 @@ impl AudioEngine {
     // }
 }
 
+unsafe impl Send for AudioEngine {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
