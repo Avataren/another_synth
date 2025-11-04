@@ -22,6 +22,7 @@ const DEFAULT_HOST_BUFFER: usize = 256;
 
 // Engine block size - keep same for all hosts unless overridden
 const ENGINE_BLOCK_SIZE: usize = 128;
+const TARGET_CHANNELS: u16 = 2;
 
 // Preferred sample rate for consistent playback speed across all hosts
 const PREFERRED_SAMPLE_RATE: u32 = 48000;
@@ -274,47 +275,89 @@ fn select_output_device(
             continue;
         };
 
-        // Try to find a config with the preferred sample rate and supported format
-        match device.supported_output_configs() {
-            Ok(configs) => {
-                // Look for config that supports our preferred sample rate and a supported format
-                for supported in configs {
-                    let sample_format = supported.sample_format();
-
-                    // Only consider formats we support (F32, I16, U16)
-                    if !matches!(
-                        sample_format,
-                        SampleFormat::F32 | SampleFormat::I16 | SampleFormat::U16
-                    ) {
-                        continue;
-                    }
-
-                    if supported.min_sample_rate().0 <= PREFERRED_SAMPLE_RATE
-                        && supported.max_sample_rate().0 >= PREFERRED_SAMPLE_RATE
-                    {
-                        let supported_config =
-                            supported.with_sample_rate(cpal::SampleRate(PREFERRED_SAMPLE_RATE));
-                        let (buffer_size, range, block_size) = choose_buffer_size(
-                            supported_config.buffer_size().clone(),
-                            &host_name,
-                            custom_buffer_size,
-                        );
-                        let mut config = supported_config.config();
-                        config.buffer_size = buffer_size;
-                        println!(
-                            "Using preferred sample rate: {} Hz (format: {:?})",
-                            PREFERRED_SAMPLE_RATE, sample_format
-                        );
-                        return Ok((device, config, sample_format, host_name, range, block_size));
-                    }
-                }
-            }
+        // Enumerate supported configs once so we can prefer stereo output
+        let supported_configs = match device.supported_output_configs() {
+            Ok(configs) => configs.collect::<Vec<_>>(),
             Err(err) => {
                 last_error = Some(anyhow::anyhow!(
                     "failed to enumerate output configs for host {}: {}",
                     host_name,
                     err
                 ));
+                Vec::new()
+            }
+        };
+
+        // First pass: prefer configs that expose stereo output
+        for supported in supported_configs.iter().cloned() {
+            if supported.channels() != TARGET_CHANNELS {
+                continue;
+            }
+
+            let sample_format = supported.sample_format();
+            if !matches!(
+                sample_format,
+                SampleFormat::F32 | SampleFormat::I16 | SampleFormat::U16
+            ) {
+                continue;
+            }
+
+            if supported.min_sample_rate().0 <= PREFERRED_SAMPLE_RATE
+                && supported.max_sample_rate().0 >= PREFERRED_SAMPLE_RATE
+            {
+                let supported_config =
+                    supported.with_sample_rate(cpal::SampleRate(PREFERRED_SAMPLE_RATE));
+                let (buffer_size, range, block_size) = choose_buffer_size(
+                    supported_config.buffer_size().clone(),
+                    &host_name,
+                    custom_buffer_size,
+                );
+                let mut config = supported_config.config();
+                config.buffer_size = buffer_size;
+                config.channels = TARGET_CHANNELS;
+                println!(
+                    "Using preferred sample rate: {} Hz (format: {:?}, channels: {})",
+                    PREFERRED_SAMPLE_RATE, sample_format, config.channels
+                );
+                return Ok((
+                    device,
+                    config,
+                    sample_format,
+                    host_name.clone(),
+                    range,
+                    block_size,
+                ));
+            }
+        }
+
+        // Second pass: fall back to any supported config with the preferred sample rate
+        for supported in supported_configs.into_iter() {
+            let sample_format = supported.sample_format();
+
+            if !matches!(
+                sample_format,
+                SampleFormat::F32 | SampleFormat::I16 | SampleFormat::U16
+            ) {
+                continue;
+            }
+
+            if supported.min_sample_rate().0 <= PREFERRED_SAMPLE_RATE
+                && supported.max_sample_rate().0 >= PREFERRED_SAMPLE_RATE
+            {
+                let supported_config =
+                    supported.with_sample_rate(cpal::SampleRate(PREFERRED_SAMPLE_RATE));
+                let (buffer_size, range, block_size) = choose_buffer_size(
+                    supported_config.buffer_size().clone(),
+                    &host_name,
+                    custom_buffer_size,
+                );
+                let mut config = supported_config.config();
+                config.buffer_size = buffer_size;
+                println!(
+                    "Using preferred sample rate: {} Hz (format: {:?}, channels: {})",
+                    PREFERRED_SAMPLE_RATE, sample_format, config.channels
+                );
+                return Ok((device, config, sample_format, host_name, range, block_size));
             }
         }
 
