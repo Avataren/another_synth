@@ -1,10 +1,10 @@
 use crate::{audio_engine::WasmModulationType, graph::ModulationTransformation, traits::PortId};
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use crate::audio_engine::AudioEngine;
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use js_sys::{Float32Array, Object, Reflect};
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use wasm_bindgen::{prelude::*, JsCast, JsValue};
 
 const DEFAULT_FREQUENCY: f32 = 440.0;
@@ -13,7 +13,7 @@ const DEFAULT_GATE: f32 = 0.0;
 const DEFAULT_VELOCITY: f32 = 0.0;
 
 /// Frame of automation data that can be shared between wasm and native hosts.
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen)]
 #[derive(Clone, Debug)]
 pub struct AutomationFrame {
     num_voices: usize,
@@ -135,7 +135,7 @@ impl AutomationFrame {
         (voice_index * self.macro_count + macro_index) * self.macro_buffer_len
     }
 
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     fn reset_defaults(&mut self) {
         self.gates.fill(DEFAULT_GATE);
         self.frequencies.fill(DEFAULT_FREQUENCY);
@@ -144,7 +144,7 @@ impl AutomationFrame {
         self.macro_buffers.fill(0.0);
     }
 
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     fn read_parameter_scalar(
         &self,
         parameters: &Object,
@@ -170,7 +170,7 @@ impl AutomationFrame {
         Ok(default)
     }
 
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     fn populate_from_js_object(&mut self, parameters: &Object) -> Result<(), JsValue> {
         self.reset_defaults();
 
@@ -199,15 +199,21 @@ impl AutomationFrame {
     }
 }
 
-#[cfg(feature = "wasm")]
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen)]
 impl AutomationFrame {
-    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(constructor)
+    )]
     pub fn new(num_voices: usize, macro_count: usize, macro_buffer_len: usize) -> AutomationFrame {
         AutomationFrame::with_dimensions(num_voices, macro_count, macro_buffer_len)
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "populateFromParameters"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(js_name = "populateFromParameters")
+    )]
     pub fn populate_from_parameters(&mut self, parameters: &JsValue) -> Result<(), JsValue> {
         let object = parameters
             .dyn_ref::<Object>()
@@ -216,7 +222,7 @@ impl AutomationFrame {
     }
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(crate) trait ModulationEndpoint {
     fn connect_nodes_adapter(
         &mut self,
@@ -237,7 +243,7 @@ pub(crate) trait ModulationEndpoint {
     ) -> Result<(), JsValue>;
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 impl ModulationEndpoint for AudioEngine {
     fn connect_nodes_adapter(
         &mut self,
@@ -270,7 +276,7 @@ impl ModulationEndpoint for AudioEngine {
     }
 }
 
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectionUpdate {
     from_id: usize,
@@ -312,7 +318,7 @@ impl ConnectionUpdate {
     }
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 fn apply_connection_update_internal<E: ModulationEndpoint>(
     engine: &mut E,
     update: &ConnectionUpdate,
@@ -333,13 +339,13 @@ fn apply_connection_update_internal<E: ModulationEndpoint>(
     }
 }
 
-#[cfg(feature = "wasm")]
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen)]
 pub struct AutomationAdapter {
     frame: AutomationFrame,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 impl AutomationAdapter {
     pub fn with_frame(frame: AutomationFrame) -> Self {
         Self { frame }
@@ -350,10 +356,13 @@ impl AutomationAdapter {
     }
 }
 
-#[cfg(feature = "wasm")]
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen)]
 impl AutomationAdapter {
-    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(constructor)
+    )]
     pub fn new(
         num_voices: usize,
         macro_count: usize,
@@ -364,7 +373,10 @@ impl AutomationAdapter {
         }
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "processBlock"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(js_name = "processBlock")
+    )]
     pub fn process_block(
         &mut self,
         engine: &mut AudioEngine,
@@ -378,7 +390,10 @@ impl AutomationAdapter {
         Ok(())
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "applyConnectionUpdate"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(js_name = "applyConnectionUpdate")
+    )]
     pub fn apply_connection_update(
         &mut self,
         engine: &mut AudioEngine,
@@ -388,10 +403,13 @@ impl AutomationAdapter {
     }
 }
 
-#[cfg(feature = "wasm")]
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen)]
 impl ConnectionUpdate {
-    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(constructor)
+    )]
     pub fn new_wasm(
         from_id: usize,
         to_id: usize,
@@ -412,22 +430,28 @@ impl ConnectionUpdate {
         }
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(getter, js_name = "fromId"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(getter, js_name = "fromId")
+    )]
     pub fn from_id(&self) -> usize {
         self.from_id
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(getter, js_name = "toId"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(getter, js_name = "toId")
+    )]
     pub fn to_id(&self) -> usize {
         self.to_id
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
+    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen(getter))]
     pub fn target(&self) -> PortId {
         self.target
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(getter))]
+    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen(getter))]
     pub fn amount(&self) -> f32 {
         self.amount
     }
@@ -440,19 +464,28 @@ impl ConnectionUpdate {
         self.modulation_transformation
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(getter, js_name = "isRemoving"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(getter, js_name = "isRemoving")
+    )]
     pub fn is_removing(&self) -> bool {
         self.is_removing
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(getter, js_name = "modulationType"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        wasm_bindgen(getter, js_name = "modulationType")
+    )]
     pub fn modulation_type(&self) -> Option<WasmModulationType> {
         self.modulation_type
     }
 }
 
-#[cfg(feature = "wasm")]
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "apply_modulation_update"))]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg_attr(
+    all(feature = "wasm", target_arch = "wasm32"),
+    wasm_bindgen(js_name = "apply_modulation_update")
+)]
 pub fn apply_connection_update(
     engine: &mut AudioEngine,
     update: &ConnectionUpdate,

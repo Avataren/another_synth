@@ -25,7 +25,7 @@ pub use voice::Voice;
 
 pub use audio_engine::{AudioEngine, LfoUpdateParams, NoiseUpdateParams};
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub use automation::{apply_connection_update as apply_modulation_update, AutomationAdapter};
 
 #[cfg(feature = "wasm")]
