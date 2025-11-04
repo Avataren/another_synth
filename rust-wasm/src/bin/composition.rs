@@ -2,7 +2,7 @@ use audio_processor::audio_engine::native::AudioEngine;
 use audio_processor::automation::AutomationFrame;
 use audio_processor::biquad::FilterType;
 use audio_processor::graph::{ModulationTransformation, ModulationType};
-use audio_processor::nodes::FilterSlope;
+use audio_processor::nodes::{AnalogOscillatorStateUpdate, FilterSlope, Waveform};
 use audio_processor::traits::PortId;
 use rayon::prelude::*;
 
@@ -202,7 +202,7 @@ impl Composition {
             "Bass".to_string(),
             bass_engine,
             bass_sequence,
-            0.9, // Boosted from 0.6 to make it more audible
+            0.5,
             timing.block_size(),
         ));
 
@@ -284,14 +284,33 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     let osc1_id = engine.create_oscillator()?;
     let osc2_id = engine.create_oscillator()?;
     let env_id = engine.create_envelope()?;
+    let mod_env_id = engine.create_envelope()?;
 
     println!(
-        "🎸 Bass synth nodes - Mixer: {}, Filter: {}, Osc1: {}, Osc2: {}, Env: {}",
-        mixer_id, filter_id, osc1_id, osc2_id, env_id
+        "🎸 Bass synth nodes - Mixer: {}, Filter: {}, Osc1: {}, Osc2: {}, Env: {}, Mod Env: {}",
+        mixer_id, filter_id, osc1_id, osc2_id, env_id, mod_env_id
     );
 
     // Configure envelope - punchy attack, moderate release
     engine.update_envelope(env_id, 0.001, 0.05, 0.2, 0.2, 1.0, 1.0, 1.0, true)?;
+    // Modulation envelope: slower ramp then settles low for continued movement
+    engine.update_envelope(mod_env_id, 0.05, 0.7, 0.5, 0.2, 1.0, -2.3, 1.0, true)?;
+
+    // Lower oscillator 2 by two octaves to act as the modulator
+    engine.update_oscillator(
+        osc2_id,
+        &AnalogOscillatorStateUpdate {
+            phase_mod_amount: 0.0,
+            detune: -2400.0,
+            hard_sync: false,
+            gain: 1.0,
+            active: true,
+            feedback_amount: 0.0,
+            waveform: Waveform::Sine,
+            unison_voices: 1,
+            spread: 10.0,
+        },
+    )?;
 
     // Configure filter - OPEN IT UP for more bass presence
     engine.update_filters(
@@ -307,34 +326,35 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
         FilterSlope::Db24,
     )?;
 
-    // Connect oscillators to filter - BOOST THE MIX
+    // Oscillator 2 drives phase modulation on oscillator 1
+    engine.connect_nodes(
+        osc2_id,
+        PortId::AudioOutput0,
+        osc1_id,
+        PortId::PhaseMod,
+        1.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Mod envelope shapes oscillator 1's modulation index
+    engine.connect_nodes(
+        mod_env_id,
+        PortId::AudioOutput0,
+        osc1_id,
+        PortId::ModIndex,
+        20.0,
+        ModulationType::Additive,
+        ModulationTransformation::None,
+    )?;
+
+    // Connect carrier oscillator into filter
     engine.connect_nodes(
         osc1_id,
         PortId::AudioOutput0,
         filter_id,
         PortId::AudioInput0,
         0.9, // Higher - was 0.7
-        ModulationType::Additive,
-        ModulationTransformation::None,
-    )?;
-
-    // engine.connect_nodes(
-    //     osc2_id,
-    //     PortId::AudioOutput0,
-    //     filter_id,
-    //     PortId::AudioInput0,
-    //     0.9, // Higher - was 0.7
-    //     ModulationType::Additive,
-    //     ModulationTransformation::None,
-    // )?;
-
-    //Slight detune on second oscillator
-    engine.connect_nodes(
-        osc2_id,
-        PortId::AudioOutput0,
-        osc1_id,
-        PortId::FrequencyMod,
-        0.005,
         ModulationType::Additive,
         ModulationTransformation::None,
     )?;
@@ -613,7 +633,6 @@ fn create_arp_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
 fn create_bass_sequence(timing: &TimingConfig) -> NoteSequence {
     // Key: A minor
     // Bassline: A - C - D - E pattern
-    // Raised one octave (A3-E4 instead of A2-E3) for better audibility
     let notes = vec![
         Note::new(57 - 12, 0.9, 32),  // A3 (was A2) - doubled duration
         Note::new(57, 0.85, 32),      // A3

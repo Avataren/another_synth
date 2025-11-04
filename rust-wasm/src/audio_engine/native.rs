@@ -153,10 +153,12 @@ impl AudioEngine {
         chorus.set_active(false);
         self.effect_stack.add_effect(Box::new(chorus));
 
-        let delay = Delay::new(sample_rate, 2000.0, 500.0, 0.5, 0.1);
+        let mut delay = Delay::new(sample_rate, 2000.0, 500.0, 0.5, 0.1);
+        delay.set_active(false);
         self.effect_stack.add_effect(Box::new(delay));
 
-        let reverb = Freeverb::new(sample_rate, 0.95, 0.5, 0.3, 0.7, 1.0);
+        let mut reverb = Freeverb::new(sample_rate, 0.95, 0.5, 0.3, 0.7, 1.0);
+        reverb.set_active(false);
         self.effect_stack.add_effect(Box::new(reverb));
 
         let plate_ir = self.ir_generator.plate(2.0, 0.6);
