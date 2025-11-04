@@ -350,6 +350,24 @@ impl AudioEngine {
         self.num_voices
     }
 
+    fn set_effect_active(&mut self, index: usize, active: bool) {
+        if let Some(effect) = self.effect_stack.effects.get_mut(index) {
+            effect.node.set_active(active);
+        }
+    }
+
+    pub fn set_chorus_active(&mut self, active: bool) {
+        self.set_effect_active(0, active);
+    }
+
+    pub fn set_delay_active(&mut self, active: bool) {
+        self.set_effect_active(1, active);
+    }
+
+    pub fn set_reverb_active(&mut self, active: bool) {
+        self.set_effect_active(2, active);
+    }
+
     // Node creation methods
     pub fn create_oscillator(&mut self) -> Result<usize, String> {
         let mut osc_id = NodeId(0);

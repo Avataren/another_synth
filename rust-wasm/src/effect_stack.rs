@@ -1,4 +1,5 @@
 use rustc_hash::FxHashMap;
+use std::mem;
 
 use crate::{
     graph::{ModulationSource, ModulationTransformation, ModulationType},
@@ -11,12 +12,60 @@ pub struct Effect {
 
 pub struct EffectStack {
     pub effects: Vec<Effect>,
+    work_left_a: Vec<f32>,
+    work_right_a: Vec<f32>,
+    work_left_b: Vec<f32>,
+    work_right_b: Vec<f32>,
+    input_audio0: Vec<ModulationSource>,
+    input_audio1: Vec<ModulationSource>,
+}
+
+fn empty_modulation_source() -> ModulationSource {
+    ModulationSource {
+        buffer: Vec::new(),
+        amount: 1.0,
+        mod_type: ModulationType::Additive,
+        transformation: ModulationTransformation::None,
+    }
 }
 
 impl EffectStack {
     pub fn new(_buffer_size: usize) -> Self {
         Self {
             effects: Vec::new(),
+            work_left_a: Vec::new(),
+            work_right_a: Vec::new(),
+            work_left_b: Vec::new(),
+            work_right_b: Vec::new(),
+            input_audio0: vec![empty_modulation_source()],
+            input_audio1: vec![empty_modulation_source()],
+        }
+    }
+
+    fn ensure_capacity(&mut self, len: usize) {
+        if self.work_left_a.len() < len {
+            self.work_left_a.resize(len, 0.0);
+        }
+        if self.work_right_a.len() < len {
+            self.work_right_a.resize(len, 0.0);
+        }
+        if self.work_left_b.len() < len {
+            self.work_left_b.resize(len, 0.0);
+        }
+        if self.work_right_b.len() < len {
+            self.work_right_b.resize(len, 0.0);
+        }
+        if self.input_audio0.is_empty() {
+            self.input_audio0.push(empty_modulation_source());
+        }
+        if self.input_audio1.is_empty() {
+            self.input_audio1.push(empty_modulation_source());
+        }
+        if self.input_audio0[0].buffer.len() < len {
+            self.input_audio0[0].buffer.resize(len, 0.0);
+        }
+        if self.input_audio1[0].buffer.len() < len {
+            self.input_audio1[0].buffer.resize(len, 0.0);
         }
     }
 
@@ -74,60 +123,100 @@ impl EffectStack {
             return;
         }
 
-        // Start with the input signal in local working buffers.
-        // FIXED: Use actual_buffer_size instead of self.buffer_size
-        let mut current_left = input_left[..actual_buffer_size].to_vec();
-        let mut current_right = input_right[..actual_buffer_size].to_vec();
-
-        // Process each effect in order.
-        for effect in &mut self.effects {
-            // FIXED: Allocate buffers with actual_buffer_size
-            let mut next_left = vec![0.0; actual_buffer_size];
-            let mut next_right = vec![0.0; actual_buffer_size];
-
-            if effect.node.is_active() {
-                let mut inputs = FxHashMap::default();
-                inputs.insert(
-                    PortId::AudioInput0,
-                    vec![ModulationSource {
-                        buffer: current_left.clone(),
-                        amount: 1.0,
-                        mod_type: ModulationType::Additive,
-                        transformation: ModulationTransformation::None,
-                    }],
-                );
-                inputs.insert(
-                    PortId::AudioInput1,
-                    vec![ModulationSource {
-                        buffer: current_right.clone(),
-                        amount: 1.0,
-                        mod_type: ModulationType::Additive,
-                        transformation: ModulationTransformation::None,
-                    }],
-                );
-
-                let mut outputs = FxHashMap::default();
-                outputs.insert(PortId::AudioOutput0, next_left.as_mut_slice());
-                outputs.insert(PortId::AudioOutput1, next_right.as_mut_slice());
-
-                // FIXED: Pass actual_buffer_size to the effect
-                effect
-                    .node
-                    .process(&inputs, &mut outputs, actual_buffer_size);
-            } else {
-                // Bypass the disabled effect: simply copy the current signal.
-                next_left.copy_from_slice(&current_left);
-                next_right.copy_from_slice(&current_right);
-            }
-
-            // Use the output from this stage as the input to the next effect.
-            current_left = next_left;
-            current_right = next_right;
+        if self.effects.iter().all(|e| !e.node.is_active()) {
+            output_left[..actual_buffer_size].copy_from_slice(&input_left[..actual_buffer_size]);
+            output_right[..actual_buffer_size].copy_from_slice(&input_right[..actual_buffer_size]);
+            return;
         }
 
-        // Finally, write the processed (or bypassed) signal to the output buffers.
-        output_left[..actual_buffer_size].copy_from_slice(&current_left);
-        output_right[..actual_buffer_size].copy_from_slice(&current_right);
+        self.ensure_capacity(actual_buffer_size);
+
+        self.work_left_a[..actual_buffer_size].copy_from_slice(&input_left[..actual_buffer_size]);
+        self.work_right_a[..actual_buffer_size].copy_from_slice(&input_right[..actual_buffer_size]);
+
+        let mut current_is_a = true;
+        let mut had_active_effect = false;
+
+        for effect in &mut self.effects {
+            if !effect.node.is_active() {
+                continue;
+            }
+            had_active_effect = true;
+
+            let (current_left, current_right, next_left, next_right) = if current_is_a {
+                (
+                    &mut self.work_left_a,
+                    &mut self.work_right_a,
+                    &mut self.work_left_b,
+                    &mut self.work_right_b,
+                )
+            } else {
+                (
+                    &mut self.work_left_b,
+                    &mut self.work_right_b,
+                    &mut self.work_left_a,
+                    &mut self.work_right_a,
+                )
+            };
+
+            next_left[..actual_buffer_size].fill(0.0);
+            next_right[..actual_buffer_size].fill(0.0);
+
+            let mut inputs = FxHashMap::with_capacity_and_hasher(2, Default::default());
+
+            let mut audio0 = mem::take(&mut self.input_audio0);
+            if audio0.is_empty() {
+                audio0.push(empty_modulation_source());
+            }
+            let left_source = &mut audio0[0];
+            left_source.buffer[..actual_buffer_size]
+                .copy_from_slice(&current_left[..actual_buffer_size]);
+            left_source.amount = 1.0;
+            left_source.mod_type = ModulationType::Additive;
+            left_source.transformation = ModulationTransformation::None;
+
+            let mut audio1 = mem::take(&mut self.input_audio1);
+            if audio1.is_empty() {
+                audio1.push(empty_modulation_source());
+            }
+            let right_source = &mut audio1[0];
+            right_source.buffer[..actual_buffer_size]
+                .copy_from_slice(&current_right[..actual_buffer_size]);
+            right_source.amount = 1.0;
+            right_source.mod_type = ModulationType::Additive;
+            right_source.transformation = ModulationTransformation::None;
+
+            inputs.insert(PortId::AudioInput0, audio0);
+            inputs.insert(PortId::AudioInput1, audio1);
+
+            let mut outputs = FxHashMap::with_capacity_and_hasher(2, Default::default());
+            outputs.insert(PortId::AudioOutput0, &mut next_left[..actual_buffer_size]);
+            outputs.insert(PortId::AudioOutput1, &mut next_right[..actual_buffer_size]);
+
+            effect
+                .node
+                .process(&inputs, &mut outputs, actual_buffer_size);
+
+            let audio0 = inputs.remove(&PortId::AudioInput0).unwrap();
+            let audio1 = inputs.remove(&PortId::AudioInput1).unwrap();
+            self.input_audio0 = audio0;
+            self.input_audio1 = audio1;
+
+            current_is_a = !current_is_a;
+        }
+
+        let (final_left, final_right) = if had_active_effect {
+            if current_is_a {
+                (&self.work_left_a, &self.work_right_a)
+            } else {
+                (&self.work_left_b, &self.work_right_b)
+            }
+        } else {
+            (&self.work_left_a, &self.work_right_a)
+        };
+
+        output_left[..actual_buffer_size].copy_from_slice(&final_left[..actual_buffer_size]);
+        output_right[..actual_buffer_size].copy_from_slice(&final_right[..actual_buffer_size]);
 
         // CRITICAL: Zero out any remaining samples to prevent garbage data
         if actual_buffer_size < output_left.len() {

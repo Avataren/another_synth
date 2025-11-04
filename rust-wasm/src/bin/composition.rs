@@ -2,7 +2,9 @@ use audio_processor::audio_engine::native::AudioEngine;
 use audio_processor::automation::AutomationFrame;
 use audio_processor::biquad::FilterType;
 use audio_processor::graph::{ModulationTransformation, ModulationType};
-use audio_processor::nodes::{AnalogOscillatorStateUpdate, FilterSlope, Waveform};
+use audio_processor::nodes::{
+    AnalogOscillatorStateUpdate, FilterSlope, Waveform, WavetableOscillatorStateUpdate,
+};
 use audio_processor::traits::PortId;
 use rayon::prelude::*;
 
@@ -488,6 +490,40 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     let mod_osc_id = engine.create_oscillator()?;
     let env_id = engine.create_envelope()?;
     let filter_env_id = engine.create_envelope()?;
+
+    engine.update_wavetable_oscillator(
+        osc_id,
+        &WavetableOscillatorStateUpdate {
+            phase_mod_amount: 0.0,
+            detune: 0.0,
+            hard_sync: false,
+            gain: 1.0,
+            active: true,
+            feedback_amount: 0.0,
+            unison_voices: 1,
+            spread: 0.0,
+            wavetable_index: 2.0, // Saw slot in default bank
+        },
+    )?;
+
+    engine.update_oscillator(
+        mod_osc_id,
+        &AnalogOscillatorStateUpdate {
+            phase_mod_amount: 0.0,
+            detune: 0.0,
+            hard_sync: false,
+            gain: 1.0,
+            active: true,
+            feedback_amount: 0.0,
+            waveform: Waveform::Saw,
+            unison_voices: 1,
+            spread: 10.0,
+        },
+    )?;
+
+    engine.set_chorus_active(false);
+    engine.set_delay_active(true);
+    engine.set_reverb_active(true);
 
     // Plucky envelope
     engine.update_envelope(env_id, 0.005, 0.1, 0.5, 0.3, 0.0, 0.0, 0.0, true)?;
