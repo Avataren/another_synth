@@ -521,7 +521,7 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
         },
     )?;
 
-    engine.set_chorus_active(false);
+    engine.set_chorus_active(true);
     engine.set_delay_active(true);
     engine.set_reverb_active(true);
 

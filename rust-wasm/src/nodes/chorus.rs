@@ -31,6 +31,17 @@ impl FeedbackFilter {
     fn process(&mut self, input: f32) -> f32 {
         // Simple one-pole filter: y[n] = (1 - alpha) * input + alpha * y[n - 1]
         self.state = (1.0 - self.alpha) * input + self.alpha * self.state;
+
+        // SAFETY: Clamp state to prevent unbounded growth and check for NaN
+        const MAX_STATE: f32 = 100.0;
+        if !self.state.is_finite() {
+            self.state = 0.0;
+        } else if self.state > MAX_STATE {
+            self.state = MAX_STATE;
+        } else if self.state < -MAX_STATE {
+            self.state = -MAX_STATE;
+        }
+
         self.state
     }
 
@@ -185,6 +196,14 @@ impl DcBlocker {
         self.x_prev = input;
         // Add tiny value to prevent denormals
         self.y_prev = output + DENORMAL_PREVENTION;
+
+        // SAFETY: Check for NaN or Inf and reset if detected
+        if !output.is_finite() {
+            self.x_prev = 0.0;
+            self.y_prev = 0.0;
+            return 0.0;
+        }
+
         output
     }
 
@@ -675,9 +694,19 @@ impl Chorus {
                     current_write_index,
                     max_delay_samples,
                 );
+
+                // SAFETY: Check for NaN or Inf in delayed signals
+                let delayed_left = if delayed_left.is_finite() { delayed_left } else { 0.0 };
+                let delayed_right = if delayed_right.is_finite() { delayed_right } else { 0.0 };
+
                 // Process through the feedback filter
                 let filtered_left = self.feedback_filter_l.process(delayed_left);
                 let filtered_right = self.feedback_filter_r.process(delayed_right);
+
+                // SAFETY: Check for NaN or Inf in filtered signals
+                let filtered_left = if filtered_left.is_finite() { filtered_left } else { 0.0 };
+                let filtered_right = if filtered_right.is_finite() { filtered_right } else { 0.0 };
+
                 // Compute the feedback terms using the filtered signals
                 let feedback_term_l = feedback * filtered_left;
                 let feedback_term_r = feedback * filtered_right;
@@ -685,6 +714,12 @@ impl Chorus {
                 let current_input_r = self.upsampled_input_right[i];
                 let write_val_left = current_input_l + feedback_term_l;
                 let write_val_right = current_input_r + feedback_term_r;
+
+                // SAFETY: Clamp values to prevent unbounded growth
+                const MAX_SAMPLE_VALUE: f32 = 10.0; // Allow some headroom beyond [-1, 1]
+                let write_val_left = write_val_left.clamp(-MAX_SAMPLE_VALUE, MAX_SAMPLE_VALUE);
+                let write_val_right = write_val_right.clamp(-MAX_SAMPLE_VALUE, MAX_SAMPLE_VALUE);
+
                 delay_buf_l[current_write_index] = write_val_left;
                 delay_buf_r[current_write_index] = write_val_right;
                 self.processed_oversampled_left[i] =
