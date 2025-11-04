@@ -16,12 +16,12 @@ use dasp_sample::FromSample;
 // Note: CPAL buffer sizes (host block) affect latency
 // Engine block size affects how often the audio engine is called
 // Playback speed is determined solely by sample rate
-const JACK_HOST_BUFFER: usize = 512; // JACK CPAL callback size
-const ALSA_HOST_BUFFER: usize = 1024; // ALSA CPAL callback size
-const DEFAULT_HOST_BUFFER: usize = 512;
+const JACK_HOST_BUFFER: usize = 128; // JACK CPAL callback size
+const ALSA_HOST_BUFFER: usize = 256; // ALSA CPAL callback size
+const DEFAULT_HOST_BUFFER: usize = 256;
 
-// Engine block size - keep same for all hosts for consistent timing
-const ENGINE_BLOCK_SIZE: usize = 512;
+// Engine block size - keep same for all hosts unless overridden
+const ENGINE_BLOCK_SIZE: usize = 128;
 
 // Preferred sample rate for consistent playback speed across all hosts
 const PREFERRED_SAMPLE_RATE: u32 = 48000;
@@ -169,7 +169,7 @@ impl AudioHost {
         println!("Channels: {}", config.channels);
 
         // Use a fixed engine block size for consistent musical timing across hosts
-        let engine_block_size = ENGINE_BLOCK_SIZE;
+        let engine_block_size = options.buffer_size.unwrap_or(ENGINE_BLOCK_SIZE).max(1);
         if engine_block_size != block_size_hint {
             println!(
                 "Engine block size fixed at {} frames (host target: {})",
@@ -373,7 +373,7 @@ fn choose_buffer_size(
                 return (
                     BufferSize::Default, // Let JACK use its configured size
                     Some((min, max)),
-                    preferred_buffer_size, // Use same size for engine
+                    preferred_buffer_size, // Host target size (engine may override internally)
                 );
             }
 
@@ -390,13 +390,13 @@ fn choose_buffer_size(
             (
                 BufferSize::Fixed(clamped),
                 Some((min, max)),
-                clamped as usize, // Engine block size = host buffer for lowest latency
+                clamped as usize, // Host target size (engine may override internally)
             )
         }
         SupportedBufferSize::Unknown => (
             BufferSize::Fixed(preferred_buffer_size as u32),
             None,
-            preferred_buffer_size, // Engine block size = host buffer for lowest latency
+            preferred_buffer_size, // Host target size (engine may override internally)
         ),
     }
 }

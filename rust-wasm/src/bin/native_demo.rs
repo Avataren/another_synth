@@ -8,10 +8,9 @@ mod cpal_host;
 use std::env;
 use std::time::Duration;
 
-use anyhow;
 use audio_renderer::AudioRenderer;
 use composition::Composition;
-use cpal_host::AudioHost;
+use cpal_host::{AudioHost, AudioHostOptions};
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -32,24 +31,70 @@ fn main() -> anyhow::Result<()> {
             };
             println!("  - {} ({})", host.name, device_status);
         }
-        println!("\nUsage: {} [--host <host_name>]", args[0]);
-        println!("Example: {} --host ALSA", args[0]);
+        println!(
+            "\nUsage: {} [--host <host_name>] [--buffer-size <frames>]",
+            args[0]
+        );
+        println!("Example: {} --host ALSA --buffer-size 128", args[0]);
         return Ok(());
     }
 
-    // Parse --host argument
-    let preferred_host = args
-        .windows(2)
-        .find(|w| w[0] == "--host")
-        .map(|w| w[1].as_str());
+    // Parse CLI arguments
+    let mut preferred_host_name: Option<String> = None;
+    let mut requested_buffer_size: Option<usize> = None;
+
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--host" => {
+                if index + 1 >= args.len() {
+                    return Err(anyhow::anyhow!("Expected value after --host"));
+                }
+                preferred_host_name = Some(args[index + 1].clone());
+                index += 2;
+            }
+            "--buffer-size" => {
+                if index + 1 >= args.len() {
+                    return Err(anyhow::anyhow!(
+                        "Expected value after --buffer-size (e.g. 128)"
+                    ));
+                }
+                let value = args[index + 1].parse::<usize>().map_err(|err| {
+                    anyhow::anyhow!("Invalid buffer size '{}': {}", args[index + 1], err)
+                })?;
+                if value == 0 {
+                    return Err(anyhow::anyhow!("Buffer size must be greater than zero"));
+                }
+                requested_buffer_size = Some(value);
+                index += 2;
+            }
+            "--list-hosts" => {
+                index += 1;
+            }
+            _ => {
+                index += 1;
+            }
+        }
+    }
+
+    let preferred_host = preferred_host_name.as_deref();
 
     if let Some(host) = preferred_host {
         println!("=== REQUESTING HOST: {} ===\n", host);
     }
 
+    if let Some(size) = requested_buffer_size {
+        println!("Requested buffer size: {} frames\n", size);
+    }
+
     println!("=== CREATING COMPOSITION ===");
 
-    let _host = AudioHost::with_host_preference(
+    let options = AudioHostOptions {
+        preferred_host: preferred_host_name,
+        buffer_size: requested_buffer_size,
+    };
+
+    let _host = AudioHost::with_options(
         |sample_rate, block_size| {
             let composition =
                 Composition::new(sample_rate, block_size).expect("Failed to create composition");
@@ -64,7 +109,7 @@ fn main() -> anyhow::Result<()> {
 
             composition
         },
-        preferred_host,
+        options,
     )?;
 
     println!("\n🎵 Musical composition in A minor");
