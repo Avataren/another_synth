@@ -27,11 +27,7 @@ pub struct AutomationFrame {
 }
 
 impl AutomationFrame {
-    pub fn with_dimensions(
-        num_voices: usize,
-        macro_count: usize,
-        macro_buffer_len: usize,
-    ) -> Self {
+    pub fn with_dimensions(num_voices: usize, macro_count: usize, macro_buffer_len: usize) -> Self {
         let macro_buffers = vec![0.0; num_voices * macro_count * macro_buffer_len];
         Self {
             num_voices,
@@ -185,8 +181,7 @@ impl AutomationFrame {
             let velocity_key = format!("velocity_{}", voice);
 
             let gate = self.read_parameter_scalar(parameters, &gate_key, DEFAULT_GATE)?;
-            let frequency =
-                self.read_parameter_scalar(parameters, &freq_key, DEFAULT_FREQUENCY)?;
+            let frequency = self.read_parameter_scalar(parameters, &freq_key, DEFAULT_FREQUENCY)?;
             let gain = self.read_parameter_scalar(parameters, &gain_key, DEFAULT_GAIN)?;
             let velocity =
                 self.read_parameter_scalar(parameters, &velocity_key, DEFAULT_VELOCITY)?;
@@ -325,9 +320,7 @@ fn apply_connection_update_internal<E: ModulationEndpoint>(
     if update.is_removing {
         engine.remove_specific_connection_adapter(update.from_id, update.to_id, update.target)
     } else {
-        let modulation_type = update
-            .modulation_type
-            .or(Some(WasmModulationType::VCA));
+        let modulation_type = update.modulation_type.or(Some(WasmModulationType::VCA));
         engine.connect_nodes_adapter(
             update.from_id,
             PortId::AudioOutput0,
@@ -361,7 +354,11 @@ impl AutomationAdapter {
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl AutomationAdapter {
     #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
-    pub fn new(num_voices: usize, macro_count: usize, macro_buffer_len: usize) -> AutomationAdapter {
+    pub fn new(
+        num_voices: usize,
+        macro_count: usize,
+        macro_buffer_len: usize,
+    ) -> AutomationAdapter {
         AutomationAdapter {
             frame: AutomationFrame::with_dimensions(num_voices, macro_count, macro_buffer_len),
         }
@@ -435,7 +432,10 @@ impl ConnectionUpdate {
         self.amount
     }
 
-    #[cfg_attr(feature = "wasm", wasm_bindgen(getter, js_name = "modulationTransformation"))]
+    #[cfg_attr(
+        feature = "wasm",
+        wasm_bindgen(getter, js_name = "modulationTransformation")
+    )]
     pub fn modulation_transformation(&self) -> ModulationTransformation {
         self.modulation_transformation
     }

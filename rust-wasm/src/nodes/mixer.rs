@@ -5,9 +5,7 @@ use std::simd::{Simd, StdFloat}; // Import Simd explicitly, StdFloat for sqrt
 use rustc_hash::FxHashMap;
 
 // Import necessary types
-use crate::graph::{
-    ModulationProcessor, ModulationSource,
-};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 
 /// A simple stereo mixer node with gain and panning control.

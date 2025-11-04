@@ -13,9 +13,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 // Import necessary items from other modules (adjust paths as needed)
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
-use crate::graph::{
-    ModulationProcessor, ModulationSource,
-};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]

@@ -1,46 +1,17 @@
 use crate::automation::AutomationFrame;
 use crate::biquad::FilterType;
 use crate::effect_stack::EffectStack;
-use crate::graph::{
-    Connection,
-    ConnectionKey,
-    ModulationTransformation,
-    ModulationType,
-    NodeId,
-};
+use crate::graph::{Connection, ConnectionKey, ModulationTransformation, ModulationType, NodeId};
 use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::{
-    MipmappedWavetable,
-    WavetableMorphCollection,
-    WavetableSynthBank,
+    MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
 };
 use crate::nodes::{
-    generate_mipmapped_bank_dynamic,
-    AnalogOscillator,
-    AnalogOscillatorStateUpdate,
-    ArpeggiatorGenerator,
-    Chorus,
-    Convolver,
-    Delay,
-    Envelope,
-    EnvelopeConfig,
-    FilterCollection,
-    FilterSlope,
-    Freeverb,
-    GlobalVelocityNode,
-    Lfo,
-    LfoLoopMode,
-    LfoRetriggerMode,
-    LfoWaveform,
-    Limiter,
-    Mixer,
-    NoiseGenerator,
-    NoiseType,
-    NoiseUpdate,
-    Waveform,
-    WavetableBank,
-    WavetableOscillator,
-    WavetableOscillatorStateUpdate,
+    generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
+    ArpeggiatorGenerator, Chorus, Convolver, Delay, Envelope, EnvelopeConfig, FilterCollection,
+    FilterSlope, Freeverb, GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform,
+    Limiter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
+    WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
@@ -320,7 +291,10 @@ impl AudioEngine {
         let num_voices = 8;
         let max_table_size = 2048;
         let buffer_size = 128;
-        log_console(&format!("INITIALIZING AUDIO ENGINE WITH {} VOICES", num_voices));
+        log_console(&format!(
+            "INITIALIZING AUDIO ENGINE WITH {} VOICES",
+            num_voices
+        ));
         log_console(&format!("Creating WavetableSynthBank"));
         let wavetable_synthbank = Rc::new(RefCell::new(WavetableSynthBank::new(sample_rate)));
         let mut banks = FxHashMap::default();
@@ -925,7 +899,10 @@ impl AudioEngine {
             }
         }
 
-        log_console(&format!("Node {} successfully deleted from all voices", node_id.0));
+        log_console(&format!(
+            "Node {} successfully deleted from all voices",
+            node_id.0
+        ));
         Ok(())
     }
 
@@ -1160,7 +1137,10 @@ impl AudioEngine {
             let partition_size = convolver.partition_size;
             let target_sample_rate = convolver.sample_rate;
             let wet_level = convolver.wet_level;
-            log_console(&format!("Convolver target sample rate: {}", target_sample_rate));
+            log_console(&format!(
+                "Convolver target sample rate: {}",
+                target_sample_rate
+            ));
 
             // If the IR's sample rate doesn't match the target sample rate, resample it.
             if spec.sample_rate as f32 != target_sample_rate {

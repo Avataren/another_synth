@@ -251,7 +251,10 @@ impl WavetableBank {
         // Generate a full–cycle (base) table with all available harmonics.
         let base_samples = generate_base_samples(waveform, max_table_size);
         // Now build the mip–mapped bank from the base table.
-        log_console(&format!("Generating mipmapped bank for {:?} waveform", waveform));
+        log_console(&format!(
+            "Generating mipmapped bank for {:?} waveform",
+            waveform
+        ));
         generate_mipmapped_bank_dynamic(base_samples, max_table_size, sample_rate)
     }
 

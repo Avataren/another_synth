@@ -167,15 +167,11 @@ impl Limiter {
         }
 
         // From here both exist; reborrow as &mut [f32] without moving
-        let out_left_full:  &mut [f32] = l_opt.as_deref_mut().unwrap();
+        let out_left_full: &mut [f32] = l_opt.as_deref_mut().unwrap();
         let out_right_full: &mut [f32] = r_opt.as_deref_mut().unwrap();
 
-
         // Inputs
-        let left_source = match inputs
-            .get(&PortId::AudioInput0)
-            .and_then(|v| v.first())
-        {
+        let left_source = match inputs.get(&PortId::AudioInput0).and_then(|v| v.first()) {
             Some(src) => src,
             None => {
                 let fill_len = buffer_size
@@ -227,8 +223,12 @@ impl Limiter {
             // Nothing to do; zero up to requested buffer_size if there’s space
             let fill_l = buffer_size.min(out_left_full.len());
             let fill_r = buffer_size.min(out_right_full.len());
-            if fill_l > 0 { out_left_full[..fill_l].fill(0.0); }
-            if fill_r > 0 { out_right_full[..fill_r].fill(0.0); }
+            if fill_l > 0 {
+                out_left_full[..fill_l].fill(0.0);
+            }
+            if fill_r > 0 {
+                out_right_full[..fill_r].fill(0.0);
+            }
             return;
         }
 
@@ -304,10 +304,14 @@ impl Limiter {
             } else {
                 let gl = if envelope_l > threshold_lin {
                     (threshold_lin / envelope_l).min(1.0)
-                } else { 1.0 };
+                } else {
+                    1.0
+                };
                 let gr = if envelope_r > threshold_lin {
                     (threshold_lin / envelope_r).min(1.0)
-                } else { 1.0 };
+                } else {
+                    1.0
+                };
                 (gl, gr)
             };
 

@@ -6,9 +6,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 // use web_sys::console; // Uncomment for debugging
 
 // Import necessary types
-use crate::graph::{
-    ModulationProcessor, ModulationSource,
-};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 use crate::utils::curves::get_curved_value;
 

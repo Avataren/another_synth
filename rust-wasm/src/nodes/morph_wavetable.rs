@@ -168,6 +168,9 @@ pub fn generate_mipmapped_bank(
 ) -> MipmappedWavetable {
     let bank = WavetableBank::new(waveform, max_table_size, sample_rate)
         .expect("Failed to generate mipmapped bank");
-        log_console(&format!("Generated mipmapped bank for {:?} waveform", waveform));
+    log_console(&format!(
+        "Generated mipmapped bank for {:?} waveform",
+        waveform
+    ));
     MipmappedWavetable { bank }
 }

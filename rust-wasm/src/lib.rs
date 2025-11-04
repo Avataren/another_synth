@@ -30,4 +30,3 @@ pub use automation::{apply_connection_update as apply_modulation_update, Automat
 
 #[cfg(feature = "wasm")]
 pub use audio_engine::{WasmModulationType, WasmNoiseType};
-

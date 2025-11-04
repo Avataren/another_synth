@@ -491,13 +491,12 @@ impl Chorus {
         let out_right_slice: &mut [f32] = out_right.as_mut().unwrap();
 
         // Retrieve input buffers.
-        let left_in_slice = match inputs
-            .get(&PortId::AudioInput0)
-            .and_then(|v| v.first())
-        {
+        let left_in_slice = match inputs.get(&PortId::AudioInput0).and_then(|v| v.first()) {
             Some(src) => src.buffer.as_slice(),
             None => {
-                let fill_len = buffer_size.min(out_left_slice.len()).min(out_right_slice.len());
+                let fill_len = buffer_size
+                    .min(out_left_slice.len())
+                    .min(out_right_slice.len());
                 if fill_len > 0 {
                     out_left_slice[..fill_len].fill(0.0);
                     out_right_slice[..fill_len].fill(0.0);

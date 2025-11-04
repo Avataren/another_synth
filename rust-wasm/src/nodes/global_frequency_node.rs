@@ -5,9 +5,7 @@ use std::simd::StdFloat;
 use rustc_hash::FxHashMap;
 
 // Import necessary types
-use crate::graph::{
-    ModulationProcessor, ModulationSource,
-};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
 
 /// GlobalFrequencyNode encapsulates the base frequency buffer and applies a detune factor.

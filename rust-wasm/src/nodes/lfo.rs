@@ -6,9 +6,7 @@ use rustc_hash::FxHashMap;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::graph::{
-    ModulationProcessor, ModulationSource,
-};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 
 // --- Enums, LfoTables, Constants remain the same ---

@@ -7,13 +7,15 @@ use audio_processor::traits::PortId;
 
 const MACRO_COUNT: usize = 4;
 const MACRO_BUFFER_LEN: usize = 128;
+const REFERENCE_SAMPLE_RATE: f32 = 48_000.0;
+const REFERENCE_BLOCK_SIZE: usize = 512;
 
 /// Represents a single note in a sequence
 #[derive(Debug, Clone, Copy)]
 pub struct Note {
     pub frequency: f32,
     pub velocity: f32,
-    pub duration_blocks: usize, // How many blocks this note lasts
+    pub duration_blocks: usize, // How many reference blocks (512 @ 48kHz) this note lasts
 }
 
 impl Note {
@@ -35,19 +37,63 @@ impl Note {
     }
 }
 
+/// Timing configuration used to scale note durations
+struct TimingConfig {
+    sample_rate: f32,
+    block_size: usize,
+}
+
+impl TimingConfig {
+    fn new(sample_rate: f32, block_size: usize) -> Self {
+        Self {
+            sample_rate: sample_rate.max(1.0),
+            block_size: block_size.max(1),
+        }
+    }
+
+    fn block_size(&self) -> usize {
+        self.block_size
+    }
+
+    fn note_duration_samples(&self, reference_blocks: usize) -> usize {
+        // Duration of one reference block (ENGINE_BLOCK_SIZE at REFERENCE_SAMPLE_RATE)
+        let reference_block_duration = REFERENCE_BLOCK_SIZE as f32 / REFERENCE_SAMPLE_RATE;
+        let duration_seconds = reference_blocks as f32 * reference_block_duration;
+        let samples = (duration_seconds * self.sample_rate).round() as usize;
+        samples.max(1)
+    }
+}
+
+struct SequenceNote {
+    frequency: f32,
+    velocity: f32,
+    duration_samples: usize,
+}
+
 /// A sequence of notes with timing information
 pub struct NoteSequence {
-    notes: Vec<Note>,
+    notes: Vec<SequenceNote>,
     current_index: usize,
-    blocks_into_current_note: usize,
+    samples_into_current_note: usize,
+    block_size: usize,
 }
 
 impl NoteSequence {
-    pub fn new(notes: Vec<Note>) -> Self {
+    pub fn new(notes: Vec<Note>, timing: &TimingConfig) -> Self {
+        let converted_notes = notes
+            .into_iter()
+            .map(|note| SequenceNote {
+                frequency: note.frequency,
+                velocity: note.velocity,
+                duration_samples: timing.note_duration_samples(note.duration_blocks),
+            })
+            .collect();
+
         Self {
-            notes,
+            notes: converted_notes,
             current_index: 0,
-            blocks_into_current_note: 0,
+            samples_into_current_note: 0,
+            block_size: timing.block_size(),
         }
     }
 
@@ -57,11 +103,12 @@ impl NoteSequence {
         }
 
         let current_note = &self.notes[self.current_index];
+        let remaining_samples = current_note
+            .duration_samples
+            .saturating_sub(self.samples_into_current_note);
 
-        // Gate should be on for most of the note, off near the end for articulation
-        let gate = if current_note.frequency > 0.0
-            && self.blocks_into_current_note < current_note.duration_blocks.saturating_sub(1)
-        {
+        // Gate stays on while we have more than one block of audio left
+        let gate = if current_note.frequency > 0.0 && remaining_samples > self.block_size {
             1.0
         } else {
             0.0
@@ -69,10 +116,12 @@ impl NoteSequence {
 
         let frequency = current_note.frequency;
 
-        self.blocks_into_current_note += 1;
+        self.samples_into_current_note = self
+            .samples_into_current_note
+            .saturating_add(self.block_size);
 
-        if self.blocks_into_current_note >= current_note.duration_blocks {
-            self.blocks_into_current_note = 0;
+        if self.samples_into_current_note >= current_note.duration_samples {
+            self.samples_into_current_note = 0;
             self.current_index = (self.current_index + 1) % self.notes.len();
         }
 
@@ -140,50 +189,51 @@ pub struct Composition {
 
 impl Composition {
     pub fn new(sample_rate: f32, block_size: usize) -> Result<Self, String> {
+        let timing = TimingConfig::new(sample_rate, block_size);
         let mut tracks = Vec::new();
 
         // BASS TRACK - Deep, punchy bass
-        let bass_sequence = create_bass_sequence();
-        let bass_engine = create_bass_synth(sample_rate, block_size)?;
+        let bass_sequence = create_bass_sequence(&timing);
+        let bass_engine = create_bass_synth(sample_rate, timing.block_size())?;
         tracks.push(Track::new(
             "Bass".to_string(),
             bass_engine,
             bass_sequence,
             0.9, // Boosted from 0.6 to make it more audible
-            block_size,
+            timing.block_size(),
         ));
 
         // PAD TRACK - Atmospheric chords
-        let pad_sequence = create_pad_sequence();
-        let pad_engine = create_pad_synth(sample_rate, block_size)?;
+        let pad_sequence = create_pad_sequence(&timing);
+        let pad_engine = create_pad_synth(sample_rate, timing.block_size())?;
         tracks.push(Track::new(
             "Pad".to_string(),
             pad_engine,
             pad_sequence,
             0.35,
-            block_size,
+            timing.block_size(),
         ));
 
         // LEAD TRACK - Melodic lead
-        let lead_sequence = create_lead_sequence();
-        let lead_engine = create_lead_synth(sample_rate, block_size)?;
+        let lead_sequence = create_lead_sequence(&timing);
+        let lead_engine = create_lead_synth(sample_rate, timing.block_size())?;
         tracks.push(Track::new(
             "Lead".to_string(),
             lead_engine,
             lead_sequence,
             0.5,
-            block_size,
+            timing.block_size(),
         ));
 
         // ARPEGGIO TRACK - Rhythmic texture
-        let arp_sequence = create_arp_sequence();
-        let arp_engine = create_arp_synth(sample_rate, block_size)?;
+        let arp_sequence = create_arp_sequence(&timing);
+        let arp_engine = create_arp_synth(sample_rate, timing.block_size())?;
         tracks.push(Track::new(
             "Arp".to_string(),
             arp_engine,
             arp_sequence,
             0.3, // Resonance
-            block_size,
+            timing.block_size(),
         ));
 
         Ok(Self {
@@ -554,7 +604,7 @@ fn create_arp_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
 // NOTE SEQUENCES
 // ============================================================================
 
-fn create_bass_sequence() -> NoteSequence {
+fn create_bass_sequence(timing: &TimingConfig) -> NoteSequence {
     // Key: A minor
     // Bassline: A - C - D - E pattern
     // Raised one octave (A3-E4 instead of A2-E3) for better audibility
@@ -569,10 +619,10 @@ fn create_bass_sequence() -> NoteSequence {
         Note::new(64, 0.86, 16),      // E4
         Note::new(62 - 12, 0.87, 16), // D4 (passing)
     ];
-    NoteSequence::new(notes)
+    NoteSequence::new(notes, timing)
 }
 
-fn create_pad_sequence() -> NoteSequence {
+fn create_pad_sequence(timing: &TimingConfig) -> NoteSequence {
     // Long, sustained chords in A minor
     let notes = vec![
         Note::new(57, 0.6, 128), // A3 (Am chord root) - doubled duration
@@ -580,10 +630,10 @@ fn create_pad_sequence() -> NoteSequence {
         Note::new(62, 0.6, 128), // D4
         Note::new(64, 0.6, 128), // E4
     ];
-    NoteSequence::new(notes)
+    NoteSequence::new(notes, timing)
 }
 
-fn create_lead_sequence() -> NoteSequence {
+fn create_lead_sequence(timing: &TimingConfig) -> NoteSequence {
     // Melodic phrase in A minor
     let notes = vec![
         Note::rest(64),          // Start with silence - doubled
@@ -603,10 +653,10 @@ fn create_lead_sequence() -> NoteSequence {
         Note::new(77, 0.83, 32), // F5
         Note::new(76, 0.8, 48),  // E5
     ];
-    NoteSequence::new(notes)
+    NoteSequence::new(notes, timing)
 }
 
-fn create_arp_sequence() -> NoteSequence {
+fn create_arp_sequence(timing: &TimingConfig) -> NoteSequence {
     // Fast arpeggios
     let notes = vec![
         Note::new(69, 0.5, 8), // A4 - doubled duration
@@ -627,5 +677,5 @@ fn create_arp_sequence() -> NoteSequence {
         Note::new(79, 0.5, 8), // G5
         Note::new(84, 0.5, 8), // C6
     ];
-    NoteSequence::new(notes)
+    NoteSequence::new(notes, timing)
 }

@@ -51,8 +51,8 @@ fn main() -> anyhow::Result<()> {
 
     let _host = AudioHost::with_host_preference(
         |sample_rate, block_size| {
-            let composition = Composition::new(sample_rate, block_size)
-                .expect("Failed to create composition");
+            let composition =
+                Composition::new(sample_rate, block_size).expect("Failed to create composition");
 
             println!(
                 "Composition created with {} tracks:",

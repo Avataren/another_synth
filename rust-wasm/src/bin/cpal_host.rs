@@ -7,15 +7,17 @@ use crate::audio_buffer::AudioBuffer;
 use crate::audio_renderer::AudioRenderer;
 use anyhow::Context;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, HostId, Sample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
+use cpal::{
+    BufferSize, HostId, Sample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize,
+};
 use dasp_sample::FromSample;
 
 // Audio configuration constants
 // Note: CPAL buffer sizes (host block) affect latency
 // Engine block size affects how often the audio engine is called
 // Playback speed is determined solely by sample rate
-const JACK_HOST_BUFFER: usize = 512;   // JACK CPAL callback size
-const ALSA_HOST_BUFFER: usize = 1024;  // ALSA CPAL callback size
+const JACK_HOST_BUFFER: usize = 512; // JACK CPAL callback size
+const ALSA_HOST_BUFFER: usize = 1024; // ALSA CPAL callback size
 const DEFAULT_HOST_BUFFER: usize = 512;
 
 // Engine block size - keep same for all hosts for consistent timing
@@ -48,6 +50,22 @@ pub struct AudioHost {
     config: AudioHostConfig,
 }
 
+/// Configuration options for audio host creation
+#[derive(Debug, Clone)]
+pub struct AudioHostOptions {
+    pub preferred_host: Option<String>,
+    pub buffer_size: Option<usize>,
+}
+
+impl Default for AudioHostOptions {
+    fn default() -> Self {
+        Self {
+            preferred_host: None,
+            buffer_size: None,
+        }
+    }
+}
+
 impl AudioHost {
     /// List all available audio hosts on the system
     pub fn list_hosts() -> Vec<HostInfo> {
@@ -71,15 +89,12 @@ impl AudioHost {
     ///
     /// The factory function receives (sample_rate, block_size) and should create
     /// the renderer with those parameters.
-    ///
-    /// If `preferred_host` is provided, it will try to use that host first before
-    /// falling back to other available hosts.
     pub fn new<R, F>(factory: F) -> anyhow::Result<Self>
     where
         R: AudioRenderer,
         F: FnOnce(f32, usize) -> R,
     {
-        Self::with_host_preference(factory, None)
+        Self::with_options(factory, AudioHostOptions::default())
     }
 
     /// Create and start a new audio host with a preferred host selection
@@ -97,8 +112,24 @@ impl AudioHost {
         R: AudioRenderer,
         F: FnOnce(f32, usize) -> R,
     {
+        let options = AudioHostOptions {
+            preferred_host: preferred_host.map(String::from),
+            buffer_size: None,
+        };
+        Self::with_options(factory, options)
+    }
+
+    /// Create and start a new audio host with full configuration options
+    ///
+    /// The factory function receives (sample_rate, block_size) and should create
+    /// the renderer with those parameters.
+    pub fn with_options<R, F>(factory: F, options: AudioHostOptions) -> anyhow::Result<Self>
+    where
+        R: AudioRenderer,
+        F: FnOnce(f32, usize) -> R,
+    {
         let (device, config, sample_format, host_name, buffer_range, block_size_hint) =
-            select_output_device(preferred_host)?;
+            select_output_device(options.preferred_host.as_deref(), options.buffer_size)?;
 
         println!("=== AUDIO CONFIGURATION ===");
         let target_frames = block_size_hint as u32;
@@ -137,8 +168,14 @@ impl AudioHost {
         println!("Sample rate: {} Hz", sample_rate);
         println!("Channels: {}", config.channels);
 
-        // Use the engine block size (always ENGINE_BLOCK_SIZE for timing consistency)
-        let engine_block_size = block_size_hint;
+        // Use a fixed engine block size for consistent musical timing across hosts
+        let engine_block_size = ENGINE_BLOCK_SIZE;
+        if engine_block_size != block_size_hint {
+            println!(
+                "Engine block size fixed at {} frames (host target: {})",
+                engine_block_size, block_size_hint
+            );
+        }
 
         // Create the renderer with the actual audio parameters
         let renderer = factory(sample_rate, engine_block_size);
@@ -187,6 +224,7 @@ impl AudioHost {
 /// Select an output device and configure it
 fn select_output_device(
     preferred_host: Option<&str>,
+    custom_buffer_size: Option<usize>,
 ) -> anyhow::Result<(
     cpal::Device,
     StreamConfig,
@@ -214,10 +252,7 @@ fn select_output_device(
     // Build host priority list: preferred first, then others
     let mut host_priority = Vec::new();
     if let Some(preferred) = preferred_host {
-        if let Some(&host_id) = available_hosts
-            .iter()
-            .find(|&h| h.name() == preferred)
-        {
+        if let Some(&host_id) = available_hosts.iter().find(|&h| h.name() == preferred) {
             host_priority.push(host_id);
         }
     }
@@ -257,12 +292,19 @@ fn select_output_device(
                     if supported.min_sample_rate().0 <= PREFERRED_SAMPLE_RATE
                         && supported.max_sample_rate().0 >= PREFERRED_SAMPLE_RATE
                     {
-                        let supported_config = supported.with_sample_rate(cpal::SampleRate(PREFERRED_SAMPLE_RATE));
-                        let (buffer_size, range, block_size) =
-                            choose_buffer_size(supported_config.buffer_size().clone(), &host_name);
+                        let supported_config =
+                            supported.with_sample_rate(cpal::SampleRate(PREFERRED_SAMPLE_RATE));
+                        let (buffer_size, range, block_size) = choose_buffer_size(
+                            supported_config.buffer_size().clone(),
+                            &host_name,
+                            custom_buffer_size,
+                        );
                         let mut config = supported_config.config();
                         config.buffer_size = buffer_size;
-                        println!("Using preferred sample rate: {} Hz (format: {:?})", PREFERRED_SAMPLE_RATE, sample_format);
+                        println!(
+                            "Using preferred sample rate: {} Hz (format: {:?})",
+                            PREFERRED_SAMPLE_RATE, sample_format
+                        );
                         return Ok((device, config, sample_format, host_name, range, block_size));
                     }
                 }
@@ -280,8 +322,11 @@ fn select_output_device(
         match device.default_output_config() {
             Ok(supported) => {
                 let sample_format = supported.sample_format();
-                let (buffer_size, range, block_size) =
-                    choose_buffer_size(supported.buffer_size().clone(), &host_name);
+                let (buffer_size, range, block_size) = choose_buffer_size(
+                    supported.buffer_size().clone(),
+                    &host_name,
+                    custom_buffer_size,
+                );
                 let mut config = supported.config();
                 config.buffer_size = buffer_size;
                 println!(
@@ -307,38 +352,51 @@ fn select_output_device(
 fn choose_buffer_size(
     supported: SupportedBufferSize,
     host_name: &str,
+    custom_buffer_size: Option<usize>,
 ) -> (BufferSize, Option<(u32, u32)>, usize) {
-    // Select CPAL callback buffer size based on host characteristics
-    let preferred_host_buffer = match host_name {
-        "JACK" => JACK_HOST_BUFFER, // JACK handles low latency well
-        "ALSA" => ALSA_HOST_BUFFER, // ALSA needs larger buffers to avoid underruns
-        _ => DEFAULT_HOST_BUFFER,   // Safe default for other hosts
+    // Use custom buffer size if provided, otherwise use host-specific defaults
+    let preferred_buffer_size = if let Some(custom) = custom_buffer_size {
+        custom
+    } else {
+        match host_name {
+            "JACK" => JACK_HOST_BUFFER, // JACK handles low latency well
+            "ALSA" => ALSA_HOST_BUFFER, // ALSA needs larger buffers to avoid underruns
+            _ => DEFAULT_HOST_BUFFER,   // Safe default for other hosts
+        }
     };
 
     match supported {
         SupportedBufferSize::Range { min, max } => {
-            // For JACK, use Default to let it manage its own buffer size
+            // For JACK, use Default unless custom buffer size is specified
             // JACK dynamically changes buffer sizes and we handle this via carry buffer
-            if host_name == "JACK" {
+            if host_name == "JACK" && custom_buffer_size.is_none() {
                 return (
                     BufferSize::Default, // Let JACK use its configured size
                     Some((min, max)),
-                    ENGINE_BLOCK_SIZE, // Always use same engine block size
+                    preferred_buffer_size, // Use same size for engine
                 );
             }
 
-            let desired = preferred_host_buffer as u32;
+            let desired = preferred_buffer_size as u32;
             let clamped = desired.clamp(min, max);
+
+            if clamped != desired {
+                println!(
+                    "Note: Requested buffer size {} adjusted to {} (device limits: {}-{})",
+                    desired, clamped, min, max
+                );
+            }
+
             (
                 BufferSize::Fixed(clamped),
                 Some((min, max)),
-                ENGINE_BLOCK_SIZE, // Always use same engine block size
+                clamped as usize, // Engine block size = host buffer for lowest latency
             )
         }
         SupportedBufferSize::Unknown => (
-            BufferSize::Fixed(preferred_host_buffer as u32),
+            BufferSize::Fixed(preferred_buffer_size as u32),
             None,
-            ENGINE_BLOCK_SIZE, // Always use same engine block size
+            preferred_buffer_size, // Engine block size = host buffer for lowest latency
         ),
     }
 }

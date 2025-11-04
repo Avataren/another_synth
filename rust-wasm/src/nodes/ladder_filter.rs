@@ -2,9 +2,7 @@ use std::any::Any;
 use std::f32::consts::PI; // Import PI for calculations
 
 // Import necessary types
-use crate::graph::{
-    ModulationProcessor, ModulationSource,
-};
+use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 // Import the fast_tanh function if it's in a shared utils module, otherwise define it here or copy it.
 // Assuming it might be available via crate::utils::math::fast_tanh
