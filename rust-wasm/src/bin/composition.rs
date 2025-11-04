@@ -559,15 +559,15 @@ fn create_bass_sequence() -> NoteSequence {
     // Bassline: A - C - D - E pattern
     // Raised one octave (A3-E4 instead of A2-E3) for better audibility
     let notes = vec![
-        Note::new(57 - 12, 0.9, 16),  // A3 (was A2)
-        Note::new(57, 0.85, 16),      // A3
-        Note::new(60 - 12, 0.88, 16), // C4 (was C3)
-        Note::new(60, 0.85, 16),      // C4
-        Note::new(62 - 12, 0.87, 16), // D4 (was D3)
-        Note::new(62, 0.84, 16),      // D4
-        Note::new(64 - 12, 0.89, 16), // E4 (was E3)
-        Note::new(64, 0.86, 8),       // E4
-        Note::new(62 - 12, 0.87, 8),  // D4 (passing)
+        Note::new(57 - 12, 0.9, 32),  // A3 (was A2) - doubled duration
+        Note::new(57, 0.85, 32),      // A3
+        Note::new(60 - 12, 0.88, 32), // C4 (was C3)
+        Note::new(60, 0.85, 32),      // C4
+        Note::new(62 - 12, 0.87, 32), // D4 (was D3)
+        Note::new(62, 0.84, 32),      // D4
+        Note::new(64 - 12, 0.89, 32), // E4 (was E3)
+        Note::new(64, 0.86, 16),      // E4
+        Note::new(62 - 12, 0.87, 16), // D4 (passing)
     ];
     NoteSequence::new(notes)
 }
@@ -575,10 +575,10 @@ fn create_bass_sequence() -> NoteSequence {
 fn create_pad_sequence() -> NoteSequence {
     // Long, sustained chords in A minor
     let notes = vec![
-        Note::new(57, 0.6, 64), // A3 (Am chord root)
-        Note::new(60, 0.6, 64), // C4 (Am to C progression)
-        Note::new(62, 0.6, 64), // D4
-        Note::new(64, 0.6, 64), // E4
+        Note::new(57, 0.6, 128), // A3 (Am chord root) - doubled duration
+        Note::new(60, 0.6, 128), // C4 (Am to C progression)
+        Note::new(62, 0.6, 128), // D4
+        Note::new(64, 0.6, 128), // E4
     ];
     NoteSequence::new(notes)
 }
@@ -586,22 +586,22 @@ fn create_pad_sequence() -> NoteSequence {
 fn create_lead_sequence() -> NoteSequence {
     // Melodic phrase in A minor
     let notes = vec![
-        Note::rest(32),          // Start with silence
-        Note::new(69, 0.8, 8),   // A4
-        Note::new(72, 0.82, 8),  // C5
-        Note::new(76, 0.85, 12), // E5
-        Note::new(74, 0.8, 4),   // D5
+        Note::rest(64),          // Start with silence - doubled
+        Note::new(69, 0.8, 16),  // A4 - doubled duration
         Note::new(72, 0.82, 16), // C5
-        Note::rest(8),
-        Note::new(69, 0.8, 8),   // A4
-        Note::new(67, 0.78, 8),  // G4
-        Note::new(69, 0.85, 24), // A4
+        Note::new(76, 0.85, 24), // E5
+        Note::new(74, 0.8, 8),   // D5
+        Note::new(72, 0.82, 32), // C5
         Note::rest(16),
-        Note::new(72, 0.8, 8),   // C5
-        Note::new(74, 0.82, 8),  // D5
-        Note::new(76, 0.85, 16), // E5
-        Note::new(77, 0.83, 16), // F5
-        Note::new(76, 0.8, 24),  // E5
+        Note::new(69, 0.8, 16),  // A4
+        Note::new(67, 0.78, 16), // G4
+        Note::new(69, 0.85, 48), // A4
+        Note::rest(32),
+        Note::new(72, 0.8, 16),  // C5
+        Note::new(74, 0.82, 16), // D5
+        Note::new(76, 0.85, 32), // E5
+        Note::new(77, 0.83, 32), // F5
+        Note::new(76, 0.8, 48),  // E5
     ];
     NoteSequence::new(notes)
 }
@@ -609,23 +609,23 @@ fn create_lead_sequence() -> NoteSequence {
 fn create_arp_sequence() -> NoteSequence {
     // Fast arpeggios
     let notes = vec![
-        Note::new(69, 0.5, 4), // A4
-        Note::new(72, 0.5, 4), // C5
-        Note::new(76, 0.5, 4), // E5
-        Note::new(72, 0.5, 4), // C5
-        Note::new(69, 0.5, 4), // A4
-        Note::new(72, 0.5, 4), // C5
-        Note::new(76, 0.5, 4), // E5
-        Note::new(81, 0.5, 4), // A5
+        Note::new(69, 0.5, 8), // A4 - doubled duration
+        Note::new(72, 0.5, 8), // C5
+        Note::new(76, 0.5, 8), // E5
+        Note::new(72, 0.5, 8), // C5
+        Note::new(69, 0.5, 8), // A4
+        Note::new(72, 0.5, 8), // C5
+        Note::new(76, 0.5, 8), // E5
+        Note::new(81, 0.5, 8), // A5
         // Variation
-        Note::new(72, 0.5, 4), // C5
-        Note::new(76, 0.5, 4), // E5
-        Note::new(79, 0.5, 4), // G5
-        Note::new(76, 0.5, 4), // E5
-        Note::new(72, 0.5, 4), // C5
-        Note::new(76, 0.5, 4), // E5
-        Note::new(79, 0.5, 4), // G5
-        Note::new(84, 0.5, 4), // C6
+        Note::new(72, 0.5, 8), // C5
+        Note::new(76, 0.5, 8), // E5
+        Note::new(79, 0.5, 8), // G5
+        Note::new(76, 0.5, 8), // E5
+        Note::new(72, 0.5, 8), // C5
+        Note::new(76, 0.5, 8), // E5
+        Note::new(79, 0.5, 8), // G5
+        Note::new(84, 0.5, 8), // C6
     ];
     NoteSequence::new(notes)
 }

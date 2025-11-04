@@ -11,11 +11,15 @@ use cpal::{BufferSize, HostId, Sample, SampleFormat, SizedSample, StreamConfig, 
 use dasp_sample::FromSample;
 
 // Audio configuration constants
-// Note: Buffer sizes affect latency but not playback speed
+// Note: CPAL buffer sizes (host block) affect latency
+// Engine block size affects how often the audio engine is called
 // Playback speed is determined solely by sample rate
-const JACK_BLOCK_SIZE: usize = 512;  // JACK typically uses 512 frames
-const ALSA_BLOCK_SIZE: usize = 1024; // ALSA needs larger buffers to avoid underruns
-const DEFAULT_BLOCK_SIZE: usize = 512;
+const JACK_HOST_BUFFER: usize = 512;   // JACK CPAL callback size
+const ALSA_HOST_BUFFER: usize = 1024;  // ALSA CPAL callback size
+const DEFAULT_HOST_BUFFER: usize = 512;
+
+// Engine block size - keep same for all hosts for consistent timing
+const ENGINE_BLOCK_SIZE: usize = 512;
 
 // Preferred sample rate for consistent playback speed across all hosts
 const PREFERRED_SAMPLE_RATE: u32 = 48000;
@@ -133,7 +137,8 @@ impl AudioHost {
         println!("Sample rate: {} Hz", sample_rate);
         println!("Channels: {}", config.channels);
 
-        let engine_block_size = configured_frames.max(DEFAULT_BLOCK_SIZE);
+        // Use the engine block size (always ENGINE_BLOCK_SIZE for timing consistency)
+        let engine_block_size = block_size_hint;
 
         // Create the renderer with the actual audio parameters
         let renderer = factory(sample_rate, engine_block_size);
@@ -234,21 +239,30 @@ fn select_output_device(
             continue;
         };
 
-        // Try to find a config with the preferred sample rate for consistent playback speed
+        // Try to find a config with the preferred sample rate and supported format
         match device.supported_output_configs() {
             Ok(configs) => {
-                // Look for config that supports our preferred sample rate
+                // Look for config that supports our preferred sample rate and a supported format
                 for supported in configs {
+                    let sample_format = supported.sample_format();
+
+                    // Only consider formats we support (F32, I16, U16)
+                    if !matches!(
+                        sample_format,
+                        SampleFormat::F32 | SampleFormat::I16 | SampleFormat::U16
+                    ) {
+                        continue;
+                    }
+
                     if supported.min_sample_rate().0 <= PREFERRED_SAMPLE_RATE
                         && supported.max_sample_rate().0 >= PREFERRED_SAMPLE_RATE
                     {
-                        let sample_format = supported.sample_format();
                         let supported_config = supported.with_sample_rate(cpal::SampleRate(PREFERRED_SAMPLE_RATE));
                         let (buffer_size, range, block_size) =
                             choose_buffer_size(supported_config.buffer_size().clone(), &host_name);
                         let mut config = supported_config.config();
                         config.buffer_size = buffer_size;
-                        println!("Using preferred sample rate: {} Hz", PREFERRED_SAMPLE_RATE);
+                        println!("Using preferred sample rate: {} Hz (format: {:?})", PREFERRED_SAMPLE_RATE, sample_format);
                         return Ok((device, config, sample_format, host_name, range, block_size));
                     }
                 }
@@ -271,8 +285,8 @@ fn select_output_device(
                 let mut config = supported.config();
                 config.buffer_size = buffer_size;
                 println!(
-                    "Using device default sample rate: {} Hz (preferred {} Hz not available)",
-                    config.sample_rate.0, PREFERRED_SAMPLE_RATE
+                    "Using device default sample rate: {} Hz (preferred {} Hz not available, format: {:?})",
+                    config.sample_rate.0, PREFERRED_SAMPLE_RATE, sample_format
                 );
                 return Ok((device, config, sample_format, host_name, range, block_size));
             }
@@ -294,11 +308,11 @@ fn choose_buffer_size(
     supported: SupportedBufferSize,
     host_name: &str,
 ) -> (BufferSize, Option<(u32, u32)>, usize) {
-    // Select buffer size based on host characteristics
-    let preferred_size = match host_name {
-        "JACK" => JACK_BLOCK_SIZE, // JACK handles low latency well
-        "ALSA" => ALSA_BLOCK_SIZE, // ALSA needs larger buffers to avoid underruns
-        _ => DEFAULT_BLOCK_SIZE,   // Safe default for other hosts
+    // Select CPAL callback buffer size based on host characteristics
+    let preferred_host_buffer = match host_name {
+        "JACK" => JACK_HOST_BUFFER, // JACK handles low latency well
+        "ALSA" => ALSA_HOST_BUFFER, // ALSA needs larger buffers to avoid underruns
+        _ => DEFAULT_HOST_BUFFER,   // Safe default for other hosts
     };
 
     match supported {
@@ -309,22 +323,22 @@ fn choose_buffer_size(
                 return (
                     BufferSize::Default, // Let JACK use its configured size
                     Some((min, max)),
-                    JACK_BLOCK_SIZE, // Use fixed engine block size
+                    ENGINE_BLOCK_SIZE, // Always use same engine block size
                 );
             }
 
-            let desired = preferred_size as u32;
+            let desired = preferred_host_buffer as u32;
             let clamped = desired.clamp(min, max);
             (
                 BufferSize::Fixed(clamped),
                 Some((min, max)),
-                clamped as usize,
+                ENGINE_BLOCK_SIZE, // Always use same engine block size
             )
         }
         SupportedBufferSize::Unknown => (
-            BufferSize::Fixed(preferred_size as u32),
+            BufferSize::Fixed(preferred_host_buffer as u32),
             None,
-            preferred_size,
+            ENGINE_BLOCK_SIZE, // Always use same engine block size
         ),
     }
 }
