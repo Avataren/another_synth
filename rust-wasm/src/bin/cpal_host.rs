@@ -7,10 +7,26 @@ use crate::audio_buffer::AudioBuffer;
 use crate::audio_renderer::AudioRenderer;
 use anyhow::Context;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, Sample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
+use cpal::{BufferSize, HostId, Sample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
 use dasp_sample::FromSample;
 
-const DEFAULT_BLOCK_SIZE: usize = 128;
+// Audio configuration constants
+// Note: Buffer sizes affect latency but not playback speed
+// Playback speed is determined solely by sample rate
+const JACK_BLOCK_SIZE: usize = 512;  // JACK typically uses 512 frames
+const ALSA_BLOCK_SIZE: usize = 1024; // ALSA needs larger buffers to avoid underruns
+const DEFAULT_BLOCK_SIZE: usize = 512;
+
+// Preferred sample rate for consistent playback speed across all hosts
+const PREFERRED_SAMPLE_RATE: u32 = 48000;
+
+/// Information about an available audio host
+#[derive(Debug, Clone)]
+pub struct HostInfo {
+    pub id: HostId,
+    pub name: String,
+    pub has_default_device: bool,
+}
 
 /// Configuration for the audio host
 #[derive(Debug, Clone)]
@@ -29,17 +45,56 @@ pub struct AudioHost {
 }
 
 impl AudioHost {
+    /// List all available audio hosts on the system
+    pub fn list_hosts() -> Vec<HostInfo> {
+        let mut hosts = Vec::new();
+
+        for host_id in cpal::available_hosts() {
+            if let Ok(host) = cpal::host_from_id(host_id) {
+                let has_default_device = host.default_output_device().is_some();
+                hosts.push(HostInfo {
+                    id: host_id,
+                    name: host_id.name().to_string(),
+                    has_default_device,
+                });
+            }
+        }
+
+        hosts
+    }
+
     /// Create and start a new audio host with the given renderer factory
     ///
     /// The factory function receives (sample_rate, block_size) and should create
     /// the renderer with those parameters.
+    ///
+    /// If `preferred_host` is provided, it will try to use that host first before
+    /// falling back to other available hosts.
     pub fn new<R, F>(factory: F) -> anyhow::Result<Self>
     where
         R: AudioRenderer,
         F: FnOnce(f32, usize) -> R,
     {
+        Self::with_host_preference(factory, None)
+    }
+
+    /// Create and start a new audio host with a preferred host selection
+    ///
+    /// The factory function receives (sample_rate, block_size) and should create
+    /// the renderer with those parameters.
+    ///
+    /// If `preferred_host` is provided, it will try to use that host first before
+    /// falling back to other available hosts.
+    pub fn with_host_preference<R, F>(
+        factory: F,
+        preferred_host: Option<&str>,
+    ) -> anyhow::Result<Self>
+    where
+        R: AudioRenderer,
+        F: FnOnce(f32, usize) -> R,
+    {
         let (device, config, sample_format, host_name, buffer_range, block_size_hint) =
-            select_output_device()?;
+            select_output_device(preferred_host)?;
 
         println!("=== AUDIO CONFIGURATION ===");
         let target_frames = block_size_hint as u32;
@@ -125,7 +180,9 @@ impl AudioHost {
 }
 
 /// Select an output device and configure it
-fn select_output_device() -> anyhow::Result<(
+fn select_output_device(
+    preferred_host: Option<&str>,
+) -> anyhow::Result<(
     cpal::Device,
     StreamConfig,
     SampleFormat,
@@ -134,8 +191,38 @@ fn select_output_device() -> anyhow::Result<(
     usize,
 )> {
     let mut last_error: Option<anyhow::Error> = None;
+    let available_hosts = cpal::available_hosts();
 
-    for host_id in cpal::available_hosts() {
+    // Print available hosts
+    println!("=== AVAILABLE AUDIO HOSTS ===");
+    for host_id in &available_hosts {
+        let host_name = host_id.name();
+        let marker = if Some(host_name) == preferred_host {
+            " (preferred)"
+        } else {
+            ""
+        };
+        println!("  - {}{}", host_name, marker);
+    }
+    println!();
+
+    // Build host priority list: preferred first, then others
+    let mut host_priority = Vec::new();
+    if let Some(preferred) = preferred_host {
+        if let Some(&host_id) = available_hosts
+            .iter()
+            .find(|&h| h.name() == preferred)
+        {
+            host_priority.push(host_id);
+        }
+    }
+    for host_id in available_hosts {
+        if !host_priority.contains(&host_id) {
+            host_priority.push(host_id);
+        }
+    }
+
+    for host_id in host_priority {
         let host = cpal::host_from_id(host_id)?;
         let host_name = host_id.name().to_string();
 
@@ -147,34 +234,23 @@ fn select_output_device() -> anyhow::Result<(
             continue;
         };
 
-        match device.default_output_config() {
-            Ok(supported) => {
-                let sample_format = supported.sample_format();
-                let (buffer_size, range, block_size) =
-                    choose_buffer_size(supported.buffer_size().clone());
-                let mut config = supported.config();
-                config.buffer_size = buffer_size;
-                return Ok((device, config, sample_format, host_name, range, block_size));
-            }
-            Err(err) => {
-                last_error = Some(anyhow::anyhow!(
-                    "failed to query default output config for host {}: {}",
-                    host_name,
-                    err
-                ));
-            }
-        }
-
+        // Try to find a config with the preferred sample rate for consistent playback speed
         match device.supported_output_configs() {
-            Ok(mut configs) => {
-                if let Some(supported) = configs.next() {
-                    let sample_format = supported.sample_format();
-                    let supported_config = supported.with_max_sample_rate();
-                    let (buffer_size, range, block_size) =
-                        choose_buffer_size(supported_config.buffer_size().clone());
-                    let mut config = supported_config.config();
-                    config.buffer_size = buffer_size;
-                    return Ok((device, config, sample_format, host_name, range, block_size));
+            Ok(configs) => {
+                // Look for config that supports our preferred sample rate
+                for supported in configs {
+                    if supported.min_sample_rate().0 <= PREFERRED_SAMPLE_RATE
+                        && supported.max_sample_rate().0 >= PREFERRED_SAMPLE_RATE
+                    {
+                        let sample_format = supported.sample_format();
+                        let supported_config = supported.with_sample_rate(cpal::SampleRate(PREFERRED_SAMPLE_RATE));
+                        let (buffer_size, range, block_size) =
+                            choose_buffer_size(supported_config.buffer_size().clone(), &host_name);
+                        let mut config = supported_config.config();
+                        config.buffer_size = buffer_size;
+                        println!("Using preferred sample rate: {} Hz", PREFERRED_SAMPLE_RATE);
+                        return Ok((device, config, sample_format, host_name, range, block_size));
+                    }
                 }
             }
             Err(err) => {
@@ -185,16 +261,59 @@ fn select_output_device() -> anyhow::Result<(
                 ));
             }
         }
+
+        // Fall back to default config if preferred sample rate not available
+        match device.default_output_config() {
+            Ok(supported) => {
+                let sample_format = supported.sample_format();
+                let (buffer_size, range, block_size) =
+                    choose_buffer_size(supported.buffer_size().clone(), &host_name);
+                let mut config = supported.config();
+                config.buffer_size = buffer_size;
+                println!(
+                    "Using device default sample rate: {} Hz (preferred {} Hz not available)",
+                    config.sample_rate.0, PREFERRED_SAMPLE_RATE
+                );
+                return Ok((device, config, sample_format, host_name, range, block_size));
+            }
+            Err(err) => {
+                last_error = Some(anyhow::anyhow!(
+                    "failed to query default output config for host {}: {}",
+                    host_name,
+                    err
+                ));
+            }
+        }
     }
 
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no usable output device found")))
 }
 
-/// Choose an appropriate buffer size based on device capabilities
-fn choose_buffer_size(supported: SupportedBufferSize) -> (BufferSize, Option<(u32, u32)>, usize) {
+/// Choose an appropriate buffer size based on device capabilities and host type
+fn choose_buffer_size(
+    supported: SupportedBufferSize,
+    host_name: &str,
+) -> (BufferSize, Option<(u32, u32)>, usize) {
+    // Select buffer size based on host characteristics
+    let preferred_size = match host_name {
+        "JACK" => JACK_BLOCK_SIZE, // JACK handles low latency well
+        "ALSA" => ALSA_BLOCK_SIZE, // ALSA needs larger buffers to avoid underruns
+        _ => DEFAULT_BLOCK_SIZE,   // Safe default for other hosts
+    };
+
     match supported {
         SupportedBufferSize::Range { min, max } => {
-            let desired = DEFAULT_BLOCK_SIZE as u32;
+            // For JACK, use Default to let it manage its own buffer size
+            // JACK dynamically changes buffer sizes and we handle this via carry buffer
+            if host_name == "JACK" {
+                return (
+                    BufferSize::Default, // Let JACK use its configured size
+                    Some((min, max)),
+                    JACK_BLOCK_SIZE, // Use fixed engine block size
+                );
+            }
+
+            let desired = preferred_size as u32;
             let clamped = desired.clamp(min, max);
             (
                 BufferSize::Fixed(clamped),
@@ -203,9 +322,9 @@ fn choose_buffer_size(supported: SupportedBufferSize) -> (BufferSize, Option<(u3
             )
         }
         SupportedBufferSize::Unknown => (
-            BufferSize::Fixed(DEFAULT_BLOCK_SIZE as u32),
+            BufferSize::Fixed(preferred_size as u32),
             None,
-            DEFAULT_BLOCK_SIZE,
+            preferred_size,
         ),
     }
 }
@@ -258,6 +377,17 @@ where
 }
 
 /// Process CPAL callback: get audio from buffer and convert to target sample format
+///
+/// This function handles variable buffer sizes by using a carry buffer strategy:
+/// - The audio renderer works with fixed-size blocks (engine_block_size)
+/// - CPAL callbacks may request any number of frames (can vary between calls)
+/// - We maintain a carry buffer that accumulates samples from the renderer
+/// - Each callback pulls from the carry buffer and generates new blocks as needed
+///
+/// This approach ensures:
+/// - The audio engine always processes consistent block sizes
+/// - CPAL hosts can use their preferred (potentially variable) buffer sizes
+/// - Smooth audio playback across different hosts (ALSA, Jack, PulseAudio, etc.)
 fn process_cpal_callback<T, R>(
     output: &mut [T],
     channels: usize,
@@ -289,6 +419,7 @@ where
 
     let mut frames_written = 0;
 
+    // Fill the output buffer, generating new blocks as needed
     while frames_written < total_frames {
         if buffer.carry_available == 0 {
             // Generate a fresh block from the renderer
