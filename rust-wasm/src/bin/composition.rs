@@ -610,8 +610,8 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
             active: true,
             feedback_amount: 0.0,
             waveform: Waveform::Saw,
-            unison_voices: 1,
-            spread: 10.0,
+            unison_voices: 3,
+            spread: 0.1,
         },
     )?;
 
@@ -628,7 +628,7 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     // Bright filter that's modulated
     engine.update_filters(
         filter_id,
-        3500.0,
+        6500.0,
         0.5,
         1.0,
         0.0,
