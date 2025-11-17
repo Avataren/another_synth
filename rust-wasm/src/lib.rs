@@ -23,10 +23,11 @@ pub use traits::{AudioNode, PortId};
 pub use utils::*;
 pub use voice::Voice;
 
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub use audio_engine::{AudioEngine, LfoUpdateParams, NoiseUpdateParams};
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub use automation::{apply_connection_update as apply_modulation_update, AutomationAdapter};
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub use audio_engine::{WasmModulationType, WasmNoiseType};

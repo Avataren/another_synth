@@ -461,4 +461,174 @@ mod tests {
             "Second sample same as first"
         );
     }
+
+    #[test]
+    fn test_biquad_dc_blocking() {
+        // DC signal should be blocked by highpass
+        let mut bq = Biquad::new(FilterType::HighPass, TEST_SAMPLE_RATE, 100.0, 0.707, 0.0);
+
+        // Process DC signal (constant 1.0)
+        let mut output_sum = 0.0;
+        for _ in 0..1000 {
+            output_sum += bq.process(1.0).abs();
+        }
+        let avg_output = output_sum / 1000.0;
+
+        // After settling, DC should be heavily attenuated
+        assert!(avg_output < 0.1, "HighPass should block DC signal, got {}", avg_output);
+    }
+
+    #[test]
+    fn test_biquad_stability() {
+        // Test that filter doesn't explode with extreme inputs
+        for filter_type in [
+            FilterType::LowPass,
+            FilterType::HighPass,
+            FilterType::BandPass,
+            FilterType::Notch,
+        ] {
+            let mut bq = Biquad::new(filter_type, TEST_SAMPLE_RATE, 1000.0, 0.707, 0.0);
+
+            // Feed in extreme values
+            for _ in 0..100 {
+                let output = bq.process(100.0);
+                assert!(output.is_finite(), "Filter {:?} produced non-finite output", filter_type);
+                assert!(output.abs() < 1000.0, "Filter {:?} output exploded: {}", filter_type, output);
+            }
+
+            // Reset and test with negative extreme
+            bq.reset();
+            for _ in 0..100 {
+                let output = bq.process(-100.0);
+                assert!(output.is_finite(), "Filter {:?} produced non-finite output with negative input", filter_type);
+                assert!(output.abs() < 1000.0, "Filter {:?} output exploded with negative input: {}", filter_type, output);
+            }
+        }
+    }
+
+    #[test]
+    fn test_biquad_reset() {
+        let mut bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 1000.0, 0.707, 0.0);
+
+        // Process some samples to build up state
+        for _ in 0..10 {
+            bq.process(1.0);
+        }
+
+        // Reset
+        bq.reset();
+
+        // State variables should be zero
+        assert_eq!(bq.x1, 0.0);
+        assert_eq!(bq.x2, 0.0);
+        assert_eq!(bq.y1, 0.0);
+        assert_eq!(bq.y2, 0.0);
+    }
+
+    #[test]
+    fn test_biquad_frequency_clamping() {
+        // Test that extreme frequencies are clamped properly
+        let mut bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 100000.0, 0.707, 0.0);
+        assert!(bq.frequency < TEST_SAMPLE_RATE * 0.5, "Frequency should be clamped below Nyquist");
+
+        bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, -100.0, 0.707, 0.0);
+        assert!(bq.frequency >= 10.0, "Frequency should be clamped above minimum");
+
+        // Update coefficients with extreme values
+        bq.frequency = 100000.0;
+        bq.update_coefficients();
+        assert!(bq.b0.is_finite() && bq.b1.is_finite() && bq.b2.is_finite());
+        assert!(bq.a1.is_finite() && bq.a2.is_finite());
+    }
+
+    #[test]
+    fn test_biquad_q_clamping() {
+        // Test that Q values are handled correctly
+        let mut bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 1000.0, -1.0, 0.0);
+        assert!(bq.q > 0.0, "Q should be positive");
+
+        bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 1000.0, 0.0, 0.0);
+        assert!(bq.q > 0.0, "Q should be positive even when set to 0");
+    }
+
+    #[test]
+    fn test_biquad_all_filter_types() {
+        // Ensure all filter types can be created and process without panicking
+        for filter_type in [
+            FilterType::LowPass,
+            FilterType::HighPass,
+            FilterType::BandPass,
+            FilterType::Notch,
+            FilterType::Peaking,
+            FilterType::LowShelf,
+            FilterType::HighShelf,
+            FilterType::Ladder,
+            FilterType::Comb,
+        ] {
+            let mut bq = Biquad::new(filter_type, TEST_SAMPLE_RATE, 1000.0, 0.707, 6.0);
+
+            // Process a sine wave
+            for i in 0..100 {
+                let phase = 2.0 * PI * 100.0 * i as f32 / TEST_SAMPLE_RATE;
+                let input = phase.sin();
+                let output = bq.process(input);
+                assert!(output.is_finite(), "Filter {:?} produced non-finite output", filter_type);
+            }
+        }
+    }
+
+    #[test]
+    fn test_cascaded_biquad() {
+        let mut cascaded = CascadedBiquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 1000.0, 1.0, 0.0);
+
+        // Process impulse
+        let output1 = cascaded.process(1.0);
+        let output2 = cascaded.process(0.0);
+
+        assert!(output1.is_finite());
+        assert!(output2.is_finite());
+
+        // Reset should clear state
+        cascaded.reset();
+        let output_after_reset = cascaded.process(1.0);
+        assert!((output_after_reset - output1).abs() < F32_EPSILON, "Reset should restore initial state");
+    }
+
+    #[test]
+    fn test_biquad_gain() {
+        // Test that gain affects shelving and peaking filters
+        let mut bq_pos = Biquad::new(FilterType::LowShelf, TEST_SAMPLE_RATE, 1000.0, 0.707, 6.0);
+        let mut bq_neg = Biquad::new(FilterType::LowShelf, TEST_SAMPLE_RATE, 1000.0, 0.707, -6.0);
+        let mut bq_zero = Biquad::new(FilterType::LowShelf, TEST_SAMPLE_RATE, 1000.0, 0.707, 0.0);
+
+        // Process low frequency signal
+        let mut sum_pos = 0.0;
+        let mut sum_neg = 0.0;
+        let mut sum_zero = 0.0;
+
+        for i in 0..100 {
+            let phase = 2.0 * PI * 50.0 * i as f32 / TEST_SAMPLE_RATE;
+            let input = phase.sin();
+            sum_pos += bq_pos.process(input).abs();
+            sum_neg += bq_neg.process(input).abs();
+            sum_zero += bq_zero.process(input).abs();
+        }
+
+        // Positive gain should amplify, negative should attenuate
+        assert!(sum_pos > sum_zero, "Positive gain should amplify low frequencies");
+        assert!(sum_neg < sum_zero, "Negative gain should attenuate low frequencies");
+    }
+
+    #[test]
+    fn test_biquad_denormal_prevention() {
+        // Test that very small values are properly handled
+        let mut bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 1000.0, 0.707, 0.0);
+
+        // Process very small values
+        for _ in 0..1000 {
+            let output = bq.process(1e-20);
+            // Should either be zero or a small value, not accumulate denormals
+            assert!(output.abs() < 1e-15 || output == 0.0);
+        }
+    }
 }
