@@ -105,6 +105,32 @@
         </div>
       </div>
 
+      <div class="waveform-section">
+        <div class="waveform-header">
+          <div class="text-subtitle2">Waveform Preview</div>
+          <q-btn
+            dense
+            flat
+            icon="refresh"
+            :loading="isWaveformLoading"
+            @click="refreshWaveform"
+          />
+        </div>
+        <div class="waveform-canvas-wrapper">
+          <canvas
+            ref="waveformCanvas"
+            :width="waveformWidth"
+            :height="waveformHeight"
+          ></canvas>
+          <div
+            v-if="showWaveformPlaceholder"
+            class="waveform-placeholder"
+          >
+            {{ waveformPlaceholderText }}
+          </div>
+        </div>
+      </div>
+
       <routing-component
         :source-id="props.nodeId"
         :source-type="VoiceNodeType.Sampler"
@@ -114,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
@@ -151,7 +177,7 @@ function forwardClose() {
 }
 
 const store = useAudioSystemStore();
-const { samplerStates } = storeToRefs(store);
+const { samplerStates, samplerWaveforms } = storeToRefs(store);
 
 const fallbackState: SamplerState = {
   id: props.nodeId,
@@ -171,6 +197,16 @@ const fallbackState: SamplerState = {
 const samplerState = computed<SamplerState>(() => {
   return samplerStates.value.get(props.nodeId) ?? fallbackState;
 });
+
+const waveformData = computed<Float32Array | undefined>(() => {
+  return samplerWaveforms.value.get(props.nodeId);
+});
+
+const waveformCanvas = ref<HTMLCanvasElement | null>(null);
+const waveformWidth = 512;
+const waveformHeight = 120;
+const isWaveformLoading = ref(false);
+const waveformError = ref<string | null>(null);
 
 const loopModeOptions = [
   { label: 'Off', value: SamplerLoopMode.Off },
@@ -320,6 +356,7 @@ async function handleFileUpload(event: Event) {
       fileName: file.name,
     });
     store.currentInstrument?.importSampleData(props.nodeId, wavBytes);
+    await refreshWaveform();
   } catch (err) {
     console.error('Failed to import sample:', err);
   } finally {
@@ -327,6 +364,93 @@ async function handleFileUpload(event: Event) {
       input.value = '';
     }
   }
+}
+
+async function refreshWaveform() {
+  if (!store.currentInstrument) return;
+  try {
+    isWaveformLoading.value = true;
+    waveformError.value = null;
+    await store.fetchSamplerWaveform(props.nodeId, waveformWidth);
+  } catch (err) {
+    console.error('Failed to refresh waveform', err);
+    waveformError.value = 'Unable to load waveform';
+  } finally {
+    isWaveformLoading.value = false;
+  }
+}
+
+const showWaveformPlaceholder = computed(() => {
+  return (
+    (!!waveformError.value || !waveformData.value || waveformData.value.length === 0) &&
+    !isWaveformLoading.value
+  );
+});
+
+const waveformPlaceholderText = computed(() => {
+  if (waveformError.value) return waveformError.value;
+  if (!samplerState.value.sampleLength) return 'No sample loaded';
+  return 'Waveform unavailable';
+});
+
+watch(
+  () => waveformData.value,
+  (data) => {
+    drawWaveform(data);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => samplerState.value.sampleLength,
+  (newLen, oldLen) => {
+    if (newLen !== oldLen) {
+      void refreshWaveform();
+    }
+  },
+);
+
+onMounted(() => {
+  if (!waveformData.value || waveformData.value.length === 0) {
+    void refreshWaveform();
+  } else {
+    drawWaveform(waveformData.value);
+  }
+});
+
+function drawWaveform(data?: Float32Array) {
+  const canvas = waveformCanvas.value;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#13171c';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const midY = canvas.height / 2;
+  ctx.strokeStyle = '#2c3e50';
+  ctx.beginPath();
+  ctx.moveTo(0, midY);
+  ctx.lineTo(canvas.width, midY);
+  ctx.stroke();
+
+  if (!data || data.length === 0) {
+    return;
+  }
+
+  ctx.strokeStyle = '#00bcd4';
+  ctx.beginPath();
+  for (let i = 0; i < data.length; i++) {
+    const x = (i / (data.length - 1)) * canvas.width;
+    const y = midY - data[i]! * (canvas.height / 2 - 2);
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.stroke();
 }
 </script>
 
@@ -367,6 +491,41 @@ async function handleFileUpload(event: Event) {
 
 .note-row > * {
   flex: 1;
+}
+
+.waveform-section {
+  margin: 1rem 0;
+}
+
+.waveform-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.waveform-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  border: 1px solid #2c3e50;
+  border-radius: 4px;
+  background-color: #13171c;
+}
+
+.waveform-canvas-wrapper canvas {
+  display: block;
+  width: 100%;
+}
+
+.waveform-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8f9dac;
+  font-size: 0.85rem;
+  pointer-events: none;
 }
 
 .loop-row {

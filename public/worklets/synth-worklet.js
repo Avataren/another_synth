@@ -1068,6 +1068,20 @@ var AudioEngine = class {
     return takeFromExternrefTable0(ret[0]);
   }
   /**
+   * @param {number} sampler_id
+   * @param {number} max_points
+   * @returns {Float32Array}
+   */
+  get_sampler_waveform(sampler_id, max_points) {
+    const ret = wasm.audioengine_get_sampler_waveform(this.__wbg_ptr, sampler_id, max_points);
+    if (ret[3]) {
+      throw takeFromExternrefTable0(ret[2]);
+    }
+    var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+  }
+  /**
    * @param {number} node_id
    * @param {number} waveform_length
    * @returns {Float32Array}
@@ -2589,6 +2603,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "importSample":
         this.handleImportSample(event.data);
         break;
+      case "getSamplerWaveform":
+        this.handleGetSamplerWaveform(event.data);
+        break;
       case "cpuUsage":
         this.handleCpuUsage();
         break;
@@ -3218,6 +3235,29 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       this.port.postMessage({
         type: "error",
         message: "Failed to generate LFO waveform"
+      });
+    }
+  }
+  handleGetSamplerWaveform(data) {
+    if (!this.audioEngine) return;
+    try {
+      const waveform = this.audioEngine.get_sampler_waveform(
+        data.samplerId,
+        data.maxLength ?? 512
+      );
+      this.port.postMessage({
+        type: "samplerWaveform",
+        samplerId: data.samplerId,
+        messageId: data.messageId,
+        waveform
+      });
+    } catch (err) {
+      console.error("Error getting sampler waveform:", err);
+      this.port.postMessage({
+        type: "error",
+        source: "getSamplerWaveform",
+        messageId: data.messageId,
+        message: "Failed to get sampler waveform"
       });
     }
   }

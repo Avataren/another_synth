@@ -124,6 +124,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     oscillatorStates: new Map<number, OscillatorState>(),
     wavetableOscillatorStates: new Map<number, OscillatorState>(),
     samplerStates: new Map<number, SamplerState>(),
+    samplerWaveforms: new Map<number, Float32Array>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
     convolverStates: new Map<number, ConvolverState>(),
     delayStates: new Map<number, DelayState>(),
@@ -775,6 +776,20 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
       this.samplerStates.set(nodeId, updatedState);
       this.sendSamplerState(nodeId);
+      void this.fetchSamplerWaveform(nodeId);
+    },
+
+    async fetchSamplerWaveform(nodeId: number, maxPoints = 512) {
+      if (!this.currentInstrument) return;
+      try {
+        const waveform = await this.currentInstrument.getSamplerWaveform(
+          nodeId,
+          maxPoints,
+        );
+        this.samplerWaveforms.set(nodeId, waveform);
+      } catch (err) {
+        console.error('Failed to fetch sampler waveform', err);
+      }
     },
 
     buildSamplerUpdatePayload(state: SamplerState) {

@@ -1003,6 +1003,20 @@ export class AudioEngine {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * @param {number} sampler_id
+     * @param {number} max_points
+     * @returns {Float32Array}
+     */
+    get_sampler_waveform(sampler_id, max_points) {
+        const ret = wasm.audioengine_get_sampler_waveform(this.__wbg_ptr, sampler_id, max_points);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @param {number} node_id
      * @param {number} waveform_length
      * @returns {Float32Array}

@@ -1692,6 +1692,49 @@ impl AudioEngine {
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn get_sampler_waveform(
+        &self,
+        sampler_id: usize,
+        max_points: usize,
+    ) -> Result<Vec<f32>, JsValue> {
+        let voice = self
+            .voices
+            .first()
+            .ok_or_else(|| JsValue::from_str("No voices available"))?;
+        let node = voice
+            .graph
+            .get_node(NodeId(sampler_id))
+            .ok_or_else(|| JsValue::from_str("Sampler node not found"))?;
+        let sampler = node
+            .as_any()
+            .downcast_ref::<Sampler>()
+            .ok_or_else(|| JsValue::from_str("Node is not a Sampler"))?;
+        let sample_data = sampler.get_sample_data();
+        let data_ref = sample_data.borrow();
+        let channels = data_ref.channels.max(1);
+        let total_frames = data_ref.len();
+        if total_frames == 0 {
+            return Ok(Vec::new());
+        }
+
+        let target_points = max_points.max(32).min(total_frames);
+        let mut waveform = Vec::with_capacity(target_points);
+        let step = total_frames as f32 / target_points as f32;
+
+        for i in 0..target_points {
+            let frame = ((i as f32 * step).floor() as usize).min(total_frames - 1);
+            let mut value = 0.0;
+            for ch in 0..channels {
+                let idx = frame * channels + ch;
+                value += data_ref.samples[idx];
+            }
+            waveform.push(value / channels as f32);
+        }
+
+        Ok(waveform)
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_filters(
         &mut self,
         filter_id: usize,

@@ -221,6 +221,43 @@ export default class Instrument {
     );
   }
 
+  public async getSamplerWaveform(
+    nodeId: number,
+    maxLength = 512,
+  ): Promise<Float32Array> {
+    if (!this.ready || !this.workletNode) {
+      throw new Error('Audio system not ready');
+    }
+    const port = this.workletNode.port;
+
+    return new Promise<Float32Array>((resolve, reject) => {
+      const messageId = `sampler-waveform-${nodeId}-${performance.now()}`;
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data.type === 'samplerWaveform' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(event.data.waveform));
+        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(event.data.message ?? 'Failed to fetch sampler waveform'));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+
+      port.postMessage({
+        type: 'getSamplerWaveform',
+        samplerId: nodeId,
+        maxLength,
+        messageId,
+      });
+
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout retrieving sampler waveform'));
+      }, 2000);
+    });
+  }
+
   public updateDelayState(nodeId: number, newState: DelayState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({

@@ -271,6 +271,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'importSample':
         this.handleImportSample(event.data);
         break;
+      case 'getSamplerWaveform':
+        this.handleGetSamplerWaveform(event.data);
+        break;
       case 'cpuUsage':
         this.handleCpuUsage();
         break;
@@ -1103,6 +1106,34 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type: 'error',
         message: 'Failed to generate LFO waveform',
+      });
+    }
+  }
+
+  private handleGetSamplerWaveform(data: {
+    samplerId: number;
+    maxLength?: number;
+    messageId: string;
+  }) {
+    if (!this.audioEngine) return;
+    try {
+      const waveform = this.audioEngine.get_sampler_waveform(
+        data.samplerId,
+        data.maxLength ?? 512,
+      );
+      this.port.postMessage({
+        type: 'samplerWaveform',
+        samplerId: data.samplerId,
+        messageId: data.messageId,
+        waveform,
+      });
+    } catch (err) {
+      console.error('Error getting sampler waveform:', err);
+      this.port.postMessage({
+        type: 'error',
+        source: 'getSamplerWaveform',
+        messageId: data.messageId,
+        message: 'Failed to get sampler waveform',
       });
     }
   }
