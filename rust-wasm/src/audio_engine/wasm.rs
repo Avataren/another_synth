@@ -286,6 +286,18 @@ impl LfoUpdateParams {
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl AudioEngine {
+    fn generate_default_sampler_data(sample_rate: f32) -> Vec<f32> {
+        let duration_seconds = 0.5f32;
+        let total_samples = (sample_rate * duration_seconds).max(1.0) as usize;
+        let frequency = 220.0f32;
+        let mut data = Vec::with_capacity(total_samples);
+        for n in 0..total_samples {
+            let t = n as f32 / sample_rate;
+            let value = (2.0 * std::f32::consts::PI * frequency * t).sin();
+            data.push(value);
+        }
+        data
+    }
     #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(sample_rate: f32) -> Self {
         let num_voices = 8;
@@ -1547,6 +1559,12 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_sampler(&mut self) -> Result<usize, JsValue> {
         let sample_data = Rc::new(RefCell::new(SampleData::new()));
+        {
+            let default_samples = Self::generate_default_sampler_data(self.sample_rate);
+            let mut data_ref = sample_data.borrow_mut();
+            data_ref.load_from_wav(default_samples, 1, self.sample_rate);
+            data_ref.root_note = 69.0;
+        }
         let mut sampler_id = NodeId(0);
         for voice in &mut self.voices {
             let mut sampler = Sampler::new(self.sample_rate);

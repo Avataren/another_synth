@@ -41,6 +41,22 @@
             />
           </div>
 
+          <generic-tab-container
+            v-if="samplerNodes.length"
+            :nodes="samplerNodes"
+            :destinationNode="destinationNode"
+            :componentName="SamplerComponent"
+            nodeLabel="Sampler"
+          />
+          <div v-else class="empty-state">
+            <q-btn
+              color="primary"
+              label="Add Sampler"
+              @click="addSampler"
+              icon="add"
+            />
+          </div>
+
           <!-- Noise -->
           <generic-tab-container
             v-if="noiseNodes.length"
@@ -239,6 +255,7 @@ import OscillatorComponent from 'src/components/OscillatorComponent.vue';
 import WavetableOscillatorComponent from 'src/components/WavetableOscillatorComponent.vue';
 import NoiseComponent from 'src/components/NoiseComponent.vue';
 import ArpeggiatorComponent from 'src/components/ArpeggiatorComponent.vue';
+import SamplerComponent from 'src/components/SamplerComponent.vue';
 
 // Modulators DSP components
 import LfoComponent from 'src/components/LfoComponent.vue';
@@ -274,6 +291,11 @@ const oscillatorNodes = computed(() => {
 
 const wavetableOscillatorNodes = computed(() => {
   const nodes = store.getVoiceNodes(0, VoiceNodeType.WavetableOscillator);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const samplerNodes = computed(() => {
+  const nodes = store.getVoiceNodes(0, VoiceNodeType.Sampler);
   return Array.isArray(nodes) ? nodes : [];
 });
 
@@ -335,6 +357,10 @@ function addOscillator() {
 
 function addNoise() {
   store.currentInstrument?.createNode(VoiceNodeType.Noise);
+}
+
+function addSampler() {
+  store.currentInstrument?.createNode(VoiceNodeType.Sampler);
 }
 
 function addArpeggiator() {

@@ -9,6 +9,7 @@ import type {
   DelayState,
   EnvelopeConfig,
   ReverbState,
+  SamplerState,
   VelocityState,
 } from 'src/audio/types/synth-layout';
 import {
@@ -23,6 +24,8 @@ import {
   type RawConnection,
   FilterType,
   FilterSlope,
+  SamplerLoopMode,
+  SamplerTriggerMode,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import {
@@ -91,6 +94,25 @@ function debounce<T extends (...args: unknown[]) => void>(
   } as T;
 }
 
+const DEFAULT_SAMPLE_RATE = 44100;
+
+function createDefaultSamplerState(id: number): SamplerState {
+  return {
+    id,
+    frequency: 440,
+    gain: 1.0,
+    loopMode: SamplerLoopMode.Off,
+    loopStart: 0,
+    loopEnd: 1,
+    sampleLength: DEFAULT_SAMPLE_RATE,
+    rootNote: 60,
+    triggerMode: SamplerTriggerMode.Gate,
+    active: true,
+    sampleRate: DEFAULT_SAMPLE_RATE,
+    channels: 1,
+  };
+}
+
 export const useAudioSystemStore = defineStore('audioSystem', {
   state: () => ({
     audioSystem: null as AudioSystem | null,
@@ -101,6 +123,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     // State maps using node IDs from the layout
     oscillatorStates: new Map<number, OscillatorState>(),
     wavetableOscillatorStates: new Map<number, OscillatorState>(),
+    samplerStates: new Map<number, SamplerState>(),
     envelopeStates: new Map<number, EnvelopeConfig>(),
     convolverStates: new Map<number, ConvolverState>(),
     delayStates: new Map<number, DelayState>(),
@@ -154,6 +177,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       switch (nodeType) {
         case VoiceNodeType.Oscillator:
           return state.oscillatorStates.get(nodeId);
+        case VoiceNodeType.WavetableOscillator:
+          return state.wavetableOscillatorStates.get(nodeId);
+        case VoiceNodeType.Sampler:
+          return state.samplerStates.get(nodeId);
         case VoiceNodeType.Envelope:
           return state.envelopeStates.get(nodeId);
         case VoiceNodeType.Filter:
@@ -573,6 +600,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             [VoiceNodeType.LFO]: [],
             [VoiceNodeType.Mixer]: [],
             [VoiceNodeType.Noise]: [],
+            [VoiceNodeType.Sampler]: [],
             [VoiceNodeType.GlobalFrequency]: [],
             [VoiceNodeType.GlobalVelocity]: [],
             [VoiceNodeType.Convolver]: [],
@@ -608,6 +636,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
                 return VoiceNodeType.GlobalVelocity;
               case 'wavetable_oscillator':
                 return VoiceNodeType.WavetableOscillator;
+              case 'sampler':
+              case 'Sampler':
+                return VoiceNodeType.Sampler;
               case 'convolver':
                 return VoiceNodeType.Convolver;
               case 'delay':
@@ -706,6 +737,73 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         loopStart: state.loopStart,
         loopEnd: state.loopEnd,
       });
+    },
+
+    updateSampler(nodeId: number, state: Partial<SamplerState>) {
+      const currentState =
+        this.samplerStates.get(nodeId) || createDefaultSamplerState(nodeId);
+      const mergedState: SamplerState = {
+        ...currentState,
+        ...state,
+        id: nodeId,
+      };
+      this.samplerStates.set(nodeId, mergedState);
+      this.sendSamplerState(nodeId);
+    },
+
+    setSamplerSampleInfo(
+      nodeId: number,
+      info: { sampleLength: number; sampleRate: number; channels: number; fileName?: string },
+    ) {
+      const currentState =
+        this.samplerStates.get(nodeId) || createDefaultSamplerState(nodeId);
+      const safeLength = info.sampleLength || currentState.sampleLength;
+      const updatedState: SamplerState = {
+        ...currentState,
+        sampleLength: safeLength,
+        sampleRate: info.sampleRate || currentState.sampleRate,
+        channels:
+          typeof info.channels === 'number'
+            ? info.channels
+            : currentState.channels,
+        loopEnd: safeLength > 0 ? 1 : currentState.loopEnd,
+      };
+      const nextFileName =
+        info.fileName !== undefined ? info.fileName : currentState.fileName;
+      if (nextFileName !== undefined) {
+        updatedState.fileName = nextFileName;
+      }
+      this.samplerStates.set(nodeId, updatedState);
+      this.sendSamplerState(nodeId);
+    },
+
+    buildSamplerUpdatePayload(state: SamplerState) {
+      const sampleLength = Math.max(1, state.sampleLength || DEFAULT_SAMPLE_RATE);
+      const loopStartNorm = Math.min(Math.max(state.loopStart ?? 0, 0), 1);
+      const requestedEnd = Math.min(Math.max(state.loopEnd ?? 1, 0), 1);
+      const minDelta = 1 / sampleLength;
+      const loopEndNorm =
+        requestedEnd <= loopStartNorm + minDelta
+          ? Math.min(1, loopStartNorm + minDelta)
+          : requestedEnd;
+
+      return {
+        frequency: state.frequency,
+        gain: state.gain,
+        loopMode: state.loopMode,
+        loopStart: loopStartNorm * sampleLength,
+        loopEnd: loopEndNorm * sampleLength,
+        rootNote: state.rootNote,
+        triggerMode: state.triggerMode,
+      };
+    },
+
+    sendSamplerState(nodeId: number) {
+      if (!this.currentInstrument) return;
+      const state = this.samplerStates.get(nodeId);
+      if (!state) return;
+      const payload = this.buildSamplerUpdatePayload(state);
+      this.currentInstrument.updateSamplerState(nodeId, payload);
     },
 
     debugNodeState() {
@@ -942,6 +1040,13 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               ]),
             );
 
+            const savedSamplerStates = new Map(
+              Array.from(this.samplerStates.entries()).map(([id, state]) => [
+                id,
+                JSON.parse(JSON.stringify(state)),
+              ]),
+            );
+
             // DEBUG: Check saved oscillator states
             console.log('BEFORE SHIFTING: Saved oscillator states:');
             savedOscillatorStates.forEach((state, id) => {
@@ -1083,6 +1188,17 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               }
             });
 
+            const shiftedSamplerStates = new Map<number, SamplerState>();
+            savedSamplerStates.forEach((state, id) => {
+              if (id !== deletedNodeId) {
+                const newId = shiftNodeId(id);
+                shiftedSamplerStates.set(newId, {
+                  ...state,
+                  id: newId,
+                });
+              }
+            });
+
             // DEBUG: Check shifted oscillator states
             console.log('AFTER SHIFTING: New oscillator states:');
             shiftedOscillatorStates.forEach((state, id) => {
@@ -1109,6 +1225,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               this.delayStates = shiftedDelayStates;
               this.convolverStates = shiftedConvolverStates;
               this.chorusStates = shiftedChorusStates;
+              this.samplerStates = shiftedSamplerStates;
               // Initialize default states only for nodes that don't have state yet
               this.initializeDefaultStates();
 
@@ -1275,6 +1392,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         }
       });
 
+      this.samplerStates.forEach((state, nodeId) => {
+        console.log('Reapplying sampler state for node', nodeId, state);
+        this.sendSamplerState(nodeId);
+      });
+
       this.chorusStates.forEach((state, nodeId) => {
         console.log('Reapplying chorus state for node', nodeId, state);
         if (this.currentInstrument?.updateChorusState) {
@@ -1339,6 +1461,16 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             spread: 0,
             wave_index: 0,
           });
+        }
+      });
+
+      const samplers = getNodesOfType(voice, VoiceNodeType.Sampler) || [];
+      samplers.forEach((sampler) => {
+        if (!this.samplerStates.has(sampler.id)) {
+          this.samplerStates.set(
+            sampler.id,
+            createDefaultSamplerState(sampler.id),
+          );
         }
       });
 

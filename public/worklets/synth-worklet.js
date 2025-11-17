@@ -2583,6 +2583,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateReverb":
         this.handleUpdateReverb(event.data);
         break;
+      case "updateSampler":
+        this.handleUpdateSampler(event.data);
+        break;
+      case "importSample":
+        this.handleImportSample(event.data);
+        break;
       case "cpuUsage":
         this.handleCpuUsage();
         break;
@@ -2616,6 +2622,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "noise" /* Noise */:
         this.audioEngine.create_noise();
         break;
+      case "sampler" /* Sampler */:
+        this.audioEngine.create_sampler();
+        break;
       case "envelope" /* Envelope */:
         this.audioEngine.create_envelope();
         break;
@@ -2632,6 +2641,32 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   handleImportWavetableData(data) {
     const uint8Data = new Uint8Array(data.data);
     this.audioEngine.import_wavetable(data.nodeId, uint8Data, 2048);
+  }
+  handleImportSample(data) {
+    if (!this.audioEngine) return;
+    try {
+      const uint8Data = new Uint8Array(data.data);
+      this.audioEngine.import_sample(data.nodeId, uint8Data);
+    } catch (err) {
+      console.error("Error importing sample:", err);
+    }
+  }
+  handleUpdateSampler(data) {
+    if (!this.audioEngine) return;
+    try {
+      this.audioEngine.update_sampler(
+        data.samplerId,
+        data.state.frequency,
+        data.state.gain,
+        data.state.loopMode,
+        data.state.loopStart,
+        data.state.loopEnd,
+        data.state.rootNote,
+        data.state.triggerMode
+      );
+    } catch (err) {
+      console.error("Error updating sampler:", err);
+    }
   }
   // Inside SynthAudioProcessor's handleMessage method:
   handleGetEnvelopePreview(data) {
@@ -2720,6 +2755,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const mixerId = this.audioEngine.create_mixer();
     console.log("#mixerID:", mixerId);
     const filterId = this.audioEngine.create_filter();
+    const samplerNodeId = this.audioEngine.create_sampler();
     const oscIds = [];
     const wtoscId = this.audioEngine.create_wavetable_oscillator();
     oscIds.push(wtoscId);
@@ -2765,6 +2801,17 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         WasmModulationType.Additive,
         ModulationTransformation.None
       );
+      if (typeof samplerNodeId === "number") {
+        this.audioEngine.connect_nodes(
+          samplerNodeId,
+          PortId.AudioOutput0,
+          filterId,
+          PortId.AudioInput0,
+          1,
+          WasmModulationType.Additive,
+          ModulationTransformation.None
+        );
+      }
       this.audioEngine.connect_nodes(
         oscIds[1],
         PortId.AudioOutput0,
@@ -2795,6 +2842,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["filter" /* Filter */]: [],
       ["mixer" /* Mixer */]: [],
       ["noise" /* Noise */]: [],
+      ["sampler" /* Sampler */]: [],
       ["global_frequency" /* GlobalFrequency */]: [],
       ["global_velocity" /* GlobalVelocity */]: [],
       ["convolver" /* Convolver */]: [],
@@ -2832,6 +2880,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "wavetable_oscillator":
           type = "wavetable_oscillator" /* WavetableOscillator */;
+          break;
+        case "sampler":
+        case "Sampler":
+          type = "sampler" /* Sampler */;
           break;
         case "convolver":
           type = "convolver" /* Convolver */;

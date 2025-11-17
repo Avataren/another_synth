@@ -98,6 +98,19 @@ export interface LfoUpdateData {
   };
 }
 
+interface SamplerUpdateData {
+  samplerId: number;
+  state: {
+    frequency: number;
+    gain: number;
+    loopMode: number;
+    loopStart: number;
+    loopEnd: number;
+    rootNote: number;
+    triggerMode: number;
+  };
+}
+
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private audioEngine: AudioEngine | null = null;
@@ -252,6 +265,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'updateReverb':
         this.handleUpdateReverb(event.data);
         break;
+      case 'updateSampler':
+        this.handleUpdateSampler(event.data);
+        break;
+      case 'importSample':
+        this.handleImportSample(event.data);
+        break;
       case 'cpuUsage':
         this.handleCpuUsage();
         break;
@@ -288,6 +307,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case VoiceNodeType.Noise:
         this.audioEngine!.create_noise();
         break;
+      case VoiceNodeType.Sampler:
+        this.audioEngine!.create_sampler();
+        break;
       case VoiceNodeType.Envelope:
         this.audioEngine!.create_envelope();
         break;
@@ -316,6 +338,34 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }) {
     const uint8Data = new Uint8Array(data.data);
     this.audioEngine!.import_wavetable(data.nodeId, uint8Data, 2048);
+  }
+
+  private handleImportSample(data: { nodeId: number; data: ArrayBuffer }) {
+    if (!this.audioEngine) return;
+    try {
+      const uint8Data = new Uint8Array(data.data);
+      this.audioEngine.import_sample(data.nodeId, uint8Data);
+    } catch (err) {
+      console.error('Error importing sample:', err);
+    }
+  }
+
+  private handleUpdateSampler(data: SamplerUpdateData) {
+    if (!this.audioEngine) return;
+    try {
+      this.audioEngine.update_sampler(
+        data.samplerId,
+        data.state.frequency,
+        data.state.gain,
+        data.state.loopMode,
+        data.state.loopStart,
+        data.state.loopEnd,
+        data.state.rootNote,
+        data.state.triggerMode,
+      );
+    } catch (err) {
+      console.error('Error updating sampler:', err);
+    }
   }
 
   // Inside SynthAudioProcessor's handleMessage method:
@@ -434,6 +484,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const filterId = this.audioEngine.create_filter();
     // this.audioEngine.create_filter();
 
+    const samplerNodeId = this.audioEngine.create_sampler();
+
     // Create oscillators.
     const oscIds: number[] = [];
     const wtoscId = this.audioEngine.create_wavetable_oscillator();
@@ -525,6 +577,18 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         ModulationTransformation.None,
       );
 
+      if (typeof samplerNodeId === 'number') {
+        this.audioEngine.connect_nodes(
+          samplerNodeId,
+          PortId.AudioOutput0,
+          filterId,
+          PortId.AudioInput0,
+          1.0,
+          WasmModulationType.Additive,
+          ModulationTransformation.None,
+        );
+      }
+
       // Connect oscillator 2's output to oscillator 1's phase mod.
       this.audioEngine.connect_nodes(
         oscIds[1]!,
@@ -568,6 +632,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Filter]: [],
       [VoiceNodeType.Mixer]: [],
       [VoiceNodeType.Noise]: [],
+      [VoiceNodeType.Sampler]: [],
       [VoiceNodeType.GlobalFrequency]: [],
       [VoiceNodeType.GlobalVelocity]: [],
       [VoiceNodeType.Convolver]: [],
@@ -606,6 +671,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'wavetable_oscillator':
           type = VoiceNodeType.WavetableOscillator;
+          break;
+        case 'sampler':
+        case 'Sampler':
+          type = VoiceNodeType.Sampler;
           break;
         case 'convolver':
           type = VoiceNodeType.Convolver;

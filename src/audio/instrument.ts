@@ -11,6 +11,8 @@ import type {
   DelayState,
   EnvelopeConfig,
   ReverbState,
+  SamplerLoopMode,
+  SamplerTriggerMode,
   VelocityState,
 } from './types/synth-layout';
 import {
@@ -22,6 +24,16 @@ import {
   type NodeConnectionUpdate,
   type FilterState,
 } from './types/synth-layout';
+
+interface SamplerUpdatePayload {
+  frequency: number;
+  gain: number;
+  loopMode: SamplerLoopMode;
+  loopStart: number;
+  loopEnd: number;
+  rootNote: number;
+  triggerMode: SamplerTriggerMode;
+}
 
 // interface ConnectionUpdateMessage {
 //   type: 'updateConnection';
@@ -152,6 +164,15 @@ export default class Instrument {
     });
   }
 
+  public updateSamplerState(nodeId: number, state: SamplerUpdatePayload) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateSampler',
+      samplerId: nodeId,
+      state,
+    });
+  }
+
   public importWavetableData(nodeId: number, wavData: Uint8Array): void {
     if (!this.ready || !this.workletNode) {
       console.error('Audio system not ready for importing wavetable data');
@@ -182,6 +203,22 @@ export default class Instrument {
       data: wavData.buffer,
     });
     console.log('Sent wavetable data to worklet');
+  }
+
+  public importSampleData(nodeId: number, wavData: Uint8Array): void {
+    if (!this.ready || !this.workletNode) {
+      console.error('Audio system not ready for importing sample data');
+      return;
+    }
+
+    this.workletNode.port.postMessage(
+      {
+        type: 'importSample',
+        nodeId,
+        data: wavData.buffer,
+      },
+      [wavData.buffer],
+    );
   }
 
   public updateDelayState(nodeId: number, newState: DelayState) {

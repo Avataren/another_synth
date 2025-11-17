@@ -34,9 +34,7 @@ interface Props {
   title?: string;
 }
 
-const { title } = withDefaults(defineProps<Props>(), {
-  title: 'Default Title',
-});
+const { title = 'Default Title' } = defineProps<Props>();
 
 // Define emits
 const emits = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);

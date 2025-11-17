@@ -269,11 +269,12 @@ impl Sampler {
 impl AudioNode for Sampler {
     fn get_ports(&self) -> FxHashMap<PortId, bool> {
         let mut ports = FxHashMap::default();
-        ports.insert(PortId::AudioOutput0, false); // Left output
-        ports.insert(PortId::AudioOutput1, false); // Right output
-        ports.insert(PortId::GlobalGate, true);    // Gate input
-        ports.insert(PortId::Frequency, true);     // Frequency modulation
-        ports.insert(PortId::GainMod, true);       // Gain modulation
+        ports.insert(PortId::AudioOutput0, true); // Left output
+        ports.insert(PortId::AudioOutput1, true); // Right output
+        ports.insert(PortId::GlobalGate, false);  // Gate input
+        ports.insert(PortId::GlobalFrequency, false); // Note pitch from voice
+        ports.insert(PortId::FrequencyMod, false);    // Frequency modulation
+        ports.insert(PortId::GainMod, false);         // Gain modulation
         ports
     }
 
@@ -304,7 +305,8 @@ impl AudioNode for Sampler {
         }
 
         // Collect frequency modulation
-        let (freq_add, freq_mult) = self.collect_modulation(PortId::Frequency, inputs, buffer_size);
+        let (freq_add, freq_mult) =
+            self.collect_modulation(PortId::FrequencyMod, inputs, buffer_size);
 
         // Collect gain modulation
         let (gain_add, gain_mult) = self.collect_modulation(PortId::GainMod, inputs, buffer_size);
@@ -343,6 +345,10 @@ impl AudioNode for Sampler {
         let root_freq = 440.0 * 2.0_f32.powf((sample_data.root_note - 69.0) / 12.0);
         let sample_rate_ratio = sample_data.sample_rate / self.sample_rate;
 
+        let global_freq_source = inputs
+            .get(&PortId::GlobalFrequency)
+            .and_then(|sources| sources.first());
+
         // Process samples directly to output
         for i in 0..buffer_size {
             let gate = self.gate_buffer[i];
@@ -374,7 +380,10 @@ impl AudioNode for Sampler {
             self.last_gate = gate;
 
             // Calculate frequency for this sample
-            let freq = (self.base_frequency + freq_add[i]) * freq_mult[i];
+            let base_freq = global_freq_source
+                .and_then(|src| src.buffer.get(i).copied())
+                .unwrap_or(self.base_frequency);
+            let freq = (base_freq + freq_add[i]) * freq_mult[i];
             let playback_rate = (freq / root_freq) * sample_rate_ratio;
 
             // Calculate gain for this sample

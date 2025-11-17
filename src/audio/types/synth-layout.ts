@@ -14,6 +14,7 @@ export enum VoiceNodeType {
   LFO = 'lfo',
   Mixer = 'mixer',
   Noise = 'noise',
+  Sampler = 'sampler',
   GlobalFrequency = 'global_frequency',
   GlobalVelocity = 'global_velocity',
   Convolver = 'convolver',
@@ -54,6 +55,34 @@ export interface ChorusState {
   mix: number;
   /** The phase difference in degrees between the LFOs for the left and right channels (0 to 360). */
   stereoPhaseOffsetDeg: number;
+}
+
+export enum SamplerLoopMode {
+  Off = 0,
+  Loop = 1,
+  PingPong = 2,
+}
+
+export enum SamplerTriggerMode {
+  FreeRunning = 0,
+  Gate = 1,
+  OneShot = 2,
+}
+
+export interface SamplerState {
+  id: number;
+  frequency: number;
+  gain: number;
+  loopMode: SamplerLoopMode;
+  loopStart: number; // normalized 0..1
+  loopEnd: number; // normalized 0..1
+  sampleLength: number;
+  rootNote: number;
+  triggerMode: SamplerTriggerMode;
+  active: boolean;
+  sampleRate: number;
+  channels: number;
+  fileName?: string;
 }
 
 export interface ConvolverState {
@@ -347,6 +376,11 @@ export function getModulationTargetsForType(
       return [
         { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
         { value: PortId.CutoffMod, label: PORT_LABELS[PortId.CutoffMod] },
+      ];
+    case VoiceNodeType.Sampler:
+      return [
+        { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
+        { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
       ];
     case VoiceNodeType.Mixer:
       return [
