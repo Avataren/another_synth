@@ -14,7 +14,15 @@ use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
 use crate::NodeId;
 use rustc_hash::FxHashMap;
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 
 const DEFAULT_NUM_VOICES: usize = 8;
 const MAX_TABLE_SIZE: usize = 2048;
@@ -216,18 +224,16 @@ impl AudioEngine {
         output_right: &mut [f32],
     ) {
         // DEBUG: Check what we're actually receiving
-        static mut CALL_COUNT: usize = 0;
-        unsafe {
-            CALL_COUNT += 1;
-            if CALL_COUNT % 1000 == 0 {
-                eprintln!("ENGINE process_audio_internal call {}:", CALL_COUNT);
-                eprintln!(
-                    "  output_left.len()={}, output_right.len()={}",
-                    output_left.len(),
-                    output_right.len()
-                );
-                eprintln!("  self.block_size={}", self.block_size);
-            }
+        static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
+        let call_count = CALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        if call_count % 1000 == 0 {
+            eprintln!("ENGINE process_audio_internal call {}:", call_count);
+            eprintln!(
+                "  output_left.len()={}, output_right.len()={}",
+                output_left.len(),
+                output_right.len()
+            );
+            eprintln!("  self.block_size={}", self.block_size);
         }
 
         let start = Instant::now();

@@ -90,6 +90,7 @@ impl AudioHost {
     ///
     /// The factory function receives (sample_rate, block_size) and should create
     /// the renderer with those parameters.
+    #[allow(dead_code)]
     pub fn new<R, F>(factory: F) -> anyhow::Result<Self>
     where
         R: AudioRenderer,
@@ -105,6 +106,7 @@ impl AudioHost {
     ///
     /// If `preferred_host` is provided, it will try to use that host first before
     /// falling back to other available hosts.
+    #[allow(dead_code)]
     pub fn with_host_preference<R, F>(
         factory: F,
         preferred_host: Option<&str>,

@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::simd::Simd;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::console;
 
 use super::morph_wavetable::{WavetableMorphCollection, WavetableSynthBank};
@@ -568,7 +568,7 @@ impl WavetableOscillator {
 
         // Correct unison if mismatched
         if self.voice_offsets.len() != self.unison_voices {
-            #[cfg(feature = "wasm")]
+            #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
             console::warn_1(
                 &format!(
                     "Correcting voice offset count ({} vs {})",
@@ -577,7 +577,7 @@ impl WavetableOscillator {
                 )
                 .into(),
             );
-            #[cfg(not(feature = "wasm"))]
+            #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
             eprintln!(
                 "Correcting voice offset count ({} vs {})",
                 self.voice_offsets.len(),

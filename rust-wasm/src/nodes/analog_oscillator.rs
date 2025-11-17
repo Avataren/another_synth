@@ -31,7 +31,7 @@ use std::simd::{LaneCount, Simd, SupportedLaneCount};
 use std::sync::Arc;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::console;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
@@ -657,9 +657,11 @@ impl AudioNode for AnalogOscillator {
         let bank = match self.wavetable_banks.get(&self.waveform) {
             Some(b) => b.clone(),
             None => {
-                #[cfg(feature = "wasm")]
-                console::error_1(&format!("Wavetable bank missing for {:?}", self.waveform).into());
-                #[cfg(not(feature = "wasm"))]
+                #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+                console::error_1(
+                    &format!("Wavetable bank missing for {:?}", self.waveform).into(),
+                );
+                #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
                 eprintln!("Wavetable bank missing for {:?}", self.waveform);
                 if let Some(o) = outputs.get_mut(&PortId::AudioOutput0) {
                     o[..buffer_size].fill(0.0);

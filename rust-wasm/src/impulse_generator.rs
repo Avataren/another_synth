@@ -1,21 +1,21 @@
 use getrandom::fill;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::{console, js_sys};
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 fn log_error(message: &str) {
     console::error_1(&message.into());
 }
 
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 fn log_error(message: &str) {
     eprintln!("{message}");
 }
 
 /// Fallback to JS crypto.getRandomValues if available, or use Math.random() as a last resort.
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     if let Some(window) = web_sys::window() {
         if let Ok(crypto) = window.crypto() {
@@ -38,7 +38,7 @@ pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     let mut rng = rand::rng();
     for byte in seed.iter_mut() {

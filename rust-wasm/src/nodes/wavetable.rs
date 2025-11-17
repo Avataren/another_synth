@@ -3,15 +3,15 @@
 use rustfft::{num_complex::Complex, FftPlanner};
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::console;
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 fn log_console(message: &str) {
     console::log_1(&message.into());
 }
 
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 fn log_console(_message: &str) {}
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]

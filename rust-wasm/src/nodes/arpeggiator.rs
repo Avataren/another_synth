@@ -2,15 +2,15 @@ use core::simd::Simd;
 use std::any::Any;
 
 use rustc_hash::FxHashMap;
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::console;
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 fn log_console(message: &str) {
     console::log_1(&message.into());
 }
 
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 fn log_console(_message: &str) {}
 
 use crate::graph::ModulationSource;

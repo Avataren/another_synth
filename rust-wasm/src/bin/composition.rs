@@ -69,6 +69,7 @@ impl TimingConfig {
 
 struct SequenceNote {
     frequency: f32,
+    #[allow(dead_code)]
     velocity: f32,
     duration_samples: usize,
 }
@@ -82,7 +83,7 @@ pub struct NoteSequence {
 }
 
 impl NoteSequence {
-    pub fn new(notes: Vec<Note>, timing: &TimingConfig) -> Self {
+    fn new(notes: Vec<Note>, timing: &TimingConfig) -> Self {
         let converted_notes = notes
             .into_iter()
             .map(|note| SequenceNote {

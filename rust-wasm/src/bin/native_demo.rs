@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 "no default device"
             };
-            println!("  - {} ({})", host.name, device_status);
+            println!("  - {} ({}, id: {:?})", host.name, device_status, host.id);
         }
         println!(
             "\nUsage: {} [--host <host_name>] [--buffer-size <frames>]",
@@ -94,7 +94,7 @@ fn main() -> anyhow::Result<()> {
         buffer_size: requested_buffer_size,
     };
 
-    let _host = AudioHost::with_options(
+    let host = AudioHost::with_options(
         |sample_rate, block_size| {
             let composition =
                 Composition::new(sample_rate, block_size).expect("Failed to create composition");
@@ -111,6 +111,16 @@ fn main() -> anyhow::Result<()> {
         },
         options,
     )?;
+
+    let host_config = host.config();
+    println!(
+        "\nEngine configured: sample_rate={} Hz, channels={}, block_size={} (host: {}, device: {})",
+        host_config.sample_rate,
+        host_config.channels,
+        host_config.buffer_size,
+        host_config.host_name,
+        host_config.device_name
+    );
 
     println!("\n🎵 Musical composition in A minor");
     println!("   4 tracks: Bass, Pads, Lead, Arpeggio");
