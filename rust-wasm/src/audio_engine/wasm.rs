@@ -10,8 +10,8 @@ use crate::nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
     ArpeggiatorGenerator, Chorus, Convolver, Delay, Envelope, EnvelopeConfig, FilterCollection,
     FilterSlope, Freeverb, GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform,
-    Limiter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, Waveform, WavetableBank,
-    WavetableOscillator, WavetableOscillatorStateUpdate,
+    Limiter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, SampleData, Sampler, SamplerLoopMode,
+    SamplerTriggerMode, Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
@@ -1542,6 +1542,135 @@ impl AudioEngine {
             )));
         }
         Ok(osc_id.0)
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn create_sampler(&mut self) -> Result<usize, JsValue> {
+        let sample_data = Rc::new(RefCell::new(SampleData::new()));
+        let mut sampler_id = NodeId(0);
+        for voice in &mut self.voices {
+            let mut sampler = Sampler::new(self.sample_rate);
+            sampler.set_sample_data(sample_data.clone());
+            sampler_id = voice.graph.add_node(Box::new(sampler));
+        }
+        Ok(sampler_id.0)
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn import_sample(&mut self, sampler_id: usize, data: &[u8]) -> Result<(), JsValue> {
+        use std::io::Cursor;
+
+        log_console("Starting import_sample");
+
+        // Create a hound reader from the data
+        let cursor = Cursor::new(data);
+        let mut reader =
+            hound::WavReader::new(cursor).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let spec = reader.spec();
+        log_console(&format!(
+            "WAV spec: sample_rate={}, channels={}, bits_per_sample={}, sample_format={:?}",
+            spec.sample_rate, spec.channels, spec.bits_per_sample, spec.sample_format
+        ));
+
+        // Read the samples in f32 form
+        let samples: Vec<f32> = match (spec.bits_per_sample, spec.sample_format) {
+            (32, hound::SampleFormat::Float) => {
+                reader.samples::<f32>().map(|s| s.unwrap()).collect()
+            }
+            (16, hound::SampleFormat::Int) => reader
+                .samples::<i16>()
+                .map(|s| s.unwrap() as f32 / i16::MAX as f32)
+                .collect(),
+            (24, hound::SampleFormat::Int) => {
+                let shift = 32 - 24;
+                reader
+                    .samples::<i32>()
+                    .map(|s| (s.unwrap() << shift >> shift) as f32 / 8_388_607.0)
+                    .collect()
+            }
+            (32, hound::SampleFormat::Int) => reader
+                .samples::<i32>()
+                .map(|s| s.unwrap() as f32 / i32::MAX as f32)
+                .collect(),
+            (bits, format) => {
+                return Err(JsValue::from_str(&format!(
+                    "Unsupported WAV format: bits_per_sample={} sample_format={:?}",
+                    bits, format
+                )))
+            }
+        };
+
+        log_console(&format!("Read {} samples", samples.len()));
+
+        // Create new sample data
+        let sample_data = Rc::new(RefCell::new(SampleData::new()));
+        sample_data.borrow_mut().load_from_wav(
+            samples,
+            spec.channels as usize,
+            spec.sample_rate as f32,
+        );
+
+        // Update all sampler nodes with the new sample data
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(sampler_id)) {
+                if let Some(sampler) = node.as_any_mut().downcast_mut::<Sampler>() {
+                    sampler.set_sample_data(sample_data.clone());
+                } else {
+                    return Err(JsValue::from_str("Node is not a Sampler"));
+                }
+            } else {
+                return Err(JsValue::from_str("Node not found"));
+            }
+        }
+
+        log_console("Sample imported successfully");
+        Ok(())
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn update_sampler(
+        &mut self,
+        sampler_id: usize,
+        frequency: f32,
+        gain: f32,
+        loop_mode: u8,
+        loop_start: f32,
+        loop_end: f32,
+        root_note: f32,
+        trigger_mode: u8,
+    ) -> Result<(), JsValue> {
+        let loop_mode = match loop_mode {
+            0 => SamplerLoopMode::Off,
+            1 => SamplerLoopMode::Loop,
+            2 => SamplerLoopMode::PingPong,
+            _ => SamplerLoopMode::Off,
+        };
+
+        let trigger_mode = match trigger_mode {
+            0 => SamplerTriggerMode::FreeRunning,
+            1 => SamplerTriggerMode::Gate,
+            2 => SamplerTriggerMode::OneShot,
+            _ => SamplerTriggerMode::Gate,
+        };
+
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(sampler_id)) {
+                if let Some(sampler) = node.as_any_mut().downcast_mut::<Sampler>() {
+                    sampler.set_base_frequency(frequency);
+                    sampler.set_base_gain(gain);
+                    sampler.set_loop_mode(loop_mode);
+                    sampler.set_loop_start(loop_start);
+                    sampler.set_loop_end(loop_end);
+                    sampler.set_root_note(root_note);
+                    sampler.set_trigger_mode(trigger_mode);
+                } else {
+                    return Err(JsValue::from_str("Node is not a Sampler"));
+                }
+            } else {
+                return Err(JsValue::from_str("Node not found"));
+            }
+        }
+        Ok(())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
