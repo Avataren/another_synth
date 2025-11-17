@@ -60,13 +60,21 @@ pub struct NoiseGenerator {
     // RNG state (xorshift-like)
     rng_state: [u32; 4],
 
-    // Filter state
+    // Filter state (left channel)
     lp_state: f32x4,
     lp_state_scalar: f32,
     pink_b: [f32x4; 6],
     pink_b_scalar: [f32; 6],
     brown_state: f32x4,
     brown_state_scalar: f32,
+
+    // Filter state (right channel)
+    lp_state_r: f32x4,
+    lp_state_scalar_r: f32,
+    pink_b_r: [f32x4; 6],
+    pink_b_scalar_r: [f32; 6],
+    brown_state_r: f32x4,
+    brown_state_scalar_r: f32,
 
     // Scratch buffers for modulation
     scratch_cutoff_add: Vec<f32>,
@@ -110,6 +118,12 @@ impl NoiseGenerator {
             pink_b_scalar: [0.0; 6],
             brown_state: f32x4::splat(0.0),
             brown_state_scalar: 0.0,
+            lp_state_r: f32x4::splat(0.0),
+            lp_state_scalar_r: 0.0,
+            pink_b_r: [f32x4::splat(0.0); 6],
+            pink_b_scalar_r: [0.0; 6],
+            brown_state_r: f32x4::splat(0.0),
+            brown_state_scalar_r: 0.0,
             scratch_cutoff_add: vec![0.0; cap],
             scratch_cutoff_mult: vec![1.0; cap],
             scratch_gain_add: vec![0.0; cap],
@@ -156,6 +170,12 @@ impl NoiseGenerator {
         self.pink_b_scalar = [0.0; 6];
         self.brown_state = f32x4::splat(0.0);
         self.brown_state_scalar = 0.0;
+        self.lp_state_r = f32x4::splat(0.0);
+        self.lp_state_scalar_r = 0.0;
+        self.pink_b_r = [f32x4::splat(0.0); 6];
+        self.pink_b_scalar_r = [0.0; 6];
+        self.brown_state_r = f32x4::splat(0.0);
+        self.brown_state_scalar_r = 0.0;
     }
 
     // --- RNG ---
@@ -272,6 +292,77 @@ impl NoiseGenerator {
         self.lp_state_scalar
     }
 
+    // Right channel versions
+    #[inline(always)]
+    fn pink_simd_r(&mut self) -> f32x4 {
+        let w = self.white_simd();
+        for i in 0..6 {
+            let (p, wt) = match i {
+                0 => (PINK_P0, PINK_W0),
+                1 => (PINK_P1, PINK_W1),
+                2 => (PINK_P2, PINK_W2),
+                3 => (PINK_P3, PINK_W3),
+                4 => (PINK_P4, PINK_W4),
+                5 => (PINK_P5, PINK_W5),
+                _ => unreachable!(),
+            };
+            let pb = &mut self.pink_b_r[i];
+            *pb = Simd::splat(p).mul_add(*pb, Simd::splat(wt) * w);
+        }
+        let sum = self.pink_b_r.iter().copied().reduce(|a, b| a + b).unwrap()
+            + Simd::splat(PINK_W6_FACTOR) * w
+            + Simd::splat(PINK_FINAL_WHITE_FACTOR) * w;
+        sum * Simd::splat(PINK_OUTPUT_SCALE)
+    }
+    #[inline(always)]
+    fn pink_scalar_r(&mut self) -> f32 {
+        let w = self.white_scalar();
+        for i in 0..6 {
+            let (p, wt) = match i {
+                0 => (PINK_P0, PINK_W0),
+                1 => (PINK_P1, PINK_W1),
+                2 => (PINK_P2, PINK_W2),
+                3 => (PINK_P3, PINK_W3),
+                4 => (PINK_P4, PINK_W4),
+                5 => (PINK_P5, PINK_W5),
+                _ => unreachable!(),
+            };
+            self.pink_b_scalar_r[i] = p.mul_add(self.pink_b_scalar_r[i], wt * w);
+        }
+        let sum = self.pink_b_scalar_r.iter().copied().sum::<f32>()
+            + PINK_W6_FACTOR * w
+            + PINK_FINAL_WHITE_FACTOR * w;
+        sum * PINK_OUTPUT_SCALE
+    }
+
+    #[inline(always)]
+    fn brown_simd_r(&mut self) -> f32x4 {
+        let w = self.white_simd();
+        self.brown_state_r = Simd::splat(BROWN_DECAY)
+            .mul_add(self.brown_state_r, Simd::splat(BROWN_WHITE_INPUT_SCALE) * w);
+        self.brown_state_r * Simd::splat(BROWN_OUTPUT_SCALE)
+    }
+    #[inline(always)]
+    fn brown_scalar_r(&mut self) -> f32 {
+        let w = self.white_scalar();
+        self.brown_state_scalar_r =
+            BROWN_DECAY.mul_add(self.brown_state_scalar_r, BROWN_WHITE_INPUT_SCALE * w);
+        self.brown_state_scalar_r * BROWN_OUTPUT_SCALE
+    }
+
+    #[inline(always)]
+    fn apply_filter_simd_r(&mut self, input: f32x4, alpha: f32x4) -> f32x4 {
+        let a = alpha.simd_clamp(Simd::splat(0.0), Simd::splat(Self::MAX_FILTER_ALPHA));
+        self.lp_state_r = a.mul_add(input, (Simd::splat(1.0) - a) * self.lp_state_r);
+        self.lp_state_r
+    }
+    #[inline(always)]
+    fn apply_filter_scalar_r(&mut self, input: f32, alpha: f32) -> f32 {
+        let a = alpha.clamp(0.0, Self::MAX_FILTER_ALPHA);
+        self.lp_state_scalar_r = a.mul_add(input, (1.0 - a) * self.lp_state_scalar_r);
+        self.lp_state_scalar_r
+    }
+
     /// Core block-processing entry.
     pub fn process_block(
         &mut self,
@@ -283,12 +374,18 @@ impl NoiseGenerator {
             if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
                 buf[..buffer_size].fill(0.0);
             }
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                buf[..buffer_size].fill(0.0);
+            }
             return;
         }
-        let out = match outputs.get_mut(&PortId::AudioOutput0) {
-            Some(b) => b,
-            None => return,
-        };
+
+        // Check that we have at least one output
+        let has_out0 = outputs.contains_key(&PortId::AudioOutput0);
+        let has_out1 = outputs.contains_key(&PortId::AudioOutput1);
+        if !has_out0 && !has_out1 {
+            return;
+        }
 
         self.ensure_scratch(buffer_size);
 
@@ -325,17 +422,26 @@ impl NoiseGenerator {
             self.scratch_gain_vca[i] = base * vca;
         }
 
-        // 3) Pick noise fns once
-        let (n4, n1): (fn(&mut _) -> f32x4, fn(&mut _) -> f32) = match self.noise_type {
-            NoiseType::White => (Self::white_simd, Self::white_scalar),
-            NoiseType::Pink => (Self::pink_simd, Self::pink_scalar),
-            NoiseType::Brownian => (Self::brown_simd, Self::brown_scalar),
+        // 3) Pick noise fns once for left and right
+        let (n4_l, n1_l, n4_r, n1_r): (fn(&mut _) -> f32x4, fn(&mut _) -> f32, fn(&mut _) -> f32x4, fn(&mut _) -> f32) = match self.noise_type {
+            NoiseType::White => (Self::white_simd, Self::white_scalar, Self::white_simd, Self::white_scalar),
+            NoiseType::Pink => (Self::pink_simd, Self::pink_scalar, Self::pink_simd_r, Self::pink_scalar_r),
+            NoiseType::Brownian => (Self::brown_simd, Self::brown_scalar, Self::brown_simd_r, Self::brown_scalar_r),
         };
 
-        // 4) SIMD loop
+        // Initialize output buffers
+        if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+            buf[..buffer_size].fill(0.0);
+        }
+        if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+            buf[..buffer_size].fill(0.0);
+        }
+
+        // 4) SIMD loop - process left and right channels
         let lanes = 4;
         let chunks = buffer_size / lanes;
         let dc4 = Simd::splat(self.dc_offset);
+
         for i in 0..chunks {
             let idx = i * lanes;
             let cut_v = Simd::from_slice(&self.scratch_cutoff_mult[idx..][..lanes])
@@ -343,10 +449,23 @@ impl NoiseGenerator {
             let gain_v =
                 Simd::from_slice(&self.scratch_gain_vca[idx..][..lanes]).simd_max(Simd::splat(0.0));
             let alpha = Self::normalized_cutoff_to_alpha_simd(cut_v);
-            let noise = n4(self);
-            let filt = self.apply_filter_simd(noise, alpha) + dc4;
-            let outv = filt * gain_v;
-            outv.copy_to_slice(&mut out[idx..][..lanes]);
+
+            // Left channel
+            let noise_l = n4_l(self);
+            let filt_l = self.apply_filter_simd(noise_l, alpha) + dc4;
+            let outv_l = filt_l * gain_v;
+
+            // Right channel
+            let noise_r = n4_r(self);
+            let filt_r = self.apply_filter_simd_r(noise_r, alpha) + dc4;
+            let outv_r = filt_r * gain_v;
+
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+                outv_l.copy_to_slice(&mut buf[idx..][..lanes]);
+            }
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                outv_r.copy_to_slice(&mut buf[idx..][..lanes]);
+            }
         }
 
         // 5) Remainder
@@ -355,9 +474,23 @@ impl NoiseGenerator {
             let cut = self.scratch_cutoff_mult[i].clamp(0.0, 1.0);
             let gain = self.scratch_gain_vca[i].max(0.0);
             let alpha = Self::normalized_cutoff_to_alpha_scalar(cut);
-            let noise = n1(self);
-            let filt = self.apply_filter_scalar(noise, alpha) + self.dc_offset;
-            out[i] = filt * gain;
+
+            // Left channel
+            let noise_l = n1_l(self);
+            let filt_l = self.apply_filter_scalar(noise_l, alpha) + self.dc_offset;
+            let out_l = filt_l * gain;
+
+            // Right channel
+            let noise_r = n1_r(self);
+            let filt_r = self.apply_filter_scalar_r(noise_r, alpha) + self.dc_offset;
+            let out_r = filt_r * gain;
+
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+                buf[i] = out_l;
+            }
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                buf[i] = out_r;
+            }
         }
     }
 }
@@ -366,6 +499,7 @@ impl AudioNode for NoiseGenerator {
     fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::AudioOutput0, true),
+            (PortId::AudioOutput1, true),
             (PortId::CutoffMod, false),
             (PortId::GainMod, false),
         ]

@@ -62,13 +62,17 @@ pub struct LadderFilter {
     smoothed_resonance: f32, // normalized (0-1)
     smoothing_factor: f32,   // e.g., 0.05
 
-    // Filter state
+    // Filter state (left channel)
     stages: [f32; 4], // State variables for the four 1-pole stages
+
+    // Filter state (right channel)
+    stages_r: [f32; 4], // State variables for the four 1-pole stages (right)
 
     // === Scratch Buffers ===
     mod_scratch_add: Vec<f32>,
     mod_scratch_mult: Vec<f32>,
-    audio_in_buffer: Vec<f32>, // Holds combined audio input
+    audio_in_buffer: Vec<f32>,   // Holds combined audio input (left)
+    audio_in_buffer_r: Vec<f32>, // Holds combined audio input (right)
     scratch_cutoff_add: Vec<f32>,
     scratch_cutoff_mult: Vec<f32>,
     scratch_res_add: Vec<f32>,
@@ -98,11 +102,13 @@ impl LadderFilter {
             smoothing_factor: 0.05, // Adjust for desired smoothing speed
 
             stages: [0.0; 4],
+            stages_r: [0.0; 4],
 
             // Initialize scratch buffers
             mod_scratch_add: vec![0.0; initial_capacity],
             mod_scratch_mult: vec![1.0; initial_capacity],
             audio_in_buffer: vec![0.0; initial_capacity],
+            audio_in_buffer_r: vec![0.0; initial_capacity],
             scratch_cutoff_add: vec![0.0; initial_capacity],
             scratch_cutoff_mult: vec![1.0; initial_capacity],
             scratch_res_add: vec![0.0; initial_capacity],
@@ -122,6 +128,7 @@ impl LadderFilter {
         resize_if_needed(&mut self.mod_scratch_add, 0.0);
         resize_if_needed(&mut self.mod_scratch_mult, 1.0);
         resize_if_needed(&mut self.audio_in_buffer, 0.0);
+        resize_if_needed(&mut self.audio_in_buffer_r, 0.0);
         resize_if_needed(&mut self.scratch_cutoff_add, 0.0);
         resize_if_needed(&mut self.scratch_cutoff_mult, 1.0);
         resize_if_needed(&mut self.scratch_res_add, 0.0);
@@ -149,12 +156,13 @@ impl LadderFilter {
     /// Reset the filter's internal state variables.
     pub fn reset_state(&mut self) {
         self.stages = [0.0; 4];
+        self.stages_r = [0.0; 4];
         // Reset smoothed parameters to base values
         self.smoothed_cutoff = self.base_cutoff;
         self.smoothed_resonance = self.base_resonance;
     }
 
-    /// Process a single audio sample through the ladder filter.
+    /// Process a single audio sample through the ladder filter (left channel).
     #[inline(always)]
     fn process_one_sample(&mut self, input: f32, cutoff: f32, resonance_norm: f32) -> f32 {
         // --- Calculate Coefficients ---
@@ -198,6 +206,33 @@ impl LadderFilter {
         // Apply output gain (converted from dB)
         output * 10f32.powf(self.base_gain_db / 20.0)
     }
+
+    /// Process a single audio sample through the ladder filter (right channel).
+    #[inline(always)]
+    fn process_one_sample_r(&mut self, input: f32, cutoff: f32, resonance_norm: f32) -> f32 {
+        let g = (PI * cutoff / self.sample_rate).tan();
+        let g_inv = 1.0 / (1.0 + g);
+        let k = resonance_norm * 4.0;
+
+        let feedback_signal = k * self.stages_r[3];
+        let input_stage_value = input - feedback_signal;
+
+        let s0 = fast_tanh(input_stage_value);
+        let s1 = fast_tanh(self.stages_r[0]);
+        let s2 = fast_tanh(self.stages_r[1]);
+        let s3 = fast_tanh(self.stages_r[2]);
+        let s4 = fast_tanh(self.stages_r[3]);
+
+        let stage_update_factor = 2.0 * g * g_inv;
+
+        self.stages_r[0] += stage_update_factor * (s0 - s1);
+        self.stages_r[1] += stage_update_factor * (s1 - s2);
+        self.stages_r[2] += stage_update_factor * (s2 - s3);
+        self.stages_r[3] += stage_update_factor * (s3 - s4);
+
+        let output = self.stages_r[3];
+        output * 10f32.powf(self.base_gain_db / 20.0)
+    }
 }
 
 // Implement the modulation processor trait
@@ -206,11 +241,13 @@ impl ModulationProcessor for LadderFilter {}
 impl AudioNode for LadderFilter {
     fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
-            (PortId::AudioInput0, false),  // Input audio signal
+            (PortId::AudioInput0, false),  // Input audio signal (left)
+            (PortId::AudioInput1, false),  // Input audio signal (right)
             (PortId::CutoffMod, false),    // Modulation for cutoff frequency
             (PortId::ResonanceMod, false), // Modulation for resonance (0-1)
             // (PortId::GainMod, false),   // Optional: Modulation for gain
-            (PortId::AudioOutput0, true), // Output filtered audio
+            (PortId::AudioOutput0, true),  // Output filtered audio (left)
+            (PortId::AudioOutput1, true),  // Output filtered audio (right)
         ]
         .iter()
         .cloned()
@@ -228,25 +265,43 @@ impl AudioNode for LadderFilter {
             if let Some(output_buffer) = outputs.get_mut(&PortId::AudioOutput0) {
                 output_buffer[..buffer_size].fill(0.0);
             }
+            if let Some(output_buffer) = outputs.get_mut(&PortId::AudioOutput1) {
+                output_buffer[..buffer_size].fill(0.0);
+            }
             return;
         }
 
         self.ensure_scratch_buffers(buffer_size);
 
-        let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
-            Some(buffer) => buffer,
-            None => return,
-        };
+        // Check that we have at least one output
+        let has_out0 = outputs.contains_key(&PortId::AudioOutput0);
+        let has_out1 = outputs.contains_key(&PortId::AudioOutput1);
+        if !has_out0 && !has_out1 {
+            return;
+        }
 
         // --- 1) Process Modulation Inputs ---
 
-        // Audio Input (simple additive mix)
+        // Audio Input Left (simple additive mix)
         self.audio_in_buffer[..buffer_size].fill(0.0);
         if let Some(audio_sources) = inputs.get(&PortId::AudioInput0) {
             for source in audio_sources {
                 Self::apply_add(
                     &source.buffer,
                     &mut self.audio_in_buffer[..buffer_size],
+                    source.amount,
+                    source.transformation,
+                );
+            }
+        }
+
+        // Audio Input Right (simple additive mix)
+        self.audio_in_buffer_r[..buffer_size].fill(0.0);
+        if let Some(audio_sources) = inputs.get(&PortId::AudioInput1) {
+            for source in audio_sources {
+                Self::apply_add(
+                    &source.buffer,
+                    &mut self.audio_in_buffer_r[..buffer_size],
                     source.amount,
                     source.transformation,
                 );
@@ -292,6 +347,14 @@ impl AudioNode for LadderFilter {
         // Process gain mod if enabled
         // process_mod_input(PortId::GainMod, &mut self.scratch_gain_add, &mut self.scratch_gain_mult, 0.0, 1.0);
 
+        // Initialize output buffers
+        if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+            buf[..buffer_size].fill(0.0);
+        }
+        if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+            buf[..buffer_size].fill(0.0);
+        }
+
         // --- 2) Main Processing Loop (Sample by Sample) ---
         // Ladder filter state is highly sensitive, process sample-by-sample
         for i in 0..buffer_size {
@@ -316,21 +379,29 @@ impl AudioNode for LadderFilter {
             self.smoothed_cutoff = self.smoothed_cutoff.clamp(10.0, self.sample_rate * 0.49);
             self.smoothed_resonance = self.smoothed_resonance.clamp(0.0, 1.0);
 
-            // Process one audio sample using the smoothed parameters
-            let input_sample = self.audio_in_buffer[i];
-            let filtered_sample = self.process_one_sample(
-                input_sample,
+            // Process left channel
+            let input_sample_l = self.audio_in_buffer[i];
+            let filtered_sample_l = self.process_one_sample(
+                input_sample_l,
                 self.smoothed_cutoff,
                 self.smoothed_resonance,
             );
 
-            // Apply gain modulation if implemented
-            // let target_gain = (self.base_gain + self.scratch_gain_add[i]) * self.scratch_gain_mult[i];
-            // smoothed_gain += smoothing_factor * (target_gain - smoothed_gain);
-            // output_buffer[i] = filtered_sample * smoothed_gain;
+            // Process right channel
+            let input_sample_r = self.audio_in_buffer_r[i];
+            let filtered_sample_r = self.process_one_sample_r(
+                input_sample_r,
+                self.smoothed_cutoff,
+                self.smoothed_resonance,
+            );
 
-            // Write output (apply final gain)
-            output_buffer[i] = filtered_sample; // Gain is applied inside process_one_sample now
+            // Write outputs
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+                buf[i] = filtered_sample_l;
+            }
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                buf[i] = filtered_sample_r;
+            }
         }
     }
 
