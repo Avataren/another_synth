@@ -27,7 +27,6 @@ use rustc_hash::FxHashMap;
 use rustfft::num_traits::Float;
 use std::any::Any;
 use std::f32::consts::PI;
-use std::simd::num::SimdFloat;
 use std::simd::{LaneCount, Simd, SupportedLaneCount};
 use std::sync::Arc;
 #[cfg(feature = "wasm")]
@@ -346,7 +345,7 @@ impl AnalogOscillator {
         i: usize,
         bank: &WavetableBank,
         base_freq: f32,
-    ) -> f32
+    ) -> (f32, f32)
     where
         LaneCount<LANES>: SupportedLaneCount,
     {
@@ -365,8 +364,13 @@ impl AnalogOscillator {
         let semitone_ln = self.semitone_ratio.ln();
         let ext_phase_offset = (phase_mod * mod_index) * two_pi_recip;
 
-        let mut sum = 0.0;
+        let mut sum_l = 0.0;
+        let mut sum_r = 0.0;
         let mut v = 0;
+
+        // Calculate stereo spread: voices are panned across the stereo field
+        let total_voices = self.unison_voices as f32;
+
         while v + LANES <= self.unison_voices {
             // Vector of voice offsets
             let offs =
@@ -397,15 +401,28 @@ impl AnalogOscillator {
                 let table = bank.select_table(freq_k);
                 voice_smp[k] = cubic_interp(&table.samples, lookup_phase[k]);
             }
-            let voice_smp_v = F32xN::<LANES>::from_array(voice_smp);
 
-            // write back phases & outs
+            // write back phases & outs, and accumulate with stereo panning
             for k in 0..LANES {
                 self.voice_phases[v + k] = new_phase[k];
                 self.voice_last_out[v + k] = voice_smp[k];
+
+                // Calculate pan position for this voice: -1 (left) to +1 (right)
+                let pan = if total_voices > 1.0 {
+                    ((v + k) as f32 / (total_voices - 1.0)) * 2.0 - 1.0
+                } else {
+                    0.0  // Center for single voice
+                };
+
+                // Equal power panning: sqrt((1-pan)/2) for left, sqrt((1+pan)/2) for right
+                let pan_norm = (pan + 1.0) * 0.5;  // Normalize to 0..1
+                let gain_l = ((1.0 - pan_norm) * std::f32::consts::FRAC_PI_2).cos();
+                let gain_r = (pan_norm * std::f32::consts::FRAC_PI_2).cos();
+
+                sum_l += voice_smp[k] * gain_l;
+                sum_r += voice_smp[k] * gain_r;
             }
 
-            sum += voice_smp_v.reduce_sum();
             v += LANES;
         }
 
@@ -423,7 +440,20 @@ impl AnalogOscillator {
             };
             self.voice_phases[r] = np;
             self.voice_last_out[r] = samp;
-            sum += samp;
+
+            // Calculate pan for this voice
+            let pan = if total_voices > 1.0 {
+                (r as f32 / (total_voices - 1.0)) * 2.0 - 1.0
+            } else {
+                0.0
+            };
+
+            let pan_norm = (pan + 1.0) * 0.5;
+            let gain_l = ((1.0 - pan_norm) * std::f32::consts::FRAC_PI_2).cos();
+            let gain_r = (pan_norm * std::f32::consts::FRAC_PI_2).cos();
+
+            sum_l += samp * gain_l;
+            sum_r += samp * gain_r;
         }
 
         let total_weight: f32 = self.voice_weights.iter().sum();
@@ -432,7 +462,7 @@ impl AnalogOscillator {
         } else {
             1.0 / total_weight
         };
-        sum * norm * gain
+        (sum_l * norm * gain, sum_r * norm * gain)
     }
 }
 
@@ -479,6 +509,7 @@ impl AudioNode for AnalogOscillator {
             (PortId::FeedbackMod, false),
             (PortId::GlobalGate, false),
             (PortId::AudioOutput0, true),
+            (PortId::AudioOutput1, true),
         ]
         .into_iter()
         .collect()
@@ -495,14 +526,23 @@ impl AudioNode for AnalogOscillator {
             if let Some(o) = outputs.get_mut(&PortId::AudioOutput0) {
                 o[..buffer_size].fill(0.0);
             }
+            if let Some(o) = outputs.get_mut(&PortId::AudioOutput1) {
+                o[..buffer_size].fill(0.0);
+            }
             return;
         }
 
         // Resize scratch
         self.ensure_scratch_capacity(buffer_size);
-        let out = match outputs.get_mut(&PortId::AudioOutput0) {
-            Some(b) => b,
-            None => return,
+
+        // Get output buffers - we need to extract them first due to borrowing rules
+        let (out_l, out_r) = {
+            let has_out0 = outputs.contains_key(&PortId::AudioOutput0);
+            let has_out1 = outputs.contains_key(&PortId::AudioOutput1);
+            if !has_out0 && !has_out1 {
+                return;
+            }
+            (has_out0, has_out1)
         };
 
         // --- 1) parameter smoothing ---------------------------------------------------------------------------
@@ -631,10 +671,19 @@ impl AudioNode for AnalogOscillator {
             }
         };
 
+        // Initialize output buffers
+        if let Some(o) = outputs.get_mut(&PortId::AudioOutput0) {
+            o[..buffer_size].fill(0.0);
+        }
+        if let Some(o) = outputs.get_mut(&PortId::AudioOutput1) {
+            o[..buffer_size].fill(0.0);
+        }
+
+        // Process audio
         for i in 0..buffer_size {
             self.check_gate(self.gate_buf[i]);
             let freq = self.freq_buf[i];
-            let sample = if self.unison_voices == 1 {
+            let (sample_l, sample_r) = if self.unison_voices == 1 {
                 // Fast path: pretend SIMD‑width 1 so we reuse the same function.
                 self.process_simd::<1>(i, &bank, freq)
             } else if self.unison_voices >= SIMD_WIDTH {
@@ -643,7 +692,13 @@ impl AudioNode for AnalogOscillator {
                 // fewer than 4 voices but more than 1 → fall back to scalar remainder code
                 self.process_simd::<1>(i, &bank, freq)
             };
-            out[i] = sample;
+
+            if let Some(o) = outputs.get_mut(&PortId::AudioOutput0) {
+                o[i] = sample_l;
+            }
+            if let Some(o) = outputs.get_mut(&PortId::AudioOutput1) {
+                o[i] = sample_r;
+            }
         }
     }
 

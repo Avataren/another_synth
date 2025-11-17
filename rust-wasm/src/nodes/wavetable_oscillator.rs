@@ -422,15 +422,20 @@ impl WavetableOscillator {
             if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
                 buf[..buffer_size].fill(0.0);
             }
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                buf[..buffer_size].fill(0.0);
+            }
             return;
         }
 
         self.ensure_scratch_buffers(buffer_size);
 
-        let output_buffer = match outputs.get_mut(&PortId::AudioOutput0) {
-            Some(b) => b,
-            None => return,
-        };
+        // Check that we have at least one output
+        let has_out0 = outputs.contains_key(&PortId::AudioOutput0);
+        let has_out1 = outputs.contains_key(&PortId::AudioOutput1);
+        if !has_out0 && !has_out1 {
+            return;
+        }
 
         // — Parameter smoothing —
         let alpha = (self.smoothing_coeff * buffer_size as f32).min(1.0);
@@ -605,10 +610,20 @@ impl WavetableOscillator {
             1.0 / total_weight
         };
 
+        // Initialize output buffers
+        if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+            buf[..buffer_size].fill(0.0);
+        }
+        if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+            buf[..buffer_size].fill(0.0);
+        }
+
         // Hot‑path
         if self.unison_voices == 1 {
+            // For single voice, use a temporary buffer then copy to both channels
+            let mut temp_buffer = vec![0.0f32; buffer_size];
             self.process_simd_single_voice(
-                output_buffer,
+                &mut temp_buffer,
                 buffer_size,
                 max_wt_index,
                 sr_recip,
@@ -619,7 +634,17 @@ impl WavetableOscillator {
                 &gate_buf,
                 &collection,
             );
+            // Copy mono to both stereo channels
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+                buf[..buffer_size].copy_from_slice(&temp_buffer);
+            }
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                buf[..buffer_size].copy_from_slice(&temp_buffer);
+            }
         } else {
+            // Multi-voice: pan voices across stereo field
+            let total_voices = self.unison_voices as f32;
+
             for i in 0..buffer_size {
                 self.check_gate(self.gate_buffer[i]);
 
@@ -631,7 +656,9 @@ impl WavetableOscillator {
                 let wt_i = self.scratch_wavetable_index[i].clamp(0.0, max_wt_index);
                 let det_mod = self.scratch_detune_mod[i];
 
-                let mut sum = 0.0;
+                let mut sum_l = 0.0;
+                let mut sum_r = 0.0;
+
                 for v in 0..self.unison_voices {
                     let offset = self.voice_offsets[v];
                     let sem_off = semitone_ratio.powf(offset + det_mod);
@@ -644,13 +671,35 @@ impl WavetableOscillator {
                         (new_phase + (pm * idx_mod) * two_pi_recip + fb_val).rem_euclid(1.0);
 
                     let s = collection.lookup_sample(lookup, wt_i, eff_freq);
-                    sum += s * self.voice_weights[v];
+
+                    // Calculate pan position for this voice: -1 (left) to +1 (right)
+                    let pan = if total_voices > 1.0 {
+                        (v as f32 / (total_voices - 1.0)) * 2.0 - 1.0
+                    } else {
+                        0.0
+                    };
+
+                    // Equal power panning
+                    let pan_norm = (pan + 1.0) * 0.5;  // Normalize to 0..1
+                    let gain_l = ((1.0 - pan_norm) * std::f32::consts::FRAC_PI_2).cos();
+                    let gain_r = (pan_norm * std::f32::consts::FRAC_PI_2).cos();
+
+                    sum_l += s * self.voice_weights[v] * gain_l;
+                    sum_r += s * self.voice_weights[v] * gain_r;
 
                     self.voice_phases[v] = new_phase;
                     self.voice_last_outputs[v] = s;
                 }
 
-                output_buffer[i] = sum * norm_weight * gain;
+                let final_l = sum_l * norm_weight * gain;
+                let final_r = sum_r * norm_weight * gain;
+
+                if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+                    buf[i] = final_l;
+                }
+                if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                    buf[i] = final_r;
+                }
             }
         }
     }
@@ -721,6 +770,7 @@ impl AudioNode for WavetableOscillator {
             (PortId::DetuneMod, false),
             (PortId::GlobalGate, false),
             (PortId::AudioOutput0, true),
+            (PortId::AudioOutput1, true),
         ]
         .iter()
         .cloned()
