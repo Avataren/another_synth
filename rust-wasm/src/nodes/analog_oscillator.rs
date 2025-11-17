@@ -535,15 +535,10 @@ impl AudioNode for AnalogOscillator {
         // Resize scratch
         self.ensure_scratch_capacity(buffer_size);
 
-        // Get output buffers - we need to extract them first due to borrowing rules
-        let (out_l, out_r) = {
-            let has_out0 = outputs.contains_key(&PortId::AudioOutput0);
-            let has_out1 = outputs.contains_key(&PortId::AudioOutput1);
-            if !has_out0 && !has_out1 {
-                return;
-            }
-            (has_out0, has_out1)
-        };
+        // Check that we have at least one output
+        if !outputs.contains_key(&PortId::AudioOutput0) && !outputs.contains_key(&PortId::AudioOutput1) {
+            return;
+        }
 
         // --- 1) parameter smoothing ---------------------------------------------------------------------------
         let alpha = (self.smoothing_coeff * buffer_size as f32).min(1.0);
@@ -666,7 +661,12 @@ impl AudioNode for AnalogOscillator {
                 console::error_1(&format!("Wavetable bank missing for {:?}", self.waveform).into());
                 #[cfg(not(feature = "wasm"))]
                 eprintln!("Wavetable bank missing for {:?}", self.waveform);
-                out[..buffer_size].fill(0.0);
+                if let Some(o) = outputs.get_mut(&PortId::AudioOutput0) {
+                    o[..buffer_size].fill(0.0);
+                }
+                if let Some(o) = outputs.get_mut(&PortId::AudioOutput1) {
+                    o[..buffer_size].fill(0.0);
+                }
                 return;
             }
         };
