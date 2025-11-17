@@ -267,15 +267,15 @@ function apply_modulation_update(engine, update) {
     throw takeFromExternrefTable0(ret[0]);
   }
 }
-function getArrayF32FromWasm0(ptr, len) {
-  ptr = ptr >>> 0;
-  return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
-}
 function passArray8ToWasm0(arg, malloc) {
   const ptr = malloc(arg.length * 1, 1) >>> 0;
   getUint8ArrayMemory0().set(arg, ptr / 1);
   WASM_VECTOR_LEN = arg.length;
   return ptr;
+}
+function getArrayF32FromWasm0(ptr, len) {
+  ptr = ptr >>> 0;
+  return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 var FilterSlope = Object.freeze({
   Db12: 0,
@@ -384,6 +384,14 @@ var PortId = Object.freeze({
   "25": "ArpGate",
   CombinedGate: 26,
   "26": "CombinedGate"
+});
+var SamplerLoopMode = Object.freeze({
+  Off: 0,
+  "0": "Off",
+  Loop: 1,
+  "1": "Loop",
+  PingPong: 2,
+  "2": "PingPong"
 });
 var WasmModulationType = Object.freeze({
   VCA: 0,
@@ -728,6 +736,18 @@ var AudioEngine = class {
     return ret;
   }
   /**
+   * @param {number} sampler_id
+   * @param {Uint8Array} data
+   */
+  import_sample(sampler_id, data) {
+    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.audioengine_import_sample(this.__wbg_ptr, sampler_id, ptr0, len0);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
    * @param {Float32Array} gates
    * @param {Float32Array} frequencies
    * @param {Float32Array} gains
@@ -790,6 +810,16 @@ var AudioEngine = class {
     wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
   }
   /**
+   * @returns {number}
+   */
+  create_sampler() {
+    const ret = wasm.audioengine_create_sampler(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
    * @param {number} filter_id
    * @param {number} cutoff
    * @param {number} resonance
@@ -803,6 +833,21 @@ var AudioEngine = class {
    */
   update_filters(filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, _oversampling, filter_type, filter_slope) {
     const ret = wasm.audioengine_update_filters(this.__wbg_ptr, filter_id, cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, _oversampling, filter_type, filter_slope);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  /**
+   * @param {number} sampler_id
+   * @param {number} frequency
+   * @param {number} gain
+   * @param {number} loop_mode
+   * @param {number} loop_start
+   * @param {number} loop_end
+   * @param {number} root_note
+   */
+  update_sampler(sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note) {
+    const ret = wasm.audioengine_update_sampler(this.__wbg_ptr, sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
