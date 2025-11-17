@@ -361,3 +361,239 @@ impl AudioNode for LadderFilter {
         "ladderfilter"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_SAMPLE_RATE: f32 = 48000.0;
+    const EPSILON: f32 = 1e-6;
+
+    #[test]
+    fn test_ladder_filter_creation() {
+        let filter = LadderFilter::new(TEST_SAMPLE_RATE);
+        assert_eq!(filter.sample_rate, TEST_SAMPLE_RATE);
+        assert_eq!(filter.base_cutoff, 20000.0);
+        assert_eq!(filter.base_resonance, 0.0);
+        assert!(filter.enabled);
+    }
+
+    #[test]
+    fn test_ladder_filter_set_params() {
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+
+        // Test valid parameters
+        filter.set_params(1000.0, 0.5);
+        assert_eq!(filter.base_cutoff, 1000.0);
+        assert_eq!(filter.base_resonance, 0.5);
+
+        // Test clamping - cutoff too high
+        filter.set_params(100000.0, 0.5);
+        assert!(filter.base_cutoff < TEST_SAMPLE_RATE * 0.5);
+
+        // Test clamping - cutoff too low
+        filter.set_params(1.0, 0.5);
+        assert!(filter.base_cutoff >= 10.0);
+
+        // Test clamping - resonance too high
+        filter.set_params(1000.0, 2.0);
+        assert!(filter.base_resonance <= 1.0);
+
+        // Test clamping - resonance negative
+        filter.set_params(1000.0, -0.5);
+        assert!(filter.base_resonance >= 0.0);
+    }
+
+    #[test]
+    fn test_ladder_filter_gain() {
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+
+        filter.set_gain_db(6.0);
+        assert_eq!(filter.base_gain_db, 6.0);
+
+        filter.set_gain_db(-12.0);
+        assert_eq!(filter.base_gain_db, -12.0);
+    }
+
+    #[test]
+    fn test_ladder_filter_reset() {
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+        filter.set_params(1000.0, 0.5);
+
+        // Process some samples to build up state
+        for _ in 0..10 {
+            filter.process_one_sample(1.0, 1000.0, 0.5);
+        }
+
+        // Verify state is non-zero
+        let has_state = filter.stages.iter().any(|&s| s.abs() > EPSILON);
+        assert!(has_state, "Filter should have built up state");
+
+        // Reset
+        filter.reset_state();
+
+        // Verify all state is cleared
+        for (i, &stage) in filter.stages.iter().enumerate() {
+            assert_eq!(
+                stage, 0.0,
+                "Stage {} should be zero after reset",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_ladder_filter_stability() {
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+        filter.set_params(1000.0, 0.9);
+
+        // Process extreme inputs
+        for _ in 0..1000 {
+            let output = filter.process_one_sample(100.0, 1000.0, 0.9);
+            assert!(
+                output.is_finite(),
+                "Filter produced non-finite output"
+            );
+            assert!(
+                output.abs() < 1000.0,
+                "Filter output exploded: {}",
+                output
+            );
+        }
+    }
+
+    #[test]
+    fn test_ladder_filter_self_oscillation() {
+        // At high resonance, filter should self-oscillate
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+        filter.set_params(1000.0, 1.0);
+
+        // Feed impulse
+        filter.process_one_sample(1.0, 1000.0, 1.0);
+
+        // Continue processing zeros
+        let mut max_output: f32 = 0.0;
+        for _ in 0..100 {
+            let output = filter.process_one_sample(0.0, 1000.0, 1.0);
+            max_output = max_output.max(output.abs());
+        }
+
+        // Should have significant output from self-oscillation
+        assert!(
+            max_output > 0.01,
+            "Filter should self-oscillate at high resonance, max output: {}",
+            max_output
+        );
+    }
+
+    #[test]
+    fn test_ladder_filter_lowpass_behavior() {
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+        filter.set_params(1000.0, 0.5);
+
+        // Generate low frequency sine wave (100 Hz)
+        let mut low_freq_sum = 0.0;
+        for i in 0..480 {
+            let phase = 2.0 * std::f32::consts::PI * 100.0 * i as f32 / TEST_SAMPLE_RATE;
+            let input = phase.sin();
+            let output = filter.process_one_sample(input, 1000.0, 0.5);
+            low_freq_sum += output.abs();
+        }
+
+        filter.reset_state();
+
+        // Generate high frequency sine wave (5000 Hz)
+        let mut high_freq_sum = 0.0;
+        for i in 0..480 {
+            let phase = 2.0 * std::f32::consts::PI * 5000.0 * i as f32 / TEST_SAMPLE_RATE;
+            let input = phase.sin();
+            let output = filter.process_one_sample(input, 1000.0, 0.5);
+            high_freq_sum += output.abs();
+        }
+
+        // Low frequencies should pass more than high frequencies
+        assert!(
+            low_freq_sum > high_freq_sum,
+            "Ladder filter should attenuate high frequencies more than low. Low: {}, High: {}",
+            low_freq_sum,
+            high_freq_sum
+        );
+    }
+
+    #[test]
+    fn test_ladder_filter_varying_cutoff() {
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+
+        // Process with varying cutoff frequencies
+        for cutoff in [100.0, 500.0, 1000.0, 5000.0, 10000.0] {
+            filter.reset_state();
+            filter.set_params(cutoff, 0.5);
+
+            // Process sine wave at half the cutoff frequency
+            let test_freq = cutoff / 2.0;
+            let mut sum = 0.0;
+            for i in 0..480 {
+                let phase = 2.0 * std::f32::consts::PI * test_freq * i as f32 / TEST_SAMPLE_RATE;
+                let input = phase.sin();
+                let output = filter.process_one_sample(input, cutoff, 0.5);
+                sum += output.abs();
+            }
+
+            assert!(
+                sum > 0.0,
+                "Filter should pass frequency at half cutoff for cutoff {}",
+                cutoff
+            );
+            assert!(
+                sum.is_finite(),
+                "Output should be finite for cutoff {}",
+                cutoff
+            );
+        }
+    }
+
+    #[test]
+    fn test_ladder_filter_denormals() {
+        let mut filter = LadderFilter::new(TEST_SAMPLE_RATE);
+        filter.set_params(1000.0, 0.5);
+
+        // Process very small values
+        for _ in 0..1000 {
+            let output = filter.process_one_sample(1e-30, 1000.0, 0.5);
+            assert!(
+                output.abs() < 1e-10 || output == 0.0,
+                "Should handle denormals gracefully"
+            );
+        }
+    }
+
+    #[test]
+    fn test_fast_tanh() {
+        // Test the fast_tanh approximation
+        for x in [-5.0, -2.0, -1.0, 0.0, 1.0, 2.0, 5.0] {
+            let result = fast_tanh(x);
+            let expected = x.tanh();
+
+            assert!(
+                result.is_finite(),
+                "fast_tanh should produce finite output for {}",
+                x
+            );
+
+            // Should be reasonably close to actual tanh
+            assert!(
+                (result - expected).abs() < 0.1,
+                "fast_tanh({}) = {}, expected close to {}",
+                x,
+                result,
+                expected
+            );
+        }
+
+        // Test clamping at extremes
+        let extreme_pos = fast_tanh(10.0);
+        let extreme_neg = fast_tanh(-10.0);
+        assert!((extreme_pos - 1.0).abs() < 0.1);
+        assert!((extreme_neg - (-1.0)).abs() < 0.1);
+    }
+}

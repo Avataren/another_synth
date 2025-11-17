@@ -933,6 +933,7 @@ impl AudioNode for FilterCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{ModulationType, ModulationTransformation};
     // Removed the Lerp trait definition - no longer needed
 
     const TEST_SAMPLE_RATE: f32 = 48000.0;

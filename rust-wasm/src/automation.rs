@@ -1,4 +1,4 @@
-use crate::{audio_engine::WasmModulationType, graph::ModulationTransformation, traits::PortId};
+use crate::{graph::{ModulationType as WasmModulationType, ModulationTransformation}, traits::PortId};
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use crate::audio_engine::AudioEngine;

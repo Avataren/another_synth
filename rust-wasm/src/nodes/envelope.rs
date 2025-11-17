@@ -520,3 +520,419 @@ impl AudioNode for Envelope {
         "envelope"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_SAMPLE_RATE: f32 = 48000.0;
+    const EPSILON: f32 = 1e-6;
+
+    fn create_test_envelope() -> Envelope {
+        let config = EnvelopeConfig {
+            attack: 0.1,
+            decay: 0.1,
+            sustain: 0.7,
+            release: 0.2,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+            active: true,
+        };
+        Envelope::new(TEST_SAMPLE_RATE, config)
+    }
+
+    #[test]
+    fn test_envelope_creation() {
+        let env = create_test_envelope();
+        assert_eq!(env.phase, EnvelopePhase::Idle);
+        assert_eq!(env.value, 0.0);
+        assert!(env.config.active);
+    }
+
+    #[test]
+    fn test_envelope_gate_on_triggers_attack() {
+        let mut env = create_test_envelope();
+
+        // Trigger gate on
+        env.trigger(true);
+
+        assert_eq!(env.phase, EnvelopePhase::Attack);
+        assert_eq!(env.position, 0.0);
+    }
+
+    #[test]
+    fn test_envelope_attack_phase() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        let mut reached_peak = false;
+        let max_samples = (TEST_SAMPLE_RATE * env.config.attack * 2.0) as usize;
+
+        for _ in 0..max_samples {
+            let value = env.process_sample(0.0, 1.0);
+            if (value - 1.0).abs() < 0.01 {
+                reached_peak = true;
+                // Phase should be Attack or Decay (may transition on reaching peak)
+                assert!(matches!(env.phase, EnvelopePhase::Attack | EnvelopePhase::Decay));
+                break;
+            }
+        }
+
+        assert!(reached_peak, "Envelope should reach peak (1.0) during attack");
+    }
+
+    #[test]
+    fn test_envelope_decay_phase() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        // Process through attack
+        let attack_samples = (TEST_SAMPLE_RATE * env.config.attack * 1.5) as usize;
+        for _ in 0..attack_samples {
+            env.process_sample(0.0, 1.0);
+        }
+
+        // Should now be in decay
+        assert_eq!(env.phase, EnvelopePhase::Decay);
+
+        // Process through decay
+        let decay_samples = (TEST_SAMPLE_RATE * env.config.decay * 1.5) as usize;
+        for _ in 0..decay_samples {
+            env.process_sample(0.0, 1.0);
+        }
+
+        // Should reach sustain phase
+        assert_eq!(env.phase, EnvelopePhase::Sustain);
+        assert!(
+            (env.value - env.config.sustain).abs() < 0.01,
+            "Should reach sustain level"
+        );
+    }
+
+    #[test]
+    fn test_envelope_sustain_phase() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        // Process to sustain
+        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
+        for _ in 0..total_samples {
+            env.process_sample(0.0, 1.0);
+        }
+
+        assert_eq!(env.phase, EnvelopePhase::Sustain);
+
+        // Sustain should hold constant value
+        let sustain_value = env.value;
+        for _ in 0..1000 {
+            let value = env.process_sample(0.0, 1.0);
+            assert!(
+                (value - sustain_value).abs() < EPSILON,
+                "Sustain phase should hold constant value"
+            );
+        }
+    }
+
+    #[test]
+    fn test_envelope_release_phase() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        // Process to sustain
+        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
+        for _ in 0..total_samples {
+            env.process_sample(0.0, 1.0);
+        }
+
+        // Trigger release
+        env.trigger(false);
+        assert_eq!(env.phase, EnvelopePhase::Release);
+
+        // Value should decrease towards zero
+        let mut reached_zero = false;
+        let max_release_samples = (TEST_SAMPLE_RATE * env.config.release * 2.0) as usize;
+
+        for _ in 0..max_release_samples {
+            let value = env.process_sample(0.0, 1.0);
+            if value < 0.001 {
+                reached_zero = true;
+                break;
+            }
+        }
+
+        assert!(reached_zero, "Envelope should reach near zero during release");
+        // Phase should be Release or Idle (may transition on reaching zero)
+        assert!(matches!(env.phase, EnvelopePhase::Release | EnvelopePhase::Idle));
+    }
+
+    #[test]
+    fn test_envelope_full_cycle() {
+        let mut env = create_test_envelope();
+
+        // Gate on
+        env.trigger(true);
+        assert_eq!(env.phase, EnvelopePhase::Attack);
+
+        // Process through attack and decay
+        let ad_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
+        for _ in 0..ad_samples {
+            env.process_sample(0.0, 1.0);
+        }
+        assert_eq!(env.phase, EnvelopePhase::Sustain);
+
+        // Hold sustain
+        for _ in 0..1000 {
+            env.process_sample(0.0, 1.0);
+        }
+        assert_eq!(env.phase, EnvelopePhase::Sustain);
+
+        // Gate off
+        env.trigger(false);
+        assert_eq!(env.phase, EnvelopePhase::Release);
+
+        // Process through release
+        let release_samples = (TEST_SAMPLE_RATE * env.config.release * 2.0) as usize;
+        for _ in 0..release_samples {
+            env.process_sample(0.0, 1.0);
+        }
+        assert_eq!(env.phase, EnvelopePhase::Idle);
+        assert!(env.value < 0.001);
+    }
+
+    #[test]
+    fn test_envelope_retrigger() {
+        let mut env = create_test_envelope();
+
+        // First trigger
+        env.trigger(true);
+        let ad_samples = (TEST_SAMPLE_RATE * env.config.attack * 0.5) as usize;
+        for _ in 0..ad_samples {
+            env.process_sample(0.0, 1.0);
+        }
+
+        let mid_attack_value = env.value;
+        assert!(mid_attack_value > 0.0 && mid_attack_value < 1.0);
+
+        // Retrigger while in attack
+        env.trigger(false);
+        env.trigger(true);
+
+        assert_eq!(env.phase, EnvelopePhase::Attack);
+        assert_eq!(env.position, 0.0);
+    }
+
+    #[test]
+    fn test_envelope_attack_modulation() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        // Process with faster attack (multiplicative modulation)
+        let faster_mult = 0.5; // Makes attack 2x faster
+        let samples = (TEST_SAMPLE_RATE * env.config.attack * faster_mult * 1.2) as usize;
+
+        for _ in 0..samples {
+            env.process_sample(0.0, faster_mult);
+        }
+
+        // Should reach decay faster
+        assert_eq!(env.phase, EnvelopePhase::Decay);
+    }
+
+    #[test]
+    fn test_envelope_minimum_attack_time() {
+        let config = EnvelopeConfig {
+            attack: 0.0, // Zero attack
+            decay: 0.1,
+            sustain: 0.7,
+            release: 0.1,
+            attack_curve: 0.0,
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+            active: true,
+        };
+
+        let env = Envelope::new(TEST_SAMPLE_RATE, config);
+        // Should be clamped to minimum
+        assert!(env.config.attack >= 0.001);
+    }
+
+    #[test]
+    fn test_envelope_curves() {
+        // Test exponential attack curve
+        let config_exp = EnvelopeConfig {
+            attack: 0.1,
+            decay: 0.1,
+            sustain: 0.7,
+            release: 0.1,
+            attack_curve: 1.0, // Exponential
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+            active: true,
+        };
+
+        let mut env_exp = Envelope::new(TEST_SAMPLE_RATE, config_exp);
+        env_exp.trigger(true);
+
+        // Sample at 50% through attack
+        let half_attack = (TEST_SAMPLE_RATE * 0.05) as usize;
+        for _ in 0..half_attack {
+            env_exp.process_sample(0.0, 1.0);
+        }
+
+        let exp_value = env_exp.value;
+
+        // Test linear attack curve
+        let config_lin = EnvelopeConfig {
+            attack: 0.1,
+            decay: 0.1,
+            sustain: 0.7,
+            release: 0.1,
+            attack_curve: 0.0, // Linear
+            decay_curve: 0.0,
+            release_curve: 0.0,
+            attack_smoothing_samples: 0,
+            active: true,
+        };
+
+        let mut env_lin = Envelope::new(TEST_SAMPLE_RATE, config_lin);
+        env_lin.trigger(true);
+
+        for _ in 0..half_attack {
+            env_lin.process_sample(0.0, 1.0);
+        }
+
+        let lin_value = env_lin.value;
+
+        // Exponential should be lower at midpoint
+        assert!(
+            exp_value < lin_value,
+            "Exponential curve should be slower at midpoint. Exp: {}, Lin: {}",
+            exp_value,
+            lin_value
+        );
+    }
+
+    #[test]
+    fn test_envelope_reset() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        // Process to build state
+        for _ in 0..100 {
+            env.process_sample(0.0, 1.0);
+        }
+
+        env.reset();
+
+        assert_eq!(env.phase, EnvelopePhase::Idle);
+        assert_eq!(env.value, 0.0);
+        assert_eq!(env.position, 0.0);
+        assert_eq!(env.last_gate_value, 0.0);
+    }
+
+    #[test]
+    fn test_envelope_is_processing_active() {
+        let mut env = create_test_envelope();
+
+        // Should not be active when idle
+        assert!(!env.is_processing_active());
+
+        // Should be active when triggered
+        env.trigger(true);
+        assert!(env.is_processing_active());
+
+        // Should remain active during all phases
+        let samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
+        for _ in 0..samples {
+            env.process_sample(0.0, 1.0);
+        }
+        assert!(env.is_processing_active());
+
+        // Should be active during release
+        env.trigger(false);
+        assert!(env.is_processing_active());
+
+        // Should become inactive after release completes
+        let release_samples = (TEST_SAMPLE_RATE * env.config.release * 2.0) as usize;
+        for _ in 0..release_samples {
+            env.process_sample(0.0, 1.0);
+        }
+        assert!(!env.is_processing_active());
+    }
+
+    #[test]
+    fn test_envelope_phase_transitions_are_smooth() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        let mut prev_value = 0.0;
+        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay + 0.1) * 1.5) as usize;
+
+        for _ in 0..total_samples {
+            let value = env.process_sample(0.0, 1.0);
+            // Check for discontinuities (jumps larger than expected)
+            let diff = (value - prev_value).abs();
+            assert!(
+                diff < 0.1,
+                "Envelope transition should be smooth, found jump of {}",
+                diff
+            );
+            prev_value = value;
+        }
+    }
+
+    #[test]
+    fn test_envelope_output_range() {
+        let mut env = create_test_envelope();
+        env.trigger(true);
+
+        // Process through full envelope
+        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay + env.config.release + 0.5) * 2.0) as usize;
+
+        for i in 0..total_samples {
+            // Trigger release partway through
+            if i == total_samples / 2 {
+                env.trigger(false);
+            }
+
+            let value = env.process_sample(0.0, 1.0);
+
+            // Value should always be in valid range
+            assert!(
+                value >= 0.0 && value <= 1.0,
+                "Envelope value out of range: {}",
+                value
+            );
+            assert!(value.is_finite(), "Envelope produced non-finite value");
+        }
+    }
+
+    #[test]
+    fn test_envelope_config_update() {
+        let mut env = create_test_envelope();
+
+        let new_config = EnvelopeConfig {
+            attack: 0.2,
+            decay: 0.3,
+            sustain: 0.5,
+            release: 0.4,
+            attack_curve: 1.0,
+            decay_curve: -1.0,
+            release_curve: 0.5,
+            attack_smoothing_samples: 10,
+            active: true,
+        };
+
+        env.update_config(new_config.clone());
+
+        assert_eq!(env.config.decay, 0.3);
+        assert_eq!(env.config.sustain, 0.5);
+        assert_eq!(env.config.release, 0.4);
+        // Attack should be enforced to minimum
+        assert!(env.config.attack >= 0.001);
+    }
+}
