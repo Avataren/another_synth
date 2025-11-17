@@ -99,7 +99,7 @@ const DEFAULT_SAMPLE_RATE = 44100;
 function createDefaultSamplerState(id: number): SamplerState {
   return {
     id,
-    frequency: 440,
+    frequency: 261.6256,
     gain: 1.0,
     loopMode: SamplerLoopMode.Off,
     loopStart: 0,

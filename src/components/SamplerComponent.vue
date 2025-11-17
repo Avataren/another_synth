@@ -13,14 +13,6 @@
     <q-card-section v-show="!props.isMinimized" class="sampler-body">
       <div class="knob-row">
         <audio-knob-component
-          v-model="localFrequency"
-          label="Base Freq"
-          :min="20"
-          :max="4000"
-          :step="1"
-          :decimals="0"
-        />
-        <audio-knob-component
           v-model="localGain"
           label="Gain"
           :min="0"
@@ -28,13 +20,18 @@
           :step="0.001"
           :decimals="3"
         />
-        <audio-knob-component
-          v-model="localRootNote"
-          label="Root Note"
-          :min="0"
-          :max="120"
-          :step="1"
-          :decimals="0"
+      </div>
+
+      <div class="note-row">
+        <q-select
+          v-model="rootNoteValue"
+          :options="noteOptions"
+          label="Sample Root Note / Pitch"
+          dense
+          dark
+          filled
+          emit-value
+          map-options
         />
       </div>
 
@@ -158,7 +155,7 @@ const { samplerStates } = storeToRefs(store);
 
 const fallbackState: SamplerState = {
   id: props.nodeId,
-  frequency: 440,
+  frequency: 261.6256,
   gain: 1,
   loopMode: SamplerLoopMode.Off,
   loopStart: 0,
@@ -206,15 +203,23 @@ const durationLabel = computed(() => {
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
-const localFrequency = computed({
-  get: () => samplerState.value.frequency,
-  set: (val: number) => handleFrequencyChange(val),
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const noteOptions = Array.from({ length: 73 }, (_, index) => {
+  const midi = 24 + index; // C1 (24) through C7 (96)
+  const octave = Math.floor(midi / 12) - 1;
+  const label = `${NOTE_NAMES[midi % 12]}${octave}`;
+  return { label, value: midi };
 });
+
+function midiToFrequency(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
 const localGain = computed({
   get: () => samplerState.value.gain,
   set: (val: number) => handleGainChange(val),
 });
-const localRootNote = computed({
+const rootNoteValue = computed({
   get: () => samplerState.value.rootNote,
   set: (val: number) => handleRootNoteChange(val),
 });
@@ -223,16 +228,13 @@ function updateSampler(values: Partial<SamplerState>) {
   store.updateSampler(props.nodeId, values);
 }
 
-function handleFrequencyChange(value: number) {
-  updateSampler({ frequency: Number(value) });
-}
-
 function handleGainChange(value: number) {
   updateSampler({ gain: Number(value) });
 }
 
 function handleRootNoteChange(value: number) {
-  updateSampler({ rootNote: Number(value) });
+  const midi = Number(value);
+  updateSampler({ rootNote: midi, frequency: midiToFrequency(midi) });
 }
 
 function handleLoopModeChange(value: SamplerLoopMode) {
@@ -354,6 +356,16 @@ async function handleFileUpload(event: Event) {
 }
 
 .mode-row > * {
+  flex: 1;
+}
+
+.note-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.note-row > * {
   flex: 1;
 }
 

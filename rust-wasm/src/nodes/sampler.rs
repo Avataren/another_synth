@@ -350,6 +350,12 @@ impl AudioNode for Sampler {
             .and_then(|sources| sources.first());
 
         // Process samples directly to output
+        let tuning_ratio = if self.base_frequency <= 0.0 {
+            1.0
+        } else {
+            self.base_frequency / 440.0
+        };
+
         for i in 0..buffer_size {
             let gate = self.gate_buffer[i];
 
@@ -380,10 +386,10 @@ impl AudioNode for Sampler {
             self.last_gate = gate;
 
             // Calculate frequency for this sample
-            let base_freq = global_freq_source
+            let base_pitch = global_freq_source
                 .and_then(|src| src.buffer.get(i).copied())
-                .unwrap_or(self.base_frequency);
-            let freq = (base_freq + freq_add[i]) * freq_mult[i];
+                .unwrap_or(440.0);
+            let freq = ((base_pitch + freq_add[i]) * freq_mult[i]) * tuning_ratio;
             let playback_rate = (freq / root_freq) * sample_rate_ratio;
 
             // Calculate gain for this sample
