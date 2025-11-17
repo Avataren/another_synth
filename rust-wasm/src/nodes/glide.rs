@@ -12,6 +12,7 @@ pub struct Glide {
     fall_alpha: f32,
     current: f32,
     active: bool,
+    last_gate_value: f32,
 }
 
 impl Glide {
@@ -31,6 +32,7 @@ impl Glide {
             fall_alpha,
             current: 0.0,
             active: true,
+            last_gate_value: 0.0,
         }
     }
 
@@ -76,6 +78,7 @@ impl AudioNode for Glide {
     fn get_ports(&self) -> FxHashMap<PortId, bool> {
         [
             (PortId::AudioInput0, false),
+            (PortId::CombinedGate, false),
             (PortId::AudioOutput0, true),
         ]
         .into_iter()
@@ -106,9 +109,48 @@ impl AudioNode for Glide {
             None => return,
         };
 
+        // Optional gate input (CombinedGate). If present, we use it to
+        // detect new note-ons and bypass glide on 0 -> 1 edges so that
+        // each new gated note starts at its correct frequency.
+        let gate_buffer = inputs
+            .get(&PortId::CombinedGate)
+            .and_then(|sources| sources.first())
+            .map(|src| &src.buffer[..buffer_size]);
+
         if input.is_empty() {
             output[..buffer_size].fill(self.current);
+            if let Some(gates) = gate_buffer {
+                if !gates.is_empty() {
+                    self.last_gate_value = gates[gates.len().saturating_sub(1)];
+                }
+            }
             return;
+        }
+
+        // If we have a gate buffer, treat the gate as block-rate and
+        // disable glide on 0 -> 1 edges (new notes).
+        if let Some(gates) = gate_buffer {
+            if !gates.is_empty() {
+                let gate_now = gates[0];
+                let was_open = self.last_gate_value > 0.5;
+                let is_open = gate_now > 0.5;
+
+                if is_open && !was_open {
+                    // New gate edge: start directly at target without interpolation.
+                    let len = input.len().min(buffer_size);
+                    output[..len].copy_from_slice(&input[..len]);
+                    if len > 0 {
+                        self.current = input[len - 1];
+                    }
+                    if len < buffer_size {
+                        output[len..buffer_size].fill(self.current);
+                    }
+                    self.last_gate_value = gates[gates.len().saturating_sub(1)];
+                    return;
+                }
+
+                self.last_gate_value = gates[gates.len().saturating_sub(1)];
+            }
         }
 
         let len = input.len().min(buffer_size);
@@ -122,6 +164,7 @@ impl AudioNode for Glide {
 
     fn reset(&mut self) {
         self.current = 0.0;
+        self.last_gate_value = 0.0;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -219,4 +262,3 @@ mod tests {
         assert!(out_buf[7] < 1.0);
     }
 }
-

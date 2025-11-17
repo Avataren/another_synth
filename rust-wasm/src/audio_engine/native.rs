@@ -6,7 +6,7 @@ use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::WavetableSynthBank;
 use crate::nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Convolver, Delay, Envelope,
-    EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, Lfo, Limiter, Mixer, Waveform,
+    EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, Glide, Lfo, Limiter, Mixer, Waveform,
     WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 //NoiseGenerator, NoiseUpdate,
@@ -434,6 +434,63 @@ impl AudioEngine {
                 .add_node(Box::new(FilterCollection::new(self.sample_rate)));
         }
         Ok(filter_id.0)
+    }
+
+    pub fn create_glide(&mut self, rise_time: f32, fall_time: f32) -> Result<usize, String> {
+        let mut glide_id = NodeId(0);
+        for voice in &mut self.voices {
+            glide_id = voice
+                .graph
+                .add_node(Box::new(Glide::new(self.sample_rate, rise_time, fall_time)));
+        }
+        Ok(glide_id.0)
+    }
+
+    /// Insert a Glide node between the global frequency source and the target node's
+    /// GlobalFrequency input, so that pitch changes are slewed.
+    pub fn insert_glide_on_global_frequency(
+        &mut self,
+        glide_id: usize,
+        target_node: usize,
+    ) -> Result<(), String> {
+        let glide_node = NodeId(glide_id);
+        let target_node_id = NodeId(target_node);
+
+        for voice in &mut self.voices {
+            let global_freq_id = voice
+                .graph
+                .global_frequency_node
+                .ok_or_else(|| "GlobalFrequencyNode not found in voice graph".to_string())?;
+
+            // Remove the direct GlobalFrequency -> target connection, if present.
+            voice
+                .graph
+                .remove_specific_connection(global_freq_id, target_node_id, PortId::GlobalFrequency);
+
+            // Connect GlobalFrequency -> Glide input.
+            voice.graph.add_connection(Connection {
+                from_node: global_freq_id,
+                from_port: PortId::GlobalFrequency,
+                to_node: glide_node,
+                to_port: PortId::AudioInput0,
+                amount: 1.0,
+                modulation_type: ModulationType::Additive,
+                modulation_transform: ModulationTransformation::None,
+            });
+
+            // Connect Glide output -> target GlobalFrequency input.
+            voice.graph.add_connection(Connection {
+                from_node: glide_node,
+                from_port: PortId::AudioOutput0,
+                to_node: target_node_id,
+                to_port: PortId::GlobalFrequency,
+                amount: 1.0,
+                modulation_type: ModulationType::Additive,
+                modulation_transform: ModulationTransformation::None,
+            });
+        }
+
+        Ok(())
     }
 
     // pub fn create_noise(&mut self) -> Result<usize, String> {

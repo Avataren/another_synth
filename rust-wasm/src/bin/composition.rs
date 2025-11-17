@@ -80,10 +80,19 @@ pub struct NoteSequence {
     current_index: usize,
     samples_into_current_note: usize,
     block_size: usize,
+    legato: bool,
 }
 
 impl NoteSequence {
     fn new(notes: Vec<Note>, timing: &TimingConfig) -> Self {
+        Self::new_internal(notes, timing, false)
+    }
+
+    fn new_legato(notes: Vec<Note>, timing: &TimingConfig) -> Self {
+        Self::new_internal(notes, timing, true)
+    }
+
+    fn new_internal(notes: Vec<Note>, timing: &TimingConfig, legato: bool) -> Self {
         let converted_notes = notes
             .into_iter()
             .map(|note| SequenceNote {
@@ -98,6 +107,7 @@ impl NoteSequence {
             current_index: 0,
             samples_into_current_note: 0,
             block_size: timing.block_size(),
+            legato,
         }
     }
 
@@ -107,16 +117,37 @@ impl NoteSequence {
         }
 
         let current_note = &self.notes[self.current_index];
-        let remaining_samples = current_note
-            .duration_samples
-            .saturating_sub(self.samples_into_current_note);
+        let mut gate = 0.0;
 
-        // Gate stays on while we have more than one block of audio left
-        let gate = if current_note.frequency > 0.0 && remaining_samples > self.block_size {
-            1.0
-        } else {
-            0.0
-        };
+        if current_note.frequency > 0.0 {
+            if self.legato {
+                // Legato mode: keep gate open across consecutive non-rest notes,
+                // and only close it when we are about to move into a rest.
+                let end_of_note_after_block =
+                    self.samples_into_current_note + self.block_size >= current_note.duration_samples;
+                if end_of_note_after_block {
+                    let next_index = (self.current_index + 1) % self.notes.len();
+                    let next_note = &self.notes[next_index];
+                    if next_note.frequency <= 0.0 {
+                        gate = 0.0;
+                    } else {
+                        gate = 1.0;
+                    }
+                } else {
+                    gate = 1.0;
+                }
+            } else {
+                // Original per-note gate behaviour: gate closes on the last block.
+                let remaining_samples = current_note
+                    .duration_samples
+                    .saturating_sub(self.samples_into_current_note);
+                gate = if remaining_samples > self.block_size {
+                    1.0
+                } else {
+                    0.0
+                };
+            }
+        }
 
         let frequency = current_note.frequency;
 
@@ -585,6 +616,8 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     let mod_osc_id = engine.create_oscillator()?;
     let env_id = engine.create_envelope()?;
     let filter_env_id = engine.create_envelope()?;
+    // Moderate glide for the lead melody (in seconds)
+    let glide_id = engine.create_glide(0.06, 0.06)?;
 
     engine.update_wavetable_oscillator(
         osc_id,
@@ -615,6 +648,10 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
             spread: 0.1,
         },
     )?;
+
+    // Route global pitch through the glide node so the lead line has portamento
+    engine.insert_glide_on_global_frequency(glide_id, osc_id)?;
+    engine.insert_glide_on_global_frequency(glide_id, mod_osc_id)?;
 
     engine.set_chorus_active(true);
     engine.set_delay_active(true);
@@ -811,7 +848,7 @@ fn create_lead_sequence(timing: &TimingConfig) -> NoteSequence {
         Note::new(77, 0.83, 32), // F5
         Note::new(76, 0.8, 48),  // E5
     ];
-    NoteSequence::new(notes, timing)
+    NoteSequence::new_legato(notes, timing)
 }
 
 fn create_arp_sequence(timing: &TimingConfig) -> NoteSequence {
