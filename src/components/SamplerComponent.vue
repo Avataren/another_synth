@@ -181,7 +181,7 @@ const { samplerStates, samplerWaveforms } = storeToRefs(store);
 
 const fallbackState: SamplerState = {
   id: props.nodeId,
-  frequency: 261.6256,
+  frequency: 440,
   gain: 1,
   loopMode: SamplerLoopMode.Off,
   loopStart: 0,
@@ -247,10 +247,6 @@ const noteOptions = Array.from({ length: 73 }, (_, index) => {
   return { label, value: midi };
 });
 
-function midiToFrequency(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
 const localGain = computed({
   get: () => samplerState.value.gain,
   set: (val: number) => handleGainChange(val),
@@ -269,8 +265,7 @@ function handleGainChange(value: number) {
 }
 
 function handleRootNoteChange(value: number) {
-  const midi = Number(value);
-  updateSampler({ rootNote: midi, frequency: midiToFrequency(midi) });
+  updateSampler({ rootNote: Number(value) });
 }
 
 function handleLoopModeChange(value: SamplerLoopMode) {
