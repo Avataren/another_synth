@@ -322,6 +322,15 @@ export const SamplerLoopMode = Object.freeze({
     PingPong: 2, "2": "PingPong",
 });
 /**
+ * Sample trigger mode
+ * @enum {0 | 1 | 2}
+ */
+export const SamplerTriggerMode = Object.freeze({
+    FreeRunning: 0, "0": "FreeRunning",
+    Gate: 1, "1": "Gate",
+    OneShot: 2, "2": "OneShot",
+});
+/**
  * @enum {0 | 1 | 2}
  */
 export const WasmModulationType = Object.freeze({
@@ -779,9 +788,10 @@ export class AudioEngine {
      * @param {number} loop_start
      * @param {number} loop_end
      * @param {number} root_note
+     * @param {number} trigger_mode
      */
-    update_sampler(sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note) {
-        const ret = wasm.audioengine_update_sampler(this.__wbg_ptr, sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note);
+    update_sampler(sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note, trigger_mode) {
+        const ret = wasm.audioengine_update_sampler(this.__wbg_ptr, sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note, trigger_mode);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

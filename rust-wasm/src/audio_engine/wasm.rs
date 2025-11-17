@@ -11,7 +11,7 @@ use crate::nodes::{
     ArpeggiatorGenerator, Chorus, Convolver, Delay, Envelope, EnvelopeConfig, FilterCollection,
     FilterSlope, Freeverb, GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform,
     Limiter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, SampleData, Sampler, SamplerLoopMode,
-    Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    SamplerTriggerMode, Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
@@ -1637,12 +1637,20 @@ impl AudioEngine {
         loop_start: f32,
         loop_end: f32,
         root_note: f32,
+        trigger_mode: u8,
     ) -> Result<(), JsValue> {
         let loop_mode = match loop_mode {
             0 => SamplerLoopMode::Off,
             1 => SamplerLoopMode::Loop,
             2 => SamplerLoopMode::PingPong,
             _ => SamplerLoopMode::Off,
+        };
+
+        let trigger_mode = match trigger_mode {
+            0 => SamplerTriggerMode::FreeRunning,
+            1 => SamplerTriggerMode::Gate,
+            2 => SamplerTriggerMode::OneShot,
+            _ => SamplerTriggerMode::Gate,
         };
 
         for voice in &mut self.voices {
@@ -1654,6 +1662,7 @@ impl AudioEngine {
                     sampler.set_loop_start(loop_start);
                     sampler.set_loop_end(loop_end);
                     sampler.set_root_note(root_note);
+                    sampler.set_trigger_mode(trigger_mode);
                 } else {
                     return Err(JsValue::from_str("Node is not a Sampler"));
                 }

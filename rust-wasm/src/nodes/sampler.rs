@@ -18,11 +18,12 @@ pub enum SamplerLoopMode {
 }
 
 /// Sample trigger mode
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SamplerTriggerMode {
-    FreeRunning,  // Always plays
-    Gate,         // Plays when gate is high, restarts on rising edge
-    OneShot,      // Plays once per gate trigger, ignores gate until complete
+    FreeRunning = 0,  // Always plays
+    Gate = 1,         // Plays when gate is high, restarts on rising edge
+    OneShot = 2,      // Plays once per gate trigger, ignores gate until complete
 }
 
 /// Shared sample data structure
@@ -398,14 +399,13 @@ impl AudioNode for Sampler {
 
                 match self.loop_mode {
                     SamplerLoopMode::Off => {
+                        // One-shot playback - play once and stop at the end
                         self.playhead += playback_rate * self.direction;
                         if self.playhead >= sample_len {
                             self.playhead = sample_len - 1.0;
+                            self.is_playing = false;
                             if self.trigger_mode == SamplerTriggerMode::OneShot {
-                                self.is_playing = false;
                                 self.oneshot_complete = true;
-                            } else {
-                                self.playhead = 0.0;
                             }
                         } else if self.playhead < 0.0 {
                             self.playhead = 0.0;
