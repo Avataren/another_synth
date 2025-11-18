@@ -274,6 +274,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'getSamplerWaveform':
         this.handleGetSamplerWaveform(event.data);
         break;
+      case 'exportSampleData':
+        this.handleExportSampleData(event.data);
+        break;
       case 'cpuUsage':
         this.handleCpuUsage();
         break;
@@ -1134,6 +1137,30 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         source: 'getSamplerWaveform',
         messageId: data.messageId,
         message: 'Failed to get sampler waveform',
+      });
+    }
+  }
+
+  private handleExportSampleData(data: {
+    samplerId: number;
+    messageId: string;
+  }) {
+    if (!this.audioEngine) return;
+    try {
+      const sampleData = this.audioEngine.export_sample_data(data.samplerId);
+      this.port.postMessage({
+        type: 'sampleData',
+        samplerId: data.samplerId,
+        messageId: data.messageId,
+        sampleData,
+      });
+    } catch (err) {
+      console.error('Error exporting sample data:', err);
+      this.port.postMessage({
+        type: 'error',
+        source: 'exportSampleData',
+        messageId: data.messageId,
+        message: 'Failed to export sample data',
       });
     }
   }

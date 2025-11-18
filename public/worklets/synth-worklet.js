@@ -177,6 +177,17 @@ function getArrayU8FromWasm0(ptr, len) {
   ptr = ptr >>> 0;
   return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
+var cachedFloat32ArrayMemory0 = null;
+function getFloat32ArrayMemory0() {
+  if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+    cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+  }
+  return cachedFloat32ArrayMemory0;
+}
+function getArrayF32FromWasm0(ptr, len) {
+  ptr = ptr >>> 0;
+  return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
 function isLikeNone(x) {
   return x === void 0 || x === null;
 }
@@ -246,13 +257,6 @@ function _assertClass(instance, klass) {
     throw new Error(`expected instance of ${klass.name}`);
   }
 }
-var cachedFloat32ArrayMemory0 = null;
-function getFloat32ArrayMemory0() {
-  if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
-    cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
-  }
-  return cachedFloat32ArrayMemory0;
-}
 function passArrayF32ToWasm0(arg, malloc) {
   const ptr = malloc(arg.length * 4, 4) >>> 0;
   getFloat32ArrayMemory0().set(arg, ptr / 4);
@@ -272,10 +276,6 @@ function passArray8ToWasm0(arg, malloc) {
   getUint8ArrayMemory0().set(arg, ptr / 1);
   WASM_VECTOR_LEN = arg.length;
   return ptr;
-}
-function getArrayF32FromWasm0(ptr, len) {
-  ptr = ptr >>> 0;
-  return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 var FilterSlope = Object.freeze({
   Db12: 0,
@@ -1023,6 +1023,18 @@ var AudioEngine = class {
    */
   create_arpeggiator() {
     const ret = wasm.audioengine_create_arpeggiator(this.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
+   * Export raw sample data with metadata for serialization
+   * @param {number} sampler_id
+   * @returns {object}
+   */
+  export_sample_data(sampler_id) {
+    const ret = wasm.audioengine_export_sample_data(this.__wbg_ptr, sampler_id);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
@@ -2215,6 +2227,10 @@ function __wbg_get_imports() {
     const ret = new Uint8Array(arg0);
     return ret;
   };
+  imports.wbg.__wbg_newfromslice_eb3df67955925a7c = function(arg0, arg1) {
+    const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
+    return ret;
+  };
   imports.wbg.__wbg_newnoargs_254190557c45b4ec = function(arg0, arg1) {
     const ret = new Function(getStringFromWasm0(arg0, arg1));
     return ret;
@@ -2605,6 +2621,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         break;
       case "getSamplerWaveform":
         this.handleGetSamplerWaveform(event.data);
+        break;
+      case "exportSampleData":
+        this.handleExportSampleData(event.data);
         break;
       case "cpuUsage":
         this.handleCpuUsage();
@@ -3258,6 +3277,26 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         source: "getSamplerWaveform",
         messageId: data.messageId,
         message: "Failed to get sampler waveform"
+      });
+    }
+  }
+  handleExportSampleData(data) {
+    if (!this.audioEngine) return;
+    try {
+      const sampleData = this.audioEngine.export_sample_data(data.samplerId);
+      this.port.postMessage({
+        type: "sampleData",
+        samplerId: data.samplerId,
+        messageId: data.messageId,
+        sampleData
+      });
+    } catch (err) {
+      console.error("Error exporting sample data:", err);
+      this.port.postMessage({
+        type: "error",
+        source: "exportSampleData",
+        messageId: data.messageId,
+        message: "Failed to export sample data"
       });
     }
   }

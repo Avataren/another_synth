@@ -16,29 +16,25 @@ export async function extractSamplerAudioAssets(
 
   for (const nodeId of samplerNodeIds) {
     try {
-      // Get the sampler waveform data
-      const waveform = await instrument.getSamplerWaveform(nodeId, -1); // -1 = get full waveform
+      // Export the raw sample data with metadata
+      const sampleData = await instrument.exportSamplerData(nodeId);
 
-      if (waveform && waveform.length > 0) {
-        // Get sampler state to retrieve metadata
-        // Note: This would need to be passed in or retrieved from store
-        // For now, we'll use placeholder values
-        const sampleRate = 44100; // Default, should come from sampler state
-        const channels = 1; // Default, should come from sampler state
-        const rootNote = 60; // Default C4
-
+      if (sampleData.samples && sampleData.samples.length > 0) {
+        // Use the actual metadata from the sampler
         const asset = encodeFloat32ArrayToBase64(
-          waveform,
-          sampleRate,
-          channels,
+          sampleData.samples,
+          sampleData.sampleRate,
+          sampleData.channels,
           AssetType.Sample,
           nodeId,
-          undefined, // fileName can be added from sampler state
-          rootNote,
+          undefined, // fileName can be added from sampler state if stored
+          sampleData.rootNote,
         );
 
         assets.set(asset.id, asset);
-        console.log(`Extracted sample for sampler node ${nodeId}`);
+        console.log(
+          `Extracted sample for sampler node ${nodeId}: ${sampleData.channels}ch @ ${sampleData.sampleRate}Hz, root note ${sampleData.rootNote}`,
+        );
       }
     } catch (error) {
       console.error(`Failed to extract sample from node ${nodeId}:`, error);

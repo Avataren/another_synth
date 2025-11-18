@@ -258,6 +258,50 @@ export default class Instrument {
     });
   }
 
+  public async exportSamplerData(nodeId: number): Promise<{
+    samples: Float32Array;
+    sampleRate: number;
+    channels: number;
+    rootNote: number;
+  }> {
+    if (!this.ready || !this.workletNode) {
+      throw new Error('Audio system not ready');
+    }
+    const port = this.workletNode.port;
+
+    return new Promise((resolve, reject) => {
+      const messageId = `export-sample-${nodeId}-${performance.now()}`;
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data.type === 'sampleData' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          const data = event.data.sampleData;
+          resolve({
+            samples: new Float32Array(data.samples),
+            sampleRate: data.sampleRate,
+            channels: data.channels,
+            rootNote: data.rootNote,
+          });
+        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(event.data.message ?? 'Failed to export sample data'));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+
+      port.postMessage({
+        type: 'exportSampleData',
+        samplerId: nodeId,
+        messageId,
+      });
+
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout exporting sample data'));
+      }, 2000);
+    });
+  }
+
   public updateDelayState(nodeId: number, newState: DelayState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({

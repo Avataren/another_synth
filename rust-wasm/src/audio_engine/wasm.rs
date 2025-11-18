@@ -1734,6 +1734,59 @@ impl AudioEngine {
         Ok(waveform)
     }
 
+    /// Export raw sample data with metadata for serialization
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn export_sample_data(
+        &self,
+        sampler_id: usize,
+    ) -> Result<js_sys::Object, JsValue> {
+        let voice = self
+            .voices
+            .first()
+            .ok_or_else(|| JsValue::from_str("No voices available"))?;
+        let node = voice
+            .graph
+            .get_node(NodeId(sampler_id))
+            .ok_or_else(|| JsValue::from_str("Sampler node not found"))?;
+        let sampler = node
+            .as_any()
+            .downcast_ref::<Sampler>()
+            .ok_or_else(|| JsValue::from_str("Node is not a Sampler"))?;
+
+        let sample_data = sampler.get_sample_data();
+        let data_ref = sample_data.borrow();
+
+        // Create a JavaScript object with metadata and data
+        let result = js_sys::Object::new();
+
+        // Set metadata
+        js_sys::Reflect::set(
+            &result,
+            &JsValue::from_str("sampleRate"),
+            &JsValue::from_f64(data_ref.sample_rate as f64),
+        )?;
+        js_sys::Reflect::set(
+            &result,
+            &JsValue::from_str("channels"),
+            &JsValue::from_f64(data_ref.channels as f64),
+        )?;
+        js_sys::Reflect::set(
+            &result,
+            &JsValue::from_str("rootNote"),
+            &JsValue::from_f64(data_ref.root_note as f64),
+        )?;
+
+        // Convert samples vec to JavaScript Float32Array
+        let samples_array = js_sys::Float32Array::from(&data_ref.samples[..]);
+        js_sys::Reflect::set(
+            &result,
+            &JsValue::from_str("samples"),
+            &samples_array,
+        )?;
+
+        Ok(result)
+    }
+
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_filters(
         &mut self,
