@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 use std::any::Any;
 use std::simd::f32x4;
 use std::simd::num::SimdFloat;
+use serde::{Deserialize, Serialize};
 
 /// A single comb filter with a one-pole lowpass in the feedback loop.
 struct CombFilter {

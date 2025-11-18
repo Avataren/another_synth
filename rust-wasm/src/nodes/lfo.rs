@@ -8,6 +8,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
+use serde::{Deserialize, Serialize};
 
 // --- Enums, LfoTables, Constants remain the same ---
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -46,7 +47,7 @@ impl LfoRetriggerMode {
     }
 }
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LfoLoopMode {
     Off = 0,      // Repeats full 0..1 waveform (unless OneShot)
     Loop = 1,     // Starts at 0.0, runs to loop_end, then loops between loop_start and loop_end

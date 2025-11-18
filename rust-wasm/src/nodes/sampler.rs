@@ -7,10 +7,11 @@ use std::cell::RefCell;
 
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Sample loop mode
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum SamplerLoopMode {
     Off = 0,      // One-shot playback, no looping
     Loop = 1,     // Loop between loop_start and loop_end
@@ -19,7 +20,7 @@ pub enum SamplerLoopMode {
 
 /// Sample trigger mode
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum SamplerTriggerMode {
     FreeRunning = 0,  // Always plays
     Gate = 1,         // Plays when gate is high, restarts on rising edge

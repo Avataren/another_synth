@@ -13,9 +13,10 @@ use web_sys::console;
 use super::morph_wavetable::{WavetableMorphCollection, WavetableSynthBank};
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::{AudioNode, PortId};
+use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct WavetableOscillatorStateUpdate {
     pub phase_mod_amount: f32,
     pub detune: f32,

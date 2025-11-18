@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 use crate::utils::curves::get_curved_value;
+use serde::{Deserialize, Serialize};
 
 // Resolution of our lookup tables.
 const CURVE_TABLE_SIZE: usize = 1024;
@@ -23,7 +24,7 @@ pub enum EnvelopePhase {
 }
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvelopeConfig {
     pub attack: f32,  // Time in seconds
     pub decay: f32,   // Time in seconds

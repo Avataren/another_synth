@@ -15,9 +15,10 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
+use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum FilterSlope {
     Db12,
     Db24,

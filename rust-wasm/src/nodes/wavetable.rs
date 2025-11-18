@@ -5,6 +5,7 @@ use rustfft::{num_complex::Complex, FftPlanner};
 use wasm_bindgen::prelude::*;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::console;
+use serde::{Deserialize, Serialize};
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 fn log_console(message: &str) {
@@ -16,7 +17,7 @@ fn log_console(_message: &str) {}
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum Waveform {
     Sine = 0,
     Triangle = 1,
