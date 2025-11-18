@@ -61,7 +61,7 @@ import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { type VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Node {
-  id: number;
+  id: string;
   name: string;
   type?: VoiceNodeType;
 }

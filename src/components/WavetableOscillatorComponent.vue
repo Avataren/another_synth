@@ -172,7 +172,7 @@ import { VoiceNodeType } from 'src/audio/types/synth-layout';
 // Define props
 interface Props {
   node: AudioNode | null | undefined;
-  nodeId: number;
+  nodeId: string;
   isMinimized?: boolean;
   nodeName?: string;
 }

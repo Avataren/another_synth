@@ -127,7 +127,7 @@ import {
 import { throttle } from 'quasar';
 
 interface Props {
-  nodeId: number;
+  nodeId: string;
   isMinimized?: boolean; // default: false
   nodeName?: string;
 }
