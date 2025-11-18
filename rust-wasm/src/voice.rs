@@ -24,7 +24,7 @@ impl Voice {
         let buffer_size = buffer_size.max(1);
         let mut graph = AudioGraph::new(buffer_size);
         let macro_manager = MacroManager::new(4, &mut graph.buffer_pool, buffer_size);
-        let output_node = NodeId(0);
+        let output_node = NodeId::default();
         graph.set_output_node(output_node);
 
         Self {
@@ -45,7 +45,7 @@ impl Voice {
         self.graph.clear();
 
         // Clear stored node references
-        self.output_node = NodeId(0);
+        self.output_node = NodeId::default();
 
         // Reset state
         self.current_gate = 0.0;
@@ -87,7 +87,7 @@ impl Voice {
 
     // Simple check for active envelopes (same as your original implementation)
     fn has_active_envelopes(&self) -> bool {
-        self.graph.nodes.iter().any(|node| {
+        self.graph.nodes.iter().any(|(_id, node)| {
             if let Some(env) = node.as_any().downcast_ref::<Envelope>() {
                 env.is_active() && env.get_phase() == EnvelopePhase::Release
             } else {
@@ -102,7 +102,7 @@ impl Voice {
         // even after envelopes have completed
 
         // If we don't have an output node, we can't check
-        if self.output_node == NodeId(0) {
+        if self.output_node == NodeId::default() {
             return false;
         }
 
@@ -135,7 +135,7 @@ impl Voice {
 
     //this doesn't quite work yet, dont use
     pub fn has_active_lfos(&self) -> bool {
-        self.graph.nodes.iter().any(|node| {
+        self.graph.nodes.iter().any(|(_id, node)| {
             if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
                 lfo.is_active()
             } else {
@@ -190,7 +190,7 @@ impl Voice {
                 target_port,
                 buffer_idx,
                 amount,
-                NodeId(usize::MAX),
+                NodeId::default(), // Sentinel value for macro modulations (no source node)
                 ModulationType::VCA,
                 ModulationTransformation::None,
             ));
@@ -247,7 +247,7 @@ impl Voice {
     }
 
     fn has_free_running_lfos(&self) -> bool {
-        self.graph.nodes.iter().any(|node| {
+        self.graph.nodes.iter().any(|(_id, node)| {
             if let Some(lfo) = node.as_any().downcast_ref::<Lfo>() {
                 lfo.retrigger_mode == LfoRetriggerMode::FreeRunning
             } else {
@@ -258,7 +258,7 @@ impl Voice {
 
     // New method to only update LFO phases
     fn update_free_running_lfos(&mut self) {
-        for node in &mut self.graph.nodes {
+        for (_id, node) in &mut self.graph.nodes {
             if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
                 if lfo.retrigger_mode == LfoRetriggerMode::FreeRunning {
                     // web_sys::console::log_1(&format!("LFO state advancing phase",).into());
