@@ -67,9 +67,9 @@ use crate::{
 use crate::{AudioNode, MacroManager, PortId};
 
 pub struct AudioGraph {
-    pub(crate) nodes: Vec<Box<dyn AudioNode>>,
+    pub(crate) nodes: FxHashMap<NodeId, Box<dyn AudioNode>>,
     pub(crate) connections: FxHashMap<ConnectionKey, Connection>,
-    pub(crate) processing_order: Vec<usize>,
+    pub(crate) processing_order: Vec<NodeId>,
     pub(crate) buffer_size: usize,
     pub(crate) buffer_pool: AudioBufferPool,
     pub(crate) node_buffers: FxHashMap<(NodeId, PortId), usize>,
@@ -99,7 +99,7 @@ impl AudioGraph {
         let gate_buffer_idx = buffer_pool.acquire(buffer_size);
 
         let mut graph = Self {
-            nodes: Vec::new(),
+            nodes: FxHashMap::default(),
             connections: FxHashMap::default(),
             processing_order: Vec::new(),
             buffer_size,
@@ -146,62 +146,93 @@ impl AudioGraph {
     }
 
     pub fn add_node(&mut self, node: Box<dyn AudioNode>) -> NodeId {
-        let id = NodeId(self.nodes.len());
+        let id = NodeId::new();
+
         // Allocate buffers for each port.
-        for (port, _) in node.get_ports() {
+        let ports = node.get_ports();
+        for (port, _) in &ports {
             let buffer_idx = self.buffer_pool.acquire(self.buffer_size);
-            self.node_buffers.insert((id, port), buffer_idx);
+            self.node_buffers.insert((id, *port), buffer_idx);
         }
-        self.nodes.push(node);
+
+        self.nodes.insert(id, node);
         self.update_processing_order();
 
         // Auto-connect the GlobalFrequency node if the new node accepts it.
-        if let Some(ref ports) = self.nodes.last().map(|n| n.get_ports()) {
-            if ports.contains_key(&PortId::GlobalFrequency) {
-                if let Some(global_node_id) = self.global_frequency_node {
-                    // Create a connection from the global frequency node's output
-                    self.add_connection(Connection {
-                        from_node: global_node_id,
-                        from_port: PortId::GlobalFrequency,
-                        to_node: id,
-                        to_port: PortId::GlobalFrequency,
-                        amount: 1.0,
-                        modulation_type: ModulationType::Additive,
-                        modulation_transform: ModulationTransformation::None,
-                    });
-                }
+        if ports.contains_key(&PortId::GlobalFrequency) {
+            if let Some(global_node_id) = self.global_frequency_node {
+                // Create a connection from the global frequency node's output
+                self.add_connection(Connection {
+                    from_node: global_node_id,
+                    from_port: PortId::GlobalFrequency,
+                    to_node: id,
+                    to_port: PortId::GlobalFrequency,
+                    amount: 1.0,
+                    modulation_type: ModulationType::Additive,
+                    modulation_transform: ModulationTransformation::None,
+                });
             }
+        }
 
-            // Auto-connect the GateMixer node if the new node accepts CombinedGate.
-            if ports.contains_key(&PortId::CombinedGate) {
-                if let Some(gate_mixer_node_id) = self.global_gatemixer_node {
-                    self.add_connection(Connection {
-                        from_node: gate_mixer_node_id,
-                        from_port: PortId::CombinedGate,
-                        to_node: id,
-                        to_port: PortId::CombinedGate,
-                        amount: 1.0,
-                        modulation_type: ModulationType::Additive,
-                        modulation_transform: ModulationTransformation::None,
-                    });
-                }
+        // Auto-connect the GateMixer node if the new node accepts CombinedGate.
+        if ports.contains_key(&PortId::CombinedGate) {
+            if let Some(gate_mixer_node_id) = self.global_gatemixer_node {
+                self.add_connection(Connection {
+                    from_node: gate_mixer_node_id,
+                    from_port: PortId::CombinedGate,
+                    to_node: id,
+                    to_port: PortId::CombinedGate,
+                    amount: 1.0,
+                    modulation_type: ModulationType::Additive,
+                    modulation_transform: ModulationTransformation::None,
+                });
             }
         }
 
         id
     }
 
-    // pub fn add_node(&mut self, node: Box<dyn AudioNode>) -> NodeId {
-    //     let id = NodeId(self.nodes.len());
-    //     // Allocate buffers for each port.
-    //     for (port, _) in node.get_ports() {
-    //         let buffer_idx = self.buffer_pool.acquire(self.buffer_size);
-    //         self.node_buffers.insert((id, port), buffer_idx);
-    //     }
-    //     self.nodes.push(node);
-    //     self.update_processing_order();
-    //     id
-    // }
+    pub fn delete_node(&mut self, node_id: NodeId) {
+        // Remove all connections involving this node
+        self.connections.retain(|_, conn| {
+            conn.from_node != node_id && conn.to_node != node_id
+        });
+
+        // Remove from input_connections
+        self.input_connections.remove(&node_id);
+        for inputs in self.input_connections.values_mut() {
+            inputs.retain(|(_, _, _, from_node, _, _)| *from_node != node_id);
+        }
+
+        // Release buffers
+        let buffers_to_release: Vec<_> = self
+            .node_buffers
+            .iter()
+            .filter_map(|((id, _port), &buffer_idx)| {
+                if *id == node_id {
+                    Some(buffer_idx)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for buffer_idx in buffers_to_release {
+            self.buffer_pool.release(buffer_idx);
+        }
+
+        // Remove node buffers
+        self.node_buffers.retain(|(id, _), _| *id != node_id);
+
+        // Remove from processing order
+        self.processing_order.retain(|&id| id != node_id);
+
+        // Remove the node itself
+        self.nodes.remove(&node_id);
+
+        // Update processing order
+        self.update_processing_order();
+    }
 
     pub fn add_connection(&mut self, connection: Connection) {
         let key = ConnectionKey::new(
@@ -445,52 +476,57 @@ impl AudioGraph {
     }
 
     pub fn get_node(&self, node_id: NodeId) -> Option<&Box<dyn AudioNode>> {
-        self.nodes.get(node_id.0)
+        self.nodes.get(&node_id)
     }
 
     pub fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut Box<dyn AudioNode>> {
-        self.nodes.get_mut(node_id.0)
+        self.nodes.get_mut(&node_id)
     }
 
     fn update_processing_order(&mut self) {
-        let num_nodes = self.nodes.len();
-        let mut in_degree = vec![0; num_nodes];
+        let mut in_degree: FxHashMap<NodeId, usize> = FxHashMap::default();
+
+        // Initialize in-degrees for all nodes to 0
+        for &node_id in self.nodes.keys() {
+            in_degree.insert(node_id, 0);
+        }
 
         // Compute in-degrees for each node.
         for conn in self.connections.values() {
-            in_degree[conn.to_node.0] += 1;
+            *in_degree.entry(conn.to_node).or_insert(0) += 1;
         }
 
         // Start with all nodes that have no incoming connections.
-        let mut queue: Vec<usize> = in_degree
+        let mut queue: Vec<NodeId> = in_degree
             .iter()
-            .enumerate()
-            .filter_map(|(i, &deg)| if deg == 0 { Some(i) } else { None })
+            .filter_map(|(&node_id, &deg)| if deg == 0 { Some(node_id) } else { None })
             .collect();
 
         self.processing_order.clear();
 
         // Process nodes in order.
-        while let Some(node_index) = queue.pop() {
-            self.processing_order.push(node_index);
+        while let Some(node_id) = queue.pop() {
+            self.processing_order.push(node_id);
 
             // For each connection from this node, reduce the in-degree of its destination.
             for conn in self.connections.values() {
-                if conn.from_node.0 == node_index {
-                    let dest = conn.to_node.0;
-                    in_degree[dest] -= 1;
-                    if in_degree[dest] == 0 {
-                        queue.push(dest);
+                if conn.from_node == node_id {
+                    let dest = conn.to_node;
+                    if let Some(degree) = in_degree.get_mut(&dest) {
+                        *degree -= 1;
+                        if *degree == 0 {
+                            queue.push(dest);
+                        }
                     }
                 }
             }
         }
 
         // If there is a cycle (or some nodes were not reached), add any remaining nodes.
-        if self.processing_order.len() < num_nodes {
-            for i in 0..num_nodes {
-                if !self.processing_order.contains(&i) {
-                    self.processing_order.push(i);
+        if self.processing_order.len() < self.nodes.len() {
+            for &node_id in self.nodes.keys() {
+                if !self.processing_order.contains(&node_id) {
+                    self.processing_order.push(node_id);
                 }
             }
         }
@@ -548,12 +584,15 @@ impl AudioGraph {
         type InputsMap = FxHashMap<PortId, Vec<ModulationSource>>;
         type OutputsMap<'a> = FxHashMap<PortId, &'a mut [f32]>;
 
-        'node_loop: for &node_idx in &self.processing_order {
+        'node_loop: for &node_id in &self.processing_order {
             // Added optional loop label
-            let node_id = NodeId(node_idx);
+            let node = match self.nodes.get(&node_id) {
+                Some(n) => n,
+                None => continue,
+            };
 
-            if !self.nodes[node_idx].should_process() {
-                let node_ports = self.nodes[node_idx].get_ports();
+            if !node.should_process() {
+                let node_ports = node.get_ports();
                 for (port, is_output) in node_ports.iter() {
                     if *is_output {
                         if let Some(buffer_idx) = self.node_buffers.get(&(node_id, *port)) {
@@ -564,7 +603,7 @@ impl AudioGraph {
                 continue;
             }
 
-            let node_ports = self.nodes[node_idx].get_ports().clone();
+            let node_ports = node.get_ports().clone();
 
             // --- Input Gathering and Copying ---
             let mut inputs: InputsMap = FxHashMap::default(); // Or FxFxHashMap::default()
@@ -596,8 +635,8 @@ impl AudioGraph {
                     }
                     Err(e) => {
                         log_error(&format!(
-                            "Error getting input buffers for node {}: {}",
-                            node_idx, e
+                            "Error getting input buffers for node {:?}: {}",
+                            node_id, e
                         ));
                         continue 'node_loop; // Skip node if inputs can't be retrieved
                     }
@@ -673,20 +712,22 @@ impl AudioGraph {
 
                         // --- Process Node ---
                         // Pass copied inputs (Vec<f32>) and mutable output slices (&mut [f32])
-                        self.nodes[node_idx].process(&inputs, &mut outputs, self.buffer_size);
+                        if let Some(node_mut) = self.nodes.get_mut(&node_id) {
+                            node_mut.process(&inputs, &mut outputs, self.buffer_size);
 
-                        // --- Apply Macro Modulation ---
-                        if let (Some(mgr), Some(ref data)) = (macro_manager, &macro_data) {
-                            if mgr.has_active_macros() {
-                                mgr.apply_modulation(0, data, &mut outputs);
+                            // --- Apply Macro Modulation ---
+                            if let (Some(mgr), Some(ref data)) = (macro_manager, &macro_data) {
+                                if mgr.has_active_macros() {
+                                    mgr.apply_modulation(0, data, &mut outputs);
+                                }
                             }
                         }
                         // Mutable borrow of output_buffers_vec ends here.
                     }
                     Err(e) => {
                         log_error(&format!(
-                            "Error getting output buffers for node {}: {}",
-                            node_idx, e
+                            "Error getting output buffers for node {:?}: {}",
+                            node_id, e
                         ));
                         continue 'node_loop; // Skip node if outputs can't be retrieved
                     }
@@ -695,7 +736,9 @@ impl AudioGraph {
                 // Node has no outputs, just process it (might have side effects?)
                 // Need an empty mutable map for the process call signature
                 let mut empty_outputs: OutputsMap = FxHashMap::default();
-                self.nodes[node_idx].process(&inputs, &mut empty_outputs, self.buffer_size);
+                if let Some(node_mut) = self.nodes.get_mut(&node_id) {
+                    node_mut.process(&inputs, &mut empty_outputs, self.buffer_size);
+                }
                 // Macros cannot be applied if there are no output buffers
             }
         } // End node processing loop ('node_loop)
@@ -705,7 +748,7 @@ impl AudioGraph {
             // Check if the output node itself was processed (i.e., is active)
             let output_node_active = self
                 .nodes
-                .get(output_node_id.0)
+                .get(&output_node_id)
                 .map_or(false, |n| n.is_active());
 
             if output_node_active {

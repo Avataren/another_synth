@@ -1,6 +1,7 @@
 use crate::PortId;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::ops::Deref;
+use uuid::Uuid;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
@@ -13,44 +14,69 @@ pub struct ModulationSource {
     pub transformation: ModulationTransformation,
 }
 
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct NodeId(pub usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct NodeId(pub Uuid);
 
 impl Default for NodeId {
     fn default() -> Self {
-        NodeId(0)
+        NodeId(Uuid::nil())
     }
 }
 
-impl From<usize> for NodeId {
-    fn from(value: usize) -> Self {
-        NodeId(value)
+impl NodeId {
+    pub fn new() -> Self {
+        NodeId(Uuid::new_v4())
     }
-}
 
-impl From<NodeId> for usize {
-    fn from(id: NodeId) -> Self {
-        id.0
+    pub fn from_string(s: &str) -> Result<Self, uuid::Error> {
+        Ok(NodeId(Uuid::parse_str(s)?))
     }
-}
 
-impl Deref for NodeId {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn to_string(&self) -> String {
+        self.0.to_string()
     }
 }
 
 #[cfg(feature = "wasm")]
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
-impl NodeId {
-    pub fn as_number(&self) -> usize {
-        self.0
+#[wasm_bindgen]
+pub struct WasmNodeId {
+    inner: NodeId,
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+impl WasmNodeId {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        WasmNodeId {
+            inner: NodeId::new(),
+        }
     }
-    pub fn from_number(value: usize) -> NodeId {
-        NodeId(value)
+
+    #[wasm_bindgen(js_name = fromString)]
+    pub fn from_string(s: &str) -> Result<WasmNodeId, JsValue> {
+        NodeId::from_string(s)
+            .map(|inner| WasmNodeId { inner })
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = toString)]
+    pub fn to_string(&self) -> String {
+        self.inner.to_string()
+    }
+}
+
+#[cfg(feature = "wasm")]
+impl From<NodeId> for WasmNodeId {
+    fn from(inner: NodeId) -> Self {
+        WasmNodeId { inner }
+    }
+}
+
+#[cfg(feature = "wasm")]
+impl From<WasmNodeId> for NodeId {
+    fn from(wasm: WasmNodeId) -> Self {
+        wasm.inner
     }
 }
 

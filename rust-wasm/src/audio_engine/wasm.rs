@@ -669,52 +669,36 @@ impl AudioEngine {
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn delete_node(&mut self, node_id: usize) -> Result<(), JsValue> {
-        let node_id = NodeId(node_id);
+    pub fn delete_node(&mut self, node_id_str: &str) -> Result<(), JsValue> {
+        let node_id = NodeId::from_string(node_id_str)
+            .map_err(|e| JsValue::from_str(&format!("Invalid node UUID: {}", e)))?;
 
-        log_console(&format!("Attempting to delete node with ID: {}", node_id.0));
+        log_console(&format!("Attempting to delete node with ID: {:?}", node_id));
 
         // Check if this is a special node that shouldn't be deleted
         if let Some(voice) = self.voices.first() {
             // Log the global node IDs for debugging
             log_console(&format!(
                 "Global node IDs - Frequency: {:?}, Velocity: {:?}, GateMixer: {:?}",
-                voice.graph.global_frequency_node.map(|n| n.0),
-                voice.graph.global_velocity_node.map(|n| n.0),
-                voice.graph.global_gatemixer_node.map(|n| n.0)
+                voice.graph.global_frequency_node,
+                voice.graph.global_velocity_node,
+                voice.graph.global_gatemixer_node
             ));
 
             if voice.graph.global_frequency_node == Some(node_id)
                 || voice.graph.global_velocity_node == Some(node_id)
                 || voice.graph.global_gatemixer_node == Some(node_id)
             {
-                return Err(JsValue::from_str(&format!(
-                    "Cannot delete node {} as it is a system node",
-                    node_id.0
-                )));
+                return Err(JsValue::from_str(
+                    "Cannot delete node as it is a system node"
+                ));
             }
 
             // Check if this is the output node
             if voice.graph.output_node == Some(node_id) {
-                return Err(JsValue::from_str(&format!(
-                    "Cannot delete node {} as it is the output node",
-                    node_id.0
-                )));
-            }
-        }
-
-        // Check if it's an effect node (if node_id >= EFFECT_NODE_ID_OFFSET)
-        if node_id.0 >= EFFECT_NODE_ID_OFFSET {
-            let effect_index = node_id.0 - EFFECT_NODE_ID_OFFSET;
-            if effect_index < self.effect_stack.effects.len() {
-                self.effect_stack.remove_effect(effect_index);
-                log_console(&format!("Effect {} successfully removed", node_id.0));
-                return Ok(());
-            } else {
-                return Err(JsValue::from_str(&format!(
-                    "Effect with id {} not found",
-                    node_id.0
-                )));
+                return Err(JsValue::from_str(
+                    "Cannot delete node as it is the output node"
+                ));
             }
         }
 
@@ -722,8 +706,8 @@ impl AudioEngine {
         if let Some(voice) = self.voices.first() {
             if let Some(node) = voice.graph.get_node(node_id) {
                 log_console(&format!(
-                    "Node {} is of type: {}, with {} connections",
-                    node_id.0,
+                    "Node {:?} is of type: {}, with {} connections",
+                    node_id,
                     node.node_type(),
                     voice
                         .graph
@@ -735,188 +719,14 @@ impl AudioEngine {
             }
         }
 
-        // Find what connections need to be removed across all voices
-        let mut connections_to_remove = Vec::new();
-        if let Some(voice) = self.voices.first() {
-            connections_to_remove = voice
-                .graph
-                .connections
-                .iter()
-                .filter(|(_, conn)| conn.from_node == node_id || conn.to_node == node_id)
-                .map(|(key, _)| key.clone())
-                .collect();
-        }
-
-        // Stage 1: Remove connections in all voices
+        // Delete the node from all voices using the simplified delete_node method
         for voice in &mut self.voices {
-            for key in &connections_to_remove {
-                voice.graph.connections.remove(key);
-            }
-            voice.graph.input_connections.remove(&node_id);
-            for inputs in voice.graph.input_connections.values_mut() {
-                inputs.retain(|(_, _, _, from_node, _, _)| *from_node != node_id);
-            }
-        }
-
-        // Stage 2: Release buffers and remove the node itself
-        for (voice_idx, voice) in self.voices.iter_mut().enumerate() {
-            // Skip if node doesn't exist in this voice
-            if node_id.0 >= voice.graph.nodes.len() {
-                log_console(&format!(
-                    "Node {} does not exist in voice {}",
-                    node_id.0, voice_idx
-                ));
-                continue;
-            }
-
-            let buffers_to_release: Vec<_> = voice
-                .graph
-                .node_buffers
-                .iter()
-                .filter_map(|((id, port), &buffer_idx)| {
-                    if *id == node_id {
-                        Some((buffer_idx, *port))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            for (buffer_idx, _) in &buffers_to_release {
-                voice.graph.buffer_pool.release(*buffer_idx);
-            }
-
-            voice.graph.node_buffers.retain(|(id, _), _| *id != node_id);
-            voice.graph.processing_order.retain(|&idx| idx != node_id.0);
-
-            // Remove the node
-            if node_id.0 < voice.graph.nodes.len() {
-                voice.graph.nodes.remove(node_id.0);
-            }
-        }
-
-        // Stage 3: Update all node references consistently across all voices
-        for (voice_idx, voice) in self.voices.iter_mut().enumerate() {
-            log_console(&format!("Updating references in voice {}", voice_idx));
-
-            // Update connections with new node IDs
-            let updated_connections: FxHashMap<_, _> = voice
-                .graph
-                .connections
-                .iter()
-                .map(|(_key, conn)| {
-                    let mut new_conn = conn.clone();
-
-                    if new_conn.from_node.0 > node_id.0 {
-                        new_conn.from_node = NodeId(new_conn.from_node.0 - 1);
-                    }
-                    if new_conn.to_node.0 > node_id.0 {
-                        new_conn.to_node = NodeId(new_conn.to_node.0 - 1);
-                    }
-
-                    // Create a completely new key using the ConnectionKey::new constructor
-                    let new_key = ConnectionKey::new(
-                        new_conn.from_node,
-                        new_conn.from_port,
-                        new_conn.to_node,
-                        new_conn.to_port,
-                    );
-
-                    (new_key, new_conn)
-                })
-                .collect();
-
-            voice.graph.connections.clear();
-            voice.graph.connections.extend(updated_connections);
-
-            // Update node buffers
-            let updated_buffers: FxHashMap<_, _> = voice
-                .graph
-                .node_buffers
-                .iter()
-                .filter_map(|((id, port), &buffer_idx)| {
-                    if id.0 > node_id.0 {
-                        Some(((NodeId(id.0 - 1), *port), buffer_idx))
-                    } else if id.0 != node_id.0 {
-                        Some(((*id, *port), buffer_idx))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            voice.graph.node_buffers.clear();
-            voice.graph.node_buffers.extend(updated_buffers);
-
-            // Update processing order
-            for idx in &mut voice.graph.processing_order {
-                if *idx > node_id.0 {
-                    *idx -= 1;
-                }
-            }
-
-            // Update input_connections
-            let mut updated_inputs = FxHashMap::default();
-            for (target, inputs) in &voice.graph.input_connections {
-                let new_target = if target.0 > node_id.0 {
-                    NodeId(target.0 - 1)
-                } else {
-                    *target
-                };
-
-                let new_inputs: Vec<_> = inputs
-                    .iter()
-                    .map(
-                        |(port, buffer, amount, from_node, mod_type, mod_transform)| {
-                            let new_from = if from_node.0 > node_id.0 {
-                                NodeId(from_node.0 - 1)
-                            } else {
-                                *from_node
-                            };
-
-                            (*port, *buffer, *amount, new_from, *mod_type, *mod_transform)
-                        },
-                    )
-                    .collect();
-
-                if new_target != *target {
-                    log_console(&format!(
-                        "Updating input connections: {} -> {}",
-                        target.0, new_target.0
-                    ));
-                }
-
-                updated_inputs.insert(new_target, new_inputs);
-            }
-
-            voice.graph.input_connections = updated_inputs;
-
-            // Update special node references
-            if let Some(output_id) = voice.graph.output_node {
-                if output_id.0 > node_id.0 {
-                    let new_id = NodeId(output_id.0 - 1);
-                    log_console(&format!(
-                        "Updating output node: {} -> {}",
-                        output_id.0, new_id.0
-                    ));
-                    voice.graph.output_node = Some(new_id);
-                }
-            }
-
-            // Also update the voice's output_node if needed
-            if voice.output_node.0 > node_id.0 {
-                let old_id = voice.output_node.0;
-                voice.output_node = NodeId(voice.output_node.0 - 1);
-                log_console(&format!(
-                    "Updating voice output node: {} -> {}",
-                    old_id, voice.output_node.0
-                ));
-            }
+            voice.graph.delete_node(node_id);
         }
 
         log_console(&format!(
-            "Node {} successfully deleted from all voices",
-            node_id.0
+            "Node {:?} successfully deleted from all voices",
+            node_id
         ));
         Ok(())
     }
@@ -1453,7 +1263,7 @@ impl AudioEngine {
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_envelope(&mut self) -> Result<JsValue, JsValue> {
-        let mut envelope_id = NodeId(0);
+        let mut envelope_id = NodeId::default();
         for voice in &mut self.voices {
             envelope_id = voice.graph.add_node(Box::new(Envelope::new(
                 self.sample_rate,
@@ -1461,15 +1271,15 @@ impl AudioEngine {
             )));
         }
         let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"envelopeId".into(), &(envelope_id.0.into()))?;
+        js_sys::Reflect::set(&obj, &"envelopeId".into(), &JsValue::from_str(&envelope_id.to_string()))?;
 
         Ok(obj.into())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_arpeggiator(&mut self) -> Result<JsValue, JsValue> {
-        let mut arp_id = NodeId(0);
-        let mut gate_mixer_id = NodeId(0);
+        let mut arp_id = NodeId::default();
+        let mut gate_mixer_id = NodeId::default();
         for voice in &mut self.voices {
             let mut arp = ArpeggiatorGenerator::new();
             arp.create_test_pattern(self.sample_rate, 0.225);
@@ -1477,66 +1287,66 @@ impl AudioEngine {
             gate_mixer_id = voice.graph.global_gatemixer_node.unwrap();
         }
         self.connect_nodes(
-            arp_id.0,
+            &arp_id.to_string(),
             PortId::ArpGate,
-            gate_mixer_id.0,
+            &gate_mixer_id.to_string(),
             PortId::ArpGate,
             1.0,
             Some(WasmModulationType::VCA),
             ModulationTransformation::None,
         )
         .unwrap();
-        Ok(JsValue::from(arp_id.0))
+        Ok(JsValue::from_str(&arp_id.to_string()))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_mixer(&mut self) -> Result<JsValue, JsValue> {
-        let mut mixer_id = NodeId(0);
+        let mut mixer_id = NodeId::default();
         for voice in &mut self.voices {
             mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
             voice.graph.set_output_node(mixer_id);
         }
         // Just return the ID directly like other nodes
-        Ok(JsValue::from(mixer_id.0))
+        Ok(JsValue::from_str(&mixer_id.to_string()))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_lfo(&mut self) -> Result<JsValue, JsValue> {
-        let mut lfo_id = NodeId(0);
+        let mut lfo_id = NodeId::default();
         for voice in &mut self.voices {
             lfo_id = voice.graph.add_node(Box::new(Lfo::new(self.sample_rate)));
         }
         let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"lfoId".into(), &(lfo_id.0.into()))?;
+        js_sys::Reflect::set(&obj, &"lfoId".into(), &JsValue::from_str(&lfo_id.to_string()))?;
 
         Ok(obj.into())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn create_filter(&mut self) -> Result<usize, JsValue> {
-        let mut filter_id = NodeId(0);
+    pub fn create_filter(&mut self) -> Result<String, JsValue> {
+        let mut filter_id = NodeId::default();
         for voice in &mut self.voices {
             filter_id = voice
                 .graph
                 .add_node(Box::new(FilterCollection::new(self.sample_rate)));
         }
-        Ok(filter_id.0)
+        Ok(filter_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn create_noise(&mut self) -> Result<usize, JsValue> {
-        let mut noise_id = NodeId(0);
+    pub fn create_noise(&mut self) -> Result<String, JsValue> {
+        let mut noise_id = NodeId::default();
         for voice in &mut self.voices {
             noise_id = voice
                 .graph
                 .add_node(Box::new(NoiseGenerator::new(self.sample_rate)));
         }
-        Ok(noise_id.0)
+        Ok(noise_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn create_oscillator(&mut self) -> Result<usize, JsValue> {
-        let mut osc_id = NodeId(0);
+    pub fn create_oscillator(&mut self) -> Result<String, JsValue> {
+        let mut osc_id = NodeId::default();
         for voice in &mut self.voices {
             osc_id = voice.graph.add_node(Box::new(AnalogOscillator::new(
                 self.sample_rate,
@@ -1544,23 +1354,23 @@ impl AudioEngine {
                 self.wavetable_banks.clone(), // pass the shared banks
             )));
         }
-        Ok(osc_id.0)
+        Ok(osc_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn create_wavetable_oscillator(&mut self) -> Result<usize, JsValue> {
-        let mut osc_id = NodeId(0);
+    pub fn create_wavetable_oscillator(&mut self) -> Result<String, JsValue> {
+        let mut osc_id = NodeId::default();
         for voice in &mut self.voices {
             osc_id = voice.graph.add_node(Box::new(WavetableOscillator::new(
                 self.sample_rate,
                 self.wavetable_synthbank.clone(),
             )));
         }
-        Ok(osc_id.0)
+        Ok(osc_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn create_sampler(&mut self) -> Result<usize, JsValue> {
+    pub fn create_sampler(&mut self) -> Result<String, JsValue> {
         let sample_data = Rc::new(RefCell::new(SampleData::new()));
         {
             let default_samples = Self::generate_default_sampler_data(self.sample_rate);
@@ -1568,13 +1378,13 @@ impl AudioEngine {
             data_ref.load_from_wav(default_samples, 1, self.sample_rate);
             data_ref.root_note = 69.0;
         }
-        let mut sampler_id = NodeId(0);
+        let mut sampler_id = NodeId::default();
         for voice in &mut self.voices {
             let mut sampler = Sampler::new(self.sample_rate);
             sampler.set_sample_data(sample_data.clone());
             sampler_id = voice.graph.add_node(Box::new(sampler));
         }
-        Ok(sampler_id.0)
+        Ok(sampler_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -1989,9 +1799,9 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn connect_nodes(
         &mut self,
-        from_node: usize,
+        from_node: &str,
         from_port: PortId,
-        to_node: usize,
+        to_node: &str,
         to_port: PortId,
         amount: f32,
         modulation_type: Option<WasmModulationType>,
@@ -2004,10 +1814,15 @@ impl AudioEngine {
         //     )
         //     .into(),
         // );
+        let from_node_id = NodeId::from_string(from_node)
+            .map_err(|e| JsValue::from_str(&format!("Invalid from_node UUID: {}", e)))?;
+        let to_node_id = NodeId::from_string(to_node)
+            .map_err(|e| JsValue::from_str(&format!("Invalid to_node UUID: {}", e)))?;
+
         let connection = Connection {
-            from_node: NodeId(from_node),
+            from_node: from_node_id,
             from_port,
-            to_node: NodeId(to_node),
+            to_node: to_node_id,
             to_port,
             amount,
             modulation_type: modulation_type
