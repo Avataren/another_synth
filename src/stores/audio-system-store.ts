@@ -35,7 +35,12 @@ import {
 } from 'app/public/wasm/audio_processor';
 import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 import { nextTick } from 'process';
-import type { Bank, Patch, AudioAsset } from 'src/audio/types/preset-types';
+import type {
+  Bank,
+  Patch,
+  AudioAsset,
+  PatchMetadata,
+} from 'src/audio/types/preset-types';
 import {
   serializeCurrentPatch,
   deserializePatch,
@@ -48,6 +53,7 @@ import {
   importBankFromJSON,
   addPatchToBank,
   removePatchFromBank,
+  updatePatchInBank,
 } from 'src/audio/serialization/bank-serializer';
 import {
   extractAllAudioAssets,
@@ -1617,7 +1623,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
         const extractedAssets = await extractAllAudioAssets(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        this.currentInstrument as any,
+          this.currentInstrument as any,
           samplerIds,
           convolverIds,
         );
@@ -1657,6 +1663,96 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         return patch;
       } catch (error) {
         console.error('Failed to save patch:', error);
+        return null;
+      }
+    },
+
+    /**
+     * Overwrite the current patch with the current synth state.
+     * Does not create a new patch entry in the bank.
+     */
+    async updateCurrentPatch(
+      name?: string,
+      metadata?: { author?: string; tags?: string[]; description?: string },
+    ): Promise<Patch | null> {
+      if (!this.synthLayout) {
+        console.error('Cannot update patch: no synth layout');
+        return null;
+      }
+
+      if (!this.currentInstrument) {
+        console.error('Cannot update patch: no instrument');
+        return null;
+      }
+
+      if (!this.currentBank || !this.currentPatchId) {
+        console.error('Cannot update patch: no current patch selected');
+        return null;
+      }
+
+      const existingPatch = this.currentBank.patches.find(
+        (p) => p.metadata.id === this.currentPatchId,
+      );
+
+      if (!existingPatch) {
+        console.error('Cannot update patch: current patch not found in bank');
+        return null;
+      }
+
+      try {
+        // Extract audio assets from sampler and convolver nodes
+        const samplerIds = getSamplerNodeIds(this.synthLayout);
+        const convolverIds = getConvolverNodeIds(this.synthLayout);
+
+        console.log(
+          `Extracting audio assets from ${samplerIds.length} samplers and ${convolverIds.length} convolvers`,
+        );
+
+        const extractedAssets = await extractAllAudioAssets(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          this.currentInstrument as any,
+          samplerIds,
+          convolverIds,
+        );
+
+        // Merge with existing audio assets
+        const allAssets = new Map([...this.audioAssets, ...extractedAssets]);
+
+        const existingMetadata = existingPatch.metadata;
+        const finalName = name?.trim() || existingMetadata.name;
+        const now = Date.now();
+        const mergedMetadata: Partial<PatchMetadata> = {
+          ...existingMetadata,
+          name: finalName,
+          modified: now,
+          ...(metadata || {}),
+        };
+
+        const patch = serializeCurrentPatch(
+          finalName,
+          this.synthLayout,
+          this.oscillatorStates,
+          this.wavetableOscillatorStates,
+          this.filterStates,
+          this.envelopeStates,
+          this.lfoStates,
+          this.samplerStates,
+          this.convolverStates,
+          this.delayStates,
+          this.chorusStates,
+          this.reverbStates,
+          this.noiseState,
+          this.velocityState,
+          allAssets,
+          mergedMetadata,
+        );
+
+        this.currentBank = updatePatchInBank(this.currentBank, patch);
+        this.currentPatchId = patch.metadata.id;
+        console.log('Patch updated successfully:', patch.metadata.name);
+        return patch;
+      } catch (error) {
+        console.error('Failed to update patch:', error);
         return null;
       }
     },

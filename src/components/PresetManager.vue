@@ -51,18 +51,24 @@
       <!-- Save Current State -->
       <div class="save-section">
         <q-input
-          v-model="newPatchName"
-          label="New Patch Name"
+          v-model="patchName"
+          label="Patch Name"
           outlined
           dense
           @keyup.enter="handleSavePatch"
           class="patch-name-input"
         />
         <q-btn
-          label="Save Current"
+          label="Save Patch"
           color="primary"
           @click="handleSavePatch"
-          :disable="!newPatchName"
+          :disable="!patchName || !currentPatchId"
+          class="save-btn"
+        />
+        <q-btn
+          label="New Patch"
+          color="secondary"
+          @click="handleNewPatch"
           class="save-btn"
         />
       </div>
@@ -178,7 +184,7 @@ const $q = useQuasar();
 // Local state
 const isMinimized = ref(false);
 const selectedPatchId = ref<string | null>(null);
-const newPatchName = ref('');
+const patchName = ref('');
 const pasteDialogOpen = ref(false);
 const pasteText = ref('');
 const pasteType = ref<'patch' | 'bank'>('patch');
@@ -202,22 +208,49 @@ const patchOptions = computed(() => {
 const currentPatchId = computed(() => store.currentPatchId);
 const hasBank = computed(() => store.currentBank !== null);
 
-// Watch for changes to current patch
-watch(currentPatchId, (newId) => {
-  if (newId && !selectedPatchId.value) {
-    selectedPatchId.value = newId;
-  }
-});
-
-// Initialize selected patch if there's a current one
-if (currentPatchId.value) {
-  selectedPatchId.value = currentPatchId.value;
-}
+// Watch for changes to current patch and keep local selection/name in sync
+watch(
+  currentPatchId,
+  (newId) => {
+    if (newId) {
+      selectedPatchId.value = newId;
+      const patch = patches.value.find((p) => p.metadata.id === newId);
+      patchName.value = patch?.metadata.name || '';
+    } else {
+      selectedPatchId.value = null;
+      patchName.value = '';
+    }
+  },
+  { immediate: true },
+);
 
 // Handlers
-const handlePatchSelect = (patchId: string | null) => {
-  // Just update selection, don't auto-load
+const handlePatchSelect = async (patchId: string | null) => {
   selectedPatchId.value = patchId;
+  if (!patchId) return;
+
+  try {
+    const success = await store.loadPatch(patchId);
+    if (success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Patch loaded successfully',
+        timeout: 2000,
+      });
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to load patch',
+        timeout: 2000,
+      });
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: `Error loading patch: ${error}`,
+      timeout: 3000,
+    });
+  }
 };
 
 const handleLoadPatch = async () => {
@@ -248,18 +281,16 @@ const handleLoadPatch = async () => {
 };
 
 const handleSavePatch = async () => {
-  if (!newPatchName.value.trim()) return;
+  if (!patchName.value.trim() || !currentPatchId.value) return;
 
   try {
-    const patch = await store.saveCurrentPatch(newPatchName.value.trim());
+    const patch = await store.updateCurrentPatch(patchName.value.trim());
     if (patch) {
       $q.notify({
         type: 'positive',
         message: `Patch "${patch.metadata.name}" saved`,
         timeout: 2000,
       });
-      selectedPatchId.value = patch.metadata.id;
-      newPatchName.value = '';
     } else {
       $q.notify({
         type: 'negative',
@@ -271,6 +302,32 @@ const handleSavePatch = async () => {
     $q.notify({
       type: 'negative',
       message: `Error saving patch: ${error}`,
+      timeout: 3000,
+    });
+  }
+};
+
+const handleNewPatch = async () => {
+  try {
+    const patch = await store.saveCurrentPatch('New Patch');
+    if (patch) {
+      $q.notify({
+        type: 'positive',
+        message: `New patch "${patch.metadata.name}" created`,
+        timeout: 2000,
+      });
+      patchName.value = patch.metadata.name;
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to create new patch',
+        timeout: 2000,
+      });
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: `Error creating new patch: ${error}`,
       timeout: 3000,
     });
   }
