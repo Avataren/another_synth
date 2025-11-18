@@ -224,6 +224,7 @@ export interface FilterState {
 export interface VoiceNode {
   id: number;
   type: VoiceNodeType;
+  name: string;
 }
 
 // The complete layout of a voice
@@ -269,9 +270,9 @@ export const getNodesOfType = (
 };
 
 export interface RawNode {
-    id: number;
-    node_type: string;
-    name: string;
+  id: number;
+  node_type: string;
+  name: string;
 }
 
 export interface RawConnection {

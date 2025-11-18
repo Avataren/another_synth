@@ -2,11 +2,13 @@
   <q-card class="lfo-card">
     <!-- Header: forwards events to parent -->
     <audio-card-header
-      :title="`LFO ${props.nodeId}`"
+      :title="displayName"
+      :editable="true"
       :isMinimized="props.isMinimized"
       @plusClicked="forwardPlus"
       @minimizeClicked="forwardMinimize"
       @closeClicked="forwardClose"
+      @update:title="handleNameChange"
     />
 
     <q-separator />
@@ -143,11 +145,13 @@ interface Props {
   node: AudioNode | null;
   nodeId: number;
   isMinimized?: boolean;
+  nodeName?: string;
 }
 const props = withDefaults(defineProps<Props>(), {
   node: null,
   nodeId: 0,
   isMinimized: false,
+  nodeName: undefined,
 });
 
 // Define emits for forwarding events
@@ -170,6 +174,14 @@ const { lfoStates } = storeToRefs(store);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 const waveform = ref<number>(0);
 const triggerMode = ref<boolean>(false);
+
+const displayName = computed(
+  () => props.nodeName || store.getNodeName(props.nodeId) || `LFO ${props.nodeId}`,
+);
+
+function handleNameChange(name: string) {
+  store.renameNode(props.nodeId, name);
+}
 
 // We'll cache the drawn waveform as an offscreen canvas.
 let cachedWaveformCanvas: HTMLCanvasElement | null = null;
