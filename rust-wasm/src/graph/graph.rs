@@ -145,9 +145,13 @@ impl AudioGraph {
         self.update_processing_order();
     }
 
-    pub fn add_node(&mut self, node: Box<dyn AudioNode>) -> NodeId {
-        let id = NodeId::new();
-
+    /// Adds a node to the graph using an explicit NodeId.
+    ///
+    /// This is primarily used by the audio engine to ensure that
+    /// corresponding nodes across different voices share the same
+    /// logical identifier, while still keeping the graph's internal
+    /// representation based on NodeId keys.
+    pub fn add_node_with_id(&mut self, id: NodeId, node: Box<dyn AudioNode>) {
         // Allocate buffers for each port.
         let ports = node.get_ports();
         for (port, _) in &ports {
@@ -188,7 +192,11 @@ impl AudioGraph {
                 });
             }
         }
+    }
 
+    pub fn add_node(&mut self, node: Box<dyn AudioNode>) -> NodeId {
+        let id = NodeId::new();
+        self.add_node_with_id(id, node);
         id
     }
 
@@ -242,7 +250,19 @@ impl AudioGraph {
             connection.to_port,
         );
 
-        let source_buffer_idx = self.node_buffers[&(connection.from_node, connection.from_port)];
+        let source_buffer_idx = match self
+            .node_buffers
+            .get(&(connection.from_node, connection.from_port))
+        {
+            Some(&idx) => idx,
+            None => {
+                log_error(&format!(
+                    "add_connection: source buffer not found for node {:?}, port {:?}",
+                    connection.from_node, connection.from_port
+                ));
+                return;
+            }
+        };
         let to_port = connection.to_port;
         let to_node = connection.to_node;
         let amount = connection.amount;

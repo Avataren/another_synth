@@ -5,6 +5,7 @@ use std::simd::num::SimdFloat;
 use crate::graph::ModulationSource;
 use crate::impulse_generator::js_fallback_fill;
 use crate::{AudioNode, PortId};
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 use getrandom::fill;
 use rustc_hash::FxHashMap;
 
@@ -31,11 +32,22 @@ impl GlobalVelocityNode {
         let mut random_numbers = vec![0f32; num_random];
         // 4 bytes per f32.
         let mut buf = vec![0u8; num_random * 4];
-        if let Err(e) = fill(&mut buf) {
-            js_fallback_fill(&mut buf).expect(&format!(
-                "Fallback for random number generation failed: {}",
-                e
-            ));
+        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+        {
+            // In WASM, skip getrandom entirely; rely on the JS/Math.random
+            // fallback which is compatible with AudioWorklet and similar
+            // environments where Web Crypto may be unavailable.
+            js_fallback_fill(&mut buf)
+                .expect("Fallback for random number generation failed");
+        }
+        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+        {
+            if let Err(e) = fill(&mut buf) {
+                js_fallback_fill(&mut buf).expect(&format!(
+                    "Fallback for random number generation failed: {}",
+                    e
+                ));
+            }
         }
         for i in 0..num_random {
             let start = i * 4;

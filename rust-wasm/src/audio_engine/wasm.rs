@@ -1301,12 +1301,12 @@ impl AudioEngine {
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_envelope(&mut self) -> Result<JsValue, JsValue> {
-        let mut envelope_id = NodeId::default();
+        let envelope_id = NodeId::new();
         for voice in &mut self.voices {
-            envelope_id = voice.graph.add_node(Box::new(Envelope::new(
-                self.sample_rate,
-                EnvelopeConfig::default(),
-            )));
+            voice.graph.add_node_with_id(
+                envelope_id,
+                Box::new(Envelope::new(self.sample_rate, EnvelopeConfig::default())),
+            );
         }
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(&obj, &"envelopeId".into(), &JsValue::from_str(&envelope_id.to_string()))?;
@@ -1316,32 +1316,34 @@ impl AudioEngine {
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_arpeggiator(&mut self) -> Result<JsValue, JsValue> {
-        let mut arp_id = NodeId::default();
-        let mut gate_mixer_id = NodeId::default();
+        let arp_id = NodeId::new();
         for voice in &mut self.voices {
             let mut arp = ArpeggiatorGenerator::new();
             arp.create_test_pattern(self.sample_rate, 0.225);
-            arp_id = voice.graph.add_node(Box::new(arp));
-            gate_mixer_id = voice.graph.global_gatemixer_node.unwrap();
+            voice.graph.add_node_with_id(arp_id, Box::new(arp));
+
+            if let Some(gate_mixer_id) = voice.graph.global_gatemixer_node {
+                voice.graph.add_connection(Connection {
+                    from_node: arp_id,
+                    from_port: PortId::ArpGate,
+                    to_node: gate_mixer_id,
+                    to_port: PortId::ArpGate,
+                    amount: 1.0,
+                    modulation_type: ModulationType::VCA,
+                    modulation_transform: ModulationTransformation::None,
+                });
+            }
         }
-        self.connect_nodes(
-            &arp_id.to_string(),
-            PortId::ArpGate,
-            &gate_mixer_id.to_string(),
-            PortId::ArpGate,
-            1.0,
-            Some(WasmModulationType::VCA),
-            ModulationTransformation::None,
-        )
-        .unwrap();
         Ok(JsValue::from_str(&arp_id.to_string()))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_mixer(&mut self) -> Result<JsValue, JsValue> {
-        let mut mixer_id = NodeId::default();
+        let mixer_id = NodeId::new();
         for voice in &mut self.voices {
-            mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
+            voice
+                .graph
+                .add_node_with_id(mixer_id, Box::new(Mixer::new()));
             voice.graph.set_output_node(mixer_id);
         }
         // Just return the ID directly like other nodes
@@ -1350,9 +1352,11 @@ impl AudioEngine {
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_lfo(&mut self) -> Result<JsValue, JsValue> {
-        let mut lfo_id = NodeId::default();
+        let lfo_id = NodeId::new();
         for voice in &mut self.voices {
-            lfo_id = voice.graph.add_node(Box::new(Lfo::new(self.sample_rate)));
+            voice
+                .graph
+                .add_node_with_id(lfo_id, Box::new(Lfo::new(self.sample_rate)));
         }
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(&obj, &"lfoId".into(), &JsValue::from_str(&lfo_id.to_string()))?;
@@ -1362,47 +1366,54 @@ impl AudioEngine {
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_filter(&mut self) -> Result<String, JsValue> {
-        let mut filter_id = NodeId::default();
+        let filter_id = NodeId::new();
         for voice in &mut self.voices {
-            filter_id = voice
-                .graph
-                .add_node(Box::new(FilterCollection::new(self.sample_rate)));
+            voice.graph.add_node_with_id(
+                filter_id,
+                Box::new(FilterCollection::new(self.sample_rate)),
+            );
         }
         Ok(filter_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_noise(&mut self) -> Result<String, JsValue> {
-        let mut noise_id = NodeId::default();
+        let noise_id = NodeId::new();
         for voice in &mut self.voices {
-            noise_id = voice
+            voice
                 .graph
-                .add_node(Box::new(NoiseGenerator::new(self.sample_rate)));
+                .add_node_with_id(noise_id, Box::new(NoiseGenerator::new(self.sample_rate)));
         }
         Ok(noise_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_oscillator(&mut self) -> Result<String, JsValue> {
-        let mut osc_id = NodeId::default();
+        let osc_id = NodeId::new();
         for voice in &mut self.voices {
-            osc_id = voice.graph.add_node(Box::new(AnalogOscillator::new(
-                self.sample_rate,
-                Waveform::Sine,
-                self.wavetable_banks.clone(), // pass the shared banks
-            )));
+            voice.graph.add_node_with_id(
+                osc_id,
+                Box::new(AnalogOscillator::new(
+                    self.sample_rate,
+                    Waveform::Sine,
+                    self.wavetable_banks.clone(), // pass the shared banks
+                )),
+            );
         }
         Ok(osc_id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn create_wavetable_oscillator(&mut self) -> Result<String, JsValue> {
-        let mut osc_id = NodeId::default();
+        let osc_id = NodeId::new();
         for voice in &mut self.voices {
-            osc_id = voice.graph.add_node(Box::new(WavetableOscillator::new(
-                self.sample_rate,
-                self.wavetable_synthbank.clone(),
-            )));
+            voice.graph.add_node_with_id(
+                osc_id,
+                Box::new(WavetableOscillator::new(
+                    self.sample_rate,
+                    self.wavetable_synthbank.clone(),
+                )),
+            );
         }
         Ok(osc_id.to_string())
     }
@@ -1416,11 +1427,13 @@ impl AudioEngine {
             data_ref.load_from_wav(default_samples, 1, self.sample_rate);
             data_ref.root_note = 69.0;
         }
-        let mut sampler_id = NodeId::default();
+        let sampler_id = NodeId::new();
         for voice in &mut self.voices {
             let mut sampler = Sampler::new(self.sample_rate);
             sampler.set_sample_data(sample_data.clone());
-            sampler_id = voice.graph.add_node(Box::new(sampler));
+            voice
+                .graph
+                .add_node_with_id(sampler_id, Box::new(sampler));
         }
         Ok(sampler_id.to_string())
     }

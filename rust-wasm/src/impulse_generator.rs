@@ -1,3 +1,4 @@
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 use getrandom::fill;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -47,13 +48,28 @@ pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// Tries getrandom::fill first, then falls back to js_fallback_fill.
-fn fill_seed(seed: &mut [u8]) -> Result<(), String> {
-    match fill(seed) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            log_error(&format!("getrandom failed: {:?}", e));
-            js_fallback_fill(seed)
+/// Tries getrandom::fill first (on native), then falls back to js_fallback_fill.
+///
+/// On WebAssembly this skips getrandom entirely and only uses the JS/Math.random
+/// fallback to avoid relying on the Web Crypto API in contexts where it is
+/// unavailable (e.g. AudioWorklet global scope).
+pub fn fill_seed(seed: &mut [u8]) -> Result<(), String> {
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    {
+        // In WASM we avoid getrandom completely to prevent noisy failures when
+        // Web Crypto is not available. The js_fallback_fill implementation
+        // already logs a warning and falls back to Math.random() if needed.
+        return js_fallback_fill(seed);
+    }
+
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    {
+        match fill(seed) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                log_error(&format!("getrandom failed: {:?}", e));
+                js_fallback_fill(seed)
+            }
         }
     }
 }

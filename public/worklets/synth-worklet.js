@@ -2120,16 +2120,6 @@ function __wbg_get_imports() {
   imports.wbg.__wbg_error_99981e16d476aa5c = function(arg0) {
     console.error(arg0);
   };
-  imports.wbg.__wbg_getRandomValues_38a1ff1ea09f6cc7 = function() {
-    return handleError(function(arg0, arg1) {
-      globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
-    }, arguments);
-  };
-  imports.wbg.__wbg_getRandomValues_3c9c0d586e575a16 = function() {
-    return handleError(function(arg0, arg1) {
-      globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
-    }, arguments);
-  };
   imports.wbg.__wbg_getRandomValues_98a405f989c78bd6 = function() {
     return handleError(function(arg0, arg1, arg2) {
       const ret = arg0.getRandomValues(getArrayU8FromWasm0(arg1, arg2));
