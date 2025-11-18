@@ -68,6 +68,9 @@ impl AudioNode for GateMixer {
         true
     }
     fn set_active(&mut self, _active: bool) {}
+    fn name(&self) -> &str {
+        "Gate Mixer"
+    }
     fn node_type(&self) -> &str {
         "gatemixer"
     }

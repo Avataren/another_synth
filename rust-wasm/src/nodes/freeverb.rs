@@ -414,6 +414,10 @@ impl AudioNode for Freeverb {
         }
     }
 
+    fn name(&self) -> &str {
+        "Reverb"
+    }
+
     fn node_type(&self) -> &str {
         "freeverb"
     }

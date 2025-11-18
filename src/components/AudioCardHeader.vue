@@ -3,7 +3,18 @@
     class="row items-center justify-between bg-primary text-white"
   >
     <!-- Left side: Title -->
-    <div class="text-h6">{{ title }}</div>
+    <div class="text-h6 header-title">
+      <template v-if="editable">
+        <q-input
+          dense
+          filled
+          class="name-input"
+          v-model="editableTitle"
+          @update:model-value="onTitleInput"
+        />
+      </template>
+      <template v-else>{{ title }}</template>
+    </div>
 
     <!-- Right side: Buttons -->
     <div class="row items-center">
@@ -27,17 +38,39 @@
 
 <script setup lang="ts">
 // Import what we need from Vue
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 // Define props
 interface Props {
   title?: string;
+  editable?: boolean;
 }
 
-const { title = 'Default Title' } = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  title: 'Default Title',
+  editable: false,
+});
 
 // Define emits
-const emits = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);
+const emits = defineEmits([
+  'plusClicked',
+  'minimizeClicked',
+  'closeClicked',
+  'update:title',
+]);
+
+const editableTitle = ref(props.title);
+
+watch(
+  () => props.title,
+  (newTitle) => {
+    editableTitle.value = newTitle;
+  },
+);
+
+function onTitleInput(value: string) {
+  emits('update:title', value);
+}
 
 // Local ref to track if minimized or not
 const minimized = ref(false);

@@ -886,6 +886,9 @@ impl AudioNode for Chorus {
     fn set_active(&mut self, active: bool) {
         self.set_node_active(active);
     }
+    fn name(&self) -> &str {
+        "Chorus"
+    }
     fn node_type(&self) -> &str {
         self.node_type_str()
     }

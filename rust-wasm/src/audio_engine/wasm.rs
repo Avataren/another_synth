@@ -238,6 +238,7 @@ struct VoiceState {
 struct NodeState {
     id: usize,
     node_type: String,
+    name: String,
 }
 
 #[derive(Serialize, Debug)]
@@ -411,6 +412,7 @@ impl AudioEngine {
                     NodeState {
                         id: i, // This is the same as the node's assigned id.
                         node_type: node.node_type().to_string(),
+                        name: node.name().to_string(),
                     }
                 })
                 .collect();
@@ -424,6 +426,7 @@ impl AudioEngine {
                 .map(|(i, effect)| NodeState {
                     id: EFFECT_NODE_ID_OFFSET + i, // ensure uniqueness by offsetting
                     node_type: effect.node.node_type().to_string(),
+                    name: effect.node.name().to_string(),
                 })
                 .collect();
             nodes.extend(effect_nodes);
