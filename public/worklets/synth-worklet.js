@@ -1094,6 +1094,18 @@ var AudioEngine = class {
     return v1;
   }
   /**
+   * Export raw convolver impulse response with metadata for serialization
+   * @param {number} convolver_id
+   * @returns {object}
+   */
+  export_convolver_data(convolver_id) {
+    const ret = wasm.audioengine_export_convolver_data(this.__wbg_ptr, convolver_id);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  /**
    * @param {number} node_id
    * @param {number} waveform_length
    * @returns {Float32Array}
@@ -2625,6 +2637,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "exportSampleData":
         this.handleExportSampleData(event.data);
         break;
+      case "exportConvolverData":
+        this.handleExportConvolverData(event.data);
+        break;
       case "cpuUsage":
         this.handleCpuUsage();
         break;
@@ -3297,6 +3312,26 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         source: "exportSampleData",
         messageId: data.messageId,
         message: "Failed to export sample data"
+      });
+    }
+  }
+  handleExportConvolverData(data) {
+    if (!this.audioEngine) return;
+    try {
+      const convolverData = this.audioEngine.export_convolver_data(data.convolverId);
+      this.port.postMessage({
+        type: "convolverData",
+        convolverId: data.convolverId,
+        messageId: data.messageId,
+        convolverData
+      });
+    } catch (err) {
+      console.error("Error exporting convolver data:", err);
+      this.port.postMessage({
+        type: "error",
+        source: "exportConvolverData",
+        messageId: data.messageId,
+        message: "Failed to export convolver data"
       });
     }
   }

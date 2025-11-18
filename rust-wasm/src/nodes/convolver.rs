@@ -32,6 +32,8 @@ pub struct Convolver {
     fallback_zero_buffer: Vec<f32>,
     temp_wet_l: Vec<f32>,
     temp_wet_r: Vec<f32>,
+    /// Store the original impulse response for serialization
+    original_impulse_response: Vec<Vec<f32>>,
 }
 
 impl Convolver {
@@ -45,6 +47,15 @@ impl Convolver {
 
     pub fn set_enabled(&mut self, enabled: bool) {
         self.set_active(enabled);
+    }
+
+    /// Get the original impulse response data and metadata for serialization
+    pub fn get_impulse_response_data(&self) -> (Vec<Vec<f32>>, f32, usize) {
+        (
+            self.original_impulse_response.clone(),
+            self.sample_rate,
+            self.original_impulse_response.len(),
+        )
     }
 
     pub fn new_multi_channel(
@@ -124,6 +135,7 @@ impl Convolver {
             fallback_zero_buffer: Vec::new(),
             temp_wet_l: Vec::new(),
             temp_wet_r: Vec::new(),
+            original_impulse_response: impulse_response, // Store original IR
         }
     }
 

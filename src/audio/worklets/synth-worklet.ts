@@ -277,6 +277,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'exportSampleData':
         this.handleExportSampleData(event.data);
         break;
+      case 'exportConvolverData':
+        this.handleExportConvolverData(event.data);
+        break;
       case 'cpuUsage':
         this.handleCpuUsage();
         break;
@@ -1161,6 +1164,30 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         source: 'exportSampleData',
         messageId: data.messageId,
         message: 'Failed to export sample data',
+      });
+    }
+  }
+
+  private handleExportConvolverData(data: {
+    convolverId: number;
+    messageId: string;
+  }) {
+    if (!this.audioEngine) return;
+    try {
+      const convolverData = this.audioEngine.export_convolver_data(data.convolverId);
+      this.port.postMessage({
+        type: 'convolverData',
+        convolverId: data.convolverId,
+        messageId: data.messageId,
+        convolverData,
+      });
+    } catch (err) {
+      console.error('Error exporting convolver data:', err);
+      this.port.postMessage({
+        type: 'error',
+        source: 'exportConvolverData',
+        messageId: data.messageId,
+        message: 'Failed to export convolver data',
       });
     }
   }

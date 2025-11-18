@@ -55,27 +55,26 @@ export async function extractConvolverAudioAssets(
 
   for (const nodeId of convolverNodeIds) {
     try {
-      // Get the convolver impulse response data
-      // Note: You may need to add a method to Instrument to retrieve this
-      // const impulseData = await instrument.getConvolverImpulse(nodeId);
+      // Export the raw impulse response data with metadata
+      const convolverData = await instrument.exportConvolverData(nodeId);
 
-      // For now, we'll skip this as the method might not exist yet
-      // You can implement getConvolverImpulse in the Instrument class
-      console.log(
-        `Convolver impulse extraction not yet implemented for node ${nodeId}`,
-      );
+      if (convolverData.samples && convolverData.samples.length > 0) {
+        // Use the actual metadata from the convolver
+        const asset = encodeFloat32ArrayToBase64(
+          convolverData.samples,
+          convolverData.sampleRate,
+          convolverData.channels,
+          AssetType.ImpulseResponse,
+          nodeId,
+          undefined, // fileName can be added from convolver state if stored
+          undefined, // rootNote not applicable for impulse responses
+        );
 
-      // When implemented:
-      // if (impulseData && impulseData.length > 0) {
-      //   const asset = encodeFloat32ArrayToBase64(
-      //     impulseData,
-      //     48000, // Common IR sample rate
-      //     2,     // Stereo IRs are common
-      //     AssetType.ImpulseResponse,
-      //     nodeId,
-      //   );
-      //   assets.set(asset.id, asset);
-      // }
+        assets.set(asset.id, asset);
+        console.log(
+          `Extracted impulse response for convolver node ${nodeId}: ${convolverData.channels}ch @ ${convolverData.sampleRate}Hz`,
+        );
+      }
     } catch (error) {
       console.error(
         `Failed to extract impulse from convolver ${nodeId}:`,

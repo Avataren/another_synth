@@ -302,6 +302,48 @@ export default class Instrument {
     });
   }
 
+  public async exportConvolverData(nodeId: number): Promise<{
+    samples: Float32Array;
+    sampleRate: number;
+    channels: number;
+  }> {
+    if (!this.ready || !this.workletNode) {
+      throw new Error('Audio system not ready');
+    }
+    const port = this.workletNode.port;
+
+    return new Promise((resolve, reject) => {
+      const messageId = `export-convolver-${nodeId}-${performance.now()}`;
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data.type === 'convolverData' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          const data = event.data.convolverData;
+          resolve({
+            samples: new Float32Array(data.samples),
+            sampleRate: data.sampleRate,
+            channels: data.channels,
+          });
+        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(event.data.message ?? 'Failed to export convolver data'));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+
+      port.postMessage({
+        type: 'exportConvolverData',
+        convolverId: nodeId,
+        messageId,
+      });
+
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout exporting convolver data'));
+      }, 2000);
+    });
+  }
+
   public updateDelayState(nodeId: number, newState: DelayState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({

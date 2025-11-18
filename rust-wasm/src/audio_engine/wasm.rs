@@ -1787,6 +1787,72 @@ impl AudioEngine {
         Ok(result)
     }
 
+    /// Export raw convolver impulse response with metadata for serialization
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn export_convolver_data(
+        &self,
+        convolver_id: usize,
+    ) -> Result<js_sys::Object, JsValue> {
+        let voice = self
+            .voices
+            .first()
+            .ok_or_else(|| JsValue::from_str("No voices available"))?;
+        let node = voice
+            .graph
+            .get_node(NodeId(convolver_id))
+            .ok_or_else(|| JsValue::from_str("Convolver node not found"))?;
+        let convolver = node
+            .as_any()
+            .downcast_ref::<Convolver>()
+            .ok_or_else(|| JsValue::from_str("Node is not a Convolver"))?;
+
+        let (ir_channels, sample_rate, num_channels) = convolver.get_impulse_response_data();
+
+        // Create a JavaScript object with metadata and data
+        let result = js_sys::Object::new();
+
+        // Set metadata
+        js_sys::Reflect::set(
+            &result,
+            &JsValue::from_str("sampleRate"),
+            &JsValue::from_f64(sample_rate as f64),
+        )?;
+        js_sys::Reflect::set(
+            &result,
+            &JsValue::from_str("channels"),
+            &JsValue::from_f64(num_channels as f64),
+        )?;
+
+        // Flatten the multi-channel IR into a single interleaved buffer
+        // For stereo: [L0, R0, L1, R1, L2, R2, ...]
+        let ir_length = ir_channels.get(0).map_or(0, |ch| ch.len());
+        let mut interleaved = Vec::with_capacity(ir_length * num_channels);
+
+        for i in 0..ir_length {
+            for ch in 0..num_channels {
+                if let Some(channel_data) = ir_channels.get(ch) {
+                    if let Some(&sample) = channel_data.get(i) {
+                        interleaved.push(sample);
+                    } else {
+                        interleaved.push(0.0);
+                    }
+                } else {
+                    interleaved.push(0.0);
+                }
+            }
+        }
+
+        // Convert to JavaScript Float32Array
+        let samples_array = js_sys::Float32Array::from(&interleaved[..]);
+        js_sys::Reflect::set(
+            &result,
+            &JsValue::from_str("samples"),
+            &samples_array,
+        )?;
+
+        Ok(result)
+    }
+
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_filters(
         &mut self,
