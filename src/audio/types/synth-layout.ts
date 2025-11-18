@@ -27,7 +27,7 @@ export enum VoiceNodeType {
 }
 
 export interface ReverbState {
-  id: number;
+  id: string;
   active: boolean;
   room_size: number,
   damp: number,
@@ -38,7 +38,7 @@ export interface ReverbState {
 
 export interface ChorusState {
   /** Unique identifier for this chorus node instance. */
-  id: number;
+  id: string;
   /** Whether the chorus effect is currently active/enabled. */
   active: boolean;
   /** The base delay time in milliseconds around which the LFO modulates. */
@@ -70,7 +70,7 @@ export enum SamplerTriggerMode {
 }
 
 export interface SamplerState {
-  id: number;
+  id: string;
   frequency: number;
   gain: number;
   loopMode: SamplerLoopMode;
@@ -86,13 +86,13 @@ export interface SamplerState {
 }
 
 export interface ConvolverState {
-  id?: number;
+  id?: string;
   wetMix: number;
   active: boolean;
 }
 
 export interface DelayState {
-  id?: number;
+  id?: string;
   delayMs: number;
   feedback: number;
   wetMix: number;
@@ -100,7 +100,7 @@ export interface DelayState {
 }
 
 export interface LfoState {
-  id?: number;
+  id?: string;
   frequency: number;
   phaseOffset: number;
   waveform: number;
@@ -115,8 +115,8 @@ export interface LfoState {
 }
 
 export interface NodeConnectionUpdate {
-  fromId: number;
-  toId: number;
+  fromId: string;
+  toId: string;
   target: PortId;
   amount: number;
   modulationTransformation: ModulationTransformation;
@@ -125,8 +125,8 @@ export interface NodeConnectionUpdate {
 }
 
 export interface NodeConnection {
-  fromId: number;
-  toId: number;
+  fromId: string;
+  toId: string;
   target: PortId;
   amount: number;
   modulationType: WasmModulationType;
@@ -134,7 +134,7 @@ export interface NodeConnection {
 }
 
 export interface EnvelopeConfig {
-  id: number;
+  id: string;
   active: boolean;
   attack: number; // seconds
   decay: number; // seconds
@@ -207,7 +207,7 @@ export interface VelocityState {
 }
 
 export interface FilterState {
-  id: number;
+  id: string;
   cutoff: number;
   resonance: number;
   keytracking: number;
@@ -222,7 +222,7 @@ export interface FilterState {
 
 // Represents a node in the voice with its configuration
 export interface VoiceNode {
-  id: number;
+  id: string;
   type: VoiceNodeType;
   name: string;
 }
@@ -270,14 +270,14 @@ export const getNodesOfType = (
 };
 
 export interface RawNode {
-  id: number;
+  id: string;
   node_type: string;
   name: string;
 }
 
 export interface RawConnection {
-  from_id: number;
-  to_id: number;
+  from_id: string;
+  to_id: string;
   target: number;
   amount: number;
   modulation_type: string;
@@ -296,7 +296,7 @@ export interface WasmState {
 
 export const findNodeById = (
   voice: VoiceLayout,
-  id: number,
+  id: string,
 ): VoiceNode | undefined => {
   return Object.values(voice.nodes)
     .flat()
@@ -305,7 +305,7 @@ export const findNodeById = (
 
 export const findNodeConnections = (
   voice: VoiceLayout,
-  nodeId: number,
+  nodeId: string,
 ): NodeConnection[] => {
   return voice.connections.filter(
     (conn) => conn.fromId === nodeId || conn.toId === nodeId,
@@ -328,9 +328,9 @@ export function convertRawModulationType(raw: string): WasmModulationType {
 
 export function findModulationTargets(
   voice: VoiceLayout,
-  sourceId: number,
+  sourceId: string,
 ): Array<{
-  nodeId: number;
+  nodeId: string;
   target: PortId;
   amount: number;
 }> {
@@ -411,8 +411,8 @@ export function getModulationTargetsForType(
 }
 
 export function createNodeConnection(
-  fromId: number,
-  toId: number,
+  fromId: string,
+  toId: string,
   target: PortId,
   amount: number,
   modulationType: WasmModulationType,
