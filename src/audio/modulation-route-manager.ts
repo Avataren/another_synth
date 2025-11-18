@@ -11,7 +11,7 @@ import {
 import { PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
 
 export interface TargetNode {
-  id: number;
+  id: string;
   name: string;
   type: VoiceNodeType;
 }
@@ -19,15 +19,15 @@ export interface TargetNode {
 export class ModulationRouteManager {
   constructor(
     private readonly store = useAudioSystemStore(),
-    private readonly sourceId: number,
+    private readonly sourceId: string,
     private readonly sourceType: VoiceNodeType,
   ) { }
 
-  private getNodeName(type: VoiceNodeType, index: number): string {
+  private getNodeName(type: VoiceNodeType, index: string): string {
     return this.store.getNodeName(index) || `${type} ${index}`;
   }
 
-  private findNodeById(nodeId: number): VoiceNode | undefined {
+  private findNodeById(nodeId: string): VoiceNode | undefined {
     const voice = this.store.synthLayout?.voices[0];
     if (!voice) return undefined;
 
@@ -39,8 +39,8 @@ export class ModulationRouteManager {
   }
 
   private isConnectionCreatingFeedback(
-    sourceId: number,
-    targetNodeId: number,
+    sourceId: string,
+    targetNodeId: string,
   ): boolean {
     const voice = this.store.synthLayout?.voices[0];
     if (!voice) return false;
@@ -57,8 +57,8 @@ export class ModulationRouteManager {
 
     // Helper function to check if there's a path from target back to source
     const hasPathToSource = (
-      currentId: number,
-      visited: Set<number>,
+      currentId: string,
+      visited: Set<string>,
     ): boolean => {
       if (currentId === sourceId) return true;
       if (visited.has(currentId)) return false;
@@ -101,7 +101,7 @@ export class ModulationRouteManager {
   /**
    * Gets available parameters for a target node that aren't already used in other routes
    */
-  getAvailableParams(targetId: number): ModulationTargetOption[] {
+  getAvailableParams(targetId: string): ModulationTargetOption[] {
     const node = this.findNodeById(targetId);
     if (!node) return [];
 

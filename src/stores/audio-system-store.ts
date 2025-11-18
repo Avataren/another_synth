@@ -204,7 +204,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }));
     },
 
-    getNodeState: (state) => (nodeId: number, nodeType: VoiceNodeType) => {
+    getNodeState: (state) => (nodeId: string, nodeType: VoiceNodeType) => {
       switch (nodeType) {
         case VoiceNodeType.Oscillator:
           return state.oscillatorStates.get(nodeId);
@@ -231,7 +231,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
     getNodeConnectionsForVoice:
       (state) =>
-        (voiceIndex: number, nodeId: number): NodeConnection[] => {
+        (voiceIndex: number, nodeId: string): NodeConnection[] => {
           if (!state.synthLayout) return [];
           const voice = state.synthLayout.voices[voiceIndex];
           if (!voice) return [];
@@ -241,7 +241,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         },
     getNodeConnections:
       (state) =>
-        (nodeId: number): NodeConnection[] => {
+        (nodeId: string): NodeConnection[] => {
           if (!state.synthLayout) return [];
           const voice = state.synthLayout.voices[0]; // Only look at voice 0
           if (!voice) return [];
@@ -495,7 +495,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout with:', layout);
 
-      const existingNames = new Map<number, string>();
+      const existingNames = new Map<string, string>();
       if (this.synthLayout) {
         this.synthLayout.voices.forEach((voice) => {
           Object.values(voice.nodes).forEach((nodeArray) => {
@@ -549,94 +549,50 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               `updateSynthLayout: Processing ${rawConnections.length} raw connections for voice ${voice.id}`,
             );
 
-            voice.connections = rawConnections.map(
-              (rawConn: RawConnection): NodeConnection => {
-                // --- Explicit Numeric Conversions ---
+            voice.connections = rawConnections.map((rawConn: RawConnection) => {
+              const amount =
+                typeof rawConn.amount === 'number' && !isNaN(rawConn.amount)
+                  ? rawConn.amount
+                  : Number(rawConn.amount) || 1.0;
 
-                // Modulation Transformation
-                const transformRaw = rawConn.modulation_transform;
-                let fixedTransform: ModulationTransformation =
-                  ModulationTransformation.None;
-                // Default to 0 (ModulationTransformation.None) if null, undefined, or NaN
-                if (transformRaw != null || isNaN(transformRaw)) {
-                  console.log('WTF:', transformRaw);
-                  fixedTransform = ModulationTransformation.None;
-                }
+              const targetValue =
+                typeof rawConn.target === 'number' && !isNaN(rawConn.target)
+                  ? rawConn.target
+                  : Number(rawConn.target) || 0;
 
-                // Amount
-                const amountRaw = rawConn.amount;
-                let amountNum = Number(amountRaw);
-                // Default amount to 1.0 if conversion fails
-                if (amountRaw == null || isNaN(amountNum)) {
-                  if (amountRaw != null) {
-                    console.warn(
-                      `updateSynthLayout: Invalid amount "${amountRaw}", defaulting to 1.0. RawConn:`,
-                      rawConn,
-                    );
-                  }
-                  amountNum = 1.0;
-                }
+              const modulationTransformation =
+                typeof rawConn.modulation_transform === 'number' &&
+                !isNaN(rawConn.modulation_transform)
+                  ? rawConn.modulation_transform
+                  : ModulationTransformation.None;
 
-                // Target (PortId)
-                const targetRaw = rawConn.target;
-                let targetNum = Number(targetRaw);
-                // Default target to 0 if conversion fails (though this might be risky depending on PortId 0 meaning)
-                if (targetRaw == null || isNaN(targetNum)) {
-                  if (targetRaw != null) {
-                    console.warn(
-                      'updateSynthLayout: Invalid target "${targetRaw}", defaulting to 0. RawConn:',
-                      rawConn,
-                    );
-                  }
-                  targetNum = 0;
-                }
+              const newNodeConnection: NodeConnection = {
+                fromId: String(rawConn.from_id),
+                toId: String(rawConn.to_id),
+                target: targetValue as PortId,
+                amount,
+                modulationTransformation,
+                modulationType: this.convertModulationType(
+                  rawConn.modulation_type,
+                ),
+              };
 
-                // IDs
-                const fromIdNum = Number(rawConn.from_id);
-                const toIdNum = Number(rawConn.to_id);
-                if (isNaN(fromIdNum) || isNaN(toIdNum)) {
-                  console.error(
-                    'updateSynthLayout: Invalid from_id or to_id! Skipping connection. RawConn:',
-                    rawConn,
-                  );
-                  // Returning null and filtering later might be safer, but for now let's log and provide potentially invalid IDs
-                  // Or consider throwing an error if IDs are critical
-                }
-                // --- End Numeric Conversions ---
-
-                const newNodeConnection: NodeConnection = {
-                  fromId: fromIdNum, // Use converted number
-                  toId: toIdNum, // Use converted number
-                  target: targetNum as PortId, // Use converted number, assert type
-                  amount: amountNum, // Use converted number
-                  modulationTransformation: fixedTransform, // Use converted number
-                  modulationType: this.convertModulationType(
-                    rawConn.modulation_type,
-                  ),
-                };
-
-                // console.log('Converted connection:', newNodeConnection); // Optional: Log each conversion result
-                return newNodeConnection;
-              },
-            );
+              return newNodeConnection;
+            });
           } else {
-            // Optional: Add checks here if connections might already be in the correct format
-            // to ensure numeric types if they come from other sources (e.g., loading presets)
-            // For now, assume if it doesn't have 'from_id', it's already correct.
             console.log(
               `updateSynthLayout: Connections for voice ${voice.id} appear to be in correct format already.`,
             );
-            /// HERE conn.modulationTransformation appears to sometimes be a string???
             voice.connections = voice.connections.map((conn) => ({
               ...conn,
-              fromId: Number(conn.fromId),
-              toId: Number(conn.toId),
+              fromId: String(conn.fromId),
+              toId: String(conn.toId),
               target: Number(conn.target) as PortId,
               amount: Number(conn.amount),
-              modulationTransformation: isNaN(conn.modulationTransformation)
-                ? ModulationTransformation.None
-                : conn.modulationTransformation,
-              // modulationType should already be correct enum value if not raw
+              modulationTransformation:
+                typeof conn.modulationTransformation === 'number'
+                  ? conn.modulationTransformation
+                  : ModulationTransformation.None,
             }));
           }
         }
@@ -646,7 +602,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         if (Array.isArray(voice.nodes)) {
           // ... existing node conversion logic ...
           const nodesByType: {
-            [key in VoiceNodeType]: { id: number; type: VoiceNodeType; name: string }[];
+            [key in VoiceNodeType]: { id: string; type: VoiceNodeType; name: string }[];
           } = {
             [VoiceNodeType.Oscillator]: [],
             [VoiceNodeType.WavetableOscillator]: [],
@@ -668,7 +624,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           };
 
           interface RawNode {
-            id: number;
+            id: string;
             node_type: string;
             name: string;
           }
@@ -719,21 +675,19 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           };
 
           for (const rawNode of voice.nodes as RawNode[]) {
-            // Ensure node ID is also a number
-            const nodeIdNum = Number(rawNode.id);
-            if (isNaN(nodeIdNum)) {
+            const type = convertNodeType(rawNode.node_type);
+            const nodeId = String(rawNode.id);
+            if (!nodeId) {
               console.error(
                 `updateSynthLayout: Invalid node ID "${rawNode.id}" found. Skipping node.`,
               );
               continue;
             }
-            const type = convertNodeType(rawNode.node_type);
-            const baseName = rawNode.name?.trim() || `${type} ${nodeIdNum}`;
-            const nodeName =
-              existingNames.get(nodeIdNum) || nextDefaultName(type, baseName);
+            const baseName = rawNode.name?.trim() || `${type} ${nodeId}`;
+            const nodeName = existingNames.get(nodeId) || nextDefaultName(type, baseName);
             // Check if type is valid before pushing
             if (nodesByType[type]) {
-              nodesByType[type].push({ id: nodeIdNum, type, name: nodeName });
+              nodesByType[type].push({ id: nodeId, type, name: nodeName });
             } else {
               console.warn(
                 `updateSynthLayout: Node type "${type}" derived from "${rawNode.node_type}" is not tracked in nodesByType. Skipping node.`,
@@ -753,7 +707,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
 
       // Log valid node IDs from the canonical voice
-      const validIds = new Set<number>();
+      const validIds = new Set<string>();
       Object.values(canonicalVoice.nodes).forEach((nodeArray) => {
         nodeArray.forEach((node) => validIds.add(node.id));
       });
@@ -770,7 +724,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       console.log('--------- updateSynthLayout FINISHED ---------');
       // console.log('Processed synthLayout:', this.synthLayout); // Log final result if needed
     },
-    getNodeName(nodeId: number): string | undefined {
+    getNodeName(nodeId: string): string | undefined {
       const voice = this.synthLayout?.voices[0];
       if (!voice) return undefined;
       for (const type of Object.values(VoiceNodeType)) {
@@ -837,7 +791,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
 
     setSamplerSampleInfo(
-      nodeId: number,
+      nodeId: string,
       info: { sampleLength: number; sampleRate: number; channels: number; fileName?: string },
     ) {
       const currentState =
@@ -863,7 +817,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       void this.fetchSamplerWaveform(nodeId);
     },
 
-    async fetchSamplerWaveform(nodeId: number, maxPoints = 512) {
+    async fetchSamplerWaveform(nodeId: string, maxPoints = 512) {
       if (!this.currentInstrument) return;
       try {
         const waveform = await this.currentInstrument.getSamplerWaveform(
@@ -897,7 +851,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       };
     },
 
-    sendSamplerState(nodeId: number) {
+    sendSamplerState(nodeId: string) {
       if (!this.currentInstrument) return;
       const state = this.samplerStates.get(nodeId);
       if (!state) return;
@@ -979,8 +933,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         try {
           // Prepare the connection update
           const plainConnection = {
-            fromId: Number(connection.fromId),
-            toId: Number(connection.toId),
+            fromId: String(connection.fromId),
+            toId: String(connection.toId),
             target: Number(connection.target) as PortId,
             amount: Number(connection.amount),
             isRemoving: Boolean(connection.isRemoving),
