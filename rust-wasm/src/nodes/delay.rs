@@ -238,7 +238,7 @@ impl AudioNode for Delay {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Delay"
     }
 

@@ -517,7 +517,7 @@ impl AudioNode for Envelope {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Envelope"
     }
 

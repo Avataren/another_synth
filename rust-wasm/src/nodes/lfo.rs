@@ -778,7 +778,7 @@ impl AudioNode for Lfo {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "LFO"
     }
 

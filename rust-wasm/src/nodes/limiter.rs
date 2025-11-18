@@ -429,7 +429,7 @@ impl AudioNode for Limiter {
     fn set_active(&mut self, active: bool) {
         self.set_node_active(active);
     }
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Limiter"
     }
     fn node_type(&self) -> &str {

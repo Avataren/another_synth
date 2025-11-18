@@ -226,9 +226,9 @@ impl AutomationFrame {
 pub(crate) trait ModulationEndpoint {
     fn connect_nodes_adapter(
         &mut self,
-        from_node: usize,
+        from_node: &str,
         from_port: PortId,
-        to_node: usize,
+        to_node: &str,
         to_port: PortId,
         amount: f32,
         modulation_type: Option<WasmModulationType>,
@@ -237,8 +237,8 @@ pub(crate) trait ModulationEndpoint {
 
     fn remove_specific_connection_adapter(
         &mut self,
-        from_node: usize,
-        to_node: usize,
+        from_node: &str,
+        to_node: &str,
         to_port: PortId,
     ) -> Result<(), JsValue>;
 }
@@ -247,9 +247,9 @@ pub(crate) trait ModulationEndpoint {
 impl ModulationEndpoint for AudioEngine {
     fn connect_nodes_adapter(
         &mut self,
-        from_node: usize,
+        from_node: &str,
         from_port: PortId,
-        to_node: usize,
+        to_node: &str,
         to_port: PortId,
         amount: f32,
         modulation_type: Option<WasmModulationType>,
@@ -268,8 +268,8 @@ impl ModulationEndpoint for AudioEngine {
 
     fn remove_specific_connection_adapter(
         &mut self,
-        from_node: usize,
-        to_node: usize,
+        from_node: &str,
+        to_node: &str,
         to_port: PortId,
     ) -> Result<(), JsValue> {
         self.remove_specific_connection(from_node, to_node, to_port)
@@ -279,8 +279,8 @@ impl ModulationEndpoint for AudioEngine {
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectionUpdate {
-    from_id: usize,
-    to_id: usize,
+    from_id: String,
+    to_id: String,
     target: PortId,
     amount: f32,
     modulation_transformation: ModulationTransformation,
@@ -290,8 +290,8 @@ pub struct ConnectionUpdate {
 
 impl ConnectionUpdate {
     pub fn new(
-        from_id: usize,
-        to_id: usize,
+        from_id: String,
+        to_id: String,
         target: PortId,
         amount: f32,
         modulation_transformation: ModulationTransformation,
@@ -324,13 +324,13 @@ fn apply_connection_update_internal<E: ModulationEndpoint>(
     update: &ConnectionUpdate,
 ) -> Result<(), JsValue> {
     if update.is_removing {
-        engine.remove_specific_connection_adapter(update.from_id, update.to_id, update.target)
+        engine.remove_specific_connection_adapter(&update.from_id, &update.to_id, update.target)
     } else {
         let modulation_type = update.modulation_type.or(Some(WasmModulationType::VCA));
         engine.connect_nodes_adapter(
-            update.from_id,
+            &update.from_id,
             PortId::AudioOutput0,
-            update.to_id,
+            &update.to_id,
             update.target,
             update.amount,
             modulation_type,
@@ -411,8 +411,8 @@ impl ConnectionUpdate {
         wasm_bindgen(constructor)
     )]
     pub fn new_wasm(
-        from_id: usize,
-        to_id: usize,
+        from_id: String,
+        to_id: String,
         target: PortId,
         amount: f32,
         modulation_transformation: ModulationTransformation,
@@ -434,16 +434,16 @@ impl ConnectionUpdate {
         all(feature = "wasm", target_arch = "wasm32"),
         wasm_bindgen(getter, js_name = "fromId")
     )]
-    pub fn from_id(&self) -> usize {
-        self.from_id
+    pub fn from_id(&self) -> String {
+        self.from_id.clone()
     }
 
     #[cfg_attr(
         all(feature = "wasm", target_arch = "wasm32"),
         wasm_bindgen(getter, js_name = "toId")
     )]
-    pub fn to_id(&self) -> usize {
-        self.to_id
+    pub fn to_id(&self) -> String {
+        self.to_id.clone()
     }
 
     #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), wasm_bindgen(getter))]
@@ -524,32 +524,32 @@ mod tests {
     #[derive(Default)]
     struct MockEngine {
         connections: Vec<(
-            usize,
+            String,
             PortId,
-            usize,
+            String,
             PortId,
             f32,
             Option<WasmModulationType>,
             ModulationTransformation,
         )>,
-        removals: Vec<(usize, usize, PortId)>,
+        removals: Vec<(String, String, PortId)>,
     }
 
     impl ModulationEndpoint for MockEngine {
         fn connect_nodes_adapter(
             &mut self,
-            from_node: usize,
+            from_node: &str,
             from_port: PortId,
-            to_node: usize,
+            to_node: &str,
             to_port: PortId,
             amount: f32,
             modulation_type: Option<WasmModulationType>,
             modulation_transform: ModulationTransformation,
         ) -> Result<(), JsValue> {
             self.connections.push((
-                from_node,
+                from_node.to_string(),
                 from_port,
-                to_node,
+                to_node.to_string(),
                 to_port,
                 amount,
                 modulation_type,
@@ -560,11 +560,12 @@ mod tests {
 
         fn remove_specific_connection_adapter(
             &mut self,
-            from_node: usize,
-            to_node: usize,
+            from_node: &str,
+            to_node: &str,
             to_port: PortId,
         ) -> Result<(), JsValue> {
-            self.removals.push((from_node, to_node, to_port));
+            self.removals
+                .push((from_node.to_string(), to_node.to_string(), to_port));
             Ok(())
         }
     }
@@ -573,8 +574,8 @@ mod tests {
     fn apply_connection_update_adds_connection_with_defaults() {
         let mut engine = MockEngine::default();
         let update = ConnectionUpdate::new(
-            1,
-            2,
+            "1".to_string(),
+            "2".to_string(),
             PortId::GainMod,
             0.75,
             ModulationTransformation::Square,
@@ -585,8 +586,8 @@ mod tests {
         assert_eq!(engine.removals.len(), 0);
         assert_eq!(engine.connections.len(), 1);
         let (from, from_port, to, to_port, amount, modulation_type, transform) =
-            engine.connections[0];
-        assert_eq!(from, 1);
+            engine.connections[0].clone();
+        assert_eq!(from, "1");
         assert_eq!(from_port, PortId::AudioOutput0);
         assert_eq!(to, 2);
         assert_eq!(to_port, PortId::GainMod);
@@ -611,9 +612,9 @@ mod tests {
 
         assert_eq!(engine.connections.len(), 0);
         assert_eq!(engine.removals.len(), 1);
-        let (from, to, target) = engine.removals[0];
-        assert_eq!(from, 4);
-        assert_eq!(to, 7);
+        let (from, to, target) = engine.removals[0].clone();
+        assert_eq!(from, "4");
+        assert_eq!(to, "7");
         assert_eq!(target, PortId::FrequencyMod);
     }
 
@@ -621,8 +622,8 @@ mod tests {
     fn apply_connection_update_uses_custom_modulation_type() {
         let mut engine = MockEngine::default();
         let update = ConnectionUpdate::new(
-            9,
-            12,
+            "9".to_string(),
+            "12".to_string(),
             PortId::ResonanceMod,
             0.25,
             ModulationTransformation::Cube,

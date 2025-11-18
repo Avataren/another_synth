@@ -414,7 +414,7 @@ impl AudioNode for Freeverb {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Reverb"
     }
 

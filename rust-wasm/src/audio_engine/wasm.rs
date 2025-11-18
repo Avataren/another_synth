@@ -208,7 +208,7 @@ pub struct AudioEngine {
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub struct LfoUpdateParams {
-    pub lfo_id: usize,
+    pub lfo_id: String,
     pub frequency: f32,
     pub phase_offset: f32,
     pub waveform: u8,
@@ -236,15 +236,15 @@ struct VoiceState {
 
 #[derive(Serialize, Debug)]
 struct NodeState {
-    id: usize,
+    id: String,
     node_type: String,
     name: String,
 }
 
 #[derive(Serialize, Debug)]
 struct ConnectionState {
-    from_id: usize,
-    to_id: usize,
+    from_id: String,
+    to_id: String,
     target: u32,
     amount: f32,
     modulation_type: WasmModulationType,
@@ -255,7 +255,7 @@ struct ConnectionState {
 impl LfoUpdateParams {
     #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(
-        lfo_id: usize,
+        lfo_id: String,
         frequency: f32,
         phase_offset: f32,
         waveform: u8,
@@ -377,19 +377,24 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn remove_connection(
         &mut self,
-        from_node: usize,
+        from_node: &str,
         from_port: PortId,
-        to_node: usize,
+        to_node: &str,
         to_port: PortId,
     ) -> Result<(), JsValue> {
-        for (_i, voice) in self.voices.iter_mut().enumerate() {
+        let from_node_id = NodeId::from_string(from_node)
+            .map_err(|e| JsValue::from_str(&format!("Invalid from_node UUID: {}", e)))?;
+        let to_node_id = NodeId::from_string(to_node)
+            .map_err(|e| JsValue::from_str(&format!("Invalid to_node UUID: {}", e)))?;
+
+        for voice in self.voices.iter_mut() {
             voice.graph.remove_connection(&Connection {
-                from_node: NodeId(from_node),
+                from_node: from_node_id,
                 from_port,
-                to_node: NodeId(to_node),
+                to_node: to_node_id,
                 to_port,
-                amount: 0.0, // The amount doesn't matter for removal
-                modulation_type: ModulationType::VCA, // neither does modulation_type
+                amount: 0.0,
+                modulation_type: ModulationType::VCA,
                 modulation_transform: ModulationTransformation::None,
             });
         }
@@ -401,19 +406,14 @@ impl AudioEngine {
     pub fn get_current_state(&self) -> JsValue {
         // Use voice 0 as the canonical layout.
         if let Some(voice) = self.voices.get(0) {
-            // Here we assume that the nodes vector was built by add_node
-            // so the index matches the node's id.
             let mut nodes: Vec<NodeState> = voice
                 .graph
                 .nodes
                 .iter()
-                .enumerate()
-                .map(|(i, node)| {
-                    NodeState {
-                        id: i, // This is the same as the node's assigned id.
-                        node_type: node.node_type().to_string(),
-                        name: node.name().to_string(),
-                    }
+                .map(|(node_id, node)| NodeState {
+                    id: node_id.to_string(),
+                    node_type: node.node_type().to_string(),
+                    name: node.name().to_string(),
                 })
                 .collect();
 
@@ -424,7 +424,7 @@ impl AudioEngine {
                 .iter()
                 .enumerate()
                 .map(|(i, effect)| NodeState {
-                    id: EFFECT_NODE_ID_OFFSET + i, // ensure uniqueness by offsetting
+                    id: (EFFECT_NODE_ID_OFFSET + i).to_string(), // unique pseudo-ID for effects
                     node_type: effect.node.node_type().to_string(),
                     name: effect.node.name().to_string(),
                 })
@@ -437,8 +437,8 @@ impl AudioEngine {
                 .connections
                 .values()
                 .map(|conn| ConnectionState {
-                    from_id: conn.from_node.0,
-                    to_id: conn.to_node.0,
+                    from_id: conn.from_node.to_string(),
+                    to_id: conn.to_node.to_string(),
                     target: conn.to_port as u32,
                     amount: conn.amount,
                     modulation_type: match conn.modulation_type {
@@ -734,11 +734,14 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_noise(
         &mut self,
-        noise_id: usize,
+        noise_id: &str,
         params: &NoiseUpdateParams,
     ) -> Result<(), JsValue> {
+        let noise_node_id = NodeId::from_string(noise_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid noise_id UUID: {}", e)))?;
+
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(noise_id)) {
+            if let Some(node) = voice.graph.get_node_mut(noise_node_id) {
                 if let Some(noise) = node.as_any_mut().downcast_mut::<NoiseGenerator>() {
                     noise.update(NoiseUpdate {
                         noise_type: params.noise_type.into(),
@@ -759,12 +762,15 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_velocity(
         &mut self,
-        node_id: usize,
+        node_id: &str,
         sensitivity: f32,
         randomize: f32,
     ) -> Result<(), JsValue> {
+        let node_id = NodeId::from_string(node_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
+
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+            if let Some(node) = voice.graph.get_node_mut(node_id) {
                 if let Some(velocity) = node.as_any_mut().downcast_mut::<GlobalVelocityNode>() {
                     velocity.set_sensitivity(sensitivity);
                     velocity.set_randomize(randomize);
@@ -779,17 +785,17 @@ impl AudioEngine {
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn get_gate_mixer_node_id(&mut self) -> NodeId {
-        for voice in &mut self.voices {
-            return voice.graph.global_gatemixer_node.unwrap();
-        }
-        NodeId(0)
+    pub fn get_gate_mixer_node_id(&mut self) -> Option<String> {
+        self.voices
+            .get(0)
+            .and_then(|voice| voice.graph.global_gatemixer_node)
+            .map(|id| id.to_string())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_envelope(
         &mut self,
-        node_id: usize,
+        node_id: &str,
         attack: f32,
         decay: f32,
         sustain: f32,
@@ -801,9 +807,12 @@ impl AudioEngine {
     ) -> Result<(), JsValue> {
         let mut errors: Vec<String> = Vec::new();
 
+        let node_id = NodeId::from_string(node_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
+
         // Iterate over all voices and attempt to update the envelope.
         for (i, voice) in self.voices.iter_mut().enumerate() {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+            if let Some(node) = voice.graph.get_node_mut(node_id) {
                 if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
                     let config = EnvelopeConfig {
                         attack,
@@ -861,13 +870,16 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_wavetable_oscillator(
         &mut self,
-        oscillator_id: usize,
+        oscillator_id: &str,
         params: &WavetableOscillatorStateUpdate,
     ) -> Result<(), JsValue> {
+        let oscillator_id = NodeId::from_string(oscillator_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid oscillator_id UUID: {}", e)))?;
+
         for voice in &mut self.voices {
             let node = voice
                 .graph
-                .get_node_mut(NodeId(oscillator_id))
+                .get_node_mut(oscillator_id)
                 .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
             let osc = node
                 .as_any_mut()
@@ -1053,7 +1065,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn import_wavetable(
         &mut self,
-        node_id: usize,
+        node_id: &str,
         data: &[u8],
         base_size: usize,
     ) -> Result<(), JsValue> {
@@ -1068,11 +1080,15 @@ impl AudioEngine {
             .borrow_mut()
             .add_collection("imported", collection);
 
+        // Parse the target oscillator ID.
+        let node_id = NodeId::from_string(node_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
+
         // Update the oscillator's active wavetable to the newly imported collection.
         for voice in &mut self.voices {
             let node = voice
                 .graph
-                .get_node_mut(NodeId(node_id))
+                .get_node_mut(node_id)
                 .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
             let osc = node
                 .as_any_mut()
@@ -1089,13 +1105,16 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_oscillator(
         &mut self,
-        oscillator_id: usize,
+        oscillator_id: &str,
         params: &AnalogOscillatorStateUpdate,
     ) -> Result<(), JsValue> {
+        let oscillator_id = NodeId::from_string(oscillator_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid oscillator_id UUID: {}", e)))?;
+
         for voice in &mut self.voices {
             let node = voice
                 .graph
-                .get_node_mut(NodeId(oscillator_id))
+                .get_node_mut(oscillator_id)
                 .ok_or_else(|| JsValue::from_str("Node not found in one of the voices"))?;
             let osc = node
                 .as_any_mut()
@@ -1388,7 +1407,7 @@ impl AudioEngine {
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn import_sample(&mut self, sampler_id: usize, data: &[u8]) -> Result<(), JsValue> {
+    pub fn import_sample(&mut self, sampler_id: &str, data: &[u8]) -> Result<(), JsValue> {
         use std::io::Cursor;
 
         log_console("Starting import_sample");
@@ -1441,9 +1460,13 @@ impl AudioEngine {
             spec.sample_rate as f32,
         );
 
+        // Parse sampler UUID
+        let sampler_id = NodeId::from_string(sampler_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid sampler_id UUID: {}", e)))?;
+
         // Update all sampler nodes with the new sample data
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(sampler_id)) {
+            if let Some(node) = voice.graph.get_node_mut(sampler_id) {
                 if let Some(sampler) = node.as_any_mut().downcast_mut::<Sampler>() {
                     sampler.set_sample_data(sample_data.clone());
                 } else {
@@ -1461,7 +1484,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_sampler(
         &mut self,
-        sampler_id: usize,
+        sampler_id: &str,
         frequency: f32,
         gain: f32,
         loop_mode: u8,
@@ -1484,8 +1507,11 @@ impl AudioEngine {
             _ => SamplerTriggerMode::Gate,
         };
 
+        let sampler_id = NodeId::from_string(sampler_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid sampler_id UUID: {}", e)))?;
+
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(sampler_id)) {
+            if let Some(node) = voice.graph.get_node_mut(sampler_id) {
                 if let Some(sampler) = node.as_any_mut().downcast_mut::<Sampler>() {
                     sampler.set_base_frequency(frequency);
                     sampler.set_base_gain(gain);
@@ -1507,7 +1533,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn get_sampler_waveform(
         &self,
-        sampler_id: usize,
+        sampler_id: &str,
         max_points: usize,
     ) -> Result<Vec<f32>, JsValue> {
         let voice = self
@@ -1516,7 +1542,10 @@ impl AudioEngine {
             .ok_or_else(|| JsValue::from_str("No voices available"))?;
         let node = voice
             .graph
-            .get_node(NodeId(sampler_id))
+            .get_node(
+                NodeId::from_string(sampler_id)
+                    .map_err(|e| JsValue::from_str(&format!("Invalid sampler_id UUID: {}", e)))?,
+            )
             .ok_or_else(|| JsValue::from_str("Sampler node not found"))?;
         let sampler = node
             .as_any()
@@ -1551,7 +1580,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn export_sample_data(
         &self,
-        sampler_id: usize,
+        sampler_id: &str,
     ) -> Result<js_sys::Object, JsValue> {
         let voice = self
             .voices
@@ -1559,7 +1588,10 @@ impl AudioEngine {
             .ok_or_else(|| JsValue::from_str("No voices available"))?;
         let node = voice
             .graph
-            .get_node(NodeId(sampler_id))
+            .get_node(
+                NodeId::from_string(sampler_id)
+                    .map_err(|e| JsValue::from_str(&format!("Invalid sampler_id UUID: {}", e)))?,
+            )
             .ok_or_else(|| JsValue::from_str("Sampler node not found"))?;
         let sampler = node
             .as_any()
@@ -1604,7 +1636,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn export_convolver_data(
         &self,
-        convolver_id: usize,
+        convolver_id: &str,
     ) -> Result<js_sys::Object, JsValue> {
         let voice = self
             .voices
@@ -1612,7 +1644,11 @@ impl AudioEngine {
             .ok_or_else(|| JsValue::from_str("No voices available"))?;
         let node = voice
             .graph
-            .get_node(NodeId(convolver_id))
+            .get_node(
+                NodeId::from_string(convolver_id).map_err(|e| {
+                    JsValue::from_str(&format!("Invalid convolver_id UUID: {}", e))
+                })?,
+            )
             .ok_or_else(|| JsValue::from_str("Convolver node not found"))?;
         let convolver = node
             .as_any()
@@ -1669,7 +1705,7 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_filters(
         &mut self,
-        filter_id: usize,
+        filter_id: &str,
         cutoff: f32,
         resonance: f32,
         gain: f32,
@@ -1680,8 +1716,11 @@ impl AudioEngine {
         filter_type: FilterType,
         filter_slope: FilterSlope,
     ) -> Result<(), JsValue> {
+        let filter_id = NodeId::from_string(filter_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid filter_id UUID: {}", e)))?;
+
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(filter_id)) {
+            if let Some(node) = voice.graph.get_node_mut(filter_id) {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
@@ -1710,11 +1749,14 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn get_filter_ir_waveform(
         &mut self,
-        node_id: usize,
+        node_id: &str,
         waveform_length: usize,
     ) -> Result<Vec<f32>, JsValue> {
+        let node_id = NodeId::from_string(node_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
+
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+            if let Some(node) = voice.graph.get_node_mut(node_id) {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     return Ok(filter.generate_frequency_response(waveform_length));
                 } else {
@@ -1730,8 +1772,16 @@ impl AudioEngine {
     /// Update all LFOs across all   voices. This is called by the host when the user
     /// changes an LFO's settings.
     pub fn update_lfos(&mut self, params: LfoUpdateParams) {
+        let lfo_id = match NodeId::from_string(&params.lfo_id) {
+            Ok(id) => id,
+            Err(e) => {
+                log_console(&format!("Invalid LFO UUID in update_lfos: {}", e));
+                return;
+            }
+        };
+
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(params.lfo_id)) {
+            if let Some(node) = voice.graph.get_node_mut(lfo_id) {
                 if let Some(lfo) = node.as_any_mut().downcast_mut::<Lfo>() {
                     // Convert u8 to LfoWaveform
                     //log_console(&format!("waveform is {}", params.waveform));
@@ -1840,8 +1890,8 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn remove_specific_connection(
         &mut self,
-        from_node: usize,
-        to_node: usize,
+        from_node: &str,
+        to_node: &str,
         to_port: PortId,
     ) -> Result<(), JsValue> {
         log_console(&format!(
@@ -1849,10 +1899,15 @@ impl AudioEngine {
             from_node, to_node, to_port
         ));
 
+        let from_node_id = NodeId::from_string(from_node)
+            .map_err(|e| JsValue::from_str(&format!("Invalid from_node UUID: {}", e)))?;
+        let to_node_id = NodeId::from_string(to_node)
+            .map_err(|e| JsValue::from_str(&format!("Invalid to_node UUID: {}", e)))?;
+
         for voice in &mut self.voices {
             voice
                 .graph
-                .remove_specific_connection(NodeId(from_node), NodeId(to_node), to_port);
+                .remove_specific_connection(from_node_id, to_node_id, to_port);
         }
 
         Ok(())
@@ -1863,7 +1918,7 @@ impl AudioEngine {
         &mut self,
         voice_index: usize,
         macro_index: usize,
-        target_node: usize,
+        target_node: &str,
         target_port: PortId,
         amount: f32,
     ) -> Result<(), JsValue> {
@@ -1877,8 +1932,11 @@ impl AudioEngine {
             .get_mut(voice_index)
             .ok_or_else(|| JsValue::from_str("Invalid voice index"))?;
 
+        let target_node_id = NodeId::from_string(target_node)
+            .map_err(|e| JsValue::from_str(&format!("Invalid target_node UUID: {}", e)))?;
+
         voice
-            .add_macro_modulation(macro_index, NodeId(target_node), target_port, amount)
+            .add_macro_modulation(macro_index, target_node_id, target_port, amount)
             .map_err(|e| JsValue::from_str(&e))
     }
 

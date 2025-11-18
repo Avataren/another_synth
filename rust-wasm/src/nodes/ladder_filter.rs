@@ -428,7 +428,7 @@ impl AudioNode for LadderFilter {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Ladder Filter"
     }
 

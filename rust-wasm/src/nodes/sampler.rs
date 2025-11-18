@@ -488,7 +488,7 @@ impl AudioNode for Sampler {
         self.active = active;
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Sampler"
     }
 

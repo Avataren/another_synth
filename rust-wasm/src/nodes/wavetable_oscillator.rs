@@ -753,7 +753,7 @@ impl WavetableOscillator {
             self.reset();
         }
     }
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Wavetable Oscillator"
     }
     fn node_type(&self) -> &str {
@@ -807,7 +807,7 @@ impl AudioNode for WavetableOscillator {
     fn set_active(&mut self, active: bool) {
         self.set_active(active)
     }
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         WavetableOscillator::name(self)
     }
     fn node_type(&self) -> &str {

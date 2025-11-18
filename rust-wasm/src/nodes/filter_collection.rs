@@ -912,7 +912,7 @@ impl AudioNode for FilterCollection {
         self.enabled = active;
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Filter Collection"
     }
 

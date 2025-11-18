@@ -145,7 +145,7 @@ impl AudioNode for Saturation {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Saturation"
     }
 
