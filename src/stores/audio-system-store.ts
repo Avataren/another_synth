@@ -519,6 +519,21 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // Process each voice: convert raw connections and raw node arrays
       layoutClone.voices = layoutClone.voices.map((voice) => {
+        // Track generated default names so duplicated node types get unique labels
+        const defaultNameCounts = new Map<VoiceNodeType, Map<string, number>>();
+        const nextDefaultName = (
+          type: VoiceNodeType,
+          baseName: string,
+        ): string => {
+          const typeCounts =
+            defaultNameCounts.get(type) ?? new Map<string, number>();
+          const nextCount = (typeCounts.get(baseName) ?? 0) + 1;
+          typeCounts.set(baseName, nextCount);
+          defaultNameCounts.set(type, typeCounts);
+
+          return nextCount === 1 ? baseName : `${baseName} ${nextCount}`;
+        };
+
         // --- Convert Connections ---
         if (Array.isArray(voice.connections) && voice.connections.length > 0) {
           const firstConn = voice.connections[0]!;
@@ -713,8 +728,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               continue;
             }
             const type = convertNodeType(rawNode.node_type);
+            const baseName = rawNode.name?.trim() || `${type} ${nodeIdNum}`;
             const nodeName =
-              existingNames.get(nodeIdNum) || rawNode.name || `${type} ${nodeIdNum}`;
+              existingNames.get(nodeIdNum) || nextDefaultName(type, baseName);
             // Check if type is valid before pushing
             if (nodesByType[type]) {
               nodesByType[type].push({ id: nodeIdNum, type, name: nodeName });
