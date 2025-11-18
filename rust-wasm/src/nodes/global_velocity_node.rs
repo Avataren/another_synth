@@ -193,6 +193,9 @@ impl AudioNode for GlobalVelocityNode {
         true
     }
     fn set_active(&mut self, _active: bool) {}
+    fn name(&self) -> &str {
+        "Global Velocity"
+    }
     fn node_type(&self) -> &str {
         "global_velocity"
     }

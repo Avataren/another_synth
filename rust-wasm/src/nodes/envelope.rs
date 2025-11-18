@@ -517,6 +517,10 @@ impl AudioNode for Envelope {
         }
     }
 
+    fn name(&self) -> &str {
+        "Envelope"
+    }
+
     fn node_type(&self) -> &str {
         "envelope"
     }

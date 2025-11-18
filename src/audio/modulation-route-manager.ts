@@ -24,20 +24,7 @@ export class ModulationRouteManager {
   ) { }
 
   private getNodeName(type: VoiceNodeType, index: number): string {
-    switch (type) {
-      // case VoiceNodeType.Oscillator:
-      //   return `Oscillator ${index + 1}`;
-      // case VoiceNodeType.Filter:
-      //   return `Filter ${index + 1}`;
-      // case VoiceNodeType.Envelope:
-      //   return `Envelope ${index + 1}`;
-      // case VoiceNodeType.LFO:
-      //   return `LFO ${index + 1}`;
-      // case VoiceNodeType.GlobalFrequency:
-      //   return `Global Frequency ${index + 1}`;
-      default:
-        return `${type} ${index}`;
-    }
+    return this.store.getNodeName(index) || `${type} ${index}`;
   }
 
   private findNodeById(nodeId: number): VoiceNode | undefined {

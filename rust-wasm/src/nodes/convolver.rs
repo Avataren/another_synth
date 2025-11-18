@@ -358,6 +358,9 @@ impl AudioNode for Convolver {
         }
         self.enabled = active;
     }
+    fn name(&self) -> &str {
+        "Convolver"
+    }
     fn node_type(&self) -> &str {
         "convolver"
     }

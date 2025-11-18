@@ -145,6 +145,10 @@ impl AudioNode for Saturation {
         }
     }
 
+    fn name(&self) -> &str {
+        "Saturation"
+    }
+
     fn node_type(&self) -> &str {
         "saturation"
     }

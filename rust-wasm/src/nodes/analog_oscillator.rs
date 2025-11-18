@@ -730,6 +730,9 @@ impl AudioNode for AnalogOscillator {
             self.reset();
         }
     }
+    fn name(&self) -> &str {
+        "Analog Oscillator"
+    }
     fn node_type(&self) -> &str {
         "analog_oscillator"
     }

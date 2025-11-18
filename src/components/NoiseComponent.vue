@@ -2,11 +2,13 @@
   <q-card class="filter-card">
     <!-- Header: forward events to container -->
     <audio-card-header
-      title="Noise"
+      :title="displayName"
+      :editable="true"
       :isMinimized="props.isMinimized"
       @plusClicked="forwardPlus"
       @minimizeClicked="forwardMinimize"
       @closeClicked="forwardClose"
+      @update:title="handleNameChange"
     />
 
     <q-separator />
@@ -77,9 +79,11 @@ import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 interface Props {
   nodeId: number;
   isMinimized?: boolean;
+  nodeName?: string;
 }
 const props = withDefaults(defineProps<Props>(), {
   isMinimized: false,
+  nodeName: undefined,
 });
 
 // Define emit to forward events upward
@@ -98,6 +102,14 @@ function forwardClose() {
 // Audio system store for managing the noise state.
 const store = useAudioSystemStore();
 const { noiseState } = storeToRefs(store);
+
+const displayName = computed(
+  () => props.nodeName || store.getNodeName(props.nodeId) || `Noise ${props.nodeId}`,
+);
+
+function handleNameChange(name: string) {
+  store.renameNode(props.nodeId, name);
+}
 
 // Utility function for noise type display.
 const parseNoiseUnit = (val: number) => {
