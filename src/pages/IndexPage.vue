@@ -220,20 +220,17 @@
       </div>
     </div>
 
-    <!-- Bottom Fixed Row: Four columns -->
+    <!-- Bottom Fixed Row: utility components (no presets here) -->
     <div class="bottom-row q-pa-md">
       <div class="row q-col-gutter-md">
-        <div class="col-12 col-sm-6 col-lg-3">
+        <div class="col-12 col-sm-6 col-lg-4">
           <oscilloscope-component :node="destinationNode" />
         </div>
-        <div class="col-12 col-sm-6 col-lg-3">
+        <div class="col-12 col-sm-6 col-lg-4">
           <piano-keyboard-component />
         </div>
-        <div class="col-12 col-sm-6 col-lg-3">
+        <div class="col-12 col-sm-6 col-lg-4">
           <frequency-analyzer-component :node="destinationNode" />
-        </div>
-        <div class="col-12 col-sm-6 col-lg-3">
-          <preset-manager />
         </div>
       </div>
     </div>
@@ -252,7 +249,6 @@ import FrequencyAnalyzerComponent from 'src/components/FrequencyAnalyzerComponen
 
 // Bottom row component: Piano Keyboard
 import PianoKeyboardComponent from 'src/components/PianoKeyboardComponent.vue';
-import PresetManager from 'src/components/PresetManager.vue';
 
 // Generators DSP components
 import OscillatorComponent from 'src/components/OscillatorComponent.vue';

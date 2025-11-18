@@ -1578,6 +1578,51 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         }
       });
     },
+
+    /**
+     * Reset the current synth state back to default values for the
+     * existing layout and push those defaults into the audio engine.
+     *
+     * Used when creating a brand new patch so that it starts from a
+     * clean, initialized state instead of copying the previous patch.
+     */
+    resetCurrentStateToDefaults() {
+      // Clear all per-node state maps
+      this.oscillatorStates = new Map<number, OscillatorState>();
+      this.wavetableOscillatorStates = new Map<number, OscillatorState>();
+      this.samplerStates = new Map<number, SamplerState>();
+      this.samplerWaveforms = new Map<number, Float32Array>();
+      this.envelopeStates = new Map<number, EnvelopeConfig>();
+      this.convolverStates = new Map<number, ConvolverState>();
+      this.delayStates = new Map<number, DelayState>();
+      this.filterStates = new Map<number, FilterState>();
+      this.lfoStates = new Map<number, LfoState>();
+      this.chorusStates = new Map<number, ChorusState>();
+      this.reverbStates = new Map<number, ReverbState>();
+
+      // Clear any captured audio assets
+      this.audioAssets = new Map<string, AudioAsset>();
+
+      // Reset global noise / velocity to their defaults
+      this.noiseState = {
+        noiseType: NoiseType.White,
+        cutoff: 1.0,
+        gain: 1.0,
+        is_enabled: false,
+      };
+
+      this.velocityState = {
+        sensitivity: 1.0,
+        randomize: 0.0,
+        active: true,
+      };
+
+      // Recreate default per-node states for the existing layout
+      this.initializeDefaultStates();
+
+      // Apply the freshly initialized states to the audio engine
+      this.applyPreservedStatesToWasm();
+    },
     async setupAudio() {
       if (this.audioSystem) {
         this.currentInstrument = new Instrument(

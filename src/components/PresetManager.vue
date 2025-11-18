@@ -1,141 +1,115 @@
 <template>
-  <q-card class="preset-manager-card">
-    <audio-card-header
-      title="Presets"
-      :isMinimized="isMinimized"
-      @minimizeClicked="isMinimized = !isMinimized"
-    />
-
-    <q-separator />
-
-    <q-card-section v-show="!isMinimized" class="preset-container">
-      <!-- Current Bank Info -->
-      <div class="bank-info">
-        <div class="bank-name">
-          {{ currentBankName }}
-        </div>
-        <div class="patch-count">{{ patches.length }} patches</div>
+  <div class="preset-toolbar">
+    <!-- Left section: bank info + patch selector -->
+    <div class="toolbar-section left-section">
+      <div class="bank-chip">
+        <span class="bank-name">{{ currentBankName }}</span>
+        <span class="patch-count">{{ patches.length }} patches</span>
       </div>
 
-      <!-- Patch Selection -->
-      <div class="patch-selector-group">
-        <q-select
-          v-model="selectedPatchId"
-          :options="patchOptions"
-          label="Select Patch"
-          outlined
-          dense
-          emit-value
-          map-options
-          @update:model-value="handlePatchSelect"
-          class="patch-select"
-        >
-          <template v-slot:no-option>
-            <q-item>
-              <q-item-section class="text-grey"> No patches </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+      <q-select
+        v-model="selectedPatchId"
+        :options="patchOptions"
+        dense
+        outlined
+        emit-value
+        map-options
+        options-dense
+        placeholder="Select patch"
+        class="patch-select"
+        @update:model-value="handlePatchSelect"
+      >
+        <template #no-option>
+          <q-item>
+            <q-item-section class="text-grey">No patches</q-item-section>
+          </q-item>
+        </template>
+      </q-select>
 
-        <q-btn
-          icon="refresh"
-          flat
-          round
-          dense
-          @click="handleLoadPatch"
-          :disable="!selectedPatchId"
-          title="Load selected patch"
-        />
-      </div>
+      <q-btn
+        icon="refresh"
+        flat
+        round
+        dense
+        @click="handleLoadPatch"
+        :disable="!selectedPatchId"
+        title="Load selected patch"
+      />
+    </div>
 
-      <!-- Save Current State -->
-      <div class="save-section">
-        <q-input
-          v-model="patchName"
-          label="Patch Name"
-          outlined
-          dense
-          @keyup.enter="handleSavePatch"
-          class="patch-name-input"
-        />
-        <q-btn
-          label="Save Patch"
-          color="primary"
-          @click="handleSavePatch"
-          :disable="!patchName || !currentPatchId"
-          class="save-btn"
-        />
-        <q-btn
-          label="New Patch"
-          color="secondary"
-          @click="handleNewPatch"
-          class="save-btn"
-        />
-      </div>
+    <!-- Middle section: save / new patch -->
+    <div class="toolbar-section middle-section">
+      <q-input
+        v-model="patchName"
+        dense
+        outlined
+        placeholder="Patch name"
+        @keyup.enter="handleSavePatch"
+        class="patch-name-input"
+      />
+      <q-btn
+        label="Save"
+        color="primary"
+        dense
+        @click="handleSavePatch"
+        :disable="!patchName || !currentPatchId"
+      />
+      <q-btn
+        label="New"
+        color="secondary"
+        dense
+        @click="handleNewPatch"
+      />
+    </div>
 
-      <!-- Import/Export Actions -->
-      <div class="import-export-section">
-        <q-separator />
-        <div class="section-title">Import / Export</div>
-
-        <!-- Export Buttons -->
-        <div class="button-row">
-          <q-btn
-            label="Copy Patch JSON"
-            outline
-            color="secondary"
-            @click="handleCopyPatch"
-            :disable="!currentPatchId"
-            class="action-btn"
-          />
-          <q-btn
-            label="Copy Bank JSON"
-            outline
-            color="secondary"
-            @click="handleCopyBank"
-            :disable="!hasBank"
-            class="action-btn"
-          />
-        </div>
-
-        <!-- Import Buttons -->
-        <div class="button-row">
-          <q-btn
-            label="Paste Patch JSON"
-            outline
-            color="accent"
-            @click="showPasteDialog('patch')"
-            class="action-btn"
-          />
-          <q-btn
-            label="Paste Bank JSON"
-            outline
-            color="accent"
-            @click="showPasteDialog('bank')"
-            class="action-btn"
-          />
-        </div>
-
-        <!-- Delete Patch -->
-        <div class="button-row">
-          <q-btn
-            label="Delete Patch"
-            outline
-            color="negative"
-            @click="handleDeletePatch"
-            :disable="!selectedPatchId"
-            class="action-btn"
-          />
-          <q-btn
-            label="New Bank"
-            outline
-            color="info"
-            @click="handleNewBank"
-            class="action-btn"
-          />
-        </div>
-      </div>
-    </q-card-section>
+    <!-- Right section: import / export / bank actions -->
+    <div class="toolbar-section right-section">
+      <q-btn
+        label="Copy Patch"
+        outline
+        color="secondary"
+        dense
+        @click="handleCopyPatch"
+        :disable="!currentPatchId"
+      />
+      <q-btn
+        label="Copy Bank"
+        outline
+        color="secondary"
+        dense
+        @click="handleCopyBank"
+        :disable="!hasBank"
+      />
+      <q-btn
+        label="Paste Patch"
+        outline
+        color="accent"
+        dense
+        @click="showPasteDialog('patch')"
+      />
+      <q-btn
+        label="Paste Bank"
+        outline
+        color="accent"
+        dense
+        @click="showPasteDialog('bank')"
+      />
+      <q-btn
+        label="Delete"
+        outline
+        color="negative"
+        dense
+        @click="handleDeletePatch"
+        :disable="!selectedPatchId"
+      />
+      <q-btn
+        label="New Bank"
+        outline
+        color="positive"
+        dense
+        @click="handleNewBank"
+      />
+    </div>
 
     <!-- Paste Dialog -->
     <q-dialog v-model="pasteDialogOpen">
@@ -169,20 +143,18 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
-  </q-card>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { useQuasar } from 'quasar';
-import AudioCardHeader from './AudioCardHeader.vue';
 
 const store = useAudioSystemStore();
 const $q = useQuasar();
 
 // Local state
-const isMinimized = ref(false);
 const selectedPatchId = ref<string | null>(null);
 const patchName = ref('');
 const pasteDialogOpen = ref(false);
@@ -309,6 +281,10 @@ const handleSavePatch = async () => {
 
 const handleNewPatch = async () => {
   try {
+    // Reset the current synth state back to default values
+    // so the new patch starts from a clean baseline.
+    store.resetCurrentStateToDefaults();
+
     const patch = await store.saveCurrentPatch('New Patch');
     if (patch) {
       $q.notify({
@@ -448,31 +424,48 @@ const handleNewBank = () => {
 </script>
 
 <style scoped>
-.preset-manager-card {
-  background-color: #1e1e1e;
-  border: 1px solid #333;
-  min-width: 300px;
-}
-
-.preset-container {
+.preset-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-}
-
-.bank-info {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
+  gap: 12px;
+  padding: 6px 12px;
   background-color: #2a2a2a;
-  border-radius: 4px;
+  border-bottom: 1px solid #444;
+  box-sizing: border-box;
+}
+
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.left-section {
+  min-width: 280px;
+}
+
+.middle-section {
+  flex: 1;
+  min-width: 260px;
+}
+
+.right-section {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.bank-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background-color: #3a3a3a;
 }
 
 .bank-name {
   font-weight: bold;
-  font-size: 14px;
+  font-size: 12px;
   color: #fff;
 }
 
@@ -481,51 +474,21 @@ const handleNewBank = () => {
   color: #999;
 }
 
-.patch-selector-group {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
 .patch-select {
-  flex: 1;
-}
-
-.save-section {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
+  min-width: 160px;
 }
 
 .patch-name-input {
   flex: 1;
 }
 
-.save-btn {
-  margin-top: 2px;
-}
+@media (max-width: 1200px) {
+  .preset-toolbar {
+    flex-wrap: wrap;
+  }
 
-.import-export-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.section-title {
-  font-weight: bold;
-  font-size: 12px;
-  color: #999;
-  text-transform: uppercase;
-  margin-top: 8px;
-}
-
-.button-row {
-  display: flex;
-  gap: 8px;
-}
-
-.action-btn {
-  flex: 1;
-  font-size: 11px;
+  .right-section {
+    justify-content: flex-start;
+  }
 }
 </style>

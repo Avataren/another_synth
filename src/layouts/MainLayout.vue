@@ -1,19 +1,13 @@
 <template>
   <q-layout view="lHh Lpr lFf">
-    <q-header elevated>
+    <q-header elevated class="app-header">
       <q-toolbar>
-        <!-- <q-btn
-          flat
-          dense
-          round
-          icon="menu"
-          aria-label="Menu"
-          @click="toggleLeftDrawer"
-        /> -->
-
-        <q-toolbar-title> Synthesizer </q-toolbar-title>
+        <q-toolbar-title>Synthesizer</q-toolbar-title>
         <div class="cpu"><CpuUsageHeader /></div>
       </q-toolbar>
+
+      <!-- Global patch / bank toolbar, always visible at the top -->
+      <PresetManager />
     </q-header>
 
     <!-- <q-drawer
@@ -44,9 +38,14 @@
 
 <script setup lang="ts">
 import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
+import PresetManager from 'src/components/PresetManager.vue';
 </script>
 <style scoped>
 .cpu {
   width: 250px;
+}
+
+.app-header {
+  z-index: 1000;
 }
 </style>
