@@ -27,7 +27,7 @@ import {
   ConnectionUpdate,
   apply_modulation_update,
   initSync,
-  LfoUpdateParams,
+  WasmLfoUpdateParams,
   ModulationTransformation,
   NoiseUpdateParams,
   PortId,
@@ -1219,7 +1219,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
 
     try {
-      const lfoParams = new LfoUpdateParams(
+      const lfoParams = new WasmLfoUpdateParams(
         data.params.lfoId,
         data.params.frequency,
         data.params.phaseOffset,

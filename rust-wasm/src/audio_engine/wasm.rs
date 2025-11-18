@@ -206,7 +206,8 @@ pub struct AudioEngine {
     block_size: usize,
 }
 
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
+/// Internal representation of LFO update parameters used by the engine.
+#[derive(Clone)]
 pub struct LfoUpdateParams {
     pub lfo_id: String,
     pub frequency: f32,
@@ -251,8 +252,26 @@ struct ConnectionState {
     modulation_transform: ModulationTransformation,
 }
 
+/// Wasm-facing LFO params struct with only wasm-bindgen-safe field types.
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-impl LfoUpdateParams {
+pub struct WasmLfoUpdateParams {
+    /// UUID string for the target LFO node.
+    lfo_id: String,
+    frequency: f32,
+    phase_offset: f32,
+    waveform: u8,
+    use_absolute: bool,
+    use_normalized: bool,
+    trigger_mode: u8,
+    gain: f32,
+    active: bool,
+    loop_mode: usize,
+    loop_start: f32,
+    loop_end: f32,
+}
+
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
+impl WasmLfoUpdateParams {
     #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(
         lfo_id: String,
@@ -267,8 +286,8 @@ impl LfoUpdateParams {
         loop_mode: usize,
         loop_start: f32,
         loop_end: f32,
-    ) -> LfoUpdateParams {
-        LfoUpdateParams {
+    ) -> WasmLfoUpdateParams {
+        WasmLfoUpdateParams {
             lfo_id,
             frequency,
             phase_offset,
@@ -1769,9 +1788,10 @@ impl AudioEngine {
         Ok(vec![])
     }
 
-    /// Update all LFOs across all   voices. This is called by the host when the user
+    /// Update all LFOs across all voices. This is called by the host when the user
     /// changes an LFO's settings.
-    pub fn update_lfos(&mut self, params: LfoUpdateParams) {
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn update_lfos(&mut self, params: WasmLfoUpdateParams) {
         let lfo_id = match NodeId::from_string(&params.lfo_id) {
             Ok(id) => id,
             Err(e) => {
