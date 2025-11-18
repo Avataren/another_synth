@@ -23,7 +23,7 @@ pub enum SamplerLoopMode {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum SamplerTriggerMode {
     FreeRunning = 0,  // Always plays
-    Gate = 1,         // Plays when gate is high, restarts on rising edge
+    Gate = 1,         // Retriggers on rising gate edge, ignores gate off
     OneShot = 2,      // Plays once per gate trigger, ignores gate until complete
 }
 
@@ -371,8 +371,6 @@ impl AudioNode for Sampler {
                         self.playhead = 0.0;
                         self.direction = 1.0;
                         self.is_playing = true;
-                    } else if gate <= 0.5 {
-                        self.is_playing = false;
                     }
                 }
                 SamplerTriggerMode::OneShot => {
