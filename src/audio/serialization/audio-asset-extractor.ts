@@ -116,8 +116,8 @@ export async function extractAllAudioAssets(
 /**
  * Helper to get all sampler node IDs from a synth layout
  */
-export function getSamplerNodeIds(synthLayout: SynthLayout): number[] {
-  const nodeIds: number[] = [];
+export function getSamplerNodeIds(synthLayout: SynthLayout): string[] {
+  const nodeIds: string[] = [];
 
   if (!synthLayout || !synthLayout.voices) {
     return nodeIds;
@@ -137,8 +137,8 @@ export function getSamplerNodeIds(synthLayout: SynthLayout): number[] {
 /**
  * Helper to get all convolver node IDs from a synth layout
  */
-export function getConvolverNodeIds(synthLayout: SynthLayout): number[] {
-  const nodeIds: number[] = [];
+export function getConvolverNodeIds(synthLayout: SynthLayout): string[] {
+  const nodeIds: string[] = [];
 
   if (!synthLayout || !synthLayout.voices) {
     return nodeIds;

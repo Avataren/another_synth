@@ -7,7 +7,7 @@ import type { AudioAsset, AudioAssetType } from '../types/preset-types';
 export async function encodeAudioBufferToBase64(
   audioBuffer: AudioBuffer,
   assetType: AudioAssetType,
-  nodeId: number,
+  nodeId: string,
   fileName?: string,
   rootNote?: number,
 ): Promise<AudioAsset> {
@@ -44,7 +44,7 @@ export function encodeFloat32ArrayToBase64(
   sampleRate: number,
   channels: number,
   assetType: AudioAssetType,
-  nodeId: number,
+  nodeId: string,
   fileName?: string,
   rootNote?: number,
 ): AudioAsset {

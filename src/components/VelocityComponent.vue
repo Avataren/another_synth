@@ -54,10 +54,10 @@ import type { VelocityState } from 'src/audio/types/synth-layout';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Props {
-  nodeId: number;
+  nodeId: string;
 }
 const props = withDefaults(defineProps<Props>(), {
-  nodeId: 0,
+  nodeId: '',
 });
 //const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 

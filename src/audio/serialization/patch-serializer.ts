@@ -291,7 +291,7 @@ function recordToMap<T>(record: Record<string | number, T>): Map<string | number
 /**
  * Creates an audio asset ID for a node
  */
-export function createAudioAssetId(nodeType: string, nodeId: number): string {
+export function createAudioAssetId(nodeType: string, nodeId: string): string {
   return `${nodeType}_${nodeId}`;
 }
 
@@ -300,14 +300,12 @@ export function createAudioAssetId(nodeType: string, nodeId: number): string {
  */
 export function parseAudioAssetId(assetId: string): {
   nodeType: string;
-  nodeId: number;
+  nodeId: string;
 } | null {
   const parts = assetId.split('_');
   if (parts.length < 2) return null;
 
-  const nodeId = parseInt(parts[parts.length - 1] ?? '');
-  if (isNaN(nodeId)) return null;
-
+  const nodeId = parts[parts.length - 1];
   const nodeType = parts.slice(0, -1).join('_');
-  return { nodeType, nodeId };
+  return nodeId ? { nodeType, nodeId } : null;
 }

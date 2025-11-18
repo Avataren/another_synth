@@ -141,7 +141,7 @@ function handleMinimize(): void {
 /**
  * Handle the close signal from a child component.
  */
-function handleClose(nodeId: number): void {
+function handleClose(nodeId: string): void {
   console.log('Container received close click:', nodeId);
 
   // Find the index of the node being deleted
@@ -149,7 +149,7 @@ function handleClose(nodeId: number): void {
 
   // Get the ID of a different node to select if this is the currently selected tab
   let nextTabId = '';
-  if (currentTab.value === nodeId.toString() && props.nodes.length > 1) {
+  if (currentTab.value === nodeId && props.nodes.length > 1) {
     // Prefer the next node if available, otherwise the previous one
     const nextNodeIndex = (nodeIndex + 1) % props.nodes.length;
     const nextNode =
@@ -160,7 +160,7 @@ function handleClose(nodeId: number): void {
             ? nodeIndex - 1
             : 0
       ];
-    nextTabId = nextNode!.id.toString();
+    nextTabId = nextNode!.id;
   }
 
   // Delete the node
