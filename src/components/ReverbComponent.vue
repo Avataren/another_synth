@@ -72,10 +72,10 @@ import { storeToRefs } from 'pinia';
 import { type ReverbState } from 'src/audio/types/synth-layout'; // Adjust path if needed
 
 interface Props {
-  nodeId: number;
+  nodeId: string;
 }
 const props = withDefaults(defineProps<Props>(), {
-  nodeId: 0,
+  nodeId: '',
 });
 
 const store = useAudioSystemStore();

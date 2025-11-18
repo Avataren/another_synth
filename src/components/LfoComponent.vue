@@ -143,7 +143,7 @@ import { throttle } from 'src/utils/util';
 // Define props
 interface Props {
   node: AudioNode | null;
-  nodeId: number;
+  nodeId: string;
   isMinimized?: boolean;
   nodeName?: string;
 }

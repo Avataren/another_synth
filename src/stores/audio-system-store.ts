@@ -121,7 +121,7 @@ function debounce<T extends (...args: unknown[]) => void>(
 
 const DEFAULT_SAMPLE_RATE = 44100;
 
-function createDefaultSamplerState(id: number): SamplerState {
+function createDefaultSamplerState(id: string): SamplerState {
   return {
     id,
     frequency: 440,
@@ -146,22 +146,22 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     synthLayout: null as SynthLayout | null,
     syncManager: null as AudioSyncManager | null,
     // State maps using node IDs from the layout
-    oscillatorStates: new Map<number, OscillatorState>(),
-    wavetableOscillatorStates: new Map<number, OscillatorState>(),
-    samplerStates: new Map<number, SamplerState>(),
-    samplerWaveforms: new Map<number, Float32Array>(),
-    envelopeStates: new Map<number, EnvelopeConfig>(),
-    convolverStates: new Map<number, ConvolverState>(),
-    delayStates: new Map<number, DelayState>(),
-    filterStates: new Map<number, FilterState>(),
-    lfoStates: new Map<number, LfoState>(),
-    chorusStates: new Map<number, ChorusState>(),
-    reverbStates: new Map<number, ReverbState>(),
+    oscillatorStates: new Map<string, OscillatorState>(),
+    wavetableOscillatorStates: new Map<string, OscillatorState>(),
+    samplerStates: new Map<string, SamplerState>(),
+    samplerWaveforms: new Map<string, Float32Array>(),
+    envelopeStates: new Map<string, EnvelopeConfig>(),
+    convolverStates: new Map<string, ConvolverState>(),
+    delayStates: new Map<string, DelayState>(),
+    filterStates: new Map<string, FilterState>(),
+    lfoStates: new Map<string, LfoState>(),
+    chorusStates: new Map<string, ChorusState>(),
+    reverbStates: new Map<string, ReverbState>(),
     isUpdatingFromWasm: false,
     isUpdating: false,
     updateQueue: [] as NodeConnectionUpdate[],
     lastUpdateError: null as Error | null,
-    deletedNodeIds: new Set<number>(),
+    deletedNodeIds: new Set<string>(),
     // Global states
     noiseState: {
       noiseType: NoiseType.White,
@@ -261,7 +261,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     //     );
     //   },
 
-    findNodeById: (state) => (nodeId: number) => {
+    findNodeById: (state) => (nodeId: string) => {
       if (!state.synthLayout) return null;
       const voice = state.synthLayout.voices[0];
       if (!voice) return null;
@@ -779,7 +779,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
       return undefined;
     },
-    renameNode(nodeId: number, newName: string) {
+    renameNode(nodeId: string, newName: string) {
       if (!this.synthLayout) return;
       const normalized = newName.trim();
       if (!normalized) return;
@@ -796,17 +796,17 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       this.synthLayout = { ...this.synthLayout };
     },
-    updateOscillator(nodeId: number, state: OscillatorState) {
+    updateOscillator(nodeId: string, state: OscillatorState) {
       this.oscillatorStates.set(nodeId, state);
       this.currentInstrument?.updateOscillatorState(nodeId, state);
     },
 
-    updateEnvelope(nodeId: number, state: EnvelopeConfig) {
+    updateEnvelope(nodeId: string, state: EnvelopeConfig) {
       this.envelopeStates.set(nodeId, state);
       this.currentInstrument?.updateEnvelopeState(nodeId, state);
     },
 
-    updateLfo(nodeId: number, state: LfoState) {
+    updateLfo(nodeId: string, state: LfoState) {
       this.lfoStates.set(nodeId, state);
       this.currentInstrument?.updateLfoState(nodeId, {
         id: nodeId,
@@ -824,7 +824,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       });
     },
 
-    updateSampler(nodeId: number, state: Partial<SamplerState>) {
+    updateSampler(nodeId: string, state: Partial<SamplerState>) {
       const currentState =
         this.samplerStates.get(nodeId) || createDefaultSamplerState(nodeId);
       const mergedState: SamplerState = {
@@ -949,7 +949,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         }
       });
     },
-    updateFilter(nodeId: number, state: FilterState) {
+    updateFilter(nodeId: string, state: FilterState) {
       this.filterStates.set(nodeId, state);
       this.currentInstrument?.updateFilterState(nodeId, state);
     },
@@ -1056,7 +1056,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     // In audio-system-store.ts
     // In audio-system-store.ts
 
-    async deleteNodeCleanup(deletedNodeId: number): Promise<void> {
+    async deleteNodeCleanup(deletedNodeId: string): Promise<void> {
       console.log(`Starting node cleanup for deleted node ${deletedNodeId}`);
 
       try {
@@ -1067,8 +1067,19 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         const nodeType = this.findNodeById(deletedNodeId)?.type;
         console.log(`Deleted node type: ${nodeType || 'unknown'}`);
 
-        // Analyze current state before deletion
-        // this.verifyOscillatorStates();
+        // Simply remove the deleted node's state from all maps
+        // With UUIDs, no ID shifting is needed!
+        this.oscillatorStates.delete(deletedNodeId);
+        this.wavetableOscillatorStates.delete(deletedNodeId);
+        this.envelopeStates.delete(deletedNodeId);
+        this.lfoStates.delete(deletedNodeId);
+        this.filterStates.delete(deletedNodeId);
+        this.delayStates.delete(deletedNodeId);
+        this.convolverStates.delete(deletedNodeId);
+        this.chorusStates.delete(deletedNodeId);
+        this.samplerStates.delete(deletedNodeId);
+        this.samplerWaveforms.delete(deletedNodeId);
+        this.reverbStates.delete(deletedNodeId);
 
         // Wait for the WebAssembly to complete the deletion
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1079,257 +1090,14 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             await this.currentInstrument.getWasmNodeConnections();
 
           if (wasmStateJson) {
-            // Parse the WebAssembly state
             const wasmState = JSON.parse(wasmStateJson);
 
-            // IMPORTANT: Create deep clones of all state maps
-            // Use JSON methods to ensure complete decoupling from original objects
-            const savedOscillatorStates = new Map(
-              Array.from(this.oscillatorStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            const savedWavetableOscillatorStates = new Map(
-              Array.from(this.wavetableOscillatorStates.entries()).map(
-                ([id, state]) => [id, JSON.parse(JSON.stringify(state))],
-              ),
-            );
-
-            const savedEnvelopeStates = new Map(
-              Array.from(this.envelopeStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            const savedLfoStates = new Map(
-              Array.from(this.lfoStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            const savedFilterStates = new Map(
-              Array.from(this.filterStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            const savedDelayStates = new Map(
-              Array.from(this.delayStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            const savedConvolverStates = new Map(
-              Array.from(this.convolverStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            const savedChorusStates = new Map(
-              Array.from(this.chorusStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            const savedSamplerStates = new Map(
-              Array.from(this.samplerStates.entries()).map(([id, state]) => [
-                id,
-                JSON.parse(JSON.stringify(state)),
-              ]),
-            );
-
-            // DEBUG: Check saved oscillator states
-            console.log('BEFORE SHIFTING: Saved oscillator states:');
-            savedOscillatorStates.forEach((state, id) => {
-              console.log(
-                `Oscillator ${id}: waveform=${state.waveform}, gain=${state.gain}`,
-              );
-            });
-
-            // Helper function to handle ID shifting
-            const shiftNodeId = (id: number): number => {
-              return id > deletedNodeId ? id - 1 : id;
-            };
-
-            // Create explicit, new state maps with shifted IDs
-            // For oscillator states, explicitly copy all properties
-            const shiftedOscillatorStates = new Map<number, OscillatorState>();
-            savedOscillatorStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                // Create explicit copy with all properties
-                const newState: OscillatorState = {
-                  id: newId,
-                  phase_mod_amount: state.phase_mod_amount,
-                  freq_mod_amount: state.freq_mod_amount,
-                  detune_oct: state.detune_oct,
-                  detune_semi: state.detune_semi,
-                  detune_cents: state.detune_cents,
-                  detune: state.detune,
-                  hard_sync: state.hard_sync,
-                  gain: state.gain,
-                  feedback_amount: state.feedback_amount,
-                  waveform: state.waveform, // Critical property
-                  active: state.active,
-                  unison_voices: state.unison_voices,
-                  spread: state.spread,
-                  wave_index: state.wave_index,
-                };
-                shiftedOscillatorStates.set(newId, newState);
-                console.log(
-                  `Shifted oscillator ${id} → ${newId}, waveform=${state.waveform} → ${newState.waveform}`,
-                );
-              }
-            });
-
-            // Repeat pattern for each state type
-            // Wavetable oscillators
-            const shiftedWavetableOscillatorStates = new Map<
-              number,
-              OscillatorState
-            >();
-            savedWavetableOscillatorStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                const newState: OscillatorState = {
-                  id: newId,
-                  phase_mod_amount: state.phase_mod_amount,
-                  freq_mod_amount: state.freq_mod_amount,
-                  detune_oct: state.detune_oct,
-                  detune_semi: state.detune_semi,
-                  detune_cents: state.detune_cents,
-                  detune: state.detune,
-                  hard_sync: state.hard_sync,
-                  gain: state.gain,
-                  feedback_amount: state.feedback_amount,
-                  waveform: state.waveform,
-                  active: state.active,
-                  unison_voices: state.unison_voices,
-                  spread: state.spread,
-                  wave_index: state.wave_index,
-                };
-                shiftedWavetableOscillatorStates.set(newId, newState);
-              }
-            });
-
-            // Other state types follow same pattern
-            const shiftedEnvelopeStates = new Map<number, EnvelopeConfig>();
-            savedEnvelopeStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                shiftedEnvelopeStates.set(newId, {
-                  ...state,
-                  id: newId,
-                });
-              }
-            });
-
-            const shiftedLfoStates = new Map<number, LfoState>();
-            savedLfoStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                shiftedLfoStates.set(newId, {
-                  ...state,
-                  id: newId,
-                });
-              }
-            });
-
-            const shiftedFilterStates = new Map<number, FilterState>();
-            savedFilterStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                shiftedFilterStates.set(newId, {
-                  ...state,
-                  id: newId,
-                });
-              }
-            });
-
-            const shiftedDelayStates = new Map<number, DelayState>();
-            savedDelayStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                shiftedDelayStates.set(newId, {
-                  ...state,
-                  id: newId,
-                });
-              }
-            });
-
-            const shiftedChorusStates = new Map<number, ChorusState>();
-            savedChorusStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                shiftedChorusStates.set(newId, {
-                  ...state,
-                  id: newId,
-                });
-              }
-            });
-
-            const shiftedConvolverStates = new Map<number, ConvolverState>();
-            savedConvolverStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                shiftedConvolverStates.set(newId, {
-                  ...state,
-                  id: newId,
-                });
-              }
-            });
-
-            const shiftedSamplerStates = new Map<number, SamplerState>();
-            savedSamplerStates.forEach((state, id) => {
-              if (id !== deletedNodeId) {
-                const newId = shiftNodeId(id);
-                shiftedSamplerStates.set(newId, {
-                  ...state,
-                  id: newId,
-                });
-              }
-            });
-
-            // DEBUG: Check shifted oscillator states
-            console.log('AFTER SHIFTING: New oscillator states:');
-            shiftedOscillatorStates.forEach((state, id) => {
-              console.log(
-                `Oscillator ${id}: waveform=${state.waveform}, gain=${state.gain}`,
-              );
-            });
-
-            // Temporarily set synthLayout to null to force reactivity
-            //this.synthLayout = null;
-
-            // Wait for Vue to process the null update
             await nextTick(() => {
-              // Force a complete update of the synth layout
+              // Update the synth layout with the latest WASM state
               this.updateSynthLayout(wasmState);
 
-              // Replace state maps with the shifted versions
-              // Use direct assignment to ensure Vue sees the changes
-              this.oscillatorStates = shiftedOscillatorStates;
-              this.wavetableOscillatorStates = shiftedWavetableOscillatorStates;
-              this.envelopeStates = shiftedEnvelopeStates;
-              this.lfoStates = shiftedLfoStates;
-              this.filterStates = shiftedFilterStates;
-              this.delayStates = shiftedDelayStates;
-              this.convolverStates = shiftedConvolverStates;
-              this.chorusStates = shiftedChorusStates;
-              this.samplerStates = shiftedSamplerStates;
-              // Initialize default states only for nodes that don't have state yet
+              // Initialize default states for any new nodes
               this.initializeDefaultStates();
-
-              // Update WASM with the preserved states
-              //this.applyPreservedStatesToWasm();
 
               // Verify final state
               this.verifyOscillatorStates();
@@ -1642,17 +1410,17 @@ export const useAudioSystemStore = defineStore('audioSystem', {
      */
     resetCurrentStateToDefaults() {
       // Clear all per-node state maps
-      this.oscillatorStates = new Map<number, OscillatorState>();
-      this.wavetableOscillatorStates = new Map<number, OscillatorState>();
-      this.samplerStates = new Map<number, SamplerState>();
-      this.samplerWaveforms = new Map<number, Float32Array>();
-      this.envelopeStates = new Map<number, EnvelopeConfig>();
-      this.convolverStates = new Map<number, ConvolverState>();
-      this.delayStates = new Map<number, DelayState>();
-      this.filterStates = new Map<number, FilterState>();
-      this.lfoStates = new Map<number, LfoState>();
-      this.chorusStates = new Map<number, ChorusState>();
-      this.reverbStates = new Map<number, ReverbState>();
+      this.oscillatorStates = new Map<string, OscillatorState>();
+      this.wavetableOscillatorStates = new Map<string, OscillatorState>();
+      this.samplerStates = new Map<string, SamplerState>();
+      this.samplerWaveforms = new Map<string, Float32Array>();
+      this.envelopeStates = new Map<string, EnvelopeConfig>();
+      this.convolverStates = new Map<string, ConvolverState>();
+      this.delayStates = new Map<string, DelayState>();
+      this.filterStates = new Map<string, FilterState>();
+      this.lfoStates = new Map<string, LfoState>();
+      this.chorusStates = new Map<string, ChorusState>();
+      this.reverbStates = new Map<string, ReverbState>();
 
       // Clear any captured audio assets
       this.audioAssets = new Map<string, AudioAsset>();

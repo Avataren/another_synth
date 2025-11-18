@@ -153,7 +153,7 @@ import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 
 interface Props {
-  nodeId: number;
+  nodeId: string;
   isMinimized?: boolean;
   nodeName?: string;
 }

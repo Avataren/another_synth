@@ -904,7 +904,7 @@ function initializeRoutes(): void {
   }
 }
 
-function getNodeName(nodeId: number): string {
+function getNodeName(nodeId: string): string {
   const node = store.findNodeById(nodeId);
   if (!node) return `Node ${nodeId}`;
   switch (node.type) {
@@ -927,7 +927,7 @@ function getNodeName(nodeId: number): string {
   }
 }
 
-function getNodeType(nodeId: number): VoiceNodeType {
+function getNodeType(nodeId: string): VoiceNodeType {
   const node = store.findNodeById(nodeId);
   return node?.type ?? VoiceNodeType.Oscillator;
 }

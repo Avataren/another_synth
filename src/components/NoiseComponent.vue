@@ -77,7 +77,7 @@ import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 
 // Define component props (do not destructure to preserve reactivity)
 interface Props {
-  nodeId: number;
+  nodeId: string;
   isMinimized?: boolean;
   nodeName?: string;
 }

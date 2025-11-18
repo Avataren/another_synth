@@ -38,7 +38,7 @@ import {
 import type OscillatorState from '../models/OscillatorState.js';
 interface EnvelopeUpdate {
   config: EnvelopeConfig;
-  envelopeId: number;
+  envelopeId: string;
   messageId: string;
 }
 
@@ -82,9 +82,9 @@ export enum LFOWaveform {
 }
 
 export interface LfoUpdateData {
-  lfoId: number;
+  lfoId: string;
   params: {
-    lfoId: number;
+    lfoId: string;
     frequency: number;
     phaseOffset: number;
     waveform: number;
@@ -100,7 +100,7 @@ export interface LfoUpdateData {
 }
 
 interface SamplerUpdateData {
-  samplerId: number;
+  samplerId: string;
   state: {
     frequency: number;
     gain: number;
@@ -123,7 +123,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private readonly macroCount: number = 4;
   private readonly macroBufferSize: number = 128;
   private voiceLayouts: VoiceLayout[] = [];
-  private nextNodeId: number = 0;
   private stateVersion: number = 0;
   private automationAdapter: AutomationAdapter | null = null;
 
@@ -294,7 +293,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     });
   }
 
-  private handleDeleteNode(data: { nodeId: number }) {
+  private handleDeleteNode(data: { nodeId: string }) {
     this.audioEngine!.delete_node(data.nodeId);
     this.handleRequestSync();
   }
@@ -333,7 +332,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleImportImpulseWaveformData(data: {
     type: string;
     // Using wavData.buffer transfers the ArrayBuffer
-    nodeId: number;
+    nodeId: string;
     data: Uint8Array;
   }) {
     const uint8Data = new Uint8Array(data.data);
@@ -343,14 +342,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleImportWavetableData(data: {
     type: string;
     // Using wavData.buffer transfers the ArrayBuffer
-    nodeId: number;
+    nodeId: string;
     data: Uint8Array;
   }) {
     const uint8Data = new Uint8Array(data.data);
     this.audioEngine!.import_wavetable(data.nodeId, uint8Data, 2048);
   }
 
-  private handleImportSample(data: { nodeId: number; data: ArrayBuffer }) {
+  private handleImportSample(data: { nodeId: string; data: ArrayBuffer }) {
     if (!this.audioEngine) return;
     try {
       const uint8Data = new Uint8Array(data.data);
@@ -457,7 +456,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const layout: SynthLayout = {
       voices: this.voiceLayouts,
       globalNodes: {
-        masterGain: this.getNextNodeId(),
         effectsChain: [],
       },
       metadata: {
@@ -474,10 +472,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       type: 'synthLayout',
       layout,
     });
-  }
-
-  private getNextNodeId(): number {
-    return this.nextNodeId++;
   }
 
   private createNodesAndSetupConnections(): void {
@@ -749,8 +743,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   remove_specific_connection(
-    from_node: number,
-    to_node: number,
+    from_node: string,
+    to_node: string,
     to_port: PortId,
   ) {
     if (!this.audioEngine) return;
@@ -844,7 +838,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleNoiseUpdate(data: { noiseId: number; config: NoiseUpdate }) {
+  private handleNoiseUpdate(data: { noiseId: string; config: NoiseUpdate }) {
     if (!this.audioEngine) return;
     console.log('noiseData:', data);
 
@@ -860,7 +854,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateChorus(data: {
     type: string;
-    nodeId: number;
+    nodeId: string;
     state: ChorusState;
   }) {
     if (!this.audioEngine) return;
@@ -879,7 +873,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateReverb(data: {
     type: string;
-    nodeId: number;
+    nodeId: string;
     state: ReverbState;
   }) {
     if (!this.audioEngine) return;
@@ -896,7 +890,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateFilter(data: {
     type: string;
-    filterId: number;
+    filterId: string;
     config: FilterState;
   }) {
     console.log('handle filter update:', data);
@@ -916,7 +910,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateVelocity(data: {
     type: string;
-    nodeId: number;
+    nodeId: string;
     config: VelocityState;
   }) {
     if (!this.audioEngine) return;
@@ -929,7 +923,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateConvolver(data: {
     type: string;
-    nodeId: number;
+    nodeId: string;
     state: ConvolverState;
   }) {
     if (!this.audioEngine) return;
@@ -942,7 +936,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleUpdateDelay(data: {
     type: string;
-    nodeId: number;
+    nodeId: string;
     state: DelayState;
   }) {
     if (!this.audioEngine) return;
@@ -986,7 +980,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleUpdateWavetableOscillator(data: {
-    oscillatorId: number;
+    oscillatorId: string;
     newState: OscillatorState;
   }) {
     if (!this.audioEngine) return;
@@ -1014,7 +1008,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleUpdateOscillator(data: {
-    oscillatorId: number;
+    oscillatorId: string;
     newState: OscillatorState;
   }) {
     if (!this.audioEngine) return;
@@ -1067,7 +1061,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleGetFilterIrWaveform(data: { node_id: number; length: number }) {
+  private handleGetFilterIrWaveform(data: { node_id: string; length: number }) {
     if (!this.audioEngine) return;
 
     try {
@@ -1122,7 +1116,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleGetSamplerWaveform(data: {
-    samplerId: number;
+    samplerId: string;
     maxLength?: number;
     messageId: string;
   }) {
@@ -1150,7 +1144,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleExportSampleData(data: {
-    samplerId: number;
+    samplerId: string;
     messageId: string;
   }) {
     if (!this.audioEngine) return;
@@ -1174,7 +1168,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleExportConvolverData(data: {
-    convolverId: number;
+    convolverId: string;
     messageId: string;
   }) {
     if (!this.audioEngine) return;
