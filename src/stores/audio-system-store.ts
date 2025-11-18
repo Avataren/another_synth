@@ -36,7 +36,6 @@ import {
 import { type NoiseState, NoiseType } from 'src/audio/types/noise';
 import { nextTick } from 'process';
 import type { Bank, Patch, AudioAsset } from 'src/audio/types/preset-types';
-import { createDefaultBankMetadata } from 'src/audio/types/preset-types';
 import {
   serializeCurrentPatch,
   deserializePatch,
@@ -1868,7 +1867,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           const parts = assetId.split('_');
           if (parts.length < 2) continue;
 
-          const nodeId = parseInt(parts[parts.length - 1] ?? "");
+          const nodeId = parseInt(parts[parts.length - 1] ?? '');
           if (isNaN(nodeId)) continue;
 
           // Decode base64 to binary

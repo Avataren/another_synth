@@ -191,7 +191,6 @@ function wavToFloat32Array(arrayBuffer: ArrayBuffer): Float32Array {
   let offset = 12;
   let dataOffset = 0;
   let dataSize = 0;
-  let numChannels = 0;
   let bitsPerSample = 0;
 
   while (offset < view.byteLength) {
@@ -199,7 +198,6 @@ function wavToFloat32Array(arrayBuffer: ArrayBuffer): Float32Array {
     const chunkSize = view.getUint32(offset + 4, true);
 
     if (chunkId === 'fmt ') {
-      numChannels = view.getUint16(offset + 10, true);
       bitsPerSample = view.getUint16(offset + 22, true);
     } else if (chunkId === 'data') {
       dataOffset = offset + 8;
