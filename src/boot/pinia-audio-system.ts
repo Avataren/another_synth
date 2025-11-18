@@ -11,6 +11,8 @@ export default defineBoot(async () => {
     try {
         await audioSystemStore.setupAudio();
         console.log('AudioSystem successfully set up');
+
+        await audioSystemStore.initializeNewPatchSession();
     } catch (error) {
         console.error('Error setting up AudioSystem:', error);
     }

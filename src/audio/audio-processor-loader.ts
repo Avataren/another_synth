@@ -31,6 +31,8 @@ export async function createStandardAudioWorklet(
           const response = await fetch(wasmUrl);
           const wasmBytes = await response.arrayBuffer();
           workletNode.port.postMessage({ type: 'wasm-binary', wasmBytes }, [wasmBytes]);
+          clearTimeout(timeoutId);
+          resolve(workletNode);
         } catch (error) {
           clearTimeout(timeoutId);
           reject(error);
@@ -42,10 +44,6 @@ export async function createStandardAudioWorklet(
         const layoutMessage = data as LayoutUpdateMessage;
         store.updateSynthLayout(layoutMessage.layout);
         store.currentInstrument?.updateLayout(layoutMessage.layout);
-
-        // Now that we have the layout, the synth is fully initialized
-        clearTimeout(timeoutId);
-        resolve(workletNode);
       } else if (data.type === 'stateUpdated') {
         // This is the pushed update from the worklet whenever state changes.
         console.log('Received automatic state update:', data);

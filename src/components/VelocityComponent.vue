@@ -1,7 +1,7 @@
 <template>
   <q-card class="filter-card">
     <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Velocity {{ props.nodeId }}</div>
+      <div class="text-h6">{{ displayName }}</div>
     </q-card-section>
     <q-separator />
     <q-card-section class="filter-container">
@@ -55,6 +55,7 @@ import { VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Props {
   nodeId: string;
+  nodeName?: string;
 }
 const props = withDefaults(defineProps<Props>(), {
   nodeId: '',
@@ -63,6 +64,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 const store = useAudioSystemStore();
 const { velocityState } = storeToRefs(store);
+
+const displayName = computed(() => props.nodeName || `Velocity ${props.nodeId}`);
 
 // Create a reactive reference to the oscillator state
 const localVelocityState = computed({

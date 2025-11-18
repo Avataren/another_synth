@@ -1,7 +1,7 @@
 use crate::automation::AutomationFrame;
 use crate::biquad::FilterType;
 use crate::effect_stack::EffectStack;
-use crate::graph::{Connection, ConnectionKey, ModulationTransformation, ModulationType, NodeId};
+use crate::graph::{Connection, ModulationTransformation, ModulationType, NodeId};
 use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::{
     MipmappedWavetable, WavetableMorphCollection, WavetableSynthBank,
@@ -9,15 +9,19 @@ use crate::nodes::morph_wavetable::{
 use crate::nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
     ArpeggiatorGenerator, Chorus, Convolver, Delay, Envelope, EnvelopeConfig, FilterCollection,
-    FilterSlope, Freeverb, GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform,
-    Limiter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate, SampleData, Sampler, SamplerLoopMode,
-    SamplerTriggerMode, Waveform, WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    FilterSlope, Freeverb, GateMixer, GlobalFrequencyNode, GlobalVelocityNode, Lfo, LfoLoopMode,
+    LfoRetriggerMode, LfoWaveform, Limiter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
+    SampleData, Sampler, SamplerLoopMode, SamplerTriggerMode, Waveform, WavetableBank,
+    WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
+use super::patch::{AudioAsset, AudioAssetType, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_ENGINE;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use std::{cell::RefCell, io::Cursor, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, io::Cursor, rc::Rc, sync::Arc};
 
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -391,6 +395,51 @@ impl AudioEngine {
         self.add_limiter().unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         log_console(&format!("plate reverb added"));
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = initWithPatch))]
+    pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, JsValue> {
+        let patch: PatchFile = serde_json::from_str(patch_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse patch JSON: {}", e)))?;
+
+        let voice_count = patch.synth_state.layout.voices.len();
+        if voice_count == 0 {
+            return Err(JsValue::from_str("Patch contains no voices"));
+        }
+
+        self.num_voices = voice_count;
+        self.voices = (0..voice_count)
+            .map(|id| Voice::new(id, self.block_size))
+            .collect();
+
+        for voice in &mut self.voices {
+            voice.clear();
+            voice.graph.global_frequency_node = None;
+            voice.graph.global_velocity_node = None;
+            voice.graph.global_gatemixer_node = None;
+        }
+
+        self.effect_stack = EffectStack::new(self.block_size);
+        self.ir_generator = ImpulseResponseGenerator::new(self.sample_rate);
+        self.add_chorus()?;
+        self.add_delay(2000.0, 500.0, 0.5, 0.1)?;
+        self.add_freeverb(0.95, 0.5, 0.3, 0.7, 1.0)?;
+        self.add_plate_reverb(2.0, 0.6, self.sample_rate)?;
+        self.add_limiter()?;
+
+        let canonical_voice = patch
+            .synth_state
+            .layout
+            .voices
+            .first()
+            .ok_or_else(|| JsValue::from_str("Patch layout missing voice data"))?;
+
+        self.build_nodes_from_canonical_voice(canonical_voice)?;
+        self.connect_from_canonical_voice(canonical_voice)?;
+        self.apply_patch_states(&patch, canonical_voice)?;
+        self.import_audio_assets(&patch.audio_assets)?;
+
+        Ok(voice_count)
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -785,22 +834,38 @@ impl AudioEngine {
         sensitivity: f32,
         randomize: f32,
     ) -> Result<(), JsValue> {
-        let node_id = NodeId::from_string(node_id)
+        let requested_node_id = NodeId::from_string(node_id)
             .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
 
+        let mut updated_any = false;
+
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(node_id) {
+            let target_id = if voice.graph.get_node(requested_node_id).is_some() {
+                Some(requested_node_id)
+            } else {
+                voice.graph.global_velocity_node
+            };
+
+            let Some(target_id) = target_id else {
+                continue;
+            };
+
+            if let Some(node) = voice.graph.get_node_mut(target_id) {
                 if let Some(velocity) = node.as_any_mut().downcast_mut::<GlobalVelocityNode>() {
                     velocity.set_sensitivity(sensitivity);
                     velocity.set_randomize(randomize);
+                    updated_any = true;
                 } else {
                     return Err(JsValue::from_str("Node is not a GlobalVelocityNode"));
                 }
-            } else {
-                return Err(JsValue::from_str("Node not found"));
             }
         }
-        Ok(())
+
+        if updated_any {
+            Ok(())
+        } else {
+            Err(JsValue::from_str("Node not found"))
+        }
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -1998,6 +2063,385 @@ impl AudioEngine {
             .map_err(|e| JsValue::from_str(&e))
     }
 
+    fn build_nodes_from_canonical_voice(
+        &mut self,
+        voice_layout: &PatchVoiceLayout,
+    ) -> Result<(), JsValue> {
+        let mut sampler_cache: HashMap<NodeId, Rc<RefCell<SampleData>>> = HashMap::new();
+        const CREATION_ORDER: [&str; 12] = [
+            "global_frequency",
+            "global_velocity",
+            "gatemixer",
+            "mixer",
+            "filter",
+            "oscillator",
+            "wavetable_oscillator",
+            "sampler",
+            "envelope",
+            "lfo",
+            "noise",
+            "arpeggiator_generator",
+        ];
+
+        for node_type in CREATION_ORDER {
+            if let Some(nodes) = voice_layout.nodes.get(node_type) {
+                for node in nodes {
+                    let node_id = NodeId::from_string(&node.id).map_err(|e| {
+                        JsValue::from_str(&format!("Invalid node UUID {}: {}", node.id, e))
+                    })?;
+                    self.instantiate_node(node_type, node_id, &mut sampler_cache)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn instantiate_node(
+        &mut self,
+        node_type: &str,
+        node_id: NodeId,
+        sampler_cache: &mut HashMap<NodeId, Rc<RefCell<SampleData>>>,
+    ) -> Result<(), JsValue> {
+        match node_type {
+            "global_frequency" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(GlobalFrequencyNode::new(440.0, self.block_size)),
+                    );
+                    voice.graph.global_frequency_node = Some(node_id);
+                }
+            }
+            "global_velocity" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(GlobalVelocityNode::new(1.0, self.block_size)),
+                    );
+                    voice.graph.global_velocity_node = Some(node_id);
+                }
+            }
+            "gatemixer" => {
+                for voice in &mut self.voices {
+                    voice
+                        .graph
+                        .add_node_with_id(node_id, Box::new(GateMixer::new()));
+                    voice.graph.global_gatemixer_node = Some(node_id);
+                }
+            }
+            "oscillator" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(AnalogOscillator::new(
+                            self.sample_rate,
+                            Waveform::Sine,
+                            self.wavetable_banks.clone(),
+                        )),
+                    );
+                }
+            }
+            "wavetable_oscillator" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(WavetableOscillator::new(
+                            self.sample_rate,
+                            self.wavetable_synthbank.clone(),
+                        )),
+                    );
+                }
+            }
+            "sampler" => {
+                let data = sampler_cache.entry(node_id).or_insert_with(|| {
+                    let mut sample = SampleData::new();
+                    let defaults = Self::generate_default_sampler_data(self.sample_rate);
+                    sample.load_from_wav(defaults, 1, self.sample_rate);
+                    sample.root_note = 69.0;
+                    Rc::new(RefCell::new(sample))
+                });
+                for voice in &mut self.voices {
+                    let mut sampler = Sampler::new(self.sample_rate);
+                    sampler.set_sample_data(data.clone());
+                    voice.graph.add_node_with_id(node_id, Box::new(sampler));
+                }
+            }
+            "envelope" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(Envelope::new(self.sample_rate, EnvelopeConfig::default())),
+                    );
+                }
+            }
+            "lfo" => {
+                for voice in &mut self.voices {
+                    voice
+                        .graph
+                        .add_node_with_id(node_id, Box::new(Lfo::new(self.sample_rate)));
+                }
+            }
+            "filter" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(FilterCollection::new(self.sample_rate)),
+                    );
+                }
+            }
+            "mixer" => {
+                for voice in &mut self.voices {
+                    voice
+                        .graph
+                        .add_node_with_id(node_id, Box::new(Mixer::new()));
+                    voice.set_output_node(node_id);
+                }
+            }
+            "noise" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(NoiseGenerator::new(self.sample_rate)),
+                    );
+                }
+            }
+            "arpeggiator_generator" => {
+                for voice in &mut self.voices {
+                    let mut arp = ArpeggiatorGenerator::new();
+                    arp.create_test_pattern(self.sample_rate, 0.225);
+                    voice.graph.add_node_with_id(node_id, Box::new(arp));
+                }
+            }
+            // Effect nodes exist in the effect stack.
+            "chorus" | "delay" | "freeverb" | "convolver" | "limiter" => {}
+            other => log_console(&format!("Skipping unsupported node type {}", other)),
+        }
+        Ok(())
+    }
+
+    fn connect_from_canonical_voice(
+        &mut self,
+        voice_layout: &PatchVoiceLayout,
+    ) -> Result<(), JsValue> {
+        for connection in &voice_layout.connections {
+            let to_port = port_id_from_u32(connection.target)?;
+            let modulation_type = wasm_modulation_type_from_i32(connection.modulation_type)?;
+            let modulation_transform =
+                modulation_transform_from_i32(connection.modulation_transform)?;
+            self.connect_nodes(
+                &connection.from_id,
+                PortId::AudioOutput0,
+                &connection.to_id,
+                to_port,
+                connection.amount,
+                Some(modulation_type),
+                modulation_transform,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn apply_patch_states(
+        &mut self,
+        patch: &PatchFile,
+        canonical_voice: &PatchVoiceLayout,
+    ) -> Result<(), JsValue> {
+        for (id, state) in &patch.synth_state.oscillators {
+            self.update_oscillator(id, state)?;
+        }
+
+        for (id, state) in &patch.synth_state.wavetable_oscillators {
+            self.update_wavetable_oscillator(id, state)?;
+        }
+
+        for (id, config) in &patch.synth_state.envelopes {
+            self.update_envelope(
+                id,
+                config.attack,
+                config.decay,
+                config.sustain,
+                config.release,
+                config.attack_curve,
+                config.decay_curve,
+                config.release_curve,
+                config.active,
+            )?;
+        }
+
+        for state in patch.synth_state.lfos.values() {
+            let params = WasmLfoUpdateParams::new(
+                state.lfo_id.clone(),
+                state.frequency,
+                state.phase_offset,
+                state.waveform,
+                state.use_absolute,
+                state.use_normalized,
+                state.trigger_mode,
+                state.gain,
+                state.active,
+                state.loop_mode,
+                state.loop_start,
+                state.loop_end,
+            );
+            self.update_lfos(params);
+        }
+
+        for filter in patch.synth_state.filters.values() {
+            let filter_type = filter_type_from_i32(filter.filter_type);
+            self.update_filters(
+                &filter.id,
+                filter.cutoff,
+                filter.resonance,
+                filter.gain,
+                filter.key_tracking,
+                filter.comb_frequency,
+                filter.comb_dampening,
+                filter.oversampling,
+                filter_type,
+                filter.filter_slope,
+            )?;
+        }
+
+        for sampler in patch.synth_state.samplers.values() {
+            self.update_sampler(
+                &sampler.id,
+                sampler.frequency,
+                sampler.gain,
+                sampler.loop_mode,
+                sampler.loop_start,
+                sampler.loop_end,
+                sampler.root_note,
+                sampler.trigger_mode,
+            )?;
+        }
+
+        for chorus in patch.synth_state.choruses.values() {
+            if let Ok(node_id) = chorus.id.parse::<usize>() {
+                self.update_chorus(
+                    node_id,
+                    chorus.active,
+                    chorus.base_delay_ms,
+                    chorus.depth_ms,
+                    chorus.lfo_rate_hz,
+                    chorus.feedback,
+                    chorus.feedback_filter,
+                    chorus.mix,
+                    chorus.stereo_phase_offset_deg,
+                );
+            }
+        }
+
+        for delay in patch.synth_state.delays.values() {
+            if let Ok(node_id) = delay.id.parse::<usize>() {
+                self.update_delay(
+                    node_id,
+                    delay.delay_ms,
+                    delay.feedback,
+                    delay.wet_mix,
+                    delay.active,
+                );
+            }
+        }
+
+        for reverb in patch.synth_state.reverbs.values() {
+            if let Ok(node_id) = reverb.id.parse::<usize>() {
+                self.update_reverb(
+                    node_id,
+                    reverb.active,
+                    reverb.room_size,
+                    reverb.damp,
+                    reverb.wet,
+                    reverb.dry,
+                    reverb.width,
+                );
+            }
+        }
+
+        for convolver in patch.synth_state.convolvers.values() {
+            if let Ok(node_id) = convolver.id.parse::<usize>() {
+                self.update_convolver(node_id, convolver.wet_mix, convolver.active);
+            }
+        }
+
+        if let Some(noise_state) = &patch.synth_state.noise {
+            if let Some(noise_id) = find_node_id(canonical_voice, "noise") {
+                let params = NoiseUpdateParams::new(
+                    match noise_state.noise_type {
+                        1 => WasmNoiseType::Pink,
+                        2 => WasmNoiseType::Brownian,
+                        _ => WasmNoiseType::White,
+                    },
+                    noise_state.cutoff,
+                    noise_state.gain,
+                    noise_state.is_enabled,
+                );
+                self.update_noise(&noise_id, &params)?;
+            }
+        }
+
+        if let Some(velocity_state) = &patch.synth_state.velocity {
+            if let Some(velocity_id) = find_node_id(canonical_voice, "global_velocity") {
+                self.update_velocity(
+                    &velocity_id,
+                    velocity_state.sensitivity,
+                    velocity_state.randomize,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn import_audio_assets(
+        &mut self,
+        assets: &HashMap<String, AudioAsset>,
+    ) -> Result<(), JsValue> {
+        for asset in assets.values() {
+            match asset.asset_type {
+                AudioAssetType::Sample => {
+                    if let Some(node_id) = asset.id.strip_prefix("sample_") {
+                        let data = BASE64_ENGINE
+                            .decode(asset.base64_data.as_bytes())
+                            .map_err(|e| {
+                                JsValue::from_str(&format!(
+                                    "Failed to decode sample asset {}: {}",
+                                    asset.id, e
+                                ))
+                            })?;
+                        self.import_sample(node_id, &data)?;
+                    }
+                }
+                AudioAssetType::ImpulseResponse => {
+                    if let Some(effect_id) = asset.id.strip_prefix("impulse_") {
+                        let effect_index = match effect_id.parse::<usize>() {
+                            Ok(idx) => idx,
+                            Err(e) => {
+                                return Err(JsValue::from_str(&format!(
+                                    "Invalid impulse asset id {}: {}",
+                                    asset.id, e
+                                )))
+                            }
+                        };
+                        let data = BASE64_ENGINE
+                            .decode(asset.base64_data.as_bytes())
+                            .map_err(|e| {
+                                JsValue::from_str(&format!(
+                                    "Failed to decode impulse asset {}: {}",
+                                    asset.id, e
+                                ))
+                            })?;
+                        self.import_wave_impulse(effect_index, &data)?;
+                    }
+                }
+                AudioAssetType::Wavetable => {
+                    log_console("Wavetable asset import not yet implemented");
+                }
+            }
+        }
+        Ok(())
+    }
+
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn reset(&mut self) {
         // Clear all voices
@@ -2005,4 +2449,92 @@ impl AudioEngine {
             voice.clear();
         }
     }
+}
+
+fn port_id_from_u32(value: u32) -> Result<PortId, JsValue> {
+    Ok(match value {
+        0 => PortId::AudioInput0,
+        1 => PortId::AudioInput1,
+        2 => PortId::AudioInput2,
+        3 => PortId::AudioInput3,
+        4 => PortId::AudioOutput0,
+        5 => PortId::AudioOutput1,
+        6 => PortId::AudioOutput2,
+        7 => PortId::AudioOutput3,
+        8 => PortId::GlobalGate,
+        9 => PortId::GlobalFrequency,
+        10 => PortId::GlobalVelocity,
+        11 => PortId::Frequency,
+        12 => PortId::FrequencyMod,
+        13 => PortId::PhaseMod,
+        14 => PortId::ModIndex,
+        15 => PortId::CutoffMod,
+        16 => PortId::ResonanceMod,
+        17 => PortId::GainMod,
+        18 => PortId::EnvelopeMod,
+        19 => PortId::StereoPan,
+        20 => PortId::FeedbackMod,
+        21 => PortId::DetuneMod,
+        22 => PortId::WavetableIndex,
+        23 => PortId::WetDryMix,
+        24 => PortId::AttackMod,
+        25 => PortId::ArpGate,
+        26 => PortId::CombinedGate,
+        _ => {
+            return Err(JsValue::from_str(&format!(
+                "Unknown port id value {}",
+                value
+            )))
+        }
+    })
+}
+
+fn wasm_modulation_type_from_i32(value: i32) -> Result<WasmModulationType, JsValue> {
+    Ok(match value {
+        0 => WasmModulationType::VCA,
+        1 => WasmModulationType::Bipolar,
+        2 => WasmModulationType::Additive,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Unknown modulation type {}",
+                other
+            )))
+        }
+    })
+}
+
+fn modulation_transform_from_i32(value: i32) -> Result<ModulationTransformation, JsValue> {
+    Ok(match value {
+        0 => ModulationTransformation::None,
+        1 => ModulationTransformation::Invert,
+        2 => ModulationTransformation::Square,
+        3 => ModulationTransformation::Cube,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Unknown modulation transform {}",
+                other
+            )))
+        }
+    })
+}
+
+fn filter_type_from_i32(value: i32) -> FilterType {
+    match value {
+        1 => FilterType::LowShelf,
+        2 => FilterType::Peaking,
+        3 => FilterType::HighShelf,
+        4 => FilterType::Notch,
+        5 => FilterType::HighPass,
+        6 => FilterType::Ladder,
+        7 => FilterType::Comb,
+        _ => FilterType::LowPass,
+    }
+}
+
+fn find_node_id(voice_layout: &PatchVoiceLayout, target_type: &str) -> Option<String> {
+    voice_layout
+        .nodes
+        .get(target_type)
+        .and_then(|nodes: &Vec<PatchNode>| nodes.first())
+        .map(|node| node.id.clone())
 }

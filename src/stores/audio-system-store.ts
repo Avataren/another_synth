@@ -47,6 +47,7 @@ import {
   exportPatchToJSON,
   importPatchFromJSON,
   parseAudioAssetId,
+  createAudioAssetId,
 } from 'src/audio/serialization/patch-serializer';
 import {
   createBank,
@@ -61,6 +62,10 @@ import {
   getSamplerNodeIds,
   getConvolverNodeIds,
 } from 'src/audio/serialization/audio-asset-extractor';
+
+function clonePatch(patch: Patch): Patch {
+  return JSON.parse(JSON.stringify(patch)) as Patch;
+}
 
 interface AudioParamDescriptor {
   name: string;
@@ -187,6 +192,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     currentBank: null as Bank | null,
     currentPatchId: null as string | null,
     audioAssets: new Map<string, AudioAsset>(),
+    defaultPatchTemplate: null as Patch | null,
+    defaultPatchLoadAttempted: false,
   }),
 
   getters: {
@@ -319,6 +326,310 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       if (!this.audioSystem) {
         this.audioSystem = new AudioSystem();
       }
+    },
+
+    async waitForInstrumentReady(timeoutMs = 8000): Promise<boolean> {
+      const pollInterval = 50;
+      const start = Date.now();
+
+      while (
+        !this.currentInstrument ||
+        !this.currentInstrument.isReady
+      ) {
+        if (Date.now() - start > timeoutMs) {
+          console.warn('Timed out waiting for instrument readiness');
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      }
+
+      return true;
+    },
+
+    async waitForSynthLayout(timeoutMs = 8000): Promise<boolean> {
+      const pollInterval = 50;
+      const start = Date.now();
+      const requiredVoices = this.currentInstrument?.num_voices ?? 1;
+
+      while (
+        !this.synthLayout ||
+        !Array.isArray(this.synthLayout.voices) ||
+        this.synthLayout.voices.length < requiredVoices ||
+        !this.synthLayout.voices[0] ||
+        !this.synthLayout.voices[0]!.nodes
+      ) {
+        if (Date.now() - start > timeoutMs) {
+          console.warn('Timed out waiting for synth layout');
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      }
+
+      return true;
+    },
+
+    async fetchDefaultPatchTemplate(): Promise<Patch | null> {
+      if (this.defaultPatchTemplate) {
+        return this.defaultPatchTemplate;
+      }
+
+      if (this.defaultPatchLoadAttempted) {
+        return null;
+      }
+
+      this.defaultPatchLoadAttempted = true;
+
+      if (typeof fetch === 'undefined') {
+        console.warn('Fetch API unavailable; cannot load default patch file');
+        return null;
+      }
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}default-patch.json`,
+          { cache: 'no-store' },
+        );
+
+        if (!response.ok) {
+          if (response.status !== 404) {
+            console.warn(
+              `Failed to fetch default patch (status ${response.status})`,
+            );
+          }
+          return null;
+        }
+
+        const json = await response.text();
+        const result = importPatchFromJSON(json);
+
+        if (!result.validation.valid || !result.patch) {
+          console.error(
+            'Default patch validation failed:',
+            result.validation.errors?.join(', '),
+          );
+          return null;
+        }
+
+        this.defaultPatchTemplate = result.patch;
+        return this.defaultPatchTemplate;
+      } catch (error) {
+        console.error('Error loading default patch:', error);
+        return null;
+      }
+    },
+
+    ensurePatchInBank(patch: Patch) {
+      if (!patch) return;
+
+      if (!this.currentBank) {
+        this.currentBank = createBank('Default Bank', [clonePatch(patch)]);
+        return;
+      }
+
+      const exists = this.currentBank.patches.some(
+        (existing) => existing.metadata.id === patch.metadata.id,
+      );
+
+      if (!exists) {
+        this.currentBank = addPatchToBank(this.currentBank, clonePatch(patch));
+      }
+    },
+
+    async applyPatchObject(
+      patch: Patch,
+      options?: { setCurrentPatchId?: boolean },
+    ): Promise<boolean> {
+      try {
+        const layoutReady = await this.waitForSynthLayout();
+        if (!layoutReady) {
+          console.warn('Cannot apply patch because synth layout is unavailable');
+          return false;
+        }
+
+        const deserialized = deserializePatch(patch);
+
+        this.updateSynthLayout(deserialized.layout);
+        this.oscillatorStates = deserialized.oscillators;
+        this.wavetableOscillatorStates = deserialized.wavetableOscillators;
+        this.filterStates = deserialized.filters;
+        this.envelopeStates = deserialized.envelopes;
+        this.lfoStates = deserialized.lfos;
+        this.samplerStates = deserialized.samplers;
+        this.convolverStates = deserialized.convolvers;
+        this.delayStates = deserialized.delays;
+        this.chorusStates = deserialized.choruses;
+        this.reverbStates = deserialized.reverbs;
+
+        if (deserialized.noise) {
+          this.noiseState = deserialized.noise;
+        }
+        if (deserialized.velocity) {
+          this.velocityState = deserialized.velocity;
+        }
+
+        this.audioAssets = deserialized.audioAssets;
+
+        const instrumentReady = await this.waitForInstrumentReady();
+        if (!instrumentReady) {
+          console.warn('Instrument was not ready when applying patch state');
+        } else {
+          this.currentInstrument?.loadPatch(patch);
+        }
+
+        if (options?.setCurrentPatchId !== false) {
+          this.currentPatchId = patch.metadata.id;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Failed to apply patch:', error);
+        return false;
+      }
+    },
+
+    async initializeFromDefaultPatch(): Promise<boolean> {
+      const template = await this.fetchDefaultPatchTemplate();
+      if (!template) {
+        return false;
+      }
+
+      const patchInstance = clonePatch(template);
+      this.ensurePatchInBank(patchInstance);
+
+      const success = await this.applyPatchObject(patchInstance);
+      if (!success) {
+        console.warn('Unable to apply default patch');
+      }
+      return success;
+    },
+
+    async prepareStateForNewPatch(): Promise<boolean> {
+      const layoutReady = await this.waitForSynthLayout();
+      if (!layoutReady) {
+        console.warn('Cannot prepare new patch: synth layout not ready');
+        return false;
+      }
+      await this.waitForInstrumentReady();
+
+      this.resetCurrentStateToDefaults(false);
+
+      const template = await this.fetchDefaultPatchTemplate();
+      if (template) {
+        const applied = this.applyTemplateToCurrentLayout(clonePatch(template));
+        if (applied) {
+          await nextTick(() => {
+            this.applyPreservedStatesToWasm();
+            void this.restoreAudioAssets();
+          });
+          return true;
+        }
+      }
+
+      this.applyPreservedStatesToWasm();
+      return false;
+    },
+
+    applyTemplateToCurrentLayout(template: Patch): boolean {
+      if (!this.synthLayout) {
+        console.warn('Cannot apply template: synth layout missing');
+        return false;
+      }
+
+      const canonicalVoice = this.synthLayout.voices[0];
+      if (!canonicalVoice) {
+        console.warn('Cannot apply template: canonical voice missing');
+        return false;
+      }
+
+      const templateState = deserializePatch(template);
+      const nodeIdRemap = new Map<string, string>();
+
+      const assignStates = <T extends { id?: string }>(
+        nodeType: VoiceNodeType,
+        templateMap: Map<string, T>,
+        targetMap: Map<string, T>,
+      ) => {
+        const nodes = getNodesOfType(canonicalVoice, nodeType) || [];
+        const orderedTemplates = Array.from(templateMap.entries()).sort(([a], [b]) =>
+          a.localeCompare(b),
+        );
+
+        nodes.forEach((node, index) => {
+          const templateEntry = orderedTemplates[index];
+          if (!templateEntry) return;
+          const [templateId, templateValue] = templateEntry;
+          const assignedState = {
+            ...templateValue,
+            id: node.id,
+          };
+          targetMap.set(node.id, assignedState as T);
+          nodeIdRemap.set(templateId, node.id);
+        });
+      };
+
+      assignStates(
+        VoiceNodeType.Oscillator,
+        templateState.oscillators,
+        this.oscillatorStates,
+      );
+      assignStates(
+        VoiceNodeType.WavetableOscillator,
+        templateState.wavetableOscillators,
+        this.wavetableOscillatorStates,
+      );
+      assignStates(VoiceNodeType.Envelope, templateState.envelopes, this.envelopeStates);
+      assignStates(VoiceNodeType.LFO, templateState.lfos, this.lfoStates);
+      assignStates(VoiceNodeType.Filter, templateState.filters, this.filterStates);
+      assignStates(VoiceNodeType.Sampler, templateState.samplers, this.samplerStates);
+      assignStates(
+        VoiceNodeType.Convolver,
+        templateState.convolvers,
+        this.convolverStates,
+      );
+      assignStates(VoiceNodeType.Delay, templateState.delays, this.delayStates);
+      assignStates(VoiceNodeType.Chorus, templateState.choruses, this.chorusStates);
+      assignStates(VoiceNodeType.Reverb, templateState.reverbs, this.reverbStates);
+
+      if (templateState.noise) {
+        this.noiseState = templateState.noise;
+      }
+      if (templateState.velocity) {
+        this.velocityState = templateState.velocity;
+      }
+
+      const remappedAssets = new Map<string, AudioAsset>();
+      templateState.audioAssets.forEach((asset, assetId) => {
+        const parsed = parseAudioAssetId(assetId);
+        if (!parsed) return;
+        const mappedNodeId = nodeIdRemap.get(parsed.nodeId);
+        if (!mappedNodeId) return;
+        const newId = createAudioAssetId(parsed.nodeType, mappedNodeId);
+        remappedAssets.set(newId, asset);
+      });
+      this.audioAssets = remappedAssets;
+
+      return true;
+    },
+
+    async initializeNewPatchSession(): Promise<void> {
+      if (this.currentPatchId && this.currentBank) {
+        return;
+      }
+
+      const prepared = await this.prepareStateForNewPatch();
+      if (!prepared) {
+        console.warn('Default patch template was not applied; using baseline state');
+      }
+      const patch = await this.saveCurrentPatch('New Patch');
+      if (!patch) {
+        console.error('Failed to create initial patch during startup');
+        return;
+      }
+
+      console.log(
+        'Initial patch created from default template:',
+        patch.metadata.id,
+      );
     },
 
     // Helper method to check if connection exists
@@ -1363,7 +1674,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
      * Used when creating a brand new patch so that it starts from a
      * clean, initialized state instead of copying the previous patch.
      */
-    resetCurrentStateToDefaults() {
+    resetCurrentStateToDefaults(applyToWasm = true) {
       // Clear all per-node state maps
       this.oscillatorStates = new Map<string, OscillatorState>();
       this.wavetableOscillatorStates = new Map<string, OscillatorState>();
@@ -1398,7 +1709,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.initializeDefaultStates();
 
       // Apply the freshly initialized states to the audio engine
-      this.applyPreservedStatesToWasm();
+      if (applyToWasm) {
+        this.applyPreservedStatesToWasm();
+      }
     },
     async setupAudio() {
       if (this.audioSystem) {
@@ -1596,49 +1909,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         return false;
       }
 
-      try {
-        const deserialized = deserializePatch(patch);
-
-        // Update synth layout
-        this.updateSynthLayout(deserialized.layout);
-
-        // Update all state maps
-        this.oscillatorStates = deserialized.oscillators;
-        this.wavetableOscillatorStates = deserialized.wavetableOscillators;
-        this.filterStates = deserialized.filters;
-        this.envelopeStates = deserialized.envelopes;
-        this.lfoStates = deserialized.lfos;
-        this.samplerStates = deserialized.samplers;
-        this.convolverStates = deserialized.convolvers;
-        this.delayStates = deserialized.delays;
-        this.chorusStates = deserialized.choruses;
-        this.reverbStates = deserialized.reverbs;
-
-        if (deserialized.noise) {
-          this.noiseState = deserialized.noise;
-        }
-        if (deserialized.velocity) {
-          this.velocityState = deserialized.velocity;
-        }
-
-        // Store audio assets
-        this.audioAssets = deserialized.audioAssets;
-
-        // Apply all states to WASM
-        await nextTick(() => {
-          this.applyPreservedStatesToWasm();
-
-          // Restore audio assets (samples, impulses, etc.)
-          this.restoreAudioAssets();
-        });
-
-        this.currentPatchId = patchId;
+      const success = await this.applyPatchObject(patch);
+      if (success) {
         console.log('Patch loaded successfully:', patch.metadata.name);
-        return true;
-      } catch (error) {
-        console.error('Failed to load patch:', error);
-        return false;
       }
+      return success;
     },
 
     /**

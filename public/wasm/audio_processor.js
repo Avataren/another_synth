@@ -869,6 +869,19 @@ export class AudioEngine {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * @param {string} patch_json
+     * @returns {number}
+     */
+    initWithPatch(patch_json) {
+        const ptr0 = passStringToWasm0(patch_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.audioengine_initWithPatch(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
      * @param {number} from_idx
      * @param {number} to_idx
      */
@@ -2123,6 +2136,16 @@ function __wbg_get_imports() {
         let result;
         try {
             result = arg0 instanceof ArrayBuffer;
+        } catch (_) {
+            result = false;
+        }
+        const ret = result;
+        return ret;
+    };
+    imports.wbg.__wbg_instanceof_Crypto_33ac2d91cca59233 = function(arg0) {
+        let result;
+        try {
+            result = arg0 instanceof Crypto;
         } catch (_) {
             result = false;
         }

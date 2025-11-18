@@ -5,6 +5,7 @@ import { createStandardAudioWorklet } from './audio-processor-loader';
 // import { type NoiseState } from './dsp/noise-generator';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
+import type { Patch } from './types/preset-types';
 import type {
   ChorusState,
   ConvolverState,
@@ -97,6 +98,15 @@ export default class Instrument {
     }
   }
 
+  public loadPatch(patch: Patch) {
+    if (!this.ready || !this.workletNode) return;
+    const patchJson = JSON.stringify(patch);
+    this.workletNode.port.postMessage({
+      type: 'loadPatch',
+      patchJson,
+    });
+  }
+
   public updateLayout(layout: SynthLayout) {
     this.synthLayout = layout;
     console.log('Updated synth layout:', layout);
@@ -138,6 +148,12 @@ export default class Instrument {
 
   public updateVelocityState(nodeId: string, state: VelocityState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    if (this.findVoiceForNode(nodeId) === -1) {
+      console.warn(
+        `Skipping velocity update for unknown node ${nodeId}. Layout may be out of sync with worklet.`,
+      );
+      return;
+    }
     this.workletNode.port.postMessage({
       type: 'updateVelocity',
       nodeId: nodeId,
@@ -151,6 +167,12 @@ export default class Instrument {
 
   public updateNoiseState(nodeId: string, state: NoiseState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    if (this.findVoiceForNode(nodeId) === -1) {
+      console.warn(
+        `Skipping noise update for unknown node ${nodeId}. Layout may be out of sync with worklet.`,
+      );
+      return;
+    }
 
     this.workletNode.port.postMessage({
       type: 'updateNoise',

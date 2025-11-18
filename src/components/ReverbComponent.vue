@@ -1,7 +1,7 @@
 <template>
   <q-card class="chorus-card">
     <q-card-section class="bg-primary text-white">
-      <div class="text-h6">Reverb</div>
+      <div class="text-h6">{{ displayName }}</div>
     </q-card-section>
     <q-separator />
     <q-card-section class="chorus-container">
@@ -73,6 +73,7 @@ import { type ReverbState } from 'src/audio/types/synth-layout'; // Adjust path 
 
 interface Props {
   nodeId: string;
+  nodeName?: string;
 }
 const props = withDefaults(defineProps<Props>(), {
   nodeId: '',
@@ -81,6 +82,8 @@ const props = withDefaults(defineProps<Props>(), {
 const store = useAudioSystemStore();
 // Use chorusStates from the store
 const { reverbStates } = storeToRefs(store);
+
+const displayName = computed(() => props.nodeName || 'Reverb');
 
 // Create a reactive computed property for the chorus state of the current node
 const reverbState = computed({

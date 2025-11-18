@@ -296,9 +296,7 @@ const handleSavePatch = async () => {
 
 const handleNewPatch = async () => {
   try {
-    // Reset the current synth state back to default values
-    // so the new patch starts from a clean baseline.
-    store.resetCurrentStateToDefaults();
+    await store.prepareStateForNewPatch();
 
     const patch = await store.saveCurrentPatch('New Patch');
     if (patch) {
