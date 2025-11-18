@@ -68,8 +68,8 @@ watch(
   },
 );
 
-function onTitleInput(value: string) {
-  emits('update:title', value);
+function onTitleInput(value: string | number | null) {
+  emits('update:title', value ?? '');
 }
 
 // Local ref to track if minimized or not

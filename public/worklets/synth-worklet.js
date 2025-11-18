@@ -2964,7 +2964,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           console.warn("##### Unknown node type:", rawNode.node_type);
           type = rawNode.node_type;
       }
-      nodesByType[type].push({ id: rawNode.id, type });
+      nodesByType[type].push({
+        id: rawNode.id,
+        type,
+        name: rawNode.name
+      });
     }
     const connections = rawCanonicalVoice.connections.map(
       (rawConn) => ({

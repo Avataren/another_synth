@@ -165,7 +165,6 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   node: null,
   isMinimized: false,
-  nodeName: undefined,
 });
 
 const emit = defineEmits(['plusClicked', 'minimizeClicked', 'closeClicked']);

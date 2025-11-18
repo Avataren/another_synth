@@ -134,7 +134,6 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   isMinimized: false,
-  nodeName: undefined,
 });
 
 // Forward events to parent, matching the style of your Noise/Oscillator components

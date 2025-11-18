@@ -181,7 +181,6 @@ const props = withDefaults(defineProps<Props>(), {
   node: null,
   nodeId: 0,
   isMinimized: false,
-  nodeName: undefined,
 });
 
 // Define emits for forwarding events

@@ -160,7 +160,6 @@ interface Props {
 // Default isMinimized to false
 const props = withDefaults(defineProps<Props>(), {
   isMinimized: false,
-  nodeName: undefined,
 });
 
 // Define events we want to forward

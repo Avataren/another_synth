@@ -83,7 +83,6 @@ interface Props {
 }
 const props = withDefaults(defineProps<Props>(), {
   isMinimized: false,
-  nodeName: undefined,
 });
 
 // Define emit to forward events upward

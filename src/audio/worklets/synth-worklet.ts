@@ -13,6 +13,7 @@ import type {
 import {
   type SynthLayout,
   type VoiceLayout,
+  type VoiceNode,
   VoiceNodeType,
   type NodeConnectionUpdate,
   type FilterState,
@@ -632,7 +633,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Convert the raw nodes array into an object keyed by VoiceNodeType.
     const nodesByType: {
-      [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[];
+      [key in VoiceNodeType]: VoiceNode[];
     } = {
       [VoiceNodeType.Oscillator]: [],
       [VoiceNodeType.WavetableOscillator]: [],
@@ -714,7 +715,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           console.warn('##### Unknown node type:', rawNode.node_type);
           type = rawNode.node_type as VoiceNodeType;
       }
-      nodesByType[type].push({ id: rawNode.id, type });
+      nodesByType[type].push({
+        id: rawNode.id,
+        type,
+        name: rawNode.name,
+      });
     }
 
     // Convert the raw connections into the expected format.
