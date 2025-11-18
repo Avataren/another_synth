@@ -274,6 +274,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'getSamplerWaveform':
         this.handleGetSamplerWaveform(event.data);
         break;
+      case 'exportSampleData':
+        this.handleExportSampleData(event.data);
+        break;
+      case 'exportConvolverData':
+        this.handleExportConvolverData(event.data);
+        break;
       case 'cpuUsage':
         this.handleCpuUsage();
         break;
@@ -1134,6 +1140,54 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         source: 'getSamplerWaveform',
         messageId: data.messageId,
         message: 'Failed to get sampler waveform',
+      });
+    }
+  }
+
+  private handleExportSampleData(data: {
+    samplerId: number;
+    messageId: string;
+  }) {
+    if (!this.audioEngine) return;
+    try {
+      const sampleData = this.audioEngine.export_sample_data(data.samplerId);
+      this.port.postMessage({
+        type: 'sampleData',
+        samplerId: data.samplerId,
+        messageId: data.messageId,
+        sampleData,
+      });
+    } catch (err) {
+      console.error('Error exporting sample data:', err);
+      this.port.postMessage({
+        type: 'error',
+        source: 'exportSampleData',
+        messageId: data.messageId,
+        message: 'Failed to export sample data',
+      });
+    }
+  }
+
+  private handleExportConvolverData(data: {
+    convolverId: number;
+    messageId: string;
+  }) {
+    if (!this.audioEngine) return;
+    try {
+      const convolverData = this.audioEngine.export_convolver_data(data.convolverId);
+      this.port.postMessage({
+        type: 'convolverData',
+        convolverId: data.convolverId,
+        messageId: data.messageId,
+        convolverData,
+      });
+    } catch (err) {
+      console.error('Error exporting convolver data:', err);
+      this.port.postMessage({
+        type: 'error',
+        source: 'exportConvolverData',
+        messageId: data.messageId,
+        message: 'Failed to export convolver data',
       });
     }
   }

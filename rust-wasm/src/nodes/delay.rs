@@ -5,6 +5,7 @@ use rustc_hash::FxHashMap;
 
 use crate::graph::ModulationSource;
 use crate::traits::{AudioNode, PortId};
+use serde::{Deserialize, Serialize};
 
 pub struct Delay {
     enabled: bool,

@@ -1,0 +1,313 @@
+// src/audio/serialization/patch-serializer.ts
+import type {
+  Patch,
+  SynthState,
+  AudioAsset,
+  ValidationResult,
+  PatchMetadata,
+} from '../types/preset-types';
+import {
+  createDefaultPatchMetadata,
+  PRESET_SCHEMA_VERSION,
+} from '../types/preset-types';
+import type OscillatorState from '../models/OscillatorState';
+import type {
+  SynthLayout,
+  FilterState,
+  EnvelopeConfig,
+  LfoState,
+  SamplerState,
+  ConvolverState,
+  DelayState,
+  ChorusState,
+  ReverbState,
+  VelocityState,
+} from '../types/synth-layout';
+import type { NoiseState } from '../types/noise';
+
+/**
+ * Serializes the current synth state to a Patch object
+ */
+export function serializeCurrentPatch(
+  name: string,
+  layout: SynthLayout,
+  oscillators: Map<number, OscillatorState>,
+  wavetableOscillators: Map<number, OscillatorState>,
+  filters: Map<number, FilterState>,
+  envelopes: Map<number, EnvelopeConfig>,
+  lfos: Map<number, LfoState>,
+  samplers: Map<number, SamplerState>,
+  convolvers: Map<number, ConvolverState>,
+  delays: Map<number, DelayState>,
+  choruses: Map<number, ChorusState>,
+  reverbs: Map<number, ReverbState>,
+  noise?: NoiseState,
+  velocity?: VelocityState,
+  audioAssets?: Map<string, AudioAsset>,
+  metadata?: Partial<PatchMetadata>,
+): Patch {
+  // Create or use provided metadata
+  const patchMetadata: PatchMetadata = metadata
+    ? {
+        ...createDefaultPatchMetadata(name),
+        ...metadata,
+        name, // Ensure name is set
+      }
+    : createDefaultPatchMetadata(name);
+
+  // Convert Maps to Records for JSON serialization
+  const synthState: SynthState = {
+    layout,
+    oscillators: mapToRecord(oscillators),
+    wavetableOscillators: mapToRecord(wavetableOscillators),
+    filters: mapToRecord(filters),
+    envelopes: mapToRecord(envelopes),
+    lfos: mapToRecord(lfos),
+    samplers: mapToRecord(samplers),
+    convolvers: mapToRecord(convolvers),
+    delays: mapToRecord(delays),
+    choruses: mapToRecord(choruses),
+    reverbs: mapToRecord(reverbs),
+  };
+
+  if (noise !== undefined) {
+    synthState.noise = noise;
+  }
+  if (velocity !== undefined) {
+    synthState.velocity = velocity;
+  }
+
+  // Convert audio assets map to record
+  const assetRecord = audioAssets ? mapToRecord(audioAssets) : {};
+
+  return {
+    metadata: patchMetadata,
+    synthState,
+    audioAssets: assetRecord,
+  };
+}
+
+/**
+ * Deserializes a Patch object back to individual state components
+ */
+export interface DeserializedPatch {
+  metadata: PatchMetadata;
+  layout: SynthLayout;
+  oscillators: Map<number, OscillatorState>;
+  wavetableOscillators: Map<number, OscillatorState>;
+  filters: Map<number, FilterState>;
+  envelopes: Map<number, EnvelopeConfig>;
+  lfos: Map<number, LfoState>;
+  samplers: Map<number, SamplerState>;
+  convolvers: Map<number, ConvolverState>;
+  delays: Map<number, DelayState>;
+  choruses: Map<number, ChorusState>;
+  reverbs: Map<number, ReverbState>;
+  noise?: NoiseState;
+  velocity?: VelocityState;
+  audioAssets: Map<string, AudioAsset>;
+}
+
+export function deserializePatch(patch: Patch): DeserializedPatch {
+  const result: DeserializedPatch = {
+    metadata: patch.metadata,
+    layout: patch.synthState.layout,
+    oscillators: recordToMap(patch.synthState.oscillators),
+    wavetableOscillators: recordToMap(patch.synthState.wavetableOscillators),
+    filters: recordToMap(patch.synthState.filters),
+    envelopes: recordToMap(patch.synthState.envelopes),
+    lfos: recordToMap(patch.synthState.lfos),
+    samplers: recordToMap(patch.synthState.samplers),
+    convolvers: recordToMap(patch.synthState.convolvers),
+    delays: recordToMap(patch.synthState.delays),
+    choruses: recordToMap(patch.synthState.choruses),
+    reverbs: recordToMap(patch.synthState.reverbs),
+    audioAssets: recordToMap(patch.audioAssets) as unknown as Map<string, AudioAsset>,
+  };
+
+  if (patch.synthState.noise !== undefined) {
+    result.noise = patch.synthState.noise;
+  }
+  if (patch.synthState.velocity !== undefined) {
+    result.velocity = patch.synthState.velocity;
+  }
+
+  return result;
+}
+
+/**
+ * Validates a patch object structure
+ */
+export function validatePatch(patch: unknown): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!patch || typeof patch !== 'object') {
+    return {
+      valid: false,
+      errors: ['Invalid patch: not an object'],
+    };
+  }
+
+  const p = patch as Partial<Patch>;
+
+  // Validate metadata
+  if (!p.metadata) {
+    errors.push('Missing metadata');
+  } else {
+    if (!p.metadata.id) errors.push('Missing metadata.id');
+    if (!p.metadata.name) errors.push('Missing metadata.name');
+    if (!p.metadata.version) {
+      errors.push('Missing metadata.version');
+    } else if (p.metadata.version > PRESET_SCHEMA_VERSION) {
+      warnings.push(
+        `Patch version ${p.metadata.version} is newer than current version ${PRESET_SCHEMA_VERSION}. Some features may not work correctly.`,
+      );
+    }
+  }
+
+  // Validate synthState
+  if (!p.synthState) {
+    errors.push('Missing synthState');
+  } else {
+    if (!p.synthState.layout) {
+      errors.push('Missing synthState.layout');
+    } else {
+      if (!Array.isArray(p.synthState.layout.voices)) {
+        errors.push('synthState.layout.voices must be an array');
+      }
+      if (!p.synthState.layout.globalNodes) {
+        errors.push('Missing synthState.layout.globalNodes');
+      }
+    }
+
+    // Check that state objects exist (can be empty)
+    const requiredStateKeys = [
+      'oscillators',
+      'wavetableOscillators',
+      'filters',
+      'envelopes',
+      'lfos',
+      'samplers',
+      'convolvers',
+      'delays',
+      'choruses',
+      'reverbs',
+    ];
+
+    for (const key of requiredStateKeys) {
+      if (!(key in p.synthState)) {
+        errors.push(`Missing synthState.${key}`);
+      }
+    }
+  }
+
+  // Validate audioAssets
+  if (!p.audioAssets) {
+    errors.push('Missing audioAssets (should at least be an empty object)');
+  } else if (typeof p.audioAssets !== 'object') {
+    errors.push('audioAssets must be an object');
+  }
+
+  const result: ValidationResult = {
+    valid: errors.length === 0,
+  };
+
+  if (errors.length > 0) {
+    result.errors = errors;
+  }
+  if (warnings.length > 0) {
+    result.warnings = warnings;
+  }
+
+  return result;
+}
+
+/**
+ * Exports a patch to JSON string
+ */
+export function exportPatchToJSON(patch: Patch, pretty = true): string {
+  return JSON.stringify(patch, null, pretty ? 2 : undefined);
+}
+
+/**
+ * Imports a patch from JSON string
+ */
+export function importPatchFromJSON(json: string): {
+  patch?: Patch;
+  validation: ValidationResult;
+} {
+  try {
+    const parsed = JSON.parse(json);
+    const validation = validatePatch(parsed);
+
+    if (!validation.valid) {
+      return { validation };
+    }
+
+    return {
+      patch: parsed as Patch,
+      validation,
+    };
+  } catch (error) {
+    return {
+      validation: {
+        valid: false,
+        errors: [
+          `Failed to parse JSON: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        ],
+      },
+    };
+  }
+}
+
+/**
+ * Helper: Convert Map to Record for JSON serialization
+ */
+function mapToRecord<T>(map: Map<number, T> | Map<string, T>): Record<string | number, T> {
+  const record: Record<string | number, T> = {};
+  map.forEach((value, key) => {
+    record[key] = value;
+  });
+  return record;
+}
+
+/**
+ * Helper: Convert Record to Map for deserialization
+ */
+function recordToMap<T>(record: Record<number, T>): Map<number, T>;
+function recordToMap<T>(record: Record<string, T>): Map<string, T>;
+function recordToMap<T>(record: Record<string | number, T>): Map<string | number, T> {
+  const map = new Map<string | number, T>();
+  for (const [key, value] of Object.entries(record)) {
+    // Try to convert to number if it looks like a number
+    const numKey = Number(key);
+    const finalKey = !isNaN(numKey) && key === String(numKey) ? numKey : key;
+    map.set(finalKey, value);
+  }
+  return map;
+}
+
+/**
+ * Creates an audio asset ID for a node
+ */
+export function createAudioAssetId(nodeType: string, nodeId: number): string {
+  return `${nodeType}_${nodeId}`;
+}
+
+/**
+ * Parses an audio asset ID to get node type and ID
+ */
+export function parseAudioAssetId(assetId: string): {
+  nodeType: string;
+  nodeId: number;
+} | null {
+  const parts = assetId.split('_');
+  if (parts.length < 2) return null;
+
+  const nodeId = parseInt(parts[parts.length - 1] ?? '');
+  if (isNaN(nodeId)) return null;
+
+  const nodeType = parts.slice(0, -1).join('_');
+  return { nodeType, nodeId };
+}

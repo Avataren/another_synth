@@ -113,6 +113,20 @@ function getArrayU8FromWasm0(ptr, len) {
     return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
 
+let cachedFloat32ArrayMemory0 = null;
+
+function getFloat32ArrayMemory0() {
+    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachedFloat32ArrayMemory0;
+}
+
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
 function isLikeNone(x) {
     return x === undefined || x === null;
 }
@@ -194,15 +208,6 @@ function _assertClass(instance, klass) {
     }
 }
 
-let cachedFloat32ArrayMemory0 = null;
-
-function getFloat32ArrayMemory0() {
-    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
-        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
-    }
-    return cachedFloat32ArrayMemory0;
-}
-
 function passArrayF32ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 4, 4) >>> 0;
     getFloat32ArrayMemory0().set(arg, ptr / 4);
@@ -227,11 +232,6 @@ function passArray8ToWasm0(arg, malloc) {
     getUint8ArrayMemory0().set(arg, ptr / 1);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
-}
-
-function getArrayF32FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
 /**
  * @enum {0 | 1}
@@ -964,6 +964,18 @@ export class AudioEngine {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Export raw sample data with metadata for serialization
+     * @param {number} sampler_id
+     * @returns {object}
+     */
+    export_sample_data(sampler_id) {
+        const ret = wasm.audioengine_export_sample_data(this.__wbg_ptr, sampler_id);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * @param {AutomationFrame} frame
      * @param {number} master_gain
      * @param {Float32Array} output_left
@@ -1015,6 +1027,18 @@ export class AudioEngine {
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
+    }
+    /**
+     * Export raw convolver impulse response with metadata for serialization
+     * @param {number} convolver_id
+     * @returns {object}
+     */
+    export_convolver_data(convolver_id) {
+        const ret = wasm.audioengine_export_convolver_data(this.__wbg_ptr, convolver_id);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * @param {number} node_id
@@ -2193,6 +2217,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_new_638ebfaedbf32a5e = function(arg0) {
         const ret = new Uint8Array(arg0);
+        return ret;
+    };
+    imports.wbg.__wbg_newfromslice_eb3df67955925a7c = function(arg0, arg1) {
+        const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
         return ret;
     };
     imports.wbg.__wbg_newnoargs_254190557c45b4ec = function(arg0, arg1) {

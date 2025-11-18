@@ -25,6 +25,7 @@
 
 use rustc_hash::FxHashMap;
 use rustfft::num_traits::Float;
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::f32::consts::PI;
 use std::simd::{LaneCount, Simd, SupportedLaneCount};
@@ -43,8 +44,8 @@ use super::{Waveform, WavetableBank};
 // Public state‑update struct
 // ------------------------------------------------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy)]
 pub struct AnalogOscillatorStateUpdate {
     pub phase_mod_amount: f32,
     pub detune: f32, // Base detune offset in cents
