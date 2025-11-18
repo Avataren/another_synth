@@ -536,6 +536,9 @@ impl AudioNode for NoiseGenerator {
     fn set_active(&mut self, a: bool) {
         self.enabled = a;
     }
+    fn name(&self) -> &str {
+        "Noise Generator"
+    }
     fn node_type(&self) -> &str {
         "noise_generator"
     }

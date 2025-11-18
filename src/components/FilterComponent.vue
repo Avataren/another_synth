@@ -2,11 +2,13 @@
   <q-card class="filter-card">
     <!-- Replaced the old header with the AudioCardHeader component -->
     <audio-card-header
-      :title="`Filter ${props.nodeId}`"
+      :title="displayName"
+      :editable="true"
       :isMinimized="props.isMinimized"
       @plusClicked="forwardPlus"
       @minimizeClicked="forwardMinimize"
       @closeClicked="forwardClose"
+      @update:title="handleNameChange"
     />
 
     <q-separator />
@@ -152,11 +154,13 @@ import {
 interface Props {
   nodeId: number;
   isMinimized?: boolean;
+  nodeName?: string;
 }
 
 // Default isMinimized to false
 const props = withDefaults(defineProps<Props>(), {
   isMinimized: false,
+  nodeName: undefined,
 });
 
 // Define events we want to forward
@@ -177,6 +181,14 @@ const gainEnabled = ref(true);
 
 const store = useAudioSystemStore();
 const { filterStates } = storeToRefs(store);
+
+const displayName = computed(
+  () => props.nodeName || store.getNodeName(props.nodeId) || `Filter ${props.nodeId}`,
+);
+
+function handleNameChange(name: string) {
+  store.renameNode(props.nodeId, name);
+}
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 
 // Computed filter state with default values

@@ -2,11 +2,13 @@
   <q-card class="envelope-card">
     <!-- Replaced the old <q-card-section> header with AudioCardHeader -->
     <audio-card-header
-      title="Envelope"
+      :title="displayName"
+      :editable="true"
       :isMinimized="props.isMinimized"
       @plusClicked="forwardPlus"
       @minimizeClicked="forwardMinimize"
       @closeClicked="forwardClose"
+      @update:title="handleNameChange"
     />
 
     <q-separator />
@@ -127,10 +129,12 @@ import { throttle } from 'quasar';
 interface Props {
   nodeId: number;
   isMinimized?: boolean; // default: false
+  nodeName?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isMinimized: false,
+  nodeName: undefined,
 });
 
 // Forward events to parent, matching the style of your Noise/Oscillator components
@@ -149,6 +153,14 @@ function forwardClose() {
 // Audio store & references
 const store = useAudioSystemStore();
 const { envelopeStates } = storeToRefs(store);
+
+const displayName = computed(
+  () => props.nodeName || store.getNodeName(props.nodeId) || `Envelope ${props.nodeId}`,
+);
+
+function handleNameChange(name: string) {
+  store.renameNode(props.nodeId, name);
+}
 
 // Canvas ref for envelope preview
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);

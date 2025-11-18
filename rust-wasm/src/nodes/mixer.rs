@@ -263,6 +263,10 @@ impl AudioNode for Mixer {
         self.enabled = active;
     }
 
+    fn name(&self) -> &str {
+        "Mixer"
+    }
+
     fn node_type(&self) -> &str {
         "mixer"
     }

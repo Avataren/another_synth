@@ -205,6 +205,10 @@ impl AudioNode for GlobalFrequencyNode {
         // Activation state typically doesn't apply or is ignored.
     }
 
+    fn name(&self) -> &str {
+        "Global Frequency"
+    }
+
     fn node_type(&self) -> &str {
         "global_frequency"
     }

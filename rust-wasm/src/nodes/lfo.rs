@@ -778,6 +778,10 @@ impl AudioNode for Lfo {
         }
     }
 
+    fn name(&self) -> &str {
+        "LFO"
+    }
+
     fn node_type(&self) -> &str {
         "lfo"
     }
