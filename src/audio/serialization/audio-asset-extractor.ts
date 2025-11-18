@@ -10,7 +10,7 @@ import type { SynthLayout } from '../types/synth-layout';
  */
 export async function extractSamplerAudioAssets(
   instrument: Instrument,
-  samplerNodeIds: number[],
+  samplerNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
 
@@ -49,7 +49,7 @@ export async function extractSamplerAudioAssets(
  */
 export async function extractConvolverAudioAssets(
   instrument: Instrument,
-  convolverNodeIds: number[],
+  convolverNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
 
@@ -91,8 +91,8 @@ export async function extractConvolverAudioAssets(
  */
 export async function extractAllAudioAssets(
   instrument: Instrument,
-  samplerNodeIds: number[],
-  convolverNodeIds: number[],
+  samplerNodeIds: string[],
+  convolverNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const allAssets = new Map<string, AudioAsset>();
 
