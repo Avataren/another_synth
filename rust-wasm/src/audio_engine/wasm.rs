@@ -17,6 +17,7 @@ use crate::nodes::{
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
 use super::patch::{AudioAsset, AudioAssetType, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout};
+use super::patch_loader::{parse_audio_asset_id, parse_node_id, NODE_CREATION_ORDER};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_ENGINE;
 use rustc_hash::FxHashMap;
@@ -2068,27 +2069,12 @@ impl AudioEngine {
         voice_layout: &PatchVoiceLayout,
     ) -> Result<(), JsValue> {
         let mut sampler_cache: HashMap<NodeId, Rc<RefCell<SampleData>>> = HashMap::new();
-        const CREATION_ORDER: [&str; 12] = [
-            "global_frequency",
-            "global_velocity",
-            "gatemixer",
-            "mixer",
-            "filter",
-            "oscillator",
-            "wavetable_oscillator",
-            "sampler",
-            "envelope",
-            "lfo",
-            "noise",
-            "arpeggiator_generator",
-        ];
 
-        for node_type in CREATION_ORDER {
+        for node_type in NODE_CREATION_ORDER {
             if let Some(nodes) = voice_layout.nodes.get(node_type) {
                 for node in nodes {
-                    let node_id = NodeId::from_string(&node.id).map_err(|e| {
-                        JsValue::from_str(&format!("Invalid node UUID {}: {}", node.id, e))
-                    })?;
+                    let node_id = parse_node_id(&node.id)
+                        .map_err(|e| JsValue::from_str(&e))?;
                     self.instantiate_node(node_type, node_id, &mut sampler_cache)?;
                 }
             }
@@ -2398,45 +2384,39 @@ impl AudioEngine {
         assets: &HashMap<String, AudioAsset>,
     ) -> Result<(), JsValue> {
         for asset in assets.values() {
-            match asset.asset_type {
-                AudioAssetType::Sample => {
-                    if let Some(node_id) = asset.id.strip_prefix("sample_") {
-                        let data = BASE64_ENGINE
-                            .decode(asset.base64_data.as_bytes())
-                            .map_err(|e| {
-                                JsValue::from_str(&format!(
-                                    "Failed to decode sample asset {}: {}",
-                                    asset.id, e
-                                ))
-                            })?;
-                        self.import_sample(node_id, &data)?;
+            if let Some((asset_type, node_id)) = parse_audio_asset_id(&asset.id) {
+                let data = BASE64_ENGINE
+                    .decode(asset.base64_data.as_bytes())
+                    .map_err(|e| {
+                        JsValue::from_str(&format!(
+                            "Failed to decode asset {}: {}",
+                            asset.id, e
+                        ))
+                    })?;
+
+                match asset_type.as_str() {
+                    "sample" => {
+                        self.import_sample(&node_id, &data)?;
                     }
-                }
-                AudioAssetType::ImpulseResponse => {
-                    if let Some(effect_id) = asset.id.strip_prefix("impulse_") {
-                        let effect_index = match effect_id.parse::<usize>() {
-                            Ok(idx) => idx,
-                            Err(e) => {
-                                return Err(JsValue::from_str(&format!(
-                                    "Invalid impulse asset id {}: {}",
-                                    asset.id, e
-                                )))
-                            }
-                        };
-                        let data = BASE64_ENGINE
-                            .decode(asset.base64_data.as_bytes())
+                    "impulse_response" => {
+                        let effect_index = node_id.parse::<usize>()
                             .map_err(|e| {
                                 JsValue::from_str(&format!(
-                                    "Failed to decode impulse asset {}: {}",
-                                    asset.id, e
+                                    "Invalid impulse response effect ID '{}': {}",
+                                    node_id, e
                                 ))
                             })?;
                         self.import_wave_impulse(effect_index, &data)?;
                     }
+                    "wavetable" => {
+                        log_console("Wavetable asset import not yet implemented");
+                    }
+                    _ => {
+                        log_console(&format!("Unknown asset type: {}", asset_type));
+                    }
                 }
-                AudioAssetType::Wavetable => {
-                    log_console("Wavetable asset import not yet implemented");
-                }
+            } else {
+                log_console(&format!("Invalid asset ID format: {}", asset.id));
             }
         }
         Ok(())

@@ -116,6 +116,39 @@ impl PortId {
             _ => None,
         }
     }
+
+    pub fn from_u32(value: u32) -> Self {
+        match value {
+            0 => PortId::AudioInput0,
+            1 => PortId::AudioInput1,
+            2 => PortId::AudioInput2,
+            3 => PortId::AudioInput3,
+            4 => PortId::AudioOutput0,
+            5 => PortId::AudioOutput1,
+            6 => PortId::AudioOutput2,
+            7 => PortId::AudioOutput3,
+            8 => PortId::GlobalGate,
+            9 => PortId::GlobalFrequency,
+            10 => PortId::GlobalVelocity,
+            11 => PortId::Frequency,
+            12 => PortId::FrequencyMod,
+            13 => PortId::PhaseMod,
+            14 => PortId::ModIndex,
+            15 => PortId::CutoffMod,
+            16 => PortId::ResonanceMod,
+            17 => PortId::GainMod,
+            18 => PortId::EnvelopeMod,
+            19 => PortId::StereoPan,
+            20 => PortId::FeedbackMod,
+            21 => PortId::DetuneMod,
+            22 => PortId::WavetableIndex,
+            23 => PortId::WetDryMix,
+            24 => PortId::AttackMod,
+            25 => PortId::ArpGate,
+            26 => PortId::CombinedGate,
+            _ => PortId::AudioInput0, // Default or error case
+        }
+    }
 }
 
 pub trait AudioNode: Any {

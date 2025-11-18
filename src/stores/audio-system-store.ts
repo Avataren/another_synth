@@ -515,7 +515,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       const template = await this.fetchDefaultPatchTemplate();
       if (template) {
-        const applied = this.applyTemplateToCurrentLayout(clonePatch(template));
+        const patchInstance = clonePatch(template);
+        const applied = await this.applyPatchObject(patchInstance, {
+          setCurrentPatchId: false,
+        });
         if (applied) {
           await nextTick(() => {
             this.applyPreservedStatesToWasm();

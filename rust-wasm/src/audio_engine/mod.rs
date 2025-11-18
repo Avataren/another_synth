@@ -1,4 +1,5 @@
 mod patch;
+mod patch_loader;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub mod wasm;

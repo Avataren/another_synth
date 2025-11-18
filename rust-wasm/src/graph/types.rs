@@ -124,6 +124,17 @@ impl Default for ModulationType {
     }
 }
 
+impl ModulationType {
+    pub fn from_i32(value: i32) -> Self {
+        match value {
+            0 => ModulationType::VCA,
+            1 => ModulationType::Bipolar,
+            2 => ModulationType::Additive,
+            _ => ModulationType::Additive,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Serialize, PartialEq)]
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[repr(u32)]
@@ -142,6 +153,16 @@ impl ModulationTransformation {
             ModulationTransformation::Invert => 1.0 - x,
             ModulationTransformation::Square => x * x,
             ModulationTransformation::Cube => x * x * x,
+        }
+    }
+
+    pub fn from_i32(value: i32) -> Self {
+        match value {
+            0 => ModulationTransformation::None,
+            1 => ModulationTransformation::Invert,
+            2 => ModulationTransformation::Square,
+            3 => ModulationTransformation::Cube,
+            _ => ModulationTransformation::None,
         }
     }
 }

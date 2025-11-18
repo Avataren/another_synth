@@ -2555,6 +2555,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "wasm-binary":
         this.handleWasmInit(event.data);
         break;
+      case "loadPatch":
+        this.handleLoadPatch(event.data);
+        break;
       case "updateModulation":
         this.handleUpdateModulation(event.data);
         break;
@@ -2773,6 +2776,34 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       });
     }
   }
+  handleLoadPatch(data) {
+    if (!this.audioEngine) {
+      console.warn("loadPatch requested before audio engine was ready");
+      return;
+    }
+    try {
+      const voiceCount = this.audioEngine.initWithPatch(data.patchJson);
+      if (Number.isFinite(voiceCount) && voiceCount > 0) {
+        this.numVoices = voiceCount;
+      }
+      this.automationAdapter = new AutomationAdapter(
+        this.numVoices,
+        this.macroCount,
+        this.macroBufferSize
+      );
+      this.initializeVoices();
+      this.stateVersion++;
+      this.postSynthLayout();
+      this.handleRequestSync(false);
+    } catch (error) {
+      console.error("Failed to load patch in worklet:", error);
+      this.port.postMessage({
+        type: "error",
+        source: "loadPatch",
+        message: "Failed to load patch"
+      });
+    }
+  }
   initializeState() {
     if (!this.audioEngine) return;
     const initialState = this.audioEngine.get_current_state();
@@ -2783,6 +2814,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       state: initialState,
       version: this.stateVersion
     });
+    this.postSynthLayout();
+  }
+  postSynthLayout() {
+    if (!this.audioEngine) return;
     const layout = {
       voices: this.voiceLayouts,
       globalNodes: {
@@ -3056,9 +3091,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       });
     }
   }
-  handleRequestSync() {
+  handleRequestSync(incrementVersion = true) {
     if (this.audioEngine) {
-      this.stateVersion++;
+      if (incrementVersion) {
+        this.stateVersion++;
+      }
       this.port.postMessage({
         type: "stateUpdated",
         version: this.stateVersion,

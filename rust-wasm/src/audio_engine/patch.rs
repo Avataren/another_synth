@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::nodes::{
     AnalogOscillatorStateUpdate, EnvelopeConfig, FilterSlope, WavetableOscillatorStateUpdate,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PatchFile {
     pub metadata: PatchMetadata,
     #[serde(rename = "synthState")]
@@ -15,7 +15,7 @@ pub struct PatchFile {
     pub audio_assets: HashMap<String, AudioAsset>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PatchMetadata {
     pub id: String,
     pub name: String,
@@ -23,7 +23,7 @@ pub struct PatchMetadata {
     pub version: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SynthState {
     pub layout: Layout,
     #[serde(default)]
@@ -52,12 +52,12 @@ pub struct SynthState {
     pub velocity: Option<VelocityState>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Layout {
     pub voices: Vec<VoiceLayout>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VoiceLayout {
     pub id: usize,
     #[serde(default)]
@@ -66,7 +66,7 @@ pub struct VoiceLayout {
     pub connections: Vec<PatchConnection>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PatchNode {
     pub id: String,
     #[serde(rename = "type")]
@@ -74,7 +74,7 @@ pub struct PatchNode {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PatchConnection {
     #[serde(rename = "fromId")]
     pub from_id: String,
@@ -88,7 +88,7 @@ pub struct PatchConnection {
     pub modulation_transform: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LfoState {
     #[serde(rename = "id")]
     pub lfo_id: String,
@@ -112,7 +112,7 @@ pub struct LfoState {
     pub loop_end: f32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FilterState {
     pub id: String,
     pub cutoff: f32,
@@ -131,7 +131,7 @@ pub struct FilterState {
     pub filter_slope: FilterSlope,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SamplerState {
     pub id: String,
     pub frequency: f32,
@@ -148,7 +148,7 @@ pub struct SamplerState {
     pub trigger_mode: u8,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ConvolverState {
     pub id: String,
     #[serde(rename = "wetMix")]
@@ -156,7 +156,7 @@ pub struct ConvolverState {
     pub active: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DelayState {
     pub id: String,
     #[serde(rename = "delayMs")]
@@ -167,7 +167,7 @@ pub struct DelayState {
     pub active: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChorusState {
     pub id: String,
     pub active: bool,
@@ -185,7 +185,7 @@ pub struct ChorusState {
     pub stereo_phase_offset_deg: f32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ReverbState {
     pub id: String,
     pub active: bool,
@@ -197,7 +197,7 @@ pub struct ReverbState {
     pub width: f32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NoiseState {
     #[serde(rename = "noiseType")]
     pub noise_type: u8,
@@ -207,14 +207,14 @@ pub struct NoiseState {
     pub is_enabled: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VelocityState {
     pub sensitivity: f32,
     pub randomize: f32,
     pub active: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AudioAsset {
     pub id: String,
     #[serde(rename = "type")]
@@ -223,7 +223,7 @@ pub struct AudioAsset {
     pub base64_data: String,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AudioAssetType {
     Sample,

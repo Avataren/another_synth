@@ -1,3 +1,5 @@
+use crate::audio_engine::patch::{PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout};
+use crate::audio_engine::patch_loader::{parse_node_id, NODE_CREATION_ORDER};
 use crate::automation::AutomationFrame;
 use crate::biquad::FilterType;
 use crate::effect_stack::EffectStack;
@@ -7,7 +9,7 @@ use crate::nodes::morph_wavetable::WavetableSynthBank;
 use crate::nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Convolver, Delay, Envelope,
     EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, Glide, Lfo, Limiter, Mixer, Waveform,
-    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate, GateMixer, GlobalFrequencyNode, GlobalVelocityNode,
 };
 //NoiseGenerator, NoiseUpdate,
 use crate::traits::{AudioNode, PortId};
@@ -23,6 +25,7 @@ use std::{
     },
     time::Instant,
 };
+use uuid::Uuid;
 
 const DEFAULT_NUM_VOICES: usize = 8;
 const MAX_TABLE_SIZE: usize = 2048;
@@ -180,6 +183,146 @@ impl AudioEngine {
         limiter.set_active(true);
         self.effect_stack.add_effect(Box::new(limiter));
     }
+
+    pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, String> {
+        let patch: PatchFile = serde_json::from_str(patch_json)
+            .map_err(|e| format!("Failed to parse patch JSON: {}", e))?;
+
+        let voice_count = patch.synth_state.layout.voices.len();
+        if voice_count == 0 {
+            return Err("Patch contains no voices".to_string());
+        }
+
+        self.num_voices = voice_count;
+        self.voices = (0..voice_count)
+            .map(|id| Voice::new(id, self.block_size))
+            .collect();
+
+        for voice in &mut self.voices {
+            voice.clear();
+            voice.graph.global_frequency_node = None;
+            voice.graph.global_velocity_node = None;
+            voice.graph.global_gatemixer_node = None;
+        }
+
+        self.effect_stack = EffectStack::new(self.block_size);
+        self.ir_generator = ImpulseResponseGenerator::new(self.sample_rate);
+        // self.add_chorus()?;
+        // self.add_delay(2000.0, 500.0, 0.5, 0.1)?;
+        // self.add_freeverb(0.95, 0.5, 0.3, 0.7, 1.0)?;
+        // self.add_plate_reverb(2.0, 0.6, self.sample_rate)?;
+        // self.add_limiter()?;
+
+        let canonical_voice = patch
+            .synth_state
+            .layout
+            .voices
+            .first()
+            .ok_or_else(|| "Patch layout missing voice data".to_string())?;
+
+        self.build_nodes_from_canonical_voice(canonical_voice)?;
+        self.connect_from_canonical_voice(canonical_voice)?;
+        self.apply_patch_states(&patch, canonical_voice)?;
+
+        Ok(voice_count)
+    }
+
+    fn build_nodes_from_canonical_voice(&mut self, canonical_voice: &PatchVoiceLayout) -> Result<(), String> {
+        // Use the same creation order as wasm to ensure consistency
+        for node_type in NODE_CREATION_ORDER {
+            if let Some(nodes) = canonical_voice.nodes.get(node_type) {
+                for patch_node in nodes {
+                    let id = parse_node_id(&patch_node.id)?;
+                    for voice in &mut self.voices {
+                        let node = self.create_node_from_type(node_type, &id)?;
+                        voice.graph.add_node_with_id(id, node);
+
+                        // If the node is a global node, store its ID
+                        match node_type {
+                            "global_frequency" => voice.graph.global_frequency_node = Some(id),
+                            "global_velocity" => voice.graph.global_velocity_node = Some(id),
+                            "gatemixer" => voice.graph.global_gatemixer_node = Some(id),
+                            "mixer" => voice.graph.set_output_node(id),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn create_node_from_type(&self, node_type: &str, _id: &NodeId) -> Result<Box<dyn AudioNode>, String> {
+        match node_type {
+            "oscillator" => Ok(Box::new(AnalogOscillator::new(
+                self.sample_rate,
+                Waveform::Sine,
+                self.wavetable_banks.clone(),
+            ))),
+            "wavetable_oscillator" => Ok(Box::new(WavetableOscillator::new(
+                self.sample_rate,
+                self.wavetable_synthbank.clone(),
+            ))),
+            "filter" => Ok(Box::new(FilterCollection::new(self.sample_rate))),
+            "envelope" => Ok(Box::new(Envelope::new(self.sample_rate, Default::default()))),
+            "mixer" => Ok(Box::new(Mixer::new())),
+            "lfo" => Ok(Box::new(Lfo::new(self.sample_rate))),
+            "global_frequency" => Ok(Box::new(GlobalFrequencyNode::new(440.0, self.block_size))),
+            "global_velocity" => Ok(Box::new(GlobalVelocityNode::new(1.0, self.block_size))),
+            "gatemixer" => Ok(Box::new(GateMixer::new())),
+            // "noise" => Ok(Box::new(NoiseGenerator::new(self.sample_rate))),
+            // "sampler" => {
+            //     let sample_data = Rc::new(RefCell::new(SampleData::new()));
+            //     let mut sampler = Sampler::new(self.sample_rate);
+            //     sampler.set_sample_data(sample_data);
+            //     Ok(Box::new(sampler))
+            // }
+            _ => Err(format!("Unknown node type: {}", node_type)),
+        }
+    }
+
+    fn connect_from_canonical_voice(&mut self, canonical_voice: &PatchVoiceLayout) -> Result<(), String> {
+        for conn_data in &canonical_voice.connections {
+            let from_node = parse_node_id(&conn_data.from_id)?;
+            let to_node = parse_node_id(&conn_data.to_id)?;
+
+            for voice in &mut self.voices {
+                let from_port = voice.graph.nodes.get(&from_node)
+                    .and_then(|n| n.get_ports().iter().find(|(_, &is_output)| is_output).map(|(p, _)| *p))
+                    .unwrap_or(PortId::AudioOutput0);
+
+                let connection = Connection {
+                    from_node,
+                    from_port,
+                    to_node,
+                    to_port: PortId::from_u32(conn_data.target),
+                    amount: conn_data.amount,
+                    modulation_type: ModulationType::from_i32(conn_data.modulation_type),
+                    modulation_transform: ModulationTransformation::from_i32(conn_data.modulation_transform),
+                };
+                voice.graph.add_connection(connection);
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_patch_states(&mut self, patch: &PatchFile, _canonical_voice: &PatchVoiceLayout) -> Result<(), String> {
+        for (id, params) in &patch.synth_state.oscillators {
+            let node_id = parse_node_id(id)?;
+            self.update_oscillator(node_id, params)?;
+        }
+        for (id, params) in &patch.synth_state.wavetable_oscillators {
+            let node_id = parse_node_id(id)?;
+            self.update_wavetable_oscillator(node_id, params)?;
+        }
+        for (id, config) in &patch.synth_state.envelopes {
+            let node_id = parse_node_id(id)?;
+            self.update_envelope(node_id, config.attack, config.decay, config.sustain, config.release, config.attack_curve, config.decay_curve, config.release_curve, config.active)?;
+        }
+        // ... and so on for other state types (LFOs, filters, etc.)
+        Ok(())
+    }
+
 
     pub fn process_audio(
         &mut self,
@@ -376,74 +519,80 @@ impl AudioEngine {
 
     // Node creation methods
     pub fn create_oscillator(&mut self) -> Result<usize, String> {
-        let mut osc_id = NodeId(0);
+        let osc_id = NodeId::new();
         for voice in &mut self.voices {
-            osc_id = voice.graph.add_node(Box::new(AnalogOscillator::new(
+            voice.graph.add_node_with_id(osc_id, Box::new(AnalogOscillator::new(
                 self.sample_rate,
                 Waveform::Sine,
                 self.wavetable_banks.clone(),
             )));
         }
-        Ok(osc_id.0)
+        Ok(osc_id.0.as_u128() as usize)
     }
 
     pub fn create_wavetable_oscillator(&mut self) -> Result<usize, String> {
-        let mut osc_id = NodeId(0);
+        let osc_id = NodeId::new();
         for voice in &mut self.voices {
-            osc_id = voice.graph.add_node(Box::new(WavetableOscillator::new(
+            voice.graph.add_node_with_id(osc_id, Box::new(WavetableOscillator::new(
                 self.sample_rate,
                 self.wavetable_synthbank.clone(),
             )));
         }
-        Ok(osc_id.0)
+        Ok(osc_id.0.as_u128() as usize)
     }
 
     pub fn create_mixer(&mut self) -> Result<usize, String> {
-        let mut mixer_id = NodeId(0);
+        let mixer_id = NodeId::new();
         for voice in &mut self.voices {
-            mixer_id = voice.graph.add_node(Box::new(Mixer::new()));
+            voice
+                .graph
+                .add_node_with_id(mixer_id, Box::new(Mixer::new()));
             voice.graph.set_output_node(mixer_id);
         }
-        Ok(mixer_id.0)
+        Ok(mixer_id.0.as_u128() as usize)
     }
 
     pub fn create_envelope(&mut self) -> Result<usize, String> {
-        let mut envelope_id = NodeId(0);
+        let envelope_id = NodeId::new();
         for voice in &mut self.voices {
-            envelope_id = voice.graph.add_node(Box::new(Envelope::new(
+            voice.graph.add_node_with_id(envelope_id, Box::new(Envelope::new(
                 self.sample_rate,
                 EnvelopeConfig::default(),
             )));
         }
-        Ok(envelope_id.0)
+        Ok(envelope_id.0.as_u128() as usize)
     }
 
     pub fn create_lfo(&mut self) -> Result<usize, String> {
-        let mut lfo_id = NodeId(0);
+        let lfo_id = NodeId::new();
         for voice in &mut self.voices {
-            lfo_id = voice.graph.add_node(Box::new(Lfo::new(self.sample_rate)));
+            voice
+                .graph
+                .add_node_with_id(lfo_id, Box::new(Lfo::new(self.sample_rate)));
         }
-        Ok(lfo_id.0)
+        Ok(lfo_id.0.as_u128() as usize)
     }
 
     pub fn create_filter(&mut self) -> Result<usize, String> {
-        let mut filter_id = NodeId(0);
+        let filter_id = NodeId::new();
         for voice in &mut self.voices {
-            filter_id = voice
-                .graph
-                .add_node(Box::new(FilterCollection::new(self.sample_rate)));
+            voice.graph.add_node_with_id(
+                filter_id,
+                Box::new(FilterCollection::new(self.sample_rate)),
+            );
         }
-        Ok(filter_id.0)
+        Ok(filter_id.0.as_u128() as usize)
     }
 
     pub fn create_glide(&mut self, rise_time: f32, fall_time: f32) -> Result<usize, String> {
-        let mut glide_id = NodeId(0);
+        let glide_id = NodeId::new();
         for voice in &mut self.voices {
-            glide_id = voice
-                .graph
-                .add_node(Box::new(Glide::new(self.sample_rate, rise_time, fall_time)));
+            voice.graph.add_node_with_id(
+                glide_id,
+                Box::new(Glide::new(self.sample_rate, rise_time, fall_time)),
+            );
         }
-        Ok(glide_id.0)
+        Ok(glide_id.0.as_u128() as usize)
     }
 
     /// Insert a Glide node between the global frequency source and the target node's
@@ -453,8 +602,8 @@ impl AudioEngine {
         glide_id: usize,
         target_node: usize,
     ) -> Result<(), String> {
-        let glide_node = NodeId(glide_id);
-        let target_node_id = NodeId(target_node);
+        let glide_node = NodeId(Uuid::from_u128(glide_id as u128));
+        let target_node_id = NodeId(Uuid::from_u128(target_node as u128));
 
         for voice in &mut self.voices {
             let global_freq_id = voice
@@ -515,9 +664,9 @@ impl AudioEngine {
         modulation_transform: ModulationTransformation,
     ) -> Result<(), String> {
         let connection = Connection {
-            from_node: NodeId(from_node),
+            from_node: NodeId(Uuid::from_u128(from_node as u128)),
             from_port,
-            to_node: NodeId(to_node),
+            to_node: NodeId(Uuid::from_u128(to_node as u128)),
             to_port,
             amount,
             modulation_type,
@@ -533,13 +682,13 @@ impl AudioEngine {
     // Parameter update methods
     pub fn update_oscillator(
         &mut self,
-        oscillator_id: usize,
+        oscillator_id: NodeId,
         params: &AnalogOscillatorStateUpdate,
     ) -> Result<(), String> {
         for voice in &mut self.voices {
             let node = voice
                 .graph
-                .get_node_mut(NodeId(oscillator_id))
+                .get_node_mut(oscillator_id)
                 .ok_or_else(|| "Node not found in one of the voices".to_string())?;
             let osc = node
                 .as_any_mut()
@@ -554,13 +703,13 @@ impl AudioEngine {
 
     pub fn update_wavetable_oscillator(
         &mut self,
-        oscillator_id: usize,
+        oscillator_id: NodeId,
         params: &WavetableOscillatorStateUpdate,
     ) -> Result<(), String> {
         for voice in &mut self.voices {
             let node = voice
                 .graph
-                .get_node_mut(NodeId(oscillator_id))
+                .get_node_mut(oscillator_id)
                 .ok_or_else(|| "Node not found in one of the voices".to_string())?;
             let osc = node
                 .as_any_mut()
@@ -575,7 +724,7 @@ impl AudioEngine {
 
     pub fn update_envelope(
         &mut self,
-        node_id: usize,
+        node_id: NodeId,
         attack: f32,
         decay: f32,
         sustain: f32,
@@ -588,7 +737,7 @@ impl AudioEngine {
         let mut errors: Vec<String> = Vec::new();
 
         for (i, voice) in self.voices.iter_mut().enumerate() {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(node_id)) {
+            if let Some(node) = voice.graph.get_node_mut(node_id) {
                 if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
                     let config = EnvelopeConfig {
                         attack,
@@ -632,7 +781,7 @@ impl AudioEngine {
         filter_slope: FilterSlope,
     ) -> Result<(), String> {
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(filter_id)) {
+            if let Some(node) = voice.graph.get_node_mut(NodeId(Uuid::from_u128(filter_id as u128))) {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);
@@ -684,6 +833,7 @@ mod tests {
     use crate::graph::{Connection, ModulationTransformation, ModulationType};
     use crate::nodes::{AnalogOscillator, Mixer};
     use crate::PortId;
+    use uuid::Uuid;
 
     #[cfg(not(feature = "wasm"))]
     #[test]

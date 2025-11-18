@@ -115,7 +115,7 @@ interface SamplerUpdateData {
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private audioEngine: AudioEngine | null = null;
-  private readonly numVoices: number = 8;
+  private numVoices: number = 8;
   private readonly maxOscillators: number = 4;
   private readonly maxEnvelopes: number = 4;
   private readonly maxLFOs: number = 4;
@@ -198,6 +198,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     switch (event.data.type) {
       case 'wasm-binary':
         this.handleWasmInit(event.data);
+        break;
+      case 'loadPatch':
+        this.handleLoadPatch(event.data);
         break;
       case 'updateModulation': // Add this case
         this.handleUpdateModulation(event.data);
@@ -449,6 +452,38 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  private handleLoadPatch(data: { patchJson: string }) {
+    if (!this.audioEngine) {
+      console.warn('loadPatch requested before audio engine was ready');
+      return;
+    }
+
+    try {
+      const voiceCount = this.audioEngine.initWithPatch(data.patchJson);
+      if (Number.isFinite(voiceCount) && voiceCount > 0) {
+        this.numVoices = voiceCount;
+      }
+
+      this.automationAdapter = new AutomationAdapter(
+        this.numVoices,
+        this.macroCount,
+        this.macroBufferSize,
+      );
+
+      this.initializeVoices();
+      this.stateVersion++;
+      this.postSynthLayout();
+      this.handleRequestSync(false);
+    } catch (error) {
+      console.error('Failed to load patch in worklet:', error);
+      this.port.postMessage({
+        type: 'error',
+        source: 'loadPatch',
+        message: 'Failed to load patch',
+      });
+    }
+  }
+
   private initializeState() {
     if (!this.audioEngine) return;
 
@@ -463,7 +498,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       version: this.stateVersion,
     });
 
-    // Send the initial layout
+    this.postSynthLayout();
+  }
+
+  private postSynthLayout() {
+    if (!this.audioEngine) return;
     const layout: SynthLayout = {
       voices: this.voiceLayouts,
       globalNodes: {
@@ -478,7 +517,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         stateVersion: this.stateVersion,
       },
     };
-
     this.port.postMessage({
       type: 'synthLayout',
       layout,
@@ -837,9 +875,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleRequestSync() {
+  private handleRequestSync(incrementVersion = true) {
     if (this.audioEngine) {
-      this.stateVersion++;
+      if (incrementVersion) {
+        this.stateVersion++;
+      }
       this.port.postMessage({
         type: 'stateUpdated',
         version: this.stateVersion,
