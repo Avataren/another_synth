@@ -102,7 +102,7 @@ export default class Instrument {
     console.log('Updated synth layout:', layout);
   }
 
-  public deleteNode(nodeId: number) {
+  public deleteNode(nodeId: string) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'deleteNode',
@@ -118,7 +118,7 @@ export default class Instrument {
     });
   }
 
-  public updateReverbState(nodeId: number, state: ReverbState) {
+  public updateReverbState(nodeId: string, state: ReverbState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateReverb',
@@ -127,7 +127,7 @@ export default class Instrument {
     });
   }
 
-  public updateChorusState(nodeId: number, state: ChorusState) {
+  public updateChorusState(nodeId: string, state: ChorusState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateChorus',
@@ -136,7 +136,7 @@ export default class Instrument {
     });
   }
 
-  public updateVelocityState(nodeId: number, state: VelocityState) {
+  public updateVelocityState(nodeId: string, state: VelocityState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateVelocity',
@@ -149,7 +149,7 @@ export default class Instrument {
     });
   }
 
-  public updateNoiseState(nodeId: number, state: NoiseState) {
+  public updateNoiseState(nodeId: string, state: NoiseState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
     this.workletNode.port.postMessage({
@@ -164,7 +164,7 @@ export default class Instrument {
     });
   }
 
-  public updateSamplerState(nodeId: number, state: SamplerUpdatePayload) {
+  public updateSamplerState(nodeId: string, state: SamplerUpdatePayload) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateSampler',
@@ -173,7 +173,7 @@ export default class Instrument {
     });
   }
 
-  public importWavetableData(nodeId: number, wavData: Uint8Array): void {
+  public importWavetableData(nodeId: string, wavData: Uint8Array): void {
     if (!this.ready || !this.workletNode) {
       console.error('Audio system not ready for importing wavetable data');
       return;
@@ -189,7 +189,7 @@ export default class Instrument {
     console.log('Sent wavetable data to worklet');
   }
 
-  public importImpulseWaveformData(nodeId: number, wavData: Uint8Array): void {
+  public importImpulseWaveformData(nodeId: string, wavData: Uint8Array): void {
     if (!this.ready || !this.workletNode) {
       console.error('Audio system not ready for importing wavetable data');
       return;
@@ -205,7 +205,7 @@ export default class Instrument {
     console.log('Sent wavetable data to worklet');
   }
 
-  public importSampleData(nodeId: number, wavData: Uint8Array): void {
+  public importSampleData(nodeId: string, wavData: Uint8Array): void {
     if (!this.ready || !this.workletNode) {
       console.error('Audio system not ready for importing sample data');
       return;
@@ -222,7 +222,7 @@ export default class Instrument {
   }
 
   public async getSamplerWaveform(
-    nodeId: number,
+    nodeId: string,
     maxLength = 512,
   ): Promise<Float32Array> {
     if (!this.ready || !this.workletNode) {
@@ -258,7 +258,7 @@ export default class Instrument {
     });
   }
 
-  public async exportSamplerData(nodeId: number): Promise<{
+  public async exportSamplerData(nodeId: string): Promise<{
     samples: Float32Array;
     sampleRate: number;
     channels: number;
@@ -302,7 +302,7 @@ export default class Instrument {
     });
   }
 
-  public async exportConvolverData(nodeId: number): Promise<{
+  public async exportConvolverData(nodeId: string): Promise<{
     samples: Float32Array;
     sampleRate: number;
     channels: number;
@@ -344,7 +344,7 @@ export default class Instrument {
     });
   }
 
-  public updateDelayState(nodeId: number, newState: DelayState) {
+  public updateDelayState(nodeId: string, newState: DelayState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateDelayState',
@@ -353,7 +353,7 @@ export default class Instrument {
     });
   }
 
-  public updateConvolverState(nodeId: number, newState: ConvolverState) {
+  public updateConvolverState(nodeId: string, newState: ConvolverState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateConvolverState',
@@ -363,7 +363,7 @@ export default class Instrument {
   }
 
   public updateWavetableOscillatorState(
-    nodeId: number,
+    nodeId: string,
     newState: OscillatorState,
   ) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
@@ -377,7 +377,7 @@ export default class Instrument {
     });
   }
 
-  public updateOscillatorState(nodeId: number, newState: OscillatorState) {
+  public updateOscillatorState(nodeId: string, newState: OscillatorState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     console.log('### updateOscillatorState', nodeId, newState);
     // Find which voice this oscillator belongs to
@@ -389,7 +389,7 @@ export default class Instrument {
     });
   }
 
-  public updateLfoState(nodeId: number, state: LfoState) {
+  public updateLfoState(nodeId: string, state: LfoState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     // const voiceIndex = this.findVoiceForNode(nodeId);
     // if (voiceIndex === -1) return;
@@ -494,7 +494,7 @@ export default class Instrument {
   }
 
   public async getFilterResponse(
-    node_id: number,
+    node_id: string,
     length: number,
   ): Promise<Float32Array> {
     if (!this.ready || !this.workletNode) {
@@ -576,7 +576,7 @@ export default class Instrument {
     });
   }
 
-  public updateEnvelopeState(nodeId: number, newState: EnvelopeConfig): Promise<void> {
+  public updateEnvelopeState(nodeId: string, newState: EnvelopeConfig): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.ready || !this.workletNode || !this.synthLayout) {
         //reject(new Error('Audio system not ready'));
@@ -615,7 +615,7 @@ export default class Instrument {
     });
   }
 
-  public updateArpeggiatorPattern(nodeId: number, pattern: { value: number; active: boolean }[]) {
+  public updateArpeggiatorPattern(nodeId: string, pattern: { value: number; active: boolean }[]) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateArpeggiatorPattern',
@@ -625,7 +625,7 @@ export default class Instrument {
   }
 
 
-  public updateArpeggiatorStepDuration(nodeId: number, stepDurationMs: number) {
+  public updateArpeggiatorStepDuration(nodeId: string, stepDurationMs: number) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateArpeggiatorStepDuration',
@@ -634,11 +634,11 @@ export default class Instrument {
     });
   }
 
-  public updateWavetable(nodeId: number, newWavetable: Wavetable) {
+  public updateWavetable(nodeId: string, newWavetable: Wavetable) {
     console.log('### instrument got wavetable:', newWavetable);
   }
 
-  public updateFilterState(nodeId: number, newState: FilterState) {
+  public updateFilterState(nodeId: string, newState: FilterState) {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
 
     // const voiceIndex = this.findVoiceForNode(nodeId);
@@ -664,8 +664,8 @@ export default class Instrument {
     }
 
     if (
-      typeof connection.fromId !== 'number' ||
-      typeof connection.toId !== 'number'
+      typeof connection.fromId !== 'string' ||
+      typeof connection.toId !== 'string'
     ) {
       console.error('Invalid ID type in connection:', {
         fromId: typeof connection.fromId,
@@ -759,8 +759,8 @@ export default class Instrument {
   // }
 
   public remove_specific_connection(
-    from_node: number,
-    to_node: number,
+    from_node: string,
+    to_node: string,
     to_port: number,
   ) {
     if (!this.ready || !this.workletNode) return;
@@ -838,7 +838,7 @@ export default class Instrument {
     }
   }
 
-  private findVoiceForNode(nodeId: number): number {
+  private findVoiceForNode(nodeId: string): number {
     if (!this.synthLayout) return -1;
 
     for (let i = 0; i < this.synthLayout.voices.length; i++) {
