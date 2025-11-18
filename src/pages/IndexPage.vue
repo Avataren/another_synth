@@ -169,7 +169,7 @@
           <div v-else class="empty-state">
             <q-btn
               color="primary"
-              label="Add Delay"
+              label="Add Chorus"
               @click="addChorus"
               icon="add"
             />
