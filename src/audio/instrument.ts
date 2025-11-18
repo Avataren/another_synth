@@ -140,7 +140,7 @@ export default class Instrument {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateVelocity',
-      noiseId: nodeId,
+      nodeId: nodeId,
       config: {
         sensitivity: state.sensitivity,
         randomize: state.randomize,

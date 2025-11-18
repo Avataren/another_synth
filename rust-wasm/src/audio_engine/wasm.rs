@@ -1670,22 +1670,47 @@ impl AudioEngine {
         &self,
         convolver_id: &str,
     ) -> Result<js_sys::Object, JsValue> {
-        let voice = self
-            .voices
-            .first()
-            .ok_or_else(|| JsValue::from_str("No voices available"))?;
-        let node = voice
-            .graph
-            .get_node(
-                NodeId::from_string(convolver_id).map_err(|e| {
-                    JsValue::from_str(&format!("Invalid convolver_id UUID: {}", e))
-                })?,
-            )
-            .ok_or_else(|| JsValue::from_str("Convolver node not found"))?;
-        let convolver = node
-            .as_any()
-            .downcast_ref::<Convolver>()
-            .ok_or_else(|| JsValue::from_str("Node is not a Convolver"))?;
+        // Try to resolve the ID as a graph node UUID first.
+        let mut convolver_ref: Option<&Convolver> = None;
+
+        if let Some(voice) = self.voices.first() {
+            if let Ok(node_uuid) = NodeId::from_string(convolver_id) {
+                if let Some(node) = voice.graph.get_node(node_uuid) {
+                    if let Some(conv) = node.as_any().downcast_ref::<Convolver>() {
+                        convolver_ref = Some(conv);
+                    }
+                }
+            }
+        }
+
+        // If that failed, fall back to treating the ID as an effect-stack ID
+        // (e.g. "10003" for EFFECT_NODE_ID_OFFSET + index).
+        if convolver_ref.is_none() {
+            let effect_id: usize = convolver_id
+                .parse()
+                .map_err(|_| JsValue::from_str("Invalid convolver_id: not UUID or effect id"))?;
+
+            let index = effect_id
+                .checked_sub(EFFECT_NODE_ID_OFFSET)
+                .ok_or_else(|| JsValue::from_str("Invalid convolver_id: below effect offset"))?;
+
+            let effect = self
+                .effect_stack
+                .effects
+                .get(index)
+                .ok_or_else(|| JsValue::from_str("Convolver effect not found"))?;
+
+            let conv = effect
+                .node
+                .as_any()
+                .downcast_ref::<Convolver>()
+                .ok_or_else(|| JsValue::from_str("Effect is not a Convolver"))?;
+
+            convolver_ref = Some(conv);
+        }
+
+        let convolver = convolver_ref
+            .ok_or_else(|| JsValue::from_str("Convolver not found for given id"))?;
 
         let (ir_channels, sample_rate, num_channels) = convolver.get_impulse_response_data();
 

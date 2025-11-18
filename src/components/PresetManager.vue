@@ -154,6 +154,21 @@ import { useQuasar } from 'quasar';
 const store = useAudioSystemStore();
 const $q = useQuasar();
 
+const notify = (options: {
+  type: 'positive' | 'negative' | 'warning' | 'info';
+  message: string;
+  timeout?: number;
+}) => {
+  const anyQ = $q as unknown as { notify?: (opts: typeof options) => void };
+  if (anyQ.notify && typeof anyQ.notify === 'function') {
+    anyQ.notify(options);
+  } else {
+    // Fallback if Notify plugin is not available
+    // eslint-disable-next-line no-console
+    console.warn('Notify plugin not available', options);
+  }
+};
+
 // Local state
 const selectedPatchId = ref<string | null>(null);
 const patchName = ref('');
@@ -204,20 +219,20 @@ const handlePatchSelect = async (patchId: string | null) => {
   try {
     const success = await store.loadPatch(patchId);
     if (success) {
-      $q.notify({
+      notify({
         type: 'positive',
         message: 'Patch loaded successfully',
         timeout: 2000,
       });
     } else {
-      $q.notify({
+      notify({
         type: 'negative',
         message: 'Failed to load patch',
         timeout: 2000,
       });
     }
   } catch (error) {
-    $q.notify({
+    notify({
       type: 'negative',
       message: `Error loading patch: ${error}`,
       timeout: 3000,
@@ -231,20 +246,20 @@ const handleLoadPatch = async () => {
   try {
     const success = await store.loadPatch(selectedPatchId.value);
     if (success) {
-      $q.notify({
+      notify({
         type: 'positive',
         message: 'Patch loaded successfully',
         timeout: 2000,
       });
     } else {
-      $q.notify({
+      notify({
         type: 'negative',
         message: 'Failed to load patch',
         timeout: 2000,
       });
     }
   } catch (error) {
-    $q.notify({
+    notify({
       type: 'negative',
       message: `Error loading patch: ${error}`,
       timeout: 3000,
@@ -258,20 +273,20 @@ const handleSavePatch = async () => {
   try {
     const patch = await store.updateCurrentPatch(patchName.value.trim());
     if (patch) {
-      $q.notify({
+      notify({
         type: 'positive',
         message: `Patch "${patch.metadata.name}" saved`,
         timeout: 2000,
       });
     } else {
-      $q.notify({
+      notify({
         type: 'negative',
         message: 'Failed to save patch',
         timeout: 2000,
       });
     }
   } catch (error) {
-    $q.notify({
+    notify({
       type: 'negative',
       message: `Error saving patch: ${error}`,
       timeout: 3000,
@@ -287,21 +302,21 @@ const handleNewPatch = async () => {
 
     const patch = await store.saveCurrentPatch('New Patch');
     if (patch) {
-      $q.notify({
+      notify({
         type: 'positive',
         message: `New patch "${patch.metadata.name}" created`,
         timeout: 2000,
       });
       patchName.value = patch.metadata.name;
     } else {
-      $q.notify({
+      notify({
         type: 'negative',
         message: 'Failed to create new patch',
         timeout: 2000,
       });
     }
   } catch (error) {
-    $q.notify({
+    notify({
       type: 'negative',
       message: `Error creating new patch: ${error}`,
       timeout: 3000,
@@ -313,7 +328,7 @@ const handleCopyPatch = () => {
   const json = store.exportCurrentPatchAsJSON();
   if (json) {
     navigator.clipboard.writeText(json).then(() => {
-      $q.notify({
+      notify({
         type: 'positive',
         message: 'Patch JSON copied to clipboard',
         timeout: 2000,
@@ -326,7 +341,7 @@ const handleCopyBank = () => {
   const json = store.exportCurrentBankAsJSON();
   if (json) {
     navigator.clipboard.writeText(json).then(() => {
-      $q.notify({
+      notify({
         type: 'positive',
         message: 'Bank JSON copied to clipboard',
         timeout: 2000,
@@ -353,7 +368,7 @@ const handlePasteImport = async () => {
     }
 
     if (success) {
-      $q.notify({
+      notify({
         type: 'positive',
         message: `${pasteType.value === 'patch' ? 'Patch' : 'Bank'} imported successfully`,
         timeout: 2000,
@@ -361,14 +376,14 @@ const handlePasteImport = async () => {
       pasteDialogOpen.value = false;
       pasteText.value = '';
     } else {
-      $q.notify({
+      notify({
         type: 'negative',
         message: 'Import failed. Check console for details.',
         timeout: 3000,
       });
     }
   } catch (error) {
-    $q.notify({
+    notify({
       type: 'negative',
       message: `Import error: ${error}`,
       timeout: 3000,
@@ -391,7 +406,7 @@ const handleDeletePatch = () => {
     if (selectedPatchId.value) {
       const success = store.deletePatch(selectedPatchId.value);
       if (success) {
-        $q.notify({
+        notify({
           type: 'positive',
           message: 'Patch deleted',
           timeout: 2000,
@@ -414,7 +429,7 @@ const handleNewBank = () => {
     persistent: true,
   }).onOk((bankName: string) => {
     store.createNewBank(bankName);
-    $q.notify({
+    notify({
       type: 'positive',
       message: `Bank "${bankName}" created`,
       timeout: 2000,

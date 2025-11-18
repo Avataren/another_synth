@@ -23,8 +23,50 @@ export class ModulationRouteManager {
     private readonly sourceType: VoiceNodeType,
   ) { }
 
-  private getNodeName(type: VoiceNodeType, index: string): string {
-    return this.store.getNodeName(index) || `${type} ${index}`;
+  private getNodeName(type: VoiceNodeType, id: string): string {
+    const storedName = this.store.getNodeName(id);
+    if (storedName && storedName.trim().length > 0) {
+      return storedName;
+    }
+
+    switch (type) {
+      case VoiceNodeType.WavetableOscillator:
+        return 'Wavetable Oscillator';
+      case VoiceNodeType.Oscillator:
+        return 'Oscillator';
+      case VoiceNodeType.Filter:
+        return 'Filter';
+      case VoiceNodeType.Envelope:
+        return 'Envelope';
+      case VoiceNodeType.LFO:
+        return 'LFO';
+      case VoiceNodeType.Noise:
+        return 'Noise';
+      case VoiceNodeType.Sampler:
+        return 'Sampler';
+      case VoiceNodeType.Mixer:
+        return 'Mixer';
+      case VoiceNodeType.GlobalFrequency:
+        return 'Global Frequency';
+      case VoiceNodeType.GlobalVelocity:
+        return 'Global Velocity';
+      case VoiceNodeType.Convolver:
+        return 'Convolver';
+      case VoiceNodeType.Delay:
+        return 'Delay';
+      case VoiceNodeType.GateMixer:
+        return 'Gate Mixer';
+      case VoiceNodeType.ArpeggiatorGenerator:
+        return 'Arpeggiator';
+      case VoiceNodeType.Chorus:
+        return 'Chorus';
+      case VoiceNodeType.Limiter:
+        return 'Limiter';
+      case VoiceNodeType.Reverb:
+        return 'Reverb';
+      default:
+        return 'Node';
+    }
   }
 
   private findNodeById(nodeId: string): VoiceNode | undefined {

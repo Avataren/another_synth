@@ -905,25 +905,30 @@ function initializeRoutes(): void {
 }
 
 function getNodeName(nodeId: string): string {
+  const storedName = store.getNodeName(nodeId);
+  if (storedName && storedName.trim().length > 0) {
+    return storedName;
+  }
+
   const node = store.findNodeById(nodeId);
-  if (!node) return `Node ${nodeId}`;
+  if (!node) return 'Node';
   switch (node.type) {
     case VoiceNodeType.WavetableOscillator:
-      return `Wavetable Oscillator ${nodeId}`;
+      return 'Wavetable Oscillator';
     case VoiceNodeType.Oscillator:
-      return `Oscillator ${nodeId}`;
+      return 'Oscillator';
     case VoiceNodeType.Filter:
-      return `Filter ${nodeId}`;
+      return 'Filter';
     case VoiceNodeType.Envelope:
-      return `Envelope ${nodeId}`;
+      return 'Envelope';
     case VoiceNodeType.LFO:
-      return `LFO ${nodeId}`;
+      return 'LFO';
     case VoiceNodeType.Noise:
-      return `Noise ${nodeId}`;
+      return 'Noise';
     case VoiceNodeType.Mixer:
       return 'Mixer';
     default:
-      return `Unknown Node ${nodeId}`;
+      return 'Node';
   }
 }
 
