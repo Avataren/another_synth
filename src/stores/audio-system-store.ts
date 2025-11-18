@@ -121,7 +121,7 @@ function debounce<T extends (...args: unknown[]) => void>(
 
 const DEFAULT_SAMPLE_RATE = 44100;
 
-function createDefaultSamplerState(id: number): SamplerState {
+function createDefaultSamplerState(id: string): SamplerState {
   return {
     id,
     frequency: 440,
@@ -261,7 +261,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     //     );
     //   },
 
-    findNodeById: (state) => (nodeId: number) => {
+    findNodeById: (state) => (nodeId: string) => {
       if (!state.synthLayout) return null;
       const voice = state.synthLayout.voices[0];
       if (!voice) return null;
@@ -779,7 +779,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
       return undefined;
     },
-    renameNode(nodeId: number, newName: string) {
+    renameNode(nodeId: string, newName: string) {
       if (!this.synthLayout) return;
       const normalized = newName.trim();
       if (!normalized) return;
@@ -796,17 +796,17 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       this.synthLayout = { ...this.synthLayout };
     },
-    updateOscillator(nodeId: number, state: OscillatorState) {
+    updateOscillator(nodeId: string, state: OscillatorState) {
       this.oscillatorStates.set(nodeId, state);
       this.currentInstrument?.updateOscillatorState(nodeId, state);
     },
 
-    updateEnvelope(nodeId: number, state: EnvelopeConfig) {
+    updateEnvelope(nodeId: string, state: EnvelopeConfig) {
       this.envelopeStates.set(nodeId, state);
       this.currentInstrument?.updateEnvelopeState(nodeId, state);
     },
 
-    updateLfo(nodeId: number, state: LfoState) {
+    updateLfo(nodeId: string, state: LfoState) {
       this.lfoStates.set(nodeId, state);
       this.currentInstrument?.updateLfoState(nodeId, {
         id: nodeId,
@@ -824,7 +824,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       });
     },
 
-    updateSampler(nodeId: number, state: Partial<SamplerState>) {
+    updateSampler(nodeId: string, state: Partial<SamplerState>) {
       const currentState =
         this.samplerStates.get(nodeId) || createDefaultSamplerState(nodeId);
       const mergedState: SamplerState = {
@@ -949,7 +949,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         }
       });
     },
-    updateFilter(nodeId: number, state: FilterState) {
+    updateFilter(nodeId: string, state: FilterState) {
       this.filterStates.set(nodeId, state);
       this.currentInstrument?.updateFilterState(nodeId, state);
     },
