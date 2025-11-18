@@ -912,6 +912,10 @@ impl AudioNode for FilterCollection {
         self.enabled = active;
     }
 
+    fn name(&self) -> &str {
+        "Filter Collection"
+    }
+
     fn node_type(&self) -> &str {
         // (Implementation unchanged)
         "filtercollection"

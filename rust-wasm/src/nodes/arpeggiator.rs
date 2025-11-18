@@ -450,6 +450,9 @@ impl AudioNode for ArpeggiatorGenerator {
     fn set_active(&mut self, _active: bool) {
         // Always active.
     }
+    fn name(&self) -> &str {
+        "Arpeggiator"
+    }
     fn node_type(&self) -> &str {
         "arpeggiator_generator"
     }

@@ -269,8 +269,9 @@ export const getNodesOfType = (
 };
 
 export interface RawNode {
-  id: number;
-  node_type: string;
+    id: number;
+    node_type: string;
+    name: string;
 }
 
 export interface RawConnection {

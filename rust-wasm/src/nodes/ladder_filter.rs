@@ -428,6 +428,10 @@ impl AudioNode for LadderFilter {
         }
     }
 
+    fn name(&self) -> &str {
+        "Ladder Filter"
+    }
+
     fn node_type(&self) -> &str {
         "ladderfilter"
     }
