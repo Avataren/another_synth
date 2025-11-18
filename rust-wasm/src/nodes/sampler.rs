@@ -488,6 +488,10 @@ impl AudioNode for Sampler {
         self.active = active;
     }
 
+    fn name(&self) -> &str {
+        "Sampler"
+    }
+
     fn node_type(&self) -> &str {
         "Sampler"
     }

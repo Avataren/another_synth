@@ -145,6 +145,8 @@ pub trait AudioNode: Any {
         self.is_active()
     }
 
+    fn name(&self) -> &'static str;
+
     fn node_type(&self) -> &str {
         "unknown" // Default implementation returns "unknown"
     }

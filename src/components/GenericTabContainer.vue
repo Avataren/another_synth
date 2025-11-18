@@ -14,7 +14,7 @@
             v-for="node in props.nodes"
             :key="node.id"
             :name="node.id.toString()"
-            :label="`${nodeLabel} ${node.id}`"
+            :label="node.name || `${nodeLabel} ${node.id}`"
             class="tab"
           />
         </q-tabs>
@@ -43,6 +43,7 @@
             :is="componentName"
             :node="destinationNode"
             :nodeId="node.id"
+            :nodeName="node.name"
             :isMinimized="isMinimized"
             @plusClicked="handlePlus"
             @minimizeClicked="handleMinimize"
@@ -61,6 +62,7 @@ import { type VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Node {
   id: number;
+  name: string;
   type?: VoiceNodeType;
 }
 

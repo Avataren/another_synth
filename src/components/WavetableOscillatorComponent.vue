@@ -2,11 +2,13 @@
   <q-card class="oscillator-card">
     <!-- Header: forward events to parent -->
     <audio-card-header
-      :title="`Wavetable Oscillator ${props.nodeId}`"
+      :title="displayName"
+      :editable="true"
       :isMinimized="props.isMinimized"
       @plusClicked="forwardPlus"
       @minimizeClicked="forwardMinimize"
       @closeClicked="forwardClose"
+      @update:title="handleNameChange"
     />
 
     <q-separator />
@@ -172,12 +174,14 @@ interface Props {
   node: AudioNode | null | undefined;
   nodeId: number;
   isMinimized?: boolean;
+  nodeName?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   node: null,
   nodeId: 0,
   isMinimized: false,
+  nodeName: undefined,
 });
 
 // Define emits for forwarding events
@@ -197,6 +201,17 @@ function forwardClose() {
 // Access the store
 const store = useAudioSystemStore();
 const { wavetableOscillatorStates } = storeToRefs(store);
+
+const displayName = computed(
+  () =>
+    props.nodeName ||
+    store.getNodeName(props.nodeId) ||
+    `Wavetable Oscillator ${props.nodeId}`,
+);
+
+function handleNameChange(name: string) {
+  store.renameNode(props.nodeId, name);
+}
 
 // Computed for oscillator state
 const oscillatorState = computed<OscillatorState>({

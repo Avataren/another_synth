@@ -238,6 +238,10 @@ impl AudioNode for Delay {
         }
     }
 
+    fn name(&self) -> &str {
+        "Delay"
+    }
+
     fn node_type(&self) -> &str {
         "delay"
     }
