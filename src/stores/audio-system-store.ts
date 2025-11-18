@@ -1550,6 +1550,77 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       const voice = this.synthLayout.voices[0];
       if (!voice) return;
 
+      // Get the set of valid node IDs from the current layout
+      const validNodeIds = new Set<string>();
+      Object.values(voice.nodes).forEach((nodeArray) => {
+        nodeArray.forEach((node) => validNodeIds.add(node.id));
+      });
+
+      // Remove orphaned states for nodes that no longer exist
+      this.oscillatorStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.oscillatorStates.delete(id);
+        }
+      });
+      this.wavetableOscillatorStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.wavetableOscillatorStates.delete(id);
+        }
+      });
+      this.samplerStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.samplerStates.delete(id);
+          this.samplerWaveforms.delete(id);
+        }
+      });
+      this.envelopeStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.envelopeStates.delete(id);
+        }
+      });
+      this.lfoStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.lfoStates.delete(id);
+        }
+      });
+      this.filterStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.filterStates.delete(id);
+        }
+      });
+      this.convolverStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.convolverStates.delete(id);
+        }
+      });
+      this.delayStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.delayStates.delete(id);
+        }
+      });
+      this.chorusStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.chorusStates.delete(id);
+        }
+      });
+      this.reverbStates.forEach((_, id) => {
+        if (!validNodeIds.has(id)) {
+          this.reverbStates.delete(id);
+        }
+      });
+
+      // Remove orphaned audio assets
+      const assetsToRemove: string[] = [];
+      this.audioAssets.forEach((_, assetId) => {
+        const parsed = parseAudioAssetId(assetId);
+        if (parsed && !validNodeIds.has(parsed.nodeId)) {
+          assetsToRemove.push(assetId);
+        }
+      });
+      assetsToRemove.forEach((assetId) => {
+        this.audioAssets.delete(assetId);
+      });
+
       // Initialize oscillator states
       const analogOscillators =
         getNodesOfType(voice, VoiceNodeType.Oscillator) || [];
