@@ -2,11 +2,13 @@
   <q-card class="oscillator-card">
     <!-- Header: forward events to container -->
     <audio-card-header
-      :title="`Oscillator ${props.nodeId}`"
+      :title="displayName"
+      :editable="true"
       :isMinimized="props.isMinimized"
       @plusClicked="forwardPlus"
       @minimizeClicked="forwardMinimize"
       @closeClicked="forwardClose"
+      @update:title="handleNameChange"
     />
 
     <q-separator />
@@ -153,6 +155,7 @@ import type OscillatorState from 'src/audio/models/OscillatorState';
 interface Props {
   nodeId: number;
   isMinimized?: boolean;
+  nodeName?: string;
 }
 
 // Default isMinimized to false
@@ -176,6 +179,14 @@ function forwardClose() {
 // Reference to the audio system store
 const store = useAudioSystemStore();
 const { oscillatorStates } = storeToRefs(store);
+
+const displayName = computed(() =>
+  props.nodeName || store.getNodeName(props.nodeId) || `Oscillator ${props.nodeId}`,
+);
+
+function handleNameChange(name: string) {
+  store.renameNode(props.nodeId, name);
+}
 
 // Computed oscillator state
 const oscillatorState = computed<OscillatorState>({

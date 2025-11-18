@@ -186,6 +186,10 @@ impl AudioNode for Glide {
         }
     }
 
+    fn name(&self) -> &str {
+        "Glide"
+    }
+
     fn node_type(&self) -> &str {
         "glide"
     }

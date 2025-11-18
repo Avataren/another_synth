@@ -28,6 +28,7 @@ export interface WasmConnection {
 interface WasmNode {
     id: number;
     node_type: string;
+    name: string;
 }
 
 // interface WasmVoiceState {

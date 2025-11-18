@@ -495,6 +495,15 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     updateSynthLayout(layout: SynthLayout) {
       console.log('Updating synth layout with:', layout);
 
+      const existingNames = new Map<number, string>();
+      if (this.synthLayout) {
+        this.synthLayout.voices.forEach((voice) => {
+          Object.values(voice.nodes).forEach((nodeArray) => {
+            nodeArray.forEach((node) => existingNames.set(node.id, node.name));
+          });
+        });
+      }
+
       // Validate that we have at least one voice
       if (
         !layout.voices ||
@@ -510,6 +519,21 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
       // Process each voice: convert raw connections and raw node arrays
       layoutClone.voices = layoutClone.voices.map((voice) => {
+        // Track generated default names so duplicated node types get unique labels
+        const defaultNameCounts = new Map<VoiceNodeType, Map<string, number>>();
+        const nextDefaultName = (
+          type: VoiceNodeType,
+          baseName: string,
+        ): string => {
+          const typeCounts =
+            defaultNameCounts.get(type) ?? new Map<string, number>();
+          const nextCount = (typeCounts.get(baseName) ?? 0) + 1;
+          typeCounts.set(baseName, nextCount);
+          defaultNameCounts.set(type, typeCounts);
+
+          return nextCount === 1 ? baseName : `${baseName} ${nextCount}`;
+        };
+
         // --- Convert Connections ---
         if (Array.isArray(voice.connections) && voice.connections.length > 0) {
           const firstConn = voice.connections[0]!;
@@ -622,7 +646,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         if (Array.isArray(voice.nodes)) {
           // ... existing node conversion logic ...
           const nodesByType: {
-            [key in VoiceNodeType]: { id: number; type: VoiceNodeType }[];
+            [key in VoiceNodeType]: { id: number; type: VoiceNodeType; name: string }[];
           } = {
             [VoiceNodeType.Oscillator]: [],
             [VoiceNodeType.WavetableOscillator]: [],
@@ -646,6 +670,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           interface RawNode {
             id: number;
             node_type: string;
+            name: string;
           }
           const convertNodeType = (raw: string): VoiceNodeType => {
             switch (raw) {
@@ -703,9 +728,12 @@ export const useAudioSystemStore = defineStore('audioSystem', {
               continue;
             }
             const type = convertNodeType(rawNode.node_type);
+            const baseName = rawNode.name?.trim() || `${type} ${nodeIdNum}`;
+            const nodeName =
+              existingNames.get(nodeIdNum) || nextDefaultName(type, baseName);
             // Check if type is valid before pushing
             if (nodesByType[type]) {
-              nodesByType[type].push({ id: nodeIdNum, type });
+              nodesByType[type].push({ id: nodeIdNum, type, name: nodeName });
             } else {
               console.warn(
                 `updateSynthLayout: Node type "${type}" derived from "${rawNode.node_type}" is not tracked in nodesByType. Skipping node.`,
@@ -741,6 +769,32 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.deletedNodeIds.clear();
       console.log('--------- updateSynthLayout FINISHED ---------');
       // console.log('Processed synthLayout:', this.synthLayout); // Log final result if needed
+    },
+    getNodeName(nodeId: number): string | undefined {
+      const voice = this.synthLayout?.voices[0];
+      if (!voice) return undefined;
+      for (const type of Object.values(VoiceNodeType)) {
+        const node = voice.nodes[type]?.find((n) => n.id === nodeId);
+        if (node) return node.name;
+      }
+      return undefined;
+    },
+    renameNode(nodeId: number, newName: string) {
+      if (!this.synthLayout) return;
+      const normalized = newName.trim();
+      if (!normalized) return;
+
+      this.synthLayout.voices.forEach((voice) => {
+        Object.values(voice.nodes).forEach((nodeArray) => {
+          nodeArray.forEach((node) => {
+            if (node.id === nodeId) {
+              node.name = normalized;
+            }
+          });
+        });
+      });
+
+      this.synthLayout = { ...this.synthLayout };
     },
     updateOscillator(nodeId: number, state: OscillatorState) {
       this.oscillatorStates.set(nodeId, state);
