@@ -172,7 +172,7 @@ import AudioKnobComponent from './AudioKnobComponent.vue';
 
 //–––––– Props and Store ––––––
 interface Props {
-  sourceId: number;
+  sourceId: string;
   sourceType: VoiceNodeType;
   debug?: boolean;
 }

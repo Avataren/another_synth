@@ -10,7 +10,7 @@ import type { SynthLayout } from '../types/synth-layout';
  */
 export async function extractSamplerAudioAssets(
   instrument: Instrument,
-  samplerNodeIds: number[],
+  samplerNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
 
@@ -49,7 +49,7 @@ export async function extractSamplerAudioAssets(
  */
 export async function extractConvolverAudioAssets(
   instrument: Instrument,
-  convolverNodeIds: number[],
+  convolverNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
 
@@ -91,8 +91,8 @@ export async function extractConvolverAudioAssets(
  */
 export async function extractAllAudioAssets(
   instrument: Instrument,
-  samplerNodeIds: number[],
-  convolverNodeIds: number[],
+  samplerNodeIds: string[],
+  convolverNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const allAssets = new Map<string, AudioAsset>();
 
@@ -116,8 +116,8 @@ export async function extractAllAudioAssets(
 /**
  * Helper to get all sampler node IDs from a synth layout
  */
-export function getSamplerNodeIds(synthLayout: SynthLayout): number[] {
-  const nodeIds: number[] = [];
+export function getSamplerNodeIds(synthLayout: SynthLayout): string[] {
+  const nodeIds: string[] = [];
 
   if (!synthLayout || !synthLayout.voices) {
     return nodeIds;
@@ -137,8 +137,8 @@ export function getSamplerNodeIds(synthLayout: SynthLayout): number[] {
 /**
  * Helper to get all convolver node IDs from a synth layout
  */
-export function getConvolverNodeIds(synthLayout: SynthLayout): number[] {
-  const nodeIds: number[] = [];
+export function getConvolverNodeIds(synthLayout: SynthLayout): string[] {
+  const nodeIds: string[] = [];
 
   if (!synthLayout || !synthLayout.voices) {
     return nodeIds;

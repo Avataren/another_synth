@@ -149,7 +149,7 @@ interface Props {
 }
 const props = withDefaults(defineProps<Props>(), {
   node: null,
-  nodeId: 0,
+  nodeId: '',
   isMinimized: false,
 });
 

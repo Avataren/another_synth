@@ -152,7 +152,7 @@ import {
 } from 'src/audio/types/synth-layout';
 
 interface Props {
-  nodeId: number;
+  nodeId: string;
   isMinimized?: boolean;
   nodeName?: string;
 }

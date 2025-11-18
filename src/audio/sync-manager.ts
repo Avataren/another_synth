@@ -17,8 +17,8 @@ interface WasmLayout {
 }
 
 export interface WasmConnection {
-    from_id: number;
-    to_id: number;
+    from_id: string;
+    to_id: string;
     target: PortId;
     amount: number;
     modulationType: WasmModulationType;
@@ -26,7 +26,7 @@ export interface WasmConnection {
 }
 
 interface WasmNode {
-    id: number;
+    id: string;
     node_type: string;
     name: string;
 }
@@ -191,7 +191,7 @@ export class AudioSyncManager {
         }> = [];
 
         // Create maps for easier lookup using identical key generation
-        const getConnectionKey = (fromId: number, toId: number, target: PortId) => {
+        const getConnectionKey = (fromId: string, toId: string, target: PortId) => {
             return `${fromId}-${toId}-${target}`;
         };
 
@@ -239,8 +239,8 @@ export class AudioSyncManager {
 
             // Create plain connection object with the correct type
             const plainConnection: NodeConnectionUpdate = {
-                fromId: Number(connection.fromId),
-                toId: Number(connection.toId),
+                fromId: String(connection.fromId),
+                toId: String(connection.toId),
                 target: target as PortId,
                 amount: Number(connection.amount),
                 isRemoving: Boolean(connection.isRemoving),

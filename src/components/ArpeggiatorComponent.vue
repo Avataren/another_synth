@@ -79,10 +79,10 @@ interface PatternStep {
 }
 
 interface Props {
-  nodeId: number;
+  nodeId: string;
 }
 
-const props = withDefaults(defineProps<Props>(), { nodeId: 0 });
+const props = withDefaults(defineProps<Props>(), { nodeId: '' });
 const store = useAudioSystemStore();
 
 // Global arpeggiator controls

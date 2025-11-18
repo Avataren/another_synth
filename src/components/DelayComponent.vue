@@ -51,10 +51,10 @@ import { storeToRefs } from 'pinia';
 import { type DelayState } from 'src/audio/types/synth-layout';
 
 interface Props {
-  nodeId: number;
+  nodeId: string;
 }
 const props = withDefaults(defineProps<Props>(), {
-  nodeId: 0,
+  nodeId: '',
 });
 
 const store = useAudioSystemStore();
