@@ -79,34 +79,34 @@ export interface SynthState {
   layout: SynthLayout;
 
   /** Oscillator states by node ID */
-  oscillators: Record<number, OscillatorState>;
+  oscillators: Record<string, OscillatorState>;
 
   /** Wavetable oscillator states by node ID */
-  wavetableOscillators: Record<number, OscillatorState>;
+  wavetableOscillators: Record<string, OscillatorState>;
 
   /** Filter states by node ID */
-  filters: Record<number, FilterState>;
+  filters: Record<string, FilterState>;
 
   /** Envelope states by node ID */
-  envelopes: Record<number, EnvelopeConfig>;
+  envelopes: Record<string, EnvelopeConfig>;
 
   /** LFO states by node ID */
-  lfos: Record<number, LfoState>;
+  lfos: Record<string, LfoState>;
 
   /** Sampler states by node ID */
-  samplers: Record<number, SamplerState>;
+  samplers: Record<string, SamplerState>;
 
   /** Convolver states by node ID */
-  convolvers: Record<number, ConvolverState>;
+  convolvers: Record<string, ConvolverState>;
 
   /** Delay states by node ID */
-  delays: Record<number, DelayState>;
+  delays: Record<string, DelayState>;
 
   /** Chorus states by node ID */
-  choruses: Record<number, ChorusState>;
+  choruses: Record<string, ChorusState>;
 
   /** Reverb states by node ID */
-  reverbs: Record<number, ReverbState>;
+  reverbs: Record<string, ReverbState>;
 
   /** Global noise state */
   noise?: NoiseState;

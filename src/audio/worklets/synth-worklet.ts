@@ -335,8 +335,19 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     nodeId: string;
     data: Uint8Array;
   }) {
+    if (!this.audioEngine) return;
+
+    const effectId = Number(data.nodeId);
+    if (!Number.isFinite(effectId)) {
+      console.error(
+        'handleImportImpulseWaveformData: invalid nodeId for effect:',
+        data.nodeId,
+      );
+      return;
+    }
+
     const uint8Data = new Uint8Array(data.data);
-    this.audioEngine!.import_wave_impulse(data.nodeId, uint8Data);
+    this.audioEngine.import_wave_impulse(effectId, uint8Data);
   }
 
   private handleImportWavetableData(data: {
@@ -480,7 +491,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     // Create noise generator.
     //this.audioEngine.create_noise();
     // Create mixer.
-    const mixerId = this.audioEngine.create_mixer();
+    const mixerId = this.audioEngine.create_mixer() as string;
     console.log('#mixerID:', mixerId);
 
     // const arpId = this.audioEngine.create_arpeggiator();
@@ -491,7 +502,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const samplerNodeId = this.audioEngine.create_sampler();
 
     // Create oscillators.
-    const oscIds: number[] = [];
+    const oscIds: string[] = [];
     const wtoscId = this.audioEngine.create_wavetable_oscillator();
     oscIds.push(wtoscId);
 
@@ -499,7 +510,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     oscIds.push(oscId);
 
     // Create envelopes.
-    const envelopeIds: number[] = [];
+    const envelopeIds: string[] = [];
     for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_envelope();
       console.log(`Created envelope ${i} with id ${result.envelopeId}`);
@@ -507,7 +518,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     // Create LFOs.
-    const lfoIds: number[] = [];
+    const lfoIds: string[] = [];
     for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_lfo();
       console.log(`Created LFO ${i} with id ${result.lfoId}`);
@@ -581,17 +592,16 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         ModulationTransformation.None,
       );
 
-      if (typeof samplerNodeId === 'number') {
-        this.audioEngine.connect_nodes(
-          samplerNodeId,
-          PortId.AudioOutput0,
-          filterId,
-          PortId.AudioInput0,
-          1.0,
-          WasmModulationType.Additive,
-          ModulationTransformation.None,
-        );
-      }
+      // Connect sampler to filter's audio input.
+      this.audioEngine.connect_nodes(
+        samplerNodeId,
+        PortId.AudioOutput0,
+        filterId,
+        PortId.AudioInput0,
+        1.0,
+        WasmModulationType.Additive,
+        ModulationTransformation.None,
+      );
 
       // Connect oscillator 2's output to oscillator 1's phase mod.
       this.audioEngine.connect_nodes(
@@ -858,8 +868,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     state: ChorusState;
   }) {
     if (!this.audioEngine) return;
+
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error('handleUpdateChorus: invalid nodeId:', data.nodeId);
+      return;
+    }
+
     this.audioEngine.update_chorus(
-      data.nodeId,
+      nodeId,
       data.state.active,
       data.state.baseDelayMs,
       data.state.depthMs,
@@ -877,14 +894,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     state: ReverbState;
   }) {
     if (!this.audioEngine) return;
+
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error('handleUpdateReverb: invalid nodeId:', data.nodeId);
+      return;
+    }
+
     this.audioEngine.update_reverb(
-      data.nodeId,
+      nodeId,
       data.state.active,
       data.state.room_size,
       data.state.damp,
       data.state.wet,
       data.state.dry,
-      data.state.width
+      data.state.width,
     );
   }
 
@@ -927,11 +951,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     state: ConvolverState;
   }) {
     if (!this.audioEngine) return;
-    this.audioEngine.update_convolver(
-      data.nodeId,
-      data.state.wetMix,
-      data.state.active,
-    );
+
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error('handleUpdateConvolver: invalid nodeId:', data.nodeId);
+      return;
+    }
+
+    this.audioEngine.update_convolver(nodeId, data.state.wetMix, data.state.active);
   }
 
   private handleUpdateDelay(data: {
@@ -940,8 +967,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     state: DelayState;
   }) {
     if (!this.audioEngine) return;
+
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error('handleUpdateDelay: invalid nodeId:', data.nodeId);
+      return;
+    }
+
     this.audioEngine.update_delay(
-      data.nodeId,
+      nodeId,
       data.state.delayMs,
       data.state.feedback,
       data.state.wetMix,

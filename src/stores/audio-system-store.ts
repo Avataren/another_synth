@@ -46,6 +46,7 @@ import {
   deserializePatch,
   exportPatchToJSON,
   importPatchFromJSON,
+  parseAudioAssetId,
 } from 'src/audio/serialization/patch-serializer';
 import {
   createBank,
@@ -321,7 +322,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
 
     // Helper method to check if connection exists
-    hasExistingConnection(fromId: number, toId: number): boolean {
+    hasExistingConnection(fromId: string, toId: string): boolean {
       return (
         this.synthLayout?.voices.some((voice) =>
           voice.connections.some(
@@ -332,8 +333,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
 
     hasMatchingConnection(
-      fromId: number,
-      toId: number,
+      fromId: string,
+      toId: string,
       target: PortId,
     ): boolean {
       return (
@@ -1781,11 +1782,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       for (const [assetId, asset] of this.audioAssets.entries()) {
         try {
           // Parse the asset ID to get node type and ID
-          const parts = assetId.split('_');
-          if (parts.length < 2) continue;
+          const parsed = parseAudioAssetId(assetId);
+          if (!parsed) continue;
 
-          const nodeId = parseInt(parts[parts.length - 1] ?? '');
-          if (isNaN(nodeId)) continue;
+          const { nodeType, nodeId } = parsed;
 
           // Decode base64 to binary
           const binaryData = atob(asset.base64Data);
@@ -1795,11 +1795,11 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           }
 
           // Determine asset type and import accordingly
-          if (assetId.startsWith('sample_')) {
+          if (nodeType === 'sample') {
             // Import sample for sampler node
             await this.currentInstrument.importSampleData(nodeId, bytes);
             console.log(`Restored sample for sampler node ${nodeId}`);
-          } else if (assetId.startsWith('impulse_response_')) {
+          } else if (nodeType === 'impulse_response') {
             // Import impulse response for convolver node
             await this.currentInstrument.importImpulseWaveformData(
               nodeId,
@@ -1808,7 +1808,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             console.log(
               `Restored impulse response for convolver node ${nodeId}`,
             );
-          } else if (assetId.startsWith('wavetable_')) {
+          } else if (nodeType === 'wavetable') {
             // Import wavetable data
             await this.currentInstrument.importWavetableData(nodeId, bytes);
             console.log(`Restored wavetable for node ${nodeId}`);

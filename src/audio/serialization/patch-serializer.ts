@@ -31,16 +31,16 @@ import type { NoiseState } from '../types/noise';
 export function serializeCurrentPatch(
   name: string,
   layout: SynthLayout,
-  oscillators: Map<number, OscillatorState>,
-  wavetableOscillators: Map<number, OscillatorState>,
-  filters: Map<number, FilterState>,
-  envelopes: Map<number, EnvelopeConfig>,
-  lfos: Map<number, LfoState>,
-  samplers: Map<number, SamplerState>,
-  convolvers: Map<number, ConvolverState>,
-  delays: Map<number, DelayState>,
-  choruses: Map<number, ChorusState>,
-  reverbs: Map<number, ReverbState>,
+  oscillators: Map<string, OscillatorState>,
+  wavetableOscillators: Map<string, OscillatorState>,
+  filters: Map<string, FilterState>,
+  envelopes: Map<string, EnvelopeConfig>,
+  lfos: Map<string, LfoState>,
+  samplers: Map<string, SamplerState>,
+  convolvers: Map<string, ConvolverState>,
+  delays: Map<string, DelayState>,
+  choruses: Map<string, ChorusState>,
+  reverbs: Map<string, ReverbState>,
   noise?: NoiseState,
   velocity?: VelocityState,
   audioAssets?: Map<string, AudioAsset>,
@@ -93,16 +93,16 @@ export function serializeCurrentPatch(
 export interface DeserializedPatch {
   metadata: PatchMetadata;
   layout: SynthLayout;
-  oscillators: Map<number, OscillatorState>;
-  wavetableOscillators: Map<number, OscillatorState>;
-  filters: Map<number, FilterState>;
-  envelopes: Map<number, EnvelopeConfig>;
-  lfos: Map<number, LfoState>;
-  samplers: Map<number, SamplerState>;
-  convolvers: Map<number, ConvolverState>;
-  delays: Map<number, DelayState>;
-  choruses: Map<number, ChorusState>;
-  reverbs: Map<number, ReverbState>;
+  oscillators: Map<string, OscillatorState>;
+  wavetableOscillators: Map<string, OscillatorState>;
+  filters: Map<string, FilterState>;
+  envelopes: Map<string, EnvelopeConfig>;
+  lfos: Map<string, LfoState>;
+  samplers: Map<string, SamplerState>;
+  convolvers: Map<string, ConvolverState>;
+  delays: Map<string, DelayState>;
+  choruses: Map<string, ChorusState>;
+  reverbs: Map<string, ReverbState>;
   noise?: NoiseState;
   velocity?: VelocityState;
   audioAssets: Map<string, AudioAsset>;
@@ -122,7 +122,7 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
     delays: recordToMap(patch.synthState.delays),
     choruses: recordToMap(patch.synthState.choruses),
     reverbs: recordToMap(patch.synthState.reverbs),
-    audioAssets: recordToMap(patch.audioAssets) as unknown as Map<string, AudioAsset>,
+    audioAssets: recordToMap(patch.audioAssets),
   };
 
   if (patch.synthState.noise !== undefined) {
@@ -264,8 +264,10 @@ export function importPatchFromJSON(json: string): {
 /**
  * Helper: Convert Map to Record for JSON serialization
  */
-function mapToRecord<T>(map: Map<number, T> | Map<string, T>): Record<string | number, T> {
-  const record: Record<string | number, T> = {};
+function mapToRecord<T>(
+  map: Map<string, T>,
+): Record<string, T> {
+  const record: Record<string, T> = {};
   map.forEach((value, key) => {
     record[key] = value;
   });
@@ -275,15 +277,10 @@ function mapToRecord<T>(map: Map<number, T> | Map<string, T>): Record<string | n
 /**
  * Helper: Convert Record to Map for deserialization
  */
-function recordToMap<T>(record: Record<number, T>): Map<number, T>;
-function recordToMap<T>(record: Record<string, T>): Map<string, T>;
-function recordToMap<T>(record: Record<string | number, T>): Map<string | number, T> {
-  const map = new Map<string | number, T>();
+function recordToMap<T>(record: Record<string | number, T>): Map<string, T> {
+  const map = new Map<string, T>();
   for (const [key, value] of Object.entries(record)) {
-    // Try to convert to number if it looks like a number
-    const numKey = Number(key);
-    const finalKey = !isNaN(numKey) && key === String(numKey) ? numKey : key;
-    map.set(finalKey, value);
+    map.set(String(key), value);
   }
   return map;
 }

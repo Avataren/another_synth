@@ -198,7 +198,7 @@ const isExpanded = ref<boolean>(true);
 // Note: modulationTransformation is now stored as an object.
 interface RouteConfig {
   id: string;
-  targetId: number;
+  targetId: string;
   targetNode: TargetNode;
   target: number;
   targetLabel: string;
@@ -222,7 +222,7 @@ const availableTargetNodes = computed<TargetNode[]>(() =>
 );
 const getAvailableTargets = (): TargetNode[] =>
   routeManager.value ? routeManager.value.getAvailableTargets() : [];
-const getSafeParams = (targetId: number): ModulationTargetOption[] => {
+const getSafeParams = (targetId: string): ModulationTargetOption[] => {
   try {
     return routeManager.value && targetId
       ? routeManager.value.getAvailableParams(targetId)
@@ -233,7 +233,7 @@ const getSafeParams = (targetId: number): ModulationTargetOption[] => {
   }
 };
 const getSafeParam = (
-  targetId: number,
+  targetId: string,
   target: number,
 ): ModulationTargetOption | undefined => {
   try {
