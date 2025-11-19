@@ -420,6 +420,86 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
     },
 
+    async loadSystemBankIfPresent(): Promise<boolean> {
+      if (this.currentBank && this.currentBank.patches.length > 0) {
+        return true;
+      }
+
+      if (typeof fetch === 'undefined') {
+        console.warn('Fetch API unavailable; cannot load system bank file');
+        return false;
+      }
+
+      const url = `${import.meta.env.BASE_URL}system-bank.json`;
+
+      try {
+        const response = await fetch(url, { cache: 'no-store' });
+
+        if (response.status === 404) {
+          // No system bank provided in the deployment – fall back to defaults
+          return false;
+        }
+
+        if (!response.ok) {
+          console.error(
+            `Failed to fetch system bank (status ${response.status})`,
+          );
+          return false;
+        }
+
+        const json = await response.text();
+        if (!json.trim()) {
+          console.warn('System bank file was empty');
+          return false;
+        }
+
+        const result = importBankFromJSON(json);
+
+        if (!result.validation.valid || !result.bank) {
+          console.error(
+            'System bank validation failed:',
+            result.validation.errors?.join(', '),
+          );
+          return false;
+        }
+
+        if (result.validation.warnings?.length) {
+          console.warn(
+            'System bank import warnings:',
+            result.validation.warnings.join(', '),
+          );
+        }
+
+        const bank = result.bank;
+        if (bank.patches.length === 0) {
+          console.warn(
+            `System bank "${bank.metadata.name}" did not contain any patches`,
+          );
+          return false;
+        }
+
+        const firstPatch = bank.patches[0]!;
+        const applied = await this.applyPatchObject(firstPatch);
+        if (!applied) {
+          console.error(
+            `Failed to apply initial patch "${firstPatch.metadata.name}" from system bank`,
+          );
+          return false;
+        }
+
+        this.currentBank = bank;
+        this.currentPatchId = firstPatch.metadata.id;
+
+        console.log(
+          `Loaded system bank "${bank.metadata.name}" with ${bank.patches.length} patches`,
+        );
+        return true;
+      } catch (error) {
+        console.error('Error loading system bank:', error);
+        return false;
+      }
+    },
+
     ensurePatchInBank(patch: Patch) {
       if (!patch) return;
 

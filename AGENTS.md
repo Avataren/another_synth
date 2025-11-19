@@ -230,3 +230,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - `rust-wasm/src/audio_engine/patch.rs` `Layout` carries `voiceCount` + `canonicalVoice` plus helper methods (`resolved_voice_count`, `canonical_voice`) so loaders no longer inspect `voices.len()`. Always use those helpers so both native + wasm stay aligned.
 - TypeScript patch serialization now converts runtime layouts into `{ voiceCount, canonicalVoice }` via `synthLayoutToPatchLayout` and expands them back with `patchLayoutToSynthLayout`. The UI `SynthLayout` still keeps a per-voice array for editing, but patches only persist the canonical voice to avoid duplication.
 - Frontend store (`audio-system-store`) keeps `voiceCount` + `canonicalVoice` copies in `this.synthLayout` so saving patches preserves the configured polyphony even though only one voice layout is serialized.
+
+## Startup bank loading
+
+- During boot the Pinia audio store now calls `loadSystemBankIfPresent()` before falling back to `initializeNewPatchSession`.
+- This routine fetches `${import.meta.env.BASE_URL}system-bank.json`. If the file exists and passes `importBankFromJSON` validation, its first patch is applied immediately and `currentBank` is replaced with the parsed bank.
+- Missing/empty/invalid `system-bank.json` simply returns `false`, so the existing default patch creation flow still runs and creates the baseline bank.

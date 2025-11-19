@@ -12,7 +12,10 @@ export default defineBoot(async () => {
         await audioSystemStore.setupAudio();
         console.log('AudioSystem successfully set up');
 
-        await audioSystemStore.initializeNewPatchSession();
+        const systemBankLoaded = await audioSystemStore.loadSystemBankIfPresent();
+        if (!systemBankLoaded) {
+            await audioSystemStore.initializeNewPatchSession();
+        }
     } catch (error) {
         console.error('Error setting up AudioSystem:', error);
     }
