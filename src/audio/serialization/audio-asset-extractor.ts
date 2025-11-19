@@ -2,14 +2,14 @@
 import type { AudioAsset } from '../types/preset-types';
 import { AudioAssetType as AssetType } from '../types/preset-types';
 import { encodeFloat32ArrayToBase64 } from './audio-asset-encoder';
-import type Instrument from '../instrument';
+import type InstrumentV2 from '../instrument-v2';
 import type { SynthLayout } from '../types/synth-layout';
 
 /**
  * Extracts all audio assets from sampler nodes
  */
 export async function extractSamplerAudioAssets(
-  instrument: Instrument,
+  instrument: InstrumentV2,
   samplerNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
@@ -48,7 +48,7 @@ export async function extractSamplerAudioAssets(
  * Extracts all audio assets from convolver nodes
  */
 export async function extractConvolverAudioAssets(
-  instrument: Instrument,
+  instrument: InstrumentV2,
   convolverNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
@@ -90,7 +90,7 @@ export async function extractConvolverAudioAssets(
  * Extracts all audio assets from the current synth state
  */
 export async function extractAllAudioAssets(
-  instrument: Instrument,
+  instrument: InstrumentV2,
   samplerNodeIds: string[],
   convolverNodeIds: string[],
 ): Promise<Map<string, AudioAsset>> {
