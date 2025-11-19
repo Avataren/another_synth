@@ -42,6 +42,7 @@ interface QueuedOperation {
   message: WorkletMessage;
   resolve: (data?: unknown) => void;
   reject: (error: Error) => void;
+  timeout?: number; // Custom timeout in ms (uses default if undefined)
 }
 
 // ============================================================================
@@ -100,7 +101,7 @@ export class WorkletMessageHandler {
     this.messageQueue = [];
 
     for (const op of queue) {
-      this.sendMessageInternal(op.message)
+      this.sendMessageInternal(op.message, op.timeout)
         .then(op.resolve)
         .catch(op.reject);
     }
@@ -137,7 +138,7 @@ export class WorkletMessageHandler {
 
     // Queue if not initialized
     if (!this.initialized) {
-      return this.queueMessage(message);
+      return this.queueMessage(message, timeout);
     }
 
     return this.sendMessageInternal<T>(message, timeout);
@@ -202,8 +203,10 @@ export class WorkletMessageHandler {
 
   /**
    * Queues a message to be sent after initialization.
+   * @param message - Message to queue
+   * @param timeout - Optional timeout in ms (preserved for when queue is flushed)
    */
-  private queueMessage<T = unknown>(message: WorkletMessage): Promise<T> {
+  private queueMessage<T = unknown>(message: WorkletMessage, timeout?: number): Promise<T> {
     if (this.messageQueue.length >= this.maxQueueSize) {
       return Promise.reject(
         new Error(`Message queue full (${this.maxQueueSize} messages). Worklet may not be initializing.`)
@@ -217,6 +220,7 @@ export class WorkletMessageHandler {
         message,
         resolve: resolve as (data?: unknown) => void,
         reject,
+        timeout, // Preserve timeout for when queue is flushed
       });
     });
   }

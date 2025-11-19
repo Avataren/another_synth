@@ -589,6 +589,16 @@ console.log('Queued:', handler.getQueuedCount());
 - Initialization failed silently
 - Check WASM initialization errors
 
+## Implementation Notes
+
+### Timeout Preservation in Message Queue
+The message handler preserves custom timeout values through the initialization queue:
+- When `sendMessage(msg, customTimeout)` is called before initialization, both the message and timeout are stored in the queue
+- When `markInitialized()` drains the queue, each message is sent with its original timeout
+- This prevents pre-initialization operations from silently receiving the wrong timeout value
+
+**Why this matters**: Without timeout preservation, a caller requesting a 30-second timeout for a large patch load could time out at 5 seconds if the message was queued during initialization, leading to confusing failures.
+
 ## Files Changed/Added
 
 ### New Files:
