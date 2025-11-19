@@ -1287,6 +1287,15 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       this.debouncedProcessUpdateQueue();
     },
 
+    syncCanonicalVoiceWithFirstVoice() {
+      if (!this.synthLayout || this.synthLayout.voices.length === 0) {
+        return;
+      }
+      this.synthLayout.canonicalVoice = cloneVoiceLayout(
+        this.synthLayout.voices[0]!,
+      );
+    },
+
     async processUpdateQueue() {
       if (this.isUpdating) return; // prevent concurrent processing
       this.isUpdating = true;
@@ -1352,6 +1361,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
             });
 
             // Trigger reactivity update if needed
+            this.syncCanonicalVoiceWithFirstVoice();
             this.synthLayout = { ...this.synthLayout };
           }
         } catch (error) {

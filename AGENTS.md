@@ -214,6 +214,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - Is there a `GateMixer` node and a `CombinedGate` connection into the envelope?
   - Does the patch layout for voice 0 contain the expected `gatemixer → envelope` connection with `target: 26`?
 - Host builds that enable the `wasm` feature still compile the crate for non-`wasm32` targets, so `audio_engine::mod` now exposes stub `WasmNoiseType`/`WasmModulationType` enums for that configuration. Keep those shims so `automation.rs` and other shared modules continue to compile in host toolchains.
+- TS Store canonical voice syncing:
+  - Because patch serialization now only writes `canonicalVoice` plus a `voiceCount`, the UI must keep the canonical copy in sync with live edits. `src/stores/audio-system-store.ts` now calls `syncCanonicalVoiceWithFirstVoice()` after each connection update so the first voice and `canonicalVoice` stay identical.
+  - Without this, saving/loading would resurrect deleted routes or drop new connections, leading to silent voices after a patch switch. If you add other layout mutations (node creation, delete, drag reorder), ensure they also refresh the canonical voice before serializing.
 
 ## New discovery: Patch layout now canonical + voice count
 
