@@ -16,8 +16,12 @@ use crate::nodes::{
 };
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
-use super::patch::{AudioAsset, AudioAssetType, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout};
-use super::patch_loader::{parse_audio_asset_id, parse_node_id, NODE_CREATION_ORDER};
+use super::patch::{AudioAsset, PatchFile, VoiceLayout as PatchVoiceLayout};
+use super::patch_loader::{
+    find_node_id, filter_type_from_i32, modulation_transform_from_i32,
+    modulation_type_from_i32, parse_audio_asset_id, parse_node_id, port_id_from_u32,
+    NODE_CREATION_ORDER,
+};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_ENGINE;
 use rustc_hash::FxHashMap;
@@ -193,6 +197,16 @@ impl From<WasmModulationType> for ModulationType {
             WasmModulationType::VCA => ModulationType::VCA,
             WasmModulationType::Bipolar => ModulationType::Bipolar,
             WasmModulationType::Additive => ModulationType::Additive,
+        }
+    }
+}
+
+impl From<ModulationType> for WasmModulationType {
+    fn from(mod_type: ModulationType) -> Self {
+        match mod_type {
+            ModulationType::VCA => WasmModulationType::VCA,
+            ModulationType::Bipolar => WasmModulationType::Bipolar,
+            ModulationType::Additive => WasmModulationType::Additive,
         }
     }
 }
@@ -2350,10 +2364,14 @@ impl AudioEngine {
         voice_layout: &PatchVoiceLayout,
     ) -> Result<(), JsValue> {
         for connection in &voice_layout.connections {
-            let to_port = port_id_from_u32(connection.target)?;
-            let modulation_type = wasm_modulation_type_from_i32(connection.modulation_type)?;
+            let to_port = port_id_from_u32(connection.target)
+                .map_err(|e| JsValue::from_str(&e))?;
+            let base_modulation_type = modulation_type_from_i32(connection.modulation_type)
+                .map_err(|e| JsValue::from_str(&e))?;
+            let modulation_type = Some(WasmModulationType::from(base_modulation_type));
             let modulation_transform =
-                modulation_transform_from_i32(connection.modulation_transform)?;
+                modulation_transform_from_i32(connection.modulation_transform)
+                    .map_err(|e| JsValue::from_str(&e))?;
 
             // Determine the appropriate output port on the source node.
             let from_port = self
@@ -2380,7 +2398,7 @@ impl AudioEngine {
                 &connection.to_id,
                 to_port,
                 connection.amount,
-                Some(modulation_type),
+                modulation_type,
                 modulation_transform,
             )?;
         }
@@ -2433,7 +2451,8 @@ impl AudioEngine {
         }
 
         for filter in patch.synth_state.filters.values() {
-            let filter_type = filter_type_from_i32(filter.filter_type);
+            let filter_type = filter_type_from_i32(filter.filter_type)
+                .map_err(|e| JsValue::from_str(&e))?;
             self.update_filters(
                 &filter.id,
                 filter.cutoff,
@@ -2589,92 +2608,4 @@ impl AudioEngine {
             voice.clear();
         }
     }
-}
-
-fn port_id_from_u32(value: u32) -> Result<PortId, JsValue> {
-    Ok(match value {
-        0 => PortId::AudioInput0,
-        1 => PortId::AudioInput1,
-        2 => PortId::AudioInput2,
-        3 => PortId::AudioInput3,
-        4 => PortId::AudioOutput0,
-        5 => PortId::AudioOutput1,
-        6 => PortId::AudioOutput2,
-        7 => PortId::AudioOutput3,
-        8 => PortId::GlobalGate,
-        9 => PortId::GlobalFrequency,
-        10 => PortId::GlobalVelocity,
-        11 => PortId::Frequency,
-        12 => PortId::FrequencyMod,
-        13 => PortId::PhaseMod,
-        14 => PortId::ModIndex,
-        15 => PortId::CutoffMod,
-        16 => PortId::ResonanceMod,
-        17 => PortId::GainMod,
-        18 => PortId::EnvelopeMod,
-        19 => PortId::StereoPan,
-        20 => PortId::FeedbackMod,
-        21 => PortId::DetuneMod,
-        22 => PortId::WavetableIndex,
-        23 => PortId::WetDryMix,
-        24 => PortId::AttackMod,
-        25 => PortId::ArpGate,
-        26 => PortId::CombinedGate,
-        _ => {
-            return Err(JsValue::from_str(&format!(
-                "Unknown port id value {}",
-                value
-            )))
-        }
-    })
-}
-
-fn wasm_modulation_type_from_i32(value: i32) -> Result<WasmModulationType, JsValue> {
-    Ok(match value {
-        0 => WasmModulationType::VCA,
-        1 => WasmModulationType::Bipolar,
-        2 => WasmModulationType::Additive,
-        other => {
-            return Err(JsValue::from_str(&format!(
-                "Unknown modulation type {}",
-                other
-            )))
-        }
-    })
-}
-
-fn modulation_transform_from_i32(value: i32) -> Result<ModulationTransformation, JsValue> {
-    Ok(match value {
-        0 => ModulationTransformation::None,
-        1 => ModulationTransformation::Invert,
-        2 => ModulationTransformation::Square,
-        3 => ModulationTransformation::Cube,
-        other => {
-            return Err(JsValue::from_str(&format!(
-                "Unknown modulation transform {}",
-                other
-            )))
-        }
-    })
-}
-
-fn filter_type_from_i32(value: i32) -> FilterType {
-    match value {
-        1 => FilterType::LowShelf,
-        2 => FilterType::Peaking,
-        3 => FilterType::HighShelf,
-        4 => FilterType::Notch,
-        5 => FilterType::HighPass,
-        6 => FilterType::Ladder,
-        7 => FilterType::Comb,
-        _ => FilterType::LowPass,
-    }
-}
-
-fn find_node_id(voice_layout: &PatchVoiceLayout, target_type: &str) -> Option<String> {
-    voice_layout
-        .nodes
-        .get(target_type)
-        .and_then(|nodes: &Vec<PatchNode>| nodes.first())
-        .map(|node| node.id.clone())
 }

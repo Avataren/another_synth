@@ -1,6 +1,5 @@
 use crate::PortId;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 use uuid::Uuid;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;

@@ -75,6 +75,7 @@ When debugging “envelope not reacting to gate off” after any change, always 
   - `NODE_CREATION_ORDER`: canonical order for creating nodes from a patch:
     - `"global_frequency"`, `"global_velocity"`, `"gatemixer"`, `"mixer"`, `"filter"`, `"oscillator"`, `"wavetable_oscillator"`, `"sampler"`, `"envelope"`, `"lfo"`, `"noise"`, `"arpeggiator_generator"`.
   - `patch_connection_to_connection` mirrors the translation from `PatchConnection` to `graph::Connection`.
+  - These conversion helpers now return `PatchLoaderResult<T>` and are consumed by the WASM loader; keep new patch-related conversions centralized here so both WASM and native stay aligned on validation logic.
 
 ### WASM engine: patch loading
 
@@ -212,3 +213,4 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - Is the envelope’s `config.active` flag true?
   - Is there a `GateMixer` node and a `CombinedGate` connection into the envelope?
   - Does the patch layout for voice 0 contain the expected `gatemixer → envelope` connection with `target: 26`?
+- Host builds that enable the `wasm` feature still compile the crate for non-`wasm32` targets, so `audio_engine::mod` now exposes stub `WasmNoiseType`/`WasmModulationType` enums for that configuration. Keep those shims so `automation.rs` and other shared modules continue to compile in host toolchains.

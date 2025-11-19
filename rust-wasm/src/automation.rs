@@ -493,7 +493,7 @@ pub fn apply_connection_update(
     apply_connection_update_internal(engine, update)
 }
 
-#[cfg(all(test, feature = "wasm"))]
+#[cfg(all(test, feature = "wasm", target_arch = "wasm32"))]
 mod tests {
     use super::*;
     use crate::graph::ModulationTransformation;

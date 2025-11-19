@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::any::Any;
 
-use crate::graph::{ModulationSource, ModulationTransformation, ModulationType};
+use crate::graph::ModulationSource;
 use crate::traits::{AudioNode, PortId};
 
 pub struct Glide {
@@ -198,6 +198,7 @@ impl AudioNode for Glide {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{ModulationTransformation, ModulationType};
 
     #[test]
     fn glide_zero_time_is_passthrough() {

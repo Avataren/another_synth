@@ -13,6 +13,30 @@ pub use wasm::*;
 #[cfg(feature = "native-host")]
 pub use native::*;
 
+#[cfg(all(
+    feature = "wasm",
+    not(feature = "native-host"),
+    not(target_arch = "wasm32")
+))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WasmNoiseType {
+    White = 0,
+    Pink = 1,
+    Brownian = 2,
+}
+
+#[cfg(all(
+    feature = "wasm",
+    not(feature = "native-host"),
+    not(target_arch = "wasm32")
+))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WasmModulationType {
+    VCA = 0,
+    Bipolar = 1,
+    Additive = 2,
+}
+
 // Re-export common types for both
 pub use crate::graph::{ModulationTransformation, ModulationType};
 pub use crate::traits::PortId;

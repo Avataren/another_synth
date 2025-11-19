@@ -1,8 +1,13 @@
+#![cfg_attr(
+    not(any(feature = "native-host", all(feature = "wasm", target_arch = "wasm32"))),
+    allow(dead_code)
+)]
+
 // Shared patch loading logic for both native and wasm builds
 
-use crate::audio_engine::patch::{PatchConnection, VoiceLayout as PatchVoiceLayout};
-use crate::graph::{Connection, ModulationTransformation, ModulationType, NodeId};
+use crate::audio_engine::patch::VoiceLayout as PatchVoiceLayout;
 use crate::biquad::FilterType;
+use crate::graph::{ModulationTransformation, ModulationType, NodeId};
 use crate::traits::PortId;
 use uuid::Uuid;
 
@@ -17,55 +22,76 @@ pub fn parse_node_id(id_str: &str) -> PatchLoaderResult<NodeId> {
 }
 
 /// Parse a port ID from u32
-pub fn port_id_from_u32(value: u32) -> PortId {
-    PortId::from_u32(value)
-}
-
-/// Parse modulation type from i32
-pub fn modulation_type_from_i32(value: i32) -> ModulationType {
-    ModulationType::from_i32(value)
-}
-
-/// Parse modulation transformation from i32
-pub fn modulation_transform_from_i32(value: i32) -> ModulationTransformation {
-    ModulationTransformation::from_i32(value)
-}
-
-/// Parse filter type from i32
-pub fn filter_type_from_i32(value: i32) -> FilterType {
+pub fn port_id_from_u32(value: u32) -> PatchLoaderResult<PortId> {
     match value {
-        0 => FilterType::LowPass,
-        1 => FilterType::HighPass,
-        2 => FilterType::BandPass,
-        3 => FilterType::Notch,
-        4 => FilterType::Peaking,
-        5 => FilterType::LowShelf,
-        6 => FilterType::HighShelf,
-        7 => FilterType::Comb,
-        _ => FilterType::LowPass,
+        0 => Ok(PortId::AudioInput0),
+        1 => Ok(PortId::AudioInput1),
+        2 => Ok(PortId::AudioInput2),
+        3 => Ok(PortId::AudioInput3),
+        4 => Ok(PortId::AudioOutput0),
+        5 => Ok(PortId::AudioOutput1),
+        6 => Ok(PortId::AudioOutput2),
+        7 => Ok(PortId::AudioOutput3),
+        8 => Ok(PortId::GlobalGate),
+        9 => Ok(PortId::GlobalFrequency),
+        10 => Ok(PortId::GlobalVelocity),
+        11 => Ok(PortId::Frequency),
+        12 => Ok(PortId::FrequencyMod),
+        13 => Ok(PortId::PhaseMod),
+        14 => Ok(PortId::ModIndex),
+        15 => Ok(PortId::CutoffMod),
+        16 => Ok(PortId::ResonanceMod),
+        17 => Ok(PortId::GainMod),
+        18 => Ok(PortId::EnvelopeMod),
+        19 => Ok(PortId::StereoPan),
+        20 => Ok(PortId::FeedbackMod),
+        21 => Ok(PortId::DetuneMod),
+        22 => Ok(PortId::WavetableIndex),
+        23 => Ok(PortId::WetDryMix),
+        24 => Ok(PortId::AttackMod),
+        25 => Ok(PortId::ArpGate),
+        26 => Ok(PortId::CombinedGate),
+        _ => Err(format!("Unknown port id value {}", value)),
     }
 }
 
-/// Convert PatchConnection to Connection
-pub fn patch_connection_to_connection(
-    conn: &PatchConnection,
-    default_from_port: PortId,
-) -> PatchLoaderResult<Connection> {
-    let from_node = parse_node_id(&conn.from_id)?;
-    let to_node = parse_node_id(&conn.to_id)?;
-    let to_port = port_id_from_u32(conn.target);
-    let modulation_type = modulation_type_from_i32(conn.modulation_type);
-    let modulation_transform = modulation_transform_from_i32(conn.modulation_transform);
+/// Parse modulation type from i32
+pub fn modulation_type_from_i32(value: i32) -> PatchLoaderResult<ModulationType> {
+    match value {
+        0 => Ok(ModulationType::VCA),
+        1 => Ok(ModulationType::Bipolar),
+        2 => Ok(ModulationType::Additive),
+        _ => Err(format!("Unknown modulation type {}", value)),
+    }
+}
 
-    Ok(Connection {
-        from_node,
-        from_port: default_from_port,
-        to_node,
-        to_port,
-        amount: conn.amount,
-        modulation_type,
-        modulation_transform,
-    })
+/// Parse modulation transformation from i32
+pub fn modulation_transform_from_i32(
+    value: i32,
+) -> PatchLoaderResult<ModulationTransformation> {
+    match value {
+        0 => Ok(ModulationTransformation::None),
+        1 => Ok(ModulationTransformation::Invert),
+        2 => Ok(ModulationTransformation::Square),
+        3 => Ok(ModulationTransformation::Cube),
+        _ => Err(format!("Unknown modulation transform {}", value)),
+    }
+}
+
+/// Parse filter type from i32
+pub fn filter_type_from_i32(value: i32) -> PatchLoaderResult<FilterType> {
+    match value {
+        0 => Ok(FilterType::LowPass),
+        1 => Ok(FilterType::LowShelf),
+        2 => Ok(FilterType::Peaking),
+        3 => Ok(FilterType::HighShelf),
+        4 => Ok(FilterType::Notch),
+        5 => Ok(FilterType::HighPass),
+        6 => Ok(FilterType::Ladder),
+        7 => Ok(FilterType::Comb),
+        8 => Ok(FilterType::BandPass),
+        _ => Err(format!("Unknown filter type {}", value)),
+    }
 }
 
 /// Find the first node ID of a specific type in the voice layout

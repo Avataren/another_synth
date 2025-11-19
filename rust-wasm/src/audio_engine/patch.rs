@@ -1,3 +1,8 @@
+#![cfg_attr(
+    not(any(feature = "native-host", all(feature = "wasm", target_arch = "wasm32"))),
+    allow(dead_code)
+)]
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};

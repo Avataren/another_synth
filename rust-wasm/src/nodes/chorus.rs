@@ -14,7 +14,6 @@ const MAX_MIX: f32 = 1.0;
 
 use crate::graph::ModulationSource; // Assuming these paths are correct for your project
 use crate::traits::{AudioNode, PortId};
-use serde::{Deserialize, Serialize};
 
 const SIMD_WIDTH: usize = 4; // web wasm guaranteed supported
 
