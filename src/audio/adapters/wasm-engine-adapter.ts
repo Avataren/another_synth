@@ -355,8 +355,35 @@ export class WasmEngineAdapter {
     this.requireEngine().import_sample(nodeId, audioData);
   }
 
-  importImpulseResponse(effectId: string, audioData: Uint8Array): void {
-    this.requireEngine().import_wave_impulse(effectId, audioData);
+  importImpulseResponse(effectId: string | number, audioData: Uint8Array): void {
+    // Handle both string UUIDs and numeric IDs
+    const id = typeof effectId === 'number' ? effectId : effectId;
+    this.requireEngine().import_wave_impulse(id, audioData);
+  }
+
+  importWavetable(nodeId: string, audioData: Uint8Array, tableSize: number): void {
+    this.requireEngine().import_wavetable(nodeId, audioData, tableSize);
+  }
+
+  // ========================================================================
+  // Node Management
+  // ========================================================================
+
+  deleteNode(nodeId: string): void {
+    this.requireEngine().delete_node(nodeId);
+  }
+
+  // ========================================================================
+  // Performance Monitoring
+  // ========================================================================
+
+  getCpuUsage(): number {
+    try {
+      return this.requireEngine().get_cpu_usage();
+    } catch (error) {
+      console.warn('[WasmEngineAdapter] Failed to get CPU usage:', error);
+      return 0;
+    }
   }
 
   // ========================================================================

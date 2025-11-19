@@ -501,11 +501,13 @@ handler.sendFireAndForget(
 - [x] Create WASM engine adapter
 - [x] Create message handler
 
-### Phase 2: Update Worklet (Pending)
-- [ ] Replace direct WASM imports with `WasmEngineAdapter`
-- [ ] Replace manual type conversions with `wasm-type-adapter`
-- [ ] Add `operationResponse` messages for all mutations
-- [ ] Extract message handlers into separate classes
+### Phase 2: Update Worklet (✅ Foundation Complete, Migration In Progress)
+- [x] Create `WasmEngineAdapter` with all required WASM methods
+- [x] Create message handler classes (`worklet-message-handlers.ts`)
+- [x] Create `WorkletHandlerRegistry` for routing messages
+- [ ] Migrate worklet to use `WasmEngineAdapter` (incremental)
+- [ ] Replace manual type conversions with `wasm-type-adapter` (incremental)
+- [ ] Add `operationResponse` messages for all mutations (incremental)
 
 ### Phase 3: Update Instrument Class (Pending)
 - [ ] Replace manual promise handling with `WorkletMessageHandler`
@@ -599,16 +601,56 @@ The message handler preserves custom timeout values through the initialization q
 
 **Why this matters**: Without timeout preservation, a caller requesting a 30-second timeout for a large patch load could time out at 5 seconds if the message was queued during initialization, leading to confusing failures.
 
+### Worklet Handler Architecture
+The worklet message handling has been refactored from a 30+ case switch statement into modular handler classes:
+
+**Handler Registry** (`src/audio/worklets/handlers/worklet-message-handlers.ts`):
+- `BaseMessageHandler` - Base class with automatic error handling and response sending
+- Individual handlers for each message type (EnvelopeHandler, OscillatorHandler, etc.)
+- `WorkletHandlerRegistry` - Central router that dispatches messages to appropriate handlers
+- All handlers use `WasmEngineAdapter` instead of direct WASM imports
+- Automatic `operationResponse` sending for all operations
+
+**Benefits**:
+- Each handler is testable in isolation
+- Clear separation of concerns
+- Type-safe message handling
+- Consistent error handling across all operations
+- Easy to add new handlers
+
+**Incremental Migration Strategy**:
+The worklet can be migrated incrementally without breaking existing functionality:
+1. Keep existing switch statement handlers working
+2. Add handler registry as parallel system
+3. Migrate one message type at a time to use registry
+4. Test each migration independently
+5. Remove old handler when registry version is confirmed working
+
+**Example Migration**:
+```typescript
+// OLD: Direct WASM call in switch statement
+case 'updateEnvelope':
+  this.audioEngine!.update_envelope(data.envelopeId, data.config);
+  break;
+
+// NEW: Routed through handler registry
+case 'updateEnvelope':
+  await this.handlerRegistry.route(event.data);
+  // Handler automatically sends operationResponse
+  break;
+```
+
 ## Files Changed/Added
 
-### New Files:
-- `src/audio/types/worklet-messages.ts` - Message protocol
-- `src/audio/adapters/wasm-type-adapter.ts` - Type conversions
-- `src/audio/adapters/wasm-engine-adapter.ts` - WASM wrapper
-- `src/audio/adapters/message-handler.ts` - Request/response handler
+### New Files (Phase 1 & 2):
+- `src/audio/types/worklet-messages.ts` - Message protocol (442 lines)
+- `src/audio/adapters/wasm-type-adapter.ts` - Type conversions (395 lines)
+- `src/audio/adapters/wasm-engine-adapter.ts` - WASM wrapper (450+ lines)
+- `src/audio/adapters/message-handler.ts` - Request/response handler (376 lines)
+- `src/audio/worklets/handlers/worklet-message-handlers.ts` - Worklet message handlers (485 lines)
 
-### Files Needing Updates:
-- `src/audio/worklets/synth-worklet.ts` - Use adapters, add responses
-- `src/audio/instrument.ts` - Use message handler
-- `src/stores/audio-system-store.ts` - Simplify, remove mutations
-- `src/audio/types/synth-layout.ts` - Remove duplicate conversions
+### Files Needing Updates (Phase 2-4):
+- `src/audio/worklets/synth-worklet.ts` - Migrate to handler registry (incremental)
+- `src/audio/instrument.ts` - Use message handler (Phase 3)
+- `src/stores/audio-system-store.ts` - Simplify, remove mutations (Phase 4)
+- `src/audio/types/synth-layout.ts` - Remove duplicate conversions (Phase 4)
