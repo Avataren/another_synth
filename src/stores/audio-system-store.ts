@@ -42,6 +42,7 @@ import type {
   AudioAsset,
   PatchMetadata,
 } from 'src/audio/types/preset-types';
+import { createDefaultPatchMetadata } from 'src/audio/types/preset-types';
 import {
   serializeCurrentPatch,
   deserializePatch,
@@ -636,6 +637,47 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       return false;
     },
 
+    async createNewPatchFromTemplate(name: string): Promise<Patch | null> {
+      const targetName = name?.trim() || 'New Patch';
+      const template = await this.fetchDefaultPatchTemplate();
+
+      if (template) {
+        const patchInstance = clonePatch(template);
+        const newMetadata = createDefaultPatchMetadata(targetName);
+        patchInstance.metadata = {
+          ...patchInstance.metadata,
+          ...newMetadata,
+          name: targetName,
+        };
+
+        const applied = await this.applyPatchObject(patchInstance);
+        if (applied) {
+          if (this.currentBank) {
+            this.currentBank = addPatchToBank(this.currentBank, patchInstance);
+          } else {
+            this.currentBank = createBank('Default Bank', [patchInstance]);
+          }
+          this.currentPatchId = patchInstance.metadata.id;
+          console.log(
+            `New patch "${patchInstance.metadata.name}" created from default template`,
+          );
+          return patchInstance;
+        }
+
+        console.warn(
+          'Failed to apply default patch template; falling back to baseline new patch flow',
+        );
+      }
+
+      const prepared = await this.prepareStateForNewPatch();
+      if (!prepared) {
+        console.warn('Unable to prepare synth state for new patch');
+        return null;
+      }
+
+      return await this.saveCurrentPatch(targetName);
+    },
+
     applyTemplateToCurrentLayout(template: Patch): boolean {
       if (!this.synthLayout) {
         console.warn('Cannot apply template: synth layout missing');
@@ -723,20 +765,13 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         return;
       }
 
-      const prepared = await this.prepareStateForNewPatch();
-      if (!prepared) {
-        console.warn('Default patch template was not applied; using baseline state');
-      }
-      const patch = await this.saveCurrentPatch('New Patch');
+      const patch = await this.createNewPatchFromTemplate('New Patch');
       if (!patch) {
         console.error('Failed to create initial patch during startup');
         return;
       }
 
-      console.log(
-        'Initial patch created from default template:',
-        patch.metadata.id,
-      );
+      console.log('Initial patch created:', patch.metadata.id);
     },
 
     // Helper method to check if connection exists

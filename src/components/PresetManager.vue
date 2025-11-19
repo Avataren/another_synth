@@ -296,9 +296,7 @@ const handleSavePatch = async () => {
 
 const handleNewPatch = async () => {
   try {
-    await store.prepareStateForNewPatch();
-
-    const patch = await store.saveCurrentPatch('New Patch');
+    const patch = await store.createNewPatchFromTemplate('New Patch');
     if (patch) {
       notify({
         type: 'positive',

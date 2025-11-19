@@ -236,3 +236,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - During boot the Pinia audio store now calls `loadSystemBankIfPresent()` before falling back to `initializeNewPatchSession`.
 - This routine fetches `${import.meta.env.BASE_URL}system-bank.json`. If the file exists and passes `importBankFromJSON` validation, its first patch is applied immediately and `currentBank` is replaced with the parsed bank.
 - Missing/empty/invalid `system-bank.json` simply returns `false`, so the existing default patch creation flow still runs and creates the baseline bank.
+
+## Default patch template for new patches
+
+- The store now exposes `createNewPatchFromTemplate(name)` which is used both by the “New Patch” button and by `initializeNewPatchSession`.
+- When `public/default-patch.json` exists it clones that patch, assigns fresh metadata (`createDefaultPatchMetadata`), applies it to the synth, and inserts it into the current bank as the new patch.
+- If the default file is missing or fails validation the method falls back to the older `prepareStateForNewPatch` + `saveCurrentPatch` path so the user still gets a blank patch rather than an error.
