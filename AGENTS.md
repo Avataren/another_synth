@@ -640,6 +640,29 @@ case 'updateEnvelope':
   break;
 ```
 
+### Critical Bug Fixes in WasmEngineAdapter
+During Phase 2 development, code review identified critical API mismatches in the initial `WasmEngineAdapter` implementation. These have been **fixed**:
+
+**Issues Found & Resolved**:
+1. **Oscillator Updates** - Was passing plain objects where WASM expects `AnalogOscillatorStateUpdate` class instances
+   - **Fix**: Now constructs `new AnalogOscillatorStateUpdate(...)` with all required positional args
+
+2. **Envelope Updates** - Was passing object where WASM expects 8 positional arguments
+   - **Fix**: Now calls `update_envelope(id, attack, decay, sustain, release, attackCurve, decayCurve, releaseCurve, active)`
+
+3. **LFO Updates** - Was passing array of plain objects where WASM expects single `WasmLfoUpdateParams` instance
+   - **Fix**: Now constructs `new WasmLfoUpdateParams(...)` with all 12 positional args
+
+4. **Noise Updates** - Was passing plain object where WASM expects `NoiseUpdateParams` instance
+   - **Fix**: Now constructs `new NoiseUpdateParams(type, cutoff, gain, enabled)`
+
+5. **Effect Updates** - Chorus, Reverb, Delay were passing objects where WASM expects positional arguments
+   - **Fix**: Now calls with positional args (e.g., `update_chorus(nodeId, active, baseDelayMs, depthMs, ...)`)
+
+**Impact**: Without these fixes, all node update operations routed through the adapter would have thrown type errors at runtime. The adapter now correctly matches the actual WASM API surface.
+
+**Methodology**: Fixed by examining the existing worklet code to understand the correct WASM API, then updating the adapter to construct proper WASM class instances and call methods with correct signatures.
+
 ## Files Changed/Added
 
 ### New Files (Phase 1 & 2):

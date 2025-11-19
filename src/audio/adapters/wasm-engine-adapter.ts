@@ -15,8 +15,8 @@
 import type {
   AudioEngine,
   AutomationAdapter,
-  AnalogOscillatorStateUpdate,
-  WasmLfoUpdateParams,
+  AnalogOscillatorStateUpdate as AnalogOscillatorStateUpdateType,
+  WasmLfoUpdateParams as WasmLfoUpdateParamsType,
   EnvelopeUpdateParams,
 } from 'app/public/wasm/audio_processor';
 import {
@@ -25,6 +25,10 @@ import {
   type ModulationTransformation,
   initSync,
   AutomationAdapter as WasmAutomationAdapter,
+  AnalogOscillatorStateUpdate,
+  WasmLfoUpdateParams,
+  NoiseUpdateParams,
+  type Waveform,
 } from 'app/public/wasm/audio_processor';
 import { AudioEngine as WasmAudioEngine } from 'app/public/wasm/audio_processor';
 import type { EnvelopeConfig, FilterState } from '../types/synth-layout';
@@ -224,29 +228,102 @@ export class WasmEngineAdapter {
   // Node Updates
   // ========================================================================
 
-  updateOscillator(oscillatorId: string, state: AnalogOscillatorStateUpdate): void {
-    const sanitized = sanitizeForWasm(state as Record<string, unknown>);
-    this.requireEngine().update_oscillator(oscillatorId, sanitized as AnalogOscillatorStateUpdate);
+  updateOscillator(oscillatorId: string, state: {
+    phase_mod_amount?: number;
+    detune?: number;
+    hard_sync?: boolean;
+    gain: number;
+    active: boolean;
+    feedback_amount?: number;
+    waveform: number;
+    unison_voices?: number;
+    spread?: number;
+  }): void {
+    // Create WASM AnalogOscillatorStateUpdate instance
+    const oscUpdate = new AnalogOscillatorStateUpdate(
+      state.phase_mod_amount ?? 0,
+      state.detune ?? 0,
+      state.hard_sync ?? false,
+      validateFiniteNumber(state.gain, 'gain'),
+      Boolean(state.active),
+      state.feedback_amount ?? 0,
+      state.waveform as Waveform,
+      state.unison_voices ?? 1,
+      state.spread ?? 0
+    );
+    this.requireEngine().update_oscillator(oscillatorId, oscUpdate);
   }
 
-  updateWavetableOscillator(oscillatorId: string, state: AnalogOscillatorStateUpdate): void {
-    const sanitized = sanitizeForWasm(state as Record<string, unknown>);
-    this.requireEngine().update_wavetable_oscillator(oscillatorId, sanitized as AnalogOscillatorStateUpdate);
+  updateWavetableOscillator(oscillatorId: string, state: {
+    phase_mod_amount?: number;
+    detune?: number;
+    hard_sync?: boolean;
+    gain: number;
+    active: boolean;
+    feedback_amount?: number;
+    waveform: number;
+    unison_voices?: number;
+    spread?: number;
+  }): void {
+    // Create WASM AnalogOscillatorStateUpdate instance
+    const oscUpdate = new AnalogOscillatorStateUpdate(
+      state.phase_mod_amount ?? 0,
+      state.detune ?? 0,
+      state.hard_sync ?? false,
+      validateFiniteNumber(state.gain, 'gain'),
+      Boolean(state.active),
+      state.feedback_amount ?? 0,
+      state.waveform as Waveform,
+      state.unison_voices ?? 1,
+      state.spread ?? 0
+    );
+    this.requireEngine().update_wavetable_oscillator(oscillatorId, oscUpdate);
   }
 
   updateEnvelope(envelopeId: string, config: EnvelopeConfig): void {
-    const params: EnvelopeUpdateParams = {
-      attack: validateFiniteNumber(config.attack, 'attack'),
-      decay: validateFiniteNumber(config.decay, 'decay'),
-      sustain: validateFiniteNumber(config.sustain, 'sustain'),
-      release: validateFiniteNumber(config.release, 'release'),
-      active: Boolean(config.active),
-    };
-    this.requireEngine().update_envelope(envelopeId, params);
+    // WASM API takes 8 positional arguments
+    this.requireEngine().update_envelope(
+      envelopeId,
+      validateFiniteNumber(config.attack, 'attack'),
+      validateFiniteNumber(config.decay, 'decay'),
+      validateFiniteNumber(config.sustain, 'sustain'),
+      validateFiniteNumber(config.release, 'release'),
+      config.attackCurve ?? 0,
+      config.decayCurve ?? 0,
+      config.releaseCurve ?? 0,
+      Boolean(config.active)
+    );
   }
 
-  updateLfos(params: WasmLfoUpdateParams[]): void {
-    this.requireEngine().update_lfos(params);
+  updateLfos(lfoId: string, params: {
+    frequency: number;
+    phaseOffset?: number;
+    waveform: number;
+    useAbsolute?: boolean;
+    useNormalized?: boolean;
+    triggerMode?: number;
+    gain: number;
+    active: boolean;
+    loopMode?: number;
+    loopStart?: number;
+    loopEnd?: number;
+  }): void {
+    // Create WASM WasmLfoUpdateParams instance
+    const lfoParams = new WasmLfoUpdateParams(
+      lfoId,
+      validateFiniteNumber(params.frequency, 'frequency'),
+      params.phaseOffset ?? 0,
+      params.waveform,
+      params.useAbsolute ?? false,
+      params.useNormalized ?? false,
+      params.triggerMode ?? 0,
+      validateFiniteNumber(params.gain, 'gain'),
+      Boolean(params.active),
+      params.loopMode ?? 0,
+      params.loopStart ?? 0,
+      params.loopEnd ?? 1
+    );
+    this.requireEngine().update_lfos(lfoParams);
   }
 
   updateFilter(filterId: string, state: FilterState): void {
@@ -269,11 +346,23 @@ export class WasmEngineAdapter {
     this.requireEngine().update_sampler(samplerId, sanitized);
   }
 
-  updateNoise(noiseId: string, params: { active: boolean; gain: number; noise_type: number }): void {
-    this.requireEngine().update_noise(noiseId, params);
+  updateNoise(noiseId: string, params: {
+    noise_type: number;
+    cutoff?: number;
+    gain: number;
+    enabled: boolean;
+  }): void {
+    // Create WASM NoiseUpdateParams instance
+    const noiseParams = new NoiseUpdateParams(
+      params.noise_type,
+      params.cutoff ?? 20000,
+      validateFiniteNumber(params.gain, 'gain'),
+      Boolean(params.enabled)
+    );
+    this.requireEngine().update_noise(noiseId, noiseParams);
   }
 
-  updateChorus(chorusId: string, params: {
+  updateChorus(chorusId: string | number, params: {
     base_delay_ms: number;
     depth_ms: number;
     lfo_rate_hz: number;
@@ -283,10 +372,26 @@ export class WasmEngineAdapter {
     stereo_phase_offset_deg: number;
     active: boolean;
   }): void {
-    this.requireEngine().update_chorus(chorusId, params);
+    // WASM API takes positional arguments
+    const nodeId = typeof chorusId === 'string' ? Number(chorusId) : chorusId;
+    if (!Number.isFinite(nodeId)) {
+      throw new Error(`Invalid chorus node ID: ${chorusId}`);
+    }
+
+    this.requireEngine().update_chorus(
+      nodeId,
+      Boolean(params.active),
+      validateFiniteNumber(params.base_delay_ms, 'base_delay_ms'),
+      validateFiniteNumber(params.depth_ms, 'depth_ms'),
+      validateFiniteNumber(params.lfo_rate_hz, 'lfo_rate_hz'),
+      validateFiniteNumber(params.feedback, 'feedback'),
+      validateFiniteNumber(params.feedback_filter, 'feedback_filter'),
+      validateFiniteNumber(params.mix, 'mix'),
+      validateFiniteNumber(params.stereo_phase_offset_deg, 'stereo_phase_offset_deg')
+    );
   }
 
-  updateReverb(reverbId: string, params: {
+  updateReverb(reverbId: string | number, params: {
     room_size: number;
     damp: number;
     wet: number;
@@ -294,20 +399,46 @@ export class WasmEngineAdapter {
     width: number;
     active: boolean;
   }): void {
-    this.requireEngine().update_reverb(reverbId, params);
+    // WASM API takes positional arguments
+    const nodeId = typeof reverbId === 'string' ? Number(reverbId) : reverbId;
+    if (!Number.isFinite(nodeId)) {
+      throw new Error(`Invalid reverb node ID: ${reverbId}`);
+    }
+
+    this.requireEngine().update_reverb(
+      nodeId,
+      Boolean(params.active),
+      validateFiniteNumber(params.room_size, 'room_size'),
+      validateFiniteNumber(params.damp, 'damp'),
+      validateFiniteNumber(params.wet, 'wet'),
+      validateFiniteNumber(params.dry, 'dry'),
+      validateFiniteNumber(params.width, 'width')
+    );
   }
 
   updateConvolver(convolverId: string, wetMix: number, active: boolean): void {
     this.requireEngine().update_convolver(convolverId, wetMix, active);
   }
 
-  updateDelay(delayId: string, params: {
+  updateDelay(delayId: string | number, params: {
     delay_ms: number;
     feedback: number;
     wet_mix: number;
     active: boolean;
   }): void {
-    this.requireEngine().update_delay(delayId, params);
+    // WASM API takes positional arguments
+    const nodeId = typeof delayId === 'string' ? Number(delayId) : delayId;
+    if (!Number.isFinite(nodeId)) {
+      throw new Error(`Invalid delay node ID: ${delayId}`);
+    }
+
+    this.requireEngine().update_delay(
+      nodeId,
+      validateFiniteNumber(params.delay_ms, 'delay_ms'),
+      validateFiniteNumber(params.feedback, 'feedback'),
+      validateFiniteNumber(params.wet_mix, 'wet_mix'),
+      Boolean(params.active)
+    );
   }
 
   updateVelocity(voiceIndex: number, velocity: number): void {
