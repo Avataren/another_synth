@@ -1169,6 +1169,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         loopEnd: loopEndNorm * sampleLength,
         rootNote: state.rootNote,
         triggerMode: state.triggerMode,
+        active: state.active,
       };
     },
 

@@ -16,16 +16,31 @@ use crate::{AudioNode, PortId};
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WavetableOscillatorStateUpdate {
+    #[cfg_attr(feature = "wasm", wasm_bindgen(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub phase_mod_amount: f32,
+    #[serde(default)]
+    pub freq_mod_amount: f32,
+    #[serde(default)]
+    pub detune_oct: f32,
+    #[serde(default)]
+    pub detune_semi: f32,
+    #[serde(default)]
+    pub detune_cents: f32,
     pub detune: f32,
     pub hard_sync: bool,
     pub gain: f32,
     pub active: bool,
     pub feedback_amount: f32,
+    #[serde(default)]
+    pub waveform: u32,
     pub unison_voices: u32,
     pub spread: f32,
+    #[serde(default)]
+    #[serde(rename = "wave_index")]
     pub wavetable_index: f32,
 }
 
@@ -45,12 +60,18 @@ impl WavetableOscillatorStateUpdate {
         wavetable_index: f32,
     ) -> Self {
         Self {
+            id: None,
             phase_mod_amount,
+            freq_mod_amount: 0.0,
+            detune_oct: 0.0,
+            detune_semi: 0.0,
+            detune_cents: 0.0,
             detune,
             hard_sync,
             gain,
             active,
             feedback_amount,
+            waveform: 0,
             unison_voices,
             spread,
             wavetable_index,

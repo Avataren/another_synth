@@ -390,6 +390,58 @@ export class AnalogOscillatorStateUpdate {
     /**
      * @returns {number}
      */
+    get freq_mod_amount() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set freq_mod_amount(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune_oct() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune_oct(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune_oct(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_detune_oct(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune_semi() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune_semi(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune_semi(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_detune_semi(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune_cents() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune_cents(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune_cents(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_detune_cents(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
     get detune() {
         const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune(this.__wbg_ptr);
         return ret;
@@ -490,6 +542,19 @@ export class AnalogOscillatorStateUpdate {
      */
     set spread(arg0) {
         wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get wave_index() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_wave_index(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set wave_index(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_wave_index(this.__wbg_ptr, arg0);
     }
     /**
      * @param {number} phase_mod_amount
@@ -836,11 +901,12 @@ export class AudioEngine {
      * @param {number} loop_end
      * @param {number} root_note
      * @param {number} trigger_mode
+     * @param {boolean} active
      */
-    update_sampler(sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note, trigger_mode) {
+    update_sampler(sampler_id, frequency, gain, loop_mode, loop_start, loop_end, root_note, trigger_mode, active) {
         const ptr0 = passStringToWasm0(sampler_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.audioengine_update_sampler(this.__wbg_ptr, ptr0, len0, frequency, gain, loop_mode, loop_start, loop_end, root_note, trigger_mode);
+        const ret = wasm.audioengine_update_sampler(this.__wbg_ptr, ptr0, len0, frequency, gain, loop_mode, loop_start, loop_end, root_note, trigger_mode, active);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -1535,79 +1601,79 @@ export class EnvelopeConfig {
      * @returns {number}
      */
     get decay() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set decay(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
     get sustain() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_sustain(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set sustain(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_detune(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_sustain(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
     get release() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_gain(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_release(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set release(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_gain(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
     get attack_curve() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_feedback_amount(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set attack_curve(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_feedback_amount(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
     get decay_curve() {
-        const ret = wasm.__wbg_get_envelopeconfig_decay_curve(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set decay_curve(arg0) {
-        wasm.__wbg_set_envelopeconfig_decay_curve(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
     get release_curve() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_spread(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune_oct(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set release_curve(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_analogoscillatorstateupdate_detune_oct(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
@@ -1687,14 +1753,14 @@ export class NoiseUpdate {
      * @returns {number}
      */
     get gain() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set gain(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {boolean}
@@ -1771,14 +1837,14 @@ export class NoiseUpdateParams {
      * @returns {number}
      */
     get gain() {
-        const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_decay(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set gain(arg0) {
-        wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_decay(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {boolean}
@@ -1923,27 +1989,79 @@ export class WavetableOscillatorStateUpdate {
      * @returns {number}
      */
     get phase_mod_amount() {
-        const ret = wasm.__wbg_get_envelopeconfig_attack(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_envelopeconfig_release(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
     set phase_mod_amount(arg0) {
-        wasm.__wbg_set_envelopeconfig_attack(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_envelopeconfig_release(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
-    get detune() {
+    get freq_mod_amount() {
         const ret = wasm.__wbg_get_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
-    set detune(arg0) {
+    set freq_mod_amount(arg0) {
         wasm.__wbg_set_analogoscillatorstateupdate_phase_mod_amount(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune_oct() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune_oct(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_freq_mod_amount(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune_semi() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune_oct(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune_semi(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_detune_oct(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune_cents() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune_semi(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune_cents(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_detune_semi(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get detune() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_detune_cents(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set detune(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_detune_cents(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {boolean}
@@ -2000,41 +2118,54 @@ export class WavetableOscillatorStateUpdate {
     /**
      * @returns {number}
      */
+    get waveform() {
+        const ret = wasm.__wbg_get_wavetableoscillatorstateupdate_waveform(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set waveform(arg0) {
+        wasm.__wbg_set_wavetableoscillatorstateupdate_waveform(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
     get unison_voices() {
-        const ret = wasm.__wbg_get_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_unison_voices(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
      * @param {number} arg0
      */
     set unison_voices(arg0) {
-        wasm.__wbg_set_wavetableoscillatorstateupdate_unison_voices(this.__wbg_ptr, arg0);
+        wasm.__wbg_set_analogoscillatorstateupdate_unison_voices(this.__wbg_ptr, arg0);
     }
     /**
      * @returns {number}
      */
     get spread() {
-        const ret = wasm.__wbg_get_envelopeconfig_decay_curve(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @param {number} arg0
-     */
-    set spread(arg0) {
-        wasm.__wbg_set_envelopeconfig_decay_curve(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @returns {number}
-     */
-    get wavetable_index() {
         const ret = wasm.__wbg_get_analogoscillatorstateupdate_spread(this.__wbg_ptr);
         return ret;
     }
     /**
      * @param {number} arg0
      */
-    set wavetable_index(arg0) {
+    set spread(arg0) {
         wasm.__wbg_set_analogoscillatorstateupdate_spread(this.__wbg_ptr, arg0);
+    }
+    /**
+     * @returns {number}
+     */
+    get wavetable_index() {
+        const ret = wasm.__wbg_get_analogoscillatorstateupdate_wave_index(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} arg0
+     */
+    set wavetable_index(arg0) {
+        wasm.__wbg_set_analogoscillatorstateupdate_wave_index(this.__wbg_ptr, arg0);
     }
     /**
      * @param {number} phase_mod_amount

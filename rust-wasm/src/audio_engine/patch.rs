@@ -129,6 +129,8 @@ pub struct FilterState {
     pub filter_type: i32,
     #[serde(rename = "filter_slope")]
     pub filter_slope: FilterSlope,
+    #[serde(default)]
+    pub active: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -142,10 +144,20 @@ pub struct SamplerState {
     pub loop_start: f32,
     #[serde(rename = "loopEnd")]
     pub loop_end: f32,
+    #[serde(rename = "sampleLength", default)]
+    pub sample_length: f32,
     #[serde(rename = "rootNote")]
     pub root_note: f32,
     #[serde(rename = "triggerMode")]
     pub trigger_mode: u8,
+    #[serde(default)]
+    pub active: bool,
+    #[serde(rename = "sampleRate", default)]
+    pub sample_rate: f32,
+    #[serde(default)]
+    pub channels: u32,
+    #[serde(rename = "fileName", default)]
+    pub file_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

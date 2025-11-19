@@ -44,10 +44,21 @@ use super::{Waveform, WavetableBank};
 // Public state‑update struct
 // ------------------------------------------------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub struct AnalogOscillatorStateUpdate {
+    #[cfg_attr(feature = "wasm", wasm_bindgen(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub phase_mod_amount: f32,
+    #[serde(default)]
+    pub freq_mod_amount: f32,
+    #[serde(default)]
+    pub detune_oct: f32,
+    #[serde(default)]
+    pub detune_semi: f32,
+    #[serde(default)]
+    pub detune_cents: f32,
     pub detune: f32, // Base detune offset in cents
     pub hard_sync: bool,
     pub gain: f32,
@@ -56,6 +67,8 @@ pub struct AnalogOscillatorStateUpdate {
     pub waveform: Waveform,
     pub unison_voices: u32,
     pub spread: f32, // Total width in cents (peak‑to‑peak)
+    #[serde(default)]
+    pub wave_index: f32,
 }
 
 #[cfg(feature = "wasm")]
@@ -74,7 +87,12 @@ impl AnalogOscillatorStateUpdate {
         spread: f32,
     ) -> Self {
         Self {
+            id: None,
             phase_mod_amount,
+            freq_mod_amount: 0.0,
+            detune_oct: 0.0,
+            detune_semi: 0.0,
+            detune_cents: 0.0,
             detune,
             hard_sync,
             gain,
@@ -83,6 +101,7 @@ impl AnalogOscillatorStateUpdate {
             waveform,
             unison_voices,
             spread,
+            wave_index: 0.0,
         }
     }
 }

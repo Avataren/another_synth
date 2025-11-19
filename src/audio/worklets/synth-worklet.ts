@@ -109,6 +109,7 @@ interface SamplerUpdateData {
     loopEnd: number;
     rootNote: number;
     triggerMode: number;
+    active: boolean;
   };
 }
 
@@ -385,6 +386,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.state.loopEnd,
         data.state.rootNote,
         data.state.triggerMode,
+        data.state.active,
       );
     } catch (err) {
       console.error('Error updating sampler:', err);

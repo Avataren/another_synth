@@ -1606,6 +1606,7 @@ impl AudioEngine {
         loop_end: f32,
         root_note: f32,
         trigger_mode: u8,
+        active: bool,
     ) -> Result<(), JsValue> {
         let loop_mode = match loop_mode {
             0 => SamplerLoopMode::Off,
@@ -1634,6 +1635,7 @@ impl AudioEngine {
                     sampler.set_loop_end(loop_end);
                     sampler.set_root_note(root_note);
                     sampler.set_trigger_mode(trigger_mode);
+                    sampler.set_active(active);
                 } else {
                     return Err(JsValue::from_str("Node is not a Sampler"));
                 }
@@ -2315,6 +2317,7 @@ impl AudioEngine {
                 sampler.loop_end,
                 sampler.root_note,
                 sampler.trigger_mode,
+                sampler.active,
             )?;
         }
 

@@ -18,10 +18,12 @@ use crate::traits::{AudioNode, PortId};
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub enum FilterSlope {
-    Db12,
-    Db24,
+    Db12 = 0,
+    Db24 = 1,
 }
 
 #[inline(always)]

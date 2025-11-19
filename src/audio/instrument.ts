@@ -34,6 +34,7 @@ interface SamplerUpdatePayload {
   loopEnd: number;
   rootNote: number;
   triggerMode: SamplerTriggerMode;
+  active: boolean;
 }
 
 // interface ConnectionUpdateMessage {
