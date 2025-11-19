@@ -509,11 +509,14 @@ handler.sendFireAndForget(
 - [ ] Replace manual type conversions with `wasm-type-adapter` (incremental)
 - [ ] Add `operationResponse` messages for all mutations (incremental)
 
-### Phase 3: Update Instrument Class (Pending)
-- [ ] Replace manual promise handling with `WorkletMessageHandler`
-- [ ] Remove duplicate state storage
-- [ ] Make all methods return Promises
-- [ ] Add comprehensive error handling
+### Phase 3: Update Instrument Class (✅ Complete)
+- [x] Create InstrumentV2 with `WorkletMessageHandler` integration
+- [x] Remove duplicate state storage (no more synthLayout in Instrument)
+- [x] Make all mutation methods return Promises
+- [x] Add comprehensive error handling with timeouts
+- [x] Add compatibility methods for backward compatibility
+- [x] Integrate InstrumentV2 into audio-system-store
+- [x] Update audio-asset-extractor to use InstrumentV2
 
 ### Phase 4: Refactor Store (Pending)
 - [ ] Split into focused stores (PatchStore, NodeStateStore, ConnectionStore, AssetStore)
@@ -663,17 +666,102 @@ During Phase 2 development, code review identified critical API mismatches in th
 
 **Methodology**: Fixed by examining the existing worklet code to understand the correct WASM API, then updating the adapter to construct proper WASM class instances and call methods with correct signatures.
 
+### Phase 3: Instrument Class Refactoring
+
+**Overview**: The original `Instrument` class has been completely refactored into `InstrumentV2` as a drop-in replacement that uses the new architecture components.
+
+**Problems with Original Instrument**:
+- 1000 lines with 34 public methods
+- Only 2 methods returned Promises (updateEnvelopeState, and async data exports)
+- 32+ methods used fire-and-forget postMessage() with no error handling
+- Stored duplicate synthLayout state locally
+- Manual Promise construction with event listeners for each async operation
+- No timeout handling except for a few hardcoded 2-5 second timeouts
+- No operation queuing during initialization
+
+**InstrumentV2 Improvements**:
+1. **WorkletMessageHandler Integration**:
+   - All mutation operations now return Promises via message handler
+   - Automatic timeout handling (10s default, 30s for large operations like patch loading)
+   - Automatic queuing during initialization with timeout preservation
+   - Comprehensive error handling at every layer
+
+2. **Single Source of Truth**:
+   - Removed duplicate `synthLayout` storage
+   - WASM is the authoritative source for all audio state
+   - `updateLayout()` method is now a no-op for compatibility
+
+3. **Promise-Based Operations**:
+   - `loadPatch()`: Now returns `Promise<void>` with 30s timeout
+   - `deleteNode()`: Now returns `Promise<void>`
+   - `createNode()`: Now returns `Promise<{ nodeId: string; nodeType: string }>`
+   - All update methods (updateEnvelope, updateOscillator, etc.): Now return `Promise<void>`
+   - `updateConnection()`: Now returns `Promise<void>`
+
+4. **Fire-and-Forget Only Where Appropriate**:
+   - MIDI operations (`noteOn`, `noteOff`) remain fire-and-forget for low latency
+   - Asset imports (wavetable, sample, impulse data) remain fire-and-forget for large transfers
+   - Everything else uses Promise-based operations
+
+5. **Backward Compatibility**:
+   - Added compatibility aliases: `note_on()` → `noteOn()`, `note_off()` → `noteOff()`
+   - Added all missing methods from original Instrument:
+     - `getWasmNodeConnections()` - Get layout from WASM
+     - `getEnvelopePreview()` - Preview envelope shape
+     - `getFilterResponse()` - Alias to `getFilterIRWaveform()`
+     - `getLfoWaveform()` - Get LFO waveform preview
+     - `updateArpeggiatorPattern()` - Update arpeggiator pattern
+     - `updateArpeggiatorStepDuration()` - Update arpeggiator timing
+     - `remove_specific_connection()` - Remove specific connection
+     - `updateWavetable()` - No-op, deprecated in favor of `importWavetableData()`
+     - `updateLayout()` - No-op, no longer stores layout
+
+6. **Export Method Compatibility**:
+   - `exportSamplerData()`: Returns `{ samples: Float32Array, sampleRate, channels, rootNote }` matching original
+   - `exportConvolverData()`: Returns `{ samples: Float32Array, sampleRate, channels }` matching original
+
+**Integration into Application**:
+- Updated `audio-system-store.ts` to use `InstrumentV2` instead of `Instrument`
+- Updated import: `import InstrumentV2 from 'src/audio/instrument-v2'`
+- Updated type annotation: `currentInstrument: null as InstrumentV2 | null`
+- Updated instantiation: `new InstrumentV2(destination, audioContext, memory)`
+- Made `loadPatch()` call async with `await`
+- Removed `updateLayout()` call (no longer needed)
+- Updated `audio-asset-extractor.ts` to use `InstrumentV2` type
+
+**File**: `src/audio/instrument-v2.ts` (600+ lines)
+
+**Benefits**:
+- All operations now have proper error handling
+- Timeout handling prevents hanging operations
+- Promise-based API makes async control flow explicit
+- No duplicate state storage
+- Drop-in replacement - existing code continues to work
+- Foundation for future improvements (testing, retry logic, better error recovery)
+
 ## Files Changed/Added
 
-### New Files (Phase 1 & 2):
+### New Files (Phases 1-3):
 - `src/audio/types/worklet-messages.ts` - Message protocol (442 lines)
 - `src/audio/adapters/wasm-type-adapter.ts` - Type conversions (395 lines)
 - `src/audio/adapters/wasm-engine-adapter.ts` - WASM wrapper (450+ lines)
 - `src/audio/adapters/message-handler.ts` - Request/response handler (376 lines)
 - `src/audio/worklets/handlers/worklet-message-handlers.ts` - Worklet message handlers (485 lines)
+- `src/audio/instrument-v2.ts` - Refactored Instrument class (600+ lines)
 
-### Files Needing Updates (Phase 2-4):
-- `src/audio/worklets/synth-worklet.ts` - Migrate to handler registry (incremental)
-- `src/audio/instrument.ts` - Use message handler (Phase 3)
+### Modified Files (Phase 3):
+- `src/stores/audio-system-store.ts` - Updated to use InstrumentV2
+  - Line 4: Import changed to `import InstrumentV2 from 'src/audio/instrument-v2'`
+  - Line 153: Type changed to `currentInstrument: null as InstrumentV2 | null`
+  - Line 2043: Instantiation changed to `new InstrumentV2(...)`
+  - Line 544: Made `loadPatch()` async with `await`
+  - Line 549-550: Removed `updateLayout()` call (replaced with comment explaining why)
+- `src/audio/serialization/audio-asset-extractor.ts` - Updated type imports
+  - Line 5: Import changed to `import type InstrumentV2 from '../instrument-v2'`
+  - Lines 12, 51, 93: Function signatures updated to use `InstrumentV2` type
+
+### Files Needing Updates (Phase 4):
+- `src/audio/worklets/synth-worklet.ts` - Migrate to handler registry (Phase 2, incremental)
 - `src/stores/audio-system-store.ts` - Simplify, remove mutations (Phase 4)
 - `src/audio/types/synth-layout.ts` - Remove duplicate conversions (Phase 4)
+- Components using Instrument - May need to handle new Promise returns (as needed)

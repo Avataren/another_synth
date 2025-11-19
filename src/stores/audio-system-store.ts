@@ -1,7 +1,7 @@
 // src/stores/audioSystem.ts
 import { defineStore } from 'pinia';
 import AudioSystem from 'src/audio/AudioSystem';
-import Instrument from 'src/audio/instrument';
+import InstrumentV2 from 'src/audio/instrument-v2';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import type {
   ChorusState,
@@ -150,7 +150,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
   state: () => ({
     audioSystem: null as AudioSystem | null,
     destinationNode: null as AudioNode | null,
-    currentInstrument: null as Instrument | null,
+    currentInstrument: null as InstrumentV2 | null,
     synthLayout: null as SynthLayout | null,
     syncManager: null as AudioSyncManager | null,
     // State maps using node IDs from the layout
@@ -541,16 +541,13 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
         // Send the patch to WASM FIRST, before we modify any state
         // This ensures we're sending the original patch object with plain objects, not Maps
-        this.currentInstrument?.loadPatch(patch);
+        await this.currentInstrument?.loadPatch(patch);
 
         // Update the layout from the patch (this processes connections and nodes)
         this.updateSynthLayout(deserialized.layout);
 
-        // Update the instrument's layout immediately so watchers can find nodes
-        // The worklet will send back the authoritative layout which will override this
-        if (this.synthLayout && this.currentInstrument) {
-          this.currentInstrument.updateLayout(this.synthLayout);
-        }
+        // Note: InstrumentV2 doesn't have updateLayout() - it doesn't store layout locally
+        // WASM is the single source of truth for layout
 
         // Update all state maps from the patch
         this.oscillatorStates = deserialized.oscillators;
@@ -2040,7 +2037,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     },
     async setupAudio() {
       if (this.audioSystem) {
-        this.currentInstrument = new Instrument(
+        this.currentInstrument = new InstrumentV2(
           this.audioSystem.destinationNode,
           this.audioSystem.audioContext,
           this.wasmMemory,
