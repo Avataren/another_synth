@@ -15,15 +15,84 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde::de::{self, Visitor};
+use std::fmt;
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub enum FilterSlope {
     Db12 = 0,
     Db24 = 1,
+}
+
+impl<'de> Deserialize<'de> for FilterSlope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct FilterSlopeVisitor;
+
+        impl<'de> Visitor<'de> for FilterSlopeVisitor {
+            type Value = FilterSlope;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a filter slope as 0/1 or \"Db12\"/\"Db24\"")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    0 => Ok(FilterSlope::Db12),
+                    1 => Ok(FilterSlope::Db24),
+                    other => Err(E::custom(format!(
+                        "invalid filter_slope code {}, expected 0 or 1",
+                        other
+                    ))),
+                }
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value < 0 {
+                    return Err(E::custom(format!(
+                        "invalid negative filter_slope code {}",
+                        value
+                    )));
+                }
+                self.visit_u64(value as u64)
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let normalized = value.trim().to_ascii_lowercase();
+                match normalized.as_str() {
+                    "db12" => Ok(FilterSlope::Db12),
+                    "db24" => Ok(FilterSlope::Db24),
+                    other => Err(E::custom(format!(
+                        "invalid filter_slope '{}', expected \"Db12\", \"Db24\" or 0/1",
+                        other
+                    ))),
+                }
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                self.visit_str(&value)
+            }
+        }
+
+        deserializer.deserialize_any(FilterSlopeVisitor)
+    }
 }
 
 #[inline(always)]

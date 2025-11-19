@@ -5,7 +5,9 @@ use rustfft::{num_complex::Complex, FftPlanner};
 use wasm_bindgen::prelude::*;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::console;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde::de::{self, Visitor};
+use std::fmt;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 fn log_console(message: &str) {
@@ -17,13 +19,87 @@ fn log_console(_message: &str) {}
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Serialize)]
 pub enum Waveform {
     Sine = 0,
     Triangle = 1,
     Saw = 2,
     Square = 3,
     Custom = 4,
+}
+
+impl<'de> Deserialize<'de> for Waveform {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct WaveformVisitor;
+
+        impl<'de> Visitor<'de> for WaveformVisitor {
+            type Value = Waveform;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a waveform as an integer 0-4 or a string name")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    0 => Ok(Waveform::Sine),
+                    1 => Ok(Waveform::Triangle),
+                    2 => Ok(Waveform::Saw),
+                    3 => Ok(Waveform::Square),
+                    4 => Ok(Waveform::Custom),
+                    other => Err(E::custom(format!(
+                        "invalid waveform code {}, expected 0-4",
+                        other
+                    ))),
+                }
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value < 0 {
+                    return Err(E::custom(format!(
+                        "invalid negative waveform code {}",
+                        value
+                    )));
+                }
+                self.visit_u64(value as u64)
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let normalized = value.trim().to_ascii_lowercase();
+                match normalized.as_str() {
+                    "sine" => Ok(Waveform::Sine),
+                    "triangle" => Ok(Waveform::Triangle),
+                    "saw" | "sawtooth" => Ok(Waveform::Saw),
+                    "square" => Ok(Waveform::Square),
+                    "custom" => Ok(Waveform::Custom),
+                    other => Err(E::custom(format!(
+                        "invalid waveform '{}', expected one of sine, triangle, saw, square, custom or 0-4",
+                        other
+                    ))),
+                }
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                self.visit_str(&value)
+            }
+        }
+
+        deserializer.deserialize_any(WaveformVisitor)
+    }
 }
 
 /// A single wavetable: time–domain samples plus the “top frequency” (Hz) that table can safely cover.

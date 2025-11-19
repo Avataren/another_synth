@@ -279,4 +279,16 @@ mod tests {
         assert_eq!(from_node, osc_id, "The connection should come from the original oscillator's ID.");
         assert_eq!(port, PortId::AudioInput0, "The connection should go to the mixer's audio input.");
     }
+
+    #[test]
+    fn test_real_patch_json_parses() {
+        use crate::audio_engine::patch::PatchFile;
+        use std::fs;
+
+        let json = fs::read_to_string("tests/real_patch.json")
+            .expect("failed to read real_patch.json");
+
+        let parsed: Result<PatchFile, serde_json::Error> = serde_json::from_str(&json);
+        assert!(parsed.is_ok(), "serde_json failed to parse real_patch.json: {:?}", parsed.err());
+    }
 }

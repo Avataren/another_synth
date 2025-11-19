@@ -30,9 +30,13 @@ pub struct EnvelopeConfig {
     pub decay: f32,   // Time in seconds
     pub sustain: f32, // Level (0.0 to 1.0)
     pub release: f32, // Time in seconds
+    #[serde(rename = "attackCurve")]
     pub attack_curve: f32,
+    #[serde(rename = "decayCurve")]
     pub decay_curve: f32,
+    #[serde(rename = "releaseCurve")]
     pub release_curve: f32,
+    #[serde(default)]
     pub attack_smoothing_samples: usize, // Number of samples for smoothing start of attack
     pub active: bool,                    // Whether the node is active (used by graph)
 }
