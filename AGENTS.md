@@ -731,13 +731,23 @@ During Phase 2 development, code review identified critical API mismatches in th
 
 **File**: `src/audio/instrument-v2.ts` (600+ lines)
 
+**Important Correction (Post Code Review)**:
+After code review, InstrumentV2 was updated to work with the **current** worklet implementation:
+- Most operations are now **fire-and-forget** (not Promise-based) because the worklet doesn't send `operationResponse` yet
+- Only envelope updates and data exports return Promises (worklet already supports these)
+- Fixed message type mismatches:
+  - `updateConvolver` → `updateConvolverState`
+  - `updateDelay` → `updateDelayState`
+  - `exportSamplerData` → `exportSampleData`
+- When Phase 2 (worklet migration) is complete, more operations will become Promise-based
+
 **Benefits**:
-- All operations now have proper error handling
-- Timeout handling prevents hanging operations
-- Promise-based API makes async control flow explicit
+- Works correctly with current worklet (no timeouts)
+- Uses correct message types that worklet expects
+- Envelope updates have proper Promise-based error handling (worklet supports it)
 - No duplicate state storage
 - Drop-in replacement - existing code continues to work
-- Foundation for future improvements (testing, retry logic, better error recovery)
+- Foundation ready for Phase 2 migration to full Promise-based operations
 
 ## Files Changed/Added
 
