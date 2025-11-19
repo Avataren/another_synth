@@ -59,6 +59,11 @@ pub struct SynthState {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Layout {
+    #[serde(default, rename = "voiceCount")]
+    pub voice_count: Option<usize>,
+    #[serde(default, rename = "canonicalVoice")]
+    pub canonical_voice: Option<VoiceLayout>,
+    #[serde(default)]
     pub voices: Vec<VoiceLayout>,
 }
 
@@ -69,6 +74,36 @@ pub struct VoiceLayout {
     pub nodes: HashMap<String, Vec<PatchNode>>,
     #[serde(default)]
     pub connections: Vec<PatchConnection>,
+}
+
+impl Layout {
+    /// Returns the declared voice count, falling back to legacy serialized voices
+    /// or to 1 if we have a canonical voice but no explicit count.
+    pub fn resolved_voice_count(&self) -> usize {
+        if let Some(count) = self.voice_count {
+            if count > 0 {
+                return count;
+            }
+        }
+
+        if !self.voices.is_empty() {
+            return self.voices.len();
+        }
+
+        if self.canonical_voice.is_some() {
+            return 1;
+        }
+
+        0
+    }
+
+    /// Returns the canonical voice layout, falling back to the first legacy voice.
+    pub fn canonical_voice(&self) -> Option<&VoiceLayout> {
+        if let Some(ref canonical) = self.canonical_voice {
+            return Some(canonical);
+        }
+        self.voices.first()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

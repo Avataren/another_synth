@@ -26,6 +26,7 @@ import {
   FilterSlope,
   SamplerLoopMode,
   SamplerTriggerMode,
+  cloneVoiceLayout,
 } from 'src/audio/types/synth-layout';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import {
@@ -1051,6 +1052,14 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         }
         return voice;
       });
+
+      layoutClone.voiceCount =
+        layoutClone.voiceCount ?? layoutClone.voices.length;
+      if (layoutClone.voices[0]) {
+        layoutClone.canonicalVoice = cloneVoiceLayout(
+          layoutClone.voices[0]!,
+        );
+      }
 
       // Use the canonical voice (assumed to be voices[0]) as our reference
       const canonicalVoice = layoutClone.voices[0];

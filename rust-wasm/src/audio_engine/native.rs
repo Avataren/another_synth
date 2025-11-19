@@ -8,8 +8,9 @@ use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::WavetableSynthBank;
 use crate::nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Convolver, Delay, Envelope,
-    EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, Glide, Lfo, Limiter, Mixer, Waveform,
-    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate, GateMixer, GlobalFrequencyNode, GlobalVelocityNode,
+    EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
+    GlobalVelocityNode, Lfo, Limiter, Mixer, Waveform, WavetableBank, WavetableOscillator,
+    WavetableOscillatorStateUpdate,
 };
 //NoiseGenerator, NoiseUpdate,
 use crate::traits::{AudioNode, PortId};
@@ -188,7 +189,8 @@ impl AudioEngine {
         let patch: PatchFile = serde_json::from_str(patch_json)
             .map_err(|e| format!("Failed to parse patch JSON: {}", e))?;
 
-        let voice_count = patch.synth_state.layout.voices.len();
+        let layout = &patch.synth_state.layout;
+        let voice_count = layout.resolved_voice_count();
         if voice_count == 0 {
             return Err("Patch contains no voices".to_string());
         }
@@ -213,11 +215,8 @@ impl AudioEngine {
         // self.add_plate_reverb(2.0, 0.6, self.sample_rate)?;
         // self.add_limiter()?;
 
-        let canonical_voice = patch
-            .synth_state
-            .layout
-            .voices
-            .first()
+        let canonical_voice = layout
+            .canonical_voice()
             .ok_or_else(|| "Patch layout missing voice data".to_string())?;
 
         self.build_nodes_from_canonical_voice(canonical_voice)?;
@@ -227,7 +226,10 @@ impl AudioEngine {
         Ok(voice_count)
     }
 
-    fn build_nodes_from_canonical_voice(&mut self, canonical_voice: &PatchVoiceLayout) -> Result<(), String> {
+    fn build_nodes_from_canonical_voice(
+        &mut self,
+        canonical_voice: &PatchVoiceLayout,
+    ) -> Result<(), String> {
         // Use the same creation order as wasm to ensure consistency
         for node_type in NODE_CREATION_ORDER {
             if let Some(nodes) = canonical_voice.nodes.get(node_type) {
@@ -259,7 +261,11 @@ impl AudioEngine {
         Ok(())
     }
 
-    fn create_node_from_type(&self, node_type: &str, _id: &NodeId) -> Result<Box<dyn AudioNode>, String> {
+    fn create_node_from_type(
+        &self,
+        node_type: &str,
+        _id: &NodeId,
+    ) -> Result<Box<dyn AudioNode>, String> {
         match node_type {
             "oscillator" => Ok(Box::new(AnalogOscillator::new(
                 self.sample_rate,
@@ -271,7 +277,10 @@ impl AudioEngine {
                 self.wavetable_synthbank.clone(),
             ))),
             "filter" => Ok(Box::new(FilterCollection::new(self.sample_rate))),
-            "envelope" => Ok(Box::new(Envelope::new(self.sample_rate, Default::default()))),
+            "envelope" => Ok(Box::new(Envelope::new(
+                self.sample_rate,
+                Default::default(),
+            ))),
             "mixer" => Ok(Box::new(Mixer::new())),
             "lfo" => Ok(Box::new(Lfo::new(self.sample_rate))),
             "global_frequency" => Ok(Box::new(GlobalFrequencyNode::new(440.0, self.block_size))),
@@ -288,14 +297,25 @@ impl AudioEngine {
         }
     }
 
-    fn connect_from_canonical_voice(&mut self, canonical_voice: &PatchVoiceLayout) -> Result<(), String> {
+    fn connect_from_canonical_voice(
+        &mut self,
+        canonical_voice: &PatchVoiceLayout,
+    ) -> Result<(), String> {
         for conn_data in &canonical_voice.connections {
             let from_node = parse_node_id(&conn_data.from_id)?;
             let to_node = parse_node_id(&conn_data.to_id)?;
 
             for voice in &mut self.voices {
-                let from_port = voice.graph.nodes.get(&from_node)
-                    .and_then(|n| n.get_ports().iter().find(|(_, &is_output)| is_output).map(|(p, _)| *p))
+                let from_port = voice
+                    .graph
+                    .nodes
+                    .get(&from_node)
+                    .and_then(|n| {
+                        n.get_ports()
+                            .iter()
+                            .find(|(_, &is_output)| is_output)
+                            .map(|(p, _)| *p)
+                    })
                     .unwrap_or(PortId::AudioOutput0);
 
                 let connection = Connection {
@@ -305,7 +325,9 @@ impl AudioEngine {
                     to_port: PortId::from_u32(conn_data.target),
                     amount: conn_data.amount,
                     modulation_type: ModulationType::from_i32(conn_data.modulation_type),
-                    modulation_transform: ModulationTransformation::from_i32(conn_data.modulation_transform),
+                    modulation_transform: ModulationTransformation::from_i32(
+                        conn_data.modulation_transform,
+                    ),
                 };
                 voice.graph.add_connection(connection);
             }
@@ -313,7 +335,11 @@ impl AudioEngine {
         Ok(())
     }
 
-    fn apply_patch_states(&mut self, patch: &PatchFile, _canonical_voice: &PatchVoiceLayout) -> Result<(), String> {
+    fn apply_patch_states(
+        &mut self,
+        patch: &PatchFile,
+        _canonical_voice: &PatchVoiceLayout,
+    ) -> Result<(), String> {
         for (id, params) in &patch.synth_state.oscillators {
             let node_id = parse_node_id(id)?;
             self.update_oscillator(node_id, params)?;
@@ -324,12 +350,21 @@ impl AudioEngine {
         }
         for (id, config) in &patch.synth_state.envelopes {
             let node_id = parse_node_id(id)?;
-            self.update_envelope(node_id, config.attack, config.decay, config.sustain, config.release, config.attack_curve, config.decay_curve, config.release_curve, config.active)?;
+            self.update_envelope(
+                node_id,
+                config.attack,
+                config.decay,
+                config.sustain,
+                config.release,
+                config.attack_curve,
+                config.decay_curve,
+                config.release_curve,
+                config.active,
+            )?;
         }
         // ... and so on for other state types (LFOs, filters, etc.)
         Ok(())
     }
-
 
     pub fn process_audio(
         &mut self,
@@ -528,11 +563,14 @@ impl AudioEngine {
     pub fn create_oscillator(&mut self) -> Result<usize, String> {
         let osc_id = NodeId::new();
         for voice in &mut self.voices {
-            voice.graph.add_node_with_id(osc_id, Box::new(AnalogOscillator::new(
-                self.sample_rate,
-                Waveform::Sine,
-                self.wavetable_banks.clone(),
-            )));
+            voice.graph.add_node_with_id(
+                osc_id,
+                Box::new(AnalogOscillator::new(
+                    self.sample_rate,
+                    Waveform::Sine,
+                    self.wavetable_banks.clone(),
+                )),
+            );
         }
         Ok(osc_id.0.as_u128() as usize)
     }
@@ -540,10 +578,13 @@ impl AudioEngine {
     pub fn create_wavetable_oscillator(&mut self) -> Result<usize, String> {
         let osc_id = NodeId::new();
         for voice in &mut self.voices {
-            voice.graph.add_node_with_id(osc_id, Box::new(WavetableOscillator::new(
-                self.sample_rate,
-                self.wavetable_synthbank.clone(),
-            )));
+            voice.graph.add_node_with_id(
+                osc_id,
+                Box::new(WavetableOscillator::new(
+                    self.sample_rate,
+                    self.wavetable_synthbank.clone(),
+                )),
+            );
         }
         Ok(osc_id.0.as_u128() as usize)
     }
@@ -562,10 +603,10 @@ impl AudioEngine {
     pub fn create_envelope(&mut self) -> Result<usize, String> {
         let envelope_id = NodeId::new();
         for voice in &mut self.voices {
-            voice.graph.add_node_with_id(envelope_id, Box::new(Envelope::new(
-                self.sample_rate,
-                EnvelopeConfig::default(),
-            )));
+            voice.graph.add_node_with_id(
+                envelope_id,
+                Box::new(Envelope::new(self.sample_rate, EnvelopeConfig::default())),
+            );
         }
         Ok(envelope_id.0.as_u128() as usize)
     }
@@ -583,10 +624,9 @@ impl AudioEngine {
     pub fn create_filter(&mut self) -> Result<usize, String> {
         let filter_id = NodeId::new();
         for voice in &mut self.voices {
-            voice.graph.add_node_with_id(
-                filter_id,
-                Box::new(FilterCollection::new(self.sample_rate)),
-            );
+            voice
+                .graph
+                .add_node_with_id(filter_id, Box::new(FilterCollection::new(self.sample_rate)));
         }
         Ok(filter_id.0.as_u128() as usize)
     }
@@ -619,9 +659,11 @@ impl AudioEngine {
                 .ok_or_else(|| "GlobalFrequencyNode not found in voice graph".to_string())?;
 
             // Remove the direct GlobalFrequency -> target connection, if present.
-            voice
-                .graph
-                .remove_specific_connection(global_freq_id, target_node_id, PortId::GlobalFrequency);
+            voice.graph.remove_specific_connection(
+                global_freq_id,
+                target_node_id,
+                PortId::GlobalFrequency,
+            );
 
             // Connect GlobalFrequency -> Glide input.
             voice.graph.add_connection(Connection {
@@ -788,7 +830,10 @@ impl AudioEngine {
         filter_slope: FilterSlope,
     ) -> Result<(), String> {
         for voice in &mut self.voices {
-            if let Some(node) = voice.graph.get_node_mut(NodeId(Uuid::from_u128(filter_id as u128))) {
+            if let Some(node) = voice
+                .graph
+                .get_node_mut(NodeId(Uuid::from_u128(filter_id as u128)))
+            {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
                     filter.set_filter_slope(filter_slope);

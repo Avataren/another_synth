@@ -8,152 +8,151 @@
   },
   "synthState": {
     "layout": {
-      "voices": [
-        {
-          "id": 0,
-          "nodes": {
-            "oscillator": [
-              {
-                "id": "e3957b9b-9e2d-5999-bc84-93c4cd9d31b5",
-                "type": "oscillator",
-                "name": "Analog Oscillator"
-              }
-            ],
-            "wavetable_oscillator": [],
-            "filter": [
-              {
-                "id": "8386fae9-f426-ef65-070f-781e0245c2a7",
-                "type": "filter",
-                "name": "Filter Collection"
-              }
-            ],
-            "envelope": [
-              {
-                "id": "3b88a2cf-675e-6673-d3e0-54418114ccd4",
-                "type": "envelope",
-                "name": "Envelope"
-              }
-            ],
-            "lfo": [],
-            "mixer": [
-              {
-                "id": "df0c45a1-7fa5-09f7-df2e-67db8eccdb70",
-                "type": "mixer",
-                "name": "Mixer"
-              }
-            ],
-            "noise": [],
-            "sampler": [],
-            "global_frequency": [
-              {
-                "id": "3e30d147-9ec0-88e3-adcf-4e63b2c4335c",
-                "type": "global_frequency",
-                "name": "Global Frequency"
-              }
-            ],
-            "global_velocity": [
-              {
-                "id": "95e01dd6-1e0c-7be4-7da6-a62126369f90",
-                "type": "global_velocity",
-                "name": "Global Velocity"
-              }
-            ],
-            "convolver": [
-              {
-                "id": "10003",
-                "type": "convolver",
-                "name": "Convolver"
-              }
-            ],
-            "delay": [
-              {
-                "id": "10001",
-                "type": "delay",
-                "name": "Delay"
-              }
-            ],
-            "gatemixer": [
-              {
-                "id": "4801ae48-7e21-1830-164c-ed2c815d7d05",
-                "type": "gatemixer",
-                "name": "Gate Mixer"
-              }
-            ],
-            "arpeggiator_generator": [],
-            "chorus": [
-              {
-                "id": "10000",
-                "type": "chorus",
-                "name": "Chorus"
-              }
-            ],
-            "limiter": [
-              {
-                "id": "10004",
-                "type": "limiter",
-                "name": "Limiter"
-              }
-            ],
-            "freeverb": [
-              {
-                "id": "10002",
-                "type": "freeverb",
-                "name": "Reverb"
-              }
-            ]
-          },
-          "connections": [
+      "canonicalVoice": {
+        "id": 0,
+        "nodes": {
+          "oscillator": [
             {
-              "fromId": "8386fae9-f426-ef65-070f-781e0245c2a7",
-              "toId": "df0c45a1-7fa5-09f7-df2e-67db8eccdb70",
-              "target": 0,
-              "amount": 1,
-              "modulationTransformation": 0,
-              "modulationType": 2
-            },
+              "id": "e3957b9b-9e2d-5999-bc84-93c4cd9d31b5",
+              "type": "oscillator",
+              "name": "Analog Oscillator"
+            }
+          ],
+          "wavetable_oscillator": [],
+          "filter": [
             {
-              "fromId": "3b88a2cf-675e-6673-d3e0-54418114ccd4",
-              "toId": "df0c45a1-7fa5-09f7-df2e-67db8eccdb70",
-              "target": 17,
-              "amount": 1,
-              "modulationTransformation": 0,
-              "modulationType": 0
-            },
+              "id": "8386fae9-f426-ef65-070f-781e0245c2a7",
+              "type": "filter",
+              "name": "Filter Collection"
+            }
+          ],
+          "envelope": [
             {
-              "fromId": "4801ae48-7e21-1830-164c-ed2c815d7d05",
-              "toId": "3b88a2cf-675e-6673-d3e0-54418114ccd4",
-              "target": 26,
-              "amount": 1,
-              "modulationTransformation": 0,
-              "modulationType": 2
-            },
+              "id": "3b88a2cf-675e-6673-d3e0-54418114ccd4",
+              "type": "envelope",
+              "name": "Envelope"
+            }
+          ],
+          "lfo": [],
+          "mixer": [
             {
-              "fromId": "e3957b9b-9e2d-5999-bc84-93c4cd9d31b5",
-              "toId": "8386fae9-f426-ef65-070f-781e0245c2a7",
-              "target": 0,
-              "amount": 1,
-              "modulationTransformation": 0,
-              "modulationType": 2
-            },
+              "id": "df0c45a1-7fa5-09f7-df2e-67db8eccdb70",
+              "type": "mixer",
+              "name": "Mixer"
+            }
+          ],
+          "noise": [],
+          "sampler": [],
+          "global_frequency": [
             {
-              "fromId": "3e30d147-9ec0-88e3-adcf-4e63b2c4335c",
-              "toId": "e3957b9b-9e2d-5999-bc84-93c4cd9d31b5",
-              "target": 9,
-              "amount": 1,
-              "modulationTransformation": 0,
-              "modulationType": 2
-            },
+              "id": "3e30d147-9ec0-88e3-adcf-4e63b2c4335c",
+              "type": "global_frequency",
+              "name": "Global Frequency"
+            }
+          ],
+          "global_velocity": [
             {
-              "fromId": "3e30d147-9ec0-88e3-adcf-4e63b2c4335c",
-              "toId": "8386fae9-f426-ef65-070f-781e0245c2a7",
-              "target": 9,
-              "amount": 1,
-              "modulationTransformation": 0,
-              "modulationType": 2
+              "id": "95e01dd6-1e0c-7be4-7da6-a62126369f90",
+              "type": "global_velocity",
+              "name": "Global Velocity"
+            }
+          ],
+          "convolver": [
+            {
+              "id": "10003",
+              "type": "convolver",
+              "name": "Convolver"
+            }
+          ],
+          "delay": [
+            {
+              "id": "10001",
+              "type": "delay",
+              "name": "Delay"
+            }
+          ],
+          "gatemixer": [
+            {
+              "id": "4801ae48-7e21-1830-164c-ed2c815d7d05",
+              "type": "gatemixer",
+              "name": "Gate Mixer"
+            }
+          ],
+          "arpeggiator_generator": [],
+          "chorus": [
+            {
+              "id": "10000",
+              "type": "chorus",
+              "name": "Chorus"
+            }
+          ],
+          "limiter": [
+            {
+              "id": "10004",
+              "type": "limiter",
+              "name": "Limiter"
+            }
+          ],
+          "freeverb": [
+            {
+              "id": "10002",
+              "type": "freeverb",
+              "name": "Reverb"
             }
           ]
-        }
-      ]
+        },
+        "connections": [
+          {
+            "fromId": "8386fae9-f426-ef65-070f-781e0245c2a7",
+            "toId": "df0c45a1-7fa5-09f7-df2e-67db8eccdb70",
+            "target": 0,
+            "amount": 1,
+            "modulationTransformation": 0,
+            "modulationType": 2
+          },
+          {
+            "fromId": "3b88a2cf-675e-6673-d3e0-54418114ccd4",
+            "toId": "df0c45a1-7fa5-09f7-df2e-67db8eccdb70",
+            "target": 17,
+            "amount": 1,
+            "modulationTransformation": 0,
+            "modulationType": 0
+          },
+          {
+            "fromId": "4801ae48-7e21-1830-164c-ed2c815d7d05",
+            "toId": "3b88a2cf-675e-6673-d3e0-54418114ccd4",
+            "target": 26,
+            "amount": 1,
+            "modulationTransformation": 0,
+            "modulationType": 2
+          },
+          {
+            "fromId": "e3957b9b-9e2d-5999-bc84-93c4cd9d31b5",
+            "toId": "8386fae9-f426-ef65-070f-781e0245c2a7",
+            "target": 0,
+            "amount": 1,
+            "modulationTransformation": 0,
+            "modulationType": 2
+          },
+          {
+            "fromId": "3e30d147-9ec0-88e3-adcf-4e63b2c4335c",
+            "toId": "e3957b9b-9e2d-5999-bc84-93c4cd9d31b5",
+            "target": 9,
+            "amount": 1,
+            "modulationTransformation": 0,
+            "modulationType": 2
+          },
+          {
+            "fromId": "3e30d147-9ec0-88e3-adcf-4e63b2c4335c",
+            "toId": "8386fae9-f426-ef65-070f-781e0245c2a7",
+            "target": 9,
+            "amount": 1,
+            "modulationTransformation": 0,
+            "modulationType": 2
+          }
+        ]
+      },
+      "voiceCount": 1
     },
     "oscillators": {
       "e3957b9b-9e2d-5999-bc84-93c4cd9d31b5": {

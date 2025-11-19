@@ -214,3 +214,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - Is there a `GateMixer` node and a `CombinedGate` connection into the envelope?
   - Does the patch layout for voice 0 contain the expected `gatemixer → envelope` connection with `target: 26`?
 - Host builds that enable the `wasm` feature still compile the crate for non-`wasm32` targets, so `audio_engine::mod` now exposes stub `WasmNoiseType`/`WasmModulationType` enums for that configuration. Keep those shims so `automation.rs` and other shared modules continue to compile in host toolchains.
+
+## New discovery: Patch layout now canonical + voice count
+
+- `rust-wasm/src/audio_engine/patch.rs` `Layout` carries `voiceCount` + `canonicalVoice` plus helper methods (`resolved_voice_count`, `canonical_voice`) so loaders no longer inspect `voices.len()`. Always use those helpers so both native + wasm stay aligned.
+- TypeScript patch serialization now converts runtime layouts into `{ voiceCount, canonicalVoice }` via `synthLayoutToPatchLayout` and expands them back with `patchLayoutToSynthLayout`. The UI `SynthLayout` still keeps a per-voice array for editing, but patches only persist the canonical voice to avoid duplication.
+- Frontend store (`audio-system-store`) keeps `voiceCount` + `canonicalVoice` copies in `this.synthLayout` so saving patches preserves the configured polyphony even though only one voice layout is serialized.

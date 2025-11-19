@@ -11,8 +11,13 @@ import {
   PRESET_SCHEMA_VERSION,
 } from '../types/preset-types';
 import type OscillatorState from '../models/OscillatorState';
+import {
+  patchLayoutToSynthLayout,
+  synthLayoutToPatchLayout,
+} from '../types/synth-layout';
 import type {
   SynthLayout,
+  PatchLayout,
   FilterState,
   EnvelopeConfig,
   LfoState,
@@ -56,8 +61,9 @@ export function serializeCurrentPatch(
     : createDefaultPatchMetadata(name);
 
   // Convert Maps to Records for JSON serialization
+  const layoutForPatch = synthLayoutToPatchLayout(layout);
   const synthState: SynthState = {
-    layout,
+    layout: layoutForPatch,
     oscillators: mapToRecord(oscillators),
     wavetableOscillators: mapToRecord(wavetableOscillators),
     filters: mapToRecord(filters),
@@ -109,9 +115,10 @@ export interface DeserializedPatch {
 }
 
 export function deserializePatch(patch: Patch): DeserializedPatch {
+  const layout = patchLayoutToSynthLayout(patch.synthState.layout);
   const result: DeserializedPatch = {
     metadata: patch.metadata,
-    layout: patch.synthState.layout,
+    layout,
     oscillators: recordToMap(patch.synthState.oscillators),
     wavetableOscillators: recordToMap(patch.synthState.wavetableOscillators),
     filters: recordToMap(patch.synthState.filters),
@@ -173,10 +180,26 @@ export function validatePatch(patch: unknown): ValidationResult {
     if (!p.synthState.layout) {
       errors.push('Missing synthState.layout');
     } else {
-      if (!Array.isArray(p.synthState.layout.voices)) {
-        errors.push('synthState.layout.voices must be an array');
+      const layout = p.synthState.layout as PatchLayout;
+      const hasCanonicalVoice =
+        !!layout.canonicalVoice && typeof layout.canonicalVoice === 'object';
+      const hasVoiceArray = Array.isArray(layout.voices);
+
+      if (!hasCanonicalVoice && !hasVoiceArray) {
+        errors.push(
+          'synthState.layout must include canonicalVoice or a voices array',
+        );
       }
-      if (!p.synthState.layout.globalNodes) {
+
+      const voiceCountValue = layout.voiceCount;
+      if (
+        voiceCountValue !== undefined &&
+        (typeof voiceCountValue !== 'number' || voiceCountValue < 1)
+      ) {
+        errors.push('synthState.layout.voiceCount must be a positive number');
+      }
+
+      if (!layout.globalNodes) {
         errors.push('Missing synthState.layout.globalNodes');
       }
     }

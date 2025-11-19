@@ -243,23 +243,107 @@ export interface GlobalNodes {
 }
 
 // The complete synth layout
+export interface LayoutMetadata {
+  maxVoices: number;
+  maxOscillators: number;
+  maxEnvelopes: number;
+  maxLFOs: number;
+  maxFilters: number;
+  stateVersion: number;
+}
+
 export interface SynthLayout {
   voices: VoiceLayout[];
   globalNodes: GlobalNodes;
-  metadata?: {
-    maxVoices: number;
-    maxOscillators: number;
-    maxEnvelopes: number;
-    maxLFOs: number;
-    maxFilters: number;
-    stateVersion: number;
-  };
+  metadata?: LayoutMetadata | undefined;
+  voiceCount?: number;
+  canonicalVoice?: VoiceLayout;
+}
+
+export interface PatchLayout {
+  voiceCount?: number;
+  canonicalVoice?: VoiceLayout;
+  voices?: VoiceLayout[];
+  globalNodes?: GlobalNodes;
+  metadata?: LayoutMetadata | undefined;
 }
 
 export type LayoutUpdateMessage = {
   type: 'synthLayout';
   layout: SynthLayout;
 };
+
+const deepClone = <T>(value: T): T => {
+  if (value === undefined) {
+    return value;
+  }
+  return JSON.parse(JSON.stringify(value));
+};
+
+const cloneGlobalNodes = (globalNodes?: GlobalNodes): GlobalNodes => {
+  if (!globalNodes) {
+    return {};
+  }
+  return deepClone(globalNodes);
+};
+
+export const cloneVoiceLayout = (voice: VoiceLayout): VoiceLayout =>
+  deepClone(voice);
+
+export function synthLayoutToPatchLayout(layout: SynthLayout): PatchLayout {
+  if (!layout.voices || layout.voices.length === 0) {
+    throw new Error('Synth layout must contain at least one voice');
+  }
+
+  const canonicalSource = layout.canonicalVoice ?? layout.voices[0]!;
+
+  return {
+    voiceCount: layout.voiceCount ?? layout.voices.length,
+    canonicalVoice: cloneVoiceLayout(canonicalSource),
+    globalNodes: cloneGlobalNodes(layout.globalNodes),
+    metadata: layout.metadata ? { ...layout.metadata } : undefined,
+  };
+}
+
+export function patchLayoutToSynthLayout(layout: PatchLayout): SynthLayout {
+  const canonicalSource =
+    layout.canonicalVoice ??
+    (layout.voices && layout.voices.length > 0 ? layout.voices[0] : undefined);
+
+  if (!canonicalSource) {
+    throw new Error('Patch layout missing canonical voice definition');
+  }
+
+  const canonicalVoice = cloneVoiceLayout(canonicalSource);
+  const fallbackCount = layout.voices?.length ?? 1;
+  const resolvedVoiceCount = Math.max(
+    1,
+    layout.voiceCount && layout.voiceCount > 0
+      ? layout.voiceCount
+      : fallbackCount,
+  );
+
+  const voices =
+    layout.voices && layout.voices.length > 0
+      ? layout.voices.map((voice, index) => {
+          const clone = cloneVoiceLayout(voice);
+          clone.id = index;
+          return clone;
+        })
+      : Array.from({ length: resolvedVoiceCount }, (_, index) => {
+          const clone = cloneVoiceLayout(canonicalVoice);
+          clone.id = index;
+          return clone;
+        });
+
+  return {
+    voices,
+    globalNodes: cloneGlobalNodes(layout.globalNodes),
+    metadata: layout.metadata ? { ...layout.metadata } : undefined,
+    voiceCount: resolvedVoiceCount,
+    canonicalVoice,
+  };
+}
 
 // Helper functions
 export const getNodesOfType = (

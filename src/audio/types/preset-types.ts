@@ -1,7 +1,7 @@
 // src/audio/types/preset-types.ts
 import type OscillatorState from '../models/OscillatorState';
 import type {
-  SynthLayout,
+  PatchLayout,
   FilterState,
   EnvelopeConfig,
   LfoState,
@@ -76,7 +76,7 @@ export interface PatchMetadata {
  */
 export interface SynthState {
   /** Synth layout with voices and connections */
-  layout: SynthLayout;
+  layout: PatchLayout;
 
   /** Oscillator states by node ID */
   oscillators: Record<string, OscillatorState>;
@@ -212,6 +212,7 @@ export function createDefaultBankMetadata(name: string): BankMetadata {
 export function createEmptySynthState(): SynthState {
   return {
     layout: {
+      voiceCount: 0,
       voices: [],
       globalNodes: {},
     },
