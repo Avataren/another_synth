@@ -187,6 +187,20 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - On WASM: use the detailed logging in `AudioEngine::init_with_patch` for serde errors and sampler connections.
   - On native: `init_with_patch` uses the same `PatchFile` structs; prefer aligning changes with the WASM implementation.
 
+### New discovery: graph clearing and gate buffer aliasing
+
+- `AudioGraph::clear` must **not** reset the entire `AudioBufferPool` with `release_all()` while voices/macros are alive.
+  - Doing so made the dedicated `gate_buffer_idx` and macro buffers “available” again, so subsequent `add_node_with_id` calls could re-use those indices for node ports.
+  - This caused `graph.set_gate` to write into a buffer that was then immediately cleared at the start of `process_audio_with_macros`, effectively zeroing the global gate signal and leaving envelopes/mixer gain at 0 (silence) after a patch load.
+- The fix is to have `AudioGraph::clear`:
+  - Explicitly `release` only node-owned and temp buffers (`node_buffers`, `temp_buffer_indices`).
+  - Leave `gate_buffer_idx` and macro buffers untouched so they remain dedicated.
+  - Clear graph structures (`nodes`, `connections`, `input_connections`, `processing_order`, `node_buffers`, `temp_buffer_indices`) and reset `global_*` and `output_node` to `None`.
+- When debugging “sound disappears after calling `initWithPatch` / applying a patch”, check that:
+  - `AudioGraph::clear` has this selective buffer release behavior.
+  - `gate_buffer_idx` is **not** present in `node_buffers` and remains stable across patch reloads.
+  - Voices’ `output_node` still points at the mixer rebuilt from the canonical voice.
+
 ## General Guidance for Future Changes
 
 - Keep **WASM and native** implementations of patch logic, node creation, and connection wiring as parallel as possible.

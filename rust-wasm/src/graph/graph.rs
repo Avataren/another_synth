@@ -130,14 +130,32 @@ impl AudioGraph {
     }
 
     pub fn clear(&mut self) {
-        // Clear all connections and nodes.
+        // Release all buffers owned by nodes and temporary processing.
+        for &buffer_idx in self.node_buffers.values() {
+            self.buffer_pool.release(buffer_idx);
+        }
+        for &buffer_idx in &self.temp_buffer_indices {
+            self.buffer_pool.release(buffer_idx);
+        }
+
+        // Clear graph structures.
         self.connections.clear();
         self.input_connections.clear();
         self.nodes.clear();
         self.processing_order.clear();
+        self.node_buffers.clear();
+        self.temp_buffer_indices.clear();
+
+        // Reset global node references and output node.
+        self.global_frequency_node = None;
+        self.global_velocity_node = None;
+        self.global_gatemixer_node = None;
         self.output_node = None;
-        // Release all buffers back to the pool.
-        self.buffer_pool.release_all();
+
+        // IMPORTANT: We intentionally do NOT release the dedicated gate buffer or
+        // any macro buffers here. The gate buffer index remains valid and
+        // reserved, and MacroManager continues to own its buffers. New nodes
+        // will acquire fresh buffers from the pool without aliasing these.
     }
 
     pub fn set_output_node(&mut self, node: NodeId) {
