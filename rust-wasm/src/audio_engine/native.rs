@@ -233,17 +233,24 @@ impl AudioEngine {
             if let Some(nodes) = canonical_voice.nodes.get(node_type) {
                 for patch_node in nodes {
                     let id = parse_node_id(&patch_node.id)?;
-                    for voice in &mut self.voices {
-                        let node = self.create_node_from_type(node_type, &id)?;
-                        voice.graph.add_node_with_id(id, node);
 
-                        // If the node is a global node, store its ID
-                        match node_type {
-                            "global_frequency" => voice.graph.global_frequency_node = Some(id),
-                            "global_velocity" => voice.graph.global_velocity_node = Some(id),
-                            "gatemixer" => voice.graph.global_gatemixer_node = Some(id),
-                            "mixer" => voice.graph.set_output_node(id),
-                            _ => {}
+                    // IMPORTANT: Call create_node_from_type *before* mutably borrowing self.voices
+                    // to avoid aliasing (&self for creation vs &mut self.voices for insertion).
+                    for voice_index in 0..self.voices.len() {
+                        let node = self.create_node_from_type(node_type, &id)?;
+
+                        {
+                            let voice = &mut self.voices[voice_index];
+                            voice.graph.add_node_with_id(id, node);
+
+                            // If the node is a global node, store its ID for this voice
+                            match node_type {
+                                "global_frequency" => voice.graph.global_frequency_node = Some(id),
+                                "global_velocity" => voice.graph.global_velocity_node = Some(id),
+                                "gatemixer" => voice.graph.global_gatemixer_node = Some(id),
+                                "mixer" => voice.graph.set_output_node(id),
+                                _ => {}
+                            }
                         }
                     }
                 }
