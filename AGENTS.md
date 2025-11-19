@@ -217,6 +217,10 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - TS Store canonical voice syncing:
   - Because patch serialization now only writes `canonicalVoice` plus a `voiceCount`, the UI must keep the canonical copy in sync with live edits. `src/stores/audio-system-store.ts` now calls `syncCanonicalVoiceWithFirstVoice()` after each connection update so the first voice and `canonicalVoice` stay identical.
   - Without this, saving/loading would resurrect deleted routes or drop new connections, leading to silent voices after a patch switch. If you add other layout mutations (node creation, delete, drag reorder), ensure they also refresh the canonical voice before serializing.
+- Worklet layout sync only returns a single voice:
+  - `get_current_state` / `getNodeLayout` currently emit a single canonical voice. When the store ingests that layout it MUST preserve the previous `voiceCount` and explicitly clone the canonical voice across all voices; otherwise any sync (like after deleting a node) would reset `voiceCount` to `1` and future patches would instantiate only one voice.
+  - See `updateSynthLayout` in `audio-system-store.ts` for the logic that uses the existing `voiceCount` fallback and regenerates the per-voice array. Keep this in mind if the worklet ever starts reporting multiple voices or a `voiceCount` field.
+  - In addition to copying the canonical voice, `updateSynthLayout` now falls back to the instrument's configured `num_voices` when `voiceCount` isn't present yet (the first patch load). Without this fallback, patch serialization would embed `voiceCount = 1` and the Rust engine would only rebuild a single voice after deleting nodes and reloading a patch, making the synth sound monophonic.
 
 ## New discovery: Patch layout now canonical + voice count
 

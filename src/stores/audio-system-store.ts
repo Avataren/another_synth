@@ -872,6 +872,12 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       const layoutClone = JSON.parse(JSON.stringify(layout)) as SynthLayout;
 
       // Process each voice: convert raw connections and raw node arrays
+      const previousVoiceCount =
+        this.synthLayout?.voiceCount ??
+        this.synthLayout?.voices.length ??
+        0;
+      const instrumentVoiceCount = this.currentInstrument?.num_voices ?? 0;
+
       layoutClone.voices = layoutClone.voices.map((voice) => {
         // Track generated default names so duplicated node types get unique labels
         const defaultNameCounts = new Map<VoiceNodeType, Map<string, number>>();
@@ -1053,8 +1059,36 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         return voice;
       });
 
-      layoutClone.voiceCount =
-        layoutClone.voiceCount ?? layoutClone.voices.length;
+      const canonicalSource = layoutClone.voices[0]
+        ? cloneVoiceLayout(layoutClone.voices[0]!)
+        : undefined;
+
+      const resolvedVoiceCount =
+        layoutClone.voiceCount && layoutClone.voiceCount > 0
+          ? layoutClone.voiceCount
+          : previousVoiceCount > 0
+            ? previousVoiceCount
+            : instrumentVoiceCount > 0
+              ? instrumentVoiceCount
+              : layoutClone.voices.length;
+
+      if (canonicalSource && layoutClone.voices.length !== resolvedVoiceCount) {
+        layoutClone.voices = Array.from(
+          { length: resolvedVoiceCount },
+          (_, index) => {
+            const clone = cloneVoiceLayout(canonicalSource);
+            clone.id = index;
+            return clone;
+          },
+        );
+      } else {
+        layoutClone.voices = layoutClone.voices.map((voice, index) => ({
+          ...voice,
+          id: index,
+        }));
+      }
+
+      layoutClone.voiceCount = resolvedVoiceCount;
       if (layoutClone.voices[0]) {
         layoutClone.canonicalVoice = cloneVoiceLayout(
           layoutClone.voices[0]!,
@@ -1296,6 +1330,40 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       );
     },
 
+    removeNodeFromLayout(nodeId: string) {
+      if (!this.synthLayout) {
+        return;
+      }
+
+      const updatedVoices = this.synthLayout.voices.map((voice) => {
+        const updatedNodes = { ...voice.nodes };
+
+        (Object.keys(updatedNodes) as Array<VoiceNodeType>).forEach((type) => {
+          const nodeList = updatedNodes[type] || [];
+          const filtered = nodeList.filter((node) => node.id !== nodeId);
+          if (filtered.length !== nodeList.length) {
+            updatedNodes[type] = filtered;
+          }
+        });
+
+        const updatedConnections = voice.connections.filter(
+          (conn) => conn.fromId !== nodeId && conn.toId !== nodeId,
+        );
+
+        return {
+          ...voice,
+          nodes: updatedNodes,
+          connections: updatedConnections,
+        };
+      });
+
+      this.synthLayout = {
+        ...this.synthLayout,
+        voices: updatedVoices,
+      };
+      this.syncCanonicalVoiceWithFirstVoice();
+    },
+
     async processUpdateQueue() {
       if (this.isUpdating) return; // prevent concurrent processing
       this.isUpdating = true;
@@ -1387,6 +1455,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       console.log(`Starting node cleanup for deleted node ${deletedNodeId}`);
 
       try {
+        // Update the layout immediately so serialization doesn't resurrect the node
+        this.removeNodeFromLayout(deletedNodeId);
+
         // Mark node as deleted
         this.deletedNodeIds.add(deletedNodeId);
 
