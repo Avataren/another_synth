@@ -400,8 +400,24 @@ impl AudioEngine {
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = initWithPatch))]
     pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, JsValue> {
+        log_console(&format!("Received patch JSON, length: {}", patch_json.len()));
+
+        // Log a snippet around the problematic position
+        if patch_json.len() > 26412 {
+            let chars: Vec<char> = patch_json.chars().collect();
+            if chars.len() > 26412 {
+                let start = 26400;
+                let end = 26450.min(chars.len());
+                let snippet: String = chars[start..end].iter().collect();
+                log_console(&format!("JSON around char position 26412: {}", snippet));
+            }
+        }
+
         let patch: PatchFile = serde_json::from_str(patch_json)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse patch JSON: {}", e)))?;
+            .map_err(|e| {
+                log_console(&format!("Serde error: {}", e));
+                JsValue::from_str(&format!("Failed to parse patch JSON: {}", e))
+            })?;
 
         let voice_count = patch.synth_state.layout.voices.len();
         if voice_count == 0 {

@@ -440,21 +440,34 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       options?: { setCurrentPatchId?: boolean },
     ): Promise<boolean> {
       try {
-        const layoutReady = await this.waitForSynthLayout();
-        if (!layoutReady) {
-          console.warn('Cannot apply patch because synth layout is unavailable');
+        console.log('[applyPatchObject] Loading patch:', patch.metadata.name);
+
+        // Wait for instrument to be ready (not layout, since we're providing the layout)
+        const instrumentReady = await this.waitForInstrumentReady();
+        if (!instrumentReady) {
+          console.warn('Cannot apply patch because instrument is not ready');
           return false;
         }
 
         const deserialized = deserializePatch(patch);
+        console.log('[applyPatchObject] Deserialized sampler states:', Array.from(deserialized.samplers.keys()));
+        console.log('[applyPatchObject] Deserialized layout sampler nodes:', deserialized.layout.voices[0]?.nodes[VoiceNodeType.Sampler] || []);
 
+        // Send the patch to WASM FIRST, before we modify any state
+        // This ensures we're sending the original patch object with plain objects, not Maps
+        this.currentInstrument?.loadPatch(patch);
+
+        // Update the layout from the patch
         this.updateSynthLayout(deserialized.layout);
+
+        // Update all state maps from the patch
         this.oscillatorStates = deserialized.oscillators;
         this.wavetableOscillatorStates = deserialized.wavetableOscillators;
         this.filterStates = deserialized.filters;
         this.envelopeStates = deserialized.envelopes;
         this.lfoStates = deserialized.lfos;
         this.samplerStates = deserialized.samplers;
+        console.log('[applyPatchObject] After assignment, samplerStates:', Array.from(this.samplerStates.keys()));
         this.convolverStates = deserialized.convolvers;
         this.delayStates = deserialized.delays;
         this.chorusStates = deserialized.choruses;
@@ -468,13 +481,6 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         }
 
         this.audioAssets = deserialized.audioAssets;
-
-        const instrumentReady = await this.waitForInstrumentReady();
-        if (!instrumentReady) {
-          console.warn('Instrument was not ready when applying patch state');
-        } else {
-          this.currentInstrument?.loadPatch(patch);
-        }
 
         if (options?.setCurrentPatchId !== false) {
           this.currentPatchId = patch.metadata.id;
@@ -1557,22 +1563,29 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       });
 
       // Remove orphaned states for nodes that no longer exist
+      console.log('[initializeDefaultStates] Valid node IDs:', Array.from(validNodeIds));
+      console.log('[initializeDefaultStates] Current sampler states:', Array.from(this.samplerStates.keys()));
+
       this.oscillatorStates.forEach((_, id) => {
         if (!validNodeIds.has(id)) {
+          console.log('[initializeDefaultStates] Deleting orphaned oscillator:', id);
           this.oscillatorStates.delete(id);
         }
       });
       this.wavetableOscillatorStates.forEach((_, id) => {
         if (!validNodeIds.has(id)) {
+          console.log('[initializeDefaultStates] Deleting orphaned wavetable osc:', id);
           this.wavetableOscillatorStates.delete(id);
         }
       });
       this.samplerStates.forEach((_, id) => {
         if (!validNodeIds.has(id)) {
+          console.log('[initializeDefaultStates] Deleting orphaned sampler:', id);
           this.samplerStates.delete(id);
           this.samplerWaveforms.delete(id);
         }
       });
+      console.log('[initializeDefaultStates] Sampler states after cleanup:', Array.from(this.samplerStates.keys()));
       this.envelopeStates.forEach((_, id) => {
         if (!validNodeIds.has(id)) {
           this.envelopeStates.delete(id);

@@ -100,11 +100,54 @@ export default class Instrument {
 
   public loadPatch(patch: Patch) {
     if (!this.ready || !this.workletNode) return;
-    const patchJson = JSON.stringify(patch);
-    this.workletNode.port.postMessage({
-      type: 'loadPatch',
-      patchJson,
-    });
+
+    try {
+      // Check for NaN/Infinity before stringifying
+      const patchJson = JSON.stringify(patch, (key, value) => {
+        if (typeof value === 'number') {
+          if (!Number.isFinite(value)) {
+            console.warn(`[loadPatch] Found non-finite number at key "${key}":`, value);
+            return 0; // Replace NaN/Infinity with 0
+          }
+        }
+        return value;
+      });
+      console.log('[loadPatch] Patch JSON length:', patchJson.length);
+      console.log('[loadPatch] Patch JSON preview:', patchJson.substring(0, 200));
+
+      // Check what's around the position where WASM fails (column 26412)
+      if (patchJson.length > 26412) {
+        const errorPos = 26412;
+        const context = 200;
+        console.log('[loadPatch] JSON around position 26412 (where WASM fails):');
+        console.log(patchJson.substring(errorPos - context, errorPos + context));
+
+        // Also log the character at that exact position
+        console.log('[loadPatch] Character at position 26412:', JSON.stringify(patchJson[26412]));
+        console.log('[loadPatch] Next 20 chars:', JSON.stringify(patchJson.substring(26412, 26432)));
+
+        // Check if we're near audio assets
+        const audioAssetsPos = patchJson.indexOf('"audioAssets"');
+        console.log('[loadPatch] audioAssets starts at position:', audioAssetsPos);
+        console.log('[loadPatch] Distance from error to audioAssets:', audioAssetsPos - 26412);
+      }
+
+      // Verify the JSON is valid by parsing it
+      JSON.parse(patchJson);
+      console.log('[loadPatch] JSON is valid, sending to worklet');
+
+      // Save JSON to window for debugging
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).lastPatchJson = patchJson;
+
+      this.workletNode.port.postMessage({
+        type: 'loadPatch',
+        patchJson,
+      });
+    } catch (error) {
+      console.error('[loadPatch] Failed to serialize patch:', error);
+      console.error('[loadPatch] Patch object:', patch);
+    }
   }
 
   public updateLayout(layout: SynthLayout) {
@@ -867,7 +910,8 @@ export default class Instrument {
       const voice = this.synthLayout.voices[i]!;
       // Check all node types
       for (const nodeType of Object.values(VoiceNodeType)) {
-        if (voice.nodes[nodeType]?.some((node) => node.id === nodeId)) {
+        const nodes = voice.nodes[nodeType];
+        if (Array.isArray(nodes) && nodes.some((node) => node.id === nodeId)) {
           return i;
         }
       }
