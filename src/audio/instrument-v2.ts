@@ -2,12 +2,11 @@
 /**
  * Refactored Instrument class using WorkletMessageHandler.
  *
- * This version replaces the original Instrument class with:
- * - Promise-based operations (no more fire-and-forget)
- * - WorkletMessageHandler for all message passing
- * - No duplicate state storage
- * - Comprehensive error handling
- * - Proper async/await patterns
+ * IMPORTANT NOTE: This version is designed to work with the CURRENT worklet implementation.
+ * Most operations are fire-and-forget because the worklet doesn't send operationResponse yet.
+ * Only envelope updates and data exports are Promise-based (worklet supports these).
+ *
+ * When Phase 2 (worklet migration) is complete, more operations will become Promise-based.
  *
  * This is a drop-in replacement for the original Instrument class.
  */
@@ -70,10 +69,10 @@ export default class InstrumentV2 {
     this.outputNode.connect(destination);
     this.voiceLastUsedTime = new Array(this.num_voices).fill(0);
 
-    // Initialize message handler with debug logging
+    // Initialize message handler
     this.messageHandler = new WorkletMessageHandler({
-      debug: false, // Set to true for debugging
-      defaultTimeout: 10000, // 10 seconds for large operations like patch loading
+      debug: false,
+      defaultTimeout: 5000, // 5 seconds default
       maxQueueSize: 200,
     });
 
@@ -108,96 +107,87 @@ export default class InstrumentV2 {
   }
 
   // ========================================================================
-  // Patch Operations
+  // Patch Operations (fire-and-forget - worklet doesn't send response)
   // ========================================================================
 
-  public async loadPatch(patch: Patch): Promise<void> {
-    try {
-      // CRITICAL: Strip Vue reactivity by doing a deep clone
-      const cleanPatch = JSON.parse(JSON.stringify(patch, (key, value) => {
-        if (value === undefined) return null;
-        return value;
-      })) as Patch;
+  public loadPatch(patch: Patch): void {
+    if (!this.workletNode) {
+      console.error('[InstrumentV2] Worklet not initialized');
+      return;
+    }
 
-      // CRITICAL: Remove audioAssets to reduce JSON size
+    try {
+      // Strip Vue reactivity and prepare patch for WASM
+      const cleanPatch = JSON.parse(
+        JSON.stringify(patch, (key, value) => {
+          if (value === undefined) return null;
+          if (typeof value === 'number' && !Number.isFinite(value)) {
+            console.warn(`[loadPatch] Non-finite number at "${key}":`, value);
+            return 0;
+          }
+          return value;
+        })
+      ) as Patch;
+
+      // Remove audioAssets to reduce JSON size (loaded separately)
       const patchWithoutAssets = {
         ...cleanPatch,
         audioAssets: {},
       };
 
-      // Check for NaN/Infinity/undefined before stringifying
-      const patchJson = JSON.stringify(patchWithoutAssets, (key, value) => {
-        if (value === undefined) {
-          console.warn(`[loadPatch] Found undefined at key "${key}", using null`);
-          return null;
-        }
-        if (typeof value === 'number' && !Number.isFinite(value)) {
-          console.warn(`[loadPatch] Found non-finite number at key "${key}":`, value);
-          return 0;
-        }
-        return value;
+      const patchJson = JSON.stringify(patchWithoutAssets);
+      console.log('[InstrumentV2] Patch JSON length:', patchJson.length);
+
+      // Fire-and-forget - worklet doesn't send operationResponse for loadPatch
+      this.messageHandler.sendFireAndForget({
+        type: 'loadPatch',
+        patchJson,
       });
-
-      // Verify JSON is valid
-      JSON.parse(patchJson);
-
-      console.log('[InstrumentV2] Loading patch, JSON length:', patchJson.length);
-
-      // Use message handler with extended timeout for large patches
-      await this.messageHandler.sendMessage(
-        WorkletMessageBuilder.loadPatch(patchJson),
-        30000 // 30 second timeout for large patches
-      );
-
-      console.log('[InstrumentV2] Patch loaded successfully');
     } catch (error) {
-      console.error('[InstrumentV2] Failed to load patch:', error);
-      throw new Error(`Failed to load patch: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('[InstrumentV2] Failed to serialize patch:', error);
     }
   }
 
   // ========================================================================
-  // Node Operations (now all return Promises)
+  // Node Operations (fire-and-forget for now)
   // ========================================================================
 
-  public async deleteNode(nodeId: string): Promise<void> {
-    await this.messageHandler.sendMessage(
-      WorkletMessageBuilder.deleteNode(nodeId)
-    );
+  public deleteNode(nodeId: string): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'deleteNode',
+      nodeId,
+    });
   }
 
-  public async createNode(node: VoiceNodeType): Promise<{ nodeId: string; nodeType: string }> {
-    return await this.messageHandler.sendMessage(
-      WorkletMessageBuilder.createNode(node)
-    );
+  public createNode(node: VoiceNodeType): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'createNode',
+      node,
+    });
   }
 
   // ========================================================================
-  // Node State Updates (all now return Promises)
+  // Node State Updates (fire-and-forget except envelope)
   // ========================================================================
 
-  public async updateReverbState(nodeId: string, state: ReverbState): Promise<void> {
-    await this.messageHandler.sendMessage(
-      {
-        type: 'updateReverb',
-        messageId: this.messageHandler['generateMessageId']?.() || `${Date.now()}_${Math.random()}`,
-        reverbId: nodeId,
-        state,
-      }
-    );
-  }
-
-  public async updateChorusState(nodeId: string, state: ChorusState): Promise<void> {
-    await this.messageHandler.sendMessage({
-      type: 'updateChorus',
-      messageId: this.messageHandler['generateMessageId']?.() || `${Date.now()}_${Math.random()}`,
-      chorusId: nodeId,
+  public updateReverbState(nodeId: string, state: ReverbState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateReverb',
+      nodeId,
       state,
     });
   }
 
-  public async updateVelocityState(nodeId: string, state: VelocityState): Promise<void> {
-    await this.messageHandler.sendMessage({
+  public updateChorusState(nodeId: string, state: ChorusState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateChorus',
+      nodeId,
+      state,
+    });
+  }
+
+  public updateVelocityState(nodeId: string, state: VelocityState): void {
+    this.messageHandler.sendFireAndForget({
       type: 'updateVelocity',
       nodeId,
       config: {
@@ -208,8 +198,8 @@ export default class InstrumentV2 {
     });
   }
 
-  public async updateNoiseState(nodeId: string, state: NoiseState): Promise<void> {
-    await this.messageHandler.sendMessage({
+  public updateNoiseState(nodeId: string, state: NoiseState): void {
+    this.messageHandler.sendFireAndForget({
       type: 'updateNoise',
       noiseId: nodeId,
       config: {
@@ -221,80 +211,120 @@ export default class InstrumentV2 {
     });
   }
 
-  public async updateSamplerState(nodeId: string, state: SamplerUpdatePayload): Promise<void> {
-    await this.messageHandler.sendMessage({
+  public updateSamplerState(nodeId: string, state: SamplerUpdatePayload): void {
+    this.messageHandler.sendFireAndForget({
       type: 'updateSampler',
       samplerId: nodeId,
       state,
     });
   }
 
-  public async updateEnvelopeState(nodeId: string, newState: EnvelopeConfig): Promise<void> {
-    await this.messageHandler.sendMessage(
-      {
-        type: 'updateEnvelope',
-        envelopeId: nodeId,
-        state: newState,
-      }
-    );
-  }
-
-  public async updateLfoState(nodeId: string, state: LfoState): Promise<void> {
-    await this.messageHandler.sendMessage({
-      type: 'updateLfo',
-      lfoId: nodeId,
-      state,
-    });
-  }
-
-  public async updateFilterState(nodeId: string, config: FilterState): Promise<void> {
-    await this.messageHandler.sendMessage({
-      type: 'updateFilter',
-      filterId: nodeId,
-      state: config,
-    });
-  }
-
-  public async updateOscillatorState(nodeId: string, newState: OscillatorState): Promise<void> {
-    await this.messageHandler.sendMessage({
-      type: 'updateOscillator',
-      oscillatorId: nodeId,
-      state: newState,
-    });
-  }
-
-  public async updateWavetableOscillatorState(nodeId: string, newState: OscillatorState): Promise<void> {
-    await this.messageHandler.sendMessage({
+  public updateWavetableOscillatorState(nodeId: string, newState: OscillatorState): void {
+    this.messageHandler.sendFireAndForget({
       type: 'updateWavetableOscillator',
       oscillatorId: nodeId,
-      state: newState,
+      newState,
     });
   }
 
-  public async updateConvolverState(nodeId: string, state: ConvolverState): Promise<void> {
-    await this.messageHandler.sendMessage({
-      type: 'updateConvolver',
-      convolverId: nodeId,
+  public updateOscillatorState(nodeId: string, newState: OscillatorState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateOscillator',
+      oscillatorId: nodeId,
+      newState,
+    });
+  }
+
+  public updateLfoState(nodeId: string, state: LfoState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateLfo',
+      lfoId: nodeId,
+      params: {
+        lfoId: nodeId,
+        frequency: state.frequency,
+        phaseOffset: state.phaseOffset,
+        waveform: state.waveform,
+        useAbsolute: state.useAbsolute,
+        useNormalized: state.useNormalized,
+        triggerMode: state.triggerMode,
+        gain: state.gain,
+        active: state.active,
+        loopMode: state.loopMode,
+        loopStart: state.loopStart,
+        loopEnd: state.loopEnd,
+      },
+    });
+  }
+
+  public updateFilterState(nodeId: string, newState: FilterState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateFilter',
+      filterId: nodeId,
+      config: newState,
+    });
+  }
+
+  // FIXED: Use correct message type 'updateConvolverState'
+  public updateConvolverState(nodeId: string, state: ConvolverState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateConvolverState',
+      nodeId: nodeId,
+      state: state,
+    });
+  }
+
+  // FIXED: Use correct message type 'updateDelayState'
+  public updateDelayState(nodeId: string, state: DelayState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateDelayState',
+      nodeId: nodeId,
       state,
     });
   }
 
-  public async updateDelayState(nodeId: string, state: DelayState): Promise<void> {
-    await this.messageHandler.sendMessage({
-      type: 'updateDelay',
-      delayId: nodeId,
-      state,
+  // PROMISE-BASED: Envelope updates - worklet sends updateEnvelopeProcessed
+  public updateEnvelopeState(nodeId: string, newState: EnvelopeConfig): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.workletNode) {
+        resolve(); // Fail silently like original
+        return;
+      }
+
+      const messageId = `${Date.now()}_${Math.random()}`;
+
+      const listener = (event: MessageEvent) => {
+        const data = event.data;
+        if (data && data.type === 'updateEnvelopeProcessed' && data.messageId === messageId) {
+          this.workletNode?.port.removeEventListener('message', listener);
+          resolve();
+        }
+      };
+
+      this.workletNode.port.addEventListener('message', listener);
+
+      setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', listener);
+        reject(new Error('Timeout waiting for envelope update confirmation'));
+      }, 2000);
+
+      this.workletNode.port.postMessage({
+        type: 'updateEnvelope',
+        envelopeId: nodeId,
+        config: newState,
+        messageId: messageId,
+      });
     });
   }
 
   // ========================================================================
-  // Connection Operations
+  // Connection Operations (fire-and-forget)
   // ========================================================================
 
-  public async updateConnection(connection: NodeConnectionUpdate): Promise<void> {
-    await this.messageHandler.sendMessage(
-      WorkletMessageBuilder.updateConnection(connection)
-    );
+  public updateConnection(connection: NodeConnectionUpdate): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateConnection',
+      connection,
+    });
   }
 
   public remove_specific_connection(from_node: string, to_node: string, to_port: number): void {
@@ -352,13 +382,11 @@ export default class InstrumentV2 {
   // ========================================================================
 
   public importWavetableData(nodeId: string, wavData: Uint8Array): void {
-    // Asset imports don't need confirmation - they're fire-and-forget
     this.messageHandler.sendFireAndForget({
       type: 'importWavetable',
       nodeId,
       data: wavData.buffer,
     });
-    console.log('[InstrumentV2] Sent wavetable data to worklet');
   }
 
   public importImpulseWaveformData(nodeId: string, wavData: Uint8Array): void {
@@ -367,57 +395,102 @@ export default class InstrumentV2 {
       nodeId,
       data: wavData.buffer,
     });
-    console.log('[InstrumentV2] Sent impulse response data to worklet');
   }
 
   public importSampleData(nodeId: string, wavData: Uint8Array): void {
-    this.messageHandler.sendFireAndForget({
-      type: 'importSample',
-      nodeId,
-      data: wavData.buffer,
-    });
-    console.log('[InstrumentV2] Sent sample data to worklet');
+    if (!this.workletNode) return;
+    this.workletNode.port.postMessage(
+      {
+        type: 'importSample',
+        nodeId,
+        data: wavData.buffer,
+      },
+      [wavData.buffer]
+    );
   }
 
   // ========================================================================
-  // Data Export (already Promise-based, now cleaner)
+  // Data Export (Promise-based - worklet sends responses)
   // ========================================================================
 
   public async getSamplerWaveform(nodeId: string, maxLength = 512): Promise<Float32Array> {
-    const response = await this.messageHandler.sendMessage<{ waveform: Float32Array }>({
-      type: 'getSamplerWaveform',
-      samplerId: nodeId,
-      maxLength,
-    });
-
-    if (!response || !(response.waveform instanceof Float32Array)) {
-      throw new Error('Invalid waveform response from worklet');
+    if (!this.workletNode) {
+      throw new Error('Audio system not ready');
     }
+    const port = this.workletNode.port;
 
-    return response.waveform;
+    return new Promise<Float32Array>((resolve, reject) => {
+      const messageId = `sampler-waveform-${nodeId}-${performance.now()}`;
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data.type === 'samplerWaveform' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(event.data.waveform));
+        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(event.data.message ?? 'Failed to fetch sampler waveform'));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+
+      port.postMessage({
+        type: 'getSamplerWaveform',
+        samplerId: nodeId,
+        maxLength,
+        messageId,
+      });
+
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout retrieving sampler waveform'));
+      }, 2000);
+    });
   }
 
+  // FIXED: Use correct message type 'exportSampleData' not 'exportSamplerData'
   public async exportSamplerData(nodeId: string): Promise<{
     samples: Float32Array;
     sampleRate: number;
     channels: number;
     rootNote: number;
   }> {
-    const response = await this.messageHandler.sendMessage<{
-      samples: Float32Array;
-      sampleRate: number;
-      channels: number;
-      rootNote: number;
-    }>({
-      type: 'exportSamplerData',
-      samplerId: nodeId,
-    });
-
-    if (!response || !(response.samples instanceof Float32Array)) {
-      throw new Error('Invalid sample data response from worklet');
+    if (!this.workletNode) {
+      throw new Error('Audio system not ready');
     }
+    const port = this.workletNode.port;
 
-    return response;
+    return new Promise((resolve, reject) => {
+      const messageId = `export-sample-${nodeId}-${performance.now()}`;
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data.type === 'sampleData' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          const data = event.data.sampleData;
+          resolve({
+            samples: new Float32Array(data.samples),
+            sampleRate: data.sampleRate,
+            channels: data.channels,
+            rootNote: data.rootNote,
+          });
+        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(event.data.message ?? 'Failed to export sample data'));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+
+      // FIXED: Use 'exportSampleData' to match worklet expectations
+      port.postMessage({
+        type: 'exportSampleData',
+        samplerId: nodeId,
+        messageId,
+      });
+
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout exporting sample data'));
+      }, 2000);
+    });
   }
 
   public async exportConvolverData(nodeId: string): Promise<{
@@ -425,34 +498,73 @@ export default class InstrumentV2 {
     sampleRate: number;
     channels: number;
   }> {
-    const response = await this.messageHandler.sendMessage<{
-      samples: Float32Array;
-      sampleRate: number;
-      channels: number;
-    }>({
-      type: 'exportConvolverData',
-      convolverId: nodeId,
-    });
-
-    if (!response || !(response.samples instanceof Float32Array)) {
-      throw new Error('Invalid convolver data response from worklet');
+    if (!this.workletNode) {
+      throw new Error('Audio system not ready');
     }
+    const port = this.workletNode.port;
 
-    return response;
+    return new Promise((resolve, reject) => {
+      const messageId = `export-convolver-${nodeId}-${performance.now()}`;
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data.type === 'convolverData' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          const data = event.data.convolverData;
+          resolve({
+            samples: new Float32Array(data.samples),
+            sampleRate: data.sampleRate,
+            channels: data.channels,
+          });
+        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(event.data.message ?? 'Failed to export convolver data'));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+
+      port.postMessage({
+        type: 'exportConvolverData',
+        convolverId: nodeId,
+        messageId,
+      });
+
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout exporting convolver data'));
+      }, 2000);
+    });
   }
 
   public async getFilterIRWaveform(nodeId: string, maxLength = 512): Promise<Float32Array> {
-    const response = await this.messageHandler.sendMessage<{ waveform: Float32Array }>({
-      type: 'getFilterIRWaveform',
-      filterId: nodeId,
-      maxLength,
-    });
-
-    if (!response || !(response.waveform instanceof Float32Array)) {
-      throw new Error('Invalid filter IR response from worklet');
+    if (!this.workletNode) {
+      throw new Error('Audio system not ready');
     }
+    const port = this.workletNode.port;
 
-    return response.waveform;
+    return new Promise<Float32Array>((resolve, reject) => {
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.type === 'FilterIrWaveform') {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(e.data.waveform));
+        } else if (e.data.type === 'error' && e.data.source === 'getFilterIRWaveform') {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+
+      port.postMessage({
+        type: 'getFilterIRWaveform',
+        node_id: nodeId,
+        length: maxLength,
+      });
+
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for waveform data'));
+      }, 5000);
+    });
   }
 
   public async getLfoWaveform(
@@ -463,50 +575,108 @@ export default class InstrumentV2 {
     use_absolute: boolean,
     use_normalized: boolean,
   ): Promise<Float32Array> {
-    const response = await this.messageHandler.sendMessage<{ waveform: Float32Array }>({
-      type: 'getLfoWaveform',
-      waveform,
-      phaseOffset,
-      frequency,
-      bufferSize,
-      use_absolute,
-      use_normalized,
-    });
-
-    if (!response || !(response.waveform instanceof Float32Array)) {
-      throw new Error('Invalid LFO waveform response from worklet');
+    if (!this.workletNode) {
+      throw new Error('Audio system not ready');
     }
 
-    return response.waveform;
+    return new Promise<Float32Array>((resolve, reject) => {
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.type === 'lfoWaveform') {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(e.data.waveform));
+        } else if (e.data.type === 'error' && e.data.source === 'getLfoWaveform') {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      this.workletNode.port.addEventListener('message', handleMessage);
+
+      this.workletNode.port.postMessage({
+        type: 'getLfoWaveform',
+        waveform,
+        phaseOffset,
+        frequency,
+        bufferSize,
+        use_absolute,
+        use_normalized,
+      });
+
+      setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for waveform data'));
+      }, 5000);
+    });
   }
 
   public async getWasmNodeConnections(): Promise<string> {
-    const response = await this.messageHandler.sendMessage<{ layout: string }>({
-      type: 'getNodeLayout',
-    }, 5000);
-
-    if (!response || typeof response.layout !== 'string') {
-      throw new Error('Invalid node layout response from worklet');
+    if (!this.workletNode) {
+      throw new Error('Audio system not ready');
     }
 
-    return response.layout;
+    return new Promise<string>((resolve, reject) => {
+      const messageId = Date.now().toString();
+      let timeoutId = setTimeout(() => {}, 0);
+
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          clearTimeout(timeoutId);
+          resolve(e.data.layout);
+        } else if (e.data.type === 'error' && e.data.messageId === messageId) {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          clearTimeout(timeoutId);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      this.workletNode.port.addEventListener('message', handleMessage);
+
+      this.workletNode.port.postMessage({
+        type: 'getNodeLayout',
+        messageId: messageId,
+      });
+
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for node layout data'));
+      }, 5000);
+    });
   }
 
   public async getEnvelopePreview(
     config: EnvelopeConfig,
     previewDuration: number,
   ): Promise<Float32Array> {
-    const response = await this.messageHandler.sendMessage<{ preview: Float32Array }>({
-      type: 'getEnvelopePreview',
-      config: JSON.parse(JSON.stringify(config)),
-      previewDuration,
-    }, 1000);
-
-    if (!response || !(response.preview instanceof Float32Array)) {
-      throw new Error('Invalid envelope preview response from worklet');
+    if (!this.workletNode) {
+      throw new Error('Audio system not ready');
     }
 
-    return response.preview;
+    return new Promise<Float32Array>((resolve, reject) => {
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.type === 'envelopePreview' && e.data.source === 'getEnvelopePreview') {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(e.data.preview));
+        } else if (e.data.type === 'error' && e.data.source === 'getEnvelopePreview') {
+          this.workletNode?.port.removeEventListener('message', handleMessage);
+          reject(new Error(e.data.message));
+        }
+      };
+
+      this.workletNode.port.addEventListener('message', handleMessage);
+
+      this.workletNode.port.postMessage({
+        type: 'getEnvelopePreview',
+        config: JSON.parse(JSON.stringify(config)),
+        previewDuration,
+      });
+
+      setTimeout(() => {
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for envelope preview'));
+      }, 1000);
+    });
   }
 
   public async getFilterResponse(node_id: string, length: number): Promise<Float32Array> {
@@ -526,7 +696,6 @@ export default class InstrumentV2 {
 
     if (!this.workletNode) return;
 
-    // Set gate, frequency, and velocity parameters
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) gateParam.value = 1;
 

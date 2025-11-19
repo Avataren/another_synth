@@ -541,7 +541,8 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
         // Send the patch to WASM FIRST, before we modify any state
         // This ensures we're sending the original patch object with plain objects, not Maps
-        await this.currentInstrument?.loadPatch(patch);
+        // NOTE: loadPatch is fire-and-forget until worklet is updated to send responses
+        this.currentInstrument?.loadPatch(patch);
 
         // Update the layout from the patch (this processes connections and nodes)
         this.updateSynthLayout(deserialized.layout);
