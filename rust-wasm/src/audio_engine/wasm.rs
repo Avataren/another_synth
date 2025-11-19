@@ -2354,9 +2354,29 @@ impl AudioEngine {
             let modulation_type = wasm_modulation_type_from_i32(connection.modulation_type)?;
             let modulation_transform =
                 modulation_transform_from_i32(connection.modulation_transform)?;
+
+            // Determine the appropriate output port on the source node.
+            let from_port = self
+                .voices
+                .get(0)
+                .and_then(|voice| {
+                    NodeId::from_string(&connection.from_id)
+                        .ok()
+                        .and_then(|node_id| voice.graph.get_node(node_id))
+                        .map(|node| {
+                            let ports = node.get_ports();
+                            ports
+                                .iter()
+                                .find(|(_, &is_output)| is_output)
+                                .map(|(p, _)| *p)
+                                .unwrap_or(PortId::AudioOutput0)
+                        })
+                })
+                .unwrap_or(PortId::AudioOutput0);
+
             self.connect_nodes(
                 &connection.from_id,
-                PortId::AudioOutput0,
+                from_port,
                 &connection.to_id,
                 to_port,
                 connection.amount,
