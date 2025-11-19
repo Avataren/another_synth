@@ -1,5 +1,7 @@
 // src/audio/audio-processor-loader.ts
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import type { LayoutUpdateMessage } from './types/synth-layout';
 
 export async function createStandardAudioWorklet(
@@ -14,7 +16,9 @@ export async function createStandardAudioWorklet(
     numberOfOutputs: 1,
     outputChannelCount: [2], // Specify stereo output
   });
-  const store = useAudioSystemStore();
+  const legacyStore = useAudioSystemStore();
+  const layoutStore = useLayoutStore();
+  const nodeStateStore = useNodeStateStore();
 
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -40,17 +44,20 @@ export async function createStandardAudioWorklet(
       } else if (data.type === 'synthLayout') {
         console.log('Received synth layout:', data);
 
-        // Update both the store and the instrument
         const layoutMessage = data as LayoutUpdateMessage;
-        store.updateSynthLayout(layoutMessage.layout);
-        store.currentInstrument?.updateLayout(layoutMessage.layout);
+        layoutStore.updateSynthLayout(layoutMessage.layout);
+        nodeStateStore.initializeDefaultStates();
+        legacyStore.synthLayout = layoutStore.synthLayout
+          ? JSON.parse(JSON.stringify(layoutStore.synthLayout))
+          : null;
       } else if (data.type === 'stateUpdated') {
         // This is the pushed update from the worklet whenever state changes.
         console.log('Received automatic state update:', data);
-        // Assuming that "data.state" is in the same format as the layout,
-        // update the store accordingly.
-        store.updateSynthLayout(data.state);
-        store.currentInstrument?.updateLayout(data.state);
+        layoutStore.updateSynthLayout(data.state);
+        nodeStateStore.initializeDefaultStates();
+        legacyStore.synthLayout = layoutStore.synthLayout
+          ? JSON.parse(JSON.stringify(layoutStore.synthLayout))
+          : null;
       }
     };
 

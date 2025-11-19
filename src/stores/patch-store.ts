@@ -1,0 +1,678 @@
+import { defineStore } from 'pinia';
+import { nextTick } from 'vue';
+import type {
+  AudioAsset,
+  Bank,
+  Patch,
+  PatchMetadata,
+} from 'src/audio/types/preset-types';
+import {
+  addPatchToBank,
+  createBank,
+  exportBankToJSON,
+  importBankFromJSON,
+  removePatchFromBank,
+  updatePatchInBank,
+} from 'src/audio/serialization/bank-serializer';
+import {
+  deserializePatch,
+  exportPatchToJSON,
+  importPatchFromJSON,
+  serializeCurrentPatch,
+  createAudioAssetId,
+  parseAudioAssetId,
+} from 'src/audio/serialization/patch-serializer';
+import {
+  extractAllAudioAssets,
+  getConvolverNodeIds,
+  getSamplerNodeIds,
+} from 'src/audio/serialization/audio-asset-extractor';
+import { createDefaultPatchMetadata } from 'src/audio/types/preset-types';
+import { useAudioSystemStore } from './audio-system-store';
+import { useLayoutStore } from './layout-store';
+import { useNodeStateStore } from './node-state-store';
+import { useAssetStore } from './asset-store';
+import { VoiceNodeType, getNodesOfType } from 'src/audio/types/synth-layout';
+
+const clonePatch = (patch: Patch): Patch =>
+  JSON.parse(JSON.stringify(patch)) as Patch;
+
+export const usePatchStore = defineStore('patchStore', {
+  state: () => ({
+    currentBank: null as Bank | null,
+    currentPatchId: null as string | null,
+    defaultPatchTemplate: null as Patch | null,
+    defaultPatchLoadAttempted: false,
+    isLoadingPatch: false,
+  }),
+  getters: {
+    currentPatch(state): Patch | null {
+      if (!state.currentPatchId || !state.currentBank) {
+        return null;
+      }
+      return (
+        state.currentBank.patches.find(
+          (p) => p.metadata.id === state.currentPatchId,
+        ) || null
+      );
+    },
+  },
+  actions: {
+    async fetchDefaultPatchTemplate(): Promise<Patch | null> {
+      if (this.defaultPatchTemplate) {
+        return this.defaultPatchTemplate;
+      }
+
+      if (this.defaultPatchLoadAttempted) {
+        return null;
+      }
+
+      this.defaultPatchLoadAttempted = true;
+
+      if (typeof fetch === 'undefined') {
+        console.warn('Fetch API unavailable; cannot load default patch file');
+        return null;
+      }
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}default-patch.json`,
+          { cache: 'no-store' },
+        );
+
+        if (!response.ok) {
+          if (response.status !== 404) {
+            console.warn(
+              `Failed to fetch default patch (status ${response.status})`,
+            );
+          }
+          return null;
+        }
+
+        const json = await response.text();
+        const result = importPatchFromJSON(json);
+
+        if (!result.validation.valid || !result.patch) {
+          console.error(
+            'Default patch validation failed:',
+            result.validation.errors?.join(', '),
+          );
+          return null;
+        }
+
+        this.defaultPatchTemplate = result.patch;
+        return this.defaultPatchTemplate;
+      } catch (error) {
+        console.error('Error loading default patch:', error);
+        return null;
+      }
+    },
+    async loadSystemBankIfPresent(): Promise<boolean> {
+      if (this.currentBank && this.currentBank.patches.length > 0) {
+        return true;
+      }
+
+      if (typeof fetch === 'undefined') {
+        console.warn('Fetch API unavailable; cannot load system bank file');
+        return false;
+      }
+
+      const url = `${import.meta.env.BASE_URL}system-bank.json`;
+
+      try {
+        const response = await fetch(url, { cache: 'no-store' });
+
+        if (response.status === 404) {
+          return false;
+        }
+
+        if (!response.ok) {
+          console.error(
+            `Failed to fetch system bank (status ${response.status})`,
+          );
+          return false;
+        }
+
+        const json = await response.text();
+        if (!json.trim()) {
+          console.warn('System bank file was empty');
+          return false;
+        }
+
+        const result = importBankFromJSON(json);
+
+        if (!result.validation.valid || !result.bank) {
+          console.error(
+            'System bank validation failed:',
+            result.validation.errors?.join(', '),
+          );
+          return false;
+        }
+
+        this.currentBank = result.bank;
+        const firstPatch = result.bank.patches[0];
+        if (firstPatch) {
+          await this.applyPatchObject(firstPatch);
+        }
+        return true;
+      } catch (error) {
+        console.error('Error loading system bank:', error);
+        return false;
+      }
+    },
+    ensurePatchInBank(patch: Patch) {
+      if (!patch) return;
+
+      if (!this.currentBank) {
+        this.currentBank = createBank('Default Bank', [clonePatch(patch)]);
+        return;
+      }
+
+      const exists = this.currentBank.patches.some(
+        (existing) => existing.metadata.id === patch.metadata.id,
+      );
+
+      if (!exists) {
+        this.currentBank = addPatchToBank(this.currentBank, clonePatch(patch));
+      }
+    },
+    async applyPatchObject(
+      patch: Patch,
+      options?: { setCurrentPatchId?: boolean },
+    ): Promise<boolean> {
+      const audioStore = useAudioSystemStore();
+      const layoutStore = useLayoutStore();
+      const nodeStateStore = useNodeStateStore();
+      const assetStore = useAssetStore();
+
+      try {
+        const instrumentReady = await audioStore.waitForInstrumentReady();
+        if (!instrumentReady) {
+          console.warn('Cannot apply patch because instrument is not ready');
+          return false;
+        }
+
+        const deserialized = deserializePatch(patch);
+        this.isLoadingPatch = true;
+
+        audioStore.currentInstrument?.loadPatch(patch);
+        layoutStore.updateSynthLayout(deserialized.layout);
+        nodeStateStore.assignStatesFromPatch(deserialized);
+        assetStore.setAudioAssets(deserialized.audioAssets);
+
+        if (options?.setCurrentPatchId !== false) {
+          this.currentPatchId = patch.metadata.id;
+        }
+
+        await assetStore.restoreAudioAssets();
+
+        this.isLoadingPatch = false;
+        return true;
+      } catch (error) {
+        console.error('Failed to apply patch:', error);
+        this.isLoadingPatch = false;
+        return false;
+      }
+    },
+    async initializeFromDefaultPatch(): Promise<boolean> {
+      const template = await this.fetchDefaultPatchTemplate();
+      if (!template) {
+        return false;
+      }
+
+      const patchInstance = clonePatch(template);
+      this.ensurePatchInBank(patchInstance);
+
+      const success = await this.applyPatchObject(patchInstance);
+      if (!success) {
+        console.warn('Unable to apply default patch');
+      }
+      return success;
+    },
+    async prepareStateForNewPatch(): Promise<boolean> {
+      const layoutStore = useLayoutStore();
+      const nodeStateStore = useNodeStateStore();
+      const layoutReady = await layoutStore.waitForSynthLayout();
+      if (!layoutReady) {
+        console.warn('Cannot prepare new patch: synth layout not ready');
+        return false;
+      }
+      await useAudioSystemStore().waitForInstrumentReady();
+
+      nodeStateStore.resetCurrentStateToDefaults(false);
+
+      const template = await this.fetchDefaultPatchTemplate();
+      if (template) {
+        const patchInstance = clonePatch(template);
+        const applied = await this.applyPatchObject(patchInstance, {
+          setCurrentPatchId: false,
+        });
+        if (applied) {
+          await nextTick(() => {
+            nodeStateStore.applyPreservedStatesToWasm();
+            void useAssetStore().restoreAudioAssets();
+          });
+          return true;
+        }
+      }
+
+      nodeStateStore.applyPreservedStatesToWasm();
+      return false;
+    },
+    async createNewPatchFromTemplate(name: string): Promise<Patch | null> {
+      const targetName = name?.trim() || 'New Patch';
+      const template = await this.fetchDefaultPatchTemplate();
+
+      if (template) {
+        const patchInstance = clonePatch(template);
+        const newMetadata = createDefaultPatchMetadata(targetName);
+        patchInstance.metadata = {
+          ...patchInstance.metadata,
+          ...newMetadata,
+          name: targetName,
+        };
+
+        const applied = await this.applyPatchObject(patchInstance);
+        if (applied) {
+          if (this.currentBank) {
+            this.currentBank = addPatchToBank(this.currentBank, patchInstance);
+          } else {
+            this.currentBank = createBank('Default Bank', [patchInstance]);
+          }
+          this.currentPatchId = patchInstance.metadata.id;
+          return patchInstance;
+        }
+      }
+
+      const prepared = await this.prepareStateForNewPatch();
+      if (!prepared) {
+        console.warn('Unable to prepare synth state for new patch');
+        return null;
+      }
+
+      return await this.saveCurrentPatch(targetName);
+    },
+    applyTemplateToCurrentLayout(template: Patch): boolean {
+      const layoutStore = useLayoutStore();
+      const nodeStateStore = useNodeStateStore();
+      if (!layoutStore.synthLayout) {
+        console.warn('Cannot apply template: synth layout missing');
+        return false;
+      }
+
+      const canonicalVoice = layoutStore.synthLayout.voices[0];
+      if (!canonicalVoice) {
+        console.warn('Cannot apply template: canonical voice missing');
+        return false;
+      }
+
+      const templateState = deserializePatch(template);
+      const nodeIdRemap = new Map<string, string>();
+
+      const assignStates = <T extends { id?: string }>(
+        nodeType: VoiceNodeType,
+        templateMap: Map<string, T>,
+        targetMap: Map<string, T>,
+      ) => {
+        const nodes = getNodesOfType(canonicalVoice, nodeType) || [];
+        const orderedTemplates = Array.from(templateMap.entries()).sort(
+          ([a], [b]) => a.localeCompare(b),
+        );
+
+        nodes.forEach((node, index) => {
+          const templateEntry = orderedTemplates[index];
+          if (!templateEntry) return;
+          const [templateId, templateValue] = templateEntry;
+          const assignedState = {
+            ...templateValue,
+            id: node.id,
+          };
+          targetMap.set(node.id, assignedState as T);
+          nodeIdRemap.set(templateId, node.id);
+        });
+      };
+
+      assignStates(
+        VoiceNodeType.Oscillator,
+        templateState.oscillators,
+        nodeStateStore.oscillatorStates,
+      );
+      assignStates(
+        VoiceNodeType.WavetableOscillator,
+        templateState.wavetableOscillators,
+        nodeStateStore.wavetableOscillatorStates,
+      );
+      assignStates(
+        VoiceNodeType.Envelope,
+        templateState.envelopes,
+        nodeStateStore.envelopeStates,
+      );
+      assignStates(
+        VoiceNodeType.LFO,
+        templateState.lfos,
+        nodeStateStore.lfoStates,
+      );
+      assignStates(
+        VoiceNodeType.Filter,
+        templateState.filters,
+        nodeStateStore.filterStates,
+      );
+      assignStates(
+        VoiceNodeType.Sampler,
+        templateState.samplers,
+        nodeStateStore.samplerStates,
+      );
+      assignStates(
+        VoiceNodeType.Convolver,
+        templateState.convolvers,
+        nodeStateStore.convolverStates,
+      );
+      assignStates(
+        VoiceNodeType.Delay,
+        templateState.delays,
+        nodeStateStore.delayStates,
+      );
+      assignStates(
+        VoiceNodeType.Chorus,
+        templateState.choruses,
+        nodeStateStore.chorusStates,
+      );
+      assignStates(
+        VoiceNodeType.Reverb,
+        templateState.reverbs,
+        nodeStateStore.reverbStates,
+      );
+
+      if (templateState.noise) {
+        nodeStateStore.noiseState = templateState.noise;
+      }
+      if (templateState.velocity) {
+        nodeStateStore.velocityState = templateState.velocity;
+      }
+
+      const remappedAssets = new Map<string, AudioAsset>();
+      templateState.audioAssets.forEach((asset, assetId) => {
+        const parsed = parseAudioAssetId(assetId);
+        if (!parsed) return;
+        const mappedNodeId = nodeIdRemap.get(parsed.nodeId);
+        if (!mappedNodeId) return;
+        const newId = createAudioAssetId(parsed.nodeType, mappedNodeId);
+        remappedAssets.set(newId, asset);
+      });
+      useAssetStore().setAudioAssets(remappedAssets);
+
+      return true;
+    },
+    async initializeNewPatchSession(): Promise<void> {
+      if (this.currentPatchId && this.currentBank) {
+        return;
+      }
+
+      const patch = await this.createNewPatchFromTemplate('New Patch');
+      if (!patch) {
+        console.error('Failed to create initial patch during startup');
+        return;
+      }
+    },
+    async saveCurrentPatch(
+      name: string,
+      metadata?: { author?: string; tags?: string[]; description?: string },
+    ): Promise<Patch | null> {
+      const layoutStore = useLayoutStore();
+      const nodeStateStore = useNodeStateStore();
+      const assetStore = useAssetStore();
+      const audioStore = useAudioSystemStore();
+      if (!layoutStore.synthLayout) {
+        console.error('Cannot save patch: no synth layout');
+        return null;
+      }
+
+      if (!audioStore.currentInstrument) {
+        console.error('Cannot save patch: no instrument');
+        return null;
+      }
+
+      try {
+        const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
+        const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
+
+        const extractedAssets = await extractAllAudioAssets(
+          audioStore.currentInstrument as unknown as Record<string, never>,
+          samplerIds,
+          convolverIds,
+        );
+
+        const allAssets = new Map([
+          ...assetStore.audioAssets,
+          ...extractedAssets,
+        ]);
+
+        const patch = serializeCurrentPatch(
+          name,
+          layoutStore.synthLayout,
+          nodeStateStore.oscillatorStates,
+          nodeStateStore.wavetableOscillatorStates,
+          nodeStateStore.filterStates,
+          nodeStateStore.envelopeStates,
+          nodeStateStore.lfoStates,
+          nodeStateStore.samplerStates,
+          nodeStateStore.convolverStates,
+          nodeStateStore.delayStates,
+          nodeStateStore.chorusStates,
+          nodeStateStore.reverbStates,
+          nodeStateStore.noiseState,
+          nodeStateStore.velocityState,
+          allAssets,
+          metadata,
+        );
+
+        if (this.currentBank) {
+          this.currentBank = addPatchToBank(this.currentBank, patch);
+        } else {
+          this.currentBank = createBank('Default Bank', [patch]);
+        }
+
+        this.currentPatchId = patch.metadata.id;
+        return patch;
+      } catch (error) {
+        console.error('Failed to save patch:', error);
+        return null;
+      }
+    },
+    async updateCurrentPatch(
+      name?: string,
+      metadata?: { author?: string; tags?: string[]; description?: string },
+    ): Promise<Patch | null> {
+      const layoutStore = useLayoutStore();
+      const nodeStateStore = useNodeStateStore();
+      const assetStore = useAssetStore();
+      const audioStore = useAudioSystemStore();
+      if (!layoutStore.synthLayout) {
+        console.error('Cannot update patch: no synth layout');
+        return null;
+      }
+
+      if (!audioStore.currentInstrument) {
+        console.error('Cannot update patch: no instrument');
+        return null;
+      }
+
+      if (!this.currentBank || !this.currentPatchId) {
+        console.error('Cannot update patch: no current patch selected');
+        return null;
+      }
+
+      const existingPatch = this.currentBank.patches.find(
+        (p) => p.metadata.id === this.currentPatchId,
+      );
+
+      if (!existingPatch) {
+        console.error('Cannot update patch: current patch not found in bank');
+        return null;
+      }
+
+      try {
+        const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
+        const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
+
+        const extractedAssets = await extractAllAudioAssets(
+          audioStore.currentInstrument as unknown as Record<string, never>,
+          samplerIds,
+          convolverIds,
+        );
+
+        const allAssets = new Map([
+          ...assetStore.audioAssets,
+          ...extractedAssets,
+        ]);
+
+        const existingMetadata = existingPatch.metadata;
+        const finalName = name?.trim() || existingMetadata.name;
+        const now = Date.now();
+        const mergedMetadata: Partial<PatchMetadata> = {
+          ...existingMetadata,
+          name: finalName,
+          modified: now,
+          ...(metadata || {}),
+        };
+
+        const patch = serializeCurrentPatch(
+          finalName,
+          layoutStore.synthLayout,
+          nodeStateStore.oscillatorStates,
+          nodeStateStore.wavetableOscillatorStates,
+          nodeStateStore.filterStates,
+          nodeStateStore.envelopeStates,
+          nodeStateStore.lfoStates,
+          nodeStateStore.samplerStates,
+          nodeStateStore.convolverStates,
+          nodeStateStore.delayStates,
+          nodeStateStore.chorusStates,
+          nodeStateStore.reverbStates,
+          nodeStateStore.noiseState,
+          nodeStateStore.velocityState,
+          allAssets,
+          mergedMetadata,
+        );
+
+        this.currentBank = updatePatchInBank(this.currentBank, patch);
+        this.currentPatchId = patch.metadata.id;
+        return patch;
+      } catch (error) {
+        console.error('Failed to update patch:', error);
+        return null;
+      }
+    },
+    async loadPatch(patchId: string): Promise<boolean> {
+      if (!this.currentBank) {
+        console.error('Cannot load patch: no bank loaded');
+        return false;
+      }
+
+      const patch = this.currentBank.patches.find(
+        (p) => p.metadata.id === patchId,
+      );
+      if (!patch) {
+        console.error('Patch not found in bank:', patchId);
+        return false;
+      }
+
+      return await this.applyPatchObject(patch);
+    },
+    deletePatch(patchId: string): boolean {
+      if (!this.currentBank) {
+        console.error('Cannot delete patch: no bank loaded');
+        return false;
+      }
+
+      this.currentBank = removePatchFromBank(this.currentBank, patchId);
+
+      if (this.currentPatchId === patchId) {
+        this.currentPatchId = null;
+      }
+
+      return true;
+    },
+    createNewBank(name: string): Bank {
+      this.currentBank = createBank(name);
+      this.currentPatchId = null;
+      return this.currentBank;
+    },
+    exportCurrentPatchAsJSON(): string | null {
+      if (!this.currentPatchId || !this.currentBank) {
+        console.error('No current patch to export');
+        return null;
+      }
+
+      const patch = this.currentBank.patches.find(
+        (p) => p.metadata.id === this.currentPatchId,
+      );
+      if (!patch) {
+        console.error('Current patch not found');
+        return null;
+      }
+
+      return exportPatchToJSON(patch);
+    },
+    exportCurrentBankAsJSON(): string | null {
+      if (!this.currentBank) {
+        console.error('No bank to export');
+        return null;
+      }
+
+      return exportBankToJSON(this.currentBank);
+    },
+    async importPatchFromJSON(json: string): Promise<boolean> {
+      const result = importPatchFromJSON(json);
+
+      if (!result.validation.valid) {
+        console.error(
+          'Patch validation failed:',
+          result.validation.errors?.join(', '),
+        );
+        return false;
+      }
+
+      if (result.validation.warnings) {
+        console.warn('Patch import warnings:', result.validation.warnings);
+      }
+
+      if (!result.patch) {
+        console.error('No patch in import result');
+        return false;
+      }
+
+      if (this.currentBank) {
+        this.currentBank = addPatchToBank(this.currentBank, result.patch);
+      } else {
+        this.currentBank = createBank('Imported Patches', [result.patch]);
+      }
+
+      return await this.loadPatch(result.patch.metadata.id);
+    },
+    async importBankFromJSON(json: string): Promise<boolean> {
+      const result = importBankFromJSON(json);
+
+      if (!result.validation.valid) {
+        console.error(
+          'Bank validation failed:',
+          result.validation.errors?.join(', '),
+        );
+        return false;
+      }
+
+      if (result.validation.warnings) {
+        console.warn('Bank import warnings:', result.validation.warnings);
+      }
+
+      if (!result.bank) {
+        console.error('No bank in import result');
+        return false;
+      }
+
+      this.currentBank = result.bank;
+      this.currentPatchId = null;
+      return true;
+    },
+  },
+});

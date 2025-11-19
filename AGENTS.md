@@ -243,6 +243,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - When `public/default-patch.json` exists it clones that patch, assigns fresh metadata (`createDefaultPatchMetadata`), applies it to the synth, and inserts it into the current bank as the new patch.
 - If the default file is missing or fails validation the method falls back to the older `prepareStateForNewPatch` + `saveCurrentPatch` path so the user still gets a blank patch rather than an error.
 
+## Backend store migration (2025-??)
+
+- When moving helpers/services to `layout-store`/`connection-store`, keep the legacy `useAudioSystemStore().synthLayout` updated by cloning the cache after each layout mutation. Components still read from the legacy store until Phase 4 finishes, so skipping this mirror leaves the UI blind to new connections/layout changes.
+- Helpers that previously called `store.updateSynthLayout` (worklet loader, sync manager) should now update `layout-store` + run `node-state-store.initializeDefaultStates()`, then mirror the resulting layout into the audio system store for backward compatibility.
+
 ---
 
 # Web App Architecture Improvements (2025)
@@ -523,6 +528,7 @@ handler.sendFireAndForget(
 - [ ] Remove mutation logic (keep only cache updates)
 - [ ] Remove duplicate type conversions
 - [ ] Use typed messages everywhere
+- [ ] Staged rollout: add the new stores alongside `audio-system-store`, then migrate helpers/components in small PRs so the synth stays functional after each step
 
 ### Phase 5: Testing & Documentation (Pending)
 - [ ] Add unit tests for adapters

@@ -1,6 +1,7 @@
 // src/audio/modulation-route-manager.ts
 
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
+import { useConnectionStore } from 'src/stores/connection-store';
 import {
   VoiceNodeType,
   type ModulationTargetOption,
@@ -17,14 +18,19 @@ export interface TargetNode {
 }
 
 export class ModulationRouteManager {
+  private readonly layoutStore = useLayoutStore();
+  private readonly connectionStore = useConnectionStore();
+
   constructor(
-    private readonly store = useAudioSystemStore(),
+    _legacyStore: unknown = undefined,
     private readonly sourceId: string,
     private readonly sourceType: VoiceNodeType,
-  ) { }
+  ) {
+    void _legacyStore;
+  }
 
   private getNodeName(type: VoiceNodeType, id: string): string {
-    const storedName = this.store.getNodeName(id);
+    const storedName = this.layoutStore.getNodeName(id);
     if (storedName && storedName.trim().length > 0) {
       return storedName;
     }
@@ -70,7 +76,7 @@ export class ModulationRouteManager {
   }
 
   private findNodeById(nodeId: string): VoiceNode | undefined {
-    const voice = this.store.synthLayout?.voices[0];
+    const voice = this.layoutStore.synthLayout?.voices[0];
     if (!voice) return undefined;
 
     for (const type of Object.values(VoiceNodeType)) {
@@ -84,7 +90,7 @@ export class ModulationRouteManager {
     sourceId: string,
     targetNodeId: string,
   ): boolean {
-    const voice = this.store.synthLayout?.voices[0];
+    const voice = this.layoutStore.synthLayout?.voices[0];
     if (!voice) return false;
 
     // Check if this connection already exists
@@ -108,7 +114,7 @@ export class ModulationRouteManager {
       visited.add(currentId);
 
       // Get all connections from the current node
-      const outgoingConnections = this.store.getNodeConnections(currentId);
+      const outgoingConnections = this.layoutStore.getNodeConnections(currentId);
 
       // Check each connection
       for (const conn of outgoingConnections) {
@@ -151,7 +157,7 @@ export class ModulationRouteManager {
     const allParams = getModulationTargetsForType(node.type);
 
     // Get existing connections only for this specific source->target pair
-    const existingConnections = this.store
+    const existingConnections = this.layoutStore
       .getNodeConnections(this.sourceId)
       .filter(
         (conn) => conn.fromId === this.sourceId && conn.toId === targetId,
@@ -172,7 +178,7 @@ export class ModulationRouteManager {
    * Gets all target nodes that can accept new modulation connections
    */
   getAvailableTargets(): TargetNode[] {
-    const voice = this.store.synthLayout?.voices[0];
+    const voice = this.layoutStore.synthLayout?.voices[0];
     if (!voice) {
       console.warn('No voice layout available');
       return [];
@@ -241,7 +247,7 @@ export class ModulationRouteManager {
         modTransform: connection.modulationTransformation,
       });
 
-      await this.store.updateConnection(connection);
+      this.connectionStore.queueConnectionUpdate(connection);
     } catch (error) {
       console.error('Failed to update connection:', error);
       throw error;
