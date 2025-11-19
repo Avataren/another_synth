@@ -1,3 +1,5 @@
+-- when you make new key discoveries or important insights, append that knowledge to this file
+
 # Agent Notes for `another_synth`
 
 This file captures key context discovered while debugging patch loading, envelopes, and the audio graph in the Rust/WASM engine. Future agents should follow these guidelines when touching related code.
@@ -196,4 +198,3 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - Is the envelope’s `config.active` flag true?
   - Is there a `GateMixer` node and a `CombinedGate` connection into the envelope?
   - Does the patch layout for voice 0 contain the expected `gatemixer → envelope` connection with `target: 26`?
-
