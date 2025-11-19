@@ -165,6 +165,7 @@ export const useAudioSystemStore = defineStore('audioSystem', {
     reverbStates: new Map<string, ReverbState>(),
     isUpdatingFromWasm: false,
     isUpdating: false,
+    isLoadingPatch: false,
     updateQueue: [] as NodeConnectionUpdate[],
     lastUpdateError: null as Error | null,
     deletedNodeIds: new Set<string>(),
@@ -453,12 +454,21 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         console.log('[applyPatchObject] Deserialized sampler states:', Array.from(deserialized.samplers.keys()));
         console.log('[applyPatchObject] Deserialized layout sampler nodes:', deserialized.layout.voices[0]?.nodes[VoiceNodeType.Sampler] || []);
 
+        // Set loading flag to prevent redundant watcher updates
+        this.isLoadingPatch = true;
+
         // Send the patch to WASM FIRST, before we modify any state
         // This ensures we're sending the original patch object with plain objects, not Maps
         this.currentInstrument?.loadPatch(patch);
 
-        // Update the layout from the patch
+        // Update the layout from the patch (this processes connections and nodes)
         this.updateSynthLayout(deserialized.layout);
+
+        // Update the instrument's layout immediately so watchers can find nodes
+        // The worklet will send back the authoritative layout which will override this
+        if (this.synthLayout && this.currentInstrument) {
+          this.currentInstrument.updateLayout(this.synthLayout);
+        }
 
         // Update all state maps from the patch
         this.oscillatorStates = deserialized.oscillators;
@@ -488,6 +498,10 @@ export const useAudioSystemStore = defineStore('audioSystem', {
 
         // Restore audio assets (sample data, impulse responses, etc.) to WASM
         await this.restoreAudioAssets();
+
+        // Clear the loading flag - the worklet will send back its authoritative layout
+        // which will override our temporary instrument layout update
+        this.isLoadingPatch = false;
 
         return true;
       } catch (error) {

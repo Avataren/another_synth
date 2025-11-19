@@ -133,6 +133,9 @@ onMounted(() => {
 watch(
   () => localVelocityState.value,
   (newState: VelocityState) => {
+    // Skip updates during patch loading - the patch already contains the correct state
+    if (store.isLoadingPatch) return;
+
     console.log('todo: update velocityState in instrument.ts ', newState);
     store.currentInstrument?.updateVelocityState(
       props.nodeId,

@@ -171,6 +171,9 @@ onMounted(() => {
 watch(
   () => filterState.value,
   (newState) => {
+    // Skip updates during patch loading - the patch already contains the correct state
+    if (store.isLoadingPatch) return;
+
     console.log('NoiseFilter: updating noise state', newState);
     store.currentInstrument?.updateNoiseState(props.nodeId, newState);
   },
