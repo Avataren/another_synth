@@ -280,7 +280,7 @@ export interface RawConnection {
   to_id: string;
   target: number;
   amount: number;
-  modulation_type: string;
+  modulation_type: number | string; // Can be number from Rust (0,1,2) or string from TypeScript
   modulation_transform: ModulationTransformation;
 }
 
@@ -312,7 +312,22 @@ export const findNodeConnections = (
   );
 };
 
-export function convertRawModulationType(raw: string): WasmModulationType {
+export function convertRawModulationType(raw: number | string): WasmModulationType {
+  // Handle numeric values from Rust (0=VCA, 1=Bipolar, 2=Additive)
+  if (typeof raw === 'number') {
+    switch (raw) {
+      case 0:
+        return WasmModulationType.VCA;
+      case 1:
+        return WasmModulationType.Bipolar;
+      case 2:
+        return WasmModulationType.Additive;
+      default:
+        console.warn('Unknown numeric modulation type:', raw);
+        return WasmModulationType.Additive;
+    }
+  }
+  // Handle string values
   switch (raw) {
     case 'VCA':
       return WasmModulationType.VCA;

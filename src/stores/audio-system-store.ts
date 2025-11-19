@@ -486,6 +486,9 @@ export const useAudioSystemStore = defineStore('audioSystem', {
           this.currentPatchId = patch.metadata.id;
         }
 
+        // Restore audio assets (sample data, impulse responses, etc.) to WASM
+        await this.restoreAudioAssets();
+
         return true;
       } catch (error) {
         console.error('Failed to apply patch:', error);
@@ -668,11 +671,26 @@ export const useAudioSystemStore = defineStore('audioSystem', {
         ) ?? false
       );
     },
-    convertModulationType(raw: string | undefined): WasmModulationType {
+    convertModulationType(raw: number | string | undefined): WasmModulationType {
       if (raw === undefined) {
         // If the modulation type is missing, default to Additive.
         return WasmModulationType.Additive;
       }
+      // Handle numeric values from Rust (0=VCA, 1=Bipolar, 2=Additive)
+      if (typeof raw === 'number') {
+        switch (raw) {
+          case 0:
+            return WasmModulationType.VCA;
+          case 1:
+            return WasmModulationType.Bipolar;
+          case 2:
+            return WasmModulationType.Additive;
+          default:
+            console.warn('Unknown numeric modulation type:', raw);
+            return WasmModulationType.Additive;
+        }
+      }
+      // Handle string values
       switch (raw) {
         case 'VCA':
           return WasmModulationType.VCA;

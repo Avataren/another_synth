@@ -233,6 +233,15 @@ pub struct AudioAsset {
     pub asset_type: AudioAssetType,
     #[serde(rename = "base64Data")]
     pub base64_data: String,
+    #[serde(rename = "sampleRate")]
+    pub sample_rate: f32,
+    pub channels: u32,
+    #[serde(rename = "rootNote", default)]
+    pub root_note: Option<f32>,
+    #[serde(rename = "fileName", default)]
+    pub file_name: Option<String>,
+    #[serde(default)]
+    pub duration: Option<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

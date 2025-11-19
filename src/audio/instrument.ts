@@ -103,8 +103,31 @@ export default class Instrument {
     if (!this.ready || !this.workletNode) return;
 
     try {
-      // Check for NaN/Infinity before stringifying
-      const patchJson = JSON.stringify(patch, (key, value) => {
+      // CRITICAL: Strip Vue reactivity by doing a deep clone
+      // This prevents Vue proxies from breaking JSON serialization
+      // Also replace undefined with null to avoid JSON serialization issues
+      const cleanPatch = JSON.parse(JSON.stringify(patch, (key, value) => {
+        if (value === undefined) {
+          return null;
+        }
+        return value;
+      })) as Patch;
+
+      // CRITICAL: Remove audioAssets to reduce JSON size
+      // Audio assets are loaded separately via restoreAudioAssets()
+      // Sending them in the patch JSON causes WASM string passing to fail for large patches
+      const patchWithoutAssets = {
+        ...cleanPatch,
+        audioAssets: {},
+      };
+
+      // Check for NaN/Infinity/undefined before stringifying
+      const patchJson = JSON.stringify(patchWithoutAssets, (key, value) => {
+        // Skip undefined values
+        if (value === undefined) {
+          console.warn(`[loadPatch] Found undefined at key "${key}", using null instead`);
+          return null;
+        }
         if (typeof value === 'number') {
           if (!Number.isFinite(value)) {
             console.warn(`[loadPatch] Found non-finite number at key "${key}":`, value);
@@ -116,22 +139,23 @@ export default class Instrument {
       console.log('[loadPatch] Patch JSON length:', patchJson.length);
       console.log('[loadPatch] Patch JSON preview:', patchJson.substring(0, 200));
 
-      // Check what's around the position where WASM fails (column 26412)
-      if (patchJson.length > 26412) {
-        const errorPos = 26412;
-        const context = 200;
-        console.log('[loadPatch] JSON around position 26412 (where WASM fails):');
-        console.log(patchJson.substring(errorPos - context, errorPos + context));
-
-        // Also log the character at that exact position
-        console.log('[loadPatch] Character at position 26412:', JSON.stringify(patchJson[26412]));
-        console.log('[loadPatch] Next 20 chars:', JSON.stringify(patchJson.substring(26412, 26432)));
-
-        // Check if we're near audio assets
-        const audioAssetsPos = patchJson.indexOf('"audioAssets"');
-        console.log('[loadPatch] audioAssets starts at position:', audioAssetsPos);
-        console.log('[loadPatch] Distance from error to audioAssets:', audioAssetsPos - 26412);
+      // Check for undefined or invalid values in the JSON string
+      if (patchJson.includes('undefined')) {
+        console.error('[loadPatch] JSON contains literal "undefined" string!');
+        const undefinedPos = patchJson.indexOf('undefined');
+        console.error('[loadPatch] First undefined at position:', undefinedPos);
+        console.error('[loadPatch] Context:', patchJson.substring(undefinedPos - 50, undefinedPos + 50));
       }
+
+      // Check what's around typical error positions
+      [25084, 26412].forEach(errorPos => {
+        if (patchJson.length > errorPos) {
+          const context = 100;
+          console.log(`[loadPatch] JSON around position ${errorPos}:`);
+          console.log(patchJson.substring(errorPos - context, errorPos + context));
+          console.log(`[loadPatch] Character at ${errorPos}:`, JSON.stringify(patchJson[errorPos]));
+        }
+      });
 
       // Verify the JSON is valid by parsing it
       JSON.parse(patchJson);
@@ -147,7 +171,13 @@ export default class Instrument {
       });
     } catch (error) {
       console.error('[loadPatch] Failed to serialize patch:', error);
-      console.error('[loadPatch] Patch object:', patch);
+      console.error('[loadPatch] Patch object (this may have Vue reactivity issues):', patch);
+      try {
+        const testClean = JSON.parse(JSON.stringify(patch));
+        console.error('[loadPatch] Clean patch (after stripping reactivity):', testClean);
+      } catch (cleanError) {
+        console.error('[loadPatch] Even clean patch failed:', cleanError);
+      }
     }
   }
 

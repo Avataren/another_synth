@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(npm run build:wasm:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout /t 3)",
+      "Bash(nul)",
+      "Bash(cargo clean:*)",
+      "Bash(npm run build:worklets:*)",
+      "Bash(timeout /t 5)"
     ],
     "deny": [],
     "ask": []

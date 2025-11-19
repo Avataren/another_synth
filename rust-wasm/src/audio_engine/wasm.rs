@@ -400,22 +400,40 @@ impl AudioEngine {
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = initWithPatch))]
     pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, JsValue> {
-        log_console(&format!("Received patch JSON, length: {}", patch_json.len()));
+        log_console(&format!("Received patch JSON, byte length: {}, char length: {}",
+            patch_json.len(),
+            patch_json.chars().count()));
 
         // Log a snippet around the problematic position
         if patch_json.len() > 26412 {
             let chars: Vec<char> = patch_json.chars().collect();
+            log_console(&format!("Character count: {}", chars.len()));
             if chars.len() > 26412 {
                 let start = 26400;
-                let end = 26450.min(chars.len());
+                let end = (26450).min(chars.len());
                 let snippet: String = chars[start..end].iter().collect();
                 log_console(&format!("JSON around char position 26412: {}", snippet));
+
+                // Also log bytes
+                let byte_snippet = &patch_json.as_bytes()[26400.min(patch_json.len())..26450.min(patch_json.len())];
+                log_console(&format!("Bytes: {:?}", byte_snippet));
             }
         }
 
+        // First try to parse to see where it fails
         let patch: PatchFile = serde_json::from_str(patch_json)
             .map_err(|e| {
                 log_console(&format!("Serde error: {}", e));
+                log_console(&format!("Error line: {}, column: {}", e.line(), e.column()));
+
+                // Try to show context around the error
+                if e.column() > 50 && patch_json.len() >= e.column() {
+                    let start = e.column().saturating_sub(50);
+                    let end = (e.column() + 50).min(patch_json.len());
+                    let error_context = &patch_json[start..end];
+                    log_console(&format!("Context around error: {}", error_context));
+                }
+
                 JsValue::from_str(&format!("Failed to parse patch JSON: {}", e))
             })?;
 

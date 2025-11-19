@@ -2581,6 +2581,19 @@ var PORT_LABELS = {
   [PortId.CombinedGate]: "Combined gate"
 };
 function convertRawModulationType(raw) {
+  if (typeof raw === "number") {
+    switch (raw) {
+      case 0:
+        return WasmModulationType.VCA;
+      case 1:
+        return WasmModulationType.Bipolar;
+      case 2:
+        return WasmModulationType.Additive;
+      default:
+        console.warn("Unknown numeric modulation type:", raw);
+        return WasmModulationType.Additive;
+    }
+  }
   switch (raw) {
     case "VCA":
       return WasmModulationType.VCA;
