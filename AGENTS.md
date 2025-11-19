@@ -239,6 +239,366 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 
 ## Default patch template for new patches
 
-- The store now exposes `createNewPatchFromTemplate(name)` which is used both by the “New Patch” button and by `initializeNewPatchSession`.
+- The store now exposes `createNewPatchFromTemplate(name)` which is used both by the "New Patch" button and by `initializeNewPatchSession`.
 - When `public/default-patch.json` exists it clones that patch, assigns fresh metadata (`createDefaultPatchMetadata`), applies it to the synth, and inserts it into the current bank as the new patch.
 - If the default file is missing or fails validation the method falls back to the older `prepareStateForNewPatch` + `saveCurrentPatch` path so the user still gets a blank patch rather than an error.
+
+---
+
+# Web App Architecture Improvements (2025)
+
+## Overview of Architectural Refactoring
+
+The web app architecture for the WASM synth has been significantly improved to address fragility, tight coupling, and state management issues. The following sections document the new architecture patterns that should be followed going forward.
+
+## Core Architectural Principles
+
+1. **Single Source of Truth**: WASM engine is authoritative for all audio state
+2. **Layered Architecture**: Clear separation between WASM, adapter, worklet, and UI layers
+3. **Type Safety**: Comprehensive TypeScript types for all message passing
+4. **Error Recovery**: All operations use Promise-based patterns with timeout handling
+5. **Decoupling**: No direct WASM imports outside the adapter layer
+
+## New Architecture Components
+
+### 1. Typed Message Protocol (`src/audio/types/worklet-messages.ts`)
+
+**Purpose**: Eliminates the ad-hoc message passing that was scattered across files.
+
+**Key Features**:
+- Defines all 30+ message types with full TypeScript interfaces
+- `WorkletMessageBuilder` for type-safe message construction
+- `WorkletMessageValidator` for runtime validation
+- Supports both request/response and fire-and-forget patterns
+
+**Usage Example**:
+```typescript
+import { WorkletMessageBuilder } from '@/audio/types/worklet-messages';
+
+// Type-safe message creation
+const message = WorkletMessageBuilder.updateEnvelope(
+  envelopeId,
+  config,
+  true // withResponse
+);
+```
+
+**Migration Path**:
+- Replace all `workletNode.port.postMessage({ type: '...' })` with message builders
+- Add message validation before sending
+- Use the `WorkletMessage` union type for handlers
+
+### 2. WASM Type Adapter (`src/audio/adapters/wasm-type-adapter.ts`)
+
+**Purpose**: Centralizes all type conversions between Rust/WASM and TypeScript.
+
+**Eliminates Duplicate Code**:
+Previously, type conversion logic was duplicated in:
+- `synth-worklet.ts` (lines 700-761)
+- `audio-system-store.ts` (lines 804-835, 1106-1150)
+- `synth-layout.ts` (lines 399-426)
+
+**Key Functions**:
+- `rustNodeTypeToTS()` / `tsNodeTypeToRust()` - Node type conversions
+- `rustModulationTypeToTS()` / `tsModulationTypeToRust()` - Modulation enum conversions
+- `normalizeConnection()` / `denormalizeConnection()` - Connection format conversions
+- `validatePortId()`, `validateFiniteNumber()`, `sanitizeForWasm()` - Validation utilities
+
+**Usage Example**:
+```typescript
+import { rustNodeTypeToTS, normalizeConnection } from '@/audio/adapters/wasm-type-adapter';
+
+// Convert node types
+const tsType = rustNodeTypeToTS('analog_oscillator'); // VoiceNodeType.Oscillator
+
+// Normalize connections
+const normalized = normalizeConnection(rawConnection);
+```
+
+**Important**: ALL type conversions should now go through this adapter. Do NOT add new conversion logic elsewhere.
+
+### 3. WASM Engine Adapter (`src/audio/adapters/wasm-engine-adapter.ts`)
+
+**Purpose**: Decouples the worklet from direct WASM imports.
+
+**Problem Solved**: Previously, the worklet imported 10+ types directly from `audio_processor.js`, making any WASM API change require worklet changes.
+
+**Key Features**:
+- Clean, typed interface to all WASM operations
+- Automatic validation of all inputs (no NaN/Infinity/undefined to WASM)
+- Proper error handling and logging
+- Encapsulates WASM initialization complexity
+- Makes testing and mocking possible
+
+**Architecture**:
+```
+Worklet → WasmEngineAdapter → WASM AudioEngine
+         (clean interface)   (raw bindings)
+```
+
+**Usage Example**:
+```typescript
+import { WasmEngineAdapter } from '@/audio/adapters/wasm-engine-adapter';
+
+const adapter = new WasmEngineAdapter();
+const result = adapter.initialize({
+  sampleRate: 44100,
+  numVoices: 8,
+  wasmBinary: arrayBuffer
+});
+
+if (!result.success) {
+  console.error('Init failed:', result.error);
+}
+
+// Type-safe operations
+adapter.updateEnvelope(envelopeId, config);
+adapter.connectNodes(fromId, fromPort, toId, toPort, amount, modType, transform);
+```
+
+**Migration Path**:
+- Replace all `this.audioEngine.method()` calls in the worklet with `this.engineAdapter.method()`
+- Remove direct WASM imports from the worklet
+- Let the adapter handle all validation and error cases
+
+### 4. Request/Response Message Handler (`src/audio/adapters/message-handler.ts`)
+
+**Purpose**: Replaces fire-and-forget message passing with Promise-based operations.
+
+**Problem Solved**: Previously, most operations had no confirmation, error handling, or retry logic. This caused:
+- Silent failures
+- Race conditions
+- No way to know when operations completed
+- Difficult debugging
+
+**Key Features**:
+- **Automatic message queuing** during initialization
+- **Timeout handling** (default 5s, configurable)
+- **Operation tracking** with unique message IDs
+- **Error recovery** with clear error messages
+- **Initialization sequence** management
+
+**Usage Example**:
+```typescript
+import { WorkletMessageHandler } from '@/audio/adapters/message-handler';
+import { WorkletMessageBuilder } from '@/audio/types/worklet-messages';
+
+const handler = new WorkletMessageHandler({ debug: true });
+handler.attachToWorklet(workletNode);
+
+// Promise-based operation
+try {
+  await handler.sendMessage(
+    WorkletMessageBuilder.updateEnvelope(id, config)
+  );
+  console.log('Envelope updated successfully');
+} catch (error) {
+  console.error('Update failed:', error);
+}
+
+// Fire-and-forget for performance-critical messages
+handler.sendFireAndForget(
+  WorkletMessageBuilder.noteOn(60, 100)
+);
+```
+
+**Initialization Sequence**:
+1. Worklet sends `ready` message
+2. Handler calls `markInitialized()`
+3. All queued operations are processed in order
+4. New operations execute immediately
+
+**Migration Path**:
+- Replace `Instrument` class's manual promise handling with `WorkletMessageHandler`
+- Update worklet to send `operationResponse` messages for mutations
+- Use `sendFireAndForget()` only for MIDI/performance messages
+
+## State Management Architecture
+
+### Previous Issues
+
+1. **Multiple sources of truth**:
+   - Pinia store had 15+ state maps
+   - `SynthLayout` duplicated node info
+   - Instrument class had its own layout copy
+   - WASM had internal state
+   - No synchronization strategy
+
+2. **Optimistic updates without confirmation**:
+   - Store updated layout before WASM confirmed
+   - Worklet sent `stateUpdated` after the change
+   - Result: double updates, conflicts
+
+3. **Massive god store**:
+   - `audio-system-store.ts`: 2445 lines, 97 state properties, 85+ methods
+   - Mixed concerns: patch I/O, state management, UI state, serialization, asset management
+
+### New Architecture (Recommended)
+
+**Principle**: WASM is the single source of truth. Store is a read-only cache.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    UI Components                    │
+│         (Read from store, send commands)            │
+└─────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│              Pinia Store (Read-Only Cache)          │
+│  - Caches WASM state for UI rendering               │
+│  - Dispatches commands to Instrument                │
+│  - No mutation logic                                │
+└─────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│              Instrument Class (Facade)              │
+│  - Uses WorkletMessageHandler                       │
+│  - Returns Promises for all operations              │
+│  - No state storage                                 │
+└─────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│                 Audio Worklet                       │
+│  - Uses WasmEngineAdapter                           │
+│  - Sends operationResponse for mutations            │
+│  - Sends stateUpdated broadcasts                    │
+└─────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│            WASM AudioEngine (Authority)             │
+│  - Single source of truth                           │
+│  - All state lives here                             │
+└─────────────────────────────────────────────────────┘
+```
+
+**Update Flow**:
+1. UI calls `store.updateEnvelope(id, config)`
+2. Store calls `instrument.updateEnvelope(id, config)` → returns Promise
+3. Instrument uses message handler → sends typed message
+4. Worklet receives message → calls `engineAdapter.updateEnvelope()`
+5. WASM updates internal state
+6. Worklet sends `operationResponse` (success/failure)
+7. Promise resolves/rejects in UI
+8. Worklet sends `stateUpdated` broadcast
+9. Store updates cache from broadcast
+10. UI reactively updates
+
+**Benefits**:
+- No race conditions (operation completes before state update)
+- Clear error handling at every layer
+- Store stays in sync with WASM
+- No optimistic updates that can fail
+
+## Migration Strategy
+
+### Phase 1: Add New Adapters (✅ Complete)
+- [x] Create typed message protocol
+- [x] Create WASM type adapter
+- [x] Create WASM engine adapter
+- [x] Create message handler
+
+### Phase 2: Update Worklet (Pending)
+- [ ] Replace direct WASM imports with `WasmEngineAdapter`
+- [ ] Replace manual type conversions with `wasm-type-adapter`
+- [ ] Add `operationResponse` messages for all mutations
+- [ ] Extract message handlers into separate classes
+
+### Phase 3: Update Instrument Class (Pending)
+- [ ] Replace manual promise handling with `WorkletMessageHandler`
+- [ ] Remove duplicate state storage
+- [ ] Make all methods return Promises
+- [ ] Add comprehensive error handling
+
+### Phase 4: Refactor Store (Pending)
+- [ ] Split into focused stores (PatchStore, NodeStateStore, ConnectionStore, AssetStore)
+- [ ] Remove mutation logic (keep only cache updates)
+- [ ] Remove duplicate type conversions
+- [ ] Use typed messages everywhere
+
+### Phase 5: Testing & Documentation (Pending)
+- [ ] Add unit tests for adapters
+- [ ] Add integration tests for message flow
+- [ ] Update component documentation
+- [ ] Create architecture diagrams
+
+## Best Practices for Future Development
+
+### DO:
+✅ Use `WorkletMessageBuilder` for all messages
+✅ Use `WasmEngineAdapter` for all WASM operations
+✅ Use `wasm-type-adapter` for all type conversions
+✅ Return Promises for all async operations
+✅ Validate inputs before sending to WASM
+✅ Handle errors at every layer
+✅ Use the message handler for operation queuing
+
+### DON'T:
+❌ Import WASM types directly outside the adapter layer
+❌ Add type conversion logic outside `wasm-type-adapter.ts`
+❌ Use fire-and-forget for mutations (only for performance-critical MIDI)
+❌ Duplicate state across layers
+❌ Update UI optimistically without confirmation
+❌ Add more responsibilities to the god store
+
+## Common Pitfalls to Avoid
+
+1. **Breaking the adapter layer**: If you need to add a WASM method, add it to `WasmEngineAdapter` first, then use it through the adapter.
+
+2. **Skipping validation**: Always use `validateFiniteNumber()`, `sanitizeForWasm()`, etc. before sending data to WASM. NaN/Infinity will crash WASM.
+
+3. **Forgetting message IDs**: If you want a response, ensure the message has a `messageId`. Use `WorkletMessageBuilder` which adds them automatically.
+
+4. **Race conditions during init**: Always check `handler.isInitialized()` or use `sendMessage()` which queues automatically.
+
+5. **Mixing old and new patterns**: Don't use `postMessage()` directly when you have the message handler available.
+
+## Debugging Tips
+
+### Enable Debug Logging
+```typescript
+const handler = new WorkletMessageHandler({ debug: true });
+```
+
+### Check Pending Operations
+```typescript
+console.log('Pending:', handler.getPendingCount());
+console.log('Queued:', handler.getQueuedCount());
+```
+
+### Trace Message Flow
+1. Check browser console for `[MessageHandler]` logs
+2. Check `[WasmEngineAdapter]` logs for WASM errors
+3. Use browser DevTools to inspect `postMessage()` calls
+
+### Common Issues
+
+**"Operation timed out"**:
+- Worklet didn't send `operationResponse`
+- Check worklet message handler implementation
+
+**"Not attached to worklet"**:
+- Handler wasn't attached with `attachToWorklet()`
+- Worklet node not created yet
+
+**"Message queue full"**:
+- Worklet never sent `ready` message
+- Initialization failed silently
+- Check WASM initialization errors
+
+## Files Changed/Added
+
+### New Files:
+- `src/audio/types/worklet-messages.ts` - Message protocol
+- `src/audio/adapters/wasm-type-adapter.ts` - Type conversions
+- `src/audio/adapters/wasm-engine-adapter.ts` - WASM wrapper
+- `src/audio/adapters/message-handler.ts` - Request/response handler
+
+### Files Needing Updates:
+- `src/audio/worklets/synth-worklet.ts` - Use adapters, add responses
+- `src/audio/instrument.ts` - Use message handler
+- `src/stores/audio-system-store.ts` - Simplify, remove mutations
+- `src/audio/types/synth-layout.ts` - Remove duplicate conversions
