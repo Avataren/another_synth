@@ -1,8 +1,10 @@
 import { defineBoot } from '#q-app/wrappers';
 import { useAudioSystemStore } from 'stores/audio-system-store';
+import { usePatchStore } from 'stores/patch-store';
 
 export default defineBoot(async () => {
     const audioSystemStore = useAudioSystemStore();
+    const patchStore = usePatchStore();
 
     // Initialize the AudioSystem instance
     audioSystemStore.initializeAudioSystem();
@@ -12,9 +14,10 @@ export default defineBoot(async () => {
         await audioSystemStore.setupAudio();
         console.log('AudioSystem successfully set up');
 
-        const systemBankLoaded = await audioSystemStore.loadSystemBankIfPresent();
+        // Try to load system bank, otherwise initialize a new patch session
+        const systemBankLoaded = await patchStore.loadSystemBankIfPresent();
         if (!systemBankLoaded) {
-            await audioSystemStore.initializeNewPatchSession();
+            await patchStore.initializeNewPatchSession();
         }
     } catch (error) {
         console.error('Error setting up AudioSystem:', error);
