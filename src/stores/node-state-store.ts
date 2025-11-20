@@ -21,6 +21,10 @@ import {
 import { NoiseType } from 'src/audio/types/noise';
 import { useLayoutStore } from './layout-store';
 import { useAudioSystemStore } from './audio-system-store';
+import {
+  mirrorNodeStatesToLegacyStore,
+  type NodeStateSnapshot,
+} from './legacy-store-bridge';
 
 const DEFAULT_SAMPLE_RATE = 44100;
 
@@ -200,6 +204,8 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
           });
         }
       });
+
+      this.pushStatesToLegacyStore();
     },
     resetCurrentStateToDefaults(applyToWasm = true) {
       this.oscillatorStates = new Map();
@@ -320,6 +326,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       };
       this.samplerStates.set(nodeId, next);
       this.sendSamplerState(nodeId);
+      this.pushStatesToLegacyStore();
     },
     setSamplerSampleInfo(
       nodeId: string,
@@ -342,6 +349,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.samplerStates.set(nodeId, updated);
       this.sendSamplerState(nodeId);
       void this.fetchSamplerWaveform(nodeId);
+      this.pushStatesToLegacyStore();
     },
     async fetchSamplerWaveform(nodeId: string, maxPoints = 512) {
       const instrument = useAudioSystemStore().currentInstrument;
@@ -349,6 +357,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       try {
         const waveform = await instrument.getSamplerWaveform(nodeId, maxPoints);
         this.samplerWaveforms.set(nodeId, waveform);
+        this.pushStatesToLegacyStore();
       } catch (error) {
         console.error('Failed to fetch sampler waveform', error);
       }
@@ -412,6 +421,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       if (deserialized.velocity) {
         this.velocityState = deserialized.velocity;
       }
+      this.pushStatesToLegacyStore();
     },
     removeStatesForNode(nodeId: string) {
       this.oscillatorStates.delete(nodeId);
@@ -425,6 +435,27 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.samplerStates.delete(nodeId);
       this.samplerWaveforms.delete(nodeId);
       this.reverbStates.delete(nodeId);
+      this.pushStatesToLegacyStore();
+    },
+    createSnapshot(): NodeStateSnapshot {
+      return {
+        oscillatorStates: this.oscillatorStates,
+        wavetableOscillatorStates: this.wavetableOscillatorStates,
+        samplerStates: this.samplerStates,
+        samplerWaveforms: this.samplerWaveforms,
+        envelopeStates: this.envelopeStates,
+        convolverStates: this.convolverStates,
+        delayStates: this.delayStates,
+        filterStates: this.filterStates,
+        lfoStates: this.lfoStates,
+        chorusStates: this.chorusStates,
+        reverbStates: this.reverbStates,
+        noiseState: this.noiseState,
+        velocityState: this.velocityState,
+      };
+    },
+    pushStatesToLegacyStore() {
+      mirrorNodeStatesToLegacyStore(this.createSnapshot());
     },
   },
 });

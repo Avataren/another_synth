@@ -15,20 +15,17 @@
 import type {
   AudioEngine,
   AutomationAdapter,
-  AnalogOscillatorStateUpdate as AnalogOscillatorStateUpdateType,
-  WasmLfoUpdateParams as WasmLfoUpdateParamsType,
-  EnvelopeUpdateParams,
-} from 'app/public/wasm/audio_processor';
-import {
   PortId,
   WasmModulationType,
-  type ModulationTransformation,
+  ModulationTransformation,
+  Waveform,
+} from 'app/public/wasm/audio_processor';
+import {
   initSync,
   AutomationAdapter as WasmAutomationAdapter,
   AnalogOscillatorStateUpdate,
   WasmLfoUpdateParams,
   NoiseUpdateParams,
-  type Waveform,
 } from 'app/public/wasm/audio_processor';
 import { AudioEngine as WasmAudioEngine } from 'app/public/wasm/audio_processor';
 import type { EnvelopeConfig, FilterState } from '../types/synth-layout';
@@ -326,7 +323,7 @@ export class WasmEngineAdapter {
     this.requireEngine().update_lfos(lfoParams);
   }
 
-  updateFilter(filterId: string, state: FilterState): void {
+  updateFilter(_filterId: string, _state: FilterState): void {
     // Note: This assumes the WASM interface matches FilterState
     // You may need to add a proper update_filter method to the WASM engine
     console.warn('[WasmEngineAdapter] updateFilter not yet implemented in WASM');

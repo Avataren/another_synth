@@ -1,5 +1,4 @@
 // src/audio/audio-processor-loader.ts
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
 import type { LayoutUpdateMessage } from './types/synth-layout';
@@ -16,7 +15,6 @@ export async function createStandardAudioWorklet(
     numberOfOutputs: 1,
     outputChannelCount: [2], // Specify stereo output
   });
-  const legacyStore = useAudioSystemStore();
   const layoutStore = useLayoutStore();
   const nodeStateStore = useNodeStateStore();
 
@@ -47,17 +45,11 @@ export async function createStandardAudioWorklet(
         const layoutMessage = data as LayoutUpdateMessage;
         layoutStore.updateSynthLayout(layoutMessage.layout);
         nodeStateStore.initializeDefaultStates();
-        legacyStore.synthLayout = layoutStore.synthLayout
-          ? JSON.parse(JSON.stringify(layoutStore.synthLayout))
-          : null;
       } else if (data.type === 'stateUpdated') {
         // This is the pushed update from the worklet whenever state changes.
         console.log('Received automatic state update:', data);
         layoutStore.updateSynthLayout(data.state);
         nodeStateStore.initializeDefaultStates();
-        legacyStore.synthLayout = layoutStore.synthLayout
-          ? JSON.parse(JSON.stringify(layoutStore.synthLayout))
-          : null;
       }
     };
 

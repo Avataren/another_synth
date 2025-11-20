@@ -246,6 +246,7 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 ## Backend store migration (2025-??)
 
 - When moving helpers/services to `layout-store`/`connection-store`, keep the legacy `useAudioSystemStore().synthLayout` updated by cloning the cache after each layout mutation. Components still read from the legacy store until Phase 4 finishes, so skipping this mirror leaves the UI blind to new connections/layout changes.
+- `src/stores/legacy-store-bridge.ts` now owns the compatibility layer back to `useAudioSystemStore`. All helpers should call the cache store actions (`layoutStore.commitLayoutChange()` or `nodeStateStore.pushStatesToLegacyStore()`) instead of touching `audioSystemStore` directly so we keep a single place that clones data back into the legacy store.
 - Helpers that previously called `store.updateSynthLayout` (worklet loader, sync manager) should now update `layout-store` + run `node-state-store.initializeDefaultStates()`, then mirror the resulting layout into the audio system store for backward compatibility.
 
 ---

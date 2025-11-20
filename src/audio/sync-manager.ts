@@ -91,16 +91,6 @@ export class AudioSyncManager {
         this.failedAttempts = 0;
     }
 
-    private mirrorLegacyLayout() {
-        if (!this.layoutStore.synthLayout) {
-            this.audioStore.synthLayout = null;
-            return;
-        }
-        this.audioStore.synthLayout = JSON.parse(
-            JSON.stringify(this.layoutStore.synthLayout),
-        );
-    }
-
     public async forceSync(): Promise<void> {
         if (!this.audioStore.currentInstrument?.isReady) return;
 
@@ -163,7 +153,7 @@ export class AudioSyncManager {
             // Force update
             this.layoutStore.synthLayout = { ...this.layoutStore.synthLayout };
             this.nodeStateStore.initializeDefaultStates();
-            this.mirrorLegacyLayout();
+            this.layoutStore.pushLayoutToLegacyStore();
         } catch (error) {
             console.error('Failed to update store state:', error);
         } finally {
@@ -345,7 +335,7 @@ export class AudioSyncManager {
                     });
                     this.layoutStore.synthLayout = { ...synthLayout };
                     this.nodeStateStore.initializeDefaultStates();
-                    this.mirrorLegacyLayout();
+                    this.layoutStore.pushLayoutToLegacyStore();
                 }
             }
         } catch (error) {

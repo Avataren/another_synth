@@ -11,7 +11,6 @@
  * This is a drop-in replacement for the original Instrument class.
  */
 
-import { type Wavetable } from 'src/components/WaveTable/WavetableUtils';
 import { createStandardAudioWorklet } from './audio-processor-loader';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
@@ -27,14 +26,12 @@ import type {
   VelocityState,
 } from './types/synth-layout';
 import {
-  type SynthLayout,
-  VoiceNodeType,
+  type VoiceNodeType,
   type LfoState,
   type NodeConnectionUpdate,
   type FilterState,
 } from './types/synth-layout';
 import { WorkletMessageHandler } from './adapters/message-handler';
-import { WorkletMessageBuilder } from './types/worklet-messages';
 
 interface SamplerUpdatePayload {
   frequency: number;

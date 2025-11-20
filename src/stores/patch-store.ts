@@ -204,7 +204,7 @@ export const usePatchStore = defineStore('patchStore', {
           this.currentPatchId = patch.metadata.id;
         }
 
-        await assetStore.restoreAudioAssets();
+        await assetStore.restoreAudioAssets(audioStore.currentInstrument);
 
         this.isLoadingPatch = false;
         return true;
@@ -232,12 +232,13 @@ export const usePatchStore = defineStore('patchStore', {
     async prepareStateForNewPatch(): Promise<boolean> {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
+      const audioStore = useAudioSystemStore();
       const layoutReady = await layoutStore.waitForSynthLayout();
       if (!layoutReady) {
         console.warn('Cannot prepare new patch: synth layout not ready');
         return false;
       }
-      await useAudioSystemStore().waitForInstrumentReady();
+      await audioStore.waitForInstrumentReady();
 
       nodeStateStore.resetCurrentStateToDefaults(false);
 
@@ -250,7 +251,9 @@ export const usePatchStore = defineStore('patchStore', {
         if (applied) {
           await nextTick(() => {
             nodeStateStore.applyPreservedStatesToWasm();
-            void useAssetStore().restoreAudioAssets();
+            void useAssetStore().restoreAudioAssets(
+              audioStore.currentInstrument,
+            );
           });
           return true;
         }

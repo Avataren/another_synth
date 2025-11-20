@@ -14,7 +14,7 @@ import {
   type RawConnection,
   rustNodeTypeToTS,
 } from 'src/audio/adapters/wasm-type-adapter';
-import { useAudioSystemStore } from './audio-system-store';
+import { mirrorLayoutToLegacyStore } from './legacy-store-bridge';
 
 interface RawNode {
   id: string;
@@ -54,13 +54,11 @@ export const useLayoutStore = defineStore('layoutStore', {
     async waitForSynthLayout(timeoutMs = 8000): Promise<boolean> {
       const pollInterval = 50;
       const start = Date.now();
-      const requiredVoices =
-        useAudioSystemStore().currentInstrument?.num_voices ?? 1;
 
       while (
         !this.synthLayout ||
         !Array.isArray(this.synthLayout.voices) ||
-        this.synthLayout.voices.length < requiredVoices ||
+        this.synthLayout.voices.length === 0 ||
         !this.synthLayout.voices[0] ||
         !this.synthLayout.voices[0]!.nodes
       ) {
@@ -93,10 +91,8 @@ export const useLayoutStore = defineStore('layoutStore', {
       }
 
       const layoutClone = JSON.parse(JSON.stringify(layout)) as SynthLayout;
-      const audioStore = useAudioSystemStore();
       const previousVoiceCount =
         this.synthLayout?.voiceCount ?? this.synthLayout?.voices.length ?? 0;
-      const instrumentVoiceCount = audioStore.currentInstrument?.num_voices ?? 0;
 
       const convertConnections = (
         connections: Array<NodeConnection | RawConnection>,
@@ -193,9 +189,7 @@ export const useLayoutStore = defineStore('layoutStore', {
           ? layoutClone.voiceCount
           : previousVoiceCount > 0
             ? previousVoiceCount
-            : instrumentVoiceCount > 0
-              ? instrumentVoiceCount
-              : layoutClone.voices.length;
+            : layoutClone.voices.length;
 
       if (canonicalSource && layoutClone.voices.length !== resolvedVoiceCount) {
         layoutClone.voices = Array.from(
@@ -222,6 +216,7 @@ export const useLayoutStore = defineStore('layoutStore', {
 
       this.synthLayout = { ...layoutClone };
       this.deletedNodeIds.clear();
+      this.pushLayoutToLegacyStore();
     },
     getNodeName(nodeId: string): string | undefined {
       const voice = this.synthLayout?.voices[0];
@@ -247,7 +242,7 @@ export const useLayoutStore = defineStore('layoutStore', {
         });
       });
 
-      this.synthLayout = { ...this.synthLayout };
+      this.commitLayoutChange();
     },
     syncCanonicalVoiceWithFirstVoice() {
       if (!this.synthLayout || this.synthLayout.voices.length === 0) {
@@ -289,6 +284,16 @@ export const useLayoutStore = defineStore('layoutStore', {
         voices: updatedVoices,
       };
       this.syncCanonicalVoiceWithFirstVoice();
+      this.commitLayoutChange();
+    },
+    pushLayoutToLegacyStore() {
+      mirrorLayoutToLegacyStore(this.synthLayout);
+    },
+    commitLayoutChange() {
+      if (this.synthLayout) {
+        this.synthLayout = { ...this.synthLayout };
+      }
+      this.pushLayoutToLegacyStore();
     },
   },
 });

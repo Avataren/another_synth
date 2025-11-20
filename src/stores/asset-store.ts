@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import type { AudioAsset } from 'src/audio/types/preset-types';
 import { parseAudioAssetId } from 'src/audio/serialization/patch-serializer';
-import { useAudioSystemStore } from './audio-system-store';
+import type InstrumentV2 from 'src/audio/instrument-v2';
 
 export const useAssetStore = defineStore('assetStore', {
   state: () => ({
@@ -17,8 +17,7 @@ export const useAssetStore = defineStore('assetStore', {
     clearAudioAssets() {
       this.audioAssets = new Map();
     },
-    async restoreAudioAssets(): Promise<void> {
-      const instrument = useAudioSystemStore().currentInstrument;
+    async restoreAudioAssets(instrument: InstrumentV2 | null): Promise<void> {
       if (!instrument || this.audioAssets.size === 0) {
         return;
       }

@@ -22,7 +22,6 @@ import type {
   NodeConnectionUpdate,
   SynthLayout,
 } from './synth-layout';
-import type { Patch } from './preset-types';
 
 // ============================================================================
 // Base Message Types

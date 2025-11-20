@@ -28,19 +28,9 @@ import type {
   DeleteNodeMessage,
   CreateNodeMessage,
   LoadPatchMessage,
-  OperationResponse,
 } from '../../types/worklet-messages';
 import { WorkletMessageBuilder } from '../../types/worklet-messages';
-import {
-  rustModulationTypeToTS,
-  normalizeConnection,
-  type RawConnection,
-} from '../../adapters/wasm-type-adapter';
-import type {
-  VoiceLayout,
-  SynthLayout,
-  EnvelopeConfig,
-} from '../../types/synth-layout';
+import type { SynthLayout } from '../../types/synth-layout';
 import { PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
 
 // ============================================================================
@@ -56,6 +46,8 @@ export abstract class BaseMessageHandler {
     protected engineAdapter: WasmEngineAdapter,
     protected port: MessagePort
   ) {}
+
+  abstract handle(message: unknown): Promise<void>;
 
   /**
    * Sends a success response back to the main thread.
@@ -345,7 +337,7 @@ export class NodeCreationHandler extends BaseMessageHandler {
 
 export class NodeDeletionHandler extends BaseMessageHandler {
   async handle(message: DeleteNodeMessage): Promise<void> {
-    await this.executeWithResponse(message, async (msg) => {
+    await this.executeWithResponse(message, async () => {
       // Note: WASM engine doesn't currently have a deleteNode method
       // This would need to be implemented in the Rust side
       console.warn('[NodeDeletionHandler] deleteNode not yet implemented in WASM');

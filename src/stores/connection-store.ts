@@ -96,10 +96,7 @@ export const useConnectionStore = defineStore('connectionStore', {
               }
             });
             layoutStore.syncCanonicalVoiceWithFirstVoice();
-            layoutStore.synthLayout = { ...layoutStore.synthLayout };
-            audioStore.synthLayout = layoutStore.synthLayout
-              ? JSON.parse(JSON.stringify(layoutStore.synthLayout))
-              : null;
+            layoutStore.commitLayoutChange();
           }
         } catch (error) {
           console.error('Connection update failed:', error);
@@ -129,14 +126,11 @@ export const useConnectionStore = defineStore('connectionStore', {
         const instrument = audioStore.currentInstrument;
         if (instrument) {
           const wasmStateJson = await instrument.getWasmNodeConnections();
-          if (wasmStateJson) {
-            const wasmState = JSON.parse(wasmStateJson);
-            layoutStore.updateSynthLayout(wasmState);
-            nodeStateStore.initializeDefaultStates();
-            audioStore.synthLayout = layoutStore.synthLayout
-              ? JSON.parse(JSON.stringify(layoutStore.synthLayout))
-              : null;
-          }
+            if (wasmStateJson) {
+              const wasmState = JSON.parse(wasmStateJson);
+              layoutStore.updateSynthLayout(wasmState);
+              nodeStateStore.initializeDefaultStates();
+            }
         }
       } catch (error) {
         console.error('Error during node cleanup:', error);
