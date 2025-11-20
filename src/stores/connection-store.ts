@@ -46,11 +46,13 @@ export const useConnectionStore = defineStore('connectionStore', {
             target: Number(connection.target) as PortId,
             amount: Number(connection.amount),
             isRemoving: Boolean(connection.isRemoving),
-            modulationType: connection.modulationType,
             modulationTransformation:
               connection.modulationTransformation ??
               (ModulationTransformation.None as ModulationTransformation),
           };
+          if (connection.modulationType !== undefined) {
+            plainConnection.modulationType = connection.modulationType;
+          }
 
           const instrument = audioStore.currentInstrument;
           if (!instrument) throw new Error('No instrument available');

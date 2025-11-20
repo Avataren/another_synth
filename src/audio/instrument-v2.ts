@@ -159,7 +159,7 @@ export default class InstrumentV2 {
   public createNode(node: VoiceNodeType): void {
     this.messageHandler.sendFireAndForget({
       type: 'createNode',
-      node,
+      nodeType: node,
     });
   }
 
@@ -170,7 +170,7 @@ export default class InstrumentV2 {
   public updateReverbState(nodeId: string, state: ReverbState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateReverb',
-      nodeId,
+      reverbId: nodeId,
       state,
     });
   }
@@ -178,7 +178,7 @@ export default class InstrumentV2 {
   public updateChorusState(nodeId: string, state: ChorusState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateChorus',
-      nodeId,
+      chorusId: nodeId,
       state,
     });
   }
@@ -220,7 +220,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateWavetableOscillator',
       oscillatorId: nodeId,
-      newState,
+      state: newState,
     });
   }
 
@@ -228,7 +228,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateOscillator',
       oscillatorId: nodeId,
-      newState,
+      state: newState,
     });
   }
 
@@ -236,20 +236,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateLfo',
       lfoId: nodeId,
-      params: {
-        lfoId: nodeId,
-        frequency: state.frequency,
-        phaseOffset: state.phaseOffset,
-        waveform: state.waveform,
-        useAbsolute: state.useAbsolute,
-        useNormalized: state.useNormalized,
-        triggerMode: state.triggerMode,
-        gain: state.gain,
-        active: state.active,
-        loopMode: state.loopMode,
-        loopStart: state.loopStart,
-        loopEnd: state.loopEnd,
-      },
+      state,
     });
   }
 
@@ -257,24 +244,22 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateFilter',
       filterId: nodeId,
-      config: newState,
+      state: newState,
     });
   }
 
-  // FIXED: Use correct message type 'updateConvolverState'
   public updateConvolverState(nodeId: string, state: ConvolverState): void {
     this.messageHandler.sendFireAndForget({
-      type: 'updateConvolverState',
-      nodeId: nodeId,
-      state: state,
+      type: 'updateConvolver',
+      convolverId: nodeId,
+      state,
     });
   }
 
-  // FIXED: Use correct message type 'updateDelayState'
   public updateDelayState(nodeId: string, state: DelayState): void {
     this.messageHandler.sendFireAndForget({
-      type: 'updateDelayState',
-      nodeId: nodeId,
+      type: 'updateDelay',
+      delayId: nodeId,
       state,
     });
   }
@@ -327,9 +312,9 @@ export default class InstrumentV2 {
   public remove_specific_connection(from_node: string, to_node: string, to_port: number): void {
     this.messageHandler.sendFireAndForget({
       type: 'removeConnection',
-      fromNode: from_node,
-      toNode: to_node,
-      toPort: to_port,
+      fromId: from_node,
+      toId: to_node,
+      targetPort: to_port,
     });
   }
 
@@ -341,18 +326,18 @@ export default class InstrumentV2 {
     nodeId: string,
     pattern: { value: number; active: boolean }[]
   ): void {
+    // Extract just the values for the pattern
+    const numericPattern = pattern.map(p => p.value);
     this.messageHandler.sendFireAndForget({
       type: 'updateArpeggiatorPattern',
-      nodeId,
-      pattern,
+      pattern: numericPattern,
     });
   }
 
   public updateArpeggiatorStepDuration(nodeId: string, stepDurationMs: number): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateArpeggiatorStepDuration',
-      nodeId,
-      stepDurationMs,
+      stepDuration: stepDurationMs,
     });
   }
 
@@ -382,7 +367,8 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'importWavetable',
       nodeId,
-      data: wavData.buffer,
+      data: wavData,
+      tableSize: wavData.length,
     });
   }
 
@@ -390,7 +376,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'importImpulseWaveform',
       nodeId,
-      data: wavData.buffer,
+      data: wavData,
     });
   }
 
@@ -587,6 +573,11 @@ export default class InstrumentV2 {
         }
       };
 
+      if (!this.workletNode) {
+        reject(new Error('Worklet node not initialized'));
+        return;
+      }
+
       this.workletNode.port.addEventListener('message', handleMessage);
 
       this.workletNode.port.postMessage({
@@ -627,6 +618,12 @@ export default class InstrumentV2 {
         }
       };
 
+      if (!this.workletNode) {
+        clearTimeout(timeoutId);
+        reject(new Error('Worklet node not initialized'));
+        return;
+      }
+
       this.workletNode.port.addEventListener('message', handleMessage);
 
       this.workletNode.port.postMessage({
@@ -660,6 +657,11 @@ export default class InstrumentV2 {
           reject(new Error(e.data.message));
         }
       };
+
+      if (!this.workletNode) {
+        reject(new Error('Worklet node not initialized'));
+        return;
+      }
 
       this.workletNode.port.addEventListener('message', handleMessage);
 
@@ -750,11 +752,12 @@ export default class InstrumentV2 {
 
     // No free voice - steal the oldest one
     let oldestVoice = 0;
-    let oldestTime = this.voiceLastUsedTime[0];
+    let oldestTime = this.voiceLastUsedTime[0] ?? 0;
 
     for (let i = 1; i < this.num_voices; i++) {
-      if (this.voiceLastUsedTime[i] < oldestTime) {
-        oldestTime = this.voiceLastUsedTime[i];
+      const time = this.voiceLastUsedTime[i] ?? 0;
+      if (time < oldestTime) {
+        oldestTime = time;
         oldestVoice = i;
       }
     }

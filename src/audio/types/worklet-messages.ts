@@ -9,11 +9,11 @@
  * - Runtime validation utilities
  */
 
+import type OscillatorState from '../models/OscillatorState';
 import type {
   EnvelopeConfig,
   FilterState,
   LfoState,
-  OscillatorState,
   SamplerState,
   ConvolverState,
   DelayState,
@@ -140,6 +140,27 @@ export interface UpdateReverbMessage extends BaseMessage {
   state: ReverbState;
 }
 
+export interface UpdateVelocityMessage extends BaseMessage {
+  type: 'updateVelocity';
+  nodeId: string;
+  config: {
+    sensitivity: number;
+    randomize: number;
+    active: boolean;
+  };
+}
+
+export interface UpdateNoiseMessage extends BaseMessage {
+  type: 'updateNoise';
+  noiseId: string;
+  config: {
+    noise_type: number;
+    cutoff: number;
+    gain: number;
+    enabled: boolean;
+  };
+}
+
 // ============================================================================
 // Connection Messages (Main → Worklet)
 // ============================================================================
@@ -147,6 +168,13 @@ export interface UpdateReverbMessage extends BaseMessage {
 export interface UpdateConnectionMessage extends BaseMessage {
   type: 'updateConnection';
   connection: NodeConnectionUpdate;
+}
+
+export interface RemoveConnectionMessage extends BaseMessage {
+  type: 'removeConnection';
+  fromId: string;
+  toId: string;
+  targetPort: number;
 }
 
 export interface GetConnectionsMessage extends BaseMessage {
@@ -157,6 +185,20 @@ export interface ConnectionsResponseMessage extends BaseMessage {
   type: 'connectionsResponse';
   messageId: string;
   connections: NodeConnectionUpdate[];
+}
+
+// ============================================================================
+// Arpeggiator Messages (Main → Worklet)
+// ============================================================================
+
+export interface UpdateArpeggiatorPatternMessage extends BaseMessage {
+  type: 'updateArpeggiatorPattern';
+  pattern: number[];
+}
+
+export interface UpdateArpeggiatorStepDurationMessage extends BaseMessage {
+  type: 'updateArpeggiatorStepDuration';
+  stepDuration: number;
 }
 
 // ============================================================================
@@ -208,6 +250,19 @@ export interface UploadWavetableMessage extends BaseMessage {
   oscillatorId: string;
   wavetable: Float32Array;
   wavetableName?: string;
+}
+
+export interface ImportWavetableMessage extends BaseMessage {
+  type: 'importWavetable';
+  nodeId: string;
+  data: Uint8Array;
+  tableSize: number;
+}
+
+export interface ImportImpulseWaveformMessage extends BaseMessage {
+  type: 'importImpulseWaveform';
+  nodeId: string;
+  data: Uint8Array;
 }
 
 // ============================================================================
@@ -275,10 +330,16 @@ export type WorkletMessage =
   | UpdateDelayMessage
   | UpdateChorusMessage
   | UpdateReverbMessage
+  | UpdateVelocityMessage
+  | UpdateNoiseMessage
   // Connections
   | UpdateConnectionMessage
+  | RemoveConnectionMessage
   | GetConnectionsMessage
   | ConnectionsResponseMessage
+  // Arpeggiator
+  | UpdateArpeggiatorPatternMessage
+  | UpdateArpeggiatorStepDurationMessage
   // Node Creation/Deletion
   | CreateNodeMessage
   | DeleteNodeMessage
@@ -287,6 +348,8 @@ export type WorkletMessage =
   | UploadSampleMessage
   | UploadImpulseResponseMessage
   | UploadWavetableMessage
+  | ImportWavetableMessage
+  | ImportImpulseWaveformMessage
   // Performance
   | NoteOnMessage
   | NoteOffMessage
@@ -339,12 +402,17 @@ export class WorkletMessageBuilder {
   }
 
   static createNode(nodeType: string, nodeId?: string, withResponse = true): CreateNodeMessage {
-    return {
+    const message: CreateNodeMessage = {
       type: 'createNode',
       nodeType,
-      nodeId,
-      ...(withResponse && { messageId: this.generateMessageId() }),
     };
+    if (nodeId !== undefined) {
+      message.nodeId = nodeId;
+    }
+    if (withResponse) {
+      message.messageId = this.generateMessageId();
+    }
+    return message;
   }
 
   static noteOn(noteNumber: number, velocity: number): NoteOnMessage {
@@ -368,13 +436,18 @@ export class WorkletMessageBuilder {
     data?: unknown,
     error?: string
   ): OperationResponse {
-    return {
+    const response: OperationResponse = {
       type: 'operationResponse',
       messageId,
       success,
-      data,
-      error,
     };
+    if (data !== undefined) {
+      response.data = data;
+    }
+    if (error !== undefined) {
+      response.error = error;
+    }
+    return response;
   }
 }
 

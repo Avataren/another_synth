@@ -353,13 +353,13 @@ export class NodeDeletionHandler extends BaseMessageHandler {
 export class PatchHandler extends BaseMessageHandler {
   async handle(
     message: LoadPatchMessage,
-    onLayoutUpdate: (layout: SynthLayout) => void
+    _onLayoutUpdate?: (layout: SynthLayout) => void
   ): Promise<void> {
     await this.executeWithResponse(message, async (msg) => {
       const voiceCount = this.engineAdapter.loadPatch(msg.patchJson);
 
-      // Get updated state from engine
-      const state = this.engineAdapter.getCurrentState();
+      // Get updated state from engine (for future use)
+      // const _state = this.engineAdapter.getCurrentState();
 
       // Convert to layout and notify
       // (This part would need the layout conversion logic)
@@ -382,21 +382,20 @@ export class WorkletHandlerRegistry {
   private handlers: Map<string, BaseMessageHandler>;
 
   constructor(engineAdapter: WasmEngineAdapter, port: MessagePort) {
-    this.handlers = new Map([
-      ['updateEnvelope', new EnvelopeHandler(engineAdapter, port)],
-      ['updateOscillator', new OscillatorHandler(engineAdapter, port)],
-      ['updateWavetableOscillator', new WavetableOscillatorHandler(engineAdapter, port)],
-      ['updateFilter', new FilterHandler(engineAdapter, port)],
-      ['updateLfo', new LfoHandler(engineAdapter, port)],
-      ['updateSampler', new SamplerHandler(engineAdapter, port)],
-      ['updateConvolver', new ConvolverHandler(engineAdapter, port)],
-      ['updateDelay', new DelayHandler(engineAdapter, port)],
-      ['updateChorus', new ChorusHandler(engineAdapter, port)],
-      ['updateReverb', new ReverbHandler(engineAdapter, port)],
-      ['updateConnection', new ConnectionHandler(engineAdapter, port)],
-      ['createNode', new NodeCreationHandler(engineAdapter, port)],
-      ['deleteNode', new NodeDeletionHandler(engineAdapter, port)],
-    ]);
+    this.handlers = new Map<string, BaseMessageHandler>();
+    this.handlers.set('updateEnvelope', new EnvelopeHandler(engineAdapter, port));
+    this.handlers.set('updateOscillator', new OscillatorHandler(engineAdapter, port));
+    this.handlers.set('updateWavetableOscillator', new WavetableOscillatorHandler(engineAdapter, port));
+    this.handlers.set('updateFilter', new FilterHandler(engineAdapter, port));
+    this.handlers.set('updateLfo', new LfoHandler(engineAdapter, port));
+    this.handlers.set('updateSampler', new SamplerHandler(engineAdapter, port));
+    this.handlers.set('updateConvolver', new ConvolverHandler(engineAdapter, port));
+    this.handlers.set('updateDelay', new DelayHandler(engineAdapter, port));
+    this.handlers.set('updateChorus', new ChorusHandler(engineAdapter, port));
+    this.handlers.set('updateReverb', new ReverbHandler(engineAdapter, port));
+    this.handlers.set('updateConnection', new ConnectionHandler(engineAdapter, port));
+    this.handlers.set('createNode', new NodeCreationHandler(engineAdapter, port));
+    this.handlers.set('deleteNode', new NodeDeletionHandler(engineAdapter, port));
   }
 
   /**
@@ -412,6 +411,7 @@ export class WorkletHandlerRegistry {
 
     // TypeScript doesn't know which handler type this is, but each handler
     // will validate its own message format
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (handler as any).handle(message);
     return true;
   }

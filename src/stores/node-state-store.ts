@@ -12,13 +12,12 @@ import {
   type EnvelopeConfig,
   type FilterState,
   type LfoState,
-  type NoiseState,
   type ReverbState,
   type SamplerState,
   type VelocityState,
   getNodesOfType,
 } from 'src/audio/types/synth-layout';
-import { NoiseType } from 'src/audio/types/noise';
+import { NoiseType, type NoiseState } from 'src/audio/types/noise';
 import { useLayoutStore } from './layout-store';
 import { useAudioSystemStore } from './audio-system-store';
 import {

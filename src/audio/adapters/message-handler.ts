@@ -42,7 +42,7 @@ interface QueuedOperation {
   message: WorkletMessage;
   resolve: (data?: unknown) => void;
   reject: (error: Error) => void;
-  timeout?: number; // Custom timeout in ms (uses default if undefined)
+  timeout: number | undefined; // Custom timeout in ms (uses default if undefined)
 }
 
 // ============================================================================
@@ -170,7 +170,8 @@ export class WorkletMessageHandler {
     message: WorkletMessage,
     timeoutMs?: number
   ): Promise<T> {
-    if (!this.workletPort) {
+    const port = this.workletPort;
+    if (!port) {
       return Promise.reject(new Error('Not attached to worklet'));
     }
 
@@ -197,7 +198,7 @@ export class WorkletMessageHandler {
 
       // Send message
       this.log(`Sending: ${message.type} (id: ${messageId})`);
-      this.workletPort.postMessage(messageWithId);
+      port.postMessage(messageWithId);
     });
   }
 
