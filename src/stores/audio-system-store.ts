@@ -232,6 +232,18 @@ export const useAudioSystemStore = defineStore('audioSystem', {
       }
     },
 
+    // ============================================================================
+    // COMPATIBILITY WRAPPERS
+    // These delegate to the focused stores for backward compatibility
+    // ============================================================================
+
+    updateSynthLayout(layout: SynthLayout) {
+      // Delegate to layout-store
+      const { useLayoutStore } = require('./layout-store');
+      const layoutStore = useLayoutStore();
+      layoutStore.updateSynthLayout(layout);
+    },
+
     async setupAudio() {
       if (this.audioSystem) {
         this.currentInstrument = new InstrumentV2(
