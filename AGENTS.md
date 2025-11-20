@@ -249,6 +249,10 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - `src/stores/legacy-store-bridge.ts` now owns the compatibility layer back to `useAudioSystemStore`. All helpers should call the cache store actions (`layoutStore.commitLayoutChange()` or `nodeStateStore.pushStatesToLegacyStore()`) instead of touching `audioSystemStore` directly so we keep a single place that clones data back into the legacy store.
 - Helpers that previously called `store.updateSynthLayout` (worklet loader, sync manager) should now update `layout-store` + run `node-state-store.initializeDefaultStates()`, then mirror the resulting layout into the audio system store for backward compatibility.
 
+## New discovery: worklet createNode message field
+
+- `InstrumentV2` (and `WorkletMessageBuilder.createNode`) send `{ type: 'createNode', nodeType: VoiceNodeType }`, but the worklet handler previously looked at `data.node`. This mismatch produced `Missing creation case for: undefined` whenever the UI tried to create new nodes. The worklet now accepts either field (`node` or `nodeType`) and logs a clear error if both are missing.
+
 ---
 
 # Web App Architecture Improvements (2025)

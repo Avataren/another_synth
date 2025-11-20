@@ -302,9 +302,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.handleRequestSync();
   }
 
-  private handleCreateNode(data: { node: VoiceNodeType }) {
-    console.log('handleCreateNode: ', data.node);
-    switch (data.node) {
+  private handleCreateNode(data: { node?: VoiceNodeType; nodeType?: VoiceNodeType }) {
+    const nodeType = data.node ?? data.nodeType;
+    if (nodeType === undefined) {
+      console.error('handleCreateNode received no node type payload', data);
+      return;
+    }
+
+    console.log('handleCreateNode: ', nodeType);
+    switch (nodeType) {
       case VoiceNodeType.Oscillator:
         this.audioEngine!.create_oscillator();
         break;
@@ -327,7 +333,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         this.audioEngine!.create_envelope();
         break;
       default:
-        console.error('Missing creation case for: ', data.node);
+        console.error('Missing creation case for: ', nodeType);
         break;
     }
     this.handleRequestSync();
