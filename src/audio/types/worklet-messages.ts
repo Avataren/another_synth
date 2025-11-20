@@ -13,7 +13,6 @@ import type OscillatorState from '../models/OscillatorState';
 import type {
   EnvelopeConfig,
   FilterState,
-  LfoState,
   SamplerState,
   ConvolverState,
   DelayState,
@@ -89,13 +88,13 @@ export interface InitialStateMessage extends BaseMessage {
 export interface UpdateOscillatorMessage extends BaseMessage {
   type: 'updateOscillator';
   oscillatorId: string;
-  state: OscillatorState;
+  newState: OscillatorState;
 }
 
 export interface UpdateWavetableOscillatorMessage extends BaseMessage {
   type: 'updateWavetableOscillator';
   oscillatorId: string;
-  state: OscillatorState;
+  newState: OscillatorState;
 }
 
 export interface UpdateEnvelopeMessage extends BaseMessage {
@@ -107,13 +106,28 @@ export interface UpdateEnvelopeMessage extends BaseMessage {
 export interface UpdateFilterMessage extends BaseMessage {
   type: 'updateFilter';
   filterId: string;
-  state: FilterState;
+  config: FilterState;
+}
+
+export interface LfoUpdateParams {
+  lfoId: string;
+  frequency: number;
+  phaseOffset: number;
+  waveform: number;
+  useAbsolute: boolean;
+  useNormalized: boolean;
+  triggerMode: number;
+  gain: number;
+  active: boolean;
+  loopMode: number;
+  loopStart: number;
+  loopEnd: number;
 }
 
 export interface UpdateLfoMessage extends BaseMessage {
   type: 'updateLfo';
   lfoId: string;
-  state: LfoState;
+  params: LfoUpdateParams;
 }
 
 export interface UpdateSamplerMessage extends BaseMessage {
@@ -124,25 +138,25 @@ export interface UpdateSamplerMessage extends BaseMessage {
 
 export interface UpdateConvolverMessage extends BaseMessage {
   type: 'updateConvolver';
-  convolverId: string;
+  nodeId: string;
   state: ConvolverState;
 }
 
 export interface UpdateDelayMessage extends BaseMessage {
   type: 'updateDelay';
-  delayId: string;
+  nodeId: string;
   state: DelayState;
 }
 
 export interface UpdateChorusMessage extends BaseMessage {
   type: 'updateChorus';
-  chorusId: string;
+  nodeId: string;
   state: ChorusState;
 }
 
 export interface UpdateReverbMessage extends BaseMessage {
   type: 'updateReverb';
-  reverbId: string;
+  nodeId: string;
   state: ReverbState;
 }
 

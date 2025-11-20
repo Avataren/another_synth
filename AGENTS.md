@@ -412,6 +412,7 @@ handler.sendFireAndForget(
 
 - When attaching `WorkletMessageHandler` to the worklet port, do **not** clobber listeners that mirror layout updates into Pinia. The loader (`audio-processor-loader.ts`) must use `port.addEventListener('message', ...)` so `synthLayout`/`stateUpdated` broadcasts continue flowing even after the handler sets `port.onmessage`.
 - The initial `ready` message fires before `InstrumentV2` attaches the handler, so the handler now auto-calls `markInitialized()` when it sees `initialState`, `synthLayout`, or `stateUpdated` broadcasts. Without this the handler never leaves the queued state and `waitForInstrumentReady()` times out, preventing patch loads.
+- WASM message payloads are strict: `updateOscillator`/`updateWavetableOscillator` expect a `newState` field, filter updates expect `config`, and effect updates expect a `nodeId` string that may be a pseudo numeric ID (`EFFECT_NODE_ID_OFFSET + index`). Keep `InstrumentV2`, the type definitions in `worklet-messages.ts`, and any handler classes in sync with these names or the worklet will throw when it tries to read missing properties.
 
 **Initialization Sequence**:
 1. Worklet sends `ready` message

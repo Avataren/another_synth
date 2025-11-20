@@ -119,15 +119,15 @@ export class OscillatorHandler extends BaseMessageHandler {
     await this.executeWithResponse(message, async (msg) => {
       // Adapter expects different field names matching AnalogOscillatorStateUpdate
       this.engineAdapter.updateOscillator(msg.oscillatorId, {
-        phase_mod_amount: msg.state.phase_mod_amount ?? 0,
-        detune: msg.state.detune ?? 0,
-        hard_sync: msg.state.hard_sync ?? false,
-        gain: msg.state.gain,
-        active: msg.state.active,
-        feedback_amount: msg.state.feedback_amount ?? 0,
-        waveform: msg.state.waveform,
-        unison_voices: msg.state.unison_voices ?? 1,
-        spread: msg.state.spread ?? 0,
+        phase_mod_amount: msg.newState.phase_mod_amount ?? 0,
+        detune: msg.newState.detune ?? 0,
+        hard_sync: msg.newState.hard_sync ?? false,
+        gain: msg.newState.gain,
+        active: msg.newState.active,
+        feedback_amount: msg.newState.feedback_amount ?? 0,
+        waveform: msg.newState.waveform,
+        unison_voices: msg.newState.unison_voices ?? 1,
+        spread: msg.newState.spread ?? 0,
       });
     });
   }
@@ -138,15 +138,15 @@ export class WavetableOscillatorHandler extends BaseMessageHandler {
     await this.executeWithResponse(message, async (msg) => {
       // Adapter expects different field names matching AnalogOscillatorStateUpdate
       this.engineAdapter.updateWavetableOscillator(msg.oscillatorId, {
-        phase_mod_amount: msg.state.phase_mod_amount ?? 0,
-        detune: msg.state.detune ?? 0,
-        hard_sync: msg.state.hard_sync ?? false,
-        gain: msg.state.gain,
-        active: msg.state.active,
-        feedback_amount: msg.state.feedback_amount ?? 0,
-        waveform: msg.state.waveform,
-        unison_voices: msg.state.unison_voices ?? 1,
-        spread: msg.state.spread ?? 0,
+        phase_mod_amount: msg.newState.phase_mod_amount ?? 0,
+        detune: msg.newState.detune ?? 0,
+        hard_sync: msg.newState.hard_sync ?? false,
+        gain: msg.newState.gain,
+        active: msg.newState.active,
+        feedback_amount: msg.newState.feedback_amount ?? 0,
+        waveform: msg.newState.waveform,
+        unison_voices: msg.newState.unison_voices ?? 1,
+        spread: msg.newState.spread ?? 0,
       });
     });
   }
@@ -155,7 +155,7 @@ export class WavetableOscillatorHandler extends BaseMessageHandler {
 export class FilterHandler extends BaseMessageHandler {
   async handle(message: UpdateFilterMessage): Promise<void> {
     await this.executeWithResponse(message, async (msg) => {
-      this.engineAdapter.updateFilter(msg.filterId, msg.state);
+      this.engineAdapter.updateFilter(msg.filterId, msg.config);
     });
   }
 }
@@ -164,19 +164,7 @@ export class LfoHandler extends BaseMessageHandler {
   async handle(message: UpdateLfoMessage): Promise<void> {
     await this.executeWithResponse(message, async (msg) => {
       // WasmEngineAdapter now handles the WasmLfoUpdateParams construction
-      this.engineAdapter.updateLfos(msg.lfoId, {
-        frequency: msg.state.frequency,
-        phaseOffset: msg.state.phaseOffset,
-        waveform: msg.state.waveform,
-        useAbsolute: msg.state.useAbsolute,
-        useNormalized: msg.state.useNormalized,
-        triggerMode: msg.state.triggerMode,
-        gain: msg.state.gain,
-        active: msg.state.active,
-        loopMode: msg.state.loopMode,
-        loopStart: msg.state.loopStart,
-        loopEnd: msg.state.loopEnd,
-      });
+      this.engineAdapter.updateLfos(msg.lfoId, msg.params);
     });
   }
 }
@@ -193,7 +181,7 @@ export class ConvolverHandler extends BaseMessageHandler {
   async handle(message: UpdateConvolverMessage): Promise<void> {
     await this.executeWithResponse(message, async (msg) => {
       this.engineAdapter.updateConvolver(
-        msg.convolverId,
+        msg.nodeId,
         msg.state.wetMix,
         msg.state.active
       );
@@ -205,7 +193,7 @@ export class DelayHandler extends BaseMessageHandler {
   async handle(message: UpdateDelayMessage): Promise<void> {
     await this.executeWithResponse(message, async (msg) => {
       // WasmEngineAdapter handles string/number conversion and positional args
-      this.engineAdapter.updateDelay(msg.delayId, {
+      this.engineAdapter.updateDelay(msg.nodeId, {
         delay_ms: msg.state.delayMs,
         feedback: msg.state.feedback,
         wet_mix: msg.state.wetMix,
@@ -219,7 +207,7 @@ export class ChorusHandler extends BaseMessageHandler {
   async handle(message: UpdateChorusMessage): Promise<void> {
     await this.executeWithResponse(message, async (msg) => {
       // WasmEngineAdapter handles string/number conversion and positional args
-      this.engineAdapter.updateChorus(msg.chorusId, {
+      this.engineAdapter.updateChorus(msg.nodeId, {
         base_delay_ms: msg.state.baseDelayMs,
         depth_ms: msg.state.depthMs,
         lfo_rate_hz: msg.state.lfoRateHz,
@@ -237,7 +225,7 @@ export class ReverbHandler extends BaseMessageHandler {
   async handle(message: UpdateReverbMessage): Promise<void> {
     await this.executeWithResponse(message, async (msg) => {
       // WasmEngineAdapter handles string/number conversion and positional args
-      this.engineAdapter.updateReverb(msg.reverbId, {
+      this.engineAdapter.updateReverb(msg.nodeId, {
         room_size: msg.state.room_size,
         damp: msg.state.damp,
         wet: msg.state.wet,

@@ -170,7 +170,7 @@ export default class InstrumentV2 {
   public updateReverbState(nodeId: string, state: ReverbState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateReverb',
-      reverbId: nodeId,
+      nodeId,
       state,
     });
   }
@@ -178,7 +178,7 @@ export default class InstrumentV2 {
   public updateChorusState(nodeId: string, state: ChorusState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateChorus',
-      chorusId: nodeId,
+      nodeId,
       state,
     });
   }
@@ -220,7 +220,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateWavetableOscillator',
       oscillatorId: nodeId,
-      state: newState,
+      newState,
     });
   }
 
@@ -228,15 +228,30 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateOscillator',
       oscillatorId: nodeId,
-      state: newState,
+      newState,
     });
   }
 
   public updateLfoState(nodeId: string, state: LfoState): void {
+    const params = {
+      lfoId: nodeId,
+      frequency: state.frequency,
+      phaseOffset: state.phaseOffset ?? 0,
+      waveform: state.waveform,
+      useAbsolute: state.useAbsolute,
+      useNormalized: state.useNormalized,
+      triggerMode: state.triggerMode,
+      gain: state.gain,
+      active: state.active,
+      loopMode: state.loopMode,
+      loopStart: state.loopStart,
+      loopEnd: state.loopEnd,
+    };
+
     this.messageHandler.sendFireAndForget({
       type: 'updateLfo',
       lfoId: nodeId,
-      state,
+      params,
     });
   }
 
@@ -244,14 +259,14 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateFilter',
       filterId: nodeId,
-      state: newState,
+      config: newState,
     });
   }
 
   public updateConvolverState(nodeId: string, state: ConvolverState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateConvolver',
-      convolverId: nodeId,
+      nodeId,
       state,
     });
   }
@@ -259,7 +274,7 @@ export default class InstrumentV2 {
   public updateDelayState(nodeId: string, state: DelayState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateDelay',
-      delayId: nodeId,
+      nodeId,
       state,
     });
   }
