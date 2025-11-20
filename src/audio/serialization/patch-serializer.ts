@@ -29,6 +29,7 @@ import type {
   VelocityState,
 } from '../types/synth-layout';
 import type { NoiseState } from '../types/noise';
+import { normalizeSamplerState } from '../utils/sampler-detune';
 
 /**
  * Serializes the current synth state to a Patch object
@@ -116,6 +117,16 @@ export interface DeserializedPatch {
 
 export function deserializePatch(patch: Patch): DeserializedPatch {
   const layout = patchLayoutToSynthLayout(patch.synthState.layout);
+  const samplers = recordToMap(patch.synthState.samplers);
+  const normalizedSamplers = new Map(
+    Array.from(samplers.entries()).map(([id, state]) => [
+      id,
+      normalizeSamplerState({
+        ...state,
+        id,
+      }),
+    ]),
+  );
   const result: DeserializedPatch = {
     metadata: patch.metadata,
     layout,
@@ -124,7 +135,7 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
     filters: recordToMap(patch.synthState.filters),
     envelopes: recordToMap(patch.synthState.envelopes),
     lfos: recordToMap(patch.synthState.lfos),
-    samplers: recordToMap(patch.synthState.samplers),
+    samplers: normalizedSamplers,
     convolvers: recordToMap(patch.synthState.convolvers),
     delays: recordToMap(patch.synthState.delays),
     choruses: recordToMap(patch.synthState.choruses),

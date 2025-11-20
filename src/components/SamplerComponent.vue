@@ -37,6 +37,39 @@
         />
       </div>
 
+      <div class="detune-row">
+        <audio-knob-component
+          :model-value="samplerState.detune_oct ?? 0"
+          label="Octave"
+          :min="-5"
+          :max="5"
+          :step="1"
+          :decimals="0"
+          scale="half"
+          @update:model-value="handleDetuneOctChange"
+        />
+        <audio-knob-component
+          :model-value="samplerState.detune_semi ?? 0"
+          label="Semitones"
+          :min="-12"
+          :max="12"
+          :step="1"
+          :decimals="0"
+          scale="half"
+          @update:model-value="handleDetuneSemiChange"
+        />
+        <audio-knob-component
+          :model-value="samplerState.detune_cents ?? 0"
+          label="Cents"
+          :min="-100"
+          :max="100"
+          :step="1"
+          :decimals="0"
+          scale="half"
+          @update:model-value="handleDetuneCentsChange"
+        />
+      </div>
+
       <div class="mode-row">
         <q-select
           :model-value="samplerState.loopMode"
@@ -201,6 +234,10 @@ const fallbackState: SamplerState = {
   id: props.nodeId,
   frequency: 440,
   gain: 1,
+  detune_oct: 0,
+  detune_semi: 0,
+  detune_cents: 0,
+  detune: 0,
   loopMode: SamplerLoopMode.Off,
   loopStart: 0,
   loopEnd: 1,
@@ -284,6 +321,21 @@ function handleGainChange(value: number) {
 
 function handleRootNoteChange(value: number) {
   updateSampler({ rootNote: Number(value) });
+}
+
+function handleDetuneOctChange(value: number | null) {
+  if (value == null) return;
+  updateSampler({ detune_oct: Math.round(value) });
+}
+
+function handleDetuneSemiChange(value: number | null) {
+  if (value == null) return;
+  updateSampler({ detune_semi: Math.round(value) });
+}
+
+function handleDetuneCentsChange(value: number | null) {
+  if (value == null) return;
+  updateSampler({ detune_cents: Math.round(value) });
 }
 
 function handleLoopModeChange(value: SamplerLoopMode) {
@@ -498,6 +550,13 @@ function drawWaveform(data?: Float32Array) {
 
 .note-row {
   display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.detune-row {
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 0.5rem;
 }

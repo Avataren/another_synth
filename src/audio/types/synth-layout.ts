@@ -73,6 +73,10 @@ export interface SamplerState {
   id: string;
   frequency: number;
   gain: number;
+  detune_oct: number;
+  detune_semi: number;
+  detune_cents: number;
+  detune: number;
   loopMode: SamplerLoopMode;
   loopStart: number; // normalized 0..1
   loopEnd: number; // normalized 0..1

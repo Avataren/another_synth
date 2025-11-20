@@ -253,6 +253,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 
 - `InstrumentV2` (and `WorkletMessageBuilder.createNode`) send `{ type: 'createNode', nodeType: VoiceNodeType }`, but the worklet handler previously looked at `data.node`. This mismatch produced `Missing creation case for: undefined` whenever the UI tried to create new nodes. The worklet now accepts either field (`node` or `nodeType`) and logs a clear error if both are missing.
 
+## New discovery: Sampler detune support
+
+- Sampler nodes now mirror oscillator detune controls. `SamplerState` carries `detune_oct`, `detune_semi`, `detune_cents`, and `detune`, and `normalizeSamplerState` in `src/audio/utils/sampler-detune.ts` keeps these fields consistent with the sampler's stored `frequency`.
+- `node-state-store.buildSamplerUpdatePayload` derives the tuned base frequency from the total detune amount before calling `update_sampler`, so the WASM signature stays the same. Patch serialization/deserialization upgrades old patches by running `normalizeSamplerState`, so existing presets continue to load while new detune settings persist.
+
 ---
 
 # Web App Architecture Improvements (2025)

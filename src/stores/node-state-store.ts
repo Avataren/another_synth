@@ -24,14 +24,24 @@ import {
   mirrorNodeStatesToLegacyStore,
   type NodeStateSnapshot,
 } from './legacy-store-bridge';
+import {
+  BASE_SAMPLER_TUNING_FREQUENCY,
+  normalizeSamplerState,
+  frequencyFromDetune,
+  combineDetuneParts,
+} from 'src/audio/utils/sampler-detune';
 
 const DEFAULT_SAMPLE_RATE = 44100;
 
 function createDefaultSamplerState(id: string): SamplerState {
-  return {
+  return normalizeSamplerState({
     id,
-    frequency: 440,
+    frequency: BASE_SAMPLER_TUNING_FREQUENCY,
     gain: 1.0,
+    detune_oct: 0,
+    detune_semi: 0,
+    detune_cents: 0,
+    detune: 0,
     loopMode: SamplerLoopMode.Off,
     loopStart: 0,
     loopEnd: 1,
@@ -41,7 +51,7 @@ function createDefaultSamplerState(id: string): SamplerState {
     active: true,
     sampleRate: DEFAULT_SAMPLE_RATE,
     channels: 1,
-  };
+  });
 }
 
 export const useNodeStateStore = defineStore('nodeStateStore', {
@@ -74,6 +84,16 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       const layoutStore = useLayoutStore();
       const voice = layoutStore.synthLayout?.voices[0];
       if (!voice) return;
+
+      this.samplerStates.forEach((state, nodeId) => {
+        this.samplerStates.set(
+          nodeId,
+          normalizeSamplerState({
+            ...state,
+            id: nodeId,
+          }),
+        );
+      });
 
       const validNodeIds = new Set<string>();
       Object.values(voice.nodes).forEach((nodeArray) => {
@@ -318,12 +338,13 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
     updateSampler(nodeId: string, patch: Partial<SamplerState>) {
       const current =
         this.samplerStates.get(nodeId) || createDefaultSamplerState(nodeId);
-      const next: SamplerState = {
+      const merged: SamplerState = {
         ...current,
         ...patch,
         id: nodeId,
       };
-      this.samplerStates.set(nodeId, next);
+      const normalized = normalizeSamplerState(merged);
+      this.samplerStates.set(nodeId, normalized);
       this.sendSamplerState(nodeId);
       this.pushStatesToLegacyStore();
     },
@@ -370,9 +391,17 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
         requestedEnd <= loopStartNorm + minDelta
           ? Math.min(1, loopStartNorm + minDelta)
           : requestedEnd;
+      const detuneCents =
+        state.detune ??
+        combineDetuneParts(
+          state.detune_oct ?? 0,
+          state.detune_semi ?? 0,
+          state.detune_cents ?? 0,
+        );
+      const tuningFrequency = frequencyFromDetune(detuneCents);
 
       return {
-        frequency: state.frequency,
+        frequency: tuningFrequency,
         gain: state.gain,
         loopMode: state.loopMode,
         loopStart: loopStartNorm * sampleLength,
@@ -409,7 +438,15 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.filterStates = deserialized.filters;
       this.envelopeStates = deserialized.envelopes;
       this.lfoStates = deserialized.lfos;
-      this.samplerStates = deserialized.samplers;
+      this.samplerStates = new Map(
+        Array.from(deserialized.samplers.entries()).map(([nodeId, state]) => [
+          nodeId,
+          normalizeSamplerState({
+            ...state,
+            id: nodeId,
+          }),
+        ]),
+      );
       this.convolverStates = deserialized.convolvers;
       this.delayStates = deserialized.delays;
       this.chorusStates = deserialized.choruses;
