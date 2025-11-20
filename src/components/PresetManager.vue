@@ -149,9 +149,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { usePatchStore } from 'src/stores/patch-store';
 import { useQuasar } from 'quasar';
 
-const store = useAudioSystemStore();
+const audioStore = useAudioSystemStore();
+const patchStore = usePatchStore();
 const $q = useQuasar();
 
 const notify = (options: {
@@ -178,11 +180,12 @@ const pasteType = ref<'patch' | 'bank'>('patch');
 
 // Computed properties
 const currentBankName = computed(() => {
-  return store.currentBank?.metadata.name || 'No Bank';
+  return patchStore.currentBank?.metadata.name || 'No Bank';
 });
 
 const patches = computed(() => {
-  return store.getAllPatches();
+  if (!patchStore.currentBank) return [];
+  return patchStore.currentBank.patches;
 });
 
 const patchOptions = computed(() => {
@@ -192,8 +195,8 @@ const patchOptions = computed(() => {
   }));
 });
 
-const currentPatchId = computed(() => store.currentPatchId);
-const hasBank = computed(() => store.currentBank !== null);
+const currentPatchId = computed(() => patchStore.currentPatchId);
+const hasBank = computed(() => patchStore.currentBank !== null);
 
 // Watch for changes to current patch and keep local selection/name in sync
 watch(
@@ -217,7 +220,7 @@ const handlePatchSelect = async (patchId: string | null) => {
   if (!patchId) return;
 
   try {
-    const success = await store.loadPatch(patchId);
+    const success = await patchStore.loadPatch(patchId);
     if (success) {
       notify({
         type: 'positive',
@@ -244,7 +247,7 @@ const handleLoadPatch = async () => {
   if (!selectedPatchId.value) return;
 
   try {
-    const success = await store.loadPatch(selectedPatchId.value);
+    const success = await patchStore.loadPatch(selectedPatchId.value);
     if (success) {
       notify({
         type: 'positive',
@@ -271,7 +274,7 @@ const handleSavePatch = async () => {
   if (!patchName.value.trim() || !currentPatchId.value) return;
 
   try {
-    const patch = await store.updateCurrentPatch(patchName.value.trim());
+    const patch = await patchStore.updateCurrentPatch(patchName.value.trim());
     if (patch) {
       notify({
         type: 'positive',
@@ -296,7 +299,7 @@ const handleSavePatch = async () => {
 
 const handleNewPatch = async () => {
   try {
-    const patch = await store.createNewPatchFromTemplate('New Patch');
+    const patch = await patchStore.createNewPatchFromTemplate('New Patch');
     if (patch) {
       notify({
         type: 'positive',
@@ -321,7 +324,7 @@ const handleNewPatch = async () => {
 };
 
 const handleCopyPatch = () => {
-  const json = store.exportCurrentPatchAsJSON();
+  const json = patchStore.exportCurrentPatchAsJSON();
   if (json) {
     navigator.clipboard.writeText(json).then(() => {
       notify({
@@ -334,7 +337,7 @@ const handleCopyPatch = () => {
 };
 
 const handleCopyBank = () => {
-  const json = store.exportCurrentBankAsJSON();
+  const json = patchStore.exportCurrentBankAsJSON();
   if (json) {
     navigator.clipboard.writeText(json).then(() => {
       notify({
@@ -358,9 +361,9 @@ const handlePasteImport = async () => {
   try {
     let success = false;
     if (pasteType.value === 'patch') {
-      success = await store.importPatchFromJSON(pasteText.value);
+      success = await patchStore.importPatchFromJSON(pasteText.value);
     } else {
-      success = await store.importBankFromJSON(pasteText.value);
+      success = await patchStore.importBankFromJSON(pasteText.value);
     }
 
     if (success) {
@@ -400,7 +403,7 @@ const handleDeletePatch = () => {
     persistent: true,
   }).onOk(() => {
     if (selectedPatchId.value) {
-      const success = store.deletePatch(selectedPatchId.value);
+      const success = patchStore.deletePatch(selectedPatchId.value);
       if (success) {
         notify({
           type: 'positive',
@@ -424,7 +427,7 @@ const handleNewBank = () => {
     cancel: true,
     persistent: true,
   }).onOk((bankName: string) => {
-    store.createNewBank(bankName);
+    patchStore.createNewBank(bankName);
     notify({
       type: 'positive',
       message: `Bank "${bankName}" created`,
