@@ -23,11 +23,79 @@
       </div>
     </q-card-section>
     <q-card-section class="import-section">
-      <div class="row">
-        <div class="col-6">
-          <div class="text-h6">Import Impulse Response</div>
+      <div class="row q-col-gutter-md">
+        <div class="col-12">
+          <q-select
+            v-model="impulseSource"
+            :options="impulseSourceOptions"
+            label="Impulse Source"
+            dense
+            outlined
+          />
+        </div>
 
+        <!-- Upload WAV option -->
+        <div v-if="impulseSource === 'upload'" class="col-12">
+          <div class="text-subtitle2">Upload Custom Impulse</div>
           <input type="file" accept=".wav" @change="handleWavFileUpload" />
+        </div>
+
+        <!-- Hall Reverb Generator -->
+        <div v-if="impulseSource === 'hall'" class="col-12">
+          <div class="text-subtitle2">Hall Reverb Generator</div>
+          <div class="knob-group">
+            <audio-knob-component
+              v-model="hallParams.decayTime"
+              label="Decay Time"
+              :min="0.1"
+              :max="10"
+              :step="0.1"
+              :decimals="1"
+            />
+            <audio-knob-component
+              v-model="hallParams.roomSize"
+              label="Room Size"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :decimals="2"
+            />
+          </div>
+          <q-btn
+            label="Generate Hall Reverb"
+            color="primary"
+            @click="handleGenerateHall"
+            class="q-mt-sm"
+          />
+        </div>
+
+        <!-- Plate Reverb Generator -->
+        <div v-if="impulseSource === 'plate'" class="col-12">
+          <div class="text-subtitle2">Plate Reverb Generator</div>
+          <div class="knob-group">
+            <audio-knob-component
+              v-model="plateParams.decayTime"
+              label="Decay Time"
+              :min="0.1"
+              :max="10"
+              :step="0.1"
+              :decimals="1"
+            />
+            <audio-knob-component
+              v-model="plateParams.diffusion"
+              label="Diffusion"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :decimals="2"
+            />
+          </div>
+          <q-btn
+            label="Generate Plate Reverb"
+            color="primary"
+            @click="handleGeneratePlate"
+            class="q-mt-sm"
+          />
         </div>
       </div>
     </q-card-section>
@@ -35,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref, toRaw } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
@@ -49,13 +117,28 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   nodeId: '',
 });
-//const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 
 const instrumentStore = useInstrumentStore();
 const nodeStateStore = useNodeStateStore();
 const { convolverStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(() => props.nodeName || 'Convolver');
+
+// Impulse source selection
+const impulseSource = ref<'upload' | 'hall' | 'plate'>('upload');
+const impulseSourceOptions = ['upload', 'hall', 'plate'];
+
+// Hall reverb parameters
+const hallParams = ref({
+  decayTime: 2.0,
+  roomSize: 0.8,
+});
+
+// Plate reverb parameters
+const plateParams = ref({
+  decayTime: 2.0,
+  diffusion: 0.6,
+});
 
 const handleWavFileUpload = async (event: Event) => {
   const input = event.target as HTMLInputElement;
@@ -73,6 +156,13 @@ const handleWavFileUpload = async (event: Event) => {
     if (instrumentStore.currentInstrument) {
       // Call the new import function on your instrument
       instrumentStore.currentInstrument.importImpulseWaveformData(props.nodeId, wavBytes);
+
+      // Clear generator field since this is a custom upload (save binary data)
+      const currentState = ensureConvolverState();
+      updateConvolverState({
+        wetMix: currentState.wetMix,
+        active: currentState.active,
+      });
     } else {
       console.error('Instrument instance not available');
     }
@@ -120,9 +210,10 @@ const updateConvolverState = (patch: Partial<ConvolverState>) => {
 };
 
 const syncConvolverToInstrument = (state: ConvolverState) => {
-  instrumentStore.currentInstrument?.updateConvolverState(props.nodeId, {
-    ...state,
-  });
+  // Convert reactive state to plain object for postMessage
+  // Use JSON parse/stringify to create a deep clone and strip Vue reactivity
+  const plainState = JSON.parse(JSON.stringify(toRaw(state))) as ConvolverState;
+  instrumentStore.currentInstrument?.updateConvolverState(props.nodeId, plainState);
 };
 
 const handleEnabledChange = (val: boolean) => {
@@ -131,6 +222,50 @@ const handleEnabledChange = (val: boolean) => {
 
 const handleWetMixChange = (val: number) => {
   updateConvolverState({ wetMix: val });
+};
+
+const handleGenerateHall = () => {
+  if (!instrumentStore.currentInstrument || !instrumentStore.audioSystem) return;
+
+  // Generate hall reverb
+  instrumentStore.currentInstrument.generateHallReverb(
+    props.nodeId,
+    hallParams.value.decayTime,
+    hallParams.value.roomSize,
+  );
+
+  // Update convolver state with generator parameters
+  const sampleRate = instrumentStore.audioSystem.audioContext.sampleRate;
+  updateConvolverState({
+    generator: {
+      type: 'hall',
+      decayTime: hallParams.value.decayTime,
+      size: hallParams.value.roomSize,
+      sampleRate: sampleRate,
+    },
+  });
+};
+
+const handleGeneratePlate = () => {
+  if (!instrumentStore.currentInstrument || !instrumentStore.audioSystem) return;
+
+  // Generate plate reverb
+  instrumentStore.currentInstrument.generatePlateReverb(
+    props.nodeId,
+    plateParams.value.decayTime,
+    plateParams.value.diffusion,
+  );
+
+  // Update convolver state with generator parameters
+  const sampleRate = instrumentStore.audioSystem.audioContext.sampleRate;
+  updateConvolverState({
+    generator: {
+      type: 'plate',
+      decayTime: plateParams.value.decayTime,
+      size: plateParams.value.diffusion,
+      sampleRate: sampleRate,
+    },
+  });
 };
 
 onMounted(() => {

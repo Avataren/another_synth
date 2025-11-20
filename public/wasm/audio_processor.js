@@ -1198,6 +1198,43 @@ export class AudioEngine {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Generate a hall reverb impulse response and return it as a Vec<f32>
+     * @param {number} decay_time
+     * @param {number} room_size
+     * @returns {Float32Array}
+     */
+    generate_hall_impulse(decay_time, room_size) {
+        const ret = wasm.audioengine_generate_hall_impulse(this.__wbg_ptr, decay_time, room_size);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Update an existing effect's impulse response (for effects that are Convolvers)
+     * @param {number} effect_index
+     * @param {Float32Array} impulse_response
+     */
+    update_effect_impulse(effect_index, impulse_response) {
+        const ptr0 = passArrayF32ToWasm0(impulse_response, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.audioengine_update_effect_impulse(this.__wbg_ptr, effect_index, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Generate a plate reverb impulse response and return it as a Vec<f32>
+     * @param {number} decay_time
+     * @param {number} diffusion
+     * @returns {Float32Array}
+     */
+    generate_plate_impulse(decay_time, diffusion) {
+        const ret = wasm.audioengine_generate_plate_impulse(this.__wbg_ptr, decay_time, diffusion);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @param {string} node_id
      * @param {number} waveform_length
      * @returns {Float32Array}

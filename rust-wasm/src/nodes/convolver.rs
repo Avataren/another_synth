@@ -198,6 +198,17 @@ impl Convolver {
     pub fn reset_state(&mut self) {
         self.tail_count = 0;
     }
+
+    /// Update the convolver's impulse response
+    pub fn set_impulse_response(&mut self, impulse_response: Vec<f32>) {
+        // Rebuild the convolver with the new impulse response
+        let new_convolver = Self::new(impulse_response, self.partition_size, self.sample_rate);
+
+        // Update all fields
+        self.convolvers = new_convolver.convolvers;
+        self.original_impulse_response = new_convolver.original_impulse_response;
+        self.tail_count = 0; // Reset tail count
+    }
 }
 
 // ============================================================

@@ -3,7 +3,7 @@ import type { AudioAsset } from '../types/preset-types';
 import { AudioAssetType as AssetType } from '../types/preset-types';
 import { encodeFloat32ArrayToBase64 } from './audio-asset-encoder';
 import type InstrumentV2 from '../instrument-v2';
-import type { SynthLayout } from '../types/synth-layout';
+import type { SynthLayout, ConvolverState } from '../types/synth-layout';
 
 /**
  * Extracts all audio assets from sampler nodes
@@ -46,16 +46,28 @@ export async function extractSamplerAudioAssets(
 
 /**
  * Extracts all audio assets from convolver nodes
+ * Skips procedurally-generated impulse responses (hall/plate reverbs)
+ * as those are reconstructed from parameters
  */
 export async function extractConvolverAudioAssets(
   instrument: InstrumentV2,
   convolverNodeIds: string[],
+  convolverStates: Map<string, ConvolverState>,
 ): Promise<Map<string, AudioAsset>> {
   const assets = new Map<string, AudioAsset>();
 
   for (const nodeId of convolverNodeIds) {
     try {
-      // Export the raw impulse response data with metadata
+      // Check if this is a procedurally-generated convolver
+      const state = convolverStates.get(nodeId);
+      if (state?.generator) {
+        console.log(
+          `Skipping binary extraction for ${state.generator.type} reverb (node ${nodeId}) - will be regenerated from parameters`,
+        );
+        continue; // Don't save binary data for generated impulses
+      }
+
+      // Export the raw impulse response data with metadata for user-uploaded impulses
       const convolverData = await instrument.exportConvolverData(nodeId);
 
       if (convolverData.samples && convolverData.samples.length > 0) {
@@ -72,7 +84,7 @@ export async function extractConvolverAudioAssets(
 
         assets.set(asset.id, asset);
         console.log(
-          `Extracted impulse response for convolver node ${nodeId}: ${convolverData.channels}ch @ ${convolverData.sampleRate}Hz`,
+          `Extracted custom impulse response for convolver node ${nodeId}: ${convolverData.channels}ch @ ${convolverData.sampleRate}Hz`,
         );
       }
     } catch (error) {
@@ -93,6 +105,7 @@ export async function extractAllAudioAssets(
   instrument: InstrumentV2,
   samplerNodeIds: string[],
   convolverNodeIds: string[],
+  convolverStates: Map<string, ConvolverState>,
 ): Promise<Map<string, AudioAsset>> {
   const allAssets = new Map<string, AudioAsset>();
 
@@ -103,10 +116,11 @@ export async function extractAllAudioAssets(
   );
   samplerAssets.forEach((asset, id) => allAssets.set(id, asset));
 
-  // Extract convolver assets
+  // Extract convolver assets (skips procedurally-generated ones)
   const convolverAssets = await extractConvolverAudioAssets(
     instrument,
     convolverNodeIds,
+    convolverStates,
   );
   convolverAssets.forEach((asset, id) => allAssets.set(id, asset));
 

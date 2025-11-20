@@ -8,7 +8,8 @@
       "Bash(nul)",
       "Bash(cargo clean:*)",
       "Bash(npm run build:worklets:*)",
-      "Bash(timeout /t 5)"
+      "Bash(timeout /t 5)",
+      "Bash(npm run lint:*)"
     ],
     "deny": [],
     "ask": []

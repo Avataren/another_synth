@@ -285,6 +285,22 @@ export interface ImportImpulseWaveformMessage extends BaseMessage {
   data: Uint8Array;
 }
 
+export interface GenerateHallReverbMessage extends BaseMessage {
+  type: 'generateHallReverb';
+  nodeId: string;
+  decayTime: number;
+  roomSize: number;
+  sampleRate: number;
+}
+
+export interface GeneratePlateReverbMessage extends BaseMessage {
+  type: 'generatePlateReverb';
+  nodeId: string;
+  decayTime: number;
+  diffusion: number;
+  sampleRate: number;
+}
+
 // ============================================================================
 // Performance Messages (Main → Worklet)
 // ============================================================================
@@ -371,6 +387,8 @@ export type WorkletMessage =
   | UploadWavetableMessage
   | ImportWavetableMessage
   | ImportImpulseWaveformMessage
+  | GenerateHallReverbMessage
+  | GeneratePlateReverbMessage
   // Performance
   | NoteOnMessage
   | NoteOffMessage

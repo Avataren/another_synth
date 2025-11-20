@@ -872,6 +872,59 @@ impl AudioEngine {
         Ok(self.effect_stack.add_effect(Box::new(convolver)))
     }
 
+    /// Generate a hall reverb impulse response and return it as a Vec<f32>
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn generate_hall_impulse(
+        &self,
+        decay_time: f32,
+        room_size: f32,
+    ) -> Vec<f32> {
+        let decay_time = decay_time.clamp(0.1, 10.0);
+        let room_size = room_size.clamp(0.0, 1.0);
+        self.ir_generator.hall(decay_time, room_size)
+    }
+
+    /// Generate a plate reverb impulse response and return it as a Vec<f32>
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn generate_plate_impulse(
+        &self,
+        decay_time: f32,
+        diffusion: f32,
+    ) -> Vec<f32> {
+        let decay_time = decay_time.clamp(0.1, 10.0);
+        let diffusion = diffusion.clamp(0.0, 1.0);
+        self.ir_generator.plate(decay_time, diffusion)
+    }
+
+    /// Update an existing effect's impulse response (for effects that are Convolvers)
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn update_effect_impulse(
+        &mut self,
+        effect_index: usize,
+        impulse_response: Vec<f32>,
+    ) -> Result<(), JsValue> {
+        if effect_index >= self.effect_stack.effects.len() {
+            return Err(JsValue::from_str("Effect index out of bounds"));
+        }
+
+        if impulse_response.is_empty() {
+            return Err(JsValue::from_str("Impulse response cannot be empty"));
+        }
+
+        // Get mutable reference to the effect
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_index) {
+            // Try to downcast to Convolver
+            if let Some(convolver) = effect.node.as_any_mut().downcast_mut::<Convolver>() {
+                convolver.set_impulse_response(impulse_response);
+                Ok(())
+            } else {
+                Err(JsValue::from_str("Effect is not a Convolver"))
+            }
+        } else {
+            Err(JsValue::from_str("Failed to get effect"))
+        }
+    }
+
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn reorder_effects(&mut self, from_idx: usize, to_idx: usize) -> Result<(), JsValue> {
         self.effect_stack.reorder_effects(from_idx, to_idx);

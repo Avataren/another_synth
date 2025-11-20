@@ -33,11 +33,31 @@ import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
 import { useAssetStore } from './asset-store';
 import type InstrumentV2 from 'src/audio/instrument-v2';
-import { VoiceNodeType, getNodesOfType } from 'src/audio/types/synth-layout';
+import { VoiceNodeType, getNodesOfType, type ConvolverState } from 'src/audio/types/synth-layout';
 import { normalizePatchCategory } from 'src/utils/patch-category';
 
+/**
+ * Deep clones a patch WITHOUT changing its ID
+ * Used for applying templates and restoring patches
+ */
 const clonePatch = (patch: Patch): Patch =>
   JSON.parse(JSON.stringify(patch)) as Patch;
+
+/**
+ * Clones a patch and generates a NEW unique ID
+ * Used when duplicating/cloning patches for the user
+ */
+const clonePatchWithNewId = (patch: Patch, namePrefix?: string): Patch => {
+  const cloned = clonePatch(patch);
+  const newName = namePrefix
+    ? `${namePrefix} ${patch.metadata.name}`
+    : patch.metadata.name;
+  cloned.metadata = {
+    ...cloned.metadata,
+    ...createDefaultPatchMetadata(newName, cloned.metadata.category),
+  };
+  return cloned;
+};
 
 type PatchMetadataUpdates = {
   author?: string;
@@ -228,6 +248,9 @@ export const usePatchStore = defineStore('patchStore', {
         }
 
         await assetStore.restoreAudioAssets(instrumentStore.currentInstrument as InstrumentV2 | null);
+
+        // Regenerate convolvers with procedural generator params
+        await this.restoreGeneratedConvolvers(deserialized.convolvers, instrumentStore.currentInstrument as InstrumentV2 | null);
 
         this.isLoadingPatch = false;
         return true;
@@ -471,6 +494,7 @@ export const usePatchStore = defineStore('patchStore', {
           instrumentStore.currentInstrument as InstrumentV2,
           samplerIds,
           convolverIds,
+          nodeStateStore.convolverStates,
         );
 
         const allAssets = new Map([
@@ -557,6 +581,7 @@ export const usePatchStore = defineStore('patchStore', {
           instrumentStore.currentInstrument as InstrumentV2,
           samplerIds,
           convolverIds,
+          nodeStateStore.convolverStates,
         );
 
         const allAssets = new Map([
@@ -631,6 +656,31 @@ export const usePatchStore = defineStore('patchStore', {
       }
 
       return true;
+    },
+    async cloneCurrentPatch(namePrefix = 'Cloned'): Promise<Patch | null> {
+      if (!this.currentPatchId || !this.currentBank) {
+        console.error('Cannot clone patch: no current patch');
+        return null;
+      }
+
+      const currentPatch = this.currentBank.patches.find(
+        (p) => p.metadata.id === this.currentPatchId,
+      );
+      if (!currentPatch) {
+        console.error('Current patch not found in bank');
+        return null;
+      }
+
+      // Clone with a new unique ID and prefixed name
+      const clonedPatch = clonePatchWithNewId(currentPatch, namePrefix);
+
+      // Add to bank
+      this.currentBank = addPatchToBank(this.currentBank, clonedPatch);
+
+      // Set as current patch
+      this.currentPatchId = clonedPatch.metadata.id;
+
+      return clonedPatch;
     },
     createNewBank(name: string): Bank {
       this.currentBank = createBank(name);
@@ -712,6 +762,52 @@ export const usePatchStore = defineStore('patchStore', {
       this.currentBank = result.bank;
       this.currentPatchId = null;
       return true;
+    },
+    async restoreGeneratedConvolvers(
+      convolvers: Map<string, ConvolverState>,
+      instrument: InstrumentV2 | null,
+    ): Promise<void> {
+      if (!instrument) return;
+
+      for (const [nodeId, state] of convolvers.entries()) {
+        if (state.generator) {
+          console.log(
+            `Regenerating ${state.generator.type} reverb for convolver ${nodeId}`,
+            state.generator,
+          );
+
+          try {
+            if (state.generator.type === 'hall') {
+              await instrument.generateHallReverb(
+                nodeId,
+                state.generator.decayTime,
+                state.generator.size, // roomSize
+              );
+            } else if (state.generator.type === 'plate') {
+              await instrument.generatePlateReverb(
+                nodeId,
+                state.generator.decayTime,
+                state.generator.size, // diffusion
+              );
+            }
+
+            // Update wet mix and active state after generation
+            if (instrument.updateConvolverState) {
+              instrument.updateConvolverState(nodeId, {
+                id: nodeId,
+                wetMix: state.wetMix,
+                active: state.active,
+                generator: state.generator, // Preserve generator params
+              });
+            }
+          } catch (err) {
+            console.error(
+              `Failed to regenerate ${state.generator.type} reverb for convolver ${nodeId}:`,
+              err,
+            );
+          }
+        }
+      }
     },
   },
 });

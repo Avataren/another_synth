@@ -89,10 +89,31 @@ export interface SamplerState {
   fileName?: string;
 }
 
+/**
+ * Generator type for procedurally-generated impulse responses
+ */
+export type ImpulseGenerator = 'hall' | 'plate';
+
+/**
+ * Parameters for procedurally-generated impulse responses
+ */
+export interface ImpulseGeneratorParams {
+  /** Type of generator used */
+  type: ImpulseGenerator;
+  /** Decay time in seconds (0.1 - 10.0) */
+  decayTime: number;
+  /** For hall: room size (0.0 - 1.0), for plate: diffusion (0.0 - 1.0) */
+  size: number;
+  /** Sample rate used for generation */
+  sampleRate: number;
+}
+
 export interface ConvolverState {
   id?: string;
   wetMix: number;
   active: boolean;
+  /** If present, this convolver uses a procedurally-generated impulse response */
+  generator?: ImpulseGeneratorParams;
 }
 
 export interface DelayState {

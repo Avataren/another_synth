@@ -87,6 +87,14 @@
         @click="handleSavePatch"
         :disable="!patchName || !currentPatchId"
       />
+      <q-btn
+        label="Clone"
+        color="accent"
+        dense
+        @click="handleClonePatch"
+        :disable="!currentPatchId"
+        title="Clone current patch with a new ID"
+      />
       <q-btn label="New" color="secondary" dense @click="handleNewPatch" />
     </div>
 
@@ -459,6 +467,36 @@ const handleSavePatch = async () => {
     notify({
       type: 'negative',
       message: `Error saving patch: ${error}`,
+      timeout: 3000,
+    });
+  }
+};
+
+const handleClonePatch = async () => {
+  if (!currentPatchId.value) return;
+
+  try {
+    const clonedPatch = await patchStore.cloneCurrentPatch('Cloned');
+    if (clonedPatch) {
+      notify({
+        type: 'positive',
+        message: `Patch cloned as "${clonedPatch.metadata.name}"`,
+        timeout: 2000,
+      });
+      // Update local name to match the cloned patch
+      patchName.value = clonedPatch.metadata.name;
+      patchCategory.value = clonedPatch.metadata.category || '';
+    } else {
+      notify({
+        type: 'negative',
+        message: 'Failed to clone patch',
+        timeout: 2000,
+      });
+    }
+  } catch (error) {
+    notify({
+      type: 'negative',
+      message: `Error cloning patch: ${error}`,
       timeout: 3000,
     });
   }

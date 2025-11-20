@@ -395,6 +395,26 @@ export default class InstrumentV2 {
     });
   }
 
+  public generateHallReverb(nodeId: string, decayTime: number, roomSize: number): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'generateHallReverb',
+      nodeId,
+      decayTime,
+      roomSize,
+      sampleRate: this.audioContext.sampleRate,
+    });
+  }
+
+  public generatePlateReverb(nodeId: string, decayTime: number, diffusion: number): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'generatePlateReverb',
+      nodeId,
+      decayTime,
+      diffusion,
+      sampleRate: this.audioContext.sampleRate,
+    });
+  }
+
   public importSampleData(nodeId: string, wavData: Uint8Array): void {
     if (!this.workletNode) return;
     this.workletNode.port.postMessage(
