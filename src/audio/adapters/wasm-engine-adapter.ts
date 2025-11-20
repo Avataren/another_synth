@@ -19,11 +19,13 @@ import type {
   WasmModulationType,
   ModulationTransformation,
   Waveform,
+  WasmNoiseType,
 } from 'app/public/wasm/audio_processor';
 import {
   initSync,
   AutomationAdapter as WasmAutomationAdapter,
   AnalogOscillatorStateUpdate,
+  WavetableOscillatorStateUpdate,
   WasmLfoUpdateParams,
   NoiseUpdateParams,
 } from 'app/public/wasm/audio_processor';
@@ -32,7 +34,6 @@ import type { EnvelopeConfig, FilterState } from '../types/synth-layout';
 import {
   validateFiniteNumber,
   validatePortId,
-  sanitizeForWasm,
 } from './wasm-type-adapter';
 
 // ============================================================================
@@ -261,18 +262,19 @@ export class WasmEngineAdapter {
     waveform: number;
     unison_voices?: number;
     spread?: number;
+    wave_index?: number;
   }): void {
-    // Create WASM AnalogOscillatorStateUpdate instance
-    const oscUpdate = new AnalogOscillatorStateUpdate(
+    // Create WASM WavetableOscillatorStateUpdate instance
+    const oscUpdate = new WavetableOscillatorStateUpdate(
       state.phase_mod_amount ?? 0,
       state.detune ?? 0,
       state.hard_sync ?? false,
       validateFiniteNumber(state.gain, 'gain'),
       Boolean(state.active),
       state.feedback_amount ?? 0,
-      state.waveform as Waveform,
       state.unison_voices ?? 1,
-      state.spread ?? 0
+      state.spread ?? 0,
+      state.wave_index ?? 0  // wavetable_index parameter
     );
     this.requireEngine().update_wavetable_oscillator(oscillatorId, oscUpdate);
   }
@@ -339,8 +341,18 @@ export class WasmEngineAdapter {
     rootNote: number;
     active: boolean;
   }>): void {
-    const sanitized = sanitizeForWasm(state as Record<string, unknown>);
-    this.requireEngine().update_sampler(samplerId, sanitized);
+    // WASM API expects 9 positional parameters
+    this.requireEngine().update_sampler(
+      samplerId,
+      state.frequency ?? 440,
+      validateFiniteNumber(state.gain ?? 1, 'gain'),
+      state.loopMode ?? 0,
+      state.loopStart ?? 0,
+      state.loopEnd ?? 1,
+      state.rootNote ?? 60,
+      state.triggerMode ?? 0,
+      Boolean(state.active ?? true)
+    );
   }
 
   updateNoise(noiseId: string, params: {
@@ -351,7 +363,7 @@ export class WasmEngineAdapter {
   }): void {
     // Create WASM NoiseUpdateParams instance
     const noiseParams = new NoiseUpdateParams(
-      params.noise_type,
+      params.noise_type as WasmNoiseType,
       params.cutoff ?? 20000,
       validateFiniteNumber(params.gain, 'gain'),
       Boolean(params.enabled)
@@ -414,7 +426,12 @@ export class WasmEngineAdapter {
   }
 
   updateConvolver(convolverId: string, wetMix: number, active: boolean): void {
-    this.requireEngine().update_convolver(convolverId, wetMix, active);
+    // WASM API expects numeric node ID
+    const nodeId = Number(convolverId);
+    if (!Number.isFinite(nodeId)) {
+      throw new Error(`Invalid convolver node ID: ${convolverId}`);
+    }
+    this.requireEngine().update_convolver(nodeId, wetMix, active);
   }
 
   updateDelay(delayId: string | number, params: {
@@ -438,8 +455,9 @@ export class WasmEngineAdapter {
     );
   }
 
-  updateVelocity(voiceIndex: number, velocity: number): void {
-    this.requireEngine().update_velocity(voiceIndex, velocity);
+  updateVelocity(nodeId: string, sensitivity: number, randomize: number): void {
+    // WASM API expects node_id (string), sensitivity, randomize
+    this.requireEngine().update_velocity(nodeId, sensitivity, randomize);
   }
 
   // ========================================================================
@@ -484,8 +502,11 @@ export class WasmEngineAdapter {
   }
 
   importImpulseResponse(effectId: string | number, audioData: Uint8Array): void {
-    // Handle both string UUIDs and numeric IDs
-    const id = typeof effectId === 'number' ? effectId : effectId;
+    // WASM API expects numeric effect ID
+    const id = typeof effectId === 'number' ? effectId : Number(effectId);
+    if (!Number.isFinite(id)) {
+      throw new Error(`Invalid effect ID: ${effectId}`);
+    }
     this.requireEngine().import_wave_impulse(id, audioData);
   }
 
@@ -538,10 +559,11 @@ export class WasmEngineAdapter {
     }
   }
 
-  getLfoWaveform(lfoId: string, numPoints: number, sampleRate: number): Float32Array | null {
+  getLfoWaveform(waveform: number, phaseOffset: number, frequency: number, bufferSize: number, useAbsolute: boolean, useNormalized: boolean): Float32Array | null {
     try {
-      const waveform = this.requireEngine().get_lfo_waveform(lfoId, numPoints, sampleRate);
-      return waveform instanceof Float32Array ? waveform : null;
+      // WASM API expects 6 arguments: waveform, phase_offset, frequency, buffer_size, use_absolute, use_normalized
+      const result = this.requireEngine().get_lfo_waveform(waveform, phaseOffset, frequency, bufferSize, useAbsolute, useNormalized);
+      return result instanceof Float32Array ? result : null;
     } catch (error) {
       console.warn('[WasmEngineAdapter] Failed to get LFO waveform:', error);
       return null;

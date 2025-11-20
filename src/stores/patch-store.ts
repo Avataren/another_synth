@@ -32,6 +32,7 @@ import { useAudioSystemStore } from './audio-system-store';
 import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
 import { useAssetStore } from './asset-store';
+import type InstrumentV2 from 'src/audio/instrument-v2';
 import { VoiceNodeType, getNodesOfType } from 'src/audio/types/synth-layout';
 
 const clonePatch = (patch: Patch): Patch =>
@@ -204,7 +205,7 @@ export const usePatchStore = defineStore('patchStore', {
           this.currentPatchId = patch.metadata.id;
         }
 
-        await assetStore.restoreAudioAssets(audioStore.currentInstrument);
+        await assetStore.restoreAudioAssets(audioStore.currentInstrument as InstrumentV2 | null);
 
         this.isLoadingPatch = false;
         return true;
@@ -252,7 +253,7 @@ export const usePatchStore = defineStore('patchStore', {
           await nextTick(() => {
             nodeStateStore.applyPreservedStatesToWasm();
             void useAssetStore().restoreAudioAssets(
-              audioStore.currentInstrument,
+              audioStore.currentInstrument as InstrumentV2 | null,
             );
           });
           return true;
@@ -445,7 +446,7 @@ export const usePatchStore = defineStore('patchStore', {
         }
 
         const extractedAssets = await extractAllAudioAssets(
-          audioStore.currentInstrument,
+          audioStore.currentInstrument as InstrumentV2,
           samplerIds,
           convolverIds,
         );
@@ -525,11 +526,11 @@ export const usePatchStore = defineStore('patchStore', {
 
         if (!audioStore.currentInstrument) {
           console.warn('Cannot extract audio assets: instrument not ready');
-          return false;
+          return null;
         }
 
         const extractedAssets = await extractAllAudioAssets(
-          audioStore.currentInstrument,
+          audioStore.currentInstrument as InstrumentV2,
           samplerIds,
           convolverIds,
         );
