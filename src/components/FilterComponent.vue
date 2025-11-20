@@ -142,6 +142,7 @@ import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import { throttle } from 'src/utils/util';
 import {
@@ -179,14 +180,18 @@ const slopeEnabled = ref(true);
 const gainEnabled = ref(true);
 
 const store = useAudioSystemStore();
+const layoutStore = useLayoutStore();
 const { filterStates } = storeToRefs(store);
 
 const displayName = computed(
-  () => props.nodeName || store.getNodeName(props.nodeId) || `Filter ${props.nodeId}`,
+  () =>
+    props.nodeName ||
+    layoutStore.getNodeName(props.nodeId) ||
+    `Filter ${props.nodeId}`,
 );
 
 function handleNameChange(name: string) {
-  store.renameNode(props.nodeId, name);
+  layoutStore.renameNode(props.nodeId, name);
 }
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 

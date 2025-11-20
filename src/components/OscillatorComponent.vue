@@ -148,6 +148,7 @@ import AudioCardHeader from './AudioCardHeader.vue'; // New header component
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import type OscillatorState from 'src/audio/models/OscillatorState';
@@ -178,14 +179,18 @@ function forwardClose() {
 
 // Reference to the audio system store
 const store = useAudioSystemStore();
+const layoutStore = useLayoutStore();
 const { oscillatorStates } = storeToRefs(store);
 
-const displayName = computed(() =>
-  props.nodeName || store.getNodeName(props.nodeId) || `Oscillator ${props.nodeId}`,
+const displayName = computed(
+  () =>
+    props.nodeName ||
+    layoutStore.getNodeName(props.nodeId) ||
+    `Oscillator ${props.nodeId}`,
 );
 
 function handleNameChange(name: string) {
-  store.renameNode(props.nodeId, name);
+  layoutStore.renameNode(props.nodeId, name);
 }
 
 // Computed oscillator state

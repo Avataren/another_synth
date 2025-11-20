@@ -238,6 +238,11 @@ export class WorkletMessageHandler {
 
     this.log(`Received: ${message.type}`);
 
+    if (!this.initialized && this.shouldAutoInitialize(message)) {
+      this.log(`Auto-initializing from broadcast: ${message.type}`);
+      this.markInitialized();
+    }
+
     // Handle operation responses
     if (message.type === 'operationResponse') {
       this.handleOperationResponse(message as OperationResponse);
@@ -370,5 +375,16 @@ export class WorkletMessageHandler {
 
     this.initialized = false;
     this.log('Detached from worklet');
+  }
+
+  /**
+   * Determines if an incoming broadcast implies the worklet finished initialization.
+   */
+  private shouldAutoInitialize(message: WorkletMessage): boolean {
+    return (
+      message.type === 'initialState' ||
+      message.type === 'synthLayout' ||
+      message.type === 'stateUpdated'
+    );
   }
 }

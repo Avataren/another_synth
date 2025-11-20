@@ -158,6 +158,7 @@ import {
   type TargetNode,
 } from '../audio/modulation-route-manager';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 import {
   PORT_LABELS,
   VoiceNodeType,
@@ -178,6 +179,7 @@ interface Props {
 }
 const props = defineProps<Props>();
 const store = useAudioSystemStore();
+const layoutStore = useLayoutStore();
 
 //–––––– Route Manager ––––––
 const routeManager = ref<ModulationRouteManager | null>(null);
@@ -905,7 +907,7 @@ function initializeRoutes(): void {
 }
 
 function getNodeName(nodeId: string): string {
-  const storedName = store.getNodeName(nodeId);
+  const storedName = layoutStore.getNodeName(nodeId);
   if (storedName && storedName.trim().length > 0) {
     return storedName;
   }

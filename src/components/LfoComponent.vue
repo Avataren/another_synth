@@ -134,6 +134,7 @@ import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue'; // <-- be sure to import
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import { type LfoState } from 'src/audio/types/synth-layout';
 import RoutingComponent from './RoutingComponent.vue';
@@ -169,17 +170,21 @@ function forwardClose() {
 
 // Store references and local refs
 const store = useAudioSystemStore();
+const layoutStore = useLayoutStore();
 const { lfoStates } = storeToRefs(store);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 const waveform = ref<number>(0);
 const triggerMode = ref<boolean>(false);
 
 const displayName = computed(
-  () => props.nodeName || store.getNodeName(props.nodeId) || `LFO ${props.nodeId}`,
+  () =>
+    props.nodeName ||
+    layoutStore.getNodeName(props.nodeId) ||
+    `LFO ${props.nodeId}`,
 );
 
 function handleNameChange(name: string) {
-  store.renameNode(props.nodeId, name);
+  layoutStore.renameNode(props.nodeId, name);
 }
 
 // We'll cache the drawn waveform as an offscreen canvas.

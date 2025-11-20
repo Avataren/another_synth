@@ -119,6 +119,7 @@ import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import {
   VoiceNodeType,
@@ -151,14 +152,18 @@ function forwardClose() {
 
 // Audio store & references
 const store = useAudioSystemStore();
+const layoutStore = useLayoutStore();
 const { envelopeStates } = storeToRefs(store);
 
 const displayName = computed(
-  () => props.nodeName || store.getNodeName(props.nodeId) || `Envelope ${props.nodeId}`,
+  () =>
+    props.nodeName ||
+    layoutStore.getNodeName(props.nodeId) ||
+    `Envelope ${props.nodeId}`,
 );
 
 function handleNameChange(name: string) {
-  store.renameNode(props.nodeId, name);
+  layoutStore.renameNode(props.nodeId, name);
 }
 
 // Canvas ref for envelope preview

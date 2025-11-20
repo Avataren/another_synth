@@ -58,6 +58,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick, defineProps } from 'vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useConnectionStore } from 'src/stores/connection-store';
 import { type VoiceNodeType } from 'src/audio/types/synth-layout';
 
 interface Node {
@@ -75,6 +76,7 @@ interface Props {
 
 const props = defineProps<Props>();
 const store = useAudioSystemStore();
+const connectionStore = useConnectionStore();
 
 const currentTab = ref(props.nodes.length ? props.nodes[0]!.id.toString() : '');
 const isMinimized = ref(false);
@@ -165,7 +167,7 @@ function handleClose(nodeId: string): void {
 
   // Delete the node
   store.currentInstrument?.deleteNode(nodeId);
-  store.deleteNodeCleanup(nodeId);
+  connectionStore.deleteNodeCleanup(nodeId);
 
   // Switch to another tab if needed
   if (nextTabId && nextTabId !== currentTab.value) {

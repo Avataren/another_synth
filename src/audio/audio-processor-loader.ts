@@ -17,14 +17,26 @@ export async function createStandardAudioWorklet(
   });
   const layoutStore = useLayoutStore();
   const nodeStateStore = useNodeStateStore();
+  workletNode.port.start();
 
   return new Promise((resolve, reject) => {
+    let resolved = false;
+    const resolveOnce = (fn: () => void) => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      clearTimeout(timeoutId);
+      fn();
+    };
     const timeoutId = setTimeout(() => {
-      reject(new Error('Timeout waiting for synth initialization'));
+      resolveOnce(() => {
+        reject(new Error('Timeout waiting for synth initialization'));
+      });
     }, 5000); // 5 second timeout
 
     // Handle messages from the worklet
-    workletNode.port.onmessage = async (event) => {
+    const handleMessage = async (event: MessageEvent) => {
       const data = event.data;
       if (data.type === 'ready') {
         console.log('AudioWorkletProcessor is ready, sending WASM...');
@@ -32,12 +44,13 @@ export async function createStandardAudioWorklet(
           const wasmUrl = `${import.meta.env.BASE_URL}wasm/audio_processor_bg.wasm`;
           const response = await fetch(wasmUrl);
           const wasmBytes = await response.arrayBuffer();
-          workletNode.port.postMessage({ type: 'wasm-binary', wasmBytes }, [wasmBytes]);
-          clearTimeout(timeoutId);
-          resolve(workletNode);
+          workletNode.port.postMessage(
+            { type: 'wasm-binary', wasmBytes },
+            [wasmBytes]
+          );
+          resolveOnce(() => resolve(workletNode));
         } catch (error) {
-          clearTimeout(timeoutId);
-          reject(error);
+          resolveOnce(() => reject(error as Error));
         }
       } else if (data.type === 'synthLayout') {
         console.log('Received synth layout:', data);
@@ -52,11 +65,18 @@ export async function createStandardAudioWorklet(
         nodeStateStore.initializeDefaultStates();
       }
     };
-
-    workletNode.port.onmessageerror = (error) => {
-      clearTimeout(timeoutId);
-      reject(error);
+    const handleMessageError = (event: MessageEvent) => {
+      resolveOnce(() => {
+        reject(
+          event.data instanceof Error
+            ? event.data
+            : new Error('Message port error while initializing synth worklet')
+        );
+      });
     };
+
+    workletNode.port.addEventListener('message', handleMessage);
+    workletNode.port.addEventListener('messageerror', handleMessageError as EventListener);
   });
 }
 

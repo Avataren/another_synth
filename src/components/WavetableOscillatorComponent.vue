@@ -164,6 +164,7 @@ import AudioCardHeader from './AudioCardHeader.vue'; // <-- Make sure to import 
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import WavetableEditor from './WaveTable/WavetableEditor.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import RoutingComponent from './RoutingComponent.vue';
@@ -199,17 +200,18 @@ function forwardClose() {
 
 // Access the store
 const store = useAudioSystemStore();
+const layoutStore = useLayoutStore();
 const { wavetableOscillatorStates } = storeToRefs(store);
 
 const displayName = computed(
   () =>
     props.nodeName ||
-    store.getNodeName(props.nodeId) ||
+    layoutStore.getNodeName(props.nodeId) ||
     `Wavetable Oscillator ${props.nodeId}`,
 );
 
 function handleNameChange(name: string) {
-  store.renameNode(props.nodeId, name);
+  layoutStore.renameNode(props.nodeId, name);
 }
 
 // Computed for oscillator state

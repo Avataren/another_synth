@@ -408,6 +408,11 @@ handler.sendFireAndForget(
 );
 ```
 
+### Message Handler & Layout Sync (2025-03)
+
+- When attaching `WorkletMessageHandler` to the worklet port, do **not** clobber listeners that mirror layout updates into Pinia. The loader (`audio-processor-loader.ts`) must use `port.addEventListener('message', ...)` so `synthLayout`/`stateUpdated` broadcasts continue flowing even after the handler sets `port.onmessage`.
+- The initial `ready` message fires before `InstrumentV2` attaches the handler, so the handler now auto-calls `markInitialized()` when it sees `initialState`, `synthLayout`, or `stateUpdated` broadcasts. Without this the handler never leaves the queued state and `waitForInstrumentReady()` times out, preventing patch loads.
+
 **Initialization Sequence**:
 1. Worklet sends `ready` message
 2. Handler calls `markInitialized()`

@@ -76,6 +76,12 @@ export interface StateUpdatedMessage extends BaseMessage {
   state: SynthLayout;
 }
 
+export interface InitialStateMessage extends BaseMessage {
+  type: 'initialState';
+  state: SynthLayout;
+  version?: number;
+}
+
 // ============================================================================
 // Node State Update Messages (Main → Worklet)
 // ============================================================================
@@ -319,6 +325,7 @@ export type WorkletMessage =
   | LoadPatchMessage
   | SynthLayoutMessage
   | StateUpdatedMessage
+  | InitialStateMessage
   // Node Updates
   | UpdateOscillatorMessage
   | UpdateWavetableOscillatorMessage

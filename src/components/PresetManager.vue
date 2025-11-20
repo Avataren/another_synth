@@ -54,12 +54,7 @@
         @click="handleSavePatch"
         :disable="!patchName || !currentPatchId"
       />
-      <q-btn
-        label="New"
-        color="secondary"
-        dense
-        @click="handleNewPatch"
-      />
+      <q-btn label="New" color="secondary" dense @click="handleNewPatch" />
     </div>
 
     <!-- Right section: import / export / bank actions -->
@@ -148,11 +143,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useQuasar } from 'quasar';
 
-const audioStore = useAudioSystemStore();
 const patchStore = usePatchStore();
 const $q = useQuasar();
 
@@ -393,7 +386,9 @@ const handlePasteImport = async () => {
 const handleDeletePatch = () => {
   if (!selectedPatchId.value) return;
 
-  const patch = patches.value.find((p) => p.metadata.id === selectedPatchId.value);
+  const patch = patches.value.find(
+    (p) => p.metadata.id === selectedPatchId.value,
+  );
   const patchName = patch?.metadata.name || 'this patch';
 
   $q.dialog({

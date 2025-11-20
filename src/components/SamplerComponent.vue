@@ -148,6 +148,8 @@ import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useLayoutStore } from 'src/stores/layout-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import {
   VoiceNodeType,
   SamplerLoopMode,
@@ -180,14 +182,19 @@ function forwardClose() {
 }
 
 const store = useAudioSystemStore();
+const layoutStore = useLayoutStore();
+const nodeStateStore = useNodeStateStore();
 const { samplerStates, samplerWaveforms } = storeToRefs(store);
 
 const displayName = computed(
-  () => props.nodeName || store.getNodeName(props.nodeId) || `Sampler ${props.nodeId}`,
+  () =>
+    props.nodeName ||
+    layoutStore.getNodeName(props.nodeId) ||
+    `Sampler ${props.nodeId}`,
 );
 
 function handleNameChange(name: string) {
-  store.renameNode(props.nodeId, name);
+  layoutStore.renameNode(props.nodeId, name);
 }
 
 const fallbackState: SamplerState = {
@@ -268,7 +275,7 @@ const rootNoteValue = computed({
 });
 
 function updateSampler(values: Partial<SamplerState>) {
-  store.updateSampler(props.nodeId, values);
+  nodeStateStore.updateSampler(props.nodeId, values);
 }
 
 function handleGainChange(value: number) {
@@ -355,7 +362,7 @@ async function handleFileUpload(event: Event) {
     const arrayBuffer = await file.arrayBuffer();
     const header = parseWavHeader(arrayBuffer);
     const wavBytes = new Uint8Array(arrayBuffer);
-    store.setSamplerSampleInfo(props.nodeId, {
+    nodeStateStore.setSamplerSampleInfo(props.nodeId, {
       sampleLength: header.sampleLength,
       sampleRate: header.sampleRate,
       channels: header.channels,
@@ -377,7 +384,7 @@ async function refreshWaveform() {
   try {
     isWaveformLoading.value = true;
     waveformError.value = null;
-    await store.fetchSamplerWaveform(props.nodeId, waveformWidth);
+    await nodeStateStore.fetchSamplerWaveform(props.nodeId, waveformWidth);
   } catch (err) {
     console.error('Failed to refresh waveform', err);
     waveformError.value = 'Unable to load waveform';
