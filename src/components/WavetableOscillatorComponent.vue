@@ -163,7 +163,8 @@ import { computed, onMounted, watch } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue'; // <-- Make sure to import this
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import WavetableEditor from './WaveTable/WavetableEditor.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import type OscillatorState from 'src/audio/models/OscillatorState';
@@ -198,10 +199,11 @@ function forwardClose() {
   emit('closeClicked', props.nodeId);
 }
 
-// Access the store
-const store = useAudioSystemStore();
+// Access the stores
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
 const layoutStore = useLayoutStore();
-const { wavetableOscillatorStates } = storeToRefs(store);
+const { wavetableOscillatorStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
   () =>
@@ -240,7 +242,7 @@ const oscillatorState = computed<OscillatorState>({
     return state;
   },
   set: (newState: OscillatorState) => {
-    store.wavetableOscillatorStates.set(props.nodeId, newState);
+    nodeStateStore.wavetableOscillatorStates.set(props.nodeId, newState);
   },
 });
 
@@ -272,8 +274,8 @@ const handleWavFileUpload = async (event: Event) => {
     const wavBytes = new Uint8Array(arrayBuffer);
     console.log('WAV file loaded, size:', wavBytes.length);
 
-    if (store.currentInstrument) {
-      store.currentInstrument.importWavetableData(props.nodeId, wavBytes);
+    if (instrumentStore.currentInstrument) {
+      instrumentStore.currentInstrument.importWavetableData(props.nodeId, wavBytes);
     } else {
       console.error('Instrument instance not available');
     }
@@ -286,7 +288,7 @@ const handleWavFileUpload = async (event: Event) => {
 // Wavetable editor callback
 const handleWavetableUpdate = (newWavetable: Uint8Array) => {
   console.log('### got wavetable:', newWavetable);
-  store.currentInstrument?.importWavetableData(props.nodeId, newWavetable);
+  instrumentStore.currentInstrument?.importWavetableData(props.nodeId, newWavetable);
 };
 
 // Various knob and toggle handlers
@@ -295,7 +297,7 @@ const handleWaveformIndexChange = (newValue: number) => {
     ...oscillatorState.value,
     wave_index: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleUnisonVoicesChange = (newValue: number) => {
@@ -303,7 +305,7 @@ const handleUnisonVoicesChange = (newValue: number) => {
     ...oscillatorState.value,
     unison_voices: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleUnisonSpreadChange = (newValue: number) => {
@@ -311,7 +313,7 @@ const handleUnisonSpreadChange = (newValue: number) => {
     ...oscillatorState.value,
     spread: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleHardSyncChange = (newValue: boolean) => {
@@ -319,7 +321,7 @@ const handleHardSyncChange = (newValue: boolean) => {
     ...oscillatorState.value,
     hardsync: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleModIndexChange = (newValue: number) => {
@@ -327,7 +329,7 @@ const handleModIndexChange = (newValue: number) => {
     ...oscillatorState.value,
     phase_mod_amount: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleFeedbackChange = (newValue: number) => {
@@ -335,7 +337,7 @@ const handleFeedbackChange = (newValue: number) => {
     ...oscillatorState.value,
     feedback_amount: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleActiveChange = (newValue: boolean) => {
@@ -343,7 +345,7 @@ const handleActiveChange = (newValue: boolean) => {
     ...oscillatorState.value,
     active: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleGainChange = (newValue: number) => {
@@ -351,7 +353,7 @@ const handleGainChange = (newValue: number) => {
     ...oscillatorState.value,
     gain: newValue,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 const handleDetuneChange = () => {
@@ -359,7 +361,7 @@ const handleDetuneChange = () => {
     ...oscillatorState.value,
     detune: totalDetune.value,
   };
-  store.wavetableOscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.wavetableOscillatorStates.set(props.nodeId, currentState);
 };
 
 // Watch for changes and notify the instrument
@@ -368,7 +370,7 @@ watch(
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
-        store.currentInstrument?.updateWavetableOscillatorState(
+        instrumentStore.currentInstrument?.updateWavetableOscillatorState(
           props.nodeId,
           newState as OscillatorState,
         );

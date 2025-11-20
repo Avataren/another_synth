@@ -91,7 +91,8 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue'; // Assuming this path
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { storeToRefs } from 'pinia';
 import { type ChorusState } from 'src/audio/types/synth-layout'; // Adjust path if needed
 
@@ -103,9 +104,10 @@ const props = withDefaults(defineProps<Props>(), {
   nodeId: '',
 });
 
-const store = useAudioSystemStore();
-// Use chorusStates from the store
-const { chorusStates } = storeToRefs(store);
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
+const { chorusStates } = storeToRefs(nodeStateStore);
+
 
 const displayName = computed(() => props.nodeName || 'Chorus');
 
@@ -131,7 +133,7 @@ const chorusState = computed({
   },
   set: (newState: ChorusState) => {
     // Update the state in the Pinia store
-    store.chorusStates.set(props.nodeId, { ...newState });
+    nodeStateStore.chorusStates.set(props.nodeId, { ...newState });
   },
 });
 
@@ -179,7 +181,7 @@ watch(
   (newState) => {
     // You need a method on your instrument interface to handle chorus updates
     // Ensure YourInstrumentInterface has this method defined.
-    store.currentInstrument?.updateChorusState(props.nodeId, {
+    instrumentStore.currentInstrument?.updateChorusState(props.nodeId, {
       ...newState, // Send the complete new state
     });
   },

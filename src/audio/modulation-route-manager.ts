@@ -22,12 +22,9 @@ export class ModulationRouteManager {
   private readonly connectionStore = useConnectionStore();
 
   constructor(
-    _legacyStore: unknown = undefined,
     private readonly sourceId: string,
     private readonly sourceType: VoiceNodeType,
-  ) {
-    void _legacyStore;
-  }
+  ) {}
 
   private getNodeName(type: VoiceNodeType, id: string): string {
     const storedName = this.layoutStore.getNodeName(id);

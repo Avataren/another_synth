@@ -180,7 +180,7 @@ import { storeToRefs } from 'pinia';
 import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
 import {
@@ -214,10 +214,10 @@ function forwardClose() {
   emit('closeClicked', props.nodeId);
 }
 
-const store = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
 const layoutStore = useLayoutStore();
 const nodeStateStore = useNodeStateStore();
-const { samplerStates, samplerWaveforms } = storeToRefs(store);
+const { samplerStates, samplerWaveforms } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
   () =>
@@ -420,7 +420,7 @@ async function handleFileUpload(event: Event) {
       channels: header.channels,
       fileName: file.name,
     });
-    store.currentInstrument?.importSampleData(props.nodeId, wavBytes);
+    instrumentStore.currentInstrument?.importSampleData(props.nodeId, wavBytes);
     await refreshWaveform();
   } catch (err) {
     console.error('Failed to import sample:', err);
@@ -432,7 +432,7 @@ async function handleFileUpload(event: Event) {
 }
 
 async function refreshWaveform() {
-  if (!store.currentInstrument) return;
+  if (!instrumentStore.currentInstrument) return;
   try {
     isWaveformLoading.value = true;
     waveformError.value = null;

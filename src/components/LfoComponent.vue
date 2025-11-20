@@ -133,7 +133,8 @@
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue'; // <-- be sure to import
 import AudioKnobComponent from './AudioKnobComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import { type LfoState } from 'src/audio/types/synth-layout';
@@ -169,9 +170,10 @@ function forwardClose() {
 }
 
 // Store references and local refs
-const store = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
 const layoutStore = useLayoutStore();
-const { lfoStates } = storeToRefs(store);
+const { lfoStates } = storeToRefs(nodeStateStore);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 const waveform = ref<number>(0);
 const triggerMode = ref<boolean>(false);
@@ -217,7 +219,7 @@ const lfoState = computed<LfoState>({
     return state;
   },
   set: (newState) => {
-    store.lfoStates.set(props.nodeId, newState);
+    nodeStateStore.lfoStates.set(props.nodeId, newState);
   },
 });
 
@@ -262,24 +264,24 @@ onBeforeUnmount(() => {
 
 // Handler methods
 async function handleFrequencyChange(newFrequency: number) {
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     frequency: newFrequency,
   });
   await throttledUpdateWaveformDisplay();
 }
 async function handlePhaseChange(newPhase: number) {
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     phaseOffset: newPhase,
   });
   await throttledUpdateWaveformDisplay();
 }
 function handleGainChange(newGain: number) {
-  store.lfoStates.set(props.nodeId, { ...lfoState.value, gain: newGain });
+  nodeStateStore.lfoStates.set(props.nodeId, { ...lfoState.value, gain: newGain });
 }
 async function handleWaveformChange(newWaveform: number) {
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     waveform: newWaveform,
   });
@@ -287,16 +289,16 @@ async function handleWaveformChange(newWaveform: number) {
   updateWaveformDisplay();
 }
 function handleTriggerModeChange(newTriggerMode: boolean) {
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     triggerMode: newTriggerMode ? 1 : 0,
   });
 }
 function handleActiveChange(newValue: boolean) {
-  store.lfoStates.set(props.nodeId, { ...lfoState.value, active: newValue });
+  nodeStateStore.lfoStates.set(props.nodeId, { ...lfoState.value, active: newValue });
 }
 async function handleAbsoluteChange(newValue: boolean) {
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     useAbsolute: newValue,
   });
@@ -304,7 +306,7 @@ async function handleAbsoluteChange(newValue: boolean) {
   updateWaveformDisplay();
 }
 async function handleNormalizedChange(newValue: boolean) {
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     useNormalized: newValue,
   });
@@ -312,12 +314,12 @@ async function handleNormalizedChange(newValue: boolean) {
   updateWaveformDisplay();
 }
 function handleLoopModeChange(newValue: number) {
-  store.lfoStates.set(props.nodeId, { ...lfoState.value, loopMode: newValue });
+  nodeStateStore.lfoStates.set(props.nodeId, { ...lfoState.value, loopMode: newValue });
   updateWaveformDisplay();
 }
 function handleLoopStartChange(newLoopStart: number) {
   const loopEnd = Math.max(newLoopStart, lfoState.value.loopEnd);
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     loopStart: newLoopStart,
     loopEnd,
@@ -326,7 +328,7 @@ function handleLoopStartChange(newLoopStart: number) {
 }
 function handleLoopEndChange(newLoopEnd: number) {
   const loopStart = Math.min(newLoopEnd, lfoState.value.loopStart);
-  store.lfoStates.set(props.nodeId, {
+  nodeStateStore.lfoStates.set(props.nodeId, {
     ...lfoState.value,
     loopEnd: newLoopEnd,
     loopStart,
@@ -343,7 +345,7 @@ async function updateCachedWaveform() {
   const height = waveformCanvas.value.height;
 
   // Acquire waveform data from the instrument
-  const waveformData = await store.currentInstrument?.getLfoWaveform(
+  const waveformData = await instrumentStore.currentInstrument?.getLfoWaveform(
     lfoState.value.waveform,
     lfoState.value.phaseOffset,
     lfoState.value.frequency,
@@ -579,7 +581,7 @@ watch(
         loopEnd: newState?.loopEnd ?? 1.0,
       };
       if (completeState.id === props.nodeId) {
-        store.currentInstrument?.updateLfoState(props.nodeId, completeState);
+        instrumentStore.currentInstrument?.updateLfoState(props.nodeId, completeState);
       }
     }
   },

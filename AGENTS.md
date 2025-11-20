@@ -262,6 +262,13 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 
 - Delay, Convolver, and Reverb components now source their state from `node-state-store` instead of the legacy `audio-system-store`. When effect components write directly to the legacy mirrors, any other store (like the delay panel) that calls `pushStatesToLegacyStore()` wipes their values, causing side effects (e.g., toggling Delay enabling Reverb). Always bind effect UI state to `node-state-store`, persist via `pushStatesToLegacyStore()`, and then call the instrument update so that patches load/save consistently and UI toggles don't interfere with each other.
 
+## New discovery: Legacy audio-system-store fully removed
+
+- The `audio-system-store` façade, its legacy bridge, and associated tests have been deleted. Runtime audio control now flows through the focused stores (`instrument-store`, `layout-store`, `node-state-store`, `connection-store`, and `patch-store`).
+- UI components should access node state exclusively via `node-state-store`, layout data from `layout-store`, and the instrument/audio context via `useInstrumentStore()`. Avoid storing mirrored maps or calling the removed legacy helpers.
+- `useInstrumentStore()` owns the `AudioSystem`, `InstrumentV2`, and the `AudioSyncManager`. Boot code initializes this store before patch loading; any component that previously depended on `useAudioSystemStore` must switch to `useInstrumentStore`.
+- Because there is no legacy mirroring, do not expect `pushStatesToLegacyStore` or `mirrorLayoutToLegacyStore` to exist—state updates should directly mutate the focused stores and call the instrument APIs as needed.
+
 ## New discovery: Patch categories & tree selection
 
 - `PatchMetadata` now exposes an optional `category` string that stores a slash-delimited hierarchy (e.g. `"FM/Lead"`). Use the helpers in `src/utils/patch-category.ts` (`normalizePatchCategory`, `categorySegments`, `DEFAULT_PATCH_CATEGORY`) whenever reading or mutating categories so the store, serializer, and UI stay in sync.

@@ -118,7 +118,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import {
@@ -151,9 +152,10 @@ function forwardClose() {
 }
 
 // Audio store & references
-const store = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
 const layoutStore = useLayoutStore();
-const { envelopeStates } = storeToRefs(store);
+const { envelopeStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
   () =>
@@ -190,62 +192,62 @@ const envelopeState = computed<EnvelopeConfig>({
     return state;
   },
   set: (newState: EnvelopeConfig) => {
-    store.envelopeStates.set(props.nodeId, { ...newState });
+    nodeStateStore.envelopeStates.set(props.nodeId, { ...newState });
   },
 });
 
 /** Envelope event handlers **/
 function handleActiveChange(newValue: boolean) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     active: newValue,
   });
 }
 
 function handleAttackCoeffChange(envVal: number) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     attackCurve: envVal,
   });
 }
 
 function handleDecayCoeffChange(envVal: number) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     decayCurve: envVal,
   });
 }
 
 function handleReleaseCoeffChange(envVal: number) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     releaseCurve: envVal,
   });
 }
 
 function handleAttackChange(envVal: number) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     attack: envVal,
   });
 }
 
 function handleDecayChange(envVal: number) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     decay: envVal,
   });
 }
 
 function handleSustainChange(envVal: number) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     sustain: envVal,
   });
 }
 
 function handleReleaseChange(envVal: number) {
-  store.envelopeStates.set(props.nodeId, {
+  nodeStateStore.envelopeStates.set(props.nodeId, {
     ...envelopeState.value,
     release: envVal,
   });
@@ -256,7 +258,7 @@ function updateEnvelopePreview() {
   const config = envelopeState.value;
   const previewDuration = config.attack + config.decay + 1 + config.release;
 
-  store.currentInstrument
+  instrumentStore.currentInstrument
     ?.getEnvelopePreview(config, previewDuration)
     .then((previewData) => {
       drawEnvelopePreviewWithData(previewData);
@@ -328,7 +330,7 @@ watch(
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState && newState.id === props.nodeId) {
         // Cast to EnvelopeConfig if needed for strict type checks
-        await store.currentInstrument?.updateEnvelopeState(
+        await instrumentStore.currentInstrument?.updateEnvelopeState(
           props.nodeId,
           newState as EnvelopeConfig,
         );

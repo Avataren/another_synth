@@ -67,7 +67,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
 import { storeToRefs } from 'pinia';
 import { type ReverbState } from 'src/audio/types/synth-layout';
@@ -80,7 +80,7 @@ const props = withDefaults(defineProps<Props>(), {
   nodeId: '',
 });
 
-const audioStore = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
 const nodeStateStore = useNodeStateStore();
 const { reverbStates } = storeToRefs(nodeStateStore);
 
@@ -106,7 +106,6 @@ const ensureReverbState = (): ReverbState => {
 
 const persistReverbState = (state: ReverbState) => {
   nodeStateStore.reverbStates.set(props.nodeId, { ...state });
-  nodeStateStore.pushStatesToLegacyStore();
 };
 
 const reverbState = computed({
@@ -130,7 +129,7 @@ const updateReverbState = (patch: Partial<ReverbState>) => {
 };
 
 const syncReverbToInstrument = (state: ReverbState) => {
-  audioStore.currentInstrument?.updateReverbState(props.nodeId, {
+  instrumentStore.currentInstrument?.updateReverbState(props.nodeId, {
     ...state,
   });
 };

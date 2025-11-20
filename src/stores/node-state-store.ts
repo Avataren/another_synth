@@ -19,11 +19,7 @@ import {
 } from 'src/audio/types/synth-layout';
 import { NoiseType, type NoiseState } from 'src/audio/types/noise';
 import { useLayoutStore } from './layout-store';
-import { useAudioSystemStore } from './audio-system-store';
-import {
-  mirrorNodeStatesToLegacyStore,
-  type NodeStateSnapshot,
-} from './legacy-store-bridge';
+import { useInstrumentStore } from './instrument-store';
 import {
   BASE_SAMPLER_TUNING_FREQUENCY,
   normalizeSamplerState,
@@ -224,7 +220,6 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
         }
       });
 
-      this.pushStatesToLegacyStore();
     },
     resetCurrentStateToDefaults(applyToWasm = true) {
       this.oscillatorStates = new Map();
@@ -256,7 +251,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       }
     },
     applyPreservedStatesToWasm() {
-      const instrument = useAudioSystemStore().currentInstrument;
+      const instrument = useInstrumentStore().currentInstrument;
       if (!instrument) return;
 
       this.oscillatorStates.forEach((state, nodeId) => {
@@ -346,7 +341,6 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       const normalized = normalizeSamplerState(merged);
       this.samplerStates.set(nodeId, normalized);
       this.sendSamplerState(nodeId);
-      this.pushStatesToLegacyStore();
     },
     setSamplerSampleInfo(
       nodeId: string,
@@ -369,15 +363,13 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.samplerStates.set(nodeId, updated);
       this.sendSamplerState(nodeId);
       void this.fetchSamplerWaveform(nodeId);
-      this.pushStatesToLegacyStore();
     },
     async fetchSamplerWaveform(nodeId: string, maxPoints = 512) {
-      const instrument = useAudioSystemStore().currentInstrument;
+      const instrument = useInstrumentStore().currentInstrument;
       if (!instrument) return;
       try {
         const waveform = await instrument.getSamplerWaveform(nodeId, maxPoints);
         this.samplerWaveforms.set(nodeId, waveform);
-        this.pushStatesToLegacyStore();
       } catch (error) {
         console.error('Failed to fetch sampler waveform', error);
       }
@@ -412,7 +404,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       };
     },
     sendSamplerState(nodeId: string) {
-      const instrument = useAudioSystemStore().currentInstrument;
+      const instrument = useInstrumentStore().currentInstrument;
       if (!instrument) return;
       const state = this.samplerStates.get(nodeId);
       if (!state) return;
@@ -457,7 +449,6 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       if (deserialized.velocity) {
         this.velocityState = deserialized.velocity;
       }
-      this.pushStatesToLegacyStore();
     },
     removeStatesForNode(nodeId: string) {
       this.oscillatorStates.delete(nodeId);
@@ -471,27 +462,6 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.samplerStates.delete(nodeId);
       this.samplerWaveforms.delete(nodeId);
       this.reverbStates.delete(nodeId);
-      this.pushStatesToLegacyStore();
-    },
-    createSnapshot(): NodeStateSnapshot {
-      return {
-        oscillatorStates: this.oscillatorStates,
-        wavetableOscillatorStates: this.wavetableOscillatorStates,
-        samplerStates: this.samplerStates,
-        samplerWaveforms: this.samplerWaveforms,
-        envelopeStates: this.envelopeStates,
-        convolverStates: this.convolverStates,
-        delayStates: this.delayStates,
-        filterStates: this.filterStates,
-        lfoStates: this.lfoStates,
-        chorusStates: this.chorusStates,
-        reverbStates: this.reverbStates,
-        noiseState: this.noiseState,
-        velocityState: this.velocityState,
-      };
-    },
-    pushStatesToLegacyStore() {
-      mirrorNodeStatesToLegacyStore(this.createSnapshot());
     },
   },
 });

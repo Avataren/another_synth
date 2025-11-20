@@ -14,7 +14,6 @@ import {
   type RawConnection,
   rustNodeTypeToTS,
 } from 'src/audio/adapters/wasm-type-adapter';
-import { mirrorLayoutToLegacyStore } from './legacy-store-bridge';
 
 interface RawNode {
   id: string;
@@ -48,6 +47,20 @@ export const useLayoutStore = defineStore('layoutStore', {
         return voice.connections.filter(
           (conn) => conn.fromId === nodeId || conn.toId === nodeId,
         );
+      },
+    findNodeById:
+      (state) =>
+      (nodeId: string) => {
+        const voice = state.synthLayout?.voices[0];
+        if (!voice) return null;
+
+        for (const type of Object.values(VoiceNodeType)) {
+          const node = voice.nodes[type]?.find((n) => n.id === nodeId);
+          if (node) {
+            return { ...node, type };
+          }
+        }
+        return null;
       },
   },
   actions: {
@@ -216,7 +229,6 @@ export const useLayoutStore = defineStore('layoutStore', {
 
       this.synthLayout = { ...layoutClone };
       this.deletedNodeIds.clear();
-      this.pushLayoutToLegacyStore();
     },
     getNodeName(nodeId: string): string | undefined {
       const voice = this.synthLayout?.voices[0];
@@ -286,14 +298,10 @@ export const useLayoutStore = defineStore('layoutStore', {
       this.syncCanonicalVoiceWithFirstVoice();
       this.commitLayoutChange();
     },
-    pushLayoutToLegacyStore() {
-      mirrorLayoutToLegacyStore(this.synthLayout);
-    },
     commitLayoutChange() {
       if (this.synthLayout) {
         this.synthLayout = { ...this.synthLayout };
       }
-      this.pushLayoutToLegacyStore();
     },
   },
 });

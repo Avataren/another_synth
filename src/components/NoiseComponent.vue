@@ -70,7 +70,9 @@ import { computed, onMounted, watch } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
+import { usePatchStore } from 'src/stores/patch-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -100,9 +102,11 @@ function forwardClose() {
 }
 
 // Audio system store for managing the noise state.
-const store = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
+const patchStore = usePatchStore();
 const layoutStore = useLayoutStore();
-const { noiseState } = storeToRefs(store);
+const { noiseState } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
   () =>
@@ -144,29 +148,29 @@ const filterState = computed({
     return state;
   },
   set: (newState: NoiseState) => {
-    store.noiseState = { ...newState };
+    nodeStateStore.noiseState = { ...newState };
   },
 });
 
 // Handlers for toggle and knob changes.
 function handleEnabledChange(val: boolean) {
   const currentState = { ...filterState.value, is_enabled: val };
-  store.noiseState = currentState;
+  nodeStateStore.noiseState = currentState;
 }
 
 function handleNoiseTypeChange(val: number) {
   const currentState = { ...filterState.value, noiseType: val as NoiseType };
-  store.noiseState = currentState;
+  nodeStateStore.noiseState = currentState;
 }
 
 function handleCutoffChange(val: number) {
   const currentState = { ...filterState.value, cutoff: val };
-  store.noiseState = currentState;
+  nodeStateStore.noiseState = currentState;
 }
 
 function handleGainChange(val: number) {
   const currentState = { ...filterState.value, gain: val };
-  store.noiseState = currentState;
+  nodeStateStore.noiseState = currentState;
 }
 
 onMounted(() => {
@@ -177,10 +181,10 @@ watch(
   () => filterState.value,
   (newState) => {
     // Skip updates during patch loading - the patch already contains the correct state
-    if (store.isLoadingPatch) return;
+    if (patchStore.isLoadingPatch) return;
 
     console.log('NoiseFilter: updating noise state', newState);
-    store.currentInstrument?.updateNoiseState(props.nodeId, newState);
+    instrumentStore.currentInstrument?.updateNoiseState(props.nodeId, newState);
   },
   { deep: true, immediate: true },
 );

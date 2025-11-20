@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue';
 import { useKeyboardStore } from '../stores/keyboard-store';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
 
 interface PianoKey {
   midiNote: number;
@@ -31,7 +31,7 @@ interface PianoKey {
   type: 'white' | 'black';
 }
 
-const { currentInstrument } = useAudioSystemStore();
+const { currentInstrument } = useInstrumentStore();
 const keyboardStore = useKeyboardStore();
 
 const keyboardNotes: PianoKey[] = [

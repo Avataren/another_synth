@@ -57,7 +57,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick, defineProps } from 'vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useConnectionStore } from 'src/stores/connection-store';
 import { type VoiceNodeType } from 'src/audio/types/synth-layout';
 
@@ -75,7 +75,7 @@ interface Props {
 }
 
 const props = defineProps<Props>();
-const store = useAudioSystemStore();
+const store = useInstrumentStore();
 const connectionStore = useConnectionStore();
 
 const currentTab = ref(props.nodes.length ? props.nodes[0]!.id.toString() : '');

@@ -141,7 +141,8 @@ import { computed, onMounted, onUnmounted, ref, watch, toRaw } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import { throttle } from 'src/utils/util';
@@ -179,9 +180,10 @@ function forwardClose() {
 const slopeEnabled = ref(true);
 const gainEnabled = ref(true);
 
-const store = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
 const layoutStore = useLayoutStore();
-const { filterStates } = storeToRefs(store);
+const { filterStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
   () =>
@@ -218,7 +220,7 @@ const filterState = computed<FilterState>({
     return state;
   },
   set: (newState: FilterState) => {
-    store.filterStates.set(props.nodeId, { ...toRaw(newState) });
+    nodeStateStore.filterStates.set(props.nodeId, { ...toRaw(newState) });
   },
 });
 
@@ -247,31 +249,31 @@ const filterSlopeOptions = [
 
 // Handlers for state changes
 function handleActiveChange(newValue: boolean) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     active: newValue,
   });
 }
 function handleGainChange(newVal: number) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     gain: newVal,
   });
 }
 function handleCutoffChange(newVal: number) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     cutoff: newVal,
   });
 }
 function handleResonanceChange(newVal: number) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     resonance: newVal,
   });
 }
 function handleKeyTrackingChange(newVal: number) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     keytracking: newVal,
   });
@@ -294,31 +296,31 @@ function handleFilterTypeChange(newVal: FilterType) {
       gainEnabled.value = true;
   }
 
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     filter_type: newVal,
   });
 }
 function handleFilterSlopeChange(newVal: FilterSlope) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     filter_slope: newVal,
   });
 }
 // function handleOversamplingChange(newVal: number) {
-//   store.filterStates.set(props.nodeId, {
+//   nodeStateStore.filterStates.set(props.nodeId, {
 //     ...toRaw(filterState.value),
 //     oversampling: newVal,
 //   });
 // }
 function handleCombFrequencyChange(newVal: number) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     comb_frequency: newVal,
   });
 }
 function handleCombDampeningChange(newVal: number) {
-  store.filterStates.set(props.nodeId, {
+  nodeStateStore.filterStates.set(props.nodeId, {
     ...toRaw(filterState.value),
     comb_dampening: newVal,
   });
@@ -376,7 +378,7 @@ async function updateCachedWaveform() {
   }
 
   // 3) Fetch the filter response data (same length as canvas width)
-  const filterData = await store.currentInstrument?.getFilterResponse(
+  const filterData = await instrumentStore.currentInstrument?.getFilterResponse(
     props.nodeId,
     width,
   );
@@ -422,7 +424,7 @@ watch(
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState.id === props.nodeId) {
-        store.currentInstrument?.updateFilterState(props.nodeId, {
+        instrumentStore.currentInstrument?.updateFilterState(props.nodeId, {
           ...toRaw(newState),
         } as FilterState);
         throttledUpdateWaveformDisplay();
@@ -435,7 +437,7 @@ watch(
 onMounted(() => {
   // Ensure there's a FilterState entry in the store for this node
   if (!filterStates.value.has(props.nodeId)) {
-    store.filterStates.set(props.nodeId, { ...toRaw(filterState.value) });
+    nodeStateStore.filterStates.set(props.nodeId, { ...toRaw(filterState.value) });
   }
 
   // Set up initial canvas size

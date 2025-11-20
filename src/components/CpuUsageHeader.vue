@@ -16,10 +16,10 @@
 </template>
 
 <script lang="ts">
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
 import { defineComponent, onMounted, onUnmounted, ref } from 'vue';
 
-const store = useAudioSystemStore();
+const store = useInstrumentStore();
 
 const cpuTimer = ref<NodeJS.Timeout | null>(null);
 export default defineComponent({

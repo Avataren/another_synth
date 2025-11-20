@@ -1,17 +1,17 @@
 import { defineBoot } from '#q-app/wrappers';
-import { useAudioSystemStore } from 'stores/audio-system-store';
+import { useInstrumentStore } from 'stores/instrument-store';
 import { usePatchStore } from 'stores/patch-store';
 
 export default defineBoot(async () => {
-    const audioSystemStore = useAudioSystemStore();
+    const instrumentStore = useInstrumentStore();
     const patchStore = usePatchStore();
 
     // Initialize the AudioSystem instance
-    audioSystemStore.initializeAudioSystem();
+    instrumentStore.initializeAudioSystem();
 
     // Set up the AudioSystem (e.g., load WASM, create AudioWorklet, etc.)
     try {
-        await audioSystemStore.setupAudio();
+        await instrumentStore.setupAudio();
         console.log('AudioSystem successfully set up');
 
         // Try to load system bank, otherwise initialize a new patch session

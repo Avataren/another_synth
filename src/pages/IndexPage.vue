@@ -240,7 +240,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 
 // Components moved from the top row (now in the bottom row)
 import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
@@ -273,122 +274,123 @@ import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import ChorusComponent from 'src/components/ChorusComponent.vue';
 
-const store = useAudioSystemStore();
-const { destinationNode } = storeToRefs(store);
+const instrumentStore = useInstrumentStore();
+const layoutStore = useLayoutStore();
+const { destinationNode } = storeToRefs(instrumentStore);
 
 // Improved computed properties with proper safeguards
 // Velocity (only one instance)
 const velocityNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.GlobalVelocity);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.GlobalVelocity);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 // Generators DSP nodes
 const oscillatorNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Oscillator);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Oscillator);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const wavetableOscillatorNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.WavetableOscillator);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.WavetableOscillator);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const samplerNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Sampler);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Sampler);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const noiseNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Noise);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Noise);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const arpeggiatorNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.ArpeggiatorGenerator);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.ArpeggiatorGenerator);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 // Modulators DSP nodes
 const lfoNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.LFO);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.LFO);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const envelopeNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Envelope);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Envelope);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 // Filters DSP nodes
 const filterNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Filter);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Filter);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const delayNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Delay);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Delay);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const chorusNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Chorus);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Chorus);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const reverbNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Reverb);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Reverb);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 const convolverNodes = computed(() => {
-  const nodes = store.getVoiceNodes(0, VoiceNodeType.Convolver);
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Convolver);
   return Array.isArray(nodes) ? nodes : [];
 });
 
 // Node creation functions
 function addWavetableOscillator() {
-  store.currentInstrument?.createNode(VoiceNodeType.WavetableOscillator);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.WavetableOscillator);
 }
 
 function addOscillator() {
-  store.currentInstrument?.createNode(VoiceNodeType.Oscillator);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Oscillator);
 }
 
 function addNoise() {
-  store.currentInstrument?.createNode(VoiceNodeType.Noise);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Noise);
 }
 
 function addSampler() {
-  store.currentInstrument?.createNode(VoiceNodeType.Sampler);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Sampler);
 }
 
 function addArpeggiator() {
-  store.currentInstrument?.createNode(VoiceNodeType.ArpeggiatorGenerator);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.ArpeggiatorGenerator);
 }
 
 function addLfo() {
-  store.currentInstrument?.createNode(VoiceNodeType.LFO);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.LFO);
 }
 
 function addEnvelope() {
-  store.currentInstrument?.createNode(VoiceNodeType.Envelope);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Envelope);
 }
 
 function addFilter() {
-  store.currentInstrument?.createNode(VoiceNodeType.Filter);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Filter);
 }
 
 function addDelay() {
-  store.currentInstrument?.createNode(VoiceNodeType.Delay);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Delay);
 }
 
 function addChorus() {
-  store.currentInstrument?.createNode(VoiceNodeType.Chorus);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Chorus);
 }
 
 function addConvolver() {
-  store.currentInstrument?.createNode(VoiceNodeType.Convolver);
+  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Convolver);
 }
 </script>
 

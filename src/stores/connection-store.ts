@@ -5,7 +5,7 @@ import {
   ModulationTransformation,
   WasmModulationType,
 } from 'app/public/wasm/audio_processor';
-import { useAudioSystemStore } from './audio-system-store';
+import { useInstrumentStore } from './instrument-store';
 import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
 
@@ -35,7 +35,7 @@ export const useConnectionStore = defineStore('connectionStore', {
       if (this.isProcessing) return;
       this.isProcessing = true;
       const layoutStore = useLayoutStore();
-      const audioStore = useAudioSystemStore();
+      const instrumentStore = useInstrumentStore();
 
       while (this.updateQueue.length > 0) {
         const connection = this.updateQueue.shift()!;
@@ -54,7 +54,7 @@ export const useConnectionStore = defineStore('connectionStore', {
             plainConnection.modulationType = connection.modulationType;
           }
 
-          const instrument = audioStore.currentInstrument;
+          const instrument = instrumentStore.currentInstrument;
           if (!instrument) throw new Error('No instrument available');
           await instrument.updateConnection(plainConnection);
 
@@ -116,7 +116,7 @@ export const useConnectionStore = defineStore('connectionStore', {
     async deleteNodeCleanup(deletedNodeId: string) {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
-      const audioStore = useAudioSystemStore();
+      const instrumentStore = useInstrumentStore();
 
       try {
         layoutStore.removeNodeFromLayout(deletedNodeId);
@@ -125,7 +125,7 @@ export const useConnectionStore = defineStore('connectionStore', {
 
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        const instrument = audioStore.currentInstrument;
+        const instrument = instrumentStore.currentInstrument;
         if (instrument) {
           const wasmStateJson = await instrument.getWasmNodeConnections();
             if (wasmStateJson) {

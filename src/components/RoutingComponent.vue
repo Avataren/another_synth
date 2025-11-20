@@ -157,7 +157,6 @@ import {
   ModulationRouteManager,
   type TargetNode,
 } from '../audio/modulation-route-manager';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import {
   PORT_LABELS,
@@ -178,7 +177,6 @@ interface Props {
   debug?: boolean;
 }
 const props = defineProps<Props>();
-const store = useAudioSystemStore();
 const layoutStore = useLayoutStore();
 
 //–––––– Route Manager ––––––
@@ -187,7 +185,6 @@ watch(
   () => props.sourceId,
   (newSourceId) => {
     routeManager.value = new ModulationRouteManager(
-      store,
       newSourceId,
       props.sourceType,
     );
@@ -214,7 +211,7 @@ const isLocalUpdate = ref<boolean>(false);
 // Computed routes (only those whose target still exists)
 const safeActiveRoutes = computed<RouteConfig[]>(() =>
   activeRoutes.value.filter(
-    (route) => store.findNodeById(route.targetId) !== null,
+    (route) => layoutStore.findNodeById(route.targetId) !== null,
   ),
 );
 
@@ -277,7 +274,7 @@ function debounce<T extends unknown[]>(
   };
 }
 const debouncedInitializeRoutes = debounce(() => {
-  if (store.synthLayout?.voices?.length) {
+  if (layoutStore.synthLayout?.voices?.length) {
     console.log('debouncedInitializeRoutes');
     initializeRoutes();
   } else {
@@ -290,8 +287,8 @@ const debouncedInitializeRoutes = debounce(() => {
 watch(
   [
     () => props.sourceId,
-    () => store.synthLayout?.metadata?.stateVersion,
-    () => store.synthLayout?.voices?.[0]?.connections?.length,
+    () => layoutStore.synthLayout?.metadata?.stateVersion,
+    () => layoutStore.synthLayout?.voices?.[0]?.connections?.length,
   ],
   async () => {
     if (isLocalUpdate.value) return;
@@ -812,7 +809,7 @@ onMounted(() => {
 
 onMounted(async () => {
   await nextTick();
-  if (!store.synthLayout?.voices?.length) {
+  if (!layoutStore.synthLayout?.voices?.length) {
     console.warn('Synth layout not ready, waiting...');
     setTimeout(initializeRoutes, 100);
     return;
@@ -835,7 +832,7 @@ function getModulationTypeLabel(type: WasmModulationType): string {
 
 function initializeRoutes(): void {
   try {
-    const connections = store.getNodeConnections(props.sourceId);
+    const connections = layoutStore.getNodeConnections(props.sourceId);
     console.log('Raw connections for node:', {
       sourceId: props.sourceId,
       connections: connections?.length ?? 0,
@@ -845,7 +842,7 @@ function initializeRoutes(): void {
       .filter(
         (conn) =>
           conn.fromId === props.sourceId &&
-          store.findNodeById(conn.toId) !== null,
+          layoutStore.findNodeById(conn.toId) !== null,
       )
       .reverse();
     if (filteredConnections.length === 0) return;
@@ -853,7 +850,7 @@ function initializeRoutes(): void {
       .filter((conn) => conn.fromId === props.sourceId)
       .map((conn) => {
         try {
-          const targetFromStore = store.findNodeById(conn.toId);
+          const targetFromStore = layoutStore.findNodeById(conn.toId);
           if (!targetFromStore) return null;
           const targetNode: TargetNode = {
             id: conn.toId,
@@ -912,7 +909,7 @@ function getNodeName(nodeId: string): string {
     return storedName;
   }
 
-  const node = store.findNodeById(nodeId);
+  const node = layoutStore.findNodeById(nodeId);
   if (!node) return 'Node';
   switch (node.type) {
     case VoiceNodeType.WavetableOscillator:
@@ -935,7 +932,7 @@ function getNodeName(nodeId: string): string {
 }
 
 function getNodeType(nodeId: string): VoiceNodeType {
-  const node = store.findNodeById(nodeId);
+  const node = layoutStore.findNodeById(nodeId);
   return node?.type ?? VoiceNodeType.Oscillator;
 }
 </script>

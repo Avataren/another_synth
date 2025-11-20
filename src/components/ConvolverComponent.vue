@@ -37,7 +37,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
 import { storeToRefs } from 'pinia';
 import { type ConvolverState } from 'src/audio/types/synth-layout';
@@ -51,7 +51,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 //const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 
-const audioStore = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
 const nodeStateStore = useNodeStateStore();
 const { convolverStates } = storeToRefs(nodeStateStore);
 
@@ -70,9 +70,9 @@ const handleWavFileUpload = async (event: Event) => {
     const wavBytes = new Uint8Array(arrayBuffer);
     console.log('WAV file loaded, size:', wavBytes.length);
 
-    if (audioStore.currentInstrument) {
+    if (instrumentStore.currentInstrument) {
       // Call the new import function on your instrument
-      audioStore.currentInstrument.importImpulseWaveformData(props.nodeId, wavBytes);
+      instrumentStore.currentInstrument.importImpulseWaveformData(props.nodeId, wavBytes);
     } else {
       console.error('Instrument instance not available');
     }
@@ -97,7 +97,6 @@ const ensureConvolverState = (): ConvolverState => {
 
 const persistConvolverState = (state: ConvolverState) => {
   nodeStateStore.convolverStates.set(props.nodeId, { ...state });
-  nodeStateStore.pushStatesToLegacyStore();
 };
 
 const convolverState = computed({
@@ -121,7 +120,7 @@ const updateConvolverState = (patch: Partial<ConvolverState>) => {
 };
 
 const syncConvolverToInstrument = (state: ConvolverState) => {
-  audioStore.currentInstrument?.updateConvolverState(props.nodeId, {
+  instrumentStore.currentInstrument?.updateConvolverState(props.nodeId, {
     ...state,
   });
 };

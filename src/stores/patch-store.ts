@@ -28,7 +28,7 @@ import {
   getSamplerNodeIds,
 } from 'src/audio/serialization/audio-asset-extractor';
 import { createDefaultPatchMetadata } from 'src/audio/types/preset-types';
-import { useAudioSystemStore } from './audio-system-store';
+import { useInstrumentStore } from './instrument-store';
 import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
 import { useAssetStore } from './asset-store';
@@ -203,13 +203,13 @@ export const usePatchStore = defineStore('patchStore', {
       patch: Patch,
       options?: { setCurrentPatchId?: boolean },
     ): Promise<boolean> {
-      const audioStore = useAudioSystemStore();
+      const instrumentStore = useInstrumentStore();
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
       const assetStore = useAssetStore();
 
       try {
-        const instrumentReady = await audioStore.waitForInstrumentReady();
+        const instrumentReady = await instrumentStore.waitForInstrumentReady();
         if (!instrumentReady) {
           console.warn('Cannot apply patch because instrument is not ready');
           return false;
@@ -218,7 +218,7 @@ export const usePatchStore = defineStore('patchStore', {
         const deserialized = deserializePatch(patch);
         this.isLoadingPatch = true;
 
-        audioStore.currentInstrument?.loadPatch(patch);
+        instrumentStore.currentInstrument?.loadPatch(patch);
         layoutStore.updateSynthLayout(deserialized.layout);
         nodeStateStore.assignStatesFromPatch(deserialized);
         assetStore.setAudioAssets(deserialized.audioAssets);
@@ -227,7 +227,7 @@ export const usePatchStore = defineStore('patchStore', {
           this.currentPatchId = patch.metadata.id;
         }
 
-        await assetStore.restoreAudioAssets(audioStore.currentInstrument as InstrumentV2 | null);
+        await assetStore.restoreAudioAssets(instrumentStore.currentInstrument as InstrumentV2 | null);
 
         this.isLoadingPatch = false;
         return true;
@@ -255,13 +255,13 @@ export const usePatchStore = defineStore('patchStore', {
     async prepareStateForNewPatch(): Promise<boolean> {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
-      const audioStore = useAudioSystemStore();
+      const instrumentStore = useInstrumentStore();
       const layoutReady = await layoutStore.waitForSynthLayout();
       if (!layoutReady) {
         console.warn('Cannot prepare new patch: synth layout not ready');
         return false;
       }
-      await audioStore.waitForInstrumentReady();
+      await instrumentStore.waitForInstrumentReady();
 
       nodeStateStore.resetCurrentStateToDefaults(false);
 
@@ -275,7 +275,7 @@ export const usePatchStore = defineStore('patchStore', {
           await nextTick(() => {
             nodeStateStore.applyPreservedStatesToWasm();
             void useAssetStore().restoreAudioAssets(
-              audioStore.currentInstrument as InstrumentV2 | null,
+              instrumentStore.currentInstrument as InstrumentV2 | null,
             );
           });
           return true;
@@ -447,13 +447,13 @@ export const usePatchStore = defineStore('patchStore', {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
       const assetStore = useAssetStore();
-      const audioStore = useAudioSystemStore();
+      const instrumentStore = useInstrumentStore();
       if (!layoutStore.synthLayout) {
         console.error('Cannot save patch: no synth layout');
         return null;
       }
 
-      if (!audioStore.currentInstrument) {
+      if (!instrumentStore.currentInstrument) {
         console.error('Cannot save patch: no instrument');
         return null;
       }
@@ -462,13 +462,13 @@ export const usePatchStore = defineStore('patchStore', {
         const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
         const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
 
-        if (!audioStore.currentInstrument) {
+        if (!instrumentStore.currentInstrument) {
           console.warn('Cannot extract audio assets: instrument not ready');
           return null;
         }
 
         const extractedAssets = await extractAllAudioAssets(
-          audioStore.currentInstrument as InstrumentV2,
+          instrumentStore.currentInstrument as InstrumentV2,
           samplerIds,
           convolverIds,
         );
@@ -519,13 +519,13 @@ export const usePatchStore = defineStore('patchStore', {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
       const assetStore = useAssetStore();
-      const audioStore = useAudioSystemStore();
+      const instrumentStore = useInstrumentStore();
       if (!layoutStore.synthLayout) {
         console.error('Cannot update patch: no synth layout');
         return null;
       }
 
-      if (!audioStore.currentInstrument) {
+      if (!instrumentStore.currentInstrument) {
         console.error('Cannot update patch: no instrument');
         return null;
       }
@@ -548,13 +548,13 @@ export const usePatchStore = defineStore('patchStore', {
         const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
         const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
 
-        if (!audioStore.currentInstrument) {
+        if (!instrumentStore.currentInstrument) {
           console.warn('Cannot extract audio assets: instrument not ready');
           return null;
         }
 
         const extractedAssets = await extractAllAudioAssets(
-          audioStore.currentInstrument as InstrumentV2,
+          instrumentStore.currentInstrument as InstrumentV2,
           samplerIds,
           convolverIds,
         );

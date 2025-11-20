@@ -48,7 +48,9 @@
 import { computed, onMounted, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
+import { usePatchStore } from 'src/stores/patch-store';
 import { storeToRefs } from 'pinia';
 import type { VelocityState } from 'src/audio/types/synth-layout';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -62,8 +64,10 @@ const props = withDefaults(defineProps<Props>(), {
 });
 //const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 
-const store = useAudioSystemStore();
-const { velocityState } = storeToRefs(store);
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
+const patchStore = usePatchStore();
+const { velocityState } = storeToRefs(nodeStateStore);
 
 const displayName = computed(() => props.nodeName || `Velocity ${props.nodeId}`);
 
@@ -81,7 +85,7 @@ const localVelocityState = computed({
     return state;
   },
   set: (newState: VelocityState) => {
-    store.velocityState = { ...newState };
+    nodeStateStore.velocityState = { ...newState };
   },
 });
 
@@ -106,7 +110,7 @@ const handleRandomizeChange = (val: number) => {
 //     ...filterState.value,
 //     noiseType: val as NoiseType,
 //   };
-//   store.velocityState = currentState;
+//   nodeStateStore.velocityState = currentState;
 // };
 
 // const handleCutoffChange = (val: number) => {
@@ -114,7 +118,7 @@ const handleRandomizeChange = (val: number) => {
 //     ...filterState.value,
 //     cutoff: val,
 //   };
-//   store.velocityState = currentState;
+//   nodeStateStore.velocityState = currentState;
 // };
 
 // const handleGainChange = (val: number) => {
@@ -122,7 +126,7 @@ const handleRandomizeChange = (val: number) => {
 //     ...filterState.value,
 //     gain: val,
 //   };
-//   store.velocityState = currentState;
+//   nodeStateStore.velocityState = currentState;
 // };
 
 onMounted(() => {
@@ -134,10 +138,10 @@ watch(
   () => localVelocityState.value,
   (newState: VelocityState) => {
     // Skip updates during patch loading - the patch already contains the correct state
-    if (store.isLoadingPatch) return;
+    if (patchStore.isLoadingPatch) return;
 
     console.log('todo: update velocityState in instrument.ts ', newState);
-    store.currentInstrument?.updateVelocityState(
+    instrumentStore.currentInstrument?.updateVelocityState(
       props.nodeId,
       newState as VelocityState,
     );

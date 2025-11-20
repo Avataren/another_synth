@@ -4,7 +4,7 @@ import {
     type NodeConnectionUpdate,
     type NodeConnection,
 } from './types/synth-layout';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import type InstrumentV2 from './instrument-v2';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { useConnectionStore } from 'src/stores/connection-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
@@ -47,7 +47,7 @@ export interface WasmState {
 
 export class AudioSyncManager {
     private syncInterval: number | null = null;
-    private audioStore = useAudioSystemStore();
+    private readonly resolveInstrument: () => InstrumentV2 | null;
     private layoutStore = useLayoutStore();
     private connectionStore = useConnectionStore();
     private nodeStateStore = useNodeStateStore();
@@ -56,7 +56,9 @@ export class AudioSyncManager {
     private failedAttempts = 0;
     private readonly maxFailedAttempts = 3;
 
-    // constructor(private syncIntervalMs: number = 1000) { }
+    constructor(instrumentProvider: () => InstrumentV2 | null) {
+        this.resolveInstrument = instrumentProvider;
+    }
 
     async start() {
         if (this.syncInterval) {
@@ -92,11 +94,12 @@ export class AudioSyncManager {
     }
 
     public async forceSync(): Promise<void> {
-        if (!this.audioStore.currentInstrument?.isReady) return;
+        const instrument = this.resolveInstrument();
+        if (!instrument?.isReady) return;
 
         try {
             const wasmState =
-                await this.audioStore.currentInstrument.getWasmNodeConnections();
+                await instrument.getWasmNodeConnections();
             const stateData: WasmState = JSON.parse(wasmState);
 
             // Compare current state with new state
@@ -153,7 +156,6 @@ export class AudioSyncManager {
             // Force update
             this.layoutStore.synthLayout = { ...this.layoutStore.synthLayout };
             this.nodeStateStore.initializeDefaultStates();
-            this.layoutStore.pushLayoutToLegacyStore();
         } catch (error) {
             console.error('Failed to update store state:', error);
         } finally {
@@ -176,12 +178,13 @@ export class AudioSyncManager {
     public async updateConnection(
         connection: NodeConnectionUpdate,
     ): Promise<void> {
-        if (!this.audioStore.currentInstrument?.isReady) return;
+        const instrument = this.resolveInstrument();
+        if (!instrument?.isReady) return;
 
         try {
             // const numVoices = this.store.synthLayout?.voices.length || 0;
             // for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
-            await this.audioStore.currentInstrument.updateConnection(connection);
+            await instrument.updateConnection(connection);
             // }
         } catch (error) {
             console.error('Failed to update connection:', error);
@@ -234,7 +237,8 @@ export class AudioSyncManager {
     public async modifyConnection(
         connection: NodeConnectionUpdate,
     ): Promise<void> {
-        if (!this.audioStore.currentInstrument?.isReady) return;
+        const instrument = this.resolveInstrument();
+        if (!instrument?.isReady) return;
 
         try {
             // const numVoices = this.layoutStore.synthLayout?.voices.length || 0;
@@ -263,12 +267,12 @@ export class AudioSyncManager {
 
             // for (let voiceIndex = 0; voiceIndex < numVoices; voiceIndex++) {
             if (connection.isRemoving) {
-                await this.audioStore.currentInstrument.updateConnection({
+                await instrument.updateConnection({
                     ...plainConnection,
                     isRemoving: true,
                 });
             } else {
-                await this.audioStore.currentInstrument.updateConnection(plainConnection);
+                await instrument.updateConnection(plainConnection);
             }
             // }
         } catch (error) {
@@ -279,10 +283,11 @@ export class AudioSyncManager {
 
     private async syncWithWasm() {
         try {
-            if (!this.audioStore.currentInstrument?.isReady) return;
+            const instrument = this.resolveInstrument();
+            if (!instrument?.isReady) return;
 
             const wasmState =
-                await this.audioStore.currentInstrument.getWasmNodeConnections();
+                await instrument.getWasmNodeConnections();
             if (wasmState === this.lastWasmState) return;
 
             this.lastWasmState = wasmState;
@@ -335,7 +340,6 @@ export class AudioSyncManager {
                     });
                     this.layoutStore.synthLayout = { ...synthLayout };
                     this.nodeStateStore.initializeDefaultStates();
-                    this.layoutStore.pushLayoutToLegacyStore();
                 }
             }
         } catch (error) {

@@ -44,7 +44,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { storeToRefs } from 'pinia';
 import FFT from 'fft.js';
 // import VariableCombFilter from 'src/audio/dsp/variable-comb-filter';
@@ -58,8 +59,10 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 const frequencyCanvas = ref<HTMLCanvasElement | null>(null);
 
-const store = useAudioSystemStore();
-const { filterStates, audioSystem } = storeToRefs(store);
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
+const { filterStates } = storeToRefs(nodeStateStore);
+const { audioSystem } = storeToRefs(instrumentStore);
 // Create a reactive reference to the oscillator state
 const filterState = computed({
   get: () => {
@@ -76,7 +79,7 @@ const filterState = computed({
     return state;
   },
   set: (newState: FilterState) => {
-    store.filterStates.set(props.Index, { ...newState });
+    nodeStateStore.filterStates.set(props.Index, { ...newState });
   },
 });
 
@@ -85,7 +88,7 @@ const handleResonanceChange = (val: number) => {
     ...filterState.value,
     resonance: val,
   };
-  store.filterStates.set(props.Index, currentState);
+  nodeStateStore.filterStates.set(props.Index, currentState);
 };
 
 const handleEnabledChange = (val: boolean) => {
@@ -93,7 +96,7 @@ const handleEnabledChange = (val: boolean) => {
     ...filterState.value,
     is_enabled: val,
   };
-  store.filterStates.set(props.Index, currentState);
+  nodeStateStore.filterStates.set(props.Index, currentState);
 };
 
 const handleCutoffChange = (val: number) => {
@@ -101,7 +104,7 @@ const handleCutoffChange = (val: number) => {
     ...filterState.value,
     cut: val,
   };
-  store.filterStates.set(props.Index, currentState);
+  nodeStateStore.filterStates.set(props.Index, currentState);
 };
 
 onMounted(() => {
@@ -114,7 +117,7 @@ watch(
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       ('');
       if (newState.id === props.Index) {
-        store.currentInstrument?.updateFilterState(
+        instrumentStore.currentInstrument?.updateFilterState(
           props.Index,
           newState as FilterState,
         );

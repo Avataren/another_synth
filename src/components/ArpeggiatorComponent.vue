@@ -71,7 +71,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
 
 interface PatternStep {
   value: number;
@@ -83,7 +83,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), { nodeId: '' });
-const store = useAudioSystemStore();
+const store = useInstrumentStore();
 
 // Global arpeggiator controls
 const stepDuration = ref<number>(100); // in milliseconds

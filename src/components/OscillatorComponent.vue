@@ -147,7 +147,8 @@ import { computed, onMounted, watch } from 'vue';
 import AudioCardHeader from './AudioCardHeader.vue'; // New header component
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
-import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
@@ -178,9 +179,10 @@ function forwardClose() {
 }
 
 // Reference to the audio system store
-const store = useAudioSystemStore();
+const instrumentStore = useInstrumentStore();
+const nodeStateStore = useNodeStateStore();
 const layoutStore = useLayoutStore();
-const { oscillatorStates } = storeToRefs(store);
+const { oscillatorStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
   () =>
@@ -219,7 +221,7 @@ const oscillatorState = computed<OscillatorState>({
     return state;
   },
   set: (newState: OscillatorState) => {
-    store.oscillatorStates.set(props.nodeId, newState);
+    nodeStateStore.oscillatorStates.set(props.nodeId, newState);
   },
 });
 
@@ -241,42 +243,42 @@ const totalDetune = computed(() => {
 /** Knob handlers below **/
 function handleActiveChange(newValue: boolean) {
   const currentState = { ...oscillatorState.value, active: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleHardSyncChange(newValue: boolean) {
   const currentState = { ...oscillatorState.value, hard_sync: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleWaveformChange(newValue: number) {
   const currentState = { ...oscillatorState.value, waveform: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleUnisonVoicesChange(newValue: number) {
   const currentState = { ...oscillatorState.value, unison_voices: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleUnisonSpreadChange(newValue: number) {
   const currentState = { ...oscillatorState.value, spread: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleModIndexChange(newValue: number) {
   const currentState = { ...oscillatorState.value, phase_mod_amount: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleFeedbackChange(newValue: number) {
   const currentState = { ...oscillatorState.value, feedback_amount: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleGainChange(newValue: number) {
   const currentState = { ...oscillatorState.value, gain: newValue };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 function handleDetuneChange() {
   const currentState = {
     ...oscillatorState.value,
     detune: totalDetune.value,
   };
-  store.oscillatorStates.set(props.nodeId, currentState);
+  nodeStateStore.oscillatorStates.set(props.nodeId, currentState);
 }
 
 // Watch the oscillator state in the store and notify the current instrument
@@ -286,7 +288,7 @@ watch(
   (newState, oldState) => {
     if (!oldState || JSON.stringify(newState) !== JSON.stringify(oldState)) {
       if (newState && newState.id === props.nodeId) {
-        store.currentInstrument?.updateOscillatorState(
+        instrumentStore.currentInstrument?.updateOscillatorState(
           props.nodeId,
           newState as OscillatorState, // <-- cast here
         );

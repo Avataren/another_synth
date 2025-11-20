@@ -4,7 +4,7 @@
  *
  * This eliminates duplicate conversion logic spread across:
  * - synth-worklet.ts
- * - audio-system-store.ts
+ * - layout-store.ts
  * - synth-layout.ts
  *
  * All conversions are validated and provide clear error messages.
