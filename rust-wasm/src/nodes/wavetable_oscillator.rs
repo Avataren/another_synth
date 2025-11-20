@@ -611,12 +611,22 @@ impl WavetableOscillator {
         let gate_buf = self.gate_buffer[..buffer_size].to_vec();
 
         // Precompute constants & fetch collection
+        // Gracefully handle missing wavetable (output silence until it's loaded)
         let collection = {
             let bank_ref = self.wavetable_bank.borrow();
-            bank_ref
-                .get_collection(&self.collection_name)
-                .unwrap_or_else(|| panic!("Missing '{}'", self.collection_name))
-                .clone()
+            match bank_ref.get_collection(&self.collection_name) {
+                Some(coll) => coll.clone(),
+                None => {
+                    // Wavetable not loaded yet - output silence
+                    if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+                        buf[..buffer_size].fill(0.0);
+                    }
+                    if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                        buf[..buffer_size].fill(0.0);
+                    }
+                    return;
+                }
+            }
         };
         let max_wt_index = collection.num_tables() as f32 - 1.0001;
         let base_detune_factor = self.cent_ratio.powf(self.target_detune);

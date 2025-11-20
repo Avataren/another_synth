@@ -1,6 +1,105 @@
 // src/audio/serialization/audio-asset-encoder.ts
 import type { AudioAsset, AudioAssetType } from '../types/preset-types';
 
+export interface WavMetadata {
+  sampleRate: number;
+  channels: number;
+  bitsPerSample: number;
+  dataOffset: number;
+  dataSize: number;
+  duration: number;
+}
+
+/**
+ * Parses a WAV header to extract metadata only (sample rate, channels, etc.)
+ */
+export function parseWavMetadata(buffer: ArrayBuffer): WavMetadata {
+  const view = new DataView(buffer);
+  const riff = readString(view, 0, 4);
+  const wave = readString(view, 8, 4);
+  if (riff !== 'RIFF' || wave !== 'WAVE') {
+    throw new Error('Invalid WAV file: missing RIFF/WAVE headers');
+  }
+
+  let offset = 12;
+  let sampleRate = 44100;
+  let channels = 1;
+  let bitsPerSample = 16;
+  let dataOffset = 0;
+  let dataSize = 0;
+
+  while (offset + 8 <= view.byteLength) {
+    const chunkId = readString(view, offset, 4);
+    const chunkSize = view.getUint32(offset + 4, true);
+    const chunkDataOffset = offset + 8;
+
+    if (chunkId === 'fmt ') {
+      channels = view.getUint16(chunkDataOffset + 2, true);
+      sampleRate = view.getUint32(chunkDataOffset + 4, true);
+      bitsPerSample = view.getUint16(chunkDataOffset + 14, true);
+    } else if (chunkId === 'data') {
+      dataOffset = chunkDataOffset;
+      dataSize = chunkSize;
+      break;
+    }
+
+    offset = chunkDataOffset + chunkSize;
+  }
+
+  if (!dataOffset || !dataSize) {
+    throw new Error('Invalid WAV file: data chunk not found');
+  }
+
+  const bytesPerSample = Math.max(1, bitsPerSample / 8);
+  const totalSamples =
+    dataSize / (bytesPerSample * Math.max(1, channels));
+  const duration =
+    sampleRate > 0 ? totalSamples / sampleRate : 0;
+
+  return {
+    sampleRate,
+    channels,
+    bitsPerSample,
+    dataOffset,
+    dataSize,
+    duration,
+  };
+}
+
+/**
+ * Converts a raw WAV buffer to an AudioAsset without decoding samples.
+ */
+export function encodeExistingWavToAudioAsset(
+  assetType: AudioAssetType,
+  nodeId: string,
+  wavBuffer: ArrayBuffer,
+  options?: {
+    fileName?: string;
+    rootNote?: number;
+  },
+): AudioAsset {
+  const metadata = parseWavMetadata(wavBuffer);
+  const base64Data = arrayBufferToBase64(wavBuffer);
+
+  const asset: AudioAsset = {
+    id: `${assetType}_${nodeId}`,
+    type: assetType,
+    base64Data,
+    sampleRate: metadata.sampleRate,
+    channels: metadata.channels,
+    duration: metadata.duration,
+  };
+
+  if (typeof options?.fileName === 'string') {
+    asset.fileName = options.fileName;
+  }
+  if (typeof options?.rootNote === 'number') {
+    asset.rootNote = options.rootNote;
+  }
+
+  return asset;
+}
+
 /**
  * Encodes an AudioBuffer to a base64-encoded WAV string
  */

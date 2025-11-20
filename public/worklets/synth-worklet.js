@@ -2636,6 +2636,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "voiceLayouts", []);
     __publicField(this, "stateVersion", 0);
     __publicField(this, "automationAdapter", null);
+    __publicField(this, "isApplyingPatch", false);
     this.port.onmessage = (event) => {
       this.handleMessage(event);
     };
@@ -2791,10 +2792,14 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   handleCpuUsage() {
-    this.port.postMessage({
-      type: "cpuUsage",
-      cpu: this.audioEngine.get_cpu_usage()
-    });
+    if (!this.audioEngine || this.isApplyingPatch || !this.ready) {
+      return;
+    }
+    try {
+      const cpu = this.audioEngine.get_cpu_usage();
+      this.port.postMessage({ type: "cpuUsage", cpu });
+    } catch (error) {
+    }
   }
   handleDeleteNode(data) {
     this.audioEngine.delete_node(data.nodeId);
@@ -2933,13 +2938,15 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       console.warn("loadPatch requested before audio engine was ready");
       return;
     }
+    this.isApplyingPatch = true;
     try {
       const voiceCount = this.audioEngine.initWithPatch(data.patchJson);
       if (Number.isFinite(voiceCount) && voiceCount > 0) {
         this.numVoices = voiceCount;
       }
       this.automationAdapter = new AutomationAdapter(
-        this.numVoices,
+        8,
+        // Fixed to match parameter descriptors
         this.macroCount,
         this.macroBufferSize
       );
@@ -2954,6 +2961,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         source: "loadPatch",
         message: "Failed to load patch"
       });
+    } finally {
+      this.isApplyingPatch = false;
     }
   }
   initializeState() {
@@ -3588,7 +3597,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   process(_inputs, outputs, parameters) {
-    if (!this.ready || !this.audioEngine) return true;
+    if (!this.ready || !this.audioEngine || this.isApplyingPatch) {
+      return true;
+    }
     const output = outputs[0];
     if (!output) return true;
     const outputLeft = output[0];
@@ -3597,7 +3608,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const masterGain = parameters.master_gain?.[0] ?? 1;
     if (!this.automationAdapter) {
       this.automationAdapter = new AutomationAdapter(
-        this.numVoices,
+        8,
+        // Fixed to match parameter descriptors
         this.macroCount,
         this.macroBufferSize
       );

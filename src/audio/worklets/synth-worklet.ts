@@ -126,6 +126,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private voiceLayouts: VoiceLayout[] = [];
   private stateVersion: number = 0;
   private automationAdapter: AutomationAdapter | null = null;
+  private isApplyingPatch = false;
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -293,10 +294,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleCpuUsage() {
-    this.port.postMessage({
-      type: 'cpuUsage',
-      cpu: this.audioEngine!.get_cpu_usage(),
-    });
+    if (!this.audioEngine || this.isApplyingPatch || !this.ready) {
+      return;
+    }
+
+    try {
+      const cpu = this.audioEngine.get_cpu_usage();
+      this.port.postMessage({ type: 'cpuUsage', cpu });
+    } catch (error) {
+      // Silently skip if there's a borrow conflict (happens during audio processing)
+      // This is expected and not an error condition
+    }
   }
 
   private handleDeleteNode(data: { nodeId: string }) {
@@ -468,14 +476,19 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
+    this.isApplyingPatch = true;
     try {
       const voiceCount = this.audioEngine.initWithPatch(data.patchJson);
       if (Number.isFinite(voiceCount) && voiceCount > 0) {
         this.numVoices = voiceCount;
       }
 
+      // IMPORTANT: Always use 8 voices for the automation adapter to match
+      // the statically-defined parameter descriptors, regardless of the patch voice count.
+      // This prevents out-of-bounds errors when parameters contain data for all 8 voices
+      // but the patch uses fewer voices.
       this.automationAdapter = new AutomationAdapter(
-        this.numVoices,
+        8, // Fixed to match parameter descriptors
         this.macroCount,
         this.macroBufferSize,
       );
@@ -491,6 +504,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         source: 'loadPatch',
         message: 'Failed to load patch',
       });
+    } finally {
+      this.isApplyingPatch = false;
     }
   }
 
@@ -1328,7 +1343,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     parameters: Record<string, Float32Array>,
   ): boolean {
-    if (!this.ready || !this.audioEngine) return true;
+    if (!this.ready || !this.audioEngine || this.isApplyingPatch) {
+      return true;
+    }
 
     const output = outputs[0];
     if (!output) return true;
@@ -1341,8 +1358,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const masterGain = parameters.master_gain?.[0] ?? 1;
 
     if (!this.automationAdapter) {
+      // IMPORTANT: Always use 8 voices to match parameter descriptors
       this.automationAdapter = new AutomationAdapter(
-        this.numVoices,
+        8, // Fixed to match parameter descriptors
         this.macroCount,
         this.macroBufferSize,
       );

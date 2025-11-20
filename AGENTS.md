@@ -202,6 +202,86 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - `gate_buffer_idx` is **not** present in `node_buffers` and remains stable across patch reloads.
   - Voices’ `output_node` still points at the mixer rebuilt from the canonical voice.
 
+## Wavetable Missing Data Panic (Critical Fix - 2025)
+
+**Problem**: The synth would crash with "RuntimeError: unreachable" panic when loading patches with wavetable oscillators.
+
+**Root Cause**:
+- When a patch is loaded via `loadPatch`, wavetable oscillator nodes are created immediately
+- Audio processing starts before `restoreAudioAssets` imports the wavetable data
+- The wavetable oscillator's `process()` method tried to access a non-existent wavetable collection
+- Original code: `bank_ref.get_collection(&self.collection_name).unwrap_or_else(|| panic!("Missing..."))`
+- Result: panic during audio processing
+
+**Fix**: The wavetable oscillator now gracefully handles missing wavetables by outputting silence until the data is loaded:
+
+```rust
+// Gracefully handle missing wavetable (output silence until it's loaded)
+let collection = {
+    let bank_ref = self.wavetable_bank.borrow();
+    match bank_ref.get_collection(&self.collection_name) {
+        Some(coll) => coll.clone(),
+        None => {
+            // Wavetable not loaded yet - output silence
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput0) {
+                buf[..buffer_size].fill(0.0);
+            }
+            if let Some(buf) = outputs.get_mut(&PortId::AudioOutput1) {
+                buf[..buffer_size].fill(0.0);
+            }
+            return;
+        }
+    }
+};
+```
+
+**Files affected**:
+- `rust-wasm/src/nodes/wavetable_oscillator.rs:617-628`
+
+**Important**: This is a race condition between patch loading and asset restoration. The oscillator must handle the case where it exists but has no data yet.
+
+## Automation Adapter & Voice Count (Critical Fix - 2025)
+
+**Problem**: The synth would crash with "table index is out of bounds" errors when switching patches or performing paste operations.
+
+**Root Cause**:
+- Web Audio API `parameterDescriptors` are **statically defined with 8 voices** in `synth-worklet.ts`
+- When loading patches with fewer voices, the `AutomationAdapter` was being created with the patch's voice count
+- The parameters object always contains data for all 8 voices, but the automation frame had fewer voice slots
+- Result: out-of-bounds access when Rust tried to populate the frame from all parameter slots
+
+**Fix**: The `AutomationAdapter` must **always** be created with 8 voices to match the static parameter descriptors, regardless of the actual patch voice count:
+
+```typescript
+// CORRECT: Always use 8 voices
+this.automationAdapter = new AutomationAdapter(
+  8, // Fixed to match parameter descriptors
+  this.macroCount,
+  this.macroBufferSize,
+);
+
+// WRONG: Using patch voice count causes crashes
+this.automationAdapter = new AutomationAdapter(
+  this.numVoices, // DON'T DO THIS
+  this.macroCount,
+  this.macroBufferSize,
+);
+```
+
+**Files affected**:
+- `synth-worklet.ts:489` - `handleLoadPatch` method
+- `synth-worklet.ts:1361` - `process` method fallback initialization
+
+**Important**: When debugging audio processing crashes, always check that the automation adapter dimensions match the parameter descriptor definitions.
+
+## CPU Usage Sampling & Borrow Conflicts
+
+**Issue**: "recursive use of an object" errors during CPU usage sampling.
+
+**Cause**: The `get_cpu_usage()` method can be called via message handler while `process_with_frame()` is running, causing RefCell borrow conflicts in Rust.
+
+**Fix**: CPU usage handler now silently skips sampling when conflicts occur (this is expected and not an error). The handler also checks `!this.ready` to avoid sampling during initialization.
+
 ## General Guidance for Future Changes
 
 - Keep **WASM and native** implementations of patch logic, node creation, and connection wiring as parallel as possible.
@@ -209,8 +289,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - Changing `PortId` enum values; they must remain aligned between Rust, the JS bindings, and the TS enums.
   - Adding new node types: update `NODE_CREATION_ORDER`, `get_current_state` serialization, and TS `VoiceNodeType`.
   - Touching envelope or gate logic: verify `CombinedGate` wiring and gate thresholds (`> 0.0`) still make sense.
+  - **Modifying parameter descriptors**: If you change the number of voices or parameters, ensure the `AutomationAdapter` is always created with matching dimensions.
 - Before assuming an envelope bug, check:
-  - Is the envelope’s `config.active` flag true?
+  - Is the envelope's `config.active` flag true?
   - Is there a `GateMixer` node and a `CombinedGate` connection into the envelope?
   - Does the patch layout for voice 0 contain the expected `gatemixer → envelope` connection with `target: 26`?
 - Host builds that enable the `wasm` feature still compile the crate for non-`wasm32` targets, so `audio_engine::mod` now exposes stub `WasmNoiseType`/`WasmModulationType` enums for that configuration. Keep those shims so `automation.rs` and other shared modules continue to compile in host toolchains.

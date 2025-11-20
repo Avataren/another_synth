@@ -166,10 +166,13 @@ import WavetableEditor from './WaveTable/WavetableEditor.vue';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
 import { useLayoutStore } from 'src/stores/layout-store';
+import { useAssetStore } from 'src/stores/asset-store';
 import { storeToRefs } from 'pinia';
 import type OscillatorState from 'src/audio/models/OscillatorState';
 import RoutingComponent from './RoutingComponent.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
+import { encodeExistingWavToAudioAsset } from 'src/audio/serialization/audio-asset-encoder';
+import { AudioAssetType } from 'src/audio/types/preset-types';
 
 // Define props
 interface Props {
@@ -203,6 +206,7 @@ function forwardClose() {
 const instrumentStore = useInstrumentStore();
 const nodeStateStore = useNodeStateStore();
 const layoutStore = useLayoutStore();
+const assetStore = useAssetStore();
 const { wavetableOscillatorStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
@@ -275,7 +279,18 @@ const handleWavFileUpload = async (event: Event) => {
     console.log('WAV file loaded, size:', wavBytes.length);
 
     if (instrumentStore.currentInstrument) {
+      // Import the wavetable data to the audio engine
       instrumentStore.currentInstrument.importWavetableData(props.nodeId, wavBytes);
+
+      // Save the wavetable to the asset store for patch persistence
+      const asset = encodeExistingWavToAudioAsset(
+        AudioAssetType.Wavetable,
+        props.nodeId,
+        arrayBuffer,
+        { fileName: file.name }
+      );
+      assetStore.audioAssets.set(asset.id, asset);
+      console.log(`Saved wavetable asset ${asset.id} for persistence`);
     } else {
       console.error('Instrument instance not available');
     }
@@ -289,6 +304,16 @@ const handleWavFileUpload = async (event: Event) => {
 const handleWavetableUpdate = (newWavetable: Uint8Array) => {
   console.log('### got wavetable:', newWavetable);
   instrumentStore.currentInstrument?.importWavetableData(props.nodeId, newWavetable);
+
+  // Save the generated wavetable to the asset store for patch persistence
+  const asset = encodeExistingWavToAudioAsset(
+    AudioAssetType.Wavetable,
+    props.nodeId,
+    newWavetable.buffer as ArrayBuffer,
+    { fileName: 'generated-wavetable.wav' }
+  );
+  assetStore.audioAssets.set(asset.id, asset);
+  console.log(`Saved generated wavetable asset ${asset.id} for persistence`);
 };
 
 // Various knob and toggle handlers
