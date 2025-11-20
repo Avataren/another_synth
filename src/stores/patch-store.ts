@@ -439,8 +439,13 @@ export const usePatchStore = defineStore('patchStore', {
         const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
         const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
 
+        if (!audioStore.currentInstrument) {
+          console.warn('Cannot extract audio assets: instrument not ready');
+          return null;
+        }
+
         const extractedAssets = await extractAllAudioAssets(
-          audioStore.currentInstrument as unknown as Record<string, never>,
+          audioStore.currentInstrument,
           samplerIds,
           convolverIds,
         );
@@ -518,8 +523,13 @@ export const usePatchStore = defineStore('patchStore', {
         const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
         const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
 
+        if (!audioStore.currentInstrument) {
+          console.warn('Cannot extract audio assets: instrument not ready');
+          return false;
+        }
+
         const extractedAssets = await extractAllAudioAssets(
-          audioStore.currentInstrument as unknown as Record<string, never>,
+          audioStore.currentInstrument,
           samplerIds,
           convolverIds,
         );

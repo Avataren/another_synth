@@ -6,12 +6,12 @@ import type {
   EnvelopeConfig,
   FilterState,
   LfoState,
-  NoiseState,
   ReverbState,
   SamplerState,
   SynthLayout,
   VelocityState,
 } from 'src/audio/types/synth-layout';
+import type { NoiseState } from 'src/audio/types/noise';
 import { useAudioSystemStore } from './audio-system-store';
 
 export interface NodeStateSnapshot {

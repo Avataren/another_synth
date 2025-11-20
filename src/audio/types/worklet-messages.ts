@@ -9,11 +9,11 @@
  * - Runtime validation utilities
  */
 
+import type OscillatorState from '../models/OscillatorState';
 import type {
   EnvelopeConfig,
   FilterState,
   LfoState,
-  OscillatorState,
   SamplerState,
   ConvolverState,
   DelayState,
@@ -339,12 +339,17 @@ export class WorkletMessageBuilder {
   }
 
   static createNode(nodeType: string, nodeId?: string, withResponse = true): CreateNodeMessage {
-    return {
+    const message: CreateNodeMessage = {
       type: 'createNode',
       nodeType,
-      nodeId,
-      ...(withResponse && { messageId: this.generateMessageId() }),
     };
+    if (nodeId !== undefined) {
+      message.nodeId = nodeId;
+    }
+    if (withResponse) {
+      message.messageId = this.generateMessageId();
+    }
+    return message;
   }
 
   static noteOn(noteNumber: number, velocity: number): NoteOnMessage {
@@ -368,13 +373,18 @@ export class WorkletMessageBuilder {
     data?: unknown,
     error?: string
   ): OperationResponse {
-    return {
+    const response: OperationResponse = {
       type: 'operationResponse',
       messageId,
       success,
-      data,
-      error,
     };
+    if (data !== undefined) {
+      response.data = data;
+    }
+    if (error !== undefined) {
+      response.error = error;
+    }
+    return response;
   }
 }
 
