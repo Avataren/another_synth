@@ -7,24 +7,49 @@
         <span class="patch-count">{{ patches.length }} patches</span>
       </div>
 
-      <q-select
-        v-model="selectedPatchId"
-        :options="patchOptions"
+      <q-btn
+        outline
         dense
-        outlined
-        emit-value
-        map-options
-        options-dense
-        placeholder="Select patch"
-        class="patch-select"
-        @update:model-value="handlePatchSelect"
+        color="primary"
+        :label="selectedPatchLabel"
+        class="patch-tree-trigger"
+        :disable="patches.length === 0"
+        icon-right="expand_more"
       >
-        <template #no-option>
-          <q-item>
-            <q-item-section class="text-grey">No patches</q-item-section>
-          </q-item>
-        </template>
-      </q-select>
+        <q-menu
+          ref="patchTreeMenu"
+          anchor="bottom left"
+          self="top left"
+          fit
+          class="patch-tree-menu"
+        >
+          <div class="patch-tree-panel">
+            <q-input
+              v-model="patchFilter"
+              dense
+              outlined
+              placeholder="Filter patches"
+              clearable
+              class="patch-filter-input"
+            />
+            <div class="patch-tree-wrapper">
+              <q-tree
+                v-model:selected="treeSelectedKey"
+                :nodes="patchTreeNodes"
+                node-key="id"
+                dense
+                dark
+                :filter="patchFilter"
+                default-expand-all
+                no-connectors
+                no-nodes-label="No patches in this bank"
+                no-results-label="No matching patches"
+                @update:selected="handleTreeSelection"
+              />
+            </div>
+          </div>
+        </q-menu>
+      </q-btn>
 
       <q-btn
         icon="refresh"
@@ -46,6 +71,14 @@
         placeholder="Patch name"
         @keyup.enter="handleSavePatch"
         class="patch-name-input"
+      />
+      <q-input
+        v-model="patchCategory"
+        dense
+        outlined
+        placeholder="Category (e.g., FM/Lead)"
+        @keyup.enter="handleSavePatch"
+        class="patch-category-input"
       />
       <q-btn
         label="Save"
@@ -145,6 +178,13 @@
 import { ref, computed, watch } from 'vue';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useQuasar } from 'quasar';
+import type { Patch } from 'src/audio/types/preset-types';
+import {
+  DEFAULT_PATCH_CATEGORY,
+  categorySegments,
+  formatCategoryLabel,
+  normalizePatchCategory,
+} from 'src/utils/patch-category';
 
 const patchStore = usePatchStore();
 const $q = useQuasar();
@@ -167,6 +207,10 @@ const notify = (options: {
 // Local state
 const selectedPatchId = ref<string | null>(null);
 const patchName = ref('');
+const patchCategory = ref('');
+const treeSelectedKey = ref<string | null>(null);
+const patchFilter = ref('');
+const patchTreeMenu = ref<{ hide?: () => void } | null>(null);
 const pasteDialogOpen = ref(false);
 const pasteText = ref('');
 const pasteType = ref<'patch' | 'bank'>('patch');
@@ -181,15 +225,125 @@ const patches = computed(() => {
   return patchStore.currentBank.patches;
 });
 
-const patchOptions = computed(() => {
-  return patches.value.map((patch) => ({
-    label: patch.metadata.name,
-    value: patch.metadata.id,
-  }));
+type PatchCategoryTreeNode = {
+  id: string;
+  label: string;
+  selectable: boolean;
+  icon?: string;
+  children?: PatchCategoryTreeNode[];
+};
+
+interface CategoryAccumulator {
+  id: string;
+  name: string;
+  path: string;
+  count: number;
+  children: Map<string, CategoryAccumulator>;
+  patches: Patch[];
+}
+
+const selectedPatchLabel = computed(() => {
+  if (!selectedPatchId.value) {
+    return 'Select patch';
+  }
+
+  const patch = patches.value.find(
+    (p) => p.metadata.id === selectedPatchId.value,
+  );
+
+  if (!patch) {
+    return 'Select patch';
+  }
+
+  const categoryLabel = formatCategoryLabel(patch.metadata.category);
+  return `${patch.metadata.name} (${categoryLabel})`;
+});
+
+const patchTreeNodes = computed<PatchCategoryTreeNode[]>(() => {
+  const root: CategoryAccumulator = {
+    id: '__root__',
+    name: '',
+    path: '',
+    count: 0,
+    children: new Map(),
+    patches: [],
+  };
+
+  patches.value.forEach((patch) => {
+    const segments = categorySegments(patch.metadata.category);
+    const pathSegments =
+      segments.length > 0 ? segments : [DEFAULT_PATCH_CATEGORY];
+
+    let currentNode = root;
+    pathSegments.forEach((segment) => {
+      let child = currentNode.children.get(segment);
+      if (!child) {
+        const path = currentNode.path
+          ? `${currentNode.path}/${segment}`
+          : segment;
+        child = {
+          id: path,
+          name: segment,
+          path,
+          count: 0,
+          children: new Map(),
+          patches: [],
+        };
+        currentNode.children.set(segment, child);
+      }
+      child.count += 1;
+      currentNode = child;
+    });
+
+    currentNode.patches.push(patch);
+  });
+
+  const buildNodes = (node: CategoryAccumulator): PatchCategoryTreeNode => {
+    const categoryChildren = Array.from(node.children.values())
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+      )
+      .map((child) => buildNodes(child));
+
+    const patchChildren = node.patches
+      .slice()
+      .sort((a, b) =>
+        a.metadata.name.localeCompare(b.metadata.name, undefined, {
+          sensitivity: 'base',
+        }),
+      )
+      .map((patch) => ({
+        id: patch.metadata.id,
+        label: patch.metadata.name,
+        selectable: true,
+        icon: 'music_note',
+      }));
+
+    return {
+      id: `category:${node.path}`,
+      label: `${node.name} (${node.count})`,
+      selectable: false,
+      icon: 'folder',
+      children: [...categoryChildren, ...patchChildren],
+    };
+  };
+
+  return Array.from(root.children.values())
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+    )
+    .map((node) => buildNodes(node));
 });
 
 const currentPatchId = computed(() => patchStore.currentPatchId);
 const hasBank = computed(() => patchStore.currentBank !== null);
+
+const closePatchTreeMenu = () => {
+  const menu = patchTreeMenu.value;
+  if (menu && typeof menu.hide === 'function') {
+    menu.hide();
+  }
+};
 
 // Watch for changes to current patch and keep local selection/name in sync
 watch(
@@ -197,17 +351,31 @@ watch(
   (newId) => {
     if (newId) {
       selectedPatchId.value = newId;
+      treeSelectedKey.value = newId;
       const patch = patches.value.find((p) => p.metadata.id === newId);
       patchName.value = patch?.metadata.name || '';
+      patchCategory.value = patch?.metadata.category || '';
     } else {
       selectedPatchId.value = null;
+      treeSelectedKey.value = null;
       patchName.value = '';
+      patchCategory.value = '';
     }
   },
   { immediate: true },
 );
 
 // Handlers
+const handleTreeSelection = async (nodeKey: string | null) => {
+  if (!nodeKey || nodeKey.startsWith('category:')) {
+    return;
+  }
+
+  treeSelectedKey.value = nodeKey;
+  await handlePatchSelect(nodeKey);
+  closePatchTreeMenu();
+};
+
 const handlePatchSelect = async (patchId: string | null) => {
   selectedPatchId.value = patchId;
   if (!patchId) return;
@@ -267,7 +435,13 @@ const handleSavePatch = async () => {
   if (!patchName.value.trim() || !currentPatchId.value) return;
 
   try {
-    const patch = await patchStore.updateCurrentPatch(patchName.value.trim());
+    const normalizedCategory = normalizePatchCategory(patchCategory.value);
+    const patch = await patchStore.updateCurrentPatch(
+      patchName.value.trim(),
+      {
+        category: normalizedCategory,
+      },
+    );
     if (patch) {
       notify({
         type: 'positive',
@@ -300,6 +474,7 @@ const handleNewPatch = async () => {
         timeout: 2000,
       });
       patchName.value = patch.metadata.name;
+      patchCategory.value = patch.metadata.category || '';
     } else {
       notify({
         type: 'negative',
@@ -483,12 +658,34 @@ const handleNewBank = () => {
   color: #999;
 }
 
-.patch-select {
-  min-width: 160px;
-}
-
 .patch-name-input {
   flex: 1;
+}
+
+.patch-category-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.patch-tree-trigger {
+  min-width: 200px;
+  text-transform: none;
+}
+
+.patch-tree-panel {
+  width: 280px;
+  max-height: 360px;
+  padding: 12px;
+  background-color: #1e1e1e;
+}
+
+.patch-filter-input {
+  margin-bottom: 8px;
+}
+
+.patch-tree-wrapper {
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 @media (max-width: 1200px) {

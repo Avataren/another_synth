@@ -258,6 +258,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - Sampler nodes now mirror oscillator detune controls. `SamplerState` carries `detune_oct`, `detune_semi`, `detune_cents`, and `detune`, and `normalizeSamplerState` in `src/audio/utils/sampler-detune.ts` keeps these fields consistent with the sampler's stored `frequency`.
 - `node-state-store.buildSamplerUpdatePayload` derives the tuned base frequency from the total detune amount before calling `update_sampler`, so the WASM signature stays the same. Patch serialization/deserialization upgrades old patches by running `normalizeSamplerState`, so existing presets continue to load while new detune settings persist.
 
+## New discovery: Patch categories & tree selection
+
+- `PatchMetadata` now exposes an optional `category` string that stores a slash-delimited hierarchy (e.g. `"FM/Lead"`). Use the helpers in `src/utils/patch-category.ts` (`normalizePatchCategory`, `categorySegments`, `DEFAULT_PATCH_CATEGORY`) whenever reading or mutating categories so the store, serializer, and UI stay in sync.
+- Preset selection in `PresetManager.vue` uses a `QTree` grouped by these categories and provides an inline category input. Blank categories fall back to `DEFAULT_PATCH_CATEGORY` ("Uncategorized"), so saving with an empty field intentionally clears the category and moves the patch under that bucket.
+
 ---
 
 # Web App Architecture Improvements (2025)

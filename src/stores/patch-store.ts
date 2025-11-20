@@ -34,9 +34,31 @@ import { useNodeStateStore } from './node-state-store';
 import { useAssetStore } from './asset-store';
 import type InstrumentV2 from 'src/audio/instrument-v2';
 import { VoiceNodeType, getNodesOfType } from 'src/audio/types/synth-layout';
+import { normalizePatchCategory } from 'src/utils/patch-category';
 
 const clonePatch = (patch: Patch): Patch =>
   JSON.parse(JSON.stringify(patch)) as Patch;
+
+type PatchMetadataUpdates = {
+  author?: string;
+  tags?: string[];
+  description?: string;
+  category?: string | undefined;
+};
+
+const sanitizeMetadataUpdates = (
+  updates?: PatchMetadataUpdates,
+): PatchMetadataUpdates | undefined => {
+  if (!updates) {
+    return undefined;
+  }
+
+  const normalizedCategory = normalizePatchCategory(updates.category);
+  return {
+    ...updates,
+    category: normalizedCategory,
+  };
+};
 
 export const usePatchStore = defineStore('patchStore', {
   state: () => ({
@@ -420,7 +442,7 @@ export const usePatchStore = defineStore('patchStore', {
     },
     async saveCurrentPatch(
       name: string,
-      metadata?: { author?: string; tags?: string[]; description?: string },
+      metadata?: PatchMetadataUpdates,
     ): Promise<Patch | null> {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
@@ -456,6 +478,8 @@ export const usePatchStore = defineStore('patchStore', {
           ...extractedAssets,
         ]);
 
+        const metadataPayload = sanitizeMetadataUpdates(metadata);
+
         const patch = serializeCurrentPatch(
           name,
           layoutStore.synthLayout,
@@ -472,7 +496,7 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.noiseState,
           nodeStateStore.velocityState,
           allAssets,
-          metadata,
+          metadataPayload,
         );
 
         if (this.currentBank) {
@@ -490,7 +514,7 @@ export const usePatchStore = defineStore('patchStore', {
     },
     async updateCurrentPatch(
       name?: string,
-      metadata?: { author?: string; tags?: string[]; description?: string },
+      metadata?: PatchMetadataUpdates,
     ): Promise<Patch | null> {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
@@ -540,6 +564,7 @@ export const usePatchStore = defineStore('patchStore', {
           ...extractedAssets,
         ]);
 
+        const metadataPayload = sanitizeMetadataUpdates(metadata);
         const existingMetadata = existingPatch.metadata;
         const finalName = name?.trim() || existingMetadata.name;
         const now = Date.now();
@@ -547,7 +572,7 @@ export const usePatchStore = defineStore('patchStore', {
           ...existingMetadata,
           name: finalName,
           modified: now,
-          ...(metadata || {}),
+          ...(metadataPayload || {}),
         };
 
         const patch = serializeCurrentPatch(

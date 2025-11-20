@@ -11,6 +11,7 @@
       "metadata": {
         "id": "patch_1763571630475_1z6pdyb",
         "name": "basic",
+        "category": "Factory/Basics",
         "created": 1763571630475,
         "modified": 1763571656893,
         "version": 1
@@ -245,6 +246,7 @@
       "metadata": {
         "id": "patch_1763571661484_xeo9mfs",
         "name": "pad1",
+        "category": "Factory/Pads",
         "created": 1763571661484,
         "modified": 1763571729891,
         "version": 1

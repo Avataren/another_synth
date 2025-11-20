@@ -56,6 +56,8 @@ export interface PatchMetadata {
   id: string;
   /** User-friendly name */
   name: string;
+  /** Hierarchical category path, e.g. "FM/Lead" */
+  category?: string | undefined;
   /** Author/creator name */
   author?: string;
   /** Tags for categorization */
@@ -181,11 +183,15 @@ export const PRESET_SCHEMA_VERSION = 1;
 /**
  * Helper to create default patch metadata
  */
-export function createDefaultPatchMetadata(name: string): PatchMetadata {
+export function createDefaultPatchMetadata(
+  name: string,
+  category?: string,
+): PatchMetadata {
   const now = Date.now();
   return {
     id: `patch_${now}_${Math.random().toString(36).substring(2, 9)}`,
     name,
+    ...(category ? { category } : {}),
     created: now,
     modified: now,
     version: PRESET_SCHEMA_VERSION,
