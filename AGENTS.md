@@ -258,6 +258,10 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - Sampler nodes now mirror oscillator detune controls. `SamplerState` carries `detune_oct`, `detune_semi`, `detune_cents`, and `detune`, and `normalizeSamplerState` in `src/audio/utils/sampler-detune.ts` keeps these fields consistent with the sampler's stored `frequency`.
 - `node-state-store.buildSamplerUpdatePayload` derives the tuned base frequency from the total detune amount before calling `update_sampler`, so the WASM signature stays the same. Patch serialization/deserialization upgrades old patches by running `normalizeSamplerState`, so existing presets continue to load while new detune settings persist.
 
+## New discovery: Effect components must read from node-state-store
+
+- Delay, Convolver, and Reverb components now source their state from `node-state-store` instead of the legacy `audio-system-store`. When effect components write directly to the legacy mirrors, any other store (like the delay panel) that calls `pushStatesToLegacyStore()` wipes their values, causing side effects (e.g., toggling Delay enabling Reverb). Always bind effect UI state to `node-state-store`, persist via `pushStatesToLegacyStore()`, and then call the instrument update so that patches load/save consistently and UI toggles don't interfere with each other.
+
 ## New discovery: Patch categories & tree selection
 
 - `PatchMetadata` now exposes an optional `category` string that stores a slash-delimited hierarchy (e.g. `"FM/Lead"`). Use the helpers in `src/utils/patch-category.ts` (`normalizePatchCategory`, `categorySegments`, `DEFAULT_PATCH_CATEGORY`) whenever reading or mutating categories so the store, serializer, and UI stay in sync.
@@ -828,6 +832,7 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
   - `updateConvolver` → `updateConvolverState`
   - `updateDelay` → `updateDelayState`
   - `exportSamplerData` → `exportSampleData`
+- The worklet now accepts both the legacy `updateDelayState`/`updateConvolverState` and the newer `updateDelay`/`updateConvolver` message names so InstrumentV2 stays compatible even if its message builder lags behind future refactors.
 - When Phase 2 (worklet migration) is complete, more operations will become Promise-based
 
 **Benefits**:

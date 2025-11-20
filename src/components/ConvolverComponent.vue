@@ -35,9 +35,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onMounted } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { storeToRefs } from 'pinia';
 import { type ConvolverState } from 'src/audio/types/synth-layout';
 
@@ -50,8 +51,9 @@ const props = withDefaults(defineProps<Props>(), {
 });
 //const props = withDefaults(defineProps<Props>(), { node: null, Index: 0 });
 
-const store = useAudioSystemStore();
-const { convolverStates } = storeToRefs(store);
+const audioStore = useAudioSystemStore();
+const nodeStateStore = useNodeStateStore();
+const { convolverStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(() => props.nodeName || 'Convolver');
 
@@ -68,9 +70,9 @@ const handleWavFileUpload = async (event: Event) => {
     const wavBytes = new Uint8Array(arrayBuffer);
     console.log('WAV file loaded, size:', wavBytes.length);
 
-    if (store.currentInstrument) {
+    if (audioStore.currentInstrument) {
       // Call the new import function on your instrument
-      store.currentInstrument.importImpulseWaveformData(props.nodeId, wavBytes);
+      audioStore.currentInstrument.importImpulseWaveformData(props.nodeId, wavBytes);
     } else {
       console.error('Instrument instance not available');
     }
@@ -81,49 +83,60 @@ const handleWavFileUpload = async (event: Event) => {
 };
 
 // Create a reactive reference to the oscillator state
-const convolverState = computed({
-  get: () => {
-    const state = convolverStates.value.get(props.nodeId);
-    if (!state) {
-      return {
-        id: props.nodeId,
-        wetMix: 0.1,
-        active: false,
-      };
-    }
+const ensureConvolverState = (): ConvolverState => {
+  const state = convolverStates.value.get(props.nodeId);
+  if (state) {
     return state;
-  },
+  }
+  return {
+    id: props.nodeId,
+    wetMix: 0.1,
+    active: false,
+  };
+};
+
+const persistConvolverState = (state: ConvolverState) => {
+  nodeStateStore.convolverStates.set(props.nodeId, { ...state });
+  nodeStateStore.pushStatesToLegacyStore();
+};
+
+const convolverState = computed({
+  get: () => ensureConvolverState(),
   set: (newState: ConvolverState) => {
-    store.convolverStates.set(props.nodeId, { ...newState });
+    persistConvolverState({
+      ...newState,
+      id: props.nodeId,
+    });
   },
 });
 
-const handleEnabledChange = (val: boolean) => {
-  const currentState = {
-    ...convolverState.value,
-    is_enabled: val,
+const updateConvolverState = (patch: Partial<ConvolverState>) => {
+  const next = {
+    ...ensureConvolverState(),
+    ...patch,
+    id: props.nodeId,
   };
+  persistConvolverState(next);
+  syncConvolverToInstrument(next);
+};
 
-  store.convolverStates.set(props.nodeId, currentState);
+const syncConvolverToInstrument = (state: ConvolverState) => {
+  audioStore.currentInstrument?.updateConvolverState(props.nodeId, {
+    ...state,
+  });
+};
+
+const handleEnabledChange = (val: boolean) => {
+  updateConvolverState({ active: val });
 };
 
 const handleWetMixChange = (val: number) => {
-  const currentState = {
-    ...convolverState.value,
-    wetMix: val,
-  };
-  store.convolverStates.set(props.nodeId, currentState);
+  updateConvolverState({ wetMix: val });
 };
 
-watch(
-  () => convolverState.value,
-  (newState) => {
-    store.currentInstrument?.updateConvolverState(props.nodeId, {
-      ...newState,
-    });
-  },
-  { deep: true, immediate: true },
-);
+onMounted(() => {
+  syncConvolverToInstrument(ensureConvolverState());
+});
 </script>
 
 <style scoped>

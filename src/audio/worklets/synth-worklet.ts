@@ -249,9 +249,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         this.handleImportImpulseWaveformData(event.data);
         break;
       case 'updateConvolverState':
+      case 'updateConvolver':
         this.handleUpdateConvolver(event.data);
         break;
       case 'updateDelayState':
+      case 'updateDelay':
         this.handleUpdateDelay(event.data);
         break;
       case 'updateVelocity':

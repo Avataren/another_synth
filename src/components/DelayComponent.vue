@@ -44,9 +44,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onMounted } from 'vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { storeToRefs } from 'pinia';
 import { type DelayState } from 'src/audio/types/synth-layout';
 
@@ -58,73 +59,77 @@ const props = withDefaults(defineProps<Props>(), {
   nodeId: '',
 });
 
-const store = useAudioSystemStore();
-const { delayStates } = storeToRefs(store);
+const audioStore = useAudioSystemStore();
+const nodeStateStore = useNodeStateStore();
+const { delayStates } = storeToRefs(nodeStateStore);
+
+const ensureDelayState = (): DelayState => {
+  const existing = delayStates.value.get(props.nodeId);
+  if (existing) {
+    return existing;
+  }
+  return {
+    id: props.nodeId,
+    delayMs: 500,
+    feedback: 0.5,
+    wetMix: 0.1,
+    active: true,
+  };
+};
+
+const persistDelayState = (state: DelayState) => {
+  nodeStateStore.delayStates.set(props.nodeId, { ...state });
+  nodeStateStore.pushStatesToLegacyStore();
+};
 
 const displayName = computed(() => props.nodeName || 'Delay');
 
-// Create a reactive reference to the oscillator state
+// Create a reactive reference to the delay state sourced from node-state-store
 const delayState = computed({
-  get: () => {
-    const state = delayStates.value.get(props.nodeId);
-    if (!state) {
-      return {
-        id: props.nodeId,
-        delayMs: 500,
-        feedback: 0.5,
-        wetMix: 0.1,
-        active: true,
-      };
-    }
-    return state;
-  },
+  get: () => ensureDelayState(),
   set: (newState: DelayState) => {
-    store.delayStates.set(props.nodeId, { ...newState });
+    persistDelayState({
+      ...newState,
+      id: props.nodeId,
+    });
   },
 });
 
-const handleEnabledChange = (val: boolean) => {
-  const currentState = {
-    ...delayState.value,
-    active: val,
+const updateDelayState = (patch: Partial<DelayState>) => {
+  const next = {
+    ...ensureDelayState(),
+    ...patch,
+    id: props.nodeId,
   };
+  persistDelayState(next);
+  syncDelayToInstrument(next);
+};
 
-  store.delayStates.set(props.nodeId, currentState);
+const syncDelayToInstrument = (state: DelayState) => {
+  audioStore.currentInstrument?.updateDelayState(props.nodeId, {
+    ...state,
+  });
+};
+
+const handleEnabledChange = (val: boolean) => {
+  updateDelayState({ active: val });
 };
 
 const handleWetMixChange = (val: number) => {
-  const currentState = {
-    ...delayState.value,
-    wetMix: val,
-  };
-  store.delayStates.set(props.nodeId, currentState);
+  updateDelayState({ wetMix: val });
 };
 
 const handleDelayChange = (val: number) => {
-  const currentState = {
-    ...delayState.value,
-    delayMs: val,
-  };
-  store.delayStates.set(props.nodeId, currentState);
+  updateDelayState({ delayMs: val });
 };
 
 const handleFeedbackChange = (val: number) => {
-  const currentState = {
-    ...delayState.value,
-    feedback: val,
-  };
-  store.delayStates.set(props.nodeId, currentState);
+  updateDelayState({ feedback: val });
 };
 
-watch(
-  () => delayState.value,
-  (newState) => {
-    store.currentInstrument?.updateDelayState(props.nodeId, {
-      ...newState,
-    });
-  },
-  { deep: true, immediate: true },
-);
+onMounted(() => {
+  syncDelayToInstrument(ensureDelayState());
+});
 </script>
 
 <style scoped>

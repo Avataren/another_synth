@@ -65,11 +65,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
-import AudioKnobComponent from './AudioKnobComponent.vue'; // Assuming this path
+import { computed, onMounted } from 'vue';
+import AudioKnobComponent from './AudioKnobComponent.vue';
 import { useAudioSystemStore } from 'src/stores/audio-system-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 import { storeToRefs } from 'pinia';
-import { type ReverbState } from 'src/audio/types/synth-layout'; // Adjust path if needed
+import { type ReverbState } from 'src/audio/types/synth-layout';
 
 interface Props {
   nodeId: string;
@@ -79,75 +80,92 @@ const props = withDefaults(defineProps<Props>(), {
   nodeId: '',
 });
 
-const store = useAudioSystemStore();
-// Use chorusStates from the store
-const { reverbStates } = storeToRefs(store);
+const audioStore = useAudioSystemStore();
+const nodeStateStore = useNodeStateStore();
+const { reverbStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(() => props.nodeName || 'Reverb');
 
 // Create a reactive computed property for the chorus state of the current node
+const ensureReverbState = (): ReverbState => {
+  const existing = reverbStates.value.get(props.nodeId);
+  if (existing) {
+    return existing;
+  }
+
+  return {
+    id: props.nodeId,
+    active: true,
+    room_size: 0.95,
+    damp: 0.5,
+    wet: 0.3,
+    dry: 0.7,
+    width: 1.0,
+  };
+};
+
+const persistReverbState = (state: ReverbState) => {
+  nodeStateStore.reverbStates.set(props.nodeId, { ...state });
+  nodeStateStore.pushStatesToLegacyStore();
+};
+
 const reverbState = computed({
-  get: (): ReverbState => {
-    const state = reverbStates.value.get(props.nodeId);
-    // Provide sensible defaults if state doesn't exist yet
-    if (!state) {
-      return {
-        id: props.nodeId,
-        active: true,
-        room_size: 0.95,
-        damp: 0.5,
-        wet: 0.3,
-        dry: 0.7,
-        width: 1.0,
-      };
-    }
-    return state;
-  },
+  get: (): ReverbState => ensureReverbState(),
   set: (newState: ReverbState) => {
-    // Update the state in the Pinia store
-    store.reverbStates.set(props.nodeId, { ...newState });
+    persistReverbState({
+      ...newState,
+      id: props.nodeId,
+    });
   },
 });
+
+const updateReverbState = (patch: Partial<ReverbState>) => {
+  const next = {
+    ...ensureReverbState(),
+    ...patch,
+    id: props.nodeId,
+  };
+  persistReverbState(next);
+  syncReverbToInstrument(next);
+};
+
+const syncReverbToInstrument = (state: ReverbState) => {
+  audioStore.currentInstrument?.updateReverbState(props.nodeId, {
+    ...state,
+  });
+};
 
 // --- Event Handlers ---
 // Each handler updates the specific property in the local computed state,
 // which triggers the 'set' function above, updating the store.
 
 const handleEnabledChange = (val: boolean) => {
-  reverbState.value = { ...reverbState.value, active: val };
+  updateReverbState({ active: val });
 };
 
 const handleRoomSizeChange = (val: number) => {
-  reverbState.value = { ...reverbState.value, room_size: val };
+  updateReverbState({ room_size: val });
 };
 
 const handleDampChange = (val: number) => {
-  reverbState.value = { ...reverbState.value, damp: val };
+  updateReverbState({ damp: val });
 };
 
 const handleDryChange = (val: number) => {
-  reverbState.value = { ...reverbState.value, dry: val };
+  updateReverbState({ dry: val });
 };
 
 const handleWetChange = (val: number) => {
-  reverbState.value = { ...reverbState.value, wet: val };
+  updateReverbState({ wet: val });
 };
 
 const handleWidthChange = (val: number) => {
-  reverbState.value = { ...reverbState.value, width: val };
+  updateReverbState({ width: val });
 };
-// --- Watcher ---
-// Watch for changes in the local computed state and push them to the
-// actual audio engine/instrument via the store's currentInstrument reference.
-watch(
-  () => reverbState.value,
-  (newState) => {
-    store.currentInstrument?.updateReverbState(props.nodeId, {
-      ...newState, // Send the complete new state
-    });
-  },
-  { deep: true, immediate: true }, // immediate: true ensures initial state is sent
-);
+
+onMounted(() => {
+  syncReverbToInstrument(ensureReverbState());
+});
 </script>
 
 <style scoped>
