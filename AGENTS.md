@@ -49,6 +49,7 @@ When debugging “envelope not reacting to gate off” after any change, always 
   - It should be created either by `AudioGraph::new` (on fresh graphs) **or** as a `gatemixer` node created from a patch.
 - There is at least one connection from `GateMixer` to `Envelope` for `PortId::CombinedGate`:
   - Either auto‑connected by `AudioGraph::add_node_with_id`, or explicitly present in the patch layout with `target: 26` (CombinedGate).
+- Host gate pulses (TS `instrument-v2.ts`) now retrigger stolen mono voices by sending a brief gate-off/on, but this is **suppressed when Glide/portamento is active (active && time > 0)** to preserve slides. Glide state is cached from patch `glides` and `updateGlideState`; if mono envelopes stop retriggering, check that no glide is marked active.
 
 ## Patch Format & Loader
 

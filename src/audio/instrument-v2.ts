@@ -54,6 +54,7 @@ export default class InstrumentV2 {
   private voiceLastUsedTime: number[] = [];
   private messageHandler: WorkletMessageHandler;
   private voiceLimit: number;
+  private glideStates: Map<string, GlideState> = new Map();
 
   public get isReady(): boolean {
     return this.messageHandler.isInitialized();
@@ -118,6 +119,8 @@ export default class InstrumentV2 {
     }
 
     try {
+      this.refreshGlideStatesFromPatch(patch);
+
       // Track voice limit from patch layout (clamped to available params)
       const patchLayout = patch.synthState?.layout as
         | { voiceCount?: number; voices?: unknown[] }
@@ -211,11 +214,19 @@ export default class InstrumentV2 {
   }
 
   public updateGlideState(nodeId: string, state: GlideState): void {
+    const glideState = {
+      ...state,
+      id: state.id ?? nodeId,
+      time: state.time ?? 0,
+      active: !!state.active,
+    };
+    this.glideStates.set(nodeId, glideState);
+
     this.messageHandler.sendFireAndForget({
       type: 'updateGlide',
       glideId: nodeId,
-      time: state.time,
-      active: state.active,
+      time: glideState.time,
+      active: glideState.active,
     });
   }
 
@@ -765,7 +776,10 @@ export default class InstrumentV2 {
 
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) {
-      const shouldPulseGate = this.voiceLimit > 1 && (isRetrigger || stolenNote !== null);
+      const retriggering = isRetrigger || stolenNote !== null;
+      const portamentoEnabled = this.isPortamentoEnabled();
+      const shouldPulseGate =
+        retriggering && (this.voiceLimit > 1 || !portamentoEnabled);
       if (shouldPulseGate) {
         // Force envelope retrigger by creating a brief gate off-on pulse
         gateParam.setValueAtTime(0, this.audioContext.currentTime);
@@ -851,6 +865,31 @@ export default class InstrumentV2 {
     }
 
     return { voiceIndex: oldestVoice, stolenNote };
+  }
+
+  private isPortamentoEnabled(): boolean {
+    for (const glide of this.glideStates.values()) {
+      if (glide && glide.active && (glide.time ?? 0) > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private refreshGlideStatesFromPatch(patch: Patch): void {
+    this.glideStates.clear();
+    const patchGlides = patch?.synthState?.glides;
+    if (!patchGlides) return;
+
+    Object.entries(patchGlides).forEach(([id, glide]) => {
+      if (!glide) return;
+      this.glideStates.set(id, {
+        ...glide,
+        id: glide.id ?? id,
+        time: glide.time ?? 0,
+        active: !!glide.active,
+      });
+    });
   }
 
   private midiNoteToFrequency(note: number): number {

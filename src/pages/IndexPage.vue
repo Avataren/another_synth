@@ -1,7 +1,29 @@
 <template>
-  <q-page class="page-container">
+  <q-page class="page-container" @click.capture="handleLeftClickClose">
+    <div class="tool-menu q-pa-sm">
+      <div class="tool-menu__info">
+        <div class="tool-menu__title">Patch tools</div>
+        <div class="tool-menu__hint">
+          Right-click anywhere in the grid to add nodes
+        </div>
+      </div>
+      <div class="tool-menu__actions">
+        <q-btn
+          color="primary"
+          dense
+          unelevated
+          icon="add_circle"
+          label="Add node"
+          @click="openAddMenuFromButton"
+        />
+      </div>
+    </div>
+
     <!-- Middle Scrollable Area: All DSP Nodes using CSS Grid -->
-    <div class="middle-scroll q-pa-md">
+    <div
+      class="middle-scroll q-pa-md"
+      @contextmenu.prevent.stop="openAddMenu"
+    >
       <div class="grid-container">
         <!-- Generators Column -->
         <div class="node-bg column">
@@ -15,14 +37,6 @@
             :componentName="WavetableOscillatorComponent"
             nodeLabel="WtOsc"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Wavetable Oscillator"
-              @click="addWavetableOscillator"
-              icon="add"
-            />
-          </div>
 
           <!-- Oscillator -->
           <generic-tab-container
@@ -32,14 +46,6 @@
             :componentName="OscillatorComponent"
             nodeLabel="Osc"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Oscillator"
-              @click="addOscillator"
-              icon="add"
-            />
-          </div>
 
           <generic-tab-container
             v-if="samplerNodes.length"
@@ -48,14 +54,6 @@
             :componentName="SamplerComponent"
             nodeLabel="Sampler"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Sampler"
-              @click="addSampler"
-              icon="add"
-            />
-          </div>
 
           <!-- Noise -->
           <generic-tab-container
@@ -65,14 +63,6 @@
             :componentName="NoiseComponent"
             nodeLabel="Noise"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Noise Generator"
-              @click="addNoise"
-              icon="add"
-            />
-          </div>
 
           <!-- Arpeggiator -->
           <generic-tab-container
@@ -82,15 +72,6 @@
             :componentName="ArpeggiatorComponent"
             nodeLabel="Arp"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Arpeggiator"
-              :disable="true"
-              @click="addArpeggiator"
-              icon="add"
-            />
-          </div>
 
           <!-- Velocity -->
           <generic-tab-container
@@ -122,9 +103,6 @@
             :componentName="LfoComponent"
             nodeLabel="LFO"
           />
-          <div v-else class="empty-state">
-            <q-btn color="primary" label="Add LFO" @click="addLfo" icon="add" />
-          </div>
 
           <!-- Envelope -->
           <generic-tab-container
@@ -134,14 +112,6 @@
             :componentName="EnvelopeComponent"
             nodeLabel="Env"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Envelope"
-              @click="addEnvelope"
-              icon="add"
-            />
-          </div>
         </div>
 
         <!-- Effects Column -->
@@ -156,14 +126,6 @@
             :componentName="FilterComponent"
             nodeLabel="Filter"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Filter"
-              @click="addFilter"
-              icon="add"
-            />
-          </div>
 
           <div class="header" style="margin-top: 4rem">Effects</div>
 
@@ -174,14 +136,6 @@
             :componentName="ChorusComponent"
             nodeLabel="Chorus"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Chorus"
-              @click="addChorus"
-              icon="add"
-            />
-          </div>
 
           <!-- Delay -->
           <generic-tab-container
@@ -191,14 +145,6 @@
             :componentName="DelayComponent"
             nodeLabel="Delay"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Delay"
-              @click="addDelay"
-              icon="add"
-            />
-          </div>
 
           <generic-tab-container
             v-if="reverbNodes.length"
@@ -216,14 +162,6 @@
             :componentName="ConvolverComponent"
             nodeLabel="Convolver"
           />
-          <div v-else class="empty-state">
-            <q-btn
-              color="primary"
-              label="Add Convolver"
-              @click="addConvolver"
-              icon="add"
-            />
-          </div>
         </div>
       </div>
     </div>
@@ -242,11 +180,54 @@
         </div>
       </div>
     </div>
+
+    <q-menu
+      ref="addMenu"
+      v-model="addMenuVisible"
+      no-parent-event
+      context-menu
+      touch-position
+      class="add-node-menu"
+      transition-show="jump-down"
+      transition-hide="jump-up"
+    >
+      <q-list dense>
+        <template
+          v-for="(section, sectionIndex) in addMenuSections"
+          :key="section.label"
+        >
+          <q-item-label header class="menu-section-header">
+            {{ section.label }}
+          </q-item-label>
+          <q-item
+            v-for="item in section.items"
+            :key="item.type"
+            clickable
+            @click="handleAddNode(item.type)"
+          >
+            <q-item-section avatar>
+              <q-icon :name="item.icon" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>{{ item.label }}</q-item-label>
+              <q-item-label v-if="item.caption" caption>
+                {{ item.caption }}
+              </q-item-label>
+            </q-item-section>
+          </q-item>
+          <q-separator
+            v-if="sectionIndex < addMenuSections.length - 1"
+            spaced
+            inset
+          />
+        </template>
+      </q-list>
+    </q-menu>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useLayoutStore } from 'src/stores/layout-store';
@@ -283,9 +264,163 @@ import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import ChorusComponent from 'src/components/ChorusComponent.vue';
 
+type AddMenuItem = {
+  label: string;
+  type: VoiceNodeType;
+  icon: string;
+  caption?: string;
+};
+
+type AddMenuSection = {
+  label: string;
+  items: AddMenuItem[];
+};
+
+type QMenuController = {
+  show: (evt?: Event) => void;
+  hide: () => void;
+  $el?: HTMLElement | null;
+};
+
 const instrumentStore = useInstrumentStore();
 const layoutStore = useLayoutStore();
 const { destinationNode } = storeToRefs(instrumentStore);
+
+const addMenuVisible = ref(false);
+const addMenu = ref<QMenuController | null>(null);
+
+const addMenuSections: AddMenuSection[] = [
+  {
+    label: 'Generators',
+    items: [
+      {
+        label: 'Wavetable Oscillator',
+        type: VoiceNodeType.WavetableOscillator,
+        icon: 'waves',
+        caption: 'Morph and blend tables',
+      },
+      {
+        label: 'Oscillator',
+        type: VoiceNodeType.Oscillator,
+        icon: 'graphic_eq',
+        caption: 'Classic subtractive starting point',
+      },
+      {
+        label: 'Sampler',
+        type: VoiceNodeType.Sampler,
+        icon: 'library_music',
+        caption: 'Trigger and mangle samples',
+      },
+      {
+        label: 'Noise',
+        type: VoiceNodeType.Noise,
+        icon: 'grain',
+        caption: 'Add texture or drive modulation',
+      },
+      {
+        label: 'Arpeggiator',
+        type: VoiceNodeType.ArpeggiatorGenerator,
+        icon: 'queue_music',
+        caption: 'Gate and pattern generator',
+      },
+    ],
+  },
+  {
+    label: 'Modulators',
+    items: [
+      {
+        label: 'LFO',
+        type: VoiceNodeType.LFO,
+        icon: 'show_chart',
+        caption: 'Slow, cyclical movement',
+      },
+      {
+        label: 'Envelope',
+        type: VoiceNodeType.Envelope,
+        icon: 'timeline',
+        caption: 'Shape amplitude or filter sweeps',
+      },
+    ],
+  },
+  {
+    label: 'Tone & FX',
+    items: [
+      {
+        label: 'Filter',
+        type: VoiceNodeType.Filter,
+        icon: 'tune',
+        caption: 'Carve frequencies and resonance',
+      },
+      {
+        label: 'Delay',
+        type: VoiceNodeType.Delay,
+        icon: 'av_timer',
+        caption: 'Echoes for depth',
+      },
+      {
+        label: 'Chorus',
+        type: VoiceNodeType.Chorus,
+        icon: 'surround_sound',
+        caption: 'Width and shimmer',
+      },
+      {
+        label: 'Reverb',
+        type: VoiceNodeType.Reverb,
+        icon: 'blur_on',
+        caption: 'Space and ambience',
+      },
+      {
+        label: 'Convolver',
+        type: VoiceNodeType.Convolver,
+        icon: 'layers',
+        caption: 'Impulse-based rooms and textures',
+      },
+    ],
+  },
+];
+
+const handleAddNode = (nodeType: VoiceNodeType) => {
+  instrumentStore.currentInstrument?.createNode(nodeType);
+  addMenuVisible.value = false;
+  addMenu.value?.hide();
+};
+
+const openAddMenu = (event?: Event) => {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  if (addMenu.value?.show) {
+    addMenuVisible.value = false;
+    addMenu.value.hide();
+    nextTick(() => {
+      addMenu.value?.show(event);
+    });
+  } else {
+    addMenuVisible.value = true;
+  }
+};
+
+const openAddMenuFromButton = (
+  event: Event,
+  _go?: (opts?: { to?: unknown; replace?: boolean; returnRouterError?: boolean }) => Promise<unknown>,
+) => {
+  openAddMenu(event);
+};
+
+const handleLeftClickClose = (event: MouseEvent) => {
+  if (!addMenuVisible.value) return;
+  if (event.button !== 0) return;
+
+  const menuEl = addMenu.value?.$el;
+  if (menuEl && menuEl.contains(event.target as Node)) {
+    return;
+  }
+
+  addMenuVisible.value = false;
+  addMenu.value?.hide();
+};
 
 // Improved computed properties with proper safeguards
 // Velocity (only one instance)
@@ -361,51 +496,6 @@ const convolverNodes = computed(() => {
   const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Convolver);
   return Array.isArray(nodes) ? nodes : [];
 });
-
-// Node creation functions
-function addWavetableOscillator() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.WavetableOscillator);
-}
-
-function addOscillator() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Oscillator);
-}
-
-function addNoise() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Noise);
-}
-
-function addSampler() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Sampler);
-}
-
-function addArpeggiator() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.ArpeggiatorGenerator);
-}
-
-function addLfo() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.LFO);
-}
-
-function addEnvelope() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Envelope);
-}
-
-function addFilter() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Filter);
-}
-
-function addDelay() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Delay);
-}
-
-function addChorus() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Chorus);
-}
-
-function addConvolver() {
-  instrumentStore.currentInstrument?.createNode(VoiceNodeType.Convolver);
-}
 </script>
 
 <style scoped>
@@ -415,6 +505,44 @@ function addConvolver() {
   flex-direction: column;
   height: 96vh;
   overflow: hidden;
+}
+
+.tool-menu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #15181d;
+  border-bottom: 1px solid #2b3140;
+}
+
+.tool-menu__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-menu__title {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #e9eef7;
+}
+
+.tool-menu__hint {
+  font-size: 12px;
+  color: #9fb2cc;
+}
+
+.tool-menu__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-menu__actions .q-btn {
+  text-transform: none;
 }
 
 /* Fixed height for bottom row with scrolling overflow */
@@ -433,6 +561,23 @@ function addConvolver() {
   flex: 1 1 auto;
   overflow-y: auto;
   background-image: linear-gradient(rgb(49, 69, 105), rgb(25, 38, 56));
+}
+
+.add-node-menu {
+  min-width: 280px;
+  background: #11151c;
+  color: #e9eef7;
+}
+
+.menu-section-header {
+  color: #8fa5c5;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.add-node-menu .q-item {
+  min-height: 48px;
 }
 
 /* Header styling for DSP columns */
@@ -475,19 +620,6 @@ function addConvolver() {
 /* Fix each generic-tab-container's width to 600px */
 .generic-tab-container {
   flex: 0 0 auto;
-  width: 600px;
-}
-
-/* Empty state styling */
-.empty-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  margin: 0 auto;
   width: 600px;
 }
 </style>
