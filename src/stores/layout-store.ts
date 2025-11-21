@@ -24,6 +24,7 @@ const DEFAULT_NODE_NAMES: Partial<Record<VoiceNodeType, string[]>> = {
   [VoiceNodeType.Mixer]: ['Mixer'],
   [VoiceNodeType.Noise]: ['Noise Generator'],
   [VoiceNodeType.Sampler]: ['Sampler'],
+  [VoiceNodeType.Glide]: ['Glide'],
   [VoiceNodeType.GlobalFrequency]: ['Global Frequency'],
   [VoiceNodeType.GlobalVelocity]: ['Global Velocity'],
   [VoiceNodeType.Convolver]: ['Convolver'],
@@ -261,6 +262,19 @@ export const useLayoutStore = defineStore('layoutStore', {
         return nodesByType;
       };
 
+      const ensureGlideNode = (voice: VoiceLayout) => {
+        const existing = voice.nodes[VoiceNodeType.Glide] || [];
+        if (existing.length === 0) {
+          const id =
+            typeof crypto !== 'undefined' && 'randomUUID' in crypto
+              ? (crypto as unknown as { randomUUID: () => string }).randomUUID()
+              : `glide_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+          voice.nodes[VoiceNodeType.Glide] = [
+            { id, type: VoiceNodeType.Glide, name: 'Glide' },
+          ];
+        }
+      };
+
       layoutClone.voices = layoutClone.voices.map((voice) => {
         console.log('[updateSynthLayout] Processing voice, nodes is array?', Array.isArray(voice.nodes));
 
@@ -303,6 +317,8 @@ export const useLayoutStore = defineStore('layoutStore', {
             (voice.connections ?? []) as Array<NodeConnection | RawConnection>,
           ),
         };
+
+        ensureGlideNode(converted);
 
         Object.values(converted.nodes).forEach((nodeArray) => {
           nodeArray.forEach((node) => {

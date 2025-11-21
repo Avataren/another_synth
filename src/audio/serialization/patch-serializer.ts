@@ -26,10 +26,31 @@ import type {
   DelayState,
   ChorusState,
   ReverbState,
+  GlideState,
   VelocityState,
 } from '../types/synth-layout';
 import type { NoiseState } from '../types/noise';
 import { normalizeSamplerState } from '../utils/sampler-detune';
+
+function normalizeGlideState(
+  glide: GlideState | (Partial<GlideState> & { id?: string }),
+  id: string,
+): GlideState {
+  const legacyTime =
+    glide.riseTime !== undefined || glide.fallTime !== undefined
+      ? Math.max(glide.riseTime ?? 0, glide.fallTime ?? 0)
+      : 0;
+  const resolvedTime =
+    glide.time !== undefined && (glide.time !== 0 || legacyTime === 0)
+      ? glide.time
+      : legacyTime;
+
+  return {
+    id,
+    time: resolvedTime ?? 0,
+    active: glide.active ?? false,
+  };
+}
 
 /**
  * Serializes the current synth state to a Patch object
@@ -43,6 +64,7 @@ export function serializeCurrentPatch(
   envelopes: Map<string, EnvelopeConfig>,
   lfos: Map<string, LfoState>,
   samplers: Map<string, SamplerState>,
+  glides: Map<string, GlideState>,
   convolvers: Map<string, ConvolverState>,
   delays: Map<string, DelayState>,
   choruses: Map<string, ChorusState>,
@@ -71,6 +93,7 @@ export function serializeCurrentPatch(
     envelopes: mapToRecord(envelopes),
     lfos: mapToRecord(lfos),
     samplers: mapToRecord(samplers),
+    glides: mapToRecord(glides),
     convolvers: mapToRecord(convolvers),
     delays: mapToRecord(delays),
     choruses: mapToRecord(choruses),
@@ -106,6 +129,7 @@ export interface DeserializedPatch {
   envelopes: Map<string, EnvelopeConfig>;
   lfos: Map<string, LfoState>;
   samplers: Map<string, SamplerState>;
+  glides: Map<string, GlideState>;
   convolvers: Map<string, ConvolverState>;
   delays: Map<string, DelayState>;
   choruses: Map<string, ChorusState>;
@@ -127,6 +151,12 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
       }),
     ]),
   );
+  const normalizedGlides = new Map(
+    Array.from(recordToMap(patch.synthState.glides).entries()).map(([id, glide]) => [
+      id,
+      normalizeGlideState(glide, id),
+    ]),
+  );
   const result: DeserializedPatch = {
     metadata: patch.metadata,
     layout,
@@ -136,6 +166,7 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
     envelopes: recordToMap(patch.synthState.envelopes),
     lfos: recordToMap(patch.synthState.lfos),
     samplers: normalizedSamplers,
+    glides: normalizedGlides,
     convolvers: recordToMap(patch.synthState.convolvers),
     delays: recordToMap(patch.synthState.delays),
     choruses: recordToMap(patch.synthState.choruses),
@@ -313,6 +344,9 @@ function mapToRecord<T>(
  */
 function recordToMap<T>(record: Record<string | number, T>): Map<string, T> {
   const map = new Map<string, T>();
+  if (!record) {
+    return map;
+  }
   for (const [key, value] of Object.entries(record)) {
     map.set(String(key), value);
   }

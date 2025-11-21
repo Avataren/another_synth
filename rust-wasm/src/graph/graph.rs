@@ -187,10 +187,15 @@ impl AudioGraph {
         if ports.contains_key(&PortId::GlobalFrequency) {
             let source_node = self.global_glide_node.or(self.global_frequency_node);
             if let Some(global_node_id) = source_node {
+                let from_port = if Some(global_node_id) == self.global_glide_node {
+                    PortId::AudioOutput0
+                } else {
+                    PortId::GlobalFrequency
+                };
                 // Create a connection from the global frequency node's output
                 self.add_connection(Connection {
                     from_node: global_node_id,
-                    from_port: PortId::GlobalFrequency,
+                    from_port,
                     to_node: id,
                     to_port: PortId::GlobalFrequency,
                     amount: 1.0,

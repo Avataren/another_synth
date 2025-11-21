@@ -186,8 +186,39 @@ impl AudioEngine {
     }
 
     pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, String> {
-        let patch: PatchFile = serde_json::from_str(patch_json)
+        let mut patch: PatchFile = serde_json::from_str(patch_json)
             .map_err(|e| format!("Failed to parse patch JSON: {}", e))?;
+
+        if let Some(canonical) = patch.synth_state.layout.canonical_voice.as_mut() {
+            let has_glide = canonical
+                .nodes
+                .get("glide")
+                .map(|v| !v.is_empty())
+                .unwrap_or(false);
+            if !has_glide {
+                let new_id = NodeId::new().0.to_string();
+                canonical
+                    .nodes
+                    .entry("glide".to_string())
+                    .or_default()
+                    .push(PatchNode {
+                        id: new_id.clone(),
+                        node_type: "glide".to_string(),
+                        name: "Glide".to_string(),
+                    });
+                patch
+                    .synth_state
+                    .glides
+                    .entry(new_id.clone())
+                    .or_insert(GlideState {
+                        glide_id: new_id,
+                        time: 0.0,
+                        rise_time: None,
+                        fall_time: None,
+                        active: false,
+                    });
+            }
+        }
 
         let layout = &patch.synth_state.layout;
         let voice_count = layout.resolved_voice_count();
@@ -248,6 +279,31 @@ impl AudioEngine {
                             // If the node is a global node, store its ID for this voice
                             match node_type {
                                 "global_frequency" => voice.graph.global_frequency_node = Some(id),
+                                "glide" => {
+                                    voice.graph.global_glide_node = Some(id);
+                                    if let Some(global_freq) = voice.graph.global_frequency_node {
+                                        voice.graph.add_connection(Connection {
+                                            from_node: global_freq,
+                                            from_port: PortId::GlobalFrequency,
+                                            to_node: id,
+                                            to_port: PortId::AudioInput0,
+                                            amount: 1.0,
+                                            modulation_type: ModulationType::Additive,
+                                            modulation_transform: ModulationTransformation::None,
+                                        });
+                                    }
+                                    if let Some(gate_mixer) = voice.graph.global_gatemixer_node {
+                                        voice.graph.add_connection(Connection {
+                                            from_node: gate_mixer,
+                                            from_port: PortId::CombinedGate,
+                                            to_node: id,
+                                            to_port: PortId::CombinedGate,
+                                            amount: 1.0,
+                                            modulation_type: ModulationType::Additive,
+                                            modulation_transform: ModulationTransformation::None,
+                                        });
+                                    }
+                                }
                                 "global_velocity" => voice.graph.global_velocity_node = Some(id),
                                 "gatemixer" => voice.graph.global_gatemixer_node = Some(id),
                                 "mixer" => voice.graph.set_output_node(id),
@@ -258,6 +314,23 @@ impl AudioEngine {
                 }
             }
         }
+        // Ensure the glide hears the combined gate even though the gate mixer is created later.
+        for voice in &mut self.voices {
+            if let (Some(glide_id), Some(gate_mixer_id)) =
+                (voice.graph.global_glide_node, voice.graph.global_gatemixer_node)
+            {
+                voice.graph.add_connection(Connection {
+                    from_node: gate_mixer_id,
+                    from_port: PortId::CombinedGate,
+                    to_node: glide_id,
+                    to_port: PortId::CombinedGate,
+                    amount: 1.0,
+                    modulation_type: ModulationType::Additive,
+                    modulation_transform: ModulationTransformation::None,
+                });
+            }
+        }
+
         Ok(())
     }
 
@@ -286,6 +359,11 @@ impl AudioEngine {
             "global_frequency" => Ok(Box::new(GlobalFrequencyNode::new(440.0, self.block_size))),
             "global_velocity" => Ok(Box::new(GlobalVelocityNode::new(1.0, self.block_size))),
             "gatemixer" => Ok(Box::new(GateMixer::new())),
+            "glide" => {
+                let mut glide = Glide::new(self.sample_rate, 0.0);
+                glide.set_active(false);
+                Ok(Box::new(glide))
+            }
             // "noise" => Ok(Box::new(NoiseGenerator::new(self.sample_rate))),
             // "sampler" => {
             //     let sample_data = Rc::new(RefCell::new(SampleData::new()));
@@ -318,11 +396,22 @@ impl AudioEngine {
                     })
                     .unwrap_or(PortId::AudioOutput0);
 
+                let mut effective_from_node = from_node;
+                let mut effective_from_port = from_port;
+                let to_port = PortId::from_u32(conn_data.target);
+
+                if to_port == PortId::GlobalFrequency {
+                    if let Some(glide_node) = voice.graph.global_glide_node {
+                        effective_from_node = glide_node;
+                        effective_from_port = PortId::AudioOutput0;
+                    }
+                }
+
                 let connection = Connection {
-                    from_node,
-                    from_port,
+                    from_node: effective_from_node,
+                    from_port: effective_from_port,
                     to_node,
-                    to_port: PortId::from_u32(conn_data.target),
+                    to_port,
                     amount: conn_data.amount,
                     modulation_type: ModulationType::from_i32(conn_data.modulation_type),
                     modulation_transform: ModulationTransformation::from_i32(
@@ -361,6 +450,17 @@ impl AudioEngine {
                 config.release_curve,
                 config.active,
             )?;
+        }
+        for glide in patch.synth_state.glides.values() {
+            let glide_id = parse_node_id(&glide.glide_id)?;
+            for voice in &mut self.voices {
+                if let Some(node) = voice.graph.get_node_mut(glide_id) {
+                    if let Some(glide_node) = node.as_any_mut().downcast_mut::<Glide>() {
+                        glide_node.set_time(glide.resolved_time());
+                        glide_node.set_active(glide.active);
+                    }
+                }
+            }
         }
         // ... and so on for other state types (LFOs, filters, etc.)
         Ok(())
@@ -631,13 +731,36 @@ impl AudioEngine {
         Ok(filter_id.0.as_u128() as usize)
     }
 
-    pub fn create_glide(&mut self, rise_time: f32, fall_time: f32) -> Result<usize, String> {
+    pub fn create_glide(&mut self, glide_time: f32) -> Result<usize, String> {
         let glide_id = NodeId::new();
         for voice in &mut self.voices {
             voice.graph.add_node_with_id(
                 glide_id,
-                Box::new(Glide::new(self.sample_rate, rise_time, fall_time)),
+                Box::new(Glide::new(self.sample_rate, glide_time)),
             );
+            voice.graph.global_glide_node = Some(glide_id);
+            if let Some(global_freq) = voice.graph.global_frequency_node {
+                voice.graph.add_connection(Connection {
+                    from_node: global_freq,
+                    from_port: PortId::GlobalFrequency,
+                    to_node: glide_id,
+                    to_port: PortId::AudioInput0,
+                    amount: 1.0,
+                    modulation_type: ModulationType::Additive,
+                    modulation_transform: ModulationTransformation::None,
+                });
+            }
+            if let Some(gate_mixer_id) = voice.graph.global_gatemixer_node {
+                voice.graph.add_connection(Connection {
+                    from_node: gate_mixer_id,
+                    from_port: PortId::CombinedGate,
+                    to_node: glide_id,
+                    to_port: PortId::CombinedGate,
+                    amount: 1.0,
+                    modulation_type: ModulationType::Additive,
+                    modulation_transform: ModulationTransformation::None,
+                });
+            }
         }
         Ok(glide_id.0.as_u128() as usize)
     }

@@ -11,6 +11,7 @@ import type {
   ChorusState,
   ReverbState,
   VelocityState,
+  GlideState,
 } from './synth-layout';
 import type { NoiseState } from './noise';
 
@@ -97,6 +98,9 @@ export interface SynthState {
 
   /** Sampler states by node ID */
   samplers: Record<string, SamplerState>;
+
+  /** Glide states by node ID */
+  glides: Record<string, GlideState>;
 
   /** Convolver states by node ID */
   convolvers: Record<string, ConvolverState>;
@@ -228,6 +232,7 @@ export function createEmptySynthState(): SynthState {
     envelopes: {},
     lfos: {},
     samplers: {},
+    glides: {},
     convolvers: {},
     delays: {},
     choruses: {},

@@ -11,6 +11,7 @@ import {
   type DelayState,
   type EnvelopeConfig,
   type FilterState,
+  type GlideState,
   type LfoState,
   type ReverbState,
   type SamplerState,
@@ -59,6 +60,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
     envelopeStates: new Map<string, EnvelopeConfig>(),
     convolverStates: new Map<string, ConvolverState>(),
     delayStates: new Map<string, DelayState>(),
+    glideStates: new Map<string, GlideState>(),
     filterStates: new Map<string, FilterState>(),
     lfoStates: new Map<string, LfoState>(),
     chorusStates: new Map<string, ChorusState>(),
@@ -112,6 +114,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       prune(this.filterStates);
       prune(this.convolverStates);
       prune(this.delayStates);
+      prune(this.glideStates);
       prune(this.chorusStates);
       prune(this.reverbStates);
 
@@ -220,6 +223,16 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
         }
       });
 
+      getNodesOfType(voice, VoiceNodeType.Glide)?.forEach((node) => {
+        if (!this.glideStates.has(node.id)) {
+          this.glideStates.set(node.id, {
+            id: node.id,
+            time: 0.0,
+            active: false,
+          });
+        }
+      });
+
     },
     resetCurrentStateToDefaults(applyToWasm = true) {
       this.oscillatorStates = new Map();
@@ -294,6 +307,13 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
 
       this.filterStates.forEach((state, nodeId) => {
         instrument.updateFilterState(nodeId, {
+          ...state,
+          id: nodeId,
+        });
+      });
+
+      this.glideStates.forEach((state, nodeId) => {
+        instrument.updateGlideState(nodeId, {
           ...state,
           id: nodeId,
         });
@@ -418,6 +438,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       envelopes: Map<string, EnvelopeConfig>;
       lfos: Map<string, LfoState>;
       samplers: Map<string, SamplerState>;
+      glides: Map<string, GlideState>;
       convolvers: Map<string, ConvolverState>;
       delays: Map<string, DelayState>;
       choruses: Map<string, ChorusState>;
@@ -439,6 +460,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
           }),
         ]),
       );
+      this.glideStates = deserialized.glides;
       this.convolverStates = deserialized.convolvers;
       this.delayStates = deserialized.delays;
       this.chorusStates = deserialized.choruses;
@@ -457,6 +479,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.lfoStates.delete(nodeId);
       this.filterStates.delete(nodeId);
       this.delayStates.delete(nodeId);
+      this.glideStates.delete(nodeId);
       this.convolverStates.delete(nodeId);
       this.chorusStates.delete(nodeId);
       this.samplerStates.delete(nodeId);

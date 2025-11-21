@@ -702,14 +702,13 @@ export class AudioEngine {
     }
     /**
      * @param {string} glide_id
-     * @param {number} rise_time
-     * @param {number} fall_time
+     * @param {number} glide_time
      * @param {boolean} active
      */
-    update_glide(glide_id, rise_time, fall_time, active) {
+    update_glide(glide_id, glide_time, active) {
         const ptr0 = passStringToWasm0(glide_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.audioengine_update_glide(this.__wbg_ptr, ptr0, len0, rise_time, fall_time, active);
+        const ret = wasm.audioengine_update_glide(this.__wbg_ptr, ptr0, len0, glide_time, active);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

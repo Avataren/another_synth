@@ -100,6 +100,14 @@
             :componentName="VelocityComponent"
             nodeLabel="Velocity"
           />
+
+          <generic-tab-container
+            v-if="glideNodes.length"
+            :nodes="glideNodes"
+            :destinationNode="destinationNode"
+            :componentName="GlideComponent"
+            nodeLabel="Glide"
+          />
         </div>
 
         <!-- Modulators Column -->
@@ -261,6 +269,7 @@ import SamplerComponent from 'src/components/SamplerComponent.vue';
 // Modulators DSP components
 import LfoComponent from 'src/components/LfoComponent.vue';
 import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
+import GlideComponent from 'src/components/GlideComponent.vue';
 
 // Filters DSP components
 import FilterComponent from 'src/components/FilterComponent.vue';
@@ -282,6 +291,11 @@ const { destinationNode } = storeToRefs(instrumentStore);
 // Velocity (only one instance)
 const velocityNodes = computed(() => {
   const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.GlobalVelocity);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const glideNodes = computed(() => {
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Glide);
   return Array.isArray(nodes) ? nodes : [];
 });
 

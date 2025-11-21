@@ -964,3 +964,10 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Worklet `handleLoadPatch` now reapplies node names from the patch JSON onto the voice layouts before broadcasting `synthLayout`, and caches the id→name map to reapply on every layout post. Custom labels like “Amp Envelope” survive the roundtrip even though the WASM engine reports default names. `layout-store` also avoids overriding incoming custom names when nodes arrive in object form.
 - Fire-and-forget convolver updates can throw `DataCloneError` when Vue proxies or reactive Maps are passed to `postMessage`. `InstrumentV2.updateConvolverState` now unwraps with `toRaw` and JSON clones the payload (also forcing `id`), so callers should route convolver updates through that method instead of posting reactive objects directly.
 - Preset toolbar now exposes a 1–8 voice dropdown. Selecting a new value updates `layout-store`’s `voiceCount`, serializes the current patch with that count, and reapplies it via `patch-store.setVoiceCount`, so per-patch polyphony is preserved on reload.
+
+## New discovery: Glide / Portamento handling (2025)
+
+- Glide now uses a single `time` field (legacy `riseTime`/`fallTime` still accepted) and only slews while the gate is high; on gate-off it latches to the target immediately instead of continuing to drift.
+- `GlideState::resolved_time()` in Rust and `normalizeGlideState` in TS collapse old patches by taking the max of legacy rise/fall times when `time` is absent or zero.
+- WASM and native builders now always wire `GateMixer -> Glide (CombinedGate)` after constructing the graph so the glide sees gate changes even though `gatemixer` is created after `glide` in `NODE_CREATION_ORDER`.
+- `InstrumentV2.noteOn` skips the brief gate off/on pulse when `voiceLimit === 1`, preventing stolen monophonic voices from dropping gate (which could kill the new note) and enabling legato portamento.

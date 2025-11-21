@@ -617,7 +617,7 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     let env_id = engine.create_envelope()?;
     let filter_env_id = engine.create_envelope()?;
     // Moderate glide for the lead melody (in seconds)
-    let glide_id = engine.create_glide(0.06, 0.06)?;
+    let glide_id = engine.create_glide(0.06)?;
 
     engine.update_wavetable_oscillator(
         osc_id,

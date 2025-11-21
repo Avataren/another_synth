@@ -6,33 +6,29 @@ use crate::traits::{AudioNode, PortId};
 
 pub struct Glide {
     sample_rate: f32,
-    rise_time: f32,
-    fall_time: f32,
-    rise_alpha: f32,
-    fall_alpha: f32,
+    glide_time: f32,
+    alpha: f32,
     current: f32,
     active: bool,
     last_gate_value: f32,
+    initialized: bool,
 }
 
 impl Glide {
-    pub fn new(sample_rate: f32, rise_time: f32, fall_time: f32) -> Self {
+    pub fn new(sample_rate: f32, glide_time: f32) -> Self {
         let sample_rate = sample_rate.max(1.0);
-        let rise_time = rise_time.max(0.0);
-        let fall_time = fall_time.max(0.0);
+        let glide_time = glide_time.max(0.0);
 
-        let rise_alpha = Self::time_to_alpha(sample_rate, rise_time);
-        let fall_alpha = Self::time_to_alpha(sample_rate, fall_time);
+        let alpha = Self::time_to_alpha(sample_rate, glide_time);
 
         Self {
             sample_rate,
-            rise_time,
-            fall_time,
-            rise_alpha,
-            fall_alpha,
+            glide_time,
+            alpha,
             current: 0.0,
             active: true,
             last_gate_value: 0.0,
+            initialized: false,
         }
     }
 
@@ -47,29 +43,18 @@ impl Glide {
 
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate.max(1.0);
-        self.rise_alpha = Self::time_to_alpha(self.sample_rate, self.rise_time);
-        self.fall_alpha = Self::time_to_alpha(self.sample_rate, self.fall_time);
+        self.alpha = Self::time_to_alpha(self.sample_rate, self.glide_time);
     }
 
-    pub fn set_rise_time(&mut self, rise_time: f32) {
-        self.rise_time = rise_time.max(0.0);
-        self.rise_alpha = Self::time_to_alpha(self.sample_rate, self.rise_time);
-    }
-
-    pub fn set_fall_time(&mut self, fall_time: f32) {
-        self.fall_time = fall_time.max(0.0);
-        self.fall_alpha = Self::time_to_alpha(self.sample_rate, self.fall_time);
+    pub fn set_time(&mut self, glide_time: f32) {
+        self.glide_time = glide_time.max(0.0);
+        self.alpha = Self::time_to_alpha(self.sample_rate, self.glide_time);
     }
 
     #[inline]
     fn next_value(&mut self, target: f32) -> f32 {
-        let alpha = if target >= self.current {
-            self.rise_alpha
-        } else {
-            self.fall_alpha
-        };
         let delta = target - self.current;
-        self.current += alpha * delta;
+        self.current += self.alpha * delta;
         self.current
     }
 }
@@ -112,9 +97,8 @@ impl AudioNode for Glide {
             return;
         }
 
-        // Optional gate input (CombinedGate). If present, we use it to
-        // detect new note-ons and bypass glide on 0 -> 1 edges so that
-        // each new gated note starts at its correct frequency.
+        // Optional gate input (CombinedGate) - used to disable glide when gate is off
+        // and to avoid sliding after note releases.
         let gate_buffer = inputs
             .get(&PortId::CombinedGate)
             .and_then(|sources| sources.first())
@@ -124,36 +108,53 @@ impl AudioNode for Glide {
             output[..buffer_size].fill(self.current);
             if let Some(gates) = gate_buffer {
                 if !gates.is_empty() {
-                    self.last_gate_value = gates[gates.len().saturating_sub(1)];
+                    self.last_gate_value = *gates.last().unwrap_or(&self.last_gate_value);
                 }
             }
             return;
         }
 
-        // If we have a gate buffer, treat the gate as block-rate and
-        // disable glide on 0 -> 1 edges (new notes).
-        if let Some(gates) = gate_buffer {
-            if !gates.is_empty() {
-                let gate_now = gates[0];
-                let was_open = self.last_gate_value > 0.5;
-                let is_open = gate_now > 0.5;
+        let gate_present = gate_buffer.is_some();
+        let gate_now = gate_buffer
+            .and_then(|g| g.first())
+            .copied()
+            .unwrap_or(1.0);
+        let gate_last_sample = gate_buffer
+            .and_then(|g| g.last())
+            .copied()
+            .unwrap_or(gate_now);
+        let was_open = if gate_present { self.last_gate_value > 0.5 } else { true };
+        let is_open = if gate_present { gate_now > 0.5 } else { true };
 
-                if is_open && !was_open {
-                    // New gate edge: start directly at target without interpolation.
-                    let len = input.len().min(buffer_size);
-                    output[..len].copy_from_slice(&input[..len]);
-                    if len > 0 {
-                        self.current = input[len - 1];
-                    }
-                    if len < buffer_size {
-                        output[len..buffer_size].fill(self.current);
-                    }
-                    self.last_gate_value = gates[gates.len().saturating_sub(1)];
-                    return;
-                }
-
-                self.last_gate_value = gates[gates.len().saturating_sub(1)];
+        // If the gate is closed, bypass glide and latch to the current input.
+        if !is_open {
+            let len = input.len().min(buffer_size);
+            output[..len].copy_from_slice(&input[..len]);
+            if len > 0 {
+                self.current = input[len - 1];
+                self.initialized = true;
             }
+            if len < buffer_size {
+                output[len..buffer_size].fill(self.current);
+            }
+            self.last_gate_value = if gate_present { gate_last_sample } else { 1.0 };
+            return;
+        }
+
+        // On first activation or after a gate-off period, snap to the input
+        // so portamento only engages while the gate stays high.
+        if !was_open || !self.initialized {
+            let len = input.len().min(buffer_size);
+            output[..len].copy_from_slice(&input[..len]);
+            if len > 0 {
+                self.current = input[len - 1];
+                self.initialized = true;
+            }
+            if len < buffer_size {
+                output[len..buffer_size].fill(self.current);
+            }
+            self.last_gate_value = if gate_present { gate_last_sample } else { 1.0 };
+            return;
         }
 
         let len = input.len().min(buffer_size);
@@ -163,11 +164,13 @@ impl AudioNode for Glide {
         if len < buffer_size {
             output[len..buffer_size].fill(self.current);
         }
+        self.last_gate_value = if gate_present { gate_last_sample } else { 1.0 };
     }
 
     fn reset(&mut self) {
         self.current = 0.0;
         self.last_gate_value = 0.0;
+        self.initialized = false;
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -179,7 +182,7 @@ impl AudioNode for Glide {
     }
 
     fn is_active(&self) -> bool {
-        self.active
+        true
     }
 
     fn set_active(&mut self, active: bool) {
@@ -196,6 +199,10 @@ impl AudioNode for Glide {
     fn node_type(&self) -> &str {
         "glide"
     }
+
+    fn should_process(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -206,7 +213,7 @@ mod tests {
     #[test]
     fn glide_zero_time_is_passthrough() {
         let sample_rate = 48_000.0;
-        let mut node = Glide::new(sample_rate, 0.0, 0.0);
+        let mut node = Glide::new(sample_rate, 0.0);
         let buffer_size = 16;
 
         let input: Vec<f32> = (0..buffer_size).map(|i| i as f32).collect();
@@ -234,7 +241,7 @@ mod tests {
     #[test]
     fn glide_smooths_step_input() {
         let sample_rate = 1.0;
-        let mut node = Glide::new(sample_rate, 1.0, 1.0);
+        let mut node = Glide::new(sample_rate, 1.0);
         let buffer_size = 8;
 
         let mut input = vec![0.0; buffer_size];
@@ -268,5 +275,92 @@ mod tests {
         assert!(out_buf[6] > out_buf[5]);
         assert!(out_buf[7] > out_buf[6]);
         assert!(out_buf[7] < 1.0);
+    }
+
+    #[test]
+    fn glide_stops_sliding_when_gate_is_off() {
+        let sample_rate = 10.0;
+        let mut node = Glide::new(sample_rate, 0.5);
+        let buffer_size = 4;
+
+        // Block 1: initialize with gate on and steady input
+        let mut inputs: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
+        inputs.insert(
+            PortId::AudioInput0,
+            vec![ModulationSource {
+                buffer: vec![1.0; buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        inputs.insert(
+            PortId::CombinedGate,
+            vec![ModulationSource {
+                buffer: vec![1.0; buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        let mut out_buf = vec![0.0; buffer_size];
+        let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
+        outputs.insert(PortId::AudioOutput0, &mut out_buf[..]);
+        node.process(&inputs, &mut outputs, buffer_size);
+
+        // Block 2: gate still on, target drops to 0 -> should glide (not jump)
+        let mut inputs2: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
+        inputs2.insert(
+            PortId::AudioInput0,
+            vec![ModulationSource {
+                buffer: vec![0.0; buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        inputs2.insert(
+            PortId::CombinedGate,
+            vec![ModulationSource {
+                buffer: vec![1.0; buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        let mut out_buf2 = vec![0.0; buffer_size];
+        let mut outputs2: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
+        outputs2.insert(PortId::AudioOutput0, &mut out_buf2[..]);
+        node.process(&inputs2, &mut outputs2, buffer_size);
+        assert!(out_buf2[0] < 1.0 && out_buf2[0] > 0.0);
+
+        // Block 3: gate off, new target 0.5 should be passed through without glide
+        let mut inputs3: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
+        inputs3.insert(
+            PortId::AudioInput0,
+            vec![ModulationSource {
+                buffer: vec![0.5; buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        inputs3.insert(
+            PortId::CombinedGate,
+            vec![ModulationSource {
+                buffer: vec![0.0; buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        let mut out_buf3 = vec![0.0; buffer_size];
+        let mut outputs3: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
+        outputs3.insert(PortId::AudioOutput0, &mut out_buf3[..]);
+        node.process(&inputs3, &mut outputs3, buffer_size);
+
+        for sample in out_buf3 {
+            assert!((sample - 0.5).abs() < 1e-6);
+        }
     }
 }

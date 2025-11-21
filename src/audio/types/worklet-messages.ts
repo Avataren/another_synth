@@ -170,6 +170,15 @@ export interface UpdateVelocityMessage extends BaseMessage {
   };
 }
 
+export interface UpdateGlideMessage extends BaseMessage {
+  type: 'updateGlide';
+  glideId: string;
+  active: boolean;
+  time: number;
+  riseTime?: number;
+  fallTime?: number;
+}
+
 export interface UpdateNoiseMessage extends BaseMessage {
   type: 'updateNoise';
   noiseId: string;
@@ -368,6 +377,7 @@ export type WorkletMessage =
   | UpdateChorusMessage
   | UpdateReverbMessage
   | UpdateVelocityMessage
+  | UpdateGlideMessage
   | UpdateNoiseMessage
   // Connections
   | UpdateConnectionMessage

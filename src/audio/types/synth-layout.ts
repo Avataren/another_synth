@@ -15,6 +15,7 @@ export enum VoiceNodeType {
   Mixer = 'mixer',
   Noise = 'noise',
   Sampler = 'sampler',
+  Glide = 'glide',
   GlobalFrequency = 'global_frequency',
   GlobalVelocity = 'global_velocity',
   Convolver = 'convolver',
@@ -229,6 +230,15 @@ export interface VelocityState {
   sensitivity: number;
   randomize: number;
   active: boolean;
+}
+
+export interface GlideState {
+  id: string;
+  active: boolean;
+  time: number;
+  // Legacy fields retained for backward compatibility with older patches
+  riseTime?: number;
+  fallTime?: number;
 }
 
 export interface FilterState {

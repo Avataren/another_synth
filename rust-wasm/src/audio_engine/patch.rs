@@ -272,12 +272,34 @@ pub struct VelocityState {
 pub struct GlideState {
     #[serde(rename = "id")]
     pub glide_id: String,
-    #[serde(rename = "riseTime")]
-    pub rise_time: f32,
-    #[serde(rename = "fallTime")]
-    pub fall_time: f32,
+    #[serde(rename = "time", default)]
+    pub time: f32,
+    #[serde(rename = "riseTime", default, skip_serializing_if = "Option::is_none")]
+    pub rise_time: Option<f32>,
+    #[serde(rename = "fallTime", default, skip_serializing_if = "Option::is_none")]
+    pub fall_time: Option<f32>,
     #[serde(default)]
     pub active: bool,
+}
+
+impl GlideState {
+    /// Returns the single glide time, falling back to legacy rise/fall fields if necessary.
+    pub fn resolved_time(&self) -> f32 {
+        // If a modern time value is present (including 0.0), prefer it.
+        if self.rise_time.is_none() && self.fall_time.is_none() {
+            return self.time;
+        }
+
+        // Legacy patches may contain rise/fall without the unified time field.
+        if self.time == 0.0 {
+            return self
+                .rise_time
+                .unwrap_or(0.0)
+                .max(self.fall_time.unwrap_or(0.0));
+        }
+
+        self.time
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

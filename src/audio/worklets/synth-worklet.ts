@@ -261,6 +261,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'updateVelocity':
         this.handleUpdateVelocity(event.data);
         break;
+      case 'updateGlide':
+        this.handleUpdateGlide(event.data);
+        break;
       case 'deleteNode':
         this.handleDeleteNode(event.data);
         break;
@@ -793,6 +796,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Mixer]: [],
       [VoiceNodeType.Noise]: [],
       [VoiceNodeType.Sampler]: [],
+      [VoiceNodeType.Glide]: [],
       [VoiceNodeType.GlobalFrequency]: [],
       [VoiceNodeType.GlobalVelocity]: [],
       [VoiceNodeType.Convolver]: [],
@@ -844,6 +848,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'gatemixer':
           type = VoiceNodeType.GateMixer;
+          break;
+        case 'glide':
+          type = VoiceNodeType.Glide;
           break;
         case 'arpeggiator_generator':
           type = VoiceNodeType.ArpeggiatorGenerator;
@@ -1090,6 +1097,28 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.nodeId,
       data.config.sensitivity,
       data.config.randomize,
+    );
+  }
+
+  private handleUpdateGlide(data: {
+    type: string;
+    glideId: string;
+    time?: number;
+    riseTime?: number;
+    fallTime?: number;
+    active: boolean;
+  }) {
+    if (!this.audioEngine) return;
+    const glideTime =
+      data.time ??
+      Math.max(
+        data.riseTime ?? 0,
+        data.fallTime ?? 0,
+      );
+    this.audioEngine.update_glide(
+      data.glideId,
+      glideTime,
+      data.active,
     );
   }
 

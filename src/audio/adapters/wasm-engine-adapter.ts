@@ -460,6 +460,16 @@ export class WasmEngineAdapter {
     this.requireEngine().update_velocity(nodeId, sensitivity, randomize);
   }
 
+  updateGlide(glideId: string, time: number, active: boolean): void {
+    const engine = this.requireEngine() as AudioEngine & {
+      update_glide?: (id: string, time: number, active: boolean) => void;
+    };
+    if (!engine.update_glide) {
+      throw new Error('update_glide is not available on AudioEngine');
+    }
+    engine.update_glide(glideId, validateFiniteNumber(time, 'glide_time'), active);
+  }
+
   // ========================================================================
   // Connection Management
   // ========================================================================

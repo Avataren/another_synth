@@ -29,6 +29,7 @@ const RUST_TO_TS_NODE_TYPE: Record<string, VoiceNodeType> = {
   'noise_generator': VoiceNodeType.Noise,
   'sampler': VoiceNodeType.Sampler,
   'Sampler': VoiceNodeType.Sampler, // Handle inconsistent casing
+  'glide': VoiceNodeType.Glide,
   'global_frequency': VoiceNodeType.GlobalFrequency,
   'global_velocity': VoiceNodeType.GlobalVelocity,
   'convolver': VoiceNodeType.Convolver,
@@ -50,6 +51,7 @@ const TS_TO_RUST_NODE_TYPE: Record<VoiceNodeType, string> = {
   [VoiceNodeType.Mixer]: 'mixer',
   [VoiceNodeType.Noise]: 'noise_generator',
   [VoiceNodeType.Sampler]: 'sampler',
+  [VoiceNodeType.Glide]: 'glide',
   [VoiceNodeType.GlobalFrequency]: 'global_frequency',
   [VoiceNodeType.GlobalVelocity]: 'global_velocity',
   [VoiceNodeType.Convolver]: 'convolver',

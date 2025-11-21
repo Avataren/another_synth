@@ -768,14 +768,13 @@ var AudioEngine = class {
   }
   /**
    * @param {string} glide_id
-   * @param {number} rise_time
-   * @param {number} fall_time
+   * @param {number} glide_time
    * @param {boolean} active
    */
-  update_glide(glide_id, rise_time, fall_time, active) {
+  update_glide(glide_id, glide_time, active) {
     const ptr0 = passStringToWasm0(glide_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.audioengine_update_glide(this.__wbg_ptr, ptr0, len0, rise_time, fall_time, active);
+    const ret = wasm.audioengine_update_glide(this.__wbg_ptr, ptr0, len0, glide_time, active);
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
@@ -2811,6 +2810,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateVelocity":
         this.handleUpdateVelocity(event.data);
         break;
+      case "updateGlide":
+        this.handleUpdateGlide(event.data);
+        break;
       case "deleteNode":
         this.handleDeleteNode(event.data);
         break;
@@ -3207,6 +3209,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["mixer" /* Mixer */]: [],
       ["noise" /* Noise */]: [],
       ["sampler" /* Sampler */]: [],
+      ["glide" /* Glide */]: [],
       ["global_frequency" /* GlobalFrequency */]: [],
       ["global_velocity" /* GlobalVelocity */]: [],
       ["convolver" /* Convolver */]: [],
@@ -3257,6 +3260,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "gatemixer":
           type = "gatemixer" /* GateMixer */;
+          break;
+        case "glide":
+          type = "glide" /* Glide */;
           break;
         case "arpeggiator_generator":
           type = "arpeggiator_generator" /* ArpeggiatorGenerator */;
@@ -3450,6 +3456,18 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.nodeId,
       data.config.sensitivity,
       data.config.randomize
+    );
+  }
+  handleUpdateGlide(data) {
+    if (!this.audioEngine) return;
+    const glideTime = data.time ?? Math.max(
+      data.riseTime ?? 0,
+      data.fallTime ?? 0
+    );
+    this.audioEngine.update_glide(
+      data.glideId,
+      glideTime,
+      data.active
     );
   }
   handleUpdateConvolver(data) {
