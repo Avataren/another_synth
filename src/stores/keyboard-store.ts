@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { WebMidi } from 'webmidi';
+import { useLayoutStore } from './layout-store';
 
 interface NoteEvent {
   note: number;
@@ -13,6 +14,7 @@ export const useKeyboardStore = defineStore('keyboard', {
     noteEvents: [] as NoteEvent[],
     // New property to track only the latest event (for performance)
     latestEvent: null as NoteEvent | null,
+    noteOnTimestamps: new Map<number, number>(),
     keyMap: {
       // Lower octave - white keys
       'KeyZ': 48, // C3
@@ -73,29 +75,76 @@ export const useKeyboardStore = defineStore('keyboard', {
   },
 
   actions: {
+    emitNoteEvent(event: NoteEvent) {
+      this.noteEvents.push(event);
+      this.latestEvent = event;
+    },
+
+    getVoiceLimit(): number {
+      const layoutStore = useLayoutStore();
+      const count =
+        layoutStore.synthLayout?.voiceCount ??
+        layoutStore.synthLayout?.voices.length ??
+        8;
+      return Math.min(8, Math.max(1, Math.round(count || 8)));
+    },
+
+    stealOldestNote(now: number): number | null {
+      if (this.activeNotes.size === 0) return null;
+      let oldestNote: number | null = null;
+      let oldestTime = Number.POSITIVE_INFINITY;
+      this.activeNotes.forEach((n) => {
+        const startedAt = this.noteOnTimestamps.get(n) ?? Number.POSITIVE_INFINITY;
+        if (startedAt < oldestTime) {
+          oldestTime = startedAt;
+          oldestNote = n;
+        }
+      });
+      if (oldestNote !== null) {
+        // Emit a quick gate-off for the stolen note
+        this.activeNotes.delete(oldestNote);
+        this.noteOnTimestamps.delete(oldestNote);
+        this.emitNoteEvent({
+          note: oldestNote,
+          velocity: 0,
+          timestamp: now,
+        });
+      }
+      return oldestNote;
+    },
+
     // --- Core note handling ---
     noteOn(note: number, velocity = 127) {
-      if (!this.activeNotes.has(note)) {
-        this.activeNotes.add(note);
-        const event: NoteEvent = {
-          note,
-          velocity,
-          timestamp: performance.now(),
-        };
-        this.noteEvents.push(event);
-        this.latestEvent = event; // update only the latest event
+      // Allow retriggering the same note: send a quick off first
+      if (this.activeNotes.has(note)) {
+        this.noteOff(note);
       }
+
+      const voiceLimit = this.getVoiceLimit();
+      const now = performance.now();
+
+      // Voice stealing: release oldest active note when at capacity
+      if (this.activeNotes.size >= voiceLimit) {
+        this.stealOldestNote(now);
+      }
+
+      this.activeNotes.add(note);
+      this.noteOnTimestamps.set(note, now);
+      this.emitNoteEvent({
+        note,
+        velocity,
+        timestamp: now + 0.0001, // tiny delta to follow gate-off
+      });
     },
 
     noteOff(note: number) {
       this.activeNotes.delete(note);
-      const event: NoteEvent = {
+      this.noteOnTimestamps.delete(note);
+      this.emitNoteEvent({
         note,
         velocity: 0,
         timestamp: performance.now(),
-      };
-      this.noteEvents.push(event);
-      this.latestEvent = event; // update only the latest event
+      });
     },
 
     clearAllNotes() {

@@ -52,6 +52,7 @@ export default class InstrumentV2 {
   private activeNotes: Map<number, number> = new Map();
   private voiceLastUsedTime: number[] = [];
   private messageHandler: WorkletMessageHandler;
+  private voiceLimit: number;
 
   public get isReady(): boolean {
     return this.messageHandler.isInitialized();
@@ -65,6 +66,7 @@ export default class InstrumentV2 {
     this.outputNode = audioContext.createGain();
     (this.outputNode as GainNode).gain.value = 0.5;
     this.outputNode.connect(destination);
+    this.voiceLimit = this.num_voices;
     this.voiceLastUsedTime = new Array(this.num_voices).fill(0);
 
     // Initialize message handler
@@ -115,6 +117,17 @@ export default class InstrumentV2 {
     }
 
     try {
+      // Track voice limit from patch layout (clamped to available params)
+      const patchLayout = patch.synthState?.layout as
+        | { voiceCount?: number; voices?: unknown[] }
+        | undefined;
+      const patchVoiceCount =
+        patchLayout?.voiceCount ?? patchLayout?.voices?.length ?? this.num_voices;
+      this.voiceLimit = Math.min(
+        this.num_voices,
+        Math.max(1, Number(patchVoiceCount) || this.num_voices),
+      );
+
       // Strip Vue reactivity and prepare patch for WASM
       const cleanPatch = JSON.parse(
         JSON.stringify(patch, (key, value) => {
@@ -730,7 +743,7 @@ export default class InstrumentV2 {
   // ========================================================================
 
   public noteOn(noteNumber: number, velocity: number): void {
-    const voiceIndex = this.allocateVoice(noteNumber);
+    const { voiceIndex, stolenNote } = this.allocateVoice(noteNumber);
     const isRetrigger = this.activeNotes.get(noteNumber) === voiceIndex;
 
     this.activeNotes.set(noteNumber, voiceIndex);
@@ -742,7 +755,7 @@ export default class InstrumentV2 {
 
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) {
-      if (isRetrigger) {
+      if (isRetrigger || stolenNote !== null) {
         // Force envelope retrigger by creating a brief gate off-on pulse
         gateParam.setValueAtTime(0, this.audioContext.currentTime);
         gateParam.setValueAtTime(1, this.audioContext.currentTime + 0.001); // 1ms gate-off pulse
@@ -790,26 +803,26 @@ export default class InstrumentV2 {
   // Voice Allocation
   // ========================================================================
 
-  private allocateVoice(noteNumber: number): number {
+  private allocateVoice(noteNumber: number): { voiceIndex: number; stolenNote: number | null } {
     // Check if this note is already playing
     const existingVoice = this.activeNotes.get(noteNumber);
     if (existingVoice !== undefined) {
-      return existingVoice;
+      return { voiceIndex: existingVoice, stolenNote: null };
     }
 
-    // Find first free voice
-    for (let i = 0; i < this.num_voices; i++) {
+    // Find first free voice within the current voice limit
+    for (let i = 0; i < this.voiceLimit; i++) {
       if (!Array.from(this.activeNotes.values()).includes(i)) {
-        return i;
+        return { voiceIndex: i, stolenNote: null };
       }
     }
 
     // No free voice - steal the oldest one
     let oldestVoice = 0;
-    let oldestTime = this.voiceLastUsedTime[0] ?? 0;
+    let oldestTime = this.voiceLastUsedTime[0] ?? Number.POSITIVE_INFINITY;
 
-    for (let i = 1; i < this.num_voices; i++) {
-      const time = this.voiceLastUsedTime[i] ?? 0;
+    for (let i = 1; i < this.voiceLimit; i++) {
+      const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
       if (time < oldestTime) {
         oldestTime = time;
         oldestVoice = i;
@@ -817,14 +830,16 @@ export default class InstrumentV2 {
     }
 
     // Remove the stolen voice from activeNotes
+    let stolenNote: number | null = null;
     for (const [note, voice] of this.activeNotes.entries()) {
       if (voice === oldestVoice) {
         this.activeNotes.delete(note);
+        stolenNote = note;
         break;
       }
     }
 
-    return oldestVoice;
+    return { voiceIndex: oldestVoice, stolenNote };
   }
 
   private midiNoteToFrequency(note: number): number {

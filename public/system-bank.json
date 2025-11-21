@@ -3,7 +3,7 @@
     "id": "bank_1763675029582_nj2q0ey",
     "name": "Default Bank",
     "created": 1763675029582,
-    "modified": 1763727793541,
+    "modified": 1763731623535,
     "version": 1
   },
   "patches": [
@@ -268,13 +268,13 @@
         "id": "patch_1763675032191_paui29z",
         "name": "SawBass1",
         "created": 1763675032191,
-        "modified": 1763718251414,
+        "modified": 1763731623535,
         "version": 1,
         "category": "Factory/Bass"
       },
       "synthState": {
         "layout": {
-          "voiceCount": 8,
+          "voiceCount": 1,
           "canonicalVoice": {
             "id": 0,
             "nodes": {
@@ -465,8 +465,8 @@
         "filters": {
           "c493007e-fc24-c74f-c352-9b606b4f1b54": {
             "id": "c493007e-fc24-c74f-c352-9b606b4f1b54",
-            "cutoff": 4400,
-            "resonance": 0.652,
+            "cutoff": 5650,
+            "resonance": 0.604,
             "keytracking": 0,
             "comb_frequency": 220,
             "comb_dampening": 0.5,
