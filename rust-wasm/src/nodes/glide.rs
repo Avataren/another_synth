@@ -91,13 +91,6 @@ impl AudioNode for Glide {
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
-        if !self.active {
-            if let Some(out) = outputs.get_mut(&PortId::AudioOutput0) {
-                out[..buffer_size].fill(0.0);
-            }
-            return;
-        }
-
         let input = inputs
             .get(&PortId::AudioInput0)
             .and_then(|sources| sources.first())
@@ -108,6 +101,16 @@ impl AudioNode for Glide {
             Some(buf) => buf,
             None => return,
         };
+
+        if !self.active {
+            // Bypass: copy input through unchanged
+            let len = input.len().min(buffer_size);
+            output[..len].copy_from_slice(&input[..len]);
+            if len < buffer_size {
+                output[len..buffer_size].fill(self.current);
+            }
+            return;
+        }
 
         // Optional gate input (CombinedGate). If present, we use it to
         // detect new note-ons and bypass glide on 0 -> 1 edges so that

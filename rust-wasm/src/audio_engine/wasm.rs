@@ -14,10 +14,10 @@ use crate::nodes::morph_wavetable::{
 use crate::nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
     ArpeggiatorGenerator, Chorus, Convolver, Delay, Envelope, EnvelopeConfig, FilterCollection,
-    FilterSlope, Freeverb, GateMixer, GlobalFrequencyNode, GlobalVelocityNode, Lfo, LfoLoopMode,
-    LfoRetriggerMode, LfoWaveform, Limiter, Mixer, NoiseGenerator, NoiseType, NoiseUpdate,
-    SampleData, Sampler, SamplerLoopMode, SamplerTriggerMode, Waveform, WavetableBank,
-    WavetableOscillator, WavetableOscillatorStateUpdate,
+    FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode, GlobalVelocityNode, Lfo,
+    LfoLoopMode, LfoRetriggerMode, LfoWaveform, Limiter, Mixer, NoiseGenerator, NoiseType,
+    NoiseUpdate, SampleData, Sampler, SamplerLoopMode, SamplerTriggerMode, Waveform,
+    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
@@ -1785,6 +1785,34 @@ impl AudioEngine {
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn update_glide(
+        &mut self,
+        glide_id: &str,
+        rise_time: f32,
+        fall_time: f32,
+        active: bool,
+    ) -> Result<(), JsValue> {
+        let glide_id = NodeId::from_string(glide_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid glide_id UUID: {}", e)))?;
+
+        for voice in &mut self.voices {
+            if let Some(node) = voice.graph.get_node_mut(glide_id) {
+                if let Some(glide) = node.as_any_mut().downcast_mut::<Glide>() {
+                    glide.set_rise_time(rise_time);
+                    glide.set_fall_time(fall_time);
+                    glide.set_active(active);
+                } else {
+                    return Err(JsValue::from_str("Node is not a Glide"));
+                }
+            } else {
+                return Err(JsValue::from_str("Node not found"));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn update_sampler(
         &mut self,
         sampler_id: &str,
@@ -2291,6 +2319,38 @@ impl AudioEngine {
                     voice.graph.global_frequency_node = Some(node_id);
                 }
             }
+            "glide" => {
+                for voice in &mut self.voices {
+                    voice.graph.add_node_with_id(
+                        node_id,
+                        Box::new(Glide::new(self.sample_rate, 0.0, 0.0)),
+                    );
+                    voice.graph.global_glide_node = Some(node_id);
+
+                    if let Some(global_freq) = voice.graph.global_frequency_node {
+                        voice.graph.add_connection(Connection {
+                            from_node: global_freq,
+                            from_port: PortId::GlobalFrequency,
+                            to_node: node_id,
+                            to_port: PortId::AudioInput0,
+                            amount: 1.0,
+                            modulation_type: ModulationType::Additive,
+                            modulation_transform: ModulationTransformation::None,
+                        });
+                    }
+                    if let Some(gate_mixer) = voice.graph.global_gatemixer_node {
+                        voice.graph.add_connection(Connection {
+                            from_node: gate_mixer,
+                            from_port: PortId::CombinedGate,
+                            to_node: node_id,
+                            to_port: PortId::CombinedGate,
+                            amount: 1.0,
+                            modulation_type: ModulationType::Additive,
+                            modulation_transform: ModulationTransformation::None,
+                        });
+                    }
+                }
+            }
             "global_velocity" => {
                 for voice in &mut self.voices {
                     voice.graph.add_node_with_id(
@@ -2520,6 +2580,10 @@ impl AudioEngine {
                 sampler.trigger_mode,
                 sampler.active,
             )?;
+        }
+
+        for glide in patch.synth_state.glides.values() {
+            self.update_glide(&glide.glide_id, glide.rise_time, glide.fall_time, glide.active)?;
         }
 
         for chorus in patch.synth_state.choruses.values() {

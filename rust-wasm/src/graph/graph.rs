@@ -88,6 +88,7 @@ pub struct AudioGraph {
     >,
     pub(crate) temp_buffer_indices: Vec<usize>,
     pub(crate) global_frequency_node: Option<NodeId>,
+    pub(crate) global_glide_node: Option<NodeId>,
     pub(crate) global_velocity_node: Option<NodeId>,
     pub(crate) global_gatemixer_node: Option<NodeId>,
     pub(crate) output_node: Option<NodeId>,
@@ -109,6 +110,7 @@ impl AudioGraph {
             input_connections: FxHashMap::default(),
             temp_buffer_indices: Vec::new(),
             global_frequency_node: None,
+            global_glide_node: None,
             global_velocity_node: None,
             global_gatemixer_node: None,
             output_node: None,
@@ -148,6 +150,7 @@ impl AudioGraph {
 
         // Reset global node references and output node.
         self.global_frequency_node = None;
+        self.global_glide_node = None;
         self.global_velocity_node = None;
         self.global_gatemixer_node = None;
         self.output_node = None;
@@ -182,7 +185,8 @@ impl AudioGraph {
 
         // Auto-connect the GlobalFrequency node if the new node accepts it.
         if ports.contains_key(&PortId::GlobalFrequency) {
-            if let Some(global_node_id) = self.global_frequency_node {
+            let source_node = self.global_glide_node.or(self.global_frequency_node);
+            if let Some(global_node_id) = source_node {
                 // Create a connection from the global frequency node's output
                 self.add_connection(Connection {
                     from_node: global_node_id,

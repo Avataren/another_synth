@@ -44,6 +44,8 @@ pub struct SynthState {
     #[serde(default)]
     pub samplers: HashMap<String, SamplerState>,
     #[serde(default)]
+    pub glides: HashMap<String, GlideState>,
+    #[serde(default)]
     pub convolvers: HashMap<String, ConvolverState>,
     #[serde(default)]
     pub delays: HashMap<String, DelayState>,
@@ -263,6 +265,18 @@ pub struct NoiseState {
 pub struct VelocityState {
     pub sensitivity: f32,
     pub randomize: f32,
+    pub active: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GlideState {
+    #[serde(rename = "id")]
+    pub glide_id: String,
+    #[serde(rename = "riseTime")]
+    pub rise_time: f32,
+    #[serde(rename = "fallTime")]
+    pub fall_time: f32,
+    #[serde(default)]
     pub active: bool,
 }
 

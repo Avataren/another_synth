@@ -126,8 +126,9 @@ pub fn parse_audio_asset_id(asset_id: &str) -> Option<(String, String)> {
 }
 
 /// Node creation order - ensures dependencies are created first
-pub const NODE_CREATION_ORDER: [&str; 12] = [
+pub const NODE_CREATION_ORDER: [&str; 13] = [
     "global_frequency",
+    "glide",
     "global_velocity",
     "gatemixer",
     "mixer",
