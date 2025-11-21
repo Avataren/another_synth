@@ -723,6 +723,8 @@ export default class InstrumentV2 {
 
   public noteOn(noteNumber: number, velocity: number): void {
     const voiceIndex = this.allocateVoice(noteNumber);
+    const isRetrigger = this.activeNotes.get(noteNumber) === voiceIndex;
+
     this.activeNotes.set(noteNumber, voiceIndex);
     this.voiceLastUsedTime[voiceIndex] = Date.now();
 
@@ -731,7 +733,16 @@ export default class InstrumentV2 {
     if (!this.workletNode) return;
 
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
-    if (gateParam) gateParam.value = 1;
+    if (gateParam) {
+      if (isRetrigger) {
+        // Force envelope retrigger by creating a brief gate off-on pulse
+        gateParam.setValueAtTime(0, this.audioContext.currentTime);
+        gateParam.setValueAtTime(1, this.audioContext.currentTime + 0.001); // 1ms gate-off pulse
+      } else {
+        // New note, just set gate on
+        gateParam.value = 1;
+      }
+    }
 
     const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
     if (freqParam) freqParam.value = frequency;
