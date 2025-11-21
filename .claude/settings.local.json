@@ -9,7 +9,10 @@
       "Bash(cargo clean:*)",
       "Bash(npm run build:worklets:*)",
       "Bash(timeout /t 5)",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(cargo test:*)",
+      "Bash(/tmp/default-patch-with-assets.json)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

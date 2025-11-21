@@ -159,10 +159,14 @@ const handleWavFileUpload = async (event: Event) => {
 
       // Clear generator field since this is a custom upload (save binary data)
       const currentState = ensureConvolverState();
-      updateConvolverState({
+      const cleanState: ConvolverState = {
+        id: props.nodeId,
         wetMix: currentState.wetMix,
         active: currentState.active,
-      });
+        // Explicitly omit generator so binary data is saved
+      };
+      persistConvolverState(cleanState);
+      syncConvolverToInstrument(cleanState);
     } else {
       console.error('Instrument instance not available');
     }

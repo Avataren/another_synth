@@ -11,7 +11,6 @@ pub mod gate_mixer;
 pub mod global_frequency_node;
 pub mod global_velocity_node;
 pub mod glide;
-pub mod ladder_filter;
 pub mod lfo;
 pub mod limiter;
 pub mod mixer;
