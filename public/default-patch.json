@@ -3,7 +3,7 @@
     "id": "patch_1763675026019_na4f8vw",
     "name": "New Patch",
     "created": 1763675026019,
-    "modified": 1763675026019,
+    "modified": 1763726228538,
     "version": 1,
     "category": "Templates/Init"
   },
@@ -32,7 +32,7 @@
             {
               "id": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
               "type": "envelope",
-              "name": "Envelope"
+              "name": "Amp Envelope"
             }
           ],
           "lfo": [],

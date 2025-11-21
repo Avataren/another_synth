@@ -127,6 +127,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private stateVersion: number = 0;
   private automationAdapter: AutomationAdapter | null = null;
   private isApplyingPatch = false;
+  private patchNodeNames: Map<string, string> = new Map();
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -476,6 +477,80 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  /**
+   * Apply custom node names from the incoming patch JSON onto the in-memory
+   * voice layouts. The WASM engine reports default names, so we reconcile them
+   * here to keep UI labels in sync with patch metadata.
+   */
+  private applyPatchNamesToLayouts(patchJson: string): void {
+    if (!this.voiceLayouts || this.voiceLayouts.length === 0) return;
+
+    try {
+      const parsed = JSON.parse(patchJson);
+      const layout = parsed?.synthState?.layout;
+      const canonicalVoice =
+        layout?.canonicalVoice ??
+        (Array.isArray(layout?.voices) && layout.voices.length > 0
+          ? layout.voices[0]
+          : null);
+
+      const nodes = canonicalVoice?.nodes;
+      if (!nodes || typeof nodes !== 'object') return;
+
+      const nameById = new Map<string, string>();
+      const isNamedNode = (value: unknown): value is { id: string; name?: unknown } =>
+        !!value &&
+        typeof value === 'object' &&
+        'id' in value &&
+        typeof (value as { id: unknown }).id === 'string';
+
+      Object.values(nodes).forEach((nodeArray: unknown) => {
+        if (!Array.isArray(nodeArray)) return;
+        nodeArray.forEach((node: unknown) => {
+          if (!isNamedNode(node)) return;
+          const name = node.name;
+          if (typeof name === 'string' && name.trim().length > 0) {
+            nameById.set(node.id, name);
+          }
+        });
+      });
+
+      if (nameById.size === 0) return;
+      this.patchNodeNames = nameById;
+
+      this.voiceLayouts.forEach((voice) => {
+        Object.values(voice.nodes).forEach((nodeArray) => {
+          nodeArray.forEach((node) => {
+            const customName = nameById.get(node.id);
+            if (customName) {
+              node.name = customName;
+            }
+          });
+        });
+      });
+    } catch (err) {
+      console.warn('Failed to apply patch names to layouts', err);
+    }
+  }
+
+  /**
+   * Reapply any stored patch names onto current voice layouts before sending
+   * them to the main thread (covers later layout posts).
+   */
+  private applyStoredNamesToLayouts(): void {
+    if (!this.voiceLayouts || this.patchNodeNames.size === 0) return;
+    this.voiceLayouts.forEach((voice) => {
+      Object.values(voice.nodes).forEach((nodeArray) => {
+        nodeArray.forEach((node) => {
+          const customName = this.patchNodeNames.get(node.id);
+          if (customName) {
+            node.name = customName;
+          }
+        });
+      });
+    });
+  }
+
   private handleLoadPatch(data: { patchJson: string }) {
     if (!this.audioEngine) {
       console.warn('loadPatch requested before audio engine was ready');
@@ -500,6 +575,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       );
 
       this.initializeVoices();
+      this.applyPatchNamesToLayouts(data.patchJson);
       this.stateVersion++;
       this.postSynthLayout();
       this.handleRequestSync(false);
@@ -534,6 +610,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private postSynthLayout() {
     if (!this.audioEngine) return;
+    this.applyStoredNamesToLayouts();
     const layout: SynthLayout = {
       voices: this.voiceLayouts,
       globalNodes: {

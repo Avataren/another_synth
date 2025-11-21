@@ -238,10 +238,21 @@ export const usePatchStore = defineStore('patchStore', {
         const deserialized = deserializePatch(patch);
         this.isLoadingPatch = true;
 
-        instrumentStore.currentInstrument?.loadPatch(patch);
+        // DEBUG: Check if names are preserved in deserialized layout
+        console.log('[Patch Store] Deserialized layout voices:', deserialized.layout.voices.length);
+        if (deserialized.layout.voices[0]) {
+          const firstVoice = deserialized.layout.voices[0];
+          console.log('[Patch Store] First voice envelope nodes:', firstVoice.nodes.envelope);
+        }
+
+        // Update layout store FIRST before sending to WASM
+        // This ensures custom node names are in the store when WASM posts back its layout
         layoutStore.updateSynthLayout(deserialized.layout);
         nodeStateStore.assignStatesFromPatch(deserialized);
         assetStore.setAudioAssets(deserialized.audioAssets);
+
+        // Now send to WASM (may trigger immediate layout update callback)
+        instrumentStore.currentInstrument?.loadPatch(patch);
 
         if (options?.setCurrentPatchId !== false) {
           this.currentPatchId = patch.metadata.id;

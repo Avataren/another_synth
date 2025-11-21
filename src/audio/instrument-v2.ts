@@ -32,6 +32,7 @@ import {
   type FilterState,
 } from './types/synth-layout';
 import { WorkletMessageHandler } from './adapters/message-handler';
+import { toRaw } from 'vue';
 
 interface SamplerUpdatePayload {
   frequency: number;
@@ -264,10 +265,17 @@ export default class InstrumentV2 {
   }
 
   public updateConvolverState(nodeId: string, state: ConvolverState): void {
+    const plainState = JSON.parse(
+      JSON.stringify({
+        id: nodeId,
+        ...toRaw(state),
+      }),
+    ) as ConvolverState;
+
     this.messageHandler.sendFireAndForget({
       type: 'updateConvolver',
       nodeId,
-      state,
+      state: plainState,
     });
   }
 

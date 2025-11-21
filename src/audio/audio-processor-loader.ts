@@ -53,14 +53,14 @@ export async function createStandardAudioWorklet(
           resolveOnce(() => reject(error as Error));
         }
       } else if (data.type === 'synthLayout') {
-        console.log('Received synth layout:', data);
+        console.log('[WASM Message] Received synth layout from WASM');
 
         const layoutMessage = data as LayoutUpdateMessage;
         layoutStore.updateSynthLayout(layoutMessage.layout);
         nodeStateStore.initializeDefaultStates();
       } else if (data.type === 'stateUpdated') {
         // This is the pushed update from the worklet whenever state changes.
-        console.log('Received automatic state update:', data);
+        console.log('[WASM Message] Received automatic state update from WASM');
         layoutStore.updateSynthLayout(data.state);
         nodeStateStore.initializeDefaultStates();
       }

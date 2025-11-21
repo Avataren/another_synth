@@ -15,6 +15,40 @@ import {
   rustNodeTypeToTS,
 } from 'src/audio/adapters/wasm-type-adapter';
 
+const DEFAULT_NODE_NAMES: Partial<Record<VoiceNodeType, string[]>> = {
+  [VoiceNodeType.Oscillator]: ['Analog Oscillator'],
+  [VoiceNodeType.WavetableOscillator]: ['Wavetable Oscillator'],
+  [VoiceNodeType.Envelope]: ['Envelope'],
+  [VoiceNodeType.LFO]: ['LFO'],
+  [VoiceNodeType.Filter]: ['Filter Collection'],
+  [VoiceNodeType.Mixer]: ['Mixer'],
+  [VoiceNodeType.Noise]: ['Noise Generator'],
+  [VoiceNodeType.Sampler]: ['Sampler'],
+  [VoiceNodeType.GlobalFrequency]: ['Global Frequency'],
+  [VoiceNodeType.GlobalVelocity]: ['Global Velocity'],
+  [VoiceNodeType.Convolver]: ['Convolver'],
+  [VoiceNodeType.Delay]: ['Delay'],
+  [VoiceNodeType.GateMixer]: ['Gate Mixer'],
+  [VoiceNodeType.ArpeggiatorGenerator]: ['Arpeggiator'],
+  [VoiceNodeType.Chorus]: ['Chorus'],
+  [VoiceNodeType.Limiter]: ['Limiter'],
+  [VoiceNodeType.Reverb]: ['Reverb'],
+};
+
+const isGenericNameForType = (name: string, type: VoiceNodeType): boolean => {
+  if (!name) return true;
+  const canonical = name.trim();
+  if (!canonical) return true;
+  const defaultNamesForType = DEFAULT_NODE_NAMES[type] ?? [];
+
+  return (
+    canonical === type ||
+    canonical === type.charAt(0).toUpperCase() + type.slice(1) ||
+    Object.values(VoiceNodeType).some((t) => canonical === t) ||
+    defaultNamesForType.includes(canonical)
+  );
+};
+
 interface RawNode {
   id: string;
   node_type: string;
@@ -94,14 +128,39 @@ export const useLayoutStore = defineStore('layoutStore', {
         return;
       }
 
+      // DEBUG: Log call stack to see where this is being called from
+      console.log('[updateSynthLayout] Called with layout:', {
+        voiceCount: layout.voices.length,
+        firstVoiceNodesIsArray: Array.isArray(layout.voices[0]?.nodes),
+        stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
+      });
+
+      // DEBUG: If envelope nodes exist, log their names
+      if (layout.voices[0] && !Array.isArray(layout.voices[0].nodes)) {
+        const envelopes = layout.voices[0].nodes.envelope;
+        if (envelopes && envelopes.length > 0) {
+          console.log('[updateSynthLayout] Incoming envelope node names:', envelopes.map(e => ({ id: e.id, name: e.name })));
+        }
+      } else if (layout.voices[0] && Array.isArray(layout.voices[0].nodes)) {
+        const rawNodes = layout.voices[0].nodes as unknown as Array<{ id: string; name: string; node_type: string }>;
+        const envelopes = rawNodes.filter(n => n.node_type === 'Envelope');
+        if (envelopes.length > 0) {
+          console.log('[updateSynthLayout] Incoming RAW envelope node names:', envelopes.map(e => ({ id: e.id, name: e.name })));
+        }
+      }
+
       const existingNames = new Map<string, string>();
       if (this.synthLayout) {
         this.synthLayout.voices.forEach((voice) => {
           Object.values(voice.nodes).forEach((nodeArray) => {
-            nodeArray.forEach((node) => existingNames.set(node.id, node.name));
+            nodeArray.forEach((node) => {
+              existingNames.set(node.id, node.name);
+              console.log('[updateSynthLayout] Preserving existing name:', node.id, '→', node.name);
+            });
           });
         });
       }
+      console.log('[updateSynthLayout] existingNames size:', existingNames.size);
 
       const layoutClone = JSON.parse(JSON.stringify(layout)) as SynthLayout;
       const previousVoiceCount =
@@ -160,8 +219,39 @@ export const useLayoutStore = defineStore('layoutStore', {
             console.warn('Ignoring node without ID', raw);
             return;
           }
-          const baseName = raw.name?.trim() || `${type} ${nodeId}`;
-          const nodeName = existingNames.get(nodeId) || nextDefaultName(type, baseName);
+          // Name resolution priority:
+          // 1. If rawName exists and looks custom (not just the node type), use it
+          // 2. Otherwise, use existingName if available (preserves custom names from previous state)
+          // 3. Otherwise, use rawName if it exists (even if generic)
+          // 4. Otherwise, generate a default name
+          const existingName = existingNames.get(nodeId);
+          const rawName = raw.name?.trim();
+
+          const normalizedRawName = rawName ?? '';
+          const isGenericName = isGenericNameForType(normalizedRawName, type);
+
+          let nodeName: string;
+          if (normalizedRawName && !isGenericName) {
+            // rawName looks custom, use it
+            nodeName = normalizedRawName;
+          } else if (existingName) {
+            // We have a preserved custom name, use it
+            nodeName = existingName;
+          } else if (normalizedRawName) {
+            // rawName is generic but we have nothing better
+            nodeName = normalizedRawName;
+          } else {
+            // Generate a default name
+            nodeName = nextDefaultName(type, `${type} ${nodeId}`);
+          }
+
+          console.log('[convertNodesArray] Node name resolution:', {
+            nodeId,
+            existingName,
+            rawName,
+            isGenericName,
+            chosen: nodeName
+          });
           if (!nodesByType[type]) {
             nodesByType[type] = [];
           }
@@ -172,11 +262,43 @@ export const useLayoutStore = defineStore('layoutStore', {
       };
 
       layoutClone.voices = layoutClone.voices.map((voice) => {
+        console.log('[updateSynthLayout] Processing voice, nodes is array?', Array.isArray(voice.nodes));
+
+        let processedNodes: NodeMap;
+        if (Array.isArray(voice.nodes)) {
+          processedNodes = convertNodesArray(voice.nodes as unknown as RawNode[]);
+        } else {
+          // Nodes are already in object format, but we still need to apply existingNames
+          processedNodes = { ...voice.nodes } as NodeMap;
+          Object.keys(processedNodes).forEach((type) => {
+            const nodeArray = processedNodes[type as VoiceNodeType] || [];
+            processedNodes[type as VoiceNodeType] = nodeArray.map(node => {
+              const nodeType = type as VoiceNodeType;
+              const existingName = existingNames.get(node.id);
+              const incomingName = (node.name ?? '').trim();
+              const hasCustomIncoming = incomingName && !isGenericNameForType(incomingName, nodeType);
+
+              if (hasCustomIncoming) {
+                return { ...node, name: incomingName };
+              }
+
+              if (existingName) {
+                console.log('[updateSynthLayout] Applying existing name to object-format node:', node.id, '→', existingName);
+                return { ...node, name: existingName };
+              }
+
+              if (incomingName) {
+                return { ...node, name: incomingName };
+              }
+
+              return { ...node, name: node.id };
+            });
+          });
+        }
+
         const converted: VoiceLayout = {
           id: voice.id,
-          nodes: Array.isArray(voice.nodes)
-            ? convertNodesArray(voice.nodes as unknown as RawNode[])
-            : voice.nodes,
+          nodes: processedNodes,
           connections: convertConnections(
             (voice.connections ?? []) as Array<NodeConnection | RawConnection>,
           ),
@@ -187,6 +309,7 @@ export const useLayoutStore = defineStore('layoutStore', {
             if (!node.name) {
               node.name = node.id;
             }
+            console.log('[updateSynthLayout] Final node name:', node.id, '→', node.name);
           });
         });
 
@@ -244,6 +367,7 @@ export const useLayoutStore = defineStore('layoutStore', {
       const normalized = newName.trim();
       if (!normalized) return;
 
+      // Update all voices
       this.synthLayout.voices.forEach((voice) => {
         Object.values(voice.nodes).forEach((nodeArray) => {
           nodeArray.forEach((node) => {
@@ -253,6 +377,17 @@ export const useLayoutStore = defineStore('layoutStore', {
           });
         });
       });
+
+      // Also update canonicalVoice (used for patch serialization)
+      if (this.synthLayout.canonicalVoice) {
+        Object.values(this.synthLayout.canonicalVoice.nodes).forEach((nodeArray) => {
+          nodeArray.forEach((node) => {
+            if (node.id === nodeId) {
+              node.name = normalized;
+            }
+          });
+        });
+      }
 
       this.commitLayoutChange();
     },
