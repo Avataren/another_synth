@@ -80,6 +80,17 @@
         @keyup.enter="handleSavePatch"
         class="patch-category-input"
       />
+      <q-select
+        v-model="voiceCountSelection"
+        :options="voiceOptions"
+        dense
+        outlined
+        label="Voices"
+        emit-value
+        map-options
+        class="voice-count-select"
+        @update:model-value="handleVoiceCountChange"
+      />
       <q-btn
         label="Save"
         color="primary"
@@ -185,6 +196,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { usePatchStore } from 'src/stores/patch-store';
+import { useLayoutStore } from 'src/stores/layout-store';
 import { useQuasar } from 'quasar';
 import type { Patch } from 'src/audio/types/preset-types';
 import {
@@ -195,6 +207,7 @@ import {
 } from 'src/utils/patch-category';
 
 const patchStore = usePatchStore();
+const layoutStore = useLayoutStore();
 const $q = useQuasar();
 
 const notify = (options: {
@@ -222,6 +235,20 @@ const patchTreeMenu = ref<{ hide?: () => void } | null>(null);
 const pasteDialogOpen = ref(false);
 const pasteText = ref('');
 const pasteType = ref<'patch' | 'bank'>('patch');
+const voiceCountSelection = ref(1);
+
+const clampVoiceCount = (value: number) =>
+  Math.min(8, Math.max(1, Math.round(value || 1)));
+
+const voiceOptions = computed(() =>
+  Array.from({ length: 8 }, (_, idx) => {
+    const count = idx + 1;
+    return {
+      label: `${count} voice${count === 1 ? '' : 's'}`,
+      value: count,
+    };
+  }),
+);
 
 // Computed properties
 const currentBankName = computed(() => {
@@ -373,6 +400,19 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () =>
+    clampVoiceCount(
+      layoutStore.synthLayout?.voiceCount ??
+        layoutStore.synthLayout?.voices.length ??
+        1,
+    ),
+  (val) => {
+    voiceCountSelection.value = val;
+  },
+  { immediate: true },
+);
+
 // Handlers
 const handleTreeSelection = async (nodeKey: string | null) => {
   if (!nodeKey || nodeKey.startsWith('category:')) {
@@ -408,6 +448,26 @@ const handlePatchSelect = async (patchId: string | null) => {
       type: 'negative',
       message: `Error loading patch: ${error}`,
       timeout: 3000,
+    });
+  }
+};
+
+const handleVoiceCountChange = async (count: number) => {
+  const clamped = clampVoiceCount(count);
+  voiceCountSelection.value = clamped;
+
+  const success = await patchStore.setVoiceCount(clamped);
+  if (!success) {
+    notify({
+      type: 'negative',
+      message: 'Failed to update voice count',
+      timeout: 2000,
+    });
+  } else {
+    notify({
+      type: 'positive',
+      message: `Voices set to ${clamped}`,
+      timeout: 1500,
     });
   }
 };
@@ -703,6 +763,10 @@ const handleNewBank = () => {
 .patch-category-input {
   flex: 1;
   min-width: 200px;
+}
+
+.voice-count-select {
+  width: 140px;
 }
 
 .patch-tree-trigger {

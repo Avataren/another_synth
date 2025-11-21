@@ -33,7 +33,7 @@ import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
 import { useAssetStore } from './asset-store';
 import type InstrumentV2 from 'src/audio/instrument-v2';
-import { VoiceNodeType, getNodesOfType, type ConvolverState } from 'src/audio/types/synth-layout';
+import { VoiceNodeType, getNodesOfType, cloneVoiceLayout, type SynthLayout, type ConvolverState } from 'src/audio/types/synth-layout';
 import { normalizePatchCategory } from 'src/utils/patch-category';
 
 /**
@@ -819,6 +819,85 @@ export const usePatchStore = defineStore('patchStore', {
           }
         }
       }
+    },
+    async setVoiceCount(newCount: number): Promise<boolean> {
+      const layoutStore = useLayoutStore();
+      const nodeStateStore = useNodeStateStore();
+      const assetStore = useAssetStore();
+      const instrumentStore = useInstrumentStore();
+
+      if (!layoutStore.synthLayout) {
+        console.warn('Cannot set voice count: synth layout not ready');
+        return false;
+      }
+
+      const clamped = Math.min(8, Math.max(1, Math.round(newCount)));
+      const canonical =
+        layoutStore.synthLayout.canonicalVoice ??
+        layoutStore.synthLayout.voices?.[0];
+      if (!canonical) {
+        console.warn('Cannot set voice count: no canonical voice available');
+        return false;
+      }
+
+      const canonicalClone = cloneVoiceLayout(canonical);
+      const updatedLayout: SynthLayout = {
+        ...layoutStore.synthLayout,
+        voiceCount: clamped,
+        canonicalVoice: cloneVoiceLayout(canonicalClone),
+        voices: Array.from({ length: clamped }, (_, index) => {
+          const clone = cloneVoiceLayout(canonicalClone);
+          clone.id = index;
+          return clone;
+        }),
+      };
+
+      // Update layout store immediately so UI reflects the selection
+      layoutStore.updateSynthLayout(updatedLayout);
+
+      // Build a fresh patch from current state with the new voice count
+      const samplerIds = getSamplerNodeIds(updatedLayout);
+      const convolverIds = getConvolverNodeIds(updatedLayout);
+
+      let extractedAssets = new Map<string, AudioAsset>();
+      if (instrumentStore.currentInstrument) {
+        extractedAssets = await extractAllAudioAssets(
+          instrumentStore.currentInstrument as InstrumentV2,
+          samplerIds,
+          convolverIds,
+          nodeStateStore.convolverStates,
+        );
+      }
+
+      const allAssets = new Map([
+        ...assetStore.audioAssets,
+        ...extractedAssets,
+      ]);
+
+      const existingMetadata = this.currentPatch?.metadata;
+      const patchName = existingMetadata?.name || 'Patch';
+
+      const patch = serializeCurrentPatch(
+        patchName,
+        updatedLayout,
+        nodeStateStore.oscillatorStates,
+        nodeStateStore.wavetableOscillatorStates,
+        nodeStateStore.filterStates,
+        nodeStateStore.envelopeStates,
+        nodeStateStore.lfoStates,
+        nodeStateStore.samplerStates,
+        nodeStateStore.convolverStates,
+        nodeStateStore.delayStates,
+        nodeStateStore.chorusStates,
+        nodeStateStore.reverbStates,
+        nodeStateStore.noiseState,
+        nodeStateStore.velocityState,
+        allAssets,
+        existingMetadata ? { ...existingMetadata } : undefined,
+      );
+
+      // Reapply the freshly serialized patch so the engine rebuilds voices
+      return await this.applyPatchObject(patch);
     },
   },
 });
