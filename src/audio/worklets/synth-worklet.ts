@@ -128,6 +128,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private automationAdapter: AutomationAdapter | null = null;
   private isApplyingPatch = false;
   private patchNodeNames: Map<string, string> = new Map();
+  private blockSizeFrames = 128;
+  private hasBroadcastBlockSize = false;
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -1526,6 +1528,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const outputRight = output[1];
 
     if (!outputLeft || !outputRight) return true;
+
+    const frames = outputLeft.length;
+    if (!this.hasBroadcastBlockSize || frames !== this.blockSizeFrames) {
+      this.blockSizeFrames = frames;
+      this.hasBroadcastBlockSize = true;
+      this.port.postMessage({ type: 'blockSize', blockSize: frames });
+    }
 
     const masterGain = parameters.master_gain?.[0] ?? 1;
 

@@ -351,6 +351,11 @@ export interface PerformanceStatsMessage extends BaseMessage {
   voiceCount: number;
 }
 
+export interface BlockSizeMessage extends BaseMessage {
+  type: 'blockSize';
+  blockSize: number;
+}
+
 // ============================================================================
 // Union Type of All Messages
 // ============================================================================
@@ -404,6 +409,7 @@ export type WorkletMessage =
   | NoteOffMessage
   | SetMacroMessage
   // Status
+  | BlockSizeMessage
   | ErrorMessage
   | PerformanceStatsMessage
   | OperationResponse;

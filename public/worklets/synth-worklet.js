@@ -2688,6 +2688,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "automationAdapter", null);
     __publicField(this, "isApplyingPatch", false);
     __publicField(this, "patchNodeNames", /* @__PURE__ */ new Map());
+    __publicField(this, "blockSizeFrames", 128);
+    __publicField(this, "hasBroadcastBlockSize", false);
     this.port.onmessage = (event) => {
       this.handleMessage(event);
     };
@@ -3775,6 +3777,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const outputLeft = output[0];
     const outputRight = output[1];
     if (!outputLeft || !outputRight) return true;
+    const frames = outputLeft.length;
+    if (!this.hasBroadcastBlockSize || frames !== this.blockSizeFrames) {
+      this.blockSizeFrames = frames;
+      this.hasBroadcastBlockSize = true;
+      this.port.postMessage({ type: "blockSize", blockSize: frames });
+    }
     const masterGain = parameters.master_gain?.[0] ?? 1;
     if (!this.automationAdapter) {
       this.automationAdapter = new AutomationAdapter(

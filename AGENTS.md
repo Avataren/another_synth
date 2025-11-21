@@ -50,6 +50,8 @@ When debugging “envelope not reacting to gate off” after any change, always 
 - There is at least one connection from `GateMixer` to `Envelope` for `PortId::CombinedGate`:
   - Either auto‑connected by `AudioGraph::add_node_with_id`, or explicitly present in the patch layout with `target: 26` (CombinedGate).
 - Host gate pulses (TS `instrument-v2.ts`) now retrigger stolen mono voices by sending a brief gate-off/on, but this is **suppressed when Glide/portamento is active (active && time > 0)** to preserve slides. Glide state is cached from patch `glides` and `updateGlideState`; if mono envelopes stop retriggering, check that no glide is marked active.
+- Those mono retrigger pulses need to last at least one audio quantum. A 1ms pulse was too short and occasionally got quantized away because the automation adapter only samples the first frame value; use ~5ms (>= quantumFrames/sampleRate) so the next block sees gate=0 and envelopes retrigger reliably when voiceLimit=1.
+- Worklet now broadcasts its `blockSize` (derived from the output buffer length) and InstrumentV2 tracks it per-session; the gate pulse uses this `quantumFrames` so custom/native block sizes can still guarantee a full-frame gate-low. If block size changes mid-run, the broadcast updates and pulses adapt automatically.
 
 ## Patch Format & Loader
 

@@ -55,6 +55,7 @@ export default class InstrumentV2 {
   private messageHandler: WorkletMessageHandler;
   private voiceLimit: number;
   private glideStates: Map<string, GlideState> = new Map();
+  private quantumFrames = 128;
 
   public get isReady(): boolean {
     return this.messageHandler.isInitialized();
@@ -87,6 +88,17 @@ export default class InstrumentV2 {
 
       // Attach message handler to worklet
       this.messageHandler.attachToWorklet(this.workletNode);
+
+      // Listen for broadcast messages (e.g., worklet block size)
+      this.workletNode.port.addEventListener('message', (event: MessageEvent) => {
+        const data = event.data as { type?: string; blockSize?: unknown };
+        if (data?.type === 'blockSize') {
+          const frames = Number(data.blockSize);
+          if (Number.isFinite(frames) && frames > 0) {
+            this.quantumFrames = frames;
+          }
+        }
+      });
 
       // Set up parameters for each voice
       for (let i = 0; i < this.num_voices; i++) {
@@ -781,9 +793,16 @@ export default class InstrumentV2 {
       const shouldPulseGate =
         retriggering && (this.voiceLimit > 1 || !portamentoEnabled);
       if (shouldPulseGate) {
+        const gatePulseDuration = Math.max(
+          0.005,
+          this.quantumFrames / this.audioContext.sampleRate,
+        );
         // Force envelope retrigger by creating a brief gate off-on pulse
         gateParam.setValueAtTime(0, this.audioContext.currentTime);
-        gateParam.setValueAtTime(1, this.audioContext.currentTime + 0.001); // 1ms gate-off pulse
+        gateParam.setValueAtTime(
+          1,
+          this.audioContext.currentTime + gatePulseDuration,
+        );
       } else {
         // Monophonic/legato: keep gate high to avoid killing the stolen note
         gateParam.value = 1;
