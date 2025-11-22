@@ -194,12 +194,15 @@ watch(
   /* Adjust width as needed based on knob count */
   /* Consider making it wider or using two rows */
   width: 100%;
-  max-width: 750px; /* Example max width */
+  max-width: var(--node-width, 640px);
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0.5rem auto;
 }
 
 .chorus-container {
   padding: 1rem;
+  min-width: 0;
 }
 
 .controls-row {
@@ -209,16 +212,21 @@ watch(
 }
 
 .knob-group {
-  display: flex;
-  flex-wrap: wrap; /* Allow knobs to wrap on smaller screens */
-  justify-content: space-around;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 1rem; /* Add some space between knobs */
   margin-bottom: 1rem;
+  min-width: 0;
+  width: 100%;
 }
 
 /* Optional: Add specific styling for the toggle if needed */
 .q-toggle {
   /* Style overrides */
+}
+
+:deep(.knob-wrapper) {
+  width: 100%;
+  justify-self: center;
 }
 </style>

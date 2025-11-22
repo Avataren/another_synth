@@ -50,7 +50,7 @@
     >
       <div class="grid-container">
         <!-- Generators Column -->
-        <div class="node-bg column">
+        <div class="node-bg column generators">
           <div class="header">Generators</div>
 
           <!-- Wavetable Oscillator -->
@@ -108,7 +108,7 @@
         </div>
 
         <!-- Modulators Column -->
-        <div class="node-bg column">
+        <div class="node-bg column modulators">
           <div class="header">Modulators</div>
 
           <!-- LFO -->
@@ -131,77 +131,76 @@
         </div>
 
         <!-- Effects Column -->
-        <div class="node-bg column">
-          <div class="header">Filters</div>
+        <div class="node-bg effects">
+          <div class="header">Effects</div>
 
-          <!-- Filter -->
-          <generic-tab-container
-            v-if="filterNodes.length"
-            :nodes="filterNodes"
-            :destinationNode="destinationNode"
-            :componentName="FilterComponent"
-            nodeLabel="Filter"
-          />
+          <div class="effects-grid">
+            <generic-tab-container
+              v-if="filterNodes.length"
+              :nodes="filterNodes"
+              :destinationNode="destinationNode"
+              :componentName="FilterComponent"
+              nodeLabel="Filter"
+            />
 
-          <div class="header" style="margin-top: 4rem">Effects</div>
+            <generic-tab-container
+              v-if="chorusNodes.length"
+              :nodes="chorusNodes"
+              :destinationNode="destinationNode"
+              :componentName="ChorusComponent"
+              nodeLabel="Chorus"
+            />
 
-          <generic-tab-container
-            v-if="chorusNodes.length"
-            :nodes="chorusNodes"
-            :destinationNode="destinationNode"
-            :componentName="ChorusComponent"
-            nodeLabel="Chorus"
-          />
+            <!-- Delay -->
+            <generic-tab-container
+              v-if="delayNodes.length"
+              :nodes="delayNodes"
+              :destinationNode="destinationNode"
+              :componentName="DelayComponent"
+              nodeLabel="Delay"
+            />
 
-          <!-- Delay -->
-          <generic-tab-container
-            v-if="delayNodes.length"
-            :nodes="delayNodes"
-            :destinationNode="destinationNode"
-            :componentName="DelayComponent"
-            nodeLabel="Delay"
-          />
+            <generic-tab-container
+              v-if="compressorNodes.length"
+              :nodes="compressorNodes"
+              :destinationNode="destinationNode"
+              :componentName="CompressorComponent"
+              nodeLabel="Comp"
+            />
 
-          <generic-tab-container
-            v-if="compressorNodes.length"
-            :nodes="compressorNodes"
-            :destinationNode="destinationNode"
-            :componentName="CompressorComponent"
-            nodeLabel="Comp"
-          />
+            <generic-tab-container
+              v-if="saturationNodes.length"
+              :nodes="saturationNodes"
+              :destinationNode="destinationNode"
+              :componentName="SaturationComponent"
+              nodeLabel="Saturation"
+            />
 
-          <generic-tab-container
-            v-if="saturationNodes.length"
-            :nodes="saturationNodes"
-            :destinationNode="destinationNode"
-            :componentName="SaturationComponent"
-            nodeLabel="Saturation"
-          />
+            <generic-tab-container
+              v-if="bitcrusherNodes.length"
+              :nodes="bitcrusherNodes"
+              :destinationNode="destinationNode"
+              :componentName="BitcrusherComponent"
+              nodeLabel="Bitcrusher"
+            />
 
-          <generic-tab-container
-            v-if="bitcrusherNodes.length"
-            :nodes="bitcrusherNodes"
-            :destinationNode="destinationNode"
-            :componentName="BitcrusherComponent"
-            nodeLabel="Bitcrusher"
-          />
+            <generic-tab-container
+              v-if="reverbNodes.length"
+              :nodes="reverbNodes"
+              :destinationNode="destinationNode"
+              :componentName="ReverbComponent"
+              nodeLabel="CReverb"
+            />
 
-          <generic-tab-container
-            v-if="reverbNodes.length"
-            :nodes="reverbNodes"
-            :destinationNode="destinationNode"
-            :componentName="ReverbComponent"
-            nodeLabel="CReverb"
-          />
-
-          <!-- Convolver -->
-          <generic-tab-container
-            v-if="convolverNodes.length"
-            :nodes="convolverNodes"
-            :destinationNode="destinationNode"
-            :componentName="ConvolverComponent"
-            nodeLabel="Convolver"
-          />
+            <!-- Convolver -->
+            <generic-tab-container
+              v-if="convolverNodes.length"
+              :nodes="convolverNodes"
+              :destinationNode="destinationNode"
+              :componentName="ConvolverComponent"
+              nodeLabel="Convolver"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -623,6 +622,7 @@ const bitcrusherNodes = computed(() => {
   flex-direction: column;
   height: 96vh;
   overflow: hidden;
+  --node-width: 640px;
 }
 
 .tool-menu {
@@ -743,8 +743,8 @@ const bitcrusherNodes = computed(() => {
 .grid-container {
   display: grid;
   gap: 1rem;
-  /* Each column will be at least 600px wide */
-  grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+  /* Each column will be at least the configured node width */
+  grid-template-columns: repeat(auto-fit, minmax(var(--node-width), 1fr));
 }
 
 /* Force columns to stack when viewport is below 900px */
@@ -756,10 +756,13 @@ const bitcrusherNodes = computed(() => {
 
 /* Each node container gets a fixed min-width to prevent overlap */
 .node-bg {
-  min-width: 300px;
-  padding: 0.5rem;
+  min-width: var(--node-width);
+  padding: 0.75rem;
   box-sizing: border-box;
   width: 100%;
+  border-radius: 12px;
+  border: 1px solid #273140;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
 }
 
 /* Allow multiple DSP components per column */
@@ -769,9 +772,51 @@ const bitcrusherNodes = computed(() => {
   gap: 1rem;
 }
 
-/* Fix each generic-tab-container's width to 600px */
-.generic-tab-container {
-  flex: 0 0 auto;
-  width: 600px;
+.generators {
+  background: linear-gradient(135deg, #0f1c2c, #0a1320);
+}
+
+.modulators {
+  background: linear-gradient(135deg, #141d2e, #0d1524);
+}
+
+.effects {
+  background: linear-gradient(135deg, #182031, #101724);
+  grid-column: span 2;
+  display: block;
+}
+
+.effects-grid {
+  column-count: 2;
+  column-gap: 1rem;
+  column-width: var(--node-width);
+}
+
+.effects-grid > * {
+  break-inside: avoid;
+  width: 100%;
+  max-width: var(--node-width);
+  margin: 0 0 1rem 0;
+}
+
+:deep(.tabs-outer-wrapper) {
+  width: 100%;
+  max-width: var(--node-width);
+  margin: 0 auto;
+}
+
+:deep(.tabs-wrapper),
+:deep(.panels-wrapper) {
+  width: 100%;
+}
+
+@media (max-width: 1400px) {
+  .effects {
+    grid-column: span 1;
+  }
+
+  .effects-grid {
+    column-count: 1;
+  }
 }
 </style>

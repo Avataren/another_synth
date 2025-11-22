@@ -183,11 +183,15 @@ function handleClose(nodeId: string): void {
   display: flex;
   flex-direction: column;
   align-items: center; /* centers children horizontally */
+  width: 100%;
+  max-width: var(--node-width, 640px);
+  margin: 0 auto;
 }
 
 .tabs-wrapper {
   overflow-x: auto;
   white-space: nowrap;
+  width: 100%;
 }
 
 .tab + .tab {
@@ -217,5 +221,6 @@ function handleClose(nodeId: string): void {
 /* Ensure the panels-wrapper does not stretch unnecessarily */
 .panels-wrapper {
   display: inline-block;
+  width: 100%;
 }
 </style>
