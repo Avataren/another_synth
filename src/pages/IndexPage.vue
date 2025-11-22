@@ -1,6 +1,34 @@
 <template>
   <q-page class="page-container" @click.capture="handleLeftClickClose">
     <div class="patch-layout">
+      <!-- Song patch editing banner -->
+      <div v-if="isEditingSongPatch" class="song-patch-banner">
+        <div class="song-patch-banner__info">
+          <q-icon name="edit" size="sm" />
+          <span class="song-patch-banner__label">Editing Song Patch</span>
+          <span class="song-patch-banner__slot">Slot #{{ String(editingSlotNumber).padStart(2, '0') }}</span>
+          <span class="song-patch-banner__name">{{ editingPatchName }}</span>
+        </div>
+        <div class="song-patch-banner__actions">
+          <q-btn
+            flat
+            dense
+            color="primary"
+            icon="save"
+            label="Save"
+            @click="saveSongPatch"
+          />
+          <q-btn
+            flat
+            dense
+            color="white"
+            icon="arrow_back"
+            label="Back to Tracker"
+            @click="backToTracker"
+          />
+        </div>
+      </div>
+
       <div class="preset-row q-pa-sm">
         <PresetManager />
       </div>
@@ -236,11 +264,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
+import { usePatchStore } from 'src/stores/patch-store';
+import { useTrackerStore } from 'src/stores/tracker-store';
 import PresetManager from 'src/components/PresetManager.vue';
 
 // Components moved from the top row (now in the bottom row)
@@ -296,13 +327,79 @@ type QMenuController = {
   $el?: HTMLElement | null;
 };
 
+const route = useRoute();
+const router = useRouter();
 const instrumentStore = useInstrumentStore();
 const layoutStore = useLayoutStore();
 const nodeStateStore = useNodeStateStore();
+const patchStore = usePatchStore();
+const trackerStore = useTrackerStore();
 const { destinationNode } = storeToRefs(instrumentStore);
+const { editingSlot, songPatches } = storeToRefs(trackerStore);
 
 const addMenuVisible = ref(false);
 const addMenu = ref<QMenuController | null>(null);
+
+// Song patch editing state
+const isEditingSongPatch = computed(() => editingSlot.value !== null);
+const editingSlotNumber = computed(() => editingSlot.value);
+const editingPatchName = computed(() => {
+  if (!editingSlot.value) return '';
+  const slot = trackerStore.instrumentSlots.find(s => s.slot === editingSlot.value);
+  return slot?.patchName ?? 'Song Patch';
+});
+
+async function loadSongPatchForEditing(slotNumber: number) {
+  const slot = trackerStore.instrumentSlots.find(s => s.slot === slotNumber);
+  if (!slot?.patchId) return;
+
+  const patch = songPatches.value[slot.patchId];
+  if (!patch) return;
+
+  // Load the song patch into the instrument
+  await patchStore.applyPatchObject(patch, { setCurrentPatchId: false });
+}
+
+async function saveSongPatch() {
+  if (!editingSlot.value) return;
+
+  // Serialize current patch state
+  const patch = await patchStore.serializePatch(editingPatchName.value);
+  if (!patch) return;
+
+  // Update the song patch in tracker store
+  trackerStore.updateEditingPatch(patch);
+}
+
+function backToTracker() {
+  // Save before leaving
+  void saveSongPatch().then(() => {
+    trackerStore.stopEditing();
+    void router.push('/tracker');
+  });
+}
+
+// Watch for route changes to detect song patch editing
+watch(
+  () => route.query.editSongPatch,
+  async (slotParam) => {
+    if (slotParam) {
+      const slotNumber = parseInt(slotParam as string, 10);
+      if (!Number.isNaN(slotNumber)) {
+        trackerStore.startEditingSlot(slotNumber);
+        await loadSongPatchForEditing(slotNumber);
+      }
+    }
+  },
+  { immediate: true }
+);
+
+// Clean up editing state when leaving the page
+onUnmounted(() => {
+  if (isEditingSongPatch.value) {
+    void saveSongPatch();
+  }
+});
 
 const addMenuSections: AddMenuSection[] = [
   {
@@ -587,6 +684,51 @@ const bitcrusherNodes = computed(() => {
 </script>
 
 <style scoped>
+/* Song patch editing banner */
+.song-patch-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, rgba(112, 194, 255, 0.15), rgba(77, 242, 197, 0.1));
+  border-bottom: 1px solid rgba(112, 194, 255, 0.3);
+}
+
+.song-patch-banner__info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #e8f3ff;
+}
+
+.song-patch-banner__label {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #70c2ff;
+}
+
+.song-patch-banner__slot {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 700;
+  color: #4df2c5;
+  background: rgba(77, 242, 197, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.song-patch-banner__name {
+  color: #cfe4ff;
+  font-weight: 600;
+}
+
+.song-patch-banner__actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* Full viewport container */
 .page-container {
   display: flex;
@@ -602,7 +744,7 @@ const bitcrusherNodes = computed(() => {
 
 .patch-layout {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;

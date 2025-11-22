@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import type { Patch } from 'src/audio/types/preset-types';
 
 export const SLOTS_PER_PAGE = 5;
 export const TOTAL_PAGES = 5;
@@ -12,7 +13,7 @@ export interface InstrumentSlot {
   patchId?: string | undefined;
   patchName: string;
   instrumentName: string;
-  source?: 'system' | 'user' | undefined;
+  source?: 'system' | 'user' | 'song' | undefined;
 }
 
 interface SongMeta {
@@ -29,6 +30,10 @@ interface TrackerStoreState {
   instrumentSlots: InstrumentSlot[];
   activeInstrumentId: string | null;
   currentInstrumentPage: number;
+  /** Patches owned by this song (copies from banks, or new patches) */
+  songPatches: Record<string, Patch>;
+  /** Slot number currently being edited in the synth page, or null */
+  editingSlot: number | null;
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -72,12 +77,26 @@ export const useTrackerStore = defineStore('trackerStore', {
     tracks: createDefaultTracks(),
     instrumentSlots: createDefaultInstrumentSlots(),
     activeInstrumentId: null,
-    currentInstrumentPage: 0
+    currentInstrumentPage: 0,
+    songPatches: {},
+    editingSlot: null
   }),
   getters: {
     currentPageSlots(): InstrumentSlot[] {
       const start = this.currentInstrumentPage * SLOTS_PER_PAGE;
       return this.instrumentSlots.slice(start, start + SLOTS_PER_PAGE);
+    },
+    /** Get patch for a slot from song patches */
+    getPatchForSlot(): (slotNumber: number) => Patch | undefined {
+      return (slotNumber: number) => {
+        const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
+        if (!slot?.patchId) return undefined;
+        return this.songPatches[slot.patchId];
+      };
+    },
+    /** Check if we're currently editing a song patch */
+    isEditingSongPatch(): boolean {
+      return this.editingSlot !== null;
     }
   },
   actions: {
@@ -100,12 +119,72 @@ export const useTrackerStore = defineStore('trackerStore', {
     clearSlot(slotNumber: number) {
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
       if (slot) {
+        // Remove patch from song patches if no other slot uses it
+        if (slot.patchId) {
+          const otherSlotsUsingPatch = this.instrumentSlots.filter(
+            s => s.slot !== slotNumber && s.patchId === slot.patchId
+          );
+          if (otherSlotsUsingPatch.length === 0) {
+            delete this.songPatches[slot.patchId];
+          }
+        }
         slot.patchId = undefined;
         slot.patchName = '';
         slot.bankId = undefined;
         slot.bankName = '';
         slot.instrumentName = '';
         slot.source = undefined;
+      }
+    },
+    /** Add or update a patch in the song's patch library */
+    setSongPatch(patch: Patch) {
+      if (!patch.metadata?.id) return;
+      this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
+    },
+    /** Get a patch from the song's library */
+    getSongPatch(patchId: string): Patch | undefined {
+      return this.songPatches[patchId];
+    },
+    /** Start editing a slot's patch */
+    startEditingSlot(slotNumber: number) {
+      this.editingSlot = slotNumber;
+    },
+    /** Stop editing and return to tracker */
+    stopEditing() {
+      this.editingSlot = null;
+    },
+    /** Update the patch for the currently editing slot */
+    updateEditingPatch(patch: Patch) {
+      if (this.editingSlot === null || !patch.metadata?.id) return;
+
+      const slot = this.instrumentSlots.find(s => s.slot === this.editingSlot);
+      if (!slot) return;
+
+      // Update song patches
+      this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
+
+      // Update slot metadata
+      slot.patchId = patch.metadata.id;
+      slot.patchName = patch.metadata.name ?? 'Untitled';
+      slot.instrumentName = patch.metadata.name ?? 'Untitled';
+      slot.source = 'song';
+    },
+    /** Assign a patch to a slot (copies it to song patches) */
+    assignPatchToSlot(slotNumber: number, patch: Patch, bankName: string) {
+      if (!patch.metadata?.id) return;
+
+      // Deep copy the patch to song patches
+      const patchCopy = JSON.parse(JSON.stringify(patch)) as Patch;
+      this.songPatches[patchCopy.metadata.id] = patchCopy;
+
+      // Update the slot
+      const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
+      if (slot) {
+        slot.patchId = patchCopy.metadata.id;
+        slot.patchName = patchCopy.metadata.name ?? 'Untitled';
+        slot.bankName = bankName;
+        slot.instrumentName = patchCopy.metadata.name ?? 'Untitled';
+        slot.source = 'song';
       }
     }
   }

@@ -155,6 +155,14 @@
                 <button
                   v-if="slot.patchId"
                   type="button"
+                  class="action-button edit"
+                  @click.stop="editSlotPatch(slot.slot)"
+                >
+                  Edit
+                </button>
+                <button
+                  v-if="slot.patchId"
+                  type="button"
                   class="action-button ghost"
                   @click.stop="clearInstrument(slot.slot)"
                 >
@@ -183,6 +191,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
@@ -220,9 +229,10 @@ interface RawBank {
   patches?: RawPatch[];
 }
 
+const router = useRouter();
 const trackerStore = useTrackerStore();
 trackerStore.initializeIfNeeded();
-const { currentSong, patternRows, stepSize, tracks, instrumentSlots, activeInstrumentId, currentInstrumentPage } =
+const { currentSong, patternRows, stepSize, tracks, instrumentSlots, activeInstrumentId, currentInstrumentPage, songPatches } =
   storeToRefs(trackerStore);
 const currentPageSlots = computed(() => trackerStore.currentPageSlots);
 const activeRow = ref(0);
@@ -231,7 +241,8 @@ const activeColumn = ref(0);
 const columnsPerTrack = 4;
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
-const patchLibrary = ref<Record<string, Patch>>({});
+/** Library of available patches from system bank (for dropdown) */
+const bankPatchLibrary = ref<Record<string, Patch>>({});
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const songBank = new TrackerSongBank();
 const playbackEngine = new PlaybackEngine({
@@ -417,6 +428,49 @@ function clearStep() {
   advanceRowByStep();
 }
 
+function deleteRowAndShiftUp() {
+  const currentRow = activeRow.value;
+  const maxRow = rowsCount.value - 1;
+
+  tracks.value = tracks.value.map((track, idx) => {
+    if (idx !== activeTrack.value) return track;
+
+    // Remove entries at current row, shift entries below up by one
+    const newEntries = track.entries
+      .filter((e) => e.row !== currentRow)
+      .map((e) => {
+        if (e.row > currentRow) {
+          return { ...e, row: e.row - 1 };
+        }
+        return e;
+      })
+      .filter((e) => e.row <= maxRow);
+
+    return { ...track, entries: newEntries };
+  });
+}
+
+function insertRowAndShiftDown() {
+  const currentRow = activeRow.value;
+  const maxRow = rowsCount.value - 1;
+
+  tracks.value = tracks.value.map((track, idx) => {
+    if (idx !== activeTrack.value) return track;
+
+    // Shift entries at and below current row down by one
+    const newEntries = track.entries
+      .map((e) => {
+        if (e.row >= currentRow) {
+          return { ...e, row: e.row + 1 };
+        }
+        return e;
+      })
+      .filter((e) => e.row <= maxRow);
+
+    return { ...track, entries: newEntries };
+  });
+}
+
 function hasPatchForInstrument(instrumentId: string): boolean {
   return instrumentSlots.value.some(
     (slot) => formatInstrumentId(slot.slot) === instrumentId && !!slot.patchId
@@ -550,7 +604,8 @@ async function syncSongBankFromSlots() {
   const slots: SongBankSlot[] = instrumentSlots.value
     .map((slot) => {
       if (!slot.patchId) return null;
-      const patch = patchLibrary.value[slot.patchId];
+      // Use song patches (patches are copied there when assigned)
+      const patch = songPatches.value[slot.patchId];
       if (!patch) return null;
       return {
         instrumentId: formatInstrumentId(slot.slot),
@@ -563,10 +618,20 @@ async function syncSongBankFromSlots() {
 }
 
 function initializePlayback() {
+  // Save current position before reloading
+  const currentPosition = playbackRow.value;
+  const wasNotStopped = playbackEngine['state'] !== 'stopped';
+
   const song = buildPlaybackSong();
   playbackEngine.loadSong(song);
   playbackEngine.setLength(rowsCount.value);
   playbackEngine.setBpm(currentSong.value.bpm);
+
+  // Restore position if we weren't stopped (e.g., paused while editing)
+  if (wasNotStopped) {
+    playbackEngine.seek(currentPosition);
+    playbackRow.value = currentPosition;
+  }
 
   unsubscribePosition?.();
   unsubscribePosition = playbackEngine.on('position', (pos) => {
@@ -577,11 +642,15 @@ function initializePlayback() {
 async function handlePlay() {
   playbackEngine.setBpm(currentSong.value.bpm);
   playbackEngine.setLength(rowsCount.value);
+  // Always start from the currently selected row
+  playbackEngine.seek(activeRow.value);
   await syncSongBankFromSlots();
   await playbackEngine.play();
 }
 
 function handlePause() {
+  // Set the active row to the current playback position
+  activeRow.value = playbackRow.value;
   playbackEngine.pause();
   songBank.allNotesOff();
 }
@@ -590,6 +659,14 @@ function handleStop() {
   playbackEngine.stop();
   playbackRow.value = 0;
   songBank.allNotesOff();
+}
+
+function togglePlayPause() {
+  if (playbackEngine['state'] === 'playing') {
+    handlePause();
+  } else {
+    void handlePlay();
+  }
 }
 
 async function loadSystemBankOptions() {
@@ -617,7 +694,7 @@ async function loadSystemBankOptions() {
         };
       })
       .filter(Boolean) as BankPatchOption[];
-    patchLibrary.value = patchMap;
+    bankPatchLibrary.value = patchMap;
     await syncSongBankFromSlots();
   } catch (error) {
     console.error('Failed to load system bank', error);
@@ -674,19 +751,23 @@ function onKeyDown(event: KeyboardEvent) {
       break;
     case ' ':
       event.preventDefault();
-      if (playbackEngine['state'] === 'playing') {
-        handleStop();
-      } else {
-        void handlePlay();
-      }
+      togglePlayPause();
       break;
     case 'Insert':
       event.preventDefault();
-      insertNoteOff();
+      if (event.shiftKey) {
+        insertRowAndShiftDown();
+      } else {
+        insertNoteOff();
+      }
       break;
     case 'Delete':
       event.preventDefault();
-      clearStep();
+      if (event.shiftKey) {
+        deleteRowAndShiftUp();
+      } else {
+        clearStep();
+      }
       break;
     default:
       break;
@@ -694,39 +775,42 @@ function onKeyDown(event: KeyboardEvent) {
 }
 
 function onPatchSelect(slotNumber: number, patchId: string) {
-  const option = availablePatches.value.find((p) => p.id === patchId);
-  instrumentSlots.value = instrumentSlots.value.map((slot) =>
-    slot.slot === slotNumber
-      ? option
-        ? {
-            ...slot,
-            patchId: option.id,
-            patchName: option.name,
-            bankId: option.bankId,
-            bankName: option.bankName,
-            instrumentName: option.name,
-            source: option.source
-          }
-        : {
-            ...slot,
-            patchId: undefined,
-            patchName: '',
-            bankId: undefined,
-            bankName: '',
-            instrumentName: '',
-            source: undefined
-          }
-      : slot
-  );
-  if (option) {
-    setActiveInstrument(slotNumber);
+  if (!patchId) {
+    trackerStore.clearSlot(slotNumber);
+    ensureActiveInstrument();
+    return;
   }
+
+  const option = availablePatches.value.find((p) => p.id === patchId);
+  if (!option) return;
+
+  // Get the full patch from the bank library
+  const patch = bankPatchLibrary.value[patchId];
+  if (!patch) return;
+
+  // Copy patch to song store
+  trackerStore.assignPatchToSlot(slotNumber, patch, option.bankName);
+  setActiveInstrument(slotNumber);
   ensureActiveInstrument();
 }
 
 function clearInstrument(slotNumber: number) {
   trackerStore.clearSlot(slotNumber);
   ensureActiveInstrument();
+}
+
+function editSlotPatch(slotNumber: number) {
+  const slot = instrumentSlots.value.find(s => s.slot === slotNumber);
+  if (!slot?.patchId) return;
+
+  // Mark which slot we're editing
+  trackerStore.startEditingSlot(slotNumber);
+
+  // Navigate to synth page with query param
+  void router.push({
+    path: '/',
+    query: { editSongPatch: slotNumber.toString() }
+  });
 }
 
 onMounted(async () => {
@@ -1126,6 +1210,16 @@ onBeforeUnmount(() => {
 
 .action-button:hover {
   border-color: rgba(77, 242, 197, 0.45);
+}
+
+.action-button.edit {
+  background: rgba(112, 194, 255, 0.15);
+  border-color: rgba(112, 194, 255, 0.3);
+}
+
+.action-button.edit:hover {
+  background: rgba(112, 194, 255, 0.25);
+  border-color: rgba(112, 194, 255, 0.5);
 }
 
 .action-button.ghost {

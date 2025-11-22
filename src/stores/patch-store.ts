@@ -479,6 +479,71 @@ export const usePatchStore = defineStore('patchStore', {
         return;
       }
     },
+    /** Serialize the current patch state without saving to a bank */
+    async serializePatch(
+      name?: string,
+      metadata?: PatchMetadataUpdates,
+    ): Promise<Patch | null> {
+      const layoutStore = useLayoutStore();
+      const nodeStateStore = useNodeStateStore();
+      const assetStore = useAssetStore();
+      const instrumentStore = useInstrumentStore();
+
+      if (!layoutStore.synthLayout) {
+        console.error('Cannot serialize patch: no synth layout');
+        return null;
+      }
+
+      if (!instrumentStore.currentInstrument) {
+        console.error('Cannot serialize patch: no instrument');
+        return null;
+      }
+
+      try {
+        const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
+        const convolverIds = getConvolverNodeIds(layoutStore.synthLayout);
+
+        const extractedAssets = await extractAllAudioAssets(
+          instrumentStore.currentInstrument as InstrumentV2,
+          samplerIds,
+          convolverIds,
+          nodeStateStore.convolverStates,
+        );
+
+        const allAssets = new Map([
+          ...assetStore.audioAssets,
+          ...extractedAssets,
+        ]);
+
+        const metadataPayload = sanitizeMetadataUpdates(metadata);
+
+        return serializeCurrentPatch(
+          name ?? 'Untitled',
+          layoutStore.synthLayout,
+          nodeStateStore.oscillatorStates,
+          nodeStateStore.wavetableOscillatorStates,
+          nodeStateStore.filterStates,
+          nodeStateStore.envelopeStates,
+          nodeStateStore.lfoStates,
+          nodeStateStore.samplerStates,
+          nodeStateStore.glideStates,
+          nodeStateStore.convolverStates,
+          nodeStateStore.delayStates,
+          nodeStateStore.chorusStates,
+          nodeStateStore.reverbStates,
+          nodeStateStore.compressorStates,
+          nodeStateStore.saturationStates,
+          nodeStateStore.bitcrusherStates,
+          nodeStateStore.noiseState,
+          nodeStateStore.velocityState,
+          allAssets,
+          metadataPayload,
+        );
+      } catch (error) {
+        console.error('Failed to serialize patch:', error);
+        return null;
+      }
+    },
     async saveCurrentPatch(
       name: string,
       metadata?: PatchMetadataUpdates,
