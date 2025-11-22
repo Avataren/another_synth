@@ -1,4 +1,6 @@
-use crate::audio_engine::patch::{PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout};
+use crate::audio_engine::patch::{
+    CompressorState, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout,
+};
 use crate::audio_engine::patch_loader::{parse_node_id, NODE_CREATION_ORDER};
 use crate::automation::AutomationFrame;
 use crate::biquad::FilterType;
@@ -7,7 +9,7 @@ use crate::graph::{Connection, ModulationTransformation, ModulationType};
 use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::WavetableSynthBank;
 use crate::nodes::{
-    AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Convolver, Delay, Envelope,
+    AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Compressor, Convolver, Delay, Envelope,
     EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
     GlobalVelocityNode, Lfo, Limiter, Mixer, Waveform, WavetableBank, WavetableOscillator,
     WavetableOscillatorStateUpdate,
@@ -32,6 +34,7 @@ const DEFAULT_NUM_VOICES: usize = 8;
 const MAX_TABLE_SIZE: usize = 2048;
 const DEFAULT_BLOCK_SIZE: usize = 128;
 const MACRO_COUNT: usize = 4;
+const EFFECT_NODE_ID_OFFSET: usize = 10_000;
 
 pub struct AudioEngine {
     voices: Vec<Voice>,
@@ -183,6 +186,11 @@ impl AudioEngine {
         let mut limiter = Limiter::new(sample_rate, -0.5, 0.1, 50.0, 1.5, true);
         limiter.set_active(true);
         self.effect_stack.add_effect(Box::new(limiter));
+
+        let mut compressor =
+            Compressor::new(sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
+        compressor.set_active(true);
+        self.effect_stack.add_effect(Box::new(compressor));
     }
 
     pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, String> {
@@ -240,11 +248,33 @@ impl AudioEngine {
 
         self.effect_stack = EffectStack::new(self.block_size);
         self.ir_generator = ImpulseResponseGenerator::new(self.sample_rate);
-        // self.add_chorus()?;
-        // self.add_delay(2000.0, 500.0, 0.5, 0.1)?;
-        // self.add_freeverb(0.95, 0.5, 0.3, 0.7, 1.0)?;
-        // self.add_plate_reverb(2.0, 0.6, self.sample_rate)?;
-        // self.add_limiter()?;
+        let mut chorus = Chorus::new(self.sample_rate, 65.0, 15.0, 5.0, 0.5, 0.3, 0.5, 90.0);
+        chorus.set_active(false);
+        self.effect_stack.add_effect(Box::new(chorus));
+
+        let mut delay = Delay::new(self.sample_rate, 2000.0, 500.0, 0.5, 0.1);
+        delay.set_active(false);
+        self.effect_stack.add_effect(Box::new(delay));
+
+        let mut reverb = Freeverb::new(self.sample_rate, 0.95, 0.5, 0.3, 0.7, 1.0);
+        reverb.set_active(false);
+        self.effect_stack.add_effect(Box::new(reverb));
+
+        let plate_ir = self.ir_generator.plate(2.0, 0.6);
+        let partition_size = self.block_size.next_power_of_two().max(32);
+        let mut plate = Convolver::new(plate_ir, partition_size, self.sample_rate);
+        plate.set_wet_level(0.1);
+        plate.set_enabled(false);
+        self.effect_stack.add_effect(Box::new(plate));
+
+        let mut limiter = Limiter::new(self.sample_rate, -0.5, 0.1, 50.0, 1.5, true);
+        limiter.set_active(true);
+        self.effect_stack.add_effect(Box::new(limiter));
+
+        let mut compressor =
+            Compressor::new(self.sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
+        compressor.set_active(true);
+        self.effect_stack.add_effect(Box::new(compressor));
 
         let canonical_voice = layout
             .canonical_voice()
@@ -462,6 +492,23 @@ impl AudioEngine {
                 }
             }
         }
+
+        for compressor in patch.synth_state.compressors.values() {
+            if let Ok(node_id) = compressor.id.parse::<usize>() {
+                if let Err(err) = self.update_compressor(
+                    node_id,
+                    compressor.active,
+                    compressor.threshold_db,
+                    compressor.ratio,
+                    compressor.attack_ms,
+                    compressor.release_ms,
+                    compressor.makeup_gain_db,
+                    compressor.mix,
+                ) {
+                    eprintln!("Failed to apply compressor state: {}", err);
+                }
+            }
+        }
         // ... and so on for other state types (LFOs, filters, etc.)
         Ok(())
     }
@@ -657,6 +704,41 @@ impl AudioEngine {
 
     pub fn set_reverb_active(&mut self, active: bool) {
         self.set_effect_active(2, active);
+    }
+
+    pub fn update_compressor(
+        &mut self,
+        node_id: usize,
+        active: bool,
+        threshold_db: f32,
+        ratio: f32,
+        attack_ms: f32,
+        release_ms: f32,
+        makeup_gain_db: f32,
+        mix: f32,
+    ) -> Result<(), String> {
+        let effect_id = node_id
+            .checked_sub(EFFECT_NODE_ID_OFFSET)
+            .ok_or_else(|| "Invalid compressor node id".to_string())?;
+
+        let effect = self
+            .effect_stack
+            .effects
+            .get_mut(effect_id)
+            .ok_or_else(|| format!("No effect found at index {}", effect_id))?;
+
+        if let Some(comp) = effect.node.as_any_mut().downcast_mut::<Compressor>() {
+            comp.set_threshold_db(threshold_db);
+            comp.set_ratio(ratio);
+            comp.set_attack_ms(attack_ms);
+            comp.set_release_ms(release_ms);
+            comp.set_makeup_gain_db(makeup_gain_db);
+            comp.set_mix(mix);
+            comp.set_active(active);
+            Ok(())
+        } else {
+            Err(format!("Effect at index {} is not a compressor", effect_id))
+        }
     }
 
     // Node creation methods

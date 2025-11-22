@@ -865,6 +865,22 @@ export class AudioEngine {
         wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
     }
     /**
+     * @param {number} threshold_db
+     * @param {number} ratio
+     * @param {number} attack_ms
+     * @param {number} release_ms
+     * @param {number} makeup_gain_db
+     * @param {number} mix
+     * @returns {number}
+     */
+    add_compressor(threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix) {
+        const ret = wasm.audioengine_add_compressor(this.__wbg_ptr, threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
      * @returns {string}
      */
     create_sampler() {
@@ -1103,6 +1119,19 @@ export class AudioEngine {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {number} node_id
+     * @param {boolean} active
+     * @param {number} threshold_db
+     * @param {number} ratio
+     * @param {number} attack_ms
+     * @param {number} release_ms
+     * @param {number} makeup_gain_db
+     * @param {number} mix
+     */
+    update_compressor(node_id, active, threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix) {
+        wasm.audioengine_update_compressor(this.__wbg_ptr, node_id, active, threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix);
     }
     /**
      * @param {string} oscillator_id

@@ -163,6 +163,14 @@
           />
 
           <generic-tab-container
+            v-if="compressorNodes.length"
+            :nodes="compressorNodes"
+            :destinationNode="destinationNode"
+            :componentName="CompressorComponent"
+            nodeLabel="Comp"
+          />
+
+          <generic-tab-container
             v-if="reverbNodes.length"
             :nodes="reverbNodes"
             :destinationNode="destinationNode"
@@ -273,6 +281,7 @@ import FilterComponent from 'src/components/FilterComponent.vue';
 import DelayComponent from 'src/components/DelayComponent.vue';
 import ConvolverComponent from 'src/components/ConvolverComponent.vue';
 import ReverbComponent from 'src/components/ReverbComponent.vue';
+import CompressorComponent from 'src/components/CompressorComponent.vue';
 // Generic Tab Container
 import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 
@@ -374,6 +383,12 @@ const addMenuSections: AddMenuSection[] = [
         type: VoiceNodeType.Delay,
         icon: 'av_timer',
         caption: 'Echoes for depth',
+      },
+      {
+        label: 'Compressor',
+        type: VoiceNodeType.Compressor,
+        icon: 'equalizer',
+        caption: 'Tame peaks and add punch',
       },
       {
         label: 'Chorus',
@@ -558,6 +573,11 @@ const reverbNodes = computed(() => {
 
 const convolverNodes = computed(() => {
   const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Convolver);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const compressorNodes = computed(() => {
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Compressor);
   return Array.isArray(nodes) ? nodes : [];
 });
 </script>

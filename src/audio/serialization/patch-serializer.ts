@@ -26,6 +26,7 @@ import type {
   DelayState,
   ChorusState,
   ReverbState,
+  CompressorState,
   GlideState,
   VelocityState,
 } from '../types/synth-layout';
@@ -69,6 +70,7 @@ export function serializeCurrentPatch(
   delays: Map<string, DelayState>,
   choruses: Map<string, ChorusState>,
   reverbs: Map<string, ReverbState>,
+  compressors: Map<string, CompressorState>,
   noise?: NoiseState,
   velocity?: VelocityState,
   audioAssets?: Map<string, AudioAsset>,
@@ -98,6 +100,7 @@ export function serializeCurrentPatch(
     delays: mapToRecord(delays),
     choruses: mapToRecord(choruses),
     reverbs: mapToRecord(reverbs),
+    compressors: mapToRecord(compressors),
   };
 
   if (noise !== undefined) {
@@ -134,6 +137,7 @@ export interface DeserializedPatch {
   delays: Map<string, DelayState>;
   choruses: Map<string, ChorusState>;
   reverbs: Map<string, ReverbState>;
+  compressors: Map<string, CompressorState>;
   noise?: NoiseState;
   velocity?: VelocityState;
   audioAssets: Map<string, AudioAsset>;
@@ -168,11 +172,12 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
     samplers: normalizedSamplers,
     glides: normalizedGlides,
     convolvers: recordToMap(patch.synthState.convolvers),
-    delays: recordToMap(patch.synthState.delays),
-    choruses: recordToMap(patch.synthState.choruses),
-    reverbs: recordToMap(patch.synthState.reverbs),
-    audioAssets: recordToMap(patch.audioAssets),
-  };
+  delays: recordToMap(patch.synthState.delays),
+  choruses: recordToMap(patch.synthState.choruses),
+  reverbs: recordToMap(patch.synthState.reverbs),
+  compressors: recordToMap(patch.synthState.compressors ?? {}),
+  audioAssets: recordToMap(patch.audioAssets),
+};
 
   if (patch.synthState.noise !== undefined) {
     result.noise = patch.synthState.noise;

@@ -11,6 +11,7 @@ import type {
   ConvolverState,
   DelayState,
   EnvelopeConfig,
+  CompressorState,
   ReverbState,
   SamplerLoopMode,
   SamplerTriggerMode,
@@ -453,6 +454,15 @@ export default class Instrument {
     if (!this.ready || !this.workletNode || !this.synthLayout) return;
     this.workletNode.port.postMessage({
       type: 'updateConvolverState',
+      nodeId: nodeId,
+      state: newState,
+    });
+  }
+
+  public updateCompressorState(nodeId: string, newState: CompressorState) {
+    if (!this.ready || !this.workletNode || !this.synthLayout) return;
+    this.workletNode.port.postMessage({
+      type: 'updateCompressor',
       nodeId: nodeId,
       state: newState,
     });

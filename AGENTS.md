@@ -974,3 +974,30 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - `GlideState::resolved_time()` in Rust and `normalizeGlideState` in TS collapse old patches by taking the max of legacy rise/fall times when `time` is absent or zero.
 - WASM and native builders now always wire `GateMixer -> Glide (CombinedGate)` after constructing the graph so the glide sees gate changes even though `gatemixer` is created after `glide` in `NODE_CREATION_ORDER`.
 - `InstrumentV2.noteOn` skips the brief gate off/on pulse when `voiceLimit === 1`, preventing stolen monophonic voices from dropping gate (which could kill the new note) and enabling legato portamento.
+
+## New discovery: Stereo compressor effect (2025)
+
+- The global effect stack now includes a compressor after the limiter (effect index 5 → node ID `10005`). Patch states carry it via `compressors` maps (`SynthState.compressors` in Rust/patch JSON, `compressorStates` in TS) with fields `thresholdDb`, `ratio`, `attackMs`, `releaseMs`, `makeupGainDb`, `mix`, and `active`.
+- WASM/native expose `update_compressor` and the worklet handles `updateCompressor` messages. UI controls live in `CompressorComponent.vue` and appear in the Effects column; patches serialize/deserialize compressor state, while older patches default safely because the map is optional/defaulted.
+
+## Playbook: Adding a New Node (Rust + WASM + UI)
+
+- **Rust node + wiring**
+  - Implement the node in `rust-wasm/src/nodes/` and export it from `nodes/mod.rs`.
+  - Add a `*State` struct to `audio_engine/patch.rs`, extend `SynthState` maps, and update `patch_serialization_spec.rs` defaults.
+  - Register creation in WASM/native: import the node, expose add/update methods, include default instance in `init`/`init_with_patch`, and apply state during `apply_patch_states`/`init_with_patch`.
+  - If using the global effect stack, remember `EFFECT_NODE_ID_OFFSET`; add update routing in `update_*` with downcast + bounds checks.
+
+- **Ports and node types**
+  - If it needs new ports, extend `PortId` (Rust + TS enum) and `wasm-type-adapter` mappings.
+  - Add the node type string to `wasm-type-adapter` (Rust↔TS) and `DEFAULT_NODE_NAMES` in `layout-store`.
+  - Update the worklet’s `initializeVoices` mapping so `nodesByType` contains the new `VoiceNodeType`.
+
+- **Patch serialization**
+  - Extend TS `Patch/SynthState` interfaces and `serializeCurrentPatch`/`deserializePatch` to include the new map.
+  - Update validators (required keys if appropriate) and any asset extraction if the node carries audio data.
+
+- **Stores & UI**
+  - Add state map + defaults in `node-state-store`, apply to WASM in `applyPreservedStatesToWasm`, and purge on delete.
+  - Add instrument methods + worklet message handlers (`updateX`), plus `WorkletMessage` types/builders if needed.
+  - Add UI component and hook it into the add-node menu and layout columns; align toggle/knob layout with existing effects.

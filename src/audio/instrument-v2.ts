@@ -20,6 +20,7 @@ import type {
   ConvolverState,
   DelayState,
   EnvelopeConfig,
+  CompressorState,
   ReverbState,
   SamplerLoopMode,
   SamplerTriggerMode,
@@ -200,6 +201,14 @@ export default class InstrumentV2 {
   public updateReverbState(nodeId: string, state: ReverbState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateReverb',
+      nodeId,
+      state,
+    });
+  }
+
+  public updateCompressorState(nodeId: string, state: CompressorState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateCompressor',
       nodeId,
       state,
     });

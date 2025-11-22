@@ -13,11 +13,12 @@ use crate::nodes::morph_wavetable::{
 };
 use crate::nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
-    ArpeggiatorGenerator, Chorus, Convolver, Delay, Envelope, EnvelopeConfig, FilterCollection,
-    FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode, GlobalVelocityNode, Lfo,
-    LfoLoopMode, LfoRetriggerMode, LfoWaveform, Limiter, Mixer, NoiseGenerator, NoiseType,
-    NoiseUpdate, SampleData, Sampler, SamplerLoopMode, SamplerTriggerMode, Waveform,
-    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
+    ArpeggiatorGenerator, Chorus, Compressor, Convolver, Delay, Envelope, EnvelopeConfig,
+    FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
+    GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform, Limiter, Mixer,
+    NoiseGenerator, NoiseType, NoiseUpdate, SampleData, Sampler, SamplerLoopMode,
+    SamplerTriggerMode, Waveform, WavetableBank, WavetableOscillator,
+    WavetableOscillatorStateUpdate,
 };
 use crate::traits::{AudioNode, PortId};
 use crate::voice::Voice;
@@ -408,6 +409,8 @@ impl AudioEngine {
         self.add_freeverb(0.95, 0.5, 0.3, 0.7, 1.0).unwrap();
         self.add_plate_reverb(2.0, 0.6, sample_rate).unwrap();
         self.add_limiter().unwrap();
+        self.add_compressor(-12.0, 4.0, 10.0, 80.0, 3.0, 0.5)
+            .unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         log_console(&format!("plate reverb added"));
     }
@@ -549,6 +552,7 @@ impl AudioEngine {
         self.add_freeverb(0.95, 0.5, 0.3, 0.7, 1.0)?;
         self.add_plate_reverb(2.0, 0.6, self.sample_rate)?;
         self.add_limiter()?;
+        self.add_compressor(-12.0, 4.0, 10.0, 80.0, 3.0, 0.5)?;
 
         let canonical_voice = layout
             .canonical_voice()
@@ -1504,6 +1508,29 @@ impl AudioEngine {
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn add_compressor(
+        &mut self,
+        threshold_db: f32,
+        ratio: f32,
+        attack_ms: f32,
+        release_ms: f32,
+        makeup_gain_db: f32,
+        mix: f32,
+    ) -> Result<usize, JsValue> {
+        let mut compressor = Compressor::new(
+            self.sample_rate,
+            threshold_db,
+            ratio,
+            attack_ms,
+            release_ms,
+            makeup_gain_db,
+            mix,
+        );
+        compressor.set_active(true);
+        Ok(self.effect_stack.add_effect(Box::new(compressor)))
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
 
     pub fn add_chorus(&mut self) -> Result<usize, JsValue> {
         let mut chorus = Chorus::new(
@@ -1559,6 +1586,37 @@ impl AudioEngine {
             }
         } else {
             // Log a warning if there is no effect at that index.
+            log_console(&format!("No effect found at index {}", effect_id));
+        }
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn update_compressor(
+        &mut self,
+        node_id: usize,
+        active: bool,
+        threshold_db: f32,
+        ratio: f32,
+        attack_ms: f32,
+        release_ms: f32,
+        makeup_gain_db: f32,
+        mix: f32,
+    ) {
+        let effect_id = node_id - EFFECT_NODE_ID_OFFSET;
+
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_id) {
+            if let Some(compressor) = effect.node.as_any_mut().downcast_mut::<Compressor>() {
+                compressor.set_threshold_db(threshold_db);
+                compressor.set_ratio(ratio);
+                compressor.set_attack_ms(attack_ms);
+                compressor.set_release_ms(release_ms);
+                compressor.set_makeup_gain_db(makeup_gain_db);
+                compressor.set_mix(mix);
+                compressor.set_active(active);
+            } else {
+                log_console(&format!("Effect at index {} is not a compressor", effect_id));
+            }
+        } else {
             log_console(&format!("No effect found at index {}", effect_id));
         }
     }
@@ -2687,6 +2745,21 @@ impl AudioEngine {
                     reverb.wet,
                     reverb.dry,
                     reverb.width,
+                );
+            }
+        }
+
+        for compressor in patch.synth_state.compressors.values() {
+            if let Ok(node_id) = compressor.id.parse::<usize>() {
+                self.update_compressor(
+                    node_id,
+                    compressor.active,
+                    compressor.threshold_db,
+                    compressor.ratio,
+                    compressor.attack_ms,
+                    compressor.release_ms,
+                    compressor.makeup_gain_db,
+                    compressor.mix,
                 );
             }
         }

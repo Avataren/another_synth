@@ -54,6 +54,8 @@ pub struct SynthState {
     #[serde(default)]
     pub reverbs: HashMap<String, ReverbState>,
     #[serde(default)]
+    pub compressors: HashMap<String, CompressorState>,
+    #[serde(default)]
     pub noise: Option<NoiseState>,
     #[serde(default)]
     pub velocity: Option<VelocityState>,
@@ -237,6 +239,22 @@ pub struct ChorusState {
     pub mix: f32,
     #[serde(rename = "stereoPhaseOffsetDeg")]
     pub stereo_phase_offset_deg: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompressorState {
+    pub id: String,
+    pub active: bool,
+    #[serde(rename = "thresholdDb")]
+    pub threshold_db: f32,
+    pub ratio: f32,
+    #[serde(rename = "attackMs")]
+    pub attack_ms: f32,
+    #[serde(rename = "releaseMs")]
+    pub release_ms: f32,
+    #[serde(rename = "makeupGainDb")]
+    pub makeup_gain_db: f32,
+    pub mix: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

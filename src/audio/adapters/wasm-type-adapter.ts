@@ -39,6 +39,7 @@ const RUST_TO_TS_NODE_TYPE: Record<string, VoiceNodeType> = {
   'chorus': VoiceNodeType.Chorus,
   'limiter': VoiceNodeType.Limiter,
   'freeverb': VoiceNodeType.Reverb,
+  'compressor': VoiceNodeType.Compressor,
 };
 
 /** Reverse mapping for TypeScript → Rust */
@@ -61,6 +62,7 @@ const TS_TO_RUST_NODE_TYPE: Record<VoiceNodeType, string> = {
   [VoiceNodeType.Chorus]: 'chorus',
   [VoiceNodeType.Limiter]: 'limiter',
   [VoiceNodeType.Reverb]: 'freeverb',
+  [VoiceNodeType.Compressor]: 'compressor',
 };
 
 /**

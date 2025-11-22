@@ -4,6 +4,7 @@ import type {
   ConvolverState,
   DelayState,
   EnvelopeConfig,
+  CompressorState,
   RawConnection,
   RawVoice,
   ReverbState,
@@ -260,6 +261,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'updateDelay':
         this.handleUpdateDelay(event.data);
         break;
+      case 'updateCompressor':
+        this.handleUpdateCompressor(event.data);
+        break;
       case 'updateVelocity':
         this.handleUpdateVelocity(event.data);
         break;
@@ -353,6 +357,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case VoiceNodeType.Envelope:
         this.audioEngine!.create_envelope();
+        break;
+      case VoiceNodeType.Convolver:
+      case VoiceNodeType.Delay:
+      case VoiceNodeType.Chorus:
+      case VoiceNodeType.Reverb:
+      case VoiceNodeType.Compressor:
+        // Effects live on the global stack and are created during engine init.
+        console.warn('Effect nodes are created by default; skipping explicit creation for', nodeType);
         break;
       default:
         console.error('Missing creation case for: ', nodeType);
@@ -808,6 +820,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Chorus]: [],
       [VoiceNodeType.Limiter]: [],
       [VoiceNodeType.Reverb]: [],
+      [VoiceNodeType.Compressor]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -868,6 +881,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'freeverb':
           type = VoiceNodeType.Reverb;
+          break;
+        case 'compressor':
+          type = VoiceNodeType.Compressor;
           break;
 
         default:
@@ -1042,6 +1058,31 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.state.feedback_filter,
       data.state.mix,
       data.state.stereoPhaseOffsetDeg,
+    );
+  }
+
+  private handleUpdateCompressor(data: {
+    type: string;
+    nodeId: string;
+    state: CompressorState;
+  }) {
+    if (!this.audioEngine) return;
+
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error('handleUpdateCompressor: invalid nodeId:', data.nodeId);
+      return;
+    }
+
+    this.audioEngine.update_compressor(
+      nodeId,
+      data.state.active,
+      data.state.thresholdDb,
+      data.state.ratio,
+      data.state.attackMs,
+      data.state.releaseMs,
+      data.state.makeupGainDb,
+      data.state.mix,
     );
   }
 

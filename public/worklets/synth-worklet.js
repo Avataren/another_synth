@@ -932,6 +932,22 @@ var AudioEngine = class {
     wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
   }
   /**
+   * @param {number} threshold_db
+   * @param {number} ratio
+   * @param {number} attack_ms
+   * @param {number} release_ms
+   * @param {number} makeup_gain_db
+   * @param {number} mix
+   * @returns {number}
+   */
+  add_compressor(threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix) {
+    const ret = wasm.audioengine_add_compressor(this.__wbg_ptr, threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
    * @returns {string}
    */
   create_sampler() {
@@ -1172,6 +1188,19 @@ var AudioEngine = class {
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
+  }
+  /**
+   * @param {number} node_id
+   * @param {boolean} active
+   * @param {number} threshold_db
+   * @param {number} ratio
+   * @param {number} attack_ms
+   * @param {number} release_ms
+   * @param {number} makeup_gain_db
+   * @param {number} mix
+   */
+  update_compressor(node_id, active, threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix) {
+    wasm.audioengine_update_compressor(this.__wbg_ptr, node_id, active, threshold_db, ratio, attack_ms, release_ms, makeup_gain_db, mix);
   }
   /**
    * @param {string} oscillator_id
@@ -2809,6 +2838,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateDelay":
         this.handleUpdateDelay(event.data);
         break;
+      case "updateCompressor":
+        this.handleUpdateCompressor(event.data);
+        break;
       case "updateVelocity":
         this.handleUpdateVelocity(event.data);
         break;
@@ -2895,6 +2927,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
         break;
       case "envelope" /* Envelope */:
         this.audioEngine.create_envelope();
+        break;
+      case "convolver" /* Convolver */:
+      case "delay" /* Delay */:
+      case "chorus" /* Chorus */:
+      case "freeverb" /* Reverb */:
+      case "compressor" /* Compressor */:
+        console.warn("Effect nodes are created by default; skipping explicit creation for", nodeType);
         break;
       default:
         console.error("Missing creation case for: ", nodeType);
@@ -3220,7 +3259,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["arpeggiator_generator" /* ArpeggiatorGenerator */]: [],
       ["chorus" /* Chorus */]: [],
       ["limiter" /* Limiter */]: [],
-      ["freeverb" /* Reverb */]: []
+      ["freeverb" /* Reverb */]: [],
+      ["compressor" /* Compressor */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;
@@ -3280,6 +3320,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "freeverb":
           type = "freeverb" /* Reverb */;
+          break;
+        case "compressor":
+          type = "compressor" /* Compressor */;
           break;
         default:
           console.warn("##### Unknown node type:", rawNode.node_type);
@@ -3418,6 +3461,24 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.state.feedback_filter,
       data.state.mix,
       data.state.stereoPhaseOffsetDeg
+    );
+  }
+  handleUpdateCompressor(data) {
+    if (!this.audioEngine) return;
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error("handleUpdateCompressor: invalid nodeId:", data.nodeId);
+      return;
+    }
+    this.audioEngine.update_compressor(
+      nodeId,
+      data.state.active,
+      data.state.thresholdDb,
+      data.state.ratio,
+      data.state.attackMs,
+      data.state.releaseMs,
+      data.state.makeupGainDb,
+      data.state.mix
     );
   }
   handleUpdateReverb(data) {

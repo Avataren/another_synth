@@ -18,6 +18,7 @@ import type {
   DelayState,
   ChorusState,
   ReverbState,
+  CompressorState,
   NodeConnectionUpdate,
   SynthLayout,
 } from './synth-layout';
@@ -158,6 +159,12 @@ export interface UpdateReverbMessage extends BaseMessage {
   type: 'updateReverb';
   nodeId: string;
   state: ReverbState;
+}
+
+export interface UpdateCompressorMessage extends BaseMessage {
+  type: 'updateCompressor';
+  nodeId: string;
+  state: CompressorState;
 }
 
 export interface UpdateVelocityMessage extends BaseMessage {
@@ -380,6 +387,7 @@ export type WorkletMessage =
   | UpdateConvolverMessage
   | UpdateDelayMessage
   | UpdateChorusMessage
+  | UpdateCompressorMessage
   | UpdateReverbMessage
   | UpdateVelocityMessage
   | UpdateGlideMessage

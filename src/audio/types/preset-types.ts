@@ -10,6 +10,7 @@ import type {
   DelayState,
   ChorusState,
   ReverbState,
+  CompressorState,
   VelocityState,
   GlideState,
 } from './synth-layout';
@@ -113,6 +114,9 @@ export interface SynthState {
 
   /** Reverb states by node ID */
   reverbs: Record<string, ReverbState>;
+
+  /** Compressor states by node ID */
+  compressors?: Record<string, CompressorState>;
 
   /** Global noise state */
   noise?: NoiseState;

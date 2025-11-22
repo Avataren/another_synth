@@ -25,6 +25,7 @@ export enum VoiceNodeType {
   Chorus = 'chorus',
   Limiter = 'limiter',
   Reverb = 'freeverb',
+  Compressor = 'compressor',
 }
 
 export interface ReverbState {
@@ -56,6 +57,17 @@ export interface ChorusState {
   mix: number;
   /** The phase difference in degrees between the LFOs for the left and right channels (0 to 360). */
   stereoPhaseOffsetDeg: number;
+}
+
+export interface CompressorState {
+  id: string;
+  active: boolean;
+  thresholdDb: number;
+  ratio: number;
+  attackMs: number;
+  releaseMs: number;
+  makeupGainDb: number;
+  mix: number;
 }
 
 export enum SamplerLoopMode {
