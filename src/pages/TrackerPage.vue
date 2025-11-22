@@ -405,6 +405,47 @@ function jumpToPrevTrack() {
   activeColumn.value = 0;
 }
 
+function updateEntryAt(
+  row: number,
+  trackIndex: number,
+  mutator: (entry: TrackerEntryData) => TrackerEntryData
+) {
+  tracks.value = tracks.value.map((track, idx) => {
+    if (idx !== trackIndex) return track;
+
+    const existing = track.entries.find((e) => e.row === row);
+    const baseInstrument = normalizeInstrumentId(existing?.instrument)
+      ?? formatInstrumentId(idx + 1);
+    const draft: TrackerEntryData = existing
+      ? { ...existing, instrument: existing.instrument ?? baseInstrument }
+      : { row, instrument: baseInstrument };
+
+    const mutated = mutator(draft);
+    const filtered = track.entries.filter((e) => e.row !== row);
+    filtered.push(mutated);
+    filtered.sort((a, b) => a.row - b.row);
+
+    return { ...track, entries: filtered };
+  });
+}
+
+function insertNoteOff() {
+  updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
+    ...entry,
+    note: '--'
+  }));
+}
+
+function clearStep() {
+  tracks.value = tracks.value.map((track, idx) => {
+    if (idx !== activeTrack.value) return track;
+    return {
+      ...track,
+      entries: track.entries.filter((e) => e.row !== activeRow.value)
+    };
+  });
+}
+
 function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
   patternMeta.value.rows = clamped;
@@ -614,6 +655,14 @@ function onKeyDown(event: KeyboardEvent) {
       } else {
         void handlePlay();
       }
+      break;
+    case 'Insert':
+      event.preventDefault();
+      insertNoteOff();
+      break;
+    case 'Delete':
+      event.preventDefault();
+      clearStep();
       break;
     default:
       break;
