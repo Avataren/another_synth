@@ -17,7 +17,7 @@ use crate::nodes::{
     FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
     GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform, Limiter, Mixer,
     NoiseGenerator, NoiseType, NoiseUpdate, SampleData, Sampler, SamplerLoopMode,
-    SamplerTriggerMode, Waveform, WavetableBank, WavetableOscillator,
+    SamplerTriggerMode, Saturation, Waveform, WavetableBank, WavetableOscillator,
     WavetableOscillatorStateUpdate,
 };
 use crate::traits::{AudioNode, PortId};
@@ -411,6 +411,7 @@ impl AudioEngine {
         self.add_limiter().unwrap();
         self.add_compressor(-12.0, 4.0, 10.0, 80.0, 3.0, 0.5)
             .unwrap();
+        self.add_saturation(2.0, 0.5, false).unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         log_console(&format!("plate reverb added"));
     }
@@ -553,6 +554,7 @@ impl AudioEngine {
         self.add_plate_reverb(2.0, 0.6, self.sample_rate)?;
         self.add_limiter()?;
         self.add_compressor(-12.0, 4.0, 10.0, 80.0, 3.0, 0.5)?;
+        self.add_saturation(2.0, 0.5, false)?;
 
         let canonical_voice = layout
             .canonical_voice()
@@ -837,6 +839,18 @@ impl AudioEngine {
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
     pub fn get_cpu_usage(&self) -> f32 {
         self.last_cpu_usage
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn add_saturation(
+        &mut self,
+        drive: f32,
+        mix: f32,
+        active: bool,
+    ) -> Result<usize, JsValue> {
+        let mut saturation = Saturation::new(drive, mix);
+        saturation.set_active(active);
+        Ok(self.effect_stack.add_effect(Box::new(saturation)))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -1476,6 +1490,28 @@ impl AudioEngine {
             }
         } else {
             // Log a warning if there is no effect at that index.
+            log_console(&format!("No effect found at index {}", effect_id));
+        }
+    }
+
+    pub fn update_saturation(&mut self, node_id: usize, drive: f32, mix: f32, active: bool) {
+        let Some(effect_id) = node_id.checked_sub(EFFECT_NODE_ID_OFFSET) else {
+            log_console(&format!(
+                "Invalid saturation node id {}; expected offset {}",
+                node_id, EFFECT_NODE_ID_OFFSET
+            ));
+            return;
+        };
+
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_id) {
+            if let Some(saturation) = effect.node.as_any_mut().downcast_mut::<Saturation>() {
+                saturation.set_drive(drive);
+                saturation.set_mix(mix);
+                saturation.set_active(active);
+            } else {
+                log_console(&format!("Effect at index {} is not a Saturation", effect_id));
+            }
+        } else {
             log_console(&format!("No effect found at index {}", effect_id));
         }
     }
@@ -2562,7 +2598,8 @@ impl AudioEngine {
                 }
             }
             // Effect nodes exist in the effect stack.
-            "chorus" | "delay" | "freeverb" | "convolver" | "limiter" => {}
+            "chorus" | "delay" | "freeverb" | "convolver" | "limiter" | "compressor"
+            | "saturation" => {}
             other => log_console(&format!("Skipping unsupported node type {}", other)),
         }
         Ok(())
@@ -2761,6 +2798,12 @@ impl AudioEngine {
                     compressor.makeup_gain_db,
                     compressor.mix,
                 );
+            }
+        }
+
+        for saturation in patch.synth_state.saturations.values() {
+            if let Ok(node_id) = saturation.id.parse::<usize>() {
+                self.update_saturation(node_id, saturation.drive, saturation.mix, saturation.active);
             }
         }
 

@@ -40,5 +40,6 @@ pub use limiter::*;
 pub use mixer::*;
 pub use noise_generator::*;
 pub use sampler::*;
+pub use saturation::*;
 pub use wavetable::*;
 pub use wavetable_oscillator::*;

@@ -19,6 +19,7 @@ import type {
   ChorusState,
   ReverbState,
   CompressorState,
+  SaturationState,
   NodeConnectionUpdate,
   SynthLayout,
 } from './synth-layout';
@@ -165,6 +166,12 @@ export interface UpdateCompressorMessage extends BaseMessage {
   type: 'updateCompressor';
   nodeId: string;
   state: CompressorState;
+}
+
+export interface UpdateSaturationMessage extends BaseMessage {
+  type: 'updateSaturation';
+  nodeId: string;
+  state: SaturationState;
 }
 
 export interface UpdateVelocityMessage extends BaseMessage {
@@ -388,6 +395,7 @@ export type WorkletMessage =
   | UpdateDelayMessage
   | UpdateChorusMessage
   | UpdateCompressorMessage
+  | UpdateSaturationMessage
   | UpdateReverbMessage
   | UpdateVelocityMessage
   | UpdateGlideMessage

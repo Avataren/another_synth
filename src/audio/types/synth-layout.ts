@@ -26,6 +26,7 @@ export enum VoiceNodeType {
   Limiter = 'limiter',
   Reverb = 'freeverb',
   Compressor = 'compressor',
+  Saturation = 'saturation',
 }
 
 export interface ReverbState {
@@ -67,6 +68,13 @@ export interface CompressorState {
   attackMs: number;
   releaseMs: number;
   makeupGainDb: number;
+  mix: number;
+}
+
+export interface SaturationState {
+  id: string;
+  active: boolean;
+  drive: number;
   mix: number;
 }
 

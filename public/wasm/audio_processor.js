@@ -881,6 +881,19 @@ export class AudioEngine {
         return ret[0] >>> 0;
     }
     /**
+     * @param {number} drive
+     * @param {number} mix
+     * @param {boolean} active
+     * @returns {number}
+     */
+    add_saturation(drive, mix, active) {
+        const ret = wasm.audioengine_add_saturation(this.__wbg_ptr, drive, mix, active);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
      * @returns {string}
      */
     create_sampler() {
@@ -1145,6 +1158,15 @@ export class AudioEngine {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} drive
+     * @param {number} mix
+     * @param {boolean} active
+     */
+    update_saturation(node_id, drive, mix, active) {
+        wasm.audioengine_update_saturation(this.__wbg_ptr, node_id, drive, mix, active);
     }
     /**
      * @returns {any}

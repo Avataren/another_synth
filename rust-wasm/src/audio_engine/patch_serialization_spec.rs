@@ -82,6 +82,7 @@ mod tests {
             choruses: Default::default(),
             reverbs: Default::default(),
             compressors: Default::default(),
+            saturations: Default::default(),
             noise: Default::default(),
             velocity: Default::default(),
         };

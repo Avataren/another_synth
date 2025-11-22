@@ -28,6 +28,7 @@ import type {
   DeleteNodeMessage,
   CreateNodeMessage,
   LoadPatchMessage,
+  UpdateSaturationMessage,
 } from '../../types/worklet-messages';
 import { WorkletMessageBuilder } from '../../types/worklet-messages';
 import type { SynthLayout } from '../../types/synth-layout';
@@ -237,6 +238,18 @@ export class ReverbHandler extends BaseMessageHandler {
   }
 }
 
+export class SaturationHandler extends BaseMessageHandler {
+  async handle(message: UpdateSaturationMessage): Promise<void> {
+    await this.executeWithResponse(message, async (msg) => {
+      this.engineAdapter.updateSaturation(msg.nodeId, {
+        drive: msg.state.drive,
+        mix: msg.state.mix,
+        active: msg.state.active,
+      });
+    });
+  }
+}
+
 // ============================================================================
 // Connection Handler
 // ============================================================================
@@ -381,6 +394,7 @@ export class WorkletHandlerRegistry {
     this.handlers.set('updateDelay', new DelayHandler(engineAdapter, port));
     this.handlers.set('updateChorus', new ChorusHandler(engineAdapter, port));
     this.handlers.set('updateReverb', new ReverbHandler(engineAdapter, port));
+    this.handlers.set('updateSaturation', new SaturationHandler(engineAdapter, port));
     this.handlers.set('updateConnection', new ConnectionHandler(engineAdapter, port));
     this.handlers.set('createNode', new NodeCreationHandler(engineAdapter, port));
     this.handlers.set('deleteNode', new NodeDeletionHandler(engineAdapter, port));

@@ -171,6 +171,14 @@
           />
 
           <generic-tab-container
+            v-if="saturationNodes.length"
+            :nodes="saturationNodes"
+            :destinationNode="destinationNode"
+            :componentName="SaturationComponent"
+            nodeLabel="Saturation"
+          />
+
+          <generic-tab-container
             v-if="reverbNodes.length"
             :nodes="reverbNodes"
             :destinationNode="destinationNode"
@@ -282,6 +290,7 @@ import DelayComponent from 'src/components/DelayComponent.vue';
 import ConvolverComponent from 'src/components/ConvolverComponent.vue';
 import ReverbComponent from 'src/components/ReverbComponent.vue';
 import CompressorComponent from 'src/components/CompressorComponent.vue';
+import SaturationComponent from 'src/components/SaturationComponent.vue';
 // Generic Tab Container
 import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 
@@ -389,6 +398,12 @@ const addMenuSections: AddMenuSection[] = [
         type: VoiceNodeType.Compressor,
         icon: 'equalizer',
         caption: 'Tame peaks and add punch',
+      },
+      {
+        label: 'Saturation',
+        type: VoiceNodeType.Saturation,
+        icon: 'whatshot',
+        caption: 'Add harmonic drive and warmth',
       },
       {
         label: 'Chorus',
@@ -578,6 +593,11 @@ const convolverNodes = computed(() => {
 
 const compressorNodes = computed(() => {
   const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Compressor);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const saturationNodes = computed(() => {
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Saturation);
   return Array.isArray(nodes) ? nodes : [];
 });
 </script>

@@ -35,6 +35,7 @@ const DEFAULT_NODE_NAMES: Partial<Record<VoiceNodeType, string[]>> = {
   [VoiceNodeType.Limiter]: ['Limiter'],
   [VoiceNodeType.Reverb]: ['Reverb'],
   [VoiceNodeType.Compressor]: ['Compressor'],
+  [VoiceNodeType.Saturation]: ['Saturation'],
 };
 
 const isGenericNameForType = (name: string, type: VoiceNodeType): boolean => {

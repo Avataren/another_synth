@@ -67,6 +67,8 @@ export class ModulationRouteManager {
         return 'Limiter';
       case VoiceNodeType.Reverb:
         return 'Reverb';
+      case VoiceNodeType.Saturation:
+        return 'Saturation';
       default:
         return 'Node';
     }

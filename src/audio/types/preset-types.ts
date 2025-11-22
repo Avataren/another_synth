@@ -12,6 +12,7 @@ import type {
   ReverbState,
   CompressorState,
   VelocityState,
+  SaturationState,
   GlideState,
 } from './synth-layout';
 import type { NoiseState } from './noise';
@@ -117,6 +118,9 @@ export interface SynthState {
 
   /** Compressor states by node ID */
   compressors?: Record<string, CompressorState>;
+
+  /** Saturation states by node ID */
+  saturations?: Record<string, SaturationState>;
 
   /** Global noise state */
   noise?: NoiseState;

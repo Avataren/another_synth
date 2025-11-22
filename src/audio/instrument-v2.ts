@@ -21,6 +21,7 @@ import type {
   DelayState,
   EnvelopeConfig,
   CompressorState,
+  SaturationState,
   ReverbState,
   SamplerLoopMode,
   SamplerTriggerMode,
@@ -209,6 +210,14 @@ export default class InstrumentV2 {
   public updateCompressorState(nodeId: string, state: CompressorState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateCompressor',
+      nodeId,
+      state,
+    });
+  }
+
+  public updateSaturationState(nodeId: string, state: SaturationState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateSaturation',
       nodeId,
       state,
     });

@@ -442,6 +442,11 @@ export const usePatchStore = defineStore('patchStore', {
         templateState.reverbs,
         nodeStateStore.reverbStates,
       );
+      assignStates(
+        VoiceNodeType.Saturation,
+        templateState.saturations,
+        nodeStateStore.saturationStates,
+      );
 
       if (templateState.noise) {
         nodeStateStore.noiseState = templateState.noise;
@@ -530,6 +535,7 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.chorusStates,
           nodeStateStore.reverbStates,
           nodeStateStore.compressorStates,
+          nodeStateStore.saturationStates,
           nodeStateStore.noiseState,
           nodeStateStore.velocityState,
           allAssets,
@@ -628,6 +634,7 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.chorusStates,
           nodeStateStore.reverbStates,
           nodeStateStore.compressorStates,
+          nodeStateStore.saturationStates,
           nodeStateStore.noiseState,
           nodeStateStore.velocityState,
           allAssets,
@@ -896,6 +903,7 @@ export const usePatchStore = defineStore('patchStore', {
         nodeStateStore.chorusStates,
         nodeStateStore.reverbStates,
         nodeStateStore.compressorStates,
+        nodeStateStore.saturationStates,
         nodeStateStore.noiseState,
         nodeStateStore.velocityState,
         allAssets,

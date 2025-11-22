@@ -14,6 +14,7 @@ import {
   type GlideState,
   type LfoState,
   type CompressorState,
+  type SaturationState,
   type ReverbState,
   type SamplerState,
   type VelocityState,
@@ -52,6 +53,15 @@ function createDefaultSamplerState(id: string): SamplerState {
   });
 }
 
+function createDefaultSaturationState(id: string): SaturationState {
+  return {
+    id,
+    active: false,
+    drive: 2.0,
+    mix: 0.5,
+  };
+}
+
 export const useNodeStateStore = defineStore('nodeStateStore', {
   state: () => ({
     oscillatorStates: new Map<string, OscillatorState>(),
@@ -67,6 +77,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
     chorusStates: new Map<string, ChorusState>(),
     reverbStates: new Map<string, ReverbState>(),
     compressorStates: new Map<string, CompressorState>(),
+    saturationStates: new Map<string, SaturationState>(),
     noiseState: {
       noiseType: NoiseType.White,
       cutoff: 1.0,
@@ -120,6 +131,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       prune(this.chorusStates);
       prune(this.reverbStates);
       prune(this.compressorStates);
+      prune(this.saturationStates);
 
       getNodesOfType(voice, VoiceNodeType.Oscillator)?.forEach((node) => {
         if (!this.oscillatorStates.has(node.id)) {
@@ -251,6 +263,15 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
         }
       });
 
+      getNodesOfType(voice, VoiceNodeType.Saturation)?.forEach((node) => {
+        if (!this.saturationStates.has(node.id)) {
+          this.saturationStates.set(
+            node.id,
+            createDefaultSaturationState(node.id),
+          );
+        }
+      });
+
     },
     resetCurrentStateToDefaults(applyToWasm = true) {
       this.oscillatorStates = new Map();
@@ -265,6 +286,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.chorusStates = new Map();
       this.reverbStates = new Map();
       this.compressorStates = new Map();
+      this.saturationStates = new Map();
       this.noiseState = {
         noiseType: NoiseType.White,
         cutoff: 1.0,
@@ -374,6 +396,15 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
         }
       });
 
+      this.saturationStates.forEach((state, nodeId) => {
+        if (instrument.updateSaturationState) {
+          instrument.updateSaturationState(nodeId, {
+            ...state,
+            id: nodeId,
+          });
+        }
+      });
+
       this.samplerStates.forEach((_state, nodeId) => {
         this.sendSamplerState(nodeId);
       });
@@ -472,6 +503,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       choruses: Map<string, ChorusState>;
       reverbs: Map<string, ReverbState>;
       compressors: Map<string, CompressorState>;
+      saturations: Map<string, SaturationState>;
       noise?: NoiseState;
       velocity?: VelocityState;
     }) {
@@ -495,6 +527,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.chorusStates = deserialized.choruses;
       this.reverbStates = deserialized.reverbs;
       this.compressorStates = deserialized.compressors;
+      this.saturationStates = deserialized.saturations;
       if (deserialized.noise) {
         this.noiseState = deserialized.noise;
       }
@@ -516,6 +549,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.samplerWaveforms.delete(nodeId);
       this.reverbStates.delete(nodeId);
       this.compressorStates.delete(nodeId);
+      this.saturationStates.delete(nodeId);
     },
   },
 });

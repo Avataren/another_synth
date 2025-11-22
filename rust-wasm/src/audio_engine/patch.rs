@@ -56,6 +56,8 @@ pub struct SynthState {
     #[serde(default)]
     pub compressors: HashMap<String, CompressorState>,
     #[serde(default)]
+    pub saturations: HashMap<String, SaturationState>,
+    #[serde(default)]
     pub noise: Option<NoiseState>,
     #[serde(default)]
     pub velocity: Option<VelocityState>,
@@ -254,6 +256,14 @@ pub struct CompressorState {
     pub release_ms: f32,
     #[serde(rename = "makeupGainDb")]
     pub makeup_gain_db: f32,
+    pub mix: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SaturationState {
+    pub id: String,
+    pub active: bool,
+    pub drive: f32,
     pub mix: f32,
 }
 

@@ -8,6 +8,7 @@ import type {
   RawConnection,
   RawVoice,
   ReverbState,
+  SaturationState,
   VelocityState,
   WasmState,
 } from '../types/synth-layout';
@@ -264,6 +265,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'updateCompressor':
         this.handleUpdateCompressor(event.data);
         break;
+      case 'updateSaturation':
+        this.handleUpdateSaturation(event.data);
+        break;
       case 'updateVelocity':
         this.handleUpdateVelocity(event.data);
         break;
@@ -363,6 +367,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case VoiceNodeType.Chorus:
       case VoiceNodeType.Reverb:
       case VoiceNodeType.Compressor:
+      case VoiceNodeType.Saturation:
         // Effects live on the global stack and are created during engine init.
         console.warn('Effect nodes are created by default; skipping explicit creation for', nodeType);
         break;
@@ -821,6 +826,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Limiter]: [],
       [VoiceNodeType.Reverb]: [],
       [VoiceNodeType.Compressor]: [],
+      [VoiceNodeType.Saturation]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -884,6 +890,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'compressor':
           type = VoiceNodeType.Compressor;
+          break;
+        case 'saturation':
+          type = VoiceNodeType.Saturation;
           break;
 
         default:
@@ -1199,6 +1208,29 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.state.delayMs,
       data.state.feedback,
       data.state.wetMix,
+      data.state.active,
+    );
+  }
+
+  private handleUpdateSaturation(data: {
+    type: string;
+    nodeId: string;
+    state: SaturationState;
+  }) {
+    if (!this.audioEngine) return;
+
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error('handleUpdateSaturation: invalid nodeId:', data.nodeId);
+      return;
+    }
+
+    (this.audioEngine as unknown as {
+      update_saturation: (id: number, drive: number, mix: number, active: boolean) => void;
+    }).update_saturation(
+      nodeId,
+      data.state.drive,
+      data.state.mix,
       data.state.active,
     );
   }

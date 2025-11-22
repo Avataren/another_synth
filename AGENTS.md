@@ -358,6 +358,12 @@ this.automationAdapter = new AutomationAdapter(
 - `PatchMetadata` now exposes an optional `category` string that stores a slash-delimited hierarchy (e.g. `"FM/Lead"`). Use the helpers in `src/utils/patch-category.ts` (`normalizePatchCategory`, `categorySegments`, `DEFAULT_PATCH_CATEGORY`) whenever reading or mutating categories so the store, serializer, and UI stay in sync.
 - Preset selection in `PresetManager.vue` uses a `QTree` grouped by these categories and provides an inline category input. Blank categories fall back to `DEFAULT_PATCH_CATEGORY` ("Uncategorized"), so saving with an empty field intentionally clears the category and moves the patch under that bucket.
 
+## New discovery: Saturation/drive effect in effect stack
+
+- A soft-clip saturation effect now lives on the global effect stack (created after the compressor, ID = `EFFECT_NODE_ID_OFFSET + index`, currently `10006` by default). Default state: drive `2.0`, mix `0.5`, active `false` to avoid changing legacy patches.
+- Patches serialize `saturations` alongside other effects: each entry has `{ id, drive, mix, active }`. Serde defaults make the field optional for old patches.
+- TS layout/types add `VoiceNodeType.Saturation` plus `saturationStates` in `node-state-store`; `SaturationComponent` drives UI updates and patch saving, and the worklet message type `updateSaturation` forwards changes to `AudioEngine::update_saturation`.
+
 ---
 
 # Web App Architecture Improvements (2025)

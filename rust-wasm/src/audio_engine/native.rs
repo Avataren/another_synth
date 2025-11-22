@@ -11,8 +11,8 @@ use crate::nodes::morph_wavetable::WavetableSynthBank;
 use crate::nodes::{
     AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Compressor, Convolver, Delay, Envelope,
     EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
-    GlobalVelocityNode, Lfo, Limiter, Mixer, Waveform, WavetableBank, WavetableOscillator,
-    WavetableOscillatorStateUpdate,
+    GlobalVelocityNode, Lfo, Limiter, Mixer, Saturation, Waveform, WavetableBank,
+    WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 //NoiseGenerator, NoiseUpdate,
 use crate::traits::{AudioNode, PortId};
@@ -191,6 +191,10 @@ impl AudioEngine {
             Compressor::new(sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
         compressor.set_active(true);
         self.effect_stack.add_effect(Box::new(compressor));
+
+        let mut saturation = Saturation::new(2.0, 0.5);
+        saturation.set_active(false);
+        self.effect_stack.add_effect(Box::new(saturation));
     }
 
     pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, String> {
@@ -275,6 +279,10 @@ impl AudioEngine {
             Compressor::new(self.sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
         compressor.set_active(true);
         self.effect_stack.add_effect(Box::new(compressor));
+
+        let mut saturation = Saturation::new(2.0, 0.5);
+        saturation.set_active(false);
+        self.effect_stack.add_effect(Box::new(saturation));
 
         let canonical_voice = layout
             .canonical_voice()
@@ -509,6 +517,16 @@ impl AudioEngine {
                 }
             }
         }
+
+        for saturation in patch.synth_state.saturations.values() {
+            if let Ok(node_id) = saturation.id.parse::<usize>() {
+                if let Err(err) =
+                    self.update_saturation(node_id, saturation.drive, saturation.mix, saturation.active)
+                {
+                    eprintln!("Failed to apply saturation state: {}", err);
+                }
+            }
+        }
         // ... and so on for other state types (LFOs, filters, etc.)
         Ok(())
     }
@@ -738,6 +756,36 @@ impl AudioEngine {
             Ok(())
         } else {
             Err(format!("Effect at index {} is not a compressor", effect_id))
+        }
+    }
+
+    pub fn update_saturation(
+        &mut self,
+        node_id: usize,
+        drive: f32,
+        mix: f32,
+        active: bool,
+    ) -> Result<(), String> {
+        let effect_id = node_id
+            .checked_sub(EFFECT_NODE_ID_OFFSET)
+            .ok_or_else(|| "Invalid saturation node id".to_string())?;
+
+        let effect = self
+            .effect_stack
+            .effects
+            .get_mut(effect_id)
+            .ok_or_else(|| format!("No effect found at index {}", effect_id))?;
+
+        if let Some(saturation) = effect.node.as_any_mut().downcast_mut::<Saturation>() {
+            saturation.set_drive(drive);
+            saturation.set_mix(mix);
+            saturation.set_active(active);
+            Ok(())
+        } else {
+            Err(format!(
+                "Effect at index {} is not a saturation effect",
+                effect_id
+            ))
         }
     }
 

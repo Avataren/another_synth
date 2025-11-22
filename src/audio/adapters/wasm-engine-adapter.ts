@@ -455,6 +455,25 @@ export class WasmEngineAdapter {
     );
   }
 
+  updateSaturation(saturationId: string | number, params: {
+    drive: number;
+    mix: number;
+    active: boolean;
+  }): void {
+    const nodeId = typeof saturationId === 'string' ? Number(saturationId) : saturationId;
+    if (!Number.isFinite(nodeId)) {
+      throw new Error(`Invalid saturation node ID: ${saturationId}`);
+    }
+
+    (this.requireEngine() as unknown as { update_saturation: (id: number, drive: number, mix: number, active: boolean) => void })
+      .update_saturation(
+        nodeId,
+        validateFiniteNumber(params.drive, 'drive'),
+        validateFiniteNumber(params.mix, 'mix'),
+        Boolean(params.active)
+      );
+  }
+
   updateVelocity(nodeId: string, sensitivity: number, randomize: number): void {
     // WASM API expects node_id (string), sensitivity, randomize
     this.requireEngine().update_velocity(nodeId, sensitivity, randomize);

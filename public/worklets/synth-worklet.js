@@ -948,6 +948,19 @@ var AudioEngine = class {
     return ret[0] >>> 0;
   }
   /**
+   * @param {number} drive
+   * @param {number} mix
+   * @param {boolean} active
+   * @returns {number}
+   */
+  add_saturation(drive, mix, active) {
+    const ret = wasm.audioengine_add_saturation(this.__wbg_ptr, drive, mix, active);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+  }
+  /**
    * @returns {string}
    */
   create_sampler() {
@@ -1214,6 +1227,15 @@ var AudioEngine = class {
     if (ret[1]) {
       throw takeFromExternrefTable0(ret[0]);
     }
+  }
+  /**
+   * @param {number} node_id
+   * @param {number} drive
+   * @param {number} mix
+   * @param {boolean} active
+   */
+  update_saturation(node_id, drive, mix, active) {
+    wasm.audioengine_update_saturation(this.__wbg_ptr, node_id, drive, mix, active);
   }
   /**
    * @returns {any}
@@ -2841,6 +2863,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateCompressor":
         this.handleUpdateCompressor(event.data);
         break;
+      case "updateSaturation":
+        this.handleUpdateSaturation(event.data);
+        break;
       case "updateVelocity":
         this.handleUpdateVelocity(event.data);
         break;
@@ -2933,6 +2958,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "chorus" /* Chorus */:
       case "freeverb" /* Reverb */:
       case "compressor" /* Compressor */:
+      case "saturation" /* Saturation */:
         console.warn("Effect nodes are created by default; skipping explicit creation for", nodeType);
         break;
       default:
@@ -3260,7 +3286,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       ["chorus" /* Chorus */]: [],
       ["limiter" /* Limiter */]: [],
       ["freeverb" /* Reverb */]: [],
-      ["compressor" /* Compressor */]: []
+      ["compressor" /* Compressor */]: [],
+      ["saturation" /* Saturation */]: []
     };
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type;
@@ -3323,6 +3350,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           break;
         case "compressor":
           type = "compressor" /* Compressor */;
+          break;
+        case "saturation":
+          type = "saturation" /* Saturation */;
           break;
         default:
           console.warn("##### Unknown node type:", rawNode.node_type);
@@ -3554,6 +3584,20 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       data.state.delayMs,
       data.state.feedback,
       data.state.wetMix,
+      data.state.active
+    );
+  }
+  handleUpdateSaturation(data) {
+    if (!this.audioEngine) return;
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error("handleUpdateSaturation: invalid nodeId:", data.nodeId);
+      return;
+    }
+    this.audioEngine.update_saturation(
+      nodeId,
+      data.state.drive,
+      data.state.mix,
       data.state.active
     );
   }
