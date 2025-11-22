@@ -133,7 +133,23 @@ watch(
     await nextTick();
     const btn = rowRefs.value?.[row];
     if (btn) {
-      btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      btn.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+  },
+  { flush: 'post' }
+);
+
+watch(
+  () => ({
+    row: props.selectedRow,
+    enabled: props.autoScroll
+  }),
+  async ({ row, enabled }) => {
+    if (!enabled) return;
+    await nextTick();
+    const btn = rowRefs.value?.[row];
+    if (btn) {
+      btn.scrollIntoView({ block: 'center', behavior: 'auto' });
     }
   },
   { flush: 'post' }

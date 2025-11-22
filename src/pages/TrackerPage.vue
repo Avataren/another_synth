@@ -336,9 +336,8 @@ const nextSlotId = ref(slotCount + 1);
 
 function setActiveRow(row: number) {
   const count = rowsCount.value;
-  activeRow.value = ((row % count) + count) % count;
-  playbackRow.value = activeRow.value;
-  playbackEngine.seek(activeRow.value);
+  const clamped = Math.min(count - 1, Math.max(0, row));
+  activeRow.value = clamped;
 }
 
 function setActiveCell(payload: { row: number; column: number; trackIndex: number }) {
@@ -348,8 +347,7 @@ function setActiveCell(payload: { row: number; column: number; trackIndex: numbe
 }
 
 function moveRow(delta: number) {
-  const count = rowsCount.value;
-  activeRow.value = (activeRow.value + delta + count) % count;
+  setActiveRow(activeRow.value + delta);
 }
 
 function moveColumn(delta: number) {
@@ -371,6 +369,11 @@ function moveColumn(delta: number) {
 
 function jumpToNextTrack() {
   activeTrack.value = (activeTrack.value + 1) % tracks.value.length;
+  activeColumn.value = 0;
+}
+
+function jumpToPrevTrack() {
+  activeTrack.value = (activeTrack.value - 1 + tracks.value.length) % tracks.value.length;
   activeColumn.value = 0;
 }
 
@@ -494,7 +497,19 @@ function onKeyDown(event: KeyboardEvent) {
       break;
     case 'Tab':
       event.preventDefault();
-      jumpToNextTrack();
+      if (event.shiftKey) {
+        jumpToPrevTrack();
+      } else {
+        jumpToNextTrack();
+      }
+      break;
+    case 'PageDown':
+      event.preventDefault();
+      moveRow(16);
+      break;
+    case 'PageUp':
+      event.preventDefault();
+      moveRow(-16);
       break;
     case ' ':
       event.preventDefault();
