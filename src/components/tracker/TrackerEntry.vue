@@ -1,19 +1,26 @@
 <template>
-  <button
-    type="button"
+  <div
     class="tracker-entry"
-    :class="{ active, filled: !!entry }"
+    :class="{ active, filled: !!entry, focused: isActiveTrack && active }"
     :style="{ '--entry-accent': accentColor || 'var(--tracker-accent)' }"
+    role="button"
+    tabindex="-1"
     @click="onSelectRow"
   >
-    <span class="cell note">{{ entry?.note ?? '---' }}</span>
-    <span class="cell instrument">{{ entry?.instrument ?? '..' }}</span>
-    <span class="cell volume">{{ entry?.volume ?? '..' }}</span>
-    <span class="cell effect">{{ entry?.effect ?? '---' }}</span>
-  </button>
+    <span
+      v-for="(cell, idx) in cells"
+      :key="idx"
+      class="cell"
+      :class="[cell.className, { 'cell-active': isActiveCell(idx) }]"
+      @click.stop="onSelectCell(idx)"
+    >
+      {{ cell.display }}
+    </span>
+  </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { TrackerEntryData } from './tracker-types';
 
 interface Props {
@@ -21,15 +28,37 @@ interface Props {
   rowIndex: number;
   active: boolean;
   accentColor?: string | undefined;
+  trackIndex: number;
+  activeTrack: number;
+  activeColumn: number;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
-  (event: 'selectRow', row: number): void;
+  (event: 'selectCell', payload: { row: number; column: number; trackIndex: number }): void;
 }>();
 
+const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
+
+const cells = computed(() => {
+  return [
+    { display: props.entry?.note ?? '---', className: 'note' },
+    { display: props.entry?.instrument ?? '..', className: 'instrument' },
+    { display: props.entry?.volume ?? '..', className: 'volume' },
+    { display: props.entry?.effect ?? '---', className: 'effect' }
+  ];
+});
+
 function onSelectRow() {
-  emit('selectRow', props.rowIndex);
+  emit('selectCell', { row: props.rowIndex, column: 0, trackIndex: props.trackIndex });
+}
+
+function onSelectCell(column: number) {
+  emit('selectCell', { row: props.rowIndex, column, trackIndex: props.trackIndex });
+}
+
+function isActiveCell(column: number) {
+  return isActiveTrack.value && props.active && props.activeColumn === column;
 }
 </script>
 
@@ -73,6 +102,10 @@ function onSelectRow() {
   transform: translateY(-1px);
 }
 
+.tracker-entry.focused {
+  border-color: var(--entry-accent);
+}
+
 .tracker-entry:active {
   transform: translateY(0);
 }
@@ -80,6 +113,14 @@ function onSelectRow() {
 .cell {
   text-align: left;
   white-space: nowrap;
+}
+
+.cell-active {
+  color: #0c1624;
+  font-weight: 800;
+  background: linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9));
+  border-radius: 6px;
+  padding: 2px 6px;
 }
 
 .note {

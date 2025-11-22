@@ -46,7 +46,10 @@
           :row-count="rows"
           :active-row="activeRow"
           :index="index"
+          :active-track="activeTrack"
+          :active-column="activeColumn"
           @rowSelected="selectRow"
+          @cellSelected="selectCell"
         />
       </div>
     </div>
@@ -62,12 +65,15 @@ interface Props {
   tracks: TrackerTrackData[];
   rows: number;
   activeRow: number;
+  activeTrack: number;
+  activeColumn: number;
 }
 
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (event: 'rowSelected', row: number): void;
+  (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number }): void;
 }>();
 
 const rowsList = computed(() => Array.from({ length: props.rows }, (_, idx) => idx));
@@ -86,8 +92,13 @@ function selectRow(row: number) {
   emit('rowSelected', row);
 }
 
+function selectCell(payload: { row: number; column: number; trackIndex: number }) {
+  emit('cellSelected', payload);
+}
+
 function nudgeRow(direction: number) {
-  const clamped = (props.activeRow + direction + props.rows) % props.rows;
+  const count = Math.max(props.rows, 1);
+  const clamped = (props.activeRow + direction + count) % count;
   emit('rowSelected', clamped);
 }
 </script>
@@ -120,15 +131,6 @@ function nudgeRow(direction: number) {
   text-transform: uppercase;
   font-weight: 700;
   margin-bottom: 6px;
-}
-
-.title {
-  font-size: 24px;
-  color: #e8f3ff;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-bottom: 4px;
 }
 
 .row-control {

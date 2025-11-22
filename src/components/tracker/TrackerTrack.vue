@@ -12,7 +12,10 @@
         :entry="entryLookup[row]"
         :active="activeRow === row"
         :accent-color="track.color"
-        @select-row="onSelectRow"
+        :track-index="index"
+        :active-track="activeTrack"
+        :active-column="activeColumn"
+        @select-cell="onSelectCell"
       />
     </div>
   </div>
@@ -28,11 +31,14 @@ interface Props {
   rowCount: number;
   activeRow: number;
   index: number;
+  activeTrack: number;
+  activeColumn: number;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (event: 'rowSelected', row: number): void;
+  (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number }): void;
 }>();
 
 const rows = computed(() => Array.from({ length: props.rowCount }, (_, idx) => idx));
@@ -51,8 +57,8 @@ const trackIndexLabel = computed(() => (props.index + 1).toString().padStart(2, 
 
 const fallbackAccent = '#5dd6ff';
 
-function onSelectRow(row: number) {
-  emit('rowSelected', row);
+function onSelectCell(payload: { row: number; column: number; trackIndex: number }) {
+  emit('cellSelected', payload);
 }
 </script>
 

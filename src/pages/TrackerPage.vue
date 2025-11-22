@@ -1,9 +1,31 @@
 <template>
   <q-page class="tracker-page">
-    <div class="tracker-container">
-      <div class="page-header">
-        <div>
-          <div class="eyebrow">Tracker</div>
+    <div ref="trackerContainer" class="tracker-container" tabindex="0" @keydown="onKeyDown">
+      <div class="top-grid">
+        <div class="summary-card">
+          <div class="summary-header">
+            <div class="eyebrow">Tracker</div>
+          </div>
+          <div class="song-meta">
+            <div class="field">
+              <label for="song-title">Song title</label>
+              <input
+                id="song-title"
+                v-model="currentSong.title"
+                type="text"
+                placeholder="Untitled song"
+              />
+            </div>
+            <div class="field">
+              <label for="song-author">Author</label>
+              <input
+                id="song-author"
+                v-model="currentSong.author"
+                type="text"
+                placeholder="Unknown"
+              />
+            </div>
+          </div>
           <div class="stats">
             <div class="stat-chip">
               <div class="stat-label">Tracks</div>
@@ -11,11 +33,92 @@
             </div>
             <div class="stat-chip">
               <div class="stat-label">Rows</div>
-              <div class="stat-value">{{ rows }}</div>
+              <div class="stat-value">{{ rowsCount }}</div>
             </div>
             <div class="stat-chip">
               <div class="stat-label">Current row</div>
               <div class="stat-value">{{ activeRowDisplay }}</div>
+            </div>
+          </div>
+          <div class="pattern-controls">
+            <div class="control-label">Pattern length</div>
+            <div class="control-field">
+              <input
+                class="length-input"
+                type="number"
+                :min="1"
+                :max="256"
+                :value="rowsCount"
+                @change="onPatternLengthInput($event)"
+              />
+              <div class="control-hint">Rows</div>
+            </div>
+          </div>
+          <div class="transport transport-bottom">
+            <button type="button" class="transport-button play">Play</button>
+            <button type="button" class="transport-button pause">Pause</button>
+            <button type="button" class="transport-button stop">Stop</button>
+          </div>
+        </div>
+
+        <div class="instrument-panel">
+          <div class="panel-header">
+            <div class="panel-title">Instruments</div>
+            <button type="button" class="action-button add" @click="addInstrumentSlot">
+              Add instrument
+            </button>
+          </div>
+          <div class="instrument-list">
+            <div
+              v-if="visibleSlots.length === 0"
+              class="empty-state"
+            >
+              No instruments assigned yet. Add one to link a patch.
+            </div>
+            <div
+              v-for="(slot, idx) in visibleSlots"
+              :key="slot.slot"
+              class="instrument-row"
+            >
+              <div class="slot-number">#{{ (idx + 1).toString().padStart(2, '0') }}</div>
+              <div class="instrument-meta">
+                <div class="patch-name">{{ slot.patchName }}</div>
+                <div class="patch-meta">
+                  <span>Bank: <strong>{{ slot.bankName }}</strong></span>
+                  <span class="dot">•</span>
+                  <span>Instrument: <strong>{{ slot.instrumentName }}</strong></span>
+                </div>
+              </div>
+              <div class="instrument-actions">
+                <select
+                  class="patch-select"
+                  :value="slot.patchId ?? ''"
+                  @change="onPatchSelect(slot.slot, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">Select patch</option>
+                  <option
+                    v-for="option in availablePatches"
+                    :key="option.id"
+                    :value="option.id"
+                  >
+                    {{ option.name }} ({{ option.bankName }})
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="action-button ghost"
+                  @click="clearInstrument(slot.slot)"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  class="action-button ghost danger"
+                  @click="removeInstrument(slot.slot)"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -23,21 +126,79 @@
 
       <TrackerPattern
         :tracks="tracks"
-        :rows="rows"
+        :rows="rowsCount"
         :active-row="activeRow"
+        :active-track="activeTrack"
+        :active-column="activeColumn"
         @rowSelected="setActiveRow"
+        @cellSelected="setActiveCell"
       />
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
-const rows = 16;
+interface InstrumentSlot {
+  slot: number;
+  bankId?: string | undefined;
+  bankName: string;
+  patchId?: string | undefined;
+  patchName: string;
+  instrumentName: string;
+  empty?: boolean;
+  source?: 'system' | 'user' | undefined;
+}
+
+interface BankPatchOption {
+  id: string;
+  name: string;
+  bankId: string;
+  bankName: string;
+  source: 'system' | 'user';
+}
+
+interface RawPatchMeta {
+  id?: string;
+  name?: string;
+}
+
+interface RawPatch {
+  metadata?: RawPatchMeta;
+}
+
+interface RawBank {
+  metadata?: { id?: string; name?: string };
+  patches?: RawPatch[];
+}
+
+interface PatternMetadata {
+  rows: number;
+}
+
+class SongMetadata {
+  title: string;
+  author: string;
+
+  constructor(title = 'Untitled song', author = 'Unknown') {
+    this.title = title;
+    this.author = author;
+  }
+}
+
+const patternMeta = ref<PatternMetadata>({ rows: 64 });
+const currentSong = reactive(new SongMetadata());
 const activeRow = ref(0);
+const activeTrack = ref(0);
+const activeColumn = ref(0);
+const columnsPerTrack = 4;
+const trackerContainer = ref<HTMLDivElement | null>(null);
+const availablePatches = ref<BankPatchOption[]>([]);
+const visibleSlots = computed(() => instrumentSlots.value.filter((slot) => !slot.empty));
+const rowsCount = computed(() => Math.max(patternMeta.value.rows ?? 64, 1));
 
 const tracks = ref<TrackerTrackData[]>([
   {
@@ -124,9 +285,192 @@ const tracks = ref<TrackerTrackData[]>([
 
 const activeRowDisplay = computed(() => activeRow.value.toString(16).toUpperCase().padStart(2, '0'));
 
+const slotCount = 8;
+const instrumentSlots = ref<InstrumentSlot[]>(
+  Array.from({ length: slotCount }, (_, idx) => ({
+    slot: idx + 1,
+    bankName: 'None',
+    patchName: 'Empty',
+    instrumentName: '—',
+    empty: true
+  }))
+);
+const nextSlotId = ref(slotCount + 1);
+
 function setActiveRow(row: number) {
-  activeRow.value = row;
+  const count = rowsCount.value;
+  activeRow.value = ((row % count) + count) % count;
 }
+
+function setActiveCell(payload: { row: number; column: number; trackIndex: number }) {
+  activeRow.value = payload.row;
+  activeTrack.value = payload.trackIndex;
+  activeColumn.value = payload.column;
+}
+
+function moveRow(delta: number) {
+  const count = rowsCount.value;
+  activeRow.value = (activeRow.value + delta + count) % count;
+}
+
+function moveColumn(delta: number) {
+  const nextColumn = activeColumn.value + delta;
+  if (nextColumn < 0) {
+    activeTrack.value = (activeTrack.value - 1 + tracks.value.length) % tracks.value.length;
+    activeColumn.value = columnsPerTrack - 1;
+    return;
+  }
+
+  if (nextColumn >= columnsPerTrack) {
+    activeTrack.value = (activeTrack.value + 1) % tracks.value.length;
+    activeColumn.value = 0;
+    return;
+  }
+
+  activeColumn.value = nextColumn;
+}
+
+function jumpToNextTrack() {
+  activeTrack.value = (activeTrack.value + 1) % tracks.value.length;
+  activeColumn.value = 0;
+}
+
+function setPatternRows(count: number) {
+  const clamped = Math.max(1, Math.min(256, Math.round(count)));
+  patternMeta.value.rows = clamped;
+  setActiveRow(activeRow.value);
+}
+
+function onPatternLengthInput(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const value = Number(input.value);
+  if (Number.isFinite(value)) {
+    setPatternRows(value);
+  }
+}
+
+async function loadSystemBankOptions() {
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}system-bank.json`, {
+      cache: 'no-store'
+    });
+    if (!response.ok) return;
+    const bank = (await response.json()) as RawBank;
+    const bankName = bank?.metadata?.name ?? 'System Bank';
+    const bankId = bank?.metadata?.id ?? 'system';
+    const patches = Array.isArray(bank?.patches) ? bank.patches : [];
+    availablePatches.value = patches
+      .map((patch) => {
+        const meta = patch?.metadata ?? {};
+        if (!meta.id || !meta.name) return null;
+        return {
+          id: meta.id as string,
+          name: meta.name as string,
+          bankId,
+          bankName,
+          source: 'system' as const
+        };
+      })
+      .filter(Boolean) as BankPatchOption[];
+  } catch (error) {
+    console.error('Failed to load system bank', error);
+  }
+}
+
+function onKeyDown(event: KeyboardEvent) {
+  switch (event.key) {
+    case 'ArrowUp':
+      event.preventDefault();
+      moveRow(-1);
+      break;
+    case 'ArrowDown':
+      event.preventDefault();
+      moveRow(1);
+      break;
+    case 'ArrowLeft':
+      event.preventDefault();
+      moveColumn(-1);
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      moveColumn(1);
+      break;
+    case 'Tab':
+      event.preventDefault();
+      jumpToNextTrack();
+      break;
+    default:
+      break;
+  }
+}
+
+function onPatchSelect(slotNumber: number, patchId: string) {
+  const option = availablePatches.value.find((p) => p.id === patchId);
+  instrumentSlots.value = instrumentSlots.value.map((slot) =>
+    slot.slot === slotNumber
+      ? option
+        ? {
+            ...slot,
+            patchId: option.id,
+            patchName: option.name,
+            bankId: option.bankId,
+            bankName: option.bankName,
+            instrumentName: option.name,
+            empty: false,
+            source: option.source
+          }
+        : {
+            ...slot,
+            patchId: undefined,
+            patchName: 'Empty',
+            bankId: undefined,
+            bankName: 'None',
+            instrumentName: '—',
+            empty: true,
+            source: undefined
+          }
+      : slot
+  );
+}
+
+function clearInstrument(slotNumber: number) {
+  instrumentSlots.value = instrumentSlots.value.map((slot) =>
+    slot.slot === slotNumber
+      ? {
+          ...slot,
+          patchId: undefined,
+          bankId: undefined,
+          source: undefined,
+          bankName: 'None',
+          patchName: 'Empty',
+          instrumentName: '—',
+          empty: false
+        }
+      : slot
+  );
+}
+
+function addInstrumentSlot() {
+  instrumentSlots.value = [
+    ...instrumentSlots.value,
+    {
+      slot: nextSlotId.value++,
+      bankName: 'Select bank',
+      patchName: 'Select patch',
+      instrumentName: 'Pending',
+      empty: false
+    }
+  ];
+}
+
+function removeInstrument(slotNumber: number) {
+  instrumentSlots.value = instrumentSlots.value.filter((slot) => slot.slot !== slotNumber);
+}
+
+onMounted(() => {
+  trackerContainer.value?.focus();
+  loadSystemBankOptions();
+});
 </script>
 
 <style scoped>
@@ -145,12 +489,13 @@ function setActiveRow(row: number) {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  outline: none;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+.top-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 14px;
 }
 
 .eyebrow {
@@ -160,6 +505,96 @@ function setActiveRow(row: number) {
   text-transform: uppercase;
   font-weight: 700;
   margin-bottom: 4px;
+}
+
+.summary-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.transport {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.transport-bottom {
+  justify-content: center;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.transport-button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8f3ff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.transport-button:hover {
+  border-color: rgba(77, 242, 197, 0.45);
+}
+
+.transport-button.play {
+  background: linear-gradient(90deg, #4df2c5, #70c2ff);
+  color: #0c1624;
+  border-color: transparent;
+}
+
+.transport-button.stop {
+  background: rgba(255, 99, 128, 0.18);
+  border-color: rgba(255, 99, 128, 0.3);
+}
+
+.song-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  color: #9fb3d3;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.field input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #e8f3ff;
+  font-weight: 600;
+}
+
+.field input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .stats {
@@ -191,10 +626,208 @@ function setActiveRow(row: number) {
   letter-spacing: 0.08em;
 }
 
+.pattern-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.control-label {
+  color: #9fb3d3;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.control-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.length-input {
+  width: 90px;
+  background: transparent;
+  border: none;
+  color: #e8f3ff;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: right;
+}
+
+.length-input:focus {
+  outline: none;
+}
+
+.control-hint {
+  color: #9fb3d3;
+  font-size: 12px;
+}
+
+.instrument-panel {
+  background: linear-gradient(180deg, rgba(26, 32, 45, 0.9), rgba(16, 21, 33, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.32);
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.panel-title {
+  color: #e8f3ff;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel-subtitle {
+  color: #9fb3d3;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.empty-state {
+  color: #9fb3d3;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.instrument-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.instrument-row {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.instrument-row.empty {
+  opacity: 0.75;
+}
+
+.slot-number {
+  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  color: #4df2c5;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.instrument-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.patch-name {
+  color: #e8f3ff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.patch-meta {
+  color: #9fb3d3;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.patch-meta strong {
+  color: #cfe4ff;
+}
+
+.dot {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.instrument-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(77, 242, 197, 0.12);
+  color: #e8f3ff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.action-button:hover {
+  border-color: rgba(77, 242, 197, 0.45);
+}
+
+.action-button.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.action-button.ghost:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.action-button.add {
+  margin-left: auto;
+}
+
+.action-button.danger {
+  border-color: rgba(255, 99, 128, 0.35);
+  color: #ffc1d1;
+}
+
+.action-button.danger:hover {
+  border-color: rgba(255, 99, 128, 0.7);
+}
+
+.patch-select {
+  min-width: 200px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8f3ff;
+  font-weight: 600;
+}
+
+.patch-select option {
+  color: #0c1624;
+}
+
 @media (max-width: 900px) {
-  .page-header {
-    flex-direction: column;
-    gap: 12px;
+  .top-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
