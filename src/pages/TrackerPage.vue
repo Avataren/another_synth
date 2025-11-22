@@ -594,13 +594,14 @@ onBeforeUnmount(() => {
   background: radial-gradient(120% 140% at 20% 20%, rgba(80, 170, 255, 0.1), transparent),
     radial-gradient(120% 120% at 80% 10%, rgba(255, 147, 204, 0.1), transparent),
     linear-gradient(135deg, #0c111b, #0b0f18 55%, #0d1320);
-  padding: 28px 18px 36px;
+  padding: 28px 0 36px;
   box-sizing: border-box;
 }
 
 .tracker-container {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -611,6 +612,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 1.1fr 1fr;
   gap: 14px;
+  padding: 0 18px;
 }
 
 .eyebrow {
@@ -849,7 +851,7 @@ onBeforeUnmount(() => {
 
 .slot-number {
   font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
-  color: #4df2c5;
+  color: #cfe4ff;
   font-weight: 800;
   letter-spacing: 0.08em;
 }

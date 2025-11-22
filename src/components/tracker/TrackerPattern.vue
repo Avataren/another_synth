@@ -194,6 +194,7 @@ function nudgeRow(direction: number) {
   display: grid;
   grid-template-columns: 78px 1fr;
   gap: 12px;
+  width: 100%;
 }
 
 .row-column {
@@ -246,6 +247,7 @@ function nudgeRow(direction: number) {
   gap: 10px;
   overflow-x: auto;
   padding-bottom: 4px;
+  width: 100%;
 }
 
 .tracks-wrapper::-webkit-scrollbar {
@@ -290,6 +292,7 @@ function nudgeRow(direction: number) {
 
   .tracks-wrapper {
     order: 1;
+    width: 100%;
   }
 }
 </style>

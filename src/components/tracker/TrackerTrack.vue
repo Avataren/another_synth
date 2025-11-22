@@ -11,7 +11,6 @@
         :row-index="row"
         :entry="entryLookup[row]"
         :active="activeRow === row"
-        :accent-color="track.color"
         :track-index="index"
         :active-track="activeTrack"
         :active-column="activeColumn"
