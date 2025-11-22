@@ -24,7 +24,6 @@
     </div>
 
     <div class="pattern-body">
-      <div class="active-row-bar" :style="activeBarStyle"></div>
       <div class="row-column">
         <div class="row-header">Row</div>
         <button
@@ -32,7 +31,10 @@
           :key="row"
           type="button"
           class="row-number"
-          :class="{ active: activeRow === row }"
+          :class="{
+            playing: playbackRow === row,
+            selected: selectedRow === row
+          }"
           @click="selectRow(row)"
           ref="rowRefs"
         >
@@ -40,13 +42,14 @@
         </button>
       </div>
 
-      <div class="tracks-wrapper">
+      <div class="tracks-wrapper" ref="tracksWrapperRef">
+        <div class="active-row-bar" :style="activeBarStyle"></div>
         <TrackerTrack
           v-for="(track, index) in tracks"
           :key="track.id"
           :track="track"
           :row-count="rows"
-          :active-row="activeRow"
+          :selected-row="selectedRow"
           :index="index"
           :active-track="activeTrack"
           :active-column="activeColumn"
@@ -59,14 +62,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import TrackerTrack from './TrackerTrack.vue';
 import type { TrackerTrackData } from './tracker-types';
 
 interface Props {
   tracks: TrackerTrackData[];
   rows: number;
-  activeRow: number;
+  selectedRow: number;
+  playbackRow: number;
   activeTrack: number;
   activeColumn: number;
   autoScroll: boolean;
@@ -87,16 +91,17 @@ const headerHeight = `${headerHeightPx}px`;
 const accentColor = '#4df2c5';
 const rowsList = computed(() => Array.from({ length: props.rows }, (_, idx) => idx));
 const rowRefs = ref<(HTMLElement | null)[]>([]);
+const tracksWrapperRef = ref<HTMLElement | null>(null);
+const activeBarWidth = ref<number | null>(null);
 
-const formattedActiveRow = computed(() => formatRow(props.activeRow));
+const formattedActiveRow = computed(() => formatRow(props.playbackRow));
 const activeBarStyle = computed(() => {
-  const offset =
-    headerHeightPx +
-    rowGapPx +
-    props.activeRow * (rowHeightPx + rowGapPx);
+  const offset = headerHeightPx + 6 + props.playbackRow * (rowHeightPx + rowGapPx);
   return {
     transform: `translateY(${offset}px)`,
     height: rowHeight
+    ,
+    width: activeBarWidth.value ? `${activeBarWidth.value}px` : '100%'
   };
 });
 
@@ -114,13 +119,13 @@ function selectCell(payload: { row: number; column: number; trackIndex: number }
 
 function nudgeRow(direction: number) {
   const count = Math.max(props.rows, 1);
-  const clamped = (props.activeRow + direction + count) % count;
+  const clamped = (props.selectedRow + direction + count) % count;
   emit('rowSelected', clamped);
 }
 
 watch(
   () => ({
-    row: props.activeRow,
+    row: props.playbackRow,
     enabled: props.autoScroll
   }),
   async ({ row, enabled }) => {
@@ -133,6 +138,43 @@ watch(
   },
   { flush: 'post' }
 );
+
+const measureBarWidth = async () => {
+  await nextTick();
+  const wrapper = tracksWrapperRef.value;
+  if (!wrapper) return;
+  const tracks = wrapper.querySelectorAll<HTMLElement>('.tracker-track');
+  if (tracks.length === 0) {
+    activeBarWidth.value = wrapper.clientWidth;
+    return;
+  }
+  const last = tracks[tracks.length - 1];
+  if (last) {
+    const width = last.offsetLeft + last.offsetWidth;
+    activeBarWidth.value = width;
+  }
+};
+
+watch(
+  () => props.tracks.map((t: TrackerTrackData) => t.id).join(','),
+  () => measureBarWidth(),
+  { flush: 'post' }
+);
+
+watch(
+  () => rowsList.value.length,
+  () => measureBarWidth(),
+  { flush: 'post' }
+);
+
+onMounted(() => {
+  measureBarWidth();
+  window.addEventListener('resize', measureBarWidth);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', measureBarWidth);
+});
 </script>
 
 <style scoped>
@@ -236,6 +278,7 @@ watch(
   gap: 6px;
   overflow-y: auto;
   position: relative;
+  z-index: 2;
 }
 
 .row-header {
@@ -269,12 +312,16 @@ watch(
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-.row-number.active {
+.row-number.playing {
   color: #0c1624;
   font-weight: 800;
   background: linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9));
   border-color: transparent;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.row-number.selected {
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .tracks-wrapper {
@@ -283,18 +330,19 @@ watch(
   overflow-x: auto;
   padding-bottom: 4px;
   width: 100%;
+  z-index: 1;
+  position: relative;
 }
 
 .active-row-bar {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  background: linear-gradient(90deg, rgba(77, 242, 197, 0.08), rgba(88, 176, 255, 0.08));
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  inset: 0 0 auto 0;
+  background: linear-gradient(90deg, rgba(77, 242, 197, 0.18), rgba(88, 176, 255, 0.22));
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   pointer-events: none;
-  transition: transform 80ms linear;
+  transition: none;
+  will-change: transform;
 }
 
 .tracks-wrapper::-webkit-scrollbar {

@@ -10,7 +10,7 @@
         :key="`${track.id}-${row}`"
         :row-index="row"
         :entry="entryLookup[row]"
-        :active="activeRow === row"
+        :active="selectedRow === row"
         :track-index="index"
         :active-track="activeTrack"
         :active-column="activeColumn"
@@ -28,7 +28,7 @@ import type { TrackerEntryData, TrackerTrackData } from './tracker-types';
 interface Props {
   track: TrackerTrackData;
   rowCount: number;
-  activeRow: number;
+  selectedRow: number;
   index: number;
   activeTrack: number;
   activeColumn: number;

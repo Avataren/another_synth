@@ -150,7 +150,8 @@
       <TrackerPattern
         :tracks="tracks"
         :rows="rowsCount"
-        :active-row="activeRow"
+        :selected-row="activeRow"
+        :playback-row="playbackRow"
         :active-track="activeTrack"
         :active-column="activeColumn"
         :auto-scroll="autoScroll"
@@ -234,6 +235,7 @@ const rowsCount = computed(() => Math.max(patternMeta.value.rows ?? 64, 1));
 const playbackEngine = new PlaybackEngine();
 let unsubscribePosition: (() => void) | null = null;
 const autoScroll = ref(true);
+const playbackRow = ref(0);
 
 const tracks = ref<TrackerTrackData[]>([
   {
@@ -335,12 +337,8 @@ const nextSlotId = ref(slotCount + 1);
 function setActiveRow(row: number) {
   const count = rowsCount.value;
   activeRow.value = ((row % count) + count) % count;
+  playbackRow.value = activeRow.value;
   playbackEngine.seek(activeRow.value);
-}
-
-function setActiveRowFromEngine(row: number) {
-  const count = rowsCount.value;
-  activeRow.value = ((row % count) + count) % count;
 }
 
 function setActiveCell(payload: { row: number; column: number; trackIndex: number }) {
@@ -429,7 +427,7 @@ function initializePlayback() {
 
   unsubscribePosition?.();
   unsubscribePosition = playbackEngine.on('position', (pos) => {
-    setActiveRowFromEngine(pos.row);
+    playbackRow.value = ((pos.row % rowsCount.value) + rowsCount.value) % rowsCount.value;
   });
 }
 
@@ -445,7 +443,7 @@ function handlePause() {
 
 function handleStop() {
   playbackEngine.stop();
-  setActiveRow(0);
+  playbackRow.value = 0;
 }
 
 async function loadSystemBankOptions() {
