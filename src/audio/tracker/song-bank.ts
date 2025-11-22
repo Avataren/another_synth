@@ -71,6 +71,20 @@ export class TrackerSongBank {
     this.masterGain.disconnect();
   }
 
+  allNotesOff() {
+    for (const [instrumentId, active] of this.instruments.entries()) {
+      const notes = this.activeNotes.get(instrumentId);
+      if (notes) {
+        for (const note of notes) {
+          active.instrument.noteOff(note);
+        }
+        notes.clear();
+      }
+      // Also send a gate-low in case the set was empty but a gate is stuck
+      active.instrument.allNotesOff();
+    }
+  }
+
   noteOn(instrumentId: string | undefined, midi: number, velocity = 100) {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);

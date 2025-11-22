@@ -66,6 +66,20 @@
             </div>
           </div>
           <div class="pattern-controls">
+            <div class="control-label">Step size</div>
+            <div class="control-field">
+              <input
+                class="length-input"
+                type="number"
+                :min="1"
+                :max="64"
+                :value="stepSize"
+                @change="(event) => setStepSizeInput(Number((event.target as HTMLInputElement).value))"
+              />
+              <div class="control-hint">Rows per edit</div>
+            </div>
+          </div>
+          <div class="pattern-controls">
             <label class="toggle">
               <input v-model="autoScroll" type="checkbox" />
               <span>Auto-scroll active row</span>
@@ -165,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
@@ -178,17 +192,8 @@ import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
-
-interface InstrumentSlot {
-  slot: number;
-  bankId?: string | undefined;
-  bankName: string;
-  patchId?: string | undefined;
-  patchName: string;
-  instrumentName: string;
-  empty?: boolean;
-  source?: 'system' | 'user' | undefined;
-}
+import { useTrackerStore } from 'src/stores/tracker-store';
+import { storeToRefs } from 'pinia';
 
 interface BankPatchOption {
   id: string;
@@ -212,24 +217,10 @@ interface RawBank {
   patches?: RawPatch[];
 }
 
-interface PatternMetadata {
-  rows: number;
-}
-
-class SongMetadata {
-  title: string;
-  author: string;
-  bpm: number;
-
-  constructor(title = 'Untitled song', author = 'Unknown', bpm = 120) {
-    this.title = title;
-    this.author = author;
-    this.bpm = bpm;
-  }
-}
-
-const patternMeta = ref<PatternMetadata>({ rows: 64 });
-const currentSong = reactive(new SongMetadata());
+const trackerStore = useTrackerStore();
+trackerStore.initializeIfNeeded();
+const { currentSong, patternRows, stepSize, tracks, instrumentSlots, activeInstrumentId } =
+  storeToRefs(trackerStore);
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
@@ -238,7 +229,7 @@ const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
 const patchLibrary = ref<Record<string, Patch>>({});
 const visibleSlots = computed(() => instrumentSlots.value.filter((slot) => !slot.empty));
-const rowsCount = computed(() => Math.max(patternMeta.value.rows ?? 64, 1));
+const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const songBank = new TrackerSongBank();
 const playbackEngine = new PlaybackEngine({
   instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
@@ -257,89 +248,6 @@ const playbackEngine = new PlaybackEngine({
 let unsubscribePosition: (() => void) | null = null;
 const autoScroll = ref(true);
 const playbackRow = ref(0);
-
-const tracks = ref<TrackerTrackData[]>([
-  {
-    id: 'T01',
-    name: 'Track 1',
-    color: '#4df2c5',
-    entries: [
-      { row: 0, note: 'C-2', instrument: '01', volume: '7F' },
-      { row: 4, note: 'C-2', instrument: '01', volume: '7F' },
-      { row: 8, note: 'C-2', instrument: '01', volume: '7F' },
-      { row: 12, note: 'C-2', instrument: '01', volume: '7F' }
-    ]
-  },
-  {
-    id: 'T02',
-    name: 'Track 2',
-    color: '#9da6ff',
-    entries: [
-      { row: 4, note: 'D-2', instrument: '02', volume: '70' },
-      { row: 12, note: 'D-2', instrument: '02', volume: '70' }
-    ]
-  },
-  {
-    id: 'T03',
-    name: 'Track 3',
-    color: '#ffde7b',
-    entries: [
-      { row: 2, note: 'F#2', instrument: '03', volume: '60' },
-      { row: 6, note: 'F#2', instrument: '03', volume: '60' },
-      { row: 10, note: 'F#2', instrument: '03', volume: '60' },
-      { row: 14, note: 'F#2', instrument: '03', volume: '60' }
-    ]
-  },
-  {
-    id: 'T04',
-    name: 'Track 4',
-    color: '#70c2ff',
-    entries: [
-      { row: 0, note: 'C-3', instrument: '04', volume: '68', effect: 'GLD' },
-      { row: 4, note: 'G-2', instrument: '04', volume: '64' },
-      { row: 8, note: 'A-2', instrument: '04', volume: '64', effect: 'SLD' },
-      { row: 12, note: 'G-2', instrument: '04', volume: '64' }
-    ]
-  },
-  {
-    id: 'T05',
-    name: 'Track 5',
-    color: '#ff9db5',
-    entries: [
-      { row: 2, note: 'E-4', instrument: '05', volume: '70', effect: 'VIB' },
-      { row: 6, note: 'G-4', instrument: '05', volume: '70' },
-      { row: 10, note: 'B-3', instrument: '05', volume: '70' },
-      { row: 14, note: 'A-3', instrument: '05', volume: '70', effect: 'SLD' }
-    ]
-  },
-  {
-    id: 'T06',
-    name: 'Track 6',
-    color: '#8ef5c5',
-    entries: [
-      { row: 0, note: 'C-4', instrument: '06', volume: '50' },
-      { row: 8, note: 'F-3', instrument: '06', volume: '50' }
-    ]
-  },
-  {
-    id: 'T07',
-    name: 'Track 7',
-    color: '#ffa95e',
-    entries: [
-      { row: 7, note: 'G-5', instrument: '07', volume: '40', effect: 'ECO' },
-      { row: 15, note: 'C-5', instrument: '07', volume: '40', effect: 'ECO' }
-    ]
-  },
-  {
-    id: 'T08',
-    name: 'Track 8',
-    color: '#b08bff',
-    entries: [
-      { row: 3, note: 'A#2', instrument: '08', volume: '55' },
-      { row: 11, note: 'G#2', instrument: '08', volume: '55' }
-    ]
-  }
-]);
 
 const activeRowDisplay = computed(() => activeRow.value.toString(16).toUpperCase().padStart(2, '0'));
 
@@ -383,7 +291,6 @@ const noteKeyMap: Record<string, number> = {
   BracketRight: 79,
   Backslash: 81
 };
-const instrumentSlots = ref<InstrumentSlot[]>([]);
 const formatInstrumentId = (slotNumber: number) => slotNumber.toString().padStart(2, '0');
 const normalizeInstrumentId = (instrumentId?: string) => {
   if (!instrumentId) return undefined;
@@ -393,7 +300,6 @@ const normalizeInstrumentId = (instrumentId?: string) => {
   }
   return instrumentId;
 };
-const activeInstrumentId = ref<string | null>(null);
 
 function setActiveRow(row: number) {
   const count = rowsCount.value;
@@ -436,6 +342,16 @@ function jumpToNextTrack() {
 function jumpToPrevTrack() {
   activeTrack.value = (activeTrack.value - 1 + tracks.value.length) % tracks.value.length;
   activeColumn.value = 0;
+}
+
+function setStepSizeInput(value: number) {
+  if (!Number.isFinite(value)) return;
+  const clamped = Math.max(1, Math.min(64, Math.round(value)));
+  stepSize.value = clamped;
+}
+
+function advanceRowByStep() {
+  moveRow(stepSize.value);
 }
 
 function ensureActiveInstrument() {
@@ -484,6 +400,7 @@ function insertNoteOff() {
     ...entry,
     note: '--'
   }));
+  advanceRowByStep();
 }
 
 function clearStep() {
@@ -494,6 +411,22 @@ function clearStep() {
       entries: track.entries.filter((e) => e.row !== activeRow.value)
     };
   });
+  advanceRowByStep();
+}
+
+function hasPatchForInstrument(instrumentId: string): boolean {
+  return instrumentSlots.value.some(
+    (slot) => formatInstrumentId(slot.slot) === instrumentId && !!slot.patchId
+  );
+}
+
+async function previewNote(instrumentId: string, midi: number, velocity = 100) {
+  if (!hasPatchForInstrument(instrumentId)) return;
+  await songBank.prepareInstrument(instrumentId);
+  songBank.noteOn(instrumentId, midi, velocity);
+  window.setTimeout(() => {
+    songBank.noteOff(instrumentId, midi);
+  }, 250);
 }
 
 function midiToTrackerNote(midi: number): string {
@@ -511,12 +444,13 @@ function handleNoteEntry(midi: number) {
     note: midiToTrackerNote(midi),
     instrument: instrumentId
   }));
-  moveRow(1);
+  void previewNote(instrumentId, midi);
+  advanceRowByStep();
 }
 
 function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
-  patternMeta.value.rows = clamped;
+  patternRows.value = clamped;
   setActiveRow(activeRow.value);
   playbackEngine.setLength(clamped);
 }
@@ -599,9 +533,9 @@ function buildPlaybackPattern(): PlaybackPattern {
 
 function buildPlaybackSong(): PlaybackSong {
   return {
-    title: currentSong.title,
-    author: currentSong.author,
-    bpm: currentSong.bpm,
+    title: currentSong.value.title,
+    author: currentSong.value.author,
+    bpm: currentSong.value.bpm,
     pattern: buildPlaybackPattern()
   };
 }
@@ -626,7 +560,7 @@ function initializePlayback() {
   const song = buildPlaybackSong();
   playbackEngine.loadSong(song);
   playbackEngine.setLength(rowsCount.value);
-  playbackEngine.setBpm(currentSong.bpm);
+  playbackEngine.setBpm(currentSong.value.bpm);
 
   unsubscribePosition?.();
   unsubscribePosition = playbackEngine.on('position', (pos) => {
@@ -635,7 +569,7 @@ function initializePlayback() {
 }
 
 async function handlePlay() {
-  playbackEngine.setBpm(currentSong.bpm);
+  playbackEngine.setBpm(currentSong.value.bpm);
   playbackEngine.setLength(rowsCount.value);
   await syncSongBankFromSlots();
   await playbackEngine.play();
@@ -643,11 +577,13 @@ async function handlePlay() {
 
 function handlePause() {
   playbackEngine.pause();
+  songBank.allNotesOff();
 }
 
 function handleStop() {
   playbackEngine.stop();
   playbackRow.value = 0;
+  songBank.allNotesOff();
 }
 
 async function loadSystemBankOptions() {
@@ -829,7 +765,7 @@ onMounted(async () => {
 });
 
 watch(
-  () => currentSong.bpm,
+  () => currentSong.value.bpm,
   (bpm) => playbackEngine.setBpm(bpm),
   { immediate: true }
 );
