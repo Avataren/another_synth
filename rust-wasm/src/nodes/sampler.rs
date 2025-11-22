@@ -2,12 +2,12 @@ use crate::graph::{ModulationSource, ModulationType};
 use crate::traits::{AudioNode, PortId};
 use rustc_hash::FxHashMap;
 use std::any::Any;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
-use serde::{Deserialize, Serialize};
 
 /// Sample loop mode
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -22,9 +22,9 @@ pub enum SamplerLoopMode {
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum SamplerTriggerMode {
-    FreeRunning = 0,  // Always plays
-    Gate = 1,         // Retriggers on rising gate edge, ignores gate off
-    OneShot = 2,      // Plays once per gate trigger, ignores gate until complete
+    FreeRunning = 0, // Always plays
+    Gate = 1,        // Retriggers on rising gate edge, ignores gate off
+    OneShot = 2,     // Plays once per gate trigger, ignores gate until complete
 }
 
 /// Shared sample data structure
@@ -117,21 +117,21 @@ pub struct Sampler {
     sample_data: Rc<RefCell<SampleData>>,
 
     // Parameters
-    sample_rate: f32,          // Engine sample rate
-    base_frequency: f32,       // Base frequency (440 Hz = A4)
-    base_gain: f32,            // Output gain
+    sample_rate: f32,    // Engine sample rate
+    base_frequency: f32, // Base frequency (440 Hz = A4)
+    base_gain: f32,      // Output gain
     trigger_mode: SamplerTriggerMode,
     loop_mode: SamplerLoopMode,
-    loop_start: f32,           // Loop start point (in frames)
-    loop_end: f32,             // Loop end point (in frames)
+    loop_start: f32, // Loop start point (in frames)
+    loop_end: f32,   // Loop end point (in frames)
     active: bool,
 
     // State
-    playhead: f32,             // Current playback position (in frames)
-    direction: f32,            // 1.0 = forward, -1.0 = reverse (for ping-pong)
-    last_gate: f32,            // Previous gate value
-    is_playing: bool,          // Whether currently playing
-    oneshot_complete: bool,    // For OneShot mode
+    playhead: f32,          // Current playback position (in frames)
+    direction: f32,         // 1.0 = forward, -1.0 = reverse (for ping-pong)
+    last_gate: f32,         // Previous gate value
+    is_playing: bool,       // Whether currently playing
+    oneshot_complete: bool, // For OneShot mode
 
     // Scratch buffers for modulation
     mod_scratch_add: Vec<f32>,
@@ -272,10 +272,10 @@ impl AudioNode for Sampler {
         let mut ports = FxHashMap::default();
         ports.insert(PortId::AudioOutput0, true); // Left output
         ports.insert(PortId::AudioOutput1, true); // Right output
-        ports.insert(PortId::GlobalGate, false);  // Gate input
+        ports.insert(PortId::GlobalGate, false); // Gate input
         ports.insert(PortId::GlobalFrequency, false); // Note pitch from voice
-        ports.insert(PortId::FrequencyMod, false);    // Frequency modulation
-        ports.insert(PortId::GainMod, false);         // Gain modulation
+        ports.insert(PortId::FrequencyMod, false); // Frequency modulation
+        ports.insert(PortId::GainMod, false); // Gain modulation
         ports
     }
 

@@ -27,6 +27,7 @@ export enum VoiceNodeType {
   Reverb = 'freeverb',
   Compressor = 'compressor',
   Saturation = 'saturation',
+  Bitcrusher = 'bitcrusher',
 }
 
 export interface ReverbState {
@@ -75,6 +76,14 @@ export interface SaturationState {
   id: string;
   active: boolean;
   drive: number;
+  mix: number;
+}
+
+export interface BitcrusherState {
+  id: string;
+  active: boolean;
+  bits: number;
+  downsampleFactor: number;
   mix: number;
 }
 

@@ -229,9 +229,8 @@ impl AudioGraph {
 
     pub fn delete_node(&mut self, node_id: NodeId) {
         // Remove all connections involving this node
-        self.connections.retain(|_, conn| {
-            conn.from_node != node_id && conn.to_node != node_id
-        });
+        self.connections
+            .retain(|_, conn| conn.from_node != node_id && conn.to_node != node_id);
 
         // Remove from input_connections
         self.input_connections.remove(&node_id);

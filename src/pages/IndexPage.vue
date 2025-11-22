@@ -179,6 +179,14 @@
           />
 
           <generic-tab-container
+            v-if="bitcrusherNodes.length"
+            :nodes="bitcrusherNodes"
+            :destinationNode="destinationNode"
+            :componentName="BitcrusherComponent"
+            nodeLabel="Bitcrusher"
+          />
+
+          <generic-tab-container
             v-if="reverbNodes.length"
             :nodes="reverbNodes"
             :destinationNode="destinationNode"
@@ -291,6 +299,7 @@ import ConvolverComponent from 'src/components/ConvolverComponent.vue';
 import ReverbComponent from 'src/components/ReverbComponent.vue';
 import CompressorComponent from 'src/components/CompressorComponent.vue';
 import SaturationComponent from 'src/components/SaturationComponent.vue';
+import BitcrusherComponent from 'src/components/BitcrusherComponent.vue';
 // Generic Tab Container
 import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 
@@ -598,6 +607,11 @@ const compressorNodes = computed(() => {
 
 const saturationNodes = computed(() => {
   const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Saturation);
+  return Array.isArray(nodes) ? nodes : [];
+});
+
+const bitcrusherNodes = computed(() => {
+  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Bitcrusher);
   return Array.isArray(nodes) ? nodes : [];
 });
 </script>

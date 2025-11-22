@@ -18,6 +18,7 @@ import {
   type ReverbState,
   type SamplerState,
   type VelocityState,
+  type BitcrusherState,
   getNodesOfType,
 } from 'src/audio/types/synth-layout';
 import { NoiseType, type NoiseState } from 'src/audio/types/noise';
@@ -62,6 +63,16 @@ function createDefaultSaturationState(id: string): SaturationState {
   };
 }
 
+function createDefaultBitcrusherState(id: string): BitcrusherState {
+  return {
+    id,
+    active: false,
+    bits: 12,
+    downsampleFactor: 4,
+    mix: 0.5,
+  };
+}
+
 export const useNodeStateStore = defineStore('nodeStateStore', {
   state: () => ({
     oscillatorStates: new Map<string, OscillatorState>(),
@@ -78,6 +89,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
     reverbStates: new Map<string, ReverbState>(),
     compressorStates: new Map<string, CompressorState>(),
     saturationStates: new Map<string, SaturationState>(),
+    bitcrusherStates: new Map<string, BitcrusherState>(),
     noiseState: {
       noiseType: NoiseType.White,
       cutoff: 1.0,
@@ -132,6 +144,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       prune(this.reverbStates);
       prune(this.compressorStates);
       prune(this.saturationStates);
+      prune(this.bitcrusherStates);
 
       getNodesOfType(voice, VoiceNodeType.Oscillator)?.forEach((node) => {
         if (!this.oscillatorStates.has(node.id)) {
@@ -272,6 +285,15 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
         }
       });
 
+      getNodesOfType(voice, VoiceNodeType.Bitcrusher)?.forEach((node) => {
+        if (!this.bitcrusherStates.has(node.id)) {
+          this.bitcrusherStates.set(
+            node.id,
+            createDefaultBitcrusherState(node.id),
+          );
+        }
+      });
+
     },
     resetCurrentStateToDefaults(applyToWasm = true) {
       this.oscillatorStates = new Map();
@@ -287,6 +309,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.reverbStates = new Map();
       this.compressorStates = new Map();
       this.saturationStates = new Map();
+      this.bitcrusherStates = new Map();
       this.noiseState = {
         noiseType: NoiseType.White,
         cutoff: 1.0,
@@ -405,6 +428,15 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
         }
       });
 
+      this.bitcrusherStates.forEach((state, nodeId) => {
+        if (instrument.updateBitcrusherState) {
+          instrument.updateBitcrusherState(nodeId, {
+            ...state,
+            id: nodeId,
+          });
+        }
+      });
+
       this.samplerStates.forEach((_state, nodeId) => {
         this.sendSamplerState(nodeId);
       });
@@ -504,6 +536,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       reverbs: Map<string, ReverbState>;
       compressors: Map<string, CompressorState>;
       saturations: Map<string, SaturationState>;
+      bitcrushers: Map<string, BitcrusherState>;
       noise?: NoiseState;
       velocity?: VelocityState;
     }) {
@@ -528,6 +561,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.reverbStates = deserialized.reverbs;
       this.compressorStates = deserialized.compressors;
       this.saturationStates = deserialized.saturations;
+      this.bitcrusherStates = deserialized.bitcrushers;
       if (deserialized.noise) {
         this.noiseState = deserialized.noise;
       }
@@ -550,6 +584,7 @@ export const useNodeStateStore = defineStore('nodeStateStore', {
       this.reverbStates.delete(nodeId);
       this.compressorStates.delete(nodeId);
       this.saturationStates.delete(nodeId);
+      this.bitcrusherStates.delete(nodeId);
     },
   },
 });

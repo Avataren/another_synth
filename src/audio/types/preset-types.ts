@@ -14,6 +14,7 @@ import type {
   VelocityState,
   SaturationState,
   GlideState,
+  BitcrusherState,
 } from './synth-layout';
 import type { NoiseState } from './noise';
 
@@ -121,6 +122,9 @@ export interface SynthState {
 
   /** Saturation states by node ID */
   saturations?: Record<string, SaturationState>;
+
+  /** Bitcrusher states by node ID */
+  bitcrushers?: Record<string, BitcrusherState>;
 
   /** Global noise state */
   noise?: NoiseState;

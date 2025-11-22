@@ -66,9 +66,7 @@ pub fn modulation_type_from_i32(value: i32) -> PatchLoaderResult<ModulationType>
 }
 
 /// Parse modulation transformation from i32
-pub fn modulation_transform_from_i32(
-    value: i32,
-) -> PatchLoaderResult<ModulationTransformation> {
+pub fn modulation_transform_from_i32(value: i32) -> PatchLoaderResult<ModulationTransformation> {
     match value {
         0 => Ok(ModulationTransformation::None),
         1 => Ok(ModulationTransformation::Invert),

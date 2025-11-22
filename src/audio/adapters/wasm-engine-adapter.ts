@@ -474,6 +474,33 @@ export class WasmEngineAdapter {
       );
   }
 
+  updateBitcrusher(bitcrusherId: string | number, params: {
+    bits: number;
+    downsampleFactor: number;
+    mix: number;
+    active: boolean;
+  }): void {
+    const nodeId = typeof bitcrusherId === 'string' ? Number(bitcrusherId) : bitcrusherId;
+    if (!Number.isFinite(nodeId)) {
+      throw new Error(`Invalid bitcrusher node ID: ${bitcrusherId}`);
+    }
+
+    const downsample = Math.max(
+      1,
+      Math.floor(validateFiniteNumber(params.downsampleFactor, 'downsampleFactor')),
+    );
+
+    (this.requireEngine() as unknown as {
+      update_bitcrusher: (id: number, bits: number, downsampleFactor: number, mix: number, active: boolean) => void;
+    }).update_bitcrusher(
+      nodeId,
+      validateFiniteNumber(params.bits, 'bits'),
+      downsample,
+      validateFiniteNumber(params.mix, 'mix'),
+      Boolean(params.active)
+    );
+  }
+
   updateVelocity(nodeId: string, sensitivity: number, randomize: number): void {
     // WASM API expects node_id (string), sensitivity, randomize
     this.requireEngine().update_velocity(nodeId, sensitivity, randomize);

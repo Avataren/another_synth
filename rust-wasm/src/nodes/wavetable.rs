@@ -1,13 +1,13 @@
 // wavetable.rs
 
 use rustfft::{num_complex::Complex, FftPlanner};
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::fmt;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use web_sys::console;
-use serde::{Deserialize, Deserializer, Serialize};
-use serde::de::{self, Visitor};
-use std::fmt;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 fn log_console(message: &str) {

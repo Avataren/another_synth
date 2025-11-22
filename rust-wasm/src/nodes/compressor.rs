@@ -85,8 +85,7 @@ impl Compressor {
             return self.makeup_gain;
         }
 
-        let compressed_db =
-            self.threshold_db + (level_db - self.threshold_db) / self.ratio;
+        let compressed_db = self.threshold_db + (level_db - self.threshold_db) / self.ratio;
         let gain_db = compressed_db - level_db;
         Self::db_to_linear(gain_db) * self.makeup_gain
     }

@@ -37,8 +37,7 @@ impl GlobalVelocityNode {
             // In WASM, skip getrandom entirely; rely on the JS/Math.random
             // fallback which is compatible with AudioWorklet and similar
             // environments where Web Crypto may be unavailable.
-            js_fallback_fill(&mut buf)
-                .expect("Fallback for random number generation failed");
+            js_fallback_fill(&mut buf).expect("Fallback for random number generation failed");
         }
         #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
         {

@@ -1,5 +1,5 @@
 use crate::audio_engine::patch::{
-    CompressorState, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout,
+    BitcrusherState, CompressorState, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout,
 };
 use crate::audio_engine::patch_loader::{parse_node_id, NODE_CREATION_ORDER};
 use crate::automation::AutomationFrame;
@@ -9,10 +9,10 @@ use crate::graph::{Connection, ModulationTransformation, ModulationType};
 use crate::impulse_generator::ImpulseResponseGenerator;
 use crate::nodes::morph_wavetable::WavetableSynthBank;
 use crate::nodes::{
-    AnalogOscillator, AnalogOscillatorStateUpdate, Chorus, Compressor, Convolver, Delay, Envelope,
-    EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
-    GlobalVelocityNode, Lfo, Limiter, Mixer, Saturation, Waveform, WavetableBank,
-    WavetableOscillator, WavetableOscillatorStateUpdate,
+    AnalogOscillator, AnalogOscillatorStateUpdate, Bitcrusher, Chorus, Compressor, Convolver,
+    Delay, Envelope, EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, GateMixer, Glide,
+    GlobalFrequencyNode, GlobalVelocityNode, Lfo, Limiter, Mixer, Saturation, Waveform,
+    WavetableBank, WavetableOscillator, WavetableOscillatorStateUpdate,
 };
 //NoiseGenerator, NoiseUpdate,
 use crate::traits::{AudioNode, PortId};
@@ -187,14 +187,17 @@ impl AudioEngine {
         limiter.set_active(true);
         self.effect_stack.add_effect(Box::new(limiter));
 
-        let mut compressor =
-            Compressor::new(sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
+        let mut compressor = Compressor::new(sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
         compressor.set_active(true);
         self.effect_stack.add_effect(Box::new(compressor));
 
         let mut saturation = Saturation::new(2.0, 0.5);
         saturation.set_active(false);
         self.effect_stack.add_effect(Box::new(saturation));
+
+        let mut bitcrusher = Bitcrusher::new(12, 4, 0.5);
+        bitcrusher.set_active(false);
+        self.effect_stack.add_effect(Box::new(bitcrusher));
     }
 
     pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, String> {
@@ -275,14 +278,17 @@ impl AudioEngine {
         limiter.set_active(true);
         self.effect_stack.add_effect(Box::new(limiter));
 
-        let mut compressor =
-            Compressor::new(self.sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
+        let mut compressor = Compressor::new(self.sample_rate, -12.0, 4.0, 10.0, 80.0, 3.0, 0.5);
         compressor.set_active(true);
         self.effect_stack.add_effect(Box::new(compressor));
 
         let mut saturation = Saturation::new(2.0, 0.5);
         saturation.set_active(false);
         self.effect_stack.add_effect(Box::new(saturation));
+
+        let mut bitcrusher = Bitcrusher::new(12, 4, 0.5);
+        bitcrusher.set_active(false);
+        self.effect_stack.add_effect(Box::new(bitcrusher));
 
         let canonical_voice = layout
             .canonical_voice()
@@ -354,9 +360,10 @@ impl AudioEngine {
         }
         // Ensure the glide hears the combined gate even though the gate mixer is created later.
         for voice in &mut self.voices {
-            if let (Some(glide_id), Some(gate_mixer_id)) =
-                (voice.graph.global_glide_node, voice.graph.global_gatemixer_node)
-            {
+            if let (Some(glide_id), Some(gate_mixer_id)) = (
+                voice.graph.global_glide_node,
+                voice.graph.global_gatemixer_node,
+            ) {
                 voice.graph.add_connection(Connection {
                     from_node: gate_mixer_id,
                     from_port: PortId::CombinedGate,
@@ -520,10 +527,27 @@ impl AudioEngine {
 
         for saturation in patch.synth_state.saturations.values() {
             if let Ok(node_id) = saturation.id.parse::<usize>() {
-                if let Err(err) =
-                    self.update_saturation(node_id, saturation.drive, saturation.mix, saturation.active)
-                {
+                if let Err(err) = self.update_saturation(
+                    node_id,
+                    saturation.drive,
+                    saturation.mix,
+                    saturation.active,
+                ) {
                     eprintln!("Failed to apply saturation state: {}", err);
+                }
+            }
+        }
+
+        for bitcrusher in patch.synth_state.bitcrushers.values() {
+            if let Ok(node_id) = bitcrusher.id.parse::<usize>() {
+                if let Err(err) = self.update_bitcrusher(
+                    node_id,
+                    bitcrusher.bits,
+                    bitcrusher.downsample_factor,
+                    bitcrusher.mix,
+                    bitcrusher.active,
+                ) {
+                    eprintln!("Failed to apply bitcrusher state: {}", err);
                 }
             }
         }
@@ -789,6 +813,38 @@ impl AudioEngine {
         }
     }
 
+    pub fn update_bitcrusher(
+        &mut self,
+        node_id: usize,
+        bits: u8,
+        downsample_factor: usize,
+        mix: f32,
+        active: bool,
+    ) -> Result<(), String> {
+        let effect_id = node_id
+            .checked_sub(EFFECT_NODE_ID_OFFSET)
+            .ok_or_else(|| "Invalid bitcrusher node id".to_string())?;
+
+        let effect = self
+            .effect_stack
+            .effects
+            .get_mut(effect_id)
+            .ok_or_else(|| format!("No effect found at index {}", effect_id))?;
+
+        if let Some(bitcrusher) = effect.node.as_any_mut().downcast_mut::<Bitcrusher>() {
+            bitcrusher.set_bits(bits);
+            bitcrusher.set_downsample_factor(downsample_factor);
+            bitcrusher.set_mix(mix);
+            bitcrusher.set_active(active);
+            Ok(())
+        } else {
+            Err(format!(
+                "Effect at index {} is not a bitcrusher effect",
+                effect_id
+            ))
+        }
+    }
+
     // Node creation methods
     pub fn create_oscillator(&mut self) -> Result<usize, String> {
         let osc_id = NodeId::new();
@@ -864,10 +920,9 @@ impl AudioEngine {
     pub fn create_glide(&mut self, glide_time: f32) -> Result<usize, String> {
         let glide_id = NodeId::new();
         for voice in &mut self.voices {
-            voice.graph.add_node_with_id(
-                glide_id,
-                Box::new(Glide::new(self.sample_rate, glide_time)),
-            );
+            voice
+                .graph
+                .add_node_with_id(glide_id, Box::new(Glide::new(self.sample_rate, glide_time)));
             voice.graph.global_glide_node = Some(glide_id);
             if let Some(global_freq) = voice.graph.global_frequency_node {
                 voice.graph.add_connection(Connection {

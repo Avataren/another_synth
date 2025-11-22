@@ -475,7 +475,11 @@ mod tests {
         let avg_output = output_sum / 1000.0;
 
         // After settling, DC should be heavily attenuated
-        assert!(avg_output < 0.1, "HighPass should block DC signal, got {}", avg_output);
+        assert!(
+            avg_output < 0.1,
+            "HighPass should block DC signal, got {}",
+            avg_output
+        );
     }
 
     #[test]
@@ -492,16 +496,34 @@ mod tests {
             // Feed in extreme values
             for _ in 0..100 {
                 let output = bq.process(100.0);
-                assert!(output.is_finite(), "Filter {:?} produced non-finite output", filter_type);
-                assert!(output.abs() < 1000.0, "Filter {:?} output exploded: {}", filter_type, output);
+                assert!(
+                    output.is_finite(),
+                    "Filter {:?} produced non-finite output",
+                    filter_type
+                );
+                assert!(
+                    output.abs() < 1000.0,
+                    "Filter {:?} output exploded: {}",
+                    filter_type,
+                    output
+                );
             }
 
             // Reset and test with negative extreme
             bq.reset();
             for _ in 0..100 {
                 let output = bq.process(-100.0);
-                assert!(output.is_finite(), "Filter {:?} produced non-finite output with negative input", filter_type);
-                assert!(output.abs() < 1000.0, "Filter {:?} output exploded with negative input: {}", filter_type, output);
+                assert!(
+                    output.is_finite(),
+                    "Filter {:?} produced non-finite output with negative input",
+                    filter_type
+                );
+                assert!(
+                    output.abs() < 1000.0,
+                    "Filter {:?} output exploded with negative input: {}",
+                    filter_type,
+                    output
+                );
             }
         }
     }
@@ -529,10 +551,16 @@ mod tests {
     fn test_biquad_frequency_clamping() {
         // Test that extreme frequencies are clamped properly
         let mut bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 100000.0, 0.707, 0.0);
-        assert!(bq.frequency < TEST_SAMPLE_RATE * 0.5, "Frequency should be clamped below Nyquist");
+        assert!(
+            bq.frequency < TEST_SAMPLE_RATE * 0.5,
+            "Frequency should be clamped below Nyquist"
+        );
 
         bq = Biquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, -100.0, 0.707, 0.0);
-        assert!(bq.frequency >= 10.0, "Frequency should be clamped above minimum");
+        assert!(
+            bq.frequency >= 10.0,
+            "Frequency should be clamped above minimum"
+        );
 
         // Update coefficients with extreme values
         bq.frequency = 100000.0;
@@ -572,14 +600,19 @@ mod tests {
                 let phase = 2.0 * PI * 100.0 * i as f32 / TEST_SAMPLE_RATE;
                 let input = phase.sin();
                 let output = bq.process(input);
-                assert!(output.is_finite(), "Filter {:?} produced non-finite output", filter_type);
+                assert!(
+                    output.is_finite(),
+                    "Filter {:?} produced non-finite output",
+                    filter_type
+                );
             }
         }
     }
 
     #[test]
     fn test_cascaded_biquad() {
-        let mut cascaded = CascadedBiquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 1000.0, 1.0, 0.0);
+        let mut cascaded =
+            CascadedBiquad::new(FilterType::LowPass, TEST_SAMPLE_RATE, 1000.0, 1.0, 0.0);
 
         // Process impulse
         let output1 = cascaded.process(1.0);
@@ -591,7 +624,10 @@ mod tests {
         // Reset should clear state
         cascaded.reset();
         let output_after_reset = cascaded.process(1.0);
-        assert!((output_after_reset - output1).abs() < F32_EPSILON, "Reset should restore initial state");
+        assert!(
+            (output_after_reset - output1).abs() < F32_EPSILON,
+            "Reset should restore initial state"
+        );
     }
 
     #[test]
@@ -615,8 +651,14 @@ mod tests {
         }
 
         // Positive gain should amplify, negative should attenuate
-        assert!(sum_pos > sum_zero, "Positive gain should amplify low frequencies");
-        assert!(sum_neg < sum_zero, "Negative gain should attenuate low frequencies");
+        assert!(
+            sum_pos > sum_zero,
+            "Positive gain should amplify low frequencies"
+        );
+        assert!(
+            sum_neg < sum_zero,
+            "Negative gain should attenuate low frequencies"
+        );
     }
 
     #[test]

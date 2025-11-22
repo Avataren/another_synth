@@ -712,7 +712,7 @@ impl WavetableOscillator {
                     };
 
                     // Equal power panning
-                    let pan_norm = (pan + 1.0) * 0.5;  // Normalize to 0..1
+                    let pan_norm = (pan + 1.0) * 0.5; // Normalize to 0..1
                     let gain_l = ((1.0 - pan_norm) * std::f32::consts::FRAC_PI_2).cos();
                     let gain_r = (pan_norm * std::f32::consts::FRAC_PI_2).cos();
 

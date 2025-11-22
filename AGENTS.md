@@ -1005,5 +1005,11 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 
 - **Stores & UI**
   - Add state map + defaults in `node-state-store`, apply to WASM in `applyPreservedStatesToWasm`, and purge on delete.
-  - Add instrument methods + worklet message handlers (`updateX`), plus `WorkletMessage` types/builders if needed.
-  - Add UI component and hook it into the add-node menu and layout columns; align toggle/knob layout with existing effects.
+- Add instrument methods + worklet message handlers (`updateX`), plus `WorkletMessage` types/builders if needed.
+- Add UI component and hook it into the add-node menu and layout columns; align toggle/knob layout with existing effects.
+
+## New discovery: Bitcrusher effect node (2025)
+
+- Added a stereo Bitcrusher to the global effect stack after Saturation (effect index 7 → node ID `10007`). Defaults: bits 12, downsampleFactor 4, mix 0.5, active false so legacy patches sound unchanged.
+- Patch schema now carries a `bitcrushers` map (`BitcrusherState { id, active, bits, downsampleFactor, mix }`) in both Rust (`SynthState`) and TS (`Patch.synthState`). WASM/native loaders apply it, and serializers/deserializers roundtrip it.
+- Worklet/UI plumbing: new `updateBitcrusher` message handled in the worklet via `audioEngine.update_bitcrusher`, `VoiceNodeType.Bitcrusher` mapping in adapters/layout-store, and `BitcrusherComponent` in the Effects column to edit bits/downsample/mix.

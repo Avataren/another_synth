@@ -58,6 +58,8 @@ pub struct SynthState {
     #[serde(default)]
     pub saturations: HashMap<String, SaturationState>,
     #[serde(default)]
+    pub bitcrushers: HashMap<String, BitcrusherState>,
+    #[serde(default)]
     pub noise: Option<NoiseState>,
     #[serde(default)]
     pub velocity: Option<VelocityState>,
@@ -264,6 +266,16 @@ pub struct SaturationState {
     pub id: String,
     pub active: bool,
     pub drive: f32,
+    pub mix: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BitcrusherState {
+    pub id: String,
+    pub active: bool,
+    pub bits: u8,
+    #[serde(rename = "downsampleFactor")]
+    pub downsample_factor: usize,
     pub mix: f32,
 }
 

@@ -15,8 +15,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::biquad::{Biquad, CascadedBiquad, Filter, FilterType};
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
-use serde::{Deserialize, Deserializer, Serialize};
 use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -429,7 +429,7 @@ impl FilterCollection {
         let k_resonance = resonance_norm.clamp(0.0, 1.0);
         // Moog resonance: 4x feedback at maximum, with exponential curve for musical response
         let k = k_resonance.powf(1.8) * 4.0; // Slightly steeper curve for better control
-        // Compensation prevents volume loss at high resonance (authentic Moog behavior)
+                                             // Compensation prevents volume loss at high resonance (authentic Moog behavior)
         let comp_gain = (1.0 + res_comp * k * 0.5).max(0.0);
 
         // --- State & Feedback ---
@@ -463,15 +463,27 @@ impl FilterCollection {
         self.ladder_stages[0] = 2.0 * v0 - s0;
 
         // Stages 1-3 - Mostly linear with optional saturation character
-        let v1_in = if drive > 0.01 { fast_tanh(v0 * stage_drive) } else { v0 };
+        let v1_in = if drive > 0.01 {
+            fast_tanh(v0 * stage_drive)
+        } else {
+            v0
+        };
         let v1 = (s1 + g * v1_in) * g_inv;
         self.ladder_stages[1] = 2.0 * v1 - s1;
 
-        let v2_in = if drive > 0.01 { fast_tanh(v1 * stage_drive) } else { v1 };
+        let v2_in = if drive > 0.01 {
+            fast_tanh(v1 * stage_drive)
+        } else {
+            v1
+        };
         let v2 = (s2 + g * v2_in) * g_inv;
         self.ladder_stages[2] = 2.0 * v2 - s2;
 
-        let v3_in = if drive > 0.01 { fast_tanh(v2 * stage_drive) } else { v2 };
+        let v3_in = if drive > 0.01 {
+            fast_tanh(v2 * stage_drive)
+        } else {
+            v2
+        };
         let v3 = (s3 + g * v3_in) * g_inv;
         self.ladder_stages[3] = 2.0 * v3 - s3;
 
@@ -1011,7 +1023,7 @@ impl AudioNode for FilterCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{ModulationType, ModulationTransformation};
+    use crate::graph::{ModulationTransformation, ModulationType};
     // Removed the Lerp trait definition - no longer needed
 
     const TEST_SAMPLE_RATE: f32 = 48000.0;
@@ -1331,9 +1343,12 @@ mod tests {
         let freq_cutoff = cutoff_hz; // At cutoff
         let freq_nyquist = TEST_SAMPLE_RATE * 0.49; // Near Nyquist
 
-        let mag_pass = get_fft_magnitude_at_freq(&mag_db, freq_pass, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
-        let mag_cutoff = get_fft_magnitude_at_freq(&mag_db, freq_cutoff, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
-        let mag_nyquist = get_fft_magnitude_at_freq(&mag_db, freq_nyquist, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_pass =
+            get_fft_magnitude_at_freq(&mag_db, freq_pass, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_cutoff =
+            get_fft_magnitude_at_freq(&mag_db, freq_cutoff, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
+        let mag_nyquist =
+            get_fft_magnitude_at_freq(&mag_db, freq_nyquist, TEST_SAMPLE_RATE, FFT_LEN).unwrap();
 
         println!("Ladder 20kHz Response (Fixed): Pass@{:.0}Hz={:.2}dB, Cutoff@{:.0}Hz={:.2}dB, Nyquist@{:.0}Hz={:.2}dB",
                  freq_pass, mag_pass, freq_cutoff, mag_cutoff, freq_nyquist, mag_nyquist);
@@ -1363,7 +1378,8 @@ mod tests {
         assert!(
             mag_nyquist < mag_cutoff,
             "Magnitude near Nyquist ({:.2}dB) should be less than at cutoff ({:.2}dB)",
-            mag_nyquist, mag_cutoff
+            mag_nyquist,
+            mag_cutoff
         );
     }
 
@@ -1413,8 +1429,10 @@ mod tests {
         fc_driven.process(&inputs, &mut outputs_driven, buffer_size);
 
         // Calculate RMS and peak values
-        let rms_clean = (output_clean.iter().map(|x| x * x).sum::<f32>() / buffer_size as f32).sqrt();
-        let rms_driven = (output_driven.iter().map(|x| x * x).sum::<f32>() / buffer_size as f32).sqrt();
+        let rms_clean =
+            (output_clean.iter().map(|x| x * x).sum::<f32>() / buffer_size as f32).sqrt();
+        let rms_driven =
+            (output_driven.iter().map(|x| x * x).sum::<f32>() / buffer_size as f32).sqrt();
 
         let peak_clean = output_clean.iter().fold(0.0, |a: f32, &b| a.max(b.abs()));
         let peak_driven = output_driven.iter().fold(0.0, |a: f32, &b| a.max(b.abs()));
@@ -1427,14 +1445,16 @@ mod tests {
         assert!(
             rms_driven > rms_clean * 1.3,
             "Drive should increase RMS level due to harmonic content (got {:.4} vs {:.4})",
-            rms_driven, rms_clean
+            rms_driven,
+            rms_clean
         );
 
         // Peak should show saturation effects (some limiting, but still can grow)
         assert!(
             peak_driven < peak_clean * 2.0,
             "Drive should create saturation characteristics (peak: {:.4} vs {:.4})",
-            peak_driven, peak_clean
+            peak_driven,
+            peak_clean
         );
 
         // Verify drive actually does something
@@ -1479,11 +1499,15 @@ mod tests {
         // Check for sustained oscillation after initial impulse
         let first_samples = &output_buffer[0..10];
         let rms_early = (output_buffer[100..200].iter().map(|x| x * x).sum::<f32>() / 100.0).sqrt();
-        let rms_late = (output_buffer[1500..1600].iter().map(|x| x * x).sum::<f32>() / 100.0).sqrt();
+        let rms_late =
+            (output_buffer[1500..1600].iter().map(|x| x * x).sum::<f32>() / 100.0).sqrt();
         let max_output = output_buffer.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
 
         println!("Self-Oscillation Test: First10={:?}", first_samples);
-        println!("Self-Oscillation Test: Early RMS={:.4}, Late RMS={:.4}, Max={:.4}", rms_early, rms_late, max_output);
+        println!(
+            "Self-Oscillation Test: Early RMS={:.4}, Late RMS={:.4}, Max={:.4}",
+            rms_early, rms_late, max_output
+        );
 
         assert!(
             rms_late > 0.01,
@@ -1495,7 +1519,8 @@ mod tests {
         assert!(
             rms_late > rms_early * 0.3,
             "Self-oscillation should be sustained (late={:.4} vs early={:.4})",
-            rms_late, rms_early
+            rms_late,
+            rms_early
         );
     }
 }

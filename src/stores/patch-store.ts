@@ -536,6 +536,7 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.reverbStates,
           nodeStateStore.compressorStates,
           nodeStateStore.saturationStates,
+          nodeStateStore.bitcrusherStates,
           nodeStateStore.noiseState,
           nodeStateStore.velocityState,
           allAssets,
@@ -635,6 +636,7 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.reverbStates,
           nodeStateStore.compressorStates,
           nodeStateStore.saturationStates,
+          nodeStateStore.bitcrusherStates,
           nodeStateStore.noiseState,
           nodeStateStore.velocityState,
           allAssets,
@@ -900,15 +902,16 @@ export const usePatchStore = defineStore('patchStore', {
         nodeStateStore.glideStates,
         nodeStateStore.convolverStates,
         nodeStateStore.delayStates,
-        nodeStateStore.chorusStates,
-        nodeStateStore.reverbStates,
-        nodeStateStore.compressorStates,
-        nodeStateStore.saturationStates,
-        nodeStateStore.noiseState,
-        nodeStateStore.velocityState,
-        allAssets,
-        existingMetadata ? { ...existingMetadata } : undefined,
-      );
+          nodeStateStore.chorusStates,
+          nodeStateStore.reverbStates,
+          nodeStateStore.compressorStates,
+          nodeStateStore.saturationStates,
+          nodeStateStore.bitcrusherStates,
+          nodeStateStore.noiseState,
+          nodeStateStore.velocityState,
+          allAssets,
+          existingMetadata ? { ...existingMetadata } : undefined,
+        );
 
       // Reapply the freshly serialized patch so the engine rebuilds voices
       return await this.applyPatchObject(patch);

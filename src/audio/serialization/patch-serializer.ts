@@ -28,6 +28,7 @@ import type {
   ReverbState,
   CompressorState,
   SaturationState,
+  BitcrusherState,
   GlideState,
   VelocityState,
 } from '../types/synth-layout';
@@ -73,6 +74,7 @@ export function serializeCurrentPatch(
   reverbs: Map<string, ReverbState>,
   compressors: Map<string, CompressorState>,
   saturations: Map<string, SaturationState>,
+  bitcrushers: Map<string, BitcrusherState>,
   noise?: NoiseState,
   velocity?: VelocityState,
   audioAssets?: Map<string, AudioAsset>,
@@ -104,6 +106,7 @@ export function serializeCurrentPatch(
     reverbs: mapToRecord(reverbs),
     compressors: mapToRecord(compressors),
     saturations: mapToRecord(saturations),
+    bitcrushers: mapToRecord(bitcrushers),
   };
 
   if (noise !== undefined) {
@@ -142,6 +145,7 @@ export interface DeserializedPatch {
   reverbs: Map<string, ReverbState>;
   compressors: Map<string, CompressorState>;
   saturations: Map<string, SaturationState>;
+  bitcrushers: Map<string, BitcrusherState>;
   noise?: NoiseState;
   velocity?: VelocityState;
   audioAssets: Map<string, AudioAsset>;
@@ -178,6 +182,20 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
       ],
     ),
   );
+  const bitcrushers = new Map(
+    Array.from(recordToMap(patch.synthState.bitcrushers ?? {}).entries()).map(
+      ([id, state]) => [
+        id,
+        {
+          id,
+          active: state?.active ?? false,
+          bits: state?.bits ?? 12,
+          downsampleFactor: state?.downsampleFactor ?? 4,
+          mix: state?.mix ?? 0.5,
+        },
+      ],
+    ),
+  );
   const result: DeserializedPatch = {
     metadata: patch.metadata,
     layout,
@@ -194,6 +212,7 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
   reverbs: recordToMap(patch.synthState.reverbs),
   compressors: recordToMap(patch.synthState.compressors ?? {}),
   saturations,
+  bitcrushers,
   audioAssets: recordToMap(patch.audioAssets),
 };
 

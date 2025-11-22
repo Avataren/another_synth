@@ -9,6 +9,7 @@ import type {
   RawVoice,
   ReverbState,
   SaturationState,
+  BitcrusherState,
   VelocityState,
   WasmState,
 } from '../types/synth-layout';
@@ -268,6 +269,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'updateSaturation':
         this.handleUpdateSaturation(event.data);
         break;
+      case 'updateBitcrusher':
+        this.handleUpdateBitcrusher(event.data);
+        break;
       case 'updateVelocity':
         this.handleUpdateVelocity(event.data);
         break;
@@ -368,6 +372,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case VoiceNodeType.Reverb:
       case VoiceNodeType.Compressor:
       case VoiceNodeType.Saturation:
+      case VoiceNodeType.Bitcrusher:
         // Effects live on the global stack and are created during engine init.
         console.warn('Effect nodes are created by default; skipping explicit creation for', nodeType);
         break;
@@ -827,6 +832,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       [VoiceNodeType.Reverb]: [],
       [VoiceNodeType.Compressor]: [],
       [VoiceNodeType.Saturation]: [],
+      [VoiceNodeType.Bitcrusher]: [],
     };
 
     for (const rawNode of rawCanonicalVoice.nodes) {
@@ -893,6 +899,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           break;
         case 'saturation':
           type = VoiceNodeType.Saturation;
+          break;
+        case 'bitcrusher':
+          type = VoiceNodeType.Bitcrusher;
           break;
 
         default:
@@ -1233,6 +1242,28 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.state.mix,
       data.state.active,
     );
+  }
+
+  private handleUpdateBitcrusher(data: {
+    type: string;
+    nodeId: string;
+    state: BitcrusherState;
+  }) {
+    if (!this.audioEngine) return;
+
+    const nodeId = Number(data.nodeId);
+    if (!Number.isFinite(nodeId)) {
+      console.error('handleUpdateBitcrusher: invalid nodeId:', data.nodeId);
+      return;
+    }
+
+    const bits = Math.max(1, Math.round(data.state.bits));
+    const downsample = Math.max(1, Math.round(data.state.downsampleFactor));
+    const mix = Math.min(1, Math.max(0, data.state.mix));
+
+    (this.audioEngine as unknown as {
+      update_bitcrusher: (id: number, bits: number, downsampleFactor: number, mix: number, active: boolean) => void;
+    }).update_bitcrusher(nodeId, bits, downsample, mix, data.state.active);
   }
 
   private handleUpdateModulation(data: {

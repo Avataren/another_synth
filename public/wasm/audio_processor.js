@@ -865,6 +865,20 @@ export class AudioEngine {
         wasm.audioengine_update_reverb(this.__wbg_ptr, node_id, active, room_size, damp, wet, dry, width);
     }
     /**
+     * @param {number} bits
+     * @param {number} downsample_factor
+     * @param {number} mix
+     * @param {boolean} active
+     * @returns {number}
+     */
+    add_bitcrusher(bits, downsample_factor, mix, active) {
+        const ret = wasm.audioengine_add_bitcrusher(this.__wbg_ptr, bits, downsample_factor, mix, active);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
+    }
+    /**
      * @param {number} threshold_db
      * @param {number} ratio
      * @param {number} attack_ms
@@ -1132,6 +1146,16 @@ export class AudioEngine {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {number} node_id
+     * @param {number} bits
+     * @param {number} downsample_factor
+     * @param {number} mix
+     * @param {boolean} active
+     */
+    update_bitcrusher(node_id, bits, downsample_factor, mix, active) {
+        wasm.audioengine_update_bitcrusher(this.__wbg_ptr, node_id, bits, downsample_factor, mix, active);
     }
     /**
      * @param {number} node_id

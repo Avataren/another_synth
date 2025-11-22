@@ -696,16 +696,32 @@ impl Chorus {
                 );
 
                 // SAFETY: Check for NaN or Inf in delayed signals
-                let delayed_left = if delayed_left.is_finite() { delayed_left } else { 0.0 };
-                let delayed_right = if delayed_right.is_finite() { delayed_right } else { 0.0 };
+                let delayed_left = if delayed_left.is_finite() {
+                    delayed_left
+                } else {
+                    0.0
+                };
+                let delayed_right = if delayed_right.is_finite() {
+                    delayed_right
+                } else {
+                    0.0
+                };
 
                 // Process through the feedback filter
                 let filtered_left = self.feedback_filter_l.process(delayed_left);
                 let filtered_right = self.feedback_filter_r.process(delayed_right);
 
                 // SAFETY: Check for NaN or Inf in filtered signals
-                let filtered_left = if filtered_left.is_finite() { filtered_left } else { 0.0 };
-                let filtered_right = if filtered_right.is_finite() { filtered_right } else { 0.0 };
+                let filtered_left = if filtered_left.is_finite() {
+                    filtered_left
+                } else {
+                    0.0
+                };
+                let filtered_right = if filtered_right.is_finite() {
+                    filtered_right
+                } else {
+                    0.0
+                };
 
                 // Compute the feedback terms using the filtered signals
                 let feedback_term_l = feedback * filtered_left;

@@ -115,15 +115,16 @@ impl AudioNode for Glide {
         }
 
         let gate_present = gate_buffer.is_some();
-        let gate_now = gate_buffer
-            .and_then(|g| g.first())
-            .copied()
-            .unwrap_or(1.0);
+        let gate_now = gate_buffer.and_then(|g| g.first()).copied().unwrap_or(1.0);
         let gate_last_sample = gate_buffer
             .and_then(|g| g.last())
             .copied()
             .unwrap_or(gate_now);
-        let was_open = if gate_present { self.last_gate_value > 0.5 } else { true };
+        let was_open = if gate_present {
+            self.last_gate_value > 0.5
+        } else {
+            true
+        };
         let is_open = if gate_present { gate_now > 0.5 } else { true };
 
         // If the gate is closed, bypass glide and latch to the current input.

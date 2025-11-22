@@ -1,13 +1,13 @@
 use crate::graph::{ModulationProcessor, ModulationSource};
 use crate::traits::{AudioNode, PortId};
 use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::simd::num::SimdFloat;
 use std::simd::StdFloat;
 use std::simd::{f32x4, Simd};
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
-use serde::{Deserialize, Serialize};
 
 /// The type of noise to generate.
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -424,10 +424,30 @@ impl NoiseGenerator {
         }
 
         // 3) Pick noise fns once for left and right
-        let (n4_l, n1_l, n4_r, n1_r): (fn(&mut _) -> f32x4, fn(&mut _) -> f32, fn(&mut _) -> f32x4, fn(&mut _) -> f32) = match self.noise_type {
-            NoiseType::White => (Self::white_simd, Self::white_scalar, Self::white_simd, Self::white_scalar),
-            NoiseType::Pink => (Self::pink_simd, Self::pink_scalar, Self::pink_simd_r, Self::pink_scalar_r),
-            NoiseType::Brownian => (Self::brown_simd, Self::brown_scalar, Self::brown_simd_r, Self::brown_scalar_r),
+        let (n4_l, n1_l, n4_r, n1_r): (
+            fn(&mut _) -> f32x4,
+            fn(&mut _) -> f32,
+            fn(&mut _) -> f32x4,
+            fn(&mut _) -> f32,
+        ) = match self.noise_type {
+            NoiseType::White => (
+                Self::white_simd,
+                Self::white_scalar,
+                Self::white_simd,
+                Self::white_scalar,
+            ),
+            NoiseType::Pink => (
+                Self::pink_simd,
+                Self::pink_scalar,
+                Self::pink_simd_r,
+                Self::pink_scalar_r,
+            ),
+            NoiseType::Brownian => (
+                Self::brown_simd,
+                Self::brown_scalar,
+                Self::brown_simd_r,
+                Self::brown_scalar_r,
+            ),
         };
 
         // Initialize output buffers

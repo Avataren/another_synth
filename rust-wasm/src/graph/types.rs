@@ -1,14 +1,14 @@
-use crate::PortId;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-#[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::*;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use crate::impulse_generator::fill_seed;
+use crate::PortId;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use rand::rngs::StdRng;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use rand::{Rng, SeedableRng};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+#[cfg(feature = "wasm")]
+use wasm_bindgen::prelude::*;
 
 #[derive(Clone)] // Clone might not be possible/needed anymore if nodes don't own it
                  // Let's keep it for now but review if it causes issues later.

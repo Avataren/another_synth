@@ -1,9 +1,9 @@
 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 use getrandom::fill;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use js_sys::{self, Reflect};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 use wasm_bindgen::{JsCast, JsValue};
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
@@ -24,10 +24,7 @@ fn log_error(message: &str) {
 pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
     if let Some(window) = web_sys::window() {
         if let Ok(crypto) = window.crypto() {
-            if crypto
-                .get_random_values_with_u8_array(seed)
-                .is_ok()
-            {
+            if crypto.get_random_values_with_u8_array(seed).is_ok() {
                 return Ok(());
             }
         }
@@ -35,9 +32,7 @@ pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
 
     // AudioWorkletGlobalScope does not have a Window, but crypto is still exposed on globalThis.
     let global = js_sys::global();
-    if let Ok(crypto_value) =
-        Reflect::get(global.as_ref(), &JsValue::from_str("crypto"))
-    {
+    if let Ok(crypto_value) = Reflect::get(global.as_ref(), &JsValue::from_str("crypto")) {
         if let Ok(crypto) = crypto_value.dyn_into::<web_sys::Crypto>() {
             if crypto.get_random_values_with_u8_array(seed).is_ok() {
                 return Ok(());

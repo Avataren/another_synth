@@ -13,8 +13,8 @@ use crate::nodes::morph_wavetable::{
 };
 use crate::nodes::{
     generate_mipmapped_bank_dynamic, AnalogOscillator, AnalogOscillatorStateUpdate,
-    ArpeggiatorGenerator, Chorus, Compressor, Convolver, Delay, Envelope, EnvelopeConfig,
-    FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
+    ArpeggiatorGenerator, Bitcrusher, Chorus, Compressor, Convolver, Delay, Envelope,
+    EnvelopeConfig, FilterCollection, FilterSlope, Freeverb, GateMixer, Glide, GlobalFrequencyNode,
     GlobalVelocityNode, Lfo, LfoLoopMode, LfoRetriggerMode, LfoWaveform, Limiter, Mixer,
     NoiseGenerator, NoiseType, NoiseUpdate, SampleData, Sampler, SamplerLoopMode,
     SamplerTriggerMode, Saturation, Waveform, WavetableBank, WavetableOscillator,
@@ -412,6 +412,7 @@ impl AudioEngine {
         self.add_compressor(-12.0, 4.0, 10.0, 80.0, 3.0, 0.5)
             .unwrap();
         self.add_saturation(2.0, 0.5, false).unwrap();
+        self.add_bitcrusher(12, 4, 0.5, false).unwrap();
         //self.add_hall_reverb(2.0, 0.8, sample_rate).unwrap();
         log_console(&format!("plate reverb added"));
     }
@@ -514,17 +515,15 @@ impl AudioEngine {
                         node_type: "glide".to_string(),
                         name: "Glide".to_string(),
                     });
-                patch
-                    .synth_state
-                    .glides
-                    .entry(new_id.clone())
-                    .or_insert(super::patch::GlideState {
+                patch.synth_state.glides.entry(new_id.clone()).or_insert(
+                    super::patch::GlideState {
                         glide_id: new_id,
                         time: 0.0,
                         rise_time: None,
                         fall_time: None,
                         active: false,
-                    });
+                    },
+                );
             }
         }
 
@@ -555,6 +554,7 @@ impl AudioEngine {
         self.add_limiter()?;
         self.add_compressor(-12.0, 4.0, 10.0, 80.0, 3.0, 0.5)?;
         self.add_saturation(2.0, 0.5, false)?;
+        self.add_bitcrusher(12, 4, 0.5, false)?;
 
         let canonical_voice = layout
             .canonical_voice()
@@ -842,15 +842,23 @@ impl AudioEngine {
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn add_saturation(
-        &mut self,
-        drive: f32,
-        mix: f32,
-        active: bool,
-    ) -> Result<usize, JsValue> {
+    pub fn add_saturation(&mut self, drive: f32, mix: f32, active: bool) -> Result<usize, JsValue> {
         let mut saturation = Saturation::new(drive, mix);
         saturation.set_active(active);
         Ok(self.effect_stack.add_effect(Box::new(saturation)))
+    }
+
+    #[cfg_attr(feature = "wasm", wasm_bindgen)]
+    pub fn add_bitcrusher(
+        &mut self,
+        bits: u8,
+        downsample_factor: usize,
+        mix: f32,
+        active: bool,
+    ) -> Result<usize, JsValue> {
+        let mut crusher = Bitcrusher::new(bits, downsample_factor, mix);
+        crusher.set_active(active);
+        Ok(self.effect_stack.add_effect(Box::new(crusher)))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
@@ -927,11 +935,7 @@ impl AudioEngine {
 
     /// Generate a hall reverb impulse response and return it as a Vec<f32>
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn generate_hall_impulse(
-        &self,
-        decay_time: f32,
-        room_size: f32,
-    ) -> Vec<f32> {
+    pub fn generate_hall_impulse(&self, decay_time: f32, room_size: f32) -> Vec<f32> {
         let decay_time = decay_time.clamp(0.1, 10.0);
         let room_size = room_size.clamp(0.0, 1.0);
         self.ir_generator.hall(decay_time, room_size)
@@ -939,11 +943,7 @@ impl AudioEngine {
 
     /// Generate a plate reverb impulse response and return it as a Vec<f32>
     #[cfg_attr(feature = "wasm", wasm_bindgen)]
-    pub fn generate_plate_impulse(
-        &self,
-        decay_time: f32,
-        diffusion: f32,
-    ) -> Vec<f32> {
+    pub fn generate_plate_impulse(&self, decay_time: f32, diffusion: f32) -> Vec<f32> {
         let decay_time = decay_time.clamp(0.1, 10.0);
         let diffusion = diffusion.clamp(0.0, 1.0);
         self.ir_generator.plate(decay_time, diffusion)
@@ -1509,7 +1509,43 @@ impl AudioEngine {
                 saturation.set_mix(mix);
                 saturation.set_active(active);
             } else {
-                log_console(&format!("Effect at index {} is not a Saturation", effect_id));
+                log_console(&format!(
+                    "Effect at index {} is not a Saturation",
+                    effect_id
+                ));
+            }
+        } else {
+            log_console(&format!("No effect found at index {}", effect_id));
+        }
+    }
+
+    pub fn update_bitcrusher(
+        &mut self,
+        node_id: usize,
+        bits: u8,
+        downsample_factor: usize,
+        mix: f32,
+        active: bool,
+    ) {
+        let Some(effect_id) = node_id.checked_sub(EFFECT_NODE_ID_OFFSET) else {
+            log_console(&format!(
+                "Invalid bitcrusher node id {}; expected offset {}",
+                node_id, EFFECT_NODE_ID_OFFSET
+            ));
+            return;
+        };
+
+        if let Some(effect) = self.effect_stack.effects.get_mut(effect_id) {
+            if let Some(crusher) = effect.node.as_any_mut().downcast_mut::<Bitcrusher>() {
+                crusher.set_bits(bits);
+                crusher.set_downsample_factor(downsample_factor);
+                crusher.set_mix(mix);
+                crusher.set_active(active);
+            } else {
+                log_console(&format!(
+                    "Effect at index {} is not a Bitcrusher",
+                    effect_id
+                ));
             }
         } else {
             log_console(&format!("No effect found at index {}", effect_id));
@@ -1650,7 +1686,10 @@ impl AudioEngine {
                 compressor.set_mix(mix);
                 compressor.set_active(active);
             } else {
-                log_console(&format!("Effect at index {} is not a compressor", effect_id));
+                log_console(&format!(
+                    "Effect at index {} is not a compressor",
+                    effect_id
+                ));
             }
         } else {
             log_console(&format!("No effect found at index {}", effect_id));
@@ -1938,9 +1977,10 @@ impl AudioEngine {
 
         // Ensure the glide hears the combined gate even though the gate mixer is created later.
         for voice in &mut self.voices {
-            if let (Some(glide_id), Some(gate_mixer_id)) =
-                (voice.graph.global_glide_node, voice.graph.global_gatemixer_node)
-            {
+            if let (Some(glide_id), Some(gate_mixer_id)) = (
+                voice.graph.global_glide_node,
+                voice.graph.global_gatemixer_node,
+            ) {
                 voice.graph.add_connection(Connection {
                     from_node: gate_mixer_id,
                     from_port: PortId::CombinedGate,
@@ -2599,7 +2639,7 @@ impl AudioEngine {
             }
             // Effect nodes exist in the effect stack.
             "chorus" | "delay" | "freeverb" | "convolver" | "limiter" | "compressor"
-            | "saturation" => {}
+            | "saturation" | "bitcrusher" => {}
             other => log_console(&format!("Skipping unsupported node type {}", other)),
         }
         Ok(())
@@ -2641,10 +2681,7 @@ impl AudioEngine {
             let mut effective_from_port = from_port;
 
             if to_port == PortId::GlobalFrequency {
-                if let Some(glide_node) = self
-                    .voices
-                    .get(0)
-                    .and_then(|v| v.graph.global_glide_node)
+                if let Some(glide_node) = self.voices.get(0).and_then(|v| v.graph.global_glide_node)
                 {
                     from_id = glide_node.to_string();
                     effective_from_port = PortId::AudioOutput0;
@@ -2803,7 +2840,24 @@ impl AudioEngine {
 
         for saturation in patch.synth_state.saturations.values() {
             if let Ok(node_id) = saturation.id.parse::<usize>() {
-                self.update_saturation(node_id, saturation.drive, saturation.mix, saturation.active);
+                self.update_saturation(
+                    node_id,
+                    saturation.drive,
+                    saturation.mix,
+                    saturation.active,
+                );
+            }
+        }
+
+        for bitcrusher in patch.synth_state.bitcrushers.values() {
+            if let Ok(node_id) = bitcrusher.id.parse::<usize>() {
+                self.update_bitcrusher(
+                    node_id,
+                    bitcrusher.bits,
+                    bitcrusher.downsample_factor,
+                    bitcrusher.mix,
+                    bitcrusher.active,
+                );
             }
         }
 

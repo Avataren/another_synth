@@ -20,6 +20,7 @@ import type {
   ReverbState,
   CompressorState,
   SaturationState,
+  BitcrusherState,
   NodeConnectionUpdate,
   SynthLayout,
 } from './synth-layout';
@@ -172,6 +173,12 @@ export interface UpdateSaturationMessage extends BaseMessage {
   type: 'updateSaturation';
   nodeId: string;
   state: SaturationState;
+}
+
+export interface UpdateBitcrusherMessage extends BaseMessage {
+  type: 'updateBitcrusher';
+  nodeId: string;
+  state: BitcrusherState;
 }
 
 export interface UpdateVelocityMessage extends BaseMessage {
@@ -396,6 +403,7 @@ export type WorkletMessage =
   | UpdateChorusMessage
   | UpdateCompressorMessage
   | UpdateSaturationMessage
+  | UpdateBitcrusherMessage
   | UpdateReverbMessage
   | UpdateVelocityMessage
   | UpdateGlideMessage
@@ -554,6 +562,13 @@ export class WorkletMessageValidator {
         const connMsg = message as UpdateConnectionMessage;
         if (!connMsg.connection) {
           return 'updateConnection missing connection';
+        }
+        break;
+
+      case 'updateBitcrusher':
+        const crushMsg = message as UpdateBitcrusherMessage;
+        if (!crushMsg.nodeId || !crushMsg.state) {
+          return 'updateBitcrusher missing nodeId or state';
         }
         break;
 

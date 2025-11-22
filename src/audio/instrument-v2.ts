@@ -22,6 +22,7 @@ import type {
   EnvelopeConfig,
   CompressorState,
   SaturationState,
+  BitcrusherState,
   ReverbState,
   SamplerLoopMode,
   SamplerTriggerMode,
@@ -218,6 +219,14 @@ export default class InstrumentV2 {
   public updateSaturationState(nodeId: string, state: SaturationState): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateSaturation',
+      nodeId,
+      state,
+    });
+  }
+
+  public updateBitcrusherState(nodeId: string, state: BitcrusherState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateBitcrusher',
       nodeId,
       state,
     });

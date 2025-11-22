@@ -69,6 +69,8 @@ export class ModulationRouteManager {
         return 'Reverb';
       case VoiceNodeType.Saturation:
         return 'Saturation';
+      case VoiceNodeType.Bitcrusher:
+        return 'Bitcrusher';
       default:
         return 'Node';
     }

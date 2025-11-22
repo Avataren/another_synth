@@ -83,6 +83,7 @@ mod tests {
             reverbs: Default::default(),
             compressors: Default::default(),
             saturations: Default::default(),
+            bitcrushers: Default::default(),
             noise: Default::default(),
             velocity: Default::default(),
         };

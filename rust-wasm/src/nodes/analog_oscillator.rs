@@ -431,11 +431,11 @@ impl AnalogOscillator {
                 let pan = if total_voices > 1.0 {
                     ((v + k) as f32 / (total_voices - 1.0)) * 2.0 - 1.0
                 } else {
-                    0.0  // Center for single voice
+                    0.0 // Center for single voice
                 };
 
                 // Equal power panning: sqrt((1-pan)/2) for left, sqrt((1+pan)/2) for right
-                let pan_norm = (pan + 1.0) * 0.5;  // Normalize to 0..1
+                let pan_norm = (pan + 1.0) * 0.5; // Normalize to 0..1
                 let gain_l = ((1.0 - pan_norm) * std::f32::consts::FRAC_PI_2).cos();
                 let gain_r = (pan_norm * std::f32::consts::FRAC_PI_2).cos();
 
@@ -556,7 +556,9 @@ impl AudioNode for AnalogOscillator {
         self.ensure_scratch_capacity(buffer_size);
 
         // Check that we have at least one output
-        if !outputs.contains_key(&PortId::AudioOutput0) && !outputs.contains_key(&PortId::AudioOutput1) {
+        if !outputs.contains_key(&PortId::AudioOutput0)
+            && !outputs.contains_key(&PortId::AudioOutput1)
+        {
             return;
         }
 
@@ -678,9 +680,7 @@ impl AudioNode for AnalogOscillator {
             Some(b) => b.clone(),
             None => {
                 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-                console::error_1(
-                    &format!("Wavetable bank missing for {:?}", self.waveform).into(),
-                );
+                console::error_1(&format!("Wavetable bank missing for {:?}", self.waveform).into());
                 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
                 eprintln!("Wavetable bank missing for {:?}", self.waveform);
                 if let Some(o) = outputs.get_mut(&PortId::AudioOutput0) {

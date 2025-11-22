@@ -38,7 +38,7 @@ pub struct EnvelopeConfig {
     pub release_curve: f32,
     #[serde(default)]
     pub attack_smoothing_samples: usize, // Number of samples for smoothing start of attack
-    pub active: bool,                    // Whether the node is active (used by graph)
+    pub active: bool, // Whether the node is active (used by graph)
 }
 
 // Sensible defaults
@@ -584,12 +584,18 @@ mod tests {
             if (value - 1.0).abs() < 0.01 {
                 reached_peak = true;
                 // Phase should be Attack or Decay (may transition on reaching peak)
-                assert!(matches!(env.phase, EnvelopePhase::Attack | EnvelopePhase::Decay));
+                assert!(matches!(
+                    env.phase,
+                    EnvelopePhase::Attack | EnvelopePhase::Decay
+                ));
                 break;
             }
         }
 
-        assert!(reached_peak, "Envelope should reach peak (1.0) during attack");
+        assert!(
+            reached_peak,
+            "Envelope should reach peak (1.0) during attack"
+        );
     }
 
     #[test]
@@ -626,7 +632,8 @@ mod tests {
         env.trigger(true);
 
         // Process to sustain
-        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
+        let total_samples =
+            (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
         for _ in 0..total_samples {
             env.process_sample(0.0, 1.0);
         }
@@ -650,7 +657,8 @@ mod tests {
         env.trigger(true);
 
         // Process to sustain
-        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
+        let total_samples =
+            (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay) * 1.5) as usize;
         for _ in 0..total_samples {
             env.process_sample(0.0, 1.0);
         }
@@ -671,9 +679,15 @@ mod tests {
             }
         }
 
-        assert!(reached_zero, "Envelope should reach near zero during release");
+        assert!(
+            reached_zero,
+            "Envelope should reach near zero during release"
+        );
         // Phase should be Release or Idle (may transition on reaching zero)
-        assert!(matches!(env.phase, EnvelopePhase::Release | EnvelopePhase::Idle));
+        assert!(matches!(
+            env.phase,
+            EnvelopePhase::Release | EnvelopePhase::Idle
+        ));
     }
 
     #[test]
@@ -879,7 +893,8 @@ mod tests {
         env.trigger(true);
 
         let mut prev_value = 0.0;
-        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay + 0.1) * 1.5) as usize;
+        let total_samples =
+            (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay + 0.1) * 1.5) as usize;
 
         for _ in 0..total_samples {
             let value = env.process_sample(0.0, 1.0);
@@ -900,7 +915,9 @@ mod tests {
         env.trigger(true);
 
         // Process through full envelope
-        let total_samples = (TEST_SAMPLE_RATE * (env.config.attack + env.config.decay + env.config.release + 0.5) * 2.0) as usize;
+        let total_samples = (TEST_SAMPLE_RATE
+            * (env.config.attack + env.config.decay + env.config.release + 0.5)
+            * 2.0) as usize;
 
         for i in 0..total_samples {
             // Trigger release partway through
