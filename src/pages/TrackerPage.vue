@@ -66,9 +66,15 @@
             </div>
           </div>
           <div class="transport transport-bottom">
-            <button type="button" class="transport-button play">Play</button>
-            <button type="button" class="transport-button pause">Pause</button>
-            <button type="button" class="transport-button stop">Stop</button>
+            <button type="button" class="transport-button play" @click="handlePlay">
+              Play
+            </button>
+            <button type="button" class="transport-button pause" @click="handlePause">
+              Pause
+            </button>
+            <button type="button" class="transport-button stop" @click="handleStop">
+              Stop
+            </button>
           </div>
         </div>
 
@@ -149,9 +155,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import type {
+  Pattern as PlaybackPattern,
+  Song as PlaybackSong,
+  Step as PlaybackStep
+} from '../../packages/tracker-playback/src/types';
 
 interface InstrumentSlot {
   slot: number;
@@ -212,6 +224,8 @@ const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
 const visibleSlots = computed(() => instrumentSlots.value.filter((slot) => !slot.empty));
 const rowsCount = computed(() => Math.max(patternMeta.value.rows ?? 64, 1));
+const playbackEngine = new PlaybackEngine();
+let unsubscribePosition: (() => void) | null = null;
 
 const tracks = ref<TrackerTrackData[]>([
   {
@@ -313,6 +327,12 @@ const nextSlotId = ref(slotCount + 1);
 function setActiveRow(row: number) {
   const count = rowsCount.value;
   activeRow.value = ((row % count) + count) % count;
+  playbackEngine.seek(activeRow.value);
+}
+
+function setActiveRowFromEngine(row: number) {
+  const count = rowsCount.value;
+  activeRow.value = ((row % count) + count) % count;
 }
 
 function setActiveCell(payload: { row: number; column: number; trackIndex: number }) {
@@ -352,6 +372,7 @@ function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
   patternMeta.value.rows = clamped;
   setActiveRow(activeRow.value);
+  playbackEngine.setLength(clamped);
 }
 
 function onPatternLengthInput(event: Event) {
@@ -360,6 +381,61 @@ function onPatternLengthInput(event: Event) {
   if (Number.isFinite(value)) {
     setPatternRows(value);
   }
+}
+
+function buildPlaybackPattern(): PlaybackPattern {
+  return {
+    id: 'pattern-1',
+    length: rowsCount.value,
+    tracks: tracks.value.map((track) => ({
+      id: track.id,
+      instrumentId: track.id,
+      steps: track.entries.map((entry) => {
+        const step: PlaybackStep = {
+          row: entry.row,
+          instrumentId: track.id
+        };
+        if (entry.note !== undefined) {
+          step.note = entry.note;
+        }
+        return step;
+      })
+    }))
+  };
+}
+
+function buildPlaybackSong(): PlaybackSong {
+  return {
+    title: currentSong.title,
+    author: currentSong.author,
+    bpm: currentSong.bpm,
+    pattern: buildPlaybackPattern()
+  };
+}
+
+function initializePlayback() {
+  const song = buildPlaybackSong();
+  playbackEngine.loadSong(song);
+  playbackEngine.setLength(rowsCount.value);
+  playbackEngine.setBpm(currentSong.bpm);
+
+  unsubscribePosition?.();
+  unsubscribePosition = playbackEngine.on('position', (pos) => {
+    setActiveRowFromEngine(pos.row);
+  });
+}
+
+function handlePlay() {
+  playbackEngine.play();
+}
+
+function handlePause() {
+  playbackEngine.pause();
+}
+
+function handleStop() {
+  playbackEngine.stop();
+  setActiveRow(0);
 }
 
 async function loadSystemBankOptions() {
@@ -483,6 +559,28 @@ function removeInstrument(slotNumber: number) {
 onMounted(() => {
   trackerContainer.value?.focus();
   loadSystemBankOptions();
+  initializePlayback();
+});
+
+watch(
+  () => currentSong.bpm,
+  (bpm) => playbackEngine.setBpm(bpm)
+);
+
+watch(
+  () => rowsCount.value,
+  (rows) => playbackEngine.setLength(rows)
+);
+
+watch(
+  () => tracks.value,
+  () => initializePlayback(),
+  { deep: true }
+);
+
+onBeforeUnmount(() => {
+  unsubscribePosition?.();
+  playbackEngine.stop();
 });
 </script>
 

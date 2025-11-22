@@ -10,7 +10,7 @@ import {
   type Song,
   type TransportState
 } from './types';
-import { IntervalScheduler } from './scheduler';
+import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
 
 type ListenerMap = {
   [K in PlaybackEvent]: Set<PlaybackListener<K>>;
@@ -33,7 +33,10 @@ export class PlaybackEngine {
 
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
-    this.scheduler = options.scheduler ?? new IntervalScheduler();
+    this.scheduler =
+      options.scheduler ||
+      createAudioContextScheduler() ||
+      new IntervalScheduler();
   }
 
   loadSong(song: Song) {
