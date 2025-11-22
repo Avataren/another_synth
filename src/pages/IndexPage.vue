@@ -1,267 +1,237 @@
 <template>
   <q-page class="page-container" @click.capture="handleLeftClickClose">
-    <div class="tool-menu q-pa-sm">
-      <div class="tool-menu__info">
-        <div class="tool-menu__title">Patch tools</div>
-        <div class="tool-menu__hint">
-          Right-click anywhere in the grid to add nodes
+    <div class="patch-layout">
+      <div class="preset-row q-pa-sm">
+        <PresetManager />
+      </div>
+
+      <div class="tool-menu q-pa-sm">
+        <div class="tool-menu__info">
+          <div class="tool-menu__title">Patch tools</div>
+          <div class="tool-menu__hint">
+            Right-click anywhere in the grid to add nodes
+          </div>
+        </div>
+        <div v-if="portamentoState" class="tool-menu__portamento">
+          <div class="tool-menu__portamento-label">Portamento</div>
+          <q-toggle
+            dense
+            size="sm"
+            v-model="portamentoActive"
+            :label="portamentoActive ? 'On' : 'Off'"
+            @update:model-value="commitPortamento"
+          />
+          <q-slider
+            v-model="portamentoTime"
+            dense
+            color="primary"
+            :min="0"
+            :max="1"
+            :step="0.005"
+            class="tool-menu__portamento-slider"
+            @change="commitPortamento"
+          />
+          <div class="tool-menu__portamento-value">{{ portamentoTimeLabel }}</div>
+        </div>
+        <div class="tool-menu__actions">
+          <q-btn
+            color="primary"
+            dense
+            unelevated
+            icon="add_circle"
+            label="Add node"
+            @click="openAddMenuFromButton"
+          />
         </div>
       </div>
-      <div
-        v-if="portamentoState"
-        class="tool-menu__portamento"
-      >
-        <div class="tool-menu__portamento-label">Portamento</div>
-        <q-toggle
-          dense
-          size="sm"
-          v-model="portamentoActive"
-          :label="portamentoActive ? 'On' : 'Off'"
-          @update:model-value="commitPortamento"
-        />
-        <q-slider
-          v-model="portamentoTime"
-          dense
-          color="primary"
-          :min="0"
-          :max="1"
-          :step="0.005"
-          class="tool-menu__portamento-slider"
-          @change="commitPortamento"
-        />
-        <div class="tool-menu__portamento-value">{{ portamentoTimeLabel }}</div>
-      </div>
-      <div class="tool-menu__actions">
-        <q-btn
-          color="primary"
-          dense
-          unelevated
-          icon="add_circle"
-          label="Add node"
-          @click="openAddMenuFromButton"
-        />
-      </div>
-    </div>
 
-    <!-- Middle Scrollable Area: All DSP Nodes using CSS Grid -->
-    <div
-      class="middle-scroll q-pa-md"
-      @contextmenu.prevent.stop="openAddMenu"
-    >
-      <div class="grid-container">
-        <!-- Generators Column -->
-        <div class="node-bg column generators">
-          <div class="header">Generators</div>
-
-          <!-- Wavetable Oscillator -->
-          <generic-tab-container
-            v-if="wavetableOscillatorNodes.length"
-            :nodes="wavetableOscillatorNodes"
-            :destinationNode="destinationNode"
-            :componentName="WavetableOscillatorComponent"
-            nodeLabel="WtOsc"
-          />
-
-          <!-- Oscillator -->
-          <generic-tab-container
-            v-if="oscillatorNodes.length"
-            :nodes="oscillatorNodes"
-            :destinationNode="destinationNode"
-            :componentName="OscillatorComponent"
-            nodeLabel="Osc"
-          />
-
-          <generic-tab-container
-            v-if="samplerNodes.length"
-            :nodes="samplerNodes"
-            :destinationNode="destinationNode"
-            :componentName="SamplerComponent"
-            nodeLabel="Sampler"
-          />
-
-          <!-- Noise -->
-          <generic-tab-container
-            v-if="noiseNodes.length"
-            :nodes="noiseNodes"
-            :destinationNode="destinationNode"
-            :componentName="NoiseComponent"
-            nodeLabel="Noise"
-          />
-
-          <!-- Arpeggiator -->
-          <generic-tab-container
-            v-if="arpeggiatorNodes.length"
-            :nodes="arpeggiatorNodes"
-            :destinationNode="destinationNode"
-            :componentName="ArpeggiatorComponent"
-            nodeLabel="Arp"
-          />
-
-          <!-- Velocity -->
-          <generic-tab-container
-            v-if="velocityNodes.length"
-            :nodes="velocityNodes"
-            :destinationNode="destinationNode"
-            :componentName="VelocityComponent"
-            nodeLabel="Velocity"
-          />
-        </div>
-
-        <!-- Modulators Column -->
-        <div class="node-bg column modulators">
-          <div class="header">Modulators</div>
-
-          <!-- LFO -->
-          <generic-tab-container
-            v-if="lfoNodes.length"
-            :nodes="lfoNodes"
-            :destinationNode="destinationNode"
-            :componentName="LfoComponent"
-            nodeLabel="LFO"
-          />
-
-          <!-- Envelope -->
-          <generic-tab-container
-            v-if="envelopeNodes.length"
-            :nodes="envelopeNodes"
-            :destinationNode="destinationNode"
-            :componentName="EnvelopeComponent"
-            nodeLabel="Env"
-          />
-        </div>
-
-        <!-- Effects Column -->
-        <div class="node-bg effects">
-          <div class="header">Effects</div>
-
-          <div class="effects-grid">
+      <div class="patch-scroll q-pa-md" @contextmenu.prevent.stop="openAddMenu">
+        <div class="grid-container">
+          <div class="node-bg column generators">
+            <div class="header">Generators</div>
             <generic-tab-container
-              v-if="filterNodes.length"
-              :nodes="filterNodes"
+              v-if="wavetableOscillatorNodes.length"
+              :nodes="wavetableOscillatorNodes"
               :destinationNode="destinationNode"
-              :componentName="FilterComponent"
-              nodeLabel="Filter"
+              :componentName="WavetableOscillatorComponent"
+              nodeLabel="WtOsc"
             />
-
             <generic-tab-container
-              v-if="chorusNodes.length"
-              :nodes="chorusNodes"
+              v-if="oscillatorNodes.length"
+              :nodes="oscillatorNodes"
               :destinationNode="destinationNode"
-              :componentName="ChorusComponent"
-              nodeLabel="Chorus"
+              :componentName="OscillatorComponent"
+              nodeLabel="Osc"
             />
-
-            <!-- Delay -->
             <generic-tab-container
-              v-if="delayNodes.length"
-              :nodes="delayNodes"
+              v-if="samplerNodes.length"
+              :nodes="samplerNodes"
               :destinationNode="destinationNode"
-              :componentName="DelayComponent"
-              nodeLabel="Delay"
+              :componentName="SamplerComponent"
+              nodeLabel="Sampler"
             />
-
             <generic-tab-container
-              v-if="compressorNodes.length"
-              :nodes="compressorNodes"
+              v-if="noiseNodes.length"
+              :nodes="noiseNodes"
               :destinationNode="destinationNode"
-              :componentName="CompressorComponent"
-              nodeLabel="Comp"
+              :componentName="NoiseComponent"
+              nodeLabel="Noise"
             />
-
             <generic-tab-container
-              v-if="saturationNodes.length"
-              :nodes="saturationNodes"
+              v-if="arpeggiatorNodes.length"
+              :nodes="arpeggiatorNodes"
               :destinationNode="destinationNode"
-              :componentName="SaturationComponent"
-              nodeLabel="Saturation"
+              :componentName="ArpeggiatorComponent"
+              nodeLabel="Arp"
             />
-
             <generic-tab-container
-              v-if="bitcrusherNodes.length"
-              :nodes="bitcrusherNodes"
+              v-if="velocityNodes.length"
+              :nodes="velocityNodes"
               :destinationNode="destinationNode"
-              :componentName="BitcrusherComponent"
-              nodeLabel="Bitcrusher"
+              :componentName="VelocityComponent"
+              nodeLabel="Velocity"
             />
+          </div>
 
+          <div class="node-bg column modulators">
+            <div class="header">Modulators</div>
             <generic-tab-container
-              v-if="reverbNodes.length"
-              :nodes="reverbNodes"
+              v-if="lfoNodes.length"
+              :nodes="lfoNodes"
               :destinationNode="destinationNode"
-              :componentName="ReverbComponent"
-              nodeLabel="CReverb"
+              :componentName="LfoComponent"
+              nodeLabel="LFO"
             />
+            <generic-tab-container
+              v-if="envelopeNodes.length"
+              :nodes="envelopeNodes"
+              :destinationNode="destinationNode"
+              :componentName="EnvelopeComponent"
+              nodeLabel="Env"
+            />
+          </div>
 
-            <!-- Convolver -->
-            <generic-tab-container
-              v-if="convolverNodes.length"
-              :nodes="convolverNodes"
-              :destinationNode="destinationNode"
-              :componentName="ConvolverComponent"
-              nodeLabel="Convolver"
-            />
+          <div class="node-bg effects">
+            <div class="header">Effects</div>
+            <div class="effects-grid">
+              <generic-tab-container
+                v-if="filterNodes.length"
+                :nodes="filterNodes"
+                :destinationNode="destinationNode"
+                :componentName="FilterComponent"
+                nodeLabel="Filter"
+              />
+              <generic-tab-container
+                v-if="chorusNodes.length"
+                :nodes="chorusNodes"
+                :destinationNode="destinationNode"
+                :componentName="ChorusComponent"
+                nodeLabel="Chorus"
+              />
+              <generic-tab-container
+                v-if="delayNodes.length"
+                :nodes="delayNodes"
+                :destinationNode="destinationNode"
+                :componentName="DelayComponent"
+                nodeLabel="Delay"
+              />
+              <generic-tab-container
+                v-if="compressorNodes.length"
+                :nodes="compressorNodes"
+                :destinationNode="destinationNode"
+                :componentName="CompressorComponent"
+                nodeLabel="Comp"
+              />
+              <generic-tab-container
+                v-if="saturationNodes.length"
+                :nodes="saturationNodes"
+                :destinationNode="destinationNode"
+                :componentName="SaturationComponent"
+                nodeLabel="Saturation"
+              />
+              <generic-tab-container
+                v-if="bitcrusherNodes.length"
+                :nodes="bitcrusherNodes"
+                :destinationNode="destinationNode"
+                :componentName="BitcrusherComponent"
+                nodeLabel="Bitcrusher"
+              />
+              <generic-tab-container
+                v-if="reverbNodes.length"
+                :nodes="reverbNodes"
+                :destinationNode="destinationNode"
+                :componentName="ReverbComponent"
+                nodeLabel="CReverb"
+              />
+              <generic-tab-container
+                v-if="convolverNodes.length"
+                :nodes="convolverNodes"
+                :destinationNode="destinationNode"
+                :componentName="ConvolverComponent"
+                nodeLabel="Convolver"
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Bottom Fixed Row: utility components (no presets here) -->
-    <div class="bottom-row q-pa-md">
-      <div class="row q-col-gutter-md">
-        <div class="col-12 col-sm-6 col-lg-4">
-          <oscilloscope-component :node="destinationNode" />
-        </div>
-        <div class="col-12 col-sm-6 col-lg-4">
-          <piano-keyboard-component />
-        </div>
-        <div class="col-12 col-sm-6 col-lg-4">
-          <frequency-analyzer-component :node="destinationNode" />
+      <div class="bottom-row q-pa-md">
+        <div class="row q-col-gutter-md">
+          <div class="col-12 col-sm-6 col-lg-4">
+            <oscilloscope-component :node="destinationNode" />
+          </div>
+          <div class="col-12 col-sm-6 col-lg-4">
+            <piano-keyboard-component />
+          </div>
+          <div class="col-12 col-sm-6 col-lg-4">
+            <frequency-analyzer-component :node="destinationNode" />
+          </div>
         </div>
       </div>
-    </div>
 
-    <q-menu
-      ref="addMenu"
-      v-model="addMenuVisible"
-      no-parent-event
-      context-menu
-      touch-position
-      class="add-node-menu"
-      transition-show="jump-down"
-      transition-hide="jump-up"
-    >
-      <q-list dense>
-        <template
-          v-for="(section, sectionIndex) in addMenuSections"
-          :key="section.label"
-        >
-          <q-item-label header class="menu-section-header">
-            {{ section.label }}
-          </q-item-label>
-          <q-item
-            v-for="item in section.items"
-            :key="item.type"
-            clickable
-            @click="handleAddNode(item.type)"
+      <q-menu
+        ref="addMenu"
+        v-model="addMenuVisible"
+        no-parent-event
+        context-menu
+        touch-position
+        class="add-node-menu"
+        transition-show="jump-down"
+        transition-hide="jump-up"
+      >
+        <q-list dense>
+          <template
+            v-for="(section, sectionIndex) in addMenuSections"
+            :key="section.label"
           >
-            <q-item-section avatar>
-              <q-icon :name="item.icon" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>{{ item.label }}</q-item-label>
-              <q-item-label v-if="item.caption" caption>
-                {{ item.caption }}
-              </q-item-label>
-            </q-item-section>
-          </q-item>
-          <q-separator
-            v-if="sectionIndex < addMenuSections.length - 1"
-            spaced
-            inset
-          />
-        </template>
-      </q-list>
-    </q-menu>
+            <q-item-label header class="menu-section-header">
+              {{ section.label }}
+            </q-item-label>
+            <q-item
+              v-for="item in section.items"
+              :key="item.type"
+              clickable
+              @click="handleAddNode(item.type)"
+            >
+              <q-item-section avatar>
+                <q-icon :name="item.icon" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ item.label }}</q-item-label>
+                <q-item-label v-if="item.caption" caption>
+                  {{ item.caption }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-separator
+              v-if="sectionIndex < addMenuSections.length - 1"
+              spaced
+              inset
+            />
+          </template>
+        </q-list>
+      </q-menu>
+    </div>
   </q-page>
 </template>
 
@@ -271,6 +241,7 @@ import { storeToRefs } from 'pinia';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
+import PresetManager from 'src/components/PresetManager.vue';
 
 // Components moved from the top row (now in the bottom row)
 import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
@@ -620,9 +591,36 @@ const bitcrusherNodes = computed(() => {
 .page-container {
   display: flex;
   flex-direction: column;
-  height: 96vh;
+  min-height: var(--q-page-container-height, 100vh);
+  background: #0c1119;
   overflow: hidden;
+  height: 100%;
+  flex: 1 1 auto;
+  position: relative;
   --node-width: 640px;
+}
+
+.patch-layout {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  position: absolute;
+  inset: 0;
+}
+
+.patch-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.preset-row {
+  background: #0f131c;
+  border-bottom: 1px solid #273140;
+  flex: 0 0 auto;
 }
 
 .tool-menu {
@@ -633,6 +631,7 @@ const bitcrusherNodes = computed(() => {
   gap: 12px;
   background: #15181d;
   border-bottom: 1px solid #2b3140;
+  flex: 0 0 auto;
 }
 
 .tool-menu__info {
@@ -711,6 +710,7 @@ const bitcrusherNodes = computed(() => {
 /* Middle area scrollable */
 .middle-scroll {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   background-image: linear-gradient(rgb(49, 69, 105), rgb(25, 38, 56));
 }

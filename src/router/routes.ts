@@ -4,7 +4,11 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
-    children: [{ path: '', component: () => import('pages/IndexPage.vue') }],
+    children: [
+      { path: '', redirect: '/patch' },
+      { path: 'patch', component: () => import('pages/IndexPage.vue') },
+      { path: 'tracker', component: () => import('pages/TrackerPage.vue') },
+    ],
   },
 
   // Always leave this as last one,

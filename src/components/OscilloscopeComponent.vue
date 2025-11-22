@@ -5,7 +5,14 @@
     </q-card-section> -->
     <!-- <q-separator /> -->
     <q-card-section class="oscilloscope-container">
-      <canvas ref="canvasRef"></canvas>
+      <div class="channel">
+        <div class="channel-label">Left</div>
+        <canvas ref="leftCanvasRef"></canvas>
+      </div>
+      <div class="channel">
+        <div class="channel-label">Right</div>
+        <canvas ref="rightCanvasRef"></canvas>
+      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -19,45 +26,76 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), { node: null });
 const node = computed(() => props.node);
-const canvasRef = ref<HTMLCanvasElement | null>(null);
-let analyser: AnalyserNode | null = null;
+const leftCanvasRef = ref<HTMLCanvasElement | null>(null);
+const rightCanvasRef = ref<HTMLCanvasElement | null>(null);
+let splitter: ChannelSplitterNode | null = null;
+let leftAnalyser: AnalyserNode | null = null;
+let rightAnalyser: AnalyserNode | null = null;
 let animationFrameId: number | null = null;
-let dataArray: Uint8Array | null = null;
+let leftDataArray: Uint8Array | null = null;
+let rightDataArray: Uint8Array | null = null;
 
 const attachOscilloscope = (audioNode: AudioNode) => {
-  if (!analyser) {
-    const audioContext = audioNode.context;
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
+  const audioContext = audioNode.context;
+
+  if (!leftAnalyser || !rightAnalyser || !splitter) {
+    splitter = audioContext.createChannelSplitter(2);
+
+    const createAnalyser = () => {
+      const a = audioContext.createAnalyser();
+      a.fftSize = 2048;
+      return a;
+    };
+
+    leftAnalyser = createAnalyser();
+    rightAnalyser = createAnalyser();
+
+    leftDataArray = new Uint8Array(leftAnalyser.frequencyBinCount);
+    rightDataArray = new Uint8Array(rightAnalyser.frequencyBinCount);
   }
 
-  audioNode.connect(analyser);
-
-  if (audioNode.numberOfOutputs > 0) {
-    //analyser.connect(audioNode.context.destination);
-  }
+  audioNode.connect(splitter);
+  splitter.connect(leftAnalyser, 0);
+  splitter.connect(rightAnalyser, 1);
 
   startVisualization();
 };
 
 const startVisualization = () => {
-  if (!canvasRef.value || !analyser || !dataArray) return;
+  if (
+    !leftCanvasRef.value ||
+    !rightCanvasRef.value ||
+    !leftAnalyser ||
+    !rightAnalyser ||
+    !leftDataArray ||
+    !rightDataArray
+  )
+    return;
 
-  const canvas = canvasRef.value;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  const leftCanvas = leftCanvasRef.value;
+  const rightCanvas = rightCanvasRef.value;
 
-  const bufferLength = analyser.frequencyBinCount;
-  // Create a local reference that TypeScript can track
-  const localDataArray = dataArray;
+  const ensureCanvasResolution = (canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    if (canvas.width !== rect.width) {
+      canvas.width = rect.width;
+    }
+    if (canvas.height !== rect.height) {
+      canvas.height = rect.height;
+    }
+  };
 
-  const draw = () => {
-    if (!ctx || !analyser || !localDataArray) return;
+  const drawChannel = (
+    canvas: HTMLCanvasElement,
+    analyser: AnalyserNode,
+    buffer: Uint8Array,
+  ) => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ensureCanvasResolution(canvas);
 
-    animationFrameId = requestAnimationFrame(draw);
-
-    analyser.getByteTimeDomainData(localDataArray);
+    analyser.getByteTimeDomainData(buffer);
+    const bufferLength = analyser.frequencyBinCount;
 
     ctx.fillStyle = 'rgb(32, 45, 66)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -66,13 +104,12 @@ const startVisualization = () => {
     ctx.strokeStyle = 'rgb(160, 190, 225)';
     ctx.beginPath();
 
-    const sliceWidth = (canvas.width * 1.0) / bufferLength;
+    const sliceWidth = canvas.width / bufferLength;
     let x = 0;
 
     for (let i = 0; i < bufferLength; i++) {
-      // Using the local reference that TypeScript can verify is not null
-      // @ts-expect-error: We've already checked that dataArray exists
-      const v = localDataArray[i] / 128.0;
+      const sample = buffer[i] ?? 128;
+      const v = sample / 128.0;
       const y = (v * canvas.height) / 2;
 
       if (i === 0) {
@@ -88,6 +125,19 @@ const startVisualization = () => {
     ctx.stroke();
   };
 
+  const draw = () => {
+    if (!leftAnalyser || !rightAnalyser || !leftCanvas || !rightCanvas) return;
+
+    const leftBuffer = leftDataArray;
+    const rightBuffer = rightDataArray;
+    if (!leftBuffer || !rightBuffer) return;
+
+    animationFrameId = requestAnimationFrame(draw);
+
+    drawChannel(leftCanvas, leftAnalyser, leftBuffer);
+    drawChannel(rightCanvas, rightAnalyser, rightBuffer);
+  };
+
   draw();
 };
 
@@ -97,12 +147,23 @@ const cleanup = () => {
     animationFrameId = null;
   }
 
-  if (analyser) {
-    analyser.disconnect();
-    analyser = null;
+  if (splitter) {
+    splitter.disconnect();
+    splitter = null;
   }
 
-  dataArray = null;
+  if (leftAnalyser) {
+    leftAnalyser.disconnect();
+    leftAnalyser = null;
+  }
+
+  if (rightAnalyser) {
+    rightAnalyser.disconnect();
+    rightAnalyser = null;
+  }
+
+  leftDataArray = null;
+  rightDataArray = null;
 };
 
 onMounted(() => {
@@ -125,22 +186,39 @@ watch(node, (newNode, _oldNode) => {
 
 <style scoped>
 .oscilloscope-container {
-  width: 600px;
-  height: 200px;
+  width: 100%;
+  max-width: var(--node-width, 640px);
   margin: 0 auto;
-  canvas {
-    width: 100%;
-    height: 100%;
-    border: none;
-  }
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
 }
-.oscillator-card {
-  width: 600px;
-  margin: 0 auto;
+
+.channel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 0;
+}
+
+.channel-label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9fb2cc;
 }
 
 canvas {
-  border: 1px solid #ccc;
-  background-color: rgb(200, 200, 200);
+  width: 100%;
+  height: 120px;
+  border: 1px solid #273140;
+  background-color: rgb(20, 26, 36);
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .oscilloscope-container {
+    flex-direction: column;
+  }
 }
 </style>
