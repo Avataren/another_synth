@@ -31,6 +31,16 @@ export class TrackerSongBank {
     return this.masterGain;
   }
 
+  get audioContext(): AudioContext {
+    return this.audioSystem.audioContext;
+  }
+
+  /** Get the output node for a specific instrument (for visualization) */
+  getInstrumentOutput(instrumentId: string): AudioNode | null {
+    const active = this.instruments.get(instrumentId);
+    return active?.instrument.outputNode ?? null;
+  }
+
   async syncSlots(slots: SongBankSlot[]): Promise<void> {
     const nextDesired = new Map<string, Patch>();
     for (const slot of slots) {

@@ -7,10 +7,6 @@
       '--tracker-accent': accentColor
     }"
   >
-    <div class="pattern-header">
-      <div class="eyebrow">Pattern</div>
-    </div>
-
     <div class="pattern-body">
       <div class="row-column">
         <div class="row-header">Row</div>
@@ -186,22 +182,6 @@ onBeforeUnmount(() => {
   border-radius: 16px;
   padding: 18px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-
-.pattern-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.eyebrow {
-  color: #9cc7ff;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-weight: 700;
-  margin-bottom: 6px;
 }
 
 .pattern-body {

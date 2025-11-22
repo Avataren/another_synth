@@ -155,6 +155,43 @@
         </div>
       </div>
 
+      <div class="visualizer-row">
+        <div class="visualizer-spacer"></div>
+        <div class="visualizer-tracks">
+          <div
+            v-for="(track, index) in tracks"
+            :key="`viz-${track.id}`"
+            class="visualizer-cell"
+          >
+            <div class="visualizer-controls">
+              <button
+                type="button"
+                class="track-btn solo-btn"
+                :class="{ active: soloedTracks.has(index) }"
+                @click="toggleSolo(index)"
+                title="Solo"
+              >
+                S
+              </button>
+              <button
+                type="button"
+                class="track-btn mute-btn"
+                :class="{ active: mutedTracks.has(index) }"
+                @click="toggleMute(index)"
+                title="Mute"
+              >
+                M
+              </button>
+            </div>
+            <TrackWaveform
+              :audio-node="trackAudioNodes[index] ?? null"
+              :audio-context="audioContext"
+              :color="track.color || '#4df2c5'"
+            />
+          </div>
+        </div>
+      </div>
+
       <div class="pattern-area">
         <TrackerPattern
           :tracks="tracks"
@@ -176,6 +213,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
+import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type {
@@ -231,6 +269,15 @@ const songBank = new TrackerSongBank();
 const playbackEngine = new PlaybackEngine({
   instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
   noteHandler: (event) => {
+    // Check mute/solo state for this track
+    const trackIndex = event.trackIndex;
+    const hasSolo = soloedTracks.value.size > 0;
+    const isSoloed = soloedTracks.value.has(trackIndex);
+    const isMuted = mutedTracks.value.has(trackIndex);
+    const isAudible = hasSolo ? isSoloed : !isMuted;
+
+    if (!isAudible) return;
+
     if (event.type === 'noteOn') {
       if (event.instrumentId === undefined || event.midi === undefined) return;
       const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
@@ -245,6 +292,13 @@ const playbackEngine = new PlaybackEngine({
 let unsubscribePosition: (() => void) | null = null;
 const autoScroll = ref(true);
 const playbackRow = ref(0);
+/** Audio nodes per track for visualization */
+const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
+const audioContext = computed(() => songBank.audioContext);
+/** Tracks that are muted */
+const mutedTracks = ref<Set<number>>(new Set());
+/** Tracks that are soloed */
+const soloedTracks = ref<Set<number>>(new Set());
 
 const noteKeyMap: Record<string, number> = {
   KeyZ: 48,
@@ -596,6 +650,53 @@ async function syncSongBankFromSlots() {
     .filter(Boolean) as SongBankSlot[];
 
   await songBank.syncSlots(slots);
+  updateTrackAudioNodes();
+}
+
+function getTrackInstrumentId(track: TrackerTrackData, trackIndex: number): string | undefined {
+  // Only get instrument from track entries - don't fall back to activeInstrumentId
+  // This ensures each visualizer shows only its own track's audio
+  const entryInstrument = normalizeInstrumentId(
+    track.entries.find((entry) => entry.instrument)?.instrument
+  );
+  if (entryInstrument) {
+    return entryInstrument;
+  }
+  // Fall back to slot matching track index (1-indexed)
+  const slot = instrumentSlots.value[trackIndex];
+  return slot?.patchId ? formatInstrumentId(slot.slot) : undefined;
+}
+
+function updateTrackAudioNodes() {
+  const nodes: Record<number, AudioNode | null> = {};
+  for (let i = 0; i < tracks.value.length; i++) {
+    const track = tracks.value[i];
+    if (!track) continue;
+    // Get instrument ID specific to this track only
+    const instrumentId = getTrackInstrumentId(track, i);
+    nodes[i] = instrumentId ? songBank.getInstrumentOutput(instrumentId) : null;
+  }
+  trackAudioNodes.value = nodes;
+}
+
+function toggleMute(trackIndex: number) {
+  const newMuted = new Set(mutedTracks.value);
+  if (newMuted.has(trackIndex)) {
+    newMuted.delete(trackIndex);
+  } else {
+    newMuted.add(trackIndex);
+  }
+  mutedTracks.value = newMuted;
+}
+
+function toggleSolo(trackIndex: number) {
+  const newSoloed = new Set(soloedTracks.value);
+  if (newSoloed.has(trackIndex)) {
+    newSoloed.delete(trackIndex);
+  } else {
+    newSoloed.add(trackIndex);
+  }
+  soloedTracks.value = newSoloed;
 }
 
 function initializePlayback() {
@@ -874,6 +975,78 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overflow-x: auto;
   padding: 0 18px 18px;
+}
+
+.visualizer-row {
+  display: flex;
+  padding: 0 18px 0;
+  flex-shrink: 0;
+}
+
+.visualizer-spacer {
+  /* Match TrackerPattern: 18px padding + 78px row-column + 12px gap */
+  width: calc(18px + 78px + 12px);
+  flex-shrink: 0;
+}
+
+.visualizer-tracks {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.visualizer-cell {
+  width: 180px;
+  min-width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.visualizer-cell :deep(.track-waveform) {
+  width: 90%;
+}
+
+.visualizer-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-top: 14px;
+}
+
+.track-btn {
+  width: 20px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: #9fb3d3;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 100ms ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.track-btn:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.solo-btn.active {
+  background: rgba(255, 200, 50, 0.7);
+  border-color: rgba(255, 200, 50, 0.9);
+  color: #1a1a1a;
+}
+
+.mute-btn.active {
+  background: rgba(255, 80, 80, 0.7);
+  border-color: rgba(255, 80, 80, 0.9);
+  color: #1a1a1a;
 }
 
 .eyebrow {

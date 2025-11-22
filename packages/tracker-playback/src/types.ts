@@ -73,6 +73,7 @@ export interface PlaybackNoteEvent {
   midi?: number;
   velocity?: number;
   row: number;
+  trackIndex: number;
 }
 
 export type PlaybackNoteHandler = (event: PlaybackNoteEvent) => void;

@@ -165,7 +165,8 @@ export class PlaybackEngine {
         const event: PlaybackNoteEvent = {
           type: 'noteOff',
           instrumentId,
-          row
+          row,
+          trackIndex: step.trackIndex
         };
         if (step.midi !== undefined) {
           event.midi = step.midi;
@@ -181,7 +182,8 @@ export class PlaybackEngine {
         type: 'noteOn',
         instrumentId,
         midi: step.midi,
-        row
+        row,
+        trackIndex: step.trackIndex
       };
       if (velocity !== undefined) {
         event.velocity = velocity;
@@ -192,10 +194,12 @@ export class PlaybackEngine {
 
   private indexPattern(pattern: Pattern) {
     const index: Map<number, PlaybackPatternStep[]> = new Map();
-    for (const track of pattern.tracks) {
+    for (let trackIndex = 0; trackIndex < pattern.tracks.length; trackIndex++) {
+      const track = pattern.tracks[trackIndex];
+      if (!track) continue;
       for (const step of track.steps) {
         const bucket = index.get(step.row) ?? [];
-        bucket.push(step);
+        bucket.push({ ...step, trackIndex });
         index.set(step.row, bucket);
       }
     }
@@ -203,4 +207,4 @@ export class PlaybackEngine {
   }
 }
 
-type PlaybackPatternStep = Pattern['tracks'][number]['steps'][number];
+type PlaybackPatternStep = Pattern['tracks'][number]['steps'][number] & { trackIndex: number };
