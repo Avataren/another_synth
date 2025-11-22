@@ -25,6 +25,17 @@
                 placeholder="Unknown"
               />
             </div>
+            <div class="field">
+              <label for="song-bpm">BPM</label>
+              <input
+                id="song-bpm"
+                v-model.number="currentSong.bpm"
+                type="number"
+                min="20"
+                max="300"
+                placeholder="120"
+              />
+            </div>
           </div>
           <div class="stats">
             <div class="stat-chip">
@@ -182,10 +193,12 @@ interface PatternMetadata {
 class SongMetadata {
   title: string;
   author: string;
+  bpm: number;
 
-  constructor(title = 'Untitled song', author = 'Unknown') {
+  constructor(title = 'Untitled song', author = 'Unknown', bpm = 120) {
     this.title = title;
     this.author = author;
+    this.bpm = bpm;
   }
 }
 

@@ -1,0 +1,34 @@
+{
+  "name": "@another-synth/tracker-playback",
+  "version": "0.0.1",
+  "description": "Lightweight tracker playback core (transport + timing) for reuse in apps or standalone.",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts"
+  },
+  "keywords": [
+    "tracker",
+    "playback",
+    "audio",
+    "sequencer"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.3"
+  }
+}
