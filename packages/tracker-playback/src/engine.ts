@@ -112,7 +112,8 @@ export class PlaybackEngine {
 
   private step(deltaMs: number) {
     if (this.state !== 'playing') return;
-    const msPerRow = (60_000 / this.bpm) || 0;
+    const rowsPerBeat = 4; // treat one beat as 4 rows (16th grid)
+    const msPerRow = ((60_000 / this.bpm) / rowsPerBeat) || 0;
     this.tickAccumulator += deltaMs;
 
     while (this.tickAccumulator >= msPerRow && msPerRow > 0) {

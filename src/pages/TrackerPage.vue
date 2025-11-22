@@ -426,6 +426,8 @@ function initializePlayback() {
 }
 
 function handlePlay() {
+  playbackEngine.setBpm(currentSong.bpm);
+  playbackEngine.setLength(rowsCount.value);
   playbackEngine.play();
 }
 
@@ -564,12 +566,14 @@ onMounted(() => {
 
 watch(
   () => currentSong.bpm,
-  (bpm) => playbackEngine.setBpm(bpm)
+  (bpm) => playbackEngine.setBpm(bpm),
+  { immediate: true }
 );
 
 watch(
   () => rowsCount.value,
-  (rows) => playbackEngine.setLength(rows)
+  (rows) => playbackEngine.setLength(rows),
+  { immediate: true }
 );
 
 watch(
