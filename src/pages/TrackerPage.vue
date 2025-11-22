@@ -37,19 +37,9 @@
               />
             </div>
           </div>
-          <div class="stats">
-            <div class="stat-chip">
-              <div class="stat-label">Tracks</div>
-              <div class="stat-value">{{ tracks.length }}</div>
-            </div>
-            <div class="stat-chip">
-              <div class="stat-label">Rows</div>
-              <div class="stat-value">{{ rowsCount }}</div>
-            </div>
-            <div class="stat-chip">
-              <div class="stat-label">Current row</div>
-              <div class="stat-value">{{ activeRowDisplay }}</div>
-            </div>
+          <div class="stats-inline">
+            <span class="stat-inline"><span class="stat-label">Tracks:</span> {{ tracks.length }}</span>
+            <span class="stat-inline"><span class="stat-label">Rows:</span> {{ rowsCount }}</span>
           </div>
           <div class="pattern-controls">
             <div class="control-label">Pattern length</div>
@@ -123,20 +113,11 @@
                 active: activeInstrumentId === formatInstrumentId(slot.slot),
                 empty: !slot.patchId
               }"
+              :title="slot.patchId ? `Bank: ${slot.bankName}` : ''"
               @click="setActiveInstrument(slot.slot)"
             >
               <div class="slot-number">#{{ formatInstrumentId(slot.slot) }}</div>
-              <div class="instrument-meta">
-                <div class="patch-name">{{ slot.patchName || '—' }}</div>
-                <div v-if="slot.patchId" class="patch-meta">
-                  <span>Bank: <strong>{{ slot.bankName }}</strong></span>
-                  <span class="dot">•</span>
-                  <span>Instrument: <strong>{{ slot.instrumentName }}</strong></span>
-                </div>
-                <div v-else class="patch-meta">
-                  <span class="empty-hint">No patch assigned</span>
-                </div>
-              </div>
+              <div class="patch-name">{{ slot.patchName || '—' }}</div>
               <div class="instrument-actions">
                 <select
                   class="patch-select"
@@ -174,17 +155,19 @@
         </div>
       </div>
 
-      <TrackerPattern
-        :tracks="tracks"
-        :rows="rowsCount"
-        :selected-row="activeRow"
-        :playback-row="playbackRow"
-        :active-track="activeTrack"
-        :active-column="activeColumn"
-        :auto-scroll="autoScroll"
-        @rowSelected="setActiveRow"
-        @cellSelected="setActiveCell"
-      />
+      <div class="pattern-area">
+        <TrackerPattern
+          :tracks="tracks"
+          :rows="rowsCount"
+          :selected-row="activeRow"
+          :playback-row="playbackRow"
+          :active-track="activeTrack"
+          :active-column="activeColumn"
+          :auto-scroll="autoScroll"
+          @rowSelected="setActiveRow"
+          @cellSelected="setActiveCell"
+        />
+      </div>
     </div>
   </q-page>
 </template>
@@ -262,8 +245,6 @@ const playbackEngine = new PlaybackEngine({
 let unsubscribePosition: (() => void) | null = null;
 const autoScroll = ref(true);
 const playbackRow = ref(0);
-
-const activeRowDisplay = computed(() => activeRow.value.toString(16).toUpperCase().padStart(2, '0'));
 
 const noteKeyMap: Record<string, number> = {
   KeyZ: 48,
@@ -856,12 +837,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .tracker-page {
-  min-height: var(--q-page-container-height, 100vh);
+  height: var(--q-page-container-height, 100vh);
   background: radial-gradient(120% 140% at 20% 20%, rgba(80, 170, 255, 0.1), transparent),
     radial-gradient(120% 120% at 80% 10%, rgba(255, 147, 204, 0.1), transparent),
     linear-gradient(135deg, #0c111b, #0b0f18 55%, #0d1320);
-  padding: 28px 0 36px;
   box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .tracker-container {
@@ -872,6 +855,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 18px;
   outline: none;
+  flex: 1;
+  min-height: 0;
+  padding: 18px 0;
 }
 
 .top-grid {
@@ -879,6 +865,15 @@ onBeforeUnmount(() => {
   grid-template-columns: 1.1fr 1fr;
   gap: 14px;
   padding: 0 18px;
+  flex-shrink: 0;
+}
+
+.pattern-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 0 18px 18px;
 }
 
 .eyebrow {
@@ -894,11 +889,11 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  padding: 12px;
+  padding: 10px 12px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .summary-header {
@@ -948,20 +943,45 @@ onBeforeUnmount(() => {
 }
 
 .song-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.song-meta .field {
+  flex: 1;
+  min-width: 120px;
+}
+
+.stats-inline {
+  display: flex;
+  gap: 16px;
+  color: #cfe4ff;
+  font-size: 13px;
+}
+
+.stat-inline {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.stat-inline .stat-label {
+  color: #9fb3d3;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .field label {
   color: #9fb3d3;
-  font-size: 12px;
+  font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 700;
@@ -970,44 +990,17 @@ onBeforeUnmount(() => {
 .field input {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: 6px;
+  padding: 6px 10px;
   color: #e8f3ff;
   font-weight: 600;
+  font-size: 13px;
 }
 
 .field input::placeholder {
   color: rgba(255, 255, 255, 0.5);
 }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-  max-width: 520px;
-}
-
-.stat-chip {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 10px 12px;
-  color: #cfe4ff;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-}
-
-.stat-label {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #9fb3d3;
-}
-
-.stat-value {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
 
 .pattern-controls {
   display: flex;
@@ -1068,9 +1061,8 @@ onBeforeUnmount(() => {
   background: linear-gradient(180deg, rgba(26, 32, 45, 0.9), rgba(16, 21, 33, 0.95));
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  padding: 12px;
+  padding: 10px;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.32);
-  height: 400px;
   display: flex;
   flex-direction: column;
 }
@@ -1080,23 +1072,23 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .page-tabs {
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 
 .page-tab {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
   color: #9fb3d3;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 11px;
   cursor: pointer;
   transition: all 120ms ease;
 }
@@ -1114,8 +1106,8 @@ onBeforeUnmount(() => {
 
 .panel-title {
   color: #e8f3ff;
-  font-size: 16px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1123,87 +1115,65 @@ onBeforeUnmount(() => {
 .instrument-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   flex: 1;
   overflow-y: auto;
-  padding-right: 6px;
 }
 
 .instrument-row {
-  display: grid;
-  grid-template-columns: 52px 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
 }
 
 .instrument-row.active {
   border-color: rgba(77, 242, 197, 0.6);
-  box-shadow: 0 0 0 1px rgba(77, 242, 197, 0.2);
+  background: rgba(77, 242, 197, 0.08);
 }
 
 .instrument-row.empty {
-  opacity: 0.6;
-  background: rgba(255, 255, 255, 0.01);
+  opacity: 0.5;
 }
 
-.empty-hint {
-  color: #6b7a94;
-  font-style: italic;
+.instrument-row .patch-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #e8f3ff;
+  font-weight: 600;
+  font-size: 13px;
 }
 
 .slot-number {
   font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
-  color: #cfe4ff;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.instrument-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.patch-name {
-  color: #e8f3ff;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.patch-meta {
   color: #9fb3d3;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.patch-meta strong {
-  color: #cfe4ff;
-}
-
-.dot {
-  color: rgba(255, 255, 255, 0.5);
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
 }
 
 .instrument-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .action-button {
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(77, 242, 197, 0.12);
   color: #e8f3ff;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  font-size: 11px;
   cursor: pointer;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
@@ -1232,13 +1202,14 @@ onBeforeUnmount(() => {
 }
 
 .patch-select {
-  min-width: 200px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  min-width: 160px;
+  padding: 4px 8px;
+  border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
   color: #e8f3ff;
   font-weight: 600;
+  font-size: 12px;
 }
 
 .patch-select option {

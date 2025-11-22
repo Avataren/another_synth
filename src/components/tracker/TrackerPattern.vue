@@ -9,18 +9,6 @@
   >
     <div class="pattern-header">
       <div class="eyebrow">Pattern</div>
-      <div class="row-control">
-        <div class="label">Active row</div>
-        <div class="control">
-          <button type="button" class="control-button" @click="nudgeRow(-1)">
-            -
-          </button>
-          <div class="row-indicator">{{ formattedActiveRow }}</div>
-          <button type="button" class="control-button" @click="nudgeRow(1)">
-            +
-          </button>
-        </div>
-      </div>
     </div>
 
     <div class="pattern-body">
@@ -94,7 +82,6 @@ const rowRefs = ref<(HTMLElement | null)[]>([]);
 const tracksWrapperRef = ref<HTMLElement | null>(null);
 const activeBarWidth = ref<number | null>(null);
 
-const formattedActiveRow = computed(() => formatRow(props.playbackRow));
 const activeBarStyle = computed(() => {
   const offset = headerHeightPx + 6 + props.playbackRow * (rowHeightPx + rowGapPx);
   return {
@@ -115,12 +102,6 @@ function selectRow(row: number) {
 
 function selectCell(payload: { row: number; column: number; trackIndex: number }) {
   emit('cellSelected', payload);
-}
-
-function nudgeRow(direction: number) {
-  const count = Math.max(props.rows, 1);
-  const clamped = (props.selectedRow + direction + count) % count;
-  emit('rowSelected', clamped);
 }
 
 watch(
@@ -223,63 +204,6 @@ onBeforeUnmount(() => {
   margin-bottom: 6px;
 }
 
-.row-control {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.row-control .label {
-  color: #9fb3d3;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.control {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 6px 8px;
-}
-
-.control-button {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(14, 19, 28, 0.9);
-  color: #d8e7ff;
-  cursor: pointer;
-  font-weight: 800;
-  transition: border-color 120ms ease, transform 80ms ease;
-}
-
-.control-button:hover {
-  border-color: var(--tracker-accent);
-}
-
-.control-button:active {
-  transform: translateY(1px);
-}
-
-.row-indicator {
-  width: 48px;
-  text-align: center;
-  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
-  font-size: 15px;
-  color: #0c1624;
-  font-weight: 800;
-  background: linear-gradient(90deg, #4df2c5, #70c2ff);
-  border-radius: 10px;
-  padding: 6px 10px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
-}
-
 .pattern-body {
   position: relative;
   display: grid;
@@ -378,10 +302,6 @@ onBeforeUnmount(() => {
 @media (max-width: 900px) {
   .pattern-header {
     flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .row-control {
     align-items: flex-start;
   }
 
