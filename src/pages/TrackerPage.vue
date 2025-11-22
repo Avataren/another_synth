@@ -101,31 +101,40 @@
         <div class="instrument-panel">
           <div class="panel-header">
             <div class="panel-title">Instruments</div>
-            <button type="button" class="action-button add" @click="addInstrumentSlot">
-              Add instrument
-            </button>
+            <div class="page-tabs">
+              <button
+                v-for="page in TOTAL_PAGES"
+                :key="page"
+                type="button"
+                class="page-tab"
+                :class="{ active: currentInstrumentPage === page - 1 }"
+                @click="trackerStore.setInstrumentPage(page - 1)"
+              >
+                {{ page }}
+              </button>
+            </div>
           </div>
-        <div class="instrument-list">
-          <div
-            v-if="visibleSlots.length === 0"
-            class="empty-state"
-          >
-            No instruments assigned yet. Add one to link a patch.
-          </div>
-          <div
-            v-for="slot in visibleSlots"
-            :key="slot.slot"
-            class="instrument-row"
-            :class="{ active: activeInstrumentId === formatInstrumentId(slot.slot) }"
-            @click="setActiveInstrument(slot.slot)"
-          >
-            <div class="slot-number">#{{ formatInstrumentId(slot.slot) }}</div>
-            <div class="instrument-meta">
-              <div class="patch-name">{{ slot.patchName }}</div>
-              <div class="patch-meta">
+          <div class="instrument-list">
+            <div
+              v-for="slot in currentPageSlots"
+              :key="slot.slot"
+              class="instrument-row"
+              :class="{
+                active: activeInstrumentId === formatInstrumentId(slot.slot),
+                empty: !slot.patchId
+              }"
+              @click="setActiveInstrument(slot.slot)"
+            >
+              <div class="slot-number">#{{ formatInstrumentId(slot.slot) }}</div>
+              <div class="instrument-meta">
+                <div class="patch-name">{{ slot.patchName || '—' }}</div>
+                <div v-if="slot.patchId" class="patch-meta">
                   <span>Bank: <strong>{{ slot.bankName }}</strong></span>
                   <span class="dot">•</span>
                   <span>Instrument: <strong>{{ slot.instrumentName }}</strong></span>
+                </div>
+                <div v-else class="patch-meta">
+                  <span class="empty-hint">No patch assigned</span>
                 </div>
               </div>
               <div class="instrument-actions">
@@ -144,18 +153,12 @@
                   </option>
                 </select>
                 <button
+                  v-if="slot.patchId"
                   type="button"
                   class="action-button ghost"
-                  @click="clearInstrument(slot.slot)"
+                  @click.stop="clearInstrument(slot.slot)"
                 >
                   Clear
-                </button>
-                <button
-                  type="button"
-                  class="action-button ghost danger"
-                  @click="removeInstrument(slot.slot)"
-                >
-                  Remove
                 </button>
               </div>
             </div>
@@ -192,7 +195,7 @@ import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
-import { useTrackerStore } from 'src/stores/tracker-store';
+import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
 import { storeToRefs } from 'pinia';
 
 interface BankPatchOption {
@@ -219,8 +222,9 @@ interface RawBank {
 
 const trackerStore = useTrackerStore();
 trackerStore.initializeIfNeeded();
-const { currentSong, patternRows, stepSize, tracks, instrumentSlots, activeInstrumentId } =
+const { currentSong, patternRows, stepSize, tracks, instrumentSlots, activeInstrumentId, currentInstrumentPage } =
   storeToRefs(trackerStore);
+const currentPageSlots = computed(() => trackerStore.currentPageSlots);
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
@@ -228,7 +232,6 @@ const columnsPerTrack = 4;
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
 const patchLibrary = ref<Record<string, Patch>>({});
-const visibleSlots = computed(() => instrumentSlots.value.filter((slot) => !slot.empty));
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const songBank = new TrackerSongBank();
 const playbackEngine = new PlaybackEngine({
@@ -437,6 +440,9 @@ function midiToTrackerNote(midi: number): string {
 }
 
 function handleNoteEntry(midi: number) {
+  // Only enter notes when on the note column (column 0)
+  if (activeColumn.value !== 0) return;
+
   const instrumentId =
     activeInstrumentId.value ?? formatInstrumentId(activeTrack.value + 1);
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
@@ -619,6 +625,12 @@ async function loadSystemBankOptions() {
 }
 
 function onKeyDown(event: KeyboardEvent) {
+  // Don't process notes when typing in input fields
+  const target = event.target as HTMLElement;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+    return;
+  }
+
   const midiFromMap = noteKeyMap[event.code];
   if (midiFromMap !== undefined && !event.repeat) {
     event.preventDefault();
@@ -693,17 +705,15 @@ function onPatchSelect(slotNumber: number, patchId: string) {
             bankId: option.bankId,
             bankName: option.bankName,
             instrumentName: option.name,
-            empty: false,
             source: option.source
           }
         : {
             ...slot,
             patchId: undefined,
-            patchName: 'Empty',
+            patchName: '',
             bankId: undefined,
-            bankName: 'None',
-            instrumentName: '—',
-            empty: true,
+            bankName: '',
+            instrumentName: '',
             source: undefined
           }
       : slot
@@ -715,45 +725,7 @@ function onPatchSelect(slotNumber: number, patchId: string) {
 }
 
 function clearInstrument(slotNumber: number) {
-  instrumentSlots.value = instrumentSlots.value.map((slot) =>
-    slot.slot === slotNumber
-      ? {
-          ...slot,
-          patchId: undefined,
-          bankId: undefined,
-          source: undefined,
-          bankName: 'None',
-          patchName: 'Empty',
-          instrumentName: '—',
-          empty: false
-        }
-      : slot
-  );
-  ensureActiveInstrument();
-}
-
-function addInstrumentSlot() {
-  const used = new Set(instrumentSlots.value.map((slot) => slot.slot));
-  let slotNumber = 1;
-  while (used.has(slotNumber)) {
-    slotNumber += 1;
-  }
-
-  instrumentSlots.value = [
-    ...instrumentSlots.value,
-    {
-      slot: slotNumber,
-      bankName: 'Select bank',
-      patchName: 'Select patch',
-      instrumentName: 'Pending',
-      empty: false
-    }
-  ].sort((a, b) => a.slot - b.slot);
-  ensureActiveInstrument();
-}
-
-function removeInstrument(slotNumber: number) {
-  instrumentSlots.value = instrumentSlots.value.filter((slot) => slot.slot !== slotNumber);
+  trackerStore.clearSlot(slotNumber);
   ensureActiveInstrument();
 }
 
@@ -1021,10 +993,39 @@ onBeforeUnmount(() => {
 
 .panel-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.page-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.page-tab {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #9fb3d3;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.page-tab:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e8f3ff;
+}
+
+.page-tab.active {
+  background: rgba(77, 242, 197, 0.15);
+  border-color: rgba(77, 242, 197, 0.4);
+  color: #4df2c5;
 }
 
 .panel-title {
@@ -1033,18 +1034,6 @@ onBeforeUnmount(() => {
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-.panel-subtitle {
-  color: #9fb3d3;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-}
-
-.empty-state {
-  color: #9fb3d3;
-  font-size: 13px;
-  padding: 10px 12px;
 }
 
 .instrument-list {
@@ -1073,7 +1062,13 @@ onBeforeUnmount(() => {
 }
 
 .instrument-row.empty {
-  opacity: 0.75;
+  opacity: 0.6;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.empty-hint {
+  color: #6b7a94;
+  font-style: italic;
 }
 
 .slot-number {
@@ -1140,19 +1135,6 @@ onBeforeUnmount(() => {
 
 .action-button.ghost:hover {
   border-color: rgba(255, 255, 255, 0.18);
-}
-
-.action-button.add {
-  margin-left: auto;
-}
-
-.action-button.danger {
-  border-color: rgba(255, 99, 128, 0.35);
-  color: #ffc1d1;
-}
-
-.action-button.danger:hover {
-  border-color: rgba(255, 99, 128, 0.7);
 }
 
 .patch-select {

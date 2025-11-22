@@ -1,6 +1,7 @@
 import AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
-import type { Patch } from 'src/audio/types/preset-types';
+import type { AudioAsset, Patch } from 'src/audio/types/preset-types';
+import { parseAudioAssetId } from 'src/audio/serialization/patch-serializer';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -154,8 +155,40 @@ export class TrackerSongBank {
       return;
     }
 
-    instrument.loadPatch(patch);
+    await instrument.loadPatch(patch);
+    await this.restoreAudioAssets(instrument, patch);
     this.instruments.set(instrumentId, { instrument, patchId });
+  }
+
+  private async restoreAudioAssets(instrument: InstrumentV2, patch: Patch): Promise<void> {
+    const assets = patch.audioAssets;
+    if (!assets || Object.keys(assets).length === 0) {
+      return;
+    }
+
+    for (const [assetId, asset] of Object.entries(assets) as [string, AudioAsset][]) {
+      try {
+        const parsed = parseAudioAssetId(assetId);
+        if (!parsed) continue;
+        const { nodeType, nodeId } = parsed;
+
+        const binaryData = atob(asset.base64Data);
+        const bytes = new Uint8Array(binaryData.length);
+        for (let i = 0; i < binaryData.length; i++) {
+          bytes[i] = binaryData.charCodeAt(i);
+        }
+
+        if (nodeType === 'sample') {
+          await instrument.importSampleData(nodeId, bytes);
+        } else if (nodeType === 'impulse_response') {
+          await instrument.importImpulseWaveformData(nodeId, bytes);
+        } else if (nodeType === 'wavetable') {
+          await instrument.importWavetableData(nodeId, bytes);
+        }
+      } catch (error) {
+        console.error(`[TrackerSongBank] Failed to restore audio asset ${assetId}:`, error);
+      }
+    }
   }
 
   private async waitForInstrumentReady(
