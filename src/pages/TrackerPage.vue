@@ -65,6 +65,12 @@
               <div class="control-hint">Rows</div>
             </div>
           </div>
+          <div class="pattern-controls">
+            <label class="toggle">
+              <input v-model="autoScroll" type="checkbox" />
+              <span>Auto-scroll active row</span>
+            </label>
+          </div>
           <div class="transport transport-bottom">
             <button type="button" class="transport-button play" @click="handlePlay">
               Play
@@ -147,6 +153,7 @@
         :active-row="activeRow"
         :active-track="activeTrack"
         :active-column="activeColumn"
+        :auto-scroll="autoScroll"
         @rowSelected="setActiveRow"
         @cellSelected="setActiveCell"
       />
@@ -226,6 +233,7 @@ const visibleSlots = computed(() => instrumentSlots.value.filter((slot) => !slot
 const rowsCount = computed(() => Math.max(patternMeta.value.rows ?? 64, 1));
 const playbackEngine = new PlaybackEngine();
 let unsubscribePosition: (() => void) | null = null;
+const autoScroll = ref(true);
 
 const tracks = ref<TrackerTrackData[]>([
   {
@@ -489,6 +497,14 @@ function onKeyDown(event: KeyboardEvent) {
     case 'Tab':
       event.preventDefault();
       jumpToNextTrack();
+      break;
+    case ' ':
+      event.preventDefault();
+      if (playbackEngine['state'] === 'playing') {
+        handleStop();
+      } else {
+        handlePlay();
+      }
       break;
     default:
       break;
@@ -784,6 +800,18 @@ onBeforeUnmount(() => {
 .control-hint {
   color: #9fb3d3;
   font-size: 12px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #cfe4ff;
+  font-weight: 700;
+}
+
+.toggle input {
+  accent-color: #4df2c5;
 }
 
 .instrument-panel {

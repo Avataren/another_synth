@@ -24,6 +24,7 @@
     </div>
 
     <div class="pattern-body">
+      <div class="active-row-bar" :style="activeBarStyle"></div>
       <div class="row-column">
         <div class="row-header">Row</div>
         <button
@@ -33,6 +34,7 @@
           class="row-number"
           :class="{ active: activeRow === row }"
           @click="selectRow(row)"
+          ref="rowRefs"
         >
           {{ formatRow(row) }}
         </button>
@@ -57,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import TrackerTrack from './TrackerTrack.vue';
 import type { TrackerTrackData } from './tracker-types';
 
@@ -67,6 +69,7 @@ interface Props {
   activeRow: number;
   activeTrack: number;
   activeColumn: number;
+  autoScroll: boolean;
 }
 
 const props = defineProps<Props>();
@@ -76,13 +79,26 @@ const emit = defineEmits<{
   (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number }): void;
 }>();
 
-const rowsList = computed(() => Array.from({ length: props.rows }, (_, idx) => idx));
-
-const rowHeight = '30px';
-const headerHeight = '46px';
+const rowHeightPx = 30;
+const rowGapPx = 6;
+const headerHeightPx = 46;
+const rowHeight = `${rowHeightPx}px`;
+const headerHeight = `${headerHeightPx}px`;
 const accentColor = '#4df2c5';
+const rowsList = computed(() => Array.from({ length: props.rows }, (_, idx) => idx));
+const rowRefs = ref<(HTMLElement | null)[]>([]);
 
 const formattedActiveRow = computed(() => formatRow(props.activeRow));
+const activeBarStyle = computed(() => {
+  const offset =
+    headerHeightPx +
+    rowGapPx +
+    props.activeRow * (rowHeightPx + rowGapPx);
+  return {
+    transform: `translateY(${offset}px)`,
+    height: rowHeight
+  };
+});
 
 function formatRow(row: number) {
   return row.toString(16).toUpperCase().padStart(2, '0');
@@ -101,6 +117,22 @@ function nudgeRow(direction: number) {
   const clamped = (props.activeRow + direction + count) % count;
   emit('rowSelected', clamped);
 }
+
+watch(
+  () => ({
+    row: props.activeRow,
+    enabled: props.autoScroll
+  }),
+  async ({ row, enabled }) => {
+    if (!enabled) return;
+    await nextTick();
+    const btn = rowRefs.value?.[row];
+    if (btn) {
+      btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  },
+  { flush: 'post' }
+);
 </script>
 
 <style scoped>
@@ -191,6 +223,7 @@ function nudgeRow(direction: number) {
 }
 
 .pattern-body {
+  position: relative;
   display: grid;
   grid-template-columns: 78px 1fr;
   gap: 12px;
@@ -201,6 +234,8 @@ function nudgeRow(direction: number) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow-y: auto;
+  position: relative;
 }
 
 .row-header {
@@ -248,6 +283,18 @@ function nudgeRow(direction: number) {
   overflow-x: auto;
   padding-bottom: 4px;
   width: 100%;
+}
+
+.active-row-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: linear-gradient(90deg, rgba(77, 242, 197, 0.08), rgba(88, 176, 255, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  pointer-events: none;
+  transition: transform 80ms linear;
 }
 
 .tracks-wrapper::-webkit-scrollbar {

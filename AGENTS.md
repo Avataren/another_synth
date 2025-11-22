@@ -1013,3 +1013,10 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Added a stereo Bitcrusher to the global effect stack after Saturation (effect index 7 → node ID `10007`). Defaults: bits 12, downsampleFactor 4, mix 0.5, active false so legacy patches sound unchanged.
 - Patch schema now carries a `bitcrushers` map (`BitcrusherState { id, active, bits, downsampleFactor, mix }`) in both Rust (`SynthState`) and TS (`Patch.synthState`). WASM/native loaders apply it, and serializers/deserializers roundtrip it.
 - Worklet/UI plumbing: new `updateBitcrusher` message handled in the worklet via `audioEngine.update_bitcrusher`, `VoiceNodeType.Bitcrusher` mapping in adapters/layout-store, and `BitcrusherComponent` in the Effects column to edit bits/downsample/mix.
+
+## New discovery: Tracker UI + playback engine integration (2025-02)
+
+- New reusable playback core lives in `packages/tracker-playback/` with `PlaybackEngine` + types. Defaults to AudioContext-backed timing (falls back to interval) and treats 1 beat as 4 rows (16th grid). Optional instrument resolver, events for position/state/error, and spacebar toggle wiring in UI.
+- Tracker page builds a `Song`/`Pattern` from UI state (patternMeta rows, BPM, song metadata) and feeds it to the engine. Transport buttons + Space toggle play/pause/stop; engine position events update the active row indicator without feedback loops. Pattern length/BPM watchers push changes into the engine.
+- Tracker UI tweaks: single active-row bar overlay (reduced ghosting vs per-row highlights), optional auto-scroll toggle (default on, scrollIntoView per row), full-width layout, and bottom-centered transport.
+- Instrument slots load from `system-bank.json` dropdown; clear leaves slot visible, remove deletes it. Song metadata class holds title/author/bpm bound to inputs.

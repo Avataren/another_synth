@@ -93,13 +93,9 @@ function isActiveCell(column: number) {
 
 .tracker-entry.active {
   border-color: var(--entry-accent);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 6px 14px rgba(0, 0, 0, 0.35);
-  background: linear-gradient(
-    90deg,
-    rgba(45, 191, 255, 0.12),
-    rgba(77, 255, 205, 0.16)
-  );
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+  background: rgba(77, 242, 197, 0.08);
+  transform: none;
 }
 
 .tracker-entry.focused {
