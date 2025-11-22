@@ -2,7 +2,11 @@
   <q-card class="glide-card">
     <q-card-section class="row items-center justify-between">
       <div class="text-subtitle2">{{ displayName }}</div>
-      <q-toggle v-model="localState.active" label="Glide" @update:model-value="commit" />
+      <q-toggle
+        v-model="localState.active"
+        label="Portamento"
+        @update:model-value="commit"
+      />
     </q-card-section>
     <q-separator />
     <q-card-section class="column q-gutter-sm">
@@ -36,7 +40,7 @@ const props = defineProps<{
 const nodeStateStore = useNodeStateStore();
 const instrumentStore = useInstrumentStore();
 
-const displayName = computed(() => props.nodeName || 'Glide');
+const displayName = computed(() => props.nodeName || 'Portamento');
 
 const localState = computed({
   get: () => {

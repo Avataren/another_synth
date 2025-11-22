@@ -7,6 +7,30 @@
           Right-click anywhere in the grid to add nodes
         </div>
       </div>
+      <div
+        v-if="portamentoState"
+        class="tool-menu__portamento"
+      >
+        <div class="tool-menu__portamento-label">Portamento</div>
+        <q-toggle
+          dense
+          size="sm"
+          v-model="portamentoActive"
+          :label="portamentoActive ? 'On' : 'Off'"
+          @update:model-value="commitPortamento"
+        />
+        <q-slider
+          v-model="portamentoTime"
+          dense
+          color="primary"
+          :min="0"
+          :max="1"
+          :step="0.005"
+          class="tool-menu__portamento-slider"
+          @change="commitPortamento"
+        />
+        <div class="tool-menu__portamento-value">{{ portamentoTimeLabel }}</div>
+      </div>
       <div class="tool-menu__actions">
         <q-btn
           color="primary"
@@ -80,14 +104,6 @@
             :destinationNode="destinationNode"
             :componentName="VelocityComponent"
             nodeLabel="Velocity"
-          />
-
-          <generic-tab-container
-            v-if="glideNodes.length"
-            :nodes="glideNodes"
-            :destinationNode="destinationNode"
-            :componentName="GlideComponent"
-            nodeLabel="Glide"
           />
         </div>
 
@@ -231,6 +247,7 @@ import { computed, nextTick, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 import { useLayoutStore } from 'src/stores/layout-store';
+import { useNodeStateStore } from 'src/stores/node-state-store';
 
 // Components moved from the top row (now in the bottom row)
 import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
@@ -250,7 +267,6 @@ import SamplerComponent from 'src/components/SamplerComponent.vue';
 // Modulators DSP components
 import LfoComponent from 'src/components/LfoComponent.vue';
 import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
-import GlideComponent from 'src/components/GlideComponent.vue';
 
 // Filters DSP components
 import FilterComponent from 'src/components/FilterComponent.vue';
@@ -262,6 +278,7 @@ import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 
 // Node type definitions
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
+import type { GlideState } from 'src/audio/types/synth-layout';
 import ChorusComponent from 'src/components/ChorusComponent.vue';
 
 type AddMenuItem = {
@@ -284,6 +301,7 @@ type QMenuController = {
 
 const instrumentStore = useInstrumentStore();
 const layoutStore = useLayoutStore();
+const nodeStateStore = useNodeStateStore();
 const { destinationNode } = storeToRefs(instrumentStore);
 
 const addMenuVisible = ref(false);
@@ -434,6 +452,52 @@ const glideNodes = computed(() => {
   return Array.isArray(nodes) ? nodes : [];
 });
 
+const portamentoNodeId = computed(() => glideNodes.value[0]?.id ?? null);
+
+const portamentoState = computed<GlideState | null>(() => {
+  const nodeId = portamentoNodeId.value;
+  if (!nodeId) return null;
+  return (
+    nodeStateStore.glideStates.get(nodeId) ?? {
+      id: nodeId,
+      time: 0,
+      active: false,
+    }
+  );
+});
+
+const portamentoTimeLabel = computed(
+  () => `${(portamentoState.value?.time ?? 0).toFixed(3)}s`,
+);
+
+const portamentoTime = computed({
+  get: () => portamentoState.value?.time ?? 0,
+  set: (time: number) => {
+    const nodeId = portamentoNodeId.value;
+    const state = portamentoState.value;
+    if (!nodeId || !state) return;
+    nodeStateStore.glideStates.set(nodeId, { ...state, time, id: nodeId });
+  },
+});
+
+const portamentoActive = computed({
+  get: () => portamentoState.value?.active ?? false,
+  set: (active: boolean) => {
+    const nodeId = portamentoNodeId.value;
+    const state = portamentoState.value;
+    if (!nodeId || !state) return;
+    nodeStateStore.glideStates.set(nodeId, { ...state, active, id: nodeId });
+  },
+});
+
+const commitPortamento = () => {
+  const nodeId = portamentoNodeId.value;
+  const state = portamentoState.value;
+  if (!nodeId || !state) return;
+  nodeStateStore.glideStates.set(nodeId, { ...state, id: nodeId });
+  instrumentStore.currentInstrument?.updateGlideState(nodeId, state);
+};
+
 // Generators DSP nodes
 const oscillatorNodes = computed(() => {
   const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.Oscillator);
@@ -510,7 +574,8 @@ const convolverNodes = computed(() => {
 .tool-menu {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 12px;
   background: #15181d;
   border-bottom: 1px solid #2b3140;
@@ -539,10 +604,43 @@ const convolverNodes = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
 .tool-menu__actions .q-btn {
   text-transform: none;
+}
+
+.tool-menu__portamento {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #0e1117;
+  border: 1px solid #273140;
+  border-radius: 8px;
+  min-width: 260px;
+  max-width: 420px;
+}
+
+.tool-menu__portamento-label {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e9eef7;
+  font-size: 11px;
+}
+
+.tool-menu__portamento-value {
+  font-size: 12px;
+  color: #9fb2cc;
+  min-width: 56px;
+  text-align: right;
+}
+
+.tool-menu__portamento-slider {
+  width: 160px;
+  min-width: 140px;
 }
 
 /* Fixed height for bottom row with scrolling overflow */

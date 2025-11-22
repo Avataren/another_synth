@@ -3,272 +3,16 @@
     "id": "bank_1763675029582_nj2q0ey",
     "name": "Default Bank",
     "created": 1763675029582,
-    "modified": 1763747513562,
+    "modified": 1763766554322,
     "version": 1
   },
   "patches": [
     {
       "metadata": {
-        "id": "patch_1763675026019_na4f8vw",
-        "name": "New Patch",
-        "created": 1763675026019,
-        "modified": 1763727793541,
-        "version": 1,
-        "category": "Templates/Init"
-      },
-      "synthState": {
-        "layout": {
-          "voiceCount": 8,
-          "canonicalVoice": {
-            "id": 0,
-            "nodes": {
-              "oscillator": [
-                {
-                  "id": "26520f70-11b2-208c-2a4d-0903ab200303",
-                  "type": "oscillator",
-                  "name": "Analog Oscillator"
-                }
-              ],
-              "wavetable_oscillator": [],
-              "filter": [
-                {
-                  "id": "c493007e-fc24-c74f-c352-9b606b4f1b54",
-                  "type": "filter",
-                  "name": "Filter Collection"
-                }
-              ],
-              "envelope": [
-                {
-                  "id": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
-                  "type": "envelope",
-                  "name": "Amp Envelope"
-                }
-              ],
-              "lfo": [],
-              "mixer": [
-                {
-                  "id": "2e0c90c9-a786-b937-43f2-466ea61816c8",
-                  "type": "mixer",
-                  "name": "Mixer"
-                }
-              ],
-              "noise": [],
-              "sampler": [],
-              "global_frequency": [
-                {
-                  "id": "75e1aadf-d10c-6fba-dc61-ed7f08fd802d",
-                  "type": "global_frequency",
-                  "name": "Global Frequency"
-                }
-              ],
-              "global_velocity": [
-                {
-                  "id": "88578b06-13a4-7fb9-57cb-35722a639368",
-                  "type": "global_velocity",
-                  "name": "Global Velocity"
-                }
-              ],
-              "convolver": [
-                {
-                  "id": "10003",
-                  "type": "convolver",
-                  "name": "Convolver"
-                }
-              ],
-              "delay": [
-                {
-                  "id": "10001",
-                  "type": "delay",
-                  "name": "Delay"
-                }
-              ],
-              "gatemixer": [
-                {
-                  "id": "c2b2a8d3-cea4-2514-df87-1d498eb8a15d",
-                  "type": "gatemixer",
-                  "name": "Gate Mixer"
-                }
-              ],
-              "arpeggiator_generator": [],
-              "chorus": [
-                {
-                  "id": "10000",
-                  "type": "chorus",
-                  "name": "Chorus"
-                }
-              ],
-              "limiter": [
-                {
-                  "id": "10004",
-                  "type": "limiter",
-                  "name": "Limiter"
-                }
-              ],
-              "freeverb": [
-                {
-                  "id": "10002",
-                  "type": "freeverb",
-                  "name": "Reverb"
-                }
-              ]
-            },
-            "connections": [
-              {
-                "fromId": "75e1aadf-d10c-6fba-dc61-ed7f08fd802d",
-                "toId": "26520f70-11b2-208c-2a4d-0903ab200303",
-                "target": 9,
-                "amount": 1,
-                "modulationType": 2,
-                "modulationTransformation": 0
-              },
-              {
-                "fromId": "c493007e-fc24-c74f-c352-9b606b4f1b54",
-                "toId": "2e0c90c9-a786-b937-43f2-466ea61816c8",
-                "target": 0,
-                "amount": 1,
-                "modulationType": 2,
-                "modulationTransformation": 0
-              },
-              {
-                "fromId": "26520f70-11b2-208c-2a4d-0903ab200303",
-                "toId": "c493007e-fc24-c74f-c352-9b606b4f1b54",
-                "target": 0,
-                "amount": 1,
-                "modulationType": 2,
-                "modulationTransformation": 0
-              },
-              {
-                "fromId": "75e1aadf-d10c-6fba-dc61-ed7f08fd802d",
-                "toId": "c493007e-fc24-c74f-c352-9b606b4f1b54",
-                "target": 9,
-                "amount": 1,
-                "modulationType": 2,
-                "modulationTransformation": 0
-              },
-              {
-                "fromId": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
-                "toId": "2e0c90c9-a786-b937-43f2-466ea61816c8",
-                "target": 17,
-                "amount": 1,
-                "modulationType": 0,
-                "modulationTransformation": 0
-              },
-              {
-                "fromId": "c2b2a8d3-cea4-2514-df87-1d498eb8a15d",
-                "toId": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
-                "target": 26,
-                "amount": 1,
-                "modulationType": 2,
-                "modulationTransformation": 0
-              }
-            ]
-          },
-          "globalNodes": {}
-        },
-        "oscillators": {
-          "26520f70-11b2-208c-2a4d-0903ab200303": {
-            "id": "26520f70-11b2-208c-2a4d-0903ab200303",
-            "phase_mod_amount": 0,
-            "freq_mod_amount": 0,
-            "detune_oct": 0,
-            "detune_semi": 0,
-            "detune_cents": 0,
-            "detune": 0,
-            "hard_sync": false,
-            "gain": 1,
-            "feedback_amount": 0,
-            "waveform": 0,
-            "active": true,
-            "unison_voices": 1,
-            "spread": 0,
-            "wave_index": 0
-          }
-        },
-        "wavetableOscillators": {},
-        "filters": {
-          "c493007e-fc24-c74f-c352-9b606b4f1b54": {
-            "id": "c493007e-fc24-c74f-c352-9b606b4f1b54",
-            "cutoff": 20000,
-            "resonance": 0,
-            "keytracking": 0,
-            "comb_frequency": 220,
-            "comb_dampening": 0.5,
-            "oversampling": 0,
-            "gain": 1,
-            "filter_type": 0,
-            "filter_slope": 0,
-            "active": true
-          }
-        },
-        "envelopes": {
-          "67524ce8-9ddb-92e2-134a-a7e23ae8c69d": {
-            "id": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
-            "attack": 0,
-            "decay": 0.1,
-            "sustain": 1,
-            "release": 0.1,
-            "active": true,
-            "attackCurve": 0,
-            "decayCurve": 0,
-            "releaseCurve": 0
-          }
-        },
-        "lfos": {},
-        "samplers": {},
-        "convolvers": {
-          "10003": {
-            "id": "10003",
-            "wetMix": 0.1,
-            "active": false,
-            "generator": {
-              "type": "hall",
-              "decayTime": 2,
-              "size": 0.8,
-              "sampleRate": 48000
-            }
-          }
-        },
-        "delays": {
-          "10001": {
-            "id": "10001",
-            "delayMs": 500,
-            "feedback": 0.5,
-            "wetMix": 0.1,
-            "active": false
-          }
-        },
-        "choruses": {},
-        "reverbs": {
-          "10002": {
-            "id": "10002",
-            "active": false,
-            "room_size": 0.95,
-            "damp": 0.5,
-            "wet": 0.3,
-            "dry": 0.7,
-            "width": 1
-          }
-        },
-        "noise": {
-          "noiseType": 0,
-          "cutoff": 1,
-          "gain": 1,
-          "is_enabled": false
-        },
-        "velocity": {
-          "sensitivity": 1,
-          "randomize": 0,
-          "active": true
-        }
-      },
-      "audioAssets": {}
-    },
-    {
-      "metadata": {
         "id": "patch_1763675032191_paui29z",
         "name": "SawBass1",
         "created": 1763675032191,
-        "modified": 1763747513562,
+        "modified": 1763766413576,
         "version": 1,
         "category": "Factory/Bass"
       },
@@ -282,7 +26,7 @@
                 {
                   "id": "26520f70-11b2-208c-2a4d-0903ab200303",
                   "type": "oscillator",
-                  "name": "Modulator"
+                  "name": "Oscillator"
                 }
               ],
               "wavetable_oscillator": [],
@@ -476,7 +220,7 @@
             "detune": -2400,
             "hard_sync": false,
             "gain": 1,
-            "feedback_amount": 0.007,
+            "feedback_amount": 0,
             "waveform": 2,
             "active": true,
             "unison_voices": 3,
@@ -515,8 +259,8 @@
           "7eaf61b8-6289-93b0-f089-fbac005e4006": {
             "id": "7eaf61b8-6289-93b0-f089-fbac005e4006",
             "attack": 0.029,
-            "decay": 0.525,
-            "sustain": 0.01,
+            "decay": 0.65,
+            "sustain": 0,
             "release": 0.1,
             "active": true,
             "attackCurve": 0.2,
@@ -1992,7 +1736,7 @@
         "id": "patch_1763747266431_yaqy4i3",
         "name": "FMBass 1",
         "created": 1763747266431,
-        "modified": 1763747503315,
+        "modified": 1763766554321,
         "version": 1,
         "category": "Factory/FM"
       },
@@ -2006,12 +1750,17 @@
                 {
                   "id": "26520f70-11b2-208c-2a4d-0903ab200303",
                   "type": "oscillator",
-                  "name": "Modulator"
+                  "name": "Modulator 1"
+                },
+                {
+                  "id": "6bd0f086-5294-b6ac-28f0-8e95993aefdc",
+                  "type": "oscillator",
+                  "name": "Carrier"
                 },
                 {
                   "id": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
                   "type": "oscillator",
-                  "name": "Carrier"
+                  "name": "Modulator 2"
                 }
               ],
               "wavetable_oscillator": [],
@@ -2105,17 +1854,17 @@
             },
             "connections": [
               {
-                "fromId": "c2b2a8d3-cea4-2514-df87-1d498eb8a15d",
+                "fromId": "75e1aadf-d10c-6fba-dc61-ed7f08fd802d",
                 "toId": "f7d73554-84f0-860a-c85b-b0507c7d34a1",
-                "target": 26,
+                "target": 0,
                 "amount": 1,
                 "modulationType": 2,
                 "modulationTransformation": 0
               },
               {
-                "fromId": "75e1aadf-d10c-6fba-dc61-ed7f08fd802d",
-                "toId": "f7d73554-84f0-860a-c85b-b0507c7d34a1",
-                "target": 0,
+                "fromId": "f7d73554-84f0-860a-c85b-b0507c7d34a1",
+                "toId": "6bd0f086-5294-b6ac-28f0-8e95993aefdc",
+                "target": 9,
                 "amount": 1,
                 "modulationType": 2,
                 "modulationTransformation": 0
@@ -2129,39 +1878,23 @@
                 "modulationTransformation": 0
               },
               {
-                "fromId": "7eaf61b8-6289-93b0-f089-fbac005e4006",
+                "fromId": "88578b06-13a4-7fb9-57cb-35722a639368",
                 "toId": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
-                "target": 14,
-                "amount": 1,
-                "modulationType": 0,
-                "modulationTransformation": 0
-              },
-              {
-                "fromId": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
-                "toId": "2e0c90c9-a786-b937-43f2-466ea61816c8",
                 "target": 17,
-                "amount": 1,
+                "amount": 2.5,
                 "modulationType": 0,
                 "modulationTransformation": 0
               },
               {
-                "fromId": "f7d73554-84f0-860a-c85b-b0507c7d34a1",
-                "toId": "26520f70-11b2-208c-2a4d-0903ab200303",
-                "target": 9,
-                "amount": 1,
-                "modulationType": 2,
-                "modulationTransformation": 0
-              },
-              {
-                "fromId": "26520f70-11b2-208c-2a4d-0903ab200303",
-                "toId": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
+                "fromId": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
+                "toId": "6bd0f086-5294-b6ac-28f0-8e95993aefdc",
                 "target": 13,
                 "amount": 1,
                 "modulationType": 2,
                 "modulationTransformation": 0
               },
               {
-                "fromId": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
+                "fromId": "6bd0f086-5294-b6ac-28f0-8e95993aefdc",
                 "toId": "2e0c90c9-a786-b937-43f2-466ea61816c8",
                 "target": 0,
                 "amount": 1,
@@ -2183,6 +1916,62 @@
                 "amount": 1,
                 "modulationType": 2,
                 "modulationTransformation": 0
+              },
+              {
+                "fromId": "c2b2a8d3-cea4-2514-df87-1d498eb8a15d",
+                "toId": "f7d73554-84f0-860a-c85b-b0507c7d34a1",
+                "target": 26,
+                "amount": 1,
+                "modulationType": 2,
+                "modulationTransformation": 0
+              },
+              {
+                "fromId": "7eaf61b8-6289-93b0-f089-fbac005e4006",
+                "toId": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
+                "target": 14,
+                "amount": 1,
+                "modulationType": 0,
+                "modulationTransformation": 0
+              },
+              {
+                "fromId": "88578b06-13a4-7fb9-57cb-35722a639368",
+                "toId": "26520f70-11b2-208c-2a4d-0903ab200303",
+                "target": 17,
+                "amount": 4.75,
+                "modulationType": 2,
+                "modulationTransformation": 0
+              },
+              {
+                "fromId": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
+                "toId": "2e0c90c9-a786-b937-43f2-466ea61816c8",
+                "target": 17,
+                "amount": 1,
+                "modulationType": 0,
+                "modulationTransformation": 0
+              },
+              {
+                "fromId": "7eaf61b8-6289-93b0-f089-fbac005e4006",
+                "toId": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
+                "target": 17,
+                "amount": 1,
+                "modulationType": 0,
+                "modulationTransformation": 0
+              },
+              {
+                "fromId": "26520f70-11b2-208c-2a4d-0903ab200303",
+                "toId": "6bd0f086-5294-b6ac-28f0-8e95993aefdc",
+                "target": 13,
+                "amount": 1,
+                "modulationType": 2,
+                "modulationTransformation": 0
+              },
+              {
+                "fromId": "f7d73554-84f0-860a-c85b-b0507c7d34a1",
+                "toId": "26520f70-11b2-208c-2a4d-0903ab200303",
+                "target": 9,
+                "amount": 1,
+                "modulationType": 2,
+                "modulationTransformation": 0
               }
             ]
           },
@@ -2197,9 +1986,9 @@
             "detune_semi": 0,
             "detune_cents": 0,
             "detune": -2400,
-            "hard_sync": false,
+            "hard_sync": true,
             "gain": 1,
-            "feedback_amount": 0.634,
+            "feedback_amount": 0.388,
             "waveform": 0,
             "active": true,
             "unison_voices": 3,
@@ -2208,17 +1997,34 @@
           },
           "34ff15e7-05f5-a73c-965f-0495aa0182d4": {
             "id": "34ff15e7-05f5-a73c-965f-0495aa0182d4",
+            "detune_oct": 2,
+            "detune_cents": 0,
+            "detune_semi": 7,
+            "waveform": 0,
+            "gain": 0.1,
+            "phase_mod_amount": 0,
+            "freq_mod_amount": 0,
+            "detune": 3100,
+            "hard_sync": true,
+            "active": true,
+            "feedback_amount": 0,
+            "unison_voices": 1,
+            "spread": 0,
+            "wave_index": 0
+          },
+          "6bd0f086-5294-b6ac-28f0-8e95993aefdc": {
+            "id": "6bd0f086-5294-b6ac-28f0-8e95993aefdc",
             "detune_oct": 0,
             "detune_cents": 0,
             "detune_semi": 0,
             "waveform": 0,
-            "gain": 0.5,
-            "phase_mod_amount": 16.5,
+            "gain": 4,
+            "phase_mod_amount": 8.4,
             "freq_mod_amount": 0,
             "detune": 0,
             "hard_sync": false,
             "active": true,
-            "feedback_amount": 0,
+            "feedback_amount": 0.403,
             "unison_voices": 1,
             "spread": 0,
             "wave_index": 0
@@ -2230,8 +2036,8 @@
           "67524ce8-9ddb-92e2-134a-a7e23ae8c69d": {
             "id": "67524ce8-9ddb-92e2-134a-a7e23ae8c69d",
             "attack": 0.022,
-            "decay": 1.225,
-            "sustain": 0.257,
+            "decay": 0.925,
+            "sustain": 0.171,
             "release": 0.1,
             "active": true,
             "attackCurve": 0,
@@ -2240,12 +2046,12 @@
           },
           "7eaf61b8-6289-93b0-f089-fbac005e4006": {
             "id": "7eaf61b8-6289-93b0-f089-fbac005e4006",
-            "attack": 0.069,
-            "decay": 2.475,
+            "attack": 0.111,
+            "decay": 0.45,
             "sustain": 0.101,
             "release": 0.1,
             "active": true,
-            "attackCurve": 0.2,
+            "attackCurve": -0.8,
             "decayCurve": -6,
             "releaseCurve": 0
           }
@@ -2306,14 +2112,14 @@
           }
         },
         "noise": {
-          "noiseType": 0,
-          "cutoff": 1,
-          "gain": 1,
-          "is_enabled": false
+          "noiseType": 1,
+          "cutoff": 0.118,
+          "gain": 0.096,
+          "is_enabled": true
         },
         "velocity": {
           "sensitivity": 1,
-          "randomize": 0,
+          "randomize": 0.569,
           "active": true
         }
       },
