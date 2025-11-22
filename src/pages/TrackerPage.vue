@@ -91,22 +91,24 @@
               Add instrument
             </button>
           </div>
-          <div class="instrument-list">
-            <div
-              v-if="visibleSlots.length === 0"
-              class="empty-state"
-            >
-              No instruments assigned yet. Add one to link a patch.
-            </div>
-            <div
-              v-for="(slot, idx) in visibleSlots"
-              :key="slot.slot"
-              class="instrument-row"
-            >
-              <div class="slot-number">#{{ (idx + 1).toString().padStart(2, '0') }}</div>
-              <div class="instrument-meta">
-                <div class="patch-name">{{ slot.patchName }}</div>
-                <div class="patch-meta">
+        <div class="instrument-list">
+          <div
+            v-if="visibleSlots.length === 0"
+            class="empty-state"
+          >
+            No instruments assigned yet. Add one to link a patch.
+          </div>
+          <div
+            v-for="slot in visibleSlots"
+            :key="slot.slot"
+            class="instrument-row"
+            :class="{ active: activeInstrumentId === formatInstrumentId(slot.slot) }"
+            @click="setActiveInstrument(slot.slot)"
+          >
+            <div class="slot-number">#{{ formatInstrumentId(slot.slot) }}</div>
+            <div class="instrument-meta">
+              <div class="patch-name">{{ slot.patchName }}</div>
+              <div class="patch-meta">
                   <span>Bank: <strong>{{ slot.bankName }}</strong></span>
                   <span class="dot">•</span>
                   <span>Instrument: <strong>{{ slot.instrumentName }}</strong></span>
@@ -341,17 +343,47 @@ const tracks = ref<TrackerTrackData[]>([
 
 const activeRowDisplay = computed(() => activeRow.value.toString(16).toUpperCase().padStart(2, '0'));
 
-const slotCount = 8;
-const instrumentSlots = ref<InstrumentSlot[]>(
-  Array.from({ length: slotCount }, (_, idx) => ({
-    slot: idx + 1,
-    bankName: 'None',
-    patchName: 'Empty',
-    instrumentName: '—',
-    empty: true
-  }))
-);
-const nextSlotId = ref(slotCount + 1);
+const noteKeyMap: Record<string, number> = {
+  KeyZ: 48,
+  KeyS: 49,
+  KeyX: 50,
+  KeyD: 51,
+  KeyC: 52,
+  KeyV: 53,
+  KeyG: 54,
+  KeyB: 55,
+  KeyH: 56,
+  KeyN: 57,
+  KeyJ: 58,
+  KeyM: 59,
+  Comma: 60,
+  KeyL: 61,
+  Period: 62,
+  Semicolon: 63,
+  Slash: 64,
+  KeyQ: 60,
+  Digit2: 61,
+  KeyW: 62,
+  Digit3: 63,
+  KeyE: 64,
+  KeyR: 65,
+  Digit5: 66,
+  KeyT: 67,
+  Digit6: 68,
+  KeyY: 69,
+  Digit7: 70,
+  KeyU: 71,
+  KeyI: 72,
+  Digit9: 73,
+  KeyO: 74,
+  Digit0: 75,
+  KeyP: 76,
+  BracketLeft: 77,
+  Equal: 78,
+  BracketRight: 79,
+  Backslash: 81
+};
+const instrumentSlots = ref<InstrumentSlot[]>([]);
 const formatInstrumentId = (slotNumber: number) => slotNumber.toString().padStart(2, '0');
 const normalizeInstrumentId = (instrumentId?: string) => {
   if (!instrumentId) return undefined;
@@ -361,6 +393,7 @@ const normalizeInstrumentId = (instrumentId?: string) => {
   }
   return instrumentId;
 };
+const activeInstrumentId = ref<string | null>(null);
 
 function setActiveRow(row: number) {
   const count = rowsCount.value;
@@ -405,6 +438,21 @@ function jumpToPrevTrack() {
   activeColumn.value = 0;
 }
 
+function ensureActiveInstrument() {
+  if (activeInstrumentId.value) {
+    const exists = instrumentSlots.value.some(
+      (slot) => slot.patchId && formatInstrumentId(slot.slot) === activeInstrumentId.value
+    );
+    if (exists) return;
+  }
+  const firstWithPatch = instrumentSlots.value.find((slot) => slot.patchId);
+  activeInstrumentId.value = firstWithPatch ? formatInstrumentId(firstWithPatch.slot) : null;
+}
+
+function setActiveInstrument(slotNumber: number) {
+  activeInstrumentId.value = formatInstrumentId(slotNumber);
+}
+
 function updateEntryAt(
   row: number,
   trackIndex: number,
@@ -414,8 +462,10 @@ function updateEntryAt(
     if (idx !== trackIndex) return track;
 
     const existing = track.entries.find((e) => e.row === row);
-    const baseInstrument = normalizeInstrumentId(existing?.instrument)
-      ?? formatInstrumentId(idx + 1);
+    const baseInstrument =
+      activeInstrumentId.value ??
+      normalizeInstrumentId(existing?.instrument) ??
+      formatInstrumentId(idx + 1);
     const draft: TrackerEntryData = existing
       ? { ...existing, instrument: existing.instrument ?? baseInstrument }
       : { row, instrument: baseInstrument };
@@ -446,6 +496,24 @@ function clearStep() {
   });
 }
 
+function midiToTrackerNote(midi: number): string {
+  const names = ['C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#', 'A-', 'A#', 'B-'];
+  const octave = Math.floor(midi / 12) - 1;
+  const name = names[midi % 12] ?? 'C-';
+  return `${name}${octave}`;
+}
+
+function handleNoteEntry(midi: number) {
+  const instrumentId =
+    activeInstrumentId.value ?? formatInstrumentId(activeTrack.value + 1);
+  updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
+    ...entry,
+    note: midiToTrackerNote(midi),
+    instrument: instrumentId
+  }));
+  moveRow(1);
+}
+
 function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
   patternMeta.value.rows = clamped;
@@ -468,11 +536,11 @@ function resolveTrackInstrumentId(track: TrackerTrackData, trackIndex: number): 
   if (entryInstrument) {
     return entryInstrument;
   }
-  const slot = instrumentSlots.value[trackIndex];
-  if (slot?.patchId) {
-    return formatInstrumentId(slot.slot);
+  if (activeInstrumentId.value) {
+    return activeInstrumentId.value;
   }
-  return undefined;
+  const slot = instrumentSlots.value[trackIndex];
+  return slot?.patchId ? formatInstrumentId(slot.slot) : undefined;
 }
 
 function buildPlaybackStep(
@@ -615,6 +683,14 @@ async function loadSystemBankOptions() {
 }
 
 function onKeyDown(event: KeyboardEvent) {
+  const midiFromMap = noteKeyMap[event.code];
+  if (midiFromMap !== undefined && !event.repeat) {
+    event.preventDefault();
+    ensureActiveInstrument();
+    handleNoteEntry(midiFromMap);
+    return;
+  }
+
   switch (event.key) {
     case 'ArrowUp':
       event.preventDefault();
@@ -696,6 +772,10 @@ function onPatchSelect(slotNumber: number, patchId: string) {
           }
       : slot
   );
+  if (option) {
+    setActiveInstrument(slotNumber);
+  }
+  ensureActiveInstrument();
 }
 
 function clearInstrument(slotNumber: number) {
@@ -713,28 +793,38 @@ function clearInstrument(slotNumber: number) {
         }
       : slot
   );
+  ensureActiveInstrument();
 }
 
 function addInstrumentSlot() {
+  const used = new Set(instrumentSlots.value.map((slot) => slot.slot));
+  let slotNumber = 1;
+  while (used.has(slotNumber)) {
+    slotNumber += 1;
+  }
+
   instrumentSlots.value = [
     ...instrumentSlots.value,
     {
-      slot: nextSlotId.value++,
+      slot: slotNumber,
       bankName: 'Select bank',
       patchName: 'Select patch',
       instrumentName: 'Pending',
       empty: false
     }
-  ];
+  ].sort((a, b) => a.slot - b.slot);
+  ensureActiveInstrument();
 }
 
 function removeInstrument(slotNumber: number) {
   instrumentSlots.value = instrumentSlots.value.filter((slot) => slot.slot !== slotNumber);
+  ensureActiveInstrument();
 }
 
 onMounted(async () => {
   trackerContainer.value?.focus();
   await loadSystemBankOptions();
+  ensureActiveInstrument();
   initializePlayback();
 });
 
@@ -1039,6 +1129,11 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.instrument-row.active {
+  border-color: rgba(77, 242, 197, 0.6);
+  box-shadow: 0 0 0 1px rgba(77, 242, 197, 0.2);
 }
 
 .instrument-row.empty {
