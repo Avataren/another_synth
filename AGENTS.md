@@ -204,6 +204,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - `AudioGraph::clear` has this selective buffer release behavior.
   - `gate_buffer_idx` is **not** present in `node_buffers` and remains stable across patch reloads.
   - Voices’ `output_node` still points at the mixer rebuilt from the canonical voice.
+## Tracker song bank (new)
+- `src/audio/tracker/song-bank.ts` owns a dedicated `AudioSystem` + master gain and instantiates an `InstrumentV2` per instrumentId (slot). Each instrument gets its own `WebAssembly.Memory`, loads the selected patch, and is disconnected when removed.
+- Tracker UI now syncs instrument slots to the song bank and injects `instrumentResolver` into `PlaybackEngine` so `prepareInstrument` is called before playback. Instrument IDs for tracker playback are zero-padded slot numbers (e.g., `"01"`).
+- `TrackerPage.vue` builds playback patterns with instrument IDs resolved from `entry.instrument` or slot mapping, syncs the song bank whenever slots change, and waits for `syncSongBankFromSlots` before `play()` to keep the replay routine aligned with the song bank.
+- Tracker steps now support note-off markers (`--`) and per-step instrument changes. `buildPlaybackPattern` parses tracker note symbols into MIDI + `isNoteOff`, includes velocity from hex volume, and drops steps without an instrument or note/note-off. `PlaybackEngine` indexes steps by row and fires `noteHandler` events (`noteOn`/`noteOff`) each tick. `TrackerSongBank` tracks active notes per instrument and routes noteOn/noteOff into the per-instrument `InstrumentV2`, releasing all active notes when a note-off arrives without a MIDI number.
 
 ## Wavetable Missing Data Panic (Critical Fix - 2025)
 

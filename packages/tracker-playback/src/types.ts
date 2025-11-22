@@ -24,6 +24,17 @@ export interface Step {
   note?: string;
   velocity?: number;
   instrumentId?: string;
+  /**
+   * Pre-parsed MIDI note number for the step. Optional so callers can
+   * keep note strings but still provide a numeric value for scheduling.
+   */
+  midi?: number;
+  /**
+   * Marks this step as a note-off. When true, engines should release
+   * any active notes for the given instrument (or the specific midi note
+   * when provided).
+   */
+  isNoteOff?: boolean;
 }
 
 export interface PlaybackPosition {
@@ -44,6 +55,7 @@ export type PlaybackListener<K extends PlaybackEvent> = (payload: PlaybackEventM
 export interface PlaybackOptions {
   instrumentResolver?: InstrumentResolver;
   scheduler?: PlaybackScheduler;
+  noteHandler?: PlaybackNoteHandler;
 }
 
 export type InstrumentResolver = (instrumentId: string | undefined) => Promise<void> | void;
@@ -52,3 +64,15 @@ export interface PlaybackScheduler {
   start(tick: (deltaMs: number) => void): void;
   stop(): void;
 }
+
+export type PlaybackNoteEventType = 'noteOn' | 'noteOff';
+
+export interface PlaybackNoteEvent {
+  type: PlaybackNoteEventType;
+  instrumentId?: string;
+  midi?: number;
+  velocity?: number;
+  row: number;
+}
+
+export type PlaybackNoteHandler = (event: PlaybackNoteEvent) => void;

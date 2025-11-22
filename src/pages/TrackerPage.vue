@@ -165,13 +165,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
-import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type {
   Pattern as PlaybackPattern,
   Song as PlaybackSong,
   Step as PlaybackStep
 } from '../../packages/tracker-playback/src/types';
+import { TrackerSongBank } from 'src/audio/tracker/song-bank';
+import type { SongBankSlot } from 'src/audio/tracker/song-bank';
+import type { Patch } from 'src/audio/types/preset-types';
+import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
 
 interface InstrumentSlot {
   slot: number;
@@ -230,9 +234,24 @@ const activeColumn = ref(0);
 const columnsPerTrack = 4;
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
+const patchLibrary = ref<Record<string, Patch>>({});
 const visibleSlots = computed(() => instrumentSlots.value.filter((slot) => !slot.empty));
 const rowsCount = computed(() => Math.max(patternMeta.value.rows ?? 64, 1));
-const playbackEngine = new PlaybackEngine();
+const songBank = new TrackerSongBank();
+const playbackEngine = new PlaybackEngine({
+  instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
+  noteHandler: (event) => {
+    if (event.type === 'noteOn') {
+      if (event.instrumentId === undefined || event.midi === undefined) return;
+      const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
+      songBank.noteOn(event.instrumentId, event.midi, velocity);
+      return;
+    }
+
+    if (event.instrumentId === undefined) return;
+    songBank.noteOff(event.instrumentId, event.midi);
+  }
+});
 let unsubscribePosition: (() => void) | null = null;
 const autoScroll = ref(true);
 const playbackRow = ref(0);
@@ -333,6 +352,15 @@ const instrumentSlots = ref<InstrumentSlot[]>(
   }))
 );
 const nextSlotId = ref(slotCount + 1);
+const formatInstrumentId = (slotNumber: number) => slotNumber.toString().padStart(2, '0');
+const normalizeInstrumentId = (instrumentId?: string) => {
+  if (!instrumentId) return undefined;
+  const numeric = Number(instrumentId);
+  if (Number.isFinite(numeric)) {
+    return formatInstrumentId(numeric);
+  }
+  return instrumentId;
+};
 
 function setActiveRow(row: number) {
   const count = rowsCount.value;
@@ -392,24 +420,71 @@ function onPatternLengthInput(event: Event) {
   }
 }
 
+function resolveTrackInstrumentId(track: TrackerTrackData, trackIndex: number): string | undefined {
+  const entryInstrument = normalizeInstrumentId(
+    track.entries.find((entry) => entry.instrument)?.instrument
+  );
+  if (entryInstrument) {
+    return entryInstrument;
+  }
+  const slot = instrumentSlots.value[trackIndex];
+  if (slot?.patchId) {
+    return formatInstrumentId(slot.slot);
+  }
+  return undefined;
+}
+
+function buildPlaybackStep(
+  entry: TrackerEntryData,
+  fallbackInstrumentId: string | undefined
+): PlaybackStep | null {
+  const instrumentId = normalizeInstrumentId(entry.instrument) ?? fallbackInstrumentId;
+  const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
+  const velocity = parseTrackerVolume(entry.volume);
+
+  if (!instrumentId) return null;
+  if (!isNoteOff && midi === undefined) return null;
+
+  const step: PlaybackStep = {
+    row: entry.row,
+    instrumentId,
+    isNoteOff
+  };
+
+  if (midi !== undefined) {
+    step.midi = midi;
+  }
+
+  if (entry.note) {
+    step.note = entry.note;
+  }
+
+  if (velocity !== undefined) {
+    step.velocity = velocity;
+  }
+
+  return step;
+}
+
 function buildPlaybackPattern(): PlaybackPattern {
   return {
     id: 'pattern-1',
     length: rowsCount.value,
-    tracks: tracks.value.map((track) => ({
-      id: track.id,
-      instrumentId: track.id,
-      steps: track.entries.map((entry) => {
-        const step: PlaybackStep = {
-          row: entry.row,
-          instrumentId: track.id
-        };
-        if (entry.note !== undefined) {
-          step.note = entry.note;
-        }
-        return step;
-      })
-    }))
+    tracks: tracks.value.map((track, trackIndex) => {
+      const instrumentId = resolveTrackInstrumentId(track, trackIndex);
+      const trackPayload: PlaybackPattern['tracks'][number] = {
+        id: track.id,
+        steps: track.entries
+          .map((entry) => buildPlaybackStep(entry, instrumentId))
+          .filter((step): step is PlaybackStep => step !== null)
+      };
+
+      if (instrumentId) {
+        trackPayload.instrumentId = instrumentId;
+      }
+
+      return trackPayload;
+    })
   };
 }
 
@@ -420,6 +495,22 @@ function buildPlaybackSong(): PlaybackSong {
     bpm: currentSong.bpm,
     pattern: buildPlaybackPattern()
   };
+}
+
+async function syncSongBankFromSlots() {
+  const slots: SongBankSlot[] = instrumentSlots.value
+    .map((slot) => {
+      if (!slot.patchId) return null;
+      const patch = patchLibrary.value[slot.patchId];
+      if (!patch) return null;
+      return {
+        instrumentId: formatInstrumentId(slot.slot),
+        patch
+      } satisfies SongBankSlot;
+    })
+    .filter(Boolean) as SongBankSlot[];
+
+  await songBank.syncSlots(slots);
 }
 
 function initializePlayback() {
@@ -434,10 +525,11 @@ function initializePlayback() {
   });
 }
 
-function handlePlay() {
+async function handlePlay() {
   playbackEngine.setBpm(currentSong.bpm);
   playbackEngine.setLength(rowsCount.value);
-  playbackEngine.play();
+  await syncSongBankFromSlots();
+  await playbackEngine.play();
 }
 
 function handlePause() {
@@ -459,10 +551,12 @@ async function loadSystemBankOptions() {
     const bankName = bank?.metadata?.name ?? 'System Bank';
     const bankId = bank?.metadata?.id ?? 'system';
     const patches = Array.isArray(bank?.patches) ? bank.patches : [];
+    const patchMap: Record<string, Patch> = {};
     availablePatches.value = patches
       .map((patch) => {
         const meta = patch?.metadata ?? {};
         if (!meta.id || !meta.name) return null;
+        patchMap[meta.id as string] = patch as Patch;
         return {
           id: meta.id as string,
           name: meta.name as string,
@@ -472,6 +566,8 @@ async function loadSystemBankOptions() {
         };
       })
       .filter(Boolean) as BankPatchOption[];
+    patchLibrary.value = patchMap;
+    await syncSongBankFromSlots();
   } catch (error) {
     console.error('Failed to load system bank', error);
   }
@@ -516,7 +612,7 @@ function onKeyDown(event: KeyboardEvent) {
       if (playbackEngine['state'] === 'playing') {
         handleStop();
       } else {
-        handlePlay();
+        void handlePlay();
       }
       break;
     default:
@@ -587,9 +683,9 @@ function removeInstrument(slotNumber: number) {
   instrumentSlots.value = instrumentSlots.value.filter((slot) => slot.slot !== slotNumber);
 }
 
-onMounted(() => {
+onMounted(async () => {
   trackerContainer.value?.focus();
-  loadSystemBankOptions();
+  await loadSystemBankOptions();
   initializePlayback();
 });
 
@@ -611,9 +707,19 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => instrumentSlots.value,
+  () => {
+    void syncSongBankFromSlots();
+    initializePlayback();
+  },
+  { deep: true }
+);
+
 onBeforeUnmount(() => {
   unsubscribePosition?.();
   playbackEngine.stop();
+  songBank.dispose();
 });
 </script>
 

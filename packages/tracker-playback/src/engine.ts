@@ -7,6 +7,8 @@ import {
   type PlaybackOptions,
   type PlaybackPosition,
   type PlaybackScheduler,
+  type PlaybackNoteEvent,
+  type PlaybackNoteHandler,
   type Song,
   type TransportState
 } from './types';
@@ -29,7 +31,9 @@ export class PlaybackEngine {
   };
   private readonly resolver: InstrumentResolver | undefined;
   private readonly scheduler: PlaybackScheduler;
+  private readonly noteHandler: PlaybackNoteHandler | undefined;
   private tickAccumulator = 0;
+  private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
 
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
@@ -37,6 +41,7 @@ export class PlaybackEngine {
       options.scheduler ||
       createAudioContextScheduler() ||
       new IntervalScheduler();
+    this.noteHandler = options.noteHandler;
   }
 
   loadSong(song: Song) {
@@ -49,6 +54,7 @@ export class PlaybackEngine {
   setPattern(pattern: Pattern) {
     this.length = Math.max(1, pattern.length);
     this.position = pattern.id ? { row: 0, patternId: pattern.id } : { row: 0 };
+    this.indexPattern(pattern);
     this.emit('position', this.position);
   }
 
@@ -66,6 +72,7 @@ export class PlaybackEngine {
     this.state = 'playing';
     this.emit('state', this.state);
     await this.prepareInstruments();
+    this.dispatchStepsForRow(this.position.row);
     this.scheduler.start((deltaMs) => this.step(deltaMs));
   }
 
@@ -100,8 +107,17 @@ export class PlaybackEngine {
     if (!this.resolver || !this.song) return;
     const trackInstrumentIds = this.song.pattern.tracks
       .map((t) => t.instrumentId ?? t.id)
-      .filter(Boolean);
-    for (const id of trackInstrumentIds) {
+      .filter((id): id is string => Boolean(id));
+    const stepInstrumentIds: string[] = [];
+    for (const track of this.song.pattern.tracks) {
+      for (const step of track.steps) {
+        if (step.instrumentId) {
+          stepInstrumentIds.push(step.instrumentId);
+        }
+      }
+    }
+    const uniqueIds = new Set<string>([...trackInstrumentIds, ...stepInstrumentIds]);
+    for (const id of uniqueIds) {
       try {
         await this.resolver(id);
       } catch (error) {
@@ -120,6 +136,7 @@ export class PlaybackEngine {
       this.tickAccumulator -= msPerRow;
       const nextRow = (this.position.row + 1) % this.length;
       this.position = { ...this.position, row: nextRow };
+      this.dispatchStepsForRow(nextRow);
       this.emit('position', this.position);
     }
   }
@@ -134,4 +151,56 @@ export class PlaybackEngine {
       }
     }
   }
+
+  private dispatchStepsForRow(row: number) {
+    if (!this.noteHandler) return;
+    const steps = this.stepIndex.get(row);
+    if (!steps || steps.length === 0) return;
+
+    for (const step of steps) {
+      const instrumentId = step.instrumentId;
+      if (!instrumentId) continue;
+
+      if (step.isNoteOff) {
+        const event: PlaybackNoteEvent = {
+          type: 'noteOff',
+          instrumentId,
+          row
+        };
+        if (step.midi !== undefined) {
+          event.midi = step.midi;
+        }
+        this.noteHandler(event);
+        continue;
+      }
+
+      if (step.midi === undefined) continue;
+
+      const velocity = Number.isFinite(step.velocity) ? step.velocity : undefined;
+      const event: PlaybackNoteEvent = {
+        type: 'noteOn',
+        instrumentId,
+        midi: step.midi,
+        row
+      };
+      if (velocity !== undefined) {
+        event.velocity = velocity;
+      }
+      this.noteHandler(event);
+    }
+  }
+
+  private indexPattern(pattern: Pattern) {
+    const index: Map<number, PlaybackPatternStep[]> = new Map();
+    for (const track of pattern.tracks) {
+      for (const step of track.steps) {
+        const bucket = index.get(step.row) ?? [];
+        bucket.push(step);
+        index.set(step.row, bucket);
+      }
+    }
+    this.stepIndex = index;
+  }
 }
+
+type PlaybackPatternStep = Pattern['tracks'][number]['steps'][number];
