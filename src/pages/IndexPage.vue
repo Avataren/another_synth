@@ -71,13 +71,23 @@
             @click="openAddMenuFromButton"
           />
         </div>
+        <div class="tool-menu__toggles">
+          <label class="tool-checkbox">
+            <input v-model="showMacroRow" type="checkbox" />
+            <span>Show macros</span>
+          </label>
+          <label class="tool-checkbox">
+            <input v-model="showVisualizerRow" type="checkbox" />
+            <span>Show visualizer & piano</span>
+          </label>
+        </div>
       </div>
 
-      <div class="macro-row q-pa-sm">
+      <div v-show="showMacroRow" class="macro-row q-pa-sm">
         <MacroControls />
       </div>
 
-      <div class="visualizer-row q-pa-md">
+      <div v-show="showVisualizerRow" class="visualizer-row q-pa-md">
         <div class="row q-col-gutter-md">
           <div class="col-12 col-sm-6 col-lg-4">
             <oscilloscope-component :node="destinationNode" />
@@ -344,6 +354,8 @@ const { editingSlot, songPatches } = storeToRefs(trackerStore);
 
 const addMenuVisible = ref(false);
 const addMenu = ref<QMenuController | null>(null);
+const showMacroRow = ref(false);
+const showVisualizerRow = ref(false);
 
 // Song patch editing state
 const isEditingSongPatch = computed(() => editingSlot.value !== null);
@@ -809,6 +821,28 @@ const bitcrusherNodes = computed(() => {
 
 .tool-menu__actions .q-btn {
   text-transform: none;
+}
+
+.tool-menu__toggles {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.tool-checkbox {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: #cdd6e4;
+  user-select: none;
+}
+
+.tool-checkbox input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  accent-color: #4df2c5;
 }
 
 .visualizer-row {
