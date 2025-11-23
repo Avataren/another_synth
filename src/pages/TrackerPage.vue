@@ -491,6 +491,7 @@ const isPlaying = ref(false);
 /** Audio nodes per track for visualization */
 const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
 const audioContext = computed(() => songBank.audioContext);
+const DEFAULT_BASE_OCTAVE = trackerStore.baseOctave;
 const baseOctave = ref(trackerStore.baseOctave);
 /** Tracks that are muted */
 const mutedTracks = ref<Set<number>>(new Set());
@@ -783,9 +784,10 @@ function midiToTrackerNote(midi: number): string {
   return `${name}${octave}`;
 }
 
-function noteSymbolToMidi(baseOct: number, semitone: number): number {
-  const octave = Math.max(0, Math.min(8, Math.round(baseOct)));
-  return octave * 12 + semitone;
+function applyBaseOctave(midi: number): number {
+  const offset = (baseOctave.value - DEFAULT_BASE_OCTAVE) * 12;
+  const adjusted = midi + offset;
+  return Math.max(0, Math.min(127, Math.round(adjusted)));
 }
 
 function handleNoteEntry(midi: number) {
@@ -794,8 +796,7 @@ function handleNoteEntry(midi: number) {
 
   const instrumentId =
     activeInstrumentId.value ?? formatInstrumentId(activeTrack.value + 1);
-  const semitone = midi % 12;
-  const adjustedMidi = noteSymbolToMidi(baseOctave.value, semitone);
+  const adjustedMidi = applyBaseOctave(midi);
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
     ...entry,
     note: midiToTrackerNote(adjustedMidi),
