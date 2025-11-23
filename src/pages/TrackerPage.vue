@@ -1372,7 +1372,6 @@ function onKeyDown(event: KeyboardEvent) {
       } else {
         clearStep();
       }
-      advanceRowByStep();
       break;
     default:
       break;
