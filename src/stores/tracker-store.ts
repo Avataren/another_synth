@@ -33,6 +33,7 @@ interface TrackerStoreState {
   currentSong: SongMeta;
   patternRows: number;
   stepSize: number;
+  baseOctave: number;
   patterns: TrackerPattern[];
   sequence: string[];
   currentPatternId: string | null;
@@ -107,6 +108,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         author: 'Unknown',
         bpm: 120
       },
+      baseOctave: 4,
       patternRows: 64,
       stepSize: 1,
       patterns: [defaultPattern],
@@ -141,6 +143,10 @@ export const useTrackerStore = defineStore('trackerStore', {
     }
   },
   actions: {
+    setBaseOctave(octave: number) {
+      const clamped = Math.max(0, Math.min(8, Math.round(octave)));
+      this.baseOctave = clamped;
+    },
     initializeIfNeeded() {
       if (!this.patterns || this.patterns.length === 0) {
         const defaultPattern = createDefaultPattern();

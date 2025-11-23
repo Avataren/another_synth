@@ -341,7 +341,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   private handleConnectMacro(data: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }) {
     if (!this.audioEngine) return;
-    const voices = this.voiceLayouts?.length ?? this.numVoices;
+    // Always wire macros across the active voice count; voiceLayouts can be a single
+    // canonical layout, so fall back to the configured voice count instead of length.
+    const voices = Math.max(1, this.numVoices);
     const connectMacro =
       (this.audioEngine as { connect_macro?: (...args: unknown[]) => unknown })
         .connect_macro;

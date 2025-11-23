@@ -2958,7 +2958,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleConnectMacro(data) {
     if (!this.audioEngine) return;
-    const voices = this.voiceLayouts?.length ?? this.numVoices;
+    const voices = Math.max(1, this.numVoices);
     const connectMacro = this.audioEngine.connect_macro;
     for (let voice = 0; voice < voices; voice++) {
       if (typeof connectMacro === "function") {

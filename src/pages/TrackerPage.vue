@@ -93,6 +93,20 @@
               </div>
             </div>
             <div class="pattern-controls">
+              <div class="control-label">Base octave</div>
+              <div class="control-field">
+                <input
+                  class="length-input"
+                  type="number"
+                  :min="0"
+                  :max="8"
+                  :value="baseOctave"
+                  @change="(event) => setBaseOctaveInput(Number((event.target as HTMLInputElement).value))"
+                />
+                <div class="control-hint">Shift+PgUp/PgDn</div>
+              </div>
+            </div>
+            <div class="pattern-controls">
               <label class="toggle">
                 <input v-model="autoScroll" type="checkbox" />
                 <span>Auto-scroll active row</span>
@@ -477,6 +491,7 @@ const isPlaying = ref(false);
 /** Audio nodes per track for visualization */
 const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
 const audioContext = computed(() => songBank.audioContext);
+const baseOctave = ref(trackerStore.baseOctave);
 /** Tracks that are muted */
 const mutedTracks = ref<Set<number>>(new Set());
 /** Tracks that are soloed */
@@ -638,6 +653,13 @@ function setStepSizeInput(value: number) {
   stepSize.value = clamped;
 }
 
+function setBaseOctaveInput(value: number) {
+  if (!Number.isFinite(value)) return;
+  const clamped = Math.max(0, Math.min(8, Math.round(value)));
+  baseOctave.value = clamped;
+  trackerStore.setBaseOctave(clamped);
+}
+
 function advanceRowByStep() {
   moveRow(stepSize.value);
 }
@@ -761,18 +783,25 @@ function midiToTrackerNote(midi: number): string {
   return `${name}${octave}`;
 }
 
+function noteSymbolToMidi(baseOct: number, semitone: number): number {
+  const octave = Math.max(0, Math.min(8, Math.round(baseOct)));
+  return octave * 12 + semitone;
+}
+
 function handleNoteEntry(midi: number) {
   // Only enter notes when on the note column (column 0)
   if (activeColumn.value !== 0) return;
 
   const instrumentId =
     activeInstrumentId.value ?? formatInstrumentId(activeTrack.value + 1);
+  const semitone = midi % 12;
+  const adjustedMidi = noteSymbolToMidi(baseOctave.value, semitone);
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
     ...entry,
-    note: midiToTrackerNote(midi),
+    note: midiToTrackerNote(adjustedMidi),
     instrument: instrumentId
   }));
-  void previewNote(instrumentId, midi);
+  void previewNote(instrumentId, adjustedMidi);
   advanceRowByStep();
 }
 
@@ -1288,12 +1317,24 @@ function onKeyDown(event: KeyboardEvent) {
       }
       break;
     case 'PageDown':
-      event.preventDefault();
-      moveRow(16);
+      if (event.shiftKey) {
+        event.preventDefault();
+        baseOctave.value = Math.max(0, baseOctave.value - 1);
+        trackerStore.setBaseOctave(baseOctave.value);
+      } else {
+        event.preventDefault();
+        moveRow(16);
+      }
       break;
     case 'PageUp':
-      event.preventDefault();
-      moveRow(-16);
+      if (event.shiftKey) {
+        event.preventDefault();
+        baseOctave.value = Math.min(8, baseOctave.value + 1);
+        trackerStore.setBaseOctave(baseOctave.value);
+      } else {
+        event.preventDefault();
+        moveRow(-16);
+      }
       break;
     case 'Home':
       event.preventDefault();
@@ -1555,6 +1596,12 @@ watch(
 watch(
   () => rowsCount.value,
   (rows) => playbackEngine.setLength(rows),
+  { immediate: true }
+);
+
+watch(
+  () => baseOctave.value,
+  (oct) => trackerStore.setBaseOctave(oct),
   { immediate: true }
 );
 

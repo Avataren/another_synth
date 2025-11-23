@@ -312,6 +312,8 @@ export const usePatchStore = defineStore('patchStore', {
 
         // Ensure all node states (including LFO trigger modes) are pushed into WASM after load
         nodeStateStore.applyPreservedStatesToWasm();
+        // Reapply macro routes after voices are rebuilt so every voice gets connected
+        macroStore.reapplyAllRoutes();
 
         this.isLoadingPatch = false;
         return true;
@@ -1017,6 +1019,18 @@ export const usePatchStore = defineStore('patchStore', {
       // Build a fresh patch from current state with the new voice count
       const samplerIds = getSamplerNodeIds(updatedLayout);
       const convolverIds = getConvolverNodeIds(updatedLayout);
+      const macroStore = useMacroStore();
+      const macrosState = {
+        values: instrumentStore.macros,
+        routes: macroStore.routes.map((route: MacroRoute) => ({
+          macroIndex: route.macroIndex,
+          targetId: route.targetId,
+          targetPort: route.targetPort,
+          amount: route.amount,
+          modulationType: route.modulationType,
+          modulationTransformation: route.modulationTransformation,
+        })),
+      };
 
       let extractedAssets = new Map<string, AudioAsset>();
       if (instrumentStore.currentInstrument) {
@@ -1048,16 +1062,17 @@ export const usePatchStore = defineStore('patchStore', {
         nodeStateStore.glideStates,
         nodeStateStore.convolverStates,
         nodeStateStore.delayStates,
-          nodeStateStore.chorusStates,
-          nodeStateStore.reverbStates,
-          nodeStateStore.compressorStates,
-          nodeStateStore.saturationStates,
-          nodeStateStore.bitcrusherStates,
-          nodeStateStore.noiseState,
-          nodeStateStore.velocityState,
-          allAssets,
-          existingMetadata ? { ...existingMetadata } : undefined,
-        );
+        nodeStateStore.chorusStates,
+        nodeStateStore.reverbStates,
+        nodeStateStore.compressorStates,
+        nodeStateStore.saturationStates,
+        nodeStateStore.bitcrusherStates,
+        nodeStateStore.noiseState,
+        nodeStateStore.velocityState,
+        allAssets,
+        existingMetadata ? { ...existingMetadata } : undefined,
+        macrosState,
+      );
 
       // Reapply the freshly serialized patch so the engine rebuilds voices
       return await this.applyPatchObject(patch);
