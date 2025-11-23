@@ -848,6 +848,46 @@ const bitcrusherNodes = computed(() => {
 .visualizer-row {
   background: #0f131c;
   border-bottom: 1px solid #273140;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.visualizer-row .row {
+  align-items: stretch;
+}
+
+.visualizer-row .q-col-gutter-md > [class*='col-'] {
+  display: flex;
+}
+
+.visualizer-row .q-card,
+.visualizer-row .piano-keyboard,
+.visualizer-row .frequency-analyzer,
+.visualizer-row .oscilloscope-container {
+  height: 140px;
+  min-height: 140px;
+  width: 100%;
+}
+
+.visualizer-row .oscilloscope-container {
+  max-width: none;
+  height: 100%;
+}
+
+.visualizer-row .piano-keyboard {
+  max-width: none;
+  margin: 0;
+}
+
+.visualizer-row .frequency-analyzer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.visualizer-row canvas {
+  height: 100% !important;
+  width: 100% !important;
 }
 
 .macro-row {

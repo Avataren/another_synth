@@ -4,16 +4,14 @@
       <div class="text-h6">Oscilloscope</div>
     </q-card-section> -->
     <!-- <q-separator /> -->
-    <q-card-section class="oscilloscope-container">
-      <div class="channel">
-        <div class="channel-label">Left</div>
-        <canvas ref="leftCanvasRef"></canvas>
-      </div>
-      <div class="channel">
-        <div class="channel-label">Right</div>
-        <canvas ref="rightCanvasRef"></canvas>
-      </div>
-    </q-card-section>
+  <q-card-section class="oscilloscope-container">
+    <div class="channel">
+      <canvas ref="leftCanvasRef" data-label="Left"></canvas>
+    </div>
+    <div class="channel">
+      <canvas ref="rightCanvasRef" data-label="Right"></canvas>
+    </div>
+  </q-card-section>
   </q-card>
 </template>
 
@@ -77,11 +75,13 @@ const startVisualization = () => {
 
   const ensureCanvasResolution = (canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
-    if (canvas.width !== rect.width) {
-      canvas.width = rect.width;
+    const nextWidth = Math.max(1, Math.floor(rect.width));
+    const nextHeight = Math.max(1, Math.floor(rect.height));
+    if (canvas.width !== nextWidth) {
+      canvas.width = nextWidth;
     }
-    if (canvas.height !== rect.height) {
-      canvas.height = rect.height;
+    if (canvas.height !== nextHeight) {
+      canvas.height = nextHeight;
     }
   };
 
@@ -89,6 +89,7 @@ const startVisualization = () => {
     canvas: HTMLCanvasElement,
     analyser: AnalyserNode,
     buffer: Uint8Array,
+    label: string,
   ) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -123,6 +124,11 @@ const startVisualization = () => {
 
     ctx.lineTo(canvas.width, canvas.height / 2);
     ctx.stroke();
+
+    // Draw label in the corner
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(label, 8, 14);
   };
 
   const draw = () => {
@@ -134,8 +140,8 @@ const startVisualization = () => {
 
     animationFrameId = requestAnimationFrame(draw);
 
-    drawChannel(leftCanvas, leftAnalyser, leftBuffer);
-    drawChannel(rightCanvas, rightAnalyser, rightBuffer);
+    drawChannel(leftCanvas, leftAnalyser, leftBuffer, leftCanvas.dataset.label || 'Left');
+    drawChannel(rightCanvas, rightAnalyser, rightBuffer, rightCanvas.dataset.label || 'Right');
   };
 
   draw();
@@ -197,15 +203,7 @@ watch(node, (newNode, _oldNode) => {
 .channel {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
   flex: 1 1 0;
-}
-
-.channel-label {
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #9fb2cc;
 }
 
 canvas {

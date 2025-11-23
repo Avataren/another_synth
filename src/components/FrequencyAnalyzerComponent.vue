@@ -49,10 +49,6 @@ const startVisualization = () => {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Set canvas size to match display size
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-
   const bufferLength = analyser.frequencyBinCount;
   const localDataArray = dataArray;
 
@@ -60,6 +56,18 @@ const startVisualization = () => {
     if (!ctx || !analyser || !localDataArray) return;
 
     animationFrameId = requestAnimationFrame(draw);
+
+    // Keep canvas in sync with display size
+    const rect = canvas.getBoundingClientRect();
+    const nextWidth = Math.max(1, Math.floor(rect.width));
+    const nextHeight = Math.max(1, Math.floor(rect.height));
+    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+      canvas.width = nextWidth;
+      canvas.height = nextHeight;
+    }
+    if (canvas.width === 0 || canvas.height === 0) {
+      return;
+    }
 
     analyser.getByteFrequencyData(localDataArray);
 
@@ -142,9 +150,9 @@ watch(node, (newNode, _oldNode) => {
 
 <style scoped>
 .frequency-container {
-  width: 600px;
-  height: 200px;
-  margin: 0 auto;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   canvas {
     width: 100%;
     height: 100%;
@@ -153,7 +161,8 @@ watch(node, (newNode, _oldNode) => {
 }
 
 .frequency-card {
-  width: 600px;
-  margin: 0 auto;
+  width: 100%;
+  height: 100%;
+  margin: 0;
 }
 </style>
