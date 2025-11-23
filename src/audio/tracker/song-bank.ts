@@ -1,7 +1,12 @@
 import AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
-import type { AudioAsset, Patch } from 'src/audio/types/preset-types';
+import type { AudioAsset, Patch, MacroRouteState } from 'src/audio/types/preset-types';
 import { parseAudioAssetId } from 'src/audio/serialization/patch-serializer';
+import {
+  WasmModulationType,
+  ModulationTransformation,
+  PortId,
+} from 'app/public/wasm/audio_processor';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -18,7 +23,8 @@ export class TrackerSongBank {
   private readonly masterGain: GainNode;
   private readonly desired: Map<string, Patch> = new Map();
   private readonly instruments: Map<string, ActiveInstrument> = new Map();
-  private readonly activeNotes: Map<string, Set<number>> = new Map();
+  private readonly activeNotes: Map<string, Map<number, Set<number>>> = new Map();
+  private readonly lastTrackVoice: Map<string, Map<number, number>> = new Map();
 
   constructor() {
     this.audioSystem = new AudioSystem();
@@ -84,38 +90,99 @@ export class TrackerSongBank {
 
   allNotesOff() {
     for (const [instrumentId, active] of this.instruments.entries()) {
-      const notes = this.activeNotes.get(instrumentId);
-      if (notes) {
-        for (const note of notes) {
-          active.instrument.noteOff(note);
+      const byTrack = this.activeNotes.get(instrumentId);
+      if (byTrack) {
+        for (const notes of byTrack.values()) {
+          for (const note of notes) {
+            active.instrument.noteOff(note);
+          }
+          notes.clear();
         }
-        notes.clear();
+        byTrack.clear();
       }
       // Also send a gate-low in case the set was empty but a gate is stuck
       active.instrument.allNotesOff();
     }
   }
 
-  noteOn(instrumentId: string | undefined, midi: number, velocity = 100) {
+  private getTrackNotes(
+    instrumentId: string,
+    trackIndex: number | undefined,
+  ): Set<number> {
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    let byTrack = this.activeNotes.get(instrumentId);
+    if (!byTrack) {
+      byTrack = new Map();
+      this.activeNotes.set(instrumentId, byTrack);
+    }
+    let notes = byTrack.get(trackKey);
+    if (!notes) {
+      notes = new Set<number>();
+      byTrack.set(trackKey, notes);
+    }
+    return notes;
+  }
+
+  private setLastVoiceForTrack(
+    instrumentId: string,
+    trackIndex: number | undefined,
+    voiceIndex: number,
+  ) {
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    let byTrack = this.lastTrackVoice.get(instrumentId);
+    if (!byTrack) {
+      byTrack = new Map();
+      this.lastTrackVoice.set(instrumentId, byTrack);
+    }
+    byTrack.set(trackKey, voiceIndex);
+  }
+
+  private takeLastVoiceForTrack(
+    instrumentId: string,
+    trackIndex: number | undefined,
+  ): number | undefined {
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    const byTrack = this.lastTrackVoice.get(instrumentId);
+    const voice = byTrack?.get(trackKey);
+    if (voice !== undefined) {
+      byTrack?.delete(trackKey);
+    }
+    return voice;
+  }
+
+  private clearLastVoiceForTrack(
+    instrumentId: string,
+    trackIndex: number | undefined,
+  ) {
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    const byTrack = this.lastTrackVoice.get(instrumentId);
+    byTrack?.delete(trackKey);
+  }
+
+  noteOn(
+    instrumentId: string | undefined,
+    midi: number,
+    velocity = 100,
+    trackIndex?: number,
+  ) {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     active.instrument.noteOn(midi, velocity);
 
-    const notes = this.activeNotes.get(instrumentId) ?? new Set<number>();
-    notes.add(midi);
-    this.activeNotes.set(instrumentId, notes);
+    this.getTrackNotes(instrumentId, trackIndex).add(midi);
   }
 
-  noteOff(instrumentId: string | undefined, midi?: number) {
+  noteOff(instrumentId: string | undefined, midi?: number, trackIndex?: number) {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
 
-    const notes = this.activeNotes.get(instrumentId);
+    const notes = this.getTrackNotes(instrumentId, trackIndex);
     if (!notes || notes.size === 0) {
       if (midi !== undefined) {
         active.instrument.noteOff(midi);
+        this.clearLastVoiceForTrack(instrumentId, trackIndex);
       }
       return;
     }
@@ -125,12 +192,14 @@ export class TrackerSongBank {
         active.instrument.noteOff(note);
       }
       notes.clear();
+      this.clearLastVoiceForTrack(instrumentId, trackIndex);
       return;
     }
 
     if (notes.has(midi)) {
       active.instrument.noteOff(midi);
       notes.delete(midi);
+      this.clearLastVoiceForTrack(instrumentId, trackIndex);
     } else {
       active.instrument.noteOff(midi);
     }
@@ -139,21 +208,66 @@ export class TrackerSongBank {
   /**
    * Schedule a note on at a specific audio context time.
    */
-  noteOnAtTime(instrumentId: string | undefined, midi: number, velocity: number, time: number) {
+  noteOnAtTime(
+    instrumentId: string | undefined,
+    midi: number,
+    velocity: number,
+    time: number,
+    trackIndex?: number,
+  ) {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    active.instrument.noteOnAtTime(midi, velocity, time);
+    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time);
+    this.getTrackNotes(instrumentId, trackIndex).add(midi);
+    if (voiceIndex !== undefined) {
+      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
+    }
   }
 
   /**
    * Schedule a note off at a specific audio context time.
    */
-  noteOffAtTime(instrumentId: string | undefined, midi: number, time: number) {
+  noteOffAtTime(
+    instrumentId: string | undefined,
+    midi: number | undefined,
+    time: number,
+    trackIndex?: number,
+  ) {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    active.instrument.noteOffAtTime(midi, time);
+    const notes = this.getTrackNotes(instrumentId, trackIndex);
+
+    if (midi === undefined) {
+      if (notes && notes.size > 0) {
+        for (const note of notes) {
+          active.instrument.noteOffAtTime(note, time);
+        }
+        notes.clear();
+      } else {
+        const lastVoice = this.takeLastVoiceForTrack(instrumentId, trackIndex);
+        if (lastVoice !== undefined) {
+          active.instrument.gateOffVoiceAtTime(lastVoice, time);
+        }
+      }
+      return;
+    }
+
+    const hadMidi = notes.has(midi);
+    notes.delete(midi);
+    if (hadMidi) {
+      active.instrument.noteOffAtTime(midi, time);
+      this.clearLastVoiceForTrack(instrumentId, trackIndex);
+    } else {
+      const lastVoice = this.takeLastVoiceForTrack(instrumentId, trackIndex);
+      if (lastVoice !== undefined) {
+        active.instrument.gateOffVoiceAtTime(lastVoice, time);
+      } else {
+        active.instrument.noteOffAtTime(midi, time);
+        this.clearLastVoiceForTrack(instrumentId, trackIndex);
+      }
+    }
   }
 
   /**
@@ -185,7 +299,10 @@ export class TrackerSongBank {
     if (!patchId) return;
 
     const existing = this.instruments.get(instrumentId);
-    if (existing?.patchId === patchId) return;
+    if (existing?.patchId === patchId) {
+      this.applyMacrosFromPatch(existing.instrument, patch);
+      return;
+    }
 
     if (existing) {
       existing.instrument.outputNode.disconnect();
@@ -211,6 +328,7 @@ export class TrackerSongBank {
 
     await instrument.loadPatch(patch);
     await this.restoreAudioAssets(instrument, patch);
+    this.applyMacrosFromPatch(instrument, patch);
     instrument.outputNode.connect(this.masterGain);
     this.instruments.set(instrumentId, { instrument, patchId });
   }
@@ -243,6 +361,46 @@ export class TrackerSongBank {
       } catch (error) {
         console.error(`[TrackerSongBank] Failed to restore audio asset ${assetId}:`, error);
       }
+    }
+  }
+
+  private applyMacrosFromPatch(instrument: InstrumentV2, patch: Patch) {
+    const macros = patch?.synthState?.macros;
+    if (!macros) return;
+
+    if (Array.isArray(macros.values)) {
+      macros.values.forEach((value, index) => {
+        if (Number.isFinite(value)) {
+          instrument.setMacro(index, Number(value));
+        }
+      });
+    }
+
+    if (Array.isArray(macros.routes)) {
+      (macros.routes as MacroRouteState[]).forEach((route) => {
+        if (!route || route.targetId === undefined) return;
+
+        const macroIndex = Number(route.macroIndex);
+        if (!Number.isFinite(macroIndex) || macroIndex < 0) return;
+
+        const targetPort = Number(route.targetPort ?? PortId.AudioInput0);
+        const amount = Number(route.amount ?? 0);
+        const modulationType =
+          (route.modulationType as WasmModulationType | undefined) ??
+          WasmModulationType.Additive;
+        const modulationTransformation =
+          (route.modulationTransformation as ModulationTransformation | undefined) ??
+          ModulationTransformation.None;
+
+        instrument.connectMacroRoute({
+          macroIndex,
+          targetId: route.targetId,
+          targetPort: targetPort as PortId,
+          amount,
+          modulationType,
+          modulationTransformation,
+        });
+      });
     }
   }
 

@@ -229,7 +229,6 @@
             <TrackWaveform
               :audio-node="trackAudioNodes[index] ?? null"
               :audio-context="audioContext"
-              :color="track.color || '#4df2c5'"
             />
           </div>
         </div>
@@ -260,7 +259,7 @@ import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
-import type { TrackerEntryData } from 'src/components/tracker/tracker-types';
+import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type {
   Pattern as PlaybackPattern,
@@ -414,28 +413,30 @@ const playbackEngine = new PlaybackEngine({
     if (!isTrackAudible(event.trackIndex)) return;
 
     if (event.type === 'noteOn') {
+      setTrackAudioNodeForInstrument(event.trackIndex, event.instrumentId);
       if (event.instrumentId === undefined || event.midi === undefined) return;
       const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
-      songBank.noteOnAtTime(event.instrumentId, event.midi, velocity, event.time);
+      songBank.noteOnAtTime(event.instrumentId, event.midi, velocity, event.time, event.trackIndex);
       return;
     }
 
-    if (event.instrumentId === undefined || event.midi === undefined) return;
-    songBank.noteOffAtTime(event.instrumentId, event.midi, event.time);
+    if (event.instrumentId === undefined) return;
+    songBank.noteOffAtTime(event.instrumentId, event.midi, event.time, event.trackIndex);
   },
   // Keep legacy handler for preview notes (not used for playback anymore)
   noteHandler: (event) => {
     if (!isTrackAudible(event.trackIndex)) return;
 
     if (event.type === 'noteOn') {
+      setTrackAudioNodeForInstrument(event.trackIndex, event.instrumentId);
       if (event.instrumentId === undefined || event.midi === undefined) return;
       const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
-      songBank.noteOn(event.instrumentId, event.midi, velocity);
+      songBank.noteOn(event.instrumentId, event.midi, velocity, event.trackIndex);
       return;
     }
 
     if (event.instrumentId === undefined) return;
-    songBank.noteOff(event.instrumentId, event.midi);
+    songBank.noteOff(event.instrumentId, event.midi, event.trackIndex);
   }
 });
 let unsubscribePosition: (() => void) | null = null;
@@ -450,6 +451,16 @@ const audioContext = computed(() => songBank.audioContext);
 const mutedTracks = ref<Set<number>>(new Set());
 /** Tracks that are soloed */
 const soloedTracks = ref<Set<number>>(new Set());
+
+function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
+  const normalized = normalizeInstrumentId(instrumentId);
+  const node = normalized ? songBank.getInstrumentOutput(normalized) : null;
+  if (trackAudioNodes.value[trackIndex] === node) return;
+  trackAudioNodes.value = {
+    ...trackAudioNodes.value,
+    [trackIndex]: node
+  };
+}
 
 const noteKeyMap: Record<string, number> = {
   KeyZ: 48,
@@ -621,7 +632,7 @@ function updateEntryAt(
 function insertNoteOff() {
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
     ...entry,
-    note: '--'
+    note: '###'
   }));
   advanceRowByStep();
 }
@@ -807,43 +818,64 @@ function onPatternLengthInput(event: Event) {
   }
 }
 
-function buildPlaybackStep(entry: TrackerEntryData): PlaybackStep | null {
-  const instrumentId = normalizeInstrumentId(entry.instrument);
-  const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
-  const volumeValue = parseTrackerVolume(entry.volume);
-  const macroInfo = parseMacroField(entry.macro);
+interface TrackPlaybackContext {
+  instrumentId?: string;
+  lastMidi?: number;
+}
 
-  if (!instrumentId) return null;
-  if (!isNoteOff && midi === undefined && volumeValue === undefined && !macroInfo) return null;
+function buildPlaybackStepsForTrack(track: TrackerTrackData): PlaybackStep[] {
+  const ctx: TrackPlaybackContext = {};
+  const steps: PlaybackStep[] = [];
 
-  const step: PlaybackStep = {
-    row: entry.row,
-    instrumentId,
-    isNoteOff
-  };
+  const sortedEntries = [...track.entries].sort((a, b) => a.row - b.row);
+  for (const entry of sortedEntries) {
+    const instrumentId = normalizeInstrumentId(entry.instrument) ?? ctx.instrumentId;
+    const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
+    const volumeValue = parseTrackerVolume(entry.volume);
+    const macroInfo = parseMacroField(entry.macro);
 
-  if (midi !== undefined) {
-    step.midi = midi;
+    if (!instrumentId && !macroInfo) continue;
+    if (!isNoteOff && midi === undefined && volumeValue === undefined && !macroInfo) continue;
+
+    const step: PlaybackStep = {
+      row: entry.row,
+      instrumentId: instrumentId ?? '',
+      isNoteOff
+    };
+
+    if (midi !== undefined) {
+      step.midi = midi;
+      ctx.lastMidi = midi;
+    } else if (isNoteOff && ctx.lastMidi !== undefined) {
+      step.midi = ctx.lastMidi;
+    }
+
+    if (entry.note) {
+      step.note = entry.note;
+    }
+
+    if (volumeValue !== undefined) {
+      const scaledVelocity = Math.max(
+        0,
+        Math.min(127, Math.round((volumeValue / 255) * 127))
+      );
+      step.velocity = scaledVelocity;
+    }
+
+    if (macroInfo) {
+      step.macroIndex = macroInfo.index;
+      step.macroValue = macroInfo.value;
+    }
+
+    // Update context after building step
+    if (instrumentId) {
+      ctx.instrumentId = instrumentId;
+    }
+
+    steps.push(step);
   }
 
-  if (entry.note) {
-    step.note = entry.note;
-  }
-
-  if (volumeValue !== undefined) {
-    const scaledVelocity = Math.max(
-      0,
-      Math.min(127, Math.round((volumeValue / 255) * 127))
-    );
-    step.velocity = scaledVelocity;
-  }
-
-  if (macroInfo) {
-    step.macroIndex = macroInfo.index;
-    step.macroValue = macroInfo.value;
-  }
-
-  return step;
+  return steps;
 }
 
 function buildPlaybackPatterns(): PlaybackPattern[] {
@@ -852,9 +884,7 @@ function buildPlaybackPatterns(): PlaybackPattern[] {
     length: patternRows.value,
     tracks: p.tracks.map((track) => ({
       id: track.id,
-      steps: track.entries
-        .map((entry) => buildPlaybackStep(entry))
-        .filter((step): step is PlaybackStep => step !== null)
+      steps: buildPlaybackStepsForTrack(track)
     }))
   }));
 }
@@ -904,12 +934,22 @@ async function syncSongBankFromSlots() {
   updateTrackAudioNodes();
 }
 
+function resolveInstrumentForTrack(track: TrackerTrackData | undefined, trackIndex: number) {
+  if (!track) return undefined;
+  const steps = buildPlaybackStepsForTrack(track);
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const instrumentId = normalizeInstrumentId(steps[i]?.instrumentId);
+    if (instrumentId) return instrumentId;
+  }
+  return formatInstrumentId(trackIndex + 1);
+}
+
 function updateTrackAudioNodes() {
   const nodes: Record<number, AudioNode | null> = {};
-  const trackCount = currentPattern.value?.tracks.length ?? 0;
-  for (let i = 0; i < trackCount; i++) {
-    const slotInstrumentId = formatInstrumentId(i + 1);
-    nodes[i] = songBank.getInstrumentOutput(slotInstrumentId);
+  const tracks = currentPattern.value?.tracks ?? [];
+  for (let i = 0; i < tracks.length; i++) {
+    const instrumentId = resolveInstrumentForTrack(tracks[i], i);
+    nodes[i] = instrumentId ? songBank.getInstrumentOutput(instrumentId) : null;
   }
   trackAudioNodes.value = nodes;
 }
@@ -935,6 +975,7 @@ function toggleSolo(trackIndex: number) {
 }
 
 async function initializePlayback(mode: PlaybackMode = playbackMode.value): Promise<boolean> {
+  updateTrackAudioNodes();
   const song = buildPlaybackSong(mode);
   if (!song.sequence.length) {
     // eslint-disable-next-line no-console
@@ -1376,6 +1417,11 @@ watch(
   () => rowsCount.value,
   (rows) => playbackEngine.setLength(rows),
   { immediate: true }
+);
+
+watch(
+  () => currentPatternId.value,
+  () => updateTrackAudioNodes()
 );
 
 watch(

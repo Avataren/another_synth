@@ -890,7 +890,7 @@ export default class InstrumentV2 {
    * Schedule a note on at a specific audio context time.
    * Used for sample-accurate playback scheduling.
    */
-  public noteOnAtTime(noteNumber: number, velocity: number, time: number): void {
+  public noteOnAtTime(noteNumber: number, velocity: number, time: number): number | undefined {
     const { voiceIndex, stolenNote } = this.allocateVoice(noteNumber);
     const isRetrigger = this.activeNotes.get(noteNumber) === voiceIndex;
 
@@ -924,6 +924,8 @@ export default class InstrumentV2 {
 
     const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
     if (gainParam) gainParam.setValueAtTime(velocity / 127, time);
+
+    return voiceIndex;
   }
 
   /**
@@ -932,12 +934,18 @@ export default class InstrumentV2 {
    */
   public noteOffAtTime(noteNumber: number, time: number): void {
     const voiceIndex = this.activeNotes.get(noteNumber);
-    if (voiceIndex === undefined) return;
-
     this.activeNotes.delete(noteNumber);
 
     if (!this.workletNode) return;
 
+    if (voiceIndex === undefined) return;
+
+    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+    if (gateParam) gateParam.setValueAtTime(0, time);
+  }
+
+  public gateOffVoiceAtTime(voiceIndex: number, time: number): void {
+    if (!this.workletNode) return;
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) gateParam.setValueAtTime(0, time);
   }

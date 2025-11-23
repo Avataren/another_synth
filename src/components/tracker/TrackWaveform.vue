@@ -1,5 +1,5 @@
 <template>
-  <div class="track-waveform" :style="{ '--waveform-color': color }">
+  <div class="track-waveform">
     <canvas ref="canvasRef"></canvas>
   </div>
 </template>
@@ -10,12 +10,10 @@ import { onMounted, onUnmounted, ref, watch } from 'vue';
 interface Props {
   audioNode: AudioNode | null;
   audioContext: AudioContext | null;
-  color?: string;
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  color: '#4df2c5'
-});
+const WAVEFORM_COLOR = '#4df2c5';
+const props = defineProps<Props>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
@@ -72,7 +70,7 @@ function startVisualization() {
     ctx.stroke();
 
     // Draw waveform
-    ctx.strokeStyle = props.color;
+    ctx.strokeStyle = WAVEFORM_COLOR;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
 

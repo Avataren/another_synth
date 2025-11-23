@@ -81,7 +81,9 @@ const cells = computed(() => {
   const noteDisplay = (() => {
     if (!props.entry?.note) return '---';
     const normalized = props.entry.note.trim().toUpperCase();
-    return normalized === '--' ? '###' : props.entry.note;
+    const isRelease =
+      normalized === '--' || normalized === '---' || normalized === '###';
+    return isRelease ? '###' : props.entry.note;
   })();
   const macroDigits = macroPadded.split('');
   return {

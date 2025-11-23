@@ -214,6 +214,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - Tracker instrument slot IDs now start at 1 and reuse the smallest free number; the list shows the real slot ID (not just the index). This keeps tracker instrument IDs aligned with what the user sees (no more 09/10 when only two slots are in use).
 - Tracker editing now previews notes: entering a note plays it immediately via the song bank (using the active instrument if it has a patch), with an automatic gate-off after ~250 ms.
 - Tracker state persistence: `src/stores/tracker-store.ts` now owns tracker state (song meta, pattern rows, step size, tracks, instrument slots, active instrument). `TrackerPage.vue` reads/writes via this store so switching between screens no longer clears the tracker while the app session is alive.
+- Tracker note-off semantics: only `###` is treated as a release/gate-off. The Insert shortcut now writes `###`, and `parseTrackerNoteSymbol` only flags note-off for `###` (not `--`/`---`), matching the UI release indicator.
+- Tracker playback now builds per-track playback steps with context: steps inherit the last instrument, and note-offs without a MIDI value reuse the last played MIDI for that track. This keeps delayed `###` releases and macro-only rows from losing gate context.
+
+### Tracker waveforms
+- Track waveform visualizations now always use a single accent color and attach to the instrument actually referenced by that track (latest instrument ID found when building playback steps). This keeps each track’s waveform aligned to its own instrument output even when multiple tracks share a multi-voice patch.
 
 ## Wavetable Missing Data Panic (Critical Fix - 2025)
 
