@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { uid } from 'quasar';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
 
@@ -22,11 +23,19 @@ interface SongMeta {
   bpm: number;
 }
 
+export interface TrackerPattern {
+  id: string;
+  name: string;
+  tracks: TrackerTrackData[];
+}
+
 interface TrackerStoreState {
   currentSong: SongMeta;
   patternRows: number;
   stepSize: number;
-  tracks: TrackerTrackData[];
+  patterns: TrackerPattern[];
+  sequence: string[];
+  currentPatternId: string | null;
   instrumentSlots: InstrumentSlot[];
   activeInstrumentId: string | null;
   currentInstrumentPage: number;
@@ -65,22 +74,35 @@ function createDefaultInstrumentSlots(): InstrumentSlot[] {
   }));
 }
 
+function createDefaultPattern(): TrackerPattern {
+  return {
+    id: uid(),
+    name: 'Pattern 1',
+    tracks: createDefaultTracks()
+  };
+}
+
 export const useTrackerStore = defineStore('trackerStore', {
-  state: (): TrackerStoreState => ({
-    currentSong: {
-      title: 'Untitled song',
-      author: 'Unknown',
-      bpm: 120
-    },
-    patternRows: 64,
-    stepSize: 1,
-    tracks: createDefaultTracks(),
-    instrumentSlots: createDefaultInstrumentSlots(),
-    activeInstrumentId: null,
-    currentInstrumentPage: 0,
-    songPatches: {},
-    editingSlot: null
-  }),
+  state: (): TrackerStoreState => {
+    const defaultPattern = createDefaultPattern();
+    return {
+      currentSong: {
+        title: 'Untitled song',
+        author: 'Unknown',
+        bpm: 120
+      },
+      patternRows: 64,
+      stepSize: 1,
+      patterns: [defaultPattern],
+      sequence: [defaultPattern.id],
+      currentPatternId: defaultPattern.id,
+      instrumentSlots: createDefaultInstrumentSlots(),
+      activeInstrumentId: null,
+      currentInstrumentPage: 0,
+      songPatches: {},
+      editingSlot: null
+    };
+  },
   getters: {
     currentPageSlots(): InstrumentSlot[] {
       const start = this.currentInstrumentPage * SLOTS_PER_PAGE;
@@ -97,15 +119,75 @@ export const useTrackerStore = defineStore('trackerStore', {
     /** Check if we're currently editing a song patch */
     isEditingSongPatch(): boolean {
       return this.editingSlot !== null;
+    },
+    currentPattern(): TrackerPattern | undefined {
+      return this.patterns.find(p => p.id === this.currentPatternId);
     }
   },
   actions: {
     initializeIfNeeded() {
-      if (!this.tracks || this.tracks.length === 0) {
-        this.tracks = createDefaultTracks();
+      if (!this.patterns || this.patterns.length === 0) {
+        const defaultPattern = createDefaultPattern();
+        this.patterns = [defaultPattern];
+        this.sequence = [defaultPattern.id];
+        this.currentPatternId = defaultPattern.id;
       }
       if (!this.instrumentSlots || this.instrumentSlots.length !== TOTAL_SLOTS) {
         this.instrumentSlots = createDefaultInstrumentSlots();
+      }
+    },
+    createPattern() {
+      const newPattern: TrackerPattern = {
+        id: uid(),
+        name: `Pattern ${this.patterns.length + 1}`,
+        tracks: createDefaultTracks()
+      };
+      this.patterns.push(newPattern);
+      return newPattern.id;
+    },
+    deletePattern(patternId: string) {
+      if (this.patterns.length <= 1) {
+        // eslint-disable-next-line no-console
+        console.warn('Cannot delete the last pattern');
+        return;
+      }
+      this.patterns = this.patterns.filter(p => p.id !== patternId);
+      this.sequence = this.sequence.filter(id => id !== patternId);
+      if (this.currentPatternId === patternId) {
+        this.currentPatternId = this.patterns[0]?.id ?? null;
+      }
+    },
+    setCurrentPatternId(patternId: string) {
+      if (this.patterns.some(p => p.id === patternId)) {
+        this.currentPatternId = patternId;
+      }
+    },
+    addPatternToSequence(patternId: string) {
+      this.sequence.push(patternId);
+    },
+    removePatternFromSequence(index: number) {
+      if (index >= 0 && index < this.sequence.length) {
+        this.sequence.splice(index, 1);
+      }
+    },
+    setPatternName(patternId: string, name: string) {
+      const pattern = this.patterns.find(p => p.id === patternId);
+      if (pattern) {
+        pattern.name = name;
+      }
+    },
+    moveSequenceItem(fromIndex: number, toIndex: number) {
+      if (
+        fromIndex < 0 ||
+        fromIndex >= this.sequence.length ||
+        toIndex < 0 ||
+        toIndex >= this.sequence.length
+      ) {
+        return;
+      }
+      const [item] = this.sequence.splice(fromIndex, 1);
+      if (item !== undefined) {
+        this.sequence.splice(toIndex, 0, item);
       }
     },
     setActiveInstrument(id: string | null) {

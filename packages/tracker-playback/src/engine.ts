@@ -29,6 +29,7 @@ export class PlaybackEngine {
   private position: PlaybackPosition = { row: 0 };
   private bpm = 120;
   private length = 64;
+  private currentSequenceIndex = 0;
   private readonly listeners: ListenerMap = {
     position: new Set(),
     state: new Set(),
@@ -40,6 +41,7 @@ export class PlaybackEngine {
   private readonly scheduledNoteHandler: ScheduledNoteHandler | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
+  private loopCurrentPattern = false;
 
   /** Audio context time when playback started */
   private playStartTime = 0;
@@ -63,16 +65,28 @@ export class PlaybackEngine {
     this.audioContext = options.audioContext;
   }
 
+  setLoopCurrentPattern(loop: boolean) {
+    this.loopCurrentPattern = loop;
+  }
+
   loadSong(song: Song) {
     this.song = song;
     this.bpm = song.bpm;
-    this.setPattern(song.pattern);
+    this.currentSequenceIndex = 0;
+    if (this.song.sequence.length > 0) {
+      this.loadPattern(this.song.sequence[0] as string);
+    }
     this.emit('state', this.state);
   }
 
-  setPattern(pattern: Pattern) {
+  loadPattern(patternId: string) {
+    const pattern = this.song?.patterns.find(p => p.id === patternId);
+    if (!pattern) {
+      this.emit('error', new Error(`Pattern with id ${patternId} not found.`));
+      return;
+    }
     this.length = Math.max(1, pattern.length);
-    this.position = pattern.id ? { row: 0, patternId: pattern.id } : { row: 0 };
+    this.position = { row: 0, patternId: pattern.id };
     this.indexPattern(pattern);
     this.emit('position', this.position);
   }
@@ -115,6 +129,10 @@ export class PlaybackEngine {
     this.stopScheduledPlayback();
     this.scheduler.stop();
     this.position = { ...this.position, row: 0 };
+    this.currentSequenceIndex = 0;
+    if (this.song && this.song.sequence.length > 0) {
+      this.loadPattern(this.song.sequence[0] as string);
+    }
     this.emit('state', this.state);
     this.emit('position', this.position);
   }
@@ -174,14 +192,31 @@ export class PlaybackEngine {
     // Calculate which row corresponds to scheduleUntil time
     const elapsedSec = scheduleUntil - this.playStartTime;
     const rowsElapsed = Math.floor(elapsedSec / secPerRow);
-    const targetRow = this.startRow + rowsElapsed;
+    let targetRow = this.startRow + rowsElapsed;
 
-    // Schedule all rows from lastScheduledRow+1 to targetRow
-    for (let r = this.lastScheduledRow + 1; r <= targetRow; r++) {
-      const actualRow = ((r % this.length) + this.length) % this.length;
+    while (this.lastScheduledRow < targetRow) {
+      const currentRow = this.lastScheduledRow + 1;
+      const actualRow = currentRow % this.length;
+
+      if (actualRow === 0 && currentRow > 0 && !this.loopCurrentPattern) { // Pattern finished
+        this.currentSequenceIndex++;
+        if (this.currentSequenceIndex >= (this.song?.sequence.length ?? 0)) {
+          this.stop();
+          return;
+        }
+        const nextPatternId = this.song?.sequence[this.currentSequenceIndex];
+        if (nextPatternId) {
+          this.loadPattern(nextPatternId);
+          this.startRow = this.startRow - this.length;
+          targetRow = this.startRow + rowsElapsed;
+        } else {
+          this.stop();
+          return;
+        }
+      }
 
       // Calculate the exact time for this row
-      const rowOffset = r - this.startRow;
+      const rowOffset = currentRow - this.startRow;
       const rowTime = this.playStartTime + (rowOffset * secPerRow);
 
       // Only schedule if in the future
@@ -189,7 +224,7 @@ export class PlaybackEngine {
         this.scheduleRow(actualRow, rowTime);
       }
 
-      this.lastScheduledRow = r;
+      this.lastScheduledRow = currentRow;
     }
   }
 
@@ -246,10 +281,29 @@ export class PlaybackEngine {
     const secPerRow = msPerRow / 1000;
 
     const rowsElapsed = Math.floor(elapsed / secPerRow);
-    const currentRow = ((this.startRow + rowsElapsed) % this.length + this.length) % this.length;
+    const totalRowsPlayed = this.startRow + rowsElapsed;
 
-    if (currentRow !== this.position.row) {
-      this.position = { ...this.position, row: currentRow };
+    let tempRowsPlayed = totalRowsPlayed;
+    let sequenceIndex = 0;
+    let patternId = this.song?.sequence[0];
+    let currentPatternLength = this.song?.patterns.find(p => p.id === patternId)?.length ?? this.length;
+
+    while (tempRowsPlayed >= currentPatternLength && sequenceIndex < (this.song?.sequence.length ?? 0) -1) {
+      tempRowsPlayed -= currentPatternLength;
+      sequenceIndex++;
+      patternId = this.song?.sequence[sequenceIndex];
+      currentPatternLength = this.song?.patterns.find(p => p.id === patternId)?.length ?? this.length;
+    }
+
+
+    const currentRow = tempRowsPlayed % currentPatternLength;
+
+    if (currentRow !== this.position.row || patternId !== this.position.patternId) {
+      const newPosition: PlaybackPosition = { row: currentRow };
+      if (patternId) {
+        newPosition.patternId = patternId;
+      }
+      this.position = newPosition;
       this.emit('position', this.position);
     }
   }
@@ -259,21 +313,23 @@ export class PlaybackEngine {
     return (60_000 / this.bpm) / rowsPerBeat;
   }
 
-  private async prepareInstruments() {
+  async prepareInstruments() {
     if (!this.resolver || !this.song) return;
-    const trackInstrumentIds = this.song.pattern.tracks
-      .map((t) => t.instrumentId ?? t.id)
-      .filter((id): id is string => Boolean(id));
-    const stepInstrumentIds: string[] = [];
-    for (const track of this.song.pattern.tracks) {
-      for (const step of track.steps) {
-        if (step.instrumentId) {
-          stepInstrumentIds.push(step.instrumentId);
+    const instrumentIds = new Set<string>();
+    for (const pattern of this.song.patterns) {
+      for (const track of pattern.tracks) {
+        if (track.instrumentId) {
+          instrumentIds.add(track.instrumentId);
+        }
+        for (const step of track.steps) {
+          if (step.instrumentId) {
+            instrumentIds.add(step.instrumentId);
+          }
         }
       }
     }
-    const uniqueIds = new Set<string>([...trackInstrumentIds, ...stepInstrumentIds]);
-    for (const id of uniqueIds) {
+
+    for (const id of instrumentIds) {
       try {
         await this.resolver(id);
       } catch (error) {
@@ -291,7 +347,28 @@ export class PlaybackEngine {
 
     while (this.tickAccumulator >= msPerRow && msPerRow > 0) {
       this.tickAccumulator -= msPerRow;
-      const nextRow = (this.position.row + 1) % this.length;
+      let nextRow = (this.position.row + 1);
+
+      if (nextRow >= this.length) {
+        if (this.loopCurrentPattern) {
+          nextRow = 0;
+        } else {
+          this.currentSequenceIndex++;
+          if (this.currentSequenceIndex >= (this.song?.sequence.length ?? 0)) {
+            this.stop();
+            return;
+          }
+          const nextPatternId = this.song?.sequence[this.currentSequenceIndex];
+          if (nextPatternId) {
+            this.loadPattern(nextPatternId);
+            nextRow = 0;
+          } else {
+            this.stop();
+            return;
+          }
+        }
+      }
+
       this.position = { ...this.position, row: nextRow };
       this.dispatchStepsForRow(nextRow);
       this.emit('position', this.position);

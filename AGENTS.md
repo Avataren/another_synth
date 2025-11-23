@@ -1029,3 +1029,17 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Tracker page builds a `Song`/`Pattern` from UI state (patternMeta rows, BPM, song metadata) and feeds it to the engine. Transport buttons + Space toggle play/pause/stop; engine position events update the active row indicator without feedback loops. Pattern length/BPM watchers push changes into the engine.
 - Tracker UI tweaks: single active-row bar overlay (reduced ghosting vs per-row highlights), optional auto-scroll toggle (default on, scrollIntoView per row), full-width layout, and bottom-centered transport.
 - Instrument slots load from `system-bank.json` dropdown; clear leaves slot visible, remove deletes it. Song metadata class holds title/author/bpm bound to inputs.
+
+## New discovery: Tracker pattern vs song playback
+
+- `PlaybackEngine` exposes `setLoopCurrentPattern`; when enabled it loops the active pattern instead of stopping at pattern end. The tracker uses this for pattern-only playback.
+- Tracker transport now has “Play Pattern” (spacebar) and “Play Song”. Pattern mode loops the currently selected pattern; song mode follows the sequence.
+- `TrackerPage.vue` sanitizes the song sequence to existing patterns (`resolveSequenceForMode`) and falls back to the current pattern to avoid empty/invalid sequences during playback.
+- `SequenceEditor`’s add-pattern dropdown now uses `v-model` and clears after selection so the same pattern can be added repeatedly without the change handler getting stuck.
+
+## New discovery: Tracker "Add pattern" dropdown styling
+
+- `SequenceEditor` now uses `q-select` with `dark/filled/options-dark` and custom styling so pattern names are readable on the dark theme. Menu background and labels are forced to the synth palette for contrast.
+- Added overrides for `.q-field__control:before/after` to hide the default underline/focus line that showed as a white stripe beneath the dropdown.
+- Pattern list supports inline renaming: double-click a pattern row to edit the name; `SequenceEditor` emits `rename-pattern` and `TrackerPage` routes it to `trackerStore.setPatternName`.
+- Pattern active state toned down: active rows now use a subtle teal/blue gradient with a light border instead of a solid bright fill to improve readability.

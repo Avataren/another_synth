@@ -4,11 +4,12 @@ export interface Song {
   title: string;
   author: string;
   bpm: number;
-  pattern: Pattern;
+  patterns: Pattern[];
+  sequence: string[];
 }
 
 export interface Pattern {
-  id?: string;
+  id: string;
   length: number; // rows
   tracks: Track[];
 }

@@ -2,89 +2,116 @@
   <q-page class="tracker-page">
     <div ref="trackerContainer" class="tracker-container" tabindex="0" @keydown="onKeyDown">
       <div class="top-grid">
-        <div class="summary-card">
-          <div class="summary-header">
-            <div class="eyebrow">Tracker</div>
-          </div>
-          <div class="song-meta">
-            <div class="field">
-              <label for="song-title">Song title</label>
-              <input
-                id="song-title"
-                v-model="currentSong.title"
-                type="text"
-                placeholder="Untitled song"
-              />
+        <div class="info-grid">
+          <SequenceEditor
+            :sequence="sequence"
+            :patterns="patterns"
+            :current-pattern-id="currentPatternId"
+            @select-pattern="trackerStore.setCurrentPatternId"
+            @add-pattern-to-sequence="trackerStore.addPatternToSequence"
+            @remove-pattern-from-sequence="trackerStore.removePatternFromSequence"
+            @create-pattern="handleCreatePattern"
+            @move-sequence-item="trackerStore.moveSequenceItem"
+            @rename-pattern="trackerStore.setPatternName"
+          />
+          <div class="summary-card">
+            <div class="summary-header">
+              <div class="eyebrow">Tracker</div>
             </div>
-            <div class="field">
-              <label for="song-author">Author</label>
-              <input
-                id="song-author"
-                v-model="currentSong.author"
-                type="text"
-                placeholder="Unknown"
-              />
+            <div class="song-meta">
+              <div class="field">
+                <label for="song-title">Song title</label>
+                <input
+                  id="song-title"
+                  v-model="currentSong.title"
+                  type="text"
+                  placeholder="Untitled song"
+                />
+              </div>
+              <div class="field">
+                <label for="song-author">Author</label>
+                <input
+                  id="song-author"
+                  v-model="currentSong.author"
+                  type="text"
+                  placeholder="Unknown"
+                />
+              </div>
+              <div class="field">
+                <label for="song-bpm">BPM</label>
+                <input
+                  id="song-bpm"
+                  v-model.number="currentSong.bpm"
+                  type="number"
+                  min="20"
+                  max="300"
+                  placeholder="120"
+                />
+              </div>
             </div>
-            <div class="field">
-              <label for="song-bpm">BPM</label>
-              <input
-                id="song-bpm"
-                v-model.number="currentSong.bpm"
-                type="number"
-                min="20"
-                max="300"
-                placeholder="120"
-              />
+            <div class="stats-inline">
+              <span class="stat-inline"><span class="stat-label">Patterns:</span> {{ patterns.length }}</span>
+              <span class="stat-inline"><span class="stat-label">Rows:</span> {{ rowsCount }}</span>
             </div>
-          </div>
-          <div class="stats-inline">
-            <span class="stat-inline"><span class="stat-label">Tracks:</span> {{ tracks.length }}</span>
-            <span class="stat-inline"><span class="stat-label">Rows:</span> {{ rowsCount }}</span>
-          </div>
-          <div class="pattern-controls">
-            <div class="control-label">Pattern length</div>
-            <div class="control-field">
-              <input
-                class="length-input"
-                type="number"
-                :min="1"
-                :max="256"
-                :value="rowsCount"
-                @change="onPatternLengthInput($event)"
-              />
-              <div class="control-hint">Rows</div>
+            <div class="pattern-controls">
+              <div class="control-label">Pattern length</div>
+              <div class="control-field">
+                <input
+                  class="length-input"
+                  type="number"
+                  :min="1"
+                  :max="256"
+                  :value="rowsCount"
+                  @change="onPatternLengthInput($event)"
+                />
+                <div class="control-hint">Rows</div>
+              </div>
             </div>
-          </div>
-          <div class="pattern-controls">
-            <div class="control-label">Step size</div>
-            <div class="control-field">
-              <input
-                class="length-input"
-                type="number"
-                :min="1"
-                :max="64"
-                :value="stepSize"
-                @change="(event) => setStepSizeInput(Number((event.target as HTMLInputElement).value))"
-              />
-              <div class="control-hint">Rows per edit</div>
+            <div class="pattern-controls">
+              <div class="control-label">Step size</div>
+              <div class="control-field">
+                <input
+                  class="length-input"
+                  type="number"
+                  :min="1"
+                  :max="64"
+                  :value="stepSize"
+                  @change="(event) => setStepSizeInput(Number((event.target as HTMLInputElement).value))"
+                />
+                <div class="control-hint">Rows per edit</div>
+              </div>
             </div>
-          </div>
-          <div class="pattern-controls">
-            <label class="toggle">
-              <input v-model="autoScroll" type="checkbox" />
-              <span>Auto-scroll active row</span>
-            </label>
-          </div>
-          <div class="transport transport-bottom">
-            <button type="button" class="transport-button play" @click="handlePlay">
-              Play
-            </button>
-            <button type="button" class="transport-button pause" @click="handlePause">
-              Pause
-            </button>
-            <button type="button" class="transport-button stop" @click="handleStop">
-              Stop
-            </button>
+            <div class="pattern-controls">
+              <label class="toggle">
+                <input v-model="autoScroll" type="checkbox" />
+                <span>Auto-scroll active row</span>
+              </label>
+            </div>
+            <div class="transport transport-bottom">
+              <button
+                type="button"
+                class="transport-button play"
+                :class="{ active: playbackMode === 'pattern' && isPlaying }"
+                title="Spacebar"
+                @click="handlePlayPattern"
+              >
+                Play Pattern
+              </button>
+              <button
+                type="button"
+                class="transport-button play alt"
+                :class="{ active: playbackMode === 'song' && isPlaying }"
+                @click="handlePlaySong"
+              >
+                Play Song
+              </button>
+              <button type="button" class="transport-button pause" @click="handlePause">
+                Pause
+              </button>
+              <button type="button" class="transport-button stop" @click="handleStop">
+                Stop
+              </button>
+            </div>
           </div>
         </div>
 
@@ -159,7 +186,7 @@
         <div class="visualizer-spacer"></div>
         <div class="visualizer-tracks">
           <div
-            v-for="(track, index) in tracks"
+            v-for="(track, index) in currentPattern?.tracks"
             :key="`viz-${track.id}`"
             class="visualizer-cell"
           >
@@ -194,7 +221,7 @@
 
       <div class="pattern-area">
         <TrackerPattern
-          :tracks="tracks"
+          :tracks="currentPattern?.tracks ?? []"
           :rows="rowsCount"
           :selected-row="activeRow"
           :playback-row="playbackRow"
@@ -214,8 +241,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
+import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
-import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
+import type { TrackerEntryData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type {
   Pattern as PlaybackPattern,
@@ -252,11 +280,24 @@ interface RawBank {
   patches?: RawPatch[];
 }
 
+type PlaybackMode = 'pattern' | 'song';
+
 const router = useRouter();
 const trackerStore = useTrackerStore();
 trackerStore.initializeIfNeeded();
-const { currentSong, patternRows, stepSize, tracks, instrumentSlots, activeInstrumentId, currentInstrumentPage, songPatches } =
-  storeToRefs(trackerStore);
+const {
+  currentSong,
+  patternRows,
+  stepSize,
+  patterns,
+  sequence,
+  currentPatternId,
+  instrumentSlots,
+  activeInstrumentId,
+  currentInstrumentPage,
+  songPatches
+} = storeToRefs(trackerStore);
+const currentPattern = computed(() => trackerStore.currentPattern);
 const currentPageSlots = computed(() => trackerStore.currentPageSlots);
 const activeRow = ref(0);
 const activeTrack = ref(0);
@@ -267,6 +308,7 @@ const availablePatches = ref<BankPatchOption[]>([]);
 /** Library of available patches from system bank (for dropdown) */
 const bankPatchLibrary = ref<Record<string, Patch>>({});
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
+const playbackMode = ref<PlaybackMode>('song');
 const songBank = new TrackerSongBank();
 
 function isTrackAudible(trackIndex: number): boolean {
@@ -388,15 +430,18 @@ function moveRow(delta: number) {
 }
 
 function moveColumn(delta: number) {
+  if (!currentPattern.value) return;
   const nextColumn = activeColumn.value + delta;
   if (nextColumn < 0) {
-    activeTrack.value = (activeTrack.value - 1 + tracks.value.length) % tracks.value.length;
+    activeTrack.value =
+      (activeTrack.value - 1 + currentPattern.value.tracks.length) %
+      currentPattern.value.tracks.length;
     activeColumn.value = columnsPerTrack - 1;
     return;
   }
 
   if (nextColumn >= columnsPerTrack) {
-    activeTrack.value = (activeTrack.value + 1) % tracks.value.length;
+    activeTrack.value = (activeTrack.value + 1) % currentPattern.value.tracks.length;
     activeColumn.value = 0;
     return;
   }
@@ -405,12 +450,16 @@ function moveColumn(delta: number) {
 }
 
 function jumpToNextTrack() {
-  activeTrack.value = (activeTrack.value + 1) % tracks.value.length;
+  if (!currentPattern.value) return;
+  activeTrack.value = (activeTrack.value + 1) % currentPattern.value.tracks.length;
   activeColumn.value = 0;
 }
 
 function jumpToPrevTrack() {
-  activeTrack.value = (activeTrack.value - 1 + tracks.value.length) % tracks.value.length;
+  if (!currentPattern.value) return;
+  activeTrack.value =
+    (activeTrack.value - 1 + currentPattern.value.tracks.length) %
+    currentPattern.value.tracks.length;
   activeColumn.value = 0;
 }
 
@@ -444,25 +493,26 @@ function updateEntryAt(
   trackIndex: number,
   mutator: (entry: TrackerEntryData) => TrackerEntryData
 ) {
-  tracks.value = tracks.value.map((track, idx) => {
-    if (idx !== trackIndex) return track;
+  if (!currentPattern.value) return;
+  const tracks = currentPattern.value.tracks;
+  const track = tracks[trackIndex];
+  if (!track) return;
 
-    const existing = track.entries.find((e) => e.row === row);
-    const baseInstrument =
-      activeInstrumentId.value ??
-      normalizeInstrumentId(existing?.instrument) ??
-      formatInstrumentId(idx + 1);
-    const draft: TrackerEntryData = existing
-      ? { ...existing, instrument: existing.instrument ?? baseInstrument }
-      : { row, instrument: baseInstrument };
+  const existing = track.entries.find((e) => e.row === row);
+  const baseInstrument =
+    activeInstrumentId.value ??
+    normalizeInstrumentId(existing?.instrument) ??
+    formatInstrumentId(trackIndex + 1);
+  const draft: TrackerEntryData = existing
+    ? { ...existing, instrument: existing.instrument ?? baseInstrument }
+    : { row, instrument: baseInstrument };
 
-    const mutated = mutator(draft);
-    const filtered = track.entries.filter((e) => e.row !== row);
-    filtered.push(mutated);
-    filtered.sort((a, b) => a.row - b.row);
+  const mutated = mutator(draft);
+  const filtered = track.entries.filter((e) => e.row !== row);
+  filtered.push(mutated);
+  filtered.sort((a, b) => a.row - b.row);
 
-    return { ...track, entries: filtered };
-  });
+  track.entries = filtered;
 }
 
 function insertNoteOff() {
@@ -474,57 +524,50 @@ function insertNoteOff() {
 }
 
 function clearStep() {
-  tracks.value = tracks.value.map((track, idx) => {
-    if (idx !== activeTrack.value) return track;
-    return {
-      ...track,
-      entries: track.entries.filter((e) => e.row !== activeRow.value)
-    };
-  });
+  if (!currentPattern.value) return;
+  const track = currentPattern.value.tracks[activeTrack.value];
+  if (!track) return;
+  track.entries = track.entries.filter((e) => e.row !== activeRow.value);
   advanceRowByStep();
 }
 
 function deleteRowAndShiftUp() {
+  if (!currentPattern.value) return;
+  const track = currentPattern.value.tracks[activeTrack.value];
+  if (!track) return;
+
   const currentRow = activeRow.value;
   const maxRow = rowsCount.value - 1;
 
-  tracks.value = tracks.value.map((track, idx) => {
-    if (idx !== activeTrack.value) return track;
-
-    // Remove entries at current row, shift entries below up by one
-    const newEntries = track.entries
-      .filter((e) => e.row !== currentRow)
-      .map((e) => {
-        if (e.row > currentRow) {
-          return { ...e, row: e.row - 1 };
-        }
-        return e;
-      })
-      .filter((e) => e.row <= maxRow);
-
-    return { ...track, entries: newEntries };
-  });
+  // Remove entries at current row, shift entries below up by one
+  track.entries = track.entries
+    .filter((e) => e.row !== currentRow)
+    .map((e) => {
+      if (e.row > currentRow) {
+        return { ...e, row: e.row - 1 };
+      }
+      return e;
+    })
+    .filter((e) => e.row <= maxRow);
 }
 
 function insertRowAndShiftDown() {
+  if (!currentPattern.value) return;
+  const track = currentPattern.value.tracks[activeTrack.value];
+  if (!track) return;
+
   const currentRow = activeRow.value;
   const maxRow = rowsCount.value - 1;
 
-  tracks.value = tracks.value.map((track, idx) => {
-    if (idx !== activeTrack.value) return track;
-
-    // Shift entries at and below current row down by one
-    const newEntries = track.entries
-      .map((e) => {
-        if (e.row >= currentRow) {
-          return { ...e, row: e.row + 1 };
-        }
-        return e;
-      })
-      .filter((e) => e.row <= maxRow);
-
-    return { ...track, entries: newEntries };
-  });
+  // Shift entries at and below current row down by one
+  track.entries = track.entries
+    .map((e) => {
+      if (e.row >= currentRow) {
+        return { ...e, row: e.row + 1 };
+      }
+      return e;
+    })
+    .filter((e) => e.row <= maxRow);
 }
 
 function hasPatchForInstrument(instrumentId: string): boolean {
@@ -579,25 +622,8 @@ function onPatternLengthInput(event: Event) {
   }
 }
 
-function resolveTrackInstrumentId(track: TrackerTrackData, trackIndex: number): string | undefined {
-  const entryInstrument = normalizeInstrumentId(
-    track.entries.find((entry) => entry.instrument)?.instrument
-  );
-  if (entryInstrument) {
-    return entryInstrument;
-  }
-  if (activeInstrumentId.value) {
-    return activeInstrumentId.value;
-  }
-  const slot = instrumentSlots.value[trackIndex];
-  return slot?.patchId ? formatInstrumentId(slot.slot) : undefined;
-}
-
-function buildPlaybackStep(
-  entry: TrackerEntryData,
-  fallbackInstrumentId: string | undefined
-): PlaybackStep | null {
-  const instrumentId = normalizeInstrumentId(entry.instrument) ?? fallbackInstrumentId;
+function buildPlaybackStep(entry: TrackerEntryData): PlaybackStep | null {
+  const instrumentId = normalizeInstrumentId(entry.instrument);
   const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
   const velocity = parseTrackerVolume(entry.volume);
 
@@ -625,34 +651,44 @@ function buildPlaybackStep(
   return step;
 }
 
-function buildPlaybackPattern(): PlaybackPattern {
-  return {
-    id: 'pattern-1',
-    length: rowsCount.value,
-    tracks: tracks.value.map((track, trackIndex) => {
-      const instrumentId = resolveTrackInstrumentId(track, trackIndex);
-      const trackPayload: PlaybackPattern['tracks'][number] = {
-        id: track.id,
-        steps: track.entries
-          .map((entry) => buildPlaybackStep(entry, instrumentId))
-          .filter((step): step is PlaybackStep => step !== null)
-      };
-
-      if (instrumentId) {
-        trackPayload.instrumentId = instrumentId;
-      }
-
-      return trackPayload;
-    })
-  };
+function buildPlaybackPatterns(): PlaybackPattern[] {
+  return patterns.value.map(p => ({
+    id: p.id,
+    length: patternRows.value,
+    tracks: p.tracks.map((track) => ({
+      id: track.id,
+      steps: track.entries
+        .map((entry) => buildPlaybackStep(entry))
+        .filter((step): step is PlaybackStep => step !== null)
+    }))
+  }));
 }
 
-function buildPlaybackSong(): PlaybackSong {
+function resolveSequenceForMode(mode: PlaybackMode): string[] {
+  const validPatternIds = new Set(patterns.value.map((p) => p.id));
+  const sanitizedSequence = sequence.value.filter((id) => validPatternIds.has(id));
+
+  if (mode === 'pattern') {
+    const targetId =
+      currentPatternId.value ?? sanitizedSequence[0] ?? patterns.value[0]?.id;
+    return targetId ? [targetId] : [];
+  }
+
+  if (sanitizedSequence.length > 0) {
+    return sanitizedSequence;
+  }
+
+  const fallback = currentPatternId.value ?? patterns.value[0]?.id;
+  return fallback ? [fallback] : [];
+}
+
+function buildPlaybackSong(mode: PlaybackMode = playbackMode.value): PlaybackSong {
   return {
     title: currentSong.value.title,
     author: currentSong.value.author,
     bpm: currentSong.value.bpm,
-    pattern: buildPlaybackPattern()
+    patterns: buildPlaybackPatterns(),
+    sequence: resolveSequenceForMode(mode),
   };
 }
 
@@ -674,27 +710,17 @@ async function syncSongBankFromSlots() {
   updateTrackAudioNodes();
 }
 
-function getTrackInstrumentId(track: TrackerTrackData, trackIndex: number): string | undefined {
-  // Only get instrument from track entries - don't fall back to activeInstrumentId
-  // This ensures each visualizer shows only its own track's audio
-  const entryInstrument = normalizeInstrumentId(
-    track.entries.find((entry) => entry.instrument)?.instrument
-  );
-  if (entryInstrument) {
-    return entryInstrument;
-  }
-  // Fall back to slot matching track index (1-indexed)
-  const slot = instrumentSlots.value[trackIndex];
-  return slot?.patchId ? formatInstrumentId(slot.slot) : undefined;
-}
-
 function updateTrackAudioNodes() {
+  if (!currentPattern.value) return;
   const nodes: Record<number, AudioNode | null> = {};
-  for (let i = 0; i < tracks.value.length; i++) {
-    const track = tracks.value[i];
+  for (let i = 0; i < currentPattern.value.tracks.length; i++) {
+    const track = currentPattern.value.tracks[i];
     if (!track) continue;
     // Get instrument ID specific to this track only
-    const instrumentId = getTrackInstrumentId(track, i);
+    const entryInstrument = normalizeInstrumentId(
+      track.entries.find((entry) => entry.instrument)?.instrument
+    );
+    const instrumentId = entryInstrument ?? formatInstrumentId(i + 1);
     nodes[i] = instrumentId ? songBank.getInstrumentOutput(instrumentId) : null;
   }
   trackAudioNodes.value = nodes;
@@ -720,41 +746,58 @@ function toggleSolo(trackIndex: number) {
   soloedTracks.value = newSoloed;
 }
 
-function initializePlayback() {
-  // Save current position before reloading
-  const currentPosition = playbackRow.value;
-  const wasNotStopped = playbackEngine['state'] !== 'stopped';
-
-  const song = buildPlaybackSong();
-  playbackEngine.loadSong(song);
-  playbackEngine.setLength(rowsCount.value);
-  playbackEngine.setBpm(currentSong.value.bpm);
-
-  // Restore position if we weren't stopped (e.g., paused while editing)
-  if (wasNotStopped) {
-    playbackEngine.seek(currentPosition);
-    playbackRow.value = currentPosition;
+async function initializePlayback(mode: PlaybackMode = playbackMode.value): Promise<boolean> {
+  const song = buildPlaybackSong(mode);
+  if (!song.sequence.length) {
+    // eslint-disable-next-line no-console
+    console.warn('No patterns available to play.');
+    return false;
   }
+
+  playbackMode.value = mode;
+  playbackEngine.setLoopCurrentPattern(mode === 'pattern');
+  playbackEngine.loadSong(song);
+  await playbackEngine.prepareInstruments();
 
   unsubscribePosition?.();
   unsubscribePosition = playbackEngine.on('position', (pos) => {
     const row = ((pos.row % rowsCount.value) + rowsCount.value) % rowsCount.value;
     playbackRow.value = row;
+    if (pos.patternId && pos.patternId !== currentPatternId.value) {
+      trackerStore.setCurrentPatternId(pos.patternId);
+    }
   });
 
   unsubscribeState?.();
   unsubscribeState = playbackEngine.on('state', (state) => {
     isPlaying.value = state === 'playing';
   });
+
+  return true;
 }
 
-async function handlePlay() {
+async function startPlayback(mode: PlaybackMode) {
+  playbackEngine.stop();
+  songBank.cancelAllScheduled();
+  songBank.allNotesOff();
+
+  await syncSongBankFromSlots();
+  const initialized = await initializePlayback(mode);
+  if (!initialized) return;
+
   playbackEngine.setBpm(currentSong.value.bpm);
   playbackEngine.setLength(rowsCount.value);
   // Always start from the currently selected row
   playbackEngine.seek(activeRow.value);
-  await syncSongBankFromSlots();
   await playbackEngine.play();
+}
+
+async function handlePlayPattern() {
+  await startPlayback('pattern');
+}
+
+async function handlePlaySong() {
+  await startPlayback('song');
 }
 
 function handlePause() {
@@ -772,12 +815,12 @@ function handleStop() {
   songBank.allNotesOff();
 }
 
-function togglePlayPause() {
-  if (playbackEngine['state'] === 'playing') {
+function togglePatternPlayback() {
+  if (isPlaying.value && playbackMode.value === 'pattern') {
     handlePause();
-  } else {
-    void handlePlay();
+    return;
   }
+  void handlePlayPattern();
 }
 
 async function loadSystemBankOptions() {
@@ -862,7 +905,7 @@ function onKeyDown(event: KeyboardEvent) {
       break;
     case ' ':
       event.preventDefault();
-      togglePlayPause();
+      togglePatternPlayback();
       break;
     case 'Insert':
       event.preventDefault();
@@ -924,11 +967,17 @@ function editSlotPatch(slotNumber: number) {
   });
 }
 
+function handleCreatePattern() {
+  const newPatternId = trackerStore.createPattern();
+  trackerStore.addPatternToSequence(newPatternId);
+  trackerStore.setCurrentPatternId(newPatternId);
+}
+
 onMounted(async () => {
   trackerContainer.value?.focus();
   await loadSystemBankOptions();
   ensureActiveInstrument();
-  initializePlayback();
+  void initializePlayback(playbackMode.value);
 });
 
 watch(
@@ -944,16 +993,10 @@ watch(
 );
 
 watch(
-  () => tracks.value,
-  () => initializePlayback(),
-  { deep: true }
-);
-
-watch(
   () => instrumentSlots.value,
   () => {
     void syncSongBankFromSlots();
-    initializePlayback();
+    void initializePlayback(playbackMode.value);
   },
   { deep: true }
 );
@@ -998,6 +1041,12 @@ onBeforeUnmount(() => {
   gap: 14px;
   padding: 0 18px;
   flex-shrink: 0;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }
 
 .pattern-area {
@@ -1111,6 +1160,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .transport-bottom {
@@ -1141,9 +1191,17 @@ onBeforeUnmount(() => {
   border-color: transparent;
 }
 
+.transport-button.play.alt {
+  background: linear-gradient(90deg, #9da6ff, #70c2ff);
+}
+
 .transport-button.stop {
   background: rgba(255, 99, 128, 0.18);
   border-color: rgba(255, 99, 128, 0.3);
+}
+
+.transport-button.active {
+  box-shadow: 0 0 0 2px rgba(77, 242, 197, 0.35);
 }
 
 .song-meta {
