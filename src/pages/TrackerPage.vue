@@ -53,6 +53,17 @@
               <span class="stat-inline"><span class="stat-label">Patterns:</span> {{ patterns.length }}</span>
               <span class="stat-inline"><span class="stat-label">Rows:</span> {{ rowsCount }}</span>
             </div>
+            <div class="song-file-controls">
+              <div class="control-label">Song file</div>
+              <div class="song-file-buttons">
+                <button type="button" class="song-button ghost" @click="handleLoadSongFile">
+                  Load Song
+                </button>
+                <button type="button" class="song-button" @click="handleSaveSongFile">
+                  Save Song
+                </button>
+              </div>
+            </div>
             <div class="pattern-controls">
               <div class="control-label">Pattern length</div>
               <div class="control-field">
@@ -256,6 +267,30 @@ import type { SongBankSlot } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
+import type { TrackerSongFile } from 'src/stores/tracker-store';
+
+// Minimal File System Access API typings for browsers without lib.dom additions
+type FileSystemWriteChunkType = BufferSource | Blob | string;
+interface FileSystemWritableFileStream extends WritableStream<FileSystemWriteChunkType> {
+  write(data: FileSystemWriteChunkType): Promise<void>;
+  close(): Promise<void>;
+}
+interface FileSystemFileHandle {
+  getFile(): Promise<File>;
+  createWritable(): Promise<FileSystemWritableFileStream>;
+}
+interface FilePickerAcceptType {
+  description?: string;
+  accept: Record<string, string[]>;
+}
+interface SaveFilePickerOptions {
+  suggestedName?: string;
+  types?: FilePickerAcceptType[];
+}
+interface OpenFilePickerOptions {
+  multiple?: boolean;
+  types?: FilePickerAcceptType[];
+}
 import { storeToRefs } from 'pinia';
 
 interface BankPatchOption {
@@ -977,6 +1012,107 @@ function handleCreatePattern() {
   trackerStore.setCurrentPatternId(newPatternId);
 }
 
+async function promptSaveFile(contents: string, suggestedName: string) {
+  const anyWindow = window as typeof window & {
+    showSaveFilePicker?: (
+      options?: SaveFilePickerOptions
+    ) => Promise<FileSystemFileHandle>;
+  };
+
+  if (anyWindow.showSaveFilePicker) {
+    const handle = await anyWindow.showSaveFilePicker({
+      suggestedName,
+      types: [
+        {
+          description: 'Chord Mod Song',
+          accept: { 'application/json': ['.cmod'] }
+        }
+      ]
+    });
+    const writable = await handle.createWritable();
+    await writable.write(contents);
+    await writable.close();
+    return;
+  }
+
+  const blob = new Blob([contents], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = suggestedName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function promptOpenFile(): Promise<string | null> {
+  const anyWindow = window as typeof window & {
+    showOpenFilePicker?: (
+      options?: OpenFilePickerOptions
+    ) => Promise<FileSystemFileHandle[]>;
+  };
+
+  if (anyWindow.showOpenFilePicker) {
+    const [handle] =
+      (await anyWindow.showOpenFilePicker({
+        types: [
+          {
+            description: 'Chord Mod Song',
+            accept: { 'application/json': ['.cmod', '.json'] }
+          }
+        ],
+        multiple: false
+      })) ?? [];
+    if (!handle) return null;
+    const file = await handle.getFile();
+    return await file.text();
+  }
+
+  return await new Promise<string | null>((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.cmod,application/json,.json';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsText(file);
+    };
+    input.click();
+  });
+}
+
+async function handleSaveSongFile() {
+  try {
+    const songFile = trackerStore.serializeSong();
+    const json = JSON.stringify(songFile, null, 2);
+    const safeTitle = (currentSong.value.title || 'song').replace(/[^a-z0-9-_]+/gi, '_');
+    await promptSaveFile(json, `${safeTitle || 'song'}.cmod`);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save song', error);
+  }
+}
+
+async function handleLoadSongFile() {
+  try {
+    const text = await promptOpenFile();
+    if (!text) return;
+    const parsed = JSON.parse(text) as TrackerSongFile;
+    trackerStore.loadSongFile(parsed);
+    ensureActiveInstrument();
+    await syncSongBankFromSlots();
+    void initializePlayback(playbackMode.value);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to load song', error);
+  }
+}
+
 onMounted(async () => {
   trackerContainer.value?.focus();
   await loadSystemBankOptions();
@@ -1289,6 +1425,39 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 700;
+}
+
+.song-file-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.song-file-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.song-button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8f3ff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.song-button:hover {
+  border-color: rgba(77, 242, 197, 0.4);
+}
+
+.song-button.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .control-field {

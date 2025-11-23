@@ -82,6 +82,22 @@ function createDefaultPattern(): TrackerPattern {
   };
 }
 
+export interface TrackerSongFile {
+  version: 1;
+  data: {
+    currentSong: SongMeta;
+    patternRows: number;
+    stepSize: number;
+    patterns: TrackerPattern[];
+    sequence: string[];
+    currentPatternId: string | null;
+    instrumentSlots: InstrumentSlot[];
+    activeInstrumentId: string | null;
+    currentInstrumentPage: number;
+    songPatches: Record<string, Patch>;
+  };
+}
+
 export const useTrackerStore = defineStore('trackerStore', {
   state: (): TrackerStoreState => {
     const defaultPattern = createDefaultPattern();
@@ -268,6 +284,66 @@ export const useTrackerStore = defineStore('trackerStore', {
         slot.instrumentName = patchCopy.metadata.name ?? 'Untitled';
         slot.source = 'song';
       }
+    },
+    serializeSong(): TrackerSongFile {
+      const data: TrackerSongFile['data'] = {
+        currentSong: { ...this.currentSong },
+        patternRows: this.patternRows,
+        stepSize: this.stepSize,
+        patterns: JSON.parse(JSON.stringify(this.patterns)),
+        sequence: [...this.sequence],
+        currentPatternId: this.currentPatternId,
+        instrumentSlots: JSON.parse(JSON.stringify(this.instrumentSlots)),
+        activeInstrumentId: this.activeInstrumentId,
+        currentInstrumentPage: this.currentInstrumentPage,
+        songPatches: JSON.parse(JSON.stringify(this.songPatches))
+      };
+      return { version: 1, data };
+    },
+    loadSongFile(file: TrackerSongFile) {
+      if (!file || file.version !== 1 || !file.data) return;
+      const data = file.data;
+
+      this.currentSong = {
+        title: data.currentSong?.title ?? 'Untitled song',
+        author: data.currentSong?.author ?? 'Unknown',
+        bpm: data.currentSong?.bpm ?? 120
+      };
+      this.patternRows = Number.isFinite(data.patternRows) ? data.patternRows : 64;
+      this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;
+
+      const patterns = Array.isArray(data.patterns) && data.patterns.length > 0
+        ? data.patterns
+        : [createDefaultPattern()];
+      this.patterns = patterns;
+
+      const patternIds = new Set(this.patterns.map((p) => p.id));
+      const sequence = (data.sequence ?? []).filter((id) => patternIds.has(id));
+      const firstPatternId = this.patterns[0]?.id;
+      this.sequence = sequence.length > 0 ? sequence : firstPatternId ? [firstPatternId] : [];
+
+      this.currentPatternId = patternIds.has(data.currentPatternId ?? '')
+        ? data.currentPatternId
+        : this.sequence[0] ?? this.patterns[0]?.id ?? null;
+
+      const slots =
+        Array.isArray(data.instrumentSlots) && data.instrumentSlots.length === TOTAL_SLOTS
+          ? data.instrumentSlots
+          : createDefaultInstrumentSlots();
+      this.instrumentSlots = slots.map((slot, idx) => ({
+        slot: slot?.slot ?? idx + 1,
+        bankId: slot?.bankId,
+        bankName: slot?.bankName ?? '',
+        patchId: slot?.patchId,
+        patchName: slot?.patchName ?? '',
+        instrumentName: slot?.instrumentName ?? '',
+        source: slot?.source
+      }));
+
+      this.activeInstrumentId = data.activeInstrumentId ?? null;
+      this.currentInstrumentPage = data.currentInstrumentPage ?? 0;
+      this.songPatches = data.songPatches ?? {};
+      this.editingSlot = null;
     }
   }
 });
