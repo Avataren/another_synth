@@ -335,6 +335,9 @@ this.automationAdapter = new AutomationAdapter(
 - The store now exposes `createNewPatchFromTemplate(name)` which is used both by the "New Patch" button and by `initializeNewPatchSession`.
 - When `public/default-patch.json` exists it clones that patch, assigns fresh metadata (`createDefaultPatchMetadata`), applies it to the synth, and inserts it into the current bank as the new patch.
 - If the default file is missing or fails validation the method falls back to the older `prepareStateForNewPatch` + `saveCurrentPatch` path so the user still gets a blank patch rather than an error.
+- **Tracker “New” slot bug (2025-02)**: `default-patch.json` currently ships as a *bank* (metadata + `patches` array), so `fetchDefaultPatchTemplate()` returned `null`. The tracker’s `createNewSongPatch` then built a patch with `createEmptySynthState()` (voiceCount=0, no canonical voice), which the WASM loader rejected, leaving the editor on the previously loaded patch (usually the first system-bank patch). On navigation back, auto-save stored that wrong patch so the second edit “worked”. Fixes:
+  - `patch-store.fetchDefaultPatchTemplate` now recognizes bank-shaped default files and pulls the first patch as the template.
+  - Tracker `createNewSongPatch` uses `buildSongPatch` to clone the default template with fresh metadata; it no longer falls back to system-bank patches, so the first edit always instantiates the default-patch template instead of grabbing the first system patch.
 
 ## Backend store migration (2025-??)
 

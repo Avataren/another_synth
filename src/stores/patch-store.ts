@@ -135,15 +135,35 @@ export const usePatchStore = defineStore('patchStore', {
         const json = await response.text();
         const result = importPatchFromJSON(json);
 
-        if (!result.validation.valid || !result.patch) {
-          console.error(
-            'Default patch validation failed:',
-            result.validation.errors?.join(', '),
-          );
-          return null;
+        if (result.validation.valid && result.patch) {
+          this.defaultPatchTemplate = result.patch;
+          return this.defaultPatchTemplate;
         }
 
-        this.defaultPatchTemplate = result.patch;
+        // Fallback: the file might be a bank; use its first patch as the template
+        try {
+          const parsed = JSON.parse(json) as { patches?: unknown[] };
+          if (Array.isArray(parsed?.patches) && parsed.patches.length > 0) {
+            const firstPatch = parsed.patches[0];
+            const bankPatchResult = importPatchFromJSON(
+              JSON.stringify(firstPatch),
+            );
+            if (bankPatchResult.validation.valid && bankPatchResult.patch) {
+              console.warn(
+                '[Patch Store] default-patch.json contained a bank; using the first patch as the template',
+              );
+              this.defaultPatchTemplate = bankPatchResult.patch;
+              return this.defaultPatchTemplate;
+            }
+          }
+        } catch (parseError) {
+          console.error('Failed to parse default-patch.json:', parseError);
+        }
+
+        console.error(
+          'Default patch validation failed:',
+          result.validation.errors?.join(', '),
+        );
         return this.defaultPatchTemplate;
       } catch (error) {
         console.error('Error loading default patch:', error);

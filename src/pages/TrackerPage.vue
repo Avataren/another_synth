@@ -1072,27 +1072,37 @@ function clearInstrument(slotNumber: number) {
   ensureActiveInstrument();
 }
 
+async function buildSongPatch(slotNumber: number): Promise<Patch | null> {
+  const patchName = `Instrument ${formatInstrumentId(slotNumber)}`;
+  const baseMeta = createDefaultPatchMetadata(patchName);
+
+  const cloneWithMeta = (source: Patch | null | undefined): Patch | null => {
+    if (!source) return null;
+    const cloned = JSON.parse(JSON.stringify(source)) as Patch;
+    cloned.metadata = { ...(cloned.metadata || {}), ...baseMeta, name: baseMeta.name };
+    return cloned;
+  };
+
+  const template = typeof patchStore.fetchDefaultPatchTemplate === 'function'
+    ? await patchStore.fetchDefaultPatchTemplate()
+    : null;
+  const fromTemplate = cloneWithMeta(template);
+  if (fromTemplate) return fromTemplate;
+
+  const serialized = await patchStore.serializePatch(patchName);
+  if (serialized) return serialized;
+
+  return null;
+}
+
 async function createNewSongPatch(slotNumber: number) {
   try {
     const creation = (async (): Promise<void> => {
-      let patch: Patch | null = null;
-      if (typeof patchStore.fetchDefaultPatchTemplate === 'function') {
-        const template = await patchStore.fetchDefaultPatchTemplate();
-        if (template) {
-          const cloned = JSON.parse(JSON.stringify(template)) as Patch;
-          const meta = createDefaultPatchMetadata(`Instrument ${formatInstrumentId(slotNumber)}`);
-          cloned.metadata = { ...(cloned.metadata || {}), ...meta, name: meta.name };
-          patch = cloned;
-        }
-      }
-
-      if (!patch) {
-        patch = {
-          metadata: createDefaultPatchMetadata(`Instrument ${formatInstrumentId(slotNumber)}`),
-          synthState: createEmptySynthState(),
-          audioAssets: {}
-        };
-      }
+      const patch = await buildSongPatch(slotNumber) ?? {
+        metadata: createDefaultPatchMetadata(`Instrument ${formatInstrumentId(slotNumber)}`),
+        synthState: createEmptySynthState(),
+        audioAssets: {}
+      };
 
       trackerStore.assignPatchToSlot(slotNumber, patch, 'Song');
       setActiveInstrument(slotNumber);
