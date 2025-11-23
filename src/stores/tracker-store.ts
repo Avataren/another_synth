@@ -153,7 +153,6 @@ export const useTrackerStore = defineStore('trackerStore', {
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
       if (currentCount >= maxTracks) return false;
 
-      const newIndex = currentCount;
       const makeTrack = (idx: number): TrackerTrackData => ({
         id: `T${(idx + 1).toString().padStart(2, '0')}`,
         name: `Track ${idx + 1}`,
@@ -162,7 +161,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       });
 
       this.patterns.forEach((pattern) => {
-        pattern.tracks.push(makeTrack(newIndex));
+        const nextIndex = pattern.tracks.length;
+        pattern.tracks.push(makeTrack(nextIndex));
       });
 
       return true;
@@ -175,7 +175,13 @@ export const useTrackerStore = defineStore('trackerStore', {
       const idx = Math.max(0, Math.min(currentCount - 1, trackIndex));
 
       this.patterns.forEach((pattern) => {
-        pattern.tracks = pattern.tracks.filter((_, i) => i !== idx);
+        pattern.tracks = pattern.tracks
+          .filter((_, i) => i !== idx)
+          .map((track, i) => ({
+            ...track,
+            id: `T${(i + 1).toString().padStart(2, '0')}`,
+            name: `Track ${i + 1}`
+          }));
       });
 
       return true;
