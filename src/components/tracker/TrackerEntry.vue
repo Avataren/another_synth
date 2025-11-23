@@ -41,10 +41,13 @@ const emit = defineEmits<{
 const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
 
 const cells = computed(() => {
+  const volume = props.entry?.volume ?? '..';
+  const volPadded = (volume + '..').slice(0, 2);
   return [
     { display: props.entry?.note ?? '---', className: 'note' },
     { display: props.entry?.instrument ?? '..', className: 'instrument' },
-    { display: props.entry?.volume ?? '..', className: 'volume' },
+    { display: volPadded[0] ?? '.', className: 'volume volume-high' },
+    { display: volPadded[1] ?? '.', className: 'volume volume-low' },
     { display: props.entry?.effect ?? '---', className: 'effect' }
   ];
 });
@@ -68,7 +71,7 @@ function isActiveCell(column: number) {
   height: var(--tracker-row-height);
   width: 100%;
   display: grid;
-  grid-template-columns: 1.6fr 1fr 1fr 1.4fr;
+  grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.4fr;
   align-items: center;
   padding: 6px 10px;
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -130,6 +133,10 @@ function isActiveCell(column: number) {
 
 .volume {
   color: #85b7ff;
+}
+
+.volume-low {
+  justify-self: start;
 }
 
 .effect {

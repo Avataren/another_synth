@@ -59,6 +59,10 @@ export interface PlaybackOptions {
   noteHandler?: PlaybackNoteHandler;
   /** Handler for scheduling notes at specific audio times */
   scheduledNoteHandler?: ScheduledNoteHandler;
+  /** Handler for scheduling gain automation per instrument at specific audio times */
+  scheduledAutomationHandler?: ScheduledAutomationHandler;
+  /** Handler for gain automation when no scheduled handler exists (fallback) */
+  automationHandler?: AutomationHandler;
   /** Audio context for getting current time */
   audioContext?: AudioContext;
 }
@@ -91,6 +95,22 @@ export interface ScheduledNoteEvent {
   row: number;
   trackIndex: number;
   /** Audio context time when this note should be triggered */
+  time: number;
+}
+
+export type ScheduledAutomationHandler = (
+  instrumentId: string,
+  gain: number,
+  time: number
+) => void;
+
+export type AutomationHandler = (instrumentId: string, gain: number) => void;
+
+export interface GainAutomationEvent {
+  instrumentId: string;
+  velocity: number;
+  row: number;
+  trackIndex: number;
   time: number;
 }
 

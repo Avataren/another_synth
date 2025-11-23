@@ -12,7 +12,9 @@ import {
   type ScheduledNoteHandler,
   type ScheduledNoteEvent,
   type Song,
-  type TransportState
+  type TransportState,
+  type ScheduledAutomationHandler,
+  type AutomationHandler
 } from './types';
 import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
 
@@ -39,6 +41,8 @@ export class PlaybackEngine {
   private readonly scheduler: PlaybackScheduler;
   private readonly noteHandler: PlaybackNoteHandler | undefined;
   private readonly scheduledNoteHandler: ScheduledNoteHandler | undefined;
+  private readonly scheduledAutomationHandler: ScheduledAutomationHandler | undefined;
+  private readonly automationHandler: AutomationHandler | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
   private loopCurrentPattern = false;
@@ -62,6 +66,8 @@ export class PlaybackEngine {
       new IntervalScheduler();
     this.noteHandler = options.noteHandler;
     this.scheduledNoteHandler = options.scheduledNoteHandler;
+    this.scheduledAutomationHandler = options.scheduledAutomationHandler;
+    this.automationHandler = options.automationHandler;
     this.audioContext = options.audioContext;
   }
 
@@ -238,6 +244,11 @@ export class PlaybackEngine {
       const instrumentId = step.instrumentId;
       if (!instrumentId) continue;
 
+      if (this.scheduledAutomationHandler && step.velocity !== undefined) {
+        const gain = clamp(step.velocity / 127);
+        this.scheduledAutomationHandler(instrumentId, gain, time);
+      }
+
       if (step.isNoteOff) {
         const event: ScheduledNoteEvent = {
           type: 'noteOff',
@@ -412,6 +423,11 @@ export class PlaybackEngine {
 
       if (step.midi === undefined) continue;
 
+      if (this.automationHandler && step.velocity !== undefined) {
+        const gain = clamp(step.velocity / 127);
+        this.automationHandler(instrumentId, gain);
+      }
+
       const event: PlaybackNoteEvent = {
         type: 'noteOn',
         instrumentId,
@@ -443,3 +459,7 @@ export class PlaybackEngine {
 }
 
 type PlaybackPatternStep = Pattern['tracks'][number]['steps'][number] & { trackIndex: number };
+
+function clamp(value: number, min = 0, max = 1) {
+  return Math.min(max, Math.max(min, value));
+}

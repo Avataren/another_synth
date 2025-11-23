@@ -932,6 +932,18 @@ export default class InstrumentV2 {
     this.activeNotes.clear();
   }
 
+  public setGainForAllVoices(gain: number, time?: number): void {
+    if (!this.workletNode) return;
+    const clamped = Math.max(0, Math.min(1, gain));
+    const when = time ?? this.audioContext.currentTime;
+    for (let i = 0; i < this.voiceLimit; i++) {
+      const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+      if (gainParam) {
+        gainParam.setValueAtTime(clamped, when);
+      }
+    }
+  }
+
   public allNotesOff(): void {
     for (const noteNumber of this.activeNotes.keys()) {
       this.noteOff(noteNumber);

@@ -166,6 +166,13 @@ export class TrackerSongBank {
     this.activeNotes.clear();
   }
 
+  setInstrumentGain(instrumentId: string | undefined, gain: number, time?: number) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    active.instrument.setGainForAllVoices(gain, time);
+  }
+
   private async ensureInstrument(instrumentId: string, patch: Patch): Promise<void> {
     const patchId = patch?.metadata?.id;
     if (!patchId) return;
@@ -197,6 +204,7 @@ export class TrackerSongBank {
 
     await instrument.loadPatch(patch);
     await this.restoreAudioAssets(instrument, patch);
+    instrument.outputNode.connect(this.masterGain);
     this.instruments.set(instrumentId, { instrument, patchId });
   }
 

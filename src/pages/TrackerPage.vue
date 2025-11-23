@@ -337,7 +337,7 @@ const currentPageSlots = computed(() => trackerStore.currentPageSlots);
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
-const columnsPerTrack = 4;
+const columnsPerTrack = 5;
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
 /** Library of available patches from system bank (for dropdown) */
@@ -345,6 +345,15 @@ const bankPatchLibrary = ref<Record<string, Patch>>({});
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const playbackMode = ref<PlaybackMode>('song');
 const songBank = new TrackerSongBank();
+let suppressPositionUpdates = false;
+
+function normalizeVolumeChars(vol?: string): [string, string] {
+  const clean = (vol ?? '').toUpperCase();
+  const chars: [string, string] = ['.', '.'];
+  if (/^[0-9A-F]$/.test(clean[0] ?? '')) chars[0] = clean[0] as string;
+  if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1] as string;
+  return chars;
+}
 
 function isTrackAudible(trackIndex: number): boolean {
   const hasSolo = soloedTracks.value.size > 0;
@@ -356,6 +365,12 @@ function isTrackAudible(trackIndex: number): boolean {
 const playbackEngine = new PlaybackEngine({
   instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
   audioContext: songBank.audioContext,
+  scheduledAutomationHandler: (instrumentId, gain, time) => {
+    songBank.setInstrumentGain(instrumentId, gain, time);
+  },
+  automationHandler: (instrumentId, gain) => {
+    songBank.setInstrumentGain(instrumentId, gain);
+  },
   scheduledNoteHandler: (event: ScheduledNoteEvent) => {
     // Check mute/solo state for this track
     if (!isTrackAudible(event.trackIndex)) return;
@@ -642,6 +657,42 @@ function handleNoteEntry(midi: number) {
   advanceRowByStep();
 }
 
+function handleVolumeInput(hexChar: string) {
+  const row = activeRow.value;
+  const track = activeTrack.value;
+  const nibbleIndex = activeColumn.value === 2 ? 0 : 1;
+  updateEntryAt(row, track, (entry) => ({
+    ...entry,
+    volume: (() => {
+      const chars = normalizeVolumeChars(entry.volume);
+      if (chars[0] === '.') chars[0] = '0';
+      if (chars[1] === '.') chars[1] = '0';
+      chars[nibbleIndex] = hexChar;
+      return chars.join('');
+    })()
+  }));
+  advanceRowByStep();
+  activeColumn.value = nibbleIndex === 0 ? 2 : 3;
+}
+
+function clearVolumeField() {
+  if (!currentPattern.value) return;
+  if (activeColumn.value !== 2 && activeColumn.value !== 3) return;
+
+  const track = currentPattern.value.tracks[activeTrack.value];
+  if (!track) return;
+  const idx = track.entries.findIndex((e) => e.row === activeRow.value);
+  if (idx === -1) return;
+
+  const entry = track.entries[idx];
+  if (!entry) return;
+
+  const updatedEntry = { ...entry } as TrackerEntryData & { volume?: string };
+  delete updatedEntry.volume;
+
+  track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
+}
+
 function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
   patternRows.value = clamped;
@@ -660,10 +711,10 @@ function onPatternLengthInput(event: Event) {
 function buildPlaybackStep(entry: TrackerEntryData): PlaybackStep | null {
   const instrumentId = normalizeInstrumentId(entry.instrument);
   const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
-  const velocity = parseTrackerVolume(entry.volume);
+  const volumeValue = parseTrackerVolume(entry.volume);
 
   if (!instrumentId) return null;
-  if (!isNoteOff && midi === undefined) return null;
+  if (!isNoteOff && midi === undefined && volumeValue === undefined) return null;
 
   const step: PlaybackStep = {
     row: entry.row,
@@ -679,8 +730,12 @@ function buildPlaybackStep(entry: TrackerEntryData): PlaybackStep | null {
     step.note = entry.note;
   }
 
-  if (velocity !== undefined) {
-    step.velocity = velocity;
+  if (volumeValue !== undefined) {
+    const scaledVelocity = Math.max(
+      0,
+      Math.min(127, Math.round((volumeValue / 255) * 127))
+    );
+    step.velocity = scaledVelocity;
   }
 
   return step;
@@ -700,14 +755,13 @@ function buildPlaybackPatterns(): PlaybackPattern[] {
 }
 
 function resolveSequenceForMode(mode: PlaybackMode): string[] {
-  const validPatternIds = new Set(patterns.value.map((p) => p.id));
-  const sanitizedSequence = sequence.value.filter((id) => validPatternIds.has(id));
-
   if (mode === 'pattern') {
-    const targetId =
-      currentPatternId.value ?? sanitizedSequence[0] ?? patterns.value[0]?.id;
+    const targetId = currentPatternId.value ?? currentPattern.value?.id ?? patterns.value[0]?.id;
     return targetId ? [targetId] : [];
   }
+
+  const validPatternIds = new Set(patterns.value.map((p) => p.id));
+  const sanitizedSequence = sequence.value.filter((id) => validPatternIds.has(id));
 
   if (sanitizedSequence.length > 0) {
     return sanitizedSequence;
@@ -796,6 +850,7 @@ async function initializePlayback(mode: PlaybackMode = playbackMode.value): Prom
 
   unsubscribePosition?.();
   unsubscribePosition = playbackEngine.on('position', (pos) => {
+    if (suppressPositionUpdates) return;
     const row = ((pos.row % rowsCount.value) + rowsCount.value) % rowsCount.value;
     playbackRow.value = row;
     if (pos.patternId && pos.patternId !== currentPatternId.value) {
@@ -812,7 +867,9 @@ async function initializePlayback(mode: PlaybackMode = playbackMode.value): Prom
 }
 
 async function startPlayback(mode: PlaybackMode) {
+  suppressPositionUpdates = true;
   playbackEngine.stop();
+  suppressPositionUpdates = false;
   songBank.cancelAllScheduled();
   songBank.allNotesOff();
 
@@ -902,10 +959,19 @@ function onKeyDown(event: KeyboardEvent) {
   }
 
   const midiFromMap = noteKeyMap[event.code];
-  if (midiFromMap !== undefined && !event.repeat) {
+  if (midiFromMap !== undefined && !event.repeat && activeColumn.value === 0) {
     event.preventDefault();
     ensureActiveInstrument();
     handleNoteEntry(midiFromMap);
+    return;
+  }
+
+  // Volume entry in column 2 using hex keys
+  const hexChar = event.key.length === 1 ? event.key.toUpperCase() : '';
+  const isHex = /^[0-9A-F]$/.test(hexChar);
+  if (!event.repeat && isHex && (activeColumn.value === 2 || activeColumn.value === 3)) {
+    event.preventDefault();
+    handleVolumeInput(hexChar);
     return;
   }
 
@@ -942,6 +1008,14 @@ function onKeyDown(event: KeyboardEvent) {
       event.preventDefault();
       moveRow(-16);
       break;
+    case 'Home':
+      event.preventDefault();
+      setActiveRow(0);
+      break;
+    case 'End':
+      event.preventDefault();
+      setActiveRow(rowsCount.value - 1);
+      break;
     case ' ':
       event.preventDefault();
       togglePatternPlayback();
@@ -956,7 +1030,9 @@ function onKeyDown(event: KeyboardEvent) {
       break;
     case 'Delete':
       event.preventDefault();
-      if (event.shiftKey) {
+      if (!event.shiftKey && (activeColumn.value === 2 || activeColumn.value === 3)) {
+        clearVolumeField();
+      } else if (event.shiftKey) {
         deleteRowAndShiftUp();
       } else {
         clearStep();

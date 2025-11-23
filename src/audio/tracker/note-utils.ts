@@ -56,5 +56,5 @@ export function parseTrackerVolume(volume?: string): number | undefined {
   const trimmed = volume.trim();
   const value = Number.parseInt(trimmed, 16);
   if (!Number.isFinite(value)) return undefined;
-  return Math.max(0, Math.min(127, value));
+  return Math.max(0, Math.min(255, value));
 }
