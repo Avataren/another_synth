@@ -122,6 +122,14 @@
               <button type="button" class="transport-button stop" @click="handleStop">
                 Stop
               </button>
+              <button
+                type="button"
+                class="transport-button ghost"
+                :disabled="isExporting"
+                @click="exportSongToMp3"
+              >
+                {{ isExporting ? 'Exporting…' : 'Export MP3' }}
+              </button>
             </div>
           </div>
         </div>
@@ -250,6 +258,27 @@
 />
       </div>
     </div>
+    <div v-if="showExportModal" class="export-modal">
+      <div class="export-dialog">
+        <div class="export-title">Exporting song</div>
+        <div class="export-status">{{ exportStatusText }}</div>
+        <div class="export-progress">
+          <div class="export-progress-bar">
+            <div class="export-progress-fill" :style="{ width: `${exportProgressPercent}%` }"></div>
+          </div>
+          <div class="export-progress-value">{{ exportProgressPercent }}%</div>
+        </div>
+        <div v-if="exportError" class="export-error">{{ exportError }}</div>
+        <button
+          type="button"
+          class="export-close"
+          :disabled="exportStage === 'recording' || exportStage === 'encoding'"
+          @click="showExportModal = false"
+        >
+          {{ exportStage === 'done' || exportStage === 'error' ? 'Close' : 'Hide' }}
+        </button>
+      </div>
+    </div>
   </q-page>
 </template>
 
@@ -269,6 +298,7 @@ import type {
 } from '../../packages/tracker-playback/src/types';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
+import { encodeRecordingToMp3 } from 'src/audio/tracker/exporter';
 import type { Patch } from 'src/audio/types/preset-types';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
@@ -451,6 +481,31 @@ const audioContext = computed(() => songBank.audioContext);
 const mutedTracks = ref<Set<number>>(new Set());
 /** Tracks that are soloed */
 const soloedTracks = ref<Set<number>>(new Set());
+/** Export (recording) state */
+const isExporting = ref(false);
+const showExportModal = ref(false);
+const exportStage = ref<'idle' | 'preparing' | 'recording' | 'encoding' | 'saving' | 'done' | 'error'>('idle');
+const exportProgress = ref(0);
+const exportError = ref<string | null>(null);
+const exportStatusText = computed(() => {
+  switch (exportStage.value) {
+    case 'preparing':
+      return 'Preparing instruments...';
+    case 'recording':
+      return 'Recording song...';
+    case 'encoding':
+      return 'Encoding MP3...';
+    case 'saving':
+      return 'Saving file...';
+    case 'done':
+      return 'Export complete!';
+    case 'error':
+      return 'Export failed';
+    default:
+      return '';
+  }
+});
+const exportProgressPercent = computed(() => Math.round(exportProgress.value * 100));
 
 function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
   const normalized = normalizeInstrumentId(instrumentId);
@@ -1032,6 +1087,90 @@ async function handlePlaySong() {
   await startPlayback('song');
 }
 
+function getMsPerRow(bpm: number): number {
+  const rowsPerBeat = 4;
+  return (60_000 / bpm) / rowsPerBeat;
+}
+
+function waitForPlaybackStop(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timeoutId = window.setTimeout(() => {
+      playbackEngine.stop();
+      unsubscribe();
+      resolve();
+    }, timeoutMs);
+
+    const unsubscribe = playbackEngine.on('state', (state) => {
+      if (state === 'stopped') {
+        clearTimeout(timeoutId);
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
+}
+
+async function exportSongToMp3() {
+  if (isExporting.value) return;
+  showExportModal.value = true;
+  isExporting.value = true;
+  exportError.value = null;
+  exportStage.value = 'preparing';
+  exportProgress.value = 0;
+
+  try {
+    await syncSongBankFromSlots();
+    const initialized = await initializePlayback('song');
+    if (!initialized) {
+      throw new Error('Nothing to play – please add a pattern with notes.');
+    }
+
+    playbackEngine.stop();
+    playbackRow.value = 0;
+    activeRow.value = 0;
+    songBank.cancelAllScheduled();
+    songBank.allNotesOff();
+    playbackEngine.seek(0);
+
+    exportStage.value = 'recording';
+    await songBank.startRecording();
+
+    const expectedRows = rowsCount.value * Math.max(1, sequence.value.length || 1);
+    const expectedDurationMs = expectedRows * getMsPerRow(currentSong.value.bpm);
+    const waitPromise = waitForPlaybackStop(expectedDurationMs + 2000);
+
+    await playbackEngine.play();
+    await waitPromise;
+
+    const recording = await songBank.stopRecording();
+
+    exportStage.value = 'encoding';
+    exportProgress.value = 0;
+    const mp3Blob = await encodeRecordingToMp3(recording, (progress) => {
+      exportProgress.value = progress;
+    });
+    exportProgress.value = 1;
+
+    exportStage.value = 'saving';
+    const filename = `tracker-export-${new Date().toISOString().replace(/[:.]/g, '-')}.mp3`;
+    const url = URL.createObjectURL(mp3Blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+
+    exportStage.value = 'done';
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to export song', error);
+    exportError.value = error instanceof Error ? error.message : String(error);
+    exportStage.value = 'error';
+  } finally {
+    isExporting.value = false;
+  }
+}
+
 function handlePause() {
   // Set the active row to the current playback position
   activeRow.value = playbackRow.value;
@@ -1288,7 +1427,7 @@ async function editSlotPatch(slotNumber: number) {
 
   // Navigate to synth page with query param
   void router.push({
-    path: '/',
+    path: '/patch',
     query: { editSongPatch: slotNumber.toString() }
   });
 }
@@ -1640,6 +1779,12 @@ onBeforeUnmount(() => {
   border-color: rgba(255, 99, 128, 0.3);
 }
 
+.transport-button.ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
 .transport-button.active {
   box-shadow: 0 0 0 2px rgba(77, 242, 197, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
   transform: translateY(-1px);
@@ -1960,6 +2105,79 @@ onBeforeUnmount(() => {
 
 .patch-select option {
   color: #0c1624;
+}
+
+.export-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.export-dialog {
+  background: #0b111a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 18px 20px;
+  width: min(420px, 90vw);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+}
+
+.export-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.export-status {
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 12px;
+}
+
+.export-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.export-progress-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.export-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4df2c5, #7fe0ff);
+  transition: width 120ms linear;
+}
+
+.export-progress-value {
+  width: 48px;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.8);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-error {
+  color: #ff9db5;
+  margin-bottom: 10px;
+}
+
+.export-close {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
 }
 
 @media (max-width: 900px) {

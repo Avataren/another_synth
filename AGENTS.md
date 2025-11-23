@@ -221,6 +221,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 ### Tracker waveforms
 - Track waveform visualizations now always use a single accent color and attach to the instrument actually referenced by that track (latest instrument ID found when building playback steps). This keeps each track’s waveform aligned to its own instrument output even when multiple tracks share a multi-voice patch.
 
+### Tracker export (mp3)
+- Tracker master bus can be tapped via a recording audio worklet (`public/worklets/recording-worklet.js`) wired in `TrackerSongBank`. Recording accumulates interleaved float32 audio and a new helper (`src/audio/tracker/exporter.ts`) encodes it to MP3 via `lamejs` (loaded from CDNJS `https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js`, falling back to `public/vendor/lame.min.js` if present). `TrackerPage` exposes an “Export MP3” button that records the song playback once (auto-stops on `state == stopped`), shows progress, then downloads the MP3. Offline/faster-than-realtime rendering isn’t implemented; this records in real time.
+
 ## Wavetable Missing Data Panic (Critical Fix - 2025)
 
 **Problem**: The synth would crash with "RuntimeError: unreachable" panic when loading patches with wavetable oscillators.

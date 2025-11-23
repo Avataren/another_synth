@@ -77,6 +77,20 @@
         <MacroControls />
       </div>
 
+      <div class="visualizer-row q-pa-md">
+        <div class="row q-col-gutter-md">
+          <div class="col-12 col-sm-6 col-lg-4">
+            <oscilloscope-component :node="destinationNode" />
+          </div>
+          <div class="col-12 col-sm-6 col-lg-4">
+            <piano-keyboard-component />
+          </div>
+          <div class="col-12 col-sm-6 col-lg-4">
+            <frequency-analyzer-component :node="destinationNode" />
+          </div>
+        </div>
+      </div>
+
       <div class="patch-scroll q-pa-md" @contextmenu.prevent.stop="openAddMenu">
         <div class="grid-container">
           <div class="node-bg column generators">
@@ -203,20 +217,6 @@
                 nodeLabel="Convolver"
               />
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="bottom-row q-pa-md">
-        <div class="row q-col-gutter-md">
-          <div class="col-12 col-sm-6 col-lg-4">
-            <oscilloscope-component :node="destinationNode" />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-4">
-            <piano-keyboard-component />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-4">
-            <frequency-analyzer-component :node="destinationNode" />
           </div>
         </div>
       </div>
@@ -811,6 +811,11 @@ const bitcrusherNodes = computed(() => {
   text-transform: none;
 }
 
+.visualizer-row {
+  background: #0f131c;
+  border-bottom: 1px solid #273140;
+}
+
 .macro-row {
   background: #0f131c;
   border-bottom: 1px solid #273140;
@@ -849,16 +854,6 @@ const bitcrusherNodes = computed(() => {
 }
 
 /* Fixed height for bottom row with scrolling overflow */
-.bottom-row {
-  flex: 0 0 220px; /* Prevents flex shrink/grow and sets a fixed basis */
-  overflow-y: hidden;
-  box-sizing: border-box;
-  padding: 0.2rem 0 0 0;
-  margin: 0;
-  background-color: #1d2023;
-  border-top: 1px solid #444;
-}
-
 /* Middle area scrollable */
 .middle-scroll {
   flex: 1 1 auto;

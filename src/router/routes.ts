@@ -5,9 +5,19 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
     children: [
-      { path: '', redirect: '/patch' },
+      { path: '', redirect: '/tracker' },
       { path: 'patch', component: () => import('pages/IndexPage.vue') },
-      { path: 'tracker', component: () => import('pages/TrackerPage.vue') },
+      {
+        path: 'tracker',
+        component: () => import('pages/TrackerPage.vue'),
+        beforeEnter: (to) => {
+          // If a song patch edit is requested, forward to the patch editor with the same query.
+          if (to.query.editSongPatch) {
+            return { path: '/patch', query: to.query };
+          }
+          return true;
+        },
+      },
     ],
   },
 
