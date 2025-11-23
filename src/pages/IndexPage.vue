@@ -355,7 +355,7 @@ const { editingSlot, songPatches } = storeToRefs(trackerStore);
 const addMenuVisible = ref(false);
 const addMenu = ref<QMenuController | null>(null);
 const showMacroRow = ref(false);
-const showVisualizerRow = ref(false);
+const showVisualizerRow = ref(true);
 
 // Song patch editing state
 const isEditingSongPatch = computed(() => editingSlot.value !== null);
