@@ -159,6 +159,18 @@ export class TrackerSongBank {
     byTrack?.delete(trackKey);
   }
 
+  private gateOffPreviousTrackVoice(
+    instrument: InstrumentV2,
+    instrumentId: string,
+    trackIndex: number | undefined,
+    time: number,
+  ) {
+    const previousVoice = this.takeLastVoiceForTrack(instrumentId, trackIndex);
+    if (previousVoice !== undefined) {
+      instrument.gateOffVoiceAtTime(previousVoice, time);
+    }
+  }
+
   noteOn(
     instrumentId: string | undefined,
     midi: number,
@@ -168,9 +180,14 @@ export class TrackerSongBank {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    active.instrument.noteOn(midi, velocity);
+    const now = this.audioContext.currentTime;
+    this.gateOffPreviousTrackVoice(active.instrument, instrumentId, trackIndex, now);
+    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now);
 
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
+    if (voiceIndex !== undefined) {
+      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
+    }
   }
 
   noteOff(instrumentId: string | undefined, midi?: number, trackIndex?: number) {
@@ -218,6 +235,7 @@ export class TrackerSongBank {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
+    this.gateOffPreviousTrackVoice(active.instrument, instrumentId, trackIndex, time);
     const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time);
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
