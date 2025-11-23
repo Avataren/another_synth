@@ -147,6 +147,39 @@ export const useTrackerStore = defineStore('trackerStore', {
       const clamped = Math.max(0, Math.min(8, Math.round(octave)));
       this.baseOctave = clamped;
     },
+    addTrack(): boolean {
+      const maxTracks = 32;
+      if (!this.patterns.length) return false;
+      const currentCount = this.patterns[0]?.tracks.length ?? 0;
+      if (currentCount >= maxTracks) return false;
+
+      const newIndex = currentCount;
+      const makeTrack = (idx: number): TrackerTrackData => ({
+        id: `T${(idx + 1).toString().padStart(2, '0')}`,
+        name: `Track ${idx + 1}`,
+        color: DEFAULT_TRACK_COLORS[idx % DEFAULT_TRACK_COLORS.length] ?? '#4df2c5',
+        entries: []
+      });
+
+      this.patterns.forEach((pattern) => {
+        pattern.tracks.push(makeTrack(newIndex));
+      });
+
+      return true;
+    },
+    removeTrack(trackIndex: number): boolean {
+      const minTracks = 1;
+      if (!this.patterns.length) return false;
+      const currentCount = this.patterns[0]?.tracks.length ?? 0;
+      if (currentCount <= minTracks) return false;
+      const idx = Math.max(0, Math.min(currentCount - 1, trackIndex));
+
+      this.patterns.forEach((pattern) => {
+        pattern.tracks = pattern.tracks.filter((_, i) => i !== idx);
+      });
+
+      return true;
+    },
     initializeIfNeeded() {
       if (!this.patterns || this.patterns.length === 0) {
         const defaultPattern = createDefaultPattern();

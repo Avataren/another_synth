@@ -273,8 +273,10 @@ onBeforeUnmount(() => {
 }
 
 .tracks-wrapper {
+  --tracker-track-width: 180px;
+  --tracker-track-gap: 10px;
   display: flex;
-  gap: 10px;
+  gap: var(--tracker-track-gap);
   overflow-x: auto;
   padding-bottom: 4px;
   width: 100%;

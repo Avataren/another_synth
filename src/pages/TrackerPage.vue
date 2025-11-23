@@ -64,46 +64,57 @@
                 </button>
               </div>
             </div>
-            <div class="pattern-controls">
-              <div class="control-label">Pattern length</div>
-              <div class="control-field">
-                <input
-                  class="length-input"
-                  type="number"
-                  :min="1"
-                  :max="256"
-                  :value="rowsCount"
-                  @change="onPatternLengthInput($event)"
-                />
-                <div class="control-hint">Rows</div>
+            <div class="pattern-row-inline">
+              <div class="pattern-controls">
+                <div class="control-label">Pattern length</div>
+                <div class="control-field">
+                  <input
+                    class="length-input"
+                    type="number"
+                    :min="1"
+                    :max="256"
+                    :value="rowsCount"
+                    @change="onPatternLengthInput($event)"
+                  />
+                  <div class="control-hint">Rows</div>
+                </div>
+              </div>
+              <div class="pattern-controls">
+                <div class="control-label">Step size</div>
+                <div class="control-field">
+                  <input
+                    class="length-input"
+                    type="number"
+                    :min="1"
+                    :max="64"
+                    :value="stepSize"
+                    @change="(event) => setStepSizeInput(Number((event.target as HTMLInputElement).value))"
+                  />
+                  <div class="control-hint">Rows per edit</div>
+                </div>
               </div>
             </div>
-            <div class="pattern-controls">
-              <div class="control-label">Step size</div>
-              <div class="control-field">
-                <input
-                  class="length-input"
-                  type="number"
-                  :min="1"
-                  :max="64"
-                  :value="stepSize"
-                  @change="(event) => setStepSizeInput(Number((event.target as HTMLInputElement).value))"
-                />
-                <div class="control-hint">Rows per edit</div>
+            <div class="pattern-row-inline">
+              <div class="pattern-controls">
+                <div class="control-label">Base octave</div>
+                <div class="control-field">
+                  <input
+                    class="length-input"
+                    type="number"
+                    :min="0"
+                    :max="8"
+                    :value="baseOctave"
+                    @change="(event) => setBaseOctaveInput(Number((event.target as HTMLInputElement).value))"
+                  />
+                  <div class="control-hint">Shift+PgUp/PgDn</div>
+                </div>
               </div>
-            </div>
-            <div class="pattern-controls">
-              <div class="control-label">Base octave</div>
-              <div class="control-field">
-                <input
-                  class="length-input"
-                  type="number"
-                  :min="0"
-                  :max="8"
-                  :value="baseOctave"
-                  @change="(event) => setBaseOctaveInput(Number((event.target as HTMLInputElement).value))"
-                />
-                <div class="control-hint">Shift+PgUp/PgDn</div>
+              <div class="pattern-controls tracks-inline">
+                <div class="control-label">Tracks</div>
+                <div class="control-field track-buttons">
+                  <button type="button" class="song-button wide" @click="addTrack" :disabled="trackCount >= 32">+ Track</button>
+                  <button type="button" class="song-button ghost" @click="removeTrack" :disabled="trackCount <= 1">- Track</button>
+                </div>
               </div>
             </div>
             <div class="pattern-controls">
@@ -220,13 +231,20 @@
         </div>
       </div>
 
-      <div class="visualizer-row">
-        <div class="visualizer-spacer"></div>
-        <div class="visualizer-tracks">
+  <div class="visualizer-row">
+        <div class="visualizer-spacer" :style="{ width: `${visualizerSpacerWidth}px` }"></div>
+        <div
+          class="visualizer-tracks"
+          :style="{ gap: `${visualizerTrackGap}px` }"
+        >
           <div
             v-for="(track, index) in currentPattern?.tracks"
             :key="`viz-${track.id}`"
             class="visualizer-cell"
+            :style="{
+              width: `${visualizerTrackWidth}px`,
+              minWidth: `${visualizerTrackWidth}px`
+            }"
           >
             <div class="visualizer-controls">
               <button
@@ -258,6 +276,7 @@
 
       <div class="pattern-area">
         <TrackerPattern
+          ref="trackerPatternRef"
           :tracks="currentPattern?.tracks ?? []"
   :rows="rowsCount"
   :selected-row="activeRow"
@@ -493,6 +512,12 @@ const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
 const audioContext = computed(() => songBank.audioContext);
 const DEFAULT_BASE_OCTAVE = trackerStore.baseOctave;
 const baseOctave = ref(trackerStore.baseOctave);
+const trackCount = computed(() => currentPattern.value?.tracks.length ?? 0);
+const trackerPatternRef = ref<InstanceType<typeof TrackerPattern> | null>(null);
+const visualizerTrackWidth = ref(180);
+const visualizerTrackGap = ref(10);
+const visualizerSpacerWidth = ref(108);
+const visualizerSpacerOffset = 16;
 /** Tracks that are muted */
 const mutedTracks = ref<Set<number>>(new Set());
 /** Tracks that are soloed */
@@ -522,6 +547,28 @@ const exportStatusText = computed(() => {
   }
 });
 const exportProgressPercent = computed(() => Math.round(exportProgress.value * 100));
+
+async function measureVisualizerLayout() {
+  await nextTick();
+  const host = trackerPatternRef.value?.$el as HTMLElement | undefined;
+  if (!host) return;
+  const rowColumn = host.querySelector('.row-column') as HTMLElement | null;
+  const trackEl = host.querySelector('.tracker-track') as HTMLElement | null;
+  const tracksWrapper = host.querySelector('.tracks-wrapper') as HTMLElement | null;
+  if (rowColumn) {
+    visualizerSpacerWidth.value =
+      rowColumn.getBoundingClientRect().width + visualizerTrackGap.value + visualizerSpacerOffset;
+  }
+  if (tracksWrapper) {
+    const gap = parseFloat(getComputedStyle(tracksWrapper).gap || '10');
+    if (Number.isFinite(gap)) {
+      visualizerTrackGap.value = gap;
+    }
+  }
+  if (trackEl) {
+    visualizerTrackWidth.value = trackEl.getBoundingClientRect().width;
+  }
+}
 
 function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
   const normalized = normalizeInstrumentId(instrumentId);
@@ -659,6 +706,31 @@ function setBaseOctaveInput(value: number) {
   const clamped = Math.max(0, Math.min(8, Math.round(value)));
   baseOctave.value = clamped;
   trackerStore.setBaseOctave(clamped);
+}
+
+function addTrack() {
+  const added = trackerStore.addTrack();
+  if (added) {
+    activeTrack.value = Math.min(
+      activeTrack.value,
+      (currentPattern.value?.tracks.length ?? 1) - 1
+    );
+    updateTrackAudioNodes();
+    void measureVisualizerLayout();
+  }
+}
+
+function removeTrack() {
+  if (trackCount.value <= 1) return;
+  const removed = trackerStore.removeTrack(activeTrack.value);
+  if (removed) {
+    activeTrack.value = Math.min(
+      activeTrack.value,
+      (currentPattern.value?.tracks.length ?? 1) - 1
+    );
+    updateTrackAudioNodes();
+    void measureVisualizerLayout();
+  }
 }
 
 function advanceRowByStep() {
@@ -1585,6 +1657,7 @@ onMounted(async () => {
   await loadSystemBankOptions();
   ensureActiveInstrument();
   void initializePlayback(playbackMode.value);
+  void measureVisualizerLayout();
 });
 
 watch(
@@ -1615,6 +1688,7 @@ watch(
   () => {
     void syncSongBankFromSlots();
     void initializePlayback(playbackMode.value);
+    void measureVisualizerLayout();
   },
   { deep: true }
 );
@@ -1682,37 +1756,36 @@ onBeforeUnmount(() => {
 }
 
 .visualizer-spacer {
-  /* Match TrackerPattern: 18px padding + 78px row-column + 12px gap */
   width: calc(18px + 78px + 12px);
   flex-shrink: 0;
 }
 
 .visualizer-tracks {
   display: flex;
-  gap: 10px;
+  gap: var(--tracker-track-gap, 10px);
   overflow-x: auto;
   padding-bottom: 4px;
 }
 
 .visualizer-cell {
-  width: 180px;
-  min-width: 180px;
+  width: var(--tracker-track-width, 180px);
+  min-width: var(--tracker-track-width, 180px);
   flex-shrink: 0;
-  display: flex;
-  gap: 4px;
-  align-items: stretch;
+  position: relative;
 }
 
 .visualizer-cell :deep(.track-waveform) {
-  width: 90%;
+  width: 100%;
 }
 
 .visualizer-controls {
+  position: absolute;
+  top: 6px;
+  left: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex-shrink: 0;
-  padding-top: 14px;
+  z-index: 2;
 }
 
 .track-btn {
@@ -1855,6 +1928,17 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
+.track-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.track-buttons .song-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 6px 12px;
+}
+
 .stat-inline {
   display: flex;
   gap: 6px;
@@ -1901,6 +1985,23 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.pattern-row-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.tracks-inline .track-buttons {
+  justify-content: flex-start;
+  gap: 8px;
+  align-items: center;
+}
+
+.track-buttons .song-button.wide {
+  min-width: 120px;
 }
 
 .control-label {
@@ -1952,6 +2053,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   padding: 6px 8px;
+  min-height: 40px;
 }
 
 .length-input {

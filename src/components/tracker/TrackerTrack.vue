@@ -66,7 +66,7 @@ function onSelectCell(payload: { row: number; column: number; trackIndex: number
 <style scoped>
 .tracker-track {
   --track-accent: #5dd6ff;
-  min-width: 180px;
+  min-width: var(--tracker-track-width, 180px);
   background: linear-gradient(180deg, rgba(19, 26, 38, 0.9), rgba(12, 16, 24, 0.9));
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
