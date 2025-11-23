@@ -35,6 +35,7 @@ import {
   type NodeConnectionUpdate,
   type FilterState,
 } from './types/synth-layout';
+import { type PortId } from 'app/public/wasm/audio_processor';
 import { WorkletMessageHandler } from './adapters/message-handler';
 import { toRaw } from 'vue';
 
@@ -193,6 +194,34 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'createNode',
       nodeType: node,
+    });
+  }
+
+  public setMacro(macroIndex: number, value: number): void {
+    if (!this.workletNode) {
+      return;
+    }
+
+    const clampedValue = Math.min(1, Math.max(0, value));
+    const now = this.audioContext.currentTime;
+    for (let voice = 0; voice < this.num_voices; voice++) {
+      const param = this.workletNode.parameters.get(`macro_${voice}_${macroIndex}`);
+      if (param) {
+        param.setValueAtTime(clampedValue, now);
+      }
+    }
+  }
+
+  public connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number }): void {
+    if (!this.workletNode) {
+      return;
+    }
+    this.messageHandler.sendFireAndForget({
+      type: 'connectMacro',
+      macroIndex: payload.macroIndex,
+      targetId: payload.targetId,
+      targetPort: payload.targetPort,
+      amount: payload.amount,
     });
   }
 

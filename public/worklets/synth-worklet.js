@@ -2896,6 +2896,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "updateVelocity":
         this.handleUpdateVelocity(event.data);
         break;
+      case "connectMacro":
+        this.handleConnectMacro(event.data);
+        break;
       case "updateGlide":
         this.handleUpdateGlide(event.data);
         break;
@@ -2950,6 +2953,19 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   handleDeleteNode(data) {
     this.audioEngine.delete_node(data.nodeId);
     this.handleRequestSync();
+  }
+  handleConnectMacro(data) {
+    if (!this.audioEngine) return;
+    const voices = this.voiceLayouts?.length ?? this.numVoices;
+    for (let voice = 0; voice < voices; voice++) {
+      this.audioEngine.connect_macro(
+        voice,
+        data.macroIndex,
+        data.targetId,
+        data.targetPort,
+        data.amount
+      );
+    }
   }
   handleCreateNode(data) {
     const nodeType = data.node ?? data.nodeType;

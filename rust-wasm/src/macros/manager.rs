@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use super::types::{ModulationMacro, ModulationTarget};
 use crate::graph::{AudioBufferPool, ModulationType};
-use crate::PortId;
+use crate::{NodeId, PortId};
 use std::simd::f32x4;
 
 #[derive(Debug)]
@@ -44,6 +44,28 @@ impl MacroManager {
             .get_mut(macro_index)
             .ok_or_else(|| format!("Invalid macro index: {}", macro_index))?
             .add_target(target);
+        Ok(())
+    }
+
+    pub fn remove_target(
+        &mut self,
+        macro_index: usize,
+        node_id: NodeId,
+        port_id: PortId,
+    ) -> Result<bool, String> {
+        let macro_mod = self
+            .macros
+            .get_mut(macro_index)
+            .ok_or_else(|| format!("Invalid macro index: {}", macro_index))?;
+        Ok(macro_mod.remove_target(node_id, port_id))
+    }
+
+    pub fn clear_macro(&mut self, macro_index: usize) -> Result<(), String> {
+        let macro_mod = self
+            .macros
+            .get_mut(macro_index)
+            .ok_or_else(|| format!("Invalid macro index: {}", macro_index))?;
+        macro_mod.clear_targets();
         Ok(())
     }
 

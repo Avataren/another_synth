@@ -2464,6 +2464,14 @@ impl AudioEngine {
         let target_node_id = NodeId::from_string(target_node)
             .map_err(|e| JsValue::from_str(&format!("Invalid target_node UUID: {}", e)))?;
 
+        // Remove any existing route for this macro/target pairing before adding
+        let _ = voice.remove_macro_route(macro_index, target_node_id, target_port);
+
+        if amount <= 0.0 {
+            // Treat non-positive amounts as removal only
+            return Ok(());
+        }
+
         voice
             .add_macro_modulation(macro_index, target_node_id, target_port, amount)
             .map_err(|e| JsValue::from_str(&e))

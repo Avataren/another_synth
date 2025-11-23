@@ -308,6 +308,22 @@ impl AudioGraph {
         self.update_processing_order();
     }
 
+    pub fn remove_macro_connection(
+        &mut self,
+        buffer_idx: usize,
+        target_node: NodeId,
+        target_port: PortId,
+    ) {
+        if let Some(inputs) = self.input_connections.get_mut(&target_node) {
+            inputs.retain(|(port, idx, _, _, _, _)| {
+                !(*port == target_port && *idx == buffer_idx)
+            });
+            if inputs.is_empty() {
+                self.input_connections.remove(&target_node);
+            }
+        }
+    }
+
     pub fn debug_connections(&self) -> Vec<(ConnectionKey, Connection)> {
         self.connections
             .iter()

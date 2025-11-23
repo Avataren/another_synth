@@ -3,6 +3,7 @@ import { markRaw } from 'vue';
 import AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import { AudioSyncManager } from 'src/audio/sync-manager';
+import type { PortId } from 'app/public/wasm/audio_processor';
 
 interface InstrumentStoreState {
   audioSystem: AudioSystem | null;
@@ -10,12 +11,16 @@ interface InstrumentStoreState {
   currentInstrument: InstrumentV2 | null;
   syncManager: AudioSyncManager | null;
   wasmMemory: WebAssembly.Memory;
+  macros: number[];
 }
 
 interface InstrumentStoreActions {
   initializeAudioSystem(): void;
   setupAudio(): Promise<void>;
   waitForInstrumentReady(timeoutMs?: number): Promise<boolean>;
+  setMacro(macroIndex: number, value: number): void;
+  applyMacrosToInstrument(): void;
+  connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number }): void;
 }
 
 export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStoreState, Record<string, never>, InstrumentStoreActions>('instrumentStore', {
@@ -29,6 +34,7 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
       maximum: 1024,
       shared: true,
     }),
+    macros: [0, 0, 0, 0],
   }),
   actions: {
     initializeAudioSystem() {
@@ -49,6 +55,7 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
           this.wasmMemory,
         ));
         this.destinationNode = this.audioSystem.destinationNode;
+        this.applyMacrosToInstrument();
       }
 
       if (!this.syncManager) {
@@ -73,6 +80,31 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
       }
 
       return true;
+    },
+
+    setMacro(macroIndex: number, value: number) {
+      const clampedIndex = Math.max(0, Math.min(this.macros.length - 1, macroIndex));
+      const clampedValue = Math.min(1, Math.max(0, value));
+
+      const next = [...this.macros];
+      next[clampedIndex] = clampedValue;
+      this.macros = next;
+
+      if (this.currentInstrument) {
+        this.currentInstrument.setMacro(clampedIndex, clampedValue);
+      }
+    },
+
+    applyMacrosToInstrument() {
+      if (!this.currentInstrument) return;
+      this.macros.forEach((value, index) => {
+        this.currentInstrument?.setMacro(index, value);
+      });
+    },
+
+    connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number }) {
+      if (!this.currentInstrument) return;
+      this.currentInstrument.connectMacroRoute(payload);
     },
   },
 });

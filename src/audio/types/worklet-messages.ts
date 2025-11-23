@@ -24,6 +24,7 @@ import type {
   NodeConnectionUpdate,
   SynthLayout,
 } from './synth-layout';
+import type { PortId } from 'app/public/wasm/audio_processor';
 
 // ============================================================================
 // Base Message Types
@@ -227,6 +228,14 @@ export interface RemoveConnectionMessage extends BaseMessage {
   targetPort: number;
 }
 
+export interface ConnectMacroMessage extends BaseMessage {
+  type: 'connectMacro';
+  macroIndex: number;
+  targetId: string;
+  targetPort: PortId;
+  amount: number;
+}
+
 export interface GetConnectionsMessage extends BaseMessage {
   type: 'getConnections';
 }
@@ -411,6 +420,7 @@ export type WorkletMessage =
   // Connections
   | UpdateConnectionMessage
   | RemoveConnectionMessage
+  | ConnectMacroMessage
   | GetConnectionsMessage
   | ConnectionsResponseMessage
   // Arpeggiator

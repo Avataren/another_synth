@@ -198,6 +198,23 @@ impl Voice {
         Ok(())
     }
 
+    pub fn remove_macro_route(
+        &mut self,
+        macro_index: usize,
+        target_node: NodeId,
+        target_port: PortId,
+    ) -> Result<bool, String> {
+        self.macro_manager
+            .remove_target(macro_index, target_node, target_port)?;
+
+        if let Some(buffer_idx) = self.macro_manager.get_macro_buffer_idx(macro_index) {
+            self.graph
+                .remove_macro_connection(buffer_idx, target_node, target_port);
+        }
+
+        Ok(true)
+    }
+
     pub fn clear_macros(&mut self) {
         self.macro_manager.clear(&mut self.graph.buffer_pool);
     }

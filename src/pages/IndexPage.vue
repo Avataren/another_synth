@@ -73,6 +73,10 @@
         </div>
       </div>
 
+      <div class="macro-row q-pa-sm">
+        <MacroControls />
+      </div>
+
       <div class="patch-scroll q-pa-md" @contextmenu.prevent.stop="openAddMenu">
         <div class="grid-container">
           <div class="node-bg column generators">
@@ -292,6 +296,7 @@ import SamplerComponent from 'src/components/SamplerComponent.vue';
 // Modulators DSP components
 import LfoComponent from 'src/components/LfoComponent.vue';
 import EnvelopeComponent from 'src/components/EnvelopeComponent.vue';
+import MacroControls from 'src/components/MacroControls.vue';
 
 // Filters DSP components
 import FilterComponent from 'src/components/FilterComponent.vue';
@@ -744,7 +749,7 @@ const bitcrusherNodes = computed(() => {
 
 .patch-layout {
   display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto 1fr auto;
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
@@ -804,6 +809,11 @@ const bitcrusherNodes = computed(() => {
 
 .tool-menu__actions .q-btn {
   text-transform: none;
+}
+
+.macro-row {
+  background: #0f131c;
+  border-bottom: 1px solid #273140;
 }
 
 .tool-menu__portamento {

@@ -26,6 +26,17 @@ impl ModulationMacro {
         self.targets.push(target);
     }
 
+    pub fn remove_target(&mut self, node_id: NodeId, port_id: PortId) -> bool {
+        let before = self.targets.len();
+        self.targets
+            .retain(|t| !(t.node_id == node_id && t.port_id == port_id));
+        before != self.targets.len()
+    }
+
+    pub fn clear_targets(&mut self) {
+        self.targets.clear();
+    }
+
     pub fn get_targets(&self) -> &[ModulationTarget] {
         &self.targets
     }
