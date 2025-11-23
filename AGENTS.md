@@ -1058,4 +1058,5 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Volume entry normalizes missing nibbles to `0`, so typing the high nibble first now yields the expected `0xA0` instead of `0x0A` when the low nibble hasn’t been set yet.
 - Pattern playback now always targets the currently selected pattern (ignores sequence order) so spacebar plays the visible pattern instead of jumping to the first sequence entry.
 - Tracker volume mapping: steps with a volume nibble schedule Web Audio automation on `gain_i` via the playback engine’s automation callbacks (scheduled and immediate). No custom events; automation is set with `setValueAtTime` ahead of playback like gate/frequency. Never use ad-hoc events to change synth state—always route through automation tracks.
+- Tracker instruments panel now has a “New” button per slot that creates a fresh patch (via `patch-store.createNewPatchFromTemplate`) and assigns it to the song bank slot immediately.
 - Tracker hotkeys: Home jumps to the top of the pattern, End to the bottom.

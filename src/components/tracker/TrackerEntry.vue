@@ -43,8 +43,13 @@ const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
 const cells = computed(() => {
   const volume = props.entry?.volume ?? '..';
   const volPadded = (volume + '..').slice(0, 2);
+  const noteDisplay = (() => {
+    if (!props.entry?.note) return '---';
+    const normalized = props.entry.note.trim().toUpperCase();
+    return normalized === '--' ? '###' : props.entry.note;
+  })();
   return [
-    { display: props.entry?.note ?? '---', className: 'note' },
+    { display: noteDisplay, className: 'note' },
     { display: props.entry?.instrument ?? '..', className: 'instrument' },
     { display: volPadded[0] ?? '.', className: 'volume volume-high' },
     { display: volPadded[1] ?? '.', className: 'volume volume-low' },

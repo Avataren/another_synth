@@ -19,7 +19,7 @@ export function parseTrackerNoteSymbol(input?: string): ParsedNote {
   }
 
   const normalized = input.trim().toUpperCase();
-  if (normalized === '--' || normalized === '---') {
+  if (normalized === '--' || normalized === '---' || normalized === '###') {
     return { isNoteOff: true };
   }
 

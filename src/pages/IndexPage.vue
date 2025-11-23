@@ -357,7 +357,7 @@ async function loadSongPatchForEditing(slotNumber: number) {
   if (!patch) return;
 
   // Load the song patch into the instrument
-  await patchStore.applyPatchObject(patch, { setCurrentPatchId: false });
+  await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
 }
 
 async function saveSongPatch() {

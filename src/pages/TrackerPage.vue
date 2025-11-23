@@ -157,6 +157,13 @@
               <div class="slot-number">#{{ formatInstrumentId(slot.slot) }}</div>
               <div class="patch-name">{{ slot.patchName || '—' }}</div>
               <div class="instrument-actions">
+                <button
+                  type="button"
+                  class="action-button new"
+                  @click.stop="createNewSongPatch(slot.slot)"
+                >
+                  New
+                </button>
                 <select
                   class="patch-select"
                   :value="slot.patchId ?? ''"
@@ -172,15 +179,13 @@
                   </option>
                 </select>
                 <button
-                  v-if="slot.patchId"
                   type="button"
                   class="action-button edit"
                   @click.stop="editSlotPatch(slot.slot)"
-                >
+                  >
                   Edit
                 </button>
                 <button
-                  v-if="slot.patchId"
                   type="button"
                   class="action-button ghost"
                   @click.stop="clearInstrument(slot.slot)"
@@ -249,7 +254,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
@@ -265,8 +270,10 @@ import type {
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
+import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
+import { usePatchStore } from 'src/stores/patch-store';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
 // Minimal File System Access API typings for browsers without lib.dom additions
@@ -334,6 +341,7 @@ const {
 } = storeToRefs(trackerStore);
 const currentPattern = computed(() => trackerStore.currentPattern);
 const currentPageSlots = computed(() => trackerStore.currentPageSlots);
+const patchStore = usePatchStore();
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
@@ -346,6 +354,7 @@ const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const playbackMode = ref<PlaybackMode>('song');
 const songBank = new TrackerSongBank();
 let suppressPositionUpdates = false;
+const slotCreationPromises = new Map<number, Promise<void>>();
 
 function normalizeVolumeChars(vol?: string): [string, string] {
   const clean = (vol ?? '').toUpperCase();
@@ -800,17 +809,11 @@ async function syncSongBankFromSlots() {
 }
 
 function updateTrackAudioNodes() {
-  if (!currentPattern.value) return;
   const nodes: Record<number, AudioNode | null> = {};
-  for (let i = 0; i < currentPattern.value.tracks.length; i++) {
-    const track = currentPattern.value.tracks[i];
-    if (!track) continue;
-    // Get instrument ID specific to this track only
-    const entryInstrument = normalizeInstrumentId(
-      track.entries.find((entry) => entry.instrument)?.instrument
-    );
-    const instrumentId = entryInstrument ?? formatInstrumentId(i + 1);
-    nodes[i] = instrumentId ? songBank.getInstrumentOutput(instrumentId) : null;
+  const trackCount = currentPattern.value?.tracks.length ?? 0;
+  for (let i = 0; i < trackCount; i++) {
+    const slotInstrumentId = formatInstrumentId(i + 1);
+    nodes[i] = songBank.getInstrumentOutput(slotInstrumentId);
   }
   trackAudioNodes.value = nodes;
 }
@@ -1037,6 +1040,7 @@ function onKeyDown(event: KeyboardEvent) {
       } else {
         clearStep();
       }
+      advanceRowByStep();
       break;
     default:
       break;
@@ -1068,9 +1072,55 @@ function clearInstrument(slotNumber: number) {
   ensureActiveInstrument();
 }
 
-function editSlotPatch(slotNumber: number) {
+async function createNewSongPatch(slotNumber: number) {
+  try {
+    const creation = (async (): Promise<void> => {
+      let patch: Patch | null = null;
+      if (typeof patchStore.fetchDefaultPatchTemplate === 'function') {
+        const template = await patchStore.fetchDefaultPatchTemplate();
+        if (template) {
+          const cloned = JSON.parse(JSON.stringify(template)) as Patch;
+          const meta = createDefaultPatchMetadata(`Instrument ${formatInstrumentId(slotNumber)}`);
+          cloned.metadata = { ...(cloned.metadata || {}), ...meta, name: meta.name };
+          patch = cloned;
+        }
+      }
+
+      if (!patch) {
+        patch = {
+          metadata: createDefaultPatchMetadata(`Instrument ${formatInstrumentId(slotNumber)}`),
+          synthState: createEmptySynthState(),
+          audioAssets: {}
+        };
+      }
+
+      trackerStore.assignPatchToSlot(slotNumber, patch, 'Song');
+      setActiveInstrument(slotNumber);
+      ensureActiveInstrument();
+      await nextTick();
+      await syncSongBankFromSlots();
+    })();
+
+    slotCreationPromises.set(slotNumber, creation);
+    await creation;
+    slotCreationPromises.delete(slotNumber);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to create new song patch', error);
+  }
+}
+
+async function editSlotPatch(slotNumber: number) {
+  const pending = slotCreationPromises.get(slotNumber);
+  if (pending) {
+    await pending.catch(() => undefined);
+  }
   const slot = instrumentSlots.value.find(s => s.slot === slotNumber);
   if (!slot?.patchId) return;
+  const patch = songPatches.value[slot.patchId];
+  if (patch) {
+    await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
+  }
 
   // Mark which slot we're editing
   trackerStore.startEditingSlot(slotNumber);
@@ -1710,6 +1760,16 @@ onBeforeUnmount(() => {
 .action-button.edit:hover {
   background: rgba(112, 194, 255, 0.25);
   border-color: rgba(112, 194, 255, 0.5);
+}
+
+.action-button.new {
+  background: rgba(77, 242, 197, 0.12);
+  border-color: rgba(77, 242, 197, 0.35);
+}
+
+.action-button.new:hover {
+  background: rgba(77, 242, 197, 0.2);
+  border-color: rgba(77, 242, 197, 0.55);
 }
 
 .action-button.ghost {
