@@ -18,6 +18,7 @@ const routes: RouteRecordRaw[] = [
           return true;
         },
       },
+      { path: 'help', component: () => import('pages/HelpPage.vue') },
     ],
   },
 

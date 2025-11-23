@@ -14,6 +14,7 @@
         >
           <q-route-tab to="/tracker" name="tracker" label="Tracker" exact />
           <q-route-tab to="/patch" name="patch" label="Patch editor" exact />
+          <q-route-tab to="/help" name="help" label="Help" exact />
         </q-tabs>
         <q-space />
 
