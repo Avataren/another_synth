@@ -56,6 +56,10 @@ export interface PlaybackOptions {
   instrumentResolver?: InstrumentResolver;
   scheduler?: PlaybackScheduler;
   noteHandler?: PlaybackNoteHandler;
+  /** Handler for scheduling notes at specific audio times */
+  scheduledNoteHandler?: ScheduledNoteHandler;
+  /** Audio context for getting current time */
+  audioContext?: AudioContext;
 }
 
 export type InstrumentResolver = (instrumentId: string | undefined) => Promise<void> | void;
@@ -77,3 +81,20 @@ export interface PlaybackNoteEvent {
 }
 
 export type PlaybackNoteHandler = (event: PlaybackNoteEvent) => void;
+
+export interface ScheduledNoteEvent {
+  type: PlaybackNoteEventType;
+  instrumentId?: string;
+  midi?: number;
+  velocity?: number;
+  row: number;
+  trackIndex: number;
+  /** Audio context time when this note should be triggered */
+  time: number;
+}
+
+export type ScheduledNoteHandler = (event: ScheduledNoteEvent) => void;
+
+export interface CancelScheduledHandler {
+  (): void;
+}

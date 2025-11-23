@@ -855,6 +855,83 @@ export default class InstrumentV2 {
     if (gateParam) gateParam.value = 0;
   }
 
+  /**
+   * Schedule a note on at a specific audio context time.
+   * Used for sample-accurate playback scheduling.
+   */
+  public noteOnAtTime(noteNumber: number, velocity: number, time: number): void {
+    const { voiceIndex, stolenNote } = this.allocateVoice(noteNumber);
+    const isRetrigger = this.activeNotes.get(noteNumber) === voiceIndex;
+
+    this.activeNotes.set(noteNumber, voiceIndex);
+    this.voiceLastUsedTime[voiceIndex] = Date.now();
+
+    const frequency = this.midiNoteToFrequency(noteNumber);
+
+    if (!this.workletNode) return;
+
+    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+    if (gateParam) {
+      const retriggering = isRetrigger || stolenNote !== null;
+      const portamentoEnabled = this.isPortamentoEnabled();
+      const shouldPulseGate =
+        retriggering && (this.voiceLimit > 1 || !portamentoEnabled);
+      if (shouldPulseGate) {
+        const gatePulseDuration = Math.max(
+          0.005,
+          this.quantumFrames / this.audioContext.sampleRate,
+        );
+        gateParam.setValueAtTime(0, time);
+        gateParam.setValueAtTime(1, time + gatePulseDuration);
+      } else {
+        gateParam.setValueAtTime(1, time);
+      }
+    }
+
+    const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+    if (freqParam) freqParam.setValueAtTime(frequency, time);
+
+    const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+    if (gainParam) gainParam.setValueAtTime(velocity / 127, time);
+  }
+
+  /**
+   * Schedule a note off at a specific audio context time.
+   * Used for sample-accurate playback scheduling.
+   */
+  public noteOffAtTime(noteNumber: number, time: number): void {
+    const voiceIndex = this.activeNotes.get(noteNumber);
+    if (voiceIndex === undefined) return;
+
+    this.activeNotes.delete(noteNumber);
+
+    if (!this.workletNode) return;
+
+    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+    if (gateParam) gateParam.setValueAtTime(0, time);
+  }
+
+  /**
+   * Cancel all scheduled parameter changes (for stopping playback).
+   */
+  public cancelScheduledNotes(): void {
+    if (!this.workletNode) return;
+
+    const now = this.audioContext.currentTime;
+    for (let i = 0; i < this.voiceLimit; i++) {
+      const gateParam = this.workletNode.parameters.get(`gate_${i}`);
+      if (gateParam) {
+        gateParam.cancelScheduledValues(now);
+        gateParam.setValueAtTime(0, now);
+      }
+      const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
+      if (freqParam) freqParam.cancelScheduledValues(now);
+      const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+      if (gainParam) gainParam.cancelScheduledValues(now);
+    }
+    this.activeNotes.clear();
+  }
+
   public allNotesOff(): void {
     for (const noteNumber of this.activeNotes.keys()) {
       this.noteOff(noteNumber);

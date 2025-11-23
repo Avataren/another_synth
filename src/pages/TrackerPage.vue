@@ -219,7 +219,8 @@ import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type {
   Pattern as PlaybackPattern,
   Song as PlaybackSong,
-  Step as PlaybackStep
+  Step as PlaybackStep,
+  ScheduledNoteEvent
 } from '../../packages/tracker-playback/src/types';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
@@ -266,17 +267,34 @@ const availablePatches = ref<BankPatchOption[]>([]);
 const bankPatchLibrary = ref<Record<string, Patch>>({});
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const songBank = new TrackerSongBank();
+
+function isTrackAudible(trackIndex: number): boolean {
+  const hasSolo = soloedTracks.value.size > 0;
+  const isSoloed = soloedTracks.value.has(trackIndex);
+  const isMuted = mutedTracks.value.has(trackIndex);
+  return hasSolo ? isSoloed : !isMuted;
+}
+
 const playbackEngine = new PlaybackEngine({
   instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
-  noteHandler: (event) => {
+  audioContext: songBank.audioContext,
+  scheduledNoteHandler: (event: ScheduledNoteEvent) => {
     // Check mute/solo state for this track
-    const trackIndex = event.trackIndex;
-    const hasSolo = soloedTracks.value.size > 0;
-    const isSoloed = soloedTracks.value.has(trackIndex);
-    const isMuted = mutedTracks.value.has(trackIndex);
-    const isAudible = hasSolo ? isSoloed : !isMuted;
+    if (!isTrackAudible(event.trackIndex)) return;
 
-    if (!isAudible) return;
+    if (event.type === 'noteOn') {
+      if (event.instrumentId === undefined || event.midi === undefined) return;
+      const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
+      songBank.noteOnAtTime(event.instrumentId, event.midi, velocity, event.time);
+      return;
+    }
+
+    if (event.instrumentId === undefined || event.midi === undefined) return;
+    songBank.noteOffAtTime(event.instrumentId, event.midi, event.time);
+  },
+  // Keep legacy handler for preview notes (not used for playback anymore)
+  noteHandler: (event) => {
+    if (!isTrackAudible(event.trackIndex)) return;
 
     if (event.type === 'noteOn') {
       if (event.instrumentId === undefined || event.midi === undefined) return;
@@ -734,12 +752,14 @@ function handlePause() {
   // Set the active row to the current playback position
   activeRow.value = playbackRow.value;
   playbackEngine.pause();
+  songBank.cancelAllScheduled();
   songBank.allNotesOff();
 }
 
 function handleStop() {
   playbackEngine.stop();
   playbackRow.value = 0;
+  songBank.cancelAllScheduled();
   songBank.allNotesOff();
 }
 
@@ -932,6 +952,7 @@ watch(
 onBeforeUnmount(() => {
   unsubscribePosition?.();
   playbackEngine.stop();
+  songBank.cancelAllScheduled();
   songBank.dispose();
 });
 </script>

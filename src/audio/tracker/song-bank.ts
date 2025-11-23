@@ -136,6 +136,36 @@ export class TrackerSongBank {
     }
   }
 
+  /**
+   * Schedule a note on at a specific audio context time.
+   */
+  noteOnAtTime(instrumentId: string | undefined, midi: number, velocity: number, time: number) {
+    if (instrumentId === undefined) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    active.instrument.noteOnAtTime(midi, velocity, time);
+  }
+
+  /**
+   * Schedule a note off at a specific audio context time.
+   */
+  noteOffAtTime(instrumentId: string | undefined, midi: number, time: number) {
+    if (instrumentId === undefined) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    active.instrument.noteOffAtTime(midi, time);
+  }
+
+  /**
+   * Cancel all scheduled notes and stop all sound immediately.
+   */
+  cancelAllScheduled() {
+    for (const active of this.instruments.values()) {
+      active.instrument.cancelScheduledNotes();
+    }
+    this.activeNotes.clear();
+  }
+
   private async ensureInstrument(instrumentId: string, patch: Patch): Promise<void> {
     const patchId = patch?.metadata?.id;
     if (!patchId) return;
