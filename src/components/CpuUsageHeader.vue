@@ -64,13 +64,19 @@ export default defineComponent({
 <style scoped>
 .cpu-usage {
   width: 100%;
-  padding: 5px 0; /* minimal padding for header fit */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
 }
 .label {
-  font-size: 0.8rem;
-  color: #e0e0e2;
-  text-align: center;
-  margin-bottom: 3px;
+  font-size: 0.78rem;
+  color: #dfe7fb;
+  text-align: right;
+  margin: 0;
+  line-height: 1.1;
 }
 .progress-container {
   position: relative;
@@ -81,8 +87,8 @@ export default defineComponent({
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 0.75rem;
-  font-weight: bold;
-  color: #333;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #f7fcff;
 }
 </style>

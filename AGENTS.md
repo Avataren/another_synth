@@ -1043,3 +1043,11 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Added overrides for `.q-field__control:before/after` to hide the default underline/focus line that showed as a white stripe beneath the dropdown.
 - Pattern list supports inline renaming: double-click a pattern row to edit the name; `SequenceEditor` emits `rename-pattern` and `TrackerPage` routes it to `trackerStore.setPatternName`.
 - Pattern active state toned down: active rows now use a subtle teal/blue gradient with a light border instead of a solid bright fill to improve readability.
+- Tracker transport buttons restyled: Play Pattern/Song now use flat translucent fills (no gradients) with subtle shadows and accent borders; active state still lifts slightly for feedback.
+- Play buttons now use white text for better contrast on the flat translucent fills.
+- Layout scroll fix: `MainLayout` now sets `.app-layout` to `overflow: hidden` and sizes `.q-page-container` to `calc(100vh - header)` with its own overflow, removing the always-present vertical scrollbar from the header/tabs.
+- Additional scroll fix: `.app-layout :deep(.q-page)` now uses `min-height: 100%` so pages fit the container height instead of the full viewport, preventing extra vertical scroll in tracker/patch views.
+- `.q-page-container` overflow forced to `hidden` under `.app-layout` to eliminate lingering page-level vertical scroll tied to scoped header styles.
+- Layout sizing refined: header height trimmed to 44px, q-page-container now uses padding-top instead of overlaying content, and q-pages get constrained heights with their own scroll to keep tracker/patch content visible without hiding under the header.
+- CPU header alignment: CPU widget container now flexes to full height, and `CpuUsageHeader` padding is removed with centered flex layout so it aligns vertically within the slimmer header.
+- Header tabs shifted left by removing the leading spacer so Tracker/Patch links sit closer to the title instead of drifting right.

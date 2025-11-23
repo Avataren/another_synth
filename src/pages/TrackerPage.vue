@@ -809,8 +809,12 @@ function handlePause() {
 }
 
 function handleStop() {
+  const wasPlaying = isPlaying.value;
   playbackEngine.stop();
   playbackRow.value = 0;
+  if (wasPlaying) {
+    setActiveRow(0);
+  }
   songBank.cancelAllScheduled();
   songBank.allNotesOff();
 }
@@ -1171,14 +1175,18 @@ onBeforeUnmount(() => {
 
 .transport-button {
   padding: 8px 12px;
+  min-width: 120px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
-  color: #e8f3ff;
+  color: #eaf6ff;
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
   transition: border-color 120ms ease, background-color 120ms ease;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .transport-button:hover {
@@ -1186,13 +1194,17 @@ onBeforeUnmount(() => {
 }
 
 .transport-button.play {
-  background: linear-gradient(90deg, #4df2c5, #70c2ff);
-  color: #0c1624;
-  border-color: transparent;
+  background: rgba(77, 242, 197, 0.14);
+  color: #f7fcff;
+  border-color: rgba(77, 242, 197, 0.5);
+  box-shadow: 0 4px 14px rgba(77, 242, 197, 0.18);
 }
 
 .transport-button.play.alt {
-  background: linear-gradient(90deg, #9da6ff, #70c2ff);
+  background: rgba(132, 173, 255, 0.14);
+  color: #f7fcff;
+  border-color: rgba(160, 196, 255, 0.45);
+  box-shadow: 0 4px 14px rgba(112, 194, 255, 0.18);
 }
 
 .transport-button.stop {
@@ -1201,7 +1213,8 @@ onBeforeUnmount(() => {
 }
 
 .transport-button.active {
-  box-shadow: 0 0 0 2px rgba(77, 242, 197, 0.35);
+  box-shadow: 0 0 0 2px rgba(77, 242, 197, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
+  transform: translateY(-1px);
 }
 
 .song-meta {

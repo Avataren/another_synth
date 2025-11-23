@@ -1,10 +1,9 @@
 <template>
-  <q-layout view="lHh Lpr lFf">
+  <q-layout view="lHh Lpr lFf" class="app-layout">
     <q-header elevated class="app-header">
       <q-toolbar class="app-toolbar">
         <q-toolbar-title>Synthesizer</q-toolbar-title>
 
-        <q-space />
         <q-tabs
           dense
           active-color="white"
@@ -34,15 +33,24 @@ import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
 <style scoped>
 .cpu {
   width: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
 }
 
 .app-header {
+  --app-header-height: 44px;
   z-index: 1000;
+  height: var(--app-header-height);
+  min-height: var(--app-header-height);
 }
 
 .app-toolbar {
-  gap: 12px;
-  min-height: 56px;
+  gap: 10px;
+  min-height: var(--app-header-height);
+  padding: 4px 10px;
+  align-items: center;
 }
 
 .main-tabs {
@@ -70,5 +78,23 @@ import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
   min-height: 64px;
   display: flex;
   align-items: center;
+}
+
+.app-layout {
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app-layout :deep(.q-page-container) {
+  height: 100vh;
+  padding-top: var(--app-header-height, 44px);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.app-layout :deep(.q-page) {
+  min-height: calc(100vh - var(--app-header-height, 44px));
+  max-height: calc(100vh - var(--app-header-height, 44px));
+  overflow: auto;
 }
 </style>
