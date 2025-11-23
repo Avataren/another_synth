@@ -33,8 +33,266 @@ import type {
   GlideState,
   VelocityState,
 } from '../types/synth-layout';
+import {
+  FilterType,
+  FilterSlope,
+  SamplerLoopMode,
+  SamplerTriggerMode,
+} from '../types/synth-layout';
 import type { NoiseState } from '../types/noise';
 import { normalizeSamplerState } from '../utils/sampler-detune';
+
+function toNumber(value: unknown, fallback: number): number {
+  const num =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function toBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (value === 0 || value === 1) return Boolean(value);
+  return fallback;
+}
+
+function normalizeOscillatorState(
+  osc: Partial<OscillatorState>,
+  id: string,
+): OscillatorState {
+  return {
+    id,
+    phase_mod_amount: toNumber(osc.phase_mod_amount, 0),
+    freq_mod_amount: toNumber(osc.freq_mod_amount, 0),
+    detune_oct: toNumber(osc.detune_oct, 0),
+    detune_semi: toNumber(osc.detune_semi, 0),
+    detune_cents: toNumber(osc.detune_cents, 0),
+    detune: toNumber(osc.detune, 0),
+    hard_sync: toBoolean(osc.hard_sync, false),
+    gain: toNumber(osc.gain, 0.5),
+    feedback_amount: toNumber(osc.feedback_amount, 0),
+    waveform: toNumber(osc.waveform, 0),
+    active: toBoolean(osc.active, true),
+    unison_voices: toNumber(osc.unison_voices, 1),
+    spread: toNumber(osc.spread, 0),
+    wave_index: toNumber(osc.wave_index, 0),
+  };
+}
+
+function normalizeEnvelopeState(
+  env: Partial<EnvelopeConfig>,
+  id: string,
+): EnvelopeConfig {
+  return {
+    id,
+    attack: toNumber(env.attack, 0),
+    decay: toNumber(env.decay, 0.1),
+    sustain: toNumber(env.sustain, 0.5),
+    release: toNumber(env.release, 0.1),
+    active: toBoolean(env.active, true),
+    attackCurve: toNumber(env.attackCurve, 0),
+    decayCurve: toNumber(env.decayCurve, 0),
+    releaseCurve: toNumber(env.releaseCurve, 0),
+  };
+}
+
+function normalizeLfoState(lfo: Partial<LfoState>, id: string): LfoState {
+  const loopMode = toNumber(
+    (lfo as Record<string, unknown>).loopMode ??
+      (lfo as Record<string, unknown>).loop_mode,
+    0,
+  );
+  return {
+    id,
+    frequency: toNumber(lfo.frequency, 1.0),
+    phaseOffset: toNumber(
+      (lfo as Record<string, unknown>).phaseOffset ??
+        (lfo as Record<string, unknown>).phase_offset,
+      0,
+    ),
+    waveform: toNumber(lfo.waveform, 0),
+    useAbsolute: toBoolean(lfo.useAbsolute, false),
+    useNormalized: toBoolean(lfo.useNormalized, false),
+    triggerMode: toNumber(
+      (lfo as Record<string, unknown>).triggerMode ??
+        (lfo as Record<string, unknown>).trigger ??
+        (lfo as Record<string, unknown>).trigger_mode,
+      0,
+    ),
+    gain: toNumber(lfo.gain, 1),
+    active: toBoolean(lfo.active, true),
+    loopMode,
+    loopStart: toNumber(
+      (lfo as Record<string, unknown>).loopStart ??
+        (lfo as Record<string, unknown>).loop_start,
+      0.5,
+    ),
+    loopEnd: toNumber(
+      (lfo as Record<string, unknown>).loopEnd ??
+        (lfo as Record<string, unknown>).loop_end,
+      1,
+    ),
+  };
+}
+
+function normalizeFilterState(
+  filter: Partial<FilterState>,
+  id: string,
+): FilterState {
+  const filterType =
+    (filter as Record<string, unknown>).filter_type ??
+    (filter as Record<string, unknown>).filterType;
+  const filterSlope =
+    (filter as Record<string, unknown>).filter_slope ??
+    (filter as Record<string, unknown>).filterSlope;
+
+  return {
+    id,
+    cutoff: toNumber(filter.cutoff, 20000),
+    resonance: toNumber(filter.resonance, 0),
+    keytracking: toNumber(
+      (filter as Record<string, unknown>).keytracking ?? filter.keytracking,
+      0,
+    ),
+    comb_frequency: toNumber(filter.comb_frequency, 220),
+    comb_dampening: toNumber(filter.comb_dampening, 0.5),
+    oversampling: toNumber(filter.oversampling, 0),
+    gain: toNumber(filter.gain, 0.5),
+    filter_type: toNumber(filterType, FilterType.LowPass) as FilterType,
+    filter_slope: toNumber(filterSlope, FilterSlope.Db12) as FilterSlope,
+    active: toBoolean(filter.active, true),
+  };
+}
+
+function normalizeConvolverState(
+  convolver: Partial<ConvolverState>,
+  id: string,
+): ConvolverState {
+  return {
+    id,
+    wetMix: toNumber(convolver.wetMix, 0.1),
+    active: toBoolean(convolver.active, false),
+    ...(convolver.generator ? { generator: convolver.generator } : {}),
+  };
+}
+
+function normalizeDelayState(
+  delay: Partial<DelayState>,
+  id: string,
+): DelayState {
+  return {
+    id,
+    delayMs: toNumber(delay.delayMs, 250),
+    feedback: toNumber(delay.feedback, 0.5),
+    wetMix: toNumber(delay.wetMix, 0.1),
+    active: toBoolean(delay.active, false),
+  };
+}
+
+function normalizeChorusState(
+  chorus: Partial<ChorusState>,
+  id: string,
+): ChorusState {
+  return {
+    id,
+    active: toBoolean(chorus.active, false),
+    baseDelayMs: toNumber(chorus.baseDelayMs, 15.0),
+    depthMs: toNumber(chorus.depthMs, 5.0),
+    lfoRateHz: toNumber(chorus.lfoRateHz, 0.5),
+    feedback: toNumber(chorus.feedback, 0.3),
+    feedback_filter: toNumber(chorus.feedback_filter, 0.5),
+    mix: toNumber(chorus.mix, 0.5),
+    stereoPhaseOffsetDeg: toNumber(chorus.stereoPhaseOffsetDeg, 90.0),
+  };
+}
+
+function normalizeReverbState(
+  reverb: Partial<ReverbState>,
+  id: string,
+): ReverbState {
+  return {
+    id,
+    active: toBoolean(reverb.active, false),
+    room_size: toNumber(reverb.room_size, 0.95),
+    damp: toNumber(reverb.damp, 0.5),
+    wet: toNumber(reverb.wet, 0.3),
+    dry: toNumber(reverb.dry, 0.7),
+    width: toNumber(reverb.width, 1.0),
+  };
+}
+
+function normalizeCompressorState(
+  comp: Partial<CompressorState>,
+  id: string,
+): CompressorState {
+  return {
+    id,
+    active: toBoolean(comp.active, false),
+    thresholdDb: toNumber(comp.thresholdDb, -12),
+    ratio: toNumber(comp.ratio, 4),
+    attackMs: toNumber(comp.attackMs, 10),
+    releaseMs: toNumber(comp.releaseMs, 80),
+    makeupGainDb: toNumber(comp.makeupGainDb, 3),
+    mix: toNumber(comp.mix, 0.5),
+  };
+}
+
+function normalizeSaturationState(
+  sat: Partial<SaturationState>,
+  id: string,
+): SaturationState {
+  return {
+    id,
+    active: toBoolean(sat.active, false),
+    drive: toNumber(sat.drive, 2.0),
+    mix: toNumber(sat.mix, 0.5),
+  };
+}
+
+function normalizeBitcrusherState(
+  crusher: Partial<BitcrusherState>,
+  id: string,
+): BitcrusherState {
+  return {
+    id,
+    active: toBoolean(crusher.active, false),
+    bits: toNumber(crusher.bits, 12),
+    downsampleFactor: toNumber(crusher.downsampleFactor, 4),
+    mix: toNumber(crusher.mix, 0.5),
+  };
+}
+
+function normalizeNoiseState(noise: Partial<NoiseState>): NoiseState {
+  const record = noise as Record<string, unknown>;
+  const noiseType = toNumber(record.noiseType ?? record.noise_type, 0);
+  return {
+    noiseType,
+    cutoff: toNumber(noise.cutoff, 1.0),
+    gain: toNumber(noise.gain, 1.0),
+    is_enabled: toBoolean(record.is_enabled ?? record.enabled, false),
+  };
+}
+
+function normalizeVelocityState(velocity: Partial<VelocityState>): VelocityState {
+  return {
+    sensitivity: toNumber(velocity.sensitivity, 1.0),
+    randomize: toNumber(velocity.randomize, 0.0),
+    active: toBoolean(velocity.active, true),
+  };
+}
+
+function normalizeStateMap<T>(
+  map: Map<string, Partial<T>> | undefined,
+  normalizer: (state: Partial<T>, id: string) => T,
+): Map<string, T> {
+  const normalized = new Map<string, T>();
+  map?.forEach((state, id) => {
+    normalized.set(id, normalizer(state, id));
+  });
+  return normalized;
+}
 
 function normalizeGlideState(
   glide: GlideState | (Partial<GlideState> & { id?: string }),
@@ -54,6 +312,39 @@ function normalizeGlideState(
     time: resolvedTime ?? 0,
     active: glide.active ?? false,
   };
+}
+
+function normalizeSamplerStateWithDefaults(
+  sampler: Partial<SamplerState>,
+  id: string,
+): SamplerState {
+  const base: SamplerState = {
+    id,
+    frequency: toNumber(sampler.frequency, 440.0),
+    gain: toNumber(sampler.gain, 1.0),
+    detune_oct: toNumber(sampler.detune_oct, 0),
+    detune_semi: toNumber(sampler.detune_semi, 0),
+    detune_cents: toNumber(sampler.detune_cents, 0),
+    detune: toNumber(sampler.detune, 0),
+    loopMode: toNumber(sampler.loopMode, SamplerLoopMode.Off) as SamplerLoopMode,
+    loopStart: toNumber(sampler.loopStart, 0),
+    loopEnd: toNumber(sampler.loopEnd, 1),
+    sampleLength: toNumber(
+      sampler.sampleLength ?? sampler.sampleRate,
+      44100,
+    ),
+    rootNote: toNumber(sampler.rootNote, 60),
+    triggerMode: toNumber(
+      sampler.triggerMode,
+      SamplerTriggerMode.Gate,
+    ) as SamplerTriggerMode,
+    active: toBoolean(sampler.active, true),
+    sampleRate: toNumber(sampler.sampleRate, 44100),
+    channels: toNumber(sampler.channels, 1),
+    ...(sampler.fileName ? { fileName: sampler.fileName } : {}),
+  };
+
+  return normalizeSamplerState(base);
 }
 
 /**
@@ -82,6 +373,39 @@ export function serializeCurrentPatch(
   metadata?: Partial<PatchMetadata>,
   macros?: MacroState,
 ): Patch {
+  const normalizedOscillators = normalizeStateMap(
+    oscillators,
+    normalizeOscillatorState,
+  );
+  const normalizedWavetableOscillators = normalizeStateMap(
+    wavetableOscillators,
+    normalizeOscillatorState,
+  );
+  const normalizedEnvelopes = normalizeStateMap(envelopes, normalizeEnvelopeState);
+  const normalizedLfos = normalizeStateMap(lfos, normalizeLfoState);
+  const normalizedFilters = normalizeStateMap(filters, normalizeFilterState);
+  const normalizedSamplers = normalizeStateMap(
+    samplers as Map<string, Partial<SamplerState>>,
+    normalizeSamplerStateWithDefaults,
+  );
+  const normalizedGlides = normalizeStateMap(glides, normalizeGlideState);
+  const normalizedConvolvers = normalizeStateMap(convolvers, normalizeConvolverState);
+  const normalizedDelays = normalizeStateMap(delays, normalizeDelayState);
+  const normalizedChoruses = normalizeStateMap(choruses, normalizeChorusState);
+  const normalizedReverbs = normalizeStateMap(reverbs, normalizeReverbState);
+  const normalizedCompressors = normalizeStateMap(
+    compressors,
+    normalizeCompressorState,
+  );
+  const normalizedSaturations = normalizeStateMap(
+    saturations,
+    normalizeSaturationState,
+  );
+  const normalizedBitcrushers = normalizeStateMap(
+    bitcrushers,
+    normalizeBitcrusherState,
+  );
+
   // Create or use provided metadata
   const patchMetadata: PatchMetadata = metadata
     ? {
@@ -95,27 +419,27 @@ export function serializeCurrentPatch(
   const layoutForPatch = synthLayoutToPatchLayout(layout);
   const synthState: SynthState = {
     layout: layoutForPatch,
-    oscillators: mapToRecord(oscillators),
-    wavetableOscillators: mapToRecord(wavetableOscillators),
-    filters: mapToRecord(filters),
-    envelopes: mapToRecord(envelopes),
-    lfos: mapToRecord(lfos),
-    samplers: mapToRecord(samplers),
-    glides: mapToRecord(glides),
-    convolvers: mapToRecord(convolvers),
-    delays: mapToRecord(delays),
-    choruses: mapToRecord(choruses),
-    reverbs: mapToRecord(reverbs),
-    compressors: mapToRecord(compressors),
-    saturations: mapToRecord(saturations),
-    bitcrushers: mapToRecord(bitcrushers),
+    oscillators: mapToRecord(normalizedOscillators),
+    wavetableOscillators: mapToRecord(normalizedWavetableOscillators),
+    filters: mapToRecord(normalizedFilters),
+    envelopes: mapToRecord(normalizedEnvelopes),
+    lfos: mapToRecord(normalizedLfos),
+    samplers: mapToRecord(normalizedSamplers),
+    glides: mapToRecord(normalizedGlides),
+    convolvers: mapToRecord(normalizedConvolvers),
+    delays: mapToRecord(normalizedDelays),
+    choruses: mapToRecord(normalizedChoruses),
+    reverbs: mapToRecord(normalizedReverbs),
+    compressors: mapToRecord(normalizedCompressors),
+    saturations: mapToRecord(normalizedSaturations),
+    bitcrushers: mapToRecord(normalizedBitcrushers),
   };
 
   if (noise !== undefined) {
-    synthState.noise = noise;
+    synthState.noise = normalizeNoiseState(noise);
   }
   if (velocity !== undefined) {
-    synthState.velocity = velocity;
+    synthState.velocity = normalizeVelocityState(velocity);
   }
 
   if (macros) {
@@ -163,74 +487,88 @@ export interface DeserializedPatch {
 
 export function deserializePatch(patch: Patch): DeserializedPatch {
   const layout = patchLayoutToSynthLayout(patch.synthState.layout);
-  const samplers = recordToMap(patch.synthState.samplers);
-  const normalizedSamplers = new Map(
-    Array.from(samplers.entries()).map(([id, state]) => [
-      id,
-      normalizeSamplerState({
-        ...state,
-        id,
-      }),
-    ]),
+  const oscillators = normalizeStateMap(
+    recordToMap(patch.synthState.oscillators),
+    normalizeOscillatorState,
   );
-  const normalizedGlides = new Map(
-    Array.from(recordToMap(patch.synthState.glides).entries()).map(([id, glide]) => [
-      id,
-      normalizeGlideState(glide, id),
-    ]),
+  const wavetableOscillators = normalizeStateMap(
+    recordToMap(patch.synthState.wavetableOscillators),
+    normalizeOscillatorState,
   );
-  const saturations = new Map(
-    Array.from(recordToMap(patch.synthState.saturations ?? {}).entries()).map(
-      ([id, state]) => [
-        id,
-        {
-          id,
-          active: state?.active ?? false,
-          drive: state?.drive ?? 2.0,
-          mix: state?.mix ?? 0.5,
-        },
-      ],
-    ),
+  const envelopes = normalizeStateMap(
+    recordToMap(patch.synthState.envelopes),
+    normalizeEnvelopeState,
   );
-  const bitcrushers = new Map(
-    Array.from(recordToMap(patch.synthState.bitcrushers ?? {}).entries()).map(
-      ([id, state]) => [
-        id,
-        {
-          id,
-          active: state?.active ?? false,
-          bits: state?.bits ?? 12,
-          downsampleFactor: state?.downsampleFactor ?? 4,
-          mix: state?.mix ?? 0.5,
-        },
-      ],
-    ),
+  const lfos = normalizeStateMap(
+    recordToMap(patch.synthState.lfos),
+    normalizeLfoState,
   );
+  const filters = normalizeStateMap(
+    recordToMap(patch.synthState.filters),
+    normalizeFilterState,
+  );
+  const normalizedSamplers = normalizeStateMap(
+    recordToMap(patch.synthState.samplers),
+    normalizeSamplerStateWithDefaults,
+  );
+  const normalizedGlides = normalizeStateMap(
+    recordToMap(patch.synthState.glides),
+    normalizeGlideState,
+  );
+  const convolvers = normalizeStateMap(
+    recordToMap(patch.synthState.convolvers),
+    normalizeConvolverState,
+  );
+  const delays = normalizeStateMap(
+    recordToMap(patch.synthState.delays),
+    normalizeDelayState,
+  );
+  const choruses = normalizeStateMap(
+    recordToMap(patch.synthState.choruses),
+    normalizeChorusState,
+  );
+  const reverbs = normalizeStateMap(
+    recordToMap(patch.synthState.reverbs),
+    normalizeReverbState,
+  );
+  const compressors = normalizeStateMap(
+    recordToMap(patch.synthState.compressors ?? {}),
+    normalizeCompressorState,
+  );
+  const saturations = normalizeStateMap(
+    recordToMap(patch.synthState.saturations ?? {}),
+    normalizeSaturationState,
+  );
+  const bitcrushers = normalizeStateMap(
+    recordToMap(patch.synthState.bitcrushers ?? {}),
+    normalizeBitcrusherState,
+  );
+  const audioAssets = recordToMap(patch.audioAssets);
   const result: DeserializedPatch = {
     metadata: patch.metadata,
     layout,
-    oscillators: recordToMap(patch.synthState.oscillators),
-    wavetableOscillators: recordToMap(patch.synthState.wavetableOscillators),
-    filters: recordToMap(patch.synthState.filters),
-    envelopes: recordToMap(patch.synthState.envelopes),
-    lfos: recordToMap(patch.synthState.lfos),
+    oscillators,
+    wavetableOscillators,
+    filters,
+    envelopes,
+    lfos,
     samplers: normalizedSamplers,
     glides: normalizedGlides,
-    convolvers: recordToMap(patch.synthState.convolvers),
-  delays: recordToMap(patch.synthState.delays),
-  choruses: recordToMap(patch.synthState.choruses),
-  reverbs: recordToMap(patch.synthState.reverbs),
-  compressors: recordToMap(patch.synthState.compressors ?? {}),
-  saturations,
-  bitcrushers,
-  audioAssets: recordToMap(patch.audioAssets),
-};
+    convolvers,
+    delays,
+    choruses,
+    reverbs,
+    compressors,
+    saturations,
+    bitcrushers,
+    audioAssets,
+  };
 
   if (patch.synthState.noise !== undefined) {
-    result.noise = patch.synthState.noise;
+    result.noise = normalizeNoiseState(patch.synthState.noise);
   }
   if (patch.synthState.velocity !== undefined) {
-    result.velocity = patch.synthState.velocity;
+    result.velocity = normalizeVelocityState(patch.synthState.velocity);
   }
 
   if (patch.synthState.macros !== undefined) {

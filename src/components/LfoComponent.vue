@@ -34,7 +34,7 @@
             @update:modelValue="handleAbsoluteChange"
           />
           <q-toggle
-            v-model="triggerMode"
+            :model-value="(lfoState.triggerMode ?? 0) !== 0"
             label="Trigger"
             @update:modelValue="handleTriggerModeChange"
           />
@@ -176,7 +176,6 @@ const layoutStore = useLayoutStore();
 const { lfoStates } = storeToRefs(nodeStateStore);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 const waveform = ref<number>(0);
-const triggerMode = ref<boolean>(false);
 
 const displayName = computed(
   () =>

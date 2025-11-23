@@ -187,6 +187,7 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - `apply_patch_to_graph` reconstructs a graph from a `PatchFile`.
   - `test_patch_serialization_roundtrip` ensures layout + connections survive a roundtrip.
   - `test_apply_patch_after_deserialization` validates that node IDs from the original graph map correctly in a newly initialized engine.
+  - Patch serialization/deserialization now normalizes every node state map (oscillators, envelopes, LFO trigger/loop fields, filters, samplers, glides, effects, noise/velocity) so missing or boolean fields are filled with defaults and patches roundtrip with complete shapes.
 - When debugging patches:
   - On WASM: use the detailed logging in `AudioEngine::init_with_patch` for serde errors and sampler connections.
   - On native: `init_with_patch` uses the same `PatchFile` structs; prefer aligning changes with the WASM implementation.

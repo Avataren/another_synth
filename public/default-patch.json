@@ -1,9 +1,9 @@
 {
   "metadata": {
-    "id": "patch_1763922865493_ziali6z",
+    "id": "patch_1763924787056_6e7tgjj",
     "name": "New Patch",
-    "created": 1763922865493,
-    "modified": 1763922885735,
+    "created": 1763924787056,
+    "modified": 1763924884958,
     "version": 1,
     "category": "Factory/Basic"
   },
@@ -274,8 +274,8 @@
       "e791e6e0-9000-13bc-6e7e-5dd5ba41291d": {
         "id": "e791e6e0-9000-13bc-6e7e-5dd5ba41291d",
         "frequency": 7,
-        "waveform": 0,
         "phaseOffset": 0,
+        "waveform": 0,
         "useAbsolute": false,
         "useNormalized": false,
         "triggerMode": 1,
@@ -381,7 +381,7 @@
       "active": true
     },
     "macros": {
-      "values": [0, 0, 0, 0],
+      "values": [0, 0.5, 1, 0],
       "routes": [
         {
           "macroIndex": 0,
@@ -389,6 +389,30 @@
           "targetPort": 12,
           "amount": 1,
           "modulationType": 0,
+          "modulationTransformation": 0
+        },
+        {
+          "macroIndex": 1,
+          "targetId": "e791e6e0-9000-13bc-6e7e-5dd5ba41291d",
+          "targetPort": 17,
+          "amount": 1,
+          "modulationType": 0,
+          "modulationTransformation": 0
+        },
+        {
+          "macroIndex": 2,
+          "targetId": "c493007e-fc24-c74f-c352-9b606b4f1b54",
+          "targetPort": 15,
+          "amount": 1,
+          "modulationType": 0,
+          "modulationTransformation": 0
+        },
+        {
+          "macroIndex": 3,
+          "targetId": "c493007e-fc24-c74f-c352-9b606b4f1b54",
+          "targetPort": 16,
+          "amount": 1,
+          "modulationType": 2,
           "modulationTransformation": 0
         }
       ]

@@ -310,6 +310,9 @@ export const usePatchStore = defineStore('patchStore', {
         // Regenerate convolvers with procedural generator params
         await this.restoreGeneratedConvolvers(deserialized.convolvers, instrumentStore.currentInstrument as InstrumentV2 | null);
 
+        // Ensure all node states (including LFO trigger modes) are pushed into WASM after load
+        nodeStateStore.applyPreservedStatesToWasm();
+
         this.isLoadingPatch = false;
         return true;
       } catch (error) {
