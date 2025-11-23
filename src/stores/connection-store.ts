@@ -5,9 +5,11 @@ import {
   ModulationTransformation,
   WasmModulationType,
 } from 'app/public/wasm/audio_processor';
+import { uid } from 'quasar';
 import { useInstrumentStore } from './instrument-store';
 import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
+import { useMacroStore } from './macro-store';
 
 function debounce<T extends (...args: unknown[]) => void>(
   func: T,
@@ -52,6 +54,37 @@ export const useConnectionStore = defineStore('connectionStore', {
           };
           if (connection.modulationType !== undefined) {
             plainConnection.modulationType = connection.modulationType;
+          }
+
+          // Macro routing path (sourceId starts with macro-)
+          if (plainConnection.fromId.startsWith('macro-')) {
+            const macroIndex = Number(plainConnection.fromId.replace('macro-', '')) || 0;
+            const macroStore = useMacroStore();
+            const route = {
+              id:
+                macroStore.routesForMacro(macroIndex).find(
+                  (r) =>
+                    r.targetId === plainConnection.toId &&
+                    r.targetPort === plainConnection.target,
+                )?.id ?? uid(),
+              macroIndex,
+              targetId: plainConnection.toId,
+              targetPort: plainConnection.target as PortId,
+              amount: plainConnection.amount,
+              modulationType:
+                plainConnection.modulationType ?? WasmModulationType.VCA,
+              modulationTransformation:
+                plainConnection.modulationTransformation ?? ModulationTransformation.None,
+            };
+
+            if (plainConnection.isRemoving || plainConnection.amount <= 0) {
+              macroStore.removeRoute(route.id);
+            } else if (macroStore.routes.some((r) => r.id === route.id)) {
+              macroStore.updateRoute(route);
+            } else {
+              macroStore.addRoute(route);
+            }
+            continue;
           }
 
           const instrument = instrumentStore.currentInstrument;

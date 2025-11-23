@@ -732,11 +732,13 @@ export class AudioEngine {
      * @param {string} target_node
      * @param {PortId} target_port
      * @param {number} amount
+     * @param {WasmModulationType | null | undefined} modulation_type
+     * @param {ModulationTransformation} modulation_transform
      */
-    connect_macro(voice_index, macro_index, target_node, target_port, amount) {
+    connect_macro(voice_index, macro_index, target_node, target_port, amount, modulation_type, modulation_transform) {
         const ptr0 = passStringToWasm0(target_node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.audioengine_connect_macro(this.__wbg_ptr, voice_index, macro_index, ptr0, len0, target_port, amount);
+        const ret = wasm.audioengine_connect_macro(this.__wbg_ptr, voice_index, macro_index, ptr0, len0, target_port, amount, isLikeNone(modulation_type) ? 3 : modulation_type, modulation_transform);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

@@ -14,6 +14,7 @@ import {
   type RawConnection,
   rustNodeTypeToTS,
 } from 'src/audio/adapters/wasm-type-adapter';
+import { useMacroStore } from './macro-store';
 
 const DEFAULT_NODE_NAMES: Partial<Record<VoiceNodeType, string[]>> = {
   [VoiceNodeType.Oscillator]: ['Analog Oscillator'],
@@ -80,6 +81,17 @@ export const useLayoutStore = defineStore('layoutStore', {
       (state) =>
       (nodeId: string): NodeConnection[] => {
         if (!state.synthLayout) return [];
+        if (nodeId.startsWith('macro-')) {
+          const macroIndex = Number(nodeId.replace('macro-', '')) || 0;
+          return useMacroStore().routesForMacro(macroIndex).map((route) => ({
+            fromId: nodeId,
+            toId: route.targetId,
+            target: route.targetPort,
+            amount: route.amount,
+            modulationType: route.modulationType,
+            modulationTransformation: route.modulationTransformation,
+          }));
+        }
         const voice = state.synthLayout.voices[0];
         if (!voice) return [];
         return voice.connections.filter(

@@ -2450,10 +2450,12 @@ impl AudioEngine {
         target_node: &str,
         target_port: PortId,
         amount: f32,
+        modulation_type: Option<WasmModulationType>,
+        modulation_transform: ModulationTransformation,
     ) -> Result<(), JsValue> {
         log_console(&format!(
-            "Connecting macro: voice={}, macro={}, node={}, port={:?}, amount={}",
-            voice_index, macro_index, target_node, target_port, amount
+            "Connecting macro: voice={}, macro={}, node={}, port={:?}, amount={}, mod_type={:?}, mod_transform={:?}",
+            voice_index, macro_index, target_node, target_port, amount, modulation_type, modulation_transform
         ));
 
         let voice = self
@@ -2472,9 +2474,16 @@ impl AudioEngine {
             return Ok(());
         }
 
-        voice
-            .add_macro_modulation(macro_index, target_node_id, target_port, amount)
-            .map_err(|e| JsValue::from_str(&e))
+        voice.add_macro_modulation(
+            macro_index,
+            target_node_id,
+            target_port,
+            amount,
+            modulation_type
+                .map(ModulationType::from)
+                .unwrap_or_default(),
+            modulation_transform,
+        ).map_err(|e| JsValue::from_str(&e))
     }
 
     fn build_nodes_from_canonical_voice(

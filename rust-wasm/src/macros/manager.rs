@@ -168,10 +168,16 @@ impl MacroManager {
                 let mut macro_chunk = [0.0; 4];
                 macro_chunk[..current_chunk_size]
                     .copy_from_slice(&buffer[i..i + current_chunk_size]);
-                let macro_values_simd = f32x4::from_array(macro_chunk);
-
                 // Apply modulation for each target in the macro.
                 for target in targets {
+                    // Apply modulation transformation to the macro values
+                    let mut transformed = [0.0; 4];
+                    for j in 0..current_chunk_size {
+                        transformed[j] =
+                            target.modulation_transform.apply(macro_chunk[j]);
+                    }
+                    let transformed_simd = f32x4::from_array(transformed);
+
                     if let Some(output_buffer) = outputs.get_mut(&target.port_id) {
                         if i >= output_buffer.len() {
                             continue;
@@ -185,11 +191,12 @@ impl MacroManager {
 
                         let modulated_simd = match target.modulation_type {
                             ModulationType::Additive => {
-                                current_simd + (macro_values_simd * amount_simd)
+                                current_simd + (transformed_simd * amount_simd)
                             }
-                            ModulationType::VCA => current_simd * (macro_values_simd * amount_simd),
+                            ModulationType::VCA => current_simd * (transformed_simd * amount_simd),
                             ModulationType::Bipolar => {
-                                current_simd * (f32x4::splat(1.0) + macro_values_simd * amount_simd)
+                                current_simd
+                                    * (f32x4::splat(1.0) + transformed_simd * amount_simd)
                             }
                         };
 

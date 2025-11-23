@@ -35,7 +35,7 @@ import {
   type NodeConnectionUpdate,
   type FilterState,
 } from './types/synth-layout';
-import { type PortId } from 'app/public/wasm/audio_processor';
+import type { PortId, WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
 import { WorkletMessageHandler } from './adapters/message-handler';
 import { toRaw } from 'vue';
 
@@ -212,7 +212,7 @@ export default class InstrumentV2 {
     }
   }
 
-  public connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number }): void {
+  public connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }): void {
     if (!this.workletNode) {
       return;
     }
@@ -222,6 +222,8 @@ export default class InstrumentV2 {
       targetId: payload.targetId,
       targetPort: payload.targetPort,
       amount: payload.amount,
+      modulationType: payload.modulationType,
+      modulationTransformation: payload.modulationTransformation,
     });
   }
 

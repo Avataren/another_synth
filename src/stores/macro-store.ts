@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
 import { uid } from 'quasar';
 import { useInstrumentStore } from './instrument-store';
-import type { PortId } from 'app/public/wasm/audio_processor';
+import type { PortId, ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
+import type { NodeConnection } from 'src/audio/types/synth-layout';
 
 export interface MacroRoute {
   id: string;
@@ -9,6 +10,8 @@ export interface MacroRoute {
   targetId: string;
   targetPort: PortId;
   amount: number;
+  modulationType: WasmModulationType;
+  modulationTransformation: ModulationTransformation;
 }
 
 export const useMacroStore = defineStore('macroStore', {
@@ -27,6 +30,8 @@ export const useMacroStore = defineStore('macroStore', {
         targetId: route.targetId,
         targetPort: route.targetPort,
         amount: route.amount,
+        modulationType: route.modulationType,
+        modulationTransformation: route.modulationTransformation,
       };
       this.routes.push(newRoute);
       this.applyRoute(newRoute);
@@ -53,21 +58,27 @@ export const useMacroStore = defineStore('macroStore', {
         targetId: route.targetId,
         targetPort: route.targetPort,
         amount: route.amount,
+        modulationType: route.modulationType,
+        modulationTransformation: route.modulationTransformation,
       });
     },
     reapplyAllRoutes() {
-      const instrumentStore = useInstrumentStore();
       this.routes.forEach((route) => {
-        instrumentStore.connectMacroRoute({
-          macroIndex: route.macroIndex,
-          targetId: route.targetId,
-          targetPort: route.targetPort,
-          amount: route.amount,
-        });
+        this.applyRoute(route);
       });
     },
     reset() {
       this.routes = [];
+    },
+    asConnections(sourceId: string): NodeConnection[] {
+      return this.routes.map((route) => ({
+        fromId: sourceId,
+        toId: route.targetId,
+        target: route.targetPort,
+        amount: route.amount,
+        modulationType: route.modulationType,
+        modulationTransformation: route.modulationTransformation,
+      }));
     },
   },
 });

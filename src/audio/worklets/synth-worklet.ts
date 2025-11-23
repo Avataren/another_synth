@@ -339,17 +339,37 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.handleRequestSync();
   }
 
-  private handleConnectMacro(data: { macroIndex: number; targetId: string; targetPort: PortId; amount: number }) {
+  private handleConnectMacro(data: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }) {
     if (!this.audioEngine) return;
     const voices = this.voiceLayouts?.length ?? this.numVoices;
+    const connectMacro =
+      (this.audioEngine as { connect_macro?: (...args: unknown[]) => unknown })
+        .connect_macro;
     for (let voice = 0; voice < voices; voice++) {
-      this.audioEngine.connect_macro(
-        voice,
-        data.macroIndex,
-        data.targetId,
-        data.targetPort,
-        data.amount,
-      );
+      if (typeof connectMacro === 'function') {
+        // Prefer new signature with modulationType/transform; fall back to legacy 5-arg binding if present
+        if (connectMacro.length >= 7) {
+          connectMacro.call(
+            this.audioEngine,
+            voice,
+            data.macroIndex,
+            data.targetId,
+            data.targetPort,
+            data.amount,
+            data.modulationType,
+            data.modulationTransformation,
+          );
+        } else {
+          connectMacro.call(
+            this.audioEngine,
+            voice,
+            data.macroIndex,
+            data.targetId,
+            data.targetPort,
+            data.amount,
+          );
+        }
+      }
     }
   }
 

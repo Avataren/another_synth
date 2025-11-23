@@ -1,4 +1,4 @@
-use crate::{graph::ModulationType, NodeId, PortId};
+use crate::{graph::ModulationTransformation, graph::ModulationType, NodeId, PortId};
 
 #[derive(Debug, Clone)]
 pub struct ModulationTarget {
@@ -6,6 +6,7 @@ pub struct ModulationTarget {
     pub port_id: PortId,
     pub amount: f32,
     pub modulation_type: ModulationType,
+    pub modulation_transform: ModulationTransformation,
 }
 
 #[derive(Debug)]

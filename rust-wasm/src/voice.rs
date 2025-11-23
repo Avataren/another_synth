@@ -162,6 +162,8 @@ impl Voice {
         target_node: NodeId,
         target_port: PortId,
         amount: f32,
+        modulation_type: ModulationType,
+        modulation_transform: ModulationTransformation,
     ) -> Result<(), String> {
         // First add the modulation target to the macro manager to get the buffer
         self.macro_manager.add_modulation(
@@ -170,7 +172,8 @@ impl Voice {
                 node_id: target_node,
                 port_id: target_port,
                 amount,
-                modulation_type: ModulationType::default(),
+                modulation_type,
+                modulation_transform,
             },
         )?;
 
@@ -191,8 +194,8 @@ impl Voice {
                 buffer_idx,
                 amount,
                 NodeId::default(), // Sentinel value for macro modulations (no source node)
-                ModulationType::VCA,
-                ModulationTransformation::None,
+                modulation_type,
+                modulation_transform,
             ));
 
         Ok(())

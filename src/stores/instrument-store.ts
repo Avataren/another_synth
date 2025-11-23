@@ -4,6 +4,7 @@ import AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import type { PortId } from 'app/public/wasm/audio_processor';
+import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
 
 interface InstrumentStoreState {
   audioSystem: AudioSystem | null;
@@ -20,7 +21,7 @@ interface InstrumentStoreActions {
   waitForInstrumentReady(timeoutMs?: number): Promise<boolean>;
   setMacro(macroIndex: number, value: number): void;
   applyMacrosToInstrument(): void;
-  connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number }): void;
+  connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }): void;
 }
 
 export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStoreState, Record<string, never>, InstrumentStoreActions>('instrumentStore', {
@@ -102,7 +103,7 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
       });
     },
 
-    connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number }) {
+    connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }) {
       if (!this.currentInstrument) return;
       this.currentInstrument.connectMacroRoute(payload);
     },
