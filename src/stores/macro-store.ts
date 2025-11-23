@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { uid } from 'quasar';
 import { useInstrumentStore } from './instrument-store';
-import type { PortId, ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
+import { ModulationTransformation, WasmModulationType, type PortId } from 'app/public/wasm/audio_processor';
 import type { NodeConnection } from 'src/audio/types/synth-layout';
 
 export interface MacroRoute {
@@ -69,6 +69,24 @@ export const useMacroStore = defineStore('macroStore', {
     },
     reset() {
       this.routes = [];
+    },
+    setFromPatch(macros?: { values?: number[]; routes?: { macroIndex: number; targetId: string; targetPort: number; amount: number; modulationType?: WasmModulationType; modulationTransformation?: ModulationTransformation }[] }) {
+      const instrumentStore = useInstrumentStore();
+      if (macros?.values) {
+        instrumentStore.setMacros(macros.values);
+      }
+
+      this.routes = (macros?.routes ?? []).map((route) => ({
+        id: uid(),
+        macroIndex: route.macroIndex,
+        targetId: route.targetId,
+        targetPort: route.targetPort as PortId,
+        amount: route.amount,
+        modulationType: route.modulationType ?? WasmModulationType.VCA,
+        modulationTransformation: route.modulationTransformation ?? ModulationTransformation.None,
+      }));
+
+      this.reapplyAllRoutes();
     },
     asConnections(sourceId: string): NodeConnection[] {
       return this.routes.map((route) => ({

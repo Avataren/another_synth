@@ -22,6 +22,7 @@ interface InstrumentStoreActions {
   setMacro(macroIndex: number, value: number): void;
   applyMacrosToInstrument(): void;
   connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }): void;
+  setMacros(values: number[]): void;
 }
 
 export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStoreState, Record<string, never>, InstrumentStoreActions>('instrumentStore', {
@@ -106,6 +107,11 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
     connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }) {
       if (!this.currentInstrument) return;
       this.currentInstrument.connectMacroRoute(payload);
+    },
+
+    setMacros(values: number[]) {
+      this.macros = values.slice(0, this.macros.length).map((v) => Math.min(1, Math.max(0, v)));
+      this.applyMacrosToInstrument();
     },
   },
 });

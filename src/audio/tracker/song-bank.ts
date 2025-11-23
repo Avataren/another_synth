@@ -173,6 +173,13 @@ export class TrackerSongBank {
     active.instrument.setGainForAllVoices(gain, time);
   }
 
+  setInstrumentMacro(instrumentId: string | undefined, macroIndex: number, value: number, time?: number) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    active.instrument.setMacro(macroIndex, value, time);
+  }
+
   private async ensureInstrument(instrumentId: string, patch: Patch): Promise<void> {
     const patchId = patch?.metadata?.id;
     if (!patchId) return;

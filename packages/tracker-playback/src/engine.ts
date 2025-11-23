@@ -14,7 +14,9 @@ import {
   type Song,
   type TransportState,
   type ScheduledAutomationHandler,
-  type AutomationHandler
+  type AutomationHandler,
+  type ScheduledMacroHandler,
+  type MacroHandler
 } from './types';
 import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
 
@@ -43,6 +45,8 @@ export class PlaybackEngine {
   private readonly scheduledNoteHandler: ScheduledNoteHandler | undefined;
   private readonly scheduledAutomationHandler: ScheduledAutomationHandler | undefined;
   private readonly automationHandler: AutomationHandler | undefined;
+  private readonly scheduledMacroHandler: ScheduledMacroHandler | undefined;
+  private readonly macroHandler: MacroHandler | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
   private loopCurrentPattern = false;
@@ -68,6 +72,8 @@ export class PlaybackEngine {
     this.scheduledNoteHandler = options.scheduledNoteHandler;
     this.scheduledAutomationHandler = options.scheduledAutomationHandler;
     this.automationHandler = options.automationHandler;
+    this.scheduledMacroHandler = options.scheduledMacroHandler;
+    this.macroHandler = options.macroHandler;
     this.audioContext = options.audioContext;
   }
 
@@ -244,6 +250,14 @@ export class PlaybackEngine {
       const instrumentId = step.instrumentId;
       if (!instrumentId) continue;
 
+      if (step.macroIndex !== undefined && step.macroValue !== undefined) {
+        if (this.scheduledMacroHandler) {
+          this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time);
+        } else if (this.macroHandler) {
+          this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
+        }
+      }
+
       if (this.scheduledAutomationHandler && step.velocity !== undefined) {
         const gain = clamp(step.velocity / 127);
         this.scheduledAutomationHandler(instrumentId, gain, time);
@@ -406,6 +420,10 @@ export class PlaybackEngine {
     for (const step of steps) {
       const instrumentId = step.instrumentId;
       if (!instrumentId) continue;
+
+      if (this.macroHandler && step.macroIndex !== undefined && step.macroValue !== undefined) {
+        this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
+      }
 
       if (step.isNoteOff) {
         const event: PlaybackNoteEvent = {

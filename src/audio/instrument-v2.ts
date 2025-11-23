@@ -197,17 +197,17 @@ export default class InstrumentV2 {
     });
   }
 
-  public setMacro(macroIndex: number, value: number): void {
+  public setMacro(macroIndex: number, value: number, time?: number): void {
     if (!this.workletNode) {
       return;
     }
 
     const clampedValue = Math.min(1, Math.max(0, value));
-    const now = this.audioContext.currentTime;
+    const when = typeof time === 'number' ? time : this.audioContext.currentTime;
     for (let voice = 0; voice < this.num_voices; voice++) {
       const param = this.workletNode.parameters.get(`macro_${voice}_${macroIndex}`);
       if (param) {
-        param.setValueAtTime(clampedValue, now);
+        param.setValueAtTime(clampedValue, when);
       }
     }
   }

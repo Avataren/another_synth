@@ -4,19 +4,20 @@
       <div class="track-name">{{ track.name }}</div>
       <div class="track-id">#{{ trackIndexLabel }}</div>
     </div>
-    <div class="track-entries">
-      <TrackerEntry
-        v-for="row in rows"
-        :key="`${track.id}-${row}`"
-        :row-index="row"
-        :entry="entryLookup[row]"
-        :active="selectedRow === row"
-        :track-index="index"
-        :active-track="activeTrack"
-        :active-column="activeColumn"
-        @select-cell="onSelectCell"
-      />
-    </div>
+  <div class="track-entries">
+    <TrackerEntry
+      v-for="row in rows"
+      :key="`${track.id}-${row}`"
+      :row-index="row"
+      :entry="entryLookup[row]"
+      :active="selectedRow === row"
+      :track-index="index"
+      :active-track="activeTrack"
+      :active-column="activeColumn"
+      :active-macro-nibble="activeMacroNibble"
+      @select-cell="onSelectCell"
+    />
+  </div>
   </div>
 </template>
 
@@ -32,6 +33,7 @@ interface Props {
   index: number;
   activeTrack: number;
   activeColumn: number;
+  activeMacroNibble: number;
 }
 
 const props = defineProps<Props>();

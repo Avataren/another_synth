@@ -25,6 +25,9 @@ export interface Step {
   note?: string;
   velocity?: number;
   instrumentId?: string;
+  macroIndex?: number;
+  /** Normalized macro value 0..1 */
+  macroValue?: number;
   /**
    * Pre-parsed MIDI note number for the step. Optional so callers can
    * keep note strings but still provide a numeric value for scheduling.
@@ -63,6 +66,10 @@ export interface PlaybackOptions {
   scheduledAutomationHandler?: ScheduledAutomationHandler;
   /** Handler for gain automation when no scheduled handler exists (fallback) */
   automationHandler?: AutomationHandler;
+  /** Handler for scheduling macro values per instrument at specific audio times */
+  scheduledMacroHandler?: ScheduledMacroHandler;
+  /** Handler for macros when no scheduled handler exists (fallback) */
+  macroHandler?: MacroHandler;
   /** Audio context for getting current time */
   audioContext?: AudioContext;
 }
@@ -105,6 +112,15 @@ export type ScheduledAutomationHandler = (
 ) => void;
 
 export type AutomationHandler = (instrumentId: string, gain: number) => void;
+
+export type ScheduledMacroHandler = (
+  instrumentId: string,
+  macroIndex: number,
+  value: number,
+  time: number
+) => void;
+
+export type MacroHandler = (instrumentId: string, macroIndex: number, value: number) => void;
 
 export interface GainAutomationEvent {
   instrumentId: string;

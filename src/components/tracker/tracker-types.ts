@@ -3,7 +3,7 @@ export interface TrackerEntryData {
   note?: string;
   instrument?: string;
   volume?: string;
-  effect?: string;
+  macro?: string;
 }
 
 export interface TrackerTrackData {

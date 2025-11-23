@@ -37,6 +37,7 @@
           :index="index"
           :active-track="activeTrack"
           :active-column="activeColumn"
+          :active-macro-nibble="activeMacroNibble"
           @rowSelected="selectRow"
           @cellSelected="selectCell"
         />
@@ -59,13 +60,14 @@ interface Props {
   activeColumn: number;
   autoScroll: boolean;
   isPlaying: boolean;
+  activeMacroNibble: number;
 }
 
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (event: 'rowSelected', row: number): void;
-  (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number }): void;
+  (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number; macroNibble?: number }): void;
 }>();
 
 const rowHeightPx = 30;
@@ -104,7 +106,7 @@ function selectRow(row: number) {
   emit('rowSelected', row);
 }
 
-function selectCell(payload: { row: number; column: number; trackIndex: number }) {
+function selectCell(payload: { row: number; column: number; trackIndex: number; macroNibble?: number }) {
   emit('cellSelected', payload);
 }
 

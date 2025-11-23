@@ -9,6 +9,7 @@ import type {
 import {
   createDefaultPatchMetadata,
   PRESET_SCHEMA_VERSION,
+  type MacroState,
 } from '../types/preset-types';
 import type OscillatorState from '../models/OscillatorState';
 import {
@@ -79,6 +80,7 @@ export function serializeCurrentPatch(
   velocity?: VelocityState,
   audioAssets?: Map<string, AudioAsset>,
   metadata?: Partial<PatchMetadata>,
+  macros?: MacroState,
 ): Patch {
   // Create or use provided metadata
   const patchMetadata: PatchMetadata = metadata
@@ -116,6 +118,13 @@ export function serializeCurrentPatch(
     synthState.velocity = velocity;
   }
 
+  if (macros) {
+    synthState.macros = {
+      values: macros.values ?? [],
+      routes: macros.routes ?? [],
+    };
+  }
+
   // Convert audio assets map to record
   const assetRecord = audioAssets ? mapToRecord(audioAssets) : {};
 
@@ -149,6 +158,7 @@ export interface DeserializedPatch {
   noise?: NoiseState;
   velocity?: VelocityState;
   audioAssets: Map<string, AudioAsset>;
+  macros?: MacroState;
 }
 
 export function deserializePatch(patch: Patch): DeserializedPatch {
@@ -221,6 +231,10 @@ export function deserializePatch(patch: Patch): DeserializedPatch {
   }
   if (patch.synthState.velocity !== undefined) {
     result.velocity = patch.synthState.velocity;
+  }
+
+  if (patch.synthState.macros !== undefined) {
+    result.macros = patch.synthState.macros;
   }
 
   return result;
@@ -305,6 +319,13 @@ export function validatePatch(patch: unknown): ValidationResult {
     for (const key of requiredStateKeys) {
       if (!(key in p.synthState)) {
         errors.push(`Missing synthState.${key}`);
+      }
+    }
+
+    if (p.synthState.macros) {
+      const macros = p.synthState.macros as unknown;
+      if (typeof macros !== 'object') {
+        errors.push('synthState.macros must be an object');
       }
     }
   }

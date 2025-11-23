@@ -27,11 +27,14 @@ import {
   getConvolverNodeIds,
   getSamplerNodeIds,
 } from 'src/audio/serialization/audio-asset-extractor';
-import { createDefaultPatchMetadata } from 'src/audio/types/preset-types';
+import { createDefaultPatchMetadata, PRESET_SCHEMA_VERSION } from 'src/audio/types/preset-types';
 import { useInstrumentStore } from './instrument-store';
 import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
 import { useAssetStore } from './asset-store';
+import { useMacroStore } from './macro-store';
+import type { MacroRoute } from './macro-store';
+import type { WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
 import type InstrumentV2 from 'src/audio/instrument-v2';
 import { VoiceNodeType, getNodesOfType, cloneVoiceLayout, type SynthLayout, type ConvolverState } from 'src/audio/types/synth-layout';
 import { normalizePatchCategory } from 'src/utils/patch-category';
@@ -247,6 +250,7 @@ export const usePatchStore = defineStore('patchStore', {
       const layoutStore = useLayoutStore();
       const nodeStateStore = useNodeStateStore();
       const assetStore = useAssetStore();
+      const macroStore = useMacroStore();
 
       try {
         const instrumentReady = await instrumentStore.waitForInstrumentReady();
@@ -270,6 +274,29 @@ export const usePatchStore = defineStore('patchStore', {
         layoutStore.updateSynthLayout(deserialized.layout);
         nodeStateStore.assignStatesFromPatch(deserialized);
         assetStore.setAudioAssets(deserialized.audioAssets);
+        macroStore.setFromPatch(
+          deserialized.macros
+            ? {
+                values: deserialized.macros.values ?? [],
+                routes: (deserialized.macros.routes ?? []).map((route) => ({
+                  macroIndex: route.macroIndex,
+                  targetId: route.targetId,
+                  targetPort: route.targetPort,
+                  amount: route.amount,
+                  modulationType: route.modulationType as WasmModulationType | undefined,
+                  modulationTransformation:
+                    route.modulationTransformation as ModulationTransformation | undefined,
+                })) as {
+                  macroIndex: number;
+                  targetId: string;
+                  targetPort: number;
+                  amount: number;
+                  modulationType?: WasmModulationType;
+                  modulationTransformation?: ModulationTransformation;
+                }[],
+              }
+            : undefined,
+        );
 
         // Now send to WASM (may trigger immediate layout update callback)
         instrumentStore.currentInstrument?.loadPatch(patch);
@@ -508,6 +535,7 @@ export const usePatchStore = defineStore('patchStore', {
       const nodeStateStore = useNodeStateStore();
       const assetStore = useAssetStore();
       const instrumentStore = useInstrumentStore();
+      const macroStore = useMacroStore();
 
       if (!layoutStore.synthLayout) {
         console.error('Cannot serialize patch: no synth layout');
@@ -536,6 +564,17 @@ export const usePatchStore = defineStore('patchStore', {
         ]);
 
         const metadataPayload = sanitizeMetadataUpdates(metadata);
+        const macros = {
+          values: instrumentStore.macros,
+          routes: macroStore.routes.map((route: MacroRoute) => ({
+            macroIndex: route.macroIndex,
+            targetId: route.targetId,
+            targetPort: route.targetPort,
+            amount: route.amount,
+            modulationType: route.modulationType,
+            modulationTransformation: route.modulationTransformation,
+          })),
+        };
 
         return serializeCurrentPatch(
           name ?? 'Untitled',
@@ -558,6 +597,7 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.velocityState,
           allAssets,
           metadataPayload,
+          macros,
         );
       } catch (error) {
         console.error('Failed to serialize patch:', error);
@@ -640,15 +680,16 @@ export const usePatchStore = defineStore('patchStore', {
         console.error('Failed to save patch:', error);
         return null;
       }
-    },
-    async updateCurrentPatch(
-      name?: string,
-      metadata?: PatchMetadataUpdates,
-    ): Promise<Patch | null> {
+  },
+  async updateCurrentPatch(
+    name?: string,
+    metadata?: PatchMetadataUpdates,
+  ): Promise<Patch | null> {
       const layoutStore = useLayoutStore();
-      const nodeStateStore = useNodeStateStore();
-      const assetStore = useAssetStore();
-      const instrumentStore = useInstrumentStore();
+    const nodeStateStore = useNodeStateStore();
+    const assetStore = useAssetStore();
+    const instrumentStore = useInstrumentStore();
+    const macroStore = useMacroStore();
       if (!layoutStore.synthLayout) {
         console.error('Cannot update patch: no synth layout');
         return null;
@@ -667,11 +708,6 @@ export const usePatchStore = defineStore('patchStore', {
       const existingPatch = this.currentBank.patches.find(
         (p) => p.metadata.id === this.currentPatchId,
       );
-
-      if (!existingPatch) {
-        console.error('Cannot update patch: current patch not found in bank');
-        return null;
-      }
 
       try {
         const samplerIds = getSamplerNodeIds(layoutStore.synthLayout);
@@ -695,7 +731,15 @@ export const usePatchStore = defineStore('patchStore', {
         ]);
 
         const metadataPayload = sanitizeMetadataUpdates(metadata);
-        const existingMetadata = existingPatch.metadata;
+        const existingMetadata =
+          existingPatch?.metadata ??
+          ({
+            id: this.currentPatchId,
+            name: name?.trim() || 'Untitled',
+            created: Date.now(),
+            modified: Date.now(),
+            version: PRESET_SCHEMA_VERSION,
+          } as PatchMetadata);
         const finalName = name?.trim() || existingMetadata.name;
         const now = Date.now();
         const mergedMetadata: Partial<PatchMetadata> = {
@@ -703,6 +747,17 @@ export const usePatchStore = defineStore('patchStore', {
           name: finalName,
           modified: now,
           ...(metadataPayload || {}),
+        };
+        const macros = {
+          values: instrumentStore.macros,
+          routes: macroStore.routes.map((route) => ({
+            macroIndex: route.macroIndex,
+            targetId: route.targetId,
+            targetPort: route.targetPort,
+            amount: route.amount,
+            modulationType: route.modulationType,
+            modulationTransformation: route.modulationTransformation,
+          })),
         };
 
         const patch = serializeCurrentPatch(
@@ -726,9 +781,12 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.velocityState,
           allAssets,
           mergedMetadata,
+          macros,
         );
 
-        this.currentBank = updatePatchInBank(this.currentBank, patch);
+        this.currentBank = existingPatch
+          ? updatePatchInBank(this.currentBank, patch)
+          : addPatchToBank(this.currentBank, patch);
         this.currentPatchId = patch.metadata.id;
         return patch;
       } catch (error) {

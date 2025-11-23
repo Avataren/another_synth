@@ -1,11 +1,11 @@
 {
   "metadata": {
-    "id": "patch_1763911203880_5wbl3iv",
+    "id": "patch_1763922865493_ziali6z",
     "name": "New Patch",
-    "created": 1763911203880,
-    "modified": 1763911215480,
+    "created": 1763922865493,
+    "modified": 1763922885735,
     "version": 1,
-    "category": "Factory/Bass"
+    "category": "Factory/Basic"
   },
   "synthState": {
     "layout": {
@@ -35,7 +35,13 @@
               "name": "Amp Envelope"
             }
           ],
-          "lfo": [],
+          "lfo": [
+            {
+              "id": "e791e6e0-9000-13bc-6e7e-5dd5ba41291d",
+              "type": "lfo",
+              "name": "Frequency LFO"
+            }
+          ],
           "mixer": [
             {
               "id": "2e0c90c9-a786-b937-43f2-466ea61816c8",
@@ -173,6 +179,14 @@
             "modulationTransformation": 0
           },
           {
+            "fromId": "e791e6e0-9000-13bc-6e7e-5dd5ba41291d",
+            "toId": "75e1aadf-d10c-6fba-dc61-ed7f08fd802d",
+            "target": 21,
+            "amount": 1,
+            "modulationType": 2,
+            "modulationTransformation": 0
+          },
+          {
             "fromId": "c493007e-fc24-c74f-c352-9b606b4f1b54",
             "toId": "2e0c90c9-a786-b937-43f2-466ea61816c8",
             "target": 0,
@@ -184,6 +198,14 @@
             "fromId": "f7d73554-84f0-860a-c85b-b0507c7d34a1",
             "toId": "26520f70-11b2-208c-2a4d-0903ab200303",
             "target": 9,
+            "amount": 1,
+            "modulationType": 2,
+            "modulationTransformation": 0
+          },
+          {
+            "fromId": "c2b2a8d3-cea4-2514-df87-1d498eb8a15d",
+            "toId": "e791e6e0-9000-13bc-6e7e-5dd5ba41291d",
+            "target": 26,
             "amount": 1,
             "modulationType": 2,
             "modulationTransformation": 0
@@ -212,7 +234,7 @@
         "hard_sync": false,
         "gain": 1,
         "feedback_amount": 0,
-        "waveform": 0,
+        "waveform": 2,
         "active": true,
         "unison_voices": 1,
         "spread": 0,
@@ -230,7 +252,7 @@
         "comb_dampening": 0.5,
         "oversampling": 0,
         "gain": 1,
-        "filter_type": 0,
+        "filter_type": 6,
         "filter_slope": 1,
         "active": true
       }
@@ -248,7 +270,22 @@
         "releaseCurve": 0
       }
     },
-    "lfos": {},
+    "lfos": {
+      "e791e6e0-9000-13bc-6e7e-5dd5ba41291d": {
+        "id": "e791e6e0-9000-13bc-6e7e-5dd5ba41291d",
+        "frequency": 7,
+        "waveform": 0,
+        "phaseOffset": 0,
+        "useAbsolute": false,
+        "useNormalized": false,
+        "triggerMode": 1,
+        "gain": 1,
+        "active": true,
+        "loopMode": 0,
+        "loopStart": 0.5,
+        "loopEnd": 1
+      }
+    },
     "samplers": {},
     "glides": {
       "f7d73554-84f0-860a-c85b-b0507c7d34a1": {
@@ -342,6 +379,19 @@
       "sensitivity": 1,
       "randomize": 0,
       "active": true
+    },
+    "macros": {
+      "values": [0, 0, 0, 0],
+      "routes": [
+        {
+          "macroIndex": 0,
+          "targetId": "e791e6e0-9000-13bc-6e7e-5dd5ba41291d",
+          "targetPort": 12,
+          "amount": 1,
+          "modulationType": 0,
+          "modulationTransformation": 0
+        }
+      ]
     }
   },
   "audioAssets": {}

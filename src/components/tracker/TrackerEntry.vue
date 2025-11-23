@@ -8,13 +8,45 @@
     @click="onSelectRow"
   >
     <span
-      v-for="(cell, idx) in cells"
-      :key="idx"
-      class="cell"
-      :class="[cell.className, { 'cell-active': isActiveCell(idx) }]"
-      @click.stop="onSelectCell(idx)"
+      class="cell note"
+      :class="{ 'cell-active': isActiveCell(0) }"
+      @click.stop="onSelectCell(0)"
     >
-      {{ cell.display }}
+      {{ cells.note.display }}
+    </span>
+    <span
+      class="cell instrument"
+      :class="{ 'cell-active': isActiveCell(1) }"
+      @click.stop="onSelectCell(1)"
+    >
+      {{ cells.instrument.display }}
+    </span>
+    <span
+      class="cell volume volume-high"
+      :class="{ 'cell-active': isActiveCell(2) }"
+      @click.stop="onSelectCell(2)"
+    >
+      {{ cells.volumeHi.display }}
+    </span>
+    <span
+      class="cell volume volume-low"
+      :class="{ 'cell-active': isActiveCell(3) }"
+      @click.stop="onSelectCell(3)"
+    >
+      {{ cells.volumeLo.display }}
+    </span>
+    <span class="cell effect" :class="{ 'cell-active': isActiveCell(4) }">
+      <span class="macro-digits">
+        <span
+          v-for="(digit, idx) in cells.macroDigits"
+          :key="idx"
+          class="macro-digit"
+          :class="{ active: isActiveCell(4) && activeMacroNibble === idx }"
+          @click.stop="onSelectCell(4, idx)"
+        >
+          {{ digit }}
+        </span>
+      </span>
     </span>
   </div>
 </template>
@@ -31,11 +63,12 @@ interface Props {
   trackIndex: number;
   activeTrack: number;
   activeColumn: number;
+  activeMacroNibble: number;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
-  (event: 'selectCell', payload: { row: number; column: number; trackIndex: number }): void;
+  (event: 'selectCell', payload: { row: number; column: number; trackIndex: number; macroNibble?: number | undefined }): void;
 }>();
 
 const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
@@ -43,26 +76,29 @@ const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
 const cells = computed(() => {
   const volume = props.entry?.volume ?? '..';
   const volPadded = (volume + '..').slice(0, 2);
+  const macro = props.entry?.macro ?? '...';
+  const macroPadded = (macro + '...').slice(0, 3);
   const noteDisplay = (() => {
     if (!props.entry?.note) return '---';
     const normalized = props.entry.note.trim().toUpperCase();
     return normalized === '--' ? '###' : props.entry.note;
   })();
-  return [
-    { display: noteDisplay, className: 'note' },
-    { display: props.entry?.instrument ?? '..', className: 'instrument' },
-    { display: volPadded[0] ?? '.', className: 'volume volume-high' },
-    { display: volPadded[1] ?? '.', className: 'volume volume-low' },
-    { display: props.entry?.effect ?? '---', className: 'effect' }
-  ];
+  const macroDigits = macroPadded.split('');
+  return {
+    note: { display: noteDisplay, className: 'note' },
+    instrument: { display: props.entry?.instrument ?? '..', className: 'instrument' },
+    volumeHi: { display: volPadded[0] ?? '.', className: 'volume volume-high' },
+    volumeLo: { display: volPadded[1] ?? '.', className: 'volume volume-low' },
+    macroDigits
+  };
 });
 
 function onSelectRow() {
   emit('selectCell', { row: props.rowIndex, column: 0, trackIndex: props.trackIndex });
 }
 
-function onSelectCell(column: number) {
-  emit('selectCell', { row: props.rowIndex, column, trackIndex: props.trackIndex });
+function onSelectCell(column: number, macroNibble?: number) {
+  emit('selectCell', { row: props.rowIndex, column, trackIndex: props.trackIndex, macroNibble });
 }
 
 function isActiveCell(column: number) {
@@ -146,5 +182,21 @@ function isActiveCell(column: number) {
 
 .effect {
   color: #8ef5c5;
+}
+
+.macro-digits {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.macro-digit {
+  padding: 2px 3px;
+  border-radius: 4px;
+}
+
+.macro-digit.active {
+  color: #0c1624;
+  font-weight: 800;
+  background: linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9));
 }
 </style>

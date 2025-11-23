@@ -238,16 +238,17 @@
       <div class="pattern-area">
         <TrackerPattern
           :tracks="currentPattern?.tracks ?? []"
-          :rows="rowsCount"
-          :selected-row="activeRow"
-          :playback-row="playbackRow"
-          :active-track="activeTrack"
-          :active-column="activeColumn"
-          :auto-scroll="autoScroll"
-          :is-playing="isPlaying"
-          @rowSelected="setActiveRow"
-          @cellSelected="setActiveCell"
-        />
+  :rows="rowsCount"
+  :selected-row="activeRow"
+  :playback-row="playbackRow"
+  :active-track="activeTrack"
+  :active-column="activeColumn"
+  :active-macro-nibble="activeMacroNibble"
+  :auto-scroll="autoScroll"
+  :is-playing="isPlaying"
+  @rowSelected="setActiveRow"
+  @cellSelected="setActiveCell"
+/>
       </div>
     </div>
   </q-page>
@@ -345,6 +346,7 @@ const patchStore = usePatchStore();
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
+const activeMacroNibble = ref(0);
 const columnsPerTrack = 5;
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
@@ -364,6 +366,27 @@ function normalizeVolumeChars(vol?: string): [string, string] {
   return chars;
 }
 
+function normalizeMacroChars(macro?: string): [string, string, string] {
+  const clean = (macro ?? '').toUpperCase();
+  const chars: [string, string, string] = ['.', '.', '.'];
+  if (/^[0-3]$/.test(clean[0] ?? '')) chars[0] = clean[0] as string;
+  if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1] as string;
+  if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2] as string;
+  return chars;
+}
+
+function parseMacroField(macro?: string): { index: number; value: number } | undefined {
+  const chars = normalizeMacroChars(macro);
+  if (chars[0] === '.') return undefined;
+  const macroIndex = parseInt(chars[0], 16);
+  if (!Number.isFinite(macroIndex) || macroIndex < 0 || macroIndex > 3) return undefined;
+  const valueHex = `${chars[1] === '.' ? '0' : chars[1]}${chars[2] === '.' ? '0' : chars[2]}`;
+  const raw = Number.parseInt(valueHex, 16);
+  if (!Number.isFinite(raw)) return undefined;
+  const clamped = Math.max(0, Math.min(255, raw));
+  return { index: macroIndex, value: clamped / 255 };
+}
+
 function isTrackAudible(trackIndex: number): boolean {
   const hasSolo = soloedTracks.value.size > 0;
   const isSoloed = soloedTracks.value.has(trackIndex);
@@ -379,6 +402,12 @@ const playbackEngine = new PlaybackEngine({
   },
   automationHandler: (instrumentId, gain) => {
     songBank.setInstrumentGain(instrumentId, gain);
+  },
+  scheduledMacroHandler: (instrumentId, macroIndex, value, time) => {
+    songBank.setInstrumentMacro(instrumentId, macroIndex, value, time);
+  },
+  macroHandler: (instrumentId, macroIndex, value) => {
+    songBank.setInstrumentMacro(instrumentId, macroIndex, value);
   },
   scheduledNoteHandler: (event: ScheduledNoteEvent) => {
     // Check mute/solo state for this track
@@ -478,34 +507,49 @@ function setActiveRow(row: number) {
   activeRow.value = clamped;
 }
 
-function setActiveCell(payload: { row: number; column: number; trackIndex: number }) {
+function setActiveCell(payload: { row: number; column: number; trackIndex: number; macroNibble?: number }) {
   activeRow.value = payload.row;
   activeTrack.value = payload.trackIndex;
   activeColumn.value = payload.column;
+  activeMacroNibble.value = payload.macroNibble ?? 0;
 }
 
 function moveRow(delta: number) {
   setActiveRow(activeRow.value + delta);
+  activeMacroNibble.value = 0;
 }
 
 function moveColumn(delta: number) {
   if (!currentPattern.value) return;
+  if (activeColumn.value === 4 && delta !== 0) {
+    const nextNibble = activeMacroNibble.value + delta;
+    if (nextNibble >= 0 && nextNibble <= 2) {
+      activeMacroNibble.value = nextNibble;
+      return;
+    }
+  }
+
   const nextColumn = activeColumn.value + delta;
   if (nextColumn < 0) {
     activeTrack.value =
       (activeTrack.value - 1 + currentPattern.value.tracks.length) %
       currentPattern.value.tracks.length;
     activeColumn.value = columnsPerTrack - 1;
+    activeMacroNibble.value = 0;
     return;
   }
 
   if (nextColumn >= columnsPerTrack) {
     activeTrack.value = (activeTrack.value + 1) % currentPattern.value.tracks.length;
     activeColumn.value = 0;
+    activeMacroNibble.value = 0;
     return;
   }
 
   activeColumn.value = nextColumn;
+  if (activeColumn.value !== 4) {
+    activeMacroNibble.value = 0;
+  }
 }
 
 function jumpToNextTrack() {
@@ -684,6 +728,33 @@ function handleVolumeInput(hexChar: string) {
   activeColumn.value = nibbleIndex === 0 ? 2 : 3;
 }
 
+function handleMacroInput(hexChar: string) {
+  if (activeColumn.value !== 4) return;
+  const nibbleIndex = activeMacroNibble.value;
+  // First digit must be 0-3 (macro index)
+  if (nibbleIndex === 0 && !/^[0-3]$/.test(hexChar)) return;
+  if (nibbleIndex > 0 && !/^[0-9A-F]$/.test(hexChar)) return;
+
+  const row = activeRow.value;
+  const track = activeTrack.value;
+  updateEntryAt(row, track, (entry) => {
+    const chars = normalizeMacroChars(entry.macro);
+    chars[nibbleIndex] = hexChar;
+    return {
+      ...entry,
+      macro: chars.join('')
+    };
+  });
+
+  if (nibbleIndex < 2) {
+    activeMacroNibble.value = nibbleIndex + 1;
+  } else {
+    activeMacroNibble.value = 0;
+    advanceRowByStep();
+  }
+  activeColumn.value = 4;
+}
+
 function clearVolumeField() {
   if (!currentPattern.value) return;
   if (activeColumn.value !== 2 && activeColumn.value !== 3) return;
@@ -700,6 +771,25 @@ function clearVolumeField() {
   delete updatedEntry.volume;
 
   track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
+}
+
+function clearMacroField() {
+  if (!currentPattern.value) return;
+  if (activeColumn.value !== 4) return;
+
+  const track = currentPattern.value.tracks[activeTrack.value];
+  if (!track) return;
+  const idx = track.entries.findIndex((e) => e.row === activeRow.value);
+  if (idx === -1) return;
+
+  const entry = track.entries[idx];
+  if (!entry) return;
+
+  const updatedEntry = { ...entry } as TrackerEntryData & { macro?: string };
+  delete updatedEntry.macro;
+
+  track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
+  activeMacroNibble.value = 0;
 }
 
 function setPatternRows(count: number) {
@@ -721,9 +811,10 @@ function buildPlaybackStep(entry: TrackerEntryData): PlaybackStep | null {
   const instrumentId = normalizeInstrumentId(entry.instrument);
   const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
   const volumeValue = parseTrackerVolume(entry.volume);
+  const macroInfo = parseMacroField(entry.macro);
 
   if (!instrumentId) return null;
-  if (!isNoteOff && midi === undefined && volumeValue === undefined) return null;
+  if (!isNoteOff && midi === undefined && volumeValue === undefined && !macroInfo) return null;
 
   const step: PlaybackStep = {
     row: entry.row,
@@ -745,6 +836,11 @@ function buildPlaybackStep(entry: TrackerEntryData): PlaybackStep | null {
       Math.min(127, Math.round((volumeValue / 255) * 127))
     );
     step.velocity = scaledVelocity;
+  }
+
+  if (macroInfo) {
+    step.macroIndex = macroInfo.index;
+    step.macroValue = macroInfo.value;
   }
 
   return step;
@@ -972,9 +1068,17 @@ function onKeyDown(event: KeyboardEvent) {
   // Volume entry in column 2 using hex keys
   const hexChar = event.key.length === 1 ? event.key.toUpperCase() : '';
   const isHex = /^[0-9A-F]$/.test(hexChar);
-  if (!event.repeat && isHex && (activeColumn.value === 2 || activeColumn.value === 3)) {
+  if (
+    !event.repeat &&
+    isHex &&
+    (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
+  ) {
     event.preventDefault();
-    handleVolumeInput(hexChar);
+    if (activeColumn.value === 4) {
+      handleMacroInput(hexChar);
+    } else {
+      handleVolumeInput(hexChar);
+    }
     return;
   }
 
@@ -1033,8 +1137,14 @@ function onKeyDown(event: KeyboardEvent) {
       break;
     case 'Delete':
       event.preventDefault();
-      if (!event.shiftKey && (activeColumn.value === 2 || activeColumn.value === 3)) {
+      if (
+        !event.shiftKey &&
+        (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
+      ) {
         clearVolumeField();
+        if (activeColumn.value === 4) {
+          clearMacroField();
+        }
       } else if (event.shiftKey) {
         deleteRowAndShiftUp();
       } else {

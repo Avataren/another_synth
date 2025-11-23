@@ -131,6 +131,23 @@ export interface SynthState {
 
   /** Global velocity state */
   velocity?: VelocityState;
+
+  /** Macro values and routes */
+  macros?: MacroState;
+}
+
+export interface MacroRouteState {
+  macroIndex: number;
+  targetId: string;
+  targetPort: number;
+  amount: number;
+  modulationType?: number;
+  modulationTransformation?: number;
+}
+
+export interface MacroState {
+  values: number[];
+  routes: MacroRouteState[];
 }
 
 /**
