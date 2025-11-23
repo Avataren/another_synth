@@ -201,6 +201,7 @@
           :active-track="activeTrack"
           :active-column="activeColumn"
           :auto-scroll="autoScroll"
+          :is-playing="isPlaying"
           @rowSelected="setActiveRow"
           @cellSelected="setActiveCell"
         />
@@ -308,8 +309,10 @@ const playbackEngine = new PlaybackEngine({
   }
 });
 let unsubscribePosition: (() => void) | null = null;
+let unsubscribeState: (() => void) | null = null;
 const autoScroll = ref(true);
 const playbackRow = ref(0);
+const isPlaying = ref(false);
 /** Audio nodes per track for visualization */
 const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
 const audioContext = computed(() => songBank.audioContext);
@@ -735,7 +738,13 @@ function initializePlayback() {
 
   unsubscribePosition?.();
   unsubscribePosition = playbackEngine.on('position', (pos) => {
-    playbackRow.value = ((pos.row % rowsCount.value) + rowsCount.value) % rowsCount.value;
+    const row = ((pos.row % rowsCount.value) + rowsCount.value) % rowsCount.value;
+    playbackRow.value = row;
+  });
+
+  unsubscribeState?.();
+  unsubscribeState = playbackEngine.on('state', (state) => {
+    isPlaying.value = state === 'playing';
   });
 }
 
@@ -951,6 +960,7 @@ watch(
 
 onBeforeUnmount(() => {
   unsubscribePosition?.();
+  unsubscribeState?.();
   playbackEngine.stop();
   songBank.cancelAllScheduled();
   songBank.dispose();

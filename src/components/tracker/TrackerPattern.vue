@@ -16,8 +16,8 @@
           type="button"
           class="row-number"
           :class="{
-            playing: playbackRow === row,
-            selected: selectedRow === row
+            playing: isPlaying && playbackRow === row,
+            selected: effectiveSelectedRow === row
           }"
           @click="selectRow(row)"
           ref="rowRefs"
@@ -33,7 +33,7 @@
           :key="track.id"
           :track="track"
           :row-count="rows"
-          :selected-row="selectedRow"
+          :selected-row="effectiveSelectedRow"
           :index="index"
           :active-track="activeTrack"
           :active-column="activeColumn"
@@ -58,6 +58,7 @@ interface Props {
   activeTrack: number;
   activeColumn: number;
   autoScroll: boolean;
+  isPlaying: boolean;
 }
 
 const props = defineProps<Props>();
@@ -77,6 +78,13 @@ const rowsList = computed(() => Array.from({ length: props.rows }, (_, idx) => i
 const rowRefs = ref<(HTMLElement | null)[]>([]);
 const tracksWrapperRef = ref<HTMLElement | null>(null);
 const activeBarWidth = ref<number | null>(null);
+
+// During playback, don't propagate selectedRow changes to TrackerTrack/TrackerEntry
+// The active-row-bar provides visual feedback instead, avoiding component re-renders
+const effectiveSelectedRow = computed(() => props.isPlaying ? -1 : props.selectedRow);
+
+// Scroll container ref
+const patternAreaRef = ref<HTMLElement | null>(null);
 
 const activeBarStyle = computed(() => {
   const offset = headerHeightPx + 6 + props.playbackRow * (rowHeightPx + rowGapPx);
@@ -100,36 +108,48 @@ function selectCell(payload: { row: number; column: number; trackIndex: number }
   emit('cellSelected', payload);
 }
 
-watch(
-  () => ({
-    row: props.playbackRow,
-    enabled: props.autoScroll
-  }),
-  async ({ row, enabled }) => {
-    if (!enabled) return;
-    await nextTick();
+// Snap scroll to center a row
+function scrollToRow(row: number) {
+  const container = patternAreaRef.value;
+  if (!container) {
+    // Fallback to scrollIntoView
     const btn = rowRefs.value?.[row];
-    if (btn) {
-      btn.scrollIntoView({ block: 'center', behavior: 'auto' });
-    }
-  },
-  { flush: 'post' }
+    if (btn) btn.scrollIntoView({ block: 'center', behavior: 'auto' });
+    return;
+  }
+
+  // Row position within the pattern (after header)
+  const rowTop = headerHeightPx + rowGapPx + row * (rowHeightPx + rowGapPx);
+  const containerHeight = container.clientHeight;
+
+  // Center the row - snap instantly
+  container.scrollTop = Math.max(0, rowTop - containerHeight / 2 + rowHeightPx / 2);
+}
+
+// Track which row we last scrolled to
+let lastScrolledRow = -1;
+
+// Scroll for playback position - snap to row
+watch(
+  () => props.playbackRow,
+  (row) => {
+    if (!props.autoScroll) return;
+    if (row === lastScrolledRow) return;
+    lastScrolledRow = row;
+    scrollToRow(row);
+  }
 );
 
+// Scroll for selected row (keyboard navigation, clicking)
 watch(
-  () => ({
-    row: props.selectedRow,
-    enabled: props.autoScroll
-  }),
-  async ({ row, enabled }) => {
-    if (!enabled) return;
-    await nextTick();
-    const btn = rowRefs.value?.[row];
-    if (btn) {
-      btn.scrollIntoView({ block: 'center', behavior: 'auto' });
-    }
-  },
-  { flush: 'post' }
+  () => props.selectedRow,
+  (row) => {
+    if (!props.autoScroll) return;
+    if (props.isPlaying) return; // Don't interfere during playback
+    if (row === lastScrolledRow) return;
+    lastScrolledRow = row;
+    scrollToRow(row);
+  }
 );
 
 const measureBarWidth = async () => {
@@ -163,6 +183,12 @@ watch(
 onMounted(() => {
   measureBarWidth();
   window.addEventListener('resize', measureBarWidth);
+
+  // Find the scroll container (.pattern-area is in the parent)
+  const trackerPattern = tracksWrapperRef.value?.closest('.tracker-pattern');
+  if (trackerPattern) {
+    patternAreaRef.value = trackerPattern.closest('.pattern-area') as HTMLElement | null;
+  }
 });
 
 onBeforeUnmount(() => {

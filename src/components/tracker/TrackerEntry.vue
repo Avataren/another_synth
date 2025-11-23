@@ -93,17 +93,17 @@ function isActiveCell(column: number) {
 
 .tracker-entry.active {
   border-color: var(--entry-accent);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
   background: rgba(77, 242, 197, 0.08);
   transform: none;
 }
 
-.tracker-entry.focused {
-  border-color: var(--entry-accent);
-}
-
 .tracker-entry:active {
   transform: translateY(0);
+}
+
+.tracker-entry:focus,
+.tracker-entry:focus-visible {
+  outline: none;
 }
 
 .cell {
