@@ -409,6 +409,25 @@ this.automationAdapter = new AutomationAdapter(
   - The cursor’s `activeColumn`/`activeMacroNibble` are not part of selection semantics; selection is always step-based, but active cell highlighting still works as before.
   - Future changes to pattern editing should respect this model: use `TrackerSelectionRect` for new bulk operations and keep clipboard behavior step-oriented.
 
+## New discovery: Tracker selection transposition
+
+- Tracker now supports transposing all notes inside the current selection rectangle from the tracker page.
+- Implementation:
+  - `transposeSelection(semitones: number)` in `TrackerPage.vue`:
+    - Requires a non-null `selectionRect`, `currentPattern`, and `isEditMode`.
+    - Calls `trackerStore.pushHistory()` once per operation so transposes are undoable.
+    - Iterates tracks from `trackStart` to `trackEnd` and rows from `rowStart` to `rowEnd`, using `parseTrackerNoteSymbol` to parse each `TrackerEntryData.note`.
+    - Skips note-off steps (`isNoteOff` or missing `midi`); only real notes are affected.
+    - Clamps MIDI to `[0, 127]` after applying the delta, then converts back to tracker notation via `midiToTrackerNote`.
+- Shortcuts (handled in `onKeyDown` in `TrackerPage.vue`):
+  - `Ctrl/Cmd + ArrowUp` → transpose selection by +1 semitone.
+  - `Ctrl/Cmd + ArrowDown` → transpose selection by -1 semitone.
+  - `Shift + Ctrl/Cmd + ArrowUp` → transpose selection by +12 semitones (one octave).
+  - `Shift + Ctrl/Cmd + ArrowDown` → transpose selection by -12 semitones.
+- Notes:
+  - Transposition only affects steps inside `selectionRect` and only in edit mode; without a selection, these shortcuts are no-ops.
+  - Note-off markers (`###`) remain unchanged so gate/release timing is preserved when transposing phrases.
+
 - The `audio-system-store` façade, its legacy bridge, and associated tests have been deleted. Runtime audio control now flows through the focused stores (`instrument-store`, `layout-store`, `node-state-store`, `connection-store`, and `patch-store`).
 - UI components should access node state exclusively via `node-state-store`, layout data from `layout-store`, and the instrument/audio context via `useInstrumentStore()`. Avoid storing mirrored maps or calling the removed legacy helpers.
 - `useInstrumentStore()` owns the `AudioSystem`, `InstrumentV2`, and the `AudioSyncManager`. Boot code initializes this store before patch loading; any component that previously depended on `useAudioSystemStore` must switch to `useInstrumentStore`.

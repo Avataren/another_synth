@@ -759,6 +759,37 @@ function onPatternStartSelection(payload: { row: number; trackIndex: number }) {
     selectionEnd.value = { ...payload };
   }
 
+  function transposeSelection(semitones: number) {
+    if (!selectionRect.value) return;
+    if (!currentPattern.value) return;
+    if (!isEditMode.value) return;
+
+    const rect = selectionRect.value;
+    const pattern = currentPattern.value;
+
+    trackerStore.pushHistory();
+
+    for (let trackIndex = rect.trackStart; trackIndex <= rect.trackEnd; trackIndex += 1) {
+      const track = pattern.tracks[trackIndex];
+      if (!track) continue;
+
+      track.entries = track.entries.map((entry) => {
+        if (entry.row < rect.rowStart || entry.row > rect.rowEnd) return entry;
+
+        const parsed = parseTrackerNoteSymbol(entry.note);
+        if (parsed.isNoteOff || parsed.midi === undefined) return entry;
+
+        let midi = parsed.midi + semitones;
+        midi = Math.max(0, Math.min(127, midi));
+
+        return {
+          ...entry,
+          note: midiToTrackerNote(midi)
+        };
+      });
+    }
+  }
+
   function copySelectionToClipboard() {
     if (!selectionRect.value) return;
     if (!currentPattern.value) return;
@@ -1568,6 +1599,50 @@ function handleStop() {
   ) {
       event.preventDefault();
       trackerStore.redo();
+      return;
+    }
+
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      event.key === 'ArrowUp'
+    ) {
+      event.preventDefault();
+      transposeSelection(1);
+      return;
+    }
+
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      event.key === 'ArrowDown'
+    ) {
+      event.preventDefault();
+      transposeSelection(-1);
+      return;
+    }
+
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      event.key === 'ArrowUp'
+    ) {
+      event.preventDefault();
+      transposeSelection(12);
+      return;
+    }
+
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      event.key === 'ArrowDown'
+    ) {
+      event.preventDefault();
+      transposeSelection(-12);
       return;
     }
 
