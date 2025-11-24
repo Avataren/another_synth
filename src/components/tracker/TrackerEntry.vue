@@ -1,7 +1,7 @@
 <template>
   <div
     class="tracker-entry"
-    :class="{ active, filled: !!entry, focused: isActiveTrack && active, selected }"
+    :class="entryClasses"
     :style="{ '--entry-accent': accentColor || 'var(--tracker-accent)' }"
     role="button"
     tabindex="-1"
@@ -77,6 +77,29 @@ const emit = defineEmits<{
 }>();
 
 const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
+
+const entryClasses = computed(() => {
+  const classes: Record<string, boolean> = {
+    active: props.active,
+    filled: !!props.entry,
+    focused: isActiveTrack.value && props.active,
+    selected: props.selected
+  };
+
+  const rowIndex = props.rowIndex;
+
+  if (!classes.active && !classes.selected) {
+    if (rowIndex % 16 === 0) {
+      classes['row-bar'] = true;
+    } else if (rowIndex % 4 === 0) {
+      classes['row-beat'] = true;
+    } else if (rowIndex % 2 === 0) {
+      classes['row-sub'] = true;
+    }
+  }
+
+  return classes;
+});
 
 const cells = computed(() => {
   const volume = props.entry?.volume ?? '..';
@@ -159,6 +182,20 @@ function isActiveCell(column: number) {
 .tracker-entry.selected:not(.active) {
   border-color: rgba(77, 242, 197, 0.9);
   background: rgba(77, 242, 197, 0.12);
+}
+
+.tracker-entry.row-sub:not(.active):not(.selected) {
+  background: rgba(13, 18, 29, 0.9);
+}
+
+.tracker-entry.row-beat:not(.active):not(.selected) {
+  background: rgba(18, 24, 37, 0.95);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.tracker-entry.row-bar:not(.active):not(.selected) {
+  background: rgba(20, 28, 44, 0.98);
+  border-color: rgba(77, 242, 197, 0.35);
 }
 
 .tracker-entry:active {
