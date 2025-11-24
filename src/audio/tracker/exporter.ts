@@ -63,6 +63,9 @@ export async function encodeRecordingToMp3(
   const right = new Int16Array(samplesPerFrame);
   const mp3Chunks: Uint8Array[] = [];
 
+  // Encode in small async batches so the UI can update progress.
+  const FRAMES_PER_BATCH = 32;
+
   for (let frame = 0; frame < totalFrames; frame++) {
     const baseSample = frame * samplesPerFrame;
     for (let i = 0; i < samplesPerFrame; i++) {
@@ -85,6 +88,15 @@ export async function encodeRecordingToMp3(
 
     if (onProgress) {
       onProgress(Math.min(1, (frame + 1) / totalFrames));
+    }
+
+    if ((frame + 1) % FRAMES_PER_BATCH === 0) {
+      // Yield back to the event loop so the browser can
+      // paint progress updates and keep the UI responsive.
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
     }
   }
 

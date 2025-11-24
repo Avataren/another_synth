@@ -1466,6 +1466,12 @@ function getMsPerRow(bpm: number): number {
   return (60_000 / bpm) / rowsPerBeat;
 }
 
+function getPatternLengthForExport(_patternId: string | undefined): number {
+  // Tracker currently uses a single patternRows value for all patterns.
+  // When per-pattern lengths are added, look up the pattern's own length here.
+  return rowsCount.value;
+}
+
 function waitForPlaybackStop(timeoutMs: number): Promise<void> {
   return new Promise((resolve) => {
     const timeoutId = window.setTimeout(() => {
@@ -1492,6 +1498,8 @@ async function exportSongToMp3() {
   exportStage.value = 'preparing';
   exportProgress.value = 0;
 
+  let unsubscribeExportPosition: (() => void) | null = null;
+
   try {
     // For export, we want a single pass through the song,
     // not continuous looping.
@@ -1510,22 +1518,69 @@ async function exportSongToMp3() {
     songBank.allNotesOff();
     playbackEngine.seek(0);
 
+    // Compute total song length in rows (using the same
+    // sanitized sequence the playback engine sees) so we
+    // can drive a 0..1 progress value from playback
+    // position, even when pattern lengths vary in future.
+    const playbackSequence = resolveSequenceForMode('song');
+    const rowsBeforePattern = new Map<string, number>();
+    let accumulatedRows = 0;
+    for (const id of playbackSequence) {
+      rowsBeforePattern.set(id, accumulatedRows);
+      accumulatedRows += getPatternLengthForExport(id);
+    }
+    const totalRows = accumulatedRows;
+
+    const RECORDING_PROGRESS_PORTION = 0.85;
+
+    unsubscribeExportPosition = playbackEngine.on('position', (pos) => {
+      if (!pos.patternId || totalRows <= 0) return;
+      const before = rowsBeforePattern.get(pos.patternId);
+      if (before === undefined) return;
+
+      const globalRow = before + pos.row;
+      const clampedGlobal = Math.max(0, Math.min(totalRows, globalRow));
+      const fraction = clampedGlobal / totalRows;
+      const overall = Math.min(
+        RECORDING_PROGRESS_PORTION,
+        fraction * RECORDING_PROGRESS_PORTION
+      );
+
+      if (overall > exportProgress.value) {
+        exportProgress.value = overall;
+      }
+    });
+
     exportStage.value = 'recording';
     await songBank.startRecording();
 
-    const expectedRows = rowsCount.value * Math.max(1, sequence.value.length || 1);
+    const expectedRows =
+      totalRows > 0
+        ? totalRows
+        : rowsCount.value * Math.max(1, sequence.value.length || 1);
     const expectedDurationMs = expectedRows * getMsPerRow(currentSong.value.bpm);
     const waitPromise = waitForPlaybackStop(expectedDurationMs + 2000);
 
     await playbackEngine.play();
     await waitPromise;
 
+    // Allow a short tail so reverb/delay can decay
+    // before we stop recording, to avoid the export
+    // sounding abruptly cut off.
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 1000);
+    });
+
     const recording = await songBank.stopRecording();
 
+    unsubscribeExportPosition?.();
+    unsubscribeExportPosition = null;
+
     exportStage.value = 'encoding';
-    exportProgress.value = 0;
+    const baseProgress = exportProgress.value;
     const mp3Blob = await encodeRecordingToMp3(recording, (progress) => {
-      exportProgress.value = progress;
+      const clamped = Math.max(0, Math.min(1, progress));
+      exportProgress.value = baseProgress + (1 - baseProgress) * clamped;
     });
     exportProgress.value = 1;
 
@@ -1545,6 +1600,7 @@ async function exportSongToMp3() {
     exportError.value = error instanceof Error ? error.message : String(error);
     exportStage.value = 'error';
   } finally {
+    unsubscribeExportPosition?.();
     // Restore looping behavior for normal playback.
     playbackEngine.setLoopSong(true);
     isExporting.value = false;

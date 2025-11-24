@@ -205,7 +205,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - `AudioGraph::clear` has this selective buffer release behavior.
   - `gate_buffer_idx` is **not** present in `node_buffers` and remains stable across patch reloads.
   - Voices’ `output_node` still points at the mixer rebuilt from the canonical voice.
+
 ## Tracker song bank (new)
+
 - `src/audio/tracker/song-bank.ts` owns a dedicated `AudioSystem` + master gain and instantiates an `InstrumentV2` per instrumentId (slot). Each instrument gets its own `WebAssembly.Memory`, loads the selected patch, and is disconnected when removed.
 - Tracker UI now syncs instrument slots to the song bank and injects `instrumentResolver` into `PlaybackEngine` so `prepareInstrument` is called before playback. Instrument IDs for tracker playback are zero-padded slot numbers (e.g., `"01"`).
 - `TrackerPage.vue` builds playback patterns with instrument IDs resolved from `entry.instrument` or slot mapping, syncs the song bank whenever slots change, and waits for `syncSongBankFromSlots` before `play()` to keep the replay routine aligned with the song bank.
@@ -219,9 +221,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - Tracker song bank now gates off the previous track voice when a new note is triggered on that track (scheduled or realtime). `TrackerSongBank.noteOn`/`noteOnAtTime` call `gateOffVoiceAtTime` for the last tracked voice before scheduling the new note, and the realtime path now uses `noteOnAtTime` to capture the voice index.
 
 ### Tracker waveforms
+
 - Track waveform visualizations now always use a single accent color and attach to the instrument actually referenced by that track (latest instrument ID found when building playback steps). This keeps each track’s waveform aligned to its own instrument output even when multiple tracks share a multi-voice patch.
 
 ### Tracker export (mp3)
+
 - Tracker master bus can be tapped via a recording audio worklet (`public/worklets/recording-worklet.js`) wired in `TrackerSongBank`. Recording accumulates interleaved float32 audio and a new helper (`src/audio/tracker/exporter.ts`) encodes it to MP3 via `lamejs` (loaded from CDNJS `https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js`, falling back to `public/vendor/lame.min.js` if present). `TrackerPage` exposes an “Export MP3” button that records the song playback once (auto-stops on `state == stopped`), shows progress, then downloads the MP3. Offline/faster-than-realtime rendering isn’t implemented; this records in real time.
 
 ## Wavetable Missing Data Panic (Critical Fix - 2025)
@@ -229,6 +233,7 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 **Problem**: The synth would crash with "RuntimeError: unreachable" panic when loading patches with wavetable oscillators.
 
 **Root Cause**:
+
 - When a patch is loaded via `loadPatch`, wavetable oscillator nodes are created immediately
 - Audio processing starts before `restoreAudioAssets` imports the wavetable data
 - The wavetable oscillator's `process()` method tried to access a non-existent wavetable collection
@@ -258,6 +263,7 @@ let collection = {
 ```
 
 **Files affected**:
+
 - `rust-wasm/src/nodes/wavetable_oscillator.rs:617-628`
 
 **Important**: This is a race condition between patch loading and asset restoration. The oscillator must handle the case where it exists but has no data yet.
@@ -267,6 +273,7 @@ let collection = {
 **Problem**: The synth would crash with "table index is out of bounds" errors when switching patches or performing paste operations.
 
 **Root Cause**:
+
 - Web Audio API `parameterDescriptors` are **statically defined with 8 voices** in `synth-worklet.ts`
 - When loading patches with fewer voices, the `AutomationAdapter` was being created with the patch's voice count
 - The parameters object always contains data for all 8 voices, but the automation frame had fewer voice slots
@@ -291,6 +298,7 @@ this.automationAdapter = new AutomationAdapter(
 ```
 
 **Files affected**:
+
 - `synth-worklet.ts:489` - `handleLoadPatch` method
 - `synth-worklet.ts:1361` - `process` method fallback initialization
 
@@ -345,7 +353,7 @@ this.automationAdapter = new AutomationAdapter(
 - The store now exposes `createNewPatchFromTemplate(name)` which is used both by the "New Patch" button and by `initializeNewPatchSession`.
 - When `public/default-patch.json` exists it clones that patch, assigns fresh metadata (`createDefaultPatchMetadata`), applies it to the synth, and inserts it into the current bank as the new patch.
 - If the default file is missing or fails validation the method falls back to the older `prepareStateForNewPatch` + `saveCurrentPatch` path so the user still gets a blank patch rather than an error.
-- **Tracker “New” slot bug (2025-02)**: `default-patch.json` currently ships as a *bank* (metadata + `patches` array), so `fetchDefaultPatchTemplate()` returned `null`. The tracker’s `createNewSongPatch` then built a patch with `createEmptySynthState()` (voiceCount=0, no canonical voice), which the WASM loader rejected, leaving the editor on the previously loaded patch (usually the first system-bank patch). On navigation back, auto-save stored that wrong patch so the second edit “worked”. Fixes:
+- **Tracker “New” slot bug (2025-02)**: `default-patch.json` currently ships as a _bank_ (metadata + `patches` array), so `fetchDefaultPatchTemplate()` returned `null`. The tracker’s `createNewSongPatch` then built a patch with `createEmptySynthState()` (voiceCount=0, no canonical voice), which the WASM loader rejected, leaving the editor on the previously loaded patch (usually the first system-bank patch). On navigation back, auto-save stored that wrong patch so the second edit “worked”. Fixes:
   - `patch-store.fetchDefaultPatchTemplate` now recognizes bank-shaped default files and pulls the first patch as the template.
   - Tracker `createNewSongPatch` uses `buildSongPatch` to clone the default template with fresh metadata; it no longer falls back to system-bank patches, so the first edit always instantiates the default-patch template instead of grabbing the first system patch.
 - Macro UI: Patch editor exposes four macros at the top of the page (`MacroControls.vue`), wired through `instrument-store`’s `macros` array and `InstrumentV2.setMacro`, which sets `macro_${voice}_${macro}` AudioParams across all 8 voices. No worklet message is needed—values are pushed directly into the automation frame via parameters. Adjust the macro count in both the component and `InstrumentV2.setMacro` if the worklet parameter descriptors change.
@@ -425,6 +433,7 @@ this.automationAdapter = new AutomationAdapter(
   - `Shift + Ctrl/Cmd + ArrowUp` → transpose selection by +12 semitones (one octave).
   - `Shift + Ctrl/Cmd + ArrowDown` → transpose selection by -12 semitones.
 - Notes:
+
   - Transposition only affects steps inside `selectionRect` and only in edit mode; without a selection, these shortcuts are no-ops.
   - Note-off markers (`###`) remain unchanged so gate/release timing is preserved when transposing phrases.
 
@@ -467,12 +476,14 @@ The web app architecture for the WASM synth has been significantly improved to a
 **Purpose**: Eliminates the ad-hoc message passing that was scattered across files.
 
 **Key Features**:
+
 - Defines all 30+ message types with full TypeScript interfaces
 - `WorkletMessageBuilder` for type-safe message construction
 - `WorkletMessageValidator` for runtime validation
 - Supports both request/response and fire-and-forget patterns
 
 **Usage Example**:
+
 ```typescript
 import { WorkletMessageBuilder } from '@/audio/types/worklet-messages';
 
@@ -480,11 +491,12 @@ import { WorkletMessageBuilder } from '@/audio/types/worklet-messages';
 const message = WorkletMessageBuilder.updateEnvelope(
   envelopeId,
   config,
-  true // withResponse
+  true, // withResponse
 );
 ```
 
 **Migration Path**:
+
 - Replace all `workletNode.port.postMessage({ type: '...' })` with message builders
 - Add message validation before sending
 - Use the `WorkletMessage` union type for handlers
@@ -495,19 +507,25 @@ const message = WorkletMessageBuilder.updateEnvelope(
 
 **Eliminates Duplicate Code**:
 Previously, type conversion logic was duplicated in:
+
 - `synth-worklet.ts` (lines 700-761)
 - `audio-system-store.ts` (lines 804-835, 1106-1150)
 - `synth-layout.ts` (lines 399-426)
 
 **Key Functions**:
+
 - `rustNodeTypeToTS()` / `tsNodeTypeToRust()` - Node type conversions
 - `rustModulationTypeToTS()` / `tsModulationTypeToRust()` - Modulation enum conversions
 - `normalizeConnection()` / `denormalizeConnection()` - Connection format conversions
 - `validatePortId()`, `validateFiniteNumber()`, `sanitizeForWasm()` - Validation utilities
 
 **Usage Example**:
+
 ```typescript
-import { rustNodeTypeToTS, normalizeConnection } from '@/audio/adapters/wasm-type-adapter';
+import {
+  rustNodeTypeToTS,
+  normalizeConnection,
+} from '@/audio/adapters/wasm-type-adapter';
 
 // Convert node types
 const tsType = rustNodeTypeToTS('analog_oscillator'); // VoiceNodeType.Oscillator
@@ -525,6 +543,7 @@ const normalized = normalizeConnection(rawConnection);
 **Problem Solved**: Previously, the worklet imported 10+ types directly from `audio_processor.js`, making any WASM API change require worklet changes.
 
 **Key Features**:
+
 - Clean, typed interface to all WASM operations
 - Automatic validation of all inputs (no NaN/Infinity/undefined to WASM)
 - Proper error handling and logging
@@ -532,12 +551,14 @@ const normalized = normalizeConnection(rawConnection);
 - Makes testing and mocking possible
 
 **Architecture**:
+
 ```
 Worklet → WasmEngineAdapter → WASM AudioEngine
          (clean interface)   (raw bindings)
 ```
 
 **Usage Example**:
+
 ```typescript
 import { WasmEngineAdapter } from '@/audio/adapters/wasm-engine-adapter';
 
@@ -545,7 +566,7 @@ const adapter = new WasmEngineAdapter();
 const result = adapter.initialize({
   sampleRate: 44100,
   numVoices: 8,
-  wasmBinary: arrayBuffer
+  wasmBinary: arrayBuffer,
 });
 
 if (!result.success) {
@@ -554,10 +575,19 @@ if (!result.success) {
 
 // Type-safe operations
 adapter.updateEnvelope(envelopeId, config);
-adapter.connectNodes(fromId, fromPort, toId, toPort, amount, modType, transform);
+adapter.connectNodes(
+  fromId,
+  fromPort,
+  toId,
+  toPort,
+  amount,
+  modType,
+  transform,
+);
 ```
 
 **Migration Path**:
+
 - Replace all `this.audioEngine.method()` calls in the worklet with `this.engineAdapter.method()`
 - Remove direct WASM imports from the worklet
 - Let the adapter handle all validation and error cases
@@ -567,12 +597,14 @@ adapter.connectNodes(fromId, fromPort, toId, toPort, amount, modType, transform)
 **Purpose**: Replaces fire-and-forget message passing with Promise-based operations.
 
 **Problem Solved**: Previously, most operations had no confirmation, error handling, or retry logic. This caused:
+
 - Silent failures
 - Race conditions
 - No way to know when operations completed
 - Difficult debugging
 
 **Key Features**:
+
 - **Automatic message queuing** during initialization
 - **Timeout handling** (default 5s, configurable)
 - **Operation tracking** with unique message IDs
@@ -580,6 +612,7 @@ adapter.connectNodes(fromId, fromPort, toId, toPort, amount, modType, transform)
 - **Initialization sequence** management
 
 **Usage Example**:
+
 ```typescript
 import { WorkletMessageHandler } from '@/audio/adapters/message-handler';
 import { WorkletMessageBuilder } from '@/audio/types/worklet-messages';
@@ -589,18 +622,14 @@ handler.attachToWorklet(workletNode);
 
 // Promise-based operation
 try {
-  await handler.sendMessage(
-    WorkletMessageBuilder.updateEnvelope(id, config)
-  );
+  await handler.sendMessage(WorkletMessageBuilder.updateEnvelope(id, config));
   console.log('Envelope updated successfully');
 } catch (error) {
   console.error('Update failed:', error);
 }
 
 // Fire-and-forget for performance-critical messages
-handler.sendFireAndForget(
-  WorkletMessageBuilder.noteOn(60, 100)
-);
+handler.sendFireAndForget(WorkletMessageBuilder.noteOn(60, 100));
 ```
 
 ### Message Handler & Layout Sync (2025-03)
@@ -610,12 +639,14 @@ handler.sendFireAndForget(
 - WASM message payloads are strict: `updateOscillator`/`updateWavetableOscillator` expect a `newState` field, filter updates expect `config`, and effect updates expect a `nodeId` string that may be a pseudo numeric ID (`EFFECT_NODE_ID_OFFSET + index`). Keep `InstrumentV2`, the type definitions in `worklet-messages.ts`, and any handler classes in sync with these names or the worklet will throw when it tries to read missing properties.
 
 **Initialization Sequence**:
+
 1. Worklet sends `ready` message
 2. Handler calls `markInitialized()`
 3. All queued operations are processed in order
 4. New operations execute immediately
 
 **Migration Path**:
+
 - Replace `Instrument` class's manual promise handling with `WorkletMessageHandler`
 - Update worklet to send `operationResponse` messages for mutations
 - Use `sendFireAndForget()` only for MIDI/performance messages
@@ -625,6 +656,7 @@ handler.sendFireAndForget(
 ### Previous Issues
 
 1. **Multiple sources of truth**:
+
    - Pinia store had 15+ state maps
    - `SynthLayout` duplicated node info
    - Instrument class had its own layout copy
@@ -632,6 +664,7 @@ handler.sendFireAndForget(
    - No synchronization strategy
 
 2. **Optimistic updates without confirmation**:
+
    - Store updated layout before WASM confirmed
    - Worklet sent `stateUpdated` after the change
    - Result: double updates, conflicts
@@ -683,6 +716,7 @@ handler.sendFireAndForget(
 ```
 
 **Update Flow**:
+
 1. UI calls `store.updateEnvelope(id, config)`
 2. Store calls `instrument.updateEnvelope(id, config)` → returns Promise
 3. Instrument uses message handler → sends typed message
@@ -695,6 +729,7 @@ handler.sendFireAndForget(
 10. UI reactively updates
 
 **Benefits**:
+
 - No race conditions (operation completes before state update)
 - Clear error handling at every layer
 - Store stays in sync with WASM
@@ -703,12 +738,14 @@ handler.sendFireAndForget(
 ## Migration Strategy
 
 ### Phase 1: Add New Adapters (✅ Complete)
+
 - [x] Create typed message protocol
 - [x] Create WASM type adapter
 - [x] Create WASM engine adapter
 - [x] Create message handler
 
 ### Phase 2: Update Worklet (✅ Foundation Complete, Migration In Progress)
+
 - [x] Create `WasmEngineAdapter` with all required WASM methods
 - [x] Create message handler classes (`worklet-message-handlers.ts`)
 - [x] Create `WorkletHandlerRegistry` for routing messages
@@ -717,6 +754,7 @@ handler.sendFireAndForget(
 - [ ] Add `operationResponse` messages for all mutations (incremental)
 
 ### Phase 3: Update Instrument Class (✅ Complete)
+
 - [x] Create InstrumentV2 with `WorkletMessageHandler` integration
 - [x] Remove duplicate state storage (no more synthLayout in Instrument)
 - [x] Make all mutation methods return Promises
@@ -726,6 +764,7 @@ handler.sendFireAndForget(
 - [x] Update audio-asset-extractor to use InstrumentV2
 
 ### Phase 4: Refactor Store (✅ COMPLETED)
+
 - [x] Split into focused stores (PatchStore, NodeStateStore, ConnectionStore, AssetStore, LayoutStore)
 - [x] Remove mutation logic (keep only cache updates)
 - [x] Remove duplicate type conversions (using wasm-type-adapter)
@@ -733,7 +772,9 @@ handler.sendFireAndForget(
 - [x] Migrate components to use focused stores
 
 #### Refactoring Results:
+
 **audio-system-store.ts**: Reduced from 2,442 lines to 290 lines (88% reduction)
+
 - Removed all patch/bank management methods → `patch-store.ts`
 - Removed all node state update methods → `node-state-store.ts`
 - Removed all connection management methods → `connection-store.ts`
@@ -742,29 +783,35 @@ handler.sendFireAndForget(
 - Kept only: core audio infrastructure, mirrored state (via bridge), and backward-compatible getters
 
 #### Focused Store Architecture:
+
 1. **patch-store.ts** (693 lines)
+
    - Patch/bank CRUD operations
    - Import/export functionality
    - Template management
    - Delegates to other stores for layout, state, and assets
 
 2. **node-state-store.ts** (460 lines)
+
    - All node state caches (oscillators, filters, envelopes, LFOs, samplers, etc.)
    - State initialization and defaults
    - Applies state changes to WASM
    - Mirrors state to legacy store via bridge
 
 3. **connection-store.ts** (147 lines)
+
    - Connection queue management
    - Connection update processing
    - Node deletion cleanup
    - Updates layout store after connection changes
 
 4. **asset-store.ts** (51 lines)
+
    - Audio asset management (samples, impulses, wavetables)
    - Asset restoration to WASM
 
 5. **layout-store.ts** (300 lines)
+
    - SynthLayout structure management
    - Node/connection CRUD operations
    - Type conversions using wasm-type-adapter
@@ -776,18 +823,22 @@ handler.sendFireAndForget(
    - No business logic, only state copying
 
 #### Migration Pattern:
+
 **All domain logic now follows**: Focused Store → WASM/Worklet → Cache Update via Bridge
+
 - Domain operations live in focused stores
 - WASM operations go through InstrumentV2/adapters
 - Cache updates flow back through legacy-store-bridge
 - Components can gradually migrate to focused stores while legacy getters provide compatibility
 
 #### Components Updated:
+
 - `pinia-audio-system.ts`: Uses patch-store for initialization
 - `PresetManager.vue`: Uses patch-store for all patch/bank operations
 - Other components: Continue using audio-system-store getters (read-only) until migrated
 
 #### Technical Debt Resolved:
+
 - ✅ Eliminated 2,000+ lines of duplicate code
 - ✅ Centralized type conversions in wasm-type-adapter
 - ✅ Clear separation of concerns
@@ -795,6 +846,7 @@ handler.sendFireAndForget(
 - ✅ All functionality preserved
 
 ### Phase 5: Testing & Documentation (Pending)
+
 - [ ] Add unit tests for adapters
 - [ ] Add integration tests for message flow
 - [ ] Update component documentation
@@ -803,6 +855,7 @@ handler.sendFireAndForget(
 ## Best Practices for Future Development
 
 ### DO:
+
 ✅ Use `WorkletMessageBuilder` for all messages
 ✅ Use `WasmEngineAdapter` for all WASM operations
 ✅ Use `wasm-type-adapter` for all type conversions
@@ -812,6 +865,7 @@ handler.sendFireAndForget(
 ✅ Use the message handler for operation queuing
 
 ### DON'T:
+
 ❌ Import WASM types directly outside the adapter layer
 ❌ Add type conversion logic outside `wasm-type-adapter.ts`
 ❌ Use fire-and-forget for mutations (only for performance-critical MIDI)
@@ -834,17 +888,20 @@ handler.sendFireAndForget(
 ## Debugging Tips
 
 ### Enable Debug Logging
+
 ```typescript
 const handler = new WorkletMessageHandler({ debug: true });
 ```
 
 ### Check Pending Operations
+
 ```typescript
 console.log('Pending:', handler.getPendingCount());
 console.log('Queued:', handler.getQueuedCount());
 ```
 
 ### Trace Message Flow
+
 1. Check browser console for `[MessageHandler]` logs
 2. Check `[WasmEngineAdapter]` logs for WASM errors
 3. Use browser DevTools to inspect `postMessage()` calls
@@ -852,14 +909,17 @@ console.log('Queued:', handler.getQueuedCount());
 ### Common Issues
 
 **"Operation timed out"**:
+
 - Worklet didn't send `operationResponse`
 - Check worklet message handler implementation
 
 **"Not attached to worklet"**:
+
 - Handler wasn't attached with `attachToWorklet()`
 - Worklet node not created yet
 
 **"Message queue full"**:
+
 - Worklet never sent `ready` message
 - Initialization failed silently
 - Check WASM initialization errors
@@ -867,7 +927,9 @@ console.log('Queued:', handler.getQueuedCount());
 ## Implementation Notes
 
 ### Timeout Preservation in Message Queue
+
 The message handler preserves custom timeout values through the initialization queue:
+
 - When `sendMessage(msg, customTimeout)` is called before initialization, both the message and timeout are stored in the queue
 - When `markInitialized()` drains the queue, each message is sent with its original timeout
 - This prevents pre-initialization operations from silently receiving the wrong timeout value
@@ -875,9 +937,11 @@ The message handler preserves custom timeout values through the initialization q
 **Why this matters**: Without timeout preservation, a caller requesting a 30-second timeout for a large patch load could time out at 5 seconds if the message was queued during initialization, leading to confusing failures.
 
 ### Worklet Handler Architecture
+
 The worklet message handling has been refactored from a 30+ case switch statement into modular handler classes:
 
 **Handler Registry** (`src/audio/worklets/handlers/worklet-message-handlers.ts`):
+
 - `BaseMessageHandler` - Base class with automatic error handling and response sending
 - Individual handlers for each message type (EnvelopeHandler, OscillatorHandler, etc.)
 - `WorkletHandlerRegistry` - Central router that dispatches messages to appropriate handlers
@@ -885,6 +949,7 @@ The worklet message handling has been refactored from a 30+ case switch statemen
 - Automatic `operationResponse` sending for all operations
 
 **Benefits**:
+
 - Each handler is testable in isolation
 - Clear separation of concerns
 - Type-safe message handling
@@ -893,6 +958,7 @@ The worklet message handling has been refactored from a 30+ case switch statemen
 
 **Incremental Migration Strategy**:
 The worklet can be migrated incrementally without breaking existing functionality:
+
 1. Keep existing switch statement handlers working
 2. Add handler registry as parallel system
 3. Migrate one message type at a time to use registry
@@ -900,6 +966,7 @@ The worklet can be migrated incrementally without breaking existing functionalit
 5. Remove old handler when registry version is confirmed working
 
 **Example Migration**:
+
 ```typescript
 // OLD: Direct WASM call in switch statement
 case 'updateEnvelope':
@@ -914,19 +981,25 @@ case 'updateEnvelope':
 ```
 
 ### Critical Bug Fixes in WasmEngineAdapter
+
 During Phase 2 development, code review identified critical API mismatches in the initial `WasmEngineAdapter` implementation. These have been **fixed**:
 
 **Issues Found & Resolved**:
+
 1. **Oscillator Updates** - Was passing plain objects where WASM expects `AnalogOscillatorStateUpdate` class instances
+
    - **Fix**: Now constructs `new AnalogOscillatorStateUpdate(...)` with all required positional args
 
 2. **Envelope Updates** - Was passing object where WASM expects 8 positional arguments
+
    - **Fix**: Now calls `update_envelope(id, attack, decay, sustain, release, attackCurve, decayCurve, releaseCurve, active)`
 
 3. **LFO Updates** - Was passing array of plain objects where WASM expects single `WasmLfoUpdateParams` instance
+
    - **Fix**: Now constructs `new WasmLfoUpdateParams(...)` with all 12 positional args
 
 4. **Noise Updates** - Was passing plain object where WASM expects `NoiseUpdateParams` instance
+
    - **Fix**: Now constructs `new NoiseUpdateParams(type, cutoff, gain, enabled)`
 
 5. **Effect Updates** - Chorus, Reverb, Delay were passing objects where WASM expects positional arguments
@@ -941,6 +1014,7 @@ During Phase 2 development, code review identified critical API mismatches in th
 **Overview**: The original `Instrument` class has been completely refactored into `InstrumentV2` as a drop-in replacement that uses the new architecture components.
 
 **Problems with Original Instrument**:
+
 - 1000 lines with 34 public methods
 - Only 2 methods returned Promises (updateEnvelopeState, and async data exports)
 - 32+ methods used fire-and-forget postMessage() with no error handling
@@ -950,18 +1024,22 @@ During Phase 2 development, code review identified critical API mismatches in th
 - No operation queuing during initialization
 
 **InstrumentV2 Improvements**:
+
 1. **WorkletMessageHandler Integration**:
+
    - All mutation operations now return Promises via message handler
    - Automatic timeout handling (10s default, 30s for large operations like patch loading)
    - Automatic queuing during initialization with timeout preservation
    - Comprehensive error handling at every layer
 
 2. **Single Source of Truth**:
+
    - Removed duplicate `synthLayout` storage
    - WASM is the authoritative source for all audio state
    - `updateLayout()` method is now a no-op for compatibility
 
 3. **Promise-Based Operations**:
+
    - `loadPatch()`: Now returns `Promise<void>` with 30s timeout
    - `deleteNode()`: Now returns `Promise<void>`
    - `createNode()`: Now returns `Promise<{ nodeId: string; nodeType: string }>`
@@ -969,11 +1047,13 @@ During Phase 2 development, code review identified critical API mismatches in th
    - `updateConnection()`: Now returns `Promise<void>`
 
 4. **Fire-and-Forget Only Where Appropriate**:
+
    - MIDI operations (`noteOn`, `noteOff`) remain fire-and-forget for low latency
    - Asset imports (wavetable, sample, impulse data) remain fire-and-forget for large transfers
    - Everything else uses Promise-based operations
 
 5. **Backward Compatibility**:
+
    - Added compatibility aliases: `note_on()` → `noteOn()`, `note_off()` → `noteOff()`
    - Added all missing methods from original Instrument:
      - `getWasmNodeConnections()` - Get layout from WASM
@@ -991,6 +1071,7 @@ During Phase 2 development, code review identified critical API mismatches in th
    - `exportConvolverData()`: Returns `{ samples: Float32Array, sampleRate, channels }` matching original
 
 **Integration into Application**:
+
 - Updated `audio-system-store.ts` to use `InstrumentV2` instead of `Instrument`
 - Updated import: `import InstrumentV2 from 'src/audio/instrument-v2'`
 - Updated type annotation: `currentInstrument: null as InstrumentV2 | null`
@@ -1003,6 +1084,7 @@ During Phase 2 development, code review identified critical API mismatches in th
 
 **Important Correction (Post Code Review)**:
 After code review, InstrumentV2 was updated to work with the **current** worklet implementation:
+
 - Most operations are now **fire-and-forget** (not Promise-based) because the worklet doesn't send `operationResponse` yet
 - Only envelope updates and data exports return Promises (worklet already supports these)
 - Fixed message type mismatches:
@@ -1013,6 +1095,7 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - When Phase 2 (worklet migration) is complete, more operations will become Promise-based
 
 **Benefits**:
+
 - Works correctly with current worklet (no timeouts)
 - Uses correct message types that worklet expects
 - Envelope updates have proper Promise-based error handling (worklet supports it)
@@ -1023,6 +1106,7 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 ## Files Changed/Added
 
 ### New Files (Phases 1-3):
+
 - `src/audio/types/worklet-messages.ts` - Message protocol (442 lines)
 - `src/audio/adapters/wasm-type-adapter.ts` - Type conversions (395 lines)
 - `src/audio/adapters/wasm-engine-adapter.ts` - WASM wrapper (450+ lines)
@@ -1031,6 +1115,7 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - `src/audio/instrument-v2.ts` - Refactored Instrument class (600+ lines)
 
 ### Modified Files (Phase 3):
+
 - `src/stores/audio-system-store.ts` - Updated to use InstrumentV2
   - Line 4: Import changed to `import InstrumentV2 from 'src/audio/instrument-v2'`
   - Line 153: Type changed to `currentInstrument: null as InstrumentV2 | null`
@@ -1042,6 +1127,7 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
   - Lines 12, 51, 93: Function signatures updated to use `InstrumentV2` type
 
 ### Files Needing Updates (Phase 4):
+
 - `src/audio/worklets/synth-worklet.ts` - Migrate to handler registry (Phase 2, incremental)
 - `src/stores/audio-system-store.ts` - Simplify, remove mutations (Phase 4)
 - `src/audio/types/synth-layout.ts` - Remove duplicate conversions (Phase 4)
@@ -1069,17 +1155,20 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 ## Playbook: Adding a New Node (Rust + WASM + UI)
 
 - **Rust node + wiring**
+
   - Implement the node in `rust-wasm/src/nodes/` and export it from `nodes/mod.rs`.
   - Add a `*State` struct to `audio_engine/patch.rs`, extend `SynthState` maps, and update `patch_serialization_spec.rs` defaults.
   - Register creation in WASM/native: import the node, expose add/update methods, include default instance in `init`/`init_with_patch`, and apply state during `apply_patch_states`/`init_with_patch`.
   - If using the global effect stack, remember `EFFECT_NODE_ID_OFFSET`; add update routing in `update_*` with downcast + bounds checks.
 
 - **Ports and node types**
+
   - If it needs new ports, extend `PortId` (Rust + TS enum) and `wasm-type-adapter` mappings.
   - Add the node type string to `wasm-type-adapter` (Rust↔TS) and `DEFAULT_NODE_NAMES` in `layout-store`.
   - Update the worklet’s `initializeVoices` mapping so `nodesByType` contains the new `VoiceNodeType`.
 
 - **Patch serialization**
+
   - Extend TS `Patch/SynthState` interfaces and `serializeCurrentPatch`/`deserializePatch` to include the new map.
   - Update validators (required keys if appropriate) and any asset extraction if the node carries audio data.
 
@@ -1139,7 +1228,6 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Editing helpers (`handleNoteEntry`, volume/macro entry, note-off/clear/row shift) all early-return if edit mode is disabled, so accidental key presses in preview mode will not alter pattern data.
 - Hotkey: `F2` toggles edit mode on/off; the edit mode control in the tracker summary card is labeled “Edit mode (F2)” to advertise the shortcut.
 
-
 ## New discovery: Tracker song file ZIP wrapper (2025)
 
 - Tracker song saves (`Save Song` in `TrackerPage.vue`) now write a ZIP archive containing a single `song.json` entry instead of plain JSON, but keep the `.cmod` extension for compatibility with existing files and OS associations.
@@ -1150,7 +1238,11 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 
 ## New discovery: Tracker song playback rows & pattern chaining (2025-11)
 
-- PlaybackEngine.scheduleAhead now treats currentRow as a monotonically increasing global row index from playback start. Pattern boundaries are detected from actualRow = currentRow % length but startRow is no longer re-based when advancing the sequence; this avoids double-scheduling/early-stopping when chaining patterns in song mode.
+- PlaybackEngine.scheduleAhead now treats currentRow as a monotonically increasing global row index from playback start. Pattern boundaries are detected from actualRow = currentRow % length but startRow is no longer re-based when advancing the sequence; this avoids double-scheduling/early-stopping when chaining patterns in song mode.
 - PlaybackEngine.setLength still controls the effective pattern length for scheduling, but for the tracker it now also updates song.patterns[].length so updatePosition (which walks the sequence by pattern length) stays in sync with scheduling when the row count slider changes.
-- Current tracker UI keeps a single patternRows value at the song level; playback patterns are constructed with that length for every pattern. If/when per-pattern row counts are added, prefer setting Pattern.length per pattern in uildPlaybackSong and avoid calling setLength to mass-update all patterns.
+- Current tracker UI keeps a single patternRows value at the song level; playback patterns are constructed with that length for every pattern. If/when per-pattern row counts are added, prefer setting Pattern.length per pattern in uildPlaybackSong and avoid calling setLength to mass-update all patterns.
 
+## New discovery: Tracker export progress + render tail (2025-11)
+
+- MP3 encoding in `src/audio/tracker/exporter.ts` now runs in small async batches (32 frames per batch) and yields to the event loop between batches. This keeps the UI responsive and allows the export progress percentage to update smoothly during encoding instead of jumping from 0% to 100% at the end.
+- `TrackerPage.exportSongToMp3` now waits ~1 second after playback stops before calling `songBank.stopRecording()`. This records reverb/delay tails so exports no longer sound slightly cut off at the end. If you change global effect tails, consider increasing or decreasing this post-playback tail window.
