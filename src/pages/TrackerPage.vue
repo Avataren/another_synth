@@ -7,7 +7,98 @@
       tabindex="0"
       @keydown="onKeyDown"
     >
-      <div class="top-grid">
+      <div class="tracker-toolbar">
+        <div class="toolbar-section toolbar-left">
+          <button
+            type="button"
+            class="transport-button play"
+            :class="{ active: playbackMode === 'pattern' && isPlaying }"
+            title="Spacebar"
+            @click="handlePlayPattern"
+          >
+            Play Pattern
+          </button>
+          <button
+            type="button"
+            class="transport-button play alt"
+            :class="{ active: playbackMode === 'song' && isPlaying }"
+            @click="handlePlaySong"
+          >
+            Play Song
+          </button>
+          <button type="button" class="transport-button pause" @click="handlePause">
+            Pause
+          </button>
+          <button type="button" class="transport-button stop" @click="handleStop">
+            Stop
+          </button>
+          <button
+            type="button"
+            class="transport-button ghost"
+            :disabled="isExporting"
+            @click="exportSongToMp3"
+          >
+            {{ isExporting ? 'Exporting…' : 'Export MP3' }}
+          </button>
+        </div>
+        <div class="toolbar-section toolbar-middle">
+          <button
+            type="button"
+            class="song-button"
+            @click="addTrack"
+            :disabled="trackCount >= 32"
+          >
+            + Track
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
+            @click="removeTrack"
+            :disabled="trackCount <= 1"
+          >
+            - Track
+          </button>
+        </div>
+        <div class="toolbar-section toolbar-right">
+          <button
+            type="button"
+            class="song-button ghost"
+            @click="handleLoadSongFile"
+          >
+            Load Song
+          </button>
+          <button
+            type="button"
+            class="song-button"
+            @click="handleSaveSongFile"
+          >
+            Save Song
+          </button>
+          <label class="toggle toolbar-toggle">
+            <input v-model="autoScroll" type="checkbox" />
+            <span>Auto-scroll</span>
+          </label>
+          <button
+            type="button"
+            class="edit-mode-toggle toolbar-edit-toggle"
+            :class="{ active: isEditMode }"
+            @click="toggleEditMode"
+          >
+            Edit (F2)
+          </button>
+          <button
+            type="button"
+            class="toolbar-icon-button"
+            :class="{ active: isFullscreen }"
+            :title="isFullscreen ? 'Exit full screen' : 'Full screen pattern'"
+            @click="toggleFullscreen"
+          >
+            ⛶
+          </button>
+        </div>
+      </div>
+
+      <div class="top-grid" v-show="!isFullscreen">
         <div class="info-grid">
           <SequenceEditor
             :sequence="sequence"
@@ -59,17 +150,6 @@
               <span class="stat-inline"><span class="stat-label">Patterns:</span> {{ patterns.length }}</span>
               <span class="stat-inline"><span class="stat-label">Rows:</span> {{ rowsCount }}</span>
             </div>
-            <div class="song-file-controls">
-              <div class="control-label">Song file</div>
-              <div class="song-file-buttons">
-                <button type="button" class="song-button ghost" @click="handleLoadSongFile">
-                  Load Song
-                </button>
-                <button type="button" class="song-button" @click="handleSaveSongFile">
-                  Save Song
-                </button>
-              </div>
-            </div>
             <div class="pattern-row-inline">
               <div class="pattern-controls">
                 <div class="control-label">Pattern length</div>
@@ -115,68 +195,6 @@
                   <div class="control-hint">Shift+PgUp/PgDn</div>
                 </div>
               </div>
-              <div class="pattern-controls edit-mode-controls">
-                <div class="control-label">Edit mode (F2)</div>
-                <div class="control-field">
-                  <button
-                    type="button"
-                    class="edit-mode-toggle"
-                    :class="{ active: isEditMode }"
-                    @click="toggleEditMode"
-                  >
-                    {{ isEditMode ? 'Editing ON' : 'Editing OFF' }}
-                  </button>
-                  <div class="control-hint">
-                    {{ isEditMode ? 'Keyboard writes steps' : 'Keyboard only plays notes' }}
-                  </div>
-                </div>
-              </div>
-              <div class="pattern-controls tracks-inline">
-                <div class="control-label">Tracks</div>
-                <div class="control-field track-buttons">
-                  <button type="button" class="song-button wide" @click="addTrack" :disabled="trackCount >= 32">+ Track</button>
-                  <button type="button" class="song-button ghost" @click="removeTrack" :disabled="trackCount <= 1">- Track</button>
-                </div>
-              </div>
-            </div>
-            <div class="pattern-controls">
-              <label class="toggle">
-                <input v-model="autoScroll" type="checkbox" />
-                <span>Auto-scroll active row</span>
-              </label>
-            </div>
-            <div class="transport transport-bottom">
-              <button
-                type="button"
-                class="transport-button play"
-                :class="{ active: playbackMode === 'pattern' && isPlaying }"
-                title="Spacebar"
-                @click="handlePlayPattern"
-              >
-                Play Pattern
-              </button>
-              <button
-                type="button"
-                class="transport-button play alt"
-                :class="{ active: playbackMode === 'song' && isPlaying }"
-                @click="handlePlaySong"
-              >
-                Play Song
-              </button>
-              <button type="button" class="transport-button pause" @click="handlePause">
-                Pause
-              </button>
-              <button type="button" class="transport-button stop" @click="handleStop">
-                Stop
-              </button>
-              <button
-                type="button"
-                class="transport-button ghost"
-                :disabled="isExporting"
-                @click="exportSongToMp3"
-              >
-                {{ isExporting ? 'Exporting…' : 'Export MP3' }}
-              </button>
             </div>
           </div>
         </div>
@@ -432,6 +450,7 @@ const activeTrack = ref(0);
 const activeColumn = ref(0);
 const activeMacroNibble = ref(0);
 const isEditMode = ref(true);
+const isFullscreen = ref(false);
 const columnsPerTrack = 5;
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
@@ -595,6 +614,10 @@ async function measureVisualizerLayout() {
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
+}
+
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value;
 }
 
 function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
@@ -1774,6 +1797,84 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   padding: 18px 0;
+}
+
+.tracker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 18px 4px;
+  flex-wrap: wrap;
+}
+
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-left {
+  flex: 2;
+}
+
+.toolbar-middle {
+  flex: 0 0 auto;
+}
+
+.toolbar-right {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.toolbar-right,
+.toolbar-middle,
+.toolbar-left {
+  display: flex;
+}
+
+.tracker-toolbar .transport-button {
+  min-width: auto;
+  padding: 6px 10px;
+}
+
+.tracker-toolbar .song-button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+}
+
+.toolbar-toggle {
+  font-size: 11px;
+}
+
+.toolbar-edit-toggle {
+  padding: 4px 10px;
+}
+
+.toolbar-icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8f3ff;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.toolbar-icon-button.active {
+  background: rgba(112, 194, 255, 0.25);
+  border-color: rgba(112, 194, 255, 0.75);
+  color: #fff;
+}
+
+.toolbar-icon-button:hover {
+  border-color: rgba(112, 194, 255, 0.9);
 }
 
 .top-grid {
