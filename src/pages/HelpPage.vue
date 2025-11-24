@@ -60,6 +60,7 @@
         <h2>Keyboard shortcuts</h2>
         <ul>
           <li><strong>Edit mode</strong>: F2 toggles edit mode on/off.</li>
+          <li><strong>Fullscreen pattern</strong>: F10 toggles the pattern view between normal and full-screen.</li>
           <li><strong>Undo / redo</strong>: Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo.</li>
           <li><strong>Copy / paste</strong>: Ctrl/Cmd+C copies the current selection; Ctrl/Cmd+V pastes it at the cursor (overwriting steps inside the pasted block).</li>
           <li><strong>Play / pause pattern</strong>: Spacebar.</li>

@@ -1691,11 +1691,15 @@ function handleStop() {
     return;
   }
 
-    switch (event.key) {
-      case 'F2':
-        event.preventDefault();
-        toggleEditMode();
-        break;
+      switch (event.key) {
+        case 'F2':
+          event.preventDefault();
+          toggleEditMode();
+          break;
+        case 'F10':
+          event.preventDefault();
+          toggleFullscreen();
+          break;
       case 'ArrowUp':
         event.preventDefault();
         if (event.shiftKey) {
