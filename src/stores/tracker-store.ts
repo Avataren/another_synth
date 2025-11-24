@@ -258,12 +258,12 @@ export const useTrackerStore = defineStore('trackerStore', {
 
       return true;
     },
-    removeTrack(trackIndex: number): boolean {
+    removeTrack(_trackIndex: number): boolean {
       const minTracks = 1;
       if (!this.patterns.length) return false;
       const currentCount = this.patterns[0]?.tracks.length ?? 0;
       if (currentCount <= minTracks) return false;
-      const idx = Math.max(0, Math.min(currentCount - 1, trackIndex));
+      const idx = currentCount - 1; // always remove the rightmost track
 
       this.patterns.forEach((pattern) => {
         pattern.tracks = pattern.tracks
