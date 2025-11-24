@@ -1147,3 +1147,10 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - The load path (`handleLoadSongFile`) reads selected files as `ArrayBuffer` via `promptOpenFile`, then inspects the first bytes for a ZIP signature (`0x50 0x4B`). If detected, it uses `JSZip.loadAsync` to locate a `.json` entry (preferring `song.json`), extracts it as a string, and then deserializes just like before.
 - Backward compatibility: legacy `.cmod` files that are plain JSON still load because the ZIP signature check fails and the loader falls back to decoding the `ArrayBuffer` as UTF‑8 text and calling `JSON.parse` on the resulting string.
 - Song file format on disk is now “JSON inside ZIP inside `.cmod`”; when debugging tracker persistence issues, keep in mind that inspecting the raw `.cmod` requires unzipping first, while the in‑memory representation is unchanged (`TrackerSongFile` in the tracker store).
+
+## New discovery: Tracker song playback rows & pattern chaining (2025-11)
+
+- PlaybackEngine.scheduleAhead now treats currentRow as a monotonically increasing global row index from playback start. Pattern boundaries are detected from actualRow = currentRow % length but startRow is no longer re-based when advancing the sequence; this avoids double-scheduling/early-stopping when chaining patterns in song mode.
+- PlaybackEngine.setLength still controls the effective pattern length for scheduling, but for the tracker it now also updates song.patterns[].length so updatePosition (which walks the sequence by pattern length) stays in sync with scheduling when the row count slider changes.
+- Current tracker UI keeps a single patternRows value at the song level; playback patterns are constructed with that length for every pattern. If/when per-pattern row counts are added, prefer setting Pattern.length per pattern in uildPlaybackSong and avoid calling setLength to mass-update all patterns.
+

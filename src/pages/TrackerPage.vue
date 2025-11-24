@@ -1493,6 +1493,10 @@ async function exportSongToMp3() {
   exportProgress.value = 0;
 
   try {
+    // For export, we want a single pass through the song,
+    // not continuous looping.
+    playbackEngine.setLoopSong(false);
+
     await syncSongBankFromSlots();
     const initialized = await initializePlayback('song');
     if (!initialized) {
@@ -1541,6 +1545,8 @@ async function exportSongToMp3() {
     exportError.value = error instanceof Error ? error.message : String(error);
     exportStage.value = 'error';
   } finally {
+    // Restore looping behavior for normal playback.
+    playbackEngine.setLoopSong(true);
     isExporting.value = false;
   }
 }
@@ -2060,7 +2066,11 @@ async function handleSaveSongFile() {
     const safeTitle = (currentSong.value.title || 'song').replace(/[^a-z0-9-_]+/gi, '_');
     const zip = new JSZip();
     zip.file('song.json', json);
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
     await promptSaveFile(zipBlob, `${safeTitle || 'song'}.cmod`);
   } catch (error) {
     // eslint-disable-next-line no-console

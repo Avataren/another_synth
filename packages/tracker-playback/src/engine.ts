@@ -50,6 +50,7 @@ export class PlaybackEngine {
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
   private loopCurrentPattern = false;
+  private loopSong = true;
 
   /** Audio context time when playback started */
   private playStartTime = 0;
@@ -81,6 +82,10 @@ export class PlaybackEngine {
     this.loopCurrentPattern = loop;
   }
 
+  setLoopSong(loop: boolean) {
+    this.loopSong = loop;
+  }
+
   loadSong(song: Song) {
     this.song = song;
     this.bpm = song.bpm;
@@ -109,7 +114,24 @@ export class PlaybackEngine {
   }
 
   setLength(rows: number) {
-    this.length = Math.max(1, Math.round(rows));
+    const clamped = Math.max(1, Math.round(rows));
+    this.length = clamped;
+
+    // For tracker usage today, pattern length is effectively
+    // a song-level setting. Keep the Song's pattern lengths in
+    // sync so position tracking and scheduling both see the
+    // updated row count. If per-pattern lengths are introduced
+    // later, prefer updating `song.patterns` directly instead
+    // of calling `setLength` for all patterns.
+    if (this.song) {
+      this.song = {
+        ...this.song,
+        patterns: this.song.patterns.map((pattern) => ({
+          ...pattern,
+          length: clamped
+        }))
+      };
+    }
   }
 
   async play() {
@@ -201,26 +223,35 @@ export class PlaybackEngine {
     const msPerRow = this.getMsPerRow();
     const secPerRow = msPerRow / 1000;
 
-    // Calculate which row corresponds to scheduleUntil time
+    // Calculate which row corresponds to scheduleUntil time (global row index)
     const elapsedSec = scheduleUntil - this.playStartTime;
     const rowsElapsed = Math.floor(elapsedSec / secPerRow);
-    let targetRow = this.startRow + rowsElapsed;
+    const targetRow = this.startRow + rowsElapsed;
 
     while (this.lastScheduledRow < targetRow) {
       const currentRow = this.lastScheduledRow + 1;
       const actualRow = currentRow % this.length;
 
       if (actualRow === 0 && currentRow > 0 && !this.loopCurrentPattern) { // Pattern finished
-        this.currentSequenceIndex++;
-        if (this.currentSequenceIndex >= (this.song?.sequence.length ?? 0)) {
+        const sequence = this.song?.sequence ?? [];
+        if (sequence.length === 0) {
           this.stop();
           return;
         }
-        const nextPatternId = this.song?.sequence[this.currentSequenceIndex];
+
+        this.currentSequenceIndex += 1;
+        if (this.currentSequenceIndex >= sequence.length) {
+          if (this.loopSong) {
+            this.currentSequenceIndex = 0;
+          } else {
+            this.stop();
+            return;
+          }
+        }
+
+        const nextPatternId = sequence[this.currentSequenceIndex];
         if (nextPatternId) {
           this.loadPattern(nextPatternId);
-          this.startRow = this.startRow - this.length;
-          targetRow = this.startRow + rowsElapsed;
         } else {
           this.stop();
           return;
@@ -308,20 +339,44 @@ export class PlaybackEngine {
     const rowsElapsed = Math.floor(elapsed / secPerRow);
     const totalRowsPlayed = this.startRow + rowsElapsed;
 
-    let tempRowsPlayed = totalRowsPlayed;
-    let sequenceIndex = 0;
-    let patternId = this.song?.sequence[0];
-    let currentPatternLength = this.song?.patterns.find(p => p.id === patternId)?.length ?? this.length;
+    const sequence = this.song?.sequence ?? [];
+    const patterns = this.song?.patterns ?? [];
 
-    while (tempRowsPlayed >= currentPatternLength && sequenceIndex < (this.song?.sequence.length ?? 0) -1) {
-      tempRowsPlayed -= currentPatternLength;
-      sequenceIndex++;
-      patternId = this.song?.sequence[sequenceIndex];
-      currentPatternLength = this.song?.patterns.find(p => p.id === patternId)?.length ?? this.length;
+    const getPatternLength = (id: string | undefined): number => {
+      if (!id) return this.length;
+      const pattern = patterns.find((p) => p.id === id);
+      return pattern ? Math.max(1, pattern.length) : this.length;
+    };
+
+    // Total rows across the full song sequence (for wrapping)
+    const songLengthRows = sequence.reduce(
+      (total, id) => total + getPatternLength(id),
+      0
+    );
+
+    let effectiveRows = totalRowsPlayed;
+    if (songLengthRows > 0) {
+      effectiveRows =
+        ((effectiveRows % songLengthRows) + songLengthRows) % songLengthRows;
     }
 
+    let patternId = sequence[0];
+    let currentPatternLength = getPatternLength(patternId);
+    let remaining = effectiveRows;
 
-    const currentRow = tempRowsPlayed % currentPatternLength;
+    for (let i = 0; i < sequence.length; i += 1) {
+      const id = sequence[i];
+      const length = getPatternLength(id);
+      if (remaining < length) {
+        patternId = id;
+        currentPatternLength = length;
+        break;
+      }
+      remaining -= length;
+    }
+
+    const currentRow =
+      currentPatternLength > 0 ? remaining % currentPatternLength : 0;
 
     if (currentRow !== this.position.row || patternId !== this.position.patternId) {
       const newPosition: PlaybackPosition = { row: currentRow };
@@ -378,12 +433,23 @@ export class PlaybackEngine {
         if (this.loopCurrentPattern) {
           nextRow = 0;
         } else {
-          this.currentSequenceIndex++;
-          if (this.currentSequenceIndex >= (this.song?.sequence.length ?? 0)) {
+          const sequence = this.song?.sequence ?? [];
+          if (sequence.length === 0) {
             this.stop();
             return;
           }
-          const nextPatternId = this.song?.sequence[this.currentSequenceIndex];
+
+          this.currentSequenceIndex += 1;
+          if (this.currentSequenceIndex >= sequence.length) {
+            if (this.loopSong) {
+              this.currentSequenceIndex = 0;
+            } else {
+              this.stop();
+              return;
+            }
+          }
+
+          const nextPatternId = sequence[this.currentSequenceIndex];
           if (nextPatternId) {
             this.loadPattern(nextPatternId);
             nextRow = 0;
