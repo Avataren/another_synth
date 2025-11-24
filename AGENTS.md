@@ -1139,3 +1139,11 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Editing helpers (`handleNoteEntry`, volume/macro entry, note-off/clear/row shift) all early-return if edit mode is disabled, so accidental key presses in preview mode will not alter pattern data.
 - Hotkey: `F2` toggles edit mode on/off; the edit mode control in the tracker summary card is labeled “Edit mode (F2)” to advertise the shortcut.
 
+
+## New discovery: Tracker song file ZIP wrapper (2025)
+
+- Tracker song saves (`Save Song` in `TrackerPage.vue`) now write a ZIP archive containing a single `song.json` entry instead of plain JSON, but keep the `.cmod` extension for compatibility with existing files and OS associations.
+- The save path (`handleSaveSongFile`) uses `jszip` to compress the serialized `TrackerSongFile` JSON into a Blob and passes that Blob to `promptSaveFile`; the File System Access picker and download fallback both treat it as `application/octet-stream` with `.cmod` extension.
+- The load path (`handleLoadSongFile`) reads selected files as `ArrayBuffer` via `promptOpenFile`, then inspects the first bytes for a ZIP signature (`0x50 0x4B`). If detected, it uses `JSZip.loadAsync` to locate a `.json` entry (preferring `song.json`), extracts it as a string, and then deserializes just like before.
+- Backward compatibility: legacy `.cmod` files that are plain JSON still load because the ZIP signature check fails and the loader falls back to decoding the `ArrayBuffer` as UTF‑8 text and calling `JSON.parse` on the resulting string.
+- Song file format on disk is now “JSON inside ZIP inside `.cmod`”; when debugging tracker persistence issues, keep in mind that inspecting the raw `.cmod` requires unzipping first, while the in‑memory representation is unchanged (`TrackerSongFile` in the tracker store).

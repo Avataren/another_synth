@@ -361,6 +361,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import JSZip from 'jszip';
+import type { JSZipObject } from 'jszip';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
@@ -1978,7 +1980,7 @@ function handleRenamePattern(patternId: string, name: string) {
   trackerStore.setPatternName(patternId, name);
 }
 
-async function promptSaveFile(contents: string, suggestedName: string) {
+async function promptSaveFile(contents: Blob, suggestedName: string) {
   const anyWindow = window as typeof window & {
     showSaveFilePicker?: (
       options?: SaveFilePickerOptions
@@ -1991,7 +1993,7 @@ async function promptSaveFile(contents: string, suggestedName: string) {
       types: [
         {
           description: 'Chord Mod Song',
-          accept: { 'application/json': ['.cmod'] }
+          accept: { 'application/octet-stream': ['.cmod'] }
         }
       ]
     });
@@ -2001,8 +2003,7 @@ async function promptSaveFile(contents: string, suggestedName: string) {
     return;
   }
 
-  const blob = new Blob([contents], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(contents);
   const link = document.createElement('a');
   link.href = url;
   link.download = suggestedName;
@@ -2010,7 +2011,7 @@ async function promptSaveFile(contents: string, suggestedName: string) {
   URL.revokeObjectURL(url);
 }
 
-async function promptOpenFile(): Promise<string | null> {
+async function promptOpenFile(): Promise<ArrayBuffer | null> {
   const anyWindow = window as typeof window & {
     showOpenFilePicker?: (
       options?: OpenFilePickerOptions
@@ -2030,10 +2031,10 @@ async function promptOpenFile(): Promise<string | null> {
       })) ?? [];
     if (!handle) return null;
     const file = await handle.getFile();
-    return await file.text();
+    return await file.arrayBuffer();
   }
 
-  return await new Promise<string | null>((resolve) => {
+  return await new Promise<ArrayBuffer | null>((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.cmod,application/json,.json';
@@ -2044,9 +2045,9 @@ async function promptOpenFile(): Promise<string | null> {
         return;
       }
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
       reader.onerror = () => resolve(null);
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     };
     input.click();
   });
@@ -2057,7 +2058,10 @@ async function handleSaveSongFile() {
     const songFile = trackerStore.serializeSong();
     const json = JSON.stringify(songFile, null, 2);
     const safeTitle = (currentSong.value.title || 'song').replace(/[^a-z0-9-_]+/gi, '_');
-    await promptSaveFile(json, `${safeTitle || 'song'}.cmod`);
+    const zip = new JSZip();
+    zip.file('song.json', json);
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    await promptSaveFile(zipBlob, `${safeTitle || 'song'}.cmod`);
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save song', error);
@@ -2066,8 +2070,35 @@ async function handleSaveSongFile() {
 
 async function handleLoadSongFile() {
   try {
-    const text = await promptOpenFile();
-    if (!text) return;
+    const data = await promptOpenFile();
+    if (!data) return;
+
+    const buffer = new Uint8Array(data);
+    let text: string;
+
+    if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+      const zip = await JSZip.loadAsync(buffer);
+      const fileNames = Object.keys(zip.files);
+      if (fileNames.length === 0) {
+        throw new Error('Song archive is empty');
+      }
+      const preferredJsonName = fileNames.find((name) =>
+        name.toLowerCase().endsWith('.json')
+      );
+      const jsonName = preferredJsonName ?? fileNames[0];
+      if (!jsonName) {
+        throw new Error('No JSON filename found in song archive');
+      }
+      const zipFile = zip.file(jsonName) as JSZipObject | null;
+      if (!zipFile) {
+        throw new Error('No JSON file found in song archive');
+      }
+      text = await zipFile.async('string');
+    } else {
+      const decoder = new TextDecoder('utf-8');
+      text = decoder.decode(buffer);
+    }
+
     const parsed = JSON.parse(text) as TrackerSongFile;
     trackerStore.loadSongFile(parsed);
     ensureActiveInstrument();

@@ -128,6 +128,22 @@
         :disable="!hasBank"
       />
       <q-btn
+        label="Download Patch"
+        outline
+        color="secondary"
+        dense
+        @click="handleDownloadPatch"
+        :disable="!currentPatchId"
+      />
+      <q-btn
+        label="Download Bank"
+        outline
+        color="secondary"
+        dense
+        @click="handleDownloadBank"
+        :disable="!hasBank"
+      />
+      <q-btn
         label="Paste Patch"
         outline
         color="accent"
@@ -589,6 +605,74 @@ const handleNewPatch = async () => {
   }
 };
 
+const toSafeFileName = (name: string, fallback: string): string => {
+  const base = (name || fallback).trim() || fallback;
+  return base.replace(/[^a-z0-9\-_]+/gi, '_');
+};
+
+const downloadJsonFile = async (
+  json: string,
+  suggestedFilename: string,
+): Promise<void> => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    // eslint-disable-next-line no-console
+    console.warn('Download is only available in a browser environment');
+    return;
+  }
+
+  const blob = new Blob([json], {
+    type: 'application/json;charset=utf-8',
+  });
+
+  const anyWindow = window as unknown as {
+    showSaveFilePicker?: (options: unknown) => Promise<{
+      createWritable: () => Promise<WritableStreamDefaultWriter>;
+    }>;
+  };
+
+  if (anyWindow.showSaveFilePicker) {
+    try {
+      const handle = await anyWindow.showSaveFilePicker({
+        suggestedName: suggestedFilename,
+        types: [
+          {
+            description: 'JSON Files',
+            accept: {
+              'application/json': ['.json'],
+            },
+          },
+        ],
+      });
+
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        (error.name === 'AbortError' || error.name === 'SecurityError')
+      ) {
+        return;
+      }
+      // eslint-disable-next-line no-console
+      console.warn(
+        'showSaveFilePicker failed, falling back to download link',
+        error,
+      );
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = suggestedFilename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 const handleCopyPatch = () => {
   const json = patchStore.exportCurrentPatchAsJSON();
   if (json) {
@@ -613,6 +697,34 @@ const handleCopyBank = () => {
       });
     });
   }
+};
+
+const handleDownloadPatch = async () => {
+  const json = patchStore.exportCurrentPatchAsJSON();
+  if (!json) return;
+
+  const name = patchStore.currentPatch?.metadata.name || 'patch';
+  const filename = `${toSafeFileName(name, 'patch')}.json`;
+  await downloadJsonFile(json, filename);
+  notify({
+    type: 'positive',
+    message: 'Patch JSON download started',
+    timeout: 2000,
+  });
+};
+
+const handleDownloadBank = async () => {
+  const json = patchStore.exportCurrentBankAsJSON();
+  if (!json) return;
+
+  const name = patchStore.currentBank?.metadata.name || 'bank';
+  const filename = `${toSafeFileName(name, 'bank')}.json`;
+  await downloadJsonFile(json, filename);
+  notify({
+    type: 'positive',
+    message: 'Bank JSON download started',
+    timeout: 2000,
+  });
 };
 
 const showPasteDialog = (type: 'patch' | 'bank') => {
