@@ -60,6 +60,7 @@
         <h2>Keyboard shortcuts</h2>
         <ul>
           <li><strong>Edit mode</strong>: F2 toggles edit mode on/off.</li>
+          <li><strong>Undo / redo</strong>: Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo.</li>
           <li><strong>Play / pause pattern</strong>: Spacebar.</li>
           <li><strong>Row navigation</strong>: Arrow Up/Down move one row; PageUp/PageDown move 16 rows.</li>
           <li><strong>Jump rows</strong>: Home jumps to the first row; End jumps to the last row.</li>

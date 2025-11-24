@@ -105,11 +105,11 @@
             :patterns="patterns"
             :current-pattern-id="currentPatternId"
             @select-pattern="trackerStore.setCurrentPatternId"
-            @add-pattern-to-sequence="trackerStore.addPatternToSequence"
-            @remove-pattern-from-sequence="trackerStore.removePatternFromSequence"
+            @add-pattern-to-sequence="handleAddPatternToSequence"
+            @remove-pattern-from-sequence="handleRemovePatternFromSequence"
             @create-pattern="handleCreatePattern"
-            @move-sequence-item="trackerStore.moveSequenceItem"
-            @rename-pattern="trackerStore.setPatternName"
+            @move-sequence-item="handleMoveSequenceItem"
+            @rename-pattern="handleRenamePattern"
           />
           <div class="summary-card">
             <div class="summary-header">
@@ -748,6 +748,7 @@ function jumpToPrevTrack() {
 function setStepSizeInput(value: number) {
   if (!Number.isFinite(value)) return;
   const clamped = Math.max(1, Math.min(64, Math.round(value)));
+  trackerStore.pushHistory();
   stepSize.value = clamped;
 }
 
@@ -759,6 +760,7 @@ function setBaseOctaveInput(value: number) {
 }
 
 function addTrack() {
+  trackerStore.pushHistory();
   const added = trackerStore.addTrack();
   if (added) {
     activeTrack.value = Math.min(
@@ -772,6 +774,7 @@ function addTrack() {
 
 function removeTrack() {
   if (trackCount.value <= 1) return;
+  trackerStore.pushHistory();
   const removed = trackerStore.removeTrack(activeTrack.value);
   if (removed) {
     activeTrack.value = Math.min(
@@ -831,6 +834,7 @@ function updateEntryAt(
 
 function insertNoteOff() {
   if (!isEditMode.value) return;
+  trackerStore.pushHistory();
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
     ...entry,
     note: '###'
@@ -841,6 +845,7 @@ function insertNoteOff() {
 function clearStep() {
   if (!isEditMode.value) return;
   if (!currentPattern.value) return;
+  trackerStore.pushHistory();
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
   track.entries = track.entries.filter((e) => e.row !== activeRow.value);
@@ -850,6 +855,7 @@ function clearStep() {
 function deleteRowAndShiftUp() {
   if (!isEditMode.value) return;
   if (!currentPattern.value) return;
+  trackerStore.pushHistory();
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
 
@@ -871,6 +877,7 @@ function deleteRowAndShiftUp() {
 function insertRowAndShiftDown() {
   if (!isEditMode.value) return;
   if (!currentPattern.value) return;
+  trackerStore.pushHistory();
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
 
@@ -929,6 +936,7 @@ function handleNoteEntry(midi: number) {
     return;
   }
 
+  trackerStore.pushHistory();
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
     ...entry,
     note: midiToTrackerNote(adjustedMidi),
@@ -940,6 +948,7 @@ function handleNoteEntry(midi: number) {
 
 function handleVolumeInput(hexChar: string) {
   if (!isEditMode.value) return;
+  trackerStore.pushHistory();
   const row = activeRow.value;
   const track = activeTrack.value;
   const nibbleIndex = activeColumn.value === 2 ? 0 : 1;
@@ -960,6 +969,7 @@ function handleVolumeInput(hexChar: string) {
 function handleMacroInput(hexChar: string) {
   if (!isEditMode.value) return;
   if (activeColumn.value !== 4) return;
+  trackerStore.pushHistory();
   const nibbleIndex = activeMacroNibble.value;
   // First digit must be 0-3 (macro index)
   if (nibbleIndex === 0 && !/^[0-3]$/.test(hexChar)) return;
@@ -990,6 +1000,7 @@ function clearVolumeField() {
   if (!currentPattern.value) return;
   if (activeColumn.value !== 2 && activeColumn.value !== 3) return;
 
+  trackerStore.pushHistory();
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
   const idx = track.entries.findIndex((e) => e.row === activeRow.value);
@@ -1009,6 +1020,7 @@ function clearMacroField() {
   if (!currentPattern.value) return;
   if (activeColumn.value !== 4) return;
 
+  trackerStore.pushHistory();
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
   const idx = track.entries.findIndex((e) => e.row === activeRow.value);
@@ -1026,6 +1038,7 @@ function clearMacroField() {
 
 function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
+  trackerStore.pushHistory();
   patternRows.value = clamped;
   setActiveRow(activeRow.value);
   playbackEngine.setLength(clamped);
@@ -1403,6 +1416,23 @@ function onKeyDown(event: KeyboardEvent) {
     return;
   }
 
+  if (event.ctrlKey && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
+    event.preventDefault();
+    trackerStore.undo();
+    return;
+  }
+
+  if (
+    event.ctrlKey &&
+    (event.key === 'y' ||
+      event.key === 'Y' ||
+      (event.shiftKey && (event.key === 'z' || event.key === 'Z')))
+  ) {
+    event.preventDefault();
+    trackerStore.redo();
+    return;
+  }
+
   const midiFromMap = noteKeyMap[event.code];
   if (midiFromMap !== undefined && !event.repeat && activeColumn.value === 0) {
     event.preventDefault();
@@ -1520,6 +1550,7 @@ function onKeyDown(event: KeyboardEvent) {
 
 function onPatchSelect(slotNumber: number, patchId: string) {
   if (!patchId) {
+    trackerStore.pushHistory();
     trackerStore.clearSlot(slotNumber);
     ensureActiveInstrument();
     return;
@@ -1533,12 +1564,14 @@ function onPatchSelect(slotNumber: number, patchId: string) {
   if (!patch) return;
 
   // Copy patch to song store
+  trackerStore.pushHistory();
   trackerStore.assignPatchToSlot(slotNumber, patch, option.bankName);
   setActiveInstrument(slotNumber);
   ensureActiveInstrument();
 }
 
 function clearInstrument(slotNumber: number) {
+  trackerStore.pushHistory();
   trackerStore.clearSlot(slotNumber);
   ensureActiveInstrument();
 }
@@ -1575,6 +1608,7 @@ async function createNewSongPatch(slotNumber: number) {
         audioAssets: {}
       };
 
+      trackerStore.pushHistory();
       trackerStore.assignPatchToSlot(slotNumber, patch, 'Song');
       setActiveInstrument(slotNumber);
       ensureActiveInstrument();
@@ -1614,9 +1648,30 @@ async function editSlotPatch(slotNumber: number) {
 }
 
 function handleCreatePattern() {
+  trackerStore.pushHistory();
   const newPatternId = trackerStore.createPattern();
   trackerStore.addPatternToSequence(newPatternId);
   trackerStore.setCurrentPatternId(newPatternId);
+}
+
+function handleAddPatternToSequence(patternId: string) {
+  trackerStore.pushHistory();
+  trackerStore.addPatternToSequence(patternId);
+}
+
+function handleRemovePatternFromSequence(index: number) {
+  trackerStore.pushHistory();
+  trackerStore.removePatternFromSequence(index);
+}
+
+function handleMoveSequenceItem(fromIndex: number, toIndex: number) {
+  trackerStore.pushHistory();
+  trackerStore.moveSequenceItem(fromIndex, toIndex);
+}
+
+function handleRenamePattern(patternId: string, name: string) {
+  trackerStore.pushHistory();
+  trackerStore.setPatternName(patternId, name);
 }
 
 async function promptSaveFile(contents: string, suggestedName: string) {

@@ -29,6 +29,20 @@ export interface TrackerPattern {
   tracks: TrackerTrackData[];
 }
 
+interface TrackerSnapshot {
+  currentSong: SongMeta;
+  patternRows: number;
+  stepSize: number;
+  baseOctave: number;
+  patterns: TrackerPattern[];
+  sequence: string[];
+  currentPatternId: string | null;
+  instrumentSlots: InstrumentSlot[];
+  activeInstrumentId: string | null;
+  currentInstrumentPage: number;
+  songPatches: Record<string, Patch>;
+}
+
 interface TrackerStoreState {
   currentSong: SongMeta;
   patternRows: number;
@@ -44,6 +58,10 @@ interface TrackerStoreState {
   songPatches: Record<string, Patch>;
   /** Slot number currently being edited in the synth page, or null */
   editingSlot: number | null;
+  /** Undo history stack (oldest at index 0) */
+  undoStack: TrackerSnapshot[];
+  /** Redo history stack */
+  redoStack: TrackerSnapshot[];
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -118,7 +136,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       activeInstrumentId: null,
       currentInstrumentPage: 0,
       songPatches: {},
-      editingSlot: null
+      editingSlot: null,
+      undoStack: [],
+      redoStack: []
     };
   },
   getters: {
@@ -143,6 +163,77 @@ export const useTrackerStore = defineStore('trackerStore', {
     }
   },
   actions: {
+    /** Create a deep snapshot of the current tracker song state (for undo/redo). */
+    createSnapshot(): TrackerSnapshot {
+      return {
+        currentSong: { ...this.currentSong },
+        patternRows: this.patternRows,
+        stepSize: this.stepSize,
+        baseOctave: this.baseOctave,
+        patterns: JSON.parse(JSON.stringify(this.patterns)),
+        sequence: [...this.sequence],
+        currentPatternId: this.currentPatternId,
+        instrumentSlots: JSON.parse(JSON.stringify(this.instrumentSlots)),
+        activeInstrumentId: this.activeInstrumentId,
+        currentInstrumentPage: this.currentInstrumentPage,
+        songPatches: JSON.parse(JSON.stringify(this.songPatches))
+      };
+    },
+    /** Apply a snapshot back into the store state. */
+    applySnapshot(snapshot: TrackerSnapshot) {
+      this.currentSong = { ...snapshot.currentSong };
+      this.patternRows = snapshot.patternRows;
+      this.stepSize = snapshot.stepSize;
+      this.baseOctave = snapshot.baseOctave;
+
+      this.patterns = JSON.parse(JSON.stringify(snapshot.patterns));
+
+      const patternIds = new Set(this.patterns.map((p) => p.id));
+      const sequence = (snapshot.sequence ?? []).filter((id) => patternIds.has(id));
+      const firstPatternId = this.patterns[0]?.id;
+      this.sequence = sequence.length > 0 ? sequence : firstPatternId ? [firstPatternId] : [];
+
+      this.currentPatternId = patternIds.has(snapshot.currentPatternId ?? '')
+        ? snapshot.currentPatternId
+        : this.sequence[0] ?? this.patterns[0]?.id ?? null;
+
+      const slots =
+        Array.isArray(snapshot.instrumentSlots) && snapshot.instrumentSlots.length === TOTAL_SLOTS
+          ? snapshot.instrumentSlots
+          : createDefaultInstrumentSlots();
+      this.instrumentSlots = JSON.parse(JSON.stringify(slots));
+
+      this.activeInstrumentId = snapshot.activeInstrumentId ?? null;
+      this.currentInstrumentPage = snapshot.currentInstrumentPage ?? 0;
+      this.songPatches = JSON.parse(JSON.stringify(snapshot.songPatches ?? {}));
+
+      // Editing slot is only meaningful while on the patch page; reset on snapshot apply.
+      this.editingSlot = null;
+    },
+    /** Push the current state onto the undo stack and clear redo history. */
+    pushHistory() {
+      const snapshot = this.createSnapshot();
+      this.undoStack.push(snapshot);
+      const MAX_HISTORY = 100;
+      if (this.undoStack.length > MAX_HISTORY) {
+        this.undoStack.shift();
+      }
+      this.redoStack = [];
+    },
+    undo() {
+      if (this.undoStack.length === 0) return;
+      const snapshot = this.undoStack.pop() as TrackerSnapshot;
+      const current = this.createSnapshot();
+      this.redoStack.push(current);
+      this.applySnapshot(snapshot);
+    },
+    redo() {
+      if (this.redoStack.length === 0) return;
+      const snapshot = this.redoStack.pop() as TrackerSnapshot;
+      const current = this.createSnapshot();
+      this.undoStack.push(current);
+      this.applySnapshot(snapshot);
+    },
     setBaseOctave(octave: number) {
       const clamped = Math.max(0, Math.min(8, Math.round(octave)));
       this.baseOctave = clamped;
