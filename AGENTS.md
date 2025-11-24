@@ -372,6 +372,43 @@ this.automationAdapter = new AutomationAdapter(
 
 ## New discovery: Legacy audio-system-store fully removed
 
+## New discovery: Tracker pattern selection and clipboard
+
+- Tracker pattern grid (`TrackerPage.vue` + `TrackerPattern.vue` + `TrackerTrack.vue` + `TrackerEntry.vue`) now supports rectangular step selection across rows and tracks.
+- Selection model:
+  - `TrackerSelectionRect` lives in `src/components/tracker/tracker-types.ts` and is computed in `TrackerPage.vue` from `selectionAnchor` + `selectionEnd` (both `{ row, trackIndex }`).
+  - Selection always covers whole steps (entire row for a given track), not individual note/volume/macro sub-cells.
+  - Selection is visualized by:
+    - Highlighted row numbers (`.row-number.in-selection`) for rows within the selection’s vertical range.
+    - Highlighted tracker entries (`.tracker-entry.selected`) for cells inside the rectangle.
+- Mouse selection:
+  - `TrackerEntry.vue` emits `startSelection` on `mousedown` and `hoverSelection` on `mouseenter` with `{ row, trackIndex }`.
+  - Events bubble `TrackerEntry` → `TrackerTrack` → `TrackerPattern` → `TrackerPage`, where `onPatternStartSelection`/`onPatternHoverSelection` update `selectionAnchor`/`selectionEnd` and move the cursor (`activeRow`/`activeTrack`).
+  - A global `mouseup` handler (registered in `onMounted` in `TrackerPage.vue`) clears the `isMouseSelecting` flag so drags that end outside the pattern still terminate cleanly.
+- Keyboard selection:
+  - Holding `Shift` while using the arrow keys extends or shrinks the selection from the anchor:
+    - `Shift+ArrowUp/Down` adjusts the row range.
+    - `Shift+ArrowLeft/Right` tracks horizontal movement, including when `moveColumn` wraps between tracks at column boundaries.
+  - Pressing arrows without `Shift` clears the current selection and just moves the cursor as before.
+  - `Escape` clears any active selection without moving the cursor.
+- Clipboard behavior:
+  - `TrackerPage.vue` maintains an in-memory clipboard (`clipboard`) shaped as `{ width, height, data: (TrackerEntryData | null)[][] }`.
+  - `Ctrl/Cmd+C` calls `copySelectionToClipboard()`:
+    - No-op if there is no `selectionRect` or `currentPattern`.
+    - Clones entries from the selection rectangle (per row/track) into `clipboard.data`, preserving `note`, `instrument`, `volume`, and `macro` fields. Empty steps are recorded as `null`.
+  - `Ctrl/Cmd+V` calls `pasteFromClipboard()`:
+    - No-op if there is no clipboard, no pattern, or edit mode is off.
+    - `trackerStore.pushHistory()` is called once per paste so the operation is undoable.
+    - The clipboard block is pasted starting at the current cursor cell (`activeRow`, `activeTrack`):
+      - For each source cell, any existing entry at the target row/track is removed.
+      - If the clipboard cell is non-null, a deep-cloned `TrackerEntryData` is inserted with its `row` updated to the target row.
+      - Steps that would overflow beyond the last row or last track are skipped.
+    - Pasted empty cells (clipboard `null`) explicitly clear existing entries so pastes overwrite previous content rather than merging.
+- Constraints and notes:
+  - Selection is transient UI state only (not persisted in `tracker-store`), and does not participate in undo/redo; only edits caused by paste (or other commands) are tracked via `pushHistory()`.
+  - The cursor’s `activeColumn`/`activeMacroNibble` are not part of selection semantics; selection is always step-based, but active cell highlighting still works as before.
+  - Future changes to pattern editing should respect this model: use `TrackerSelectionRect` for new bulk operations and keep clipboard behavior step-oriented.
+
 - The `audio-system-store` façade, its legacy bridge, and associated tests have been deleted. Runtime audio control now flows through the focused stores (`instrument-store`, `layout-store`, `node-state-store`, `connection-store`, and `patch-store`).
 - UI components should access node state exclusively via `node-state-store`, layout data from `layout-store`, and the instrument/audio context via `useInstrumentStore()`. Avoid storing mirrored maps or calling the removed legacy helpers.
 - `useInstrumentStore()` owns the `AudioSystem`, `InstrumentV2`, and the `AudioSyncManager`. Boot code initializes this store before patch loading; any component that previously depended on `useAudioSystemStore` must switch to `useInstrumentStore`.

@@ -318,17 +318,20 @@
         <TrackerPattern
           ref="trackerPatternRef"
           :tracks="currentPattern?.tracks ?? []"
-  :rows="rowsCount"
-  :selected-row="activeRow"
-  :playback-row="playbackRow"
-  :active-track="activeTrack"
-  :active-column="activeColumn"
-  :active-macro-nibble="activeMacroNibble"
-  :auto-scroll="autoScroll"
-  :is-playing="isPlaying"
-  @rowSelected="setActiveRow"
-  @cellSelected="setActiveCell"
-/>
+          :rows="rowsCount"
+          :selected-row="activeRow"
+          :playback-row="playbackRow"
+          :active-track="activeTrack"
+          :active-column="activeColumn"
+          :active-macro-nibble="activeMacroNibble"
+          :selection-rect="selectionRect"
+          :auto-scroll="autoScroll"
+          :is-playing="isPlaying"
+          @rowSelected="setActiveRow"
+          @cellSelected="setActiveCell"
+          @startSelection="onPatternStartSelection"
+          @hoverSelection="onPatternHoverSelection"
+        />
       </div>
     </div>
     <div v-if="showExportModal" class="export-modal">
@@ -361,7 +364,7 @@ import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
-import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
+import type { TrackerEntryData, TrackerSelectionRect, TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type {
   Pattern as PlaybackPattern,
@@ -449,6 +452,9 @@ const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
 const activeMacroNibble = ref(0);
+const selectionAnchor = ref<{ row: number; trackIndex: number } | null>(null);
+const selectionEnd = ref<{ row: number; trackIndex: number } | null>(null);
+const isMouseSelecting = ref(false);
 const isEditMode = ref(false);
 const isFullscreen = ref(false);
 const columnsPerTrack = 5;
@@ -461,6 +467,36 @@ const playbackMode = ref<PlaybackMode>('song');
 const songBank = new TrackerSongBank();
 let suppressPositionUpdates = false;
 const slotCreationPromises = new Map<number, Promise<void>>();
+const clipboard = ref<{
+  width: number;
+  height: number;
+  data: (TrackerEntryData | null)[][];
+} | null>(null);
+
+const selectionRect = computed<TrackerSelectionRect | null>(() => {
+  if (!selectionAnchor.value || !selectionEnd.value) return null;
+  if (!currentPattern.value) return null;
+  const totalTracks = currentPattern.value.tracks.length;
+  const maxRow = rowsCount.value - 1;
+  if (totalTracks === 0 || maxRow < 0) return null;
+
+  const startRow = Math.max(0, Math.min(selectionAnchor.value.row, selectionEnd.value.row));
+  const endRow = Math.min(
+    maxRow,
+    Math.max(selectionAnchor.value.row, selectionEnd.value.row)
+  );
+  const startTrack = Math.max(
+    0,
+    Math.min(selectionAnchor.value.trackIndex, selectionEnd.value.trackIndex)
+  );
+  const endTrack = Math.min(
+    totalTracks - 1,
+    Math.max(selectionAnchor.value.trackIndex, selectionEnd.value.trackIndex)
+  );
+
+  if (startRow > endRow || startTrack > endTrack) return null;
+  return { rowStart: startRow, rowEnd: endRow, trackStart: startTrack, trackEnd: endTrack };
+});
 
 function normalizeVolumeChars(vol?: string): [string, string] {
   const clean = (vol ?? '').toUpperCase();
@@ -697,6 +733,102 @@ function moveRow(delta: number) {
   setActiveRow(activeRow.value + delta);
   activeMacroNibble.value = 0;
 }
+
+function clearSelection() {
+  selectionAnchor.value = null;
+  selectionEnd.value = null;
+}
+
+function startSelectionAtCursor() {
+  selectionAnchor.value = { row: activeRow.value, trackIndex: activeTrack.value };
+  selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+}
+
+function onPatternStartSelection(payload: { row: number; trackIndex: number }) {
+  isMouseSelecting.value = true;
+  activeRow.value = payload.row;
+  activeTrack.value = payload.trackIndex;
+  selectionAnchor.value = { ...payload };
+  selectionEnd.value = { ...payload };
+}
+
+  function onPatternHoverSelection(payload: { row: number; trackIndex: number }) {
+    if (!isMouseSelecting.value) return;
+    activeRow.value = payload.row;
+    activeTrack.value = payload.trackIndex;
+    selectionEnd.value = { ...payload };
+  }
+
+  function copySelectionToClipboard() {
+    if (!selectionRect.value) return;
+    if (!currentPattern.value) return;
+    const rect = selectionRect.value;
+    const pattern = currentPattern.value;
+    const height = rect.rowEnd - rect.rowStart + 1;
+    const width = rect.trackEnd - rect.trackStart + 1;
+    const data: (TrackerEntryData | null)[][] = [];
+
+    for (let rowOffset = 0; rowOffset < height; rowOffset += 1) {
+      const rowIndex = rect.rowStart + rowOffset;
+      const rowData: (TrackerEntryData | null)[] = [];
+      for (let trackOffset = 0; trackOffset < width; trackOffset += 1) {
+        const trackIndex = rect.trackStart + trackOffset;
+        const track = pattern.tracks[trackIndex];
+        if (!track) {
+          rowData.push(null);
+          continue;
+        }
+        const entry = track.entries.find((e) => e.row === rowIndex) ?? null;
+        rowData.push(entry ? (JSON.parse(JSON.stringify(entry)) as TrackerEntryData) : null);
+      }
+      data.push(rowData);
+    }
+
+    clipboard.value = { width, height, data };
+  }
+
+  function pasteFromClipboard() {
+    if (!clipboard.value) return;
+    if (!currentPattern.value) return;
+    if (!isEditMode.value) return;
+
+    const clip = clipboard.value;
+    const pattern = currentPattern.value;
+    const totalTracks = pattern.tracks.length;
+    const maxRow = rowsCount.value - 1;
+    if (totalTracks === 0 || maxRow < 0) return;
+
+    trackerStore.pushHistory();
+
+    for (let trackOffset = 0; trackOffset < clip.width; trackOffset += 1) {
+      const targetTrackIndex = activeTrack.value + trackOffset;
+      if (targetTrackIndex < 0 || targetTrackIndex >= totalTracks) continue;
+
+      const track = pattern.tracks[targetTrackIndex];
+      if (!track) continue;
+
+      let entries = track.entries.slice();
+
+      for (let rowOffset = 0; rowOffset < clip.height; rowOffset += 1) {
+        const targetRow = activeRow.value + rowOffset;
+        if (targetRow < 0 || targetRow > maxRow) continue;
+
+        const srcEntry = clip.data[rowOffset]?.[trackOffset] ?? null;
+
+        // Remove any existing entry at this row
+        entries = entries.filter((e) => e.row !== targetRow);
+
+        if (srcEntry) {
+          const cloned = JSON.parse(JSON.stringify(srcEntry)) as TrackerEntryData;
+          cloned.row = targetRow;
+          entries.push(cloned);
+        }
+      }
+
+      entries.sort((a, b) => a.row - b.row);
+      track.entries = entries;
+    }
+  }
 
 function moveColumn(delta: number) {
   if (!currentPattern.value) return;
@@ -1369,15 +1501,21 @@ function handleStop() {
   songBank.allNotesOff();
 }
 
-function togglePatternPlayback() {
-  if (isPlaying.value && playbackMode.value === 'pattern') {
-    handlePause();
-    return;
+  function togglePatternPlayback() {
+    if (isPlaying.value && playbackMode.value === 'pattern') {
+      handlePause();
+      return;
+    }
+    void handlePlayPattern();
   }
-  void handlePlayPattern();
-}
 
-async function loadSystemBankOptions() {
+  function handleGlobalMouseUp() {
+    if (isMouseSelecting.value) {
+      isMouseSelecting.value = false;
+    }
+  }
+
+  async function loadSystemBankOptions() {
   try {
     const response = await fetch(`${import.meta.env.BASE_URL}system-bank.json`, {
       cache: 'no-store'
@@ -1409,18 +1547,18 @@ async function loadSystemBankOptions() {
   }
 }
 
-function onKeyDown(event: KeyboardEvent) {
+  function onKeyDown(event: KeyboardEvent) {
   // Don't process notes when typing in input fields
   const target = event.target as HTMLElement;
   if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
     return;
   }
 
-  if (event.ctrlKey && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
-    event.preventDefault();
-    trackerStore.undo();
-    return;
-  }
+    if (event.ctrlKey && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
+      event.preventDefault();
+      trackerStore.undo();
+      return;
+    }
 
   if (
     event.ctrlKey &&
@@ -1428,12 +1566,32 @@ function onKeyDown(event: KeyboardEvent) {
       event.key === 'Y' ||
       (event.shiftKey && (event.key === 'z' || event.key === 'Z')))
   ) {
-    event.preventDefault();
-    trackerStore.redo();
-    return;
-  }
+      event.preventDefault();
+      trackerStore.redo();
+      return;
+    }
 
-  const midiFromMap = noteKeyMap[event.code];
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      (event.key === 'c' || event.key === 'C')
+    ) {
+      event.preventDefault();
+      copySelectionToClipboard();
+      return;
+    }
+
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      (event.key === 'v' || event.key === 'V')
+    ) {
+      event.preventDefault();
+      pasteFromClipboard();
+      return;
+    }
+
+    const midiFromMap = noteKeyMap[event.code];
   if (midiFromMap !== undefined && !event.repeat && activeColumn.value === 0) {
     event.preventDefault();
     ensureActiveInstrument();
@@ -1458,27 +1616,55 @@ function onKeyDown(event: KeyboardEvent) {
     return;
   }
 
-  switch (event.key) {
-    case 'F2':
-      event.preventDefault();
-      toggleEditMode();
-      break;
-    case 'ArrowUp':
-      event.preventDefault();
-      moveRow(-1);
-      break;
-    case 'ArrowDown':
-      event.preventDefault();
-      moveRow(1);
-      break;
-    case 'ArrowLeft':
-      event.preventDefault();
-      moveColumn(-1);
-      break;
-    case 'ArrowRight':
-      event.preventDefault();
-      moveColumn(1);
-      break;
+    switch (event.key) {
+      case 'F2':
+        event.preventDefault();
+        toggleEditMode();
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        if (event.shiftKey) {
+          if (!selectionAnchor.value) startSelectionAtCursor();
+          moveRow(-1);
+          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+        } else {
+          clearSelection();
+          moveRow(-1);
+        }
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        if (event.shiftKey) {
+          if (!selectionAnchor.value) startSelectionAtCursor();
+          moveRow(1);
+          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+        } else {
+          clearSelection();
+          moveRow(1);
+        }
+        break;
+      case 'ArrowLeft':
+        event.preventDefault();
+        if (event.shiftKey) {
+          if (!selectionAnchor.value) startSelectionAtCursor();
+          moveColumn(-1);
+          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+        } else {
+          clearSelection();
+          moveColumn(-1);
+        }
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        if (event.shiftKey) {
+          if (!selectionAnchor.value) startSelectionAtCursor();
+          moveColumn(1);
+          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+        } else {
+          clearSelection();
+          moveColumn(1);
+        }
+        break;
     case 'Tab':
       event.preventDefault();
       if (event.shiftKey) {
@@ -1511,10 +1697,10 @@ function onKeyDown(event: KeyboardEvent) {
       event.preventDefault();
       setActiveRow(0);
       break;
-    case 'End':
-      event.preventDefault();
-      setActiveRow(rowsCount.value - 1);
-      break;
+      case 'End':
+        event.preventDefault();
+        setActiveRow(rowsCount.value - 1);
+        break;
     case ' ':
       event.preventDefault();
       togglePatternPlayback();
@@ -1527,24 +1713,27 @@ function onKeyDown(event: KeyboardEvent) {
         insertNoteOff();
       }
       break;
-    case 'Delete':
-      event.preventDefault();
-      if (
-        !event.shiftKey &&
-        (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
-      ) {
-        clearVolumeField();
-        if (activeColumn.value === 4) {
-          clearMacroField();
+      case 'Delete':
+        event.preventDefault();
+        if (
+          !event.shiftKey &&
+          (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
+        ) {
+          clearVolumeField();
+          if (activeColumn.value === 4) {
+            clearMacroField();
+          }
+        } else if (event.shiftKey) {
+          deleteRowAndShiftUp();
+        } else {
+          clearStep();
         }
-      } else if (event.shiftKey) {
-        deleteRowAndShiftUp();
-      } else {
-        clearStep();
-      }
-      break;
-    default:
-      break;
+        break;
+      case 'Escape':
+        clearSelection();
+        break;
+      default:
+        break;
   }
 }
 
@@ -1625,7 +1814,7 @@ async function createNewSongPatch(slotNumber: number) {
   }
 }
 
-async function editSlotPatch(slotNumber: number) {
+  async function editSlotPatch(slotNumber: number) {
   const pending = slotCreationPromises.get(slotNumber);
   if (pending) {
     await pending.catch(() => undefined);
@@ -1644,10 +1833,10 @@ async function editSlotPatch(slotNumber: number) {
   void router.push({
     path: '/patch',
     query: { editSongPatch: slotNumber.toString() }
-  });
-}
+    });
+  }
 
-function handleCreatePattern() {
+  function handleCreatePattern() {
   trackerStore.pushHistory();
   const newPatternId = trackerStore.createPattern();
   trackerStore.addPatternToSequence(newPatternId);
@@ -1781,6 +1970,7 @@ onMounted(async () => {
   ensureActiveInstrument();
   void initializePlayback(playbackMode.value);
   void measureVisualizerLayout();
+  window.addEventListener('mouseup', handleGlobalMouseUp);
 });
 
 watch(
@@ -1822,6 +2012,7 @@ onBeforeUnmount(() => {
   playbackEngine.stop();
   songBank.cancelAllScheduled();
   songBank.dispose();
+  window.removeEventListener('mouseup', handleGlobalMouseUp);
 });
 </script>
 

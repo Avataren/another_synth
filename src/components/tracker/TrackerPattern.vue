@@ -17,7 +17,8 @@
           class="row-number"
           :class="{
             playing: isPlaying && playbackRow === row,
-            selected: effectiveSelectedRow === row
+            selected: effectiveSelectedRow === row,
+            'in-selection': isRowInSelection(row)
           }"
           @click="selectRow(row)"
           ref="rowRefs"
@@ -38,8 +39,11 @@
           :active-track="activeTrack"
           :active-column="activeColumn"
           :active-macro-nibble="activeMacroNibble"
+          :selection-rect="selectionRect"
           @rowSelected="selectRow"
           @cellSelected="selectCell"
+          @startSelection="startSelection"
+          @hoverSelection="hoverSelection"
         />
       </div>
     </div>
@@ -49,7 +53,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import TrackerTrack from './TrackerTrack.vue';
-import type { TrackerTrackData } from './tracker-types';
+import type { TrackerSelectionRect, TrackerTrackData } from './tracker-types';
 
 interface Props {
   tracks: TrackerTrackData[];
@@ -61,6 +65,7 @@ interface Props {
   autoScroll: boolean;
   isPlaying: boolean;
   activeMacroNibble: number;
+  selectionRect: TrackerSelectionRect | null;
 }
 
 const props = defineProps<Props>();
@@ -68,6 +73,8 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   (event: 'rowSelected', row: number): void;
   (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number; macroNibble?: number }): void;
+  (event: 'startSelection', payload: { row: number; trackIndex: number }): void;
+  (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
 }>();
 
 const rowHeightPx = 30;
@@ -80,6 +87,7 @@ const rowsList = computed(() => Array.from({ length: props.rows }, (_, idx) => i
 const rowRefs = ref<(HTMLElement | null)[]>([]);
 const tracksWrapperRef = ref<HTMLElement | null>(null);
 const activeBarWidth = ref<number | null>(null);
+const selectionRect = computed(() => props.selectionRect);
 
 // During playback, don't propagate selectedRow changes to TrackerTrack/TrackerEntry
 // The active-row-bar provides visual feedback instead, avoiding component re-renders
@@ -108,6 +116,19 @@ function selectRow(row: number) {
 
 function selectCell(payload: { row: number; column: number; trackIndex: number; macroNibble?: number }) {
   emit('cellSelected', payload);
+}
+
+function startSelection(payload: { row: number; trackIndex: number }) {
+  emit('startSelection', payload);
+}
+
+function hoverSelection(payload: { row: number; trackIndex: number }) {
+  emit('hoverSelection', payload);
+}
+
+function isRowInSelection(row: number) {
+  if (!props.selectionRect) return false;
+  return row >= props.selectionRect.rowStart && row <= props.selectionRect.rowEnd;
 }
 
 // Snap scroll to center a row
@@ -258,6 +279,11 @@ onBeforeUnmount(() => {
 
 .row-number:hover {
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+.row-number.in-selection {
+  border-color: rgba(77, 242, 197, 0.8);
+  background: rgba(77, 242, 197, 0.14);
 }
 
 .row-number.playing {

@@ -1,11 +1,13 @@
 <template>
   <div
     class="tracker-entry"
-    :class="{ active, filled: !!entry, focused: isActiveTrack && active }"
+    :class="{ active, filled: !!entry, focused: isActiveTrack && active, selected }"
     :style="{ '--entry-accent': accentColor || 'var(--tracker-accent)' }"
     role="button"
     tabindex="-1"
     @click="onSelectRow"
+    @mousedown.left="onMouseDownRow"
+    @mouseenter="onMouseEnterRow"
   >
     <span
       class="cell note"
@@ -59,6 +61,7 @@ interface Props {
   entry?: TrackerEntryData | undefined;
   rowIndex: number;
   active: boolean;
+  selected: boolean;
   accentColor?: string | undefined;
   trackIndex: number;
   activeTrack: number;
@@ -69,6 +72,8 @@ interface Props {
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (event: 'selectCell', payload: { row: number; column: number; trackIndex: number; macroNibble?: number | undefined }): void;
+  (event: 'startSelection', payload: { row: number; trackIndex: number }): void;
+  (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
 }>();
 
 const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
@@ -101,6 +106,14 @@ function onSelectRow() {
 
 function onSelectCell(column: number, macroNibble?: number) {
   emit('selectCell', { row: props.rowIndex, column, trackIndex: props.trackIndex, macroNibble });
+}
+
+function onMouseDownRow() {
+  emit('startSelection', { row: props.rowIndex, trackIndex: props.trackIndex });
+}
+
+function onMouseEnterRow() {
+  emit('hoverSelection', { row: props.rowIndex, trackIndex: props.trackIndex });
 }
 
 function isActiveCell(column: number) {
@@ -141,6 +154,11 @@ function isActiveCell(column: number) {
   border-color: var(--entry-accent);
   background: rgba(77, 242, 197, 0.08);
   transform: none;
+}
+
+.tracker-entry.selected:not(.active) {
+  border-color: rgba(77, 242, 197, 0.9);
+  background: rgba(77, 242, 197, 0.12);
 }
 
 .tracker-entry:active {

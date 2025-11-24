@@ -4,27 +4,30 @@
       <div class="track-name">{{ track.name }}</div>
       <div class="track-id">#{{ trackIndexLabel }}</div>
     </div>
-  <div class="track-entries">
-    <TrackerEntry
-      v-for="row in rows"
-      :key="`${track.id}-${row}`"
-      :row-index="row"
-      :entry="entryLookup[row]"
-      :active="selectedRow === row"
-      :track-index="index"
-      :active-track="activeTrack"
-      :active-column="activeColumn"
-      :active-macro-nibble="activeMacroNibble"
-      @select-cell="onSelectCell"
-    />
-  </div>
+    <div class="track-entries">
+      <TrackerEntry
+        v-for="row in rows"
+        :key="`${track.id}-${row}`"
+        :row-index="row"
+        :entry="entryLookup[row]"
+        :active="selectedRow === row"
+        :selected="isRowSelected(row)"
+        :track-index="index"
+        :active-track="activeTrack"
+        :active-column="activeColumn"
+        :active-macro-nibble="activeMacroNibble"
+        @select-cell="onSelectCell"
+        @start-selection="onStartSelection"
+        @hover-selection="onHoverSelection"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import TrackerEntry from './TrackerEntry.vue';
-import type { TrackerEntryData, TrackerTrackData } from './tracker-types';
+import type { TrackerEntryData, TrackerSelectionRect, TrackerTrackData } from './tracker-types';
 
 interface Props {
   track: TrackerTrackData;
@@ -34,12 +37,15 @@ interface Props {
   activeTrack: number;
   activeColumn: number;
   activeMacroNibble: number;
+  selectionRect?: TrackerSelectionRect | null;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (event: 'rowSelected', row: number): void;
   (event: 'cellSelected', payload: { row: number; column: number; trackIndex: number }): void;
+  (event: 'startSelection', payload: { row: number; trackIndex: number }): void;
+  (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
 }>();
 
 const rows = computed(() => Array.from({ length: props.rowCount }, (_, idx) => idx));
@@ -60,6 +66,20 @@ const fallbackAccent = '#5dd6ff';
 
 function onSelectCell(payload: { row: number; column: number; trackIndex: number }) {
   emit('cellSelected', payload);
+}
+
+function isRowSelected(row: number) {
+  if (!props.selectionRect) return false;
+  const { rowStart, rowEnd, trackStart, trackEnd } = props.selectionRect;
+  return props.index >= trackStart && props.index <= trackEnd && row >= rowStart && row <= rowEnd;
+}
+
+function onStartSelection(payload: { row: number; trackIndex: number }) {
+  emit('startSelection', payload);
+}
+
+function onHoverSelection(payload: { row: number; trackIndex: number }) {
+  emit('hoverSelection', payload);
 }
 </script>
 
