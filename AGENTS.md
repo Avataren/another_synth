@@ -1246,3 +1246,12 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 
 - MP3 encoding in `src/audio/tracker/exporter.ts` now runs in small async batches (32 frames per batch) and yields to the event loop between batches. This keeps the UI responsive and allows the export progress percentage to update smoothly during encoding instead of jumping from 0% to 100% at the end.
 - `TrackerPage.exportSongToMp3` now waits ~1 second after playback stops before calling `songBank.stopRecording()`. This records reverb/delay tails so exports no longer sound slightly cut off at the end. If you change global effect tails, consider increasing or decreasing this post-playback tail window.
+## New discovery: Wavetable assets vs mipmaps (2025-11)
+
+- TS patch serialization stores wavetable assets as base64-encoded WAV files (`AudioAssetType.Wavetable`), using the original import buffer or the editor-generated wavetable WAV; the runtime Rust engine never serializes its internal mipmapped `WavetableBank` structures into patches.
+- WASM `AudioEngine::import_audio_assets` currently logs "Wavetable asset import not yet implemented" for `type: "wavetable"`, so wavetable assets in patches are not re-applied on load yet; wavetables are only restored when the UI re-imports data via `InstrumentV2.importWavetableData`/`import_wavetable` at runtime.
+- Importing a wavetable from a WAV or the editor always regenerates band-limited mipmapped tables on the fly (via `import_wav_hound_reader` + `generate_mipmapped_bank_dynamic`), so patch file size is driven by the stored WAV/blob itself plus base64 overhead, not by storing precomputed mipmap levels.
+## New discovery: Tracker song patch pruning on load/save (2025-11)
+
+- Tracker songs (`TrackerSongFile`) now keep `songPatches` aligned with the visible instrument list both when saving and loading: `serializeSong` only writes patches referenced by at least one `instrumentSlot`, and `loadSongFile` filters the incoming `data.songPatches` down to those whose IDs still appear in `instrumentSlots`.
+- This prevents old, swapped-out patches (and their embedded audio assets) from accumulating in songs over time, which previously caused `.cmod` files to grow every time patches were reassigned in the tracker instrument slots.

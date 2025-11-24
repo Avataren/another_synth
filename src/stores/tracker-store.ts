@@ -407,12 +407,14 @@ export const useTrackerStore = defineStore('trackerStore', {
     assignPatchToSlot(slotNumber: number, patch: Patch, bankName: string) {
       if (!patch.metadata?.id) return;
 
+      const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
+      const previousPatchId = slot?.patchId;
+
       // Deep copy the patch to song patches
       const patchCopy = JSON.parse(JSON.stringify(patch)) as Patch;
       this.songPatches[patchCopy.metadata.id] = patchCopy;
 
       // Update the slot
-      const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
       if (slot) {
         slot.patchId = patchCopy.metadata.id;
         slot.patchName = patchCopy.metadata.name ?? 'Untitled';
@@ -420,8 +422,36 @@ export const useTrackerStore = defineStore('trackerStore', {
         slot.instrumentName = patchCopy.metadata.name ?? 'Untitled';
         slot.source = 'song';
       }
+
+      // If the slot previously pointed at a different patch that no other
+      // slot uses anymore, remove that orphaned patch from songPatches so
+      // the song file stays in-sync with the instrument list.
+      if (previousPatchId && previousPatchId !== patchCopy.metadata.id) {
+        const stillUsed = this.instrumentSlots.some(
+          s => s.patchId === previousPatchId
+        );
+        if (!stillUsed) {
+          delete this.songPatches[previousPatchId];
+        }
+      }
     },
     serializeSong(): TrackerSongFile {
+      // Only persist patches that are actually referenced by at least one
+      // instrument slot. This keeps the song file from accumulating old
+      // swapped-out patches (and their audio assets) over time.
+      const usedPatchIds = new Set(
+        this.instrumentSlots
+          .map((slot) => slot.patchId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      );
+      const filteredSongPatches: Record<string, Patch> = {};
+      for (const patchId of usedPatchIds) {
+        const patch = this.songPatches[patchId];
+        if (patch) {
+          filteredSongPatches[patchId] = JSON.parse(JSON.stringify(patch));
+        }
+      }
+
       const data: TrackerSongFile['data'] = {
         currentSong: { ...this.currentSong },
         patternRows: this.patternRows,
@@ -432,7 +462,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         instrumentSlots: JSON.parse(JSON.stringify(this.instrumentSlots)),
         activeInstrumentId: this.activeInstrumentId,
         currentInstrumentPage: this.currentInstrumentPage,
-        songPatches: JSON.parse(JSON.stringify(this.songPatches))
+        songPatches: filteredSongPatches
       };
       return { version: 1, data };
     },
@@ -478,7 +508,25 @@ export const useTrackerStore = defineStore('trackerStore', {
 
       this.activeInstrumentId = data.activeInstrumentId ?? null;
       this.currentInstrumentPage = data.currentInstrumentPage ?? 0;
-      this.songPatches = data.songPatches ?? {};
+
+      // Only keep song patches that are actually referenced by at least one
+      // instrument slot. Older song files may contain orphaned patches that
+      // no longer correspond to any slot; skipping them keeps memory usage
+      // and file size aligned with the visible instrument list.
+      const incomingSongPatches = data.songPatches ?? {};
+      const usedPatchIds = new Set(
+        this.instrumentSlots
+          .map((slot) => slot.patchId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      );
+      const filteredSongPatches: Record<string, Patch> = {};
+      for (const patchId of usedPatchIds) {
+        const patch = incomingSongPatches[patchId];
+        if (patch) {
+          filteredSongPatches[patchId] = JSON.parse(JSON.stringify(patch));
+        }
+      }
+      this.songPatches = filteredSongPatches;
       this.editingSlot = null;
     }
   }
