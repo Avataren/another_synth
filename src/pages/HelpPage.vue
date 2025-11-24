@@ -33,7 +33,7 @@
           <li><strong>Typing</strong>: use the keyboard rows (Z/X/C… and Q/W/E… etc.) just like the patch editor.</li>
           <li><strong>Octave</strong>: adjust base octave in the tracker panel or with Shift+PgUp/PgDn.</li>
           <li><strong>Advance</strong>: notes move the cursor by the step size; Tab/Shift+Tab move tracks.</li>
-          <li><strong>Note-off</strong>: press Insert to write ###, Delete clears the step.</li>
+          <li><strong>Note-off / insert row</strong>: Insert writes ### (note-off) at the current row; Shift+Insert inserts a blank row at the cursor and shifts steps below down. Delete clears the step.</li>
         </ul>
       </section>
 

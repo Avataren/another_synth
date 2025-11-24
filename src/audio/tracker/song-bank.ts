@@ -238,6 +238,29 @@ export class TrackerSongBank {
     }
   }
 
+  /**
+   * Realtime preview note-on (no per-track voice gating/stealing).
+   * Used by the tracker keyboard preview so chords behave like the patch editor.
+   */
+  previewNoteOn(instrumentId: string | undefined, midi: number, velocity = 100) {
+    if (instrumentId === undefined) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
+    active.instrument.noteOn(clampedMidi, velocity);
+  }
+
+  /**
+   * Realtime preview note-off companion to previewNoteOn.
+   */
+  previewNoteOff(instrumentId: string | undefined, midi: number) {
+    if (instrumentId === undefined) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
+    active.instrument.noteOff(clampedMidi);
+  }
+
   noteOff(instrumentId: string | undefined, midi?: number, trackIndex?: number) {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);

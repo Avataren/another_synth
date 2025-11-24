@@ -381,6 +381,7 @@ import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/no
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
+import { useKeyboardStore } from 'src/stores/keyboard-store';
 
 // Minimal File System Access API typings for browsers without lib.dom additions
 type FileSystemWriteChunkType = BufferSource | Blob | string;
@@ -433,6 +434,7 @@ type PlaybackMode = 'pattern' | 'song';
 const router = useRouter();
 const trackerStore = useTrackerStore();
 trackerStore.initializeIfNeeded();
+const keyboardStore = useKeyboardStore();
 const {
   currentSong,
   patternRows,
@@ -580,6 +582,34 @@ const playbackEngine = new PlaybackEngine({
     songBank.noteOff(event.instrumentId, event.midi, event.trackIndex);
   }
 });
+
+watch(
+  () => keyboardStore.latestEvent,
+  (event) => {
+    if (!event) return;
+    if (isEditMode.value) return;
+
+    const instrumentId =
+      activeInstrumentId.value ?? formatInstrumentId(activeTrack.value + 1);
+    if (!instrumentId) return;
+
+    const adjustedMidi = applyBaseOctave(event.note);
+    const midi = adjustedMidi;
+
+    if (!Number.isFinite(midi)) return;
+    if (!isTrackAudible(activeTrack.value)) return;
+
+    void (async () => {
+      if (!hasPatchForInstrument(instrumentId)) return;
+      await songBank.prepareInstrument(instrumentId);
+      if (event.velocity <= 0.0001) {
+        songBank.previewNoteOff(instrumentId, midi);
+      } else {
+        songBank.previewNoteOn(instrumentId, midi, event.velocity);
+      }
+    })();
+  },
+);
 let unsubscribePosition: (() => void) | null = null;
 let unsubscribeState: (() => void) | null = null;
 const autoScroll = ref(true);
@@ -752,12 +782,12 @@ function onPatternStartSelection(payload: { row: number; trackIndex: number }) {
   selectionEnd.value = { ...payload };
 }
 
-  function onPatternHoverSelection(payload: { row: number; trackIndex: number }) {
-    if (!isMouseSelecting.value) return;
-    activeRow.value = payload.row;
-    activeTrack.value = payload.trackIndex;
-    selectionEnd.value = { ...payload };
-  }
+function onPatternHoverSelection(payload: { row: number; trackIndex: number }) {
+  if (!isMouseSelecting.value) return;
+  activeRow.value = payload.row;
+  activeTrack.value = payload.trackIndex;
+  selectionEnd.value = { ...payload };
+}
 
   function transposeSelection(semitones: number) {
     if (!selectionRect.value) return;
@@ -1532,21 +1562,21 @@ function handleStop() {
   songBank.allNotesOff();
 }
 
-  function togglePatternPlayback() {
-    if (isPlaying.value && playbackMode.value === 'pattern') {
-      handlePause();
-      return;
-    }
-    void handlePlayPattern();
+function togglePatternPlayback() {
+  if (isPlaying.value && playbackMode.value === 'pattern') {
+    handlePause();
+    return;
   }
+  void handlePlayPattern();
+}
 
-  function handleGlobalMouseUp() {
-    if (isMouseSelecting.value) {
-      isMouseSelecting.value = false;
-    }
+function handleGlobalMouseUp() {
+  if (isMouseSelecting.value) {
+    isMouseSelecting.value = false;
   }
+}
 
-  async function loadSystemBankOptions() {
+async function loadSystemBankOptions() {
   try {
     const response = await fetch(`${import.meta.env.BASE_URL}system-bank.json`, {
       cache: 'no-store'
@@ -1578,18 +1608,18 @@ function handleStop() {
   }
 }
 
-  function onKeyDown(event: KeyboardEvent) {
+function onKeyDown(event: KeyboardEvent) {
   // Don't process notes when typing in input fields
   const target = event.target as HTMLElement;
   if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
     return;
   }
 
-    if (event.ctrlKey && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
-      event.preventDefault();
-      trackerStore.undo();
-      return;
-    }
+  if (event.ctrlKey && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
+    event.preventDefault();
+    trackerStore.undo();
+    return;
+  }
 
   if (
     event.ctrlKey &&
@@ -1597,80 +1627,86 @@ function handleStop() {
       event.key === 'Y' ||
       (event.shiftKey && (event.key === 'z' || event.key === 'Z')))
   ) {
-      event.preventDefault();
-      trackerStore.redo();
-      return;
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      !event.shiftKey &&
-      !event.altKey &&
-      event.key === 'ArrowUp'
-    ) {
-      event.preventDefault();
-      transposeSelection(1);
-      return;
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      !event.shiftKey &&
-      !event.altKey &&
-      event.key === 'ArrowDown'
-    ) {
-      event.preventDefault();
-      transposeSelection(-1);
-      return;
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      event.shiftKey &&
-      !event.altKey &&
-      event.key === 'ArrowUp'
-    ) {
-      event.preventDefault();
-      transposeSelection(12);
-      return;
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      event.shiftKey &&
-      !event.altKey &&
-      event.key === 'ArrowDown'
-    ) {
-      event.preventDefault();
-      transposeSelection(-12);
-      return;
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      !event.shiftKey &&
-      (event.key === 'c' || event.key === 'C')
-    ) {
-      event.preventDefault();
-      copySelectionToClipboard();
-      return;
-    }
-
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      !event.shiftKey &&
-      (event.key === 'v' || event.key === 'V')
-    ) {
-      event.preventDefault();
-      pasteFromClipboard();
-      return;
-    }
-
-    const midiFromMap = noteKeyMap[event.code];
-  if (midiFromMap !== undefined && !event.repeat && activeColumn.value === 0) {
     event.preventDefault();
-    ensureActiveInstrument();
-    handleNoteEntry(midiFromMap);
+    trackerStore.redo();
+    return;
+  }
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key === 'ArrowUp'
+  ) {
+    event.preventDefault();
+    transposeSelection(1);
+    return;
+  }
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key === 'ArrowDown'
+  ) {
+    event.preventDefault();
+    transposeSelection(-1);
+    return;
+  }
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    event.shiftKey &&
+    !event.altKey &&
+    event.key === 'ArrowUp'
+  ) {
+    event.preventDefault();
+    transposeSelection(12);
+    return;
+  }
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    event.shiftKey &&
+    !event.altKey &&
+    event.key === 'ArrowDown'
+  ) {
+    event.preventDefault();
+    transposeSelection(-12);
+    return;
+  }
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.shiftKey &&
+    (event.key === 'c' || event.key === 'C')
+  ) {
+    event.preventDefault();
+    copySelectionToClipboard();
+    return;
+  }
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.shiftKey &&
+    (event.key === 'v' || event.key === 'V')
+  ) {
+    event.preventDefault();
+    pasteFromClipboard();
+    return;
+  }
+
+  const midiFromMap = noteKeyMap[event.code];
+  if (midiFromMap !== undefined && activeColumn.value === 0) {
+    if (!isEditMode.value) {
+      // In non-edit mode, keyboardStore handles live playback.
+      return;
+    }
+    if (!event.repeat) {
+      event.preventDefault();
+      ensureActiveInstrument();
+      handleNoteEntry(midiFromMap);
+    }
     return;
   }
 
@@ -1691,59 +1727,59 @@ function handleStop() {
     return;
   }
 
-      switch (event.key) {
-        case 'F2':
-          event.preventDefault();
-          toggleEditMode();
-          break;
-        case 'F10':
-          event.preventDefault();
-          toggleFullscreen();
-          break;
-      case 'ArrowUp':
-        event.preventDefault();
-        if (event.shiftKey) {
-          if (!selectionAnchor.value) startSelectionAtCursor();
-          moveRow(-1);
-          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-        } else {
-          clearSelection();
-          moveRow(-1);
-        }
-        break;
-      case 'ArrowDown':
-        event.preventDefault();
-        if (event.shiftKey) {
-          if (!selectionAnchor.value) startSelectionAtCursor();
-          moveRow(1);
-          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-        } else {
-          clearSelection();
-          moveRow(1);
-        }
-        break;
-      case 'ArrowLeft':
-        event.preventDefault();
-        if (event.shiftKey) {
-          if (!selectionAnchor.value) startSelectionAtCursor();
-          moveColumn(-1);
-          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-        } else {
-          clearSelection();
-          moveColumn(-1);
-        }
-        break;
-      case 'ArrowRight':
-        event.preventDefault();
-        if (event.shiftKey) {
-          if (!selectionAnchor.value) startSelectionAtCursor();
-          moveColumn(1);
-          selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-        } else {
-          clearSelection();
-          moveColumn(1);
-        }
-        break;
+  switch (event.key) {
+    case 'F2':
+      event.preventDefault();
+      toggleEditMode();
+      break;
+    case 'F10':
+      event.preventDefault();
+      toggleFullscreen();
+      break;
+    case 'ArrowUp':
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (!selectionAnchor.value) startSelectionAtCursor();
+        moveRow(-1);
+        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+      } else {
+        clearSelection();
+        moveRow(-1);
+      }
+      break;
+    case 'ArrowDown':
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (!selectionAnchor.value) startSelectionAtCursor();
+        moveRow(1);
+        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+      } else {
+        clearSelection();
+        moveRow(1);
+      }
+      break;
+    case 'ArrowLeft':
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (!selectionAnchor.value) startSelectionAtCursor();
+        moveColumn(-1);
+        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+      } else {
+        clearSelection();
+        moveColumn(-1);
+      }
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (!selectionAnchor.value) startSelectionAtCursor();
+        moveColumn(1);
+        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
+      } else {
+        clearSelection();
+        moveColumn(1);
+      }
+      break;
     case 'Tab':
       event.preventDefault();
       if (event.shiftKey) {
@@ -1776,10 +1812,10 @@ function handleStop() {
       event.preventDefault();
       setActiveRow(0);
       break;
-      case 'End':
-        event.preventDefault();
-        setActiveRow(rowsCount.value - 1);
-        break;
+    case 'End':
+      event.preventDefault();
+      setActiveRow(rowsCount.value - 1);
+      break;
     case ' ':
       event.preventDefault();
       togglePatternPlayback();
@@ -1792,27 +1828,27 @@ function handleStop() {
         insertNoteOff();
       }
       break;
-      case 'Delete':
-        event.preventDefault();
-        if (
-          !event.shiftKey &&
-          (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
-        ) {
-          clearVolumeField();
-          if (activeColumn.value === 4) {
-            clearMacroField();
-          }
-        } else if (event.shiftKey) {
-          deleteRowAndShiftUp();
-        } else {
-          clearStep();
+    case 'Delete':
+      event.preventDefault();
+      if (
+        !event.shiftKey &&
+        (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
+      ) {
+        clearVolumeField();
+        if (activeColumn.value === 4) {
+          clearMacroField();
         }
-        break;
-      case 'Escape':
-        clearSelection();
-        break;
-      default:
-        break;
+      } else if (event.shiftKey) {
+        deleteRowAndShiftUp();
+      } else {
+        clearStep();
+      }
+      break;
+    case 'Escape':
+      clearSelection();
+      break;
+    default:
+      break;
   }
 }
 
@@ -2049,6 +2085,8 @@ onMounted(async () => {
   ensureActiveInstrument();
   void initializePlayback(playbackMode.value);
   void measureVisualizerLayout();
+  keyboardStore.setupGlobalKeyboardListeners();
+  keyboardStore.setupMidiListeners();
   window.addEventListener('mouseup', handleGlobalMouseUp);
 });
 
@@ -2091,6 +2129,9 @@ onBeforeUnmount(() => {
   playbackEngine.stop();
   songBank.cancelAllScheduled();
   songBank.dispose();
+  keyboardStore.cleanup();
+  keyboardStore.clearAllNotes();
+  keyboardStore.cleanupMidiListeners();
   window.removeEventListener('mouseup', handleGlobalMouseUp);
 });
 </script>
