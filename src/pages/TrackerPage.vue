@@ -1,6 +1,12 @@
 <template>
-  <q-page class="tracker-page">
-    <div ref="trackerContainer" class="tracker-container" tabindex="0" @keydown="onKeyDown">
+  <q-page class="tracker-page" :class="{ 'edit-mode-active': isEditMode }">
+    <div
+      ref="trackerContainer"
+      class="tracker-container"
+      :class="{ 'edit-mode': isEditMode }"
+      tabindex="0"
+      @keydown="onKeyDown"
+    >
       <div class="top-grid">
         <div class="info-grid">
           <SequenceEditor
@@ -107,6 +113,22 @@
                     @change="(event) => setBaseOctaveInput(Number((event.target as HTMLInputElement).value))"
                   />
                   <div class="control-hint">Shift+PgUp/PgDn</div>
+                </div>
+              </div>
+              <div class="pattern-controls edit-mode-controls">
+                <div class="control-label">Edit mode (F2)</div>
+                <div class="control-field">
+                  <button
+                    type="button"
+                    class="edit-mode-toggle"
+                    :class="{ active: isEditMode }"
+                    @click="toggleEditMode"
+                  >
+                    {{ isEditMode ? 'Editing ON' : 'Editing OFF' }}
+                  </button>
+                  <div class="control-hint">
+                    {{ isEditMode ? 'Keyboard writes steps' : 'Keyboard only plays notes' }}
+                  </div>
                 </div>
               </div>
               <div class="pattern-controls tracks-inline">
@@ -409,6 +431,7 @@ const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
 const activeMacroNibble = ref(0);
+const isEditMode = ref(true);
 const columnsPerTrack = 5;
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const availablePatches = ref<BankPatchOption[]>([]);
@@ -517,7 +540,6 @@ const trackerPatternRef = ref<InstanceType<typeof TrackerPattern> | null>(null);
 const visualizerTrackWidth = ref(180);
 const visualizerTrackGap = ref(10);
 const visualizerSpacerWidth = ref(108);
-const visualizerSpacerOffset = 16;
 /** Tracks that are muted */
 const mutedTracks = ref<Set<number>>(new Set());
 /** Tracks that are soloed */
@@ -552,22 +574,27 @@ async function measureVisualizerLayout() {
   await nextTick();
   const host = trackerPatternRef.value?.$el as HTMLElement | undefined;
   if (!host) return;
-  const rowColumn = host.querySelector('.row-column') as HTMLElement | null;
   const trackEl = host.querySelector('.tracker-track') as HTMLElement | null;
   const tracksWrapper = host.querySelector('.tracks-wrapper') as HTMLElement | null;
-  if (rowColumn) {
-    visualizerSpacerWidth.value =
-      rowColumn.getBoundingClientRect().width + visualizerTrackGap.value + visualizerSpacerOffset;
-  }
   if (tracksWrapper) {
+    const hostRect = host.getBoundingClientRect();
+    const wrapperRect = tracksWrapper.getBoundingClientRect();
     const gap = parseFloat(getComputedStyle(tracksWrapper).gap || '10');
     if (Number.isFinite(gap)) {
       visualizerTrackGap.value = gap;
+    }
+    const trackStart = wrapperRect.left - hostRect.left;
+    if (Number.isFinite(trackStart) && trackStart >= 0) {
+      visualizerSpacerWidth.value = trackStart;
     }
   }
   if (trackEl) {
     visualizerTrackWidth.value = trackEl.getBoundingClientRect().width;
   }
+}
+
+function toggleEditMode() {
+  isEditMode.value = !isEditMode.value;
 }
 
 function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
@@ -780,6 +807,7 @@ function updateEntryAt(
 }
 
 function insertNoteOff() {
+  if (!isEditMode.value) return;
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
     ...entry,
     note: '###'
@@ -788,6 +816,7 @@ function insertNoteOff() {
 }
 
 function clearStep() {
+  if (!isEditMode.value) return;
   if (!currentPattern.value) return;
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
@@ -796,6 +825,7 @@ function clearStep() {
 }
 
 function deleteRowAndShiftUp() {
+  if (!isEditMode.value) return;
   if (!currentPattern.value) return;
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
@@ -816,6 +846,7 @@ function deleteRowAndShiftUp() {
 }
 
 function insertRowAndShiftDown() {
+  if (!isEditMode.value) return;
   if (!currentPattern.value) return;
   const track = currentPattern.value.tracks[activeTrack.value];
   if (!track) return;
@@ -869,6 +900,12 @@ function handleNoteEntry(midi: number) {
   const instrumentId =
     activeInstrumentId.value ?? formatInstrumentId(activeTrack.value + 1);
   const adjustedMidi = applyBaseOctave(midi);
+
+  if (!isEditMode.value) {
+    void previewNote(instrumentId, adjustedMidi);
+    return;
+  }
+
   updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
     ...entry,
     note: midiToTrackerNote(adjustedMidi),
@@ -879,6 +916,7 @@ function handleNoteEntry(midi: number) {
 }
 
 function handleVolumeInput(hexChar: string) {
+  if (!isEditMode.value) return;
   const row = activeRow.value;
   const track = activeTrack.value;
   const nibbleIndex = activeColumn.value === 2 ? 0 : 1;
@@ -897,6 +935,7 @@ function handleVolumeInput(hexChar: string) {
 }
 
 function handleMacroInput(hexChar: string) {
+  if (!isEditMode.value) return;
   if (activeColumn.value !== 4) return;
   const nibbleIndex = activeMacroNibble.value;
   // First digit must be 0-3 (macro index)
@@ -924,6 +963,7 @@ function handleMacroInput(hexChar: string) {
 }
 
 function clearVolumeField() {
+  if (!isEditMode.value) return;
   if (!currentPattern.value) return;
   if (activeColumn.value !== 2 && activeColumn.value !== 3) return;
 
@@ -942,6 +982,7 @@ function clearVolumeField() {
 }
 
 function clearMacroField() {
+  if (!isEditMode.value) return;
   if (!currentPattern.value) return;
   if (activeColumn.value !== 4) return;
 
@@ -1365,6 +1406,10 @@ function onKeyDown(event: KeyboardEvent) {
   }
 
   switch (event.key) {
+    case 'F2':
+      event.preventDefault();
+      toggleEditMode();
+      break;
     case 'ArrowUp':
       event.preventDefault();
       moveRow(-1);
@@ -1714,6 +1759,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
+.tracker-page.edit-mode-active {
+  box-shadow: 0 0 0 2px rgba(255, 90, 90, 0.9) inset;
+}
+
 .tracker-container {
   width: 100%;
   max-width: none;
@@ -1985,6 +2034,36 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.edit-mode-controls .control-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.edit-mode-toggle {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 90, 90, 0.45);
+  background: rgba(255, 90, 90, 0.12);
+  color: #ffb3b3;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.edit-mode-toggle.active {
+  background: rgba(255, 90, 90, 0.24);
+  border-color: rgba(255, 120, 120, 0.9);
+  color: #ffe5e5;
+}
+
+.edit-mode-toggle:hover {
+  border-color: rgba(255, 140, 140, 0.95);
 }
 
 .pattern-row-inline {

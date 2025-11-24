@@ -1075,3 +1075,10 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Tracker volume mapping: steps with a volume nibble schedule Web Audio automation on `gain_i` via the playback engine’s automation callbacks (scheduled and immediate). No custom events; automation is set with `setValueAtTime` ahead of playback like gate/frequency. Never use ad-hoc events to change synth state—always route through automation tracks.
 - Tracker instruments panel now has a “New” button per slot that creates a fresh patch (via `patch-store.createNewPatchFromTemplate`) and assigns it to the song bank slot immediately.
 - Tracker hotkeys: Home jumps to the top of the pattern, End to the bottom.
+
+## New discovery: Tracker edit mode (2025)
+
+- `TrackerPage.vue` now has an explicit edit mode toggle. When edit mode is ON, keyboard input in the tracker writes steps (notes, volume, macro, row insert/delete); when OFF, navigation and transport still work but note keys only preview the currently selected instrument without modifying tracks.
+- The edit mode is local UI state (`isEditMode` ref, default `true`) and is not serialized with songs. Visual feedback: a red inset frame on the tracker page (`.tracker-page.edit-mode-active`) indicates when edits are armed.
+- Editing helpers (`handleNoteEntry`, volume/macro entry, note-off/clear/row shift) all early-return if edit mode is disabled, so accidental key presses in preview mode will not alter pattern data.
+- Hotkey: `F2` toggles edit mode on/off; the edit mode control in the tracker summary card is labeled “Edit mode (F2)” to advertise the shortcut.

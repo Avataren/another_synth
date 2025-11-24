@@ -55,6 +55,20 @@
           <li><strong>Sequence</strong>: arrange patterns in the sequence editor at the top.</li>
         </ul>
       </section>
+
+      <section class="help-section">
+        <h2>Keyboard shortcuts</h2>
+        <ul>
+          <li><strong>Edit mode</strong>: F2 toggles edit mode on/off.</li>
+          <li><strong>Play / pause pattern</strong>: Spacebar.</li>
+          <li><strong>Row navigation</strong>: Arrow Up/Down move one row; PageUp/PageDown move 16 rows.</li>
+          <li><strong>Jump rows</strong>: Home jumps to the first row; End jumps to the last row.</li>
+          <li><strong>Track navigation</strong>: Tab moves to the next track; Shift+Tab to the previous track.</li>
+          <li><strong>Octave</strong>: Shift+PageUp/PageDown adjusts the base octave.</li>
+          <li><strong>Row edits</strong>: Insert writes a note-off (###); Shift+Insert inserts a blank row and shifts steps down.</li>
+          <li><strong>Delete</strong>: Delete clears the current step; Shift+Delete deletes the row and shifts steps up. In Vol/Macro columns, Delete clears just that field.</li>
+        </ul>
+      </section>
     </div>
   </q-page>
 </template>
