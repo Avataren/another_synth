@@ -230,7 +230,7 @@ export class TrackerSongBank {
     if (!active) return;
     const now = this.audioContext.currentTime;
     this.gateOffPreviousTrackVoice(active.instrument, instrumentId, trackIndex, now);
-    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now);
+    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now, { allowDuplicate: true });
 
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
@@ -267,30 +267,31 @@ export class TrackerSongBank {
     if (!active) return;
 
     const notes = this.getTrackNotes(instrumentId, trackIndex);
-    if (!notes || notes.size === 0) {
-      if (midi !== undefined) {
-        active.instrument.noteOff(midi);
-        this.clearLastVoiceForTrack(instrumentId, trackIndex);
-      }
-      return;
-    }
+    const voiceIndex = this.takeLastVoiceForTrack(instrumentId, trackIndex);
+    const when = this.audioContext.currentTime;
 
     if (midi === undefined) {
-      for (const note of notes) {
-        active.instrument.noteOff(note);
+      if (voiceIndex !== undefined) {
+        active.instrument.gateOffVoiceAtTime(voiceIndex, when);
+      } else if (notes.size > 0) {
+        for (const note of notes) {
+          active.instrument.noteOff(note);
+        }
+      } else {
+        active.instrument.allNotesOff();
       }
       notes.clear();
-      this.clearLastVoiceForTrack(instrumentId, trackIndex);
       return;
     }
 
-    if (notes.has(midi)) {
+    if (voiceIndex !== undefined) {
+      active.instrument.noteOff(midi, voiceIndex);
+    } else if (notes.has(midi)) {
       active.instrument.noteOff(midi);
-      notes.delete(midi);
-      this.clearLastVoiceForTrack(instrumentId, trackIndex);
     } else {
       active.instrument.noteOff(midi);
     }
+    notes.delete(midi);
   }
 
   /**
@@ -307,7 +308,7 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     this.gateOffPreviousTrackVoice(active.instrument, instrumentId, trackIndex, time);
-    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time);
+    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, { allowDuplicate: true });
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
       this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
@@ -327,36 +328,28 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     const notes = this.getTrackNotes(instrumentId, trackIndex);
+    const voiceIndex = this.takeLastVoiceForTrack(instrumentId, trackIndex);
 
     if (midi === undefined) {
-      if (notes && notes.size > 0) {
+      if (voiceIndex !== undefined) {
+        active.instrument.gateOffVoiceAtTime(voiceIndex, time);
+      } else if (notes && notes.size > 0) {
         for (const note of notes) {
           active.instrument.noteOffAtTime(note, time);
         }
-        notes.clear();
       } else {
-        const lastVoice = this.takeLastVoiceForTrack(instrumentId, trackIndex);
-        if (lastVoice !== undefined) {
-          active.instrument.gateOffVoiceAtTime(lastVoice, time);
-        }
+        active.instrument.cancelScheduledNotes();
       }
+      notes.clear();
       return;
     }
 
-    const hadMidi = notes.has(midi);
-    notes.delete(midi);
-    if (hadMidi) {
-      active.instrument.noteOffAtTime(midi, time);
-      this.clearLastVoiceForTrack(instrumentId, trackIndex);
+    if (voiceIndex !== undefined) {
+      active.instrument.noteOffAtTime(midi, time, voiceIndex);
     } else {
-      const lastVoice = this.takeLastVoiceForTrack(instrumentId, trackIndex);
-      if (lastVoice !== undefined) {
-        active.instrument.gateOffVoiceAtTime(lastVoice, time);
-      } else {
-        active.instrument.noteOffAtTime(midi, time);
-        this.clearLastVoiceForTrack(instrumentId, trackIndex);
-      }
+      active.instrument.noteOffAtTime(midi, time);
     }
+    notes.delete(midi);
   }
 
   /**

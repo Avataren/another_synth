@@ -1255,3 +1255,9 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 
 - Tracker songs (`TrackerSongFile`) now keep `songPatches` aligned with the visible instrument list both when saving and loading: `serializeSong` only writes patches referenced by at least one `instrumentSlot`, and `loadSongFile` filters the incoming `data.songPatches` down to those whose IDs still appear in `instrumentSlots`.
 - This prevents old, swapped-out patches (and their embedded audio assets) from accumulating in songs over time, which previously caused `.cmod` files to grow every time patches were reassigned in the tracker instrument slots.
+
+## New discovery: Tracker voice cycling (2025-12)
+
+- `InstrumentV2` now tracks `activeNotes` as note→set-of-voices with a `voiceToNote` table and round-robin free voice search. `noteOn`/`noteOnAtTime` accept `allowDuplicate` to let the same MIDI note occupy multiple voices instead of reusing the existing one.
+- Tracker playback calls `noteOnAtTime(..., { allowDuplicate: true })` so repeated notes cycle through available voices, and simultaneous notes for the same patch across tracks land on different voices when capacity allows.
+- Tracker note-offs now prefer voice-based releases: per-track last-voice bookkeeping feeds `gateOffVoiceAtTime`/`noteOffAtTime` so a note-off on one track no longer kills the same MIDI note playing on another track when voices remain.

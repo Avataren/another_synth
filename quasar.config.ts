@@ -80,7 +80,8 @@ export default defineConfig((/* ctx */) => {
           name: 'watch-worklet-reload',
           enforce: 'pre',
           apply: 'serve',
-          handleHotUpdate({ file, server }) {
+          handleHotUpdate(ctx) {
+            const { file, server } = ctx;
             const isWorkletFile =
               file.endsWith('.js') && file.includes('public/worklets');
 

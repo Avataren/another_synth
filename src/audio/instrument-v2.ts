@@ -54,7 +54,9 @@ export default class InstrumentV2 {
   readonly num_voices = 8;
   outputNode: AudioNode;
   workletNode: AudioWorkletNode | null = null;
-  private activeNotes: Map<number, number> = new Map();
+  private activeNotes: Map<number, Set<number>> = new Map();
+  private voiceToNote: (number | null)[] = [];
+  private voiceRoundRobinIndex = 0;
   private voiceLastUsedTime: number[] = [];
   private messageHandler: WorkletMessageHandler;
   private voiceLimit: number;
@@ -74,6 +76,7 @@ export default class InstrumentV2 {
     (this.outputNode as GainNode).gain.value = 0.5;
     this.outputNode.connect(destination);
     this.voiceLimit = this.num_voices;
+    this.voiceToNote = new Array(this.num_voices).fill(null);
     this.voiceLastUsedTime = new Array(this.num_voices).fill(0);
 
     // Initialize message handler
@@ -833,12 +836,11 @@ export default class InstrumentV2 {
   // MIDI / Performance (fire-and-forget for low latency)
   // ========================================================================
 
-  public noteOn(noteNumber: number, velocity: number): void {
-    const { voiceIndex, stolenNote } = this.allocateVoice(noteNumber);
-    const isRetrigger = this.activeNotes.get(noteNumber) === voiceIndex;
+  public noteOn(noteNumber: number, velocity: number, options?: { allowDuplicate?: boolean }): void {
+    const allowDuplicate = options?.allowDuplicate ?? false;
+    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate);
 
-    this.activeNotes.set(noteNumber, voiceIndex);
-    this.voiceLastUsedTime[voiceIndex] = Date.now();
+    this.markVoiceActive(noteNumber, voiceIndex);
 
     const frequency = this.midiNoteToFrequency(noteNumber);
 
@@ -874,28 +876,38 @@ export default class InstrumentV2 {
     if (gainParam) gainParam.value = velocity / 127;
   }
 
-  public noteOff(noteNumber: number): void {
-    const voiceIndex = this.activeNotes.get(noteNumber);
-    if (voiceIndex === undefined) return;
+  public noteOff(noteNumber: number, voiceIndex?: number): void {
+    const voicesToRelease =
+      voiceIndex !== undefined
+        ? [voiceIndex]
+        : Array.from(this.activeNotes.get(noteNumber) ?? []);
 
-    this.activeNotes.delete(noteNumber);
+    if (voiceIndex === undefined) {
+      this.activeNotes.delete(noteNumber);
+    }
 
-    if (!this.workletNode) return;
-
-    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
-    if (gateParam) gateParam.value = 0;
+    for (const voice of voicesToRelease) {
+      this.releaseVoice(voice);
+      if (!this.workletNode) continue;
+      const gateParam = this.workletNode.parameters.get(`gate_${voice}`);
+      if (gateParam) gateParam.value = 0;
+    }
   }
 
   /**
    * Schedule a note on at a specific audio context time.
    * Used for sample-accurate playback scheduling.
    */
-  public noteOnAtTime(noteNumber: number, velocity: number, time: number): number | undefined {
-    const { voiceIndex, stolenNote } = this.allocateVoice(noteNumber);
-    const isRetrigger = this.activeNotes.get(noteNumber) === voiceIndex;
+  public noteOnAtTime(
+    noteNumber: number,
+    velocity: number,
+    time: number,
+    options?: { allowDuplicate?: boolean },
+  ): number | undefined {
+    const allowDuplicate = options?.allowDuplicate ?? false;
+    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate);
 
-    this.activeNotes.set(noteNumber, voiceIndex);
-    this.voiceLastUsedTime[voiceIndex] = Date.now();
+    this.markVoiceActive(noteNumber, voiceIndex);
 
     const frequency = this.midiNoteToFrequency(noteNumber);
 
@@ -932,19 +944,26 @@ export default class InstrumentV2 {
    * Schedule a note off at a specific audio context time.
    * Used for sample-accurate playback scheduling.
    */
-  public noteOffAtTime(noteNumber: number, time: number): void {
-    const voiceIndex = this.activeNotes.get(noteNumber);
-    this.activeNotes.delete(noteNumber);
+  public noteOffAtTime(noteNumber: number, time: number, voiceIndex?: number): void {
+    const voicesToRelease =
+      voiceIndex !== undefined
+        ? [voiceIndex]
+        : Array.from(this.activeNotes.get(noteNumber) ?? []);
 
-    if (!this.workletNode) return;
+    if (voiceIndex === undefined) {
+      this.activeNotes.delete(noteNumber);
+    }
 
-    if (voiceIndex === undefined) return;
-
-    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
-    if (gateParam) gateParam.setValueAtTime(0, time);
+    for (const voice of voicesToRelease) {
+      this.releaseVoice(voice);
+      if (!this.workletNode) continue;
+      const gateParam = this.workletNode.parameters.get(`gate_${voice}`);
+      if (gateParam) gateParam.setValueAtTime(0, time);
+    }
   }
 
   public gateOffVoiceAtTime(voiceIndex: number, time: number): void {
+    this.releaseVoice(voiceIndex);
     if (!this.workletNode) return;
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) gateParam.setValueAtTime(0, time);
@@ -954,21 +973,22 @@ export default class InstrumentV2 {
    * Cancel all scheduled parameter changes (for stopping playback).
    */
   public cancelScheduledNotes(): void {
-    if (!this.workletNode) return;
-
     const now = this.audioContext.currentTime;
-    for (let i = 0; i < this.voiceLimit; i++) {
-      const gateParam = this.workletNode.parameters.get(`gate_${i}`);
-      if (gateParam) {
-        gateParam.cancelScheduledValues(now);
-        gateParam.setValueAtTime(0, now);
+    if (this.workletNode) {
+      for (let i = 0; i < this.voiceLimit; i++) {
+        const gateParam = this.workletNode.parameters.get(`gate_${i}`);
+        if (gateParam) {
+          gateParam.cancelScheduledValues(now);
+          gateParam.setValueAtTime(0, now);
+        }
+        const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
+        if (freqParam) freqParam.cancelScheduledValues(now);
+        const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+        if (gainParam) gainParam.cancelScheduledValues(now);
       }
-      const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
-      if (freqParam) freqParam.cancelScheduledValues(now);
-      const gainParam = this.workletNode.parameters.get(`gain_${i}`);
-      if (gainParam) gainParam.cancelScheduledValues(now);
     }
     this.activeNotes.clear();
+    this.voiceToNote.fill(null);
   }
 
   public setGainForAllVoices(gain: number, time?: number): void {
@@ -984,7 +1004,7 @@ export default class InstrumentV2 {
   }
 
   public allNotesOff(): void {
-    for (const noteNumber of this.activeNotes.keys()) {
+    for (const noteNumber of Array.from(this.activeNotes.keys())) {
       this.noteOff(noteNumber);
     }
   }
@@ -1002,21 +1022,67 @@ export default class InstrumentV2 {
   // Voice Allocation
   // ========================================================================
 
-  private allocateVoice(noteNumber: number): { voiceIndex: number; stolenNote: number | null } {
-    // Check if this note is already playing
-    const existingVoice = this.activeNotes.get(noteNumber);
-    if (existingVoice !== undefined) {
-      return { voiceIndex: existingVoice, stolenNote: null };
-    }
+  private markVoiceActive(noteNumber: number, voiceIndex: number): void {
+    if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return;
 
-    // Find first free voice within the current voice limit
-    for (let i = 0; i < this.voiceLimit; i++) {
-      if (!Array.from(this.activeNotes.values()).includes(i)) {
-        return { voiceIndex: i, stolenNote: null };
+    let voices = this.activeNotes.get(noteNumber);
+    if (!voices) {
+      voices = new Set<number>();
+      this.activeNotes.set(noteNumber, voices);
+    }
+    voices.add(voiceIndex);
+    this.voiceToNote[voiceIndex] = noteNumber;
+    this.voiceLastUsedTime[voiceIndex] = Date.now();
+  }
+
+  private releaseVoice(voiceIndex: number): number | null {
+    if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return null;
+
+    const noteNumber = this.voiceToNote[voiceIndex];
+    if (noteNumber !== null && noteNumber !== undefined) {
+      const voices = this.activeNotes.get(noteNumber);
+      if (voices) {
+        voices.delete(voiceIndex);
+        if (voices.size === 0) {
+          this.activeNotes.delete(noteNumber);
+        }
       }
     }
 
-    // No free voice - steal the oldest one
+    this.voiceToNote[voiceIndex] = null;
+    return noteNumber ?? null;
+  }
+
+  private findNextFreeVoice(): number | null {
+    for (let offset = 0; offset < this.voiceLimit; offset++) {
+      const candidate = (this.voiceRoundRobinIndex + offset) % this.voiceLimit;
+      if (this.voiceToNote[candidate] === null) {
+        this.voiceRoundRobinIndex = (candidate + 1) % this.voiceLimit;
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private allocateVoice(
+    noteNumber: number,
+    allowDuplicate: boolean,
+  ): { voiceIndex: number; stolenNote: number | null; isRetrigger: boolean } {
+    const existingVoices = this.activeNotes.get(noteNumber);
+    if (!allowDuplicate && existingVoices && existingVoices.size > 0) {
+      const voiceIndex = existingVoices.values().next().value as number;
+      return { voiceIndex, stolenNote: null, isRetrigger: true };
+    }
+
+    const freeVoice = this.findNextFreeVoice();
+    if (freeVoice !== null) {
+      return {
+        voiceIndex: freeVoice,
+        stolenNote: null,
+        isRetrigger: existingVoices?.has(freeVoice) ?? false,
+      };
+    }
+
     let oldestVoice = 0;
     let oldestTime = this.voiceLastUsedTime[0] ?? Number.POSITIVE_INFINITY;
 
@@ -1028,17 +1094,13 @@ export default class InstrumentV2 {
       }
     }
 
-    // Remove the stolen voice from activeNotes
-    let stolenNote: number | null = null;
-    for (const [note, voice] of this.activeNotes.entries()) {
-      if (voice === oldestVoice) {
-        this.activeNotes.delete(note);
-        stolenNote = note;
-        break;
-      }
-    }
+    const stolenNote = this.releaseVoice(oldestVoice);
 
-    return { voiceIndex: oldestVoice, stolenNote };
+    return {
+      voiceIndex: oldestVoice,
+      stolenNote,
+      isRetrigger: stolenNote === noteNumber,
+    };
   }
 
   private isPortamentoEnabled(): boolean {
