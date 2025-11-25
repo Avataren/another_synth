@@ -332,7 +332,7 @@
           :node="masterOutputNode"
           :is-playing="isPlaying"
         />
-        <div class="pattern-area">
+        <div ref="patternAreaRef" class="pattern-area" @scroll="onPatternAreaScroll">
           <TrackerPattern
             ref="trackerPatternRef"
             :tracks="currentPattern?.tracks ?? []"
@@ -345,6 +345,8 @@
             :selection-rect="selectionRect"
             :auto-scroll="autoScroll"
             :is-playing="isPlaying"
+            :scroll-top="patternAreaScrollTop"
+            :container-height="patternAreaHeight"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"
@@ -446,8 +448,24 @@ const isEditMode = ref(false);
 const isFullscreen = ref(false);
 const columnsPerTrack = 5;
 const trackerContainer = ref<HTMLDivElement | null>(null);
+const patternAreaRef = ref<HTMLDivElement | null>(null);
+const patternAreaScrollTop = ref(0);
+const patternAreaHeight = ref(600);
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const songBank = new TrackerSongBank();
+
+// Handle pattern area scroll for virtual scrolling
+function onPatternAreaScroll(event: Event) {
+  const target = event.target as HTMLElement;
+  patternAreaScrollTop.value = target.scrollTop;
+}
+
+// Update pattern area height on mount and resize
+function updatePatternAreaHeight() {
+  if (patternAreaRef.value) {
+    patternAreaHeight.value = patternAreaRef.value.clientHeight;
+  }
+}
 
 // Set up selection composable
 const selectionContext: TrackerSelectionContext = {
@@ -1048,6 +1066,8 @@ onMounted(async () => {
   keyboardStore.setupGlobalKeyboardListeners();
   keyboardStore.setupMidiListeners();
   window.addEventListener('mouseup', handleGlobalMouseUp);
+  window.addEventListener('resize', updatePatternAreaHeight);
+  updatePatternAreaHeight();
 });
 
 watch(
@@ -1094,6 +1114,7 @@ onBeforeUnmount(() => {
   keyboardStore.clearAllNotes();
   keyboardStore.cleanupMidiListeners();
   window.removeEventListener('mouseup', handleGlobalMouseUp);
+  window.removeEventListener('resize', updatePatternAreaHeight);
 });
 </script>
 

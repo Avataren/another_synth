@@ -4,22 +4,24 @@
       <div class="track-name">{{ track.name }}</div>
       <div class="track-id">#{{ trackIndexLabel }}</div>
     </div>
-    <div class="track-entries">
-      <TrackerEntry
-        v-for="row in rows"
-        :key="`${track.id}-${row}`"
-        :row-index="row"
-        :entry="entryLookup[row]"
-        :active="selectedRow === row"
-        :selected="isRowSelected(row)"
-        :track-index="index"
-        :active-track="activeTrack"
-        :active-column="activeColumn"
-        :active-macro-nibble="activeMacroNibble"
-        @select-cell="onSelectCell"
-        @start-selection="onStartSelection"
-        @hover-selection="onHoverSelection"
-      />
+    <div class="track-entries-container" :style="{ height: `${totalEntriesHeight}px` }">
+      <div class="track-entries" :style="entriesOffsetStyle">
+        <TrackerEntry
+          v-for="row in visibleRows"
+          :key="`${track.id}-${row}`"
+          :row-index="row"
+          :entry="entryLookup[row]"
+          :active="selectedRow === row"
+          :selected="isRowSelected(row)"
+          :track-index="index"
+          :active-track="activeTrack"
+          :active-column="activeColumn"
+          :active-macro-nibble="activeMacroNibble"
+          @select-cell="onSelectCell"
+          @start-selection="onStartSelection"
+          @hover-selection="onHoverSelection"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -38,6 +40,8 @@ interface Props {
   activeColumn: number;
   activeMacroNibble: number;
   selectionRect?: TrackerSelectionRect | null;
+  visibleStartRow: number;
+  visibleEndRow: number;
 }
 
 const props = defineProps<Props>();
@@ -48,7 +52,22 @@ const emit = defineEmits<{
   (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
 }>();
 
-const rows = computed(() => Array.from({ length: props.rowCount }, (_, idx) => idx));
+const rowHeightPx = 30;
+const rowGapPx = 6;
+
+// Only render visible rows (virtual scrolling)
+const visibleRows = computed(() => {
+  const { visibleStartRow, visibleEndRow } = props;
+  return Array.from({ length: visibleEndRow - visibleStartRow + 1 }, (_, idx) => visibleStartRow + idx);
+});
+
+// Total height of all entries for virtual scroll container
+const totalEntriesHeight = computed(() => props.rowCount * (rowHeightPx + rowGapPx));
+
+// Offset for positioning visible entries
+const entriesOffsetStyle = computed(() => ({
+  transform: `translateY(${props.visibleStartRow * (rowHeightPx + rowGapPx)}px)`
+}));
 
 const entryLookup = computed<Record<number, TrackerEntryData | undefined>>(() => {
   const lookup: Record<number, TrackerEntryData | undefined> = {};
@@ -140,17 +159,15 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.track-entries-container {
+  position: relative;
+  padding: 6px 12px 14px;
+  overflow: hidden;
+}
+
 .track-entries {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 6px 12px 14px;
-  background-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.03) 0,
-    rgba(255, 255, 255, 0.03) 1px,
-    transparent 1px,
-    transparent var(--tracker-row-height)
-  );
 }
 </style>

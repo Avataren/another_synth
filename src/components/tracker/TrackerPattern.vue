@@ -10,21 +10,25 @@
     <div class="pattern-body">
       <div class="row-column">
         <div class="row-header">Row</div>
-        <button
-          v-for="row in rowsList"
-          :key="row"
-          type="button"
-          class="row-number"
-          :class="{
-            playing: isPlaying && playbackRow === row,
-            selected: effectiveSelectedRow === row,
-            'in-selection': isRowInSelection(row)
-          }"
-          @click="selectRow(row)"
-          ref="rowRefs"
-        >
-          {{ formatRow(row) }}
-        </button>
+        <div class="row-numbers-container" :style="{ height: `${totalRowsHeight}px` }">
+          <div class="row-numbers-viewport" :style="rowsOffsetStyle">
+            <button
+              v-for="row in visibleRowsList"
+              :key="row"
+              type="button"
+              class="row-number"
+              :class="{
+                playing: isPlaying && playbackRow === row,
+                selected: effectiveSelectedRow === row,
+                'in-selection': isRowInSelection(row)
+              }"
+              @click="selectRow(row)"
+              ref="rowRefs"
+            >
+              {{ formatRow(row) }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="tracks-wrapper" ref="tracksWrapperRef">
@@ -40,6 +44,8 @@
           :active-column="activeColumn"
           :active-macro-nibble="activeMacroNibble"
           :selection-rect="selectionRect"
+          :visible-start-row="visibleRange.startRow"
+          :visible-end-row="visibleRange.endRow"
           @rowSelected="selectRow"
           @cellSelected="selectCell"
           @startSelection="startSelection"
@@ -66,6 +72,8 @@ interface Props {
   isPlaying: boolean;
   activeMacroNibble: number;
   selectionRect: TrackerSelectionRect | null;
+  scrollTop: number;
+  containerHeight: number;
 }
 
 const props = defineProps<Props>();
@@ -89,11 +97,38 @@ const tracksWrapperRef = ref<HTMLElement | null>(null);
 const activeBarWidth = ref<number | null>(null);
 const selectionRect = computed(() => props.selectionRect);
 
+// Virtual scrolling - use scroll info from parent
+const overscan = 5; // Extra rows to render above/below viewport
+
+const visibleRange = computed(() => {
+  const rowTotalHeight = rowHeightPx + rowGapPx;
+  // Account for header height and padding in scroll offset calculation
+  const adjustedScrollTop = Math.max(0, props.scrollTop - headerHeightPx - 18); // 18px is pattern padding
+  const startRow = Math.max(0, Math.floor(adjustedScrollTop / rowTotalHeight) - overscan);
+  const visibleRows = Math.ceil(props.containerHeight / rowTotalHeight) + overscan * 2;
+  const endRow = Math.min(props.rows - 1, startRow + visibleRows);
+  return { startRow, endRow };
+});
+
+// Only the visible rows for the row column
+const visibleRowsList = computed(() => {
+  const { startRow, endRow } = visibleRange.value;
+  return Array.from({ length: endRow - startRow + 1 }, (_, idx) => startRow + idx);
+});
+
+// Total height of all rows for virtual scroll container
+const totalRowsHeight = computed(() => props.rows * (rowHeightPx + rowGapPx));
+
+// Offset for positioning visible rows
+const rowsOffsetStyle = computed(() => ({
+  transform: `translateY(${visibleRange.value.startRow * (rowHeightPx + rowGapPx)}px)`
+}));
+
 // During playback, don't propagate selectedRow changes to TrackerTrack/TrackerEntry
 // The active-row-bar provides visual feedback instead, avoiding component re-renders
 const effectiveSelectedRow = computed(() => props.isPlaying ? -1 : props.selectedRow);
 
-// Scroll container ref
+// Scroll container ref (used for programmatic scrolling)
 const patternAreaRef = ref<HTMLElement | null>(null);
 
 const activeBarStyle = computed(() => {
@@ -243,9 +278,20 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow-y: auto;
+  overflow-y: hidden;
   position: relative;
   z-index: 2;
+}
+
+.row-numbers-container {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.row-numbers-viewport {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .row-header {

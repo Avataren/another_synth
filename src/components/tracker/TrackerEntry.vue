@@ -83,49 +83,61 @@ const emit = defineEmits<{
 
 const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
 
-const entryClasses = computed(() => {
-  const classes: Record<string, boolean> = {
-    active: props.active,
-    filled: !!props.entry,
-    focused: isActiveTrack.value && props.active,
-    selected: props.selected
-  };
-
-  const rowIndex = props.rowIndex;
-
-  if (!classes.active && !classes.selected) {
-    if (rowIndex % 16 === 0) {
-      classes['row-bar'] = true;
-    } else if (rowIndex % 4 === 0) {
-      classes['row-beat'] = true;
-    } else if (rowIndex % 2 === 0) {
-      classes['row-sub'] = true;
-    }
-  }
-
-  return classes;
+// Pre-compute row type based on index - stable value that doesn't depend on active/selected state
+const rowType = computed(() => {
+  const idx = props.rowIndex;
+  if (idx % 16 === 0) return 'bar';
+  if (idx % 4 === 0) return 'beat';
+  if (idx % 2 === 0) return 'sub';
+  return 'normal';
 });
 
-const cells = computed(() => {
-  const volume = props.entry?.volume ?? '..';
+// Simplified class binding using pre-computed rowType
+const entryClasses = computed(() => ({
+  active: props.active,
+  filled: !!props.entry,
+  focused: isActiveTrack.value && props.active,
+  selected: props.selected,
+  'row-bar': !props.active && !props.selected && rowType.value === 'bar',
+  'row-beat': !props.active && !props.selected && rowType.value === 'beat',
+  'row-sub': !props.active && !props.selected && rowType.value === 'sub'
+}));
+
+// Default cells for empty entries - reused across empty rows
+const DEFAULT_CELLS = {
+  note: { display: '---', className: 'note' },
+  instrument: { display: '..', className: 'instrument' },
+  volumeHi: { display: '.', className: 'volume volume-high' },
+  volumeLo: { display: '.', className: 'volume volume-low' },
+  macroDigits: ['.', '.', '.']
+};
+
+// Process cells only when entry exists
+function processCells(entry: TrackerEntryData) {
+  const volume = entry.volume ?? '..';
   const volPadded = (volume + '..').slice(0, 2);
-  const macro = props.entry?.macro ?? '...';
+  const macro = entry.macro ?? '...';
   const macroPadded = (macro + '...').slice(0, 3);
-  const noteDisplay = (() => {
-    if (!props.entry?.note) return '---';
-    const normalized = props.entry.note.trim().toUpperCase();
-    const isRelease =
-      normalized === '--' || normalized === '---' || normalized === '###';
-    return isRelease ? '###' : props.entry.note;
-  })();
-  const macroDigits = macroPadded.split('');
+
+  let noteDisplay = '---';
+  if (entry.note) {
+    const normalized = entry.note.trim().toUpperCase();
+    const isRelease = normalized === '--' || normalized === '---' || normalized === '###';
+    noteDisplay = isRelease ? '###' : entry.note;
+  }
+
   return {
     note: { display: noteDisplay, className: 'note' },
-    instrument: { display: props.entry?.instrument ?? '..', className: 'instrument' },
+    instrument: { display: entry.instrument ?? '..', className: 'instrument' },
     volumeHi: { display: volPadded[0] ?? '.', className: 'volume volume-high' },
     volumeLo: { display: volPadded[1] ?? '.', className: 'volume volume-low' },
-    macroDigits
+    macroDigits: macroPadded.split('')
   };
+}
+
+const cells = computed(() => {
+  if (!props.entry) return DEFAULT_CELLS;
+  return processCells(props.entry);
 });
 
 function onSelectRow() {
