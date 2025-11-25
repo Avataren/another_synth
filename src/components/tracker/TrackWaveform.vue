@@ -19,6 +19,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
 let dataArray: Uint8Array | null = null;
 let unregisterAnimation: (() => void) | null = null;
+let currentConnectedNode: AudioNode | null = null;
 
 // Cached canvas dimensions - only update on resize
 let canvasWidth = 0;
@@ -64,16 +65,33 @@ function updateCanvasSize() {
 }
 
 function setupAnalyser() {
-  cleanup();
+  if (!props.audioContext) return;
 
-  if (!props.audioNode || !props.audioContext) return;
+  // Create analyser if we don't have one yet
+  if (!analyser) {
+    analyser = props.audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+  }
 
-  analyser = props.audioContext.createAnalyser();
-  analyser.fftSize = 256;
-  dataArray = new Uint8Array(analyser.frequencyBinCount);
+  // Connect new audio node if provided and different from current
+  if (props.audioNode && props.audioNode !== currentConnectedNode) {
+    // Disconnect previous node if any
+    if (currentConnectedNode) {
+      try {
+        currentConnectedNode.disconnect(analyser);
+      } catch {
+        // Node may have already been disconnected
+      }
+    }
+    props.audioNode.connect(analyser);
+    currentConnectedNode = props.audioNode;
+  }
 
-  props.audioNode.connect(analyser);
-  startVisualization();
+  // Start visualization if not already running
+  if (!unregisterAnimation) {
+    startVisualization();
+  }
 }
 
 function startVisualization() {
@@ -145,6 +163,15 @@ function cleanup() {
     unregisterAnimation = null;
   }
 
+  if (currentConnectedNode && analyser) {
+    try {
+      currentConnectedNode.disconnect(analyser);
+    } catch {
+      // Node may have already been disconnected
+    }
+    currentConnectedNode = null;
+  }
+
   if (analyser) {
     analyser.disconnect();
     analyser = null;
@@ -163,7 +190,7 @@ onMounted(() => {
   window.addEventListener('resize', handleResize);
   updateCachedColor();
   setupThemeObserver();
-  if (props.audioNode && props.audioContext) {
+  if (props.audioContext) {
     setupAnalyser();
   }
 });
