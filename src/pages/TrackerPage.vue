@@ -378,7 +378,7 @@ import type { JSZipObject } from 'jszip';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
-import type { TrackerEntryData, TrackerTrackData } from 'src/components/tracker/tracker-types';
+import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type {
   Pattern as PlaybackPattern,
@@ -404,6 +404,8 @@ import { useTrackerPlayback } from 'src/composables/useTrackerPlayback';
 import type { TrackerPlaybackContext } from 'src/composables/useTrackerPlayback';
 import { useTrackerSelection } from 'src/composables/useTrackerSelection';
 import type { TrackerSelectionContext } from 'src/composables/useTrackerSelection';
+import { useTrackerEditing } from 'src/composables/useTrackerEditing';
+import type { TrackerEditingContext } from 'src/composables/useTrackerEditing';
 
 // Minimal File System Access API typings for browsers without lib.dom additions
 type FileSystemWriteChunkType = BufferSource | Blob | string;
@@ -577,6 +579,13 @@ function parseMacroField(macro?: string): { index: number; value: number } | und
   if (!Number.isFinite(raw)) return undefined;
   const clamped = Math.max(0, Math.min(255, raw));
   return { index: macroIndex, value: clamped / 255 };
+}
+
+function midiToTrackerNote(midi: number): string {
+  const names = ['C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#', 'A-', 'A#', 'B-'];
+  const octave = Math.floor(midi / 12) - 1;
+  const name = names[midi % 12] ?? 'C-';
+  return `${name}${octave}`;
 }
 
 // Mute/solo state must exist before PlaybackEngine creation
@@ -758,6 +767,56 @@ const normalizeInstrumentId = (instrumentId?: string) => {
   return instrumentId;
 };
 
+function applyBaseOctave(midi: number): number {
+  const offset = (baseOctave.value - DEFAULT_BASE_OCTAVE) * 12;
+  const adjusted = midi + offset;
+  return Math.max(0, Math.min(127, Math.round(adjusted)));
+}
+
+function hasPatchForInstrument(instrumentId: string): boolean {
+  return instrumentSlots.value.some(
+    (slot) => formatInstrumentId(slot.slot) === instrumentId && !!slot.patchId
+  );
+}
+
+// Set up editing composable
+const editingContext: TrackerEditingContext = {
+  activeRow,
+  activeTrack,
+  activeColumn,
+  activeMacroNibble,
+  isEditMode,
+  stepSize,
+  baseOctave,
+  defaultBaseOctave: DEFAULT_BASE_OCTAVE,
+  activeInstrumentId,
+  rowsCount,
+  currentPattern,
+  instrumentSlots,
+  songBank,
+  pushHistory: () => trackerStore.pushHistory(),
+  moveRow,
+  formatInstrumentId,
+  normalizeInstrumentId,
+  normalizeVolumeChars,
+  normalizeMacroChars,
+  midiToTrackerNote
+};
+
+const {
+  ensureActiveInstrument,
+  setActiveInstrument,
+  handleNoteEntry,
+  handleVolumeInput,
+  handleMacroInput,
+  clearVolumeField,
+  clearMacroField,
+  insertNoteOff,
+  clearStep,
+  deleteRowAndShiftUp,
+  insertRowAndShiftDown
+} = useTrackerEditing(editingContext);
+
 function setActiveRow(row: number) {
   const count = rowsCount.value;
   const clamped = Math.min(count - 1, Math.max(0, row));
@@ -866,256 +925,6 @@ function removeTrack() {
     updateTrackAudioNodes();
     void measureVisualizerLayout();
   }
-}
-
-function advanceRowByStep() {
-  moveRow(stepSize.value);
-}
-
-function ensureActiveInstrument() {
-  if (activeInstrumentId.value) {
-    const exists = instrumentSlots.value.some(
-      (slot) => slot.patchId && formatInstrumentId(slot.slot) === activeInstrumentId.value
-    );
-    if (exists) return;
-  }
-  const firstWithPatch = instrumentSlots.value.find((slot) => slot.patchId);
-  activeInstrumentId.value = firstWithPatch ? formatInstrumentId(firstWithPatch.slot) : null;
-}
-
-function setActiveInstrument(slotNumber: number) {
-  activeInstrumentId.value = formatInstrumentId(slotNumber);
-}
-
-function updateEntryAt(
-  row: number,
-  trackIndex: number,
-  mutator: (entry: TrackerEntryData) => TrackerEntryData
-) {
-  if (!currentPattern.value) return;
-  const tracks = currentPattern.value.tracks;
-  const track = tracks[trackIndex];
-  if (!track) return;
-
-  const existing = track.entries.find((e) => e.row === row);
-  const baseInstrument =
-    activeInstrumentId.value ??
-    normalizeInstrumentId(existing?.instrument) ??
-    formatInstrumentId(trackIndex + 1);
-  const draft: TrackerEntryData = existing
-    ? { ...existing, instrument: existing.instrument ?? baseInstrument }
-    : { row, instrument: baseInstrument };
-
-  const mutated = mutator(draft);
-  const filtered = track.entries.filter((e) => e.row !== row);
-  filtered.push(mutated);
-  filtered.sort((a, b) => a.row - b.row);
-
-  track.entries = filtered;
-}
-
-function insertNoteOff() {
-  if (!isEditMode.value) return;
-  trackerStore.pushHistory();
-  updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
-    ...entry,
-    note: '###'
-  }));
-  advanceRowByStep();
-}
-
-function clearStep() {
-  if (!isEditMode.value) return;
-  if (!currentPattern.value) return;
-  trackerStore.pushHistory();
-  const track = currentPattern.value.tracks[activeTrack.value];
-  if (!track) return;
-  track.entries = track.entries.filter((e) => e.row !== activeRow.value);
-  advanceRowByStep();
-}
-
-function deleteRowAndShiftUp() {
-  if (!isEditMode.value) return;
-  if (!currentPattern.value) return;
-  trackerStore.pushHistory();
-  const track = currentPattern.value.tracks[activeTrack.value];
-  if (!track) return;
-
-  const currentRow = activeRow.value;
-  const maxRow = rowsCount.value - 1;
-
-  // Remove entries at current row, shift entries below up by one
-  track.entries = track.entries
-    .filter((e) => e.row !== currentRow)
-    .map((e) => {
-      if (e.row > currentRow) {
-        return { ...e, row: e.row - 1 };
-      }
-      return e;
-    })
-    .filter((e) => e.row <= maxRow);
-}
-
-function insertRowAndShiftDown() {
-  if (!isEditMode.value) return;
-  if (!currentPattern.value) return;
-  trackerStore.pushHistory();
-  const track = currentPattern.value.tracks[activeTrack.value];
-  if (!track) return;
-
-  const currentRow = activeRow.value;
-  const maxRow = rowsCount.value - 1;
-
-  // Shift entries at and below current row down by one
-  track.entries = track.entries
-    .map((e) => {
-      if (e.row >= currentRow) {
-        return { ...e, row: e.row + 1 };
-      }
-      return e;
-    })
-    .filter((e) => e.row <= maxRow);
-}
-
-function hasPatchForInstrument(instrumentId: string): boolean {
-  return instrumentSlots.value.some(
-    (slot) => formatInstrumentId(slot.slot) === instrumentId && !!slot.patchId
-  );
-}
-
-async function previewNote(instrumentId: string, midi: number, velocity = 100) {
-  if (!hasPatchForInstrument(instrumentId)) return;
-  await songBank.prepareInstrument(instrumentId);
-  songBank.noteOn(instrumentId, midi, velocity);
-  window.setTimeout(() => {
-    songBank.noteOff(instrumentId, midi);
-  }, 250);
-}
-
-function midiToTrackerNote(midi: number): string {
-  const names = ['C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#', 'A-', 'A#', 'B-'];
-  const octave = Math.floor(midi / 12) - 1;
-  const name = names[midi % 12] ?? 'C-';
-  return `${name}${octave}`;
-}
-
-function applyBaseOctave(midi: number): number {
-  const offset = (baseOctave.value - DEFAULT_BASE_OCTAVE) * 12;
-  const adjusted = midi + offset;
-  return Math.max(0, Math.min(127, Math.round(adjusted)));
-}
-
-function handleNoteEntry(midi: number) {
-  // Only enter notes when on the note column (column 0)
-  if (activeColumn.value !== 0) return;
-
-  const instrumentId =
-    activeInstrumentId.value ?? formatInstrumentId(activeTrack.value + 1);
-  const adjustedMidi = applyBaseOctave(midi);
-
-  if (!isEditMode.value) {
-    void previewNote(instrumentId, adjustedMidi);
-    return;
-  }
-
-  trackerStore.pushHistory();
-  updateEntryAt(activeRow.value, activeTrack.value, (entry) => ({
-    ...entry,
-    note: midiToTrackerNote(adjustedMidi),
-    instrument: instrumentId
-  }));
-  void previewNote(instrumentId, adjustedMidi);
-  advanceRowByStep();
-}
-
-function handleVolumeInput(hexChar: string) {
-  if (!isEditMode.value) return;
-  trackerStore.pushHistory();
-  const row = activeRow.value;
-  const track = activeTrack.value;
-  const nibbleIndex = activeColumn.value === 2 ? 0 : 1;
-  updateEntryAt(row, track, (entry) => ({
-    ...entry,
-    volume: (() => {
-      const chars = normalizeVolumeChars(entry.volume);
-      if (chars[0] === '.') chars[0] = '0';
-      if (chars[1] === '.') chars[1] = '0';
-      chars[nibbleIndex] = hexChar;
-      return chars.join('');
-    })()
-  }));
-  advanceRowByStep();
-  activeColumn.value = nibbleIndex === 0 ? 2 : 3;
-}
-
-function handleMacroInput(hexChar: string) {
-  if (!isEditMode.value) return;
-  if (activeColumn.value !== 4) return;
-  trackerStore.pushHistory();
-  const nibbleIndex = activeMacroNibble.value;
-  // First digit must be 0-3 (macro index)
-  if (nibbleIndex === 0 && !/^[0-3]$/.test(hexChar)) return;
-  if (nibbleIndex > 0 && !/^[0-9A-F]$/.test(hexChar)) return;
-
-  const row = activeRow.value;
-  const track = activeTrack.value;
-  updateEntryAt(row, track, (entry) => {
-    const chars = normalizeMacroChars(entry.macro);
-    chars[nibbleIndex] = hexChar;
-    return {
-      ...entry,
-      macro: chars.join('')
-    };
-  });
-
-  if (nibbleIndex < 2) {
-    activeMacroNibble.value = nibbleIndex + 1;
-  } else {
-    activeMacroNibble.value = 0;
-    advanceRowByStep();
-  }
-  activeColumn.value = 4;
-}
-
-function clearVolumeField() {
-  if (!isEditMode.value) return;
-  if (!currentPattern.value) return;
-  if (activeColumn.value !== 2 && activeColumn.value !== 3) return;
-
-  trackerStore.pushHistory();
-  const track = currentPattern.value.tracks[activeTrack.value];
-  if (!track) return;
-  const idx = track.entries.findIndex((e) => e.row === activeRow.value);
-  if (idx === -1) return;
-
-  const entry = track.entries[idx];
-  if (!entry) return;
-
-  const updatedEntry = { ...entry } as TrackerEntryData & { volume?: string };
-  delete updatedEntry.volume;
-
-  track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
-}
-
-function clearMacroField() {
-  if (!isEditMode.value) return;
-  if (!currentPattern.value) return;
-  if (activeColumn.value !== 4) return;
-
-  trackerStore.pushHistory();
-  const track = currentPattern.value.tracks[activeTrack.value];
-  if (!track) return;
-  const idx = track.entries.findIndex((e) => e.row === activeRow.value);
-  if (idx === -1) return;
-
-  const entry = track.entries[idx];
-  if (!entry) return;
-
-  const updatedEntry = { ...entry } as TrackerEntryData & { macro?: string };
-  delete updatedEntry.macro;
-
-  track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
-  activeMacroNibble.value = 0;
 }
 
 function setPatternRows(count: number) {

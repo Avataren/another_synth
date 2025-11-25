@@ -146,8 +146,8 @@ export function shouldExecuteCommand(
     }
   }
 
-  // Check key match
-  if (event.key !== command.key) {
+  // Check key match (support both event.code for physical keys and event.key for character keys)
+  if (event.code !== command.key && event.key !== command.key) {
     return false;
   }
 
