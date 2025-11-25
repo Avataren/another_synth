@@ -96,16 +96,21 @@ export class PlaybackEngine {
     this.emit('state', this.state);
   }
 
-  loadPattern(patternId: string) {
+  loadPattern(patternId: string, options?: { emitPosition?: boolean; updatePosition?: boolean }) {
     const pattern = this.song?.patterns.find(p => p.id === patternId);
     if (!pattern) {
       this.emit('error', new Error(`Pattern with id ${patternId} not found.`));
       return;
     }
     this.length = Math.max(1, pattern.length);
-    this.position = { row: 0, patternId: pattern.id };
     this.indexPattern(pattern);
-    this.emit('position', this.position);
+    const shouldUpdatePosition = options?.updatePosition !== false;
+    if (shouldUpdatePosition) {
+      this.position = { row: 0, patternId: pattern.id };
+      if (options?.emitPosition !== false) {
+        this.emit('position', this.position);
+      }
+    }
   }
 
   setBpm(bpm: number) {
@@ -251,7 +256,8 @@ export class PlaybackEngine {
 
         const nextPatternId = sequence[this.currentSequenceIndex];
         if (nextPatternId) {
-          this.loadPattern(nextPatternId);
+          // Preload next pattern for scheduling without flipping the visible position yet
+          this.loadPattern(nextPatternId, { emitPosition: false, updatePosition: false });
         } else {
           this.stop();
           return;

@@ -262,13 +262,6 @@ export const usePatchStore = defineStore('patchStore', {
         const deserialized = deserializePatch(patch);
         this.isLoadingPatch = true;
 
-        // DEBUG: Check if names are preserved in deserialized layout
-        console.log('[Patch Store] Deserialized layout voices:', deserialized.layout.voices.length);
-        if (deserialized.layout.voices[0]) {
-          const firstVoice = deserialized.layout.voices[0];
-          console.log('[Patch Store] First voice envelope nodes:', firstVoice.nodes.envelope);
-        }
-
         // Update layout store FIRST before sending to WASM
         // This ensures custom node names are in the store when WASM posts back its layout
         layoutStore.updateSynthLayout(deserialized.layout);
@@ -943,11 +936,6 @@ export const usePatchStore = defineStore('patchStore', {
 
       for (const [nodeId, state] of convolvers.entries()) {
         if (state.generator) {
-          console.log(
-            `Regenerating ${state.generator.type} reverb for convolver ${nodeId}`,
-            state.generator,
-          );
-
           try {
             if (state.generator.type === 'hall') {
               await instrument.generateHallReverb(

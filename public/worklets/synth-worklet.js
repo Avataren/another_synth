@@ -2992,7 +2992,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       console.error("handleCreateNode received no node type payload", data);
       return;
     }
-    console.log("handleCreateNode: ", nodeType);
     switch (nodeType) {
       case "oscillator" /* Oscillator */:
         this.audioEngine.create_oscillator();
@@ -3103,7 +3102,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     try {
       const { wasmBytes } = data;
       initSync({ module: new Uint8Array(wasmBytes) });
-      console.log("SAMPLERATE: ", sampleRate);
       this.audioEngine = new AudioEngine(sampleRate);
       this.audioEngine.init(sampleRate, this.numVoices);
       this.automationAdapter = new AutomationAdapter(
@@ -3217,7 +3215,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   initializeState() {
     if (!this.audioEngine) return;
     const initialState = this.audioEngine.get_current_state();
-    console.log("initialState:", initialState);
     this.stateVersion++;
     this.port.postMessage({
       type: "initialState",
@@ -3251,7 +3248,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   createNodesAndSetupConnections() {
     if (!this.audioEngine) throw new Error("Audio engine not initialized");
     const mixerId = this.audioEngine.create_mixer();
-    console.log("#mixerID:", mixerId);
     const filterId = this.audioEngine.create_filter();
     const samplerNodeId = this.audioEngine.create_sampler();
     const oscIds = [];
@@ -3262,13 +3258,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const envelopeIds = [];
     for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_envelope();
-      console.log(`Created envelope ${i} with id ${result.envelopeId}`);
       envelopeIds.push(result.envelopeId);
     }
     const lfoIds = [];
     for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_lfo();
-      console.log(`Created LFO ${i} with id ${result.lfoId}`);
       lfoIds.push(result.lfoId);
     }
     if (envelopeIds.length > 0 && oscIds.length >= 2) {
@@ -3596,7 +3590,6 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     );
   }
   handleUpdateFilter(data) {
-    console.log("handle filter update:", data);
     this.audioEngine.update_filters(
       data.filterId,
       data.config.cutoff,

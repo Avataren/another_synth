@@ -40,9 +40,9 @@ pub fn js_fallback_fill(seed: &mut [u8]) -> Result<(), String> {
         }
     }
 
-    web_sys::console::warn_1(
-        &"Falling back to Math.random() for seed generation (insecure)".into(),
-    );
+    // web_sys::console::warn_1(
+    //     &"Falling back to Math.random() for seed generation (insecure)".into(),
+    // );
     for byte in seed.iter_mut() {
         *byte = (js_sys::Math::random() * 256.0) as u8;
     }

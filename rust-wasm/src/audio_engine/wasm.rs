@@ -1412,7 +1412,7 @@ impl AudioEngine {
         let collection = import_wav_hound_reader(cursor, base_size)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         // Clear the existing collections so only one is kept.
-        self.wavetable_synthbank.borrow_mut().collections.clear();
+        self.wavetable_synthbank.borrow_mut().clear();
         // Add the new collection to the synth bank.
         self.wavetable_synthbank
             .borrow_mut()
@@ -2261,7 +2261,7 @@ impl AudioEngine {
                     filter.set_comb_dampening(comb_dampening);
                     filter.set_gain_db(gain * 24.0 - 12.0);
                     //log key_tracking
-                    log_console(&format!("key_tracking is {}", key_tracking));
+                    // log_console(&format!("key_tracking is {}", key_tracking));
                     filter.set_keyboard_tracking_sensitivity(key_tracking);
                     //filter.set_oversampling_factor(oversampling);
                 } else {
@@ -2453,10 +2453,10 @@ impl AudioEngine {
         modulation_type: Option<WasmModulationType>,
         modulation_transform: ModulationTransformation,
     ) -> Result<(), JsValue> {
-        log_console(&format!(
-            "Connecting macro: voice={}, macro={}, node={}, port={:?}, amount={}, mod_type={:?}, mod_transform={:?}",
-            voice_index, macro_index, target_node, target_port, amount, modulation_type, modulation_transform
-        ));
+        // log_console(&format!(
+        //     "Connecting macro: voice={}, macro={}, node={}, port={:?}, amount={}, mod_type={:?}, mod_transform={:?}",
+        //     voice_index, macro_index, target_node, target_port, amount, modulation_type, modulation_transform
+        // ));
 
         let voice = self
             .voices

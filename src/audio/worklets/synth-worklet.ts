@@ -382,7 +382,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
-    console.log('handleCreateNode: ', nodeType);
     switch (nodeType) {
       case VoiceNodeType.Oscillator:
         this.audioEngine!.create_oscillator();
@@ -516,7 +515,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     try {
       const { wasmBytes } = data;
       initSync({ module: new Uint8Array(wasmBytes) });
-      console.log('SAMPLERATE: ', sampleRate);
       this.audioEngine = new AudioEngine(sampleRate);
       this.audioEngine.init(sampleRate, this.numVoices);
       this.automationAdapter = new AutomationAdapter(
@@ -661,7 +659,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (!this.audioEngine) return;
 
     const initialState = this.audioEngine.get_current_state();
-    console.log('initialState:', initialState);
     this.stateVersion++;
 
     // Send both the initial state and state version
@@ -704,7 +701,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     //this.audioEngine.create_noise();
     // Create mixer.
     const mixerId = this.audioEngine.create_mixer() as string;
-    console.log('#mixerID:', mixerId);
 
     // const arpId = this.audioEngine.create_arpeggiator();
     // Create filter.
@@ -725,7 +721,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const envelopeIds: string[] = [];
     for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_envelope();
-      console.log(`Created envelope ${i} with id ${result.envelopeId}`);
       envelopeIds.push(result.envelopeId);
     }
 
@@ -733,7 +728,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const lfoIds: string[] = [];
     for (let i = 0; i < 1; i++) {
       const result = this.audioEngine.create_lfo();
-      console.log(`Created LFO ${i} with id ${result.lfoId}`);
       lfoIds.push(result.lfoId);
     }
 
@@ -1172,7 +1166,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     filterId: string;
     config: FilterState;
   }) {
-    console.log('handle filter update:', data);
+    // console.log('handle filter update:', data);
     this.audioEngine!.update_filters(
       data.filterId,
       data.config.cutoff,

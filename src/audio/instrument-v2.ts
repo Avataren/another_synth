@@ -120,7 +120,6 @@ export default class InstrumentV2 {
       }
 
       this.workletNode.connect(this.outputNode);
-      console.log('[InstrumentV2] Audio setup completed successfully');
     } catch (error) {
       console.error('[InstrumentV2] Failed to set up audio:', error);
       throw error;
@@ -128,10 +127,10 @@ export default class InstrumentV2 {
   }
 
   // ========================================================================
-  // Patch Operations (fire-and-forget - worklet doesn't send response)
+  // Patch Operations
   // ========================================================================
 
-  public loadPatch(patch: Patch): void {
+  public async loadPatch(patch: Patch): Promise<void> {
     if (!this.workletNode) {
       console.error('[InstrumentV2] Worklet not initialized');
       return;
@@ -170,15 +169,46 @@ export default class InstrumentV2 {
       };
 
       const patchJson = JSON.stringify(patchWithoutAssets);
-      console.log('[InstrumentV2] Patch JSON length:', patchJson.length);
 
-      // Fire-and-forget - worklet doesn't send operationResponse for loadPatch
-      this.messageHandler.sendFireAndForget({
-        type: 'loadPatch',
-        patchJson,
+      // Set up a one-time listener for synthLayout response before sending the message
+      const workletNode = this.workletNode; // Capture for closure
+      await new Promise<void>((resolve, _reject) => {
+        const timeoutMs = 5000;
+        let cleanedUp = false;
+
+        const handleSynthLayout = (event: MessageEvent) => {
+          if (event.data.type === 'synthLayout') {
+            cleanup();
+            resolve();
+          }
+        };
+
+        const handleTimeout = () => {
+          cleanup();
+          resolve(); // Continue rather than blocking initialization
+        };
+
+        const cleanup = () => {
+          if (cleanedUp) return;
+          cleanedUp = true;
+          clearTimeout(timeoutHandle);
+          workletNode.port.removeEventListener('message', handleSynthLayout);
+        };
+
+        const timeoutHandle = setTimeout(handleTimeout, timeoutMs);
+
+        // Add listener BEFORE sending message to avoid race condition
+        workletNode.port.addEventListener('message', handleSynthLayout);
+
+        // Now send the loadPatch message
+        this.messageHandler.sendFireAndForget({
+          type: 'loadPatch',
+          patchJson,
+        });
       });
     } catch (error) {
-      console.error('[InstrumentV2] Failed to serialize patch:', error);
+      console.error('[InstrumentV2] Failed to load patch:', error);
+      throw error;
     }
   }
 
@@ -477,7 +507,6 @@ export default class InstrumentV2 {
 
   public updateWavetable(_nodeId: string, _newWavetable: unknown): void {
     // No-op: Wavetable updates are handled via importWavetableData
-    console.log('[InstrumentV2] updateWavetable is deprecated, use importWavetableData instead');
   }
 
   // ========================================================================
@@ -493,13 +522,17 @@ export default class InstrumentV2 {
   // Asset Import (fire-and-forget for large transfers)
   // ========================================================================
 
-  public importWavetableData(nodeId: string, wavData: Uint8Array): void {
+  public async importWavetableData(nodeId: string, wavData: Uint8Array): Promise<void> {
     this.messageHandler.sendFireAndForget({
       type: 'importWavetable',
       nodeId,
       data: wavData,
       tableSize: wavData.length,
     });
+    // Wavetable import is fire-and-forget (no WASM response), so we add a small delay
+    // to ensure the message is processed before continuing. This prevents race conditions
+    // where patches are played before their wavetable data is fully imported.
+    await new Promise(resolve => setTimeout(resolve, 10));
   }
 
   public importImpulseWaveformData(nodeId: string, wavData: Uint8Array): void {
@@ -1112,6 +1145,10 @@ export default class InstrumentV2 {
     return false;
   }
 
+  public getVoiceLimit(): number {
+    return this.voiceLimit;
+  }
+
   private refreshGlideStatesFromPatch(patch: Patch): void {
     this.glideStates.clear();
     const patchGlides = patch?.synthState?.glides;
@@ -1130,6 +1167,12 @@ export default class InstrumentV2 {
 
   private midiNoteToFrequency(note: number): number {
     return 440 * Math.pow(2, (note - 69) / 12);
+  }
+
+  public getQuantumDurationSeconds(): number {
+    const frames = this.quantumFrames || 128;
+    const sr = this.audioContext.sampleRate || 48000;
+    return frames / sr;
   }
 
   // ========================================================================

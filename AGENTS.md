@@ -213,6 +213,9 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - `TrackerPage.vue` builds playback patterns with instrument IDs resolved from `entry.instrument` or slot mapping, syncs the song bank whenever slots change, and waits for `syncSongBankFromSlots` before `play()` to keep the replay routine aligned with the song bank.
 - Tracker steps now support note-off markers (`--`) and per-step instrument changes. `buildPlaybackPattern` parses tracker note symbols into MIDI + `isNoteOff`, includes velocity from hex volume, and drops steps without an instrument or note/note-off. `PlaybackEngine` indexes steps by row and fires `noteHandler` events (`noteOn`/`noteOff`) each tick. `TrackerSongBank` tracks active notes per instrument and routes noteOn/noteOff into the per-instrument `InstrumentV2`, releasing all active notes when a note-off arrives without a MIDI number.
 - Tracker UI: instrument list rows are clickable to set the “active instrument” (highlighted). Computer keyboard entry uses the same QWERTY/ZXC mapping as the patch editor; note entries auto-fill the active instrument ID, advance the row, Insert writes `--`, Delete clears the step. New steps default to the active instrument (or the track’s slot number if none is active).
+- Tracker wavetable import dedupes per instrument (no per-note re-imports); dedupe resets when an instrument is torn down/recreated. Avoids per-note rebuilds while still refreshing wavetables after slot/patch changes.
+- WavetableSynthBank creates its default morph collection at construction time; lazy generation was causing repeated mipmap builds. Tracker/custom wavetable imports still clear and replace the bank when a wavetable asset is provided.
+- Tracker patch metadata normalization no longer stamps `modified` with `Date.now()` if missing; it uses existing `created/modified` values (or 0) so patch signatures stay stable and instruments aren’t torn down/reloaded on every prepare (which was retriggering wavetable mipmap generation).
 - Tracker instrument slot IDs now start at 1 and reuse the smallest free number; the list shows the real slot ID (not just the index). This keeps tracker instrument IDs aligned with what the user sees (no more 09/10 when only two slots are in use).
 - Tracker editing now previews notes: entering a note plays it immediately via the song bank (using the active instrument if it has a patch), with an automatic gate-off after ~250 ms. In non-edit mode, tracker keyboard preview now holds notes until key release and is fully polyphonic: `TrackerPage` uses `keyboard-store` (same as the patch editor) and routes `latestEvent` into `TrackerSongBank.previewNoteOn`/`previewNoteOff`, which call `InstrumentV2.noteOn`/`noteOff` directly without per-track voice gating. Playback scheduling continues to use the track-aware `noteOnAtTime`/`noteOffAtTime` APIs so sequenced notes still respect per-track mono behavior when desired.
   - Tracker state persistence: `src/stores/tracker-store.ts` now owns tracker state (song meta, pattern rows, step size, tracks, instrument slots, active instrument). `TrackerPage.vue` reads/writes via this store so switching between screens no longer clears the tracker while the app session is alive.
@@ -223,6 +226,7 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 ### Tracker waveforms
 
 - Track waveform visualizations now always use a single accent color and attach to the instrument actually referenced by that track (latest instrument ID found when building playback steps). This keeps each track’s waveform aligned to its own instrument output even when multiple tracks share a multi-voice patch.
+- Tracker instruments now re-import audio assets even when reusing an unchanged patch signature: `TrackerSongBank.ensureInstrument` calls `restoreAudioAssets` in the reuse path so wavetables/samples aren’t stuck on defaults after slot updates that didn’t rebuild the instrument.
 
 ### Tracker export (mp3)
 
@@ -1261,3 +1265,47 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - `InstrumentV2` now tracks `activeNotes` as note→set-of-voices with a `voiceToNote` table and round-robin free voice search. `noteOn`/`noteOnAtTime` accept `allowDuplicate` to let the same MIDI note occupy multiple voices instead of reusing the existing one.
 - Tracker playback calls `noteOnAtTime(..., { allowDuplicate: true })` so repeated notes cycle through available voices, and simultaneous notes for the same patch across tracks land on different voices when capacity allows.
 - Tracker note-offs now prefer voice-based releases: per-track last-voice bookkeeping feeds `gateOffVoiceAtTime`/`noteOffAtTime` so a note-off on one track no longer kills the same MIDI note playing on another track when voices remain.
+
+## New discovery: Tracker pattern flicker during song playback (2025-12)
+
+- The playback scheduler used `loadPattern` during lookahead, which emitted a position change to the *next* pattern ~0.5s before the boundary. The UI followed that position and the visible pattern briefly vanished near the end of the current pattern.
+- `loadPattern` now accepts `{ emitPosition?: boolean; updatePosition?: boolean }`, and `scheduleAhead` preloads the next pattern with `emitPosition=false, updatePosition=false` so the displayed pattern only changes when playback actually crosses the boundary.
+
+## New discovery: Tracker mono retrigger lead (2025-12)
+
+- Tracker per-track voice gating now drops the previous voice’s gate a few samples before the next note time (using `getGateLeadTime` in `song-bank`) so mono patches retrigger reliably. Applies to single-voice and multi-voice patches; gate-off happens slightly early but is clamped to the current audio time for realtime notes.
+
+## Update: Tracker gate lead uses quantum duration (2025-12)
+
+- `InstrumentV2.getQuantumDurationSeconds` exposes the worklet block duration; `song-bank` now uses the larger of that quantum or 5ms when pre-gating the previous voice so the automation frame always sees a gate-low between back-to-back notes. This fixes mono patches that still missed retriggers when the gate-low was only a few samples.
+
+## Update: Portamento-aware tracker gating (2025-12)
+
+- Tracker `SongBank` now detects patches with active portamento (`glides` active with `time > 0`) and disables the pre-gate retrigger for those instruments. This preserves legato/portamento behavior (no forced gate-off) while still retriggering patches without glide.
+
+## New discovery: Tracker instrument renaming (2025-12)
+
+- Tracker instrument slots can be renamed inline by double-clicking the name in the instrument list. The custom name is stored on the slot and persists until the user selects a different patch for that slot (which resets the name to the patch title).
+- Slot rename persistence is protected against patch edits: `updateEditingPatch` leaves `instrumentName` untouched (unless it was empty) even when the patch gets a new ID on save, and `assignPatchToSlot` only overwrites the name when selecting a different patch. Clicking Edit no longer reverts the slot name to "Instrument XX".
+
+## New discovery: Tracker audio resume rebuild (2025-12)
+
+- Song bank tracks when the AudioContext was suspended; after a resume, it rebuilds instruments, clears cached assets/voices, and re-syncs slots. Playback now resumes audio context on Play and re-syncs slots twice when resumed to avoid silent playback after loading a song without opening the patch editor.
+- **Critical fix (2025-11-24)**: The `wasSuspended` flag timing bug caused silent playback on first song load. Originally, `syncSlots()` checked the flag, then called `ensureInstrument()` which set it—too late! Now `syncSlots()` checks if context is suspended at the START, sets the flag, resumes the context, THEN disposes/rebuilds instruments all in one pass (song-bank.ts:81-91). This ensures instruments are properly initialized on first load without requiring a second sync.
+
+## New discovery: Tracker song patches must be normalized on load (2025-12)
+
+- Some song patches saved in older shapes sounded wrong until the user opened the patch editor (which deserialized + reserialized the patch). Tracker song bank now normalizes patches via `deserializePatch`/`synthLayoutToPatchLayout` before loading them and computes signatures on the normalized data. Instruments are rebuilt when the normalized signature changes, ensuring `.cmod` patches play as saved without visiting the patch editor.
+
+## Update: Tracker song bank applies node states (2025-12)
+
+- Loading a song now applies per-node states (osc/WT/filters/envelopes/LFOs/glides/sampler/fx) directly to the worklet after `loadPatch`. Previously the worklet only received the layout + defaults until the user opened the patch editor (which pushed states via the stores), so song playback used default envelopes/filters. The new state application mirrors the patch editor’s `applyPreservedStatesToWasm`.
+
+## Update: Tracker song bank resets voice gain on slot sync (2025-12)
+
+- After loading/reusing an instrument, the song bank forces per-voice gains back to `1` so old automation (e.g., velocity automation setting gain to 0) doesn’t leave reused instruments muted when playing a freshly loaded song.
+
+## New discovery: Song bank patch reuse after song load (2025-12)
+
+- Tracker song bank used to reuse an instrument whenever the patch ID matched, so loading a song with a patch derived from the same system/default ID kept the old patch/asset content. Song loads could sound like the previous session instead of the patch stored in the `.cmod`.
+- `SongBank` now computes a patch signature (metadata modified timestamp, synthState hash, and audio asset hash) and rebuilds instruments when the signature changes, tearing down cached assets/voices. Slot sync now reliably applies the song’s patch even when the ID matches a previously loaded patch.

@@ -363,7 +363,7 @@ const editingSlotNumber = computed(() => editingSlot.value);
 const editingPatchName = computed(() => {
   if (!editingSlot.value) return '';
   const slot = trackerStore.instrumentSlots.find(s => s.slot === editingSlot.value);
-  return slot?.patchName ?? 'Song Patch';
+  return slot?.instrumentName || slot?.patchName || 'Song Patch';
 });
 
 async function loadSongPatchForEditing(slotNumber: number) {

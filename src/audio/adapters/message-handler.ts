@@ -54,6 +54,7 @@ export class WorkletMessageHandler {
   private workletPort: MessagePort | null = null;
   private initialized = false;
   private messageQueue: QueuedOperation[] = [];
+  private boundMessageHandler: ((event: MessageEvent) => void) | null = null;
 
   // Configuration
   private readonly defaultTimeout: number;
@@ -79,7 +80,9 @@ export class WorkletMessageHandler {
     }
 
     this.workletPort = workletNode.port;
-    this.workletPort.onmessage = this.handleIncomingMessage.bind(this);
+    // Use addEventListener instead of onmessage to allow other listeners to coexist
+    this.boundMessageHandler = this.handleIncomingMessage.bind(this);
+    this.workletPort.addEventListener('message', this.boundMessageHandler);
 
     this.log('Attached to worklet port');
   }
@@ -368,8 +371,9 @@ export class WorkletMessageHandler {
   detach(): void {
     this.clear();
 
-    if (this.workletPort) {
-      this.workletPort.onmessage = null;
+    if (this.workletPort && this.boundMessageHandler) {
+      this.workletPort.removeEventListener('message', this.boundMessageHandler);
+      this.boundMessageHandler = null;
       this.workletPort = null;
     }
 

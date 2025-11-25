@@ -350,6 +350,11 @@ export const useTrackerStore = defineStore('trackerStore', {
         this.currentInstrumentPage = page;
       }
     },
+    setInstrumentName(slotNumber: number, name: string) {
+      const slot = this.instrumentSlots.find((s) => s.slot === slotNumber);
+      if (!slot) return;
+      slot.instrumentName = name?.trim() ?? '';
+    },
     clearSlot(slotNumber: number) {
       const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
       if (slot) {
@@ -400,7 +405,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       // Update slot metadata
       slot.patchId = patch.metadata.id;
       slot.patchName = patch.metadata.name ?? 'Untitled';
-      slot.instrumentName = patch.metadata.name ?? 'Untitled';
+      if (!slot.instrumentName) {
+        slot.instrumentName = patch.metadata.name ?? 'Untitled';
+      }
       slot.source = 'song';
     },
     /** Assign a patch to a slot (copies it to song patches) */
@@ -416,10 +423,13 @@ export const useTrackerStore = defineStore('trackerStore', {
 
       // Update the slot
       if (slot) {
+        const patchChanged = slot.patchId !== patchCopy.metadata.id;
         slot.patchId = patchCopy.metadata.id;
         slot.patchName = patchCopy.metadata.name ?? 'Untitled';
         slot.bankName = bankName;
-        slot.instrumentName = patchCopy.metadata.name ?? 'Untitled';
+        if (patchChanged || !slot.instrumentName) {
+          slot.instrumentName = patchCopy.metadata.name ?? 'Untitled';
+        }
         slot.source = 'song';
       }
 

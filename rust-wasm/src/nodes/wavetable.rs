@@ -6,16 +6,16 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-use web_sys::console;
+// #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+// use web_sys::console;
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-fn log_console(message: &str) {
-    console::log_1(&message.into());
-}
+// #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+// fn log_console(message: &str) {
+//     console::log_1(&message.into());
+// }
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-fn log_console(_message: &str) {}
+// #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+// fn log_console(_message: &str) {}
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[repr(u32)]
@@ -122,8 +122,8 @@ fn compute_max_harmonic(freq_re: &[f32], freq_im: &[f32], num_samples: usize) ->
     {
         max_harmonic -= 1;
     }
-    #[cfg(feature = "wasm")]
-    log_console(&format!("Computed max_harmonic {}", max_harmonic));
+    // #[cfg(feature = "wasm")]
+    // log_console(&format!("Computed max_harmonic {}", max_harmonic));
 
     max_harmonic
 }
@@ -154,15 +154,15 @@ pub fn generate_mipmapped_bank_dynamic(
         .map(|&s| Complex { re: s, im: 0.0 })
         .collect();
 
-    #[cfg(feature = "wasm")]
-    log_console(&format!("Generated base table of length {}", base_size));
+    // #[cfg(feature = "wasm")]
+    // log_console(&format!("Generated base table of length {}", base_size));
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(base_size);
-    #[cfg(feature = "wasm")]
-    log_console(&format!("Planned FFT of length {}", base_size));
+    // #[cfg(feature = "wasm")]
+    // log_console(&format!("Planned FFT of length {}", base_size));
     fft.process(&mut spectrum);
-    #[cfg(feature = "wasm")]
-    log_console(&format!("FFT processed base table of length {}", base_size));
+    // #[cfg(feature = "wasm")]
+    // log_console(&format!("FFT processed base table of length {}", base_size));
 
     // Separate the real and imaginary parts.
     let freq_re: Vec<f32> = spectrum.iter().map(|c| c.re).collect();
@@ -183,11 +183,11 @@ pub fn generate_mipmapped_bank_dynamic(
 
     // Generate mip–levels until there are no harmonics left.
     while current_max_harmonic > 0 {
-        #[cfg(feature = "wasm")]
-        log_console(&format!(
-            "Generating mip level with {} harmonics",
-            current_max_harmonic
-        ));
+        // #[cfg(feature = "wasm")]
+        // log_console(&format!(
+        //     "Generating mip level with {} harmonics",
+        //     current_max_harmonic
+        // ));
         // Create a new (zero–filled) frequency buffer.
         let mut level_spectrum = vec![Complex { re: 0.0, im: 0.0 }; base_size];
 
@@ -328,10 +328,10 @@ impl WavetableBank {
         // Generate a full–cycle (base) table with all available harmonics.
         let base_samples = generate_base_samples(waveform, max_table_size);
         // Now build the mip–mapped bank from the base table.
-        log_console(&format!(
-            "Generating mipmapped bank for {:?} waveform",
-            waveform
-        ));
+        // log_console(&format!(
+        //     "Generating mipmapped bank for {:?} waveform",
+        //     waveform
+        // ));
         generate_mipmapped_bank_dynamic(base_samples, max_table_size, sample_rate)
     }
 

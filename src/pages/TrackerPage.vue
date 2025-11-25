@@ -228,7 +228,19 @@
               @click="setActiveInstrument(slot.slot)"
             >
               <div class="slot-number">#{{ formatInstrumentId(slot.slot) }}</div>
-              <div class="patch-name">{{ slot.patchName || '—' }}</div>
+              <div class="patch-name" @dblclick.stop="beginInstrumentRename(slot)">
+                <input
+                  v-if="instrumentNameEditSlot === slot.slot"
+                  :ref="(el) => setInstrumentNameInputRef(slot.slot, el)"
+                  v-model="instrumentNameDraft"
+                  type="text"
+                  class="instrument-name-input"
+                  @keydown.enter.prevent="commitInstrumentRename(slot.slot)"
+                  @keydown.esc.prevent="cancelInstrumentRename"
+                  @blur="commitInstrumentRename(slot.slot)"
+                />
+                <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
+              </div>
               <div class="instrument-actions">
                 <button
                   type="button"
@@ -359,7 +371,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue';
 import { useRouter } from 'vue-router';
 import JSZip from 'jszip';
 import type { JSZipObject } from 'jszip';
@@ -381,6 +393,7 @@ import type { Patch } from 'src/audio/types/preset-types';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
+import type { InstrumentSlot } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
@@ -476,6 +489,9 @@ const clipboard = ref<{
   height: number;
   data: (TrackerEntryData | null)[][];
 } | null>(null);
+const instrumentNameEditSlot = ref<number | null>(null);
+const instrumentNameDraft = ref('');
+const instrumentNameInputRefs = ref<Record<number, HTMLInputElement | null>>({});
 
 const selectionRect = computed<TrackerSelectionRect | null>(() => {
   if (!selectionAnchor.value || !selectionEnd.value) return null;
@@ -517,6 +533,42 @@ function normalizeMacroChars(macro?: string): [string, string, string] {
   if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1] as string;
   if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2] as string;
   return chars;
+}
+
+function getInstrumentDisplayName(slot: InstrumentSlot): string {
+  return slot.instrumentName || slot.patchName || '—';
+}
+
+function setInstrumentNameInputRef(
+  slotNumber: number,
+  el: Element | ComponentPublicInstance | null
+) {
+  instrumentNameInputRefs.value[slotNumber] = el as HTMLInputElement | null;
+}
+
+function beginInstrumentRename(slot: InstrumentSlot) {
+  instrumentNameEditSlot.value = slot.slot;
+  instrumentNameDraft.value = getInstrumentDisplayName(slot).replace(/^—$/, '');
+  void nextTick(() => {
+    const input = instrumentNameInputRefs.value[slot.slot];
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  });
+}
+
+function cancelInstrumentRename() {
+  instrumentNameEditSlot.value = null;
+}
+
+function commitInstrumentRename(slotNumber: number) {
+  if (instrumentNameEditSlot.value !== slotNumber) {
+    return;
+  }
+  trackerStore.pushHistory();
+  trackerStore.setInstrumentName(slotNumber, instrumentNameDraft.value);
+  instrumentNameEditSlot.value = null;
 }
 
 function parseMacroField(macro?: string): { index: number; value: number } | undefined {
@@ -603,6 +655,7 @@ watch(
 
     void (async () => {
       if (!hasPatchForInstrument(instrumentId)) return;
+      await songBank.ensureAudioContextRunning();
       await songBank.prepareInstrument(instrumentId);
       if (event.velocity <= 0.0001) {
         songBank.previewNoteOff(instrumentId, midi);
@@ -962,6 +1015,7 @@ function addTrack() {
       activeTrack.value,
       (currentPattern.value?.tracks.length ?? 1) - 1
     );
+    sanitizeMuteSoloState();
     updateTrackAudioNodes();
     void measureVisualizerLayout();
   }
@@ -972,6 +1026,7 @@ function removeTrack() {
   trackerStore.pushHistory();
   const removed = trackerStore.removeTrack(activeTrack.value);
   if (removed) {
+    sanitizeMuteSoloState();
     activeTrack.value = Math.min(
       activeTrack.value,
       (currentPattern.value?.tracks.length ?? 1) - 1
@@ -1363,14 +1418,14 @@ async function syncSongBankFromSlots() {
   updateTrackAudioNodes();
 }
 
-function resolveInstrumentForTrack(track: TrackerTrackData | undefined, trackIndex: number) {
+function resolveInstrumentForTrack(track: TrackerTrackData | undefined, _trackIndex: number) {
   if (!track) return undefined;
   const steps = buildPlaybackStepsForTrack(track);
   for (let i = steps.length - 1; i >= 0; i--) {
     const instrumentId = normalizeInstrumentId(steps[i]?.instrumentId);
     if (instrumentId) return instrumentId;
   }
-  return formatInstrumentId(trackIndex + 1);
+  return undefined;
 }
 
 function updateTrackAudioNodes() {
@@ -1401,6 +1456,27 @@ function toggleSolo(trackIndex: number) {
     newSoloed.add(trackIndex);
   }
   soloedTracks.value = newSoloed;
+}
+
+function sanitizeMuteSoloState(trackTotal = trackCount.value) {
+  const maxIndex = Math.max(0, trackTotal - 1);
+  const nextMuted = new Set<number>();
+  const nextSoloed = new Set<number>();
+
+  mutedTracks.value.forEach((idx) => {
+    if (idx <= maxIndex) {
+      nextMuted.add(idx);
+    }
+  });
+
+  soloedTracks.value.forEach((idx) => {
+    if (idx <= maxIndex) {
+      nextSoloed.add(idx);
+    }
+  });
+
+  mutedTracks.value = nextMuted;
+  soloedTracks.value = nextSoloed;
 }
 
 async function initializePlayback(mode: PlaybackMode = playbackMode.value): Promise<boolean> {
@@ -1442,7 +1518,12 @@ async function startPlayback(mode: PlaybackMode) {
   songBank.cancelAllScheduled();
   songBank.allNotesOff();
 
+  const resumed = await songBank.ensureAudioContextRunning();
   await syncSongBankFromSlots();
+  if (resumed) {
+    // Sync again after resume to rebuild instruments if we were suspended
+    await syncSongBankFromSlots();
+  }
   const initialized = await initializePlayback(mode);
   if (!initialized) return;
 
@@ -2212,8 +2293,11 @@ watch(
 
 watch(
   () => instrumentSlots.value,
-  () => {
-    void syncSongBankFromSlots();
+  async () => {
+    // Ensure audio context is resumed before creating instruments
+    // This provides the required user gesture for browsers' autoplay policy
+    await songBank.ensureAudioContextRunning();
+    await syncSongBankFromSlots();
     void initializePlayback(playbackMode.value);
     void measureVisualizerLayout();
   },
@@ -2822,6 +2906,15 @@ onBeforeUnmount(() => {
   color: #e8f3ff;
   font-weight: 600;
   font-size: 13px;
+}
+.instrument-name-input {
+  width: 100%;
+  font: inherit;
+  color: #e8f3ff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 6px 8px;
 }
 
 .slot-number {
