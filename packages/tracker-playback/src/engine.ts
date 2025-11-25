@@ -16,9 +16,20 @@ import {
   type ScheduledAutomationHandler,
   type AutomationHandler,
   type ScheduledMacroHandler,
-  type MacroHandler
+  type MacroHandler,
+  type ScheduledPitchHandler,
+  type ScheduledVolumeHandler,
+  type ScheduledRetriggerHandler,
+  type PositionCommandHandler
 } from './types';
 import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
+import {
+  type TrackEffectState,
+  createTrackEffectState,
+  processEffectTick0,
+  processEffectTickN,
+  resetEffectStateForNote
+} from './effect-processor';
 
 type ListenerMap = {
   [K in PlaybackEvent]: Set<PlaybackListener<K>>;
@@ -33,6 +44,7 @@ export class PlaybackEngine {
   private position: PlaybackPosition = { row: 0 };
   private bpm = 120;
   private speed = 6; // FastTracker 2 style speed, where 6 is normal
+  private ticksPerRow = 6; // FT2 default ticks per row
   private length = 64;
   private currentSequenceIndex = 0;
   private readonly listeners: ListenerMap = {
@@ -48,6 +60,10 @@ export class PlaybackEngine {
   private readonly automationHandler: AutomationHandler | undefined;
   private readonly scheduledMacroHandler: ScheduledMacroHandler | undefined;
   private readonly macroHandler: MacroHandler | undefined;
+  private readonly scheduledPitchHandler: ScheduledPitchHandler | undefined;
+  private readonly scheduledVolumeHandler: ScheduledVolumeHandler | undefined;
+  private readonly scheduledRetriggerHandler: ScheduledRetriggerHandler | undefined;
+  private readonly positionCommandHandler: PositionCommandHandler | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
   private loopCurrentPattern = false;
@@ -70,6 +86,12 @@ export class PlaybackEngine {
   /** Track if tab is currently visible */
   private isTabVisible = true;
 
+  /** Per-track effect state for FT2-style effects */
+  private trackEffectStates: Map<number, TrackEffectState> = new Map();
+
+  /** Position/pattern commands to process (Bxx, Dxx) */
+  private pendingPosCommand: { type: 'posJump' | 'patBreak'; value: number } | null = null;
+
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
     this.scheduler =
@@ -82,7 +104,12 @@ export class PlaybackEngine {
     this.automationHandler = options.automationHandler;
     this.scheduledMacroHandler = options.scheduledMacroHandler;
     this.macroHandler = options.macroHandler;
+    this.scheduledPitchHandler = options.scheduledPitchHandler;
+    this.scheduledVolumeHandler = options.scheduledVolumeHandler;
+    this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
+    this.positionCommandHandler = options.positionCommandHandler;
     this.audioContext = options.audioContext;
+    this.ticksPerRow = options.ticksPerRow ?? 6;
     this.setupVisibilityHandling();
   }
 
@@ -232,6 +259,7 @@ export class PlaybackEngine {
     this.scheduler.stop();
     this.position = { ...this.position, row: 0 };
     this.currentSequenceIndex = 0;
+    this.resetEffectStates();
     if (this.song && this.song.sequence.length > 0) {
       this.loadPattern(this.song.sequence[0] as string);
     }
@@ -343,73 +371,231 @@ export class PlaybackEngine {
     }
   }
 
+  /**
+   * Get or create effect state for a track
+   */
+  private getTrackEffectState(trackIndex: number): TrackEffectState {
+    let state = this.trackEffectStates.get(trackIndex);
+    if (!state) {
+      state = createTrackEffectState();
+      this.trackEffectStates.set(trackIndex, state);
+    }
+    return state;
+  }
+
+  /**
+   * Reset all effect states (called on stop/load)
+   */
+  private resetEffectStates(): void {
+    this.trackEffectStates.clear();
+    this.pendingPosCommand = null;
+  }
+
+  /**
+   * Calculate time per tick
+   */
+  private getMsPerTick(): number {
+    return this.getMsPerRow() / this.ticksPerRow;
+  }
+
   private scheduleRow(row: number, time: number) {
     if (!this.scheduledNoteHandler) return;
 
     const steps = this.stepIndex.get(row);
-    if (!steps || steps.length === 0) return;
+    const msPerTick = this.getMsPerTick();
+    const secPerTick = msPerTick / 1000;
 
-    // First pass: Apply speed/tempo commands (F commands)
-    for (const step of steps) {
-      if (step.speedCommand !== undefined) {
-        // F01-F1F: Set speed (1-31, where 6 is normal)
-        this.speed = Math.max(1, Math.min(31, step.speedCommand));
-      }
-      if (step.tempoCommand !== undefined) {
-        // F20-FF: Set BPM directly (32-255)
-        this.bpm = Math.max(32, Math.min(255, step.tempoCommand));
+    // First pass: Apply speed/tempo commands (F commands) and position commands
+    if (steps) {
+      for (const step of steps) {
+        if (step.speedCommand !== undefined) {
+          // F01-F1F: Set speed (1-31, where 6 is normal)
+          this.speed = Math.max(1, Math.min(31, step.speedCommand));
+        }
+        if (step.tempoCommand !== undefined) {
+          // F20-FF: Set BPM directly (32-255)
+          this.bpm = Math.max(32, Math.min(255, step.tempoCommand));
+        }
+
+        // Check for position commands (Bxx, Dxx)
+        if (step.effect) {
+          if (step.effect.type === 'posJump') {
+            this.pendingPosCommand = {
+              type: 'posJump',
+              value: step.effect.paramX * 16 + step.effect.paramY
+            };
+          } else if (step.effect.type === 'patBreak') {
+            this.pendingPosCommand = {
+              type: 'patBreak',
+              value: step.effect.paramX * 10 + step.effect.paramY // FT2 uses decimal for Dxx
+            };
+          }
+        }
       }
     }
 
-    // Second pass: Schedule notes and automation
-    for (const step of steps) {
-      const instrumentId = step.instrumentId;
-      if (!instrumentId) continue;
+    // Second pass: Process each step with effects
+    if (steps) {
+      for (const step of steps) {
+        const instrumentId = step.instrumentId;
+        if (!instrumentId) continue;
 
-      if (step.macroIndex !== undefined && step.macroValue !== undefined) {
-        if (this.scheduledMacroHandler) {
-          this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time);
-        } else if (this.macroHandler) {
-          this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
+        const trackIndex = step.trackIndex;
+        const effectState = this.getTrackEffectState(trackIndex);
+
+        // Handle macros
+        if (step.macroIndex !== undefined && step.macroValue !== undefined) {
+          if (this.scheduledMacroHandler) {
+            this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time);
+          } else if (this.macroHandler) {
+            this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
+          }
+        }
+
+        // Handle note-off
+        if (step.isNoteOff) {
+          const event: ScheduledNoteEvent = {
+            type: 'noteOff',
+            instrumentId,
+            row,
+            trackIndex: step.trackIndex,
+            time
+          };
+          if (step.midi !== undefined) {
+            event.midi = step.midi;
+          }
+          this.scheduledNoteHandler(event);
+          continue;
+        }
+
+        // Check if we have an effect that needs per-tick processing
+        const hasTickEffect = step.effect && this.isTickBasedEffect(step.effect.type);
+
+        // Handle note-on with effect processing
+        const newNote = step.midi;
+        const newVelocity = step.velocity;
+
+        // Reset effect state on new note (unless tone portamento)
+        if (newNote !== undefined && step.effect?.type !== 'tonePorta' && step.effect?.type !== 'tonePortaVol') {
+          resetEffectStateForNote(effectState);
+        }
+
+        // Process tick 0
+        const tick0Result = processEffectTick0(effectState, step.effect, newNote, newVelocity);
+
+        // Check for note delay (EDx) - don't trigger note on tick 0
+        const hasNoteDelay = step.effect?.type === 'noteDelay' ||
+          (step.effect?.type === 'extEffect' && step.effect?.extSubtype === 'noteDelay');
+
+        // Schedule note on tick 0 (unless delayed or tone portamento without new note)
+        if (!hasNoteDelay && newNote !== undefined) {
+          // For tone portamento, we update frequency but don't retrigger
+          const isTonePortaContinue = (step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol')
+            && effectState.voiceIndex >= 0;
+
+          if (!isTonePortaContinue) {
+            const velocity = Number.isFinite(newVelocity) ? newVelocity : 127;
+            const event: ScheduledNoteEvent = {
+              type: 'noteOn',
+              instrumentId,
+              midi: newNote,
+              row,
+              trackIndex: step.trackIndex,
+              time,
+              velocity
+            };
+            this.scheduledNoteHandler(event);
+          }
+        }
+
+        // Apply tick 0 frequency if we have pitch handler
+        if (this.scheduledPitchHandler && tick0Result.frequency !== undefined) {
+          this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tick0Result.frequency, time);
+        }
+
+        // Apply tick 0 volume if we have volume handler
+        if (this.scheduledVolumeHandler && tick0Result.volume !== undefined) {
+          this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tick0Result.volume, time);
+        }
+
+        // Handle volume automation (Cxx or step velocity)
+        if (this.scheduledAutomationHandler && step.velocity !== undefined && !tick0Result.volume) {
+          const gain = clamp(step.velocity / 127);
+          this.scheduledAutomationHandler(instrumentId, gain, time);
+        }
+
+        // Handle note cut on tick 0
+        if (tick0Result.cutNote) {
+          const cutEvent: ScheduledNoteEvent = {
+            type: 'noteOff',
+            instrumentId,
+            row,
+            trackIndex: step.trackIndex,
+            time
+          };
+          this.scheduledNoteHandler(cutEvent);
+        }
+
+        // Schedule per-tick effects for ticks 1 to ticksPerRow-1
+        if (hasTickEffect) {
+          for (let tick = 1; tick < this.ticksPerRow; tick++) {
+            const tickTime = time + tick * secPerTick;
+            const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+
+            // Schedule pitch change
+            if (this.scheduledPitchHandler && tickResult.frequency !== undefined) {
+              this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tickResult.frequency, tickTime);
+            }
+
+            // Schedule volume change
+            if (this.scheduledVolumeHandler && tickResult.volume !== undefined) {
+              this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tickResult.volume, tickTime);
+            }
+
+            // Schedule note retrigger
+            if (tickResult.triggerNote && this.scheduledRetriggerHandler) {
+              this.scheduledRetriggerHandler(
+                instrumentId,
+                tickResult.triggerNote.midi,
+                tickResult.triggerNote.velocity,
+                tickTime
+              );
+            }
+
+            // Handle note cut
+            if (tickResult.cutNote) {
+              const cutEvent: ScheduledNoteEvent = {
+                type: 'noteOff',
+                instrumentId,
+                row,
+                trackIndex: step.trackIndex,
+                time: tickTime
+              };
+              this.scheduledNoteHandler(cutEvent);
+            }
+          }
         }
       }
-
-      if (this.scheduledAutomationHandler && step.velocity !== undefined) {
-        const gain = clamp(step.velocity / 127);
-        this.scheduledAutomationHandler(instrumentId, gain, time);
-      }
-
-      if (step.isNoteOff) {
-        const event: ScheduledNoteEvent = {
-          type: 'noteOff',
-          instrumentId,
-          row,
-          trackIndex: step.trackIndex,
-          time
-        };
-        if (step.midi !== undefined) {
-          event.midi = step.midi;
-        }
-        this.scheduledNoteHandler(event);
-        continue;
-      }
-
-      if (step.midi === undefined) continue;
-
-      const velocity = Number.isFinite(step.velocity) ? step.velocity : undefined;
-      const event: ScheduledNoteEvent = {
-        type: 'noteOn',
-        instrumentId,
-        midi: step.midi,
-        row,
-        trackIndex: step.trackIndex,
-        time
-      };
-      if (velocity !== undefined) {
-        event.velocity = velocity;
-      }
-      this.scheduledNoteHandler(event);
     }
+
+    // Process position commands (handled externally)
+    if (this.pendingPosCommand && this.positionCommandHandler) {
+      this.positionCommandHandler(this.pendingPosCommand);
+      this.pendingPosCommand = null;
+    }
+  }
+
+  /**
+   * Check if an effect type requires per-tick processing
+   */
+  private isTickBasedEffect(type: string): boolean {
+    const tickEffects = [
+      'portaUp', 'portaDown', 'tonePorta', 'vibrato',
+      'tonePortaVol', 'vibratoVol', 'tremolo', 'arpeggio',
+      'volSlide', 'panSlide', 'retrigVol', 'tremor',
+      'fineVibrato', 'noteCut', 'noteDelay', 'keyOff'
+    ];
+    return tickEffects.includes(type);
   }
 
   private updatePosition() {

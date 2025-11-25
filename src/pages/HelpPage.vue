@@ -17,13 +17,13 @@
           <div class="pill"><span class="pill-label">Note</span><span>C-4 / ###</span></div>
           <div class="pill"><span class="pill-label">Instr</span><span>01</span></div>
           <div class="pill"><span class="pill-label">Vol</span><span>7F</span></div>
-          <div class="pill"><span class="pill-label">Macro</span><span>0FF</span></div>
+          <div class="pill"><span class="pill-label">Effect</span><span>4A8</span></div>
         </div>
         <ul>
           <li><strong>Note</strong>: musical note (e.g., C-4) or ### for note-off.</li>
           <li><strong>Instr</strong>: two-digit instrument slot ID (01..).</li>
           <li><strong>Vol</strong>: hex velocity (00–FF) mapped to 0–127 MIDI velocity.</li>
-          <li><strong>Macro</strong>: three hex nibbles: <code>Mxx</code> → macro index (0–3) + value (00–FF).</li>
+          <li><strong>Effect</strong>: FT2-style effect command (e.g., <code>4A8</code> = vibrato) or <code>Mnxx</code> for macro automation.</li>
         </ul>
       </section>
 
@@ -49,19 +49,86 @@
 
       <section class="help-section">
         <h2>Effect commands</h2>
-        <p>The macro column supports special effect commands in addition to macro automation:</p>
-        <ul>
-          <li>
-            <strong>Fxx – Speed/Tempo</strong>: Changes playback speed or tempo mid-pattern.
-            <ul>
-              <li><code>F01</code>–<code>F1F</code>: Set speed (ticks per row, 1–31). Lower = faster.</li>
-              <li><code>F20</code>–<code>FFF</code>: Set tempo in BPM (32–255).</li>
-            </ul>
-          </li>
-          <li>
-            <strong>0xx–3xx – Macro</strong>: Set macro slot 0–3 to value xx (00–FF).
-          </li>
-        </ul>
+        <p>The effect column supports FastTracker 2-style commands. Use <code>Mnxx</code> prefix for macro automation.</p>
+
+        <div class="effect-table">
+          <div class="effect-group">
+            <h3>Pitch Effects</h3>
+            <div class="effect-row"><code>0xy</code><span>Arpeggio – cycle base note, +x, +y semitones</span></div>
+            <div class="effect-row"><code>1xx</code><span>Portamento up – slide pitch up xx units/tick</span></div>
+            <div class="effect-row"><code>2xx</code><span>Portamento down – slide pitch down xx units/tick</span></div>
+            <div class="effect-row"><code>3xx</code><span>Tone portamento – glide to note at speed xx</span></div>
+            <div class="effect-row"><code>4xy</code><span>Vibrato – speed x, depth y</span></div>
+            <div class="effect-row"><code>5xy</code><span>Tone porta + vol slide – porta continues, vol x↑ y↓</span></div>
+            <div class="effect-row"><code>6xy</code><span>Vibrato + vol slide – vibrato continues, vol x↑ y↓</span></div>
+            <div class="effect-row"><code>Uxy</code><span>Fine vibrato – ¼ depth vibrato</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Volume Effects</h3>
+            <div class="effect-row"><code>7xy</code><span>Tremolo – volume oscillation, speed x, depth y</span></div>
+            <div class="effect-row"><code>Axy</code><span>Volume slide – x=up, y=down per tick</span></div>
+            <div class="effect-row"><code>Cxx</code><span>Set volume – 00–40 (64 = full)</span></div>
+            <div class="effect-row"><code>Txy</code><span>Tremor – on x+1 ticks, off y+1 ticks</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Panning</h3>
+            <div class="effect-row"><code>8xx</code><span>Set panning – 00=left, 80=center, FF=right</span></div>
+            <div class="effect-row"><code>Pxy</code><span>Panning slide – x=right, y=left per tick</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Timing &amp; Retrigger</h3>
+            <div class="effect-row"><code>9xx</code><span>Sample offset – start sample at xx×256</span></div>
+            <div class="effect-row"><code>Kxx</code><span>Key off – release note after xx ticks</span></div>
+            <div class="effect-row"><code>Rxy</code><span>Retrigger + vol – retrig every y ticks, vol change x</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Speed &amp; Tempo</h3>
+            <div class="effect-row"><code>F01–F1F</code><span>Set speed – ticks per row (1–31, lower=faster)</span></div>
+            <div class="effect-row"><code>F20–FFF</code><span>Set tempo – BPM (32–255)</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Pattern Control</h3>
+            <div class="effect-row"><code>Bxx</code><span>Position jump – jump to sequence position xx</span></div>
+            <div class="effect-row"><code>Dxx</code><span>Pattern break – break to row xx of next pattern</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Global</h3>
+            <div class="effect-row"><code>Gxx</code><span>Set global volume – 00–40</span></div>
+            <div class="effect-row"><code>Hxy</code><span>Global volume slide – x=up, y=down</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Extended Effects (Exy)</h3>
+            <div class="effect-row"><code>E1x</code><span>Fine porta up – once on tick 0</span></div>
+            <div class="effect-row"><code>E2x</code><span>Fine porta down – once on tick 0</span></div>
+            <div class="effect-row"><code>E3x</code><span>Glissando control – 0=off, 1=on (semitone slides)</span></div>
+            <div class="effect-row"><code>E4x</code><span>Vibrato waveform – 0=sine, 1=ramp, 2=square, 3=random</span></div>
+            <div class="effect-row"><code>E5x</code><span>Set finetune – x = finetune value</span></div>
+            <div class="effect-row"><code>E6x</code><span>Pattern loop – x=0 set start, x>0 loop x times</span></div>
+            <div class="effect-row"><code>E7x</code><span>Tremolo waveform – same as vibrato</span></div>
+            <div class="effect-row"><code>E8x</code><span>Set panning (coarse) – 0–F left to right</span></div>
+            <div class="effect-row"><code>E9x</code><span>Retrigger – retrigger note every x ticks</span></div>
+            <div class="effect-row"><code>EAx</code><span>Fine volume up – add x to volume once</span></div>
+            <div class="effect-row"><code>EBx</code><span>Fine volume down – subtract x from volume once</span></div>
+            <div class="effect-row"><code>ECx</code><span>Note cut – cut note after x ticks</span></div>
+            <div class="effect-row"><code>EDx</code><span>Note delay – delay note by x ticks</span></div>
+            <div class="effect-row"><code>EEx</code><span>Pattern delay – delay pattern by x rows</span></div>
+          </div>
+
+          <div class="effect-group">
+            <h3>Macro Automation</h3>
+            <div class="effect-row"><code>M0xx</code><span>Set macro 0 to xx (00–FF → 0–1)</span></div>
+            <div class="effect-row"><code>M1xx</code><span>Set macro 1 to xx</span></div>
+            <div class="effect-row"><code>M2xx</code><span>Set macro 2 to xx</span></div>
+            <div class="effect-row"><code>M3xx</code><span>Set macro 3 to xx</span></div>
+          </div>
+        </div>
       </section>
 
       <section class="help-section">
@@ -147,6 +214,14 @@ h1 {
   font-size: 18px;
 }
 
+.help-section h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+  color: #9fb3d3;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .help-section ul {
   margin: 0;
   padding-left: 18px;
@@ -181,5 +256,47 @@ code {
   background: rgba(255, 255, 255, 0.08);
   padding: 2px 6px;
   border-radius: 6px;
+}
+
+.effect-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.effect-group {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.effect-group h3 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #70c2ff;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 6px;
+}
+
+.effect-row {
+  display: flex;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.effect-row code {
+  flex-shrink: 0;
+  min-width: 60px;
+  font-size: 11px;
+  color: #4df2c5;
+  background: rgba(77, 242, 197, 0.1);
+}
+
+.effect-row span {
+  color: #b8c9e0;
 }
 </style>

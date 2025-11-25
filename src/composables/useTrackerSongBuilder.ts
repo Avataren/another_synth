@@ -123,6 +123,8 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
           step.speedCommand = effectCmd.speed;
         } else if (effectCmd.type === 'tempo') {
           step.tempoCommand = effectCmd.bpm;
+        } else if (effectCmd.type === 'effect') {
+          step.effect = effectCmd.effect;
         }
       }
 

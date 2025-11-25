@@ -1041,6 +1041,59 @@ export default class InstrumentV2 {
   }
 
   /**
+   * Set the frequency for a specific voice at a specific time.
+   * Used for portamento, vibrato, arpeggio effects.
+   * @param voiceIndex - Voice index (0-7), or -1 to set all voices
+   * @param frequency - Frequency in Hz
+   * @param time - Audio context time
+   */
+  public setVoiceFrequencyAtTime(voiceIndex: number, frequency: number, time: number): void {
+    if (!this.workletNode) return;
+
+    if (voiceIndex < 0) {
+      // Set all active voices
+      for (let i = 0; i < this.voiceLimit; i++) {
+        const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
+        if (freqParam) {
+          freqParam.setValueAtTime(frequency, time);
+        }
+      }
+    } else if (voiceIndex < this.voiceLimit) {
+      const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+      if (freqParam) {
+        freqParam.setValueAtTime(frequency, time);
+      }
+    }
+  }
+
+  /**
+   * Set the gain for a specific voice at a specific time.
+   * Used for tremolo, volume slide effects.
+   * @param voiceIndex - Voice index (0-7), or -1 to set all voices
+   * @param gain - Gain value (0-1)
+   * @param time - Audio context time
+   */
+  public setVoiceGainAtTime(voiceIndex: number, gain: number, time: number): void {
+    if (!this.workletNode) return;
+    const clamped = Math.max(0, Math.min(1, gain));
+
+    if (voiceIndex < 0) {
+      // Set all active voices
+      for (let i = 0; i < this.voiceLimit; i++) {
+        const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+        if (gainParam) {
+          gainParam.setValueAtTime(clamped, time);
+        }
+      }
+    } else if (voiceIndex < this.voiceLimit) {
+      const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+      if (gainParam) {
+        gainParam.setValueAtTime(clamped, time);
+      }
+    }
+  }
+
+  /**
    * Set the instrument output gain (master volume for this instrument).
    * @param gain - Gain value (0-1, can go higher for boost)
    * @param time - Optional audio context time for scheduling

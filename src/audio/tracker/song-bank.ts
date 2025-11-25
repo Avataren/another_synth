@@ -462,6 +462,60 @@ export class TrackerSongBank {
     active.instrument.setMacro(macroIndex, value, time);
   }
 
+  /**
+   * Set the pitch (frequency) for a specific voice at a specific time.
+   * Used for portamento, vibrato, arpeggio effects.
+   */
+  setVoicePitchAtTime(
+    instrumentId: string | undefined,
+    voiceIndex: number,
+    frequency: number,
+    time: number
+  ) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    active.instrument.setVoiceFrequencyAtTime(voiceIndex, frequency, time);
+  }
+
+  /**
+   * Set the volume for a specific voice at a specific time.
+   * Used for tremolo, volume slide effects.
+   */
+  setVoiceVolumeAtTime(
+    instrumentId: string | undefined,
+    voiceIndex: number,
+    volume: number,
+    time: number
+  ) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    active.instrument.setVoiceGainAtTime(voiceIndex, volume, time);
+  }
+
+  /**
+   * Retrigger a note at a specific time (for E9x, Rxy effects).
+   */
+  retriggerNoteAtTime(
+    instrumentId: string | undefined,
+    midi: number,
+    velocity: number,
+    time: number,
+    trackIndex?: number
+  ) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    // For retrigger, we want to trigger the same note again
+    // This requires briefly gating off then back on
+    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, { allowDuplicate: true });
+    this.getTrackNotes(instrumentId, trackIndex).add(midi);
+    if (voiceIndex !== undefined) {
+      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
+    }
+  }
+
   /** Ensure the audio context is running (resume if suspended) */
   /**
    * Ensure the audio context is running (resume if suspended).
