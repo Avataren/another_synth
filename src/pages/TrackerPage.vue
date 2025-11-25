@@ -346,6 +346,7 @@
             :selection-rect="selectionRect"
             :auto-scroll="autoScroll"
             :is-playing="isPlaying"
+            :playback-mode="playbackMode"
             :scroll-top="patternAreaScrollTop"
             :container-height="patternAreaHeight"
             @rowSelected="setActiveRow"

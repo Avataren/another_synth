@@ -1,6 +1,7 @@
 <template>
   <div
     class="tracker-pattern"
+    :class="{ 'playback-pattern': isPlaying && playbackMode === 'pattern', 'playback-song': isPlaying && playbackMode === 'song' }"
     :style="{
       '--tracker-row-height': rowHeight,
       '--tracker-header-height': headerHeight,
@@ -18,7 +19,6 @@
               type="button"
               class="row-number"
               :class="{
-                playing: isPlaying && playbackRow === row,
                 selected: effectiveSelectedRow === row,
                 'in-selection': isRowInSelection(row)
               }"
@@ -70,6 +70,7 @@ interface Props {
   activeColumn: number;
   autoScroll: boolean;
   isPlaying: boolean;
+  playbackMode: 'pattern' | 'song';
   activeMacroNibble: number;
   selectionRect: TrackerSelectionRect | null;
   scrollTop: number;
@@ -321,14 +322,6 @@ onBeforeUnmount(() => {
   background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
 }
 
-.row-number.playing {
-  color: var(--tracker-cell-active-text, #0c1624);
-  font-weight: 800;
-  background: var(--tracker-cell-active-bg, linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9)));
-  border-color: transparent;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-}
-
 .row-number.selected {
   border-color: var(--panel-border, rgba(255, 255, 255, 0.25));
 }
@@ -348,12 +341,22 @@ onBeforeUnmount(() => {
 .active-row-bar {
   position: absolute;
   inset: 0 0 auto 0;
-  background: var(--tracker-active-bg, linear-gradient(90deg, rgba(77, 242, 197, 0.18), rgba(88, 176, 255, 0.22)));
   border: 1px solid var(--tracker-border-hover, rgba(255, 255, 255, 0.12));
   border-radius: 10px;
   pointer-events: none;
   transition: none;
   will-change: transform;
+  background: var(--tracker-active-bg, linear-gradient(90deg, rgba(77, 242, 197, 0.18), rgba(88, 176, 255, 0.22)));
+}
+
+.playback-pattern .active-row-bar {
+  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
+  border: 2px solid var(--tracker-accent-primary, rgb(77, 242, 197));
+}
+
+.playback-song .active-row-bar {
+  background: rgba(88, 176, 255, 0.14);
+  border: 2px solid var(--tracker-accent-secondary, rgb(88, 176, 255));
 }
 
 .tracks-wrapper::-webkit-scrollbar {
