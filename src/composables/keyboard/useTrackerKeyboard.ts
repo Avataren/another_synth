@@ -7,6 +7,10 @@ import { playbackCommands } from './commands/playback';
 import { transposeCommands } from './commands/transpose';
 import { utilityCommands } from './commands/utility';
 
+// Keys that should be throttled when held down
+const THROTTLED_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
+const THROTTLE_MS = 30; // ~33fps for smooth navigation
+
 /**
  * Composable for handling all tracker keyboard shortcuts
  *
@@ -31,6 +35,10 @@ export function useTrackerKeyboard(context: TrackerKeyboardContext) {
     ...utilityCommands
   ];
 
+  // Throttle state for navigation keys
+  let lastNavigationTime = 0;
+  let lastNavigationKey = '';
+
   /**
    * Main keyboard event handler
    * Call this from the component's @keydown handler
@@ -40,6 +48,17 @@ export function useTrackerKeyboard(context: TrackerKeyboardContext) {
     const target = event.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
       return false;
+    }
+
+    // Throttle navigation keys when held down (repeat events)
+    if (event.repeat && THROTTLED_KEYS.has(event.key)) {
+      const now = performance.now();
+      if (event.key === lastNavigationKey && now - lastNavigationTime < THROTTLE_MS) {
+        event.preventDefault();
+        return true; // Consumed but throttled
+      }
+      lastNavigationTime = now;
+      lastNavigationKey = event.key;
     }
 
     // Find the first matching command

@@ -5,51 +5,46 @@
     :style="{ '--entry-accent': accentColor || 'var(--tracker-accent)' }"
     role="button"
     tabindex="-1"
-    @click="onSelectRow"
+    @click="handleClick"
     @mousedown.left="onMouseDownRow"
     @mouseenter="onMouseEnterRow"
   >
     <span
       class="cell note"
       :class="{ 'cell-active': isActiveCell(0) }"
-      @click.stop="onSelectCell(0)"
-      @mousedown.stop
+      data-cell="0"
     >
       {{ cells.note.display }}
     </span>
     <span
       class="cell instrument"
       :class="{ 'cell-active': isActiveCell(1) }"
-      @click.stop="onSelectCell(1)"
-      @mousedown.stop
+      data-cell="1"
     >
       {{ cells.instrument.display }}
     </span>
     <span
       class="cell volume volume-high"
       :class="{ 'cell-active': isActiveCell(2) }"
-      @click.stop="onSelectCell(2)"
-      @mousedown.stop
+      data-cell="2"
     >
       {{ cells.volumeHi.display }}
     </span>
     <span
       class="cell volume volume-low"
       :class="{ 'cell-active': isActiveCell(3) }"
-      @click.stop="onSelectCell(3)"
-      @mousedown.stop
+      data-cell="3"
     >
       {{ cells.volumeLo.display }}
     </span>
-    <span class="cell effect" :class="{ 'cell-active': isActiveCell(4) }">
+    <span class="cell effect" :class="{ 'cell-active': isActiveCell(4) }" data-cell="4">
       <span class="macro-digits">
         <span
           v-for="(digit, idx) in cells.macroDigits"
           :key="idx"
           class="macro-digit"
           :class="{ active: isActiveCell(4) && activeMacroNibble === idx }"
-          @click.stop="onSelectCell(4, idx)"
-          @mousedown.stop
+          :data-macro="idx"
         >
           {{ digit }}
         </span>
@@ -140,12 +135,28 @@ const cells = computed(() => {
   return processCells(props.entry);
 });
 
-function onSelectRow() {
-  emit('selectCell', { row: props.rowIndex, column: 0, trackIndex: props.trackIndex });
-}
+// Event delegation handler - single click handler for all cells
+function handleClick(event: MouseEvent) {
+  const target = event.target as HTMLElement;
 
-function onSelectCell(column: number, macroNibble?: number) {
-  emit('selectCell', { row: props.rowIndex, column, trackIndex: props.trackIndex, macroNibble });
+  // Check for macro digit click first (nested inside effect cell)
+  const macroAttr = target.dataset.macro;
+  if (macroAttr !== undefined) {
+    const macroNibble = parseInt(macroAttr, 10);
+    emit('selectCell', { row: props.rowIndex, column: 4, trackIndex: props.trackIndex, macroNibble });
+    return;
+  }
+
+  // Check for cell click
+  const cellAttr = target.dataset.cell ?? target.closest('[data-cell]')?.getAttribute('data-cell');
+  if (cellAttr !== undefined && cellAttr !== null) {
+    const column = parseInt(cellAttr, 10);
+    emit('selectCell', { row: props.rowIndex, column, trackIndex: props.trackIndex });
+    return;
+  }
+
+  // Default: select the row (column 0)
+  emit('selectCell', { row: props.rowIndex, column: 0, trackIndex: props.trackIndex });
 }
 
 function onMouseDownRow() {
