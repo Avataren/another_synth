@@ -13,7 +13,6 @@ interface Props {
   audioContext: AudioContext | null;
 }
 
-const WAVEFORM_COLOR = '#4df2c5';
 const props = defineProps<Props>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -24,6 +23,32 @@ let unregisterAnimation: (() => void) | null = null;
 // Cached canvas dimensions - only update on resize
 let canvasWidth = 0;
 let canvasHeight = 0;
+
+// Cached theme color - updated only when theme changes
+let cachedWaveformColor = 'rgb(77, 242, 197)';
+let themeObserver: MutationObserver | null = null;
+
+function getThemeColor(): string {
+  const style = getComputedStyle(document.documentElement);
+  return style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+}
+
+function updateCachedColor() {
+  cachedWaveformColor = getThemeColor();
+}
+
+function setupThemeObserver() {
+  if (themeObserver) return;
+
+  themeObserver = new MutationObserver(() => {
+    updateCachedColor();
+  });
+
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style', 'class']
+  });
+}
 
 function updateCanvasSize() {
   const canvas = canvasRef.value;
@@ -86,7 +111,7 @@ function startVisualization() {
     ctx.stroke();
 
     // Draw waveform
-    ctx.strokeStyle = WAVEFORM_COLOR;
+    ctx.strokeStyle = cachedWaveformColor;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
 
@@ -136,6 +161,8 @@ function handleResize() {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize);
+  updateCachedColor();
+  setupThemeObserver();
   if (props.audioNode && props.audioContext) {
     setupAnalyser();
   }
@@ -143,6 +170,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
+  if (themeObserver) {
+    themeObserver.disconnect();
+    themeObserver = null;
+  }
   cleanup();
 });
 
