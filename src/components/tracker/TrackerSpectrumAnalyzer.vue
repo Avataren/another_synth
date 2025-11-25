@@ -4,6 +4,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 
 interface Props {
   node: AudioNode | null;
@@ -17,7 +18,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
-let animationFrameId: number | null = null;
+let unregisterAnimation: (() => void) | null = null;
 let dataArray: Uint8Array | null = null;
 
 // Smoothed values for more fluid animation
@@ -26,11 +27,22 @@ const smoothingFactor = 0.7;
 
 // Peak hold values for visual effect
 let peakData: Float32Array | null = null;
-let peakDecay = 0.995;
+const peakDecay = 0.995;
+
+// Cached canvas dimensions - only update on resize
+let canvasWidth = 0;
+let canvasHeight = 0;
+let displayWidth = 0;
+let displayHeight = 0;
+let dpr = 1;
 
 // Cached theme colors - updated only when theme changes
 let cachedColors: { primary: { r: number; g: number; b: number }; secondary: { r: number; g: number; b: number } } | null = null;
 let themeObserver: MutationObserver | null = null;
+
+// Pre-calculated bar colors for each position (updated when theme changes)
+let barColors: Array<{ r: number; g: number; b: number }> = [];
+const MAX_BARS = 128;
 
 function getThemeColors() {
   const style = getComputedStyle(document.documentElement);
@@ -52,15 +64,18 @@ function getThemeColors() {
   };
 }
 
-function getCachedColors() {
-  if (!cachedColors) {
-    cachedColors = getThemeColors();
-  }
-  return cachedColors;
-}
-
 function updateCachedColors() {
   cachedColors = getThemeColors();
+  // Pre-calculate interpolated colors for each bar position
+  barColors = [];
+  for (let i = 0; i < MAX_BARS; i++) {
+    const t = i / MAX_BARS;
+    barColors.push({
+      r: Math.round(cachedColors.primary.r * (1 - t) + cachedColors.secondary.r * t),
+      g: Math.round(cachedColors.primary.g * (1 - t) + cachedColors.secondary.g * t),
+      b: Math.round(cachedColors.primary.b * (1 - t) + cachedColors.secondary.b * t)
+    });
+  }
 }
 
 function setupThemeObserver() {
@@ -74,6 +89,31 @@ function setupThemeObserver() {
     attributes: true,
     attributeFilter: ['style', 'class']
   });
+}
+
+function updateCanvasSize() {
+  const canvas = canvasRef.value;
+  if (!canvas) return false;
+
+  const rect = canvas.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  const nextWidth = Math.max(1, Math.floor(rect.width * dpr));
+  const nextHeight = Math.max(1, Math.floor(rect.height * dpr));
+
+  if (canvasWidth !== nextWidth || canvasHeight !== nextHeight) {
+    canvasWidth = nextWidth;
+    canvasHeight = nextHeight;
+    displayWidth = rect.width;
+    displayHeight = rect.height;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.scale(dpr, dpr);
+    }
+    return true;
+  }
+  return false;
 }
 
 function attachAnalyzer(audioNode: AudioNode) {
@@ -98,6 +138,12 @@ function startVisualization() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // Initial setup
+  updateCanvasSize();
+  if (!cachedColors) {
+    updateCachedColors();
+  }
+
   const bufferLength = analyser.frequencyBinCount;
   const localDataArray = dataArray;
   const localSmoothed = smoothedData;
@@ -105,37 +151,16 @@ function startVisualization() {
 
   const draw = () => {
     if (!ctx || !analyser || !localDataArray || !localSmoothed || !localPeaks) return;
-
-    animationFrameId = requestAnimationFrame(draw);
-
-    // Keep canvas in sync with display size
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const nextWidth = Math.max(1, Math.floor(rect.width * dpr));
-    const nextHeight = Math.max(1, Math.floor(rect.height * dpr));
-
-    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-      canvas.width = nextWidth;
-      canvas.height = nextHeight;
-      ctx.scale(dpr, dpr);
-    }
-
-    if (canvas.width === 0 || canvas.height === 0) return;
-
-    const width = rect.width;
-    const height = rect.height;
+    if (displayWidth === 0 || displayHeight === 0) return;
 
     analyser.getByteFrequencyData(localDataArray);
 
     // Clear with transparent background
-    ctx.clearRect(0, 0, width, height);
-
-    // Use cached theme colors (updated only on theme change)
-    const colors = getCachedColors();
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
 
     // Use logarithmic frequency scaling for better visual distribution
-    const numBars = Math.min(128, Math.floor(width / 6));
-    const barWidth = width / numBars;
+    const numBars = Math.min(MAX_BARS, Math.floor(displayWidth / 6));
+    const barWidth = displayWidth / numBars;
     const barGap = 1;
 
     for (let i = 0; i < numBars; i++) {
@@ -154,20 +179,17 @@ function startVisualization() {
         localPeaks[i] = localPeaks[i]! * peakDecay;
       }
 
-      const barHeight = localSmoothed[i]! * height * 0.85;
-      const peakHeight = localPeaks[i]! * height * 0.85;
+      const barHeight = localSmoothed[i]! * displayHeight * 0.85;
+      const peakHeight = localPeaks[i]! * displayHeight * 0.85;
 
       const x = i * barWidth;
-      const y = height - barHeight;
+      const y = displayHeight - barHeight;
+
+      // Use pre-calculated colors
+      const { r, g, b } = barColors[i] ?? barColors[0]!;
 
       // Create gradient based on frequency position
-      const gradient = ctx.createLinearGradient(x, height, x, y);
-      const t = i / numBars;
-
-      // Interpolate between primary and secondary colors
-      const r = Math.round(colors.primary.r * (1 - t) + colors.secondary.r * t);
-      const g = Math.round(colors.primary.g * (1 - t) + colors.secondary.g * t);
-      const b = Math.round(colors.primary.b * (1 - t) + colors.secondary.b * t);
+      const gradient = ctx.createLinearGradient(x, displayHeight, x, y);
 
       // Opacity based on height for glow effect - transparent overlay
       const baseOpacity = 0.15 + localSmoothed[i]! * 0.35;
@@ -180,7 +202,7 @@ function startVisualization() {
 
       // Draw peak line with subtle glow
       if (peakHeight > 2 && localPeaks[i]! > 0.05) {
-        const peakY = height - peakHeight;
+        const peakY = displayHeight - peakHeight;
         const peakOpacity = Math.min(0.5, localPeaks[i]! * 0.6);
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${peakOpacity})`;
         ctx.fillRect(x + barGap / 2, peakY, barWidth - barGap, 2);
@@ -188,20 +210,22 @@ function startVisualization() {
     }
 
     // Draw subtle reflection at the bottom
-    const reflectionGradient = ctx.createLinearGradient(0, height, 0, height - 40);
-    reflectionGradient.addColorStop(0, `rgba(${colors.primary.r}, ${colors.primary.g}, ${colors.primary.b}, 0.05)`);
+    const colors = barColors[0]!;
+    const reflectionGradient = ctx.createLinearGradient(0, displayHeight, 0, displayHeight - 40);
+    reflectionGradient.addColorStop(0, `rgba(${colors.r}, ${colors.g}, ${colors.b}, 0.05)`);
     reflectionGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = reflectionGradient;
-    ctx.fillRect(0, height - 40, width, 40);
+    ctx.fillRect(0, displayHeight - 40, displayWidth, 40);
   };
 
-  draw();
+  // Register with shared animation loop
+  unregisterAnimation = registerAnimationCallback(draw);
 }
 
 function cleanup() {
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
+  if (unregisterAnimation) {
+    unregisterAnimation();
+    unregisterAnimation = null;
   }
 
   if (analyser) {
@@ -212,10 +236,20 @@ function cleanup() {
   dataArray = null;
   smoothedData = null;
   peakData = null;
+  canvasWidth = 0;
+  canvasHeight = 0;
+  displayWidth = 0;
+  displayHeight = 0;
+}
+
+function handleResize() {
+  updateCanvasSize();
 }
 
 onMounted(() => {
   setupThemeObserver();
+  updateCachedColors();
+  window.addEventListener('resize', handleResize);
   if (props.node) {
     attachAnalyzer(props.node);
   }
@@ -223,6 +257,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   cleanup();
+  window.removeEventListener('resize', handleResize);
   if (themeObserver) {
     themeObserver.disconnect();
     themeObserver = null;

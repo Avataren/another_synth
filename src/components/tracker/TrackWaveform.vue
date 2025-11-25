@@ -6,6 +6,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 
 interface Props {
   audioNode: AudioNode | null;
@@ -18,7 +19,24 @@ const props = defineProps<Props>();
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
 let dataArray: Uint8Array | null = null;
-let animationFrameId: number | null = null;
+let unregisterAnimation: (() => void) | null = null;
+
+// Cached canvas dimensions - only update on resize
+let canvasWidth = 0;
+let canvasHeight = 0;
+
+function updateCanvasSize() {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width !== canvasWidth || rect.height !== canvasHeight) {
+    canvasWidth = rect.width;
+    canvasHeight = rect.height;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+  }
+}
 
 function setupAnalyser() {
   cleanup();
@@ -40,33 +58,31 @@ function startVisualization() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // Initial size measurement
+  updateCanvasSize();
+
+  // Store references for the draw callback
+  const localAnalyser = analyser;
+  const localDataArray = dataArray;
+
   const draw = () => {
-    if (!analyser || !dataArray || !ctx) return;
+    if (!localAnalyser || !localDataArray || !ctx || canvasWidth === 0) return;
 
-    animationFrameId = requestAnimationFrame(draw);
-
-    // Ensure canvas resolution matches display size
-    const rect = canvas.getBoundingClientRect();
-    if (canvas.width !== rect.width || canvas.height !== rect.height) {
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-    }
-
-    analyser.getByteTimeDomainData(dataArray);
+    localAnalyser.getByteTimeDomainData(localDataArray);
 
     // Clear with transparent background
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
     // Draw background
     ctx.fillStyle = 'rgba(12, 16, 24, 0.6)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     // Draw center line
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, canvas.height / 2);
-    ctx.lineTo(canvas.width, canvas.height / 2);
+    ctx.moveTo(0, canvasHeight / 2);
+    ctx.lineTo(canvasWidth, canvasHeight / 2);
     ctx.stroke();
 
     // Draw waveform
@@ -74,13 +90,13 @@ function startVisualization() {
     ctx.lineWidth = 1.5;
     ctx.beginPath();
 
-    const sliceWidth = canvas.width / dataArray.length;
+    const sliceWidth = canvasWidth / localDataArray.length;
     let x = 0;
 
-    for (let i = 0; i < dataArray.length; i++) {
-      const sample = dataArray[i] ?? 128;
+    for (let i = 0; i < localDataArray.length; i++) {
+      const sample = localDataArray[i] ?? 128;
       const v = sample / 128.0;
-      const y = (v * canvas.height) / 2;
+      const y = (v * canvasHeight) / 2;
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -94,13 +110,14 @@ function startVisualization() {
     ctx.stroke();
   };
 
-  draw();
+  // Register with shared animation loop
+  unregisterAnimation = registerAnimationCallback(draw);
 }
 
 function cleanup() {
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
+  if (unregisterAnimation) {
+    unregisterAnimation();
+    unregisterAnimation = null;
   }
 
   if (analyser) {
@@ -109,15 +126,23 @@ function cleanup() {
   }
 
   dataArray = null;
+  canvasWidth = 0;
+  canvasHeight = 0;
+}
+
+function handleResize() {
+  updateCanvasSize();
 }
 
 onMounted(() => {
+  window.addEventListener('resize', handleResize);
   if (props.audioNode && props.audioContext) {
     setupAnalyser();
   }
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
   cleanup();
 });
 
