@@ -28,6 +28,7 @@
               {{ formatRow(row) }}
             </button>
           </div>
+          <div class="row-playback-bar" :style="rowBarStyle"></div>
         </div>
       </div>
 
@@ -136,9 +137,17 @@ const activeBarStyle = computed(() => {
   const offset = headerHeightPx + 6 + props.playbackRow * (rowHeightPx + rowGapPx);
   return {
     transform: `translateY(${offset}px)`,
-    height: rowHeight
-    ,
+    height: rowHeight,
     width: activeBarWidth.value ? `${activeBarWidth.value}px` : '100%'
+  };
+});
+
+const rowBarStyle = computed(() => {
+  const row = props.isPlaying ? props.playbackRow : props.selectedRow;
+  const offset = row * (rowHeightPx + rowGapPx);
+  return {
+    transform: `translateY(${offset}px)`,
+    height: rowHeight
   };
 });
 
@@ -326,6 +335,29 @@ onBeforeUnmount(() => {
   border-color: var(--panel-border, rgba(255, 255, 255, 0.25));
 }
 
+.row-playback-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-radius: 10px;
+  pointer-events: none;
+  will-change: transform;
+  z-index: 10;
+  border: 2px solid var(--panel-border, rgba(255, 255, 255, 0.25));
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.playback-pattern .row-playback-bar {
+  border-color: var(--tracker-accent-primary, rgb(77, 242, 197));
+  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
+}
+
+.playback-song .row-playback-bar {
+  border-color: var(--tracker-accent-secondary, rgb(88, 176, 255));
+  background: rgba(88, 176, 255, 0.14);
+}
+
 .tracks-wrapper {
   --tracker-track-width: 180px;
   --tracker-track-gap: 10px;
@@ -341,12 +373,13 @@ onBeforeUnmount(() => {
 .active-row-bar {
   position: absolute;
   inset: 0 0 auto 0;
-  border: 1px solid var(--tracker-border-hover, rgba(255, 255, 255, 0.12));
   border-radius: 10px;
   pointer-events: none;
   transition: none;
   will-change: transform;
-  background: var(--tracker-active-bg, linear-gradient(90deg, rgba(77, 242, 197, 0.18), rgba(88, 176, 255, 0.22)));
+  z-index: 10;
+  border: 2px solid transparent;
+  background: transparent;
 }
 
 .playback-pattern .active-row-bar {

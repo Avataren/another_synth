@@ -18,7 +18,8 @@
       "Bash(for file in src/components/tracker/*.vue)",
       "Bash(done)",
       "Bash(for file in src/stores/*.ts)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npx vue-tsc:*)"
     ],
     "deny": [],
     "ask": []
