@@ -1,6 +1,6 @@
 <template>
   <q-card-section
-    class="row items-center justify-between bg-primary text-white"
+    class="row items-center justify-between card-header"
   >
     <!-- Left side: Title -->
     <div class="text-h6 header-title">
@@ -90,3 +90,19 @@ function onCloseClicked() {
   emits('closeClicked');
 }
 </script>
+
+<style scoped>
+.card-header {
+  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.header-title {
+  color: var(--text-primary);
+}
+
+.name-input {
+  color: var(--text-primary);
+}
+</style>

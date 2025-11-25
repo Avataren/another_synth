@@ -26,24 +26,22 @@ let currentConnectedNode: AudioNode | null = null;
 let canvasWidth = 0;
 let canvasHeight = 0;
 
-// Cached theme color - updated only when theme changes
+// Cached theme colors - updated only when theme changes
 let cachedWaveformColor = 'rgb(77, 242, 197)';
+let cachedBgColor = '#0b111a';
 let themeObserver: MutationObserver | null = null;
 
-function getThemeColor(): string {
+function updateCachedColors() {
   const style = getComputedStyle(document.documentElement);
-  return style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
-}
-
-function updateCachedColor() {
-  cachedWaveformColor = getThemeColor();
+  cachedWaveformColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
 }
 
 function setupThemeObserver() {
   if (themeObserver) return;
 
   themeObserver = new MutationObserver(() => {
-    updateCachedColor();
+    updateCachedColors();
   });
 
   themeObserver.observe(document.documentElement, {
@@ -122,11 +120,8 @@ function startVisualization() {
 
     localAnalyser.getByteTimeDomainData(localDataArray);
 
-    // Clear with transparent background
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-    // Draw background
-    ctx.fillStyle = 'rgba(12, 16, 24, 0.6)';
+    // Clear and draw background
+    ctx.fillStyle = cachedBgColor;
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     // Draw center line
@@ -190,7 +185,7 @@ function handleResize() {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize);
-  updateCachedColor();
+  updateCachedColors();
   setupThemeObserver();
   if (props.audioContext) {
     setupAnalyser();
@@ -221,10 +216,10 @@ watch(
 .track-waveform {
   width: 100%;
   height: 56px;
-  border-radius: 4px;
+  border-radius: 6px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(12, 16, 24, 0.6);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
+  background: var(--app-background, #0b111a);
 }
 
 canvas {

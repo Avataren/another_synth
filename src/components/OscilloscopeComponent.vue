@@ -26,6 +26,20 @@ const props = withDefaults(defineProps<Props>(), { node: null });
 const node = computed(() => props.node);
 const leftCanvasRef = ref<HTMLCanvasElement | null>(null);
 const rightCanvasRef = ref<HTMLCanvasElement | null>(null);
+
+// Theme color caching
+let cachedBgColor = '#0b111a';
+let cachedAccentColor = 'rgb(77, 242, 197)';
+let cachedTextColor = 'rgba(255, 255, 255, 0.6)';
+let oscThemeObserver: MutationObserver | null = null;
+
+function updateOscThemeColors() {
+  const style = getComputedStyle(document.documentElement);
+  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
+  cachedAccentColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedTextColor = style.getPropertyValue('--text-muted').trim() || 'rgba(255, 255, 255, 0.6)';
+}
+
 let splitter: ChannelSplitterNode | null = null;
 let leftAnalyser: AnalyserNode | null = null;
 let rightAnalyser: AnalyserNode | null = null;
@@ -98,11 +112,11 @@ const startVisualization = () => {
     analyser.getByteTimeDomainData(buffer);
     const bufferLength = analyser.frequencyBinCount;
 
-    ctx.fillStyle = 'rgb(32, 45, 66)';
+    ctx.fillStyle = cachedBgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgb(160, 190, 225)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = cachedAccentColor;
     ctx.beginPath();
 
     const sliceWidth = canvas.width / bufferLength;
@@ -126,7 +140,7 @@ const startVisualization = () => {
     ctx.stroke();
 
     // Draw label in the corner
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillStyle = cachedTextColor;
     ctx.font = '11px sans-serif';
     ctx.fillText(label, 8, 14);
   };
@@ -173,6 +187,18 @@ const cleanup = () => {
 };
 
 onMounted(() => {
+  // Initialize theme colors
+  updateOscThemeColors();
+
+  // Watch for theme changes
+  oscThemeObserver = new MutationObserver(() => {
+    updateOscThemeColors();
+  });
+  oscThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style'],
+  });
+
   if (props.node) {
     attachOscilloscope(props.node);
   }
@@ -180,6 +206,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   cleanup();
+  oscThemeObserver?.disconnect();
 });
 
 watch(node, (newNode, _oldNode) => {
@@ -209,8 +236,8 @@ watch(node, (newNode, _oldNode) => {
 canvas {
   width: 100%;
   height: 120px;
-  border: 1px solid #273140;
-  background-color: rgb(20, 26, 36);
+  border: 1px solid var(--panel-border);
+  background-color: var(--app-background);
   border-radius: 8px;
 }
 

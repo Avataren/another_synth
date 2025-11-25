@@ -823,8 +823,8 @@ const handleNewBank = () => {
   align-items: center;
   gap: 12px;
   padding: 6px 12px;
-  background-color: #2a2a2a;
-  border-bottom: 1px solid #444;
+  background-color: var(--panel-background-alt);
+  border-bottom: 1px solid var(--panel-border);
   box-sizing: border-box;
 }
 
@@ -854,18 +854,18 @@ const handleNewBank = () => {
   gap: 6px;
   padding: 4px 8px;
   border-radius: 999px;
-  background-color: #3a3a3a;
+  background-color: var(--button-background);
 }
 
 .bank-name {
   font-weight: bold;
   font-size: 12px;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .patch-count {
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .patch-name-input {
@@ -890,7 +890,7 @@ const handleNewBank = () => {
   width: 280px;
   max-height: 360px;
   padding: 12px;
-  background-color: #1e1e1e;
+  background-color: var(--panel-background);
 }
 
 .patch-filter-input {

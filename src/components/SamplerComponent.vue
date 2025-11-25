@@ -134,8 +134,14 @@
             ref="fileInput"
             type="file"
             accept="audio/wav,.wav"
-            class="file-input"
+            class="file-input-hidden"
             @change="handleFileUpload"
+          />
+          <q-btn
+            icon="folder_open"
+            label="Choose File"
+            class="choose-file-btn"
+            @click="triggerFileInput"
           />
         </div>
       </div>
@@ -175,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
@@ -263,6 +269,19 @@ const waveformHeight = 120;
 const isWaveformLoading = ref(false);
 const waveformError = ref<string | null>(null);
 
+// Theme color caching for canvas drawing
+let cachedBgColor = '#0b111a';
+let cachedGridColor = 'rgba(255, 255, 255, 0.08)';
+let cachedAccentColor = 'rgb(77, 242, 197)';
+let samplerThemeObserver: MutationObserver | null = null;
+
+function updateSamplerThemeColors() {
+  const style = getComputedStyle(document.documentElement);
+  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
+  cachedGridColor = style.getPropertyValue('--panel-border').trim() || 'rgba(255, 255, 255, 0.08)';
+  cachedAccentColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+}
+
 const loopModeOptions = [
   { label: 'Off', value: SamplerLoopMode.Off },
   { label: 'Loop', value: SamplerLoopMode.Loop },
@@ -293,6 +312,10 @@ const durationLabel = computed(() => {
 });
 
 const fileInput = ref<HTMLInputElement | null>(null);
+
+function triggerFileInput() {
+  fileInput.value?.click();
+}
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const noteOptions = Array.from({ length: 73 }, (_, index) => {
@@ -476,11 +499,28 @@ watch(
 );
 
 onMounted(() => {
+  // Initialize theme colors
+  updateSamplerThemeColors();
+
+  // Watch for theme changes
+  samplerThemeObserver = new MutationObserver(() => {
+    updateSamplerThemeColors();
+    drawWaveform(waveformData.value);
+  });
+  samplerThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style'],
+  });
+
   if (!waveformData.value || waveformData.value.length === 0) {
     void refreshWaveform();
   } else {
     drawWaveform(waveformData.value);
   }
+});
+
+onUnmounted(() => {
+  samplerThemeObserver?.disconnect();
 });
 
 function drawWaveform(data?: Float32Array) {
@@ -489,12 +529,29 @@ function drawWaveform(data?: Float32Array) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#13171c';
+  // Fill background
+  ctx.fillStyle = cachedBgColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Draw grid lines
+  ctx.strokeStyle = cachedGridColor;
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += canvas.width / 8) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += canvas.height / 4) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+
+  // Draw center line
   const midY = canvas.height / 2;
-  ctx.strokeStyle = '#2c3e50';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.beginPath();
   ctx.moveTo(0, midY);
   ctx.lineTo(canvas.width, midY);
@@ -504,7 +561,9 @@ function drawWaveform(data?: Float32Array) {
     return;
   }
 
-  ctx.strokeStyle = '#00bcd4';
+  // Draw waveform
+  ctx.strokeStyle = cachedAccentColor;
+  ctx.lineWidth = 2;
   ctx.beginPath();
   for (let i = 0; i < data.length; i++) {
     const x = (i / (data.length - 1)) * canvas.width;
@@ -579,9 +638,10 @@ function drawWaveform(data?: Float32Array) {
 .waveform-canvas-wrapper {
   position: relative;
   width: 100%;
-  border: 1px solid #2c3e50;
-  border-radius: 4px;
-  background-color: #13171c;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  background-color: var(--app-background, #0b111a);
+  overflow: hidden;
 }
 
 .waveform-canvas-wrapper canvas {
@@ -595,7 +655,7 @@ function drawWaveform(data?: Float32Array) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8f9dac;
+  color: var(--text-muted);
   font-size: 0.85rem;
   pointer-events: none;
 }
@@ -627,7 +687,16 @@ function drawWaveform(data?: Float32Array) {
   justify-content: flex-end;
 }
 
-.file-input {
-  color: #fff;
+.file-input-hidden {
+  display: none;
+}
+
+.choose-file-btn {
+  background: var(--tracker-accent-primary, #4df2c5) !important;
+  color: var(--app-background, #0b111a) !important;
+}
+
+.choose-file-btn:hover {
+  filter: brightness(1.1);
 }
 </style>

@@ -708,15 +708,15 @@ const bitcrusherNodes = computed(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 16px;
-  background: linear-gradient(90deg, rgba(112, 194, 255, 0.15), rgba(77, 242, 197, 0.1));
-  border-bottom: 1px solid rgba(112, 194, 255, 0.3);
+  background: linear-gradient(90deg, var(--tracker-active-bg), var(--button-background));
+  border-bottom: 1px solid var(--tracker-accent-secondary);
 }
 
 .song-patch-banner__info {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #e8f3ff;
+  color: var(--text-primary);
 }
 
 .song-patch-banner__label {
@@ -724,20 +724,20 @@ const bitcrusherNodes = computed(() => {
   font-size: 13px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #70c2ff;
+  color: var(--tracker-accent-secondary);
 }
 
 .song-patch-banner__slot {
   font-family: var(--font-tracker);
   font-weight: 700;
-  color: #4df2c5;
-  background: rgba(77, 242, 197, 0.15);
+  color: var(--tracker-accent-primary);
+  background: var(--button-background);
   padding: 2px 8px;
   border-radius: 4px;
 }
 
 .song-patch-banner__name {
-  color: #cfe4ff;
+  color: var(--text-secondary);
   font-weight: 600;
 }
 
@@ -751,7 +751,7 @@ const bitcrusherNodes = computed(() => {
   display: flex;
   flex-direction: column;
   min-height: var(--q-page-container-height, 100vh);
-  background: #0c1119;
+  background: var(--app-background);
   overflow: hidden;
   height: 100%;
   flex: 1 1 auto;
@@ -777,8 +777,8 @@ const bitcrusherNodes = computed(() => {
 }
 
 .preset-row {
-  background: #0f131c;
-  border-bottom: 1px solid #273140;
+  background: var(--panel-background);
+  border-bottom: 1px solid var(--panel-border);
   flex: 0 0 auto;
 }
 
@@ -788,8 +788,8 @@ const bitcrusherNodes = computed(() => {
   justify-content: flex-start;
   flex-wrap: wrap;
   gap: 12px;
-  background: #15181d;
-  border-bottom: 1px solid #2b3140;
+  background: var(--panel-background-alt);
+  border-bottom: 1px solid var(--panel-border);
   flex: 0 0 auto;
 }
 
@@ -804,12 +804,12 @@ const bitcrusherNodes = computed(() => {
   font-size: 12px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #e9eef7;
+  color: var(--text-primary);
 }
 
 .tool-menu__hint {
   font-size: 12px;
-  color: #9fb2cc;
+  color: var(--text-muted);
 }
 
 .tool-menu__actions {
@@ -835,19 +835,19 @@ const bitcrusherNodes = computed(() => {
   gap: 6px;
   align-items: center;
   font-size: 12px;
-  color: #cdd6e4;
+  color: var(--text-secondary);
   user-select: none;
 }
 
 .tool-checkbox input[type='checkbox'] {
   width: 14px;
   height: 14px;
-  accent-color: #4df2c5;
+  accent-color: var(--tracker-accent-primary);
 }
 
 .visualizer-row {
-  background: #0f131c;
-  border-bottom: 1px solid #273140;
+  background: var(--panel-background);
+  border-bottom: 1px solid var(--panel-border);
   padding-top: 10px;
   padding-bottom: 10px;
 }
@@ -891,8 +891,8 @@ const bitcrusherNodes = computed(() => {
 }
 
 .macro-row {
-  background: #0f131c;
-  border-bottom: 1px solid #273140;
+  background: var(--panel-background);
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .tool-menu__portamento {
@@ -900,8 +900,8 @@ const bitcrusherNodes = computed(() => {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  background: #0e1117;
-  border: 1px solid #273140;
+  background: var(--app-background);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   min-width: 260px;
   max-width: 420px;
@@ -911,13 +911,13 @@ const bitcrusherNodes = computed(() => {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #e9eef7;
+  color: var(--text-primary);
   font-size: 11px;
 }
 
 .tool-menu__portamento-value {
   font-size: 12px;
-  color: #9fb2cc;
+  color: var(--text-muted);
   min-width: 56px;
   text-align: right;
 }
@@ -933,17 +933,17 @@ const bitcrusherNodes = computed(() => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  background-image: linear-gradient(rgb(49, 69, 105), rgb(25, 38, 56));
+  background-image: linear-gradient(var(--panel-background-alt), var(--panel-background));
 }
 
 .add-node-menu {
   min-width: 280px;
-  background: #11151c;
-  color: #e9eef7;
+  background: var(--panel-background);
+  color: var(--text-primary);
 }
 
 .menu-section-header {
-  color: #8fa5c5;
+  color: var(--text-muted);
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -982,7 +982,7 @@ const bitcrusherNodes = computed(() => {
   box-sizing: border-box;
   width: 100%;
   border-radius: 12px;
-  border: 1px solid #273140;
+  border: 1px solid var(--panel-border);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
 }
 
@@ -994,15 +994,15 @@ const bitcrusherNodes = computed(() => {
 }
 
 .generators {
-  background: linear-gradient(135deg, #0f1c2c, #0a1320);
+  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
 }
 
 .modulators {
-  background: linear-gradient(135deg, #141d2e, #0d1524);
+  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
 }
 
 .effects {
-  background: linear-gradient(135deg, #182031, #101724);
+  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
   grid-column: span 2;
   display: block;
 }

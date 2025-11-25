@@ -635,8 +635,8 @@ watch(
 .waveform-canvas-row canvas {
   width: 100%;
   height: 160px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  background-color: #1e2a3a;
+  border: 1px solid var(--panel-border);
+  background-color: var(--app-background);
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
   transition: box-shadow 0.2s ease;

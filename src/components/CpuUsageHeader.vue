@@ -73,7 +73,7 @@ export default defineComponent({
 }
 .label {
   font-size: 0.78rem;
-  color: #dfe7fb;
+  color: var(--text-secondary);
   text-align: right;
   margin: 0;
   line-height: 1.1;
@@ -89,6 +89,6 @@ export default defineComponent({
   transform: translate(-50%, -50%);
   font-size: 0.72rem;
   font-weight: 700;
-  color: #f7fcff;
+  color: var(--text-primary);
 }
 </style>

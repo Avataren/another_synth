@@ -327,6 +327,29 @@ function handleCombDampeningChange(newVal: number) {
 }
 
 // -----------------------------------------------------
+// Theme color caching for canvas drawing
+// -----------------------------------------------------
+let cachedBgColor = '#0b111a';
+let cachedGridColor = 'rgba(255, 255, 255, 0.08)';
+let cachedAccentColor = 'rgb(77, 242, 197)';
+let cachedAccentColorAlpha = 'rgba(77, 242, 197, 0.3)';
+let themeObserver: MutationObserver | null = null;
+
+function updateThemeColors() {
+  const style = getComputedStyle(document.documentElement);
+  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
+  cachedGridColor = style.getPropertyValue('--panel-border').trim() || 'rgba(255, 255, 255, 0.08)';
+  const accent = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedAccentColor = accent;
+  // Create alpha version for fill
+  if (accent.startsWith('rgb(')) {
+    cachedAccentColorAlpha = accent.replace('rgb(', 'rgba(').replace(')', ', 0.3)');
+  } else {
+    cachedAccentColorAlpha = 'rgba(77, 242, 197, 0.3)';
+  }
+}
+
+// -----------------------------------------------------
 // Throttled waveform update and caching logic
 // -----------------------------------------------------
 let cachedWaveformCanvas: HTMLCanvasElement | null = null;
@@ -358,11 +381,11 @@ async function updateCachedWaveform() {
   if (!offCtx) return;
 
   // 1) Fill background
-  offCtx.fillStyle = '#1e2a3a';
+  offCtx.fillStyle = cachedBgColor;
   offCtx.fillRect(0, 0, width, height);
 
   // 2) Draw grid lines
-  offCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  offCtx.strokeStyle = cachedGridColor;
   offCtx.lineWidth = 1;
   for (let x = 0; x < width; x += width / 8) {
     offCtx.beginPath();
@@ -396,11 +419,11 @@ async function updateCachedWaveform() {
   offCtx.closePath();
 
   // 5) Fill under the curve
-  offCtx.fillStyle = 'rgba(255, 152, 0, 0.3)';
+  offCtx.fillStyle = cachedAccentColorAlpha;
   offCtx.fill();
 
   // 6) Draw the outline
-  offCtx.strokeStyle = '#FF9800';
+  offCtx.strokeStyle = cachedAccentColor;
   offCtx.lineWidth = 2;
   offCtx.stroke();
 
@@ -440,6 +463,19 @@ onMounted(() => {
     nodeStateStore.filterStates.set(props.nodeId, { ...toRaw(filterState.value) });
   }
 
+  // Initialize theme colors
+  updateThemeColors();
+
+  // Watch for theme changes
+  themeObserver = new MutationObserver(() => {
+    updateThemeColors();
+    throttledUpdateWaveformDisplay();
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style'],
+  });
+
   // Set up initial canvas size
   if (waveformCanvas.value) {
     const canvas = waveformCanvas.value;
@@ -460,6 +496,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', throttledUpdateWaveformDisplay);
+  themeObserver?.disconnect();
 });
 </script>
 
@@ -489,9 +526,9 @@ onUnmounted(() => {
 canvas {
   width: 100%;
   height: 100%;
-  border: 1px solid #ccc;
-  background-color: #1e2a3a; /* match the offscreen background */
-  border-radius: 4px;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  background-color: var(--app-background, #0b111a);
+  border-radius: 6px;
 }
 
 /* Custom class to increase width of q-select */

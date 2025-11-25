@@ -20,6 +20,32 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { node: null });
 const node = computed(() => props.node);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
+
+// Theme color caching
+let cachedBgColor = '#0b111a';
+let cachedAccentColor = 'rgb(77, 242, 197)';
+let cachedAccentColorDark = 'rgb(50, 160, 130)';
+let cachedGridColor = 'rgba(255, 255, 255, 0.08)';
+let freqThemeObserver: MutationObserver | null = null;
+
+function updateFreqThemeColors() {
+  const style = getComputedStyle(document.documentElement);
+  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
+  const accent = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedAccentColor = accent;
+  // Create a darker version for gradient
+  if (accent.startsWith('rgb(')) {
+    const match = accent.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (match) {
+      const r = Math.floor(parseInt(match[1]!) * 0.65);
+      const g = Math.floor(parseInt(match[2]!) * 0.65);
+      const b = Math.floor(parseInt(match[3]!) * 0.65);
+      cachedAccentColorDark = `rgb(${r}, ${g}, ${b})`;
+    }
+  }
+  cachedGridColor = style.getPropertyValue('--panel-border').trim() || 'rgba(255, 255, 255, 0.08)';
+}
+
 let analyser: AnalyserNode | null = null;
 let animationFrameId: number | null = null;
 let dataArray: Uint8Array | null = null;
@@ -71,7 +97,7 @@ const startVisualization = () => {
 
     analyser.getByteFrequencyData(localDataArray);
 
-    ctx.fillStyle = 'rgb(32, 45, 66)';
+    ctx.fillStyle = cachedBgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const barWidth = (canvas.width / bufferLength) * 2.5;
@@ -83,8 +109,8 @@ const startVisualization = () => {
 
       // Create gradient for bars
       const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-      gradient.addColorStop(0, 'rgb(160, 190, 225)');
-      gradient.addColorStop(1, 'rgb(100, 140, 200)');
+      gradient.addColorStop(0, cachedAccentColor);
+      gradient.addColorStop(1, cachedAccentColorDark);
 
       ctx.fillStyle = gradient;
       ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
@@ -93,7 +119,7 @@ const startVisualization = () => {
     }
 
     // Draw frequency grid lines
-    ctx.strokeStyle = 'rgba(160, 190, 225, 0.1)';
+    ctx.strokeStyle = cachedGridColor;
     ctx.lineWidth = 1;
 
     // Horizontal lines
@@ -131,6 +157,18 @@ const cleanup = () => {
 };
 
 onMounted(() => {
+  // Initialize theme colors
+  updateFreqThemeColors();
+
+  // Watch for theme changes
+  freqThemeObserver = new MutationObserver(() => {
+    updateFreqThemeColors();
+  });
+  freqThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style'],
+  });
+
   if (props.node) {
     attachAnalyzer(props.node);
   }
@@ -138,6 +176,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   cleanup();
+  freqThemeObserver?.disconnect();
 });
 
 watch(node, (newNode, _oldNode) => {
@@ -156,7 +195,9 @@ watch(node, (newNode, _oldNode) => {
   canvas {
     width: 100%;
     height: 100%;
-    border: none;
+    border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+    background-color: var(--app-background, #0b111a);
+    border-radius: 6px;
   }
 }
 

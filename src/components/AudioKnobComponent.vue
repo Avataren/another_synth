@@ -14,14 +14,14 @@
       >
         <path
           :d="describeSemiCircle"
-          stroke="#333333"
+          class="knob-track-bg"
           :stroke-width="props.thickness"
           fill="none"
           stroke-linecap="round"
         />
         <path
           :d="describeValueArc"
-          :stroke="props.color"
+          :stroke="accentColor"
           :stroke-width="props.thickness"
           fill="none"
           stroke-linecap="round"
@@ -105,6 +105,16 @@ const knobSize = computed(() => {
       return props.size;
   }
 });
+
+// Use theme accent color, falling back to prop color
+const accentColor = ref(props.color);
+
+function updateAccentColor() {
+  const themeColor = getComputedStyle(document.documentElement)
+    .getPropertyValue('--tracker-accent-primary')
+    .trim();
+  accentColor.value = themeColor || props.color;
+}
 
 const knobRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
@@ -287,13 +297,29 @@ function onMouseUp() {
   pendingDrag.value = false;
 }
 
+// MutationObserver to detect theme changes
+let themeObserver: MutationObserver | null = null;
+
 onMounted(() => {
   knobRef.value?.addEventListener('mousedown', onMouseDown);
+
+  // Initialize accent color from theme
+  updateAccentColor();
+
+  // Watch for theme changes via style attribute on root
+  themeObserver = new MutationObserver(() => {
+    updateAccentColor();
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style'],
+  });
 });
 
 onUnmounted(() => {
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('mouseup', onMouseUp);
+  themeObserver?.disconnect();
 });
 </script>
 
@@ -303,7 +329,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   padding: 0.5rem;
-  color: #ffffff;
+  color: var(--text-primary, #ffffff);
 }
 .knob-container {
   position: relative;
@@ -327,6 +353,9 @@ onUnmounted(() => {
   left: 0;
   pointer-events: none;
 }
+.knob-track-bg {
+  stroke: var(--panel-border, #333333);
+}
 .value-display {
   position: absolute;
   min-width: 40px;
@@ -335,10 +364,10 @@ onUnmounted(() => {
   text-align: center;
   z-index: 1;
   font-size: 0.9rem;
-  color: #ffffff;
+  color: var(--text-primary, #ffffff);
   cursor: text;
   user-select: none;
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--input-background, rgba(0, 0, 0, 0.1));
   border-radius: 3px;
   box-sizing: border-box;
 }
@@ -363,7 +392,7 @@ onUnmounted(() => {
 .knob-label {
   margin-top: 0.5rem;
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-muted, rgba(255, 255, 255, 0.7));
   text-align: center;
   position: absolute;
   bottom: -20px;

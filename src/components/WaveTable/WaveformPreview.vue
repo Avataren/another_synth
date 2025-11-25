@@ -1,12 +1,12 @@
 // WaveformPreview.vue
 <template>
   <div class="waveform-preview q-my-md">
-    <div class="text-subtitle2">Waveform Preview</div>
+    <div class="text-subtitle2 preview-title">Waveform Preview</div>
     <canvas
       ref="canvas"
       :width="width"
       :height="height"
-      style="border: 1px solid #ccc; width: 100%"
+      class="preview-canvas"
     ></canvas>
   </div>
 </template>
@@ -65,6 +65,10 @@ export default {
       isUpdating: false,
       rafId: null,
       lastDrawnState: null,
+      cachedBgColor: '#0b111a',
+      cachedAccentColor: 'rgb(77, 242, 197)',
+      cachedGridColor: 'rgba(255, 255, 255, 0.08)',
+      themeObserver: null,
     };
   },
 
@@ -73,11 +77,16 @@ export default {
     this.debouncedUpdate = debounce(this.performUpdate, 16); // ~60fps
   },
   mounted() {
+    this.updateThemeColors();
+    this.setupThemeObserver();
     this.scheduleUpdate(); // Schedule initial waveform update
   },
   beforeUnmount() {
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
+    }
+    if (this.themeObserver) {
+      this.themeObserver.disconnect();
     }
   },
 
@@ -115,6 +124,22 @@ export default {
   },
 
   methods: {
+    updateThemeColors() {
+      const style = getComputedStyle(document.documentElement);
+      this.cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
+      this.cachedAccentColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+      this.cachedGridColor = style.getPropertyValue('--panel-border').trim() || 'rgba(255, 255, 255, 0.08)';
+    },
+    setupThemeObserver() {
+      this.themeObserver = new MutationObserver(() => {
+        this.updateThemeColors();
+        this.scheduleUpdate();
+      });
+      this.themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['style'],
+      });
+    },
     scheduleUpdate() {
       this.debouncedUpdate();
     },
@@ -341,10 +366,28 @@ export default {
       const height = canvas.height;
       const scale = height / 2;
 
-      ctx.clearRect(0, 0, width, height);
+      // Fill background
+      ctx.fillStyle = this.cachedBgColor;
+      ctx.fillRect(0, 0, width, height);
+
+      // Draw grid lines
+      ctx.strokeStyle = this.cachedGridColor;
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += width / 8) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += height / 4) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
 
       // Draw center line
-      ctx.strokeStyle = '#cccccc';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, height / 2);
@@ -353,7 +396,7 @@ export default {
 
       // Draw waveform
       ctx.beginPath();
-      ctx.strokeStyle = '#ff0000';
+      ctx.strokeStyle = this.cachedAccentColor;
       ctx.lineWidth = 2;
 
       // Calculate step size for smoother rendering
@@ -375,3 +418,21 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.waveform-preview {
+  width: 100%;
+}
+
+.preview-title {
+  color: var(--text-secondary, #c8d9f2);
+  margin-bottom: 0.5rem;
+}
+
+.preview-canvas {
+  width: 100%;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  background-color: var(--app-background, #0b111a);
+  border-radius: 6px;
+}
+</style>

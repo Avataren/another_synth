@@ -1,6 +1,6 @@
 <template>
   <q-card class="chorus-card">
-    <q-card-section class="bg-primary text-white">
+    <q-card-section class="card-header">
       <div class="text-h6">{{ displayName }}</div>
     </q-card-section>
     <q-separator />
@@ -190,6 +190,12 @@ watch(
 </script>
 
 <style scoped>
+.card-header {
+  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--panel-border);
+}
+
 .chorus-card {
   /* Adjust width as needed based on knob count */
   /* Consider making it wider or using two rows */

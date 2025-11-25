@@ -20,3 +20,30 @@ body,
 .q-select {
   font-family: var(--font-ui);
 }
+
+// Override Quasar's bg-primary to use theme variables for card headers
+.q-card-section.bg-primary {
+  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background)) !important;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.q-card-section.bg-primary.text-white {
+  color: var(--text-primary) !important;
+}
+
+// Card backgrounds
+.q-card {
+  background: var(--panel-background) !important;
+  border: 1px solid var(--panel-border);
+  color: var(--text-primary);
+}
+
+// Card section text
+.q-card-section {
+  color: var(--text-primary);
+}
+
+// Separator styling
+.q-separator {
+  background: var(--panel-border) !important;
+}

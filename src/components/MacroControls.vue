@@ -15,7 +15,7 @@
             :max="1"
             :decimals="2"
             scale="half"
-            color="#66d9ff"
+            :color="'var(--tracker-accent-secondary)'"
             @update:model-value="(val: number) => setMacro(index - 1, val)"
           />
         </div>
@@ -126,9 +126,9 @@ watch(
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  color: #eaf2ff;
+  border: 1px solid var(--panel-border);
+  background: var(--button-background);
+  color: var(--text-primary);
   cursor: pointer;
 }
 
@@ -138,16 +138,16 @@ watch(
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--button-background);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
 }
 
 .macro-select {
   width: 100%;
-  background: #0d1118;
-  color: #eaf2ff;
-  border: 1px solid #273140;
+  background: var(--input-background);
+  color: var(--text-primary);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
   padding: 6px 8px;
 }
@@ -156,9 +156,9 @@ watch(
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
-  color: #f7b0b0;
+  border: 1px solid var(--panel-border);
+  background: var(--button-background);
+  color: var(--tracker-accent-primary);
   cursor: pointer;
 }
 </style>

@@ -12,11 +12,10 @@
       <q-card dark class="bg-dark">
         <q-card-section>
           <q-btn
-            color="primary"
             icon="add"
             label="Add Routing"
             @click="addNewRoute"
-            class="q-mb-md"
+            class="q-mb-md add-routing-btn"
             :disable="availableTargetNodes.length === 0"
           />
 
@@ -941,9 +940,24 @@ function getNodeType(nodeId: string): VoiceNodeType {
 .routing-section {
   margin: 1rem 0;
 }
+
+.add-routing-btn {
+  background: var(--tracker-accent-primary, #4df2c5) !important;
+  color: var(--app-background, #0b111a) !important;
+}
+
+.add-routing-btn:hover {
+  filter: brightness(1.1);
+}
+
+.add-routing-btn:disabled {
+  opacity: 0.5;
+  filter: grayscale(0.5);
+}
+
 .route-item {
   padding: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.05);
 }
@@ -956,7 +970,7 @@ function getNodeType(nodeId: string): VoiceNodeType {
   opacity: 0;
 }
 :deep(.q-field__label) {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-muted, rgba(255, 255, 255, 0.7));
 }
 :deep(.q-slider__track) {
   background: rgba(255, 255, 255, 0.28);

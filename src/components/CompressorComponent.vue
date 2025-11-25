@@ -1,6 +1,6 @@
 <template>
   <q-card class="compressor-card">
-    <q-card-section class="bg-primary text-white">
+    <q-card-section class="card-header">
       <div class="text-h6">{{ displayName }}</div>
     </q-card-section>
     <q-separator />
@@ -155,6 +155,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.card-header {
+  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--panel-border);
+}
+
 .compressor-card {
   width: 600px;
   margin: 0.5rem auto;

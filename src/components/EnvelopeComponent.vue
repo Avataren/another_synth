@@ -253,6 +253,19 @@ function handleReleaseChange(envVal: number) {
   });
 }
 
+// -----------------------------------------------------
+// Theme color caching for canvas drawing
+// -----------------------------------------------------
+let cachedBgColor = '#0b111a';
+let cachedAccentColor = 'rgb(77, 242, 197)';
+let envThemeObserver: MutationObserver | null = null;
+
+function updateEnvThemeColors() {
+  const style = getComputedStyle(document.documentElement);
+  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
+  cachedAccentColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+}
+
 /** Envelope preview drawing logic **/
 function updateEnvelopePreview() {
   const config = envelopeState.value;
@@ -285,15 +298,31 @@ function drawEnvelopePreviewWithData(previewData: Float32Array) {
   canvas.height = height;
 
   // Background
-  ctx.fillStyle = 'rgb(32, 45, 66)';
+  ctx.fillStyle = cachedBgColor;
   ctx.fillRect(0, 0, width, height);
+
+  // Draw grid lines
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < width; x += width / 8) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < height; y += height / 4) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
 
   // Downsample to fit canvas width
   const totalSamples = previewData.length;
   const step = totalSamples / width;
 
   ctx.beginPath();
-  ctx.strokeStyle = 'rgb(160, 190, 225)';
+  ctx.strokeStyle = cachedAccentColor;
   ctx.lineWidth = 2;
 
   ctx.moveTo(0, height - previewData[0]! * height);
@@ -312,6 +341,19 @@ onMounted(() => {
     envelopeStates.value.set(props.nodeId, envelopeState.value);
   }
 
+  // Initialize theme colors
+  updateEnvThemeColors();
+
+  // Watch for theme changes
+  envThemeObserver = new MutationObserver(() => {
+    updateEnvThemeColors();
+    throttledUpdateEnvelopePreview();
+  });
+  envThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style'],
+  });
+
   // Delay the initial draw a bit
   setTimeout(updateEnvelopePreview, 250);
 
@@ -321,6 +363,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', throttledUpdateEnvelopePreview);
+  envThemeObserver?.disconnect();
 });
 
 /** Watch for changes in the store's envelope state **/
@@ -368,7 +411,8 @@ watch(
 canvas {
   width: 100%;
   height: 100%;
-  border: none;
-  background-color: rgb(200, 200, 200);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  background-color: var(--app-background, #0b111a);
+  border-radius: 6px;
 }
 </style>
