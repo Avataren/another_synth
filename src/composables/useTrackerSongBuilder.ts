@@ -81,13 +81,14 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       // Check if this entry has any meaningful data
       const hasMacro = effectCmd?.type === 'macro';
       const hasTempoEffect = effectCmd?.type === 'speed' || effectCmd?.type === 'tempo';
+      const hasEffect = effectCmd?.type === 'effect';
       const hasNoteData = isNoteOff || midi !== undefined;
       const hasVolumeData = volumeValue !== undefined;
 
       // Skip if no instrument and no effect command
-      if (!instrumentId && !hasMacro && !hasTempoEffect) continue;
+      if (!instrumentId && !hasMacro && !hasTempoEffect && !hasEffect) continue;
       // Skip if no meaningful data at all
-      if (!hasNoteData && !hasVolumeData && !hasMacro && !hasTempoEffect) continue;
+      if (!hasNoteData && !hasVolumeData && !hasMacro && !hasTempoEffect && !hasEffect) continue;
 
       const step: PlaybackStep = {
         row: entry.row,

@@ -290,6 +290,8 @@ export class PlaybackEngine {
     // Initialize timing for cumulative tempo changes
     this.nextRowTime = this.playStartTime;
     this.speed = 6; // Reset to normal speed
+    // Reset effect states for clean playback start
+    this.resetEffectStates();
 
     // Schedule initial batch of notes
     this.scheduleAhead();
@@ -494,7 +496,7 @@ export class PlaybackEngine {
             && effectState.voiceIndex >= 0;
 
           if (!isTonePortaContinue) {
-            const velocity = Number.isFinite(newVelocity) ? newVelocity : 127;
+            const velocity = Number.isFinite(newVelocity) ? newVelocity as number : 127;
             const event: ScheduledNoteEvent = {
               type: 'noteOn',
               instrumentId,

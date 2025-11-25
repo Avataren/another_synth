@@ -222,6 +222,29 @@ export const useTrackerStore = defineStore('trackerStore', {
       }
       this.redoStack = [];
     },
+
+    /** Reset to a new empty song */
+    resetToNewSong() {
+      const defaultPattern = createDefaultPattern();
+      this.currentSong = {
+        title: 'Untitled song',
+        author: 'Unknown',
+        bpm: 120
+      };
+      this.baseOctave = 4;
+      this.patternRows = 64;
+      this.stepSize = 1;
+      this.patterns = [defaultPattern];
+      this.sequence = [defaultPattern.id];
+      this.currentPatternId = defaultPattern.id;
+      this.instrumentSlots = createDefaultInstrumentSlots();
+      this.activeInstrumentId = null;
+      this.currentInstrumentPage = 0;
+      this.songPatches = {};
+      this.editingSlot = null;
+      this.undoStack = [];
+      this.redoStack = [];
+    },
     undo() {
       if (this.undoStack.length === 0) return;
       const snapshot = this.undoStack.pop() as TrackerSnapshot;

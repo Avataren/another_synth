@@ -52,10 +52,10 @@ export interface TrackEffectState {
   // Note cut/delay
   noteCutTick: number;
   noteDelayTick: number;
-  delayedNote?: {
+  delayedNote: {
     midi: number;
     velocity: number;
-  };
+  } | undefined;
 
   // Voice tracking
   voiceIndex: number;

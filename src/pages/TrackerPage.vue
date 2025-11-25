@@ -63,6 +63,13 @@
           <button
             type="button"
             class="song-button ghost"
+            @click="handleNewSong"
+          >
+            New Song
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
             @click="handleLoadSongFile"
           >
             Load Song
@@ -395,6 +402,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
@@ -429,6 +437,7 @@ import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { storeToRefs } from 'pinia';
 
 const router = useRouter();
+const $q = useQuasar();
 const userSettingsStore = useUserSettingsStore();
 const { settings: userSettings } = storeToRefs(userSettingsStore);
 const trackerStore = useTrackerStore();
@@ -557,6 +566,16 @@ const playbackEngine = new PlaybackEngine({
   },
   macroHandler: (instrumentId, macroIndex, value) => {
     songBank.setInstrumentMacro(instrumentId, macroIndex, value);
+  },
+  // Effect handlers for pitch/volume/retrigger
+  scheduledPitchHandler: (instrumentId: string, voiceIndex: number, frequency: number, time: number) => {
+    songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time);
+  },
+  scheduledVolumeHandler: (instrumentId: string, voiceIndex: number, volume: number, time: number) => {
+    songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time);
+  },
+  scheduledRetriggerHandler: (instrumentId: string, midi: number, velocity: number, time: number) => {
+    songBank.retriggerNoteAtTime(instrumentId, midi, velocity, time);
   },
   scheduledNoteHandler: (event: ScheduledNoteEvent) => {
     // Check mute/solo state for this track
@@ -984,6 +1003,30 @@ const {
   handleSaveSongFile,
   handleLoadSongFile
 } = useTrackerFileIO(fileIOContext);
+
+// New Song with confirmation
+function handleNewSong() {
+  $q.dialog({
+    title: 'New Song',
+    message: 'Are you sure you want to start a new song? All unsaved changes will be lost.',
+    cancel: {
+      label: 'Cancel',
+      flat: true
+    },
+    ok: {
+      label: 'New Song',
+      color: 'negative'
+    },
+    persistent: true
+  }).onOk(() => {
+    // Stop any playback first
+    handleStop();
+    // Reset the store to a fresh state
+    trackerStore.resetToNewSong();
+    // Resync the song bank with empty instruments
+    syncSongBankFromSlots();
+  });
+}
 
 // Set up keyboard command system
 const keyboardContext: TrackerKeyboardContext = {
