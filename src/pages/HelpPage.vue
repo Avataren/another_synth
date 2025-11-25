@@ -48,6 +48,23 @@
       </section>
 
       <section class="help-section">
+        <h2>Effect commands</h2>
+        <p>The macro column supports special effect commands in addition to macro automation:</p>
+        <ul>
+          <li>
+            <strong>Fxx – Speed/Tempo</strong>: Changes playback speed or tempo mid-pattern.
+            <ul>
+              <li><code>F01</code>–<code>F1F</code>: Set speed (ticks per row, 1–31). Lower = faster.</li>
+              <li><code>F20</code>–<code>FFF</code>: Set tempo in BPM (32–255).</li>
+            </ul>
+          </li>
+          <li>
+            <strong>0xx–3xx – Macro</strong>: Set macro slot 0–3 to value xx (00–FF).
+          </li>
+        </ul>
+      </section>
+
+      <section class="help-section">
         <h2>Transport & patterns</h2>
         <ul>
           <li><strong>Play</strong>: Pattern vs Song modes in the tracker toolbar.</li>
