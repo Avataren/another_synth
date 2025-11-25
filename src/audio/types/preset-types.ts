@@ -134,6 +134,9 @@ export interface SynthState {
 
   /** Macro values and routes */
   macros?: MacroState;
+
+  /** Instrument output gain (0-1, default 1.0) */
+  instrumentGain?: number;
 }
 
 export interface MacroRouteState {

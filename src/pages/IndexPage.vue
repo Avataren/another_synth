@@ -61,6 +61,18 @@
           />
           <div class="tool-menu__portamento-value">{{ portamentoTimeLabel }}</div>
         </div>
+        <div class="tool-menu__gain" @mousedown.stop>
+          <AudioKnobComponent
+            v-model="instrumentGain"
+            label="Volume"
+            :min="0"
+            :max="2"
+            :decimals="2"
+            scale="half"
+            :unitFunc="formatGainAsDb"
+            @update:model-value="onInstrumentGainChange"
+          />
+        </div>
         <div class="tool-menu__actions">
           <q-btn
             color="primary"
@@ -319,6 +331,9 @@ import BitcrusherComponent from 'src/components/BitcrusherComponent.vue';
 // Generic Tab Container
 import GenericTabContainer from 'src/components/GenericTabContainer.vue';
 
+// Audio controls
+import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
+
 // Node type definitions
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import type { GlideState } from 'src/audio/types/synth-layout';
@@ -349,7 +364,7 @@ const layoutStore = useLayoutStore();
 const nodeStateStore = useNodeStateStore();
 const patchStore = usePatchStore();
 const trackerStore = useTrackerStore();
-const { destinationNode } = storeToRefs(instrumentStore);
+const { destinationNode, instrumentGain } = storeToRefs(instrumentStore);
 const { editingSlot, songPatches } = storeToRefs(trackerStore);
 
 const addMenuVisible = ref(false);
@@ -619,6 +634,17 @@ const commitPortamento = () => {
   if (!nodeId || !state) return;
   nodeStateStore.glideStates.set(nodeId, { ...state, id: nodeId });
   instrumentStore.currentInstrument?.updateGlideState(nodeId, state);
+};
+
+// Instrument gain (volume) control
+const onInstrumentGainChange = (value: number) => {
+  instrumentStore.setInstrumentGain(value);
+};
+
+const formatGainAsDb = (value: number): string => {
+  if (value <= 0) return '-inf dB';
+  const db = 20 * Math.log10(value);
+  return `${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`;
 };
 
 // Generators DSP nodes
@@ -925,6 +951,21 @@ const bitcrusherNodes = computed(() => {
 .tool-menu__portamento-slider {
   width: 160px;
   min-width: 140px;
+}
+
+.tool-menu__gain {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.tool-menu__gain :deep(.knob-wrapper) {
+  padding: 0.25rem;
+}
+
+.tool-menu__gain :deep(.knob-label) {
+  bottom: -16px;
+  font-size: 10px;
 }
 
 /* Fixed height for bottom row with scrolling overflow */

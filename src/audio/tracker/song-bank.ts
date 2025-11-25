@@ -434,6 +434,27 @@ export class TrackerSongBank {
     active.instrument.setGainForAllVoices(gain, time);
   }
 
+  /**
+   * Set the output volume for a specific instrument (mixer volume).
+   * This sets the gain on the instrument's output node, separate from per-voice gain.
+   */
+  setInstrumentOutputGain(instrumentId: string | undefined, gain: number) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    active.instrument.setOutputGain(gain);
+  }
+
+  /**
+   * Get the current output gain for a specific instrument.
+   */
+  getInstrumentOutputGain(instrumentId: string | undefined): number {
+    if (!instrumentId) return 1.0;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return 1.0;
+    return active.instrument.getOutputGain();
+  }
+
   setInstrumentMacro(instrumentId: string | undefined, macroIndex: number, value: number, time?: number) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);

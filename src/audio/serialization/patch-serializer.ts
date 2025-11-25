@@ -372,6 +372,7 @@ export function serializeCurrentPatch(
   audioAssets?: Map<string, AudioAsset>,
   metadata?: Partial<PatchMetadata>,
   macros?: MacroState,
+  instrumentGain?: number,
 ): Patch {
   const normalizedOscillators = normalizeStateMap(
     oscillators,
@@ -447,6 +448,10 @@ export function serializeCurrentPatch(
       values: macros.values ?? [],
       routes: macros.routes ?? [],
     };
+  }
+
+  if (instrumentGain !== undefined && instrumentGain !== 1.0) {
+    synthState.instrumentGain = instrumentGain;
   }
 
   // Convert audio assets map to record

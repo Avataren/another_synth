@@ -241,6 +241,18 @@
                 />
                 <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
               </div>
+              <div class="instrument-volume" @click.stop @mousedown.stop>
+                <AudioKnobComponent
+                  :model-value="slot.volume ?? 1.0"
+                  label=""
+                  :min="0"
+                  :max="2"
+                  :decimals="2"
+                  scale="mini"
+                  :unitFunc="formatGainAsDb"
+                  @update:model-value="onSlotVolumeChange(slot.slot, $event)"
+                />
+              </div>
               <div class="instrument-actions">
                 <button
                   type="button"
@@ -387,6 +399,7 @@ import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
+import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type { ScheduledNoteEvent } from '../../packages/tracker-playback/src/types';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
@@ -845,11 +858,19 @@ let updateTrackAudioNodesRef: (() => void) | null = null;
 let markTrackNotePlayedRef: ((trackIndex: number) => void) | null = null;
 let setTrackAudioNodeForInstrumentRef: ((trackIndex: number, instrumentId?: string) => void) | null = null;
 
-// Wrapper that also updates track audio nodes
+// Wrapper that also updates track audio nodes and applies volumes
 async function syncSongBankFromSlots() {
   await syncSongBankFromSlotsBase();
   if (updateTrackAudioNodesRef) {
     updateTrackAudioNodesRef();
+  }
+  // Apply stored volumes to each instrument in the song bank
+  for (const slot of trackerStore.instrumentSlots) {
+    if (slot.patchId) {
+      const instrumentId = formatInstrumentId(slot.slot);
+      const volume = slot.volume ?? 1.0;
+      songBank.setInstrumentOutputGain(instrumentId, volume);
+    }
   }
 }
 
@@ -934,6 +955,20 @@ const {
   addTrack,
   removeTrack
 } = useTrackerInstruments(instrumentsContext);
+
+// Instrument volume (mixer) controls
+const formatGainAsDb = (value: number): string => {
+  if (value <= 0) return '-inf dB';
+  const db = 20 * Math.log10(value);
+  return `${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`;
+};
+
+const onSlotVolumeChange = (slotNumber: number, volume: number) => {
+  trackerStore.setSlotVolume(slotNumber, volume);
+  // Apply to song bank immediately
+  const instrumentId = formatInstrumentId(slotNumber);
+  songBank.setInstrumentOutputGain(instrumentId, volume);
+};
 
 // Set up file I/O composable
 const fileIOContext: TrackerFileIOContext = {
@@ -1787,6 +1822,26 @@ onBeforeUnmount(() => {
   font-weight: 700;
   font-size: 11px;
   flex-shrink: 0;
+}
+
+.instrument-volume {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.instrument-volume :deep(.knob-wrapper) {
+  padding: 0;
+}
+
+.instrument-volume :deep(.value-display) {
+  font-size: 9px;
+  min-width: 28px;
+  padding: 1px 2px;
+}
+
+.instrument-volume :deep(.knob-label) {
+  display: none;
 }
 
 .instrument-actions {

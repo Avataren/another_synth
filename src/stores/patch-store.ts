@@ -294,6 +294,11 @@ export const usePatchStore = defineStore('patchStore', {
         // Now send to WASM (may trigger immediate layout update callback)
         instrumentStore.currentInstrument?.loadPatch(patch);
 
+        // Update instrument gain from patch (loadPatch already sets it on the instrument,
+        // but we need to sync the store state as well)
+        const patchGain = patch.synthState?.instrumentGain ?? 1.0;
+        instrumentStore.instrumentGain = patchGain;
+
         if (options?.setCurrentPatchId !== false) {
           this.currentPatchId = patch.metadata.id;
         }
@@ -596,6 +601,7 @@ export const usePatchStore = defineStore('patchStore', {
           allAssets,
           metadataPayload,
           macros,
+          instrumentStore.instrumentGain,
         );
       } catch (error) {
         console.error('Failed to serialize patch:', error);
@@ -664,6 +670,8 @@ export const usePatchStore = defineStore('patchStore', {
           nodeStateStore.velocityState,
           allAssets,
           metadataPayload,
+          undefined, // macros not used in saveCurrentPatch
+          instrumentStore.instrumentGain,
         );
 
         if (this.currentBank) {
@@ -780,6 +788,7 @@ export const usePatchStore = defineStore('patchStore', {
           allAssets,
           mergedMetadata,
           macros,
+          instrumentStore.instrumentGain,
         );
 
         this.currentBank = existingPatch
@@ -1060,6 +1069,7 @@ export const usePatchStore = defineStore('patchStore', {
         allAssets,
         existingMetadata ? { ...existingMetadata } : undefined,
         macrosState,
+        instrumentStore.instrumentGain,
       );
 
       // Reapply the freshly serialized patch so the engine rebuilds voices

@@ -13,6 +13,7 @@ interface InstrumentStoreState {
   syncManager: AudioSyncManager | null;
   wasmMemory: WebAssembly.Memory;
   macros: number[];
+  instrumentGain: number;
 }
 
 interface InstrumentStoreActions {
@@ -23,6 +24,7 @@ interface InstrumentStoreActions {
   applyMacrosToInstrument(): void;
   connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }): void;
   setMacros(values: number[]): void;
+  setInstrumentGain(gain: number): void;
 }
 
 export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStoreState, Record<string, never>, InstrumentStoreActions>('instrumentStore', {
@@ -37,6 +39,7 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
       shared: true,
     }),
     macros: [0, 0, 0, 0],
+    instrumentGain: 1.0,
   }),
   actions: {
     initializeAudioSystem() {
@@ -112,6 +115,14 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
     setMacros(values: number[]) {
       this.macros = values.slice(0, this.macros.length).map((v) => Math.min(1, Math.max(0, v)));
       this.applyMacrosToInstrument();
+    },
+
+    setInstrumentGain(gain: number) {
+      const clamped = Math.max(0, Math.min(2, gain)); // Allow up to 2x gain
+      this.instrumentGain = clamped;
+      if (this.currentInstrument) {
+        this.currentInstrument.setOutputGain(clamped);
+      }
     },
   },
 });

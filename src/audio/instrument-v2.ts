@@ -206,6 +206,10 @@ export default class InstrumentV2 {
           patchJson,
         });
       });
+
+      // Apply instrument output gain from patch
+      const instrumentGain = patch.synthState?.instrumentGain ?? 1.0;
+      this.setOutputGain(instrumentGain);
     } catch (error) {
       console.error('[InstrumentV2] Failed to load patch:', error);
       throw error;
@@ -1034,6 +1038,24 @@ export default class InstrumentV2 {
         gainParam.setValueAtTime(clamped, when);
       }
     }
+  }
+
+  /**
+   * Set the instrument output gain (master volume for this instrument).
+   * @param gain - Gain value (0-1, can go higher for boost)
+   * @param time - Optional audio context time for scheduling
+   */
+  public setOutputGain(gain: number, time?: number): void {
+    const gainNode = this.outputNode as GainNode;
+    const when = time ?? this.audioContext.currentTime;
+    gainNode.gain.setValueAtTime(gain, when);
+  }
+
+  /**
+   * Get the current output gain value.
+   */
+  public getOutputGain(): number {
+    return (this.outputNode as GainNode).gain.value;
   }
 
   public allNotesOff(): void {

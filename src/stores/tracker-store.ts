@@ -15,6 +15,8 @@ export interface InstrumentSlot {
   patchName: string;
   instrumentName: string;
   source?: 'system' | 'user' | 'song' | undefined;
+  /** Mixer volume for this instrument (0-2, default 1.0) */
+  volume?: number;
 }
 
 interface SongMeta {
@@ -443,6 +445,13 @@ export const useTrackerStore = defineStore('trackerStore', {
         if (!stillUsed) {
           delete this.songPatches[previousPatchId];
         }
+      }
+    },
+    /** Set the mixer volume for an instrument slot */
+    setSlotVolume(slotNumber: number, volume: number) {
+      const slot = this.instrumentSlots.find(s => s.slot === slotNumber);
+      if (slot) {
+        slot.volume = Math.max(0, Math.min(2, volume));
       }
     },
     serializeSong(): TrackerSongFile {
