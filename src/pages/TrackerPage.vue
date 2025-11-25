@@ -432,6 +432,11 @@ const {
 } = storeToRefs(trackerStore);
 const currentPattern = computed(() => trackerStore.currentPattern);
 const currentPageSlots = computed(() => trackerStore.currentPageSlots);
+
+// Signature of instrument slots for audio sync - only watch properties that matter
+const slotSignatures = computed(() =>
+  instrumentSlots.value.map(s => `${s.slot}:${s.patchId ?? ''}:${s.bankId ?? ''}`).join('|')
+);
 const patchStore = usePatchStore();
 const activeRow = ref(0);
 const activeTrack = ref(0);
@@ -1068,19 +1073,17 @@ watch(
   () => updateTrackAudioNodes()
 );
 
-watch(
-  () => instrumentSlots.value,
-  async () => {
-    // Ensure audio context is resumed before creating instruments
-    // This provides the required user gesture for browsers' autoplay policy
-    await songBank.ensureAudioContextRunning();
-    await syncSongBankFromSlots();
-    updateTrackAudioNodes();
-    void initializePlayback(playbackMode.value);
-    void measureVisualizerLayout();
-  },
-  { deep: true }
-);
+// Watch only the properties that matter for audio sync (slot, patchId, bankId)
+// This prevents unnecessary audio rebuilds when editing instrument names
+watch(slotSignatures, async () => {
+  // Ensure audio context is resumed before creating instruments
+  // This provides the required user gesture for browsers' autoplay policy
+  await songBank.ensureAudioContextRunning();
+  await syncSongBankFromSlots();
+  updateTrackAudioNodes();
+  void initializePlayback(playbackMode.value);
+  void measureVisualizerLayout();
+});
 
 onBeforeUnmount(() => {
   cleanupPlayback();

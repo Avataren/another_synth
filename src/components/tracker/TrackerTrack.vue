@@ -64,14 +64,30 @@ const trackIndexLabel = computed(() => (props.index + 1).toString().padStart(2, 
 
 const fallbackAccent = '#5dd6ff';
 
+// Pre-compute selected rows as a Set for O(1) lookup instead of O(n) function calls
+const selectedRows = computed(() => {
+  if (!props.selectionRect) return new Set<number>();
+  const { rowStart, rowEnd, trackStart, trackEnd } = props.selectionRect;
+
+  // If this track is not in the selection range, return empty set
+  if (props.index < trackStart || props.index > trackEnd) {
+    return new Set<number>();
+  }
+
+  // Build set of selected row indices
+  const rows = new Set<number>();
+  for (let r = rowStart; r <= rowEnd; r++) {
+    rows.add(r);
+  }
+  return rows;
+});
+
 function onSelectCell(payload: { row: number; column: number; trackIndex: number }) {
   emit('cellSelected', payload);
 }
 
 function isRowSelected(row: number) {
-  if (!props.selectionRect) return false;
-  const { rowStart, rowEnd, trackStart, trackEnd } = props.selectionRect;
-  return props.index >= trackStart && props.index <= trackEnd && row >= rowStart && row <= rowEnd;
+  return selectedRows.value.has(row);
 }
 
 function onStartSelection(payload: { row: number; trackIndex: number }) {

@@ -28,6 +28,10 @@ const smoothingFactor = 0.7;
 let peakData: Float32Array | null = null;
 let peakDecay = 0.995;
 
+// Cached theme colors - updated only when theme changes
+let cachedColors: { primary: { r: number; g: number; b: number }; secondary: { r: number; g: number; b: number } } | null = null;
+let themeObserver: MutationObserver | null = null;
+
 function getThemeColors() {
   const style = getComputedStyle(document.documentElement);
   const accent = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
@@ -46,6 +50,30 @@ function getThemeColors() {
     primary: parseColor(accent),
     secondary: parseColor(secondary)
   };
+}
+
+function getCachedColors() {
+  if (!cachedColors) {
+    cachedColors = getThemeColors();
+  }
+  return cachedColors;
+}
+
+function updateCachedColors() {
+  cachedColors = getThemeColors();
+}
+
+function setupThemeObserver() {
+  if (themeObserver) return;
+
+  themeObserver = new MutationObserver(() => {
+    updateCachedColors();
+  });
+
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style', 'class']
+  });
 }
 
 function attachAnalyzer(audioNode: AudioNode) {
@@ -102,8 +130,8 @@ function startVisualization() {
     // Clear with transparent background
     ctx.clearRect(0, 0, width, height);
 
-    // Get theme colors
-    const colors = getThemeColors();
+    // Use cached theme colors (updated only on theme change)
+    const colors = getCachedColors();
 
     // Use logarithmic frequency scaling for better visual distribution
     const numBars = Math.min(128, Math.floor(width / 6));
@@ -187,6 +215,7 @@ function cleanup() {
 }
 
 onMounted(() => {
+  setupThemeObserver();
   if (props.node) {
     attachAnalyzer(props.node);
   }
@@ -194,6 +223,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   cleanup();
+  if (themeObserver) {
+    themeObserver.disconnect();
+    themeObserver = null;
+  }
 });
 
 watch(() => props.node, (newNode) => {
