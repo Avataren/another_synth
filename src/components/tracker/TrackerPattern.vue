@@ -187,28 +187,19 @@ function scrollToRow(row: number) {
 // Track which row we last scrolled to
 let lastScrolledRow = -1;
 
-// Scroll for playback position - snap to row
-watch(
-  () => props.playbackRow,
-  (row) => {
-    if (!props.autoScroll) return;
-    if (row === lastScrolledRow) return;
-    lastScrolledRow = row;
-    scrollToRow(row);
-  }
-);
+// Consolidated scroll target - prioritizes playback row during playback, otherwise selected row
+const scrollTarget = computed(() => {
+  if (!props.autoScroll) return null;
+  if (props.isPlaying) return props.playbackRow;
+  return props.selectedRow;
+});
 
-// Scroll for selected row (keyboard navigation, clicking)
-watch(
-  () => props.selectedRow,
-  (row) => {
-    if (!props.autoScroll) return;
-    if (props.isPlaying) return; // Don't interfere during playback
-    if (row === lastScrolledRow) return;
-    lastScrolledRow = row;
-    scrollToRow(row);
-  }
-);
+// Single watcher for both playback and selection scrolling
+watch(scrollTarget, (row) => {
+  if (row === null || row === lastScrolledRow) return;
+  lastScrolledRow = row;
+  scrollToRow(row);
+});
 
 const measureBarWidth = async () => {
   await nextTick();

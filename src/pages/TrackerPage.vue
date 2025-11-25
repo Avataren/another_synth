@@ -1070,9 +1070,16 @@ onMounted(async () => {
   updatePatternAreaHeight();
 });
 
+// Debounced BPM watcher to avoid excessive updates during slider dragging
+let bpmDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 watch(
   () => currentSong.value.bpm,
-  (bpm) => playbackEngine.setBpm(bpm),
+  (bpm) => {
+    if (bpmDebounceTimer) clearTimeout(bpmDebounceTimer);
+    bpmDebounceTimer = setTimeout(() => {
+      playbackEngine.setBpm(bpm);
+    }, 50);
+  },
   { immediate: true }
 );
 
