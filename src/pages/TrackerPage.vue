@@ -373,8 +373,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue';
 import { useRouter } from 'vue-router';
-import JSZip from 'jszip';
-import type { JSZipObject } from 'jszip';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
@@ -394,7 +392,6 @@ import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/no
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
 import type { InstrumentSlot } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
-import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
 import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
 import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
@@ -406,29 +403,8 @@ import { useTrackerSelection } from 'src/composables/useTrackerSelection';
 import type { TrackerSelectionContext } from 'src/composables/useTrackerSelection';
 import { useTrackerEditing } from 'src/composables/useTrackerEditing';
 import type { TrackerEditingContext } from 'src/composables/useTrackerEditing';
-
-// Minimal File System Access API typings for browsers without lib.dom additions
-type FileSystemWriteChunkType = BufferSource | Blob | string;
-interface FileSystemWritableFileStream extends WritableStream<FileSystemWriteChunkType> {
-  write(data: FileSystemWriteChunkType): Promise<void>;
-  close(): Promise<void>;
-}
-interface FileSystemFileHandle {
-  getFile(): Promise<File>;
-  createWritable(): Promise<FileSystemWritableFileStream>;
-}
-interface FilePickerAcceptType {
-  description?: string;
-  accept: Record<string, string[]>;
-}
-interface SaveFilePickerOptions {
-  suggestedName?: string;
-  types?: FilePickerAcceptType[];
-}
-interface OpenFilePickerOptions {
-  multiple?: boolean;
-  types?: FilePickerAcceptType[];
-}
+import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
+import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
 import { storeToRefs } from 'pinia';
 
 interface BankPatchOption {
@@ -1149,6 +1125,21 @@ const {
   cleanup: cleanupPlayback
 } = useTrackerPlayback(playbackContext);
 
+// Set up file I/O composable
+const fileIOContext: TrackerFileIOContext = {
+  trackerStore,
+  currentSong,
+  playbackMode,
+  ensureActiveInstrument,
+  syncSongBankFromSlots,
+  initializePlayback
+};
+
+const {
+  handleSaveSongFile,
+  handleLoadSongFile
+} = useTrackerFileIO(fileIOContext);
+
 // Set up keyboard command system
 const keyboardContext: TrackerKeyboardContext = {
   // Current state
@@ -1363,139 +1354,6 @@ function handleRenamePattern(patternId: string, name: string) {
   trackerStore.setPatternName(patternId, name);
 }
 
-async function promptSaveFile(contents: Blob, suggestedName: string) {
-  const anyWindow = window as typeof window & {
-    showSaveFilePicker?: (
-      options?: SaveFilePickerOptions
-    ) => Promise<FileSystemFileHandle>;
-  };
-
-  if (anyWindow.showSaveFilePicker) {
-    const handle = await anyWindow.showSaveFilePicker({
-      suggestedName,
-      types: [
-        {
-          description: 'Chord Mod Song',
-          accept: { 'application/octet-stream': ['.cmod'] }
-        }
-      ]
-    });
-    const writable = await handle.createWritable();
-    await writable.write(contents);
-    await writable.close();
-    return;
-  }
-
-  const url = URL.createObjectURL(contents);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = suggestedName;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-async function promptOpenFile(): Promise<ArrayBuffer | null> {
-  const anyWindow = window as typeof window & {
-    showOpenFilePicker?: (
-      options?: OpenFilePickerOptions
-    ) => Promise<FileSystemFileHandle[]>;
-  };
-
-  if (anyWindow.showOpenFilePicker) {
-    const [handle] =
-      (await anyWindow.showOpenFilePicker({
-        types: [
-          {
-            description: 'Chord Mod Song',
-            accept: { 'application/json': ['.cmod', '.json'] }
-          }
-        ],
-        multiple: false
-      })) ?? [];
-    if (!handle) return null;
-    const file = await handle.getFile();
-    return await file.arrayBuffer();
-  }
-
-  return await new Promise<ArrayBuffer | null>((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.cmod,application/json,.json';
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) {
-        resolve(null);
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as ArrayBuffer);
-      reader.onerror = () => resolve(null);
-      reader.readAsArrayBuffer(file);
-    };
-    input.click();
-  });
-}
-
-async function handleSaveSongFile() {
-  try {
-    const songFile = trackerStore.serializeSong();
-    const json = JSON.stringify(songFile, null, 2);
-    const safeTitle = (currentSong.value.title || 'song').replace(/[^a-z0-9-_]+/gi, '_');
-    const zip = new JSZip();
-    zip.file('song.json', json);
-    const zipBlob = await zip.generateAsync({
-      type: 'blob',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 6 }
-    });
-    await promptSaveFile(zipBlob, `${safeTitle || 'song'}.cmod`);
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to save song', error);
-  }
-}
-
-async function handleLoadSongFile() {
-  try {
-    const data = await promptOpenFile();
-    if (!data) return;
-
-    const buffer = new Uint8Array(data);
-    let text: string;
-
-    if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
-      const zip = await JSZip.loadAsync(buffer);
-      const fileNames = Object.keys(zip.files);
-      if (fileNames.length === 0) {
-        throw new Error('Song archive is empty');
-      }
-      const preferredJsonName = fileNames.find((name) =>
-        name.toLowerCase().endsWith('.json')
-      );
-      const jsonName = preferredJsonName ?? fileNames[0];
-      if (!jsonName) {
-        throw new Error('No JSON filename found in song archive');
-      }
-      const zipFile = zip.file(jsonName) as JSZipObject | null;
-      if (!zipFile) {
-        throw new Error('No JSON file found in song archive');
-      }
-      text = await zipFile.async('string');
-    } else {
-      const decoder = new TextDecoder('utf-8');
-      text = decoder.decode(buffer);
-    }
-
-    const parsed = JSON.parse(text) as TrackerSongFile;
-    trackerStore.loadSongFile(parsed);
-    ensureActiveInstrument();
-    await syncSongBankFromSlots();
-    void initializePlayback(playbackMode.value);
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to load song', error);
-  }
-}
 
 onMounted(async () => {
   trackerContainer.value?.focus();
