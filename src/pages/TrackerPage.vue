@@ -1272,6 +1272,28 @@ onBeforeUnmount(() => {
   padding: 0 18px 18px;
 }
 
+.pattern-area::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.pattern-area::-webkit-scrollbar-thumb {
+  background: var(--button-background, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+}
+
+.pattern-area::-webkit-scrollbar-thumb:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.18));
+}
+
+.pattern-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pattern-area::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .visualizer-row {
   display: flex;
   padding: 0 18px 0;
@@ -1286,8 +1308,7 @@ onBeforeUnmount(() => {
 .visualizer-tracks {
   display: flex;
   gap: var(--tracker-track-gap, 10px);
-  overflow-x: auto;
-  padding-bottom: 4px;
+  overflow: hidden;
 }
 
 .visualizer-cell {
@@ -1701,6 +1722,23 @@ onBeforeUnmount(() => {
   gap: 4px;
   flex: 1;
   overflow-y: auto;
+}
+
+.instrument-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.instrument-list::-webkit-scrollbar-thumb {
+  background: var(--button-background, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+}
+
+.instrument-list::-webkit-scrollbar-thumb:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.18));
+}
+
+.instrument-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .instrument-row {

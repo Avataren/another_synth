@@ -139,6 +139,23 @@ const onAddPatternToSequence = (patternId: string | null) => {
   max-height: 200px;
   overflow-y: auto;
 }
+
+.sequence-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sequence-list-container::-webkit-scrollbar-thumb {
+  background: var(--button-background, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+}
+
+.sequence-list-container::-webkit-scrollbar-thumb:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.18));
+}
+
+.sequence-list-container::-webkit-scrollbar-track {
+  background: transparent;
+}
 .sequence-item {
   display: flex;
   justify-content: space-between;
