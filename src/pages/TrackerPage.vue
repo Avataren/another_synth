@@ -371,7 +371,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
@@ -386,11 +386,8 @@ import type {
 } from '../../packages/tracker-playback/src/types';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
-import type { Patch } from 'src/audio/types/preset-types';
-import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
-import type { InstrumentSlot } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
 import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
@@ -407,29 +404,9 @@ import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
 import { useTrackerNavigation } from 'src/composables/useTrackerNavigation';
 import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigation';
+import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
+import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { storeToRefs } from 'pinia';
-
-interface BankPatchOption {
-  id: string;
-  name: string;
-  bankId: string;
-  bankName: string;
-  source: 'system' | 'user';
-}
-
-interface RawPatchMeta {
-  id?: string;
-  name?: string;
-}
-
-interface RawPatch {
-  metadata?: RawPatchMeta;
-}
-
-interface RawBank {
-  metadata?: { id?: string; name?: string };
-  patches?: RawPatch[];
-}
 
 const router = useRouter();
 const trackerStore = useTrackerStore();
@@ -458,15 +435,8 @@ const isEditMode = ref(false);
 const isFullscreen = ref(false);
 const columnsPerTrack = 5;
 const trackerContainer = ref<HTMLDivElement | null>(null);
-const availablePatches = ref<BankPatchOption[]>([]);
-/** Library of available patches from system bank (for dropdown) */
-const bankPatchLibrary = ref<Record<string, Patch>>({});
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
 const songBank = new TrackerSongBank();
-const slotCreationPromises = new Map<number, Promise<void>>();
-const instrumentNameEditSlot = ref<number | null>(null);
-const instrumentNameDraft = ref('');
-const instrumentNameInputRefs = ref<Record<number, HTMLInputElement | null>>({});
 
 // Set up selection composable
 const selectionContext: TrackerSelectionContext = {
@@ -511,41 +481,6 @@ function normalizeMacroChars(macro?: string): [string, string, string] {
   return chars;
 }
 
-function getInstrumentDisplayName(slot: InstrumentSlot): string {
-  return slot.instrumentName || slot.patchName || '—';
-}
-
-function setInstrumentNameInputRef(
-  slotNumber: number,
-  el: Element | ComponentPublicInstance | null
-) {
-  instrumentNameInputRefs.value[slotNumber] = el as HTMLInputElement | null;
-}
-
-function beginInstrumentRename(slot: InstrumentSlot) {
-  instrumentNameEditSlot.value = slot.slot;
-  instrumentNameDraft.value = getInstrumentDisplayName(slot).replace(/^—$/, '');
-  void nextTick(() => {
-    const input = instrumentNameInputRefs.value[slot.slot];
-    if (input) {
-      input.focus();
-      input.select();
-    }
-  });
-}
-
-function cancelInstrumentRename() {
-  instrumentNameEditSlot.value = null;
-}
-
-function commitInstrumentRename(slotNumber: number) {
-  if (instrumentNameEditSlot.value !== slotNumber) {
-    return;
-  }
-  trackerStore.pushHistory();
-  trackerStore.setInstrumentName(slotNumber, instrumentNameDraft.value);
-  instrumentNameEditSlot.value = null;
-}
 
 function parseMacroField(macro?: string): { index: number; value: number } | undefined {
   const chars = normalizeMacroChars(macro);
@@ -816,6 +751,9 @@ const {
   insertRowAndShiftDown
 } = useTrackerEditing(editingContext);
 
+// Set up instruments composable (needs to be after playback and editing composables)
+// We'll declare it later after playback is set up
+
 function setStepSizeInput(value: number) {
   if (!Number.isFinite(value)) return;
   const clamped = Math.max(1, Math.min(64, Math.round(value)));
@@ -830,34 +768,6 @@ function setBaseOctaveInput(value: number) {
   trackerStore.setBaseOctave(clamped);
 }
 
-function addTrack() {
-  trackerStore.pushHistory();
-  const added = trackerStore.addTrack();
-  if (added) {
-    activeTrack.value = Math.min(
-      activeTrack.value,
-      (currentPattern.value?.tracks.length ?? 1) - 1
-    );
-    sanitizeMuteSoloState();
-    updateTrackAudioNodes();
-    void measureVisualizerLayout();
-  }
-}
-
-function removeTrack() {
-  if (trackCount.value <= 1) return;
-  trackerStore.pushHistory();
-  const removed = trackerStore.removeTrack(activeTrack.value);
-  if (removed) {
-    sanitizeMuteSoloState();
-    activeTrack.value = Math.min(
-      activeTrack.value,
-      (currentPattern.value?.tracks.length ?? 1) - 1
-    );
-    updateTrackAudioNodes();
-    void measureVisualizerLayout();
-  }
-}
 
 function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
@@ -1010,37 +920,6 @@ function handleGlobalMouseUp() {
   }
 }
 
-async function loadSystemBankOptions() {
-  try {
-    const response = await fetch(`${import.meta.env.BASE_URL}system-bank.json`, {
-      cache: 'no-store'
-    });
-    if (!response.ok) return;
-    const bank = (await response.json()) as RawBank;
-    const bankName = bank?.metadata?.name ?? 'System Bank';
-    const bankId = bank?.metadata?.id ?? 'system';
-    const patches = Array.isArray(bank?.patches) ? bank.patches : [];
-    const patchMap: Record<string, Patch> = {};
-    availablePatches.value = patches
-      .map((patch) => {
-        const meta = patch?.metadata ?? {};
-        if (!meta.id || !meta.name) return null;
-        patchMap[meta.id as string] = patch as Patch;
-        return {
-          id: meta.id as string,
-          name: meta.name as string,
-          bankId,
-          bankName,
-          source: 'system' as const
-        };
-      })
-      .filter(Boolean) as BankPatchOption[];
-    bankPatchLibrary.value = patchMap;
-    await syncSongBankFromSlots();
-  } catch (error) {
-    console.error('Failed to load system bank', error);
-  }
-}
 
 // Set up playback composable
 const playbackContext: TrackerPlaybackContext = {
@@ -1080,6 +959,43 @@ const {
   togglePatternPlayback,
   cleanup: cleanupPlayback
 } = useTrackerPlayback(playbackContext);
+
+// Set up instruments composable
+const instrumentsContext: TrackerInstrumentsContext = {
+  trackerStore,
+  patchStore,
+  router,
+  instrumentSlots,
+  songPatches,
+  activeTrack,
+  currentPattern,
+  formatInstrumentId,
+  ensureActiveInstrument,
+  setActiveInstrument,
+  syncSongBankFromSlots,
+  sanitizeMuteSoloState,
+  updateTrackAudioNodes,
+  measureVisualizerLayout,
+  trackCount
+};
+
+const {
+  instrumentNameEditSlot,
+  instrumentNameDraft,
+  availablePatches,
+  getInstrumentDisplayName,
+  setInstrumentNameInputRef,
+  beginInstrumentRename,
+  cancelInstrumentRename,
+  commitInstrumentRename,
+  onPatchSelect,
+  clearInstrument,
+  createNewSongPatch,
+  editSlotPatch,
+  loadSystemBankOptions,
+  addTrack,
+  removeTrack
+} = useTrackerInstruments(instrumentsContext);
 
 // Set up file I/O composable
 const fileIOContext: TrackerFileIOContext = {
@@ -1184,106 +1100,7 @@ const {
   exportSongToMp3
 } = useTrackerExport(exportContext);
 
-function onPatchSelect(slotNumber: number, patchId: string) {
-  if (!patchId) {
-    trackerStore.pushHistory();
-    trackerStore.clearSlot(slotNumber);
-    ensureActiveInstrument();
-    return;
-  }
-
-  const option = availablePatches.value.find((p) => p.id === patchId);
-  if (!option) return;
-
-  // Get the full patch from the bank library
-  const patch = bankPatchLibrary.value[patchId];
-  if (!patch) return;
-
-  // Copy patch to song store
-  trackerStore.pushHistory();
-  trackerStore.assignPatchToSlot(slotNumber, patch, option.bankName);
-  setActiveInstrument(slotNumber);
-  ensureActiveInstrument();
-}
-
-function clearInstrument(slotNumber: number) {
-  trackerStore.pushHistory();
-  trackerStore.clearSlot(slotNumber);
-  ensureActiveInstrument();
-}
-
-async function buildSongPatch(slotNumber: number): Promise<Patch | null> {
-  const patchName = `Instrument ${formatInstrumentId(slotNumber)}`;
-  const baseMeta = createDefaultPatchMetadata(patchName);
-
-  const cloneWithMeta = (source: Patch | null | undefined): Patch | null => {
-    if (!source) return null;
-    const cloned = JSON.parse(JSON.stringify(source)) as Patch;
-    cloned.metadata = { ...(cloned.metadata || {}), ...baseMeta, name: baseMeta.name };
-    return cloned;
-  };
-
-  const template = typeof patchStore.fetchDefaultPatchTemplate === 'function'
-    ? await patchStore.fetchDefaultPatchTemplate()
-    : null;
-  const fromTemplate = cloneWithMeta(template);
-  if (fromTemplate) return fromTemplate;
-
-  const serialized = await patchStore.serializePatch(patchName);
-  if (serialized) return serialized;
-
-  return null;
-}
-
-async function createNewSongPatch(slotNumber: number) {
-  try {
-    const creation = (async (): Promise<void> => {
-      const patch = await buildSongPatch(slotNumber) ?? {
-        metadata: createDefaultPatchMetadata(`Instrument ${formatInstrumentId(slotNumber)}`),
-        synthState: createEmptySynthState(),
-        audioAssets: {}
-      };
-
-      trackerStore.pushHistory();
-      trackerStore.assignPatchToSlot(slotNumber, patch, 'Song');
-      setActiveInstrument(slotNumber);
-      ensureActiveInstrument();
-      await nextTick();
-      await syncSongBankFromSlots();
-    })();
-
-    slotCreationPromises.set(slotNumber, creation);
-    await creation;
-    slotCreationPromises.delete(slotNumber);
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to create new song patch', error);
-  }
-}
-
-  async function editSlotPatch(slotNumber: number) {
-  const pending = slotCreationPromises.get(slotNumber);
-  if (pending) {
-    await pending.catch(() => undefined);
-  }
-  const slot = instrumentSlots.value.find(s => s.slot === slotNumber);
-  if (!slot?.patchId) return;
-  const patch = songPatches.value[slot.patchId];
-  if (patch) {
-    await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
-  }
-
-  // Mark which slot we're editing
-  trackerStore.startEditingSlot(slotNumber);
-
-  // Navigate to synth page with query param
-  void router.push({
-    path: '/patch',
-    query: { editSongPatch: slotNumber.toString() }
-    });
-  }
-
-  function handleCreatePattern() {
+function handleCreatePattern() {
   trackerStore.pushHistory();
   const newPatternId = trackerStore.createPattern();
   trackerStore.addPatternToSequence(newPatternId);
