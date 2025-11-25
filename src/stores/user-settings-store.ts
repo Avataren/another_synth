@@ -9,6 +9,8 @@ export interface UserSettings {
   theme: string;
   trackerFont: string;
   uiFont: string;
+  showSpectrumAnalyzer: boolean;
+  showWaveformVisualizers: boolean;
 }
 
 /**
@@ -17,7 +19,9 @@ export interface UserSettings {
 const defaultSettings: UserSettings = {
   theme: 'default',
   trackerFont: 'JetBrains Mono',
-  uiFont: 'Inter'
+  uiFont: 'Inter',
+  showSpectrumAnalyzer: true,
+  showWaveformVisualizers: true
 };
 
 const STORAGE_KEY = 'synth-user-settings';

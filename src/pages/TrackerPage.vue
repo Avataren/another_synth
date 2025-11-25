@@ -283,7 +283,7 @@
         </div>
       </div>
 
-  <div class="visualizer-row">
+  <div v-if="userSettings.showWaveformVisualizers" class="visualizer-row">
         <div class="visualizer-spacer" :style="{ width: `${visualizerSpacerWidth}px` }"></div>
         <div
           class="visualizer-tracks"
@@ -326,24 +326,31 @@
         </div>
       </div>
 
-      <div class="pattern-area">
-        <TrackerPattern
-          ref="trackerPatternRef"
-          :tracks="currentPattern?.tracks ?? []"
-          :rows="rowsCount"
-          :selected-row="activeRow"
-          :playback-row="playbackRow"
-          :active-track="activeTrack"
-          :active-column="activeColumn"
-          :active-macro-nibble="activeMacroNibble"
-          :selection-rect="selectionRect"
-          :auto-scroll="autoScroll"
+      <div class="pattern-area-wrapper">
+        <TrackerSpectrumAnalyzer
+          v-if="userSettings.showSpectrumAnalyzer"
+          :node="masterOutputNode"
           :is-playing="isPlaying"
-          @rowSelected="setActiveRow"
-          @cellSelected="setActiveCell"
-          @startSelection="onPatternStartSelection"
-          @hoverSelection="onPatternHoverSelection"
         />
+        <div class="pattern-area">
+          <TrackerPattern
+            ref="trackerPatternRef"
+            :tracks="currentPattern?.tracks ?? []"
+            :rows="rowsCount"
+            :selected-row="activeRow"
+            :playback-row="playbackRow"
+            :active-track="activeTrack"
+            :active-column="activeColumn"
+            :active-macro-nibble="activeMacroNibble"
+            :selection-rect="selectionRect"
+            :auto-scroll="autoScroll"
+            :is-playing="isPlaying"
+            @rowSelected="setActiveRow"
+            @cellSelected="setActiveCell"
+            @startSelection="onPatternStartSelection"
+            @hoverSelection="onPatternHoverSelection"
+          />
+        </div>
       </div>
     </div>
     <div v-if="showExportModal" class="export-modal">
@@ -376,6 +383,7 @@ import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
+import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type { ScheduledNoteEvent } from '../../packages/tracker-playback/src/types';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
@@ -401,9 +409,12 @@ import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
 import type { TrackerSongBuilderContext } from 'src/composables/useTrackerSongBuilder';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { storeToRefs } from 'pinia';
 
 const router = useRouter();
+const userSettingsStore = useUserSettingsStore();
+const { settings: userSettings } = storeToRefs(userSettingsStore);
 const trackerStore = useTrackerStore();
 trackerStore.initializeIfNeeded();
 const keyboardStore = useKeyboardStore();
@@ -574,6 +585,7 @@ watch(
 // Playback functionality will be initialized after all dependencies are set up
 
 const audioContext = computed(() => songBank.audioContext);
+const masterOutputNode = computed(() => songBank.output);
 const DEFAULT_BASE_OCTAVE = trackerStore.baseOctave;
 const baseOctave = ref(trackerStore.baseOctave);
 const trackCount = computed(() => currentPattern.value?.tracks.length ?? 0);
@@ -1201,9 +1213,17 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
-.pattern-area {
+.pattern-area-wrapper {
+  position: relative;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+.pattern-area {
+  position: relative;
+  z-index: 1;
+  height: 100%;
   overflow-y: auto;
   overflow-x: auto;
   padding: 0 18px 18px;

@@ -134,6 +134,44 @@
           </div>
         </div>
       </section>
+
+      <!-- Visualizers Section -->
+      <section class="settings-section">
+        <div class="section-header">
+          <h2>Visualizers</h2>
+        </div>
+        <div class="settings-content">
+          <p class="section-description">
+            Configure audio visualizations in the tracker.
+          </p>
+
+          <div class="toggle-settings">
+            <label class="toggle-setting">
+              <input
+                type="checkbox"
+                :checked="settings.showSpectrumAnalyzer"
+                @change="updateSetting('showSpectrumAnalyzer', ($event.target as HTMLInputElement).checked)"
+              />
+              <div class="toggle-info">
+                <span class="toggle-label">Spectrum Analyzer</span>
+                <span class="toggle-description">Show frequency spectrum overlay on the tracker</span>
+              </div>
+            </label>
+
+            <label class="toggle-setting">
+              <input
+                type="checkbox"
+                :checked="settings.showWaveformVisualizers"
+                @change="updateSetting('showWaveformVisualizers', ($event.target as HTMLInputElement).checked)"
+              />
+              <div class="toggle-info">
+                <span class="toggle-label">Track Waveforms</span>
+                <span class="toggle-description">Show waveform visualizers for each track</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </section>
     </div>
   </q-page>
 </template>
@@ -141,10 +179,15 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useThemeStore } from 'src/stores/theme-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 const themeStore = useThemeStore();
 const { currentThemeId, currentTheme, currentUiFont, currentTrackerFont } = storeToRefs(themeStore);
 const { setTheme, setUiFont, setTrackerFont, themePresets, uiFonts, monospaceFonts } = themeStore;
+
+const userSettingsStore = useUserSettingsStore();
+const { settings } = storeToRefs(userSettingsStore);
+const { updateSetting } = userSettingsStore;
 </script>
 
 <style scoped>
@@ -371,6 +414,55 @@ const { setTheme, setUiFont, setTrackerFont, themePresets, uiFonts, monospaceFon
   top: 6px;
   right: 6px;
   color: var(--tracker-accent-primary, rgb(77, 242, 197));
+}
+
+/* Toggle settings styles */
+.toggle-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toggle-setting {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--panel-background-alt, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.toggle-setting:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.05));
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.12));
+}
+
+.toggle-setting input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--tracker-accent-primary, rgb(77, 242, 197));
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e8f3ff);
+}
+
+.toggle-description {
+  font-size: 12px;
+  color: var(--text-muted, #9fb3d3);
 }
 </style>
 
