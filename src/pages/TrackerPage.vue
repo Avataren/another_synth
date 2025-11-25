@@ -399,7 +399,9 @@ import { useKeyboardStore } from 'src/stores/keyboard-store';
 import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
 import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
 import { useTrackerExport } from 'src/composables/useTrackerExport';
-import type { TrackerExportContext } from 'src/composables/useTrackerExport';
+import type { TrackerExportContext, PlaybackMode } from 'src/composables/useTrackerExport';
+import { useTrackerPlayback } from 'src/composables/useTrackerPlayback';
+import type { TrackerPlaybackContext } from 'src/composables/useTrackerPlayback';
 
 // Minimal File System Access API typings for browsers without lib.dom additions
 type FileSystemWriteChunkType = BufferSource | Blob | string;
@@ -447,8 +449,6 @@ interface RawBank {
   patches?: RawPatch[];
 }
 
-type PlaybackMode = 'pattern' | 'song';
-
 const router = useRouter();
 const trackerStore = useTrackerStore();
 trackerStore.initializeIfNeeded();
@@ -483,9 +483,7 @@ const availablePatches = ref<BankPatchOption[]>([]);
 /** Library of available patches from system bank (for dropdown) */
 const bankPatchLibrary = ref<Record<string, Patch>>({});
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
-const playbackMode = ref<PlaybackMode>('song');
 const songBank = new TrackerSongBank();
-let suppressPositionUpdates = false;
 const slotCreationPromises = new Map<number, Promise<void>>();
 const clipboard = ref<{
   width: number;
@@ -586,6 +584,10 @@ function parseMacroField(macro?: string): { index: number; value: number } | und
   return { index: macroIndex, value: clamped / 255 };
 }
 
+// Mute/solo state must exist before PlaybackEngine creation
+const mutedTracks = ref<Set<number>>(new Set());
+const soloedTracks = ref<Set<number>>(new Set());
+
 function isTrackAudible(trackIndex: number): boolean {
   const hasSolo = soloedTracks.value.size > 0;
   const isSoloed = soloedTracks.value.has(trackIndex);
@@ -668,13 +670,9 @@ watch(
     })();
   },
 );
-let unsubscribePosition: (() => void) | null = null;
-let unsubscribeState: (() => void) | null = null;
-const autoScroll = ref(true);
-const playbackRow = ref(0);
-const isPlaying = ref(false);
-/** Audio nodes per track for visualization */
-const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
+
+// Playback functionality will be initialized after all dependencies are set up
+
 const audioContext = computed(() => songBank.audioContext);
 const DEFAULT_BASE_OCTAVE = trackerStore.baseOctave;
 const baseOctave = ref(trackerStore.baseOctave);
@@ -683,12 +681,6 @@ const trackerPatternRef = ref<InstanceType<typeof TrackerPattern> | null>(null);
 const visualizerTrackWidth = ref(180);
 const visualizerTrackGap = ref(10);
 const visualizerSpacerWidth = ref(108);
-/** Tracks that are muted */
-const mutedTracks = ref<Set<number>>(new Set());
-/** Tracks that are soloed */
-const soloedTracks = ref<Set<number>>(new Set());
-/** Export (recording) state */
-// Export functionality will be initialized after all dependencies are set up
 
 async function measureVisualizerLayout() {
   await nextTick();
@@ -719,16 +711,6 @@ function toggleEditMode() {
 
 function toggleFullscreen() {
   isFullscreen.value = !isFullscreen.value;
-}
-
-function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
-  const normalized = normalizeInstrumentId(instrumentId);
-  const node = normalized ? songBank.getInstrumentOutput(normalized) : null;
-  if (trackAudioNodes.value[trackIndex] === node) return;
-  trackAudioNodes.value = {
-    ...trackAudioNodes.value,
-    [trackIndex]: node
-  };
 }
 
 const noteKeyMap: Record<string, number> = {
@@ -1408,149 +1390,8 @@ function resolveInstrumentForTrack(track: TrackerTrackData | undefined, _trackIn
   return undefined;
 }
 
-function updateTrackAudioNodes() {
-  const nodes: Record<number, AudioNode | null> = {};
-  const tracks = currentPattern.value?.tracks ?? [];
-  for (let i = 0; i < tracks.length; i++) {
-    const instrumentId = resolveInstrumentForTrack(tracks[i], i);
-    nodes[i] = instrumentId ? songBank.getInstrumentOutput(instrumentId) : null;
-  }
-  trackAudioNodes.value = nodes;
-}
-
-function toggleMute(trackIndex: number) {
-  const newMuted = new Set(mutedTracks.value);
-  if (newMuted.has(trackIndex)) {
-    newMuted.delete(trackIndex);
-  } else {
-    newMuted.add(trackIndex);
-  }
-  mutedTracks.value = newMuted;
-}
-
-function toggleSolo(trackIndex: number) {
-  const newSoloed = new Set(soloedTracks.value);
-  if (newSoloed.has(trackIndex)) {
-    newSoloed.delete(trackIndex);
-  } else {
-    newSoloed.add(trackIndex);
-  }
-  soloedTracks.value = newSoloed;
-}
-
-function sanitizeMuteSoloState(trackTotal = trackCount.value) {
-  const maxIndex = Math.max(0, trackTotal - 1);
-  const nextMuted = new Set<number>();
-  const nextSoloed = new Set<number>();
-
-  mutedTracks.value.forEach((idx) => {
-    if (idx <= maxIndex) {
-      nextMuted.add(idx);
-    }
-  });
-
-  soloedTracks.value.forEach((idx) => {
-    if (idx <= maxIndex) {
-      nextSoloed.add(idx);
-    }
-  });
-
-  mutedTracks.value = nextMuted;
-  soloedTracks.value = nextSoloed;
-}
-
-async function initializePlayback(mode: PlaybackMode = playbackMode.value): Promise<boolean> {
-  updateTrackAudioNodes();
-  const song = buildPlaybackSong(mode);
-  if (!song.sequence.length) {
-    // eslint-disable-next-line no-console
-    console.warn('No patterns available to play.');
-    return false;
-  }
-
-  playbackMode.value = mode;
-  playbackEngine.setLoopCurrentPattern(mode === 'pattern');
-  playbackEngine.loadSong(song);
-  await playbackEngine.prepareInstruments();
-
-  unsubscribePosition?.();
-  unsubscribePosition = playbackEngine.on('position', (pos) => {
-    if (suppressPositionUpdates) return;
-    const row = ((pos.row % rowsCount.value) + rowsCount.value) % rowsCount.value;
-    playbackRow.value = row;
-    if (pos.patternId && pos.patternId !== currentPatternId.value) {
-      trackerStore.setCurrentPatternId(pos.patternId);
-    }
-  });
-
-  unsubscribeState?.();
-  unsubscribeState = playbackEngine.on('state', (state) => {
-    isPlaying.value = state === 'playing';
-  });
-
-  return true;
-}
-
-async function startPlayback(mode: PlaybackMode) {
-  suppressPositionUpdates = true;
-  playbackEngine.stop();
-  suppressPositionUpdates = false;
-  songBank.cancelAllScheduled();
-  songBank.allNotesOff();
-
-  const resumed = await songBank.ensureAudioContextRunning();
-  await syncSongBankFromSlots();
-  if (resumed) {
-    // Sync again after resume to rebuild instruments if we were suspended
-    await syncSongBankFromSlots();
-  }
-  const initialized = await initializePlayback(mode);
-  if (!initialized) return;
-
-  playbackEngine.setBpm(currentSong.value.bpm);
-  playbackEngine.setLength(rowsCount.value);
-  // Always start from the currently selected row
-  playbackEngine.seek(activeRow.value);
-  await playbackEngine.play();
-}
-
-async function handlePlayPattern() {
-  await startPlayback('pattern');
-}
-
-async function handlePlaySong() {
-  await startPlayback('song');
-}
-
 // Export composable - initialized after all dependencies are set up
 // (see initialization near keyboard context setup)
-
-function handlePause() {
-  // Set the active row to the current playback position
-  activeRow.value = playbackRow.value;
-  playbackEngine.pause();
-  songBank.cancelAllScheduled();
-  songBank.allNotesOff();
-}
-
-function handleStop() {
-  const wasPlaying = isPlaying.value;
-  playbackEngine.stop();
-  playbackRow.value = 0;
-  if (wasPlaying) {
-    setActiveRow(0);
-  }
-  songBank.cancelAllScheduled();
-  songBank.allNotesOff();
-}
-
-function togglePatternPlayback() {
-  if (isPlaying.value && playbackMode.value === 'pattern') {
-    handlePause();
-    return;
-  }
-  void handlePlayPattern();
-}
 
 function handleGlobalMouseUp() {
   if (isMouseSelecting.value) {
@@ -1589,6 +1430,45 @@ async function loadSystemBankOptions() {
     console.error('Failed to load system bank', error);
   }
 }
+
+// Set up playback composable
+const playbackContext: TrackerPlaybackContext = {
+  playbackEngine,
+  songBank,
+  rowsCount,
+  trackCount,
+  currentSong,
+  currentPatternId,
+  currentPattern,
+  activeRow,
+  mutedTracks,
+  soloedTracks,
+  buildPlaybackSong,
+  syncSongBankFromSlots,
+  setCurrentPatternId: (patternId: string) => trackerStore.setCurrentPatternId(patternId),
+  normalizeInstrumentId,
+  resolveInstrumentForTrack
+};
+
+const {
+  isPlaying,
+  playbackRow,
+  playbackMode,
+  autoScroll,
+  trackAudioNodes,
+  toggleMute,
+  toggleSolo,
+  sanitizeMuteSoloState,
+  setTrackAudioNodeForInstrument,
+  updateTrackAudioNodes,
+  initializePlayback,
+  handlePlayPattern,
+  handlePlaySong,
+  handlePause,
+  handleStop,
+  togglePatternPlayback,
+  cleanup: cleanupPlayback
+} = useTrackerPlayback(playbackContext);
 
 // Set up keyboard command system
 const keyboardContext: TrackerKeyboardContext = {
@@ -1986,8 +1866,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  unsubscribePosition?.();
-  unsubscribeState?.();
+  cleanupPlayback();
   playbackEngine.stop();
   songBank.cancelAllScheduled();
   songBank.dispose();
