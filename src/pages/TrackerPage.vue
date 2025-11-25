@@ -321,6 +321,7 @@
             <TrackWaveform
               :audio-node="trackAudioNodes[index] ?? null"
               :audio-context="audioContext"
+              :is-track-active="tracksWithActiveNotes.has(index)"
             />
           </div>
         </div>
@@ -550,6 +551,7 @@ const playbackEngine = new PlaybackEngine({
 
     if (event.type === 'noteOn') {
       setTrackAudioNodeForInstrument(event.trackIndex, event.instrumentId);
+      markTrackNotePlayedRef?.(event.trackIndex);
       if (event.instrumentId === undefined || event.midi === undefined) return;
       const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
       songBank.noteOnAtTime(event.instrumentId, event.midi, velocity, event.time, event.trackIndex);
@@ -565,6 +567,7 @@ const playbackEngine = new PlaybackEngine({
 
     if (event.type === 'noteOn') {
       setTrackAudioNodeForInstrument(event.trackIndex, event.instrumentId);
+      markTrackNotePlayedRef?.(event.trackIndex);
       if (event.instrumentId === undefined || event.midi === undefined) return;
       const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
       songBank.noteOn(event.instrumentId, event.midi, velocity, event.trackIndex);
@@ -835,6 +838,7 @@ const {
 
 // Will be assigned after playback composable is set up
 let updateTrackAudioNodesRef: (() => void) | null = null;
+let markTrackNotePlayedRef: ((trackIndex: number) => void) | null = null;
 
 // Wrapper that also updates track audio nodes
 async function syncSongBankFromSlots() {
@@ -869,11 +873,13 @@ const {
   playbackMode,
   autoScroll,
   trackAudioNodes,
+  tracksWithActiveNotes,
   toggleMute,
   toggleSolo,
   sanitizeMuteSoloState,
   setTrackAudioNodeForInstrument,
   updateTrackAudioNodes,
+  markTrackNotePlayed,
   initializePlayback,
   handlePlayPattern,
   handlePlaySong,
@@ -883,8 +889,9 @@ const {
   cleanup: cleanupPlayback
 } = useTrackerPlayback(playbackContext);
 
-// Assign the ref so syncSongBankFromSlots wrapper can use it
+// Assign the refs so wrappers can use them
 updateTrackAudioNodesRef = updateTrackAudioNodes;
+markTrackNotePlayedRef = markTrackNotePlayed;
 
 // Set up instruments composable
 const instrumentsContext: TrackerInstrumentsContext = {

@@ -56,6 +56,9 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
   // Track audio nodes for visualization
   const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
 
+  // Tracks that have actually played notes (for waveform visualization)
+  const tracksWithActiveNotes = ref<Set<number>>(new Set());
+
   // Event subscription handles
   let unsubscribePosition: (() => void) | null = null;
   let unsubscribeState: (() => void) | null = null;
@@ -87,6 +90,22 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
       nodes[i] = instrumentId ? context.songBank.getInstrumentOutput(instrumentId) : null;
     }
     trackAudioNodes.value = nodes;
+  }
+
+  /**
+   * Mark a track as having played a note (enables waveform visualization)
+   */
+  function markTrackNotePlayed(trackIndex: number) {
+    if (!tracksWithActiveNotes.value.has(trackIndex)) {
+      tracksWithActiveNotes.value = new Set([...tracksWithActiveNotes.value, trackIndex]);
+    }
+  }
+
+  /**
+   * Clear all active note tracking (called on stop)
+   */
+  function clearActiveNoteTracks() {
+    tracksWithActiveNotes.value = new Set();
   }
 
   /**
@@ -186,6 +205,7 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
     suppressPositionUpdates = false;
     context.songBank.cancelAllScheduled();
     context.songBank.allNotesOff();
+    clearActiveNoteTracks();
 
     const resumed = await context.songBank.ensureAudioContextRunning();
     await context.syncSongBankFromSlots();
@@ -240,6 +260,7 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
     }
     context.songBank.cancelAllScheduled();
     context.songBank.allNotesOff();
+    clearActiveNoteTracks();
   }
 
   /**
@@ -270,6 +291,7 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
     playbackMode,
     autoScroll,
     trackAudioNodes,
+    tracksWithActiveNotes,
 
     // Mute/Solo
     // Note: isTrackAudible, mutedTracks, and soloedTracks are defined in TrackerPage before PlaybackEngine
@@ -280,6 +302,8 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
     // Track audio nodes
     setTrackAudioNodeForInstrument,
     updateTrackAudioNodes,
+    markTrackNotePlayed,
+    clearActiveNoteTracks,
 
     // Playback controls
     initializePlayback,

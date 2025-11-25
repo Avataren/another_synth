@@ -11,6 +11,7 @@ import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 interface Props {
   audioNode: AudioNode | null;
   audioContext: AudioContext | null;
+  isTrackActive: boolean;
 }
 
 const props = defineProps<Props>();
@@ -64,6 +65,17 @@ function updateCanvasSize() {
   }
 }
 
+function disconnectCurrentNode() {
+  if (currentConnectedNode && analyser) {
+    try {
+      currentConnectedNode.disconnect(analyser);
+    } catch {
+      // Node may have already been disconnected
+    }
+    currentConnectedNode = null;
+  }
+}
+
 function setupAnalyser() {
   if (!props.audioContext) return;
 
@@ -74,16 +86,13 @@ function setupAnalyser() {
     dataArray = new Uint8Array(analyser.frequencyBinCount);
   }
 
-  // Connect new audio node if provided and different from current
-  if (props.audioNode && props.audioNode !== currentConnectedNode) {
-    // Disconnect previous node if any
-    if (currentConnectedNode) {
-      try {
-        currentConnectedNode.disconnect(analyser);
-      } catch {
-        // Node may have already been disconnected
-      }
-    }
+  // Disconnect if track is not active or node changed
+  if (currentConnectedNode && (!props.isTrackActive || currentConnectedNode !== props.audioNode)) {
+    disconnectCurrentNode();
+  }
+
+  // Only connect if track is active and we have a node
+  if (props.isTrackActive && props.audioNode && props.audioNode !== currentConnectedNode) {
     props.audioNode.connect(analyser);
     currentConnectedNode = props.audioNode;
   }
@@ -163,14 +172,7 @@ function cleanup() {
     unregisterAnimation = null;
   }
 
-  if (currentConnectedNode && analyser) {
-    try {
-      currentConnectedNode.disconnect(analyser);
-    } catch {
-      // Node may have already been disconnected
-    }
-    currentConnectedNode = null;
-  }
+  disconnectCurrentNode();
 
   if (analyser) {
     analyser.disconnect();
@@ -206,6 +208,11 @@ onUnmounted(() => {
 
 watch(
   () => props.audioNode,
+  () => setupAnalyser()
+);
+
+watch(
+  () => props.isTrackActive,
   () => setupAnalyser()
 );
 </script>
