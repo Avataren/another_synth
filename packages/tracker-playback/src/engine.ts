@@ -62,6 +62,10 @@ export class PlaybackEngine {
   private scheduledLoops = 0;
   /** RAF handle for playback loop */
   private rafHandle: number | null = null;
+  /** Interval handle for background playback when tab is hidden */
+  private intervalHandle: number | null = null;
+  /** Track if tab is currently visible */
+  private isTabVisible = true;
 
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
@@ -76,6 +80,62 @@ export class PlaybackEngine {
     this.scheduledMacroHandler = options.scheduledMacroHandler;
     this.macroHandler = options.macroHandler;
     this.audioContext = options.audioContext;
+    this.setupVisibilityHandling();
+  }
+
+  private setupVisibilityHandling() {
+    if (typeof document === 'undefined') return;
+
+    const handleVisibilityChange = () => {
+      this.isTabVisible = !document.hidden;
+      if (this.state === 'playing') {
+        // Switch between RAF and interval based on visibility
+        if (this.isTabVisible) {
+          this.switchToRAF();
+        } else {
+          this.switchToInterval();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+
+  private switchToRAF() {
+    // Clear interval if it's running
+    if (this.intervalHandle !== null) {
+      clearInterval(this.intervalHandle);
+      this.intervalHandle = null;
+    }
+
+    // Start RAF loop if not already running
+    if (this.rafHandle === null && this.state === 'playing') {
+      const loop = () => {
+        if (this.state !== 'playing' || !this.isTabVisible) return;
+        this.updatePosition();
+        this.scheduleAhead();
+        this.rafHandle = requestAnimationFrame(loop);
+      };
+      this.rafHandle = requestAnimationFrame(loop);
+    }
+  }
+
+  private switchToInterval() {
+    // Clear RAF if it's running
+    if (this.rafHandle !== null) {
+      cancelAnimationFrame(this.rafHandle);
+      this.rafHandle = null;
+    }
+
+    // Start interval loop if not already running
+    if (this.intervalHandle === null && this.state === 'playing') {
+      // Use 60fps equivalent (16.67ms) for smooth scheduling even when hidden
+      this.intervalHandle = setInterval(() => {
+        if (this.state !== 'playing' || this.isTabVisible) return;
+        this.updatePosition();
+        this.scheduleAhead();
+      }, 16) as unknown as number;
+    }
   }
 
   setLoopCurrentPattern(loop: boolean) {
@@ -200,20 +260,22 @@ export class PlaybackEngine {
     // Schedule initial batch of notes
     this.scheduleAhead();
 
-    // Use RAF for both scheduling and position updates
-    const loop = () => {
-      if (this.state !== 'playing') return;
-      this.updatePosition();
-      this.scheduleAhead();
-      this.rafHandle = requestAnimationFrame(loop);
-    };
-    this.rafHandle = requestAnimationFrame(loop);
+    // Use RAF when tab is visible, setInterval when hidden
+    if (this.isTabVisible) {
+      this.switchToRAF();
+    } else {
+      this.switchToInterval();
+    }
   }
 
   private stopScheduledPlayback() {
     if (this.rafHandle !== null) {
       cancelAnimationFrame(this.rafHandle);
       this.rafHandle = null;
+    }
+    if (this.intervalHandle !== null) {
+      clearInterval(this.intervalHandle);
+      this.intervalHandle = null;
     }
     this.lastScheduledRow = -1;
     this.scheduledLoops = 0;
