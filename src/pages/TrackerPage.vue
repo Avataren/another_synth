@@ -376,24 +376,17 @@ import { useRouter } from 'vue-router';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
-import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type {
-  Pattern as PlaybackPattern,
-  Song as PlaybackSong,
-  Step as PlaybackStep,
-  ScheduledNoteEvent
-} from '../../packages/tracker-playback/src/types';
+import type { ScheduledNoteEvent } from '../../packages/tracker-playback/src/types';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
-import type { SongBankSlot } from 'src/audio/tracker/song-bank';
-import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
+import { parseTrackerNoteSymbol } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
 import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
 import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
 import { useTrackerExport } from 'src/composables/useTrackerExport';
-import type { TrackerExportContext, PlaybackMode } from 'src/composables/useTrackerExport';
+import type { TrackerExportContext } from 'src/composables/useTrackerExport';
 import { useTrackerPlayback } from 'src/composables/useTrackerPlayback';
 import type { TrackerPlaybackContext } from 'src/composables/useTrackerPlayback';
 import { useTrackerSelection } from 'src/composables/useTrackerSelection';
@@ -406,6 +399,8 @@ import { useTrackerNavigation } from 'src/composables/useTrackerNavigation';
 import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigation';
 import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
+import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
+import type { TrackerSongBuilderContext } from 'src/composables/useTrackerSongBuilder';
 import { storeToRefs } from 'pinia';
 
 const router = useRouter();
@@ -785,141 +780,44 @@ function onPatternLengthInput(event: Event) {
   }
 }
 
-interface TrackPlaybackContext {
-  instrumentId?: string;
-  lastMidi?: number;
-}
-
-function buildPlaybackStepsForTrack(track: TrackerTrackData): PlaybackStep[] {
-  const ctx: TrackPlaybackContext = {};
-  const steps: PlaybackStep[] = [];
-
-  const sortedEntries = [...track.entries].sort((a, b) => a.row - b.row);
-  for (const entry of sortedEntries) {
-    const instrumentId = normalizeInstrumentId(entry.instrument) ?? ctx.instrumentId;
-    const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
-    const volumeValue = parseTrackerVolume(entry.volume);
-    const macroInfo = parseMacroField(entry.macro);
-
-    if (!instrumentId && !macroInfo) continue;
-    if (!isNoteOff && midi === undefined && volumeValue === undefined && !macroInfo) continue;
-
-    const step: PlaybackStep = {
-      row: entry.row,
-      instrumentId: instrumentId ?? '',
-      isNoteOff
-    };
-
-    if (midi !== undefined) {
-      step.midi = midi;
-      ctx.lastMidi = midi;
-    } else if (isNoteOff && ctx.lastMidi !== undefined) {
-      step.midi = ctx.lastMidi;
-    }
-
-    if (entry.note) {
-      step.note = entry.note;
-    }
-
-    if (volumeValue !== undefined) {
-      const scaledVelocity = Math.max(
-        0,
-        Math.min(127, Math.round((volumeValue / 255) * 127))
-      );
-      step.velocity = scaledVelocity;
-    }
-
-    if (macroInfo) {
-      step.macroIndex = macroInfo.index;
-      step.macroValue = macroInfo.value;
-    }
-
-    // Update context after building step
-    if (instrumentId) {
-      ctx.instrumentId = instrumentId;
-    }
-
-    steps.push(step);
-  }
-
-  return steps;
-}
-
-function buildPlaybackPatterns(): PlaybackPattern[] {
-  return patterns.value.map(p => ({
-    id: p.id,
-    length: patternRows.value,
-    tracks: p.tracks.map((track) => ({
-      id: track.id,
-      steps: buildPlaybackStepsForTrack(track)
-    }))
-  }));
-}
-
-function resolveSequenceForMode(mode: PlaybackMode): string[] {
-  if (mode === 'pattern') {
-    const targetId = currentPatternId.value ?? currentPattern.value?.id ?? patterns.value[0]?.id;
-    return targetId ? [targetId] : [];
-  }
-
-  const validPatternIds = new Set(patterns.value.map((p) => p.id));
-  const sanitizedSequence = sequence.value.filter((id) => validPatternIds.has(id));
-
-  if (sanitizedSequence.length > 0) {
-    return sanitizedSequence;
-  }
-
-  const fallback = currentPatternId.value ?? patterns.value[0]?.id;
-  return fallback ? [fallback] : [];
-}
-
-function buildPlaybackSong(mode: PlaybackMode = playbackMode.value): PlaybackSong {
-  return {
-    title: currentSong.value.title,
-    author: currentSong.value.author,
-    bpm: currentSong.value.bpm,
-    patterns: buildPlaybackPatterns(),
-    sequence: resolveSequenceForMode(mode),
-  };
-}
-
-async function syncSongBankFromSlots() {
-  const slots: SongBankSlot[] = instrumentSlots.value
-    .map((slot) => {
-      if (!slot.patchId) return null;
-      // Use song patches (patches are copied there when assigned)
-      const patch = songPatches.value[slot.patchId];
-      if (!patch) return null;
-      return {
-        instrumentId: formatInstrumentId(slot.slot),
-        patch
-      } satisfies SongBankSlot;
-    })
-    .filter(Boolean) as SongBankSlot[];
-
-  await songBank.syncSlots(slots);
-  updateTrackAudioNodes();
-}
-
-function resolveInstrumentForTrack(track: TrackerTrackData | undefined, _trackIndex: number) {
-  if (!track) return undefined;
-  const steps = buildPlaybackStepsForTrack(track);
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const instrumentId = normalizeInstrumentId(steps[i]?.instrumentId);
-    if (instrumentId) return instrumentId;
-  }
-  return undefined;
-}
-
-// Export composable - initialized after all dependencies are set up
-// (see initialization near keyboard context setup)
-
 function handleGlobalMouseUp() {
   if (isMouseSelecting.value) {
     isMouseSelecting.value = false;
   }
 }
 
+// Set up song builder composable (must be before playback)
+const songBuilderContext: TrackerSongBuilderContext = {
+  currentSong,
+  patterns,
+  sequence,
+  currentPatternId,
+  currentPattern,
+  patternRows,
+  instrumentSlots,
+  songPatches,
+  songBank,
+  normalizeInstrumentId,
+  formatInstrumentId,
+  parseMacroField
+};
+
+const {
+  buildPlaybackSong,
+  syncSongBankFromSlots: syncSongBankFromSlotsBase,
+  resolveInstrumentForTrack
+} = useTrackerSongBuilder(songBuilderContext);
+
+// Will be assigned after playback composable is set up
+let updateTrackAudioNodesRef: (() => void) | null = null;
+
+// Wrapper that also updates track audio nodes
+async function syncSongBankFromSlots() {
+  await syncSongBankFromSlotsBase();
+  if (updateTrackAudioNodesRef) {
+    updateTrackAudioNodesRef();
+  }
+}
 
 // Set up playback composable
 const playbackContext: TrackerPlaybackContext = {
@@ -959,6 +857,9 @@ const {
   togglePatternPlayback,
   cleanup: cleanupPlayback
 } = useTrackerPlayback(playbackContext);
+
+// Assign the ref so syncSongBankFromSlots wrapper can use it
+updateTrackAudioNodesRef = updateTrackAudioNodes;
 
 // Set up instruments composable
 const instrumentsContext: TrackerInstrumentsContext = {
@@ -1169,6 +1070,7 @@ watch(
     // This provides the required user gesture for browsers' autoplay policy
     await songBank.ensureAudioContextRunning();
     await syncSongBankFromSlots();
+    updateTrackAudioNodes();
     void initializePlayback(playbackMode.value);
     void measureVisualizerLayout();
   },
