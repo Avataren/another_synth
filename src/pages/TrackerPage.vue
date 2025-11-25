@@ -405,6 +405,8 @@ import { useTrackerEditing } from 'src/composables/useTrackerEditing';
 import type { TrackerEditingContext } from 'src/composables/useTrackerEditing';
 import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
+import { useTrackerNavigation } from 'src/composables/useTrackerNavigation';
+import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigation';
 import { storeToRefs } from 'pinia';
 
 interface BankPatchOption {
@@ -755,6 +757,27 @@ function hasPatchForInstrument(instrumentId: string): boolean {
   );
 }
 
+// Set up navigation composable
+const navigationContext: TrackerNavigationContext = {
+  activeRow,
+  activeTrack,
+  activeColumn,
+  activeMacroNibble,
+  rowsCount,
+  currentPattern,
+  columnsPerTrack,
+  clearSelection
+};
+
+const {
+  setActiveRow,
+  setActiveCell,
+  moveRow,
+  moveColumn,
+  jumpToNextTrack,
+  jumpToPrevTrack
+} = useTrackerNavigation(navigationContext);
+
 // Set up editing composable
 const editingContext: TrackerEditingContext = {
   activeRow,
@@ -792,73 +815,6 @@ const {
   deleteRowAndShiftUp,
   insertRowAndShiftDown
 } = useTrackerEditing(editingContext);
-
-function setActiveRow(row: number) {
-  const count = rowsCount.value;
-  const clamped = Math.min(count - 1, Math.max(0, row));
-  activeRow.value = clamped;
-}
-
-function setActiveCell(payload: { row: number; column: number; trackIndex: number; macroNibble?: number }) {
-  activeRow.value = payload.row;
-  activeTrack.value = payload.trackIndex;
-  activeColumn.value = payload.column;
-  activeMacroNibble.value = payload.macroNibble ?? 0;
-  // Clear selection when clicking on a specific cell
-  clearSelection();
-}
-
-function moveRow(delta: number) {
-  setActiveRow(activeRow.value + delta);
-  activeMacroNibble.value = 0;
-}
-
-function moveColumn(delta: number) {
-  if (!currentPattern.value) return;
-  if (activeColumn.value === 4 && delta !== 0) {
-    const nextNibble = activeMacroNibble.value + delta;
-    if (nextNibble >= 0 && nextNibble <= 2) {
-      activeMacroNibble.value = nextNibble;
-      return;
-    }
-  }
-
-  const nextColumn = activeColumn.value + delta;
-  if (nextColumn < 0) {
-    activeTrack.value =
-      (activeTrack.value - 1 + currentPattern.value.tracks.length) %
-      currentPattern.value.tracks.length;
-    activeColumn.value = columnsPerTrack - 1;
-    activeMacroNibble.value = 0;
-    return;
-  }
-
-  if (nextColumn >= columnsPerTrack) {
-    activeTrack.value = (activeTrack.value + 1) % currentPattern.value.tracks.length;
-    activeColumn.value = 0;
-    activeMacroNibble.value = 0;
-    return;
-  }
-
-  activeColumn.value = nextColumn;
-  if (activeColumn.value !== 4) {
-    activeMacroNibble.value = 0;
-  }
-}
-
-function jumpToNextTrack() {
-  if (!currentPattern.value) return;
-  activeTrack.value = (activeTrack.value + 1) % currentPattern.value.tracks.length;
-  activeColumn.value = 0;
-}
-
-function jumpToPrevTrack() {
-  if (!currentPattern.value) return;
-  activeTrack.value =
-    (activeTrack.value - 1 + currentPattern.value.tracks.length) %
-    currentPattern.value.tracks.length;
-  activeColumn.value = 0;
-}
 
 function setStepSizeInput(value: number) {
   if (!Number.isFinite(value)) return;
