@@ -397,6 +397,8 @@ import type { InstrumentSlot } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
+import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
+import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
 
 // Minimal File System Access API typings for browsers without lib.dom additions
 type FileSystemWriteChunkType = BufferSource | Blob | string;
@@ -1753,249 +1755,66 @@ async function loadSystemBankOptions() {
   }
 }
 
-function onKeyDown(event: KeyboardEvent) {
-  // Don't process notes when typing in input fields
-  const target = event.target as HTMLElement;
-  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-    return;
-  }
+// Set up keyboard command system
+const keyboardContext: TrackerKeyboardContext = {
+  // Current state
+  activeRow,
+  activeTrack,
+  activeColumn,
+  activeMacroNibble,
+  isEditMode,
+  isFullscreen,
+  get rowsCount() { return rowsCount.value; },
+  get trackCount() { return trackCount.value; },
 
-  if (event.ctrlKey && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
-    event.preventDefault();
-    trackerStore.undo();
-    return;
-  }
+  // Selection
+  selectionAnchor,
+  selectionEnd,
+  clearSelection,
+  startSelectionAtCursor,
+  copySelectionToClipboard,
+  pasteFromClipboard,
+  transposeSelection,
 
-  if (
-    event.ctrlKey &&
-    (event.key === 'y' ||
-      event.key === 'Y' ||
-      (event.shiftKey && (event.key === 'z' || event.key === 'Z')))
-  ) {
-    event.preventDefault();
-    trackerStore.redo();
-    return;
-  }
+  // Navigation
+  setActiveRow,
+  moveRow,
+  moveColumn,
+  jumpToNextTrack,
+  jumpToPrevTrack,
 
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    !event.shiftKey &&
-    !event.altKey &&
-    event.key === 'ArrowUp'
-  ) {
-    event.preventDefault();
-    transposeSelection(1);
-    return;
-  }
+  // Editing
+  handleNoteEntry,
+  handleVolumeInput,
+  handleMacroInput,
+  clearStep,
+  clearVolumeField,
+  clearMacroField,
+  insertNoteOff,
+  insertRowAndShiftDown,
+  deleteRowAndShiftUp,
+  ensureActiveInstrument,
 
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    !event.shiftKey &&
-    !event.altKey &&
-    event.key === 'ArrowDown'
-  ) {
-    event.preventDefault();
-    transposeSelection(-1);
-    return;
-  }
+  // Playback
+  togglePatternPlayback,
 
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    event.shiftKey &&
-    !event.altKey &&
-    event.key === 'ArrowUp'
-  ) {
-    event.preventDefault();
-    transposeSelection(12);
-    return;
-  }
+  // UI
+  toggleEditMode,
+  toggleFullscreen,
 
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    event.shiftKey &&
-    !event.altKey &&
-    event.key === 'ArrowDown'
-  ) {
-    event.preventDefault();
-    transposeSelection(-12);
-    return;
-  }
+  // Octave
+  baseOctave,
+  setBaseOctaveInput,
 
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    !event.shiftKey &&
-    (event.key === 'c' || event.key === 'C')
-  ) {
-    event.preventDefault();
-    copySelectionToClipboard();
-    return;
-  }
+  // Store actions
+  undo: () => trackerStore.undo(),
+  redo: () => trackerStore.redo(),
 
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    !event.shiftKey &&
-    (event.key === 'v' || event.key === 'V')
-  ) {
-    event.preventDefault();
-    pasteFromClipboard();
-    return;
-  }
+  // Note mapping
+  noteKeyMap
+};
 
-  const midiFromMap = noteKeyMap[event.code];
-  if (midiFromMap !== undefined && activeColumn.value === 0) {
-    if (!isEditMode.value) {
-      // In non-edit mode, keyboardStore handles live playback.
-      return;
-    }
-    if (!event.repeat) {
-      event.preventDefault();
-      ensureActiveInstrument();
-      handleNoteEntry(midiFromMap);
-    }
-    return;
-  }
-
-  // Volume entry in column 2 using hex keys
-  const hexChar = event.key.length === 1 ? event.key.toUpperCase() : '';
-  const isHex = /^[0-9A-F]$/.test(hexChar);
-  if (
-    !event.repeat &&
-    isHex &&
-    (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
-  ) {
-    event.preventDefault();
-    if (activeColumn.value === 4) {
-      handleMacroInput(hexChar);
-    } else {
-      handleVolumeInput(hexChar);
-    }
-    return;
-  }
-
-  switch (event.key) {
-    case 'F2':
-      event.preventDefault();
-      toggleEditMode();
-      break;
-    case 'F10':
-      event.preventDefault();
-      toggleFullscreen();
-      break;
-    case 'ArrowUp':
-      event.preventDefault();
-      if (event.shiftKey) {
-        if (!selectionAnchor.value) startSelectionAtCursor();
-        moveRow(-1);
-        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-      } else {
-        clearSelection();
-        moveRow(-1);
-      }
-      break;
-    case 'ArrowDown':
-      event.preventDefault();
-      if (event.shiftKey) {
-        if (!selectionAnchor.value) startSelectionAtCursor();
-        moveRow(1);
-        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-      } else {
-        clearSelection();
-        moveRow(1);
-      }
-      break;
-    case 'ArrowLeft':
-      event.preventDefault();
-      if (event.shiftKey) {
-        if (!selectionAnchor.value) startSelectionAtCursor();
-        moveColumn(-1);
-        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-      } else {
-        clearSelection();
-        moveColumn(-1);
-      }
-      break;
-    case 'ArrowRight':
-      event.preventDefault();
-      if (event.shiftKey) {
-        if (!selectionAnchor.value) startSelectionAtCursor();
-        moveColumn(1);
-        selectionEnd.value = { row: activeRow.value, trackIndex: activeTrack.value };
-      } else {
-        clearSelection();
-        moveColumn(1);
-      }
-      break;
-    case 'Tab':
-      event.preventDefault();
-      if (event.shiftKey) {
-        jumpToPrevTrack();
-      } else {
-        jumpToNextTrack();
-      }
-      break;
-    case 'PageDown':
-      if (event.shiftKey) {
-        event.preventDefault();
-        baseOctave.value = Math.max(0, baseOctave.value - 1);
-        trackerStore.setBaseOctave(baseOctave.value);
-      } else {
-        event.preventDefault();
-        moveRow(16);
-      }
-      break;
-    case 'PageUp':
-      if (event.shiftKey) {
-        event.preventDefault();
-        baseOctave.value = Math.min(8, baseOctave.value + 1);
-        trackerStore.setBaseOctave(baseOctave.value);
-      } else {
-        event.preventDefault();
-        moveRow(-16);
-      }
-      break;
-    case 'Home':
-      event.preventDefault();
-      setActiveRow(0);
-      break;
-    case 'End':
-      event.preventDefault();
-      setActiveRow(rowsCount.value - 1);
-      break;
-    case ' ':
-      event.preventDefault();
-      togglePatternPlayback();
-      break;
-    case 'Insert':
-      event.preventDefault();
-      if (event.shiftKey) {
-        insertRowAndShiftDown();
-      } else {
-        insertNoteOff();
-      }
-      break;
-    case 'Delete':
-      event.preventDefault();
-      if (
-        !event.shiftKey &&
-        (activeColumn.value === 2 || activeColumn.value === 3 || activeColumn.value === 4)
-      ) {
-        clearVolumeField();
-        if (activeColumn.value === 4) {
-          clearMacroField();
-        }
-      } else if (event.shiftKey) {
-        deleteRowAndShiftUp();
-      } else {
-        clearStep();
-      }
-      break;
-    case 'Escape':
-      clearSelection();
-      break;
-    default:
-      break;
-  }
-}
+const { handleKeyDown: onKeyDown } = useTrackerKeyboard(keyboardContext);
 
 function onPatchSelect(slotNumber: number, patchId: string) {
   if (!patchId) {

@@ -14,7 +14,10 @@
       "Bash(/tmp/default-patch-with-assets.json)",
       "Bash(node:*)",
       "Bash(npm run lint:check:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(for file in src/components/tracker/*.vue)",
+      "Bash(done)",
+      "Bash(for file in src/stores/*.ts)"
     ],
     "deny": [],
     "ask": []
