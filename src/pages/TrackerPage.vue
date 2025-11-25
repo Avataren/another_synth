@@ -388,7 +388,6 @@ import type {
 } from '../../packages/tracker-playback/src/types';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
-import { encodeRecordingToMp3 } from 'src/audio/tracker/exporter';
 import type { Patch } from 'src/audio/types/preset-types';
 import { createDefaultPatchMetadata, createEmptySynthState } from 'src/audio/types/preset-types';
 import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
@@ -399,6 +398,8 @@ import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
 import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
 import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
+import { useTrackerExport } from 'src/composables/useTrackerExport';
+import type { TrackerExportContext } from 'src/composables/useTrackerExport';
 
 // Minimal File System Access API typings for browsers without lib.dom additions
 type FileSystemWriteChunkType = BufferSource | Blob | string;
@@ -687,30 +688,7 @@ const mutedTracks = ref<Set<number>>(new Set());
 /** Tracks that are soloed */
 const soloedTracks = ref<Set<number>>(new Set());
 /** Export (recording) state */
-const isExporting = ref(false);
-const showExportModal = ref(false);
-const exportStage = ref<'idle' | 'preparing' | 'recording' | 'encoding' | 'saving' | 'done' | 'error'>('idle');
-const exportProgress = ref(0);
-const exportError = ref<string | null>(null);
-const exportStatusText = computed(() => {
-  switch (exportStage.value) {
-    case 'preparing':
-      return 'Preparing instruments...';
-    case 'recording':
-      return 'Recording song...';
-    case 'encoding':
-      return 'Encoding MP3...';
-    case 'saving':
-      return 'Saving file...';
-    case 'done':
-      return 'Export complete!';
-    case 'error':
-      return 'Export failed';
-    default:
-      return '';
-  }
-});
-const exportProgressPercent = computed(() => Math.round(exportProgress.value * 100));
+// Export functionality will be initialized after all dependencies are set up
 
 async function measureVisualizerLayout() {
   await nextTick();
@@ -1544,151 +1522,8 @@ async function handlePlaySong() {
   await startPlayback('song');
 }
 
-function getMsPerRow(bpm: number): number {
-  const rowsPerBeat = 4;
-  return (60_000 / bpm) / rowsPerBeat;
-}
-
-function getPatternLengthForExport(_patternId: string | undefined): number {
-  // Tracker currently uses a single patternRows value for all patterns.
-  // When per-pattern lengths are added, look up the pattern's own length here.
-  return rowsCount.value;
-}
-
-function waitForPlaybackStop(timeoutMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timeoutId = window.setTimeout(() => {
-      playbackEngine.stop();
-      unsubscribe();
-      resolve();
-    }, timeoutMs);
-
-    const unsubscribe = playbackEngine.on('state', (state) => {
-      if (state === 'stopped') {
-        clearTimeout(timeoutId);
-        unsubscribe();
-        resolve();
-      }
-    });
-  });
-}
-
-async function exportSongToMp3() {
-  if (isExporting.value) return;
-  showExportModal.value = true;
-  isExporting.value = true;
-  exportError.value = null;
-  exportStage.value = 'preparing';
-  exportProgress.value = 0;
-
-  let unsubscribeExportPosition: (() => void) | null = null;
-
-  try {
-    // For export, we want a single pass through the song,
-    // not continuous looping.
-    playbackEngine.setLoopSong(false);
-
-    await syncSongBankFromSlots();
-    const initialized = await initializePlayback('song');
-    if (!initialized) {
-      throw new Error('Nothing to play – please add a pattern with notes.');
-    }
-
-    playbackEngine.stop();
-    playbackRow.value = 0;
-    activeRow.value = 0;
-    songBank.cancelAllScheduled();
-    songBank.allNotesOff();
-    playbackEngine.seek(0);
-
-    // Compute total song length in rows (using the same
-    // sanitized sequence the playback engine sees) so we
-    // can drive a 0..1 progress value from playback
-    // position, even when pattern lengths vary in future.
-    const playbackSequence = resolveSequenceForMode('song');
-    const rowsBeforePattern = new Map<string, number>();
-    let accumulatedRows = 0;
-    for (const id of playbackSequence) {
-      rowsBeforePattern.set(id, accumulatedRows);
-      accumulatedRows += getPatternLengthForExport(id);
-    }
-    const totalRows = accumulatedRows;
-
-    const RECORDING_PROGRESS_PORTION = 0.85;
-
-    unsubscribeExportPosition = playbackEngine.on('position', (pos) => {
-      if (!pos.patternId || totalRows <= 0) return;
-      const before = rowsBeforePattern.get(pos.patternId);
-      if (before === undefined) return;
-
-      const globalRow = before + pos.row;
-      const clampedGlobal = Math.max(0, Math.min(totalRows, globalRow));
-      const fraction = clampedGlobal / totalRows;
-      const overall = Math.min(
-        RECORDING_PROGRESS_PORTION,
-        fraction * RECORDING_PROGRESS_PORTION
-      );
-
-      if (overall > exportProgress.value) {
-        exportProgress.value = overall;
-      }
-    });
-
-    exportStage.value = 'recording';
-    await songBank.startRecording();
-
-    const expectedRows =
-      totalRows > 0
-        ? totalRows
-        : rowsCount.value * Math.max(1, sequence.value.length || 1);
-    const expectedDurationMs = expectedRows * getMsPerRow(currentSong.value.bpm);
-    const waitPromise = waitForPlaybackStop(expectedDurationMs + 2000);
-
-    await playbackEngine.play();
-    await waitPromise;
-
-    // Allow a short tail so reverb/delay can decay
-    // before we stop recording, to avoid the export
-    // sounding abruptly cut off.
-    await new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 1000);
-    });
-
-    const recording = await songBank.stopRecording();
-
-    unsubscribeExportPosition?.();
-    unsubscribeExportPosition = null;
-
-    exportStage.value = 'encoding';
-    const baseProgress = exportProgress.value;
-    const mp3Blob = await encodeRecordingToMp3(recording, (progress) => {
-      const clamped = Math.max(0, Math.min(1, progress));
-      exportProgress.value = baseProgress + (1 - baseProgress) * clamped;
-    });
-    exportProgress.value = 1;
-
-    exportStage.value = 'saving';
-    const filename = `tracker-export-${new Date().toISOString().replace(/[:.]/g, '-')}.mp3`;
-    const url = URL.createObjectURL(mp3Blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
-
-    exportStage.value = 'done';
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to export song', error);
-    exportError.value = error instanceof Error ? error.message : String(error);
-    exportStage.value = 'error';
-  } finally {
-    unsubscribeExportPosition?.();
-    // Restore looping behavior for normal playback.
-    playbackEngine.setLoopSong(true);
-    isExporting.value = false;
-  }
-}
+// Export composable - initialized after all dependencies are set up
+// (see initialization near keyboard context setup)
 
 function handlePause() {
   // Set the active row to the current playback position
@@ -1815,6 +1650,33 @@ const keyboardContext: TrackerKeyboardContext = {
 };
 
 const { handleKeyDown: onKeyDown } = useTrackerKeyboard(keyboardContext);
+
+// Set up export composable
+const exportContext: TrackerExportContext = {
+  playbackEngine,
+  songBank,
+  rowsCount,
+  currentSong,
+  sequence,
+  patterns,
+  currentPatternId,
+  currentPattern,
+  playbackMode,
+  activeRow,
+  playbackRow,
+  syncSongBankFromSlots,
+  initializePlayback
+};
+
+const {
+  isExporting,
+  showExportModal,
+  exportStage,
+  exportError,
+  exportStatusText,
+  exportProgressPercent,
+  exportSongToMp3
+} = useTrackerExport(exportContext);
 
 function onPatchSelect(slotNumber: number, patchId: string) {
   if (!patchId) {
