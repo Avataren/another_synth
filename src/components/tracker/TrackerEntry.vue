@@ -151,17 +151,17 @@ function isActiveCell(column: number) {
 
 <style scoped>
 .tracker-entry {
-  --entry-accent: var(--tracker-accent);
+  --entry-accent: var(--tracker-accent, var(--tracker-accent-primary, rgb(77, 242, 197)));
   height: var(--tracker-row-height);
   width: 100%;
   display: grid;
   grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.4fr;
   align-items: center;
   padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--tracker-border-default, rgba(255, 255, 255, 0.05));
   border-radius: 8px;
-  background: rgba(13, 18, 29, 0.85);
-  color: #d8e7ff;
+  background: var(--tracker-entry-base, rgba(13, 18, 29, 0.85));
+  color: var(--tracker-default-text, #d8e7ff);
   font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
   font-size: 12px;
   letter-spacing: 0.03em;
@@ -171,36 +171,40 @@ function isActiveCell(column: number) {
 }
 
 .tracker-entry:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--tracker-border-hover, rgba(255, 255, 255, 0.12));
 }
 
 .tracker-entry.filled {
-  background: linear-gradient(90deg, rgba(21, 31, 48, 0.95), rgba(17, 24, 38, 0.95));
+  background: linear-gradient(
+    90deg,
+    var(--tracker-entry-filled, rgba(21, 31, 48, 0.95)),
+    var(--tracker-entry-filled-alt, rgba(17, 24, 38, 0.95))
+  );
 }
 
 .tracker-entry.active {
-  border-color: var(--entry-accent);
-  background: rgba(77, 242, 197, 0.08);
+  border-color: var(--tracker-active-border, var(--entry-accent));
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.08));
   transform: none;
 }
 
 .tracker-entry.selected:not(.active) {
-  border-color: rgba(77, 242, 197, 0.9);
-  background: rgba(77, 242, 197, 0.12);
+  border-color: var(--tracker-selected-border, rgba(77, 242, 197, 0.9));
+  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.12));
 }
 
 .tracker-entry.row-sub:not(.active):not(.selected) {
-  background: rgba(13, 18, 29, 0.9);
+  background: var(--tracker-entry-row-sub, rgba(13, 18, 29, 0.9));
 }
 
 .tracker-entry.row-beat:not(.active):not(.selected) {
-  background: rgba(18, 24, 37, 0.95);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: var(--tracker-entry-row-beat, rgba(18, 24, 37, 0.95));
+  border-color: var(--tracker-border-beat, rgba(255, 255, 255, 0.08));
 }
 
 .tracker-entry.row-bar:not(.active):not(.selected) {
-  background: rgba(20, 28, 44, 0.98);
-  border-color: rgba(77, 242, 197, 0.35);
+  background: var(--tracker-entry-row-bar, rgba(20, 28, 44, 0.98));
+  border-color: var(--tracker-border-bar, rgba(77, 242, 197, 0.35));
 }
 
 .tracker-entry:active {
@@ -218,24 +222,27 @@ function isActiveCell(column: number) {
 }
 
 .cell-active {
-  color: #0c1624;
+  color: var(--tracker-cell-active-text, #0c1624);
   font-weight: 800;
-  background: linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9));
+  background: var(
+    --tracker-cell-active-bg,
+    linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9))
+  );
   border-radius: 6px;
   padding: 2px 6px;
 }
 
 .note {
-  color: #ffffff;
+  color: var(--tracker-note-text, #ffffff);
   font-weight: 700;
 }
 
 .instrument {
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--tracker-instrument-text, rgba(255, 255, 255, 0.82));
 }
 
 .volume {
-  color: #85b7ff;
+  color: var(--tracker-volume-text, #85b7ff);
 }
 
 .volume-low {
@@ -243,7 +250,7 @@ function isActiveCell(column: number) {
 }
 
 .effect {
-  color: #8ef5c5;
+  color: var(--tracker-effect-text, #8ef5c5);
 }
 
 .macro-digits {
@@ -257,8 +264,11 @@ function isActiveCell(column: number) {
 }
 
 .macro-digit.active {
-  color: #0c1624;
+  color: var(--tracker-cell-active-text, #0c1624);
   font-weight: 800;
-  background: linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9));
+  background: var(
+    --tracker-cell-active-bg,
+    linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9))
+  );
 }
 </style>

@@ -1085,9 +1085,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .tracker-page {
   height: var(--q-page-container-height, 100vh);
-  background: radial-gradient(120% 140% at 20% 20%, rgba(80, 170, 255, 0.1), transparent),
-    radial-gradient(120% 120% at 80% 10%, rgba(255, 147, 204, 0.1), transparent),
-    linear-gradient(135deg, #0c111b, #0b0f18 55%, #0d1320);
+  background: var(--app-background, #0b111a);
   box-sizing: border-box;
   overflow: hidden;
   display: flex;
@@ -1168,9 +1166,9 @@ onBeforeUnmount(() => {
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e8f3ff;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.18));
+  background: var(--button-background, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary, #e8f3ff);
   font-size: 14px;
   display: inline-flex;
   align-items: center;
@@ -1180,13 +1178,13 @@ onBeforeUnmount(() => {
 }
 
 .toolbar-icon-button.active {
-  background: rgba(112, 194, 255, 0.25);
-  border-color: rgba(112, 194, 255, 0.75);
-  color: #fff;
+  background: var(--tracker-active-bg, rgba(112, 194, 255, 0.25));
+  border-color: var(--tracker-accent-primary, rgba(112, 194, 255, 0.75));
+  color: var(--text-primary, #fff);
 }
 
 .toolbar-icon-button:hover {
-  border-color: rgba(112, 194, 255, 0.9);
+  border-color: var(--tracker-accent-primary, rgba(112, 194, 255, 0.9));
 }
 
 .top-grid {
@@ -1254,9 +1252,9 @@ onBeforeUnmount(() => {
   width: 20px;
   height: 14px;
   border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.05);
-  color: #9fb3d3;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.15));
+  background: var(--button-background, rgba(255, 255, 255, 0.05));
+  color: var(--text-muted, #9fb3d3);
   font-size: 9px;
   font-weight: 700;
   cursor: pointer;
@@ -1266,8 +1264,8 @@ onBeforeUnmount(() => {
 }
 
 .track-btn:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.3));
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.1));
 }
 
 .solo-btn.active {
@@ -1283,7 +1281,7 @@ onBeforeUnmount(() => {
 }
 
 .eyebrow {
-  color: #9cc7ff;
+  color: var(--tracker-accent-primary, #9cc7ff);
   font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1292,8 +1290,8 @@ onBeforeUnmount(() => {
 }
 
 .summary-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--panel-background, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
   border-radius: 14px;
   padding: 10px 12px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
@@ -1326,9 +1324,9 @@ onBeforeUnmount(() => {
   padding: 8px 12px;
   min-width: 120px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: #eaf6ff;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--button-background, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary, #eaf6ff);
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -1339,20 +1337,20 @@ onBeforeUnmount(() => {
 }
 
 .transport-button:hover {
-  border-color: rgba(77, 242, 197, 0.45);
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.45));
 }
 
 .transport-button.play {
-  background: rgba(77, 242, 197, 0.14);
-  color: #f7fcff;
-  border-color: rgba(77, 242, 197, 0.5);
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.14));
+  color: var(--text-primary, #f7fcff);
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.5));
   box-shadow: 0 4px 14px rgba(77, 242, 197, 0.18);
 }
 
 .transport-button.play.alt {
-  background: rgba(132, 173, 255, 0.14);
-  color: #f7fcff;
-  border-color: rgba(160, 196, 255, 0.45);
+  background: var(--tracker-active-bg, rgba(132, 173, 255, 0.14));
+  color: var(--text-primary, #f7fcff);
+  border-color: var(--tracker-accent-secondary, rgba(160, 196, 255, 0.45));
   box-shadow: 0 4px 14px rgba(112, 194, 255, 0.18);
 }
 
@@ -1363,12 +1361,12 @@ onBeforeUnmount(() => {
 
 .transport-button.ghost {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #fff;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.15));
+  color: var(--text-primary, #fff);
 }
 
 .transport-button.active {
-  box-shadow: 0 0 0 2px rgba(77, 242, 197, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 2px var(--tracker-selected-bg, rgba(77, 242, 197, 0.35)), 0 8px 20px rgba(0, 0, 0, 0.35);
   transform: translateY(-1px);
 }
 
@@ -1386,7 +1384,7 @@ onBeforeUnmount(() => {
 .stats-inline {
   display: flex;
   gap: 16px;
-  color: #cfe4ff;
+  color: var(--text-secondary, #cfe4ff);
   font-size: 13px;
 }
 
@@ -1408,7 +1406,7 @@ onBeforeUnmount(() => {
 }
 
 .stat-inline .stat-label {
-  color: #9fb3d3;
+  color: var(--text-muted, #9fb3d3);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1421,7 +1419,7 @@ onBeforeUnmount(() => {
 }
 
 .field label {
-  color: #9fb3d3;
+  color: var(--text-muted, #9fb3d3);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1429,17 +1427,17 @@ onBeforeUnmount(() => {
 }
 
 .field input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--input-background, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.08));
   border-radius: 6px;
   padding: 6px 10px;
-  color: #e8f3ff;
+  color: var(--text-primary, #e8f3ff);
   font-weight: 600;
   font-size: 13px;
 }
 
 .field input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
 }
 
 
@@ -1497,7 +1495,7 @@ onBeforeUnmount(() => {
 }
 
 .control-label {
-  color: #9fb3d3;
+  color: var(--text-muted, #9fb3d3);
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1519,9 +1517,9 @@ onBeforeUnmount(() => {
   flex: 1;
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e8f3ff;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--button-background, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary, #e8f3ff);
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -1529,20 +1527,20 @@ onBeforeUnmount(() => {
 }
 
 .song-button:hover {
-  border-color: rgba(77, 242, 197, 0.4);
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.4));
 }
 
 .song-button.ghost {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.12));
 }
 
 .control-field {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--input-background, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.08));
   border-radius: 10px;
   padding: 6px 8px;
   min-height: 40px;
@@ -1552,7 +1550,7 @@ onBeforeUnmount(() => {
   width: 90px;
   background: transparent;
   border: none;
-  color: #e8f3ff;
+  color: var(--text-primary, #e8f3ff);
   font-weight: 700;
   font-size: 14px;
   text-align: right;
@@ -1563,7 +1561,7 @@ onBeforeUnmount(() => {
 }
 
 .control-hint {
-  color: #9fb3d3;
+  color: var(--text-muted, #9fb3d3);
   font-size: 12px;
 }
 
@@ -1571,17 +1569,17 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #cfe4ff;
+  color: var(--text-secondary, #cfe4ff);
   font-weight: 700;
 }
 
 .toggle input {
-  accent-color: #4df2c5;
+  accent-color: var(--tracker-accent-primary, #4df2c5);
 }
 
 .instrument-panel {
-  background: linear-gradient(180deg, rgba(26, 32, 45, 0.9), rgba(16, 21, 33, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--panel-background, linear-gradient(180deg, rgba(26, 32, 45, 0.9), rgba(16, 21, 33, 0.95)));
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
   border-radius: 14px;
   padding: 10px;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.32);
@@ -1606,9 +1604,9 @@ onBeforeUnmount(() => {
   width: 24px;
   height: 24px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: #9fb3d3;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  background: var(--button-background, rgba(255, 255, 255, 0.04));
+  color: var(--text-muted, #9fb3d3);
   font-weight: 700;
   font-size: 11px;
   cursor: pointer;
@@ -1616,18 +1614,18 @@ onBeforeUnmount(() => {
 }
 
 .page-tab:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #e8f3ff;
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.2));
+  color: var(--text-primary, #e8f3ff);
 }
 
 .page-tab.active {
-  background: rgba(77, 242, 197, 0.15);
-  border-color: rgba(77, 242, 197, 0.4);
-  color: #4df2c5;
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.15));
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.4));
+  color: var(--tracker-accent-primary, #4df2c5);
 }
 
 .panel-title {
-  color: #e8f3ff;
+  color: var(--text-primary, #e8f3ff);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1648,14 +1646,14 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 6px 10px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--panel-background-alt, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.05));
   cursor: pointer;
 }
 
 .instrument-row.active {
-  border-color: rgba(77, 242, 197, 0.6);
-  background: rgba(77, 242, 197, 0.08);
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.6));
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.08));
 }
 
 .instrument-row.empty {
@@ -1668,23 +1666,23 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #e8f3ff;
+  color: var(--text-primary, #e8f3ff);
   font-weight: 600;
   font-size: 13px;
 }
 .instrument-name-input {
   width: 100%;
   font: inherit;
-  color: #e8f3ff;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-primary, #e8f3ff);
+  background: var(--input-background, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
   border-radius: 6px;
   padding: 6px 8px;
 }
 
 .slot-number {
   font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
-  color: #9fb3d3;
+  color: var(--text-muted, #9fb3d3);
   font-weight: 700;
   font-size: 11px;
   flex-shrink: 0;
@@ -1700,9 +1698,9 @@ onBeforeUnmount(() => {
 .action-button {
   padding: 4px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(77, 242, 197, 0.12);
-  color: #e8f3ff;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.12));
+  color: var(--text-primary, #e8f3ff);
   font-weight: 600;
   font-size: 11px;
   cursor: pointer;
@@ -1710,51 +1708,51 @@ onBeforeUnmount(() => {
 }
 
 .action-button:hover {
-  border-color: rgba(77, 242, 197, 0.45);
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.45));
 }
 
 .action-button.edit {
-  background: rgba(112, 194, 255, 0.15);
-  border-color: rgba(112, 194, 255, 0.3);
+  background: var(--tracker-active-bg, rgba(112, 194, 255, 0.15));
+  border-color: var(--tracker-accent-secondary, rgba(112, 194, 255, 0.3));
 }
 
 .action-button.edit:hover {
-  background: rgba(112, 194, 255, 0.25);
-  border-color: rgba(112, 194, 255, 0.5);
+  background: var(--button-background-hover, rgba(112, 194, 255, 0.25));
+  border-color: var(--tracker-accent-secondary, rgba(112, 194, 255, 0.5));
 }
 
 .action-button.new {
-  background: rgba(77, 242, 197, 0.12);
-  border-color: rgba(77, 242, 197, 0.35);
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.12));
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.35));
 }
 
 .action-button.new:hover {
-  background: rgba(77, 242, 197, 0.2);
-  border-color: rgba(77, 242, 197, 0.55);
+  background: var(--button-background-hover, rgba(77, 242, 197, 0.2));
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.55));
 }
 
 .action-button.ghost {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.08));
 }
 
 .action-button.ghost:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.18));
 }
 
 .patch-select {
   min-width: 160px;
   padding: 4px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: #e8f3ff;
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
+  background: var(--input-background, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary, #e8f3ff);
   font-weight: 600;
   font-size: 12px;
 }
 
 .patch-select option {
-  color: #0c1624;
+  color: var(--tracker-cell-active-text, #0c1624);
 }
 
 .export-modal {
@@ -1768,8 +1766,8 @@ onBeforeUnmount(() => {
 }
 
 .export-dialog {
-  background: #0b111a;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--panel-background, #0b111a);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
   border-radius: 10px;
   padding: 18px 20px;
   width: min(420px, 90vw);
@@ -1779,11 +1777,12 @@ onBeforeUnmount(() => {
 .export-title {
   font-size: 18px;
   font-weight: 700;
+  color: var(--text-primary, #fff);
   margin-bottom: 8px;
 }
 
 .export-status {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.85));
   margin-bottom: 12px;
 }
 
@@ -1798,20 +1797,20 @@ onBeforeUnmount(() => {
   flex: 1;
   height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--input-background, rgba(255, 255, 255, 0.08));
   overflow: hidden;
 }
 
 .export-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4df2c5, #7fe0ff);
+  background: linear-gradient(90deg, var(--tracker-accent-primary, #4df2c5), var(--tracker-accent-secondary, #7fe0ff));
   transition: width 120ms linear;
 }
 
 .export-progress-value {
   width: 48px;
   text-align: right;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.8));
   font-variant-numeric: tabular-nums;
 }
 
@@ -1825,9 +1824,9 @@ onBeforeUnmount(() => {
   margin-top: 6px;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--button-background, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary, #fff);
 }
 
 @media (max-width: 900px) {

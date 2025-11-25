@@ -14,6 +14,7 @@
         >
           <q-route-tab to="/tracker" name="tracker" label="Tracker" exact />
           <q-route-tab to="/patch" name="patch" label="Patch editor" exact />
+          <q-route-tab to="/settings" name="settings" label="Settings" exact />
           <q-route-tab to="/help" name="help" label="Help" exact />
         </q-tabs>
         <q-space />
@@ -30,6 +31,10 @@
 
 <script setup lang="ts">
 import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
+import { useThemeStore } from 'src/stores/theme-store';
+
+// Initialize theme store - this will automatically apply the saved theme from localStorage
+useThemeStore();
 </script>
 <style scoped>
 .cpu {
@@ -45,6 +50,7 @@ import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
   z-index: 1000;
   height: var(--app-header-height);
   min-height: var(--app-header-height);
+  background: var(--header-background, #0a0f18) !important;
 }
 
 .app-toolbar {
@@ -52,6 +58,12 @@ import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
   min-height: var(--app-header-height);
   padding: 4px 10px;
   align-items: center;
+  background: transparent;
+  color: var(--text-primary, #e8f3ff);
+}
+
+.app-toolbar :deep(.q-toolbar__title) {
+  color: var(--text-primary, #e8f3ff);
 }
 
 .main-tabs {
@@ -59,13 +71,17 @@ import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
 }
 
 .main-tabs :deep(.q-tab__label) {
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.75));
   font-weight: 600;
 }
 
 .main-tabs :deep(.q-tab--active .q-tab__label) {
-  color: #ffffff;
+  color: var(--text-primary, #ffffff);
   font-weight: 700;
+}
+
+.main-tabs :deep(.q-tab__indicator) {
+  background: var(--tracker-accent-primary, currentColor) !important;
 }
 
 @media (max-width: 900px) {
@@ -84,6 +100,7 @@ import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
 .app-layout {
   min-height: 100vh;
   overflow: hidden;
+  background: var(--app-background, #0b111a);
 }
 
 .app-layout :deep(.q-page-container) {
@@ -91,11 +108,13 @@ import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
   padding-top: var(--app-header-height, 44px);
   overflow: hidden;
   box-sizing: border-box;
+  background: var(--app-background, #0b111a);
 }
 
 .app-layout :deep(.q-page) {
   min-height: calc(100vh - var(--app-header-height, 44px));
   max-height: calc(100vh - var(--app-header-height, 44px));
   overflow: auto;
+  background: var(--app-background, #0b111a);
 }
 </style>

@@ -224,10 +224,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: radial-gradient(160% 120% at 80% 10%, rgba(77, 242, 197, 0.08), transparent),
-    radial-gradient(160% 160% at 10% 20%, rgba(80, 170, 255, 0.07), transparent),
-    linear-gradient(180deg, #0c1018, #0b0f17);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--panel-background, #0c1018);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.06));
   border-radius: 16px;
   padding: 18px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -256,8 +254,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #9fb3d3;
+  background: var(--button-background, rgba(255, 255, 255, 0.04));
+  color: var(--text-muted, #9fb3d3);
   font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -267,9 +265,9 @@ onBeforeUnmount(() => {
 .row-number {
   height: var(--tracker-row-height);
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(13, 17, 26, 0.92);
-  color: #a7bcd8;
+  border: 1px solid var(--tracker-border-default, rgba(255, 255, 255, 0.05));
+  background: var(--tracker-entry-base, rgba(13, 17, 26, 0.92));
+  color: var(--text-muted, #a7bcd8);
   font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -278,24 +276,24 @@ onBeforeUnmount(() => {
 }
 
 .row-number:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--tracker-border-hover, rgba(255, 255, 255, 0.12));
 }
 
 .row-number.in-selection {
-  border-color: rgba(77, 242, 197, 0.8);
-  background: rgba(77, 242, 197, 0.14);
+  border-color: var(--tracker-selected-border, rgba(77, 242, 197, 0.8));
+  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.14));
 }
 
 .row-number.playing {
-  color: #0c1624;
+  color: var(--tracker-cell-active-text, #0c1624);
   font-weight: 800;
-  background: linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9));
+  background: var(--tracker-cell-active-bg, linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9)));
   border-color: transparent;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
 .row-number.selected {
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.25));
 }
 
 .tracks-wrapper {
@@ -313,8 +311,8 @@ onBeforeUnmount(() => {
 .active-row-bar {
   position: absolute;
   inset: 0 0 auto 0;
-  background: linear-gradient(90deg, rgba(77, 242, 197, 0.18), rgba(88, 176, 255, 0.22));
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--tracker-active-bg, linear-gradient(90deg, rgba(77, 242, 197, 0.18), rgba(88, 176, 255, 0.22)));
+  border: 1px solid var(--tracker-border-hover, rgba(255, 255, 255, 0.12));
   border-radius: 10px;
   pointer-events: none;
   transition: none;
@@ -326,12 +324,12 @@ onBeforeUnmount(() => {
 }
 
 .tracks-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--button-background, rgba(255, 255, 255, 0.08));
   border-radius: 999px;
 }
 
 .tracks-wrapper::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--input-background, rgba(255, 255, 255, 0.03));
   border-radius: 999px;
 }
 
