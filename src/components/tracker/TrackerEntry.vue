@@ -13,6 +13,7 @@
       class="cell note"
       :class="{ 'cell-active': isActiveCell(0) }"
       @click.stop="onSelectCell(0)"
+      @mousedown.stop
     >
       {{ cells.note.display }}
     </span>
@@ -20,6 +21,7 @@
       class="cell instrument"
       :class="{ 'cell-active': isActiveCell(1) }"
       @click.stop="onSelectCell(1)"
+      @mousedown.stop
     >
       {{ cells.instrument.display }}
     </span>
@@ -27,6 +29,7 @@
       class="cell volume volume-high"
       :class="{ 'cell-active': isActiveCell(2) }"
       @click.stop="onSelectCell(2)"
+      @mousedown.stop
     >
       {{ cells.volumeHi.display }}
     </span>
@@ -34,6 +37,7 @@
       class="cell volume volume-low"
       :class="{ 'cell-active': isActiveCell(3) }"
       @click.stop="onSelectCell(3)"
+      @mousedown.stop
     >
       {{ cells.volumeLo.display }}
     </span>
@@ -45,6 +49,7 @@
           class="macro-digit"
           :class="{ active: isActiveCell(4) && activeMacroNibble === idx }"
           @click.stop="onSelectCell(4, idx)"
+          @mousedown.stop
         >
           {{ digit }}
         </span>
