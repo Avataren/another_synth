@@ -1,11 +1,12 @@
 <template>
   <q-page class="settings-page q-pa-xl">
     <div class="settings-container">
+      <!-- Theme Section -->
       <section class="settings-section">
         <div class="section-header">
-          <h2>Styling</h2>
+          <h2>Theme</h2>
           <div class="current-theme-badge" role="button">
-            <span class="badge-label">Current theme:</span>
+            <span class="badge-label">Current:</span>
             <span class="badge-value">{{ currentTheme.name }}</span>
             <q-icon name="expand_more" size="18px" class="badge-icon" />
             <q-menu anchor="bottom right" self="top right" class="theme-menu">
@@ -21,7 +22,7 @@
                 >
                   <q-item-section side>
                     <div
-                      class="menu-swatch"
+                      class="menu-color-dot"
                       :style="{ background: theme.colors.accentPrimary }"
                     />
                   </q-item-section>
@@ -39,7 +40,7 @@
         </div>
         <div class="settings-content">
           <p class="section-description">
-            Choose a color theme for the tracker interface. The theme will be applied immediately and saved automatically.
+            Choose a color theme for the interface.
           </p>
           <div class="theme-grid">
             <div
@@ -56,27 +57,78 @@
                     background: theme.colors.accentPrimary
                   }"
                 />
-                <div class="preview-colors">
-                  <div
-                    class="preview-swatch"
-                    :style="{ background: theme.colors.noteText }"
-                  />
-                  <div
-                    class="preview-swatch"
-                    :style="{ background: theme.colors.volumeText }"
-                  />
-                  <div
-                    class="preview-swatch"
-                    :style="{ background: theme.colors.effectText }"
-                  />
-                </div>
               </div>
               <div class="theme-info">
                 <div class="theme-name">{{ theme.name }}</div>
-                <div class="theme-description">{{ theme.description }}</div>
               </div>
               <div v-if="currentThemeId === theme.id" class="theme-check">
                 <q-icon name="check_circle" size="20px" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Fonts Section -->
+      <section class="settings-section">
+        <div class="section-header">
+          <h2>Fonts</h2>
+        </div>
+        <div class="settings-content">
+          <p class="section-description">
+            Customize the fonts used throughout the application.
+          </p>
+
+          <div class="font-settings">
+            <!-- UI Font Selection -->
+            <div class="font-setting">
+              <div class="font-setting-header">
+                <label class="font-label">Interface Font</label>
+                <span class="font-preview-text" :style="{ fontFamily: `'${currentUiFont}', sans-serif` }">
+                  {{ currentUiFont }}
+                </span>
+              </div>
+              <div class="font-grid">
+                <div
+                  v-for="font in uiFonts"
+                  :key="font.id"
+                  class="font-card"
+                  :class="{ active: currentUiFont === font.id }"
+                  @click="setUiFont(font.id)"
+                >
+                  <span class="font-name" :style="{ fontFamily: `'${font.id}', sans-serif` }">
+                    {{ font.name }}
+                  </span>
+                  <div v-if="currentUiFont === font.id" class="font-check">
+                    <q-icon name="check_circle" size="16px" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tracker Font Selection -->
+            <div class="font-setting">
+              <div class="font-setting-header">
+                <label class="font-label">Tracker Font</label>
+                <span class="font-preview-text mono" :style="{ fontFamily: `'${currentTrackerFont}', monospace` }">
+                  {{ currentTrackerFont }}
+                </span>
+              </div>
+              <div class="font-grid">
+                <div
+                  v-for="font in monospaceFonts"
+                  :key="font.id"
+                  class="font-card"
+                  :class="{ active: currentTrackerFont === font.id }"
+                  @click="setTrackerFont(font.id)"
+                >
+                  <span class="font-name mono" :style="{ fontFamily: `'${font.id}', monospace` }">
+                    {{ font.name }}
+                  </span>
+                  <div v-if="currentTrackerFont === font.id" class="font-check">
+                    <q-icon name="check_circle" size="16px" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -91,8 +143,8 @@ import { storeToRefs } from 'pinia';
 import { useThemeStore } from 'src/stores/theme-store';
 
 const themeStore = useThemeStore();
-const { currentThemeId, currentTheme } = storeToRefs(themeStore);
-const { setTheme, themePresets } = themeStore;
+const { currentThemeId, currentTheme, currentUiFont, currentTrackerFont } = storeToRefs(themeStore);
+const { setTheme, setUiFont, setTrackerFont, themePresets, uiFonts, monospaceFonts } = themeStore;
 </script>
 
 <style scoped>
@@ -168,10 +220,10 @@ const { setTheme, themePresets } = themeStore;
   margin-left: 2px;
 }
 
-.menu-swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+.menu-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
 }
 
 .settings-content {
@@ -185,27 +237,27 @@ const { setTheme, themePresets } = themeStore;
 
 .theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
 }
 
 .theme-card {
   position: relative;
-  padding: 14px;
+  padding: 12px;
   background: var(--panel-background-alt, rgba(255, 255, 255, 0.03));
   border: 2px solid var(--panel-border, rgba(255, 255, 255, 0.08));
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 200ms ease;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .theme-card:hover {
   background: var(--button-background-hover, rgba(255, 255, 255, 0.05));
   border-color: var(--tracker-accent-primary, rgba(255, 255, 255, 0.15));
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .theme-card.active {
@@ -217,25 +269,14 @@ const { setTheme, themePresets } = themeStore;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px;
+  padding: 8px;
   background: var(--input-background, rgba(0, 0, 0, 0.3));
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .preview-bar {
   height: 4px;
   border-radius: 2px;
-}
-
-.preview-colors {
-  display: flex;
-  gap: 6px;
-}
-
-.preview-swatch {
-  flex: 1;
-  height: 24px;
-  border-radius: 4px;
 }
 
 .theme-info {
@@ -245,20 +286,90 @@ const { setTheme, themePresets } = themeStore;
 }
 
 .theme-name {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary, #e8f3ff);
 }
 
-.theme-description {
-  font-size: 12px;
-  color: var(--text-muted, #9fb3d3);
-}
-
 .theme-check {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 8px;
+  right: 8px;
+  color: var(--tracker-accent-primary, rgb(77, 242, 197));
+}
+
+/* Font settings styles */
+.font-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.font-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.font-setting-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.font-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e8f3ff);
+}
+
+.font-preview-text {
+  font-size: 13px;
+  color: var(--tracker-accent-primary, rgb(77, 242, 197));
+  padding: 4px 10px;
+  background: var(--button-background, rgba(77, 242, 197, 0.1));
+  border-radius: 4px;
+}
+
+.font-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.font-card {
+  position: relative;
+  padding: 12px 14px;
+  background: var(--panel-background-alt, rgba(255, 255, 255, 0.03));
+  border: 2px solid var(--panel-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.font-card:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.05));
+  border-color: var(--tracker-accent-primary, rgba(255, 255, 255, 0.15));
+}
+
+.font-card.active {
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.08));
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.6));
+}
+
+.font-name {
+  font-size: 14px;
+  color: var(--text-primary, #e8f3ff);
+  text-align: center;
+}
+
+.font-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
   color: var(--tracker-accent-primary, rgb(77, 242, 197));
 }
 </style>

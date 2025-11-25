@@ -2,6 +2,34 @@ import { defineStore } from 'pinia';
 import { ref, watch, computed } from 'vue';
 import { useUserSettingsStore } from './user-settings-store';
 
+// Monospace fonts for tracker matrix
+export const monospaceFonts = [
+  { id: 'JetBrains Mono', name: 'JetBrains Mono', googleFont: 'JetBrains+Mono:wght@400;500;600;700;800' },
+  { id: 'Fira Code', name: 'Fira Code', googleFont: 'Fira+Code:wght@400;500;600;700' },
+  { id: 'Source Code Pro', name: 'Source Code Pro', googleFont: 'Source+Code+Pro:wght@400;500;600;700' },
+  { id: 'IBM Plex Mono', name: 'IBM Plex Mono', googleFont: 'IBM+Plex+Mono:wght@400;500;600;700' },
+  { id: 'Roboto Mono', name: 'Roboto Mono', googleFont: 'Roboto+Mono:wght@400;500;600;700' },
+  { id: 'Space Mono', name: 'Space Mono', googleFont: 'Space+Mono:wght@400;700' },
+  { id: 'Inconsolata', name: 'Inconsolata', googleFont: 'Inconsolata:wght@400;500;600;700' },
+  { id: 'Ubuntu Mono', name: 'Ubuntu Mono', googleFont: 'Ubuntu+Mono:wght@400;700' },
+  { id: 'Anonymous Pro', name: 'Anonymous Pro', googleFont: 'Anonymous+Pro:wght@400;700' },
+  { id: 'Cousine', name: 'Cousine', googleFont: 'Cousine:wght@400;700' }
+];
+
+// UI fonts for general text
+export const uiFonts = [
+  { id: 'Inter', name: 'Inter', googleFont: 'Inter:wght@400;500;600;700' },
+  { id: 'Roboto', name: 'Roboto', googleFont: 'Roboto:wght@400;500;700' },
+  { id: 'Open Sans', name: 'Open Sans', googleFont: 'Open+Sans:wght@400;500;600;700' },
+  { id: 'Lato', name: 'Lato', googleFont: 'Lato:wght@400;700' },
+  { id: 'Poppins', name: 'Poppins', googleFont: 'Poppins:wght@400;500;600;700' },
+  { id: 'Nunito', name: 'Nunito', googleFont: 'Nunito:wght@400;500;600;700' },
+  { id: 'Work Sans', name: 'Work Sans', googleFont: 'Work+Sans:wght@400;500;600;700' },
+  { id: 'DM Sans', name: 'DM Sans', googleFont: 'DM+Sans:wght@400;500;600;700' },
+  { id: 'Outfit', name: 'Outfit', googleFont: 'Outfit:wght@400;500;600;700' },
+  { id: 'Manrope', name: 'Manrope', googleFont: 'Manrope:wght@400;500;600;700' }
+];
+
 export interface ThemeColors {
   // App-wide colors
   appBackground: string;
@@ -666,6 +694,35 @@ export const themePresets: TrackerTheme[] = [
   }
 ];
 
+// Track loaded Google Fonts to avoid duplicate link elements
+const loadedFonts = new Set<string>();
+
+function loadGoogleFont(fontId: string, googleFont: string) {
+  if (loadedFonts.has(fontId)) return;
+
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${googleFont}&display=swap`;
+  document.head.appendChild(link);
+  loadedFonts.add(fontId);
+}
+
+function applyFonts(uiFontId: string, trackerFontId: string) {
+  const root = document.documentElement;
+
+  // Find font definitions
+  const uiFont = uiFonts.find((f) => f.id === uiFontId) ?? uiFonts[0]!;
+  const trackerFont = monospaceFonts.find((f) => f.id === trackerFontId) ?? monospaceFonts[0]!;
+
+  // Load fonts from Google Fonts
+  loadGoogleFont(uiFont.id, uiFont.googleFont);
+  loadGoogleFont(trackerFont.id, trackerFont.googleFont);
+
+  // Apply CSS variables
+  root.style.setProperty('--font-ui', `'${uiFont.id}', sans-serif`);
+  root.style.setProperty('--font-tracker', `'${trackerFont.id}', monospace`);
+}
+
 export const useThemeStore = defineStore('theme', () => {
   const userSettings = useUserSettingsStore();
 
@@ -674,6 +731,21 @@ export const useThemeStore = defineStore('theme', () => {
     get: () => userSettings.settings.theme,
     set: (value: string) => {
       userSettings.updateSetting('theme', value);
+    }
+  });
+
+  // Get current fonts from user settings
+  const currentUiFont = computed({
+    get: () => userSettings.settings.uiFont,
+    set: (value: string) => {
+      userSettings.updateSetting('uiFont', value);
+    }
+  });
+
+  const currentTrackerFont = computed({
+    get: () => userSettings.settings.trackerFont,
+    set: (value: string) => {
+      userSettings.updateSetting('trackerFont', value);
     }
   });
 
@@ -690,6 +762,15 @@ export const useThemeStore = defineStore('theme', () => {
       const theme = getThemeById(newThemeId);
       currentTheme.value = theme;
       applyTheme(theme);
+    },
+    { immediate: true }
+  );
+
+  // Watch for font changes and apply them
+  watch(
+    [currentUiFont, currentTrackerFont],
+    ([uiFont, trackerFont]) => {
+      applyFonts(uiFont, trackerFont);
     },
     { immediate: true }
   );
@@ -753,10 +834,24 @@ export const useThemeStore = defineStore('theme', () => {
     currentThemeId.value = themeId;
   }
 
+  function setUiFont(fontId: string) {
+    currentUiFont.value = fontId;
+  }
+
+  function setTrackerFont(fontId: string) {
+    currentTrackerFont.value = fontId;
+  }
+
   return {
     currentThemeId,
     currentTheme,
+    currentUiFont,
+    currentTrackerFont,
     themePresets,
-    setTheme
+    uiFonts,
+    monospaceFonts,
+    setTheme,
+    setUiFont,
+    setTrackerFont
   };
 });

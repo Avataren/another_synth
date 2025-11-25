@@ -728,7 +728,7 @@ const bitcrusherNodes = computed(() => {
 }
 
 .song-patch-banner__slot {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-tracker);
   font-weight: 700;
   color: #4df2c5;
   background: rgba(77, 242, 197, 0.15);

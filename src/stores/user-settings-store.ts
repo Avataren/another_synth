@@ -7,17 +7,17 @@ import { ref, watch } from 'vue';
  */
 export interface UserSettings {
   theme: string;
-  // Future settings can be added here:
-  // volume: number;
-  // midiDeviceId: string;
-  // etc.
+  trackerFont: string;
+  uiFont: string;
 }
 
 /**
  * Default user settings
  */
 const defaultSettings: UserSettings = {
-  theme: 'default'
+  theme: 'default',
+  trackerFont: 'JetBrains Mono',
+  uiFont: 'Inter'
 };
 
 const STORAGE_KEY = 'synth-user-settings';

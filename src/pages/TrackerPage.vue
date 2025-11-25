@@ -1681,7 +1681,7 @@ onBeforeUnmount(() => {
 }
 
 .slot-number {
-  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  font-family: var(--font-tracker);
   color: var(--text-muted, #9fb3d3);
   font-weight: 700;
   font-size: 11px;

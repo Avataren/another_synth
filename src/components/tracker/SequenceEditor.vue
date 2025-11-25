@@ -154,13 +154,9 @@ const onAddPatternToSequence = (patternId: string | null) => {
   background: rgba(0, 0, 0, 0.35);
 }
 .sequence-item.active {
-  background: linear-gradient(
-    90deg,
-    rgba(77, 242, 197, 0.18),
-    rgba(112, 194, 255, 0.14)
-  );
-  border-color: rgba(77, 242, 197, 0.45);
-  color: #e8f3ff;
+  background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.12));
+  border-color: var(--tracker-selected-border, rgba(77, 242, 197, 0.9));
+  color: var(--text-primary, #e8f3ff);
 }
 .pattern-name {
   font-weight: bold;
@@ -178,7 +174,7 @@ const onAddPatternToSequence = (patternId: string | null) => {
   font-weight: 700;
 }
 .rename-input:focus {
-  outline: 1px solid rgba(77, 242, 197, 0.6);
+  outline: 1px solid var(--tracker-accent-primary, rgba(77, 242, 197, 0.6));
 }
 .item-actions button {
   background: none;

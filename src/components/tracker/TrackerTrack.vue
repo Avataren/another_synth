@@ -105,7 +105,7 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   color: #e6f2ff;
   text-transform: uppercase;
-  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  font-family: var(--font-tracker);
   letter-spacing: 0.04em;
 }
 

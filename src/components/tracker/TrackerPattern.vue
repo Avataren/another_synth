@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   background: var(--button-background, rgba(255, 255, 255, 0.04));
   color: var(--text-muted, #9fb3d3);
-  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  font-family: var(--font-tracker);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 700;
@@ -268,7 +268,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--tracker-border-default, rgba(255, 255, 255, 0.05));
   background: var(--tracker-entry-base, rgba(13, 17, 26, 0.92));
   color: var(--text-muted, #a7bcd8);
-  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  font-family: var(--font-tracker);
   font-size: 12px;
   letter-spacing: 0.08em;
   cursor: pointer;

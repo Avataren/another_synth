@@ -1,6 +1,22 @@
 // app global css in SCSS form
+
+// Global font CSS variables with defaults
 :root {
+  --font-ui: 'Inter', sans-serif;
+  --font-tracker: 'JetBrains Mono', monospace;
+
   .q-card__section--vert {
     padding: 8px;
   }
+}
+
+// Apply UI font globally
+body,
+.q-page,
+.q-layout,
+.q-btn,
+.q-item,
+.q-input,
+.q-select {
+  font-family: var(--font-ui);
 }

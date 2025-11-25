@@ -162,7 +162,7 @@ function isActiveCell(column: number) {
   border-radius: 8px;
   background: var(--tracker-entry-base, rgba(13, 18, 29, 0.85));
   color: var(--tracker-default-text, #d8e7ff);
-  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  font-family: var(--font-tracker);
   font-size: 12px;
   letter-spacing: 0.03em;
   text-transform: uppercase;
