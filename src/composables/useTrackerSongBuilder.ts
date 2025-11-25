@@ -4,7 +4,11 @@ import type { TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
-import { parseTrackerNoteSymbol, parseTrackerVolume } from 'src/audio/tracker/note-utils';
+import {
+  parseTrackerNoteSymbol,
+  parseTrackerVolume,
+  parseEffectCommand
+} from 'src/audio/tracker/note-utils';
 import type {
   Pattern as PlaybackPattern,
   Song as PlaybackSong,
@@ -44,7 +48,6 @@ export interface TrackerSongBuilderContext {
   // Functions
   normalizeInstrumentId: (instrumentId?: string) => string | undefined;
   formatInstrumentId: (slotNumber: number) => string;
-  parseMacroField: (macro?: string) => { index: number; value: number } | undefined;
 }
 
 /**
@@ -73,10 +76,18 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       const instrumentId = context.normalizeInstrumentId(entry.instrument) ?? ctx.instrumentId;
       const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
       const volumeValue = parseTrackerVolume(entry.volume);
-      const macroInfo = context.parseMacroField(entry.macro);
+      const effectCmd = parseEffectCommand(entry.macro);
 
-      if (!instrumentId && !macroInfo) continue;
-      if (!isNoteOff && midi === undefined && volumeValue === undefined && !macroInfo) continue;
+      // Check if this entry has any meaningful data
+      const hasMacro = effectCmd?.type === 'macro';
+      const hasTempoEffect = effectCmd?.type === 'speed' || effectCmd?.type === 'tempo';
+      const hasNoteData = isNoteOff || midi !== undefined;
+      const hasVolumeData = volumeValue !== undefined;
+
+      // Skip if no instrument and no effect command
+      if (!instrumentId && !hasMacro && !hasTempoEffect) continue;
+      // Skip if no meaningful data at all
+      if (!hasNoteData && !hasVolumeData && !hasMacro && !hasTempoEffect) continue;
 
       const step: PlaybackStep = {
         row: entry.row,
@@ -103,9 +114,16 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         step.velocity = scaledVelocity;
       }
 
-      if (macroInfo) {
-        step.macroIndex = macroInfo.index;
-        step.macroValue = macroInfo.value;
+      // Handle effect commands
+      if (effectCmd) {
+        if (effectCmd.type === 'macro') {
+          step.macroIndex = effectCmd.index;
+          step.macroValue = effectCmd.value;
+        } else if (effectCmd.type === 'speed') {
+          step.speedCommand = effectCmd.speed;
+        } else if (effectCmd.type === 'tempo') {
+          step.tempoCommand = effectCmd.bpm;
+        }
       }
 
       // Update context after building step

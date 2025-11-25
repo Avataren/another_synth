@@ -272,8 +272,8 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     if (context.activeColumn.value !== 4) return;
     context.pushHistory();
     const nibbleIndex = context.activeMacroNibble.value;
-    // First digit must be 0-3 (macro index)
-    if (nibbleIndex === 0 && !/^[0-3]$/.test(hexChar)) return;
+    // First digit is the macro command (0-F for commands 0-F)
+    if (nibbleIndex === 0 && !/^[0-9A-F]$/.test(hexChar)) return;
     if (nibbleIndex > 0 && !/^[0-9A-F]$/.test(hexChar)) return;
 
     const row = context.activeRow.value;
@@ -297,6 +297,51 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   }
 
   /**
+   * Clear the instrument field at the current position
+   */
+  function clearInstrumentField() {
+    if (!context.isEditMode.value) return;
+    if (!context.currentPattern.value) return;
+    if (context.activeColumn.value !== 1) return;
+
+    context.pushHistory();
+    const track = context.currentPattern.value.tracks[context.activeTrack.value];
+    if (!track) return;
+    const idx = track.entries.findIndex((e) => e.row === context.activeRow.value);
+    if (idx === -1) return;
+
+    const entry = track.entries[idx];
+    if (!entry) return;
+
+    const updatedEntry = { ...entry } as TrackerEntryData & { instrument?: string };
+    delete updatedEntry.instrument;
+
+    track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
+  }
+
+  /**
+   * Clear a single volume nibble at the current position
+   */
+  function clearVolumeNibble() {
+    if (!context.isEditMode.value) return;
+    if (context.activeColumn.value !== 2 && context.activeColumn.value !== 3) return;
+
+    context.pushHistory();
+    const row = context.activeRow.value;
+    const track = context.activeTrack.value;
+    const nibbleIndex = context.activeColumn.value === 2 ? 0 : 1;
+
+    updateEntryAt(row, track, (entry) => ({
+      ...entry,
+      volume: (() => {
+        const chars = context.normalizeVolumeChars(entry.volume);
+        chars[nibbleIndex] = '.';
+        return chars.join('');
+      })()
+    }));
+  }
+
+  /**
    * Clear the volume field at the current position
    */
   function clearVolumeField() {
@@ -317,6 +362,28 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     delete updatedEntry.volume;
 
     track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
+  }
+
+  /**
+   * Clear a single macro nibble at the current position
+   */
+  function clearMacroNibble() {
+    if (!context.isEditMode.value) return;
+    if (context.activeColumn.value !== 4) return;
+
+    context.pushHistory();
+    const row = context.activeRow.value;
+    const track = context.activeTrack.value;
+    const nibbleIndex = context.activeMacroNibble.value;
+
+    updateEntryAt(row, track, (entry) => {
+      const chars = context.normalizeMacroChars(entry.macro);
+      chars[nibbleIndex] = '.';
+      return {
+        ...entry,
+        macro: chars.join('')
+      };
+    });
   }
 
   /**
@@ -350,7 +417,10 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     handleNoteEntry,
     handleVolumeInput,
     handleMacroInput,
+    clearInstrumentField,
+    clearVolumeNibble,
     clearVolumeField,
+    clearMacroNibble,
     clearMacroField,
     insertNoteOff,
     clearStep,

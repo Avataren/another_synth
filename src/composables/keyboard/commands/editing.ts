@@ -23,10 +23,38 @@ export const editingCommands: KeyboardCommand[] = [
   },
   {
     key: 'Delete',
+    columnFilter: 0,
     description: 'Clear current step',
     category: 'editing',
     handler: (ctx) => {
       ctx.clearStep();
+    }
+  },
+  {
+    key: 'Delete',
+    columnFilter: 1,
+    description: 'Clear instrument field',
+    category: 'editing',
+    handler: (ctx) => {
+      ctx.clearInstrumentField();
+    }
+  },
+  {
+    key: 'Delete',
+    columnFilter: [2, 3],
+    description: 'Clear volume field',
+    category: 'editing',
+    handler: (ctx) => {
+      ctx.clearVolumeField();
+    }
+  },
+  {
+    key: 'Delete',
+    columnFilter: 4,
+    description: 'Clear macro field',
+    category: 'editing',
+    handler: (ctx) => {
+      ctx.clearMacroField();
     }
   },
   {
@@ -36,18 +64,6 @@ export const editingCommands: KeyboardCommand[] = [
     category: 'editing',
     handler: (ctx) => {
       ctx.deleteRowAndShiftUp();
-    }
-  },
-  {
-    key: 'Delete',
-    columnFilter: [2, 3, 4],
-    description: 'Clear volume/macro field',
-    category: 'editing',
-    handler: (ctx) => {
-      ctx.clearVolumeField();
-      if (ctx.activeColumn.value === 4) {
-        ctx.clearMacroField();
-      }
     }
   }
 ];

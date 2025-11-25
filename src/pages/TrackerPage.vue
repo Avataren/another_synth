@@ -470,23 +470,11 @@ function normalizeVolumeChars(vol?: string): [string, string] {
 function normalizeMacroChars(macro?: string): [string, string, string] {
   const clean = (macro ?? '').toUpperCase();
   const chars: [string, string, string] = ['.', '.', '.'];
-  if (/^[0-3]$/.test(clean[0] ?? '')) chars[0] = clean[0] as string;
+  // Allow hex digits for all positions
+  if (/^[0-9A-F]$/.test(clean[0] ?? '')) chars[0] = clean[0] as string;
   if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1] as string;
   if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2] as string;
   return chars;
-}
-
-
-function parseMacroField(macro?: string): { index: number; value: number } | undefined {
-  const chars = normalizeMacroChars(macro);
-  if (chars[0] === '.') return undefined;
-  const macroIndex = parseInt(chars[0], 16);
-  if (!Number.isFinite(macroIndex) || macroIndex < 0 || macroIndex > 3) return undefined;
-  const valueHex = `${chars[1] === '.' ? '0' : chars[1]}${chars[2] === '.' ? '0' : chars[2]}`;
-  const raw = Number.parseInt(valueHex, 16);
-  if (!Number.isFinite(raw)) return undefined;
-  const clamped = Math.max(0, Math.min(255, raw));
-  return { index: macroIndex, value: clamped / 255 };
 }
 
 function midiToTrackerNote(midi: number): string {
@@ -738,7 +726,10 @@ const {
   handleNoteEntry,
   handleVolumeInput,
   handleMacroInput,
+  clearInstrumentField,
+  clearVolumeNibble,
   clearVolumeField,
+  clearMacroNibble,
   clearMacroField,
   insertNoteOff,
   clearStep,
@@ -798,8 +789,7 @@ const songBuilderContext: TrackerSongBuilderContext = {
   songPatches,
   songBank,
   normalizeInstrumentId,
-  formatInstrumentId,
-  parseMacroField
+  formatInstrumentId
 };
 
 const {
@@ -946,7 +936,10 @@ const keyboardContext: TrackerKeyboardContext = {
   handleVolumeInput,
   handleMacroInput,
   clearStep,
+  clearInstrumentField,
+  clearVolumeNibble,
   clearVolumeField,
+  clearMacroNibble,
   clearMacroField,
   insertNoteOff,
   insertRowAndShiftDown,

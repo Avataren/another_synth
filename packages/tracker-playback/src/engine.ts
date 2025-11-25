@@ -32,6 +32,7 @@ export class PlaybackEngine {
   private state: TransportState = 'stopped';
   private position: PlaybackPosition = { row: 0 };
   private bpm = 120;
+  private speed = 6; // FastTracker 2 style speed, where 6 is normal
   private length = 64;
   private currentSequenceIndex = 0;
   private readonly listeners: ListenerMap = {
@@ -58,6 +59,8 @@ export class PlaybackEngine {
   private startRow = 0;
   /** Last scheduled row (for lookahead scheduling) */
   private lastScheduledRow = -1;
+  /** Exact audio time for the next row to be scheduled */
+  private nextRowTime = 0;
   /** Pattern loop count for scheduling */
   private scheduledLoops = 0;
   /** RAF handle for playback loop */
@@ -256,6 +259,9 @@ export class PlaybackEngine {
     this.startRow = this.position.row;
     this.lastScheduledRow = this.startRow - 1;
     this.scheduledLoops = 0;
+    // Initialize timing for cumulative tempo changes
+    this.nextRowTime = this.playStartTime;
+    this.speed = 6; // Reset to normal speed
 
     // Schedule initial batch of notes
     this.scheduleAhead();
@@ -287,15 +293,9 @@ export class PlaybackEngine {
 
     const now = this.audioContext.currentTime;
     const scheduleUntil = now + SCHEDULE_AHEAD_TIME;
-    const msPerRow = this.getMsPerRow();
-    const secPerRow = msPerRow / 1000;
 
-    // Calculate which row corresponds to scheduleUntil time (global row index)
-    const elapsedSec = scheduleUntil - this.playStartTime;
-    const rowsElapsed = Math.floor(elapsedSec / secPerRow);
-    const targetRow = this.startRow + rowsElapsed;
-
-    while (this.lastScheduledRow < targetRow) {
+    // Schedule rows using cumulative timing to support dynamic tempo changes
+    while (this.nextRowTime < scheduleUntil) {
       const currentRow = this.lastScheduledRow + 1;
       const actualRow = currentRow % this.length;
 
@@ -326,14 +326,18 @@ export class PlaybackEngine {
         }
       }
 
-      // Calculate the exact time for this row
-      const rowOffset = currentRow - this.startRow;
-      const rowTime = this.playStartTime + (rowOffset * secPerRow);
+      // Schedule this row at nextRowTime (may apply F commands that change speed/bpm)
+      const rowTime = this.nextRowTime;
 
       // Only schedule if in the future
       if (rowTime >= now) {
         this.scheduleRow(actualRow, rowTime);
       }
+
+      // Calculate time for next row using current speed/bpm (after F commands were applied)
+      const msPerRow = this.getMsPerRow();
+      const secPerRow = msPerRow / 1000;
+      this.nextRowTime += secPerRow;
 
       this.lastScheduledRow = currentRow;
     }
@@ -345,6 +349,19 @@ export class PlaybackEngine {
     const steps = this.stepIndex.get(row);
     if (!steps || steps.length === 0) return;
 
+    // First pass: Apply speed/tempo commands (F commands)
+    for (const step of steps) {
+      if (step.speedCommand !== undefined) {
+        // F01-F1F: Set speed (1-31, where 6 is normal)
+        this.speed = Math.max(1, Math.min(31, step.speedCommand));
+      }
+      if (step.tempoCommand !== undefined) {
+        // F20-FF: Set BPM directly (32-255)
+        this.bpm = Math.max(32, Math.min(255, step.tempoCommand));
+      }
+    }
+
+    // Second pass: Schedule notes and automation
     for (const step of steps) {
       const instrumentId = step.instrumentId;
       if (!instrumentId) continue;
@@ -458,7 +475,10 @@ export class PlaybackEngine {
 
   private getMsPerRow(): number {
     const rowsPerBeat = 4; // treat one beat as 4 rows (16th grid)
-    return (60_000 / this.bpm) / rowsPerBeat;
+    const baseMs = (60_000 / this.bpm) / rowsPerBeat;
+    // Apply speed multiplier (speed 6 is normal, speed 3 is 2x faster, speed 12 is 0.5x)
+    const speedMultiplier = this.speed / 6.0;
+    return baseMs * speedMultiplier;
   }
 
   async prepareInstruments() {

@@ -39,6 +39,17 @@ export interface Step {
    * when provided).
    */
   isNoteOff?: boolean;
+  /**
+   * Speed command (F01-F1F): Sets playback speed multiplier.
+   * Value 1-31, where 6 is normal speed.
+   * speedMultiplier = speedCommand / 6.0
+   */
+  speedCommand?: number;
+  /**
+   * Tempo command (F20-FF): Sets BPM directly.
+   * Value 32-255 represents the new BPM.
+   */
+  tempoCommand?: number;
 }
 
 export interface PlaybackPosition {

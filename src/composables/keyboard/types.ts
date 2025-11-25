@@ -46,7 +46,10 @@ export interface TrackerKeyboardContext {
   handleVolumeInput: (hexChar: string) => void;
   handleMacroInput: (hexChar: string) => void;
   clearStep: () => void;
+  clearInstrumentField: () => void;
+  clearVolumeNibble: () => void;
   clearVolumeField: () => void;
+  clearMacroNibble: () => void;
   clearMacroField: () => void;
   insertNoteOff: () => void;
   insertRowAndShiftDown: () => void;
