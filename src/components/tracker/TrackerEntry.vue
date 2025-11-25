@@ -11,39 +11,39 @@
   >
     <span
       class="cell note"
-      :class="{ 'cell-active': isActiveCell(0) }"
+      :class="{ 'cell-active': activeCells[0] }"
       data-cell="0"
     >
       {{ cells.note.display }}
     </span>
     <span
       class="cell instrument"
-      :class="{ 'cell-active': isActiveCell(1) }"
+      :class="{ 'cell-active': activeCells[1] }"
       data-cell="1"
     >
       {{ cells.instrument.display }}
     </span>
     <span
       class="cell volume volume-high"
-      :class="{ 'cell-active': isActiveCell(2) }"
+      :class="{ 'cell-active': activeCells[2] }"
       data-cell="2"
     >
       {{ cells.volumeHi.display }}
     </span>
     <span
       class="cell volume volume-low"
-      :class="{ 'cell-active': isActiveCell(3) }"
+      :class="{ 'cell-active': activeCells[3] }"
       data-cell="3"
     >
       {{ cells.volumeLo.display }}
     </span>
-    <span class="cell effect" :class="{ 'cell-active': isActiveCell(4) }" data-cell="4">
+    <span class="cell effect" :class="{ 'cell-active': activeCells[4] }" data-cell="4">
       <span class="macro-digits">
         <span
           v-for="(digit, idx) in cells.macroDigits"
           :key="idx"
           class="macro-digit"
-          :class="{ active: isActiveCell(4) && activeMacroNibble === idx }"
+          :class="{ active: activeCells[4] && activeMacroNibble === idx }"
           :data-macro="idx"
         >
           {{ digit }}
@@ -76,9 +76,10 @@ const emit = defineEmits<{
   (event: 'hoverSelection', payload: { row: number; trackIndex: number }): void;
 }>();
 
+// Cache isActiveTrack check - only recompute when trackIndex or activeTrack changes
 const isActiveTrack = computed(() => props.trackIndex === props.activeTrack);
 
-// Pre-compute row type based on index - stable value that doesn't depend on active/selected state
+// Pre-compute row type based on index - this is stable and doesn't change
 const rowType = computed(() => {
   const idx = props.rowIndex;
   if (idx % 16 === 0) return 'bar';
@@ -98,21 +99,21 @@ const entryClasses = computed(() => ({
   'row-sub': !props.active && !props.selected && rowType.value === 'sub'
 }));
 
-// Default cells for empty entries - reused across empty rows
-const DEFAULT_CELLS = {
-  note: { display: '---', className: 'note' },
-  instrument: { display: '..', className: 'instrument' },
-  volumeHi: { display: '.', className: 'volume volume-high' },
-  volumeLo: { display: '.', className: 'volume volume-low' },
-  macroDigits: ['.', '.', '.']
-};
+// Default cells for empty entries - reused across empty rows (frozen to prevent reactivity overhead)
+const DEFAULT_CELLS = Object.freeze({
+  note: Object.freeze({ display: '---', className: 'note' }),
+  instrument: Object.freeze({ display: '..', className: 'instrument' }),
+  volumeHi: Object.freeze({ display: '.', className: 'volume volume-high' }),
+  volumeLo: Object.freeze({ display: '.', className: 'volume volume-low' }),
+  macroDigits: Object.freeze(['.', '.', '.'])
+});
 
-// Process cells only when entry exists
+// Process cells only when entry exists - optimized to avoid unnecessary string operations
 function processCells(entry: TrackerEntryData) {
   const volume = entry.volume ?? '..';
-  const volPadded = (volume + '..').slice(0, 2);
+  const volPadded = volume.length >= 2 ? volume : (volume + '..').slice(0, 2);
   const macro = entry.macro ?? '...';
-  const macroPadded = (macro + '...').slice(0, 3);
+  const macroPadded = macro.length >= 3 ? macro : (macro + '...').slice(0, 3);
 
   let noteDisplay = '---';
   if (entry.note) {
@@ -126,13 +127,22 @@ function processCells(entry: TrackerEntryData) {
     instrument: { display: entry.instrument ?? '..', className: 'instrument' },
     volumeHi: { display: volPadded[0] ?? '.', className: 'volume volume-high' },
     volumeLo: { display: volPadded[1] ?? '.', className: 'volume volume-low' },
-    macroDigits: macroPadded.split('')
+    macroDigits: [macroPadded[0] ?? '.', macroPadded[1] ?? '.', macroPadded[2] ?? '.']
   };
 }
 
 const cells = computed(() => {
   if (!props.entry) return DEFAULT_CELLS;
   return processCells(props.entry);
+});
+
+// Pre-compute active cell states to avoid repeated function calls in template
+const activeCells = computed(() => {
+  if (!isActiveTrack.value || !props.active) {
+    return [false, false, false, false, false];
+  }
+  const col = props.activeColumn;
+  return [col === 0, col === 1, col === 2, col === 3, col === 4];
 });
 
 // Event delegation handler - single click handler for all cells
@@ -166,10 +176,6 @@ function onMouseDownRow() {
 function onMouseEnterRow() {
   emit('hoverSelection', { row: props.rowIndex, trackIndex: props.trackIndex });
 }
-
-function isActiveCell(column: number) {
-  return isActiveTrack.value && props.active && props.activeColumn === column;
-}
 </script>
 
 <style scoped>
@@ -190,7 +196,8 @@ function isActiveCell(column: number) {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease;
+  /* Removed transitions for better performance during rapid updates */
+  contain: layout style;
 }
 
 .tracker-entry:hover {
@@ -198,17 +205,12 @@ function isActiveCell(column: number) {
 }
 
 .tracker-entry.filled {
-  background: linear-gradient(
-    90deg,
-    var(--tracker-entry-filled, rgba(21, 31, 48, 0.95)),
-    var(--tracker-entry-filled-alt, rgba(17, 24, 38, 0.95))
-  );
+  background: var(--tracker-entry-filled, rgba(21, 31, 48, 0.95));
 }
 
 .tracker-entry.active {
   border-color: var(--tracker-active-border, var(--entry-accent));
   background: var(--tracker-active-bg, rgba(77, 242, 197, 0.08));
-  transform: none;
 }
 
 .tracker-entry.selected:not(.active) {
@@ -228,10 +230,6 @@ function isActiveCell(column: number) {
 .tracker-entry.row-bar:not(.active):not(.selected) {
   background: var(--tracker-entry-row-bar, rgba(20, 28, 44, 0.98));
   border-color: var(--tracker-border-bar, rgba(77, 242, 197, 0.35));
-}
-
-.tracker-entry:active {
-  transform: translateY(0);
 }
 
 .tracker-entry:focus,

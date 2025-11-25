@@ -86,8 +86,11 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
     const nodes: Record<number, AudioNode | null> = {};
     const tracks = (context.currentPattern.value?.tracks ?? []) as TrackerTrackData[];
     for (let i = 0; i < tracks.length; i++) {
-      const instrumentId = context.resolveInstrumentForTrack(tracks[i], i);
-      nodes[i] = instrumentId ? context.songBank.getInstrumentOutput(instrumentId) : null;
+      // Try to resolve instrument from pattern, fallback to default (track index + 1)
+      const resolvedId = context.resolveInstrumentForTrack(tracks[i], i);
+      const defaultId = (i + 1).toString().padStart(2, '0');
+      const instrumentId = resolvedId ?? defaultId;
+      nodes[i] = context.songBank.getInstrumentOutput(instrumentId);
     }
     trackAudioNodes.value = nodes;
   }

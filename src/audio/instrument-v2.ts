@@ -73,7 +73,7 @@ export default class InstrumentV2 {
     memory: WebAssembly.Memory,
   ) {
     this.outputNode = audioContext.createGain();
-    (this.outputNode as GainNode).gain.value = 0.5;
+    (this.outputNode as GainNode).gain.value = 1.0;
     this.outputNode.connect(destination);
     this.voiceLimit = this.num_voices;
     this.voiceToNote = new Array(this.num_voices).fill(null);

@@ -122,12 +122,13 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
 .tracker-track {
   --track-accent: #5dd6ff;
   min-width: var(--tracker-track-width, 180px);
-  background: linear-gradient(180deg, rgba(19, 26, 38, 0.9), rgba(12, 16, 24, 0.9));
+  background: rgba(15, 21, 31, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
   overflow: hidden;
-  backdrop-filter: blur(6px);
+  /* Removed backdrop-filter and gradient for better performance */
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
+  contain: layout style;
 }
 
 .track-header {

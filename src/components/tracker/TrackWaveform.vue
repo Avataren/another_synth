@@ -11,7 +11,6 @@ import { registerAnimationCallback } from 'src/composables/useAnimationLoop';
 interface Props {
   audioNode: AudioNode | null;
   audioContext: AudioContext | null;
-  isTrackActive: boolean;
 }
 
 const props = defineProps<Props>();
@@ -84,13 +83,13 @@ function setupAnalyser() {
     dataArray = new Uint8Array(analyser.frequencyBinCount);
   }
 
-  // Disconnect if track is not active or node changed
-  if (currentConnectedNode && (!props.isTrackActive || currentConnectedNode !== props.audioNode)) {
+  // Disconnect if node changed
+  if (currentConnectedNode && currentConnectedNode !== props.audioNode) {
     disconnectCurrentNode();
   }
 
-  // Only connect if track is active and we have a node
-  if (props.isTrackActive && props.audioNode && props.audioNode !== currentConnectedNode) {
+  // Connect to audio node if we have one and not already connected
+  if (props.audioNode && props.audioNode !== currentConnectedNode) {
     props.audioNode.connect(analyser);
     currentConnectedNode = props.audioNode;
   }
@@ -142,8 +141,11 @@ function startVisualization() {
 
     for (let i = 0; i < localDataArray.length; i++) {
       const sample = localDataArray[i] ?? 128;
-      const v = sample / 128.0;
-      const y = (v * canvasHeight) / 2;
+      // Convert from 0-255 range to -1 to +1 range (128 is center/silence)
+      const v = (sample - 128) / 128.0;
+      // Map to canvas: 0 is top, canvasHeight is bottom, center is canvasHeight/2
+      // v=-1 should be at bottom (canvasHeight), v=+1 should be at top (0)
+      const y = canvasHeight / 2 - (v * canvasHeight / 2);
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -203,11 +205,6 @@ onUnmounted(() => {
 
 watch(
   () => props.audioNode,
-  () => setupAnalyser()
-);
-
-watch(
-  () => props.isTrackActive,
   () => setupAnalyser()
 );
 </script>

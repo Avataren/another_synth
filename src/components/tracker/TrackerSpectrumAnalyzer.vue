@@ -20,6 +20,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 let analyser: AnalyserNode | null = null;
 let unregisterAnimation: (() => void) | null = null;
 let dataArray: Uint8Array | null = null;
+let connectedNode: AudioNode | null = null;
 
 // Smoothed values for more fluid animation
 let smoothedData: Float32Array | null = null;
@@ -116,6 +117,17 @@ function updateCanvasSize() {
   return false;
 }
 
+function disconnectSourceNode() {
+  if (connectedNode && analyser) {
+    try {
+      connectedNode.disconnect(analyser);
+    } catch {
+      // Node may have already been disconnected
+    }
+    connectedNode = null;
+  }
+}
+
 function attachAnalyzer(audioNode: AudioNode) {
   if (!analyser) {
     const audioContext = audioNode.context;
@@ -127,7 +139,16 @@ function attachAnalyzer(audioNode: AudioNode) {
     peakData = new Float32Array(analyser.frequencyBinCount);
   }
 
-  audioNode.connect(analyser);
+  // Disconnect previous node if different
+  if (connectedNode && connectedNode !== audioNode) {
+    disconnectSourceNode();
+  }
+
+  if (audioNode !== connectedNode) {
+    audioNode.connect(analyser);
+    connectedNode = audioNode;
+  }
+
   startVisualization();
 }
 
@@ -227,6 +248,9 @@ function cleanup() {
     unregisterAnimation();
     unregisterAnimation = null;
   }
+
+  // Disconnect the source node from the analyser
+  disconnectSourceNode();
 
   if (analyser) {
     analyser.disconnect();

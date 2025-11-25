@@ -18,6 +18,7 @@
               :key="row"
               type="button"
               class="row-number"
+              tabindex="-1"
               :class="{
                 selected: effectiveSelectedRow === row,
                 'in-selection': isRowInSelection(row)
@@ -194,9 +195,6 @@ function scrollToRow(row: number) {
   container.scrollTop = Math.max(0, rowTop - containerHeight / 2 + rowHeightPx / 2);
 }
 
-// Track which row we last scrolled to
-let lastScrolledRow = -1;
-
 // Consolidated scroll target - prioritizes playback row during playback, otherwise selected row
 const scrollTarget = computed(() => {
   if (!props.autoScroll) return null;
@@ -206,8 +204,7 @@ const scrollTarget = computed(() => {
 
 // Single watcher for both playback and selection scrolling
 watch(scrollTarget, (row) => {
-  if (row === null || row === lastScrolledRow) return;
-  lastScrolledRow = row;
+  if (row === null) return;
   scrollToRow(row);
 });
 
@@ -319,7 +316,12 @@ onBeforeUnmount(() => {
   font-size: 12px;
   letter-spacing: 0.08em;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease;
+  /* Removed transitions for better performance */
+  contain: layout style;
+}
+
+.row-number:focus {
+  outline: none;
 }
 
 .row-number:hover {

@@ -321,7 +321,6 @@
             <TrackWaveform
               :audio-node="trackAudioNodes[index] ?? null"
               :audio-context="audioContext"
-              :is-track-active="tracksWithActiveNotes.has(index)"
             />
           </div>
         </div>
@@ -756,7 +755,11 @@ const editingContext: TrackerEditingContext = {
   normalizeInstrumentId,
   normalizeVolumeChars,
   normalizeMacroChars,
-  midiToTrackerNote
+  midiToTrackerNote,
+  onNotePreview: (trackIndex: number, instrumentId: string) => {
+    setTrackAudioNodeForInstrumentRef?.(trackIndex, instrumentId);
+    markTrackNotePlayedRef?.(trackIndex);
+  }
 };
 
 const {
@@ -840,6 +843,7 @@ const {
 // Will be assigned after playback composable is set up
 let updateTrackAudioNodesRef: (() => void) | null = null;
 let markTrackNotePlayedRef: ((trackIndex: number) => void) | null = null;
+let setTrackAudioNodeForInstrumentRef: ((trackIndex: number, instrumentId?: string) => void) | null = null;
 
 // Wrapper that also updates track audio nodes
 async function syncSongBankFromSlots() {
@@ -874,7 +878,6 @@ const {
   playbackMode,
   autoScroll,
   trackAudioNodes,
-  tracksWithActiveNotes,
   toggleMute,
   toggleSolo,
   sanitizeMuteSoloState,
@@ -893,6 +896,7 @@ const {
 // Assign the refs so wrappers can use them
 updateTrackAudioNodesRef = updateTrackAudioNodes;
 markTrackNotePlayedRef = markTrackNotePlayed;
+setTrackAudioNodeForInstrumentRef = setTrackAudioNodeForInstrument;
 
 // Set up instruments composable
 const instrumentsContext: TrackerInstrumentsContext = {

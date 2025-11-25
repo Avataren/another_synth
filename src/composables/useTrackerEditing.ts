@@ -30,6 +30,9 @@ export interface TrackerEditingContext {
   normalizeVolumeChars: (vol?: string) => [string, string];
   normalizeMacroChars: (macro?: string) => [string, string, string];
   midiToTrackerNote: (midi: number) => string;
+  // Optional callback to mark track as having active notes (for visualizer)
+  // Also provides instrumentId so the caller can set the audio node for visualization
+  onNotePreview?: (trackIndex: number, instrumentId: string) => void;
 }
 
 /**
@@ -199,6 +202,9 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   async function previewNote(instrumentId: string, midi: number, velocity = 100) {
     if (!hasPatchForInstrument(instrumentId)) return;
     await context.songBank.prepareInstrument(instrumentId);
+    // Mark the active track as having a note playing (for waveform visualizer)
+    // Also provide the instrumentId so caller can set the audio node
+    context.onNotePreview?.(context.activeTrack.value, instrumentId);
     context.songBank.noteOn(instrumentId, midi, velocity);
     window.setTimeout(() => {
       context.songBank.noteOff(instrumentId, midi);
