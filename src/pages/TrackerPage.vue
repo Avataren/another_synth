@@ -230,6 +230,22 @@
               >
                 <q-icon name="stop" size="20px" />
               </button>
+              <div class="volume-control">
+                <q-icon name="volume_up" size="14px" class="volume-icon" />
+                <input
+                  type="range"
+                  class="volume-slider"
+                  :value="userSettings.masterVolume"
+                  :style="{ '--volume-percent': `${userSettings.masterVolume * 100}%` }"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  @input="onMasterVolumeChange"
+                  @mousedown.stop
+                  @click.stop
+                  title="Master Volume"
+                />
+              </div>
             </div>
         </div>
 
@@ -328,9 +344,17 @@
         </div>
       </div>
 
-  <div v-if="userSettings.showWaveformVisualizers" class="visualizer-row">
+  <div
+    v-if="userSettings.showWaveformVisualizers"
+    ref="visualizerRowRef"
+    class="visualizer-row"
+    :style="{
+      paddingLeft: `${visualizerPadding.left}px`,
+      paddingRight: `${visualizerPadding.right}px`
+    }"
+  >
         <div class="visualizer-spacer"></div>
-        <div class="visualizer-tracks">
+        <div ref="visualizerTracksRef" class="visualizer-tracks">
           <div
             v-for="(track, index) in currentPattern?.tracks"
             :key="`viz-${track.id}`"
@@ -617,7 +641,17 @@ const masterOutputNode = computed(() => songBank.output);
 const DEFAULT_BASE_OCTAVE = trackerStore.baseOctave;
 const baseOctave = ref(trackerStore.baseOctave);
 const trackCount = computed(() => currentPattern.value?.tracks.length ?? 0);
-const trackerPatternRef = ref<InstanceType<typeof TrackerPattern> | null>(null);
+type TrackerPatternInstance = InstanceType<typeof TrackerPattern> & {
+  tracksWrapperRef?: { value: HTMLElement | null };
+};
+const trackerPatternRef = ref<TrackerPatternInstance | null>(null);
+const visualizerRowRef = ref<HTMLDivElement | null>(null);
+const visualizerTracksRef = ref<HTMLDivElement | null>(null);
+const patternTracksWrapper = ref<HTMLElement | null>(null);
+const visualizerPadding = ref({ left: 18, right: 18 });
+const VISUALIZER_PADDING_BIAS = 25;
+let teardownVisualizerScrollSync: (() => void) | null = null;
+let isSyncingVisualizerScroll = false;
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
@@ -635,6 +669,86 @@ function refocusTracker() {
   // Use nextTick to ensure this happens after the current event completes
   void nextTick(() => {
     trackerContainer.value?.focus();
+  });
+}
+
+function resolvePatternTracksWrapper(): HTMLElement | null {
+  return trackerPatternRef.value?.tracksWrapperRef?.value ?? patternTracksWrapper.value ?? null;
+}
+
+function updateVisualizerPadding() {
+  const rowEl = visualizerRowRef.value;
+  const patternEl = (trackerPatternRef.value?.$el as HTMLElement | undefined) ?? null;
+  if (!rowEl || !patternEl) return;
+
+  const rowRect = rowEl.getBoundingClientRect();
+  const patternRect = patternEl.getBoundingClientRect();
+
+  if (rowRect.width === 0) return;
+
+  const left = Math.max(0, patternRect.left - rowRect.left + VISUALIZER_PADDING_BIAS);
+  const right = Math.max(0, rowRect.right - patternRect.right - VISUALIZER_PADDING_BIAS);
+
+  visualizerPadding.value = { left, right };
+}
+
+function syncVisualizerScroll(scrollLeft: number) {
+  const patternWrapper = resolvePatternTracksWrapper();
+  const visualizer = visualizerTracksRef.value;
+  if (!patternWrapper || !visualizer) return;
+
+  patternTracksWrapper.value = patternWrapper;
+  const maxScroll = Math.max(0, patternWrapper.scrollWidth - patternWrapper.clientWidth);
+  const clamped = Math.min(scrollLeft, maxScroll);
+
+  if (isSyncingVisualizerScroll) return;
+  isSyncingVisualizerScroll = true;
+
+  if (patternWrapper.scrollLeft !== clamped) {
+    patternWrapper.scrollLeft = clamped;
+  }
+
+  if (visualizer.scrollLeft !== clamped) {
+    visualizer.scrollLeft = clamped;
+  }
+
+  requestAnimationFrame(() => {
+    isSyncingVisualizerScroll = false;
+  });
+}
+
+function setupVisualizerScrollSync() {
+  teardownVisualizerScrollSync?.();
+
+  const patternWrapper = resolvePatternTracksWrapper();
+  const visualizer = visualizerTracksRef.value;
+  patternTracksWrapper.value = patternWrapper;
+
+  if (!patternWrapper || !visualizer) return;
+
+  const handlePatternScroll = () => syncVisualizerScroll(patternWrapper.scrollLeft);
+  const handleVisualizerScroll = () => syncVisualizerScroll(visualizer.scrollLeft);
+
+  patternWrapper.addEventListener('scroll', handlePatternScroll, { passive: true });
+  visualizer.addEventListener('scroll', handleVisualizerScroll, { passive: true });
+
+  teardownVisualizerScrollSync = () => {
+    patternWrapper.removeEventListener('scroll', handlePatternScroll);
+    visualizer.removeEventListener('scroll', handleVisualizerScroll);
+  };
+
+  syncVisualizerScroll(patternWrapper.scrollLeft);
+}
+
+function refreshVisualizerAlignment() {
+  if (!userSettings.value.showWaveformVisualizers) {
+    teardownVisualizerScrollSync?.();
+    visualizerPadding.value = { left: 18, right: 18 };
+    return;
+  }
+  void nextTick(() => {
+    updateVisualizerPadding();
+    setupVisualizerScrollSync();
   });
 }
 
@@ -1010,6 +1124,13 @@ const onSlotVolumeChange = (slotNumber: number, volume: number) => {
   songBank.setInstrumentOutputGain(instrumentId, volume);
 };
 
+// Master volume control
+const onMasterVolumeChange = (event: Event) => {
+  const volume = parseFloat((event.target as HTMLInputElement).value);
+  userSettingsStore.updateSetting('masterVolume', volume);
+  songBank.setMasterVolume(volume);
+};
+
 // Flag to prevent watcher interference during explicit file load
 const isLoadingSong = ref(false);
 
@@ -1190,19 +1311,26 @@ function handleRenamePattern(patternId: string, name: string) {
 }
 
 
+function handleWindowResize() {
+  updatePatternAreaHeight();
+  refreshVisualizerAlignment();
+}
+
 onMounted(async () => {
   trackerContainer.value?.focus();
   // Skip song bank sync if playback is active (returning from instrument editor)
   // The song bank already has the correct instruments loaded
   await loadSystemBankOptions({ skipSync: isPlaying.value || isPaused.value });
   ensureActiveInstrument();
+  // Apply master volume from user settings
+  songBank.setMasterVolume(userSettings.value.masterVolume);
   // Skip reloading song if playback is already active (returning to page while playing)
   void initializePlayback(playbackMode.value, true);
   keyboardStore.setupGlobalKeyboardListeners();
   keyboardStore.setupMidiListeners();
   window.addEventListener('mouseup', handleGlobalMouseUp);
-  window.addEventListener('resize', updatePatternAreaHeight);
-  updatePatternAreaHeight();
+  window.addEventListener('resize', handleWindowResize);
+  handleWindowResize();
 
   // Re-register the track audio node setter since it was cleared on unmount
   playbackStore.setTrackAudioNodeSetter((trackIndex: number, instrumentId: string | undefined) => {
@@ -1234,6 +1362,7 @@ watch(
 watch(isFullscreen, async () => {
   await nextTick();
   updatePatternAreaHeight();
+  refreshVisualizerAlignment();
 });
 
 watch(
@@ -1244,7 +1373,23 @@ watch(
 
 watch(
   () => currentPatternId.value,
-  () => updateTrackAudioNodes()
+  () => {
+    updateTrackAudioNodes();
+    refreshVisualizerAlignment();
+  }
+);
+
+watch(trackCount, () => refreshVisualizerAlignment());
+
+watch(
+  () => userSettings.value.showWaveformVisualizers,
+  (show) => {
+    if (show) {
+      refreshVisualizerAlignment();
+    } else {
+      teardownVisualizerScrollSync?.();
+    }
+  }
 );
 
 // Watch only the properties that matter for audio sync (slot, patchId, bankId)
@@ -1280,7 +1425,8 @@ onBeforeUnmount(() => {
   keyboardStore.clearAllNotes();
   keyboardStore.cleanupMidiListeners();
   window.removeEventListener('mouseup', handleGlobalMouseUp);
-  window.removeEventListener('resize', updatePatternAreaHeight);
+  window.removeEventListener('resize', handleWindowResize);
+  teardownVisualizerScrollSync?.();
   // Cancel pending scroll RAF
   if (scrollRafId !== null) {
     cancelAnimationFrame(scrollRafId);
@@ -1465,9 +1611,8 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 78px 1fr;
   gap: 12px;
-  padding: 0 18px 0;
+  padding: 0 36px 0;
   flex-shrink: 0;
-  max-width: 1600px;
   margin: 0 auto;
   width: 100%;
 }
@@ -1484,9 +1629,14 @@ onBeforeUnmount(() => {
   --tracker-track-gap: 10px;
   display: flex;
   gap: var(--tracker-track-gap);
-  overflow-x: hidden;
+  overflow-x: auto;
   width: 100%;
   position: relative;
+  scrollbar-width: none;
+}
+
+.visualizer-tracks::-webkit-scrollbar {
+  display: none;
 }
 
 .visualizer-cell {
@@ -1585,7 +1735,7 @@ onBeforeUnmount(() => {
 
 .transport-controls {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   margin-top: auto;
   padding-top: 12px;
@@ -1616,6 +1766,99 @@ onBeforeUnmount(() => {
   color: var(--tracker-accent-primary, #4df2c5);
   border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.5));
   box-shadow: 0 4px 14px rgba(77, 242, 197, 0.18);
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--input-background, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.08));
+  margin-top: 8px;
+}
+
+.volume-icon {
+  color: var(--text-secondary, #b8c9e0);
+  flex-shrink: 0;
+}
+
+.volume-slider {
+  flex: 1;
+  min-width: 100px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--input-background, rgba(255, 255, 255, 0.1));
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--tracker-accent-primary, #4df2c5);
+  cursor: pointer;
+  border: 2px solid var(--panel-background, #0c1018);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  background: var(--tracker-accent-primary, #5ffad0);
+  box-shadow: 0 2px 8px rgba(77, 242, 197, 0.4);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--tracker-accent-primary, #4df2c5);
+  cursor: pointer;
+  border: 2px solid var(--panel-background, #0c1018);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.volume-slider::-moz-range-thumb:hover {
+  background: var(--tracker-accent-primary, #5ffad0);
+  box-shadow: 0 2px 8px rgba(77, 242, 197, 0.4);
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--tracker-accent-primary, #4df2c5) 0%,
+    var(--tracker-accent-primary, #4df2c5) var(--volume-percent, 75%),
+    var(--input-background, rgba(255, 255, 255, 0.1)) var(--volume-percent, 75%),
+    var(--input-background, rgba(255, 255, 255, 0.1)) 100%
+  );
+}
+
+.volume-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--input-background, rgba(255, 255, 255, 0.1));
+}
+
+.volume-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--tracker-accent-primary, #4df2c5);
+}
+
+.volume-value {
+  color: var(--text-primary, #e8f3ff);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-tracker, monospace);
+  min-width: 38px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .transport-button {

@@ -250,6 +250,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', measureBarWidth);
 });
+
+defineExpose({
+  tracksWrapperRef
+});
 </script>
 
 <style scoped>

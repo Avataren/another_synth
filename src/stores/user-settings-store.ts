@@ -11,6 +11,7 @@ export interface UserSettings {
   uiFont: string;
   showSpectrumAnalyzer: boolean;
   showWaveformVisualizers: boolean;
+  masterVolume: number; // 0.0 to 1.0
 }
 
 /**
@@ -21,7 +22,8 @@ const defaultSettings: UserSettings = {
   trackerFont: 'JetBrains Mono',
   uiFont: 'Inter',
   showSpectrumAnalyzer: true,
-  showWaveformVisualizers: true
+  showWaveformVisualizers: true,
+  masterVolume: 0.75
 };
 
 const STORAGE_KEY = 'synth-user-settings';

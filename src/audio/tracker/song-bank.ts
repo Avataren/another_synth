@@ -91,6 +91,17 @@ export class TrackerSongBank {
     return active?.instrument ?? null;
   }
 
+  /** Set the master volume (0.0 to 1.0) */
+  setMasterVolume(volume: number): void {
+    const clamped = Math.max(0, Math.min(1, volume));
+    this.masterGain.gain.value = clamped;
+  }
+
+  /** Get the current master volume */
+  getMasterVolume(): number {
+    return this.masterGain.gain.value;
+  }
+
   private syncInProgress = false;
 
   async syncSlots(slots: SongBankSlot[]): Promise<void> {

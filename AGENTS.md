@@ -226,6 +226,8 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 ### Tracker waveforms
 
 - Track waveform visualizations now always use a single accent color and attach to the instrument actually referenced by that track (latest instrument ID found when building playback steps). This keeps each track’s waveform aligned to its own instrument output even when multiple tracks share a multi-voice patch.
+- The waveform row now mirrors the tracker grid’s horizontal scroll: `TrackerPage` syncs `visualizer-tracks` to the `tracks-wrapper` inside `TrackerPattern` and reattaches the sync whenever the track count or pattern changes. This keeps the visualizers sitting over the correct channels even after adding/removing tracks.
+- Visualizer row padding is measured dynamically against the centered tracker layout: `updateVisualizerPadding` compares the `TrackerPattern` bounding box to the visualizer row and applies left/right padding (with a small +25px left/-25px right bias) so the waveform strip stays horizontally centered with the grid across track counts and screen widths.
 - Tracker instruments now re-import audio assets even when reusing an unchanged patch signature: `TrackerSongBank.ensureInstrument` calls `restoreAudioAssets` in the reuse path so wavetables/samples aren’t stuck on defaults after slot updates that didn’t rebuild the instrument.
 
 ### Tracker export (mp3)
