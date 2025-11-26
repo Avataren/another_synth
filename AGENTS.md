@@ -1305,6 +1305,10 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 
 - After loading/reusing an instrument, the song bank forces per-voice gains back to `1` so old automation (e.g., velocity automation setting gain to 0) doesn’t leave reused instruments muted when playing a freshly loaded song.
 
+## Observation: Tracker keyboard preview vs. delay timing (2026-01)
+
+- Live keyboard input on the tracker page uses the `previewNoteOn`/`previewNoteOff` path in `TrackerPage.vue` → `TrackerSongBank.previewNoteOn`, which fires `InstrumentV2.noteOn` immediately through the master gain. This preview path bypasses the playback scheduler that processes per-row effect commands (including delay time/mix changes), so tempo-synced or effect-command-driven delay settings never reach the worklet during keyboard preview. Song playback and the patch editor both go through their schedulers/state application, so the delay parameters are correct there.
+
 ## New discovery: Song bank patch reuse after song load (2025-12)
 
 - Tracker song bank used to reuse an instrument whenever the patch ID matched, so loading a song with a patch derived from the same system/default ID kept the old patch/asset content. Song loads could sound like the previous session instead of the patch stored in the `.cmod`.
