@@ -427,13 +427,23 @@ export const useTrackerStore = defineStore('trackerStore', {
       // Update song patches
       this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
 
-      // Update slot metadata
-      slot.patchId = patch.metadata.id;
-      slot.patchName = patch.metadata.name ?? 'Untitled';
-      if (!slot.instrumentName) {
-        slot.instrumentName = patch.metadata.name ?? 'Untitled';
+      // Only update slot metadata if values actually changed
+      // This prevents triggering watchers unnecessarily
+      const newPatchId = patch.metadata.id;
+      const newPatchName = patch.metadata.name ?? 'Untitled';
+
+      if (slot.patchId !== newPatchId) {
+        slot.patchId = newPatchId;
       }
-      slot.source = 'song';
+      if (slot.patchName !== newPatchName) {
+        slot.patchName = newPatchName;
+      }
+      if (!slot.instrumentName) {
+        slot.instrumentName = newPatchName;
+      }
+      if (slot.source !== 'song') {
+        slot.source = 'song';
+      }
     },
     /** Assign a patch to a slot (copies it to song patches) */
     assignPatchToSlot(slotNumber: number, patch: Patch, bankName: string) {

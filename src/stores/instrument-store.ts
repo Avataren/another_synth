@@ -10,6 +10,10 @@ interface InstrumentStoreState {
   audioSystem: AudioSystem | null;
   destinationNode: AudioNode | null;
   currentInstrument: InstrumentV2 | null;
+  /** The original/default instrument for standalone patch editing */
+  defaultInstrument: InstrumentV2 | null;
+  /** Whether we're currently using an external instrument (from song bank) */
+  usingExternalInstrument: boolean;
   syncManager: AudioSyncManager | null;
   wasmMemory: WebAssembly.Memory;
   macros: number[];
@@ -25,6 +29,10 @@ interface InstrumentStoreActions {
   connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }): void;
   setMacros(values: number[]): void;
   setInstrumentGain(gain: number): void;
+  /** Swap currentInstrument to an external instrument (e.g., from song bank for live editing) */
+  useExternalInstrument(instrument: InstrumentV2): void;
+  /** Restore the default instrument after live editing */
+  restoreDefaultInstrument(): void;
 }
 
 export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStoreState, Record<string, never>, InstrumentStoreActions>('instrumentStore', {
@@ -32,6 +40,8 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
     audioSystem: null,
     destinationNode: null,
     currentInstrument: null,
+    defaultInstrument: null,
+    usingExternalInstrument: false,
     syncManager: null,
     wasmMemory: new WebAssembly.Memory({
       initial: 256,
@@ -54,11 +64,13 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
       }
 
       if (!this.currentInstrument) {
-        this.currentInstrument = markRaw(new InstrumentV2(
+        const instrument = markRaw(new InstrumentV2(
           this.audioSystem.destinationNode,
           this.audioSystem.audioContext,
           this.wasmMemory,
         ));
+        this.currentInstrument = instrument;
+        this.defaultInstrument = instrument;
         this.destinationNode = this.audioSystem.destinationNode;
         this.applyMacrosToInstrument();
       }
@@ -122,6 +134,29 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
       this.instrumentGain = clamped;
       if (this.currentInstrument) {
         this.currentInstrument.setOutputGain(clamped);
+      }
+    },
+
+    useExternalInstrument(instrument: InstrumentV2) {
+      // Store the current instrument as default if we haven't already
+      if (!this.usingExternalInstrument && this.currentInstrument) {
+        this.defaultInstrument = this.currentInstrument;
+      }
+      // Swap to the external instrument
+      this.currentInstrument = markRaw(instrument);
+      this.usingExternalInstrument = true;
+      // Update destination node to the external instrument's output
+      this.destinationNode = instrument.outputNode;
+    },
+
+    restoreDefaultInstrument() {
+      if (this.usingExternalInstrument && this.defaultInstrument) {
+        this.currentInstrument = this.defaultInstrument;
+        this.usingExternalInstrument = false;
+        // Restore the original destination node
+        if (this.audioSystem) {
+          this.destinationNode = this.audioSystem.destinationNode;
+        }
       }
     },
   },

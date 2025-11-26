@@ -260,8 +260,9 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
 
   /**
    * Load available patches from the system bank
+   * @param options.skipSync - Skip syncing song bank from slots (use when playback is active)
    */
-  async function loadSystemBankOptions() {
+  async function loadSystemBankOptions(options?: { skipSync?: boolean }) {
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}system-bank.json`, {
         cache: 'no-store'
@@ -288,7 +289,10 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
         })
         .filter(Boolean) as BankPatchOption[];
       bankPatchLibrary.value = patchMap;
-      await context.syncSongBankFromSlots();
+      // Skip sync when playback is active - the song bank already has correct instruments
+      if (!options?.skipSync) {
+        await context.syncSongBankFromSlots();
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load system bank', error);

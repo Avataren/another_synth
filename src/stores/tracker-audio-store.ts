@@ -89,6 +89,27 @@ export const useTrackerAudioStore = defineStore('trackerAudio', {
     },
 
     /**
+     * Get the InstrumentV2 instance for a slot (for live editing)
+     */
+    getInstrumentForSlot(slotNumber: number) {
+      const instrumentId = this.formatInstrumentId(slotNumber);
+      return getSongBank().getInstrument(instrumentId);
+    },
+
+    /**
+     * Update the stored patch data for a slot after live editing.
+     * This keeps the song bank's stored patch in sync with the live instrument
+     * WITHOUT reloading the instrument.
+     *
+     * Call this when saving live edits to ensure future prepareInstrument calls
+     * don't overwrite the live changes.
+     */
+    updateStoredPatch(slotNumber: number, patch: Patch) {
+      const instrumentId = this.formatInstrumentId(slotNumber);
+      getSongBank().updateStoredPatch(instrumentId, patch);
+    },
+
+    /**
      * Dispose the song bank (call on app shutdown if needed)
      */
     dispose() {

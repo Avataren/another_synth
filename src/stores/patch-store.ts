@@ -90,6 +90,9 @@ export const usePatchStore = defineStore('patchStore', {
     defaultPatchTemplate: null as Patch | null,
     defaultPatchLoadAttempted: false,
     isLoadingPatch: false,
+    /** Version counter that increments when any patch parameter changes.
+     *  Used by IndexPage to trigger debounced live updates during song patch editing. */
+    patchVersion: 0,
   }),
   getters: {
     currentPatch(state): Patch | null {
@@ -104,6 +107,18 @@ export const usePatchStore = defineStore('patchStore', {
     },
   },
   actions: {
+    /**
+     * Notify that a patch parameter has changed.
+     * This increments the patchVersion counter, which can be watched
+     * by components to trigger debounced live updates.
+     */
+    notifyPatchChanged(): void {
+      // Don't notify during patch loading to avoid false positives
+      if (!this.isLoadingPatch) {
+        this.patchVersion++;
+      }
+    },
+
     async fetchDefaultPatchTemplate(): Promise<Patch | null> {
       if (this.defaultPatchTemplate) {
         return this.defaultPatchTemplate;
@@ -244,7 +259,7 @@ export const usePatchStore = defineStore('patchStore', {
     },
     async applyPatchObject(
       patch: Patch,
-      options?: { setCurrentPatchId?: boolean },
+      options?: { setCurrentPatchId?: boolean; skipLoadPatch?: boolean },
     ): Promise<boolean> {
       const instrumentStore = useInstrumentStore();
       const layoutStore = useLayoutStore();
@@ -291,8 +306,12 @@ export const usePatchStore = defineStore('patchStore', {
             : undefined,
         );
 
-        // Now send to WASM (may trigger immediate layout update callback)
-        instrumentStore.currentInstrument?.loadPatch(patch);
+        // Send to WASM (may trigger immediate layout update callback)
+        // Skip this when editing an external instrument (e.g., from song bank)
+        // because the instrument is already loaded and we don't want to rebuild voices
+        if (!options?.skipLoadPatch) {
+          instrumentStore.currentInstrument?.loadPatch(patch);
+        }
 
         // Update instrument gain from patch (loadPatch already sets it on the instrument,
         // but we need to sync the store state as well)
@@ -303,15 +322,19 @@ export const usePatchStore = defineStore('patchStore', {
           this.currentPatchId = patch.metadata.id;
         }
 
-        await assetStore.restoreAudioAssets(instrumentStore.currentInstrument as InstrumentV2 | null);
+        // Skip asset restoration and state application when skipLoadPatch is true
+        // (the external instrument already has these loaded)
+        if (!options?.skipLoadPatch) {
+          await assetStore.restoreAudioAssets(instrumentStore.currentInstrument as InstrumentV2 | null);
 
-        // Regenerate convolvers with procedural generator params
-        await this.restoreGeneratedConvolvers(deserialized.convolvers, instrumentStore.currentInstrument as InstrumentV2 | null);
+          // Regenerate convolvers with procedural generator params
+          await this.restoreGeneratedConvolvers(deserialized.convolvers, instrumentStore.currentInstrument as InstrumentV2 | null);
 
-        // Ensure all node states (including LFO trigger modes) are pushed into WASM after load
-        nodeStateStore.applyPreservedStatesToWasm();
-        // Reapply macro routes after voices are rebuilt so every voice gets connected
-        macroStore.reapplyAllRoutes();
+          // Ensure all node states (including LFO trigger modes) are pushed into WASM after load
+          nodeStateStore.applyPreservedStatesToWasm();
+          // Reapply macro routes after voices are rebuilt so every voice gets connected
+          macroStore.reapplyAllRoutes();
+        }
 
         this.isLoadingPatch = false;
         return true;

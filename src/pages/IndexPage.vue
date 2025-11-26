@@ -8,28 +8,25 @@
           <span class="song-patch-banner__label">Editing Song Patch</span>
           <span class="song-patch-banner__slot">Slot #{{ String(editingSlotNumber).padStart(2, '0') }}</span>
           <span class="song-patch-banner__name">{{ editingPatchName }}</span>
+          <span v-if="isPlaying" class="song-patch-banner__live">
+            <span class="live-dot"></span>
+            LIVE
+          </span>
         </div>
         <div class="song-patch-banner__actions">
-          <q-btn
-            flat
-            dense
-            color="primary"
-            icon="save"
-            label="Save"
-            @click="saveSongPatch"
-          />
           <q-btn
             flat
             dense
             color="white"
             icon="arrow_back"
             label="Back to Tracker"
+            title="Press Escape to return"
             @click="backToTracker"
           />
         </div>
       </div>
 
-      <div class="preset-row q-pa-sm">
+      <div v-if="!isEditingSongPatch" class="preset-row q-pa-sm">
         <PresetManager />
       </div>
 
@@ -290,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useInstrumentStore } from 'src/stores/instrument-store';
@@ -299,6 +296,7 @@ import { useNodeStateStore } from 'src/stores/node-state-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
+import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import PresetManager from 'src/components/PresetManager.vue';
 
 // Components moved from the top row (now in the bottom row)
@@ -365,8 +363,11 @@ const layoutStore = useLayoutStore();
 const nodeStateStore = useNodeStateStore();
 const patchStore = usePatchStore();
 const trackerStore = useTrackerStore();
+const playbackStore = useTrackerPlaybackStore();
+const trackerAudioStore = useTrackerAudioStore();
 const { destinationNode, instrumentGain } = storeToRefs(instrumentStore);
 const { editingSlot, songPatches } = storeToRefs(trackerStore);
+const { isPlaying } = storeToRefs(playbackStore);
 
 const addMenuVisible = ref(false);
 const addMenu = ref<QMenuController | null>(null);
@@ -389,58 +390,93 @@ async function loadSongPatchForEditing(slotNumber: number) {
   const patch = songPatches.value[slot.patchId];
   if (!patch) return;
 
-  // Load the song patch into the instrument
-  await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
+  // Try to get the actual instrument from the song bank for live editing
+  const songBankInstrument = trackerAudioStore.getInstrumentForSlot(slotNumber);
+
+  if (songBankInstrument) {
+    // LIVE EDITING: Swap to the song bank's actual instrument
+    // This means all knob turns will directly affect the playing sound
+    instrumentStore.useExternalInstrument(songBankInstrument);
+
+    // Load the patch state into the UI stores (layout, node states, etc.)
+    // Skip loadPatch because the instrument is already loaded and playing
+    await patchStore.applyPatchObject(patch, { setCurrentPatchId: true, skipLoadPatch: true });
+  } else {
+    // Fallback: No active instrument in song bank, use standalone mode
+    await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
+  }
 }
 
 async function saveSongPatch() {
   if (!editingSlot.value) return;
 
-  // Serialize current patch state
+  // Serialize current patch state from the UI stores
   const patch = await patchStore.serializePatch(editingPatchName.value);
   if (!patch) return;
 
-  // Update the song patch in tracker store
+  // Update the song patch in tracker store for persistence
+  // This doesn't affect playback - just updates the stored patch data
   trackerStore.updateEditingPatch(patch);
+
+  // Also update the song bank's stored patch to keep it in sync
+  // This prevents the old patch from being reapplied on next playback start
+  trackerAudioStore.updateStoredPatch(editingSlot.value, patch);
 }
 
-function backToTracker() {
-  // Save before leaving
-  void saveSongPatch().then(() => {
-    trackerStore.stopEditing();
-    void router.push('/tracker');
-  });
+async function backToTracker() {
+  // Save patch state before leaving (serialize from UI stores to song patches)
+  await saveSongPatch();
+  // Restore the default instrument before navigating away
+  instrumentStore.restoreDefaultInstrument();
+  trackerStore.stopEditing();
+  void router.push('/tracker');
 }
 
 // Watch for route changes to detect song patch editing
 watch(
   () => route.query.editSongPatch,
-  async (slotParam) => {
+  async (slotParam, oldSlotParam) => {
     if (slotParam) {
       const slotNumber = parseInt(slotParam as string, 10);
       if (!Number.isNaN(slotNumber)) {
         trackerStore.startEditingSlot(slotNumber);
         await loadSongPatchForEditing(slotNumber);
       }
+    } else if (oldSlotParam && !slotParam) {
+      // Navigating away from song patch editing mode
+      instrumentStore.restoreDefaultInstrument();
     }
   },
   { immediate: true }
 );
 
+// Keyboard handler for Escape to return to tracker
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && isEditingSongPatch.value) {
+    event.preventDefault();
+    backToTracker();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
+});
+
 // Clean up editing state when leaving the page
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
   if (isEditingSongPatch.value) {
+    // Save the patch state before leaving
     void saveSongPatch();
+    // Restore the default instrument when leaving the page
+    instrumentStore.restoreDefaultInstrument();
   }
 });
 
-// Live patch editing during playback - DISABLED for now
-// This feature requires the PlaybackEngine to be persistent across page navigation,
-// which is a larger architectural change. The songBank singleton is in place,
-// but the playback scheduling and UI state live in TrackerPage.
-// TODO: Move PlaybackEngine to a persistent store/service for live editing support
-const trackerAudioStore = useTrackerAudioStore();
-void trackerAudioStore; // Suppress unused warning - will be used when live editing is enabled
+// Live patch editing during playback - enabled!
+// When editing a song patch, we swap currentInstrument to the song bank's actual instrument,
+// so all DSP component changes directly affect the playing sound.
+// Patch serialization only happens when saving the song, not during editing.
 
 const addMenuSections: AddMenuSection[] = [
   {
@@ -779,6 +815,34 @@ const bitcrusherNodes = computed(() => {
 .song-patch-banner__actions {
   display: flex;
   gap: 8px;
+}
+
+.song-patch-banner__live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(76, 175, 80, 0.2);
+  border: 1px solid #4caf50;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #4caf50;
+  margin-left: 8px;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4caf50;
+  animation: live-pulse 1s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px #4caf50; }
+  50% { opacity: 0.6; box-shadow: 0 0 8px #4caf50; }
 }
 
 /* Full viewport container */

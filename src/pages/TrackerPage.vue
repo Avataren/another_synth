@@ -569,7 +569,7 @@ function midiToTrackerNote(midi: number): string {
 }
 
 // Mute/solo state from playback store
-const { mutedTracks, soloedTracks, isPlaying, playbackRow, playbackMode, autoScroll } = storeToRefs(playbackStore);
+const { mutedTracks, soloedTracks, isPlaying, isPaused, playbackRow, playbackMode, autoScroll } = storeToRefs(playbackStore);
 
 watch(
   () => keyboardStore.latestEvent,
@@ -1172,7 +1172,9 @@ function handleRenamePattern(patternId: string, name: string) {
 
 onMounted(async () => {
   trackerContainer.value?.focus();
-  await loadSystemBankOptions();
+  // Skip song bank sync if playback is active (returning from instrument editor)
+  // The song bank already has the correct instruments loaded
+  await loadSystemBankOptions({ skipSync: isPlaying.value || isPaused.value });
   ensureActiveInstrument();
   // Skip reloading song if playback is already active (returning to page while playing)
   void initializePlayback(playbackMode.value, true);
@@ -1229,6 +1231,13 @@ watch(
 // Watch only the properties that matter for audio sync (slot, patchId, bankId)
 // This prevents unnecessary audio rebuilds when editing instrument names
 watch(slotSignatures, async () => {
+  // Skip sync if playback is active - the song bank already has the correct state
+  // This prevents interruption when returning from instrument editor
+  if (isPlaying.value || isPaused.value) {
+    updateTrackAudioNodes();
+    return;
+  }
+
   // Ensure audio context is resumed before creating instruments
   // This provides the required user gesture for browsers' autoplay policy
   await songBank.ensureAudioContextRunning();

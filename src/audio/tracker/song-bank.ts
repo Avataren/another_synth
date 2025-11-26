@@ -80,6 +80,12 @@ export class TrackerSongBank {
     return active?.instrument.outputNode ?? null;
   }
 
+  /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
+  getInstrument(instrumentId: string): InstrumentV2 | null {
+    const active = this.instruments.get(instrumentId);
+    return active?.instrument ?? null;
+  }
+
   async syncSlots(slots: SongBankSlot[]): Promise<void> {
     // Resume context if suspended, and set flag so we rebuild instruments
     if (this.audioContext.state === 'suspended') {
@@ -1206,5 +1212,33 @@ export class TrackerSongBank {
    */
   hasActiveInstrument(instrumentId: string): boolean {
     return this.instruments.has(instrumentId);
+  }
+
+  /**
+   * Update the stored patch data for an instrument after live editing.
+   * This updates the "desired" patch and the instrument's stored signature
+   * WITHOUT reloading the instrument (since it already has the live changes).
+   *
+   * Call this when saving live edits to ensure the song bank's stored data
+   * matches the actual instrument state.
+   *
+   * @param instrumentId - The instrument ID (e.g., "01", "02")
+   * @param patch - The serialized patch with the current state
+   */
+  updateStoredPatch(instrumentId: string, patch: Patch): void {
+    const normalizedPatch = this.normalizePatch(patch);
+    const patchId = normalizedPatch?.metadata?.id;
+    if (!patchId) return;
+
+    // Update the desired patch
+    this.desired.set(instrumentId, normalizedPatch);
+
+    // Update the active instrument's stored signature so it matches
+    const active = this.instruments.get(instrumentId);
+    if (active) {
+      active.patchId = patchId;
+      active.patchSignature = this.computePatchSignature(normalizedPatch);
+      active.hasPortamento = this.hasActivePortamento(normalizedPatch);
+    }
   }
 }
