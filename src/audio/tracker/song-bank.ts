@@ -825,6 +825,7 @@ export class TrackerSongBank {
     if (canReuse) {
       console.log(`[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`);
       existing.hasPortamento = hasPortamento;
+      this.normalizeVoiceGain(existing.instrument);
       // Skip restoreAudioAssets, applyNodeStates, and applyMacros when reusing
       // These would reset effect buffers (delays, reverbs) and interrupt live playback
       // The instrument already has the correct patch loaded from previous sync
@@ -872,10 +873,14 @@ export class TrackerSongBank {
     await this.restoreAudioAssets(instrumentId, instrument, normalizedPatch, deserialized);
     await this.applyNodeStates(instrument, deserialized);
     this.applyMacrosFromPatch(instrument, normalizedPatch);
-    // Ensure voice gains aren't left at a previous automation value (e.g. 0)
-    instrument.setGainForAllVoices(1);
+    this.normalizeVoiceGain(instrument);
     instrument.outputNode.connect(this.masterGain);
     this.instruments.set(instrumentId, { instrument, patchId, patchSignature, hasPortamento });
+  }
+
+  private normalizeVoiceGain(instrument: InstrumentV2) {
+    // Ensure voice gains aren't left at a previous automation value (e.g. 0)
+    instrument.setGainForAllVoices(1);
   }
 
   private async restoreAudioAssets(
