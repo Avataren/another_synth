@@ -1,6 +1,10 @@
 import AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
-import type { AudioAsset, Patch, MacroRouteState } from 'src/audio/types/preset-types';
+import type {
+  AudioAsset,
+  Patch,
+  MacroRouteState,
+} from 'src/audio/types/preset-types';
 import {
   deserializePatch,
   type DeserializedPatch,
@@ -28,8 +32,15 @@ import {
   type BitcrusherState,
 } from 'src/audio/types/synth-layout';
 import type OscillatorState from 'src/audio/models/OscillatorState';
-import { PRESET_SCHEMA_VERSION, type PatchMetadata, type SynthState } from 'src/audio/types/preset-types';
-import { combineDetuneParts, frequencyFromDetune } from 'src/audio/utils/sampler-detune';
+import {
+  PRESET_SCHEMA_VERSION,
+  type PatchMetadata,
+  type SynthState,
+} from 'src/audio/types/preset-types';
+import {
+  combineDetuneParts,
+  frequencyFromDetune,
+} from 'src/audio/utils/sampler-detune';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -48,10 +59,12 @@ export class TrackerSongBank {
   private readonly masterGain: GainNode;
   private readonly desired: Map<string, Patch> = new Map();
   private readonly instruments: Map<string, ActiveInstrument> = new Map();
-  private readonly activeNotes: Map<string, Map<number, Set<number>>> = new Map();
+  private readonly activeNotes: Map<string, Map<number, Set<number>>> =
+    new Map();
   private readonly lastTrackVoice: Map<string, Map<number, number>> = new Map();
   /** Track all voices allocated to each track: instrumentId -> trackIndex -> Set<voiceIndex> */
-  private readonly trackVoices: Map<string, Map<number, Set<number>>> = new Map();
+  private readonly trackVoices: Map<string, Map<number, Set<number>>> =
+    new Map();
   private readonly restoredAssets: Map<string, Set<string>> = new Map();
   private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
   private wasSuspended = false;
@@ -106,18 +119,24 @@ export class TrackerSongBank {
 
   async syncSlots(slots: SongBankSlot[]): Promise<void> {
     console.log(`[SongBank] syncSlots called with ${slots.length} slots`);
-    console.log(`[SongBank] Current instruments before sync: [${Array.from(this.instruments.keys()).join(', ')}]`);
+    console.log(
+      `[SongBank] Current instruments before sync: [${Array.from(this.instruments.keys()).join(', ')}]`,
+    );
     console.log(`[SongBank] AudioContext state: ${this.audioContext.state}`);
-    console.log(`[SongBank] MasterGain connected: ${this.masterGain.numberOfOutputs > 0}, gain value: ${this.masterGain.gain.value}`);
+    console.log(
+      `[SongBank] MasterGain connected: ${this.masterGain.numberOfOutputs > 0}, gain value: ${this.masterGain.gain.value}`,
+    );
     // Verify destinationNode connection
-    console.log(`[SongBank] AudioSystem destinationNode outputs: ${this.audioSystem.destinationNode.numberOfOutputs}`);
+    console.log(
+      `[SongBank] AudioSystem destinationNode outputs: ${this.audioSystem.destinationNode.numberOfOutputs}`,
+    );
 
     // Prevent concurrent syncs - wait for previous sync to complete
     if (this.syncInProgress) {
       console.log('[SongBank] Sync already in progress, waiting...');
       // Wait for the current sync to finish (poll every 50ms)
       while (this.syncInProgress) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
       console.log('[SongBank] Previous sync completed, proceeding');
     }
@@ -166,15 +185,21 @@ export class TrackerSongBank {
       }
 
       for (const [instrumentId, patch] of nextDesired.entries()) {
-        console.log(`[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`);
+        console.log(
+          `[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`,
+        );
         await this.ensureInstrument(instrumentId, patch);
       }
 
-      console.log(`[SongBank] syncSlots complete, active instruments: ${Array.from(this.instruments.keys()).join(', ')}`);
+      console.log(
+        `[SongBank] syncSlots complete, active instruments: ${Array.from(this.instruments.keys()).join(', ')}`,
+      );
       // Verify all instruments are properly connected
       for (const [id, active] of this.instruments.entries()) {
         const hasOutput = active.instrument.outputNode.numberOfOutputs > 0;
-        console.log(`[SongBank] Instrument ${id} output connected: ${hasOutput}`);
+        console.log(
+          `[SongBank] Instrument ${id} output connected: ${hasOutput}`,
+        );
       }
     } finally {
       this.syncInProgress = false;
@@ -352,10 +377,7 @@ export class TrackerSongBank {
   /**
    * Clear all voice tracking for a specific track
    */
-  private clearVoicesForTrack(
-    instrumentId: string,
-    trackIndex: number,
-  ) {
+  private clearVoicesForTrack(instrumentId: string, trackIndex: number) {
     const byTrack = this.trackVoices.get(instrumentId);
     byTrack?.delete(trackIndex);
   }
@@ -393,9 +415,15 @@ export class TrackerSongBank {
   }
 
   /** Stop capture and return interleaved Float32 data */
-  async stopRecording(): Promise<{ interleaved: Float32Array; sampleRate: number }> {
+  async stopRecording(): Promise<{
+    interleaved: Float32Array;
+    sampleRate: number;
+  }> {
     this.recording = false;
-    const totalFrames = this.recordedBuffers.reduce((sum, buf) => sum + buf.length, 0);
+    const totalFrames = this.recordedBuffers.reduce(
+      (sum, buf) => sum + buf.length,
+      0,
+    );
     const merged = new Float32Array(totalFrames);
     let offset = 0;
     for (const buf of this.recordedBuffers) {
@@ -404,19 +432,19 @@ export class TrackerSongBank {
     }
     return {
       interleaved: merged,
-      sampleRate: this.audioSystem.audioContext.sampleRate
+      sampleRate: this.audioSystem.audioContext.sampleRate,
     };
   }
 
   private async ensureRecorderNode(): Promise<void> {
     if (this.recorderNode) return;
     await this.audioSystem.audioContext.audioWorklet.addModule(
-      `${import.meta.env.BASE_URL}worklets/recording-worklet.js`
+      `${import.meta.env.BASE_URL}worklets/recording-worklet.js`,
     );
     this.recorderNode = new AudioWorkletNode(
       this.audioSystem.audioContext,
       'recording-processor',
-      { numberOfInputs: 1, numberOfOutputs: 0 }
+      { numberOfInputs: 1, numberOfOutputs: 0 },
     );
     this.masterGain.connect(this.recorderNode);
     this.recorderNode.port.onmessage = (event: MessageEvent) => {
@@ -442,7 +470,9 @@ export class TrackerSongBank {
     if (!active) return;
     const now = this.audioContext.currentTime;
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, now);
-    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now, { allowDuplicate: true });
+    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now, {
+      allowDuplicate: true,
+    });
 
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
@@ -454,18 +484,28 @@ export class TrackerSongBank {
    * Realtime preview note-on (no per-track voice gating/stealing).
    * Used by the tracker keyboard preview so chords behave like the patch editor.
    */
-  previewNoteOn(instrumentId: string | undefined, midi: number, velocity = 100) {
-    console.log(`[SongBank] previewNoteOn: inst=${instrumentId}, midi=${midi}, vel=${velocity}`);
+  previewNoteOn(
+    instrumentId: string | undefined,
+    midi: number,
+    velocity = 100,
+  ) {
+    console.log(
+      `[SongBank] previewNoteOn: inst=${instrumentId}, midi=${midi}, vel=${velocity}`,
+    );
     if (this.audioContext.state === 'suspended') {
       this.wasSuspended = true;
     }
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) {
-      console.warn(`[SongBank] previewNoteOn: instrument ${instrumentId} not found!`);
+      console.warn(
+        `[SongBank] previewNoteOn: instrument ${instrumentId} not found!`,
+      );
       return;
     }
-    console.log(`[SongBank] previewNoteOn: instrument found, isReady=${active.instrument.isReady}, hasWorklet=${!!active.instrument.workletNode}`);
+    console.log(
+      `[SongBank] previewNoteOn: instrument found, isReady=${active.instrument.isReady}, hasWorklet=${!!active.instrument.workletNode}`,
+    );
     const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
     active.instrument.noteOn(clampedMidi, velocity);
   }
@@ -481,7 +521,11 @@ export class TrackerSongBank {
     active.instrument.noteOff(clampedMidi);
   }
 
-  noteOff(instrumentId: string | undefined, midi?: number, trackIndex?: number) {
+  noteOff(
+    instrumentId: string | undefined,
+    midi?: number,
+    trackIndex?: number,
+  ) {
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
@@ -528,7 +572,9 @@ export class TrackerSongBank {
     const timeOffset = time - now;
     // Only log first few notes to avoid spam
     if (timeOffset < 2) {
-      console.log(`[SongBank] noteOnAtTime: inst=${instrumentId}, midi=${midi}, time=${time.toFixed(3)}, now=${now.toFixed(3)}, offset=${timeOffset.toFixed(3)}s`);
+      console.log(
+        `[SongBank] noteOnAtTime: inst=${instrumentId}, midi=${midi}, time=${time.toFixed(3)}, now=${now.toFixed(3)}, offset=${timeOffset.toFixed(3)}s`,
+      );
     }
     if (this.audioContext.state === 'suspended') {
       this.wasSuspended = true;
@@ -540,23 +586,31 @@ export class TrackerSongBank {
     }
     const active = this.instruments.get(instrumentId);
     if (!active) {
-      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} not found! Available: [${Array.from(this.instruments.keys()).join(', ')}]`);
+      console.warn(
+        `[SongBank] noteOnAtTime: instrument ${instrumentId} not found! Available: [${Array.from(this.instruments.keys()).join(', ')}]`,
+      );
       return;
     }
     // Check if instrument is actually ready
     if (!active.instrument.isReady) {
-      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} is NOT ready!`);
+      console.warn(
+        `[SongBank] noteOnAtTime: instrument ${instrumentId} is NOT ready!`,
+      );
     }
     // Check worklet state
     const worklet = active.instrument.workletNode;
     if (!worklet) {
-      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} has NO workletNode!`);
+      console.warn(
+        `[SongBank] noteOnAtTime: instrument ${instrumentId} has NO workletNode!`,
+      );
     }
     // Check output gain (first few notes only)
     if (timeOffset < 0.5) {
       const outputGain = (active.instrument.outputNode as GainNode).gain.value;
       const masterGainVal = this.masterGain.gain.value;
-      console.log(`[SongBank] noteOnAtTime: inst=${instrumentId} outputGain=${outputGain}, masterGain=${masterGainVal}`);
+      console.log(
+        `[SongBank] noteOnAtTime: inst=${instrumentId} outputGain=${outputGain}, masterGain=${masterGainVal}`,
+      );
     }
     // DIAGNOSTIC: Try immediate noteOn if scheduled time is very close to now
     // This helps determine if the issue is with scheduling vs the instrument itself
@@ -564,24 +618,32 @@ export class TrackerSongBank {
     let voiceIndex: number | undefined;
     if (useImmediate) {
       // Skip gateOffPreviousTrackVoice for immediate notes to isolate the issue
-      console.log(`[SongBank] Using IMMEDIATE noteOn for inst=${instrumentId} midi=${midi} (offset=${timeOffset.toFixed(3)}s)`);
+      console.log(
+        `[SongBank] Using IMMEDIATE noteOn for inst=${instrumentId} midi=${midi} (offset=${timeOffset.toFixed(3)}s)`,
+      );
       // Use exact same call as previewNoteOn (no allowDuplicate option)
       const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
       active.instrument.noteOn(clampedMidi, velocity);
       voiceIndex = 0; // noteOn doesn't return voice index, assume 0
     } else {
       this.gateOffPreviousTrackVoice(instrumentId, trackIndex, time);
-      voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, { allowDuplicate: true });
+      voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, {
+        allowDuplicate: true,
+      });
     }
 
     if (voiceIndex === undefined && !useImmediate) {
-      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} returned undefined voiceIndex`);
+      console.warn(
+        `[SongBank] noteOnAtTime: instrument ${instrumentId} returned undefined voiceIndex`,
+      );
     } else if (!useImmediate) {
       // Verify the parameters exist
       const gateParam = worklet?.parameters.get(`gate_${voiceIndex}`);
       const freqParam = worklet?.parameters.get(`frequency_${voiceIndex}`);
       if (!gateParam || !freqParam) {
-        console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} voice ${voiceIndex} missing params! gate=${!!gateParam}, freq=${!!freqParam}`);
+        console.warn(
+          `[SongBank] noteOnAtTime: instrument ${instrumentId} voice ${voiceIndex} missing params! gate=${!!gateParam}, freq=${!!freqParam}`,
+        );
       }
     }
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
@@ -658,17 +720,25 @@ export class TrackerSongBank {
 
       // Verify output connection, reconnect if needed
       if (active.instrument.outputNode.numberOfOutputs === 0) {
-        console.warn(`[SongBank] resetForPlayback: instrument ${id} disconnected, reconnecting`);
+        console.warn(
+          `[SongBank] resetForPlayback: instrument ${id} disconnected, reconnecting`,
+        );
         active.instrument.outputNode.connect(this.masterGain);
       }
 
       // Log state for debugging
       const outputGain = (active.instrument.outputNode as GainNode).gain.value;
-      console.log(`[SongBank] resetForPlayback: ${id} outputGain=${outputGain}, connected=${active.instrument.outputNode.numberOfOutputs > 0}`);
+      console.log(
+        `[SongBank] resetForPlayback: ${id} outputGain=${outputGain}, connected=${active.instrument.outputNode.numberOfOutputs > 0}`,
+      );
     }
   }
 
-  setInstrumentGain(instrumentId: string | undefined, gain: number, time?: number) {
+  setInstrumentGain(
+    instrumentId: string | undefined,
+    gain: number,
+    time?: number,
+  ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
@@ -696,7 +766,12 @@ export class TrackerSongBank {
     return active.instrument.getOutputGain();
   }
 
-  setInstrumentMacro(instrumentId: string | undefined, macroIndex: number, value: number, time?: number) {
+  setInstrumentMacro(
+    instrumentId: string | undefined,
+    macroIndex: number,
+    value: number,
+    time?: number,
+  ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
@@ -711,7 +786,7 @@ export class TrackerSongBank {
     instrumentId: string | undefined,
     voiceIndex: number,
     frequency: number,
-    time: number
+    time: number,
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
@@ -727,7 +802,7 @@ export class TrackerSongBank {
     instrumentId: string | undefined,
     voiceIndex: number,
     volume: number,
-    time: number
+    time: number,
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
@@ -743,14 +818,16 @@ export class TrackerSongBank {
     midi: number,
     velocity: number,
     time: number,
-    trackIndex?: number
+    trackIndex?: number,
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     // For retrigger, we want to trigger the same note again
     // This requires briefly gating off then back on
-    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, { allowDuplicate: true });
+    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, {
+      allowDuplicate: true,
+    });
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
       this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
@@ -773,7 +850,9 @@ export class TrackerSongBank {
     }
 
     this.needsAudioContextResume = true;
-    console.warn(`[SongBank] AudioContext state=${ctx.state}; attempting to resume.`);
+    console.warn(
+      `[SongBank] AudioContext state=${ctx.state}; attempting to resume.`,
+    );
 
     // Try to resume - might fail if no user interaction yet
     try {
@@ -801,7 +880,7 @@ export class TrackerSongBank {
         return true;
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollMs));
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
 
       // Try resuming again
       try {
@@ -817,13 +896,20 @@ export class TrackerSongBank {
     }
 
     // Timed out
-    console.error('[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).');
-    console.warn(`[SongBank] AudioContext resume timed out; final state=${ctx.state}`);
+    console.error(
+      '[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).',
+    );
+    console.warn(
+      `[SongBank] AudioContext resume timed out; final state=${ctx.state}`,
+    );
     this.needsAudioContextResume = true;
     return false;
   }
 
-  private async ensureInstrument(instrumentId: string, patch: Patch): Promise<void> {
+  private async ensureInstrument(
+    instrumentId: string,
+    patch: Patch,
+  ): Promise<void> {
     // Check if this instrument is already being initialized
     const pending = this.pendingInstruments.get(instrumentId);
     if (pending) {
@@ -843,13 +929,16 @@ export class TrackerSongBank {
     }
   }
 
-  private async ensureInstrumentInternal(instrumentId: string, patch: Patch): Promise<void> {
+  private async ensureInstrumentInternal(
+    instrumentId: string,
+    patch: Patch,
+  ): Promise<void> {
     const contextRunning = await this.ensureAudioContextRunning();
     if (!contextRunning || this.audioContext.state !== 'running') {
       console.warn(
         `[SongBank] Skipping ensureInstrument for ${instrumentId} because AudioContext is not running (state=${this.audioContext.state}). needsResume=${this.needsAudioContextResume}`,
       );
-    
+
       return;
     }
     const normalizedPatch = this.normalizePatch(patch);
@@ -867,7 +956,9 @@ export class TrackerSongBank {
       existing.patchSignature === patchSignature;
 
     if (canReuse) {
-      console.log(`[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`);
+      console.log(
+        `[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`,
+      );
       existing.hasPortamento = hasPortamento;
       this.normalizeVoiceGain(existing.instrument);
       // Skip restoreAudioAssets, applyNodeStates, and applyMacros when reusing
@@ -875,14 +966,18 @@ export class TrackerSongBank {
       // The instrument already has the correct patch loaded from previous sync
       // Verify connection is still intact, reconnect if needed
       if (existing.instrument.outputNode.numberOfOutputs === 0) {
-        console.warn(`[SongBank] Instrument ${instrumentId} was disconnected, reconnecting...`);
+        console.warn(
+          `[SongBank] Instrument ${instrumentId} was disconnected, reconnecting...`,
+        );
         existing.instrument.outputNode.connect(this.masterGain);
       }
       return;
     }
 
     if (existing) {
-      console.log(`[SongBank] Tearing down existing instrument (different patch): ${instrumentId}`);
+      console.log(
+        `[SongBank] Tearing down existing instrument (different patch): ${instrumentId}`,
+      );
       this.teardownInstrument(instrumentId);
     }
 
@@ -905,21 +1000,34 @@ export class TrackerSongBank {
       instrument.outputNode.disconnect();
       return;
     }
-    console.log(`[SongBank] Instrument ${instrumentId} worklet ready, loading patch...`);
+    console.log(
+      `[SongBank] Instrument ${instrumentId} worklet ready, loading patch...`,
+    );
 
     await instrument.loadPatch(normalizedPatch);
-    console.log(`[SongBank] Instrument ${instrumentId} patch loaded, isReady=${instrument.isReady}`);
+    console.log(
+      `[SongBank] Instrument ${instrumentId} patch loaded, isReady=${instrument.isReady}`,
+    );
     // Give WASM time to finish building all voice node structures before updating states
     // Without this delay, updateOscillator messages arrive before nodes exist in voices
     // This is a race condition: synthLayout response means layout is created, but WASM
     // still needs time to build the actual node structures in each voice
-    await new Promise(resolve => setTimeout(resolve, 100));
-    await this.restoreAudioAssets(instrumentId, instrument, normalizedPatch, deserialized);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await this.restoreAudioAssets(
+      instrumentId,
+      instrument,
+      normalizedPatch,
+      deserialized,
+    );
     await this.applyNodeStates(instrument, deserialized);
     this.applyMacrosFromPatch(instrument, normalizedPatch);
     this.normalizeVoiceGain(instrument);
-    instrument.outputNode.connect(this.masterGain);
-    this.instruments.set(instrumentId, { instrument, patchId, patchSignature, hasPortamento });
+    this.instruments.set(instrumentId, {
+      instrument,
+      patchId,
+      patchSignature,
+      hasPortamento,
+    });
   }
 
   private normalizeVoiceGain(instrument: InstrumentV2) {
@@ -980,7 +1088,10 @@ export class TrackerSongBank {
         }
         seen.add(assetId);
       } catch (error) {
-        console.error(`[TrackerSongBank] Failed to restore audio asset ${assetId}:`, error);
+        console.error(
+          `[TrackerSongBank] Failed to restore audio asset ${assetId}:`,
+          error,
+        );
       }
     }
   }
@@ -1010,8 +1121,9 @@ export class TrackerSongBank {
           (route.modulationType as WasmModulationType | undefined) ??
           WasmModulationType.Additive;
         const modulationTransformation =
-          (route.modulationTransformation as ModulationTransformation | undefined) ??
-          ModulationTransformation.None;
+          (route.modulationTransformation as
+            | ModulationTransformation
+            | undefined) ?? ModulationTransformation.None;
 
         instrument.connectMacroRoute({
           macroIndex,
@@ -1033,7 +1145,9 @@ export class TrackerSongBank {
     const start = Date.now();
     while (!instrument.isReady) {
       if (Date.now() - start > timeoutMs) {
-        console.warn('[TrackerSongBank] Timed out waiting for instrument readiness');
+        console.warn(
+          '[TrackerSongBank] Timed out waiting for instrument readiness',
+        );
         return false;
       }
       await new Promise((resolve) => setTimeout(resolve, pollMs));
@@ -1063,7 +1177,9 @@ export class TrackerSongBank {
       const synthState: SynthState = {
         layout: this.normalizePatchLayout(deserialized.layout),
         oscillators: this.mapToRecord(deserialized.oscillators),
-        wavetableOscillators: this.mapToRecord(deserialized.wavetableOscillators),
+        wavetableOscillators: this.mapToRecord(
+          deserialized.wavetableOscillators,
+        ),
         filters: this.mapToRecord(deserialized.filters),
         envelopes: this.mapToRecord(deserialized.envelopes),
         lfos: this.mapToRecord(deserialized.lfos),
@@ -1097,7 +1213,10 @@ export class TrackerSongBank {
         audioAssets: this.mapToRecord(deserialized.audioAssets),
       };
     } catch (error) {
-      console.warn('[TrackerSongBank] Failed to normalize patch; using raw patch', error);
+      console.warn(
+        '[TrackerSongBank] Failed to normalize patch; using raw patch',
+        error,
+      );
       return patch;
     }
   }
@@ -1107,7 +1226,9 @@ export class TrackerSongBank {
   }
 
   private normalizePatchMetadata(metadata: PatchMetadata): PatchMetadata {
-    const safeTags = Array.isArray(metadata?.tags) ? [...metadata.tags] : undefined;
+    const safeTags = Array.isArray(metadata?.tags)
+      ? [...metadata.tags]
+      : undefined;
     const created = metadata?.created ?? metadata?.modified ?? 0;
     const modified = metadata?.modified ?? metadata?.created ?? created;
     return {
@@ -1116,10 +1237,16 @@ export class TrackerSongBank {
       created,
       modified,
       version: metadata?.version ?? PRESET_SCHEMA_VERSION,
-      ...(typeof metadata?.category === 'string' ? { category: metadata.category } : {}),
-      ...(typeof metadata?.author === 'string' ? { author: metadata.author } : {}),
+      ...(typeof metadata?.category === 'string'
+        ? { category: metadata.category }
+        : {}),
+      ...(typeof metadata?.author === 'string'
+        ? { author: metadata.author }
+        : {}),
       ...(safeTags ? { tags: safeTags } : {}),
-      ...(typeof metadata?.description === 'string' ? { description: metadata.description } : {}),
+      ...(typeof metadata?.description === 'string'
+        ? { description: metadata.description }
+        : {}),
     };
   }
 
@@ -1135,13 +1262,20 @@ export class TrackerSongBank {
     instrument: InstrumentV2,
     deserialized: DeserializedPatch,
   ): Promise<void> {
-    deserialized.oscillators.forEach((state: OscillatorState, nodeId: string) => {
-      instrument.updateOscillatorState(nodeId, { ...state, id: nodeId });
-    });
+    deserialized.oscillators.forEach(
+      (state: OscillatorState, nodeId: string) => {
+        instrument.updateOscillatorState(nodeId, { ...state, id: nodeId });
+      },
+    );
 
-    deserialized.wavetableOscillators.forEach((state: OscillatorState, nodeId: string) => {
-      instrument.updateWavetableOscillatorState(nodeId, { ...state, id: nodeId });
-    });
+    deserialized.wavetableOscillators.forEach(
+      (state: OscillatorState, nodeId: string) => {
+        instrument.updateWavetableOscillatorState(nodeId, {
+          ...state,
+          id: nodeId,
+        });
+      },
+    );
 
     const envelopePromises: Promise<void>[] = [];
     deserialized.envelopes.forEach((state: EnvelopeConfig, nodeId: string) => {
@@ -1194,20 +1328,29 @@ export class TrackerSongBank {
       instrument.updateReverbState(nodeId, { ...state, id: nodeId });
     });
 
-    deserialized.compressors.forEach((state: CompressorState, nodeId: string) => {
-      instrument.updateCompressorState(nodeId, { ...state, id: nodeId });
-    });
+    deserialized.compressors.forEach(
+      (state: CompressorState, nodeId: string) => {
+        instrument.updateCompressorState(nodeId, { ...state, id: nodeId });
+      },
+    );
 
-    deserialized.saturations.forEach((state: SaturationState, nodeId: string) => {
-      instrument.updateSaturationState(nodeId, { ...state, id: nodeId });
-    });
+    deserialized.saturations.forEach(
+      (state: SaturationState, nodeId: string) => {
+        instrument.updateSaturationState(nodeId, { ...state, id: nodeId });
+      },
+    );
 
-    deserialized.bitcrushers.forEach((state: BitcrusherState, nodeId: string) => {
-      instrument.updateBitcrusherState(nodeId, { ...state, id: nodeId });
-    });
+    deserialized.bitcrushers.forEach(
+      (state: BitcrusherState, nodeId: string) => {
+        instrument.updateBitcrusherState(nodeId, { ...state, id: nodeId });
+      },
+    );
 
     deserialized.samplers.forEach((state: SamplerState, nodeId: string) => {
-      const sampleLength = Math.max(1, state.sampleLength || state.sampleRate || 1);
+      const sampleLength = Math.max(
+        1,
+        state.sampleLength || state.sampleRate || 1,
+      );
       const loopStartNorm = this.clamp01(state.loopStart ?? 0);
       const requestedEnd = this.clamp01(state.loopEnd ?? 1);
       const minDelta = 1 / sampleLength;
@@ -1217,7 +1360,11 @@ export class TrackerSongBank {
           : requestedEnd;
       const detuneCents = Number.isFinite(state.detune)
         ? (state.detune as number)
-        : combineDetuneParts(state.detune_oct ?? 0, state.detune_semi ?? 0, state.detune_cents ?? 0);
+        : combineDetuneParts(
+            state.detune_oct ?? 0,
+            state.detune_semi ?? 0,
+            state.detune_cents ?? 0,
+          );
       const tuningFrequency = frequencyFromDetune(detuneCents);
 
       instrument.updateSamplerState(nodeId, {
@@ -1243,14 +1390,17 @@ export class TrackerSongBank {
   /**
    * Minimal WAV header parser to extract sample rate, channels, and frame count.
    */
-  private parseWavInfo(bytes: Uint8Array): { sampleRate: number; channels: number; frames: number } | null {
+  private parseWavInfo(
+    bytes: Uint8Array,
+  ): { sampleRate: number; channels: number; frames: number } | null {
     const getString = (offset: number, length: number) =>
       String.fromCharCode(...bytes.slice(offset, offset + length));
     const getUint32LE = (offset: number) =>
       ((bytes[offset] ?? 0) |
         ((bytes[offset + 1] ?? 0) << 8) |
         ((bytes[offset + 2] ?? 0) << 16) |
-        ((bytes[offset + 3] ?? 0) << 24)) >>> 0;
+        ((bytes[offset + 3] ?? 0) << 24)) >>>
+      0;
     const getUint16LE = (offset: number) =>
       ((bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8)) >>> 0;
 
@@ -1293,11 +1443,16 @@ export class TrackerSongBank {
     if (!id) return null;
 
     const modified = patch?.metadata?.modified ?? patch?.metadata?.created ?? 0;
-    const stateHash = this.simpleHash(this.safeStringify(patch?.synthState ?? {}));
+    const stateHash = this.simpleHash(
+      this.safeStringify(patch?.synthState ?? {}),
+    );
     const assets = patch?.audioAssets ?? {};
     const assetHash = this.simpleHash(
       Object.entries(assets)
-        .map(([assetId, asset]) => `${assetId}:${this.simpleHash(asset?.base64Data ?? '')}`)
+        .map(
+          ([assetId, asset]) =>
+            `${assetId}:${this.simpleHash(asset?.base64Data ?? '')}`,
+        )
         .sort()
         .join('|'),
     );
@@ -1309,7 +1464,10 @@ export class TrackerSongBank {
     try {
       return JSON.stringify(value) ?? '';
     } catch (error) {
-      console.warn('[TrackerSongBank] Failed to stringify patch for signature:', error);
+      console.warn(
+        '[TrackerSongBank] Failed to stringify patch for signature:',
+        error,
+      );
       return '';
     }
   }
@@ -1335,6 +1493,7 @@ export class TrackerSongBank {
     this.instruments.delete(instrumentId);
     this.activeNotes.delete(instrumentId);
     this.lastTrackVoice.delete(instrumentId);
+    this.trackVoices.delete(instrumentId);
     this.restoredAssets.delete(instrumentId);
   }
 
@@ -1349,7 +1508,10 @@ export class TrackerSongBank {
   async updatePatchLive(instrumentId: string, patch: Patch): Promise<boolean> {
     const active = this.instruments.get(instrumentId);
     if (!active) {
-      console.warn('[TrackerSongBank] Cannot update patch live: instrument not found', instrumentId);
+      console.warn(
+        '[TrackerSongBank] Cannot update patch live: instrument not found',
+        instrumentId,
+      );
       return false;
     }
 
@@ -1362,7 +1524,12 @@ export class TrackerSongBank {
 
       // Restore audio assets (samplers, convolvers) if any
       const deserialized = deserializePatch(normalizedPatch);
-      await this.restoreAudioAssets(instrumentId, active.instrument, normalizedPatch, deserialized);
+      await this.restoreAudioAssets(
+        instrumentId,
+        active.instrument,
+        normalizedPatch,
+        deserialized,
+      );
 
       // Update the stored patch reference and signature
       this.desired.set(instrumentId, normalizedPatch);
