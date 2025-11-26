@@ -882,10 +882,28 @@ function updateTrackAudioNodes() {
   const nodes: Record<number, AudioNode | null> = {};
   const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
   for (let i = 0; i < tracks.length; i++) {
+    // Only show waveform for tracks that have notes with an instrument in this pattern
+    // During playback, setTrackAudioNodeForInstrument will update nodes when notes play
+    // This allows sound from previous patterns to continue showing on the visualizer
     const resolvedId = resolveInstrumentForTrack(tracks[i], i);
-    const defaultId = (i + 1).toString().padStart(2, '0');
-    const instrumentId = resolvedId ?? defaultId;
-    nodes[i] = songBank.getInstrumentOutput(instrumentId);
+    if (resolvedId) {
+      nodes[i] = songBank.getInstrumentOutput(resolvedId);
+    } else if (isPlaying.value || isPaused.value) {
+      // During playback, preserve existing node assignment (might be from previous pattern)
+      nodes[i] = trackAudioNodes.value[i] ?? null;
+    } else {
+      // When stopped, clear nodes for tracks without notes
+      nodes[i] = null;
+    }
+  }
+  trackAudioNodes.value = nodes;
+}
+
+function clearTrackAudioNodes() {
+  const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
+  const nodes: Record<number, AudioNode | null> = {};
+  for (let i = 0; i < tracks.length; i++) {
+    nodes[i] = null;
   }
   trackAudioNodes.value = nodes;
 }
@@ -903,14 +921,14 @@ function clearActiveNoteTracks() {
 // Playback handlers that delegate to the store
 async function handlePlayPattern() {
   clearActiveNoteTracks();
-  updateTrackAudioNodes();
+  clearTrackAudioNodes();
   const song = buildPlaybackSong('pattern');
   await playbackStore.play(song, 'pattern', activeRow.value);
 }
 
 async function handlePlaySong() {
   clearActiveNoteTracks();
-  updateTrackAudioNodes();
+  clearTrackAudioNodes();
   const song = buildPlaybackSong('song');
   await playbackStore.play(song, 'song', activeRow.value);
 }
@@ -924,6 +942,7 @@ function handleStop() {
   playbackStore.stop();
   activeRow.value = 0;
   clearActiveNoteTracks();
+  // Don't clear track audio nodes - allow sounds to fade out visually
 }
 
 function togglePatternPlayback() {

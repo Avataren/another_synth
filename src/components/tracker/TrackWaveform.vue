@@ -83,7 +83,8 @@ function setupAnalyser() {
     dataArray = new Uint8Array(analyser.frequencyBinCount);
   }
 
-  // Disconnect if node changed
+  // Always disconnect the current node first when the prop changes
+  // This ensures we don't keep showing audio from a previous connection
   if (currentConnectedNode && currentConnectedNode !== props.audioNode) {
     disconnectCurrentNode();
   }
