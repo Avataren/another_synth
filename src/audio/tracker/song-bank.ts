@@ -86,38 +86,72 @@ export class TrackerSongBank {
     return active?.instrument ?? null;
   }
 
+  private syncInProgress = false;
+
   async syncSlots(slots: SongBankSlot[]): Promise<void> {
-    // Resume context if suspended, and set flag so we rebuild instruments
-    if (this.audioContext.state === 'suspended') {
-      this.wasSuspended = true;
-      await this.ensureAudioContextRunning();
-    }
+    console.log(`[SongBank] syncSlots called with ${slots.length} slots`);
+    console.log(`[SongBank] Current instruments before sync: [${Array.from(this.instruments.keys()).join(', ')}]`);
+    console.log(`[SongBank] AudioContext state: ${this.audioContext.state}`);
+    console.log(`[SongBank] MasterGain connected: ${this.masterGain.numberOfOutputs > 0}, gain value: ${this.masterGain.gain.value}`);
+    // Verify destinationNode connection
+    console.log(`[SongBank] AudioSystem destinationNode outputs: ${this.audioSystem.destinationNode.numberOfOutputs}`);
 
-    if (this.wasSuspended && this.audioContext.state === 'running') {
-      // Recreate instruments after a resume to avoid stale worklet state
-      this.disposeInstruments();
-      this.wasSuspended = false;
-    }
-
-    const nextDesired = new Map<string, Patch>();
-    for (const slot of slots) {
-      if (!slot.instrumentId) continue;
-      nextDesired.set(slot.instrumentId, this.normalizePatch(slot.patch));
-    }
-    this.desired.clear();
-    for (const [id, patch] of nextDesired.entries()) {
-      this.desired.set(id, patch);
-    }
-
-    const wantedIds = new Set(nextDesired.keys());
-    for (const [id] of this.instruments.entries()) {
-      if (!wantedIds.has(id)) {
-        this.teardownInstrument(id);
+    // Prevent concurrent syncs - wait for previous sync to complete
+    if (this.syncInProgress) {
+      console.log('[SongBank] Sync already in progress, waiting...');
+      // Wait for the current sync to finish (poll every 50ms)
+      while (this.syncInProgress) {
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
+      console.log('[SongBank] Previous sync completed, proceeding');
     }
 
-    for (const [instrumentId, patch] of nextDesired.entries()) {
-      await this.ensureInstrument(instrumentId, patch);
+    this.syncInProgress = true;
+    try {
+      // Resume context if suspended, and set flag so we rebuild instruments
+      if (this.audioContext.state === 'suspended') {
+        this.wasSuspended = true;
+        await this.ensureAudioContextRunning();
+      }
+
+      if (this.wasSuspended && this.audioContext.state === 'running') {
+        // Recreate instruments after a resume to avoid stale worklet state
+        console.log('[SongBank] Disposing all instruments after resume');
+        this.disposeInstruments();
+        this.wasSuspended = false;
+      }
+
+      const nextDesired = new Map<string, Patch>();
+      for (const slot of slots) {
+        if (!slot.instrumentId) continue;
+        nextDesired.set(slot.instrumentId, this.normalizePatch(slot.patch));
+      }
+      this.desired.clear();
+      for (const [id, patch] of nextDesired.entries()) {
+        this.desired.set(id, patch);
+      }
+
+      const wantedIds = new Set(nextDesired.keys());
+      for (const [id] of this.instruments.entries()) {
+        if (!wantedIds.has(id)) {
+          console.log(`[SongBank] Tearing down unwanted instrument: ${id}`);
+          this.teardownInstrument(id);
+        }
+      }
+
+      for (const [instrumentId, patch] of nextDesired.entries()) {
+        console.log(`[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`);
+        await this.ensureInstrument(instrumentId, patch);
+      }
+
+      console.log(`[SongBank] syncSlots complete, active instruments: ${Array.from(this.instruments.keys()).join(', ')}`);
+      // Verify all instruments are properly connected
+      for (const [id, active] of this.instruments.entries()) {
+        const hasOutput = active.instrument.outputNode.numberOfOutputs > 0;
+        console.log(`[SongBank] Instrument ${id} output connected: ${hasOutput}`);
+      }
+    } finally {
+      this.syncInProgress = false;
     }
   }
 
@@ -395,12 +429,17 @@ export class TrackerSongBank {
    * Used by the tracker keyboard preview so chords behave like the patch editor.
    */
   previewNoteOn(instrumentId: string | undefined, midi: number, velocity = 100) {
+    console.log(`[SongBank] previewNoteOn: inst=${instrumentId}, midi=${midi}, vel=${velocity}`);
     if (this.audioContext.state === 'suspended') {
       this.wasSuspended = true;
     }
     if (instrumentId === undefined) return;
     const active = this.instruments.get(instrumentId);
-    if (!active) return;
+    if (!active) {
+      console.warn(`[SongBank] previewNoteOn: instrument ${instrumentId} not found!`);
+      return;
+    }
+    console.log(`[SongBank] previewNoteOn: instrument found, isReady=${active.instrument.isReady}, hasWorklet=${!!active.instrument.workletNode}`);
     const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
     active.instrument.noteOn(clampedMidi, velocity);
   }
@@ -459,14 +498,66 @@ export class TrackerSongBank {
     time: number,
     trackIndex?: number,
   ) {
+    const now = this.audioContext.currentTime;
+    const timeOffset = time - now;
+    // Only log first few notes to avoid spam
+    if (timeOffset < 2) {
+      console.log(`[SongBank] noteOnAtTime: inst=${instrumentId}, midi=${midi}, time=${time.toFixed(3)}, now=${now.toFixed(3)}, offset=${timeOffset.toFixed(3)}s`);
+    }
     if (this.audioContext.state === 'suspended') {
       this.wasSuspended = true;
+      console.warn('[SongBank] noteOnAtTime: AudioContext is suspended!');
     }
-    if (instrumentId === undefined) return;
+    if (instrumentId === undefined) {
+      console.warn('[SongBank] noteOnAtTime: instrumentId is undefined');
+      return;
+    }
     const active = this.instruments.get(instrumentId);
-    if (!active) return;
-    this.gateOffPreviousTrackVoice(instrumentId, trackIndex, time);
-    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, { allowDuplicate: true });
+    if (!active) {
+      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} not found! Available: [${Array.from(this.instruments.keys()).join(', ')}]`);
+      return;
+    }
+    // Check if instrument is actually ready
+    if (!active.instrument.isReady) {
+      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} is NOT ready!`);
+    }
+    // Check worklet state
+    const worklet = active.instrument.workletNode;
+    if (!worklet) {
+      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} has NO workletNode!`);
+    }
+    // Check output gain (first few notes only)
+    if (timeOffset < 0.5) {
+      const outputGain = (active.instrument.outputNode as GainNode).gain.value;
+      const masterGainVal = this.masterGain.gain.value;
+      console.log(`[SongBank] noteOnAtTime: inst=${instrumentId} outputGain=${outputGain}, masterGain=${masterGainVal}`);
+    }
+    // DIAGNOSTIC: Try immediate noteOn if scheduled time is very close to now
+    // This helps determine if the issue is with scheduling vs the instrument itself
+    const useImmediate = timeOffset < 0.01;
+    let voiceIndex: number | undefined;
+    if (useImmediate) {
+      // Skip gateOffPreviousTrackVoice for immediate notes to isolate the issue
+      console.log(`[SongBank] Using IMMEDIATE noteOn for inst=${instrumentId} midi=${midi} (offset=${timeOffset.toFixed(3)}s)`);
+      // Use exact same call as previewNoteOn (no allowDuplicate option)
+      const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
+      active.instrument.noteOn(clampedMidi, velocity);
+      voiceIndex = 0; // noteOn doesn't return voice index, assume 0
+    } else {
+      this.gateOffPreviousTrackVoice(instrumentId, trackIndex, time);
+      voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, { allowDuplicate: true });
+    }
+
+    if (voiceIndex === undefined && !useImmediate) {
+      console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} returned undefined voiceIndex`);
+    } else if (!useImmediate) {
+      // Verify the parameters exist
+      const gateParam = worklet?.parameters.get(`gate_${voiceIndex}`);
+      const freqParam = worklet?.parameters.get(`frequency_${voiceIndex}`);
+      if (!gateParam || !freqParam) {
+        console.warn(`[SongBank] noteOnAtTime: instrument ${instrumentId} voice ${voiceIndex} missing params! gate=${!!gateParam}, freq=${!!freqParam}`);
+      }
+    }
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
       this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
@@ -527,6 +618,28 @@ export class TrackerSongBank {
     }
     this.activeNotes.clear();
     this.trackVoices.clear();
+  }
+
+  /**
+   * Reset all instruments to a clean state for playback.
+   * Ensures all voice gains are at 1, gates are at 0, and connections are intact.
+   */
+  resetForPlayback() {
+    console.log('[SongBank] resetForPlayback: resetting all instruments');
+    for (const [id, active] of this.instruments.entries()) {
+      // Reset all voice gains to 1
+      active.instrument.setGainForAllVoices(1);
+
+      // Verify output connection, reconnect if needed
+      if (active.instrument.outputNode.numberOfOutputs === 0) {
+        console.warn(`[SongBank] resetForPlayback: instrument ${id} disconnected, reconnecting`);
+        active.instrument.outputNode.connect(this.masterGain);
+      }
+
+      // Log state for debugging
+      const outputGain = (active.instrument.outputNode as GainNode).gain.value;
+      console.log(`[SongBank] resetForPlayback: ${id} outputGain=${outputGain}, connected=${active.instrument.outputNode.numberOfOutputs > 0}`);
+    }
   }
 
   setInstrumentGain(instrumentId: string | undefined, gain: number, time?: number) {
@@ -710,17 +823,25 @@ export class TrackerSongBank {
       existing.patchSignature === patchSignature;
 
     if (canReuse) {
+      console.log(`[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`);
       existing.hasPortamento = hasPortamento;
-      await this.restoreAudioAssets(instrumentId, existing.instrument, normalizedPatch, deserialized);
-      await this.applyNodeStates(existing.instrument, deserialized);
-      this.applyMacrosFromPatch(existing.instrument, normalizedPatch);
-      existing.instrument.setGainForAllVoices(1);
+      // Skip restoreAudioAssets, applyNodeStates, and applyMacros when reusing
+      // These would reset effect buffers (delays, reverbs) and interrupt live playback
+      // The instrument already has the correct patch loaded from previous sync
+      // Verify connection is still intact, reconnect if needed
+      if (existing.instrument.outputNode.numberOfOutputs === 0) {
+        console.warn(`[SongBank] Instrument ${instrumentId} was disconnected, reconnecting...`);
+        existing.instrument.outputNode.connect(this.masterGain);
+      }
       return;
     }
 
     if (existing) {
+      console.log(`[SongBank] Tearing down existing instrument (different patch): ${instrumentId}`);
       this.teardownInstrument(instrumentId);
     }
+
+    console.log(`[SongBank] Creating new instrument: ${instrumentId}`);
 
     const memory = new WebAssembly.Memory({
       initial: 256,
@@ -739,8 +860,10 @@ export class TrackerSongBank {
       instrument.outputNode.disconnect();
       return;
     }
+    console.log(`[SongBank] Instrument ${instrumentId} worklet ready, loading patch...`);
 
     await instrument.loadPatch(normalizedPatch);
+    console.log(`[SongBank] Instrument ${instrumentId} patch loaded, isReady=${instrument.isReady}`);
     // Give WASM time to finish building all voice node structures before updating states
     // Without this delay, updateOscillator messages arrive before nodes exist in voices
     // This is a race condition: synthLayout response means layout is created, but WASM

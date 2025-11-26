@@ -1308,4 +1308,59 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 ## New discovery: Song bank patch reuse after song load (2025-12)
 
 - Tracker song bank used to reuse an instrument whenever the patch ID matched, so loading a song with a patch derived from the same system/default ID kept the old patch/asset content. Song loads could sound like the previous session instead of the patch stored in the `.cmod`.
-- `SongBank` now computes a patch signature (metadata modified timestamp, synthState hash, and audio asset hash) and rebuilds instruments when the signature changes, tearing down cached assets/voices. Slot sync now reliably applies the song’s patch even when the ID matches a previously loaded patch.
+- `SongBank` now computes a patch signature (metadata modified timestamp, synthState hash, and audio asset hash) and rebuilds instruments when the signature changes, tearing down cached assets/voices. Slot sync now reliably applies the song's patch even when the ID matches a previously loaded patch.
+
+## **CRITICAL: Tracker keyboard preview & effect buffer preservation (2025-11)**
+
+**Problem**: When playing keyboard in the tracker, effects (especially delays and reverbs) sounded broken - delays had "half their buffer missing", releases were cut off incorrectly, and effects behaved differently than in the patch editor or during song playback.
+
+**Root Cause**: When keyboard input triggered `syncSlots()` (via watchers when patterns/instruments change), the instrument reuse path in `song-bank.ts` was calling:
+1. `restoreAudioAssets()` - Re-imported audio data
+2. `applyNodeStates()` - Re-sent all node states to WASM, including `updateDelayState()`, `updateReverbState()`, etc.
+3. `applyMacrosFromPatch()` - Re-applied macro values
+
+**Why This Broke Effects**:
+- `updateDelayState()` and similar methods **reset the WASM effect buffers** (delay lines, reverb tails, etc.)
+- When you're holding a keyboard note and the reuse path executes, it resets the delay buffer mid-note
+- Result: "half missing" delay sound, cut-off reverb tails, broken effect behavior
+
+**The Fix** (`src/audio/tracker/song-bank.ts:825-837`):
+
+The instrument reuse path now **skips state reapplication entirely**:
+
+```typescript
+if (canReuse) {
+  console.log(`[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`);
+  existing.hasPortamento = hasPortamento;
+  // Skip restoreAudioAssets, applyNodeStates, and applyMacros when reusing
+  // These would reset effect buffers (delays, reverbs) and interrupt live playback
+  // The instrument already has the correct patch loaded from previous sync
+  // Verify connection is still intact, reconnect if needed
+  if (existing.instrument.outputNode.numberOfOutputs === 0) {
+    console.warn(`[SongBank] Instrument ${instrumentId} was disconnected, reconnecting...`);
+    existing.instrument.outputNode.connect(this.masterGain);
+  }
+  return;
+}
+```
+
+**Why This Is Safe**:
+- `canReuse` is only `true` when `patchSignature === existing.patchSignature`
+- Patch signature includes a hash of the entire patch state (layout, node states, audio assets)
+- If you edit a patch, the signature changes → full rebuild path is taken
+- If patch is unchanged → no need to reapply states (preserves effect buffers during live playback)
+
+**NEVER** reintroduce state reapplication in the reuse path. If you need to fix effect state sync issues:
+1. Check if the patch signature is being computed correctly
+2. Ensure signature changes when patches are actually edited
+3. Verify the full rebuild path applies all states correctly
+
+**Related Code**:
+- `src/audio/instrument-v2.ts:886-920` - `noteOn()` cancels scheduled values before `.value` assignments to prevent Web Audio automation conflicts
+- `src/audio/instrument-v2.ts:923-944` - `noteOff()` cancels scheduled values before gate-off for the same reason
+- `src/audio/instrument-v2.ts:1048-1051` - `cancelScheduledNotes()` resets gains to 1 after canceling
+
+**Testing**: Always test keyboard playback in the tracker with patches that have delay/reverb effects. The effects should sound identical whether played via:
+1. Keyboard in patch editor
+2. Keyboard in tracker (with edit mode off for preview)
+3. Song playback in tracker

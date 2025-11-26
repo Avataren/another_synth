@@ -282,6 +282,10 @@ onBeforeUnmount(() => {
   overflow-y: hidden;
   position: relative;
   z-index: 2;
+  width: 78px;
+  min-width: 78px;
+  max-width: 78px;
+  flex-shrink: 0;
 }
 
 .row-numbers-container {
@@ -293,10 +297,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .row-header {
-  height: var(--tracker-header-height);
+  height: 46px;
+  min-height: 46px;
+  max-height: 46px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -307,10 +315,14 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 700;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .row-number {
-  height: var(--tracker-row-height);
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
   border-radius: 10px;
   border: 1px solid var(--tracker-border-default, rgba(255, 255, 255, 0.05));
   background: var(--tracker-entry-base, rgba(13, 17, 26, 0.92));
@@ -321,6 +333,8 @@ onBeforeUnmount(() => {
   cursor: pointer;
   /* Removed transitions for better performance */
   contain: layout style;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .row-number:focus {

@@ -121,7 +121,9 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
 <style scoped>
 .tracker-track {
   --track-accent: #5dd6ff;
+  width: var(--tracker-track-width, 180px);
   min-width: var(--tracker-track-width, 180px);
+  max-width: var(--tracker-track-width, 180px);
   background: rgba(15, 21, 31, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
@@ -130,10 +132,14 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
   contain: layout style paint;
   will-change: auto;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .track-header {
-  height: var(--tracker-header-height);
+  height: 46px;
+  min-height: 46px;
+  max-height: 46px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -144,6 +150,8 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   text-transform: uppercase;
   font-family: var(--font-tracker);
   letter-spacing: 0.04em;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .track-name {
@@ -173,5 +181,7 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   flex-direction: column;
   gap: 6px;
   contain: layout style;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 </style>

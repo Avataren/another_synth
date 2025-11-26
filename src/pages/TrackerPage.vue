@@ -379,7 +379,7 @@
           :node="masterOutputNode"
           :is-playing="isPlaying"
         />
-        <div ref="patternAreaRef" class="pattern-area" @scroll="onPatternAreaScroll">
+        <div ref="patternAreaRef" class="pattern-area" @scroll.passive="onPatternAreaScroll">
           <TrackerPattern
             ref="trackerPatternRef"
             :tracks="currentPattern?.tracks ?? []"
@@ -507,9 +507,16 @@ const trackerAudioStore = useTrackerAudioStore();
 const songBank = trackerAudioStore.songBank;
 
 // Handle pattern area scroll for virtual scrolling
+// Throttle scroll updates using requestAnimationFrame for better performance
+let scrollRafId: number | null = null;
 function onPatternAreaScroll(event: Event) {
-  const target = event.target as HTMLElement;
-  patternAreaScrollTop.value = target.scrollTop;
+  if (scrollRafId !== null) return;
+
+  scrollRafId = requestAnimationFrame(() => {
+    const target = event.target as HTMLElement;
+    patternAreaScrollTop.value = target.scrollTop;
+    scrollRafId = null;
+  });
 }
 
 // Update pattern area height on mount and resize
@@ -1039,14 +1046,22 @@ const onSlotVolumeChange = (slotNumber: number, volume: number) => {
   songBank.setInstrumentOutputGain(instrumentId, volume);
 };
 
+// Flag to prevent watcher interference during explicit file load
+const isLoadingSong = ref(false);
+
 // Set up file I/O composable
 const fileIOContext: TrackerFileIOContext = {
   trackerStore,
   currentSong,
   playbackMode,
+  isLoadingSong,
   ensureActiveInstrument,
   syncSongBankFromSlots,
-  initializePlayback
+  initializePlayback,
+  stopPlayback: () => {
+    playbackStore.stop();
+    clearTrackAudioNodes();
+  }
 };
 
 const {
@@ -1272,6 +1287,11 @@ watch(
 // Watch only the properties that matter for audio sync (slot, patchId, bankId)
 // This prevents unnecessary audio rebuilds when editing instrument names
 watch(slotSignatures, async () => {
+  // Skip sync if explicit file load is in progress - handleLoadSongFile handles everything
+  if (isLoadingSong.value) {
+    return;
+  }
+
   // Skip sync if playback is active - the song bank already has the correct state
   // This prevents interruption when returning from instrument editor
   if (isPlaying.value || isPaused.value) {
@@ -1299,6 +1319,11 @@ onBeforeUnmount(() => {
   keyboardStore.cleanupMidiListeners();
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('resize', updatePatternAreaHeight);
+  // Cancel pending scroll RAF
+  if (scrollRafId !== null) {
+    cancelAnimationFrame(scrollRafId);
+    scrollRafId = null;
+  }
 });
 </script>
 
@@ -1441,6 +1466,10 @@ onBeforeUnmount(() => {
   padding: 0 18px 18px;
   text-align: center;
   contain: layout style;
+  /* Optimize scrolling performance */
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto;
+  overscroll-behavior: contain;
 }
 
 .pattern-area :deep(.tracker-pattern) {

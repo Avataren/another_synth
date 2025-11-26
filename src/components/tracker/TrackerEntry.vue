@@ -181,8 +181,11 @@ function onMouseEnterRow() {
 <style scoped>
 .tracker-entry {
   --entry-accent: var(--tracker-accent, var(--tracker-accent-primary, rgb(77, 242, 197)));
-  height: var(--tracker-row-height);
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
   width: 100%;
+  min-width: 156px;
   display: grid;
   grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.4fr;
   align-items: center;
@@ -199,6 +202,8 @@ function onMouseEnterRow() {
   /* Removed transitions for better performance during rapid updates */
   contain: layout style paint;
   will-change: auto;
+  /* Prevent layout shifts */
+  box-sizing: border-box;
 }
 
 .tracker-entry:hover {
@@ -241,6 +246,8 @@ function onMouseEnterRow() {
 .cell {
   text-align: left;
   white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .cell-active {

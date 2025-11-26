@@ -31,11 +31,14 @@ export interface TrackerFileIOContext {
   // State refs
   currentSong: Ref<{ title: string; author: string; bpm: number }>;
   playbackMode: Ref<'pattern' | 'song'>;
+  /** Flag to prevent watcher interference during explicit file load */
+  isLoadingSong: Ref<boolean>;
 
   // Functions
   ensureActiveInstrument: () => void;
   syncSongBankFromSlots: () => Promise<void>;
-  initializePlayback: (mode: 'pattern' | 'song') => Promise<boolean>;
+  initializePlayback: (mode: 'pattern' | 'song', skipIfPlaying?: boolean) => Promise<boolean>;
+  stopPlayback: () => void;
 }
 
 /**
@@ -186,13 +189,33 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       }
 
       const parsed = JSON.parse(text) as TrackerSongFile;
+
+      // Set flag to prevent watcher interference during explicit load
+      context.isLoadingSong.value = true;
+
+      // Stop playback before loading new song to cleanup audio nodes
+      console.log('[FileIO] Stopping playback before load');
+      context.stopPlayback();
+
+      // Load song data and rebuild instruments
+      console.log('[FileIO] Loading song data');
       context.trackerStore.loadSongFile(parsed);
       context.ensureActiveInstrument();
+
+      console.log('[FileIO] Syncing song bank from slots');
       await context.syncSongBankFromSlots();
-      void context.initializePlayback(context.playbackMode.value);
+      console.log('[FileIO] Song bank sync complete');
+
+      // Force re-initialization of playback with the new song
+      console.log('[FileIO] Initializing playback');
+      await context.initializePlayback(context.playbackMode.value, false);
+      console.log('[FileIO] Song loaded successfully');
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load song', error);
+    } finally {
+      // Always clear the flag when done
+      context.isLoadingSong.value = false;
     }
   }
 

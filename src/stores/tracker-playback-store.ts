@@ -290,8 +290,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * If skipIfPlaying is true and playback is active, skips reloading to preserve position.
    */
   async function loadSong(song: PlaybackSong, mode: PlaybackMode = 'song', skipIfPlaying: boolean = false): Promise<boolean> {
+    console.log(`[PlaybackStore] loadSong called: mode=${mode}, skipIfPlaying=${skipIfPlaying}, isPlaying=${isPlaying.value}, isPaused=${isPaused.value}, hasSongLoaded=${hasSongLoaded.value}`);
+    console.log(`[PlaybackStore] Song has ${song.sequence.length} patterns, ${song.bpm} BPM`);
+
     // If already playing/paused and skipIfPlaying is set, don't disturb the current playback
     if (skipIfPlaying && (isPlaying.value || isPaused.value) && hasSongLoaded.value) {
+      console.log('[PlaybackStore] Skipping load - playback active and skipIfPlaying=true');
       return true;
     }
 
@@ -304,9 +308,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     playbackMode.value = mode;
     engine.setLoopCurrentPattern(mode === 'pattern');
+    console.log('[PlaybackStore] Loading song into engine...');
     engine.loadSong(song);
+    console.log('[PlaybackStore] Preparing instruments...');
     await engine.prepareInstruments();
     hasSongLoaded.value = true;
+    console.log('[PlaybackStore] Song loaded successfully');
 
     return true;
   }
@@ -315,11 +322,13 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Start playback
    */
   async function play(song: PlaybackSong, mode: PlaybackMode, startRow: number = 0): Promise<void> {
+    console.log(`[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}`);
     const songBank = getSongBank();
 
     // Stop any existing playback
     suppressPositionUpdates = true;
     if (playbackEngineInstance) {
+      console.log('[PlaybackStore] Stopping existing playback');
       playbackEngineInstance.stop();
     }
     suppressPositionUpdates = false;
@@ -332,16 +341,21 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     // Load song
     const loaded = await loadSong(song, mode);
-    if (!loaded) return;
+    if (!loaded) {
+      console.warn('[PlaybackStore] Failed to load song, aborting play');
+      return;
+    }
 
     const engine = ensureEngine();
 
     // Configure and start
+    console.log(`[PlaybackStore] Starting playback: bpm=${song.bpm}, length=${trackerStore.patternRows}`);
     engine.setBpm(song.bpm);
     engine.setLength(trackerStore.patternRows);
     engine.seek(startRow);
 
     await engine.play();
+    console.log('[PlaybackStore] Playback started');
   }
 
   /**

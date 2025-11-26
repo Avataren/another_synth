@@ -1,5 +1,16 @@
 // app global css in SCSS form
 
+// Prevent font loading from causing layout shifts
+@font-face {
+  font-family: 'Inter';
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-display: swap;
+}
+
 // Global font CSS variables with defaults
 :root {
   --font-ui: 'Inter', sans-serif;

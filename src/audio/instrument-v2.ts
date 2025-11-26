@@ -883,8 +883,12 @@ export default class InstrumentV2 {
 
     if (!this.workletNode) return;
 
+    const now = this.audioContext.currentTime;
+
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) {
+      // Cancel any scheduled values from previous playback to ensure .value works
+      gateParam.cancelScheduledValues(now);
       const retriggering = isRetrigger || stolenNote !== null;
       const portamentoEnabled = this.isPortamentoEnabled();
       const shouldPulseGate =
@@ -895,11 +899,8 @@ export default class InstrumentV2 {
           this.quantumFrames / this.audioContext.sampleRate,
         );
         // Force envelope retrigger by creating a brief gate off-on pulse
-        gateParam.setValueAtTime(0, this.audioContext.currentTime);
-        gateParam.setValueAtTime(
-          1,
-          this.audioContext.currentTime + gatePulseDuration,
-        );
+        gateParam.setValueAtTime(0, now);
+        gateParam.setValueAtTime(1, now + gatePulseDuration);
       } else {
         // Monophonic/legato: keep gate high to avoid killing the stolen note
         gateParam.value = 1;
@@ -907,10 +908,16 @@ export default class InstrumentV2 {
     }
 
     const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
-    if (freqParam) freqParam.value = frequency;
+    if (freqParam) {
+      freqParam.cancelScheduledValues(now);
+      freqParam.value = frequency;
+    }
 
     const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
-    if (gainParam) gainParam.value = velocity / 127;
+    if (gainParam) {
+      gainParam.cancelScheduledValues(now);
+      gainParam.value = velocity / 127;
+    }
   }
 
   public noteOff(noteNumber: number, voiceIndex?: number): void {
@@ -923,11 +930,16 @@ export default class InstrumentV2 {
       this.activeNotes.delete(noteNumber);
     }
 
+    const now = this.audioContext.currentTime;
     for (const voice of voicesToRelease) {
       this.releaseVoice(voice);
       if (!this.workletNode) continue;
       const gateParam = this.workletNode.parameters.get(`gate_${voice}`);
-      if (gateParam) gateParam.value = 0;
+      if (gateParam) {
+        // Cancel any scheduled values from previous playback to ensure .value works
+        gateParam.cancelScheduledValues(now);
+        gateParam.value = 0;
+      }
     }
   }
 
@@ -1045,7 +1057,10 @@ export default class InstrumentV2 {
         const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
         if (freqParam) freqParam.cancelScheduledValues(now);
         const gainParam = this.workletNode.parameters.get(`gain_${i}`);
-        if (gainParam) gainParam.cancelScheduledValues(now);
+        if (gainParam) {
+          gainParam.cancelScheduledValues(now);
+          gainParam.setValueAtTime(1, now);  // Reset gain to 1 for next playback
+        }
       }
     }
     this.activeNotes.clear();
