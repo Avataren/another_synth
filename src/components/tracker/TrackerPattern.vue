@@ -262,6 +262,8 @@ onBeforeUnmount(() => {
   border-radius: 16px;
   padding: 18px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  contain: layout style paint;
+  will-change: auto;
 }
 
 .pattern-body {
@@ -270,6 +272,7 @@ onBeforeUnmount(() => {
   grid-template-columns: 78px 1fr;
   gap: 12px;
   width: 100%;
+  contain: layout style;
 }
 
 .row-column {
@@ -370,6 +373,7 @@ onBeforeUnmount(() => {
   width: 100%;
   z-index: 1;
   position: relative;
+  contain: layout style;
 }
 
 .active-row-bar {

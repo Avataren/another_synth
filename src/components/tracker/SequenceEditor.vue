@@ -136,6 +136,7 @@ const onAddPatternToSequence = (patternId: string | null) => {
   border-radius: 14px;
   padding: 10px 12px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  contain: layout style paint;
 }
 .sequence-list-container {
   display: flex;
@@ -170,7 +171,7 @@ const onAddPatternToSequence = (patternId: string | null) => {
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  contain: layout style paint;
 }
 .sequence-item:hover {
   background: rgba(0, 0, 0, 0.35);

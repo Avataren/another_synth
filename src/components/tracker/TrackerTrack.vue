@@ -128,7 +128,8 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   overflow: hidden;
   /* Removed backdrop-filter and gradient for better performance */
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
-  contain: layout style;
+  contain: layout style paint;
+  will-change: auto;
 }
 
 .track-header {
@@ -164,11 +165,13 @@ function onHoverSelection(payload: { row: number; trackIndex: number }) {
   position: relative;
   padding: 6px 12px 14px;
   overflow: hidden;
+  contain: layout style;
 }
 
 .track-entries {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  contain: layout style;
 }
 </style>

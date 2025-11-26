@@ -1394,7 +1394,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+  contain: layout style paint;
 }
 
 .toolbar-icon-button.active {
@@ -1416,6 +1416,7 @@ onBeforeUnmount(() => {
   max-width: 1600px;
   margin: 0 auto;
   width: 100%;
+  contain: layout style;
 }
 
 .top-panel {
@@ -1439,6 +1440,7 @@ onBeforeUnmount(() => {
   overflow-x: auto;
   padding: 0 18px 18px;
   text-align: center;
+  contain: layout style;
 }
 
 .pattern-area :deep(.tracker-pattern) {
@@ -1522,9 +1524,9 @@ onBeforeUnmount(() => {
   font-size: 9px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 100ms ease;
   padding: 0;
   line-height: 1;
+  contain: layout style paint;
 }
 
 .track-btn:hover {
@@ -1562,6 +1564,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  contain: layout style paint;
 }
 
 .summary-header {
@@ -1600,10 +1603,10 @@ onBeforeUnmount(() => {
   background: var(--button-background, rgba(255, 255, 255, 0.04));
   color: var(--text-secondary, #b8c9e0);
   cursor: pointer;
-  transition: all 120ms ease;
   display: flex;
   justify-content: center;
   align-items: center;
+  contain: layout style paint;
 }
 
 .transport-icon-btn:hover {
@@ -1629,10 +1632,10 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease;
   display: inline-flex;
   justify-content: center;
   align-items: center;
+  contain: layout style paint;
 }
 
 .transport-button:hover {
@@ -1907,13 +1910,14 @@ onBeforeUnmount(() => {
 }
 
 .instrument-panel {
-  background: var(--panel-background, linear-gradient(180deg, rgba(26, 32, 45, 0.9), rgba(16, 21, 33, 0.95)));
+  background: var(--panel-background, rgba(21, 27, 39, 0.95));
   border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
   border-radius: 14px;
   padding: 10px;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.32);
   display: flex;
   flex-direction: column;
+  contain: layout style paint;
 }
 
 .panel-header {

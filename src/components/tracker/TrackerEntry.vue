@@ -197,7 +197,8 @@ function onMouseEnterRow() {
   text-transform: uppercase;
   cursor: pointer;
   /* Removed transitions for better performance during rapid updates */
-  contain: layout style;
+  contain: layout style paint;
+  will-change: auto;
 }
 
 .tracker-entry:hover {
@@ -245,10 +246,7 @@ function onMouseEnterRow() {
 .cell-active {
   color: var(--tracker-cell-active-text, #0c1624);
   font-weight: 800;
-  background: var(
-    --tracker-cell-active-bg,
-    linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9))
-  );
+  background: var(--tracker-cell-active-bg, rgba(77, 242, 197, 0.9));
   border-radius: 6px;
   padding: 2px 6px;
 }
@@ -287,9 +285,6 @@ function onMouseEnterRow() {
 .macro-digit.active {
   color: var(--tracker-cell-active-text, #0c1624);
   font-weight: 800;
-  background: var(
-    --tracker-cell-active-bg,
-    linear-gradient(90deg, rgba(77, 242, 197, 0.9), rgba(88, 176, 255, 0.9))
-  );
+  background: var(--tracker-cell-active-bg, rgba(77, 242, 197, 0.9));
 }
 </style>
