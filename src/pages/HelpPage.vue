@@ -142,20 +142,53 @@
 
       <section class="help-section">
         <h2>Keyboard shortcuts</h2>
+
+        <h3>General</h3>
         <ul>
-          <li><strong>Edit mode</strong>: F2 toggles edit mode on/off.</li>
-          <li><strong>Fullscreen pattern</strong>: F10 toggles the pattern view between normal and full-screen.</li>
-          <li><strong>Undo / redo</strong>: Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo.</li>
-          <li><strong>Copy / paste</strong>: Ctrl/Cmd+C copies the current selection; Ctrl/Cmd+V pastes it at the cursor (overwriting steps inside the pasted block).</li>
-          <li><strong>Play / pause pattern</strong>: Spacebar.</li>
-          <li><strong>Row navigation</strong>: Arrow Up/Down move one row; PageUp/PageDown move 16 rows. Hold Shift+Arrow keys to extend or shrink a rectangular selection.</li>
-          <li><strong>Step size</strong>: Ctrl+ArrowUp/ArrowDown increases/decreases the step size (rows to advance after entering a note).</li>
-          <li><strong>Transpose selection</strong>: Ctrl+Shift+ArrowUp/ArrowDown transposes all notes in the selection by one octave.</li>
-          <li><strong>Jump rows</strong>: Home jumps to the first row; End jumps to the last row.</li>
-          <li><strong>Track navigation</strong>: Tab moves to the next track; Shift+Tab to the previous track.</li>
-          <li><strong>Octave</strong>: Shift+PageUp/PageDown adjusts the base octave.</li>
-          <li><strong>Row edits</strong>: Insert writes a note-off (###); Shift+Insert inserts a blank row and shifts steps down.</li>
-          <li><strong>Delete</strong>: Delete clears the current step; Shift+Delete deletes the row and shifts steps up. In Vol/Macro columns, Delete clears just that field.</li>
+          <li><strong>F2</strong>: Toggle edit mode on/off.</li>
+          <li><strong>F10</strong>: Toggle fullscreen pattern view.</li>
+          <li><strong>Ctrl+Z</strong>: Undo.</li>
+          <li><strong>Ctrl+Y / Ctrl+Shift+Z</strong>: Redo.</li>
+          <li><strong>Spacebar</strong>: Play/pause pattern.</li>
+        </ul>
+
+        <h3>Navigation</h3>
+        <ul>
+          <li><strong>Arrow Up/Down</strong>: Move one row.</li>
+          <li><strong>PageUp/PageDown</strong>: Move 16 rows.</li>
+          <li><strong>Home/End</strong>: Jump to first/last row.</li>
+          <li><strong>Tab/Shift+Tab</strong>: Move to next/previous track.</li>
+          <li><strong>Shift+PageUp/PageDown</strong>: Adjust base octave.</li>
+          <li><strong>Ctrl+ArrowUp/ArrowDown</strong>: Adjust step size.</li>
+        </ul>
+
+        <h3>Selection &amp; Clipboard</h3>
+        <ul>
+          <li><strong>Shift+Arrow keys</strong>: Extend/shrink rectangular selection.</li>
+          <li><strong>Ctrl+C / Ctrl+V</strong>: Copy/paste selection.</li>
+          <li><strong>F3</strong>: Copy current track.</li>
+          <li><strong>Shift+F3</strong>: Cut current track.</li>
+          <li><strong>F4</strong>: Paste track to current track.</li>
+          <li><strong>F6</strong>: Copy entire pattern.</li>
+          <li><strong>Shift+F6</strong>: Cut entire pattern.</li>
+          <li><strong>Ctrl+F6</strong>: Paste pattern to current pattern.</li>
+        </ul>
+
+        <h3>Transpose</h3>
+        <ul>
+          <li><strong>Ctrl+Shift+ArrowUp/ArrowDown</strong>: Transpose selection by one octave.</li>
+          <li><strong>F7</strong>: Transpose current track down 1 semitone.</li>
+          <li><strong>Shift+F7</strong>: Transpose current track up 1 semitone.</li>
+          <li><strong>F8</strong>: Transpose entire pattern down 1 semitone.</li>
+          <li><strong>Shift+F8</strong>: Transpose entire pattern up 1 semitone.</li>
+        </ul>
+
+        <h3>Editing</h3>
+        <ul>
+          <li><strong>Insert</strong>: Write note-off (###).</li>
+          <li><strong>Shift+Insert</strong>: Insert blank row and shift steps down.</li>
+          <li><strong>Delete</strong>: Clear current step (or just Vol/Macro field when in those columns).</li>
+          <li><strong>Shift+Delete</strong>: Delete row and shift steps up.</li>
         </ul>
       </section>
     </div>

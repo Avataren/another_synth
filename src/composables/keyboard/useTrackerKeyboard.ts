@@ -5,6 +5,7 @@ import { selectionCommands } from './commands/selection';
 import { editingCommands, createHexInputCommands, createNoteEntryCommands } from './commands/editing';
 import { playbackCommands } from './commands/playback';
 import { transposeCommands } from './commands/transpose';
+import { trackPatternCommands } from './commands/trackPattern';
 import { utilityCommands } from './commands/utility';
 
 // Keys that should be throttled when held down
@@ -26,6 +27,7 @@ export function useTrackerKeyboard(context: TrackerKeyboardContext) {
     // Order matters! More specific commands should come first
     // (e.g., Shift+Arrow before Arrow, Ctrl+Shift+Z before Ctrl+Z)
     ...transposeCommands,
+    ...trackPatternCommands,
     ...selectionCommands,
     ...editingCommands,
     ...createHexInputCommands(),
@@ -133,6 +135,7 @@ export {
   editingCommands,
   playbackCommands,
   transposeCommands,
+  trackPatternCommands,
   utilityCommands,
   createHexInputCommands,
   createNoteEntryCommands

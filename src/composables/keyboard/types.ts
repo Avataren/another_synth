@@ -75,6 +75,16 @@ export interface TrackerKeyboardContext {
   undo: () => void;
   redo: () => void;
 
+  // Track/Pattern operations
+  copyTrack: () => void;
+  cutTrack: () => void;
+  pasteTrack: () => void;
+  copyPattern: () => void;
+  cutPattern: () => void;
+  pastePattern: () => void;
+  transposeTrack: (semitones: number) => void;
+  transposePattern: (semitones: number) => void;
+
   // Note mapping
   noteKeyMap: Record<string, number>;
 }

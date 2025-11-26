@@ -1,14 +1,30 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue';
-import type { TrackerEntryData, TrackerSelectionRect } from 'src/components/tracker/tracker-types';
+import type { TrackerEntryData, TrackerTrackData, TrackerSelectionRect } from 'src/components/tracker/tracker-types';
 import type { TrackerPattern } from 'src/stores/tracker-store';
 
 /**
- * Clipboard data structure
+ * Clipboard data structure for selection copy/paste
  */
 export interface ClipboardData {
   width: number;
   height: number;
   data: (TrackerEntryData | null)[][];
+}
+
+/**
+ * Clipboard data structure for track copy/paste
+ */
+export interface TrackClipboardData {
+  type: 'track';
+  entries: TrackerEntryData[];
+}
+
+/**
+ * Clipboard data structure for pattern copy/paste
+ */
+export interface PatternClipboardData {
+  type: 'pattern';
+  tracks: TrackerTrackData[];
 }
 
 /**
@@ -48,6 +64,8 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
 
   // Clipboard state
   const clipboard = ref<ClipboardData | null>(null);
+  const trackClipboard = ref<TrackClipboardData | null>(null);
+  const patternClipboard = ref<PatternClipboardData | null>(null);
 
   /**
    * Compute the selection rectangle from anchor and end points
@@ -225,21 +243,228 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
     }
   }
 
+  // ============================================
+  // Track operations
+  // ============================================
+
+  /**
+   * Copy the current track to clipboard
+   */
+  function copyTrack() {
+    if (!context.currentPattern.value) return;
+    const track = context.currentPattern.value.tracks[context.activeTrack.value];
+    if (!track) return;
+
+    trackClipboard.value = {
+      type: 'track',
+      entries: JSON.parse(JSON.stringify(track.entries))
+    };
+  }
+
+  /**
+   * Cut the current track (copy and clear)
+   */
+  function cutTrack() {
+    if (!context.currentPattern.value) return;
+
+    copyTrack();
+
+    // Auto-enable edit mode for modifications
+    context.isEditMode.value = true;
+    context.pushHistory();
+
+    const track = context.currentPattern.value.tracks[context.activeTrack.value];
+    if (track) {
+      track.entries = [];
+    }
+  }
+
+  /**
+   * Paste track from clipboard to current track
+   */
+  function pasteTrack() {
+    if (!trackClipboard.value) return;
+    if (!context.currentPattern.value) return;
+
+    // Auto-enable edit mode for modifications
+    context.isEditMode.value = true;
+    context.pushHistory();
+
+    const track = context.currentPattern.value.tracks[context.activeTrack.value];
+    if (track) {
+      track.entries = JSON.parse(JSON.stringify(trackClipboard.value.entries));
+    }
+  }
+
+  /**
+   * Transpose all notes in the current track
+   */
+  function transposeTrack(semitones: number) {
+    if (!context.currentPattern.value) return;
+
+    const track = context.currentPattern.value.tracks[context.activeTrack.value];
+    if (!track) return;
+
+    // Auto-enable edit mode for modifications
+    context.isEditMode.value = true;
+    context.pushHistory();
+
+    track.entries = track.entries.map((entry) => {
+      const parsed = context.parseTrackerNoteSymbol(entry.note);
+      if (parsed.isNoteOff || parsed.midi === undefined) return entry;
+
+      let midi = parsed.midi + semitones;
+      midi = Math.max(0, Math.min(127, midi));
+
+      return {
+        ...entry,
+        note: context.midiToTrackerNote(midi)
+      };
+    });
+  }
+
+  // ============================================
+  // Pattern operations
+  // ============================================
+
+  /**
+   * Copy the entire current pattern to clipboard
+   */
+  function copyPattern() {
+    if (!context.currentPattern.value) return;
+
+    patternClipboard.value = {
+      type: 'pattern',
+      tracks: JSON.parse(JSON.stringify(context.currentPattern.value.tracks))
+    };
+  }
+
+  /**
+   * Cut the entire current pattern (copy and clear all tracks)
+   */
+  function cutPattern() {
+    if (!context.currentPattern.value) return;
+
+    copyPattern();
+
+    // Auto-enable edit mode for modifications
+    context.isEditMode.value = true;
+    context.pushHistory();
+
+    context.currentPattern.value.tracks.forEach((track) => {
+      track.entries = [];
+    });
+  }
+
+  /**
+   * Paste pattern from clipboard to current pattern
+   */
+  function pastePattern() {
+    if (!patternClipboard.value) return;
+    if (!context.currentPattern.value) return;
+
+    // Auto-enable edit mode for modifications
+    context.isEditMode.value = true;
+    context.pushHistory();
+
+    const currentTracks = context.currentPattern.value.tracks;
+    const clipTracks = patternClipboard.value.tracks;
+
+    // Expand the current pattern to fit the clipboard tracks if needed
+    const tracksNeeded = clipTracks.length - currentTracks.length;
+    if (tracksNeeded > 0) {
+      const maxTracks = 32;
+      const currentCount = currentTracks.length;
+      const tracksToAdd = Math.min(tracksNeeded, maxTracks - currentCount);
+
+      const DEFAULT_TRACK_COLORS = [
+        '#4df2c5',
+        '#9da6ff',
+        '#ffde7b',
+        '#70c2ff',
+        '#ff9db5',
+        '#8ef5c5',
+        '#ffa95e',
+        '#b08bff'
+      ];
+
+      for (let i = 0; i < tracksToAdd; i++) {
+        const nextIndex = currentTracks.length;
+        const newTrack = {
+          id: `T${(nextIndex + 1).toString().padStart(2, '0')}`,
+          name: `Track ${nextIndex + 1}`,
+          color: DEFAULT_TRACK_COLORS[nextIndex % DEFAULT_TRACK_COLORS.length] ?? '#4df2c5',
+          entries: []
+        };
+        currentTracks.push(newTrack);
+      }
+    }
+
+    // Paste as many tracks as we can fit
+    for (let i = 0; i < Math.min(currentTracks.length, clipTracks.length); i++) {
+      const srcTrack = clipTracks[i];
+      const dstTrack = currentTracks[i];
+      if (srcTrack && dstTrack) {
+        dstTrack.entries = JSON.parse(JSON.stringify(srcTrack.entries));
+      }
+    }
+  }
+
+  /**
+   * Transpose all notes in the entire current pattern
+   */
+  function transposePattern(semitones: number) {
+    if (!context.currentPattern.value) return;
+
+    // Auto-enable edit mode for modifications
+    context.isEditMode.value = true;
+    context.pushHistory();
+
+    context.currentPattern.value.tracks.forEach((track) => {
+      track.entries = track.entries.map((entry) => {
+        const parsed = context.parseTrackerNoteSymbol(entry.note);
+        if (parsed.isNoteOff || parsed.midi === undefined) return entry;
+
+        let midi = parsed.midi + semitones;
+        midi = Math.max(0, Math.min(127, midi));
+
+        return {
+          ...entry,
+          note: context.midiToTrackerNote(midi)
+        };
+      });
+    });
+  }
+
   return {
     // State
     selectionAnchor,
     selectionEnd,
     isMouseSelecting,
     clipboard,
+    trackClipboard,
+    patternClipboard,
     selectionRect,
 
-    // Functions
+    // Selection functions
     clearSelection,
     startSelectionAtCursor,
     onPatternStartSelection,
     onPatternHoverSelection,
     transposeSelection,
     copySelectionToClipboard,
-    pasteFromClipboard
+    pasteFromClipboard,
+
+    // Track functions
+    copyTrack,
+    cutTrack,
+    pasteTrack,
+    transposeTrack,
+
+    // Pattern functions
+    copyPattern,
+    cutPattern,
+    pastePattern,
+    transposePattern
   };
 }

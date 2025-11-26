@@ -540,7 +540,17 @@ const {
   onPatternHoverSelection,
   transposeSelection,
   copySelectionToClipboard,
-  pasteFromClipboard
+  pasteFromClipboard,
+  // Track operations
+  copyTrack,
+  cutTrack,
+  pasteTrack,
+  transposeTrack,
+  // Pattern operations
+  copyPattern,
+  cutPattern,
+  pastePattern,
+  transposePattern
 } = useTrackerSelection(selectionContext);
 
 function normalizeVolumeChars(vol?: string): [string, string] {
@@ -1127,6 +1137,16 @@ const keyboardContext: TrackerKeyboardContext = {
   // Store actions
   undo: () => trackerStore.undo(),
   redo: () => trackerStore.redo(),
+
+  // Track/Pattern operations
+  copyTrack,
+  cutTrack,
+  pasteTrack,
+  copyPattern,
+  cutPattern,
+  pastePattern,
+  transposeTrack,
+  transposePattern,
 
   // Note mapping
   noteKeyMap
