@@ -260,21 +260,14 @@
                 />
                 <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
               </div>
-              <select
-                class="patch-select"
-                :value="slot.patchId ?? ''"
-                @change="onPatchSelectAndBlur(slot.slot, $event)"
+              <PatchPicker
+                :model-value="slot.patchId ?? null"
+                :patches="availablePatches"
+                placeholder="Select patch"
+                @select="(p) => { onPatchSelect(slot.slot, p.id); refocusTracker(); }"
+                @close="refocusTracker"
                 @click.stop
-              >
-                <option value="">Select patch</option>
-                <option
-                  v-for="option in availablePatches"
-                  :key="option.id"
-                  :value="option.id"
-                >
-                  {{ option.name }} ({{ option.bankName }})
-                </option>
-              </select>
+              />
               <div class="instrument-volume" @click.stop @mousedown.stop>
                 <AudioKnobComponent
                   :model-value="slot.volume ?? 1.0"
@@ -426,6 +419,7 @@ import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
+import PatchPicker from 'src/components/PatchPicker.vue';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type { ScheduledNoteEvent } from '../../packages/tracker-playback/src/types';
 import { parseTrackerNoteSymbol } from 'src/audio/tracker/note-utils';
@@ -711,18 +705,6 @@ function refocusTracker() {
   void nextTick(() => {
     trackerContainer.value?.focus();
   });
-}
-
-/**
- * Handle patch selection and immediately blur the select to return focus to tracker.
- */
-function onPatchSelectAndBlur(slotNumber: number, event: Event) {
-  const select = event.target as HTMLSelectElement;
-  const patchId = select.value;
-  onPatchSelect(slotNumber, patchId);
-  // Immediately blur the select so it doesn't capture keyboard events
-  select.blur();
-  trackerContainer.value?.focus();
 }
 
 const noteKeyMap: Record<string, number> = {

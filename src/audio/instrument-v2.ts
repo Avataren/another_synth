@@ -1007,6 +1007,30 @@ export default class InstrumentV2 {
   }
 
   /**
+   * Cancel all scheduled events for a specific voice and silence it immediately.
+   * Used when muting a track during playback.
+   */
+  public cancelAndSilenceVoice(voiceIndex: number): void {
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) return;
+    const now = this.audioContext.currentTime;
+    if (this.workletNode) {
+      const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+      if (gateParam) {
+        gateParam.cancelScheduledValues(now);
+        gateParam.setValueAtTime(0, now);
+      }
+      const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+      if (freqParam) freqParam.cancelScheduledValues(now);
+      const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+      if (gainParam) {
+        gainParam.cancelScheduledValues(now);
+        gainParam.setValueAtTime(0, now);
+      }
+    }
+    this.releaseVoice(voiceIndex);
+  }
+
+  /**
    * Cancel all scheduled parameter changes (for stopping playback).
    */
   public cancelScheduledNotes(): void {

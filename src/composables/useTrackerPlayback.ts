@@ -112,9 +112,44 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
   }
 
   /**
+   * Check if a track is audible given current mute/solo state
+   */
+  function isTrackAudible(trackIndex: number): boolean {
+    const hasSolo = context.soloedTracks.value.size > 0;
+    const isSoloed = context.soloedTracks.value.has(trackIndex);
+    const isMuted = context.mutedTracks.value.has(trackIndex);
+    return hasSolo ? isSoloed : !isMuted;
+  }
+
+  /**
+   * Stop notes on tracks that are no longer audible
+   */
+  function muteInaudibleTracks(previouslyAudible: boolean[], newlyAudible: boolean[]) {
+    for (let i = 0; i < context.trackCount.value; i++) {
+      if (previouslyAudible[i] && !newlyAudible[i]) {
+        // Track became inaudible - stop its notes immediately
+        context.songBank.notesOffForTrack(i);
+      }
+    }
+  }
+
+  /**
+   * Get current audibility state for all tracks
+   */
+  function getAudibilitySnapshot(): boolean[] {
+    const result: boolean[] = [];
+    for (let i = 0; i < context.trackCount.value; i++) {
+      result.push(isTrackAudible(i));
+    }
+    return result;
+  }
+
+  /**
    * Toggle mute state for a track
    */
   function toggleMute(trackIndex: number) {
+    const before = getAudibilitySnapshot();
+
     const newMuted = new Set(context.mutedTracks.value);
     if (newMuted.has(trackIndex)) {
       newMuted.delete(trackIndex);
@@ -122,12 +157,17 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
       newMuted.add(trackIndex);
     }
     context.mutedTracks.value = newMuted;
+
+    const after = getAudibilitySnapshot();
+    muteInaudibleTracks(before, after);
   }
 
   /**
    * Toggle solo state for a track
    */
   function toggleSolo(trackIndex: number) {
+    const before = getAudibilitySnapshot();
+
     const newSoloed = new Set(context.soloedTracks.value);
     if (newSoloed.has(trackIndex)) {
       newSoloed.delete(trackIndex);
@@ -135,6 +175,9 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
       newSoloed.add(trackIndex);
     }
     context.soloedTracks.value = newSoloed;
+
+    const after = getAudibilitySnapshot();
+    muteInaudibleTracks(before, after);
   }
 
   /**

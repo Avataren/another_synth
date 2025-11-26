@@ -13,6 +13,7 @@ export interface BankPatchOption {
   name: string;
   bankId: string;
   bankName: string;
+  category?: string;
   source: 'system' | 'user';
 }
 
@@ -22,6 +23,7 @@ export interface BankPatchOption {
 interface RawPatchMeta {
   id?: string;
   name?: string;
+  category?: string;
 }
 
 interface RawPatch {
@@ -280,6 +282,7 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
             name: meta.name as string,
             bankId,
             bankName,
+            category: meta.category,
             source: 'system' as const
           };
         })

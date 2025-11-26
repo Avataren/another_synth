@@ -50,6 +50,8 @@ export class TrackerSongBank {
   private readonly instruments: Map<string, ActiveInstrument> = new Map();
   private readonly activeNotes: Map<string, Map<number, Set<number>>> = new Map();
   private readonly lastTrackVoice: Map<string, Map<number, number>> = new Map();
+  /** Track all voices allocated to each track: instrumentId -> trackIndex -> Set<voiceIndex> */
+  private readonly trackVoices: Map<string, Map<number, Set<number>>> = new Map();
   private readonly restoredAssets: Map<string, Set<string>> = new Map();
   private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
   private wasSuspended = false;
@@ -151,6 +153,33 @@ export class TrackerSongBank {
       // Also send a gate-low in case the set was empty but a gate is stuck
       active.instrument.allNotesOff();
     }
+    this.trackVoices.clear();
+  }
+
+  /**
+   * Stop all notes playing on a specific track across all instruments.
+   * Cancels all scheduled events and silences voices immediately.
+   * Used when muting a track during playback.
+   */
+  notesOffForTrack(trackIndex: number) {
+    for (const [instrumentId, active] of this.instruments.entries()) {
+      // Cancel and silence all voices allocated to this track
+      const voices = this.getVoicesForTrack(instrumentId, trackIndex);
+      if (voices && voices.size > 0) {
+        for (const voiceIndex of voices) {
+          active.instrument.cancelAndSilenceVoice(voiceIndex);
+        }
+      }
+      this.clearVoicesForTrack(instrumentId, trackIndex);
+
+      // Clear the note tracking for this track
+      const byTrack = this.activeNotes.get(instrumentId);
+      const notes = byTrack?.get(trackIndex);
+      notes?.clear();
+
+      // Clear the last voice tracking for this track
+      this.clearLastVoiceForTrack(instrumentId, trackIndex);
+    }
   }
 
   private getTrackNotes(
@@ -205,6 +234,64 @@ export class TrackerSongBank {
     const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
     const byTrack = this.lastTrackVoice.get(instrumentId);
     byTrack?.delete(trackKey);
+  }
+
+  /**
+   * Add a voice to the track's voice set
+   */
+  private addVoiceToTrack(
+    instrumentId: string,
+    trackIndex: number | undefined,
+    voiceIndex: number,
+  ) {
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    let byTrack = this.trackVoices.get(instrumentId);
+    if (!byTrack) {
+      byTrack = new Map();
+      this.trackVoices.set(instrumentId, byTrack);
+    }
+    let voices = byTrack.get(trackKey);
+    if (!voices) {
+      voices = new Set();
+      byTrack.set(trackKey, voices);
+    }
+    voices.add(voiceIndex);
+  }
+
+  /**
+   * Remove a voice from the track's voice set
+   */
+  private removeVoiceFromTrack(
+    instrumentId: string,
+    trackIndex: number | undefined,
+    voiceIndex: number,
+  ) {
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    const byTrack = this.trackVoices.get(instrumentId);
+    const voices = byTrack?.get(trackKey);
+    voices?.delete(voiceIndex);
+  }
+
+  /**
+   * Get all voices currently allocated to a track
+   */
+  private getVoicesForTrack(
+    instrumentId: string,
+    trackIndex: number,
+  ): Set<number> | undefined {
+    const byTrack = this.trackVoices.get(instrumentId);
+    return byTrack?.get(trackIndex);
+  }
+
+  /**
+   * Clear all voice tracking for a specific track
+   */
+  private clearVoicesForTrack(
+    instrumentId: string,
+    trackIndex: number,
+  ) {
+    const byTrack = this.trackVoices.get(instrumentId);
+    byTrack?.delete(trackIndex);
   }
 
   private gateOffPreviousTrackVoice(
@@ -377,6 +464,8 @@ export class TrackerSongBank {
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
       this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
+      // Track the voice for this track (for mute/solo)
+      this.addVoiceToTrack(instrumentId, trackIndex, voiceIndex);
     }
   }
 
@@ -398,6 +487,8 @@ export class TrackerSongBank {
     if (midi === undefined) {
       if (voiceIndex !== undefined) {
         active.instrument.gateOffVoiceAtTime(voiceIndex, time);
+        // Remove voice from track tracking
+        this.removeVoiceFromTrack(instrumentId, trackIndex, voiceIndex);
       } else if (notes && notes.size > 0) {
         for (const note of notes) {
           active.instrument.noteOffAtTime(note, time);
@@ -406,11 +497,15 @@ export class TrackerSongBank {
         active.instrument.cancelScheduledNotes();
       }
       notes.clear();
+      // Clear all voice tracking for this track
+      this.clearVoicesForTrack(instrumentId, trackIndex ?? -1);
       return;
     }
 
     if (voiceIndex !== undefined) {
       active.instrument.noteOffAtTime(midi, time, voiceIndex);
+      // Remove voice from track tracking
+      this.removeVoiceFromTrack(instrumentId, trackIndex, voiceIndex);
     } else {
       active.instrument.noteOffAtTime(midi, time);
     }
@@ -425,6 +520,7 @@ export class TrackerSongBank {
       active.instrument.cancelScheduledNotes();
     }
     this.activeNotes.clear();
+    this.trackVoices.clear();
   }
 
   setInstrumentGain(instrumentId: string | undefined, gain: number, time?: number) {
