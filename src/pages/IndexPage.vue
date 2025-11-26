@@ -298,6 +298,7 @@ import { useLayoutStore } from 'src/stores/layout-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useTrackerStore } from 'src/stores/tracker-store';
+import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
 import PresetManager from 'src/components/PresetManager.vue';
 
 // Components moved from the top row (now in the bottom row)
@@ -432,6 +433,14 @@ onUnmounted(() => {
     void saveSongPatch();
   }
 });
+
+// Live patch editing during playback - DISABLED for now
+// This feature requires the PlaybackEngine to be persistent across page navigation,
+// which is a larger architectural change. The songBank singleton is in place,
+// but the playback scheduling and UI state live in TrackerPage.
+// TODO: Move PlaybackEngine to a persistent store/service for live editing support
+const trackerAudioStore = useTrackerAudioStore();
+void trackerAudioStore; // Suppress unused warning - will be used when live editing is enabled
 
 const addMenuSections: AddMenuSection[] = [
   {

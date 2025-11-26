@@ -242,9 +242,9 @@
                   v-model="instrumentNameDraft"
                   type="text"
                   class="instrument-name-input"
-                  @keydown.enter.prevent="commitInstrumentRename(slot.slot)"
-                  @keydown.esc.prevent="cancelInstrumentRename"
-                  @blur="commitInstrumentRename(slot.slot)"
+                  @keydown.enter.prevent="commitInstrumentRename(slot.slot); refocusTracker()"
+                  @keydown.esc.prevent="cancelInstrumentRename(); refocusTracker()"
+                  @blur="commitInstrumentRename(slot.slot); refocusTracker()"
                 />
                 <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
               </div>
@@ -264,14 +264,14 @@
                 <button
                   type="button"
                   class="action-button new"
-                  @click.stop="createNewSongPatch(slot.slot)"
+                  @click.stop="createNewSongPatch(slot.slot); refocusTracker()"
                 >
                   New
                 </button>
                 <select
                   class="patch-select"
                   :value="slot.patchId ?? ''"
-                  @change="onPatchSelect(slot.slot, ($event.target as HTMLSelectElement).value)"
+                  @change="onPatchSelectAndBlur(slot.slot, $event)"
                 >
                   <option value="">Select patch</option>
                   <option
@@ -286,13 +286,13 @@
                   type="button"
                   class="action-button edit"
                   @click.stop="editSlotPatch(slot.slot)"
-                  >
+                >
                   Edit
                 </button>
                 <button
                   type="button"
                   class="action-button ghost"
-                  @click.stop="clearInstrument(slot.slot)"
+                  @click.stop="clearInstrument(slot.slot); refocusTracker()"
                 >
                   Clear
                 </button>
@@ -410,7 +410,6 @@ import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnaly
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type { ScheduledNoteEvent } from '../../packages/tracker-playback/src/types';
-import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { parseTrackerNoteSymbol } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
@@ -433,6 +432,7 @@ import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
 import type { TrackerSongBuilderContext } from 'src/composables/useTrackerSongBuilder';
+import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { storeToRefs } from 'pinia';
 
@@ -475,7 +475,8 @@ const patternAreaRef = ref<HTMLDivElement | null>(null);
 const patternAreaScrollTop = ref(0);
 const patternAreaHeight = ref(600);
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
-const songBank = new TrackerSongBank();
+const trackerAudioStore = useTrackerAudioStore();
+const songBank = trackerAudioStore.songBank;
 
 // Handle pattern area scroll for virtual scrolling
 function onPatternAreaScroll(event: Event) {
@@ -681,6 +682,29 @@ function toggleEditMode() {
 
 function toggleFullscreen() {
   isFullscreen.value = !isFullscreen.value;
+}
+
+/**
+ * Return focus to the tracker container so keyboard shortcuts work.
+ * Called after interacting with form elements like selects.
+ */
+function refocusTracker() {
+  // Use nextTick to ensure this happens after the current event completes
+  void nextTick(() => {
+    trackerContainer.value?.focus();
+  });
+}
+
+/**
+ * Handle patch selection and immediately blur the select to return focus to tracker.
+ */
+function onPatchSelectAndBlur(slotNumber: number, event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const patchId = select.value;
+  onPatchSelect(slotNumber, patchId);
+  // Immediately blur the select so it doesn't capture keyboard events
+  select.blur();
+  trackerContainer.value?.focus();
 }
 
 const noteKeyMap: Record<string, number> = {
@@ -932,6 +956,11 @@ const {
   togglePatternPlayback,
   cleanup: cleanupPlayback
 } = useTrackerPlayback(playbackContext);
+
+// Sync playback state to the tracker audio store (for live patch editing)
+watch(isPlaying, (playing) => {
+  trackerAudioStore.setPlaybackState(playing);
+}, { immediate: true });
 
 // Assign the refs so wrappers can use them
 updateTrackAudioNodesRef = updateTrackAudioNodes;
@@ -1203,10 +1232,13 @@ watch(slotSignatures, async () => {
 });
 
 onBeforeUnmount(() => {
+  // Always stop playback when leaving the tracker page
+  // Live editing during playback requires the playback engine to be persistent,
+  // which is a larger architectural change for a future update
   cleanupPlayback();
   playbackEngine.stop();
   songBank.cancelAllScheduled();
-  songBank.dispose();
+  // Don't dispose the songBank - it's a singleton managed by trackerAudioStore
   keyboardStore.cleanup();
   keyboardStore.clearAllNotes();
   keyboardStore.cleanupMidiListeners();

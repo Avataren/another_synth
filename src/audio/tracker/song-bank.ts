@@ -1063,4 +1063,52 @@ export class TrackerSongBank {
     this.lastTrackVoice.delete(instrumentId);
     this.restoredAssets.delete(instrumentId);
   }
+
+  /**
+   * Update a running instrument's patch in real-time without stopping playback.
+   * This is used for live editing while a song is playing.
+   *
+   * @param instrumentId - The instrument ID (e.g., "01", "02")
+   * @param patch - The updated patch to apply
+   * @returns true if the patch was applied, false if the instrument wasn't found
+   */
+  async updatePatchLive(instrumentId: string, patch: Patch): Promise<boolean> {
+    const active = this.instruments.get(instrumentId);
+    if (!active) {
+      console.warn('[TrackerSongBank] Cannot update patch live: instrument not found', instrumentId);
+      return false;
+    }
+
+    try {
+      // Normalize and apply the patch to the active instrument
+      const normalizedPatch = this.normalizePatch(patch);
+
+      // Load the patch into the instrument (this updates all synth parameters)
+      await active.instrument.loadPatch(normalizedPatch);
+
+      // Restore audio assets (samplers, convolvers) if any
+      const deserialized = deserializePatch(normalizedPatch);
+      await this.restoreAudioAssets(instrumentId, active.instrument, normalizedPatch, deserialized);
+
+      // Update the stored patch reference and signature
+      this.desired.set(instrumentId, normalizedPatch);
+      active.patchId = normalizedPatch.metadata.id;
+      active.patchSignature = this.computePatchSignature(normalizedPatch);
+
+      // Update portamento state based on new patch
+      active.hasPortamento = this.hasActivePortamento(normalizedPatch);
+
+      return true;
+    } catch (error) {
+      console.error('[TrackerSongBank] Failed to update patch live:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if an instrument is currently active (has been synced and created)
+   */
+  hasActiveInstrument(instrumentId: string): boolean {
+    return this.instruments.has(instrumentId);
+  }
 }
