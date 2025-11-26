@@ -4,6 +4,29 @@ import type { KeyboardCommand } from '../types';
  * Navigation commands for moving around the tracker grid
  */
 export const navigationCommands: KeyboardCommand[] = [
+  // Ctrl+Arrow for step size adjustment (must come before regular arrows)
+  {
+    key: 'ArrowUp',
+    modifiers: { ctrl: true },
+    description: 'Increase step size',
+    category: 'navigation',
+    handler: (ctx) => {
+      const newSize = Math.min(64, ctx.stepSize.value + 1);
+      ctx.stepSize.value = newSize;
+      ctx.setStepSizeInput(newSize);
+    }
+  },
+  {
+    key: 'ArrowDown',
+    modifiers: { ctrl: true },
+    description: 'Decrease step size',
+    category: 'navigation',
+    handler: (ctx) => {
+      const newSize = Math.max(0, ctx.stepSize.value - 1);
+      ctx.stepSize.value = newSize;
+      ctx.setStepSizeInput(newSize);
+    }
+  },
   {
     key: 'ArrowUp',
     description: 'Move cursor up one row',

@@ -67,6 +67,10 @@ export interface TrackerKeyboardContext {
   baseOctave: Ref<number>;
   setBaseOctaveInput: (octave: number) => void;
 
+  // Step size
+  stepSize: Ref<number>;
+  setStepSizeInput: (size: number) => void;
+
   // Store actions
   undo: () => void;
   redo: () => void;

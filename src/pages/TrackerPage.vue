@@ -106,19 +106,19 @@
       </div>
 
       <div class="top-grid" v-show="!isFullscreen">
-        <div class="info-grid">
-          <SequenceEditor
-            :sequence="sequence"
-            :patterns="patterns"
-            :current-pattern-id="currentPatternId"
-            @select-pattern="trackerStore.setCurrentPatternId"
-            @add-pattern-to-sequence="handleAddPatternToSequence"
-            @remove-pattern-from-sequence="handleRemovePatternFromSequence"
-            @create-pattern="handleCreatePattern"
-            @move-sequence-item="handleMoveSequenceItem"
-            @rename-pattern="handleRenamePattern"
-          />
-          <div class="summary-card">
+        <SequenceEditor
+          class="top-panel"
+          :sequence="sequence"
+          :patterns="patterns"
+          :current-pattern-id="currentPatternId"
+          @select-pattern="trackerStore.setCurrentPatternId"
+          @add-pattern-to-sequence="handleAddPatternToSequence"
+          @remove-pattern-from-sequence="handleRemovePatternFromSequence"
+          @create-pattern="handleCreatePattern"
+          @move-sequence-item="handleMoveSequenceItem"
+          @rename-pattern="handleRenamePattern"
+        />
+        <div class="summary-card top-panel">
             <div class="summary-header">
               <div class="eyebrow">Tracker</div>
             </div>
@@ -130,6 +130,8 @@
                   v-model="currentSong.title"
                   type="text"
                   placeholder="Untitled song"
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
                 />
               </div>
               <div class="field">
@@ -139,17 +141,22 @@
                   v-model="currentSong.author"
                   type="text"
                   placeholder="Unknown"
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
                 />
               </div>
               <div class="field">
                 <label for="song-bpm">BPM</label>
                 <input
                   id="song-bpm"
+                  class="bpm-input"
                   v-model.number="currentSong.bpm"
                   type="number"
                   min="20"
                   max="300"
                   placeholder="120"
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
                 />
               </div>
             </div>
@@ -168,6 +175,8 @@
                     :max="256"
                     :value="rowsCount"
                     @change="onPatternLengthInput($event)"
+                    @blur="refocusTracker"
+                    @keydown.enter="($event.target as HTMLInputElement).blur()"
                   />
                   <div class="control-hint">Rows</div>
                 </div>
@@ -182,6 +191,8 @@
                     :max="64"
                     :value="stepSize"
                     @change="(event) => setStepSizeInput(Number((event.target as HTMLInputElement).value))"
+                    @blur="refocusTracker"
+                    @keydown.enter="($event.target as HTMLInputElement).blur()"
                   />
                   <div class="control-hint">Rows per edit</div>
                 </div>
@@ -198,15 +209,16 @@
                     :max="8"
                     :value="baseOctave"
                     @change="(event) => setBaseOctaveInput(Number((event.target as HTMLInputElement).value))"
+                    @blur="refocusTracker"
+                    @keydown.enter="($event.target as HTMLInputElement).blur()"
                   />
                   <div class="control-hint">Shift+PgUp/PgDn</div>
                 </div>
               </div>
             </div>
-          </div>
         </div>
 
-        <div class="instrument-panel">
+        <div class="instrument-panel top-panel">
           <div class="panel-header">
             <div class="panel-title">Instruments</div>
             <div class="page-tabs">
@@ -248,6 +260,21 @@
                 />
                 <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
               </div>
+              <select
+                class="patch-select"
+                :value="slot.patchId ?? ''"
+                @change="onPatchSelectAndBlur(slot.slot, $event)"
+                @click.stop
+              >
+                <option value="">Select patch</option>
+                <option
+                  v-for="option in availablePatches"
+                  :key="option.id"
+                  :value="option.id"
+                >
+                  {{ option.name }} ({{ option.bankName }})
+                </option>
+              </select>
               <div class="instrument-volume" @click.stop @mousedown.stop>
                 <AudioKnobComponent
                   :model-value="slot.volume ?? 1.0"
@@ -263,38 +290,29 @@
               <div class="instrument-actions">
                 <button
                   type="button"
-                  class="action-button new"
+                  class="icon-action-button"
+                  title="New patch"
                   @click.stop="createNewSongPatch(slot.slot); refocusTracker()"
                 >
-                  New
+                  <q-icon name="add" size="16px" />
                 </button>
-                <select
-                  class="patch-select"
-                  :value="slot.patchId ?? ''"
-                  @change="onPatchSelectAndBlur(slot.slot, $event)"
-                >
-                  <option value="">Select patch</option>
-                  <option
-                    v-for="option in availablePatches"
-                    :key="option.id"
-                    :value="option.id"
-                  >
-                    {{ option.name }} ({{ option.bankName }})
-                  </option>
-                </select>
                 <button
                   type="button"
-                  class="action-button edit"
+                  class="icon-action-button"
+                  title="Edit patch"
+                  :disabled="!slot.patchId"
                   @click.stop="editSlotPatch(slot.slot)"
                 >
-                  Edit
+                  <q-icon name="edit" size="16px" />
                 </button>
                 <button
                   type="button"
-                  class="action-button ghost"
+                  class="icon-action-button danger"
+                  title="Clear instrument"
+                  :disabled="!slot.patchId"
                   @click.stop="clearInstrument(slot.slot); refocusTracker()"
                 >
-                  Clear
+                  <q-icon name="close" size="16px" />
                 </button>
               </div>
             </div>
@@ -1111,6 +1129,10 @@ const keyboardContext: TrackerKeyboardContext = {
   baseOctave,
   setBaseOctaveInput,
 
+  // Step size
+  stepSize,
+  setStepSizeInput,
+
   // Store actions
   undo: () => trackerStore.undo(),
   redo: () => trackerStore.redo(),
@@ -1354,16 +1376,19 @@ onBeforeUnmount(() => {
 
 .top-grid {
   display: grid;
-  grid-template-columns: 1.1fr 1fr;
+  grid-template-columns: 1fr 1.5fr 1fr;
   gap: 14px;
   padding: 0 18px;
   flex-shrink: 0;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-.info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+.top-panel {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
 }
 
 .pattern-area-wrapper {
@@ -1741,17 +1766,47 @@ onBeforeUnmount(() => {
 }
 
 .length-input {
-  width: 90px;
-  background: transparent;
-  border: none;
+  width: 60px;
+  background: var(--input-background, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
   color: var(--text-primary, #e8f3ff);
   font-weight: 700;
   font-size: 14px;
-  text-align: right;
+  text-align: center;
+  padding: 4px 8px;
+  font-family: var(--font-tracker, monospace);
+  /* Hide default spinner buttons */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.length-input::-webkit-outer-spin-button,
+.length-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .length-input:focus {
   outline: none;
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.6));
+  background: var(--input-background, rgba(255, 255, 255, 0.08));
+}
+
+.length-input:hover {
+  border-color: var(--input-border, rgba(255, 255, 255, 0.2));
+}
+
+/* Style BPM input to match theme */
+.bpm-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.bpm-input::-webkit-outer-spin-button,
+.bpm-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .control-hint {
@@ -1921,65 +1976,55 @@ onBeforeUnmount(() => {
 
 .instrument-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
-.action-button {
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+.icon-action-button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  background: var(--button-background, rgba(255, 255, 255, 0.04));
+  color: var(--text-secondary, #b8c9e0);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 120ms ease;
+}
+
+.icon-action-button:hover:not(:disabled) {
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.5));
   background: var(--tracker-active-bg, rgba(77, 242, 197, 0.12));
   color: var(--text-primary, #e8f3ff);
-  font-weight: 600;
-  font-size: 11px;
-  cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease;
 }
 
-.action-button:hover {
-  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.45));
+.icon-action-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
-.action-button.edit {
-  background: var(--tracker-active-bg, rgba(112, 194, 255, 0.15));
-  border-color: var(--tracker-accent-secondary, rgba(112, 194, 255, 0.3));
-}
-
-.action-button.edit:hover {
-  background: var(--button-background-hover, rgba(112, 194, 255, 0.25));
-  border-color: var(--tracker-accent-secondary, rgba(112, 194, 255, 0.5));
-}
-
-.action-button.new {
-  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.12));
-  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.35));
-}
-
-.action-button.new:hover {
-  background: var(--button-background-hover, rgba(77, 242, 197, 0.2));
-  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.55));
-}
-
-.action-button.ghost {
-  background: transparent;
-  border-color: var(--panel-border, rgba(255, 255, 255, 0.08));
-}
-
-.action-button.ghost:hover {
-  border-color: var(--panel-border, rgba(255, 255, 255, 0.18));
+.icon-action-button.danger:hover:not(:disabled) {
+  border-color: rgba(255, 100, 100, 0.5);
+  background: rgba(255, 100, 100, 0.12);
+  color: #ff8080;
 }
 
 .patch-select {
-  min-width: 160px;
+  flex: 1;
+  min-width: 100px;
+  max-width: 180px;
   padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  border: 1px solid var(--input-border, rgba(255, 255, 255, 0.1));
   background: var(--input-background, rgba(255, 255, 255, 0.04));
   color: var(--text-primary, #e8f3ff);
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 500;
+  font-size: 11px;
 }
 
 .patch-select option {

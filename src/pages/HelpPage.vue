@@ -149,7 +149,8 @@
           <li><strong>Copy / paste</strong>: Ctrl/Cmd+C copies the current selection; Ctrl/Cmd+V pastes it at the cursor (overwriting steps inside the pasted block).</li>
           <li><strong>Play / pause pattern</strong>: Spacebar.</li>
           <li><strong>Row navigation</strong>: Arrow Up/Down move one row; PageUp/PageDown move 16 rows. Hold Shift+Arrow keys to extend or shrink a rectangular selection.</li>
-          <li><strong>Transpose selection</strong>: Ctrl/Cmd+ArrowUp/ArrowDown transposes all notes in the selection by one semitone; Shift+Ctrl/Cmd+ArrowUp/ArrowDown transposes by one octave.</li>
+          <li><strong>Step size</strong>: Ctrl+ArrowUp/ArrowDown increases/decreases the step size (rows to advance after entering a note).</li>
+          <li><strong>Transpose selection</strong>: Ctrl+Shift+ArrowUp/ArrowDown transposes all notes in the selection by one octave.</li>
           <li><strong>Jump rows</strong>: Home jumps to the first row; End jumps to the last row.</li>
           <li><strong>Track navigation</strong>: Tab moves to the next track; Shift+Tab to the previous track.</li>
           <li><strong>Octave</strong>: Shift+PageUp/PageDown adjusts the base octave.</li>
