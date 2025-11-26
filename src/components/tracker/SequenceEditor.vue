@@ -4,12 +4,17 @@
       <div
         v-for="(patternId, index) in sequence"
         :key="`${patternId}-${index}`"
+        :ref="el => { if (index === currentSequenceIndex) activeSequenceItem = el as HTMLElement | null }"
         class="sequence-item"
-        :class="{ active: patternId === currentPatternId }"
+        :class="{
+          'is-playing': index === currentSequenceIndex,
+          'is-inactive': index !== currentSequenceIndex
+        }"
         @click="$emit('select-pattern', patternId)"
         @dblclick.stop="startRename(patternId)"
       >
         <div class="pattern-name-wrapper">
+          <div class="sequence-number">{{ index + 1 }}.</div>
           <div class="active-indicator" v-if="index === currentSequenceIndex">▶</div>
           <div class="pattern-name">
             <input
@@ -58,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { TrackerPattern } from 'src/stores/tracker-store';
 
 const props = defineProps<{
@@ -82,6 +87,7 @@ const selectedPatternId = ref<string | null>(null);
 const editingPatternId = ref<string | null>(null);
 const editingName = ref('');
 const renameInput = ref<HTMLInputElement | null>(null);
+const activeSequenceItem = ref<HTMLElement | null>(null);
 
 const patternOptions = computed(() =>
   props.patterns.map((pattern) => ({
@@ -89,6 +95,18 @@ const patternOptions = computed(() =>
     value: pattern.id
   }))
 );
+
+// Auto-scroll the active pattern into view when sequence position changes
+watch(() => props.currentSequenceIndex, () => {
+  if (props.isPlaying && activeSequenceItem.value) {
+    nextTick(() => {
+      activeSequenceItem.value?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    });
+  }
+});
 
 const getPatternName = (patternId: string) => {
   return props.patterns.find(p => p.id === patternId)?.name ?? 'Unknown Pattern';
@@ -172,14 +190,23 @@ const onAddPatternToSequence = (patternId: string | null) => {
   border: 1px solid transparent;
   cursor: pointer;
   contain: layout style paint;
+  transition: all 0.15s ease;
 }
 .sequence-item:hover {
   background: rgba(0, 0, 0, 0.35);
 }
-.sequence-item.active {
+
+.sequence-item.is-playing {
   background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.12));
-  border-color: var(--tracker-selected-border, rgba(77, 242, 197, 0.9));
-  color: var(--text-primary, #e8f3ff);
+  border-color: var(--tracker-accent-primary, #4df2c5);
+}
+
+.sequence-item.is-inactive {
+  opacity: 0.5;
+}
+
+.sequence-item.is-inactive .pattern-name {
+  color: rgba(232, 243, 255, 0.5);
 }
 
 .pattern-name-wrapper {
@@ -188,6 +215,14 @@ const onAddPatternToSequence = (patternId: string | null) => {
   gap: 6px;
   flex: 1;
   min-width: 0;
+}
+
+.sequence-number {
+  color: var(--text-secondary, rgba(232, 243, 255, 0.6));
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 20px;
 }
 
 .active-indicator {

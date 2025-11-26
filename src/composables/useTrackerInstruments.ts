@@ -57,7 +57,6 @@ export interface TrackerInstrumentsContext {
   syncSongBankFromSlots: () => Promise<void>;
   sanitizeMuteSoloState: () => void;
   updateTrackAudioNodes: () => void;
-  measureVisualizerLayout: () => void;
 
   // Track count
   trackCount: Ref<number>;
@@ -312,7 +311,6 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
       );
       context.sanitizeMuteSoloState();
       context.updateTrackAudioNodes();
-      void context.measureVisualizerLayout();
     }
   }
 
@@ -330,7 +328,6 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
         (context.currentPattern.value?.tracks.length ?? 1) - 1
       );
       context.updateTrackAudioNodes();
-      void context.measureVisualizerLayout();
     }
   }
 

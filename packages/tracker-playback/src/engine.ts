@@ -634,6 +634,7 @@ export class PlaybackEngine {
     let patternId = sequence[0];
     let currentPatternLength = getPatternLength(patternId);
     let remaining = effectiveRows;
+    let sequenceIndex = 0;
 
     for (let i = 0; i < sequence.length; i += 1) {
       const id = sequence[i];
@@ -641,6 +642,7 @@ export class PlaybackEngine {
       if (remaining < length) {
         patternId = id;
         currentPatternLength = length;
+        sequenceIndex = i;
         break;
       }
       remaining -= length;
@@ -649,8 +651,8 @@ export class PlaybackEngine {
     const currentRow =
       currentPatternLength > 0 ? remaining % currentPatternLength : 0;
 
-    if (currentRow !== this.position.row || patternId !== this.position.patternId) {
-      const newPosition: PlaybackPosition = { row: currentRow };
+    if (currentRow !== this.position.row || patternId !== this.position.patternId || sequenceIndex !== this.position.sequenceIndex) {
+      const newPosition: PlaybackPosition = { row: currentRow, sequenceIndex };
       if (patternId) {
         newPosition.patternId = patternId;
       }

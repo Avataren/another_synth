@@ -258,6 +258,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
         const row = ((pos.row % rowsCount) + rowsCount) % rowsCount;
         playbackRow.value = row;
 
+        // Update sequence index if provided
+        if (pos.sequenceIndex !== undefined) {
+          currentSequenceIndex.value = pos.sequenceIndex;
+        }
+
         // Update current pattern if changed
         if (pos.patternId && pos.patternId !== trackerStore.currentPatternId) {
           trackerStore.setCurrentPatternId(pos.patternId);

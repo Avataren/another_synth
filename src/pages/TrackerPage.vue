@@ -329,46 +329,37 @@
       </div>
 
   <div v-if="userSettings.showWaveformVisualizers" class="visualizer-row">
-        <div class="visualizer-row-inner">
-          <div class="visualizer-spacer" :style="{ width: `${visualizerSpacerWidth}px` }"></div>
+        <div class="visualizer-spacer"></div>
+        <div class="visualizer-tracks">
           <div
-            class="visualizer-tracks"
-            :style="{ gap: `${visualizerTrackGap}px` }"
+            v-for="(track, index) in currentPattern?.tracks"
+            :key="`viz-${track.id}`"
+            class="visualizer-cell"
           >
-            <div
-              v-for="(track, index) in currentPattern?.tracks"
-              :key="`viz-${track.id}`"
-              class="visualizer-cell"
-              :style="{
-                width: `${visualizerTrackWidth}px`,
-                minWidth: `${visualizerTrackWidth}px`
-              }"
-            >
-              <div class="visualizer-controls">
-                <button
-                  type="button"
-                  class="track-btn solo-btn"
-                  :class="{ active: soloedTracks.has(index) }"
-                  @click="toggleSolo(index)"
-                  title="Solo"
-                >
-                  S
-                </button>
-                <button
-                  type="button"
-                  class="track-btn mute-btn"
-                  :class="{ active: mutedTracks.has(index) }"
-                  @click="toggleMute(index)"
-                  title="Mute"
-                >
-                  M
-                </button>
-              </div>
-              <TrackWaveform
-                :audio-node="trackAudioNodes[index] ?? null"
-                :audio-context="audioContext"
-              />
+            <div class="visualizer-controls">
+              <button
+                type="button"
+                class="track-btn solo-btn"
+                :class="{ active: soloedTracks.has(index) }"
+                @click="toggleSolo(index)"
+                title="Solo"
+              >
+                S
+              </button>
+              <button
+                type="button"
+                class="track-btn mute-btn"
+                :class="{ active: mutedTracks.has(index) }"
+                @click="toggleMute(index)"
+                title="Mute"
+              >
+                M
+              </button>
             </div>
+            <TrackWaveform
+              :audio-node="trackAudioNodes[index] ?? null"
+              :audio-context="audioContext"
+            />
           </div>
         </div>
       </div>
@@ -627,32 +618,6 @@ const DEFAULT_BASE_OCTAVE = trackerStore.baseOctave;
 const baseOctave = ref(trackerStore.baseOctave);
 const trackCount = computed(() => currentPattern.value?.tracks.length ?? 0);
 const trackerPatternRef = ref<InstanceType<typeof TrackerPattern> | null>(null);
-const visualizerTrackWidth = ref(180);
-const visualizerTrackGap = ref(10);
-const visualizerSpacerWidth = ref(108);
-
-async function measureVisualizerLayout() {
-  await nextTick();
-  const host = trackerPatternRef.value?.$el as HTMLElement | undefined;
-  if (!host) return;
-  const trackEl = host.querySelector('.tracker-track') as HTMLElement | null;
-  const tracksWrapper = host.querySelector('.tracks-wrapper') as HTMLElement | null;
-  if (tracksWrapper) {
-    const hostRect = host.getBoundingClientRect();
-    const wrapperRect = tracksWrapper.getBoundingClientRect();
-    const gap = parseFloat(getComputedStyle(tracksWrapper).gap || '10');
-    if (Number.isFinite(gap)) {
-      visualizerTrackGap.value = gap;
-    }
-    const trackStart = wrapperRect.left - hostRect.left;
-    if (Number.isFinite(trackStart) && trackStart >= 0) {
-      visualizerSpacerWidth.value = trackStart;
-    }
-  }
-  if (trackEl) {
-    visualizerTrackWidth.value = trackEl.getBoundingClientRect().width;
-  }
-}
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
@@ -1010,7 +975,6 @@ const instrumentsContext: TrackerInstrumentsContext = {
   syncSongBankFromSlots,
   sanitizeMuteSoloState,
   updateTrackAudioNodes,
-  measureVisualizerLayout,
   trackCount
 };
 
@@ -1234,7 +1198,6 @@ onMounted(async () => {
   ensureActiveInstrument();
   // Skip reloading song if playback is already active (returning to page while playing)
   void initializePlayback(playbackMode.value, true);
-  void measureVisualizerLayout();
   keyboardStore.setupGlobalKeyboardListeners();
   keyboardStore.setupMidiListeners();
   window.addEventListener('mouseup', handleGlobalMouseUp);
@@ -1306,7 +1269,6 @@ watch(slotSignatures, async () => {
   updateTrackAudioNodes();
   // Skip reloading song if playback is active to preserve position
   void initializePlayback(playbackMode.value, true);
-  void measureVisualizerLayout();
 });
 
 onBeforeUnmount(() => {
@@ -1500,31 +1462,36 @@ onBeforeUnmount(() => {
 }
 
 .visualizer-row {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 12px;
   padding: 0 18px 0;
   flex-shrink: 0;
-}
-
-.visualizer-row-inner {
-  display: flex;
-  margin-left: -20px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .visualizer-spacer {
-  width: calc(18px + 78px + 12px);
+  width: 78px;
+  min-width: 78px;
+  max-width: 78px;
   flex-shrink: 0;
 }
 
 .visualizer-tracks {
+  --tracker-track-width: 180px;
+  --tracker-track-gap: 10px;
   display: flex;
-  gap: var(--tracker-track-gap, 10px);
-  overflow: hidden;
+  gap: var(--tracker-track-gap);
+  overflow-x: hidden;
+  width: 100%;
+  position: relative;
 }
 
 .visualizer-cell {
-  width: var(--tracker-track-width, 180px);
-  min-width: var(--tracker-track-width, 180px);
+  width: var(--tracker-track-width);
+  min-width: var(--tracker-track-width);
   flex-shrink: 0;
   position: relative;
 }

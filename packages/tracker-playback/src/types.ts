@@ -123,6 +123,7 @@ export interface Step {
 export interface PlaybackPosition {
   row: number;
   patternId?: string;
+  sequenceIndex?: number;
 }
 
 export interface PlaybackEventMap {
