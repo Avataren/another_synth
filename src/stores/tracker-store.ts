@@ -548,15 +548,21 @@ export const useTrackerStore = defineStore('trackerStore', {
         Array.isArray(data.instrumentSlots) && data.instrumentSlots.length === TOTAL_SLOTS
           ? data.instrumentSlots
           : createDefaultInstrumentSlots();
-      this.instrumentSlots = slots.map((slot, idx) => ({
-        slot: slot?.slot ?? idx + 1,
-        bankId: slot?.bankId,
-        bankName: slot?.bankName ?? '',
-        patchId: slot?.patchId,
-        patchName: slot?.patchName ?? '',
-        instrumentName: slot?.instrumentName ?? '',
-        source: slot?.source
-      }));
+      this.instrumentSlots = slots.map((slot, idx) => {
+        const mapped: InstrumentSlot = {
+          slot: slot?.slot ?? idx + 1,
+          bankId: slot?.bankId,
+          bankName: slot?.bankName ?? '',
+          patchId: slot?.patchId,
+          patchName: slot?.patchName ?? '',
+          instrumentName: slot?.instrumentName ?? '',
+          source: slot?.source
+        };
+        if (slot?.volume !== undefined) {
+          mapped.volume = slot.volume;
+        }
+        return mapped;
+      });
 
       this.activeInstrumentId = data.activeInstrumentId ?? null;
       this.currentInstrumentPage = data.currentInstrumentPage ?? 0;

@@ -88,6 +88,8 @@
           :sequence="sequence"
           :patterns="patterns"
           :current-pattern-id="currentPatternId"
+          :current-sequence-index="currentSequenceIndex"
+          :is-playing="isPlaying"
           @select-pattern="trackerStore.setCurrentPatternId"
           @add-pattern-to-sequence="handleAddPatternToSequence"
           @remove-pattern-from-sequence="handleRemovePatternFromSequence"
@@ -579,7 +581,7 @@ function midiToTrackerNote(midi: number): string {
 }
 
 // Mute/solo state from playback store
-const { mutedTracks, soloedTracks, isPlaying, isPaused, playbackRow, playbackMode, autoScroll } = storeToRefs(playbackStore);
+const { mutedTracks, soloedTracks, isPlaying, isPaused, playbackRow, playbackMode, autoScroll, currentSequenceIndex } = storeToRefs(playbackStore);
 
 watch(
   () => keyboardStore.latestEvent,

@@ -9,22 +9,25 @@
         @click="$emit('select-pattern', patternId)"
         @dblclick.stop="startRename(patternId)"
       >
-        <div class="pattern-name">
-          <input
-            v-if="editingPatternId === patternId"
-            ref="renameInput"
-            v-model="editingName"
-            class="rename-input"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            @keydown.enter.prevent="commitRename()"
-            @keydown.esc.prevent="cancelRename"
-            @blur="commitRename()"
-          />
-          <span v-else>
-            {{ getPatternName(patternId) }}
-          </span>
+        <div class="pattern-name-wrapper">
+          <div class="active-indicator" v-if="index === currentSequenceIndex">▶</div>
+          <div class="pattern-name">
+            <input
+              v-if="editingPatternId === patternId"
+              ref="renameInput"
+              v-model="editingName"
+              class="rename-input"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              @keydown.enter.prevent="commitRename()"
+              @keydown.esc.prevent="cancelRename"
+              @blur="commitRename()"
+            />
+            <span v-else>
+              {{ getPatternName(patternId) }}
+            </span>
+          </div>
         </div>
         <div class="item-actions">
           <button @click.stop="$emit('move-sequence-item', index, index - 1)" :disabled="index === 0">&uarr;</button>
@@ -62,6 +65,8 @@ const props = defineProps<{
   sequence: string[];
   patterns: TrackerPattern[];
   currentPatternId: string | null;
+  currentSequenceIndex?: number;
+  isPlaying?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -175,6 +180,22 @@ const onAddPatternToSequence = (patternId: string | null) => {
   border-color: var(--tracker-selected-border, rgba(77, 242, 197, 0.9));
   color: var(--text-primary, #e8f3ff);
 }
+
+.pattern-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.active-indicator {
+  color: var(--tracker-accent-primary, #4df2c5);
+  font-size: 12px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .pattern-name {
   font-weight: bold;
   flex: 1;
