@@ -257,13 +257,11 @@ export class PlaybackEngine {
     this.state = 'stopped';
     this.stopScheduledPlayback();
     this.scheduler.stop();
+    // Reset to row 0 but stay on the current pattern
     this.position = { ...this.position, row: 0 };
-    this.currentSequenceIndex = 0;
     this.resetEffectStates();
-    if (this.song && this.song.sequence.length > 0) {
-      this.loadPattern(this.song.sequence[0] as string);
-    }
     this.emit('state', this.state);
+    // Emit position without changing the pattern
     this.emit('position', this.position);
   }
 
