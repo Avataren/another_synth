@@ -78,6 +78,22 @@ export class TrackerSongBank {
     this.masterGain = this.audioSystem.audioContext.createGain();
     this.masterGain.gain.value = 1.0;
     this.masterGain.connect(this.audioSystem.destinationNode);
+
+    // If the AudioContext resumes after we deferred a sync, rebuild instruments
+    // using the last requested slot state so playback doesn't stay silent.
+    this.audioSystem.audioContext.onstatechange = () => {
+      if (
+        this.audioSystem.audioContext.state === 'running' &&
+        this.needsAudioContextResume
+      ) {
+        const pendingSlots: SongBankSlot[] = Array.from(this.desired.entries()).map(
+          ([instrumentId, patch]) => ({ instrumentId, patch }),
+        );
+        if (pendingSlots.length > 0) {
+          void this.syncSlots(pendingSlots);
+        }
+      }
+    };
   }
 
   get output(): AudioNode {
@@ -143,6 +159,16 @@ export class TrackerSongBank {
 
     this.syncInProgress = true;
     try {
+      const nextDesired = new Map<string, Patch>();
+      for (const slot of slots) {
+        if (!slot.instrumentId) continue;
+        nextDesired.set(slot.instrumentId, this.normalizePatch(slot.patch));
+      }
+      this.desired.clear();
+      for (const [id, patch] of nextDesired.entries()) {
+        this.desired.set(id, patch);
+      }
+
       // Resume context if suspended, and set flag so we rebuild instruments
       let contextRunning = true;
       if (this.audioContext.state === 'suspended') {
@@ -164,16 +190,6 @@ export class TrackerSongBank {
         console.log('[SongBank] Disposing all instruments after resume');
         this.disposeInstruments();
         this.wasSuspended = false;
-      }
-
-      const nextDesired = new Map<string, Patch>();
-      for (const slot of slots) {
-        if (!slot.instrumentId) continue;
-        nextDesired.set(slot.instrumentId, this.normalizePatch(slot.patch));
-      }
-      this.desired.clear();
-      for (const [id, patch] of nextDesired.entries()) {
-        this.desired.set(id, patch);
       }
 
       const wantedIds = new Set(nextDesired.keys());
