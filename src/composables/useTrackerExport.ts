@@ -18,8 +18,8 @@ export type PlaybackMode = 'pattern' | 'song';
  * Dependencies required by the export composable
  */
 export interface TrackerExportContext {
-  // Playback dependencies
-  playbackEngine: PlaybackEngine;
+  // Playback dependencies - engine getter returns PlaybackEngine or null
+  getPlaybackEngine: () => PlaybackEngine | null;
   songBank: TrackerSongBank;
 
   // State refs
@@ -124,13 +124,19 @@ export function useTrackerExport(context: TrackerExportContext) {
    */
   function waitForPlaybackStop(timeoutMs: number): Promise<void> {
     return new Promise((resolve) => {
+      const playbackEngine = context.getPlaybackEngine();
+      if (!playbackEngine) {
+        resolve();
+        return;
+      }
+
       const timeoutId = window.setTimeout(() => {
-        context.playbackEngine.stop();
+        playbackEngine.stop();
         unsubscribe();
         resolve();
       }, timeoutMs);
 
-      const unsubscribe = context.playbackEngine.on('state', (state) => {
+      const unsubscribe = playbackEngine.on('state', (state) => {
         if (state === 'stopped') {
           clearTimeout(timeoutId);
           unsubscribe();
@@ -160,9 +166,14 @@ export function useTrackerExport(context: TrackerExportContext) {
     let unsubscribeExportPosition: (() => void) | null = null;
 
     try {
+      const playbackEngine = context.getPlaybackEngine();
+      if (!playbackEngine) {
+        throw new Error('Playback engine not initialized');
+      }
+
       // For export, we want a single pass through the song,
       // not continuous looping.
-      context.playbackEngine.setLoopSong(false);
+      playbackEngine.setLoopSong(false);
 
       await context.syncSongBankFromSlots();
       const initialized = await context.initializePlayback('song');
@@ -170,12 +181,12 @@ export function useTrackerExport(context: TrackerExportContext) {
         throw new Error('Nothing to play – please add a pattern with notes.');
       }
 
-      context.playbackEngine.stop();
+      playbackEngine.stop();
       context.playbackRow.value = 0;
       context.activeRow.value = 0;
       context.songBank.cancelAllScheduled();
       context.songBank.allNotesOff();
-      context.playbackEngine.seek(0);
+      playbackEngine.seek(0);
 
       // Compute total song length in rows (using the same
       // sanitized sequence the playback engine sees) so we
@@ -192,7 +203,7 @@ export function useTrackerExport(context: TrackerExportContext) {
 
       const RECORDING_PROGRESS_PORTION = 0.85;
 
-      unsubscribeExportPosition = context.playbackEngine.on('position', (pos) => {
+      unsubscribeExportPosition = playbackEngine.on('position', (pos) => {
         if (!pos.patternId || totalRows <= 0) return;
         const before = rowsBeforePattern.get(pos.patternId);
         if (before === undefined) return;
@@ -220,7 +231,7 @@ export function useTrackerExport(context: TrackerExportContext) {
       const expectedDurationMs = expectedRows * getMsPerRow(context.currentSong.value.bpm);
       const waitPromise = waitForPlaybackStop(expectedDurationMs + 2000);
 
-      await context.playbackEngine.play();
+      await playbackEngine.play();
       await waitPromise;
 
       // Allow a short tail so reverb/delay can decay
@@ -260,7 +271,8 @@ export function useTrackerExport(context: TrackerExportContext) {
     } finally {
       unsubscribeExportPosition?.();
       // Restore looping behavior for normal playback.
-      context.playbackEngine.setLoopSong(true);
+      const playbackEngine = context.getPlaybackEngine();
+      playbackEngine?.setLoopSong(true);
       isExporting.value = false;
     }
   }

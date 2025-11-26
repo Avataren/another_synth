@@ -435,8 +435,7 @@ import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { ScheduledNoteEvent } from '../../packages/tracker-playback/src/types';
+import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { parseTrackerNoteSymbol } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
@@ -445,8 +444,7 @@ import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard'
 import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
 import { useTrackerExport } from 'src/composables/useTrackerExport';
 import type { TrackerExportContext } from 'src/composables/useTrackerExport';
-import { useTrackerPlayback } from 'src/composables/useTrackerPlayback';
-import type { TrackerPlaybackContext } from 'src/composables/useTrackerPlayback';
+import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { useTrackerSelection } from 'src/composables/useTrackerSelection';
 import type { TrackerSelectionContext } from 'src/composables/useTrackerSelection';
 import { useTrackerEditing } from 'src/composables/useTrackerEditing';
@@ -490,6 +488,7 @@ const slotSignatures = computed(() =>
   instrumentSlots.value.map(s => `${s.slot}:${s.patchId ?? ''}:${s.bankId ?? ''}`).join('|')
 );
 const patchStore = usePatchStore();
+const playbackStore = useTrackerPlaybackStore();
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
@@ -569,75 +568,8 @@ function midiToTrackerNote(midi: number): string {
   return `${name}${octave}`;
 }
 
-// Mute/solo state must exist before PlaybackEngine creation
-const mutedTracks = ref<Set<number>>(new Set());
-const soloedTracks = ref<Set<number>>(new Set());
-
-function isTrackAudible(trackIndex: number): boolean {
-  const hasSolo = soloedTracks.value.size > 0;
-  const isSoloed = soloedTracks.value.has(trackIndex);
-  const isMuted = mutedTracks.value.has(trackIndex);
-  return hasSolo ? isSoloed : !isMuted;
-}
-
-const playbackEngine = new PlaybackEngine({
-  instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
-  audioContext: songBank.audioContext,
-  scheduledAutomationHandler: (instrumentId, gain, time) => {
-    songBank.setInstrumentGain(instrumentId, gain, time);
-  },
-  automationHandler: (instrumentId, gain) => {
-    songBank.setInstrumentGain(instrumentId, gain);
-  },
-  scheduledMacroHandler: (instrumentId, macroIndex, value, time) => {
-    songBank.setInstrumentMacro(instrumentId, macroIndex, value, time);
-  },
-  macroHandler: (instrumentId, macroIndex, value) => {
-    songBank.setInstrumentMacro(instrumentId, macroIndex, value);
-  },
-  // Effect handlers for pitch/volume/retrigger
-  scheduledPitchHandler: (instrumentId: string, voiceIndex: number, frequency: number, time: number) => {
-    songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time);
-  },
-  scheduledVolumeHandler: (instrumentId: string, voiceIndex: number, volume: number, time: number) => {
-    songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time);
-  },
-  scheduledRetriggerHandler: (instrumentId: string, midi: number, velocity: number, time: number) => {
-    songBank.retriggerNoteAtTime(instrumentId, midi, velocity, time);
-  },
-  scheduledNoteHandler: (event: ScheduledNoteEvent) => {
-    // Check mute/solo state for this track
-    if (!isTrackAudible(event.trackIndex)) return;
-
-    if (event.type === 'noteOn') {
-      setTrackAudioNodeForInstrument(event.trackIndex, event.instrumentId);
-      markTrackNotePlayedRef?.(event.trackIndex);
-      if (event.instrumentId === undefined || event.midi === undefined) return;
-      const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
-      songBank.noteOnAtTime(event.instrumentId, event.midi, velocity, event.time, event.trackIndex);
-      return;
-    }
-
-    if (event.instrumentId === undefined) return;
-    songBank.noteOffAtTime(event.instrumentId, event.midi, event.time, event.trackIndex);
-  },
-  // Keep legacy handler for preview notes (not used for playback anymore)
-  noteHandler: (event) => {
-    if (!isTrackAudible(event.trackIndex)) return;
-
-    if (event.type === 'noteOn') {
-      setTrackAudioNodeForInstrument(event.trackIndex, event.instrumentId);
-      markTrackNotePlayedRef?.(event.trackIndex);
-      if (event.instrumentId === undefined || event.midi === undefined) return;
-      const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
-      songBank.noteOn(event.instrumentId, event.midi, velocity, event.trackIndex);
-      return;
-    }
-
-    if (event.instrumentId === undefined) return;
-    songBank.noteOff(event.instrumentId, event.midi, event.trackIndex);
-  }
-});
+// Mute/solo state from playback store
+const { mutedTracks, soloedTracks, isPlaying, playbackRow, playbackMode, autoScroll } = storeToRefs(playbackStore);
 
 watch(
   () => keyboardStore.latestEvent,
@@ -653,7 +585,7 @@ watch(
     const midi = adjustedMidi;
 
     if (!Number.isFinite(midi)) return;
-    if (!isTrackAudible(activeTrack.value)) return;
+    if (!playbackStore.isTrackAudible(activeTrack.value)) return;
 
     void (async () => {
       if (!hasPatchForInstrument(instrumentId)) return;
@@ -873,7 +805,7 @@ function setPatternRows(count: number) {
   trackerStore.pushHistory();
   patternRows.value = clamped;
   setActiveRow(activeRow.value);
-  playbackEngine.setLength(clamped);
+  playbackStore.setLength(clamped);
 }
 
 function onPatternLengthInput(event: Event) {
@@ -932,50 +864,93 @@ async function syncSongBankFromSlots() {
   }
 }
 
-// Set up playback composable
-const playbackContext: TrackerPlaybackContext = {
-  playbackEngine,
-  songBank,
-  rowsCount,
-  trackCount,
-  currentSong,
-  currentPatternId,
-  currentPattern,
-  activeRow,
-  mutedTracks,
-  soloedTracks,
-  buildPlaybackSong,
-  syncSongBankFromSlots,
-  setCurrentPatternId: (patternId: string) => trackerStore.setCurrentPatternId(patternId),
-  normalizeInstrumentId,
-  resolveInstrumentForTrack
-};
+// Track audio nodes for visualization (simplified from old composable)
+const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
+const tracksWithActiveNotes = ref<Set<number>>(new Set());
 
-const {
-  isPlaying,
-  playbackRow,
-  playbackMode,
-  autoScroll,
-  trackAudioNodes,
-  toggleMute,
-  toggleSolo,
-  sanitizeMuteSoloState,
-  setTrackAudioNodeForInstrument,
-  updateTrackAudioNodes,
-  markTrackNotePlayed,
-  initializePlayback,
-  handlePlayPattern,
-  handlePlaySong,
-  handlePause,
-  handleStop,
-  togglePatternPlayback,
-  cleanup: cleanupPlayback
-} = useTrackerPlayback(playbackContext);
+function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
+  const normalized = normalizeInstrumentId(instrumentId);
+  const node = normalized ? songBank.getInstrumentOutput(normalized) : null;
+  if (trackAudioNodes.value[trackIndex] === node) return;
+  trackAudioNodes.value = {
+    ...trackAudioNodes.value,
+    [trackIndex]: node
+  };
+}
 
-// Sync playback state to the tracker audio store (for live patch editing)
-watch(isPlaying, (playing) => {
-  trackerAudioStore.setPlaybackState(playing);
-}, { immediate: true });
+function updateTrackAudioNodes() {
+  const nodes: Record<number, AudioNode | null> = {};
+  const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
+  for (let i = 0; i < tracks.length; i++) {
+    const resolvedId = resolveInstrumentForTrack(tracks[i], i);
+    const defaultId = (i + 1).toString().padStart(2, '0');
+    const instrumentId = resolvedId ?? defaultId;
+    nodes[i] = songBank.getInstrumentOutput(instrumentId);
+  }
+  trackAudioNodes.value = nodes;
+}
+
+function markTrackNotePlayed(trackIndex: number) {
+  if (!tracksWithActiveNotes.value.has(trackIndex)) {
+    tracksWithActiveNotes.value = new Set([...tracksWithActiveNotes.value, trackIndex]);
+  }
+}
+
+function clearActiveNoteTracks() {
+  tracksWithActiveNotes.value = new Set();
+}
+
+// Playback handlers that delegate to the store
+async function handlePlayPattern() {
+  clearActiveNoteTracks();
+  updateTrackAudioNodes();
+  const song = buildPlaybackSong('pattern');
+  await playbackStore.play(song, 'pattern', activeRow.value);
+}
+
+async function handlePlaySong() {
+  clearActiveNoteTracks();
+  updateTrackAudioNodes();
+  const song = buildPlaybackSong('song');
+  await playbackStore.play(song, 'song', activeRow.value);
+}
+
+function handlePause() {
+  activeRow.value = playbackRow.value;
+  playbackStore.pause();
+}
+
+function handleStop() {
+  playbackStore.stop();
+  activeRow.value = 0;
+  clearActiveNoteTracks();
+}
+
+function togglePatternPlayback() {
+  if (isPlaying.value && playbackMode.value === 'pattern') {
+    handlePause();
+    return;
+  }
+  void handlePlayPattern();
+}
+
+function toggleMute(trackIndex: number) {
+  playbackStore.toggleMute(trackIndex, trackCount.value);
+}
+
+function toggleSolo(trackIndex: number) {
+  playbackStore.toggleSolo(trackIndex, trackCount.value);
+}
+
+function sanitizeMuteSoloState(trackTotal = trackCount.value) {
+  playbackStore.sanitizeMuteSoloState(trackTotal);
+}
+
+async function initializePlayback(mode: 'pattern' | 'song' = playbackMode.value, skipIfPlaying: boolean = false): Promise<boolean> {
+  updateTrackAudioNodes();
+  const song = buildPlaybackSong(mode);
+  return await playbackStore.loadSong(song, mode, skipIfPlaying);
+}
 
 // Assign the refs so wrappers can use them
 updateTrackAudioNodesRef = updateTrackAudioNodes;
@@ -1142,7 +1117,7 @@ const { handleKeyDown: onKeyDown } = useTrackerKeyboard(keyboardContext);
 
 // Set up export composable
 const exportContext: TrackerExportContext = {
-  playbackEngine,
+  getPlaybackEngine: () => playbackStore.engine,
   songBank,
   rowsCount,
   currentSong,
@@ -1199,13 +1174,20 @@ onMounted(async () => {
   trackerContainer.value?.focus();
   await loadSystemBankOptions();
   ensureActiveInstrument();
-  void initializePlayback(playbackMode.value);
+  // Skip reloading song if playback is already active (returning to page while playing)
+  void initializePlayback(playbackMode.value, true);
   void measureVisualizerLayout();
   keyboardStore.setupGlobalKeyboardListeners();
   keyboardStore.setupMidiListeners();
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('resize', updatePatternAreaHeight);
   updatePatternAreaHeight();
+
+  // Re-register the track audio node setter since it was cleared on unmount
+  playbackStore.setTrackAudioNodeSetter((trackIndex: number, instrumentId: string | undefined) => {
+    setTrackAudioNodeForInstrument(trackIndex, instrumentId);
+    markTrackNotePlayedRef?.(trackIndex);
+  });
 });
 
 // Debounced BPM watcher to avoid excessive updates during slider dragging
@@ -1215,7 +1197,7 @@ watch(
   (bpm) => {
     if (bpmDebounceTimer) clearTimeout(bpmDebounceTimer);
     bpmDebounceTimer = setTimeout(() => {
-      playbackEngine.setBpm(bpm);
+      playbackStore.setBpm(bpm);
     }, 50);
   },
   { immediate: true }
@@ -1223,7 +1205,7 @@ watch(
 
 watch(
   () => rowsCount.value,
-  (rows) => playbackEngine.setLength(rows),
+  (rows) => playbackStore.setLength(rows),
   { immediate: true }
 );
 
@@ -1252,17 +1234,15 @@ watch(slotSignatures, async () => {
   await songBank.ensureAudioContextRunning();
   await syncSongBankFromSlots();
   updateTrackAudioNodes();
-  void initializePlayback(playbackMode.value);
+  // Skip reloading song if playback is active to preserve position
+  void initializePlayback(playbackMode.value, true);
   void measureVisualizerLayout();
 });
 
 onBeforeUnmount(() => {
-  // Always stop playback when leaving the tracker page
-  // Live editing during playback requires the playback engine to be persistent,
-  // which is a larger architectural change for a future update
-  cleanupPlayback();
-  playbackEngine.stop();
-  songBank.cancelAllScheduled();
+  // Clear the track audio node setter so the store doesn't try to call into unmounted component
+  playbackStore.setTrackAudioNodeSetter(null);
+  // Don't stop playback - it continues when navigating away
   // Don't dispose the songBank - it's a singleton managed by trackerAudioStore
   keyboardStore.cleanup();
   keyboardStore.clearAllNotes();
