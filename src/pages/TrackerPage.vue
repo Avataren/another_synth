@@ -314,44 +314,46 @@
       </div>
 
   <div v-if="userSettings.showWaveformVisualizers" class="visualizer-row">
-        <div class="visualizer-spacer" :style="{ width: `${visualizerSpacerWidth}px` }"></div>
-        <div
-          class="visualizer-tracks"
-          :style="{ gap: `${visualizerTrackGap}px` }"
-        >
+        <div class="visualizer-row-inner">
+          <div class="visualizer-spacer" :style="{ width: `${visualizerSpacerWidth}px` }"></div>
           <div
-            v-for="(track, index) in currentPattern?.tracks"
-            :key="`viz-${track.id}`"
-            class="visualizer-cell"
-            :style="{
-              width: `${visualizerTrackWidth}px`,
-              minWidth: `${visualizerTrackWidth}px`
-            }"
+            class="visualizer-tracks"
+            :style="{ gap: `${visualizerTrackGap}px` }"
           >
-            <div class="visualizer-controls">
-              <button
-                type="button"
-                class="track-btn solo-btn"
-                :class="{ active: soloedTracks.has(index) }"
-                @click="toggleSolo(index)"
-                title="Solo"
-              >
-                S
-              </button>
-              <button
-                type="button"
-                class="track-btn mute-btn"
-                :class="{ active: mutedTracks.has(index) }"
-                @click="toggleMute(index)"
-                title="Mute"
-              >
-                M
-              </button>
+            <div
+              v-for="(track, index) in currentPattern?.tracks"
+              :key="`viz-${track.id}`"
+              class="visualizer-cell"
+              :style="{
+                width: `${visualizerTrackWidth}px`,
+                minWidth: `${visualizerTrackWidth}px`
+              }"
+            >
+              <div class="visualizer-controls">
+                <button
+                  type="button"
+                  class="track-btn solo-btn"
+                  :class="{ active: soloedTracks.has(index) }"
+                  @click="toggleSolo(index)"
+                  title="Solo"
+                >
+                  S
+                </button>
+                <button
+                  type="button"
+                  class="track-btn mute-btn"
+                  :class="{ active: mutedTracks.has(index) }"
+                  @click="toggleMute(index)"
+                  title="Mute"
+                >
+                  M
+                </button>
+              </div>
+              <TrackWaveform
+                :audio-node="trackAudioNodes[index] ?? null"
+                :audio-context="audioContext"
+              />
             </div>
-            <TrackWaveform
-              :audio-node="trackAudioNodes[index] ?? null"
-              :audio-context="audioContext"
-            />
           </div>
         </div>
       </div>
@@ -1212,6 +1214,12 @@ watch(
   { immediate: true }
 );
 
+// Update pattern area height when fullscreen mode changes
+watch(isFullscreen, async () => {
+  await nextTick();
+  updatePatternAreaHeight();
+});
+
 watch(
   () => baseOctave.value,
   (oct) => trackerStore.setBaseOctave(oct),
@@ -1387,6 +1395,12 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overflow-x: auto;
   padding: 0 18px 18px;
+  text-align: center;
+}
+
+.pattern-area :deep(.tracker-pattern) {
+  display: inline-flex;
+  text-align: left;
 }
 
 .pattern-area::-webkit-scrollbar {
@@ -1413,8 +1427,14 @@ onBeforeUnmount(() => {
 
 .visualizer-row {
   display: flex;
+  justify-content: center;
   padding: 0 18px 0;
   flex-shrink: 0;
+}
+
+.visualizer-row-inner {
+  display: flex;
+  margin-left: -20px;
 }
 
 .visualizer-spacer {
