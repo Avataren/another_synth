@@ -37,6 +37,10 @@ export const useTrackerAudioStore = defineStore('trackerAudio', {
 
     masterOutput(): AudioNode {
       return getSongBank().output;
+    },
+
+    needsAudioResume(): boolean {
+      return getSongBank().needsResume;
     }
   },
 

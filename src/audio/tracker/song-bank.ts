@@ -55,6 +55,7 @@ export class TrackerSongBank {
   private readonly restoredAssets: Map<string, Set<string>> = new Map();
   private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
   private wasSuspended = false;
+  private needsAudioContextResume = false;
   private recorderNode: AudioWorkletNode | null = null;
   private recordedBuffers: Float32Array[] = [];
   private recording = false;
@@ -68,6 +69,10 @@ export class TrackerSongBank {
 
   get output(): AudioNode {
     return this.masterGain;
+  }
+
+  get needsResume(): boolean {
+    return this.needsAudioContextResume;
   }
 
   get audioContext(): AudioContext {
@@ -109,9 +114,19 @@ export class TrackerSongBank {
     this.syncInProgress = true;
     try {
       // Resume context if suspended, and set flag so we rebuild instruments
+      let contextRunning = true;
       if (this.audioContext.state === 'suspended') {
         this.wasSuspended = true;
-        await this.ensureAudioContextRunning();
+        contextRunning = await this.ensureAudioContextRunning();
+      } else {
+        contextRunning = await this.ensureAudioContextRunning();
+      }
+
+      if (!contextRunning || this.audioContext.state !== 'running') {
+        console.warn(
+          `[SongBank] AudioContext not running after resume attempt (state=${this.audioContext.state}). Deferring syncSlots and flagging needsResume.`,
+        );
+        return;
       }
 
       if (this.wasSuspended && this.audioContext.state === 'running') {
@@ -734,14 +749,20 @@ export class TrackerSongBank {
   /** Ensure the audio context is running (resume if suspended) */
   /**
    * Ensure the audio context is running (resume if suspended).
-   * Returns true if the context was resumed during this call.
+   * Returns true if the context is running after this call (whether it was already running or successfully resumed).
    *
    * IMPORTANT: This will wait and poll for the context to become running,
    * which might require user interaction on the page.
    */
   async ensureAudioContextRunning(): Promise<boolean> {
     const ctx = this.audioContext;
-    if (ctx.state === 'running') return false;
+    if (ctx.state === 'running') {
+      this.needsAudioContextResume = false;
+      return true;
+    }
+
+    this.needsAudioContextResume = true;
+    console.warn(`[SongBank] AudioContext state=${ctx.state}; attempting to resume.`);
 
     // Try to resume - might fail if no user interaction yet
     try {
@@ -749,6 +770,7 @@ export class TrackerSongBank {
       // Use string variable to avoid TypeScript's type narrowing issue
       const currentState: string = ctx.state;
       if (currentState === 'running') {
+        this.needsAudioContextResume = false;
         return true;
       }
     } catch (error) {
@@ -764,6 +786,7 @@ export class TrackerSongBank {
     while (Date.now() - startTime < maxWaitMs) {
       const currentState: string = ctx.state;
       if (currentState === 'running') {
+        this.needsAudioContextResume = false;
         return true;
       }
 
@@ -774,6 +797,7 @@ export class TrackerSongBank {
         await ctx.resume();
         const stateAfterResume: string = ctx.state;
         if (stateAfterResume === 'running') {
+          this.needsAudioContextResume = false;
           return true;
         }
       } catch (e) {
@@ -783,6 +807,8 @@ export class TrackerSongBank {
 
     // Timed out
     console.error('[TrackerSongBank] Timeout waiting for audio context to resume. Please interact with the page (click anywhere).');
+    console.warn(`[SongBank] AudioContext resume timed out; final state=${ctx.state}`);
+    this.needsAudioContextResume = true;
     return false;
   }
 
@@ -807,7 +833,14 @@ export class TrackerSongBank {
   }
 
   private async ensureInstrumentInternal(instrumentId: string, patch: Patch): Promise<void> {
-    await this.ensureAudioContextRunning();
+    const contextRunning = await this.ensureAudioContextRunning();
+    if (!contextRunning || this.audioContext.state !== 'running') {
+      console.warn(
+        `[SongBank] Skipping ensureInstrument for ${instrumentId} because AudioContext is not running (state=${this.audioContext.state}). needsResume=${this.needsAudioContextResume}`,
+      );
+    
+      return;
+    }
     const normalizedPatch = this.normalizePatch(patch);
     const deserialized = deserializePatch(normalizedPatch);
     const patchId = normalizedPatch?.metadata?.id;

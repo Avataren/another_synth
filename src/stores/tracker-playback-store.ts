@@ -337,7 +337,13 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     songBank.allNotesOff();
 
     // Ensure audio context is running
-    await songBank.ensureAudioContextRunning();
+    const contextRunning = await songBank.ensureAudioContextRunning();
+    if (!contextRunning || songBank.audioContext.state !== 'running') {
+      console.warn(
+        `[PlaybackStore] AudioContext not running; skipping playback start (state=${songBank.audioContext.state}, needsResume=${songBank.needsResume})`,
+      );
+      return;
+    }
 
     // Load song
     const loaded = await loadSong(song, mode);
