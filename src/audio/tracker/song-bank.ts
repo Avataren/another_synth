@@ -1493,6 +1493,8 @@ export class TrackerSongBank {
     this.instruments.delete(instrumentId);
     this.activeNotes.delete(instrumentId);
     this.lastTrackVoice.delete(instrumentId);
+    // Clear any per-track voice tracking so stale voice IDs don't linger when
+    // the instrument is rebuilt for a new song/patch.
     this.trackVoices.delete(instrumentId);
     this.restoredAssets.delete(instrumentId);
   }
