@@ -1137,6 +1137,7 @@ const isLoadingSong = ref(false);
 // Set up file I/O composable
 const fileIOContext: TrackerFileIOContext = {
   trackerStore,
+  songBank,
   currentSong,
   playbackMode,
   isLoadingSong,

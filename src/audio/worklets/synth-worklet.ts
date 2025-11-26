@@ -118,6 +118,7 @@ interface SamplerUpdateData {
 
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
+  private stopped: boolean = false;
   private audioEngine: AudioEngine | null = null;
   private numVoices: number = 8;
   private readonly maxOscillators: number = 4;
@@ -317,7 +318,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'cpuUsage':
         this.handleCpuUsage();
         break;
+      case 'stop':
+        this.handleStop();
+        break;
     }
+  }
+
+  private handleStop() {
+    this.stopped = true;
   }
 
   private handleCpuUsage() {
@@ -1654,6 +1662,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     parameters: Record<string, Float32Array>,
   ): boolean {
+    if (this.stopped) {
+      return false;
+    }
+
     if (!this.ready || !this.audioEngine || this.isApplyingPatch) {
       return true;
     }

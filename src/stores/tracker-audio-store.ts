@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { Patch } from 'src/audio/types/preset-types';
+import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
 
 // Singleton instance - lives outside Pinia to avoid reactivity issues with AudioContext
 let songBankInstance: TrackerSongBank | null = null;
 
 function getSongBank(): TrackerSongBank {
   if (!songBankInstance) {
-    songBankInstance = new TrackerSongBank();
+    songBankInstance = new TrackerSongBank(getSharedAudioSystem());
   }
   return songBankInstance;
 }

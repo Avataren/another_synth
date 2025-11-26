@@ -2,6 +2,7 @@ import type { Ref } from 'vue';
 import JSZip from 'jszip';
 import type { JSZipObject } from 'jszip';
 import type { TrackerSongFile, useTrackerStore } from 'src/stores/tracker-store';
+import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 
 /**
  * File picker types for File System Access API
@@ -27,6 +28,7 @@ interface OpenFilePickerOptions {
 export interface TrackerFileIOContext {
   // Store
   trackerStore: ReturnType<typeof useTrackerStore>;
+  songBank: TrackerSongBank;
 
   // State refs
   currentSong: Ref<{ title: string; author: string; bpm: number }>;
@@ -196,6 +198,9 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       // Stop playback before loading new song to cleanup audio nodes
       console.log('[FileIO] Stopping playback before load');
       context.stopPlayback();
+
+      // Drop all existing tracker instruments before wiring up the next song
+      context.songBank.resetForNewSong();
 
       // Load song data and rebuild instruments
       console.log('[FileIO] Loading song data');

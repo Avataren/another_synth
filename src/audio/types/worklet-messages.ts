@@ -388,6 +388,11 @@ export interface BlockSizeMessage extends BaseMessage {
   blockSize: number;
 }
 
+/** Signal the processor to halt processing and return false from process() */
+export interface StopMessage extends BaseMessage {
+  type: 'stop';
+}
+
 // ============================================================================
 // Union Type of All Messages
 // ============================================================================
@@ -446,6 +451,7 @@ export type WorkletMessage =
   | SetMacroMessage
   // Status
   | BlockSizeMessage
+  | StopMessage
   | ErrorMessage
   | PerformanceStatsMessage
   | OperationResponse;

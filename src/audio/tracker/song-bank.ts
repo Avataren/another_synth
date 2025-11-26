@@ -1,4 +1,4 @@
-import AudioSystem from 'src/audio/AudioSystem';
+import type AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import type {
   AudioAsset,
@@ -41,6 +41,7 @@ import {
   combineDetuneParts,
   frequencyFromDetune,
 } from 'src/audio/utils/sampler-detune';
+import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -55,6 +56,7 @@ interface ActiveInstrument {
 }
 
 export class TrackerSongBank {
+  private generation = 0;
   private readonly audioSystem: AudioSystem;
   private readonly masterGain: GainNode;
   private readonly desired: Map<string, Patch> = new Map();
@@ -73,11 +75,27 @@ export class TrackerSongBank {
   private recordedBuffers: Float32Array[] = [];
   private recording = false;
 
-  constructor() {
-    this.audioSystem = new AudioSystem();
+  constructor(audioSystem?: AudioSystem) {
+    this.audioSystem = audioSystem ?? getSharedAudioSystem();
     this.masterGain = this.audioSystem.audioContext.createGain();
     this.masterGain.gain.value = 1.0;
     this.masterGain.connect(this.audioSystem.destinationNode);
+
+    // If the AudioContext resumes after we deferred a sync, rebuild instruments
+    // using the last requested slot state so playback doesn't stay silent.
+    this.audioSystem.audioContext.onstatechange = () => {
+      if (
+        this.audioSystem.audioContext.state === 'running' &&
+        this.needsAudioContextResume
+      ) {
+        const pendingSlots: SongBankSlot[] = Array.from(
+          this.desired.entries(),
+        ).map(([instrumentId, patch]) => ({ instrumentId, patch }));
+        if (pendingSlots.length > 0) {
+          void this.syncSlots(pendingSlots);
+        }
+      }
+    };
   }
 
   get output(): AudioNode {
@@ -143,6 +161,33 @@ export class TrackerSongBank {
 
     this.syncInProgress = true;
     try {
+      // Build desired patch map up front so it is available even if the context
+      // cannot be resumed yet. This allows prepareInstrument() during playback
+      // to find the correct patch once the AudioContext is running again.
+      const nextDesired = new Map<string, Patch>();
+      for (const slot of slots) {
+        if (!slot.instrumentId) continue;
+        nextDesired.set(slot.instrumentId, this.normalizePatch(slot.patch));
+      }
+
+      // Update desired patches immediately so playback can prepare instruments
+      // later even if we have to bail out before connecting to the AudioContext.
+      this.desired.clear();
+      for (const [id, patch] of nextDesired.entries()) {
+        this.desired.set(id, patch);
+      }
+
+      // Tear down instruments no longer referenced in the slots before we try
+      // to resume audio. This keeps the active set aligned with desired state
+      // even if we have to defer instrument creation until after a resume.
+      const wantedIds = new Set(nextDesired.keys());
+      for (const [id] of this.instruments.entries()) {
+        if (!wantedIds.has(id)) {
+          console.log(`[SongBank] Tearing down unwanted instrument: ${id}`);
+          this.teardownInstrument(id);
+        }
+      }
+
       // Resume context if suspended, and set flag so we rebuild instruments
       let contextRunning = true;
       if (this.audioContext.state === 'suspended') {
@@ -164,24 +209,6 @@ export class TrackerSongBank {
         console.log('[SongBank] Disposing all instruments after resume');
         this.disposeInstruments();
         this.wasSuspended = false;
-      }
-
-      const nextDesired = new Map<string, Patch>();
-      for (const slot of slots) {
-        if (!slot.instrumentId) continue;
-        nextDesired.set(slot.instrumentId, this.normalizePatch(slot.patch));
-      }
-      this.desired.clear();
-      for (const [id, patch] of nextDesired.entries()) {
-        this.desired.set(id, patch);
-      }
-
-      const wantedIds = new Set(nextDesired.keys());
-      for (const [id] of this.instruments.entries()) {
-        if (!wantedIds.has(id)) {
-          console.log(`[SongBank] Tearing down unwanted instrument: ${id}`);
-          this.teardownInstrument(id);
-        }
       }
 
       for (const [instrumentId, patch] of nextDesired.entries()) {
@@ -910,6 +937,7 @@ export class TrackerSongBank {
     instrumentId: string,
     patch: Patch,
   ): Promise<void> {
+    const generation = this.generation;
     // Check if this instrument is already being initialized
     const pending = this.pendingInstruments.get(instrumentId);
     if (pending) {
@@ -918,7 +946,11 @@ export class TrackerSongBank {
     }
 
     // Start initialization and track the promise
-    const initPromise = this.ensureInstrumentInternal(instrumentId, patch);
+    const initPromise = this.ensureInstrumentInternal(
+      instrumentId,
+      patch,
+      generation,
+    );
     this.pendingInstruments.set(instrumentId, initPromise);
 
     try {
@@ -932,6 +964,7 @@ export class TrackerSongBank {
   private async ensureInstrumentInternal(
     instrumentId: string,
     patch: Patch,
+    generation: number,
   ): Promise<void> {
     const contextRunning = await this.ensureAudioContextRunning();
     if (!contextRunning || this.audioContext.state !== 'running') {
@@ -1022,6 +1055,13 @@ export class TrackerSongBank {
     await this.applyNodeStates(instrument, deserialized);
     this.applyMacrosFromPatch(instrument, normalizedPatch);
     this.normalizeVoiceGain(instrument);
+    if (generation !== this.generation) {
+      console.warn(
+        `[SongBank] Discarding instrument ${instrumentId} from previous generation`,
+      );
+      instrument.dispose();
+      return;
+    }
     this.instruments.set(instrumentId, {
       instrument,
       patchId,
@@ -1497,6 +1537,20 @@ export class TrackerSongBank {
     // the instrument is rebuilt for a new song/patch.
     this.trackVoices.delete(instrumentId);
     this.restoredAssets.delete(instrumentId);
+  }
+
+  /**
+   * Hard reset all tracker instruments. Use when loading a new song to drop
+   * every existing AudioWorklet before instantiating the next set.
+   */
+  resetForNewSong(): void {
+    console.log(
+      '[SongBank] Resetting for new song (disposing all instruments)',
+    );
+    this.generation += 1;
+    this.pendingInstruments.clear();
+    this.disposeInstruments();
+    this.desired.clear();
   }
 
   /**

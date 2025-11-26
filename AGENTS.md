@@ -229,6 +229,8 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - The waveform row now mirrors the tracker grid’s horizontal scroll: `TrackerPage` syncs `visualizer-tracks` to the `tracks-wrapper` inside `TrackerPattern` and reattaches the sync whenever the track count or pattern changes. This keeps the visualizers sitting over the correct channels even after adding/removing tracks.
 - Visualizer row padding is measured dynamically against the centered tracker layout: `updateVisualizerPadding` compares the `TrackerPattern` bounding box to the visualizer row and applies left/right padding (with a small +25px left/-25px right bias) so the waveform strip stays horizontally centered with the grid across track counts and screen widths.
 - Tracker instruments now re-import audio assets even when reusing an unchanged patch signature: `TrackerSongBank.ensureInstrument` calls `restoreAudioAssets` in the reuse path so wavetables/samples aren’t stuck on defaults after slot updates that didn’t rebuild the instrument.
+- Loading a new tracker song should drop all old worklets first: `TrackerSongBank.resetForNewSong()` now increments a generation, clears pending instrument inits, disposes every instrument, and clears desired slots. The file load path calls this before syncing slots so no lingering AudioWorkletNodes stick around between songs.
+- Worklet stop message: `InstrumentV2.dispose()` now sends `{ type: 'stop' }` to the synth worklet. The worklet handles this by setting `stopped` and returning `false` from `process`, which halts the processor and helps the browser release lingering AudioWorkletNodes when switching songs.
 
 ### Tracker export (mp3)
 
@@ -326,6 +328,7 @@ this.automationAdapter = new AutomationAdapter(
   - Adding new node types: update `NODE_CREATION_ORDER`, `get_current_state` serialization, and TS `VoiceNodeType`.
   - Touching envelope or gate logic: verify `CombinedGate` wiring and gate thresholds (`> 0.0`) still make sense.
   - **Modifying parameter descriptors**: If you change the number of voices or parameters, ensure the `AutomationAdapter` is always created with matching dimensions.
+- AudioContext is centralized: use `getSharedAudioSystem()` from `src/audio/shared-audio-system.ts` so the instrument store and tracker song bank share a single `AudioSystem`/`AudioContext`. Avoid `new AudioSystem()` in new code.
 - Before assuming an envelope bug, check:
   - Is the envelope's `config.active` flag true?
   - Is there a `GateMixer` node and a `CombinedGate` connection into the envelope?

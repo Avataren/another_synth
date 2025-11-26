@@ -2752,6 +2752,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   constructor() {
     super();
     __publicField(this, "ready", false);
+    __publicField(this, "stopped", false);
     __publicField(this, "audioEngine", null);
     __publicField(this, "numVoices", 8);
     __publicField(this, "maxOscillators", 4);
@@ -2940,7 +2941,13 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       case "cpuUsage":
         this.handleCpuUsage();
         break;
+      case "stop":
+        this.handleStop();
+        break;
     }
+  }
+  handleStop() {
+    this.stopped = true;
   }
   handleCpuUsage() {
     if (!this.audioEngine || this.isApplyingPatch || !this.ready) {
@@ -3946,6 +3953,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   process(_inputs, outputs, parameters) {
+    if (this.stopped) {
+      return false;
+    }
     if (!this.ready || !this.audioEngine || this.isApplyingPatch) {
       return true;
     }

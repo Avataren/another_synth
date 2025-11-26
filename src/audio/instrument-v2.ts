@@ -59,6 +59,8 @@ export default class InstrumentV2 {
   private voiceRoundRobinIndex = 0;
   private voiceLastUsedTime: number[] = [];
   private messageHandler: WorkletMessageHandler;
+  private workletBlockSizeListener: ((event: MessageEvent) => void) | null =
+    null;
   private voiceLimit: number;
   private glideStates: Map<string, GlideState> = new Map();
   private quantumFrames = 128;
@@ -97,7 +99,7 @@ export default class InstrumentV2 {
       this.messageHandler.attachToWorklet(this.workletNode);
 
       // Listen for broadcast messages (e.g., worklet block size)
-      this.workletNode.port.addEventListener('message', (event: MessageEvent) => {
+      this.workletBlockSizeListener = (event: MessageEvent) => {
         const data = event.data as { type?: string; blockSize?: unknown };
         if (data?.type === 'blockSize') {
           const frames = Number(data.blockSize);
@@ -105,7 +107,11 @@ export default class InstrumentV2 {
             this.quantumFrames = frames;
           }
         }
-      });
+      };
+      this.workletNode.port.addEventListener(
+        'message',
+        this.workletBlockSizeListener,
+      );
 
       // Set up parameters for each voice
       for (let i = 0; i < this.num_voices; i++) {
@@ -1295,11 +1301,30 @@ export default class InstrumentV2 {
 
   public dispose(): void {
     this.allNotesOff();
+    if (this.workletNode) {
+      try {
+        this.messageHandler.sendFireAndForget({ type: 'stop' });
+      } catch (error) {
+        console.warn('[InstrumentV2] Failed to send stop to worklet during dispose', error);
+      }
+    }
     this.messageHandler.clear();
     this.messageHandler.detach();
 
     if (this.workletNode) {
+      if (this.workletBlockSizeListener) {
+        this.workletNode.port.removeEventListener(
+          'message',
+          this.workletBlockSizeListener,
+        );
+        this.workletBlockSizeListener = null;
+      }
       this.workletNode.disconnect();
+      try {
+        this.workletNode.port.close();
+      } catch (error) {
+        console.warn('[InstrumentV2] Failed to close worklet port during dispose', error);
+      }
       this.workletNode = null;
     }
 

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { markRaw } from 'vue';
-import AudioSystem from 'src/audio/AudioSystem';
+import type AudioSystem from 'src/audio/AudioSystem';
+import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import { AudioSyncManager } from 'src/audio/sync-manager';
 import type { PortId } from 'app/public/wasm/audio_processor';
@@ -54,7 +55,7 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
   actions: {
     initializeAudioSystem() {
       if (!this.audioSystem) {
-        this.audioSystem = markRaw(new AudioSystem());
+        this.audioSystem = getSharedAudioSystem();
       }
     },
     async setupAudio() {
