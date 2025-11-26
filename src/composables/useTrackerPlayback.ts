@@ -295,15 +295,12 @@ export function useTrackerPlayback(context: TrackerPlaybackContext) {
   }
 
   /**
-   * Stop playback
+   * Stop playback and move to the top of the current pattern
    */
   function handleStop() {
-    const wasPlaying = isPlaying.value;
     context.playbackEngine.stop();
     playbackRow.value = 0;
-    if (wasPlaying) {
-      context.activeRow.value = 0;
-    }
+    context.activeRow.value = 0;
     context.songBank.cancelAllScheduled();
     context.songBank.allNotesOff();
     clearActiveNoteTracks();

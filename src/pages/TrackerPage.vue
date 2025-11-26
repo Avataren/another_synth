@@ -11,29 +11,6 @@
         <div class="toolbar-section toolbar-left">
           <button
             type="button"
-            class="transport-button play"
-            :class="{ active: playbackMode === 'pattern' && isPlaying }"
-            title="Spacebar"
-            @click="handlePlayPattern"
-          >
-            Play Pattern
-          </button>
-          <button
-            type="button"
-            class="transport-button play alt"
-            :class="{ active: playbackMode === 'song' && isPlaying }"
-            @click="handlePlaySong"
-          >
-            Play Song
-          </button>
-          <button type="button" class="transport-button pause" @click="handlePause">
-            Pause
-          </button>
-          <button type="button" class="transport-button stop" @click="handleStop">
-            Stop
-          </button>
-          <button
-            type="button"
             class="transport-button ghost"
             :disabled="isExporting"
             @click="exportSongToMp3"
@@ -215,6 +192,42 @@
                   <div class="control-hint">Shift+PgUp/PgDn</div>
                 </div>
               </div>
+            </div>
+            <div class="transport-controls">
+              <button
+                type="button"
+                class="transport-icon-btn"
+                :class="{ active: playbackMode === 'pattern' && isPlaying }"
+                title="Play Pattern (Space)"
+                @click="handlePlayPattern"
+              >
+                <q-icon name="replay" size="20px" />
+              </button>
+              <button
+                type="button"
+                class="transport-icon-btn"
+                :class="{ active: playbackMode === 'song' && isPlaying }"
+                title="Play Song"
+                @click="handlePlaySong"
+              >
+                <q-icon name="play_arrow" size="20px" />
+              </button>
+              <button
+                type="button"
+                class="transport-icon-btn"
+                title="Pause"
+                @click="handlePause"
+              >
+                <q-icon name="pause" size="20px" />
+              </button>
+              <button
+                type="button"
+                class="transport-icon-btn"
+                title="Stop"
+                @click="handleStop"
+              >
+                <q-icon name="stop" size="20px" />
+              </button>
             </div>
         </div>
 
@@ -1539,6 +1552,41 @@ onBeforeUnmount(() => {
   justify-content: center;
   margin-top: auto;
   padding-top: 6px;
+}
+
+.transport-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.transport-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--button-background, rgba(255, 255, 255, 0.04));
+  color: var(--text-secondary, #b8c9e0);
+  cursor: pointer;
+  transition: all 120ms ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.transport-icon-btn:hover {
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.45));
+  color: var(--text-primary, #eaf6ff);
+  background: var(--button-hover, rgba(255, 255, 255, 0.08));
+}
+
+.transport-icon-btn.active {
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.14));
+  color: var(--tracker-accent-primary, #4df2c5);
+  border-color: var(--tracker-accent-primary, rgba(77, 242, 197, 0.5));
+  box-shadow: 0 4px 14px rgba(77, 242, 197, 0.18);
 }
 
 .transport-button {
