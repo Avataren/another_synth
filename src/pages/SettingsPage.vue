@@ -169,6 +169,18 @@
                 <span class="toggle-description">Show waveform visualizers for each track</span>
               </div>
             </label>
+
+            <label class="toggle-setting">
+              <input
+                type="checkbox"
+                :checked="settings.enableMidi"
+                @change="updateSetting('enableMidi', ($event.target as HTMLInputElement).checked)"
+              />
+              <div class="toggle-info">
+                <span class="toggle-label">Enable MIDI Input</span>
+                <span class="toggle-description">Request MIDI access for external controllers (requires browser permission)</span>
+              </div>
+            </label>
           </div>
         </div>
       </section>

@@ -246,6 +246,16 @@ export const useKeyboardStore = defineStore('keyboard', {
         });
     },
 
+    syncMidiSetting(enabled: boolean) {
+      if (enabled) {
+        if (this.midiEnabled) return;
+        this.setupMidiListeners();
+      } else {
+        this.cleanupMidiListeners();
+        this.midiEnabled = false;
+      }
+    },
+
     cleanupMidiListeners() {
       if (this.midiEnabled) {
         WebMidi.inputs.forEach((input) => {

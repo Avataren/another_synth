@@ -1343,7 +1343,7 @@ onMounted(async () => {
   // Skip reloading song if playback is already active (returning to page while playing)
   void initializePlayback(playbackMode.value, true);
   keyboardStore.setupGlobalKeyboardListeners();
-  keyboardStore.setupMidiListeners();
+  keyboardStore.syncMidiSetting(userSettings.value.enableMidi);
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('resize', handleWindowResize);
   handleWindowResize();
@@ -1354,6 +1354,13 @@ onMounted(async () => {
     markTrackNotePlayedRef?.(trackIndex);
   });
 });
+
+watch(
+  () => userSettings.value.enableMidi,
+  (enabled) => {
+    keyboardStore.syncMidiSetting(enabled);
+  },
+);
 
 // Debounced BPM watcher to avoid excessive updates during slider dragging
 let bpmDebounceTimer: ReturnType<typeof setTimeout> | null = null;

@@ -12,6 +12,7 @@ export interface UserSettings {
   showSpectrumAnalyzer: boolean;
   showWaveformVisualizers: boolean;
   masterVolume: number; // 0.0 to 1.0
+  enableMidi: boolean;
 }
 
 /**
@@ -23,7 +24,8 @@ const defaultSettings: UserSettings = {
   uiFont: 'Inter',
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
-  masterVolume: 0.75
+  masterVolume: 0.75,
+  enableMidi: false
 };
 
 const STORAGE_KEY = 'synth-user-settings';

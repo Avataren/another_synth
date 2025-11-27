@@ -23,6 +23,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue';
 import { useKeyboardStore } from '../stores/keyboard-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 
 interface PianoKey {
@@ -33,6 +34,7 @@ interface PianoKey {
 
 const { currentInstrument } = useInstrumentStore();
 const keyboardStore = useKeyboardStore();
+const userSettingsStore = useUserSettingsStore();
 
 const keyboardNotes: PianoKey[] = [
   { midiNote: 48, label: 'C3', type: 'white' },
@@ -94,7 +96,7 @@ function handleNoteOff(note: number) {
 onMounted(() => {
   console.log('Component mounted, setting up listeners.');
   keyboardStore.setupGlobalKeyboardListeners();
-  keyboardStore.setupMidiListeners();
+  keyboardStore.syncMidiSetting(userSettingsStore.settings.enableMidi);
 });
 
 onUnmounted(() => {
