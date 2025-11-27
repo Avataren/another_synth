@@ -390,6 +390,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     playbackRow.value = 0;
     getSongBank().cancelAllScheduled();
     getSongBank().allNotesOff();
+    isPlaying.value = false;
+    isPaused.value = false;
+    audioStore.setPlaybackState(false);
   }
 
   /**

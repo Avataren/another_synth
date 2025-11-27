@@ -662,19 +662,19 @@ const {
   startSelectionAtCursor,
   onPatternStartSelection,
   onPatternHoverSelection,
-  transposeSelection,
+  transposeSelection: rawTransposeSelection,
   copySelectionToClipboard,
   pasteFromClipboard,
   // Track operations
   copyTrack,
   cutTrack,
   pasteTrack,
-  transposeTrack,
+  transposeTrack: rawTransposeTrack,
   // Pattern operations
   copyPattern,
   cutPattern,
   pastePattern,
-  transposePattern,
+  transposePattern: rawTransposePattern,
 } = useTrackerSelection(selectionContext);
 
 function normalizeVolumeChars(vol?: string): [string, string] {
@@ -1263,6 +1263,31 @@ function markTrackNotePlayed(trackIndex: number) {
 
 function clearActiveNoteTracks() {
   tracksWithActiveNotes.value = new Set();
+}
+
+// Reload playback after structural edits (transpose) without forcing a stop/start cycle
+async function restartPlaybackIfActive() {
+  // Only hot-reload playback while actively playing; keep stopped/paused idle
+  if (!isPlaying.value) return;
+  const mode = playbackMode.value;
+  const startRow = playbackRow.value;
+  const song = buildPlaybackSong(mode);
+  await playbackStore.play(song, mode, startRow);
+}
+
+function transposeSelection(semitones: number) {
+  rawTransposeSelection(semitones);
+  void restartPlaybackIfActive();
+}
+
+function transposeTrack(semitones: number) {
+  rawTransposeTrack(semitones);
+  void restartPlaybackIfActive();
+}
+
+function transposePattern(semitones: number) {
+  rawTransposePattern(semitones);
+  void restartPlaybackIfActive();
 }
 
 // Playback handlers that delegate to the store

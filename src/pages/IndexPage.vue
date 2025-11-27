@@ -14,6 +14,17 @@
           </span>
         </div>
         <div class="song-patch-banner__actions">
+          <q-select
+            v-model="songPatchVoiceCount"
+            :options="voiceOptions"
+            dense
+            outlined
+            label="Voices"
+            emit-value
+            map-options
+            class="song-patch-voice-select"
+            @update:model-value="handleSongPatchVoiceChange"
+          />
           <q-btn
             flat
             dense
@@ -368,6 +379,11 @@ const trackerAudioStore = useTrackerAudioStore();
 const { destinationNode, instrumentGain } = storeToRefs(instrumentStore);
 const { editingSlot, songPatches } = storeToRefs(trackerStore);
 const { isPlaying } = storeToRefs(playbackStore);
+const songPatchVoiceCount = ref(1);
+const voiceOptions = Array.from({ length: 8 }, (_, idx) => ({
+  label: `${idx + 1} voice${idx === 0 ? '' : 's'}`,
+  value: idx + 1
+}));
 
 const addMenuVisible = ref(false);
 const addMenu = ref<QMenuController | null>(null);
@@ -402,6 +418,12 @@ async function loadSongPatchForEditing(slotNumber: number) {
   const patch = songPatches.value[slot.patchId];
   if (!patch) return;
 
+  const layoutVoiceCount =
+    layoutStore.synthLayout?.voiceCount ??
+    layoutStore.synthLayout?.voices?.length ??
+    1;
+  songPatchVoiceCount.value = Math.max(1, Math.min(8, layoutVoiceCount));
+
   // Try to get the actual instrument from the song bank for live editing
   const songBankInstrument = trackerAudioStore.getInstrumentForSlot(slotNumber);
 
@@ -433,6 +455,11 @@ async function saveSongPatch() {
   // Also update the song bank's stored patch to keep it in sync
   // This prevents the old patch from being reapplied on next playback start
   trackerAudioStore.updateStoredPatch(editingSlot.value, patch);
+}
+
+async function handleSongPatchVoiceChange(value: number) {
+  songPatchVoiceCount.value = value;
+  await patchStore.setVoiceCount(value);
 }
 
 async function backToTracker() {
@@ -840,6 +867,7 @@ const bitcrusherNodes = computed(() => {
 .song-patch-banner__actions {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 .song-patch-banner__live {
@@ -855,6 +883,10 @@ const bitcrusherNodes = computed(() => {
   letter-spacing: 0.08em;
   color: #4caf50;
   margin-left: 8px;
+}
+
+.song-patch-voice-select :deep(.q-field__control) {
+  min-width: 120px;
 }
 
 .live-dot {
