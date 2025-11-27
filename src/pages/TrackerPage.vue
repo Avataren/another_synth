@@ -72,7 +72,11 @@
             Save Song
           </button>
           <label class="toggle toolbar-toggle">
-            <input v-model="autoScroll" type="checkbox" />
+            <input
+              v-model="autoScroll"
+              type="checkbox"
+              @change="blurAndRefocusTracker"
+            />
             <span>Auto-scroll</span>
           </label>
           <button
@@ -109,6 +113,7 @@
           @create-pattern="handleCreatePattern"
           @move-sequence-item="handleMoveSequenceItem"
           @rename-pattern="handleRenamePattern"
+          @request-refocus="refocusTracker"
         />
         <div class="summary-card top-panel">
           <div class="summary-header">
@@ -275,6 +280,7 @@
                 max="1"
                 step="0.01"
                 @input="onMasterVolumeChange"
+                @change="blurAndRefocusTracker"
                 @mousedown.stop
                 @click.stop
                 title="Master Volume"
@@ -773,6 +779,12 @@ function refocusTracker() {
   void nextTick(() => {
     trackerContainer.value?.focus();
   });
+}
+
+function blurAndRefocusTracker(event?: Event) {
+  const target = event?.target as HTMLElement | null;
+  target?.blur();
+  refocusTracker();
 }
 
 function resolvePatternTracksWrapper(): HTMLElement | null {

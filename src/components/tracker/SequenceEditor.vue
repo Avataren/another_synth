@@ -56,6 +56,8 @@
         behavior="menu"
         class="pattern-select"
         @update:model-value="onAddPatternToSequence"
+        @popup-hide="requestRefocus"
+        @blur="requestRefocus"
       />
       <button type="button" @click="$emit('create-pattern')">New Pattern</button>
     </div>
@@ -81,6 +83,7 @@ const emit = defineEmits<{
   (e: 'create-pattern'): void;
   (e: 'move-sequence-item', fromIndex: number, toIndex: number): void;
   (e: 'rename-pattern', patternId: string, name: string): void;
+  (e: 'request-refocus'): void;
 }>();
 
 const selectedPatternId = ref<string | null>(null);
@@ -95,6 +98,8 @@ const patternOptions = computed(() =>
     value: pattern.id
   }))
 );
+
+const requestRefocus = () => emit('request-refocus');
 
 // Auto-scroll the active pattern into view when sequence position changes
 watch(() => props.currentSequenceIndex, () => {
@@ -121,6 +126,7 @@ const startRename = (patternId: string) => {
 const cancelRename = () => {
   editingPatternId.value = null;
   editingName.value = '';
+  requestRefocus();
 };
 
 const commitRename = () => {
@@ -141,6 +147,7 @@ const onAddPatternToSequence = (patternId: string | null) => {
     emit('add-pattern-to-sequence', patternId);
     selectedPatternId.value = null;
   }
+  requestRefocus();
 };
 </script>
 
