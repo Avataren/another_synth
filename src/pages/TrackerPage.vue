@@ -11,7 +11,9 @@
         <div class="song-loading-dialog">
           <div class="spinner" aria-hidden="true"></div>
           <div class="song-loading-text">Loading song…</div>
-          <div class="song-loading-subtext">Preparing instruments and assets</div>
+          <div class="song-loading-subtext">
+            Preparing instruments and assets
+          </div>
         </div>
       </div>
 
@@ -109,159 +111,176 @@
           @rename-pattern="handleRenamePattern"
         />
         <div class="summary-card top-panel">
-            <div class="summary-header">
-              <div class="eyebrow">Tracker</div>
+          <div class="summary-header">
+            <div class="eyebrow">Tracker</div>
+          </div>
+          <div class="song-meta">
+            <div class="field">
+              <label for="song-title">Song title</label>
+              <input
+                id="song-title"
+                v-model="currentSong.title"
+                type="text"
+                placeholder="Untitled song"
+                @blur="refocusTracker"
+                @keydown.enter="($event.target as HTMLInputElement).blur()"
+              />
             </div>
-            <div class="song-meta">
-              <div class="field">
-                <label for="song-title">Song title</label>
+            <div class="field">
+              <label for="song-author">Author</label>
+              <input
+                id="song-author"
+                v-model="currentSong.author"
+                type="text"
+                placeholder="Unknown"
+                @blur="refocusTracker"
+                @keydown.enter="($event.target as HTMLInputElement).blur()"
+              />
+            </div>
+            <div class="field">
+              <label for="song-bpm">BPM</label>
+              <input
+                id="song-bpm"
+                class="bpm-input"
+                v-model.number="currentSong.bpm"
+                type="number"
+                min="20"
+                max="300"
+                placeholder="120"
+                @blur="refocusTracker"
+                @keydown.enter="($event.target as HTMLInputElement).blur()"
+              />
+            </div>
+          </div>
+          <div class="stats-inline">
+            <span class="stat-inline"
+              ><span class="stat-label">Patterns:</span>
+              {{ patterns.length }}</span
+            >
+            <span class="stat-inline"
+              ><span class="stat-label">Rows:</span> {{ rowsCount }}</span
+            >
+          </div>
+          <div class="pattern-row-inline">
+            <div class="pattern-controls">
+              <div class="control-label">Pattern length</div>
+              <div class="control-field">
                 <input
-                  id="song-title"
-                  v-model="currentSong.title"
-                  type="text"
-                  placeholder="Untitled song"
-                  @blur="refocusTracker"
-                  @keydown.enter="($event.target as HTMLInputElement).blur()"
-                />
-              </div>
-              <div class="field">
-                <label for="song-author">Author</label>
-                <input
-                  id="song-author"
-                  v-model="currentSong.author"
-                  type="text"
-                  placeholder="Unknown"
-                  @blur="refocusTracker"
-                  @keydown.enter="($event.target as HTMLInputElement).blur()"
-                />
-              </div>
-              <div class="field">
-                <label for="song-bpm">BPM</label>
-                <input
-                  id="song-bpm"
-                  class="bpm-input"
-                  v-model.number="currentSong.bpm"
+                  class="length-input"
                   type="number"
-                  min="20"
-                  max="300"
-                  placeholder="120"
+                  :min="1"
+                  :max="256"
+                  :value="rowsCount"
+                  @change="onPatternLengthInput($event)"
                   @blur="refocusTracker"
                   @keydown.enter="($event.target as HTMLInputElement).blur()"
                 />
+                <div class="control-hint">Rows</div>
               </div>
             </div>
-            <div class="stats-inline">
-              <span class="stat-inline"><span class="stat-label">Patterns:</span> {{ patterns.length }}</span>
-              <span class="stat-inline"><span class="stat-label">Rows:</span> {{ rowsCount }}</span>
-            </div>
-            <div class="pattern-row-inline">
-              <div class="pattern-controls">
-                <div class="control-label">Pattern length</div>
-                <div class="control-field">
-                  <input
-                    class="length-input"
-                    type="number"
-                    :min="1"
-                    :max="256"
-                    :value="rowsCount"
-                    @change="onPatternLengthInput($event)"
-                    @blur="refocusTracker"
-                    @keydown.enter="($event.target as HTMLInputElement).blur()"
-                  />
-                  <div class="control-hint">Rows</div>
-                </div>
-              </div>
-              <div class="pattern-controls">
-                <div class="control-label">Step size</div>
-                <div class="control-field">
-                  <input
-                    class="length-input"
-                    type="number"
-                    :min="1"
-                    :max="64"
-                    :value="stepSize"
-                    @change="(event) => setStepSizeInput(Number((event.target as HTMLInputElement).value))"
-                    @blur="refocusTracker"
-                    @keydown.enter="($event.target as HTMLInputElement).blur()"
-                  />
-                  <div class="control-hint">Rows per edit</div>
-                </div>
-              </div>
-            </div>
-            <div class="pattern-row-inline">
-              <div class="pattern-controls">
-                <div class="control-label">Base octave</div>
-                <div class="control-field">
-                  <input
-                    class="length-input"
-                    type="number"
-                    :min="0"
-                    :max="8"
-                    :value="baseOctave"
-                    @change="(event) => setBaseOctaveInput(Number((event.target as HTMLInputElement).value))"
-                    @blur="refocusTracker"
-                    @keydown.enter="($event.target as HTMLInputElement).blur()"
-                  />
-                  <div class="control-hint">Shift+PgUp/PgDn</div>
-                </div>
-              </div>
-            </div>
-            <div class="transport-controls">
-              <button
-                type="button"
-                class="transport-icon-btn"
-                :class="{ active: playbackMode === 'pattern' && isPlaying }"
-                title="Play Pattern (Space)"
-                :disabled="isLoadingSong"
-                @click="handlePlayPattern"
-              >
-                <q-icon name="replay" size="20px" />
-              </button>
-              <button
-                type="button"
-                class="transport-icon-btn"
-                :class="{ active: playbackMode === 'song' && isPlaying }"
-                title="Play Song"
-                :disabled="isLoadingSong"
-                @click="handlePlaySong"
-              >
-                <q-icon name="play_arrow" size="20px" />
-              </button>
-              <button
-                type="button"
-                class="transport-icon-btn"
-                title="Pause"
-                :disabled="isLoadingSong"
-                @click="handlePause"
-              >
-                <q-icon name="pause" size="20px" />
-              </button>
-              <button
-                type="button"
-                class="transport-icon-btn"
-                title="Stop"
-                :disabled="isLoadingSong"
-                @click="handleStop"
-              >
-                <q-icon name="stop" size="20px" />
-              </button>
-              <div class="volume-control">
-                <q-icon name="volume_up" size="14px" class="volume-icon" />
+            <div class="pattern-controls">
+              <div class="control-label">Step size</div>
+              <div class="control-field">
                 <input
-                  type="range"
-                  class="volume-slider"
-                  :value="userSettings.masterVolume"
-                  :style="{ '--volume-percent': `${userSettings.masterVolume * 100}%` }"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  @input="onMasterVolumeChange"
-                  @mousedown.stop
-                  @click.stop
-                  title="Master Volume"
+                  class="length-input"
+                  type="number"
+                  :min="1"
+                  :max="64"
+                  :value="stepSize"
+                  @change="
+                    (event) =>
+                      setStepSizeInput(
+                        Number((event.target as HTMLInputElement).value),
+                      )
+                  "
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
                 />
+                <div class="control-hint">Rows per edit</div>
               </div>
             </div>
+          </div>
+          <div class="pattern-row-inline">
+            <div class="pattern-controls">
+              <div class="control-label">Base octave</div>
+              <div class="control-field">
+                <input
+                  class="length-input"
+                  type="number"
+                  :min="0"
+                  :max="8"
+                  :value="baseOctave"
+                  @change="
+                    (event) =>
+                      setBaseOctaveInput(
+                        Number((event.target as HTMLInputElement).value),
+                      )
+                  "
+                  @blur="refocusTracker"
+                  @keydown.enter="($event.target as HTMLInputElement).blur()"
+                />
+                <div class="control-hint">Shift+PgUp/PgDn</div>
+              </div>
+            </div>
+          </div>
+          <div class="transport-controls">
+            <button
+              type="button"
+              class="transport-icon-btn"
+              :class="{ active: playbackMode === 'pattern' && isPlaying }"
+              title="Play Pattern (Space)"
+              :disabled="isLoadingSong"
+              @click="handlePlayPattern"
+            >
+              <q-icon name="replay" size="20px" />
+            </button>
+            <button
+              type="button"
+              class="transport-icon-btn"
+              :class="{ active: playbackMode === 'song' && isPlaying }"
+              title="Play Song"
+              :disabled="isLoadingSong"
+              @click="handlePlaySong"
+            >
+              <q-icon name="play_arrow" size="20px" />
+            </button>
+            <button
+              type="button"
+              class="transport-icon-btn"
+              title="Pause"
+              :disabled="isLoadingSong"
+              @click="handlePause"
+            >
+              <q-icon name="pause" size="20px" />
+            </button>
+            <button
+              type="button"
+              class="transport-icon-btn"
+              title="Stop"
+              :disabled="isLoadingSong"
+              @click="handleStop"
+            >
+              <q-icon name="stop" size="20px" />
+            </button>
+            <div class="volume-control">
+              <q-icon name="volume_up" size="14px" class="volume-icon" />
+              <input
+                type="range"
+                class="volume-slider"
+                :value="userSettings.masterVolume"
+                :style="{
+                  '--volume-percent': `${userSettings.masterVolume * 100}%`,
+                }"
+                min="0"
+                max="1"
+                step="0.01"
+                @input="onMasterVolumeChange"
+                @mousedown.stop
+                @click.stop
+                title="Master Volume"
+              />
+            </div>
+          </div>
         </div>
 
         <div class="instrument-panel top-panel">
@@ -287,22 +306,36 @@
               class="instrument-row"
               :class="{
                 active: activeInstrumentId === formatInstrumentId(slot.slot),
-                empty: !slot.patchId
+                empty: !slot.patchId,
               }"
               :title="slot.patchId ? `Bank: ${slot.bankName}` : ''"
               @click="setActiveInstrument(slot.slot)"
             >
-              <div class="slot-number">#{{ formatInstrumentId(slot.slot) }}</div>
-              <div class="patch-name" @dblclick.stop="beginInstrumentRename(slot)">
+              <div class="slot-number">
+                #{{ formatInstrumentId(slot.slot) }}
+              </div>
+              <div
+                class="patch-name"
+                @dblclick.stop="beginInstrumentRename(slot)"
+              >
                 <input
                   v-if="instrumentNameEditSlot === slot.slot"
                   :ref="(el) => setInstrumentNameInputRef(slot.slot, el)"
                   v-model="instrumentNameDraft"
                   type="text"
                   class="instrument-name-input"
-                  @keydown.enter.prevent="commitInstrumentRename(slot.slot); refocusTracker()"
-                  @keydown.esc.prevent="cancelInstrumentRename(); refocusTracker()"
-                  @blur="commitInstrumentRename(slot.slot); refocusTracker()"
+                  @keydown.enter.prevent="
+                    commitInstrumentRename(slot.slot);
+                    refocusTracker();
+                  "
+                  @keydown.esc.prevent="
+                    cancelInstrumentRename();
+                    refocusTracker();
+                  "
+                  @blur="
+                    commitInstrumentRename(slot.slot);
+                    refocusTracker();
+                  "
                 />
                 <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
               </div>
@@ -310,7 +343,12 @@
                 :model-value="slot.patchId ?? null"
                 :patches="availablePatches"
                 placeholder="Select patch"
-                @select="(p) => { onPatchSelect(slot.slot, p.id); refocusTracker(); }"
+                @select="
+                  (p) => {
+                    onPatchSelect(slot.slot, p.id);
+                    refocusTracker();
+                  }
+                "
                 @close="refocusTracker"
                 @click.stop
               />
@@ -331,7 +369,10 @@
                   type="button"
                   class="icon-action-button"
                   title="New patch"
-                  @click.stop="createNewSongPatch(slot.slot); refocusTracker()"
+                  @click.stop="
+                    createNewSongPatch(slot.slot);
+                    refocusTracker();
+                  "
                 >
                   <q-icon name="add" size="16px" />
                 </button>
@@ -349,7 +390,10 @@
                   class="icon-action-button danger"
                   title="Clear instrument"
                   :disabled="!slot.patchId"
-                  @click.stop="clearInstrument(slot.slot); refocusTracker()"
+                  @click.stop="
+                    clearInstrument(slot.slot);
+                    refocusTracker();
+                  "
                 >
                   <q-icon name="close" size="16px" />
                 </button>
@@ -359,17 +403,21 @@
         </div>
       </div>
 
-  <div
-    v-if="userSettings.showWaveformVisualizers"
-    ref="visualizerRowRef"
-    class="visualizer-row"
-    :style="{
-      paddingLeft: `${visualizerPadding.left}px`,
-      paddingRight: `${visualizerPadding.right}px`
-    }"
-  >
+      <div
+        v-if="userSettings.showWaveformVisualizers"
+        ref="visualizerRowRef"
+        class="visualizer-row"
+        :style="{
+          paddingLeft: `${visualizerPadding.left}px`,
+          paddingRight: `${visualizerPadding.right}px`,
+        }"
+      >
         <div class="visualizer-spacer"></div>
-        <div ref="visualizerTracksRef" class="visualizer-tracks">
+        <div
+          ref="visualizerTracksRef"
+          class="visualizer-tracks visualizer-fade"
+          :class="{ ready: visualizerReady }"
+        >
           <div
             v-for="(track, index) in currentPattern?.tracks"
             :key="`viz-${track.id}`"
@@ -409,7 +457,11 @@
           :node="masterOutputNode"
           :is-playing="isPlaying"
         />
-        <div ref="patternAreaRef" class="pattern-area" @scroll.passive="onPatternAreaScroll">
+        <div
+          ref="patternAreaRef"
+          class="pattern-area"
+          @scroll.passive="onPatternAreaScroll"
+        >
           <TrackerPattern
             ref="trackerPatternRef"
             :tracks="currentPattern?.tracks ?? []"
@@ -439,7 +491,10 @@
         <div class="export-status">{{ exportStatusText }}</div>
         <div class="export-progress">
           <div class="export-progress-bar">
-            <div class="export-progress-fill" :style="{ width: `${exportProgressPercent}%` }"></div>
+            <div
+              class="export-progress-fill"
+              :style="{ width: `${exportProgressPercent}%` }"
+            ></div>
           </div>
           <div class="export-progress-value">{{ exportProgressPercent }}%</div>
         </div>
@@ -450,7 +505,9 @@
           :disabled="exportStage === 'recording' || exportStage === 'encoding'"
           @click="showExportModal = false"
         >
-          {{ exportStage === 'done' || exportStage === 'error' ? 'Close' : 'Hide' }}
+          {{
+            exportStage === 'done' || exportStage === 'error' ? 'Close' : 'Hide'
+          }}
         </button>
       </div>
     </div>
@@ -458,7 +515,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
@@ -510,14 +574,16 @@ const {
   instrumentSlots,
   activeInstrumentId,
   currentInstrumentPage,
-  songPatches
+  songPatches,
 } = storeToRefs(trackerStore);
 const currentPattern = computed(() => trackerStore.currentPattern);
 const currentPageSlots = computed(() => trackerStore.currentPageSlots);
 
 // Signature of instrument slots for audio sync - only watch properties that matter
 const slotSignatures = computed(() =>
-  instrumentSlots.value.map(s => `${s.slot}:${s.patchId ?? ''}:${s.bankId ?? ''}`).join('|')
+  instrumentSlots.value
+    .map((s) => `${s.slot}:${s.patchId ?? ''}:${s.bankId ?? ''}`)
+    .join('|'),
 );
 const patchStore = usePatchStore();
 const playbackStore = useTrackerPlaybackStore();
@@ -565,7 +631,7 @@ const selectionContext: TrackerSelectionContext = {
   currentPattern,
   pushHistory: () => trackerStore.pushHistory(),
   parseTrackerNoteSymbol,
-  midiToTrackerNote
+  midiToTrackerNote,
 };
 
 const {
@@ -589,7 +655,7 @@ const {
   copyPattern,
   cutPattern,
   pastePattern,
-  transposePattern
+  transposePattern,
 } = useTrackerSelection(selectionContext);
 
 function normalizeVolumeChars(vol?: string): [string, string] {
@@ -611,14 +677,36 @@ function normalizeMacroChars(macro?: string): [string, string, string] {
 }
 
 function midiToTrackerNote(midi: number): string {
-  const names = ['C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#', 'A-', 'A#', 'B-'];
+  const names = [
+    'C-',
+    'C#',
+    'D-',
+    'D#',
+    'E-',
+    'F-',
+    'F#',
+    'G-',
+    'G#',
+    'A-',
+    'A#',
+    'B-',
+  ];
   const octave = Math.floor(midi / 12) - 1;
   const name = names[midi % 12] ?? 'C-';
   return `${name}${octave}`;
 }
 
 // Mute/solo state from playback store
-const { mutedTracks, soloedTracks, isPlaying, isPaused, playbackRow, playbackMode, autoScroll, currentSequenceIndex } = storeToRefs(playbackStore);
+const {
+  mutedTracks,
+  soloedTracks,
+  isPlaying,
+  isPaused,
+  playbackRow,
+  playbackMode,
+  autoScroll,
+  currentSequenceIndex,
+} = storeToRefs(playbackStore);
 
 watch(
   () => keyboardStore.latestEvent,
@@ -688,12 +776,17 @@ function refocusTracker() {
 }
 
 function resolvePatternTracksWrapper(): HTMLElement | null {
-  return trackerPatternRef.value?.tracksWrapperRef?.value ?? patternTracksWrapper.value ?? null;
+  return (
+    trackerPatternRef.value?.tracksWrapperRef?.value ??
+    patternTracksWrapper.value ??
+    null
+  );
 }
 
 function updateVisualizerPadding() {
   const rowEl = visualizerRowRef.value;
-  const patternEl = (trackerPatternRef.value?.$el as HTMLElement | undefined) ?? null;
+  const patternEl =
+    (trackerPatternRef.value?.$el as HTMLElement | undefined) ?? null;
   if (!rowEl || !patternEl) return;
 
   const rowRect = rowEl.getBoundingClientRect();
@@ -701,8 +794,14 @@ function updateVisualizerPadding() {
 
   if (rowRect.width === 0) return;
 
-  const left = Math.max(0, patternRect.left - rowRect.left + VISUALIZER_PADDING_BIAS);
-  const right = Math.max(0, rowRect.right - patternRect.right - VISUALIZER_PADDING_BIAS);
+  const left = Math.max(
+    0,
+    patternRect.left - rowRect.left + VISUALIZER_PADDING_BIAS,
+  );
+  const right = Math.max(
+    0,
+    rowRect.right - patternRect.right - VISUALIZER_PADDING_BIAS,
+  );
 
   visualizerPadding.value = { left, right };
 }
@@ -713,7 +812,10 @@ function syncVisualizerScroll(scrollLeft: number) {
   if (!patternWrapper || !visualizer) return;
 
   patternTracksWrapper.value = patternWrapper;
-  const maxScroll = Math.max(0, patternWrapper.scrollWidth - patternWrapper.clientWidth);
+  const maxScroll = Math.max(
+    0,
+    patternWrapper.scrollWidth - patternWrapper.clientWidth,
+  );
   const clamped = Math.min(scrollLeft, maxScroll);
 
   if (isSyncingVisualizerScroll) return;
@@ -741,11 +843,17 @@ function setupVisualizerScrollSync() {
 
   if (!patternWrapper || !visualizer) return;
 
-  const handlePatternScroll = () => syncVisualizerScroll(patternWrapper.scrollLeft);
-  const handleVisualizerScroll = () => syncVisualizerScroll(visualizer.scrollLeft);
+  const handlePatternScroll = () =>
+    syncVisualizerScroll(patternWrapper.scrollLeft);
+  const handleVisualizerScroll = () =>
+    syncVisualizerScroll(visualizer.scrollLeft);
 
-  patternWrapper.addEventListener('scroll', handlePatternScroll, { passive: true });
-  visualizer.addEventListener('scroll', handleVisualizerScroll, { passive: true });
+  patternWrapper.addEventListener('scroll', handlePatternScroll, {
+    passive: true,
+  });
+  visualizer.addEventListener('scroll', handleVisualizerScroll, {
+    passive: true,
+  });
 
   teardownVisualizerScrollSync = () => {
     patternWrapper.removeEventListener('scroll', handlePatternScroll);
@@ -766,6 +874,8 @@ function refreshVisualizerAlignment() {
     setupVisualizerScrollSync();
   });
 }
+
+const visualizerReady = ref(false);
 
 const noteKeyMap: Record<string, number> = {
   KeyZ: 48,
@@ -805,9 +915,10 @@ const noteKeyMap: Record<string, number> = {
   BracketLeft: 77,
   Equal: 78,
   BracketRight: 79,
-  Backslash: 81
+  Backslash: 81,
 };
-const formatInstrumentId = (slotNumber: number) => slotNumber.toString().padStart(2, '0');
+const formatInstrumentId = (slotNumber: number) =>
+  slotNumber.toString().padStart(2, '0');
 const normalizeInstrumentId = (instrumentId?: string) => {
   if (!instrumentId) return undefined;
   const numeric = Number(instrumentId);
@@ -825,7 +936,7 @@ function applyBaseOctave(midi: number): number {
 
 function hasPatchForInstrument(instrumentId: string): boolean {
   return instrumentSlots.value.some(
-    (slot) => formatInstrumentId(slot.slot) === instrumentId && !!slot.patchId
+    (slot) => formatInstrumentId(slot.slot) === instrumentId && !!slot.patchId,
   );
 }
 
@@ -838,7 +949,7 @@ const navigationContext: TrackerNavigationContext = {
   rowsCount,
   currentPattern,
   columnsPerTrack,
-  clearSelection
+  clearSelection,
 };
 
 const {
@@ -847,7 +958,7 @@ const {
   moveRow,
   moveColumn,
   jumpToNextTrack,
-  jumpToPrevTrack
+  jumpToPrevTrack,
 } = useTrackerNavigation(navigationContext);
 
 // Set up editing composable
@@ -875,7 +986,7 @@ const editingContext: TrackerEditingContext = {
   onNotePreview: (trackIndex: number, instrumentId: string) => {
     setTrackAudioNodeForInstrumentRef?.(trackIndex, instrumentId);
     markTrackNotePlayedRef?.(trackIndex);
-  }
+  },
 };
 
 const {
@@ -892,7 +1003,7 @@ const {
   insertNoteOff,
   clearStep,
   deleteRowAndShiftUp,
-  insertRowAndShiftDown
+  insertRowAndShiftDown,
 } = useTrackerEditing(editingContext);
 
 // Set up instruments composable (needs to be after playback and editing composables)
@@ -911,7 +1022,6 @@ function setBaseOctaveInput(value: number) {
   baseOctave.value = clamped;
   trackerStore.setBaseOctave(clamped);
 }
-
 
 function setPatternRows(count: number) {
   const clamped = Math.max(1, Math.min(256, Math.round(count)));
@@ -947,19 +1057,21 @@ const songBuilderContext: TrackerSongBuilderContext = {
   songPatches,
   songBank,
   normalizeInstrumentId,
-  formatInstrumentId
+  formatInstrumentId,
 };
 
 const {
   buildPlaybackSong,
   syncSongBankFromSlots: syncSongBankFromSlotsBase,
-  resolveInstrumentForTrack
+  resolveInstrumentForTrack,
 } = useTrackerSongBuilder(songBuilderContext);
 
 // Will be assigned after playback composable is set up
 let updateTrackAudioNodesRef: (() => void) | null = null;
 let markTrackNotePlayedRef: ((trackIndex: number) => void) | null = null;
-let setTrackAudioNodeForInstrumentRef: ((trackIndex: number, instrumentId?: string) => void) | null = null;
+let setTrackAudioNodeForInstrumentRef:
+  | ((trackIndex: number, instrumentId?: string) => void)
+  | null = null;
 
 // Wrapper that also updates track audio nodes and applies volumes
 async function syncSongBankFromSlots() {
@@ -981,13 +1093,16 @@ async function syncSongBankFromSlots() {
 const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
 const tracksWithActiveNotes = ref<Set<number>>(new Set());
 
-function setTrackAudioNodeForInstrument(trackIndex: number, instrumentId?: string) {
+function setTrackAudioNodeForInstrument(
+  trackIndex: number,
+  instrumentId?: string,
+) {
   const normalized = normalizeInstrumentId(instrumentId);
   const node = normalized ? songBank.getInstrumentOutput(normalized) : null;
   if (trackAudioNodes.value[trackIndex] === node) return;
   trackAudioNodes.value = {
     ...trackAudioNodes.value,
-    [trackIndex]: node
+    [trackIndex]: node,
   };
 }
 
@@ -1023,7 +1138,10 @@ function clearTrackAudioNodes() {
 
 function markTrackNotePlayed(trackIndex: number) {
   if (!tracksWithActiveNotes.value.has(trackIndex)) {
-    tracksWithActiveNotes.value = new Set([...tracksWithActiveNotes.value, trackIndex]);
+    tracksWithActiveNotes.value = new Set([
+      ...tracksWithActiveNotes.value,
+      trackIndex,
+    ]);
   }
 }
 
@@ -1078,7 +1196,10 @@ function sanitizeMuteSoloState(trackTotal = trackCount.value) {
   playbackStore.sanitizeMuteSoloState(trackTotal);
 }
 
-async function initializePlayback(mode: 'pattern' | 'song' = playbackMode.value, skipIfPlaying: boolean = false): Promise<boolean> {
+async function initializePlayback(
+  mode: 'pattern' | 'song' = playbackMode.value,
+  skipIfPlaying: boolean = false,
+): Promise<boolean> {
   updateTrackAudioNodes();
   const song = buildPlaybackSong(mode);
   return await playbackStore.loadSong(song, mode, skipIfPlaying);
@@ -1104,7 +1225,7 @@ const instrumentsContext: TrackerInstrumentsContext = {
   syncSongBankFromSlots,
   sanitizeMuteSoloState,
   updateTrackAudioNodes,
-  trackCount
+  trackCount,
 };
 
 const {
@@ -1122,7 +1243,7 @@ const {
   editSlotPatch,
   loadSystemBankOptions,
   addTrack,
-  removeTrack
+  removeTrack,
 } = useTrackerInstruments(instrumentsContext);
 
 // Instrument volume (mixer) controls
@@ -1162,28 +1283,27 @@ const fileIOContext: TrackerFileIOContext = {
   stopPlayback: () => {
     playbackStore.stop();
     clearTrackAudioNodes();
-  }
+  },
 };
 
-const {
-  handleSaveSongFile,
-  handleLoadSongFile
-} = useTrackerFileIO(fileIOContext);
+const { handleSaveSongFile, handleLoadSongFile } =
+  useTrackerFileIO(fileIOContext);
 
 // New Song with confirmation
 function handleNewSong() {
   $q.dialog({
     title: 'New Song',
-    message: 'Are you sure you want to start a new song? All unsaved changes will be lost.',
+    message:
+      'Are you sure you want to start a new song? All unsaved changes will be lost.',
     cancel: {
       label: 'Cancel',
-      flat: true
+      flat: true,
     },
     ok: {
       label: 'New Song',
-      color: 'negative'
+      color: 'negative',
     },
-    persistent: true
+    persistent: true,
   }).onOk(() => {
     // Stop any playback first
     handleStop();
@@ -1203,8 +1323,12 @@ const keyboardContext: TrackerKeyboardContext = {
   activeMacroNibble,
   isEditMode,
   isFullscreen,
-  get rowsCount() { return rowsCount.value; },
-  get trackCount() { return trackCount.value; },
+  get rowsCount() {
+    return rowsCount.value;
+  },
+  get trackCount() {
+    return trackCount.value;
+  },
 
   // Selection
   selectionAnchor,
@@ -1267,7 +1391,7 @@ const keyboardContext: TrackerKeyboardContext = {
   transposePattern,
 
   // Note mapping
-  noteKeyMap
+  noteKeyMap,
 };
 
 const { handleKeyDown: onKeyDown } = useTrackerKeyboard(keyboardContext);
@@ -1286,7 +1410,7 @@ const exportContext: TrackerExportContext = {
   activeRow,
   playbackRow,
   syncSongBankFromSlots,
-  initializePlayback
+  initializePlayback,
 };
 
 const {
@@ -1296,7 +1420,7 @@ const {
   exportError,
   exportStatusText,
   exportProgressPercent,
-  exportSongToMp3
+  exportSongToMp3,
 } = useTrackerExport(exportContext);
 
 function handleCreatePattern() {
@@ -1326,7 +1450,6 @@ function handleRenamePattern(patternId: string, name: string) {
   trackerStore.setPatternName(patternId, name);
 }
 
-
 function handleWindowResize() {
   updatePatternAreaHeight();
   refreshVisualizerAlignment();
@@ -1347,12 +1470,23 @@ onMounted(async () => {
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('resize', handleWindowResize);
   handleWindowResize();
+  visualizerReady.value = false;
+  await nextTick();
+  refreshVisualizerAlignment();
+  await nextTick();
+  visualizerReady.value = true;
+  visualizerReady.value = false;
+  await nextTick();
+  refreshVisualizerAlignment();
+  visualizerReady.value = true;
 
   // Re-register the track audio node setter since it was cleared on unmount
-  playbackStore.setTrackAudioNodeSetter((trackIndex: number, instrumentId: string | undefined) => {
-    setTrackAudioNodeForInstrument(trackIndex, instrumentId);
-    markTrackNotePlayedRef?.(trackIndex);
-  });
+  playbackStore.setTrackAudioNodeSetter(
+    (trackIndex: number, instrumentId: string | undefined) => {
+      setTrackAudioNodeForInstrument(trackIndex, instrumentId);
+      markTrackNotePlayedRef?.(trackIndex);
+    },
+  );
 });
 
 watch(
@@ -1372,13 +1506,13 @@ watch(
       playbackStore.setBpm(bpm);
     }, 50);
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => rowsCount.value,
   (rows) => playbackStore.setLength(rows),
-  { immediate: true }
+  { immediate: true },
 );
 
 // Update pattern area height when fullscreen mode changes
@@ -1391,7 +1525,7 @@ watch(isFullscreen, async () => {
 watch(
   () => baseOctave.value,
   (oct) => trackerStore.setBaseOctave(oct),
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
@@ -1399,20 +1533,25 @@ watch(
   () => {
     updateTrackAudioNodes();
     refreshVisualizerAlignment();
-  }
+  },
 );
 
 watch(trackCount, () => refreshVisualizerAlignment());
 
 watch(
   () => userSettings.value.showWaveformVisualizers,
-  (show) => {
+  async (show) => {
     if (show) {
+      visualizerReady.value = false;
+      await nextTick();
       refreshVisualizerAlignment();
+      await nextTick();
+      visualizerReady.value = true;
     } else {
+      visualizerReady.value = false;
       teardownVisualizerScrollSync?.();
     }
-  }
+  },
 );
 
 // Watch only the properties that matter for audio sync (slot, patchId, bankId)
@@ -1690,6 +1829,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   margin: 0 auto;
   width: 100%;
+  overflow: hidden;
 }
 
 .visualizer-spacer {
@@ -1712,6 +1852,15 @@ onBeforeUnmount(() => {
 
 .visualizer-tracks::-webkit-scrollbar {
   display: none;
+}
+
+.visualizer-fade {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.visualizer-fade.ready {
+  opacity: 1;
 }
 
 .visualizer-cell {
@@ -1982,7 +2131,9 @@ onBeforeUnmount(() => {
 }
 
 .transport-button.active {
-  box-shadow: 0 0 0 2px var(--tracker-selected-bg, rgba(77, 242, 197, 0.35)), 0 8px 20px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 0 0 2px var(--tracker-selected-bg, rgba(77, 242, 197, 0.35)),
+    0 8px 20px rgba(0, 0, 0, 0.35);
   transform: translateY(-1px);
 }
 
@@ -2056,7 +2207,6 @@ onBeforeUnmount(() => {
   color: var(--text-muted, rgba(255, 255, 255, 0.5));
 }
 
-
 .pattern-controls {
   display: flex;
   align-items: center;
@@ -2080,7 +2230,10 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .edit-mode-toggle.active {
@@ -2139,7 +2292,9 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
 }
 
 .song-button:hover {
@@ -2477,7 +2632,11 @@ onBeforeUnmount(() => {
 
 .export-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--tracker-accent-primary, #4df2c5), var(--tracker-accent-secondary, #7fe0ff));
+  background: linear-gradient(
+    90deg,
+    var(--tracker-accent-primary, #4df2c5),
+    var(--tracker-accent-secondary, #7fe0ff)
+  );
   transition: width 120ms linear;
 }
 

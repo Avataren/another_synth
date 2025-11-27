@@ -25,7 +25,11 @@
                   <span class="badge-label">Current:</span>
                   <span class="badge-value">{{ currentTheme.name }}</span>
                   <q-icon name="expand_more" size="18px" class="badge-icon" />
-                  <q-menu anchor="bottom right" self="top right" class="theme-menu">
+                  <q-menu
+                    anchor="bottom right"
+                    self="top right"
+                    class="theme-menu"
+                  >
                     <q-list>
                       <q-item
                         v-for="theme in allThemes"
@@ -44,7 +48,9 @@
                         </q-item-section>
                         <q-item-section>
                           <q-item-label>{{ theme.name }}</q-item-label>
-                          <q-item-label caption>{{ theme.description }}</q-item-label>
+                          <q-item-label caption>{{
+                            theme.description
+                          }}</q-item-label>
                         </q-item-section>
                         <q-item-section v-if="currentThemeId === theme.id" side>
                           <q-icon name="check" color="positive" size="18px" />
@@ -70,7 +76,7 @@
                       <div
                         class="preview-bar"
                         :style="{
-                          background: theme.colors.accentPrimary
+                          background: theme.colors.accentPrimary,
                         }"
                       />
                     </div>
@@ -111,7 +117,12 @@
                   <div class="font-setting">
                     <div class="font-setting-header">
                       <label class="font-label">Interface Font</label>
-                      <span class="font-preview-text" :style="{ fontFamily: `'${currentUiFont}', sans-serif` }">
+                      <span
+                        class="font-preview-text"
+                        :style="{
+                          fontFamily: `'${currentUiFont}', sans-serif`,
+                        }"
+                      >
                         {{ currentUiFont }}
                       </span>
                     </div>
@@ -123,10 +134,16 @@
                         :class="{ active: currentUiFont === font.id }"
                         @click="setUiFont(font.id)"
                       >
-                        <span class="font-name" :style="{ fontFamily: `'${font.id}', sans-serif` }">
+                        <span
+                          class="font-name"
+                          :style="{ fontFamily: `'${font.id}', sans-serif` }"
+                        >
                           {{ font.name }}
                         </span>
-                        <div v-if="currentUiFont === font.id" class="font-check">
+                        <div
+                          v-if="currentUiFont === font.id"
+                          class="font-check"
+                        >
                           <q-icon name="check_circle" size="16px" />
                         </div>
                       </div>
@@ -137,7 +154,12 @@
                   <div class="font-setting">
                     <div class="font-setting-header">
                       <label class="font-label">Tracker Font</label>
-                      <span class="font-preview-text mono" :style="{ fontFamily: `'${currentTrackerFont}', monospace` }">
+                      <span
+                        class="font-preview-text mono"
+                        :style="{
+                          fontFamily: `'${currentTrackerFont}', monospace`,
+                        }"
+                      >
                         {{ currentTrackerFont }}
                       </span>
                     </div>
@@ -149,10 +171,16 @@
                         :class="{ active: currentTrackerFont === font.id }"
                         @click="setTrackerFont(font.id)"
                       >
-                        <span class="font-name mono" :style="{ fontFamily: `'${font.id}', monospace` }">
+                        <span
+                          class="font-name mono"
+                          :style="{ fontFamily: `'${font.id}', monospace` }"
+                        >
                           {{ font.name }}
                         </span>
-                        <div v-if="currentTrackerFont === font.id" class="font-check">
+                        <div
+                          v-if="currentTrackerFont === font.id"
+                          class="font-check"
+                        >
                           <q-icon name="check_circle" size="16px" />
                         </div>
                       </div>
@@ -179,11 +207,18 @@
                     <input
                       type="checkbox"
                       :checked="settings.showSpectrumAnalyzer"
-                      @change="updateSetting('showSpectrumAnalyzer', ($event.target as HTMLInputElement).checked)"
+                      @change="
+                        updateSetting(
+                          'showSpectrumAnalyzer',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
                     />
                     <div class="toggle-info">
                       <span class="toggle-label">Spectrum Analyzer</span>
-                      <span class="toggle-description">Show frequency spectrum overlay on the tracker</span>
+                      <span class="toggle-description"
+                        >Show frequency spectrum overlay on the tracker</span
+                      >
                     </div>
                   </label>
 
@@ -191,11 +226,18 @@
                     <input
                       type="checkbox"
                       :checked="settings.showWaveformVisualizers"
-                      @change="updateSetting('showWaveformVisualizers', ($event.target as HTMLInputElement).checked)"
+                      @change="
+                        updateSetting(
+                          'showWaveformVisualizers',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
                     />
                     <div class="toggle-info">
                       <span class="toggle-label">Track Waveforms</span>
-                      <span class="toggle-description">Show waveform visualizers for each track</span>
+                      <span class="toggle-description"
+                        >Show waveform visualizers for each track</span
+                      >
                     </div>
                   </label>
 
@@ -203,11 +245,19 @@
                     <input
                       type="checkbox"
                       :checked="settings.enableMidi"
-                      @change="updateSetting('enableMidi', ($event.target as HTMLInputElement).checked)"
+                      @change="
+                        updateSetting(
+                          'enableMidi',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
                     />
                     <div class="toggle-info">
                       <span class="toggle-label">Enable MIDI Input</span>
-                      <span class="toggle-description">Request MIDI access for external controllers (requires browser permission)</span>
+                      <span class="toggle-description"
+                        >Request MIDI access for external controllers (requires
+                        browser permission)</span
+                      >
                     </div>
                   </label>
                 </div>
@@ -224,54 +274,72 @@
     <div class="theme-editor-dialog">
       <div class="dialog-header">
         <h3>Edit Custom Theme</h3>
-        <button class="dialog-close" type="button" @click="closeThemeEditor">×</button>
+        <button class="dialog-close" type="button" @click="closeThemeEditor">
+          ×
+        </button>
       </div>
-        <div class="dialog-body">
-          <div class="theme-editor-row">
-            <label class="dialog-label">Theme name</label>
-            <input
-              class="dialog-input"
-              type="text"
-              :value="themeDraft.name"
-              disabled
-            />
-          </div>
-          <div class="theme-editor-row">
-            <label class="dialog-label">Copy colors from</label>
-            <q-select
-              class="dialog-select"
-              v-model="copySourceId"
-              :options="copyThemeOptions"
-              dense
-              outlined
-              emit-value
-              map-options
-              dropdown-icon="expand_more"
-              popup-content-class="dialog-select-menu"
-              @update:model-value="applyCopySource"
-            />
-          </div>
+      <div class="dialog-body">
+        <div class="theme-editor-row">
+          <label class="dialog-label">Theme name</label>
+          <input
+            class="dialog-input"
+            type="text"
+            :value="themeDraft.name"
+            disabled
+          />
+        </div>
+        <div class="theme-editor-row">
+          <label class="dialog-label">Copy colors from</label>
+          <q-select
+            class="dialog-select"
+            v-model="copySourceId"
+            :options="copyThemeOptions"
+            dense
+            outlined
+            emit-value
+            map-options
+            dropdown-icon="expand_more"
+            popup-content-class="dialog-select-menu"
+            @update:model-value="applyCopySource"
+          />
+        </div>
 
-          <div class="color-grid">
-            <div v-for="field in colorFields" :key="field.key" class="color-row">
-              <label class="color-label">{{ field.label }}</label>
-              <div class="color-input-wrapper">
-                <label class="color-swatch">
-                  <input
-                    class="color-picker"
-                    type="color"
-                    :value="coerceColor(themeDraft.colors[field.key])"
-                    @input="onPickColor(field.key, ($event.target as HTMLInputElement).value)"
-                  />
-                  <span class="color-preview" :style="{ background: themeDraft.colors[field.key] }"></span>
-                </label>
-              </div>
+        <div class="color-grid">
+          <div v-for="field in colorFields" :key="field.key" class="color-row">
+            <label class="color-label">{{ field.label }}</label>
+            <div class="color-input-wrapper">
+              <label class="color-swatch">
+                <input
+                  class="color-picker"
+                  type="color"
+                  :value="coerceColor(themeDraft.colors[field.key])"
+                  @input="
+                    onPickColor(
+                      field.key,
+                      ($event.target as HTMLInputElement).value,
+                    )
+                  "
+                />
+                <span
+                  class="color-preview"
+                  :style="{ background: themeDraft.colors[field.key] }"
+                ></span>
+              </label>
             </div>
           </div>
         </div>
+      </div>
       <div class="dialog-footer">
-        <button type="button" class="dialog-button ghost" @click="closeThemeEditor">Cancel</button>
-        <button type="button" class="dialog-button" @click="saveCustomTheme">Save Theme</button>
+        <button
+          type="button"
+          class="dialog-button ghost"
+          @click="closeThemeEditor"
+        >
+          Cancel
+        </button>
+        <button type="button" class="dialog-button" @click="saveCustomTheme">
+          Save Theme
+        </button>
       </div>
     </div>
   </div>
@@ -280,7 +348,11 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { ref, computed } from 'vue';
-import { useThemeStore, type ThemeColors, type TrackerTheme } from 'src/stores/theme-store';
+import {
+  useThemeStore,
+  type ThemeColors,
+  type TrackerTheme,
+} from 'src/stores/theme-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 const themeStore = useThemeStore();
@@ -290,7 +362,7 @@ const {
   currentUiFont,
   currentTrackerFont,
   allThemes,
-  customTheme
+  customTheme,
 } = storeToRefs(themeStore);
 const {
   setTheme,
@@ -299,7 +371,7 @@ const {
   uiFonts,
   monospaceFonts,
   setCustomTheme,
-  getThemeById
+  getThemeById,
 } = themeStore;
 
 const userSettingsStore = useUserSettingsStore();
@@ -308,13 +380,17 @@ const { updateSetting } = userSettingsStore;
 
 const tabs = [
   { id: 'appearance' as const, label: 'Appearance' },
-  { id: 'preferences' as const, label: 'Preferences' }
+  { id: 'preferences' as const, label: 'Preferences' },
 ];
 type TabId = (typeof tabs)[number]['id'];
 const activeTab = ref<TabId>('appearance');
 
 type ColorFieldKey = keyof ThemeColors;
-const colorFields: { key: ColorFieldKey; label: string; placeholder?: string }[] = [
+const colorFields: {
+  key: ColorFieldKey;
+  label: string;
+  placeholder?: string;
+}[] = [
   { key: 'appBackground', label: 'App Background' },
   { key: 'appBackgroundAlt', label: 'App Background Alt' },
   { key: 'headerBackground', label: 'Header Background' },
@@ -344,13 +420,17 @@ const colorFields: { key: ColorFieldKey; label: string; placeholder?: string }[]
   { key: 'activeBorder', label: 'Active Border' },
   { key: 'selectedBorder', label: 'Selected Border' },
   { key: 'selectedBackground', label: 'Selected Background' },
-  { key: 'cellActiveBg', label: 'Cell Active BG', placeholder: 'Supports gradients' },
+  {
+    key: 'cellActiveBg',
+    label: 'Cell Active BG',
+    placeholder: 'Supports gradients',
+  },
   { key: 'cellActiveText', label: 'Cell Active Text' },
   { key: 'noteText', label: 'Note Text' },
   { key: 'instrumentText', label: 'Instrument Text' },
   { key: 'volumeText', label: 'Volume Text' },
   { key: 'effectText', label: 'Effect Text' },
-  { key: 'defaultText', label: 'Default Text' }
+  { key: 'defaultText', label: 'Default Text' },
 ];
 
 const showThemeEditor = ref(false);
@@ -358,14 +438,14 @@ const copySourceId = ref('custom');
 const copyThemeOptions = computed(() =>
   allThemes.value.map((theme) => ({
     label: theme.name,
-    value: theme.id
-  }))
+    value: theme.id,
+  })),
 );
 
 function cloneTheme(theme: TrackerTheme) {
   return {
     ...theme,
-    colors: { ...theme.colors }
+    colors: { ...theme.colors },
   };
 }
 
@@ -387,7 +467,7 @@ function applyCopySource() {
     ...source,
     id: 'custom',
     name: 'Custom',
-    description: 'Your custom colors'
+    description: 'Your custom colors',
   });
 }
 
@@ -450,7 +530,7 @@ function onPickColor(key: ColorFieldKey, value: string) {
 
 .fade-slide-enter-active,
 .fade-slide-leave-active {
-  transition: all 200ms ease;
+  transition: all 100ms ease;
 }
 
 .fade-slide-enter-from,
@@ -736,7 +816,7 @@ function onPickColor(key: ColorFieldKey, value: string) {
   border-color: var(--panel-border, rgba(255, 255, 255, 0.12));
 }
 
-.toggle-setting input[type="checkbox"] {
+.toggle-setting input[type='checkbox'] {
   width: 20px;
   height: 20px;
   accent-color: var(--tracker-accent-primary, rgb(77, 242, 197));
@@ -823,7 +903,9 @@ function onPickColor(key: ColorFieldKey, value: string) {
   border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
   background: var(--input-background, rgba(0, 0, 0, 0.3));
   color: var(--text-primary, #e8f3ff);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .dialog-input:focus {
