@@ -82,7 +82,8 @@ function createDefaultTracks(): TrackerTrackData[] {
     id: `T${(idx + 1).toString().padStart(2, '0')}`,
     name: `Track ${idx + 1}`,
     color: DEFAULT_TRACK_COLORS[idx % DEFAULT_TRACK_COLORS.length] ?? '#4df2c5',
-    entries: []
+    entries: [],
+    interpolations: []
   }));
 }
 

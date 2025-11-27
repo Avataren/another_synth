@@ -1,5 +1,5 @@
 import type { Ref } from 'vue';
-import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
+import type { TrackerTrackData, TrackerEntryData } from 'src/components/tracker/tracker-types';
 import type { TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type { SongBankSlot } from 'src/audio/tracker/song-bank';
@@ -70,13 +70,39 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
   function buildPlaybackStepsForTrack(track: TrackerTrackData): PlaybackStep[] {
     const ctx: TrackPlaybackContext = {};
     const steps: PlaybackStep[] = [];
+    const patternRows = context.patternRows.value;
+    const entryByRow = new Map<number, TrackerEntryData>();
+    for (const entry of track.entries) {
+      entryByRow.set(entry.row, entry);
+    }
 
-    const sortedEntries = [...track.entries].sort((a, b) => a.row - b.row);
-    for (const entry of sortedEntries) {
-      const instrumentId = context.normalizeInstrumentId(entry.instrument) ?? ctx.instrumentId;
-      const { midi, isNoteOff } = parseTrackerNoteSymbol(entry.note);
-      const volumeValue = parseTrackerVolume(entry.volume);
-      const effectCmd = parseEffectCommand(entry.macro);
+    function getInterpolationForRow(row: number) {
+      const ranges = track.interpolations ?? [];
+      return ranges.find((range) => row >= range.startRow && row <= range.endRow);
+    }
+
+    function interpolateValue(range: { startRow: number; endRow: number; startValue: number; endValue: number }, row: number) {
+      if (range.endRow === range.startRow) return range.endValue;
+      const t = (row - range.startRow) / (range.endRow - range.startRow);
+      return range.startValue + (range.endValue - range.startValue) * t;
+    }
+
+    for (let row = 0; row < patternRows; row += 1) {
+      const entry = entryByRow.get(row);
+      const instrumentId = context.normalizeInstrumentId(entry?.instrument) ?? ctx.instrumentId;
+      const { midi, isNoteOff } = parseTrackerNoteSymbol(entry?.note);
+      const volumeValue = parseTrackerVolume(entry?.volume);
+      let effectCmd = parseEffectCommand(entry?.macro);
+
+      const interpolation = getInterpolationForRow(row);
+      const interpolationType = interpolation?.interpolation ?? 'linear';
+      if (!effectCmd && interpolation) {
+        effectCmd = {
+          type: 'macro',
+          index: interpolation.macroIndex,
+          value: interpolateValue(interpolation, row)
+        };
+      }
 
       // Check if this entry has any meaningful data
       const hasMacro = effectCmd?.type === 'macro';
@@ -91,7 +117,7 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       if (!hasNoteData && !hasVolumeData && !hasMacro && !hasTempoEffect && !hasEffect) continue;
 
       const step: PlaybackStep = {
-        row: entry.row,
+        row,
         instrumentId: instrumentId ?? '',
         isNoteOff
       };
@@ -103,7 +129,7 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         step.midi = ctx.lastMidi;
       }
 
-      if (entry.note) {
+      if (entry?.note) {
         step.note = entry.note;
       }
 
@@ -120,6 +146,14 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         if (effectCmd.type === 'macro') {
           step.macroIndex = effectCmd.index;
           step.macroValue = effectCmd.value;
+          if (interpolation && interpolation.macroIndex === effectCmd.index && row < interpolation.endRow) {
+            const nextValue = interpolateValue(interpolation, row + 1);
+            step.macroRamp = {
+              targetRow: row + 1,
+              targetValue: nextValue,
+              interpolation: interpolationType
+            };
+          }
         } else if (effectCmd.type === 'speed') {
           step.speedCommand = effectCmd.speed;
         } else if (effectCmd.type === 'tempo') {

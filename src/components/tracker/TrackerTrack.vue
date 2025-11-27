@@ -17,6 +17,7 @@
           :active-track="activeTrack"
           :active-column="activeColumn"
           :active-macro-nibble="activeMacroNibble"
+          :interpolation-type="interpolatedRows[row] ?? undefined"
           @select-cell="onSelectCell"
           @start-selection="onStartSelection"
           @hover-selection="onHoverSelection"
@@ -77,6 +78,16 @@ const entryLookup = computed<Record<number, TrackerEntryData | undefined>>(() =>
     }
   }
   return lookup;
+});
+
+const interpolatedRows = computed<Record<number, 'linear' | 'exponential' | undefined>>(() => {
+  const result: Record<number, 'linear' | 'exponential' | undefined> = {};
+  for (const range of props.track.interpolations ?? []) {
+    for (let r = range.startRow; r <= range.endRow; r++) {
+      result[r] = range.interpolation ?? 'linear';
+    }
+  }
+  return result;
 });
 
 const trackIndexLabel = computed(() => (props.index + 1).toString().padStart(2, '0'));

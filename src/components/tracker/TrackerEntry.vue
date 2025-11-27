@@ -37,7 +37,15 @@
     >
       {{ cells.volumeLo.display }}
     </span>
-    <span class="cell effect" :class="{ 'cell-active': activeCells[4] }" data-cell="4">
+    <span
+      class="cell effect"
+      :class="{
+        'cell-active': activeCells[4],
+        'interpolated-linear': interpolationType === 'linear',
+        'interpolated-exponential': interpolationType === 'exponential'
+      }"
+      data-cell="4"
+    >
       <span class="macro-digits">
         <span
           v-for="(digit, idx) in cells.macroDigits"
@@ -67,6 +75,7 @@ interface Props {
   activeTrack: number;
   activeColumn: number;
   activeMacroNibble: number;
+  interpolationType?: 'linear' | 'exponential' | undefined;
 }
 
 const props = defineProps<Props>();
@@ -307,5 +316,13 @@ function onMouseEnterRow() {
   color: var(--tracker-effect-text, #8ef5c5);
   font-weight: 700;
   background: rgba(77, 242, 197, 0.12);
+}
+
+.effect.interpolated-linear {
+  background: rgba(77, 242, 197, 0.08);
+}
+
+.effect.interpolated-exponential {
+  background: rgba(158, 197, 255, 0.1);
 }
 </style>

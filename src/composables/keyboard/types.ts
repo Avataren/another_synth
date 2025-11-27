@@ -45,6 +45,7 @@ export interface TrackerKeyboardContext {
   handleNoteEntry: (midi: number) => void;
   handleVolumeInput: (hexChar: string) => void;
   handleMacroInput: (hexChar: string) => void;
+  toggleInterpolationRange: () => void;
   clearStep: () => void;
   clearInstrumentField: () => void;
   clearVolumeNibble: () => void;

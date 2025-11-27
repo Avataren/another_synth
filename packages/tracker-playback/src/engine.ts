@@ -444,8 +444,10 @@ export class PlaybackEngine {
     if (!this.scheduledNoteHandler) return;
 
     const steps = this.stepIndex.get(row);
+    const msPerRow = this.getMsPerRow();
     const msPerTick = this.getMsPerTick();
     const secPerTick = msPerTick / 1000;
+    const secPerRow = msPerRow / 1000;
 
     // First pass: Apply speed/tempo commands (F commands) and position commands
     if (steps) {
@@ -486,13 +488,23 @@ export class PlaybackEngine {
         const effectState = this.getTrackEffectState(trackIndex);
 
         // Handle macros
-        if (step.macroIndex !== undefined && step.macroValue !== undefined) {
-          if (this.scheduledMacroHandler) {
-            this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time);
-          } else if (this.macroHandler) {
-            this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
+          if (step.macroIndex !== undefined && step.macroValue !== undefined) {
+            if (this.scheduledMacroHandler) {
+              const ramp =
+                step.macroRamp && step.macroRamp.targetRow > row
+                  ? {
+                      targetValue: step.macroRamp.targetValue,
+                      targetTime: time + (step.macroRamp.targetRow - row) * secPerRow,
+                      ...(step.macroRamp.interpolation
+                        ? { interpolation: step.macroRamp.interpolation }
+                        : {})
+                    }
+                  : undefined;
+              this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time, ramp);
+            } else if (this.macroHandler) {
+              this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
+            }
           }
-        }
 
         // Handle note-off
         if (step.isNoteOff) {

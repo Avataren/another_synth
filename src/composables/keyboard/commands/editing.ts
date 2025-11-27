@@ -65,6 +65,18 @@ export const editingCommands: KeyboardCommand[] = [
     handler: (ctx) => {
       ctx.deleteRowAndShiftUp();
     }
+  },
+  {
+    key: 'KeyL',
+    editModeOnly: true,
+    columnFilter: 4,
+    description: 'Toggle interpolation (effect column)',
+    category: 'editing',
+    handler: (ctx, event) => {
+      if (!event.repeat) {
+        ctx.toggleInterpolationRange();
+      }
+    }
   }
 ];
 

@@ -240,7 +240,14 @@ export default class InstrumentV2 {
     });
   }
 
-  public setMacro(macroIndex: number, value: number, time?: number): void {
+  public setMacro(
+    macroIndex: number,
+    value: number,
+    time?: number,
+    rampToValue?: number,
+    rampTime?: number,
+    interpolation: 'linear' | 'exponential' = 'linear'
+  ): void {
     if (!this.workletNode) {
       return;
     }
@@ -251,6 +258,18 @@ export default class InstrumentV2 {
       const param = this.workletNode.parameters.get(`macro_${voice}_${macroIndex}`);
       if (param) {
         param.setValueAtTime(clampedValue, when);
+        if (typeof rampToValue === 'number' && typeof rampTime === 'number') {
+          const clampedRamp = Math.min(1, Math.max(0, rampToValue));
+          if (interpolation === 'exponential') {
+            // Exponential ramps require positive values; fall back to a tiny epsilon
+            const start = clampedValue <= 0 ? 0.0001 : clampedValue;
+            const target = clampedRamp <= 0 ? 0.0001 : clampedRamp;
+            param.setValueAtTime(start, when);
+            param.exponentialRampToValueAtTime(target, rampTime);
+          } else {
+            param.linearRampToValueAtTime(clampedRamp, rampTime);
+          }
+        }
       }
     }
   }

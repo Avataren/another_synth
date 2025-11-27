@@ -1391,6 +1391,13 @@ if (canReuse) {
 - Auto-scroll toggle and the master volume slider in `TrackerPage.vue` now call `blurAndRefocusTracker` on change to drop focus and re-focus the container.
 - `SequenceEditor` emits `request-refocus` after the Add Pattern select closes (popup-hide) or after rename commits/cancels so the tracker regains keyboard focus even when the dropdown lives in a portal.
 
+### Tracker interpolation (2025-04)
+
+- Tracks carry optional `interpolations` per track (`TrackerInterpolationRange` with start/end row, macro index, start/end normalized values). Defaults are empty on new tracks.
+- Pressing `L` in the effect column cycles interpolation: empty cell → create linear range between matching macros above/below (same macro index); inside a range, linear → exponential → none (removes). Edits to any effect cell in a range clear the range. Adjacent ranges are allowed; overlapping ranges are skipped.
+- Interpolated rows are highlighted in the effect column (linear = soft green, exponential = soft blue), with no text filled into the cells.
+- Playback builder synthesizes macro steps for rows inside a range with interpolated values and attaches ramp targets (with type) to the next row. Steps use the current track instrument context to deliver automation.
+- Playback engine schedules macro ramps via `scheduledMacroHandler` with optional ramp data (type), and `SongBank.setInstrumentMacro`/`InstrumentV2.setMacro` now accept ramp targets and call `setValueAtTime` + `linearRampToValueAtTime` or `exponentialRampToValueAtTime` (epsilon clamp when <=0).
 ### Tracker macro effect commands (2025)
 
 - The effect column now accepts effect letters instead of just hex digits; keyboard input in column 4 handles A–F via hex handlers and G–Z (including M/N/O/P) via effect-only bindings.

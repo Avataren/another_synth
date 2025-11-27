@@ -93,6 +93,16 @@ export interface Step {
   /** Normalized macro value 0..1 */
   macroValue?: number;
   /**
+   * Optional macro ramp target (used for interpolated macro automation).
+   * When provided, engines should schedule a linear ramp from macroValue
+   * at this row/time to targetValue at the targetRow's time.
+   */
+  macroRamp?: {
+    targetRow: number;
+    targetValue: number;
+    interpolation?: 'linear' | 'exponential';
+  };
+  /**
    * Pre-parsed MIDI note number for the step. Optional so callers can
    * keep note strings but still provide a numeric value for scheduling.
    */
@@ -207,7 +217,12 @@ export type ScheduledMacroHandler = (
   instrumentId: string,
   macroIndex: number,
   value: number,
-  time: number
+  time: number,
+  ramp?: {
+    targetValue: number;
+    targetTime: number;
+    interpolation?: 'linear' | 'exponential';
+  }
 ) => void;
 
 export type MacroHandler = (instrumentId: string, macroIndex: number, value: number) => void;

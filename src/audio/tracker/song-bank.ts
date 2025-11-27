@@ -854,11 +854,19 @@ export class TrackerSongBank {
     macroIndex: number,
     value: number,
     time?: number,
+    ramp?: { targetValue: number; targetTime: number; interpolation?: 'linear' | 'exponential' },
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    active.instrument.setMacro(macroIndex, value, time);
+    active.instrument.setMacro(
+      macroIndex,
+      value,
+      time,
+      ramp?.targetValue,
+      ramp?.targetTime,
+      ramp?.interpolation
+    );
   }
 
   private ensureInstrumentIfDesired(instrumentId: string) {

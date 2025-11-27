@@ -21,6 +21,8 @@ export interface TrackerEditingContext {
   currentPattern: ComputedRef<TrackerPattern | undefined>;
   instrumentSlots: Ref<InstrumentSlot[]>;
   songBank: TrackerSongBank;
+  toggleInterpolationRange: (row: number, trackIndex: number) => void;
+  clearInterpolationRangeAt: (row: number, trackIndex: number) => void;
 
   // Functions
   pushHistory: () => void;
@@ -285,6 +287,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
 
     const row = context.activeRow.value;
     const track = context.activeTrack.value;
+    context.clearInterpolationRangeAt(row, track);
     updateEntryAt(row, track, (entry) => {
       const chars = context.normalizeMacroChars(entry.macro);
       chars[nibbleIndex] = char;
@@ -410,11 +413,19 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     const entry = track.entries[idx];
     if (!entry) return;
 
+    context.clearInterpolationRangeAt(context.activeRow.value, context.activeTrack.value);
+
     const updatedEntry = { ...entry } as TrackerEntryData & { macro?: string };
     delete updatedEntry.macro;
 
     track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
     context.activeMacroNibble.value = 0;
+  }
+
+  function toggleInterpolationRange() {
+    if (!context.isEditMode.value) return;
+    if (context.activeColumn.value !== 4) return;
+    context.toggleInterpolationRange(context.activeRow.value, context.activeTrack.value);
   }
 
   return {
@@ -432,6 +443,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     insertNoteOff,
     clearStep,
     deleteRowAndShiftUp,
-    insertRowAndShiftDown
+    insertRowAndShiftDown,
+    toggleInterpolationRange
   };
 }

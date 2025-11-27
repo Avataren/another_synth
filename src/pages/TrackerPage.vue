@@ -235,6 +235,8 @@
               :class="{ active: playbackMode === 'pattern' && isPlaying }"
               title="Play Pattern (Space)"
               :disabled="isLoadingSong"
+              @mousedown.prevent
+              @focus="($event.target as HTMLButtonElement)?.blur()"
               @click="handlePlayPattern"
             >
               <q-icon name="replay" size="20px" />
@@ -245,6 +247,8 @@
               :class="{ active: playbackMode === 'song' && isPlaying }"
               title="Play Song"
               :disabled="isLoadingSong"
+              @mousedown.prevent
+              @focus="($event.target as HTMLButtonElement)?.blur()"
               @click="handlePlaySong"
             >
               <q-icon name="play_arrow" size="20px" />
@@ -254,6 +258,8 @@
               class="transport-icon-btn"
               title="Pause"
               :disabled="isLoadingSong"
+              @mousedown.prevent
+              @focus="($event.target as HTMLButtonElement)?.blur()"
               @click="handlePause"
             >
               <q-icon name="pause" size="20px" />
@@ -544,7 +550,7 @@ import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnaly
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
-import { parseTrackerNoteSymbol } from 'src/audio/tracker/note-utils';
+import { parseEffectCommand, parseTrackerNoteSymbol } from 'src/audio/tracker/note-utils';
 import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
@@ -686,6 +692,94 @@ function normalizeMacroChars(macro?: string): [string, string, string] {
   if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1] as string;
   if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2] as string;
   return chars;
+}
+
+function getTrackByIndex(trackIndex: number) {
+  return currentPattern.value?.tracks[trackIndex];
+}
+
+function parseMacroEffect(macro?: string) {
+  const parsed = parseEffectCommand(macro);
+  if (parsed?.type === 'macro') {
+    return { macroIndex: parsed.index, value: parsed.value };
+  }
+  return undefined;
+}
+
+function findInterpolationRangeContaining(trackIndex: number, row: number) {
+  const track = getTrackByIndex(trackIndex);
+  if (!track?.interpolations) return undefined;
+  return track.interpolations.find(
+    (range) => row >= range.startRow && row <= range.endRow,
+  );
+}
+
+function clearInterpolationRangeAt(row: number, trackIndex: number) {
+  const track = getTrackByIndex(trackIndex);
+  if (!track?.interpolations || track.interpolations.length === 0) return;
+  track.interpolations = track.interpolations.filter(
+    (range) => !(row >= range.startRow && row <= range.endRow),
+  );
+}
+
+function findNearestMacroEntry(
+  trackIndex: number,
+  row: number,
+  direction: -1 | 1,
+): { row: number; macroIndex: number; value: number } | undefined {
+  const track = getTrackByIndex(trackIndex);
+  if (!track) return undefined;
+  const sorted = [...track.entries].sort((a, b) => a.row - b.row);
+  const iterator =
+    direction === -1 ? [...sorted].reverse() : sorted;
+  for (const entry of iterator) {
+    if (direction === -1 && entry.row >= row) continue;
+    if (direction === 1 && entry.row <= row) continue;
+    const macro = parseMacroEffect(entry.macro);
+    if (macro) {
+      return { row: entry.row, macroIndex: macro.macroIndex, value: macro.value };
+    }
+  }
+  return undefined;
+}
+
+function toggleInterpolationRangeAt(row: number, trackIndex: number) {
+  const track = getTrackByIndex(trackIndex);
+  if (!track) return;
+
+  const existing = findInterpolationRangeContaining(trackIndex, row);
+  if (existing) {
+    trackerStore.pushHistory();
+    if (existing.interpolation === 'linear') {
+      existing.interpolation = 'exponential';
+    } else {
+      clearInterpolationRangeAt(row, trackIndex);
+    }
+    return;
+  }
+
+  const entryHere = track.entries.find((e) => e.row === row);
+  if (entryHere && (entryHere.macro ?? '').trim() !== '') return;
+
+  const above = findNearestMacroEntry(trackIndex, row, -1);
+  const below = findNearestMacroEntry(trackIndex, row, 1);
+  if (!above || !below) return;
+  if (above.macroIndex !== below.macroIndex) return;
+
+  trackerStore.pushHistory();
+  const filtered = (track.interpolations ?? []).filter(
+    // Keep ranges that end at/before the new start, or start at/after the new end (allow touching endpoints)
+    (r) => r.endRow <= above.row || r.startRow >= below.row,
+  );
+  filtered.push({
+    startRow: above.row,
+    endRow: below.row,
+    macroIndex: above.macroIndex,
+    startValue: above.value,
+    endValue: below.value,
+    interpolation: 'linear',
+  });
+  track.interpolations = filtered;
 }
 
 function midiToTrackerNote(midi: number): string {
@@ -994,6 +1088,8 @@ const editingContext: TrackerEditingContext = {
   currentPattern,
   instrumentSlots,
   songBank,
+  toggleInterpolationRange: toggleInterpolationRangeAt,
+  clearInterpolationRangeAt,
   pushHistory: () => trackerStore.pushHistory(),
   moveRow,
   formatInstrumentId,
@@ -1022,6 +1118,7 @@ const {
   clearStep,
   deleteRowAndShiftUp,
   insertRowAndShiftDown,
+  toggleInterpolationRange: toggleInterpolationRangeCommand,
 } = useTrackerEditing(editingContext);
 
 // Set up instruments composable (needs to be after playback and editing composables)
@@ -1377,6 +1474,7 @@ const keyboardContext: TrackerKeyboardContext = {
   insertNoteOff,
   insertRowAndShiftDown,
   deleteRowAndShiftUp,
+  toggleInterpolationRange: toggleInterpolationRangeCommand,
   ensureActiveInstrument,
 
   // Playback

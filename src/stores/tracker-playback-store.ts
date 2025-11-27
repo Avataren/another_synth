@@ -179,8 +179,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       },
 
       // Macro handlers
-      scheduledMacroHandler: (instrumentId, macroIndex, value, time) => {
-        songBank.setInstrumentMacro(instrumentId, macroIndex, value, time);
+      scheduledMacroHandler: (instrumentId, macroIndex, value, time, ramp) => {
+        songBank.setInstrumentMacro(instrumentId, macroIndex, value, time, ramp);
       },
       macroHandler: (instrumentId, macroIndex, value) => {
         songBank.setInstrumentMacro(instrumentId, macroIndex, value);
