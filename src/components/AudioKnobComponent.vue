@@ -295,6 +295,11 @@ function onMouseUp() {
   document.removeEventListener('mouseup', onMouseUp);
   isDragging.value = false;
   pendingDrag.value = false;
+  // Clear focus after drag so parent views (tracker, patch editor) regain keyboard shortcuts
+  const active = document.activeElement as HTMLElement | null;
+  if (active && typeof active.blur === 'function') {
+    active.blur();
+  }
 }
 
 // MutationObserver to detect theme changes

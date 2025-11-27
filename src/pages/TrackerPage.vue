@@ -281,6 +281,7 @@
                 step="0.01"
                 @input="onMasterVolumeChange"
                 @change="blurAndRefocusTracker"
+                @pointerup="blurAndRefocusTracker"
                 @mousedown.stop
                 @click.stop
                 title="Master Volume"
@@ -358,7 +359,12 @@
                 @close="refocusTracker"
                 @click.stop
               />
-              <div class="instrument-volume" @click.stop @mousedown.stop>
+              <div
+                class="instrument-volume"
+                @click.stop
+                @mousedown.stop
+                @pointerup="blurAndRefocusTracker"
+              >
                 <AudioKnobComponent
                   :model-value="slot.volume ?? 1.0"
                   label=""

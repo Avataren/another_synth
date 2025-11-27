@@ -1381,6 +1381,8 @@ if (canReuse) {
 - Instrument routing safety: `restoreDefaultInstrument()` now always rebinds `currentInstrument`/`destinationNode` to the default instrument when leaving the instrument editor, even if `usingExternalInstrument` flags drift. `IndexPage` also watches the route and forces restore when not on `patch-instrument-editor`, preventing the standalone patch editor keyboard from sticking to a tracker instrument.
 - Patch editor keyboard now tracks instrument swaps reactively: `PianoKeyboardComponent` uses `storeToRefs` for `currentInstrument` so computer-keyboard/MIDI preview always hits the currently active instrument (restored standalone vs song-bank).
 - Tracker instrument selection now immediately re-syncs the SongBank: `useTrackerInstruments` calls `syncSongBankFromSlots()` after patch selection or clearing a slot so changing a slot’s patch actually rebuilds the underlying instrument (avoids the first instrument “sticking”).
+- Tracker slot volume knobs now blur/refocus the tracker container on pointer release (`TrackerPage.vue`), preventing the keyboard/edit focus from getting stuck after adjusting volume.
+- Global knob focus handling: `AudioKnobComponent` blurs the active element after knob drag, so knobs across tracker/patch editor don't trap focus and keyboard shortcuts continue working. Master volume slider also blurs on pointerup.
 
 ### Tracker focus handling (2025-03)
 
