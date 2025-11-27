@@ -19,7 +19,7 @@ export interface UserSettings {
  * Default user settings
  */
 const defaultSettings: UserSettings = {
-  theme: 'default',
+  theme: 'custom',
   trackerFont: 'JetBrains Mono',
   uiFont: 'Inter',
   showSpectrumAnalyzer: true,

@@ -89,6 +89,8 @@ export interface TrackerTheme {
   colors: ThemeColors;
 }
 
+const CUSTOM_THEME_STORAGE_KEY = 'synth-custom-theme';
+
 export const themePresets: TrackerTheme[] = [
   {
     id: 'default',
@@ -725,6 +727,29 @@ function applyFonts(uiFontId: string, trackerFontId: string) {
 
 export const useThemeStore = defineStore('theme', () => {
   const userSettings = useUserSettingsStore();
+  const basePreset = themePresets[0]!;
+  const defaultCustomTheme: TrackerTheme = {
+    ...basePreset,
+    id: 'custom',
+    name: 'Custom',
+    description: 'Your custom colors',
+    colors: { ...basePreset.colors }
+  };
+
+  function loadCustomTheme(): TrackerTheme {
+    try {
+      const stored = localStorage.getItem(CUSTOM_THEME_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as TrackerTheme;
+        return { ...defaultCustomTheme, ...parsed, colors: { ...defaultCustomTheme.colors, ...parsed.colors } };
+      }
+    } catch (error) {
+      console.warn('Failed to load custom theme:', error);
+    }
+    return { ...defaultCustomTheme };
+  }
+
+  const customTheme = ref<TrackerTheme>(loadCustomTheme());
 
   // Get current theme ID from user settings
   const currentThemeId = computed({
@@ -749,8 +774,10 @@ export const useThemeStore = defineStore('theme', () => {
     }
   });
 
+  const allThemes = computed<TrackerTheme[]>(() => [customTheme.value, ...themePresets]);
+
   function getThemeById(id: string): TrackerTheme {
-    return themePresets.find((t) => t.id === id) ?? themePresets[0]!;
+    return allThemes.value.find((t) => t.id === id) ?? allThemes.value[0]!;
   }
 
   const currentTheme = ref<TrackerTheme>(getThemeById(currentThemeId.value));
@@ -834,6 +861,43 @@ export const useThemeStore = defineStore('theme', () => {
     currentThemeId.value = themeId;
   }
 
+  function setCustomTheme(theme: TrackerTheme) {
+    customTheme.value = {
+      ...theme,
+      id: 'custom',
+      name: theme.name || 'Custom',
+      description: theme.description || 'Your custom colors'
+    };
+    localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(customTheme.value));
+    if (currentThemeId.value === 'custom') {
+      currentTheme.value = customTheme.value;
+      applyTheme(customTheme.value);
+    }
+  }
+
+  function copyThemeToCustom(themeId: string) {
+    const base = getThemeById(themeId);
+    setCustomTheme({
+      ...base,
+      id: 'custom',
+      name: 'Custom',
+      description: 'Your custom colors'
+    });
+    setTheme('custom');
+  }
+
+  watch(
+    customTheme,
+    (theme) => {
+      try {
+        localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(theme));
+      } catch (error) {
+        console.warn('Failed to persist custom theme:', error);
+      }
+    },
+    { deep: true }
+  );
+
   function setUiFont(fontId: string) {
     currentUiFont.value = fontId;
   }
@@ -848,9 +912,14 @@ export const useThemeStore = defineStore('theme', () => {
     currentUiFont,
     currentTrackerFont,
     themePresets,
+    customTheme,
+    allThemes,
     uiFonts,
     monospaceFonts,
     setTheme,
+    setCustomTheme,
+    copyThemeToCustom,
+    getThemeById,
     setUiFont,
     setTrackerFont
   };
