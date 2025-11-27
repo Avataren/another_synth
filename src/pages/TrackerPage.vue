@@ -7,6 +7,14 @@
       tabindex="0"
       @keydown="onKeyDown"
     >
+      <div v-if="isLoadingSong" class="song-loading-overlay">
+        <div class="song-loading-dialog">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="song-loading-text">Loading song…</div>
+          <div class="song-loading-subtext">Preparing instruments and assets</div>
+        </div>
+      </div>
+
       <div class="tracker-toolbar">
         <div class="toolbar-section toolbar-left">
           <button
@@ -41,6 +49,7 @@
             type="button"
             class="song-button ghost"
             @click="handleNewSong"
+            :disabled="isLoadingSong"
           >
             New Song
           </button>
@@ -48,6 +57,7 @@
             type="button"
             class="song-button ghost"
             @click="handleLoadSongFile"
+            :disabled="isLoadingSong"
           >
             Load Song
           </button>
@@ -55,6 +65,7 @@
             type="button"
             class="song-button"
             @click="handleSaveSongFile"
+            :disabled="isLoadingSong"
           >
             Save Song
           </button>
@@ -201,6 +212,7 @@
                 class="transport-icon-btn"
                 :class="{ active: playbackMode === 'pattern' && isPlaying }"
                 title="Play Pattern (Space)"
+                :disabled="isLoadingSong"
                 @click="handlePlayPattern"
               >
                 <q-icon name="replay" size="20px" />
@@ -210,6 +222,7 @@
                 class="transport-icon-btn"
                 :class="{ active: playbackMode === 'song' && isPlaying }"
                 title="Play Song"
+                :disabled="isLoadingSong"
                 @click="handlePlaySong"
               >
                 <q-icon name="play_arrow" size="20px" />
@@ -218,6 +231,7 @@
                 type="button"
                 class="transport-icon-btn"
                 title="Pause"
+                :disabled="isLoadingSong"
                 @click="handlePause"
               >
                 <q-icon name="pause" size="20px" />
@@ -226,6 +240,7 @@
                 type="button"
                 class="transport-icon-btn"
                 title="Stop"
+                :disabled="isLoadingSong"
                 @click="handleStop"
               >
                 <q-icon name="stop" size="20px" />
@@ -1448,6 +1463,58 @@ onBeforeUnmount(() => {
 
 .tracker-page.edit-mode-active {
   box-shadow: 0 0 0 2px rgba(255, 90, 90, 0.9) inset;
+}
+
+.song-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 20, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.song-loading-dialog {
+  background: #0f172a;
+  border: 1px solid #223150;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  min-width: 240px;
+  text-align: center;
+  color: #e2e8f0;
+}
+
+.song-loading-text {
+  font-weight: 600;
+  margin-top: 12px;
+}
+
+.song-loading-subtext {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+.song-loading-dialog .spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #5eead4;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tracker-container {

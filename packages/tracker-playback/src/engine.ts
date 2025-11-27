@@ -35,9 +35,6 @@ type ListenerMap = {
   [K in PlaybackEvent]: Set<PlaybackListener<K>>;
 };
 
-/** How far ahead to schedule notes (in seconds) */
-const SCHEDULE_AHEAD_TIME = 0.5;
-
 export class PlaybackEngine {
   private song: Song | null = null;
   private state: TransportState = 'stopped';
@@ -85,6 +82,15 @@ export class PlaybackEngine {
   private intervalHandle: number | null = null;
   /** Track if tab is currently visible */
   private isTabVisible = true;
+  /** Base lookahead when visible/hidden (seconds) */
+  private readonly baseLookaheadVisible = 0.5;
+  private readonly baseLookaheadHidden = 1.0;
+  /** If the next row is within this threshold (seconds), consider scheduling “late” */
+  private readonly lateScheduleThreshold = 0.02;
+  /** Count of consecutive late scheduling loops */
+  private lateScheduleCount = 0;
+  /** Track worst lead deficit observed while scheduling late */
+  private maxLeadDeficit = 0;
 
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
@@ -166,6 +172,16 @@ export class PlaybackEngine {
         this.scheduleAhead();
       }, 16) as unknown as number;
     }
+  }
+
+  /**
+   * Compute the current scheduling lookahead window (seconds).
+   * Expands when tab is hidden or when we’ve observed consecutive “late” loops.
+   */
+  private getLookaheadSeconds(): number {
+    const base = this.isTabVisible ? this.baseLookaheadVisible : this.baseLookaheadHidden;
+    const latePenalty = this.lateScheduleCount >= 3 ? 0.5 : 0; // widen window after repeated lateness
+    return base + latePenalty;
   }
 
   setLoopCurrentPattern(loop: boolean) {
@@ -320,7 +336,9 @@ export class PlaybackEngine {
     if (this.state !== 'playing') return;
 
     const now = this.audioContext.currentTime;
-    const scheduleUntil = now + SCHEDULE_AHEAD_TIME;
+    const lookahead = this.getLookaheadSeconds();
+    const scheduleUntil = now + lookahead;
+    const catchUpLead = 0.01; // ensure late rows still land slightly in the future
 
     // Schedule rows using cumulative timing to support dynamic tempo changes
     while (this.nextRowTime < scheduleUntil) {
@@ -357,9 +375,18 @@ export class PlaybackEngine {
       // Schedule this row at nextRowTime (may apply F commands that change speed/bpm)
       const rowTime = this.nextRowTime;
 
-      // Only schedule if in the future
-      if (rowTime >= now) {
-        this.scheduleRow(actualRow, rowTime);
+      // If we're late, still schedule the row just ahead of now to avoid drops
+      const isLate = rowTime < now;
+      const scheduledRowTime = isLate ? now + catchUpLead : rowTime;
+      if (isLate) {
+        console.warn(
+          `[PlaybackEngine] Scheduling row ${actualRow} late by ${(now - rowTime).toFixed(
+            3,
+          )}s, using catch-up lead ${catchUpLead}s`,
+        );
+      }
+      if (scheduledRowTime >= now) {
+        this.scheduleRow(actualRow, scheduledRowTime);
       }
 
       // Calculate time for next row using current speed/bpm (after F commands were applied)
@@ -368,6 +395,21 @@ export class PlaybackEngine {
       this.nextRowTime += secPerRow;
 
       this.lastScheduledRow = currentRow;
+    }
+
+    // Jitter/lag instrumentation: track when scheduling approaches the deadline
+    const lead = this.nextRowTime - now;
+    if (lead < this.lateScheduleThreshold) {
+      this.lateScheduleCount = Math.min(this.lateScheduleCount + 1, 10);
+      this.maxLeadDeficit = Math.min(this.maxLeadDeficit, lead);
+      if (this.lateScheduleCount === 3) {
+        console.warn(
+          `[PlaybackEngine] Scheduling is running close to deadline (lead=${lead.toFixed(3)}s, max deficit=${this.maxLeadDeficit.toFixed(3)}s). Expanding lookahead.`,
+        );
+      }
+    } else {
+      this.lateScheduleCount = 0;
+      this.maxLeadDeficit = 0;
     }
   }
 
@@ -685,13 +727,15 @@ export class PlaybackEngine {
       }
     }
 
+    const resolverTasks: Promise<void>[] = [];
     for (const id of instrumentIds) {
       try {
-        await this.resolver(id);
+        resolverTasks.push(Promise.resolve(this.resolver(id)));
       } catch (error) {
         this.emit('error', error instanceof Error ? error : new Error(String(error)));
       }
     }
+    await Promise.all(resolverTasks);
   }
 
   /** Legacy tick-based step function (fallback when no scheduledNoteHandler) */

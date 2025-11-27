@@ -55,6 +55,28 @@ interface ActiveInstrument {
   hasPortamento: boolean;
 }
 
+type PendingScheduledEvent =
+  | {
+      kind: 'noteOn';
+      instrumentId: string;
+      midi: number;
+      velocity: number;
+      time: number;
+      trackIndex?: number;
+      enqueuedAt: number;
+    }
+  | {
+      kind: 'noteOff';
+      instrumentId: string;
+      midi?: number;
+      time: number;
+      trackIndex?: number;
+      enqueuedAt: number;
+    };
+
+const MIN_SCHEDULE_LEAD_SECONDS = 0.01;
+const MAX_PENDING_SCHEDULED_EVENTS = 2048;
+
 export class TrackerSongBank {
   private generation = 0;
   private readonly audioSystem: AudioSystem;
@@ -69,6 +91,8 @@ export class TrackerSongBank {
     new Map();
   private readonly restoredAssets: Map<string, Set<string>> = new Map();
   private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
+  private pendingScheduledEvents: PendingScheduledEvent[] = [];
+  private flushingPendingScheduled = false;
   private wasSuspended = false;
   private needsAudioContextResume = false;
   private recorderNode: AudioWorkletNode | null = null;
@@ -211,12 +235,15 @@ export class TrackerSongBank {
         this.wasSuspended = false;
       }
 
+      const ensureTasks: Promise<void>[] = [];
       for (const [instrumentId, patch] of nextDesired.entries()) {
         console.log(
           `[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`,
         );
-        await this.ensureInstrument(instrumentId, patch);
+        ensureTasks.push(this.ensureInstrument(instrumentId, patch));
       }
+
+      await Promise.all(ensureTasks);
 
       console.log(
         `[SongBank] syncSlots complete, active instruments: ${Array.from(this.instruments.keys()).join(', ')}`,
@@ -228,6 +255,9 @@ export class TrackerSongBank {
           `[SongBank] Instrument ${id} output connected: ${hasOutput}`,
         );
       }
+
+      // Try to flush any scheduled events that were queued while suspended/loading
+      await this.flushPendingScheduledEvents();
     } finally {
       this.syncInProgress = false;
     }
@@ -407,6 +437,77 @@ export class TrackerSongBank {
   private clearVoicesForTrack(instrumentId: string, trackIndex: number) {
     const byTrack = this.trackVoices.get(instrumentId);
     byTrack?.delete(trackIndex);
+  }
+
+  private enqueueScheduledEvent(event: PendingScheduledEvent) {
+    if (this.pendingScheduledEvents.length >= MAX_PENDING_SCHEDULED_EVENTS) {
+      // Drop the oldest to avoid unbounded growth
+      this.pendingScheduledEvents.shift();
+      console.warn(
+        '[SongBank] Pending scheduled event queue is full; dropping oldest event.',
+      );
+    }
+    this.pendingScheduledEvents.push(event);
+  }
+
+  private getEnqueueTimestamp(): number {
+    if (
+      typeof performance !== 'undefined' &&
+      typeof performance.now === 'function'
+    ) {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  private async flushPendingScheduledEvents(
+    instrumentId?: string,
+  ): Promise<void> {
+    if (this.flushingPendingScheduled) return;
+    this.flushingPendingScheduled = true;
+    try {
+      const now = this.audioContext.currentTime;
+      const remaining: PendingScheduledEvent[] = [];
+
+      for (const event of this.pendingScheduledEvents) {
+        if (instrumentId && event.instrumentId !== instrumentId) {
+          remaining.push(event);
+          continue;
+        }
+
+        const active = this.instruments.get(event.instrumentId);
+        const contextReady = this.audioContext.state === 'running';
+        if (!active || !active.instrument.isReady || !contextReady) {
+          remaining.push(event);
+          continue;
+        }
+
+        const scheduledTime = Math.max(
+          event.time,
+          now + MIN_SCHEDULE_LEAD_SECONDS,
+        );
+        if (event.kind === 'noteOn') {
+          this.dispatchNoteOnAtTime(
+            event.instrumentId,
+            event.midi,
+            event.velocity,
+            scheduledTime,
+            event.trackIndex,
+          );
+        } else {
+          this.dispatchNoteOffAtTime(
+            event.instrumentId,
+            event.midi,
+            scheduledTime,
+            event.trackIndex,
+          );
+        }
+      }
+
+      this.pendingScheduledEvents = remaining;
+    } finally {
+      this.flushingPendingScheduled = false;
+    }
   }
 
   private gateOffPreviousTrackVoice(
@@ -595,90 +696,44 @@ export class TrackerSongBank {
     time: number,
     trackIndex?: number,
   ) {
-    const now = this.audioContext.currentTime;
-    const timeOffset = time - now;
-    // Only log first few notes to avoid spam
-    if (timeOffset < 2) {
-      console.log(
-        `[SongBank] noteOnAtTime: inst=${instrumentId}, midi=${midi}, time=${time.toFixed(3)}, now=${now.toFixed(3)}, offset=${timeOffset.toFixed(3)}s`,
-      );
-    }
-    if (this.audioContext.state === 'suspended') {
-      this.wasSuspended = true;
-      console.warn('[SongBank] noteOnAtTime: AudioContext is suspended!');
-    }
     if (instrumentId === undefined) {
       console.warn('[SongBank] noteOnAtTime: instrumentId is undefined');
       return;
     }
-    const active = this.instruments.get(instrumentId);
-    if (!active) {
-      console.warn(
-        `[SongBank] noteOnAtTime: instrument ${instrumentId} not found! Available: [${Array.from(this.instruments.keys()).join(', ')}]`,
-      );
-      return;
-    }
-    // Check if instrument is actually ready
-    if (!active.instrument.isReady) {
-      console.warn(
-        `[SongBank] noteOnAtTime: instrument ${instrumentId} is NOT ready!`,
-      );
-    }
-    // Check worklet state
-    const worklet = active.instrument.workletNode;
-    if (!worklet) {
-      console.warn(
-        `[SongBank] noteOnAtTime: instrument ${instrumentId} has NO workletNode!`,
-      );
-    }
-    // Check output gain (first few notes only)
-    if (timeOffset < 0.5) {
-      const outputGain = (active.instrument.outputNode as GainNode).gain.value;
-      const masterGainVal = this.masterGain.gain.value;
-      console.log(
-        `[SongBank] noteOnAtTime: inst=${instrumentId} outputGain=${outputGain}, masterGain=${masterGainVal}`,
-      );
-    }
-    // DIAGNOSTIC: Try immediate noteOn if scheduled time is very close to now
-    // This helps determine if the issue is with scheduling vs the instrument itself
-    const useImmediate = timeOffset < 0.01;
-    let voiceIndex: number | undefined;
-    if (useImmediate) {
-      // Skip gateOffPreviousTrackVoice for immediate notes to isolate the issue
-      console.log(
-        `[SongBank] Using IMMEDIATE noteOn for inst=${instrumentId} midi=${midi} (offset=${timeOffset.toFixed(3)}s)`,
-      );
-      // Use exact same call as previewNoteOn (no allowDuplicate option)
-      const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
-      active.instrument.noteOn(clampedMidi, velocity);
-      voiceIndex = 0; // noteOn doesn't return voice index, assume 0
-    } else {
-      this.gateOffPreviousTrackVoice(instrumentId, trackIndex, time);
-      voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, {
-        allowDuplicate: true,
-      });
-    }
 
-    if (voiceIndex === undefined && !useImmediate) {
-      console.warn(
-        `[SongBank] noteOnAtTime: instrument ${instrumentId} returned undefined voiceIndex`,
-      );
-    } else if (!useImmediate) {
-      // Verify the parameters exist
-      const gateParam = worklet?.parameters.get(`gate_${voiceIndex}`);
-      const freqParam = worklet?.parameters.get(`frequency_${voiceIndex}`);
-      if (!gateParam || !freqParam) {
+    const scheduledTime = Math.max(time, this.audioContext.currentTime);
+    const contextRunning = this.audioContext.state === 'running';
+    const active = this.instruments.get(instrumentId);
+    const instrumentReady = active?.instrument.isReady;
+
+    if (!contextRunning || !active || !instrumentReady) {
+      if (!contextRunning) {
+        this.wasSuspended = true;
         console.warn(
-          `[SongBank] noteOnAtTime: instrument ${instrumentId} voice ${voiceIndex} missing params! gate=${!!gateParam}, freq=${!!freqParam}`,
+          '[SongBank] noteOnAtTime: AudioContext is suspended, queuing event.',
         );
       }
+      const queued: PendingScheduledEvent = {
+        kind: 'noteOn',
+        instrumentId,
+        midi,
+        velocity,
+        time: scheduledTime,
+        enqueuedAt: this.getEnqueueTimestamp(),
+      };
+      if (trackIndex !== undefined) queued.trackIndex = trackIndex;
+      this.enqueueScheduledEvent(queued);
+      this.ensureInstrumentIfDesired(instrumentId);
+      return;
     }
-    this.getTrackNotes(instrumentId, trackIndex).add(midi);
-    if (voiceIndex !== undefined) {
-      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
-      // Track the voice for this track (for mute/solo)
-      this.addVoiceToTrack(instrumentId, trackIndex, voiceIndex);
-    }
+
+    this.dispatchNoteOnAtTime(
+      instrumentId,
+      midi,
+      velocity,
+      scheduledTime,
+      trackIndex,
+    );
   }
 
   /**
@@ -691,37 +746,38 @@ export class TrackerSongBank {
     trackIndex?: number,
   ) {
     if (instrumentId === undefined) return;
-    const active = this.instruments.get(instrumentId);
-    if (!active) return;
-    const notes = this.getTrackNotes(instrumentId, trackIndex);
-    const voiceIndex = this.takeLastVoiceForTrack(instrumentId, trackIndex);
 
-    if (midi === undefined) {
-      if (voiceIndex !== undefined) {
-        active.instrument.gateOffVoiceAtTime(voiceIndex, time);
-        // Remove voice from track tracking
-        this.removeVoiceFromTrack(instrumentId, trackIndex, voiceIndex);
-      } else if (notes && notes.size > 0) {
-        for (const note of notes) {
-          active.instrument.noteOffAtTime(note, time);
-        }
-      } else {
-        active.instrument.cancelScheduledNotes();
+    const scheduledTime = Math.max(time, this.audioContext.currentTime);
+    const contextRunning = this.audioContext.state === 'running';
+    const active = this.instruments.get(instrumentId);
+    const instrumentReady = active?.instrument.isReady;
+
+    if (!contextRunning || !active || !instrumentReady) {
+      if (!contextRunning) {
+        this.wasSuspended = true;
+        console.warn(
+          '[SongBank] noteOffAtTime: AudioContext is suspended, queuing event.',
+        );
       }
-      notes.clear();
-      // Clear all voice tracking for this track
-      this.clearVoicesForTrack(instrumentId, trackIndex ?? -1);
+      const queued: PendingScheduledEvent = {
+        kind: 'noteOff',
+        instrumentId,
+        time: scheduledTime,
+        enqueuedAt: this.getEnqueueTimestamp(),
+      };
+      if (midi !== undefined) queued.midi = midi;
+      if (trackIndex !== undefined) queued.trackIndex = trackIndex;
+      this.enqueueScheduledEvent(queued);
+      this.ensureInstrumentIfDesired(instrumentId);
       return;
     }
 
-    if (voiceIndex !== undefined) {
-      active.instrument.noteOffAtTime(midi, time, voiceIndex);
-      // Remove voice from track tracking
-      this.removeVoiceFromTrack(instrumentId, trackIndex, voiceIndex);
-    } else {
-      active.instrument.noteOffAtTime(midi, time);
-    }
-    notes.delete(midi);
+    this.dispatchNoteOffAtTime(
+      instrumentId,
+      midi,
+      scheduledTime,
+      trackIndex,
+    );
   }
 
   /**
@@ -805,6 +861,111 @@ export class TrackerSongBank {
     active.instrument.setMacro(macroIndex, value, time);
   }
 
+  private ensureInstrumentIfDesired(instrumentId: string) {
+    const patch = this.desired.get(instrumentId);
+    if (patch) {
+      void this.ensureInstrument(instrumentId, patch);
+    }
+  }
+
+  private dispatchNoteOnAtTime(
+    instrumentId: string,
+    midi: number,
+    velocity: number,
+    time: number,
+    trackIndex?: number,
+  ) {
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    const now = this.audioContext.currentTime;
+    const timeOffset = time - now;
+    if (timeOffset < 2) {
+      console.log(
+        `[SongBank] noteOnAtTime: inst=${instrumentId}, midi=${midi}, time=${time.toFixed(3)}, now=${now.toFixed(3)}, offset=${timeOffset.toFixed(3)}s`,
+      );
+    }
+
+    const worklet = active.instrument.workletNode;
+    if (!worklet) {
+      console.warn(
+        `[SongBank] noteOnAtTime: instrument ${instrumentId} has NO workletNode!`,
+      );
+    }
+
+    const scheduledTime = Math.max(time, now + MIN_SCHEDULE_LEAD_SECONDS);
+    this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
+    const voiceIndex = active.instrument.noteOnAtTime(
+      midi,
+      velocity,
+      scheduledTime,
+      {
+        allowDuplicate: true,
+      },
+    );
+
+    // Verify parameter presence for debugging
+    if (voiceIndex !== undefined && worklet) {
+      const gateParam = worklet.parameters.get(`gate_${voiceIndex}`);
+      const freqParam = worklet.parameters.get(`frequency_${voiceIndex}`);
+      if (!gateParam || !freqParam) {
+        console.warn(
+          `[SongBank] noteOnAtTime: instrument ${instrumentId} voice ${voiceIndex} missing params! gate=${!!gateParam}, freq=${!!freqParam}`,
+        );
+      }
+    }
+
+    this.getTrackNotes(instrumentId, trackIndex).add(midi);
+    if (voiceIndex !== undefined) {
+      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
+      // Track the voice for this track (for mute/solo)
+      this.addVoiceToTrack(instrumentId, trackIndex, voiceIndex);
+    }
+  }
+
+  private dispatchNoteOffAtTime(
+    instrumentId: string,
+    midi: number | undefined,
+    time: number,
+    trackIndex?: number,
+  ) {
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    const notes = this.getTrackNotes(instrumentId, trackIndex);
+    const voiceIndex = this.takeLastVoiceForTrack(instrumentId, trackIndex);
+    const trackKey = Number.isFinite(trackIndex)
+      ? (trackIndex as number)
+      : -1;
+
+    const scheduledTime = Math.max(time, this.audioContext.currentTime);
+
+    if (midi === undefined) {
+      if (voiceIndex !== undefined) {
+        active.instrument.gateOffVoiceAtTime(voiceIndex, scheduledTime);
+        // Remove voice from track tracking
+        this.removeVoiceFromTrack(instrumentId, trackIndex, voiceIndex);
+      } else if (notes && notes.size > 0) {
+        for (const note of notes) {
+          active.instrument.noteOffAtTime(note, scheduledTime);
+        }
+      } else {
+        active.instrument.cancelScheduledNotes();
+      }
+      notes.clear();
+      // Clear all voice tracking for this track
+      this.clearVoicesForTrack(instrumentId, trackKey);
+      return;
+    }
+
+    if (voiceIndex !== undefined) {
+      active.instrument.noteOffAtTime(midi, scheduledTime, voiceIndex);
+      // Remove voice from track tracking
+      this.removeVoiceFromTrack(instrumentId, trackIndex, voiceIndex);
+    } else {
+      active.instrument.noteOffAtTime(midi, scheduledTime);
+    }
+    notes.delete(midi);
+  }
+
   /**
    * Set the pitch (frequency) for a specific voice at a specific time.
    * Used for portamento, vibrato, arpeggio effects.
@@ -873,6 +1034,7 @@ export class TrackerSongBank {
     const ctx = this.audioContext;
     if (ctx.state === 'running') {
       this.needsAudioContextResume = false;
+      void this.flushPendingScheduledEvents();
       return true;
     }
 
@@ -888,6 +1050,7 @@ export class TrackerSongBank {
       const currentState: string = ctx.state;
       if (currentState === 'running') {
         this.needsAudioContextResume = false;
+        void this.flushPendingScheduledEvents();
         return true;
       }
     } catch (error) {
@@ -904,6 +1067,7 @@ export class TrackerSongBank {
       const currentState: string = ctx.state;
       if (currentState === 'running') {
         this.needsAudioContextResume = false;
+        void this.flushPendingScheduledEvents();
         return true;
       }
 
@@ -1004,6 +1168,7 @@ export class TrackerSongBank {
         );
         existing.instrument.outputNode.connect(this.masterGain);
       }
+      await this.flushPendingScheduledEvents(instrumentId);
       return;
     }
 
@@ -1046,13 +1211,18 @@ export class TrackerSongBank {
     // This is a race condition: synthLayout response means layout is created, but WASM
     // still needs time to build the actual node structures in each voice
     await new Promise((resolve) => setTimeout(resolve, 100));
-    await this.restoreAudioAssets(
-      instrumentId,
-      instrument,
-      normalizedPatch,
-      deserialized,
-    );
-    await this.applyNodeStates(instrument, deserialized);
+
+    // Apply assets and node state in parallel to avoid serial stalls
+    await Promise.all([
+      this.restoreAudioAssets(
+        instrumentId,
+        instrument,
+        normalizedPatch,
+        deserialized,
+      ),
+      this.applyNodeStates(instrument, deserialized),
+    ]);
+
     this.applyMacrosFromPatch(instrument, normalizedPatch);
     this.normalizeVoiceGain(instrument);
     if (generation !== this.generation) {
@@ -1068,6 +1238,7 @@ export class TrackerSongBank {
       patchSignature,
       hasPortamento,
     });
+    await this.flushPendingScheduledEvents(instrumentId);
   }
 
   private normalizeVoiceGain(instrument: InstrumentV2) {

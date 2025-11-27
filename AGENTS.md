@@ -222,6 +222,8 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - Tracker note-off semantics: only `###` is treated as a release/gate-off. The Insert shortcut now writes `###`, and `parseTrackerNoteSymbol` only flags note-off for `###` (not `--`/`---`), matching the UI release indicator.
   - Tracker playback now builds per-track playback steps with context: steps inherit the last instrument, and note-offs without a MIDI value reuse the last played MIDI for that track. This keeps delayed `###` releases and macro-only rows from losing gate context.
   - Tracker song bank now gates off the previous track voice when a new note is triggered on that track (scheduled or realtime). `TrackerSongBank.noteOn`/`noteOnAtTime` call `gateOffVoiceAtTime` for the last tracked voice before scheduling the new note, and the realtime path now uses `noteOnAtTime` to capture the voice index.
+- Tracker scheduling (2025-03): Scheduled tracker note events now queue while the AudioContext is suspended or an instrument is still loading and flush once ready; the near-now “immediate” note path was removed to keep gate pulses/voice tracking consistent. PlaybackEngine lookahead is adaptive (0.5s visible, 1.0s hidden, +0.5s when loops run late) and logs when scheduling approaches its deadline.
+- Tracker instrument prep parallelism (2025-03): Slot sync and playback preloads now `Promise.all` instrument preparation, and per-instrument patch load now applies assets and node state in parallel (after the post-load delay), reducing the chance that late worklet prep suppresses the first scheduled notes when starting right after loading a song.
 
 ### Tracker waveforms
 
