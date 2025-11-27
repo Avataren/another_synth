@@ -862,6 +862,8 @@ const visualizerPadding = ref({ left: 18, right: 18 });
 const VISUALIZER_PADDING_BIAS = 25;
 let teardownVisualizerScrollSync: (() => void) | null = null;
 let isSyncingVisualizerScroll = false;
+const TRACK_SCROLL_MARGIN = 16;
+let teardownTrackWheelScroll: (() => void) | null = null;
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
@@ -889,11 +891,59 @@ function blurAndRefocusTracker(event?: Event) {
 }
 
 function resolvePatternTracksWrapper(): HTMLElement | null {
-  return (
-    trackerPatternRef.value?.tracksWrapperRef?.value ??
-    patternTracksWrapper.value ??
-    null
-  );
+  // tracksWrapperRef is already unwrapped when exposed from child component
+  return trackerPatternRef.value?.tracksWrapperRef ?? patternTracksWrapper.value ?? null;
+}
+
+async function scrollActiveTrackIntoView() {
+  // Wait for DOM to settle so measurements are correct
+  await nextTick();
+  const wrapper = resolvePatternTracksWrapper();
+  if (!wrapper) return;
+  const tracks = wrapper.querySelectorAll<HTMLElement>('.tracker-track');
+  const target = tracks[activeTrack.value];
+  if (!target) return;
+
+  const { scrollLeft, clientWidth } = wrapper;
+  const left = target.offsetLeft;
+  const right = target.offsetLeft + target.offsetWidth;
+  const margin = TRACK_SCROLL_MARGIN;
+
+  let targetScrollLeft: number | null = null;
+
+  // Check if track is hidden to the left
+  if (left < scrollLeft + margin) {
+    targetScrollLeft = Math.max(0, left - margin);
+  }
+  // Check if track is hidden to the right
+  else if (right > scrollLeft + clientWidth - margin) {
+    targetScrollLeft = right - clientWidth + margin;
+  }
+
+  // Perform smooth scroll if needed
+  if (targetScrollLeft !== null) {
+    wrapper.scrollTo({
+      left: targetScrollLeft,
+      behavior: 'smooth'
+    });
+  }
+}
+
+function setupTrackWheelScroll() {
+  teardownTrackWheelScroll?.();
+  const wrapper = resolvePatternTracksWrapper();
+  if (!wrapper) return;
+  const handleWheel = (event: WheelEvent) => {
+    // Convert vertical wheel motion into horizontal scroll for tracks
+    if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+      event.preventDefault();
+      wrapper.scrollLeft += event.deltaY;
+    }
+  };
+  wrapper.addEventListener('wheel', handleWheel, { passive: false });
+  teardownTrackWheelScroll = () => {
+    wrapper.removeEventListener('wheel', handleWheel);
+  };
 }
 
 function updateVisualizerPadding() {
@@ -1622,6 +1672,24 @@ onMounted(async () => {
   refreshVisualizerAlignment();
   visualizerReady.value = true;
 
+  setupTrackWheelScroll();
+  // Wait for next tick to ensure all refs are ready before setting up the watch
+  await nextTick();
+  watch(
+    () => activeTrack.value,
+    () => {
+      scrollActiveTrackIntoView();
+    },
+    { flush: 'post' },
+  );
+  watch(
+    () => trackCount.value,
+    () => {
+      setupTrackWheelScroll();
+    },
+    { immediate: true, flush: 'post' },
+  );
+
   // Re-register the track audio node setter since it was cleared on unmount
   playbackStore.setTrackAudioNodeSetter(
     (trackIndex: number, instrumentId: string | undefined) => {
@@ -1731,6 +1799,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('resize', handleWindowResize);
   teardownVisualizerScrollSync?.();
+  teardownTrackWheelScroll?.();
   // Cancel pending scroll RAF
   if (scrollRafId !== null) {
     cancelAnimationFrame(scrollRafId);

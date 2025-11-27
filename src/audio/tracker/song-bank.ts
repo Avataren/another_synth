@@ -772,12 +772,7 @@ export class TrackerSongBank {
       return;
     }
 
-    this.dispatchNoteOffAtTime(
-      instrumentId,
-      midi,
-      scheduledTime,
-      trackIndex,
-    );
+    this.dispatchNoteOffAtTime(instrumentId, midi, scheduledTime, trackIndex);
   }
 
   /**
@@ -854,7 +849,11 @@ export class TrackerSongBank {
     macroIndex: number,
     value: number,
     time?: number,
-    ramp?: { targetValue: number; targetTime: number; interpolation?: 'linear' | 'exponential' },
+    ramp?: {
+      targetValue: number;
+      targetTime: number;
+      interpolation?: 'linear' | 'exponential';
+    },
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
@@ -865,7 +864,7 @@ export class TrackerSongBank {
       time,
       ramp?.targetValue,
       ramp?.targetTime,
-      ramp?.interpolation
+      ramp?.interpolation,
     );
   }
 
@@ -886,12 +885,12 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     const now = this.audioContext.currentTime;
-    const timeOffset = time - now;
-    if (timeOffset < 2) {
-      console.log(
-        `[SongBank] noteOnAtTime: inst=${instrumentId}, midi=${midi}, time=${time.toFixed(3)}, now=${now.toFixed(3)}, offset=${timeOffset.toFixed(3)}s`,
-      );
-    }
+    //const timeOffset = time - now;
+    // if (timeOffset < 2) {
+    //   console.log(
+    //     `[SongBank] noteOnAtTime: inst=${instrumentId}, midi=${midi}, time=${time.toFixed(3)}, now=${now.toFixed(3)}, offset=${timeOffset.toFixed(3)}s`,
+    //   );
+    // }
 
     const worklet = active.instrument.workletNode;
     if (!worklet) {
@@ -940,9 +939,7 @@ export class TrackerSongBank {
     if (!active) return;
     const notes = this.getTrackNotes(instrumentId, trackIndex);
     const voiceIndex = this.takeLastVoiceForTrack(instrumentId, trackIndex);
-    const trackKey = Number.isFinite(trackIndex)
-      ? (trackIndex as number)
-      : -1;
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
 
     const scheduledTime = Math.max(time, this.audioContext.currentTime);
 

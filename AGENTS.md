@@ -1403,4 +1403,24 @@ if (canReuse) {
 - The effect column now accepts effect letters instead of just hex digits; keyboard input in column 4 handles A–F via hex handlers and G–Z (including M/N/O/P) via effect-only bindings.
 - Macro automation uses dedicated commands: `Mxx`, `Nxx`, `Oxx`, `Pxx` set macros 0–3 (00–FF → 0–1). `parseEffectCommand` maps these shorthands to macro events; legacy `M0xx`–`M3xx` still parse for pasted data.
 - `normalizeMacroChars` allows letters in the first effect slot so tracker entries can store the macro letters without being clamped back to hex.
+
+### Tracker horizontal scrolling for Tab navigation (2025-11-27)
+
+**Problem**: When using Tab/Shift+Tab to navigate between tracks, the pattern view did not scroll horizontally to show tracks that were outside the visible viewport.
+
+**Root Cause**: Vue 3's `defineExpose` automatically unwraps refs when exposing them from child components. The `TrackerPattern` component exposes `tracksWrapperRef` via `defineExpose({ tracksWrapperRef })`, which means the ref gets unwrapped when accessed from the parent. The code in `TrackerPage.vue` was incorrectly trying to access `.value` on an already-unwrapped DOM element reference (`trackerPatternRef.value?.tracksWrapperRef?.value`), resulting in `undefined`.
+
+**Solution**:
+- Fixed `resolvePatternTracksWrapper()` in `src/pages/TrackerPage.vue:893` to access the unwrapped ref correctly: `trackerPatternRef.value?.tracksWrapperRef` (no `.value` at the end)
+- Enhanced `scrollActiveTrackIntoView()` at line 898 to use smooth scrolling: `wrapper.scrollTo({ left: targetScrollLeft, behavior: 'smooth' })`
+- The watch on `activeTrack` (set up in `onMounted` at line 1678) automatically triggers scrolling when tracks change via Tab navigation
+
+**Key Insight**: When a child component exposes refs via `defineExpose`, they are **already unwrapped** when accessed from the parent component. Don't add an extra `.value` accessor.
+
+**Related Code**:
+- `src/components/tracker/TrackerPattern.vue:257` - `defineExpose({ tracksWrapperRef })`
+- `src/pages/TrackerPage.vue:893-896` - `resolvePatternTracksWrapper()` now correctly accesses unwrapped ref
+- `src/pages/TrackerPage.vue:898-930` - `scrollActiveTrackIntoView()` with smooth scroll behavior
+- `src/pages/TrackerPage.vue:1678-1684` - Watch on `activeTrack` triggers auto-scroll
+- `src/composables/useTrackerNavigation.ts:119-135` - `jumpToNextTrack()`/`jumpToPrevTrack()` called by Tab key
 - Keyboard note listeners now bail if `event.defaultPrevented` to avoid triggering note previews while editing tracker effect/volume fields (tracker hex handlers call `preventDefault`).
