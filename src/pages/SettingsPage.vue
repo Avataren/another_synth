@@ -1,200 +1,221 @@
 <template>
   <q-page class="settings-page q-pa-xl">
     <div class="settings-container">
-      <!-- Theme Section -->
-      <section class="settings-section">
-        <div class="section-header">
-          <h2>Theme</h2>
-          <div class="current-theme-badge" role="button">
-            <span class="badge-label">Current:</span>
-            <span class="badge-value">{{ currentTheme.name }}</span>
-            <q-icon name="expand_more" size="18px" class="badge-icon" />
-            <q-menu anchor="bottom right" self="top right" class="theme-menu">
-              <q-list>
-                <q-item
-                  v-for="theme in allThemes"
-                  :key="theme.id"
-                  clickable
-                  v-close-popup
-                  :active="currentThemeId === theme.id"
-                  active-class="theme-menu-active"
-                  @click="setTheme(theme.id)"
-                >
-                  <q-item-section side>
-                    <div
-                      class="menu-color-dot"
-                      :style="{ background: theme.colors.accentPrimary }"
+      <div class="tab-bar">
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          type="button"
+          class="tab-button"
+          :class="{ active: activeTab === tab.id }"
+          @click="activeTab = tab.id"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <transition name="fade-slide" mode="out-in">
+        <div :key="activeTab">
+          <template v-if="activeTab === 'appearance'">
+            <!-- Theme Section -->
+            <section class="settings-section">
+              <div class="section-header">
+                <h2>Theme</h2>
+                <div class="current-theme-badge" role="button">
+                  <span class="badge-label">Current:</span>
+                  <span class="badge-value">{{ currentTheme.name }}</span>
+                  <q-icon name="expand_more" size="18px" class="badge-icon" />
+                  <q-menu anchor="bottom right" self="top right" class="theme-menu">
+                    <q-list>
+                      <q-item
+                        v-for="theme in allThemes"
+                        :key="theme.id"
+                        clickable
+                        v-close-popup
+                        :active="currentThemeId === theme.id"
+                        active-class="theme-menu-active"
+                        @click="setTheme(theme.id)"
+                      >
+                        <q-item-section side>
+                          <div
+                            class="menu-color-dot"
+                            :style="{ background: theme.colors.accentPrimary }"
+                          />
+                        </q-item-section>
+                        <q-item-section>
+                          <q-item-label>{{ theme.name }}</q-item-label>
+                          <q-item-label caption>{{ theme.description }}</q-item-label>
+                        </q-item-section>
+                        <q-item-section v-if="currentThemeId === theme.id" side>
+                          <q-icon name="check" color="positive" size="18px" />
+                        </q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-menu>
+                </div>
+              </div>
+              <div class="settings-content">
+                <p class="section-description">
+                  Choose a color theme for the interface.
+                </p>
+                <div class="theme-grid">
+                  <div
+                    v-for="theme in allThemes"
+                    :key="theme.id"
+                    class="theme-card"
+                    :class="{ active: currentThemeId === theme.id }"
+                    @click="setTheme(theme.id)"
+                  >
+                    <div class="theme-preview">
+                      <div
+                        class="preview-bar"
+                        :style="{
+                          background: theme.colors.accentPrimary
+                        }"
+                      />
+                    </div>
+                    <div class="theme-info">
+                      <div class="theme-name">
+                        <span>{{ theme.name }}</span>
+                      </div>
+                      <button
+                        v-if="theme.id === 'custom'"
+                        type="button"
+                        class="edit-theme-button"
+                        title="Edit custom theme"
+                        @click.stop="openThemeEditor"
+                      >
+                        <q-icon name="edit" size="16px" />
+                      </button>
+                    </div>
+                    <div v-if="currentThemeId === theme.id" class="theme-check">
+                      <q-icon name="check_circle" size="20px" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Fonts Section -->
+            <section class="settings-section">
+              <div class="section-header">
+                <h2>Fonts</h2>
+              </div>
+              <div class="settings-content">
+                <p class="section-description">
+                  Customize the fonts used throughout the application.
+                </p>
+
+                <div class="font-settings">
+                  <!-- UI Font Selection -->
+                  <div class="font-setting">
+                    <div class="font-setting-header">
+                      <label class="font-label">Interface Font</label>
+                      <span class="font-preview-text" :style="{ fontFamily: `'${currentUiFont}', sans-serif` }">
+                        {{ currentUiFont }}
+                      </span>
+                    </div>
+                    <div class="font-grid">
+                      <div
+                        v-for="font in uiFonts"
+                        :key="font.id"
+                        class="font-card"
+                        :class="{ active: currentUiFont === font.id }"
+                        @click="setUiFont(font.id)"
+                      >
+                        <span class="font-name" :style="{ fontFamily: `'${font.id}', sans-serif` }">
+                          {{ font.name }}
+                        </span>
+                        <div v-if="currentUiFont === font.id" class="font-check">
+                          <q-icon name="check_circle" size="16px" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Tracker Font Selection -->
+                  <div class="font-setting">
+                    <div class="font-setting-header">
+                      <label class="font-label">Tracker Font</label>
+                      <span class="font-preview-text mono" :style="{ fontFamily: `'${currentTrackerFont}', monospace` }">
+                        {{ currentTrackerFont }}
+                      </span>
+                    </div>
+                    <div class="font-grid">
+                      <div
+                        v-for="font in monospaceFonts"
+                        :key="font.id"
+                        class="font-card"
+                        :class="{ active: currentTrackerFont === font.id }"
+                        @click="setTrackerFont(font.id)"
+                      >
+                        <span class="font-name mono" :style="{ fontFamily: `'${font.id}', monospace` }">
+                          {{ font.name }}
+                        </span>
+                        <div v-if="currentTrackerFont === font.id" class="font-check">
+                          <q-icon name="check_circle" size="16px" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </template>
+
+          <template v-else>
+            <!-- Preferences Section -->
+            <section class="settings-section">
+              <div class="section-header">
+                <h2>Preferences</h2>
+              </div>
+              <div class="settings-content">
+                <p class="section-description">
+                  Configure visualizers and MIDI input.
+                </p>
+
+                <div class="toggle-settings">
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.showSpectrumAnalyzer"
+                      @change="updateSetting('showSpectrumAnalyzer', ($event.target as HTMLInputElement).checked)"
                     />
-                  </q-item-section>
-                  <q-item-section>
-                    <q-item-label>{{ theme.name }}</q-item-label>
-                    <q-item-label caption>{{ theme.description }}</q-item-label>
-                  </q-item-section>
-                  <q-item-section v-if="currentThemeId === theme.id" side>
-                    <q-icon name="check" color="positive" size="18px" />
-                  </q-item-section>
-                </q-item>
-              </q-list>
-            </q-menu>
-          </div>
-        </div>
-        <div class="settings-content">
-          <p class="section-description">
-            Choose a color theme for the interface.
-          </p>
-          <div class="theme-grid">
-            <div
-              v-for="theme in allThemes"
-              :key="theme.id"
-              class="theme-card"
-              :class="{ active: currentThemeId === theme.id }"
-              @click="setTheme(theme.id)"
-            >
-              <div class="theme-preview">
-                <div
-                  class="preview-bar"
-                  :style="{
-                    background: theme.colors.accentPrimary
-                  }"
-                />
-              </div>
-            <div class="theme-info">
-              <div class="theme-name">
-                <span>{{ theme.name }}</span>
-              </div>
-              <button
-                v-if="theme.id === 'custom'"
-                type="button"
-                class="edit-theme-button"
-                title="Edit custom theme"
-                @click.stop="openThemeEditor"
-              >
-                <q-icon name="edit" size="16px" />
-              </button>
-            </div>
-              <div v-if="currentThemeId === theme.id" class="theme-check">
-                <q-icon name="check_circle" size="20px" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+                    <div class="toggle-info">
+                      <span class="toggle-label">Spectrum Analyzer</span>
+                      <span class="toggle-description">Show frequency spectrum overlay on the tracker</span>
+                    </div>
+                  </label>
 
-      <!-- Fonts Section -->
-      <section class="settings-section">
-        <div class="section-header">
-          <h2>Fonts</h2>
-        </div>
-        <div class="settings-content">
-          <p class="section-description">
-            Customize the fonts used throughout the application.
-          </p>
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.showWaveformVisualizers"
+                      @change="updateSetting('showWaveformVisualizers', ($event.target as HTMLInputElement).checked)"
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Track Waveforms</span>
+                      <span class="toggle-description">Show waveform visualizers for each track</span>
+                    </div>
+                  </label>
 
-          <div class="font-settings">
-            <!-- UI Font Selection -->
-            <div class="font-setting">
-              <div class="font-setting-header">
-                <label class="font-label">Interface Font</label>
-                <span class="font-preview-text" :style="{ fontFamily: `'${currentUiFont}', sans-serif` }">
-                  {{ currentUiFont }}
-                </span>
-              </div>
-              <div class="font-grid">
-                <div
-                  v-for="font in uiFonts"
-                  :key="font.id"
-                  class="font-card"
-                  :class="{ active: currentUiFont === font.id }"
-                  @click="setUiFont(font.id)"
-                >
-                  <span class="font-name" :style="{ fontFamily: `'${font.id}', sans-serif` }">
-                    {{ font.name }}
-                  </span>
-                  <div v-if="currentUiFont === font.id" class="font-check">
-                    <q-icon name="check_circle" size="16px" />
-                  </div>
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.enableMidi"
+                      @change="updateSetting('enableMidi', ($event.target as HTMLInputElement).checked)"
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Enable MIDI Input</span>
+                      <span class="toggle-description">Request MIDI access for external controllers (requires browser permission)</span>
+                    </div>
+                  </label>
                 </div>
               </div>
-            </div>
-
-            <!-- Tracker Font Selection -->
-            <div class="font-setting">
-              <div class="font-setting-header">
-                <label class="font-label">Tracker Font</label>
-                <span class="font-preview-text mono" :style="{ fontFamily: `'${currentTrackerFont}', monospace` }">
-                  {{ currentTrackerFont }}
-                </span>
-              </div>
-              <div class="font-grid">
-                <div
-                  v-for="font in monospaceFonts"
-                  :key="font.id"
-                  class="font-card"
-                  :class="{ active: currentTrackerFont === font.id }"
-                  @click="setTrackerFont(font.id)"
-                >
-                  <span class="font-name mono" :style="{ fontFamily: `'${font.id}', monospace` }">
-                    {{ font.name }}
-                  </span>
-                  <div v-if="currentTrackerFont === font.id" class="font-check">
-                    <q-icon name="check_circle" size="16px" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+            </section>
+          </template>
         </div>
-      </section>
-
-      <!-- Visualizers Section -->
-      <section class="settings-section">
-        <div class="section-header">
-          <h2>Visualizers</h2>
-        </div>
-        <div class="settings-content">
-          <p class="section-description">
-            Configure audio visualizations in the tracker.
-          </p>
-
-          <div class="toggle-settings">
-            <label class="toggle-setting">
-              <input
-                type="checkbox"
-                :checked="settings.showSpectrumAnalyzer"
-                @change="updateSetting('showSpectrumAnalyzer', ($event.target as HTMLInputElement).checked)"
-              />
-              <div class="toggle-info">
-                <span class="toggle-label">Spectrum Analyzer</span>
-                <span class="toggle-description">Show frequency spectrum overlay on the tracker</span>
-              </div>
-            </label>
-
-            <label class="toggle-setting">
-              <input
-                type="checkbox"
-                :checked="settings.showWaveformVisualizers"
-                @change="updateSetting('showWaveformVisualizers', ($event.target as HTMLInputElement).checked)"
-              />
-              <div class="toggle-info">
-                <span class="toggle-label">Track Waveforms</span>
-                <span class="toggle-description">Show waveform visualizers for each track</span>
-              </div>
-            </label>
-
-            <label class="toggle-setting">
-              <input
-                type="checkbox"
-                :checked="settings.enableMidi"
-                @change="updateSetting('enableMidi', ($event.target as HTMLInputElement).checked)"
-              />
-              <div class="toggle-info">
-                <span class="toggle-label">Enable MIDI Input</span>
-                <span class="toggle-description">Request MIDI access for external controllers (requires browser permission)</span>
-              </div>
-            </label>
-          </div>
-        </div>
-      </section>
+      </transition>
     </div>
   </q-page>
 
@@ -284,6 +305,13 @@ const {
 const userSettingsStore = useUserSettingsStore();
 const { settings } = storeToRefs(userSettingsStore);
 const { updateSetting } = userSettingsStore;
+
+const tabs = [
+  { id: 'appearance' as const, label: 'Appearance' },
+  { id: 'preferences' as const, label: 'Preferences' }
+];
+type TabId = (typeof tabs)[number]['id'];
+const activeTab = ref<TabId>('appearance');
 
 type ColorFieldKey = keyof ThemeColors;
 const colorFields: { key: ColorFieldKey; label: string; placeholder?: string }[] = [
@@ -395,6 +423,40 @@ function onPickColor(key: ColorFieldKey, value: string) {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.tab-bar {
+  display: inline-flex;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel-background-alt, rgba(255, 255, 255, 0.03));
+  align-self: flex-start;
+}
+
+.tab-button {
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #c8d9f2);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tab-button.active {
+  background: var(--tracker-active-bg, rgba(77, 242, 197, 0.08));
+  color: var(--tracker-accent-primary, #4df2c5);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 200ms ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 .settings-section {
