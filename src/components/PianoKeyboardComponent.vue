@@ -24,6 +24,7 @@
 import { onMounted, onUnmounted, watch } from 'vue';
 import { useKeyboardStore } from '../stores/keyboard-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { storeToRefs } from 'pinia';
 import { useInstrumentStore } from 'src/stores/instrument-store';
 
 interface PianoKey {
@@ -32,7 +33,8 @@ interface PianoKey {
   type: 'white' | 'black';
 }
 
-const { currentInstrument } = useInstrumentStore();
+const instrumentStore = useInstrumentStore();
+const { currentInstrument } = storeToRefs(instrumentStore);
 const keyboardStore = useKeyboardStore();
 const userSettingsStore = useUserSettingsStore();
 
@@ -78,9 +80,9 @@ watch(
   (event) => {
     if (!event) return;
     if (event.velocity < 0.0001) {
-      currentInstrument?.note_off(event.note);
+      currentInstrument.value?.note_off(event.note);
     } else {
-      currentInstrument?.note_on(event.note, event.velocity);
+      currentInstrument.value?.note_on(event.note, event.velocity);
     }
   },
 );

@@ -72,7 +72,8 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
         ));
         this.currentInstrument = instrument;
         this.defaultInstrument = instrument;
-        this.destinationNode = this.audioSystem.destinationNode;
+        // Visualizers and component controls should tap the instrument output, not the global mixer
+        this.destinationNode = instrument.outputNode;
         this.applyMacrosToInstrument();
       }
 
@@ -151,13 +152,12 @@ export const useInstrumentStore = defineStore<'instrumentStore', InstrumentStore
     },
 
     restoreDefaultInstrument() {
-      if (this.usingExternalInstrument && this.defaultInstrument) {
+      if (!this.defaultInstrument) return;
+      // Force the current instrument back to the default for standalone editing
+      if (this.currentInstrument !== this.defaultInstrument || this.usingExternalInstrument) {
         this.currentInstrument = this.defaultInstrument;
         this.usingExternalInstrument = false;
-        // Restore the original destination node
-        if (this.audioSystem) {
-          this.destinationNode = this.audioSystem.destinationNode;
-        }
+        this.destinationNode = this.defaultInstrument.outputNode;
       }
     },
   },

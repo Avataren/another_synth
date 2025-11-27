@@ -382,8 +382,9 @@ const editingPatchName = computed(() => {
   const slot = trackerStore.instrumentSlots.find(s => s.slot === editingSlot.value);
   return slot?.instrumentName || slot?.patchName || 'Song Patch';
 });
+const isInstrumentEditorRoute = computed(() => route.name === 'patch-instrument-editor');
 const songPatchRouteSlot = computed<number | null>(() => {
-  if (route.name !== 'patch-instrument-editor') {
+  if (!isInstrumentEditorRoute.value) {
     return null;
   }
   const slotParam = Array.isArray(route.params.slot) ? route.params.slot[0] : route.params.slot;
@@ -457,6 +458,18 @@ watch(
     }
     trackerStore.stopEditing();
     instrumentStore.restoreDefaultInstrument();
+  },
+  { immediate: true }
+);
+
+// Ensure standalone patch editor always uses the default instrument
+watch(
+  () => isInstrumentEditorRoute.value,
+  (isInstrumentRoute) => {
+    if (!isInstrumentRoute) {
+      trackerStore.stopEditing();
+      instrumentStore.restoreDefaultInstrument();
+    }
   },
   { immediate: true }
 );
