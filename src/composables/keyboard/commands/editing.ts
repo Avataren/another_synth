@@ -69,11 +69,13 @@ export const editingCommands: KeyboardCommand[] = [
 ];
 
 /**
- * Create hex input commands for volume and macro editing
- * These are dynamically generated for 0-9 and A-F
+ * Create input commands for the volume/effect column
+ * - Hex digits (0-9, A-F) for volume + effect params
+ * - Effect letters (G-Z) for effect/macro commands in the effect column
  */
 export function createHexInputCommands(): KeyboardCommand[] {
   const hexChars = '0123456789ABCDEF'.split('');
+  const effectLetters = 'GHIJKLMNOPQRSTUVWXYZ'.split('');
   const commands: KeyboardCommand[] = [];
 
   for (const hexChar of hexChars) {
@@ -112,6 +114,34 @@ export function createHexInputCommands(): KeyboardCommand[] {
         }
       });
     }
+  }
+
+  // Effect command letters (effect column only)
+  for (const letter of effectLetters) {
+    const lower = letter.toLowerCase();
+    commands.push({
+      key: lower,
+      columnFilter: 4,
+      description: `Enter effect letter ${letter}`,
+      category: 'editing',
+      handler: (ctx, event) => {
+        if (!event.repeat) {
+          ctx.handleMacroInput(letter);
+        }
+      }
+    });
+
+    commands.push({
+      key: letter,
+      columnFilter: 4,
+      description: `Enter effect letter ${letter}`,
+      category: 'editing',
+      handler: (ctx, event) => {
+        if (!event.repeat) {
+          ctx.handleMacroInput(letter);
+        }
+      }
+    });
   }
 
   return commands;

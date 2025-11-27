@@ -137,7 +137,9 @@ function parseExtendedEffect(x: number, y: number): EffectCommand | undefined {
 /**
  * Parse effect command field
  * Supports:
- * - Macro commands: M0xx-M3xx (explicit macro prefix) - macro index 0-3, value 00-FF
+ * - Macro commands:
+ *   - M0xx-M3xx (explicit macro prefix) - macro index 0-3, value 00-FF
+ *   - Mxx / Nxx / Oxx / Pxx (3-char macro shorthands for macro 0-3)
  * - FastTracker 2 effects:
  *   - 0xy: Arpeggio (when xy != 00)
  *   - 1xx: Portamento up
@@ -178,6 +180,22 @@ export function parseEffectCommand(macro?: string): EffectCommandResult {
         const clamped = Math.max(0, Math.min(255, raw));
         return { type: 'macro', index: macroIndex, value: clamped / 255 };
       }
+    }
+  }
+
+  // Check for single-letter macro shorthands (M/N/O/P map to macro 0-3)
+  const macroLetterMap: Record<string, number> = { M: 0, N: 1, O: 2, P: 3 };
+  const macroLetterIndex = macroLetterMap[clean[0] ?? ''];
+  if (macroLetterIndex !== undefined) {
+    const valueStr = clean
+      .slice(1)
+      .replace(/\./g, '0')
+      .padEnd(2, '0')
+      .slice(0, 2);
+    const raw = Number.parseInt(valueStr, 16);
+    if (Number.isFinite(raw)) {
+      const clamped = Math.max(0, Math.min(255, raw));
+      return { type: 'macro', index: macroLetterIndex, value: clamped / 255 };
     }
   }
 

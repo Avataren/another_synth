@@ -187,7 +187,7 @@ function onMouseEnterRow() {
   width: 100%;
   min-width: 156px;
   display: grid;
-  grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.4fr;
+  grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.8fr;
   align-items: center;
   padding: 6px 10px;
   border: 1px solid var(--tracker-border-default, rgba(255, 255, 255, 0.05));
@@ -251,11 +251,17 @@ function onMouseEnterRow() {
 }
 
 .cell-active {
-  color: var(--tracker-cell-active-text, #0c1624);
+  color: inherit;
   font-weight: 800;
-  background: var(--tracker-cell-active-bg, rgba(77, 242, 197, 0.9));
+  background: rgba(77, 242, 197, 0.12);
   border-radius: 6px;
   padding: 2px 6px;
+}
+
+.effect.cell-active {
+  /* Keep selection visible but let the text stay legible */
+  background: rgba(77, 242, 197, 0.12);
+  color: var(--tracker-effect-text, #8ef5c5);
 }
 
 .note {
@@ -285,13 +291,21 @@ function onMouseEnterRow() {
 }
 
 .macro-digit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 2px 3px;
   border-radius: 4px;
+  min-width: 0.9em;
+  font-family: var(--font-tracker), monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-weight: 700;
 }
 
 .macro-digit.active {
-  color: var(--tracker-cell-active-text, #0c1624);
-  font-weight: 800;
-  background: var(--tracker-cell-active-bg, rgba(77, 242, 197, 0.9));
+  color: var(--tracker-effect-text, #8ef5c5);
+  font-weight: 700;
+  background: rgba(77, 242, 197, 0.12);
 }
 </style>

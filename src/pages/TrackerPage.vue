@@ -681,8 +681,8 @@ function normalizeVolumeChars(vol?: string): [string, string] {
 function normalizeMacroChars(macro?: string): [string, string, string] {
   const clean = (macro ?? '').toUpperCase();
   const chars: [string, string, string] = ['.', '.', '.'];
-  // Allow hex digits for all positions
-  if (/^[0-9A-F]$/.test(clean[0] ?? '')) chars[0] = clean[0] as string;
+  // Allow any effect command letter (A-Z) or digit in the first slot; params stay hex
+  if (/^[0-9A-Z]$/.test(clean[0] ?? '')) chars[0] = clean[0] as string;
   if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1] as string;
   if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2] as string;
   return chars;

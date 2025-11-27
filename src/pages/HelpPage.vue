@@ -23,7 +23,7 @@
           <li><strong>Note</strong>: musical note (e.g., C-4) or ### for note-off.</li>
           <li><strong>Instr</strong>: two-digit instrument slot ID (01..).</li>
           <li><strong>Vol</strong>: hex velocity (00–FF) mapped to 0–127 MIDI velocity.</li>
-          <li><strong>Effect</strong>: FT2-style effect command (e.g., <code>4A8</code> = vibrato) or <code>Mnxx</code> for macro automation.</li>
+          <li><strong>Effect</strong>: FT2-style effect command (e.g., <code>4A8</code> = vibrato) or macro automation (<code>Mxx</code>/<code>Nxx</code>/<code>Oxx</code>/<code>Pxx</code> for macros 0–3).</li>
         </ul>
       </section>
 
@@ -49,7 +49,11 @@
 
       <section class="help-section">
         <h2>Effect commands</h2>
-        <p>The effect column supports FastTracker 2-style commands. Use <code>Mnxx</code> prefix for macro automation.</p>
+        <p>
+          The effect column supports FastTracker 2-style commands. Use macro letters
+          <code>Mxx</code>/<code>Nxx</code>/<code>Oxx</code>/<code>Pxx</code> to set macros 0–3
+          (legacy <code>M0xx–M3xx</code> is still understood when pasting).
+        </p>
 
         <div class="effect-table">
           <div class="effect-group">
@@ -123,10 +127,11 @@
 
           <div class="effect-group">
             <h3>Macro Automation</h3>
-            <div class="effect-row"><code>M0xx</code><span>Set macro 0 to xx (00–FF → 0–1)</span></div>
-            <div class="effect-row"><code>M1xx</code><span>Set macro 1 to xx</span></div>
-            <div class="effect-row"><code>M2xx</code><span>Set macro 2 to xx</span></div>
-            <div class="effect-row"><code>M3xx</code><span>Set macro 3 to xx</span></div>
+            <div class="effect-row"><code>Mxx</code><span>Set macro 0 to xx (00–FF → 0–1)</span></div>
+            <div class="effect-row"><code>Nxx</code><span>Set macro 1 to xx</span></div>
+            <div class="effect-row"><code>Oxx</code><span>Set macro 2 to xx</span></div>
+            <div class="effect-row"><code>Pxx</code><span>Set macro 3 to xx</span></div>
+            <div class="effect-row"><code>M0xx–M3xx</code><span>Legacy paste support for explicit macro index</span></div>
           </div>
         </div>
       </section>

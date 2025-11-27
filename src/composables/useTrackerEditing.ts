@@ -277,16 +277,17 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     if (!context.isEditMode.value) return;
     if (context.activeColumn.value !== 4) return;
     context.pushHistory();
+    const char = hexChar.toUpperCase();
     const nibbleIndex = context.activeMacroNibble.value;
-    // First digit is the macro command (0-F for commands 0-F)
-    if (nibbleIndex === 0 && !/^[0-9A-F]$/.test(hexChar)) return;
-    if (nibbleIndex > 0 && !/^[0-9A-F]$/.test(hexChar)) return;
+    // First digit is the effect command (allow letters for macros/effects), remaining are hex params
+    if (nibbleIndex === 0 && !/^[0-9A-Z]$/.test(char)) return;
+    if (nibbleIndex > 0 && !/^[0-9A-F]$/.test(char)) return;
 
     const row = context.activeRow.value;
     const track = context.activeTrack.value;
     updateEntryAt(row, track, (entry) => {
       const chars = context.normalizeMacroChars(entry.macro);
-      chars[nibbleIndex] = hexChar;
+      chars[nibbleIndex] = char;
       return {
         ...entry,
         macro: chars.join('')

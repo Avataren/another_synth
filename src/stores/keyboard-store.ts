@@ -154,6 +154,8 @@ export const useKeyboardStore = defineStore('keyboard', {
     // --- Keyboard-only listeners ---
     setupGlobalKeyboardListeners() {
       const handleKeyDown = (event: KeyboardEvent) => {
+        // Skip if another handler already consumed the event (e.g., tracker editing hex/effect input)
+        if (event.defaultPrevented) return;
         if (!this.isEnabled || this.isInputElement(event.target)) {
           return;
         }
@@ -165,6 +167,7 @@ export const useKeyboardStore = defineStore('keyboard', {
       };
 
       const handleKeyUp = (event: KeyboardEvent) => {
+        if (event.defaultPrevented) return;
         if (!this.isEnabled) return;
         const note = this.keyMap[event.code];
         if (note !== undefined) {

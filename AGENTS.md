@@ -1390,3 +1390,10 @@ if (canReuse) {
 - Tracker keyboard handler skips events when the target is an `input/textarea/select`, so UI controls must blur and return focus to the tracker container after use or the note-entry cursor appears “stuck”.
 - Auto-scroll toggle and the master volume slider in `TrackerPage.vue` now call `blurAndRefocusTracker` on change to drop focus and re-focus the container.
 - `SequenceEditor` emits `request-refocus` after the Add Pattern select closes (popup-hide) or after rename commits/cancels so the tracker regains keyboard focus even when the dropdown lives in a portal.
+
+### Tracker macro effect commands (2025)
+
+- The effect column now accepts effect letters instead of just hex digits; keyboard input in column 4 handles A–F via hex handlers and G–Z (including M/N/O/P) via effect-only bindings.
+- Macro automation uses dedicated commands: `Mxx`, `Nxx`, `Oxx`, `Pxx` set macros 0–3 (00–FF → 0–1). `parseEffectCommand` maps these shorthands to macro events; legacy `M0xx`–`M3xx` still parse for pasted data.
+- `normalizeMacroChars` allows letters in the first effect slot so tracker entries can store the macro letters without being clamped back to hex.
+- Keyboard note listeners now bail if `event.defaultPrevented` to avoid triggering note previews while editing tracker effect/volume fields (tracker hex handlers call `preventDefault`).
