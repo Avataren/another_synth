@@ -76,12 +76,15 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       entryByRow.set(entry.row, entry);
     }
 
-    function getInterpolationForRow(row: number) {
+    function getInterpolationsForRow(row: number) {
       const ranges = track.interpolations ?? [];
-      return ranges.find((range) => row >= range.startRow && row <= range.endRow);
+      return ranges.filter((range) => row >= range.startRow && row <= range.endRow);
     }
 
-    function interpolateValue(range: { startRow: number; endRow: number; startValue: number; endValue: number }, row: number) {
+    function interpolateValue(
+      range: { startRow: number; endRow: number; startValue: number; endValue: number },
+      row: number
+    ) {
       if (range.endRow === range.startRow) return range.endValue;
       const t = (row - range.startRow) / (range.endRow - range.startRow);
       return range.startValue + (range.endValue - range.startValue) * t;
@@ -94,14 +97,25 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       const volumeValue = parseTrackerVolume(entry?.volume);
       let effectCmd = parseEffectCommand(entry?.macro);
 
-      const interpolation = getInterpolationForRow(row);
-      const interpolationType = interpolation?.interpolation ?? 'linear';
-      if (!effectCmd && interpolation) {
+      const interpolationsAtRow = getInterpolationsForRow(row);
+      const startRange = interpolationsAtRow.find((r) => r.startRow === row);
+      const endRange = interpolationsAtRow.find((r) => r.endRow === row && r.startRow !== row);
+
+      if (startRange && !effectCmd) {
         effectCmd = {
           type: 'macro',
-          index: interpolation.macroIndex,
-          value: interpolateValue(interpolation, row)
+          index: startRange.macroIndex,
+          value: interpolateValue(startRange, row)
         };
+      } else if (endRange && !effectCmd) {
+        effectCmd = {
+          type: 'macro',
+          index: endRange.macroIndex,
+          value: interpolateValue(endRange, row)
+        };
+      } else if (interpolationsAtRow.length > 0 && !effectCmd) {
+        // Middle rows in the interpolation should not reset the ramp
+        effectCmd = undefined;
       }
 
       // Check if this entry has any meaningful data
@@ -146,12 +160,12 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         if (effectCmd.type === 'macro') {
           step.macroIndex = effectCmd.index;
           step.macroValue = effectCmd.value;
-          if (interpolation && interpolation.macroIndex === effectCmd.index && row < interpolation.endRow) {
-            const nextValue = interpolateValue(interpolation, row + 1);
+          if (startRange && startRange.macroIndex === effectCmd.index && row < startRange.endRow) {
+            // Single ramp across the full interpolation span
             step.macroRamp = {
-              targetRow: row + 1,
-              targetValue: nextValue,
-              interpolation: interpolationType
+              targetRow: startRange.endRow,
+              targetValue: startRange.endValue,
+              interpolation: startRange.interpolation ?? 'linear'
             };
           }
         } else if (effectCmd.type === 'speed') {

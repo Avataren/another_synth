@@ -494,7 +494,12 @@ export class PlaybackEngine {
                 step.macroRamp && step.macroRamp.targetRow > row
                   ? {
                       targetValue: step.macroRamp.targetValue,
-                      targetTime: time + (step.macroRamp.targetRow - row) * secPerRow,
+                      // Nudge the ramp to end just before the target row start to avoid overlapping set/ramp at identical times
+                      targetTime: (() => {
+                        const ideal = time + (step.macroRamp.targetRow - row) * secPerRow;
+                        const epsilon = 1e-5; // 10 microseconds
+                        return Math.max(time + epsilon, ideal - epsilon);
+                      })(),
                       ...(step.macroRamp.interpolation
                         ? { interpolation: step.macroRamp.interpolation }
                         : {})
