@@ -495,6 +495,7 @@
             :playback-mode="playbackMode"
             :scroll-top="patternAreaScrollTop"
             :container-height="patternAreaHeight"
+            :is-mouse-selecting="isMouseSelecting"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"

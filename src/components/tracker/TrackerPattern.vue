@@ -77,6 +77,7 @@ interface Props {
   selectionRect: TrackerSelectionRect | null;
   scrollTop: number;
   containerHeight: number;
+  isMouseSelecting: boolean;
 }
 
 const props = defineProps<Props>();
@@ -199,6 +200,8 @@ function scrollToRow(row: number) {
 const scrollTarget = computed(() => {
   if (!props.autoScroll) return null;
   if (props.isPlaying) return props.playbackRow;
+  // Avoid fighting with mouse selection; let user control scroll while selecting
+  if (props.isMouseSelecting) return null;
   return props.selectedRow;
 });
 
