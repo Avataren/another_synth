@@ -1371,3 +1371,9 @@ if (canReuse) {
 1. Keyboard in patch editor
 2. Keyboard in tracker (with edit mode off for preview)
 3. Song playback in tracker
+
+### Patch editor routing (tracker vs standalone) - 2025-03
+
+- The tracker now opens song patch edits on a dedicated route: `patch/instrument/:slot` (route name `patch-instrument-editor`). Legacy `?editSongPatch=` queries are redirected to this path in `src/router/routes.ts`.
+- `IndexPage.vue` watches that route to start editing, load the song patch, and swap to the tracker’s live instrument. Leaving the instrument route saves the patch (unless `stopEditing` already ran) and clears `editingSlot` while restoring the default instrument.
+- Navigating to `/patch` now reliably exits song patch mode so the standalone patch editor no longer stays stuck in tracker edit mode after editing an instrument.

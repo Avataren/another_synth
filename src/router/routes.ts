@@ -6,14 +6,42 @@ const routes: RouteRecordRaw[] = [
     component: () => import('layouts/MainLayout.vue'),
     children: [
       { path: '', redirect: '/tracker' },
-      { path: 'patch', component: () => import('pages/IndexPage.vue') },
+      {
+        path: 'patch',
+        name: 'patch-editor',
+        component: () => import('pages/IndexPage.vue'),
+        beforeEnter: (to) => {
+          const slotQuery = to.query.editSongPatch;
+          if (slotQuery) {
+            const slotNumber = parseInt(slotQuery as string, 10);
+            if (!Number.isNaN(slotNumber)) {
+              return {
+                name: 'patch-instrument-editor',
+                params: { slot: slotNumber },
+              };
+            }
+          }
+          return true;
+        },
+      },
+      {
+        path: 'patch/instrument/:slot(\\d+)',
+        name: 'patch-instrument-editor',
+        component: () => import('pages/IndexPage.vue'),
+      },
       {
         path: 'tracker',
         component: () => import('pages/TrackerPage.vue'),
         beforeEnter: (to) => {
-          // If a song patch edit is requested, forward to the patch editor with the same query.
+          // If a song patch edit is requested (legacy query), forward to the instrument editor route.
           if (to.query.editSongPatch) {
-            return { path: '/patch', query: to.query };
+            const slotNumber = parseInt(to.query.editSongPatch as string, 10);
+            if (!Number.isNaN(slotNumber)) {
+              return {
+                name: 'patch-instrument-editor',
+                params: { slot: slotNumber },
+              };
+            }
           }
           return true;
         },

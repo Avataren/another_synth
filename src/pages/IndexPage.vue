@@ -382,6 +382,17 @@ const editingPatchName = computed(() => {
   const slot = trackerStore.instrumentSlots.find(s => s.slot === editingSlot.value);
   return slot?.instrumentName || slot?.patchName || 'Song Patch';
 });
+const songPatchRouteSlot = computed<number | null>(() => {
+  if (route.name !== 'patch-instrument-editor') {
+    return null;
+  }
+  const slotParam = Array.isArray(route.params.slot) ? route.params.slot[0] : route.params.slot;
+  if (typeof slotParam !== 'string' && typeof slotParam !== 'number') {
+    return null;
+  }
+  const slotNumber = parseInt(slotParam as string, 10);
+  return Number.isNaN(slotNumber) ? null : slotNumber;
+});
 
 async function loadSongPatchForEditing(slotNumber: number) {
   const slot = trackerStore.instrumentSlots.find(s => s.slot === slotNumber);
@@ -434,18 +445,18 @@ async function backToTracker() {
 
 // Watch for route changes to detect song patch editing
 watch(
-  () => route.query.editSongPatch,
-  async (slotParam, oldSlotParam) => {
-    if (slotParam) {
-      const slotNumber = parseInt(slotParam as string, 10);
-      if (!Number.isNaN(slotNumber)) {
-        trackerStore.startEditingSlot(slotNumber);
-        await loadSongPatchForEditing(slotNumber);
-      }
-    } else if (oldSlotParam && !slotParam) {
-      // Navigating away from song patch editing mode
-      instrumentStore.restoreDefaultInstrument();
+  songPatchRouteSlot,
+  async (slotNumber, previousSlot) => {
+    if (slotNumber !== null) {
+      trackerStore.startEditingSlot(slotNumber);
+      await loadSongPatchForEditing(slotNumber);
+      return;
     }
+    if (previousSlot !== null && editingSlot.value !== null) {
+      await saveSongPatch();
+    }
+    trackerStore.stopEditing();
+    instrumentStore.restoreDefaultInstrument();
   },
   { immediate: true }
 );
@@ -471,6 +482,7 @@ onUnmounted(() => {
     // Restore the default instrument when leaving the page
     instrumentStore.restoreDefaultInstrument();
   }
+  trackerStore.stopEditing();
 });
 
 // Live patch editing during playback - enabled!

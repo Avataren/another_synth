@@ -242,18 +242,11 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
     }
     const slot = context.instrumentSlots.value.find((s) => s.slot === slotNumber);
     if (!slot?.patchId) return;
-    const patch = context.songPatches.value[slot.patchId];
-    if (patch) {
-      await context.patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
-    }
 
-    // Mark which slot we're editing
-    context.trackerStore.startEditingSlot(slotNumber);
-
-    // Navigate to synth page with query param
+    // Navigate to dedicated song patch editor route
     void context.router.push({
-      path: '/patch',
-      query: { editSongPatch: slotNumber.toString() }
+      name: 'patch-instrument-editor',
+      params: { slot: slotNumber.toString() }
     });
   }
 
