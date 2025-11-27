@@ -62,7 +62,11 @@ export function useTrackerNavigation(context: TrackerNavigationContext) {
    * Move the cursor up or down by delta rows
    */
   function moveRow(delta: number) {
-    setActiveRow(context.activeRow.value + delta);
+    const count = context.rowsCount.value;
+    if (count <= 0) return;
+    const next = (context.activeRow.value + delta) % count;
+    const wrapped = next < 0 ? next + count : next;
+    context.activeRow.value = wrapped;
     context.activeMacroNibble.value = 0;
   }
 

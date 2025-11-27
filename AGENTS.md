@@ -1383,6 +1383,7 @@ if (canReuse) {
 - Tracker instrument selection now immediately re-syncs the SongBank: `useTrackerInstruments` calls `syncSongBankFromSlots()` after patch selection or clearing a slot so changing a slot’s patch actually rebuilds the underlying instrument (avoids the first instrument “sticking”).
 - Tracker slot volume knobs now blur/refocus the tracker container on pointer release (`TrackerPage.vue`), preventing the keyboard/edit focus from getting stuck after adjusting volume.
 - Global knob focus handling: `AudioKnobComponent` blurs the active element after knob drag, so knobs across tracker/patch editor don't trap focus and keyboard shortcuts continue working. Master volume slider also blurs on pointerup.
+- Tracker row navigation wraps within the track: `useTrackerNavigation.moveRow` now wraps (mod rowsCount) instead of clamping, so moving down past the last row or entering a note at the bottom continues at the top of the same track.
 
 ### Tracker focus handling (2025-03)
 
