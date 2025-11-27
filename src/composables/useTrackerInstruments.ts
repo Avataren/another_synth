@@ -142,11 +142,9 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
   /**
    * Handle patch selection for a slot
    */
-  function onPatchSelect(slotNumber: number, patchId: string) {
+  async function onPatchSelect(slotNumber: number, patchId: string) {
     if (!patchId) {
-      context.trackerStore.pushHistory();
-      context.trackerStore.clearSlot(slotNumber);
-      context.ensureActiveInstrument();
+      await clearInstrument(slotNumber);
       return;
     }
 
@@ -162,15 +160,17 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
     context.trackerStore.assignPatchToSlot(slotNumber, patch, option.bankName);
     context.setActiveInstrument(slotNumber);
     context.ensureActiveInstrument();
+    await context.syncSongBankFromSlots();
   }
 
   /**
    * Clear an instrument slot
    */
-  function clearInstrument(slotNumber: number) {
+  async function clearInstrument(slotNumber: number) {
     context.trackerStore.pushHistory();
     context.trackerStore.clearSlot(slotNumber);
     context.ensureActiveInstrument();
+    await context.syncSongBankFromSlots();
   }
 
   /**
