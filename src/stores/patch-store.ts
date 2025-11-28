@@ -44,7 +44,7 @@ import { normalizePatchCategory } from 'src/utils/patch-category';
  * Used for applying templates and restoring patches
  */
 const clonePatch = (patch: Patch): Patch =>
-  JSON.parse(JSON.stringify(patch)) as Patch;
+  structuredClone(patch) as Patch;
 
 /**
  * Clones a patch and generates a NEW unique ID

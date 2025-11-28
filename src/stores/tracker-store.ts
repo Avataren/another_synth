@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { uid } from 'quasar';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
+import { DEFAULT_TRACK_COLORS } from 'src/constants/tracker-constants';
 
 export const SLOTS_PER_PAGE = 5;
 export const TOTAL_PAGES = 5;
@@ -65,17 +66,6 @@ interface TrackerStoreState {
   /** Redo history stack */
   redoStack: TrackerSnapshot[];
 }
-
-const DEFAULT_TRACK_COLORS = [
-  '#4df2c5',
-  '#9da6ff',
-  '#ffde7b',
-  '#70c2ff',
-  '#ff9db5',
-  '#8ef5c5',
-  '#ffa95e',
-  '#b08bff'
-];
 
 function createDefaultTracks(): TrackerTrackData[] {
   return Array.from({ length: 8 }, (_, idx) => ({
@@ -173,13 +163,13 @@ export const useTrackerStore = defineStore('trackerStore', {
         patternRows: this.patternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
-        patterns: JSON.parse(JSON.stringify(this.patterns)),
+        patterns: structuredClone(this.patterns),
         sequence: [...this.sequence],
         currentPatternId: this.currentPatternId,
-        instrumentSlots: JSON.parse(JSON.stringify(this.instrumentSlots)),
+        instrumentSlots: structuredClone(this.instrumentSlots),
         activeInstrumentId: this.activeInstrumentId,
         currentInstrumentPage: this.currentInstrumentPage,
-        songPatches: JSON.parse(JSON.stringify(this.songPatches))
+        songPatches: structuredClone(this.songPatches)
       };
     },
     /** Apply a snapshot back into the store state. */
@@ -189,7 +179,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
 
-      this.patterns = JSON.parse(JSON.stringify(snapshot.patterns));
+      this.patterns = structuredClone(snapshot.patterns);
 
       const patternIds = new Set(this.patterns.map((p) => p.id));
       const sequence = (snapshot.sequence ?? []).filter((id) => patternIds.has(id));
@@ -204,11 +194,11 @@ export const useTrackerStore = defineStore('trackerStore', {
         Array.isArray(snapshot.instrumentSlots) && snapshot.instrumentSlots.length === TOTAL_SLOTS
           ? snapshot.instrumentSlots
           : createDefaultInstrumentSlots();
-      this.instrumentSlots = JSON.parse(JSON.stringify(slots));
+      this.instrumentSlots = structuredClone(slots);
 
       this.activeInstrumentId = snapshot.activeInstrumentId ?? null;
       this.currentInstrumentPage = snapshot.currentInstrumentPage ?? 0;
-      this.songPatches = JSON.parse(JSON.stringify(snapshot.songPatches ?? {}));
+      this.songPatches = structuredClone(snapshot.songPatches ?? {});
 
       // Editing slot is only meaningful while on the patch page; reset on snapshot apply.
       this.editingSlot = null;
@@ -404,7 +394,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     /** Add or update a patch in the song's patch library */
     setSongPatch(patch: Patch) {
       if (!patch.metadata?.id) return;
-      this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
+      this.songPatches[patch.metadata.id] = structuredClone(patch);
     },
     /** Get a patch from the song's library */
     getSongPatch(patchId: string): Patch | undefined {
@@ -426,7 +416,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       if (!slot) return;
 
       // Update song patches
-      this.songPatches[patch.metadata.id] = JSON.parse(JSON.stringify(patch));
+      this.songPatches[patch.metadata.id] = structuredClone(patch);
 
       // Only update slot metadata if values actually changed
       // This prevents triggering watchers unnecessarily
@@ -454,7 +444,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       const previousPatchId = slot?.patchId;
 
       // Deep copy the patch to song patches
-      const patchCopy = JSON.parse(JSON.stringify(patch)) as Patch;
+      const patchCopy = structuredClone(patch) as Patch;
       this.songPatches[patchCopy.metadata.id] = patchCopy;
 
       // Update the slot
@@ -501,7 +491,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       for (const patchId of usedPatchIds) {
         const patch = this.songPatches[patchId];
         if (patch) {
-          filteredSongPatches[patchId] = JSON.parse(JSON.stringify(patch));
+          filteredSongPatches[patchId] = structuredClone(patch);
         }
       }
 
@@ -509,10 +499,10 @@ export const useTrackerStore = defineStore('trackerStore', {
         currentSong: { ...this.currentSong },
         patternRows: this.patternRows,
         stepSize: this.stepSize,
-        patterns: JSON.parse(JSON.stringify(this.patterns)),
+        patterns: structuredClone(this.patterns),
         sequence: [...this.sequence],
         currentPatternId: this.currentPatternId,
-        instrumentSlots: JSON.parse(JSON.stringify(this.instrumentSlots)),
+        instrumentSlots: structuredClone(this.instrumentSlots),
         activeInstrumentId: this.activeInstrumentId,
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: filteredSongPatches
@@ -582,7 +572,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       for (const patchId of usedPatchIds) {
         const patch = incomingSongPatches[patchId];
         if (patch) {
-          filteredSongPatches[patchId] = JSON.parse(JSON.stringify(patch));
+          filteredSongPatches[patchId] = structuredClone(patch);
         }
       }
       this.songPatches = filteredSongPatches;

@@ -106,13 +106,8 @@ export default class Instrument {
     try {
       // CRITICAL: Strip Vue reactivity by doing a deep clone
       // This prevents Vue proxies from breaking JSON serialization
-      // Also replace undefined with null to avoid JSON serialization issues
-      const cleanPatch = JSON.parse(JSON.stringify(patch, (key, value) => {
-        if (value === undefined) {
-          return null;
-        }
-        return value;
-      })) as Patch;
+      // Undefined values will be handled by the replacer in JSON.stringify below
+      const cleanPatch = structuredClone(patch) as Patch;
 
       // CRITICAL: Remove audioAssets to reduce JSON size
       // Audio assets are loaded separately via restoreAudioAssets()
@@ -174,7 +169,7 @@ export default class Instrument {
       console.error('[loadPatch] Failed to serialize patch:', error);
       console.error('[loadPatch] Patch object (this may have Vue reactivity issues):', patch);
       try {
-        const testClean = JSON.parse(JSON.stringify(patch));
+        const testClean = structuredClone(patch);
         console.error('[loadPatch] Clean patch (after stripping reactivity):', testClean);
       } catch (cleanError) {
         console.error('[loadPatch] Even clean patch failed:', cleanError);
@@ -587,8 +582,8 @@ export default class Instrument {
 
       this.workletNode?.port.postMessage({
         type: 'getEnvelopePreview',
-        // Convert the config to a plain object (using JSON‑serialization or spread)
-        config: JSON.parse(JSON.stringify(config)),
+        // Convert the config to a plain object (using structured clone)
+        config: structuredClone(config),
         previewDuration,
       });
 

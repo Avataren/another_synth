@@ -878,7 +878,7 @@ export default class InstrumentV2 {
 
       this.workletNode.port.postMessage({
         type: 'getEnvelopePreview',
-        config: JSON.parse(JSON.stringify(config)),
+        config: structuredClone(config),
         previewDuration,
       });
 

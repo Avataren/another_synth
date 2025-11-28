@@ -182,7 +182,7 @@ export function useTrackerInstruments(context: TrackerInstrumentsContext) {
 
     const cloneWithMeta = (source: Patch | null | undefined): Patch | null => {
       if (!source) return null;
-      const cloned = JSON.parse(JSON.stringify(source)) as Patch;
+      const cloned = structuredClone(source) as Patch;
       cloned.metadata = { ...(cloned.metadata || {}), ...baseMeta, name: baseMeta.name };
       return cloned;
     };

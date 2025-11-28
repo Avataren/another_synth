@@ -341,7 +341,7 @@ const deepClone = <T>(value: T): T => {
   if (value === undefined) {
     return value;
   }
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 };
 
 const cloneGlobalNodes = (globalNodes?: GlobalNodes): GlobalNodes => {

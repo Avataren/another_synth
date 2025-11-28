@@ -155,7 +155,7 @@ export const useLayoutStore = defineStore('layoutStore', {
         });
       }
 
-      const layoutClone = JSON.parse(JSON.stringify(layout)) as SynthLayout;
+      const layoutClone = structuredClone(layout) as SynthLayout;
       const previousVoiceCount =
         this.synthLayout?.voiceCount ?? this.synthLayout?.voices.length ?? 0;
 

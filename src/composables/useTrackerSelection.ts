@@ -1,6 +1,7 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue';
 import type { TrackerEntryData, TrackerTrackData, TrackerSelectionRect } from 'src/components/tracker/tracker-types';
 import type { TrackerPattern } from 'src/stores/tracker-store';
+import { DEFAULT_TRACK_COLORS } from 'src/constants/tracker-constants';
 
 /**
  * Clipboard data structure for selection copy/paste
@@ -189,7 +190,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
           continue;
         }
         const entry = track.entries.find((e) => e.row === rowIndex) ?? null;
-        rowData.push(entry ? (JSON.parse(JSON.stringify(entry)) as TrackerEntryData) : null);
+        rowData.push(entry ? (structuredClone(entry) as TrackerEntryData) : null);
       }
       data.push(rowData);
     }
@@ -232,7 +233,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
         entries = entries.filter((e) => e.row !== targetRow);
 
         if (srcEntry) {
-          const cloned = JSON.parse(JSON.stringify(srcEntry)) as TrackerEntryData;
+          const cloned = structuredClone(srcEntry) as TrackerEntryData;
           cloned.row = targetRow;
           entries.push(cloned);
         }
@@ -257,7 +258,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
 
     trackClipboard.value = {
       type: 'track',
-      entries: JSON.parse(JSON.stringify(track.entries))
+      entries: structuredClone(track.entries)
     };
   }
 
@@ -292,7 +293,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
 
     const track = context.currentPattern.value.tracks[context.activeTrack.value];
     if (track) {
-      track.entries = JSON.parse(JSON.stringify(trackClipboard.value.entries));
+      track.entries = structuredClone(trackClipboard.value.entries);
     }
   }
 
@@ -335,7 +336,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
 
     patternClipboard.value = {
       type: 'pattern',
-      tracks: JSON.parse(JSON.stringify(context.currentPattern.value.tracks))
+      tracks: structuredClone(context.currentPattern.value.tracks)
     };
   }
 
@@ -377,17 +378,6 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
       const currentCount = currentTracks.length;
       const tracksToAdd = Math.min(tracksNeeded, maxTracks - currentCount);
 
-      const DEFAULT_TRACK_COLORS = [
-        '#4df2c5',
-        '#9da6ff',
-        '#ffde7b',
-        '#70c2ff',
-        '#ff9db5',
-        '#8ef5c5',
-        '#ffa95e',
-        '#b08bff'
-      ];
-
       for (let i = 0; i < tracksToAdd; i++) {
         const nextIndex = currentTracks.length;
         const newTrack = {
@@ -405,7 +395,7 @@ export function useTrackerSelection(context: TrackerSelectionContext) {
       const srcTrack = clipTracks[i];
       const dstTrack = currentTracks[i];
       if (srcTrack && dstTrack) {
-        dstTrack.entries = JSON.parse(JSON.stringify(srcTrack.entries));
+        dstTrack.entries = structuredClone(srcTrack.entries);
       }
     }
   }
