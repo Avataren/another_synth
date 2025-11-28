@@ -1212,10 +1212,10 @@ export class TrackerSongBank {
       `[SongBank] Instrument ${instrumentId} patch loaded, isReady=${instrument.isReady}`,
     );
     // Give WASM time to finish building all voice node structures before updating states
-    // Without this delay, updateOscillator messages arrive before nodes exist in voices
-    // This is a race condition: synthLayout response means layout is created, but WASM
-    // still needs time to build the actual node structures in each voice
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Reduced from 100ms to 20ms - loadPatch already waits for synthLayout response,
+    // this additional delay just ensures voice structures are built. Conservative reduction
+    // maintains stability while reducing stutter on laptops
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     // Apply assets and node state in parallel to avoid serial stalls
     await Promise.all([

@@ -558,10 +558,9 @@ export default class InstrumentV2 {
       data: wavData,
       tableSize: wavData.length,
     });
-    // Wavetable import is fire-and-forget (no WASM response), so we add a small delay
-    // to ensure the message is processed before continuing. This prevents race conditions
-    // where patches are played before their wavetable data is fully imported.
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // Reduced from 10ms to 2ms - fire-and-forget still needs minimal delay for message processing,
+    // but 2ms is sufficient for the worklet to receive the message while reducing load stutter
+    await new Promise(resolve => setTimeout(resolve, 2));
   }
 
   public importImpulseWaveformData(nodeId: string, wavData: Uint8Array): void {
