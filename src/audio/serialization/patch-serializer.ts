@@ -348,6 +348,37 @@ function normalizeSamplerStateWithDefaults(
 }
 
 /**
+ * Filters out audio assets for convolvers that have generator parameters
+ * These will be regenerated from parameters and don't need binary data
+ */
+function filterConvolverAssets(
+  audioAssets: Map<string, AudioAsset>,
+  convolvers: Map<string, ConvolverState>,
+): Map<string, AudioAsset> {
+  const filtered = new Map<string, AudioAsset>();
+
+  audioAssets.forEach((asset, assetId) => {
+    // Check if this is an impulse response asset (convolver)
+    const parsed = parseAudioAssetId(assetId);
+    if (parsed?.nodeType === 'impulse_response') {
+      // Check if the convolver has a generator
+      const convolverState = convolvers.get(parsed.nodeId);
+      if (convolverState?.generator) {
+        // Skip this asset - it will be regenerated from parameters
+        console.log(
+          `Excluding binary data for ${convolverState.generator.type} reverb (node ${parsed.nodeId}) - using generator parameters instead`,
+        );
+        return;
+      }
+    }
+    // Keep all other assets (non-convolver or convolver without generator)
+    filtered.set(assetId, asset);
+  });
+
+  return filtered;
+}
+
+/**
  * Serializes the current synth state to a Patch object
  */
 export function serializeCurrentPatch(
@@ -454,8 +485,13 @@ export function serializeCurrentPatch(
     synthState.instrumentGain = instrumentGain;
   }
 
+  // Filter out convolver assets that have generators (they'll be regenerated from parameters)
+  const filteredAssets = audioAssets
+    ? filterConvolverAssets(audioAssets, normalizedConvolvers)
+    : new Map<string, AudioAsset>();
+
   // Convert audio assets map to record
-  const assetRecord = audioAssets ? mapToRecord(audioAssets) : {};
+  const assetRecord = mapToRecord(filteredAssets);
 
   return {
     metadata: patchMetadata,

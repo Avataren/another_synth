@@ -20,7 +20,8 @@
       "Bash(for file in src/stores/*.ts)",
       "Bash(find:*)",
       "Bash(npx vue-tsc:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run test:*)"
     ],
     "deny": [],
     "ask": []
