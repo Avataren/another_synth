@@ -85,7 +85,7 @@ export default class InstrumentV2 {
     this.messageHandler = new WorkletMessageHandler({
       debug: false,
       defaultTimeout: 5000, // 5 seconds default
-      maxQueueSize: 200,
+      maxQueueSize: 50, // Reduced from 200 to reduce memory overhead and improve latency
     });
 
     this.setupAudio(memory);
