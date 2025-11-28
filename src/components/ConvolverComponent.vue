@@ -124,21 +124,47 @@ const { convolverStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(() => props.nodeName || 'Convolver');
 
+// Initialize impulse source from convolver state's generator field
+const initializeImpulseSource = (): 'upload' | 'hall' | 'plate' => {
+  const state = convolverStates.value.get(props.nodeId);
+  if (state?.generator) {
+    return state.generator.type;
+  }
+  return 'upload';
+};
+
 // Impulse source selection
-const impulseSource = ref<'upload' | 'hall' | 'plate'>('upload');
+const impulseSource = ref<'upload' | 'hall' | 'plate'>(initializeImpulseSource());
 const impulseSourceOptions = ['upload', 'hall', 'plate'];
 
+// Initialize parameters from generator state if available
+const initializeHallParams = () => {
+  const state = convolverStates.value.get(props.nodeId);
+  if (state?.generator && state.generator.type === 'hall') {
+    return {
+      decayTime: state.generator.decayTime,
+      roomSize: state.generator.size,
+    };
+  }
+  return { decayTime: 2.0, roomSize: 0.8 };
+};
+
+const initializePlateParams = () => {
+  const state = convolverStates.value.get(props.nodeId);
+  if (state?.generator && state.generator.type === 'plate') {
+    return {
+      decayTime: state.generator.decayTime,
+      diffusion: state.generator.size,
+    };
+  }
+  return { decayTime: 2.0, diffusion: 0.6 };
+};
+
 // Hall reverb parameters
-const hallParams = ref({
-  decayTime: 2.0,
-  roomSize: 0.8,
-});
+const hallParams = ref(initializeHallParams());
 
 // Plate reverb parameters
-const plateParams = ref({
-  decayTime: 2.0,
-  diffusion: 0.6,
-});
+const plateParams = ref(initializePlateParams());
 
 const handleWavFileUpload = async (event: Event) => {
   const input = event.target as HTMLInputElement;
