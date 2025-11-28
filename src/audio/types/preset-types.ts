@@ -254,7 +254,7 @@ export function createDefaultBankMetadata(name: string): BankMetadata {
 export function createEmptySynthState(): SynthState {
   return {
     layout: {
-      voiceCount: 0,
+      voiceCount: 1,
       voices: [],
       globalNodes: {},
     },
