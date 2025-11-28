@@ -85,12 +85,17 @@ export class PlaybackEngine {
   /** Base lookahead when visible/hidden (seconds) */
   private readonly baseLookaheadVisible = 0.5;
   private readonly baseLookaheadHidden = 1.0;
-  /** If the next row is within this threshold (seconds), consider scheduling “late” */
+  /** If the next row is within this threshold (seconds), consider scheduling "late" */
   private readonly lateScheduleThreshold = 0.02;
   /** Count of consecutive late scheduling loops */
   private lateScheduleCount = 0;
   /** Track worst lead deficit observed while scheduling late */
   private maxLeadDeficit = 0;
+  /** Target FPS for scheduling loop (30fps reduces CPU usage) */
+  private readonly targetFps = 30;
+  private readonly minFrameTime = 1000 / this.targetFps; // ~33ms
+  /** Last timestamp when scheduling loop executed */
+  private lastScheduleTime = 0;
 
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
@@ -146,10 +151,18 @@ export class PlaybackEngine {
 
     // Start RAF loop if not already running
     if (this.rafHandle === null && this.state === 'playing') {
-      const loop = () => {
+      this.lastScheduleTime = performance.now();
+      const loop = (timestamp: number) => {
         if (this.state !== 'playing' || !this.isTabVisible) return;
-        this.updatePosition();
-        this.scheduleAhead();
+
+        // Throttle to 30fps by checking elapsed time
+        const elapsed = timestamp - this.lastScheduleTime;
+        if (elapsed >= this.minFrameTime) {
+          this.updatePosition();
+          this.scheduleAhead();
+          this.lastScheduleTime = timestamp;
+        }
+
         this.rafHandle = requestAnimationFrame(loop);
       };
       this.rafHandle = requestAnimationFrame(loop);
@@ -165,12 +178,12 @@ export class PlaybackEngine {
 
     // Start interval loop if not already running
     if (this.intervalHandle === null && this.state === 'playing') {
-      // Use 60fps equivalent (16.67ms) for smooth scheduling even when hidden
+      // Use 30fps (~33ms) for efficient scheduling when hidden
       this.intervalHandle = setInterval(() => {
         if (this.state !== 'playing' || this.isTabVisible) return;
         this.updatePosition();
         this.scheduleAhead();
-      }, 16) as unknown as number;
+      }, this.minFrameTime) as unknown as number;
     }
   }
 

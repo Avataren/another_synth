@@ -247,21 +247,15 @@ ${val.stack}`;
   }
   return className;
 }
-function takeFromExternrefTable0(idx) {
-  const value = wasm.__wbindgen_export_4.get(idx);
-  wasm.__externref_table_dealloc(idx);
-  return value;
-}
 function _assertClass(instance, klass) {
   if (!(instance instanceof klass)) {
     throw new Error(`expected instance of ${klass.name}`);
   }
 }
-function passArrayF32ToWasm0(arg, malloc) {
-  const ptr = malloc(arg.length * 4, 4) >>> 0;
-  getFloat32ArrayMemory0().set(arg, ptr / 4);
-  WASM_VECTOR_LEN = arg.length;
-  return ptr;
+function takeFromExternrefTable0(idx) {
+  const value = wasm.__wbindgen_export_4.get(idx);
+  wasm.__externref_table_dealloc(idx);
+  return value;
 }
 function apply_modulation_update(engine, update) {
   _assertClass(engine, AudioEngine);
@@ -274,6 +268,12 @@ function apply_modulation_update(engine, update) {
 function passArray8ToWasm0(arg, malloc) {
   const ptr = malloc(arg.length * 1, 1) >>> 0;
   getUint8ArrayMemory0().set(arg, ptr / 1);
+  WASM_VECTOR_LEN = arg.length;
+  return ptr;
+}
+function passArrayF32ToWasm0(arg, malloc) {
+  const ptr = malloc(arg.length * 4, 4) >>> 0;
+  getFloat32ArrayMemory0().set(arg, ptr / 4);
   WASM_VECTOR_LEN = arg.length;
   return ptr;
 }
@@ -1743,23 +1743,6 @@ var EnvelopeConfig = class {
     wasm.__wbg_envelopeconfig_free(ptr, 0);
   }
   /**
-   * @param {number} attack
-   * @param {number} decay
-   * @param {number} sustain
-   * @param {number} release
-   * @param {number} attack_curve
-   * @param {number} decay_curve
-   * @param {number} release_curve
-   * @param {number} attack_smoothing_samples
-   * @param {boolean} active
-   */
-  constructor(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active) {
-    const ret = wasm.envelopeconfig_new(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active);
-    this.__wbg_ptr = ret >>> 0;
-    EnvelopeConfigFinalization.register(this, this.__wbg_ptr, this);
-    return this;
-  }
-  /**
    * @returns {number}
    */
   get attack() {
@@ -1876,6 +1859,23 @@ var EnvelopeConfig = class {
   set active(arg0) {
     wasm.__wbg_set_envelopeconfig_active(this.__wbg_ptr, arg0);
   }
+  /**
+   * @param {number} attack
+   * @param {number} decay
+   * @param {number} sustain
+   * @param {number} release
+   * @param {number} attack_curve
+   * @param {number} decay_curve
+   * @param {number} release_curve
+   * @param {number} attack_smoothing_samples
+   * @param {boolean} active
+   */
+  constructor(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active) {
+    const ret = wasm.envelopeconfig_new(attack, decay, sustain, release, attack_curve, decay_curve, release_curve, attack_smoothing_samples, active);
+    this.__wbg_ptr = ret >>> 0;
+    EnvelopeConfigFinalization.register(this, this.__wbg_ptr, this);
+    return this;
+  }
 };
 if (Symbol.dispose) EnvelopeConfig.prototype[Symbol.dispose] = EnvelopeConfig.prototype.free;
 var NoiseUpdateFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
@@ -1961,18 +1961,6 @@ var NoiseUpdateParams = class {
     wasm.__wbg_noiseupdateparams_free(ptr, 0);
   }
   /**
-   * @param {WasmNoiseType} noise_type
-   * @param {number} cutoff
-   * @param {number} gain
-   * @param {boolean} enabled
-   */
-  constructor(noise_type, cutoff, gain, enabled) {
-    const ret = wasm.noiseupdateparams_new(noise_type, cutoff, gain, enabled);
-    this.__wbg_ptr = ret >>> 0;
-    NoiseUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
-    return this;
-  }
-  /**
    * @returns {WasmNoiseType}
    */
   get noise_type() {
@@ -2023,6 +2011,18 @@ var NoiseUpdateParams = class {
    */
   set enabled(arg0) {
     wasm.__wbg_set_noiseupdate_enabled(this.__wbg_ptr, arg0);
+  }
+  /**
+   * @param {WasmNoiseType} noise_type
+   * @param {number} cutoff
+   * @param {number} gain
+   * @param {boolean} enabled
+   */
+  constructor(noise_type, cutoff, gain, enabled) {
+    const ret = wasm.noiseupdateparams_new(noise_type, cutoff, gain, enabled);
+    this.__wbg_ptr = ret >>> 0;
+    NoiseUpdateParamsFinalization.register(this, this.__wbg_ptr, this);
+    return this;
   }
 };
 if (Symbol.dispose) NoiseUpdateParams.prototype[Symbol.dispose] = NoiseUpdateParams.prototype.free;
