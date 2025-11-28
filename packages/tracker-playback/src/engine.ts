@@ -609,41 +609,79 @@ export class PlaybackEngine {
         }
 
         // Schedule per-tick effects for ticks 1 to ticksPerRow-1
-        if (hasTickEffect) {
-          for (let tick = 1; tick < this.ticksPerRow; tick++) {
-            const tickTime = time + tick * secPerTick;
-            const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+        if (hasTickEffect && step.effect) {
+          const canUseRamp = this.canUseAutomationRamp(step.effect.type);
 
-            // Schedule pitch change
-            if (this.scheduledPitchHandler && tickResult.frequency !== undefined) {
-              this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tickResult.frequency, tickTime);
-            }
+          if (canUseRamp) {
+            // Optimization: Use audio-rate automation ramps for simple linear/exponential effects
+            // This reduces scheduling calls from 5 per row to 1 per row (83% reduction)
+            const endTime = time + (this.ticksPerRow - 1) * secPerTick;
+            const endTickResult = processEffectTickN(
+              effectState,
+              step.effect,
+              this.ticksPerRow - 1,
+              this.ticksPerRow
+            );
 
-            // Schedule volume change
-            if (this.scheduledVolumeHandler && tickResult.volume !== undefined) {
-              this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tickResult.volume, tickTime);
-            }
-
-            // Schedule note retrigger
-            if (tickResult.triggerNote && this.scheduledRetriggerHandler) {
-              this.scheduledRetriggerHandler(
+            // Schedule smooth ramps instead of discrete per-tick values
+            if (this.scheduledPitchHandler && endTickResult.frequency !== undefined) {
+              // Use exponential ramp for pitch (frequency is exponential)
+              this.scheduledPitchHandler(
                 instrumentId,
-                tickResult.triggerNote.midi,
-                tickResult.triggerNote.velocity,
-                tickTime
+                effectState.voiceIndex,
+                endTickResult.frequency,
+                endTime,
+                'exponential'
               );
             }
 
-            // Handle note cut
-            if (tickResult.cutNote) {
-              const cutEvent: ScheduledNoteEvent = {
-                type: 'noteOff',
+            if (this.scheduledVolumeHandler && endTickResult.volume !== undefined) {
+              // Use linear ramp for volume
+              this.scheduledVolumeHandler(
                 instrumentId,
-                row,
-                trackIndex: step.trackIndex,
-                time: tickTime
-              };
-              this.scheduledNoteHandler(cutEvent);
+                effectState.voiceIndex,
+                endTickResult.volume,
+                endTime,
+                'linear'
+              );
+            }
+          } else {
+            // Complex effects (vibrato, tremolo, arpeggio, etc.) still need per-tick processing
+            for (let tick = 1; tick < this.ticksPerRow; tick++) {
+              const tickTime = time + tick * secPerTick;
+              const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+
+              // Schedule pitch change
+              if (this.scheduledPitchHandler && tickResult.frequency !== undefined) {
+                this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tickResult.frequency, tickTime);
+              }
+
+              // Schedule volume change
+              if (this.scheduledVolumeHandler && tickResult.volume !== undefined) {
+                this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tickResult.volume, tickTime);
+              }
+
+              // Schedule note retrigger
+              if (tickResult.triggerNote && this.scheduledRetriggerHandler) {
+                this.scheduledRetriggerHandler(
+                  instrumentId,
+                  tickResult.triggerNote.midi,
+                  tickResult.triggerNote.velocity,
+                  tickTime
+                );
+              }
+
+              // Handle note cut
+              if (tickResult.cutNote) {
+                const cutEvent: ScheduledNoteEvent = {
+                  type: 'noteOff',
+                  instrumentId,
+                  row,
+                  trackIndex: step.trackIndex,
+                  time: tickTime
+                };
+                this.scheduledNoteHandler(cutEvent);
+              }
             }
           }
         }
@@ -668,6 +706,17 @@ export class PlaybackEngine {
       'fineVibrato', 'noteCut', 'noteDelay', 'keyOff'
     ];
     return tickEffects.includes(type);
+  }
+
+  /**
+   * Check if an effect can use audio-rate automation ramps instead of per-tick scheduling.
+   * Simple linear/exponential slides can use ramps for better performance and smoother audio.
+   */
+  private canUseAutomationRamp(type: string): boolean {
+    const rampableEffects = [
+      'portaUp', 'portaDown', 'tonePorta', 'tonePortaVol', 'volSlide'
+    ];
+    return rampableEffects.includes(type);
   }
 
   private updatePosition() {

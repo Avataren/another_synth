@@ -187,11 +187,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       },
 
       // Effect handlers
-      scheduledPitchHandler: (instrumentId, voiceIndex, frequency, time) => {
-        songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time);
+      scheduledPitchHandler: (instrumentId, voiceIndex, frequency, time, rampMode) => {
+        songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time, rampMode);
       },
-      scheduledVolumeHandler: (instrumentId, voiceIndex, volume, time) => {
-        songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time);
+      scheduledVolumeHandler: (instrumentId, voiceIndex, volume, time, rampMode) => {
+        songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time, rampMode);
       },
       scheduledRetriggerHandler: (instrumentId, midi, velocity, time) => {
         songBank.retriggerNoteAtTime(instrumentId, midi, velocity, time);

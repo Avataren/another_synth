@@ -1109,22 +1109,42 @@ export default class InstrumentV2 {
    * @param voiceIndex - Voice index (0-7), or -1 to set all voices
    * @param frequency - Frequency in Hz
    * @param time - Audio context time
+   * @param rampMode - Optional ramp mode for smooth transitions (exponential recommended for frequency)
    */
-  public setVoiceFrequencyAtTime(voiceIndex: number, frequency: number, time: number): void {
+  public setVoiceFrequencyAtTime(
+    voiceIndex: number,
+    frequency: number,
+    time: number,
+    rampMode?: 'linear' | 'exponential'
+  ): void {
     if (!this.workletNode) return;
+
+    const applyToParam = (param: AudioParam) => {
+      if (rampMode === 'exponential') {
+        // Use exponential ramp for frequency (perceptually linear pitch)
+        // Ensure positive value for exponential ramps
+        const safeFreq = Math.max(0.01, frequency);
+        param.exponentialRampToValueAtTime(safeFreq, time);
+      } else if (rampMode === 'linear') {
+        param.linearRampToValueAtTime(frequency, time);
+      } else {
+        // Default: discrete value change
+        param.setValueAtTime(frequency, time);
+      }
+    };
 
     if (voiceIndex < 0) {
       // Set all active voices
       for (let i = 0; i < this.voiceLimit; i++) {
         const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
         if (freqParam) {
-          freqParam.setValueAtTime(frequency, time);
+          applyToParam(freqParam);
         }
       }
     } else if (voiceIndex < this.voiceLimit) {
       const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
       if (freqParam) {
-        freqParam.setValueAtTime(frequency, time);
+        applyToParam(freqParam);
       }
     }
   }
@@ -1135,23 +1155,42 @@ export default class InstrumentV2 {
    * @param voiceIndex - Voice index (0-7), or -1 to set all voices
    * @param gain - Gain value (0-1)
    * @param time - Audio context time
+   * @param rampMode - Optional ramp mode for smooth transitions (linear recommended for volume)
    */
-  public setVoiceGainAtTime(voiceIndex: number, gain: number, time: number): void {
+  public setVoiceGainAtTime(
+    voiceIndex: number,
+    gain: number,
+    time: number,
+    rampMode?: 'linear' | 'exponential'
+  ): void {
     if (!this.workletNode) return;
     const clamped = Math.max(0, Math.min(1, gain));
+
+    const applyToParam = (param: AudioParam) => {
+      if (rampMode === 'linear') {
+        param.linearRampToValueAtTime(clamped, time);
+      } else if (rampMode === 'exponential') {
+        // Ensure positive value for exponential ramps
+        const safeGain = Math.max(0.001, clamped);
+        param.exponentialRampToValueAtTime(safeGain, time);
+      } else {
+        // Default: discrete value change
+        param.setValueAtTime(clamped, time);
+      }
+    };
 
     if (voiceIndex < 0) {
       // Set all active voices
       for (let i = 0; i < this.voiceLimit; i++) {
         const gainParam = this.workletNode.parameters.get(`gain_${i}`);
         if (gainParam) {
-          gainParam.setValueAtTime(clamped, time);
+          applyToParam(gainParam);
         }
       }
     } else if (voiceIndex < this.voiceLimit) {
       const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
       if (gainParam) {
-        gainParam.setValueAtTime(clamped, time);
+        applyToParam(gainParam);
       }
     }
   }

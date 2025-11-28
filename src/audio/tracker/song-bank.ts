@@ -980,11 +980,12 @@ export class TrackerSongBank {
     voiceIndex: number,
     frequency: number,
     time: number,
+    rampMode?: 'linear' | 'exponential',
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    active.instrument.setVoiceFrequencyAtTime(voiceIndex, frequency, time);
+    active.instrument.setVoiceFrequencyAtTime(voiceIndex, frequency, time, rampMode);
   }
 
   /**
@@ -996,11 +997,12 @@ export class TrackerSongBank {
     voiceIndex: number,
     volume: number,
     time: number,
+    rampMode?: 'linear' | 'exponential',
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    active.instrument.setVoiceGainAtTime(voiceIndex, volume, time);
+    active.instrument.setVoiceGainAtTime(voiceIndex, volume, time, rampMode);
   }
 
   /**
