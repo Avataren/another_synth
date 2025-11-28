@@ -613,34 +613,41 @@ export class PlaybackEngine {
           const canUseRamp = this.canUseAutomationRamp(step.effect.type);
 
           if (canUseRamp) {
-            // Optimization: Use audio-rate automation ramps for simple linear/exponential effects
+            // Optimization: Process all ticks to maintain correct state, but use a single
+            // ramp to the final value instead of scheduling each tick discretely.
             // This reduces scheduling calls from 5 per row to 1 per row (83% reduction)
-            const endTime = time + (this.ticksPerRow - 1) * secPerTick;
-            const endTickResult = processEffectTickN(
-              effectState,
-              step.effect,
-              this.ticksPerRow - 1,
-              this.ticksPerRow
-            );
+            // while maintaining correct effect state progression.
+            let finalFrequency: number | undefined;
+            let finalVolume: number | undefined;
 
-            // Schedule smooth ramps instead of discrete per-tick values
-            if (this.scheduledPitchHandler && endTickResult.frequency !== undefined) {
+            // Process all ticks to advance effect state correctly
+            for (let tick = 1; tick < this.ticksPerRow; tick++) {
+              const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+              // Keep track of final values
+              if (tickResult.frequency !== undefined) finalFrequency = tickResult.frequency;
+              if (tickResult.volume !== undefined) finalVolume = tickResult.volume;
+            }
+
+            // Schedule smooth ramp to final value (instead of discrete per-tick values)
+            const endTime = time + (this.ticksPerRow - 1) * secPerTick;
+
+            if (this.scheduledPitchHandler && finalFrequency !== undefined) {
               // Use exponential ramp for pitch (frequency is exponential)
               this.scheduledPitchHandler(
                 instrumentId,
                 effectState.voiceIndex,
-                endTickResult.frequency,
+                finalFrequency,
                 endTime,
                 'exponential'
               );
             }
 
-            if (this.scheduledVolumeHandler && endTickResult.volume !== undefined) {
+            if (this.scheduledVolumeHandler && finalVolume !== undefined) {
               // Use linear ramp for volume
               this.scheduledVolumeHandler(
                 instrumentId,
                 effectState.voiceIndex,
-                endTickResult.volume,
+                finalVolume,
                 endTime,
                 'linear'
               );
