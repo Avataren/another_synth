@@ -207,7 +207,8 @@ export class PlaybackEngine {
 
   loadSong(song: Song) {
     this.song = song;
-    this.bpm = song.bpm;
+    // Clamp BPM to valid range in case song file has invalid value
+    this.bpm = Math.max(32, Math.min(255, song.bpm));
     this.currentSequenceIndex = 0;
     if (this.song.sequence.length > 0) {
       this.loadPattern(this.song.sequence[0] as string);
@@ -234,7 +235,8 @@ export class PlaybackEngine {
 
   setBpm(bpm: number) {
     if (!Number.isFinite(bpm) || bpm <= 0) return;
-    this.bpm = bpm;
+    // Clamp to FastTracker 2 limits (matches F command range)
+    this.bpm = Math.max(32, Math.min(255, bpm));
   }
 
   setLength(rows: number) {
