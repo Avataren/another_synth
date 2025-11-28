@@ -85,12 +85,17 @@ export class PlaybackEngine {
   /** Base lookahead when visible/hidden (seconds) */
   private readonly baseLookaheadVisible = 0.5;
   private readonly baseLookaheadHidden = 1.0;
-  /** If the next row is within this threshold (seconds), consider scheduling “late” */
+  /** If the next row is within this threshold (seconds), consider scheduling "late" */
   private readonly lateScheduleThreshold = 0.02;
   /** Count of consecutive late scheduling loops */
   private lateScheduleCount = 0;
   /** Track worst lead deficit observed while scheduling late */
   private maxLeadDeficit = 0;
+  /** Target FPS for scheduling loop (30fps reduces CPU usage) */
+  private readonly targetFps = 30;
+  private readonly minFrameTime = 1000 / this.targetFps; // ~33ms
+  /** Last timestamp when scheduling loop executed */
+  private lastScheduleTime = 0;
 
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
@@ -146,10 +151,18 @@ export class PlaybackEngine {
 
     // Start RAF loop if not already running
     if (this.rafHandle === null && this.state === 'playing') {
-      const loop = () => {
+      this.lastScheduleTime = performance.now();
+      const loop = (timestamp: number) => {
         if (this.state !== 'playing' || !this.isTabVisible) return;
-        this.updatePosition();
-        this.scheduleAhead();
+
+        // Throttle to 30fps by checking elapsed time
+        const elapsed = timestamp - this.lastScheduleTime;
+        if (elapsed >= this.minFrameTime) {
+          this.updatePosition();
+          this.scheduleAhead();
+          this.lastScheduleTime = timestamp;
+        }
+
         this.rafHandle = requestAnimationFrame(loop);
       };
       this.rafHandle = requestAnimationFrame(loop);
@@ -165,12 +178,12 @@ export class PlaybackEngine {
 
     // Start interval loop if not already running
     if (this.intervalHandle === null && this.state === 'playing') {
-      // Use 60fps equivalent (16.67ms) for smooth scheduling even when hidden
+      // Use 30fps (~33ms) for efficient scheduling when hidden
       this.intervalHandle = setInterval(() => {
         if (this.state !== 'playing' || this.isTabVisible) return;
         this.updatePosition();
         this.scheduleAhead();
-      }, 16) as unknown as number;
+      }, this.minFrameTime) as unknown as number;
     }
   }
 
@@ -596,41 +609,86 @@ export class PlaybackEngine {
         }
 
         // Schedule per-tick effects for ticks 1 to ticksPerRow-1
-        if (hasTickEffect) {
-          for (let tick = 1; tick < this.ticksPerRow; tick++) {
-            const tickTime = time + tick * secPerTick;
-            const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+        if (hasTickEffect && step.effect) {
+          const canUseRamp = this.canUseAutomationRamp(step.effect.type);
 
-            // Schedule pitch change
-            if (this.scheduledPitchHandler && tickResult.frequency !== undefined) {
-              this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tickResult.frequency, tickTime);
+          if (canUseRamp) {
+            // Optimization: Process all ticks to maintain correct state, but use a single
+            // ramp to the final value instead of scheduling each tick discretely.
+            // This reduces scheduling calls from 5 per row to 1 per row (83% reduction)
+            // while maintaining correct effect state progression.
+            let finalFrequency: number | undefined;
+            let finalVolume: number | undefined;
+
+            // Process all ticks to advance effect state correctly
+            for (let tick = 1; tick < this.ticksPerRow; tick++) {
+              const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+              // Keep track of final values
+              if (tickResult.frequency !== undefined) finalFrequency = tickResult.frequency;
+              if (tickResult.volume !== undefined) finalVolume = tickResult.volume;
             }
 
-            // Schedule volume change
-            if (this.scheduledVolumeHandler && tickResult.volume !== undefined) {
-              this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tickResult.volume, tickTime);
-            }
+            // Schedule smooth ramp to final value (instead of discrete per-tick values)
+            const endTime = time + (this.ticksPerRow - 1) * secPerTick;
 
-            // Schedule note retrigger
-            if (tickResult.triggerNote && this.scheduledRetriggerHandler) {
-              this.scheduledRetriggerHandler(
+            if (this.scheduledPitchHandler && finalFrequency !== undefined) {
+              // Use exponential ramp for pitch (frequency is exponential)
+              this.scheduledPitchHandler(
                 instrumentId,
-                tickResult.triggerNote.midi,
-                tickResult.triggerNote.velocity,
-                tickTime
+                effectState.voiceIndex,
+                finalFrequency,
+                endTime,
+                'exponential'
               );
             }
 
-            // Handle note cut
-            if (tickResult.cutNote) {
-              const cutEvent: ScheduledNoteEvent = {
-                type: 'noteOff',
+            if (this.scheduledVolumeHandler && finalVolume !== undefined) {
+              // Use linear ramp for volume
+              this.scheduledVolumeHandler(
                 instrumentId,
-                row,
-                trackIndex: step.trackIndex,
-                time: tickTime
-              };
-              this.scheduledNoteHandler(cutEvent);
+                effectState.voiceIndex,
+                finalVolume,
+                endTime,
+                'linear'
+              );
+            }
+          } else {
+            // Complex effects (vibrato, tremolo, arpeggio, etc.) still need per-tick processing
+            for (let tick = 1; tick < this.ticksPerRow; tick++) {
+              const tickTime = time + tick * secPerTick;
+              const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+
+              // Schedule pitch change
+              if (this.scheduledPitchHandler && tickResult.frequency !== undefined) {
+                this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tickResult.frequency, tickTime);
+              }
+
+              // Schedule volume change
+              if (this.scheduledVolumeHandler && tickResult.volume !== undefined) {
+                this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tickResult.volume, tickTime);
+              }
+
+              // Schedule note retrigger
+              if (tickResult.triggerNote && this.scheduledRetriggerHandler) {
+                this.scheduledRetriggerHandler(
+                  instrumentId,
+                  tickResult.triggerNote.midi,
+                  tickResult.triggerNote.velocity,
+                  tickTime
+                );
+              }
+
+              // Handle note cut
+              if (tickResult.cutNote) {
+                const cutEvent: ScheduledNoteEvent = {
+                  type: 'noteOff',
+                  instrumentId,
+                  row,
+                  trackIndex: step.trackIndex,
+                  time: tickTime
+                };
+                this.scheduledNoteHandler(cutEvent);
+              }
             }
           }
         }
@@ -655,6 +713,17 @@ export class PlaybackEngine {
       'fineVibrato', 'noteCut', 'noteDelay', 'keyOff'
     ];
     return tickEffects.includes(type);
+  }
+
+  /**
+   * Check if an effect can use audio-rate automation ramps instead of per-tick scheduling.
+   * Simple linear/exponential slides can use ramps for better performance and smoother audio.
+   */
+  private canUseAutomationRamp(type: string): boolean {
+    const rampableEffects = [
+      'portaUp', 'portaDown', 'tonePorta', 'tonePortaVol', 'volSlide'
+    ];
+    return rampableEffects.includes(type);
   }
 
   private updatePosition() {

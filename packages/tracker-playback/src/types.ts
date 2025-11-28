@@ -252,7 +252,9 @@ export type ScheduledPitchHandler = (
   /** Frequency in Hz */
   frequency: number,
   /** Audio context time */
-  time: number
+  time: number,
+  /** Ramp mode for smooth transitions (optional, defaults to discrete setValueAtTime) */
+  rampMode?: 'linear' | 'exponential'
 ) => void;
 
 /**
@@ -266,7 +268,9 @@ export type ScheduledVolumeHandler = (
   /** Volume 0-1 */
   volume: number,
   /** Audio context time */
-  time: number
+  time: number,
+  /** Ramp mode for smooth transitions (optional, defaults to discrete setValueAtTime) */
+  rampMode?: 'linear' | 'exponential'
 ) => void;
 
 /**
