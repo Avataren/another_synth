@@ -628,6 +628,11 @@ impl AudioEngine {
             let gain = gains.get(i).copied().unwrap_or(1.0);
             let velocity = velocities.get(i).copied().unwrap_or(0.0);
 
+            // Debug: Log voice parameters when gate is on or when there's activity
+            if gate > 0.0 || voice.current_gate > 0.0 {
+                eprintln!("[WASM Voice {}] gate={:.1} freq={:.1}Hz gain={:.3} vel={:.3}", i, gate, frequency, gain, velocity);
+            }
+
             voice.current_gate = gate;
             voice.current_frequency = frequency;
             voice.current_velocity = velocity;

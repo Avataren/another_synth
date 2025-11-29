@@ -359,7 +359,19 @@ export class TrackerSongBank {
       byTrack = new Map();
       this.lastTrackVoice.set(instrumentId, byTrack);
     }
+    console.log('[SongBank] setLastVoiceForTrack: track', trackIndex, '→ voice', voiceIndex);
     byTrack.set(trackKey, voiceIndex);
+  }
+
+  private peekLastVoiceForTrack(
+    instrumentId: string,
+    trackIndex: number | undefined,
+  ): number | undefined {
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    const byTrack = this.lastTrackVoice.get(instrumentId);
+    const voice = byTrack?.get(trackKey);
+    console.log('[SongBank] peekLastVoiceForTrack: track', trackIndex, '← voice', voice);
+    return voice;
   }
 
   private takeLastVoiceForTrack(
@@ -369,6 +381,7 @@ export class TrackerSongBank {
     const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
     const byTrack = this.lastTrackVoice.get(instrumentId);
     const voice = byTrack?.get(trackKey);
+    console.log('[SongBank] takeLastVoiceForTrack: track', trackIndex, '← voice', voice);
     if (voice !== undefined) {
       byTrack?.delete(trackKey);
     }
@@ -677,7 +690,7 @@ export class TrackerSongBank {
     if (!active) return;
 
     const notes = this.getTrackNotes(instrumentId, trackIndex);
-    const voiceIndex = this.takeLastVoiceForTrack(instrumentId, trackIndex);
+    const voiceIndex = this.peekLastVoiceForTrack(instrumentId, trackIndex);
     const when = this.audioContext.currentTime;
 
     if (midi === undefined) {
@@ -918,6 +931,7 @@ export class TrackerSongBank {
     }
 
     const scheduledTime = Math.max(time, now + MIN_SCHEDULE_LEAD_SECONDS);
+    console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'note', midi, 'time', scheduledTime.toFixed(3) + 's');
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
     const voiceIndex = active.instrument.noteOnAtTime(
       midi,
@@ -927,6 +941,7 @@ export class TrackerSongBank {
         allowDuplicate: true,
       },
     );
+    console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'allocated voice', voiceIndex);
 
     // Verify parameter presence for debugging
     if (voiceIndex !== undefined && worklet) {
@@ -956,7 +971,7 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     const notes = this.getTrackNotes(instrumentId, trackIndex);
-    const voiceIndex = this.takeLastVoiceForTrack(instrumentId, trackIndex);
+    const voiceIndex = this.peekLastVoiceForTrack(instrumentId, trackIndex);
     const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
 
     const scheduledTime = Math.max(time, this.audioContext.currentTime);

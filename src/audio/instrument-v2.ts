@@ -921,7 +921,7 @@ export default class InstrumentV2 {
     const time = this.audioContext.currentTime;
     const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
 
-    this.markVoiceActive(noteNumber, voiceIndex);
+    this.markVoiceActive(noteNumber, voiceIndex, time);
 
     const frequency = this.midiNoteToFrequency(noteNumber);
 
@@ -976,7 +976,7 @@ export default class InstrumentV2 {
 
     const now = this.audioContext.currentTime;
     for (const voice of voicesToRelease) {
-      this.releaseVoice(voice);
+      this.releaseVoice(voice, now);
       if (!this.workletNode) continue;
       const gateParam = this.workletNode.parameters.get(`gate_${voice}`);
       if (gateParam) {
@@ -998,9 +998,12 @@ export default class InstrumentV2 {
     options?: { allowDuplicate?: boolean },
   ): number | undefined {
     const allowDuplicate = options?.allowDuplicate ?? false;
+    console.log('[noteOnAtTime] Note', noteNumber, 'at time', time.toFixed(3) + 's, vel=' + velocity + ', allowDup=' + allowDuplicate);
     const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
 
-    this.markVoiceActive(noteNumber, voiceIndex);
+    console.log('[noteOnAtTime] Allocated voice', voiceIndex, 'for note', noteNumber, ', stolen=', stolenNote, ', retrigger=', isRetrigger);
+
+    this.markVoiceActive(noteNumber, voiceIndex, time);
 
     const frequency = this.midiNoteToFrequency(noteNumber);
 
@@ -1008,6 +1011,10 @@ export default class InstrumentV2 {
 
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) {
+      // Cancel any previously scheduled values that might interfere with this new note
+      console.log('[noteOnAtTime] Canceling scheduled gate events for voice', voiceIndex, 'from time', time.toFixed(3) + 's');
+      gateParam.cancelScheduledValues(time);
+
       const retriggering = isRetrigger || stolenNote !== null;
       const portamentoEnabled = this.isPortamentoEnabled();
       const shouldPulseGate =
@@ -1017,18 +1024,36 @@ export default class InstrumentV2 {
           0.005,
           this.quantumFrames / this.audioContext.sampleRate,
         );
+        console.log('[noteOnAtTime] GATE PULSE: voice', voiceIndex, 'time=' + time.toFixed(3) + 's, pulse=' + gatePulseDuration.toFixed(4) + 's, stolen=', stolenNote, 'retrigger=', isRetrigger);
         gateParam.setValueAtTime(0, time);
         gateParam.setValueAtTime(1, time + gatePulseDuration);
       } else {
+        console.log('[noteOnAtTime] GATE ON: voice', voiceIndex, 'time=' + time.toFixed(3) + 's, stolen=', stolenNote, 'retrigger=', isRetrigger);
         gateParam.setValueAtTime(1, time);
       }
+    } else {
+      console.log('[noteOnAtTime] WARNING: No gate param for voice', voiceIndex);
     }
 
     const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
-    if (freqParam) freqParam.setValueAtTime(frequency, time);
+    if (freqParam) {
+      // Cancel any previously scheduled frequency changes
+      freqParam.cancelScheduledValues(time);
+      console.log('[noteOnAtTime] FREQ: voice', voiceIndex, 'freq=' + frequency.toFixed(2) + 'Hz, time=' + time.toFixed(3) + 's');
+      freqParam.setValueAtTime(frequency, time);
+    } else {
+      console.log('[noteOnAtTime] WARNING: No freq param for voice', voiceIndex);
+    }
 
     const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
-    if (gainParam) gainParam.setValueAtTime(velocity / 127, time);
+    if (gainParam) {
+      // Cancel any previously scheduled gain changes
+      gainParam.cancelScheduledValues(time);
+      console.log('[noteOnAtTime] GAIN: voice', voiceIndex, 'gain=' + (velocity / 127).toFixed(3) + ', time=' + time.toFixed(3) + 's');
+      gainParam.setValueAtTime(velocity / 127, time);
+    } else {
+      console.log('[noteOnAtTime] WARNING: No gain param for voice', voiceIndex);
+    }
 
     return voiceIndex;
   }
@@ -1048,10 +1073,13 @@ export default class InstrumentV2 {
     }
 
     for (const voice of voicesToRelease) {
-      this.releaseVoice(voice);
+      this.releaseVoice(voice, time);
       if (!this.workletNode) continue;
       const gateParam = this.workletNode.parameters.get(`gate_${voice}`);
-      if (gateParam) gateParam.setValueAtTime(0, time);
+      if (gateParam) {
+        console.log('[noteOffAtTime] Setting gate_' + voice + ' to 0 at time ' + time.toFixed(3) + 's');
+        gateParam.setValueAtTime(0, time);
+      }
     }
   }
 
@@ -1059,7 +1087,12 @@ export default class InstrumentV2 {
     this.releaseVoice(voiceIndex, time);
     if (!this.workletNode) return;
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
-    if (gateParam) gateParam.setValueAtTime(0, time);
+    if (gateParam) {
+      console.log('[gateOffVoiceAtTime] Setting gate_' + voiceIndex + ' to 0 at time ' + time.toFixed(3) + 's');
+      gateParam.setValueAtTime(0, time);
+    } else {
+      console.log('[gateOffVoiceAtTime] WARNING: No gate param for voice', voiceIndex);
+    }
   }
 
   /**
@@ -1083,7 +1116,7 @@ export default class InstrumentV2 {
         gainParam.setValueAtTime(0, now);
       }
     }
-    this.releaseVoice(voiceIndex);
+    this.releaseVoice(voiceIndex, now);
   }
 
   /**
@@ -1252,7 +1285,7 @@ export default class InstrumentV2 {
   // Voice Allocation
   // ========================================================================
 
-  private markVoiceActive(noteNumber: number, voiceIndex: number): void {
+  private markVoiceActive(noteNumber: number, voiceIndex: number, audioTime: number): void {
     if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return;
 
     let voices = this.activeNotes.get(noteNumber);
@@ -1262,7 +1295,7 @@ export default class InstrumentV2 {
     }
     voices.add(voiceIndex);
     this.voiceToNote[voiceIndex] = noteNumber;
-    this.voiceLastUsedTime[voiceIndex] = Date.now();
+    this.voiceLastUsedTime[voiceIndex] = audioTime;
     // Reset release time since voice is now active
     this.voiceReleaseTime[voiceIndex] = 0;
   }
@@ -1271,23 +1304,32 @@ export default class InstrumentV2 {
     if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return null;
 
     const noteNumber = this.voiceToNote[voiceIndex];
-    if (noteNumber !== null && noteNumber !== undefined) {
-      const voices = this.activeNotes.get(noteNumber);
-      if (voices) {
-        voices.delete(voiceIndex);
-        if (voices.size === 0) {
-          this.activeNotes.delete(noteNumber);
-        }
+    console.log('[releaseVoice] Releasing voice', voiceIndex, ', note=', noteNumber, ', audioTime=', audioTime?.toFixed(3) + 's');
+
+    // If voice is already released (note is null), don't update release time
+    // This prevents the tracker from incorrectly updating releaseTime when calling gateOff on already-free voices
+    if (noteNumber === null || noteNumber === undefined) {
+      console.log('[releaseVoice] Voice', voiceIndex, 'already released - skipping to preserve original releaseTime');
+      return null;
+    }
+
+    const voices = this.activeNotes.get(noteNumber);
+    if (voices) {
+      voices.delete(voiceIndex);
+      if (voices.size === 0) {
+        this.activeNotes.delete(noteNumber);
       }
+      console.log('[releaseVoice] Removed voice', voiceIndex, 'from activeNotes for note', noteNumber);
     }
 
     // Record when this voice started its release phase (in audio time, seconds)
     // If audioTime is provided, use it; otherwise use current audio context time
     const releaseTime = audioTime ?? this.audioContext.currentTime;
     this.voiceReleaseTime[voiceIndex] = releaseTime;
+    console.log('[releaseVoice] Set voiceReleaseTime[' + voiceIndex + '] =', releaseTime.toFixed(3) + 's');
     // Don't mark as null yet - will be cleared after release completes
     this.voiceToNote[voiceIndex] = null;
-    return noteNumber ?? null;
+    return noteNumber;
   }
 
   private findNextFreeVoice(scheduledTime: number): number | null {
@@ -1296,20 +1338,31 @@ export default class InstrumentV2 {
     // maxReleaseTimeMs is in milliseconds, convert to seconds
     const maxReleaseTimeSec = this.maxReleaseTimeMs / 1000;
 
+    console.log('[findNextFreeVoice] Looking for free voice at time', scheduledTime.toFixed(3) + 's, maxRelease=' + maxReleaseTimeSec.toFixed(3) + 's');
+
     for (let offset = 0; offset < this.voiceLimit; offset++) {
       const candidate = (this.voiceRoundRobinIndex + offset) % this.voiceLimit;
+      const voiceNote = this.voiceToNote[candidate];
+      const releaseStartTime = this.voiceReleaseTime[candidate] ?? 0;
+      const timeSinceRelease = scheduledTime - releaseStartTime;
+
+      console.log('  Voice', candidate + ': voiceToNote=' + voiceNote + ', releaseTime=' + releaseStartTime.toFixed(3) + 's, timeSince=' + timeSinceRelease.toFixed(3) + 's');
+
       if (this.voiceToNote[candidate] === null) {
         // Voice is marked as free, but check if release phase has completed
-        const releaseStartTime = this.voiceReleaseTime[candidate] ?? 0;
-        const timeSinceRelease = scheduledTime - releaseStartTime;
+
 
         // Only consider truly free if enough time has passed for release to complete
         if (timeSinceRelease >= maxReleaseTimeSec || releaseStartTime === 0) {
           this.voiceRoundRobinIndex = (candidate + 1) % this.voiceLimit;
+          console.log('  ✓ Voice', candidate, 'is FREE (release completed)');
           return candidate;
+        } else {
+          console.log('  ✗ Voice', candidate, 'still in release (' + timeSinceRelease.toFixed(3) + 's < ' + maxReleaseTimeSec.toFixed(3) + 's)');
         }
       }
     }
+    console.log('[findNextFreeVoice] No free voices found');
     return null;
   }
 
@@ -1318,14 +1371,18 @@ export default class InstrumentV2 {
     allowDuplicate: boolean,
     scheduledTime: number,
   ): { voiceIndex: number; stolenNote: number | null; isRetrigger: boolean } {
+    console.log('[allocateVoice] Allocating for note', noteNumber + ', allowDup=' + allowDuplicate + ', time=' + scheduledTime.toFixed(3) + 's');
+
     const existingVoices = this.activeNotes.get(noteNumber);
     if (!allowDuplicate && existingVoices && existingVoices.size > 0) {
       const voiceIndex = existingVoices.values().next().value as number;
+      console.log('[allocateVoice] Retriggering existing voice', voiceIndex, 'for note', noteNumber);
       return { voiceIndex, stolenNote: null, isRetrigger: true };
     }
 
     const freeVoice = this.findNextFreeVoice(scheduledTime);
     if (freeVoice !== null) {
+      console.log('[allocateVoice] Using free voice', freeVoice);
       return {
         voiceIndex: freeVoice,
         stolenNote: null,
@@ -1334,6 +1391,7 @@ export default class InstrumentV2 {
     }
 
     // No free voices - must steal one
+    console.log('[allocateVoice] No free voices - need to steal');
     // Strategy: Prefer voices in release over active voices
     const maxReleaseTimeSec = this.maxReleaseTimeMs / 1000;
     let oldestVoice = 0;
@@ -1349,12 +1407,15 @@ export default class InstrumentV2 {
     };
 
     // First pass: Voices that have completed their release (truly free)
+    console.log('[allocateVoice] Pass 1: Looking for voices with completed release');
     for (let i = 0; i < this.voiceLimit; i++) {
       const releaseStartTime = this.voiceReleaseTime[i] ?? 0;
       if (releaseStartTime === 0) continue; // Never been used in release
 
       const timeSinceRelease = scheduledTime - releaseStartTime;
       const releaseCompleted = timeSinceRelease >= maxReleaseTimeSec;
+
+      console.log('  Voice', i + ': releaseTime=' + releaseStartTime.toFixed(3) + 's, timeSince=' + timeSinceRelease.toFixed(3) + 's, completed=' + releaseCompleted);
 
       if (releaseCompleted) {
         const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
@@ -1368,12 +1429,16 @@ export default class InstrumentV2 {
 
     // Second pass: Voices in release but not yet completed (preferred over active)
     if (!foundVoice) {
+      console.log('[allocateVoice] Pass 2: Looking for voices in release (not completed)');
       for (let i = 0; i < this.voiceLimit; i++) {
         const releaseStartTime = this.voiceReleaseTime[i] ?? 0;
         if (releaseStartTime === 0) continue; // Not in release
 
         const timeSinceRelease = scheduledTime - releaseStartTime;
         const inRelease = timeSinceRelease < maxReleaseTimeSec;
+        const active = isVoiceActive(i);
+
+        console.log('  Voice', i + ': inRelease=' + inRelease + ', isActive=' + active);
 
         if (inRelease && !isVoiceActive(i)) {
           const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
@@ -1388,7 +1453,12 @@ export default class InstrumentV2 {
 
     // Third pass: Fall back to oldest fully active voice (last resort)
     if (!foundVoice) {
+      console.log('[allocateVoice] Pass 3: Looking for active voices (last resort)');
       for (let i = 0; i < this.voiceLimit; i++) {
+        const active = isVoiceActive(i);
+        const noteNum = this.voiceToNote[i];
+        console.log('  Voice', i + ': isActive=' + active + ', note=' + noteNum);
+
         if (isVoiceActive(i)) {
           const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
           if (!foundVoice || time < oldestTime) {
@@ -1406,6 +1476,7 @@ export default class InstrumentV2 {
       oldestVoice = 0;
     }
 
+    console.log('[allocateVoice] Stealing voice', oldestVoice + ', voiceToNote=' + this.voiceToNote[oldestVoice]);
     const stolenNote = this.releaseVoice(oldestVoice, scheduledTime);
 
     return {
