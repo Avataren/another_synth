@@ -306,9 +306,9 @@ impl ArpeggiatorGenerator {
         self.sample_counter += buffer_size;
     }
 
-    fn process_trigger_mode(
+    fn process_trigger_mode<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
@@ -367,9 +367,9 @@ impl ArpeggiatorGenerator {
     ///
     /// For each step, if the step is active the gate output is high (except for a brief gap at the end of the step);
     /// if the step is skipped, the gate output remains low (0.0) for the entire duration.
-    fn process_with_optional_gate(
+    fn process_with_optional_gate<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
@@ -423,9 +423,9 @@ impl AudioNode for ArpeggiatorGenerator {
         ports
     }
 
-    fn process(
+    fn process<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {

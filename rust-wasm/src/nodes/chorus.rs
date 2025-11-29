@@ -511,7 +511,7 @@ impl Chorus {
 
         // Retrieve input buffers.
         let left_in_slice = match inputs.get(&PortId::AudioInput0).and_then(|v| v.first()) {
-            Some(src) => src.buffer.as_slice(),
+            Some(src) => src.buffer,
             None => {
                 let fill_len = buffer_size
                     .min(out_left_slice.len())
@@ -534,7 +534,7 @@ impl Chorus {
         let right_in_slice = inputs
             .get(&PortId::AudioInput1)
             .and_then(|v| v.first())
-            .map_or(left_in_slice, |s| s.buffer.as_slice());
+            .map_or(left_in_slice, |s| s.buffer);
 
         // Disabled state: passthrough
         if !self.enabled {

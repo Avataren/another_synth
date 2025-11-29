@@ -67,18 +67,16 @@ impl AudioNode for Bitcrusher {
         ports
     }
 
-    fn process(
+    fn process<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         let left_in = inputs.get(&PortId::AudioInput0).unwrap()[0]
-            .buffer
-            .as_slice();
+            .buffer;
         let right_in = inputs.get(&PortId::AudioInput1).unwrap()[0]
-            .buffer
-            .as_slice();
+            .buffer;
 
         let outs = outputs.get_disjoint_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);
         let [Some(out_left), Some(out_right)] = outs else {

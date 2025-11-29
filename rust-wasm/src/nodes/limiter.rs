@@ -134,9 +134,9 @@ impl Limiter {
 
     // --- MAIN PROCESS FUNCTION ---
     #[inline(never)]
-    pub fn process_block(
+    pub fn process_block<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
@@ -190,12 +190,12 @@ impl Limiter {
                 return;
             }
         };
-        let left_in_slice = left_source.buffer.as_slice();
+        let left_in_slice = left_source.buffer;
 
         let right_in_slice = inputs
             .get(&PortId::AudioInput1)
             .and_then(|v| v.first())
-            .map_or(left_in_slice, |s| s.buffer.as_slice());
+            .map_or(left_in_slice, |s| s.buffer);
 
         // Work length
         let process_len = buffer_size
@@ -405,9 +405,9 @@ impl AudioNode for Limiter {
         ])
     }
 
-    fn process(
+    fn process<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {

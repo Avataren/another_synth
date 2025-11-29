@@ -643,7 +643,7 @@ impl AudioGraph {
         }
 
         // Use FxFxHashMap if you added the dependency and want the potential speedup
-        type InputsMap = FxHashMap<PortId, Vec<ModulationSource>>;
+        type InputsMap<'a> = FxHashMap<PortId, Vec<ModulationSource<'a>>>;
         type OutputsMap<'a> = FxHashMap<PortId, &'a mut [f32]>;
 
         'node_loop: for &node_id in &self.processing_order {
@@ -667,9 +667,8 @@ impl AudioGraph {
 
             let node_ports = node.get_ports().clone();
 
-            // --- Input Gathering and Copying ---
-            let mut inputs: InputsMap = FxHashMap::default(); // Or FxFxHashMap::default()
-            let mut required_input_indices = FxHashSet::default(); // Use FxHashSet for uniqueness
+            // --- Gather Input and Output Buffer Indices ---
+            let mut required_input_indices = FxHashSet::default();
 
             // Collect required input indices
             if node_ports.contains_key(&PortId::GlobalGate) {
@@ -683,125 +682,102 @@ impl AudioGraph {
                 }
             }
 
-            // Temporary map to hold immutable slices before copying
-            let mut temp_input_slices = FxHashMap::default();
-            if !required_input_indices.is_empty() {
-                let indices_vec: Vec<usize> = required_input_indices.iter().copied().collect();
-                // Get immutable slices (immutable borrow of self.buffer_pool starts here)
-                match self.buffer_pool.get_multiple_buffers(&indices_vec) {
-                    Ok(slices_vec) => {
-                        // Populate temp map
-                        for (idx, slice) in slices_vec {
-                            temp_input_slices.insert(idx, slice);
-                        }
-                    }
-                    Err(e) => {
-                        log_error(&format!(
-                            "Error getting input buffers for node {:?}: {}",
-                            node_id, e
-                        ));
-                        continue 'node_loop; // Skip node if inputs can't be retrieved
-                    }
-                }
-            }
-            // Immutable borrow of self.buffer_pool via get_multiple_buffers ends when slices_vec goes out of scope here.
-            // temp_input_slices now holds references (&[f32]) that are still valid.
+            // Collect output buffer indices
+            let output_indices_map: FxHashMap<PortId, usize> = node_ports
+                .iter()
+                .filter(|(_, &is_output)| is_output)
+                .filter_map(|(&port, _)| {
+                    self.node_buffers
+                        .get(&(node_id, port))
+                        .map(|&idx| (port, idx))
+                })
+                .collect();
 
-            // Now, populate the 'inputs' map by *copying* data from temp_input_slices
+            let input_indices: Vec<usize> = required_input_indices.iter().copied().collect();
+            let output_indices: Vec<usize> = output_indices_map.values().copied().collect();
+
+            // --- Get Buffers with Zero-Copy ---
+            // Get both input (immutable) and output (mutable) buffers in a single call
+            let (input_buffers, output_buffers) = match self
+                .buffer_pool
+                .get_mixed_buffers(&input_indices, &output_indices)
+            {
+                Ok((inputs, outputs)) => (inputs, outputs),
+                Err(e) => {
+                    log_error(&format!(
+                        "Error getting buffers for node {:?}: {}",
+                        node_id, e
+                    ));
+                    continue 'node_loop;
+                }
+            };
+
+            // Build input map with buffer slices (zero-copy)
+            let mut input_slices: FxHashMap<usize, &[f32]> = FxHashMap::default();
+            for (idx, slice) in input_buffers {
+                input_slices.insert(idx, slice);
+            }
+
+            let mut inputs: InputsMap = FxHashMap::default();
+
             // Global Gate
             if node_ports.contains_key(&PortId::GlobalGate) {
-                if let Some(slice) = temp_input_slices.get(&self.gate_buffer_idx) {
+                if let Some(&slice) = input_slices.get(&self.gate_buffer_idx) {
                     inputs
                         .entry(PortId::GlobalGate)
                         .or_default()
                         .push(ModulationSource {
-                            buffer: slice.to_vec(), // *** COPY ***
+                            buffer: slice, // Zero-copy: use slice reference directly
                             amount: 1.0,
                             mod_type: ModulationType::Additive,
                             transformation: ModulationTransformation::None,
                         });
-                } // else: Error should have been caught above
+                }
             }
 
             // Connection Inputs
             if let Some(connections) = self.input_connections.get(&node_id) {
                 for &(port, source_idx, amount, _src_node, mod_type, mod_transform) in connections {
-                    if let Some(slice) = temp_input_slices.get(&source_idx) {
+                    if let Some(&slice) = input_slices.get(&source_idx) {
                         inputs.entry(port).or_default().push(ModulationSource {
-                            buffer: slice.to_vec(), // *** COPY ***
+                            buffer: slice, // Zero-copy: use slice reference directly
                             amount,
                             mod_type,
                             transformation: mod_transform,
                         });
-                    } // else: Error should have been caught above
+                    }
                 }
             }
-            // Drop the temporary slice map explicitly if needed, though scope should handle it.
-            drop(temp_input_slices);
 
-            // --- Output Gathering ---
-            let output_indices_map: FxHashMap<PortId, usize> = node_ports // Use FxHashMap if desired
-                .iter()
-                // First, filter only the ports marked as outputs
-                .filter(|(_, &is_output)| is_output) // Use *is_output to dereference
-                // Then, filter_map: try to find the buffer index and create the (PortId, usize) pair
-                .filter_map(|(&port, _)| {
-                    // Closure returns Option<(PortId, usize)>
-                    self.node_buffers
-                        .get(&(node_id, port)) // This returns Option<&usize>
-                        .map(|&idx| (port, idx)) // This transforms it into Option<(PortId, usize)>
-                                                 // No outer Some(...) needed! Return the Option directly.
-                })
-                .collect(); // collect now receives items of type (PortId, usize)
-
-            let output_indices: Vec<usize> = output_indices_map.values().copied().collect();
+            // Build output map
             let mut outputs: OutputsMap = FxHashMap::default();
+            for (buffer_idx, buffer_slice) in output_buffers {
+                if let Some((port, _)) = output_indices_map
+                    .iter()
+                    .find(|(_, &idx)| idx == buffer_idx)
+                {
+                    outputs.insert(*port, buffer_slice);
+                }
+            }
 
-            if !output_indices.is_empty() {
-                // Now it's safe to get mutable buffers because the immutable borrow for inputs is finished.
-                match self.buffer_pool.get_multiple_buffers_mut(&output_indices) {
-                    Ok(mut output_buffers_vec) => {
-                        // Populate the 'outputs' map
-                        for (buffer_idx, buffer_slice) in output_buffers_vec.iter_mut() {
-                            // Find the PortId corresponding to this index for this node
-                            if let Some((port, _)) = output_indices_map
-                                .iter()
-                                .find(|(_, &idx)| idx == *buffer_idx)
-                            {
-                                outputs.insert(*port, *buffer_slice);
-                            }
+            // --- Process Node ---
+            if !outputs.is_empty() {
+                if let Some(node_mut) = self.nodes.get_mut(&node_id) {
+                    node_mut.process(&inputs, &mut outputs, self.buffer_size);
+
+                    // --- Apply Macro Modulation ---
+                    if let (Some(mgr), Some(ref data)) = (macro_manager, &macro_data) {
+                        if mgr.has_active_macros() {
+                            mgr.apply_modulation(0, data, &mut outputs);
                         }
-
-                        // --- Process Node ---
-                        // Pass copied inputs (Vec<f32>) and mutable output slices (&mut [f32])
-                        if let Some(node_mut) = self.nodes.get_mut(&node_id) {
-                            node_mut.process(&inputs, &mut outputs, self.buffer_size);
-
-                            // --- Apply Macro Modulation ---
-                            if let (Some(mgr), Some(ref data)) = (macro_manager, &macro_data) {
-                                if mgr.has_active_macros() {
-                                    mgr.apply_modulation(0, data, &mut outputs);
-                                }
-                            }
-                        }
-                        // Mutable borrow of output_buffers_vec ends here.
-                    }
-                    Err(e) => {
-                        log_error(&format!(
-                            "Error getting output buffers for node {:?}: {}",
-                            node_id, e
-                        ));
-                        continue 'node_loop; // Skip node if outputs can't be retrieved
                     }
                 }
             } else {
                 // Node has no outputs, just process it (might have side effects?)
-                // Need an empty mutable map for the process call signature
                 let mut empty_outputs: OutputsMap = FxHashMap::default();
                 if let Some(node_mut) = self.nodes.get_mut(&node_id) {
                     node_mut.process(&inputs, &mut empty_outputs, self.buffer_size);
                 }
-                // Macros cannot be applied if there are no output buffers
             }
         } // End node processing loop ('node_loop)
 

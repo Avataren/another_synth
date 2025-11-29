@@ -229,9 +229,9 @@ impl AudioNode for Convolver {
     }
 
     // --- process (Cleaned) ---
-    fn process(
+    fn process<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
@@ -247,7 +247,7 @@ impl AudioNode for Convolver {
                 .get(&PortId::AudioInput1)
                 .and_then(|v| v.first())
                 .map(|s| &s.buffer);
-            let fill_or_copy = |out_opt: Option<&mut &mut [f32]>, in_opt: Option<&&Vec<f32>>| {
+            let fill_or_copy = |out_opt: Option<&mut &mut [f32]>, in_opt: Option<&&[f32]>| {
                 if let Some(out_slice) = out_opt {
                     if let Some(in_buf_ref) = in_opt {
                         let in_buf = *in_buf_ref;
@@ -265,12 +265,12 @@ impl AudioNode for Convolver {
             };
             fill_or_copy(
                 outputs.get_mut(&PortId::AudioOutput0),
-                maybe_in_l_buf.as_ref(),
+                maybe_in_l_buf,
             );
             let fallback_r_in = maybe_in_r_buf.or(maybe_in_l_buf);
             fill_or_copy(
                 outputs.get_mut(&PortId::AudioOutput1),
-                fallback_r_in.as_ref(),
+                fallback_r_in,
             );
             return;
         }

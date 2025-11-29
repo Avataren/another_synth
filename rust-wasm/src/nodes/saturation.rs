@@ -51,19 +51,17 @@ impl AudioNode for Saturation {
         ports
     }
 
-    fn process(
+    fn process<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     ) {
         // Extract the input buffers from the first modulation source for each channel.
         let left_in = inputs.get(&PortId::AudioInput0).unwrap()[0]
-            .buffer
-            .as_slice();
+            .buffer;
         let right_in = inputs.get(&PortId::AudioInput1).unwrap()[0]
-            .buffer
-            .as_slice();
+            .buffer;
 
         // Retrieve output buffers using nightly's get_disjoint_mut.
         let outs = outputs.get_disjoint_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);

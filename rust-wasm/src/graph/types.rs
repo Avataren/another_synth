@@ -10,10 +10,10 @@ use uuid::Uuid;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone)] // Clone might not be possible/needed anymore if nodes don't own it
-                 // Let's keep it for now but review if it causes issues later.
-pub struct ModulationSource {
-    pub buffer: Vec<f32>, // Owned Vec<f32>
+// Zero-copy buffer passing: uses borrowed slices instead of owned Vec
+// This eliminates expensive buffer copies in the audio processing hot path
+pub struct ModulationSource<'a> {
+    pub buffer: &'a [f32], // Borrowed slice (zero-copy)
     pub amount: f32,
     pub mod_type: ModulationType,
     pub transformation: ModulationTransformation,

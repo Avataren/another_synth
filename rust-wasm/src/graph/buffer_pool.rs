@@ -126,4 +126,59 @@ impl AudioBufferPool {
             self.available.push(i);
         }
     }
+
+    /// Get multiple buffers with mixed mutability in a single call.
+    /// Returns (immutable_refs, mutable_refs).
+    /// SAFETY: Caller must ensure that immutable_indices and mutable_indices are disjoint.
+    pub fn get_mixed_buffers<'a>(
+        &'a mut self,
+        immutable_indices: &[usize],
+        mutable_indices: &[usize],
+    ) -> Result<(Vec<(usize, &'a [f32])>, Vec<(usize, &'a mut [f32])>), String> {
+        // Validate bounds and check for duplicates
+        let mut all_indices = HashSet::new();
+
+        for &idx in immutable_indices {
+            if idx >= self.buffers.len() {
+                return Err(format!(
+                    "Immutable buffer index {} out of bounds (total: {})",
+                    idx, self.buffers.len()
+                ));
+            }
+            if !all_indices.insert(idx) {
+                return Err(format!("Duplicate index in immutable/mutable sets: {}", idx));
+            }
+        }
+
+        for &idx in mutable_indices {
+            if idx >= self.buffers.len() {
+                return Err(format!(
+                    "Mutable buffer index {} out of bounds (total: {})",
+                    idx, self.buffers.len()
+                ));
+            }
+            if !all_indices.insert(idx) {
+                return Err(format!("Duplicate index in immutable/mutable sets: {}", idx));
+            }
+        }
+
+        let mut immutable_refs = Vec::new();
+        let mut mutable_refs = Vec::new();
+
+        // Safety: We've verified that all indices are unique and in bounds.
+        // We can safely create multiple references (immutable and mutable to different buffers).
+        unsafe {
+            for &idx in immutable_indices {
+                let buffer = &*self.buffers.as_ptr().add(idx);
+                immutable_refs.push((idx, buffer.as_slice()));
+            }
+
+            for &idx in mutable_indices {
+                let buffer = &mut *self.buffers.as_mut_ptr().add(idx);
+                mutable_refs.push((idx, buffer.as_mut_slice()));
+            }
+        }
+
+        Ok((immutable_refs, mutable_refs))
+    }
 }

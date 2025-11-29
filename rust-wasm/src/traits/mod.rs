@@ -154,10 +154,10 @@ impl PortId {
 pub trait AudioNode: Any {
     fn get_ports(&self) -> FxHashMap<PortId, bool>;
 
-    fn process(
+    fn process<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>, // Or FxFxHashMap
-        outputs: &mut FxHashMap<PortId, &mut [f32]>,       // Or FxFxHashMap
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>, // Zero-copy: borrowed slices
+        outputs: &mut FxHashMap<PortId, &mut [f32]>,
         buffer_size: usize,
     );
 

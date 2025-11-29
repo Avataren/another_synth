@@ -91,9 +91,9 @@ impl AudioNode for Mixer {
         .collect()
     }
 
-    fn process(
+    fn process<'a>(
         &mut self,
-        inputs: &FxHashMap<PortId, Vec<ModulationSource>>,
+        inputs: &FxHashMap<PortId, Vec<ModulationSource<'a>>>,
         outputs: &mut FxHashMap<PortId, &mut [f32]>, // Still takes mutable FxHashMap
         buffer_size: usize,
     ) {

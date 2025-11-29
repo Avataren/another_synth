@@ -1,5 +1,4 @@
 use rustc_hash::FxHashMap;
-use std::mem;
 
 use crate::{
     graph::{ModulationSource, ModulationTransformation, ModulationType},
@@ -16,17 +15,6 @@ pub struct EffectStack {
     work_right_a: Vec<f32>,
     work_left_b: Vec<f32>,
     work_right_b: Vec<f32>,
-    input_audio0: Vec<ModulationSource>,
-    input_audio1: Vec<ModulationSource>,
-}
-
-fn empty_modulation_source() -> ModulationSource {
-    ModulationSource {
-        buffer: Vec::new(),
-        amount: 1.0,
-        mod_type: ModulationType::Additive,
-        transformation: ModulationTransformation::None,
-    }
 }
 
 impl EffectStack {
@@ -37,8 +25,6 @@ impl EffectStack {
             work_right_a: Vec::new(),
             work_left_b: Vec::new(),
             work_right_b: Vec::new(),
-            input_audio0: vec![empty_modulation_source()],
-            input_audio1: vec![empty_modulation_source()],
         }
     }
 
@@ -54,18 +40,6 @@ impl EffectStack {
         }
         if self.work_right_b.len() < len {
             self.work_right_b.resize(len, 0.0);
-        }
-        if self.input_audio0.is_empty() {
-            self.input_audio0.push(empty_modulation_source());
-        }
-        if self.input_audio1.is_empty() {
-            self.input_audio1.push(empty_modulation_source());
-        }
-        if self.input_audio0[0].buffer.len() < len {
-            self.input_audio0[0].buffer.resize(len, 0.0);
-        }
-        if self.input_audio1[0].buffer.len() < len {
-            self.input_audio1[0].buffer.resize(len, 0.0);
         }
     }
 
@@ -162,32 +136,25 @@ impl EffectStack {
             next_left[..actual_buffer_size].fill(0.0);
             next_right[..actual_buffer_size].fill(0.0);
 
+            // Zero-copy: Create ModulationSource with references to current buffers
             let mut inputs = FxHashMap::with_capacity_and_hasher(2, Default::default());
 
-            let mut audio0 = mem::take(&mut self.input_audio0);
-            if audio0.is_empty() {
-                audio0.push(empty_modulation_source());
-            }
-            let left_source = &mut audio0[0];
-            left_source.buffer[..actual_buffer_size]
-                .copy_from_slice(&current_left[..actual_buffer_size]);
-            left_source.amount = 1.0;
-            left_source.mod_type = ModulationType::Additive;
-            left_source.transformation = ModulationTransformation::None;
+            let left_source = ModulationSource {
+                buffer: &current_left[..actual_buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            };
 
-            let mut audio1 = mem::take(&mut self.input_audio1);
-            if audio1.is_empty() {
-                audio1.push(empty_modulation_source());
-            }
-            let right_source = &mut audio1[0];
-            right_source.buffer[..actual_buffer_size]
-                .copy_from_slice(&current_right[..actual_buffer_size]);
-            right_source.amount = 1.0;
-            right_source.mod_type = ModulationType::Additive;
-            right_source.transformation = ModulationTransformation::None;
+            let right_source = ModulationSource {
+                buffer: &current_right[..actual_buffer_size],
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            };
 
-            inputs.insert(PortId::AudioInput0, audio0);
-            inputs.insert(PortId::AudioInput1, audio1);
+            inputs.insert(PortId::AudioInput0, vec![left_source]);
+            inputs.insert(PortId::AudioInput1, vec![right_source]);
 
             let mut outputs = FxHashMap::with_capacity_and_hasher(2, Default::default());
             outputs.insert(PortId::AudioOutput0, &mut next_left[..actual_buffer_size]);
@@ -197,11 +164,7 @@ impl EffectStack {
                 .node
                 .process(&inputs, &mut outputs, actual_buffer_size);
 
-            let audio0 = inputs.remove(&PortId::AudioInput0).unwrap();
-            let audio1 = inputs.remove(&PortId::AudioInput1).unwrap();
-            self.input_audio0 = audio0;
-            self.input_audio1 = audio1;
-
+            // No need to store ModulationSource instances - they're created on the fly
             current_is_a = !current_is_a;
         }
 
