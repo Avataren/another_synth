@@ -308,7 +308,10 @@ import { usePatchStore } from 'src/stores/patch-store';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
+import { useMacroStore } from 'src/stores/macro-store';
+import { resolvePatchVoiceCount } from 'src/audio/utils/voice-count';
 import PresetManager from 'src/components/PresetManager.vue';
+import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
 
 // Components moved from the top row (now in the bottom row)
 import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
@@ -376,6 +379,7 @@ const patchStore = usePatchStore();
 const trackerStore = useTrackerStore();
 const playbackStore = useTrackerPlaybackStore();
 const trackerAudioStore = useTrackerAudioStore();
+const macroStore = useMacroStore();
 const { destinationNode, instrumentGain } = storeToRefs(instrumentStore);
 const { editingSlot, songPatches } = storeToRefs(trackerStore);
 const { isPlaying } = storeToRefs(playbackStore);
@@ -418,11 +422,7 @@ async function loadSongPatchForEditing(slotNumber: number) {
   const patch = songPatches.value[slot.patchId];
   if (!patch) return;
 
-  const layoutVoiceCount =
-    layoutStore.synthLayout?.voiceCount ??
-    layoutStore.synthLayout?.voices?.length ??
-    1;
-  songPatchVoiceCount.value = Math.max(1, Math.min(8, layoutVoiceCount));
+  songPatchVoiceCount.value = resolvePatchVoiceCount(patch);
 
   // Try to get the actual instrument from the song bank for live editing
   const songBankInstrument = trackerAudioStore.getInstrumentForSlot(slotNumber);
@@ -432,10 +432,56 @@ async function loadSongPatchForEditing(slotNumber: number) {
     // This means all knob turns will directly affect the playing sound
     instrumentStore.useExternalInstrument(songBankInstrument);
 
+    // Make sure macro routes are visible immediately even before the patch is re-applied
+    macroStore.setFromPatch(
+      patch.synthState.macros
+        ? {
+            values: patch.synthState.macros.values,
+            routes:
+              patch.synthState.macros.routes?.map((route) => ({
+                macroIndex: route.macroIndex,
+                targetId: route.targetId,
+                targetPort: route.targetPort,
+                amount: route.amount,
+                ...(route.modulationType !== undefined
+                  ? { modulationType: route.modulationType as WasmModulationType }
+                  : {}),
+                ...(route.modulationTransformation !== undefined
+                  ? {
+                      modulationTransformation: route.modulationTransformation as ModulationTransformation,
+                    }
+                  : {}),
+              })) ?? [],
+          }
+        : undefined,
+    );
+
     // Load the patch state into the UI stores (layout, node states, etc.)
     // Skip loadPatch because the instrument is already loaded and playing
     await patchStore.applyPatchObject(patch, { setCurrentPatchId: true, skipLoadPatch: true });
   } else {
+    macroStore.setFromPatch(
+      patch.synthState.macros
+        ? {
+            values: patch.synthState.macros.values,
+            routes:
+              patch.synthState.macros.routes?.map((route) => ({
+                macroIndex: route.macroIndex,
+                targetId: route.targetId,
+                targetPort: route.targetPort,
+                amount: route.amount,
+                ...(route.modulationType !== undefined
+                  ? { modulationType: route.modulationType as WasmModulationType }
+                  : {}),
+                ...(route.modulationTransformation !== undefined
+                  ? {
+                      modulationTransformation: route.modulationTransformation as ModulationTransformation,
+                    }
+                  : {}),
+              })) ?? [],
+          }
+        : undefined,
+    );
     // Fallback: No active instrument in song bank, use standalone mode
     await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
   }

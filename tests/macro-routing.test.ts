@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { serializeCurrentPatch, deserializePatch } from '../src/audio/serialization/patch-serializer';
 import { WasmModulationType, ModulationTransformation, PortId } from 'app/public/wasm/audio_processor';
 import type {
@@ -23,6 +23,10 @@ import type { MacroState, AudioAsset, PatchMetadata } from '../src/audio/types/p
 import type { NoiseState } from '../src/audio/types/noise';
 import type OscillatorState from '../src/audio/models/OscillatorState';
 import { VoiceNodeType } from '../src/audio/types/synth-layout';
+import { setActivePinia, createPinia } from 'pinia';
+import { usePatchStore } from '../src/stores/patch-store';
+import { useMacroStore } from '../src/stores/macro-store';
+import { useInstrumentStore } from '../src/stores/instrument-store';
 
 // Helper to create a test synth layout with some nodes to target
 function createTestLayout(): SynthLayout {
@@ -166,6 +170,10 @@ function serializeTestPatch(
     instrumentGain,
   });
 }
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+});
 
 describe('macro routing persistence', () => {
   it('preserves macro routes through serialize/deserialize cycle', () => {
@@ -540,5 +548,49 @@ describe('macro routing round-trip fidelity', () => {
 
     // Verify all amounts are preserved
     expect(deserialized.macros!.routes.map((r) => r.amount)).toEqual([0.2, 0.3, 0.4, 0.5, 0.6, 0.7]);
+  });
+});
+
+describe('macro store integration', () => {
+  it('applies macro routes when applying a patch (skipLoadPatch)', async () => {
+    const layout = createTestLayout();
+    const macros = createMacroState([
+      {
+        macroIndex: 0,
+        targetId: 'osc-1',
+        targetPort: PortId.FrequencyMod,
+        amount: 0.5,
+        modulationType: WasmModulationType.Bipolar,
+        modulationTransformation: ModulationTransformation.Square,
+      },
+    ]);
+    const patch = serializeTestPatch('Macro Apply Test', layout, macros);
+
+    const patchStore = usePatchStore();
+    const macroStore = useMacroStore();
+    const instrumentStore = useInstrumentStore();
+
+    // Mock instrument readiness and macro routing hooks
+    vi.spyOn(instrumentStore, 'waitForInstrumentReady').mockResolvedValue(true);
+    instrumentStore.currentInstrument = {
+      isReady: true,
+      loadPatch: vi.fn(),
+      setOutputGain: vi.fn(),
+      setMacro: vi.fn(),
+      connectMacroRoute: vi.fn(),
+      outputNode: {},
+    } as unknown as ReturnType<typeof useInstrumentStore>['currentInstrument'];
+
+    const applied = await patchStore.applyPatchObject(patch, {
+      setCurrentPatchId: true,
+      skipLoadPatch: true,
+    });
+
+    expect(applied).toBe(true);
+    expect(macroStore.routes).toHaveLength(1);
+    expect(macroStore.routes[0]!.targetId).toBe('osc-1');
+    expect(
+      (instrumentStore.currentInstrument as unknown as { connectMacroRoute: ReturnType<typeof vi.fn> }).connectMacroRoute,
+    ).toHaveBeenCalledTimes(1);
   });
 });

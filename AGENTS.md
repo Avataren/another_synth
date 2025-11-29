@@ -1428,3 +1428,11 @@ if (canReuse) {
 ### Macro serialization positional args (2025-03 → replaced with options object)
 
 - `serializeCurrentPatch` now takes a single options object (`SerializeCurrentPatchOptions`) with named fields instead of 20 positional params. This removes the prior footgun where extra placeholder maps would shift optional args and drop macros. Update any new call sites to pass `{ name, layout, oscillators, ... , macros?, instrumentGain? }`.
+
+### Tracker song patch voice count (2025-04)
+
+- `patch/instrument/:slot` now derives the voice count from the patch itself via `resolvePatchVoiceCount` (`src/audio/utils/voice-count.ts`), instead of using whatever layout was previously loaded. This fixes the case where adding a new 8‑voice song instrument temporarily showed 1 voice until reloading the editor. The helper clamps to 1–8 and tolerates malformed patches.
+
+### Macro routes when editing song instruments (2025-04)
+
+- Entering the song instrument editor now immediately seeds macro routes from the patch (`macroStore.setFromPatch`) before applying the patch; this prevents the macros panel from appearing empty on first open when using a live song-bank instrument (skipLoadPatch path). Added a regression test in `tests/macro-routing.test.ts` to ensure applying a patch (even with `skipLoadPatch`) populates `macroStore.routes`.
