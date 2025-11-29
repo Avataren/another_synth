@@ -378,33 +378,59 @@ function filterConvolverAssets(
   return filtered;
 }
 
+export interface SerializeCurrentPatchOptions {
+  name: string;
+  layout: SynthLayout;
+  oscillators?: Map<string, OscillatorState> | undefined;
+  wavetableOscillators?: Map<string, OscillatorState> | undefined;
+  filters?: Map<string, FilterState> | undefined;
+  envelopes?: Map<string, EnvelopeConfig> | undefined;
+  lfos?: Map<string, LfoState> | undefined;
+  samplers?: Map<string, SamplerState> | undefined;
+  glides?: Map<string, GlideState> | undefined;
+  convolvers?: Map<string, ConvolverState> | undefined;
+  delays?: Map<string, DelayState> | undefined;
+  choruses?: Map<string, ChorusState> | undefined;
+  reverbs?: Map<string, ReverbState> | undefined;
+  compressors?: Map<string, CompressorState> | undefined;
+  saturations?: Map<string, SaturationState> | undefined;
+  bitcrushers?: Map<string, BitcrusherState> | undefined;
+  noise?: NoiseState | undefined;
+  velocity?: VelocityState | undefined;
+  audioAssets?: Map<string, AudioAsset> | undefined;
+  metadata?: Partial<PatchMetadata> | undefined;
+  macros?: MacroState | undefined;
+  instrumentGain?: number | undefined;
+}
+
 /**
  * Serializes the current synth state to a Patch object
  */
-export function serializeCurrentPatch(
-  name: string,
-  layout: SynthLayout,
-  oscillators: Map<string, OscillatorState>,
-  wavetableOscillators: Map<string, OscillatorState>,
-  filters: Map<string, FilterState>,
-  envelopes: Map<string, EnvelopeConfig>,
-  lfos: Map<string, LfoState>,
-  samplers: Map<string, SamplerState>,
-  glides: Map<string, GlideState>,
-  convolvers: Map<string, ConvolverState>,
-  delays: Map<string, DelayState>,
-  choruses: Map<string, ChorusState>,
-  reverbs: Map<string, ReverbState>,
-  compressors: Map<string, CompressorState>,
-  saturations: Map<string, SaturationState>,
-  bitcrushers: Map<string, BitcrusherState>,
-  noise?: NoiseState,
-  velocity?: VelocityState,
-  audioAssets?: Map<string, AudioAsset>,
-  metadata?: Partial<PatchMetadata>,
-  macros?: MacroState,
-  instrumentGain?: number,
-): Patch {
+export function serializeCurrentPatch(options: SerializeCurrentPatchOptions): Patch {
+  const {
+    name,
+    layout,
+    oscillators = new Map<string, OscillatorState>(),
+    wavetableOscillators = new Map<string, OscillatorState>(),
+    filters = new Map<string, FilterState>(),
+    envelopes = new Map<string, EnvelopeConfig>(),
+    lfos = new Map<string, LfoState>(),
+    samplers = new Map<string, SamplerState>(),
+    glides = new Map<string, GlideState>(),
+    convolvers = new Map<string, ConvolverState>(),
+    delays = new Map<string, DelayState>(),
+    choruses = new Map<string, ChorusState>(),
+    reverbs = new Map<string, ReverbState>(),
+    compressors = new Map<string, CompressorState>(),
+    saturations = new Map<string, SaturationState>(),
+    bitcrushers = new Map<string, BitcrusherState>(),
+    noise,
+    velocity,
+    audioAssets,
+    metadata,
+    macros,
+    instrumentGain,
+  } = options;
   const normalizedOscillators = normalizeStateMap(
     oscillators,
     normalizeOscillatorState,

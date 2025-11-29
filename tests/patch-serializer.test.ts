@@ -8,29 +8,53 @@ import {
   importPatchFromJSON,
 } from '../src/audio/serialization/patch-serializer';
 import { AudioAssetType } from '../src/audio/types/preset-types';
-import type { SynthLayout, ConvolverState, VoiceLayout } from '../src/audio/types/synth-layout';
+import type {
+  SynthLayout,
+  ConvolverState,
+  VoiceLayout,
+  VoiceNode,
+} from '../src/audio/types/synth-layout';
+import { VoiceNodeType } from '../src/audio/types/synth-layout';
+import type { SerializeCurrentPatchOptions } from '../src/audio/serialization/patch-serializer';
 
 // Test helper to create a valid synth layout
 function createTestLayout(
   voiceCount: number,
   convolverNodes: Array<{ id: string; type: string; name: string }> = []
 ): SynthLayout {
+  const baseNodes: Record<VoiceNodeType, VoiceNode[]> = {
+    [VoiceNodeType.Oscillator]: [],
+    [VoiceNodeType.WavetableOscillator]: [],
+    [VoiceNodeType.Filter]: [],
+    [VoiceNodeType.Envelope]: [],
+    [VoiceNodeType.LFO]: [],
+    [VoiceNodeType.Mixer]: [],
+    [VoiceNodeType.Noise]: [],
+    [VoiceNodeType.Sampler]: [],
+    [VoiceNodeType.Glide]: [],
+    [VoiceNodeType.GlobalFrequency]: [],
+    [VoiceNodeType.GlobalVelocity]: [],
+    [VoiceNodeType.Convolver]: [],
+    [VoiceNodeType.Delay]: [],
+    [VoiceNodeType.GateMixer]: [],
+    [VoiceNodeType.ArpeggiatorGenerator]: [],
+    [VoiceNodeType.Chorus]: [],
+    [VoiceNodeType.Limiter]: [],
+    [VoiceNodeType.Reverb]: [],
+    [VoiceNodeType.Compressor]: [],
+    [VoiceNodeType.Saturation]: [],
+    [VoiceNodeType.Bitcrusher]: [],
+  };
+
+  const convolverNodesTyped: VoiceNode[] = convolverNodes.map(node => ({
+    ...node,
+    type: VoiceNodeType.Convolver,
+  }));
   const canonicalVoice: VoiceLayout = {
     id: 0,
     nodes: {
-      oscillator: [],
-      wavetable_oscillator: [],
-      filter: [],
-      envelope: [],
-      lfo: [],
-      sampler: [],
-      convolver: convolverNodes,
-      delay: [],
-      chorus: [],
-      reverb: [],
-      compressor: [],
-      saturation: [],
-      bitcrusher: [],
+      ...baseNodes,
+      [VoiceNodeType.Convolver]: convolverNodesTyped,
     },
     connections: [],
   };
@@ -44,6 +68,32 @@ function createTestLayout(
     })),
     globalNodes: {},
   };
+}
+
+function serializeWithLayout(
+  name: string,
+  layout: SynthLayout,
+  overrides: Partial<SerializeCurrentPatchOptions> = {},
+) {
+  return serializeCurrentPatch({
+    name,
+    layout,
+    oscillators: new Map(),
+    wavetableOscillators: new Map(),
+    filters: new Map(),
+    envelopes: new Map(),
+    lfos: new Map(),
+    samplers: new Map(),
+    glides: new Map(),
+    convolvers: new Map(),
+    delays: new Map(),
+    choruses: new Map(),
+    reverbs: new Map(),
+    compressors: new Map(),
+    saturations: new Map(),
+    bitcrushers: new Map(),
+    ...overrides,
+  });
 }
 
 describe('patch-serializer audio asset helpers', () => {
@@ -73,24 +123,7 @@ describe('patch serialization round-trips', () => {
     voiceCounts.forEach(voiceCount => {
       const layout = createTestLayout(voiceCount);
 
-      const patch = serializeCurrentPatch(
-        'Test Patch',
-        layout,
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-      );
+      const patch = serializeWithLayout('Test Patch', layout);
 
       expect(patch.synthState.layout.voiceCount).toBe(voiceCount);
 
@@ -102,24 +135,7 @@ describe('patch serialization round-trips', () => {
   it('preserves patch through JSON export/import', () => {
     const layout = createTestLayout(4);
 
-    const originalPatch = serializeCurrentPatch(
-      'Export Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-    );
+    const originalPatch = serializeWithLayout('Export Test', layout);
 
     const json = exportPatchToJSON(originalPatch);
     const result = importPatchFromJSON(json);
@@ -168,27 +184,10 @@ describe('convolver generator asset filtering', () => {
       ],
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Hall Reverb Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
+    const patch = serializeWithLayout('Hall Reverb Test', layout, {
       convolvers,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined,
-      undefined,
       audioAssets,
-    );
+    });
 
     // The binary data should be excluded because generator exists
     expect(Object.keys(patch.audioAssets)).toHaveLength(0);
@@ -225,32 +224,16 @@ describe('convolver generator asset filtering', () => {
       ],
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Custom Impulse Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
+    const patch = serializeWithLayout('Custom Impulse Test', layout, {
       convolvers,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined,
-      undefined,
       audioAssets,
-    );
+    });
 
     // The binary data should be included because no generator exists
     expect(Object.keys(patch.audioAssets)).toHaveLength(1);
-    expect(patch.audioAssets[`impulse_response_${nodeId}`]).toBeDefined();
-    expect(patch.audioAssets[`impulse_response_${nodeId}`].base64Data).toBe('CUSTOMWAVDATA');
+    const asset = patch.audioAssets[`impulse_response_${nodeId}`];
+    expect(asset).toBeDefined();
+    expect(asset!.base64Data).toBe('CUSTOMWAVDATA');
   });
 
   it('preserves generator parameters in patch', () => {
@@ -275,24 +258,9 @@ describe('convolver generator asset filtering', () => {
 
     const convolvers = new Map([[nodeId, convolverState]]);
 
-    const patch = serializeCurrentPatch(
-      'Plate Reverb Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
+    const patch = serializeWithLayout('Plate Reverb Test', layout, {
       convolvers,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-    );
+    });
 
     const deserialized = deserializePatch(patch);
     const deserializedConvolver = deserialized.convolvers.get(nodeId);

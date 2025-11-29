@@ -602,30 +602,30 @@ export const usePatchStore = defineStore('patchStore', {
           })),
         };
 
-        return serializeCurrentPatch(
-          name ?? 'Untitled',
-          layoutStore.synthLayout,
-          nodeStateStore.oscillatorStates,
-          nodeStateStore.wavetableOscillatorStates,
-          nodeStateStore.filterStates,
-          nodeStateStore.envelopeStates,
-          nodeStateStore.lfoStates,
-          nodeStateStore.samplerStates,
-          nodeStateStore.glideStates,
-          nodeStateStore.convolverStates,
-          nodeStateStore.delayStates,
-          nodeStateStore.chorusStates,
-          nodeStateStore.reverbStates,
-          nodeStateStore.compressorStates,
-          nodeStateStore.saturationStates,
-          nodeStateStore.bitcrusherStates,
-          nodeStateStore.noiseState,
-          nodeStateStore.velocityState,
-          allAssets,
-          metadataPayload,
+        return serializeCurrentPatch({
+          name: name ?? 'Untitled',
+          layout: layoutStore.synthLayout,
+          oscillators: nodeStateStore.oscillatorStates,
+          wavetableOscillators: nodeStateStore.wavetableOscillatorStates,
+          filters: nodeStateStore.filterStates,
+          envelopes: nodeStateStore.envelopeStates,
+          lfos: nodeStateStore.lfoStates,
+          samplers: nodeStateStore.samplerStates,
+          glides: nodeStateStore.glideStates,
+          convolvers: nodeStateStore.convolverStates,
+          delays: nodeStateStore.delayStates,
+          choruses: nodeStateStore.chorusStates,
+          reverbs: nodeStateStore.reverbStates,
+          compressors: nodeStateStore.compressorStates,
+          saturations: nodeStateStore.saturationStates,
+          bitcrushers: nodeStateStore.bitcrusherStates,
+          noise: nodeStateStore.noiseState,
+          velocity: nodeStateStore.velocityState,
+          audioAssets: allAssets,
+          metadata: metadataPayload,
           macros,
-          instrumentStore.instrumentGain,
-        );
+          instrumentGain: instrumentStore.instrumentGain,
+        });
       } catch (error) {
         console.error('Failed to serialize patch:', error);
         return null;
@@ -672,30 +672,29 @@ export const usePatchStore = defineStore('patchStore', {
 
         const metadataPayload = sanitizeMetadataUpdates(metadata);
 
-        const patch = serializeCurrentPatch(
+        const patch = serializeCurrentPatch({
           name,
-          layoutStore.synthLayout,
-          nodeStateStore.oscillatorStates,
-          nodeStateStore.wavetableOscillatorStates,
-          nodeStateStore.filterStates,
-          nodeStateStore.envelopeStates,
-          nodeStateStore.lfoStates,
-          nodeStateStore.samplerStates,
-          nodeStateStore.glideStates,
-          nodeStateStore.convolverStates,
-          nodeStateStore.delayStates,
-          nodeStateStore.chorusStates,
-          nodeStateStore.reverbStates,
-          nodeStateStore.compressorStates,
-          nodeStateStore.saturationStates,
-          nodeStateStore.bitcrusherStates,
-          nodeStateStore.noiseState,
-          nodeStateStore.velocityState,
-          allAssets,
-          metadataPayload,
-          undefined, // macros not used in saveCurrentPatch
-          instrumentStore.instrumentGain,
-        );
+          layout: layoutStore.synthLayout,
+          oscillators: nodeStateStore.oscillatorStates,
+          wavetableOscillators: nodeStateStore.wavetableOscillatorStates,
+          filters: nodeStateStore.filterStates,
+          envelopes: nodeStateStore.envelopeStates,
+          lfos: nodeStateStore.lfoStates,
+          samplers: nodeStateStore.samplerStates,
+          glides: nodeStateStore.glideStates,
+          convolvers: nodeStateStore.convolverStates,
+          delays: nodeStateStore.delayStates,
+          choruses: nodeStateStore.chorusStates,
+          reverbs: nodeStateStore.reverbStates,
+          compressors: nodeStateStore.compressorStates,
+          saturations: nodeStateStore.saturationStates,
+          bitcrushers: nodeStateStore.bitcrusherStates,
+          noise: nodeStateStore.noiseState,
+          velocity: nodeStateStore.velocityState,
+          audioAssets: allAssets,
+          metadata: metadataPayload,
+          instrumentGain: instrumentStore.instrumentGain,
+        });
 
         if (this.currentBank) {
           this.currentBank = addPatchToBank(this.currentBank, patch);
@@ -789,30 +788,30 @@ export const usePatchStore = defineStore('patchStore', {
           })),
         };
 
-        const patch = serializeCurrentPatch(
-          finalName,
-          layoutStore.synthLayout,
-          nodeStateStore.oscillatorStates,
-          nodeStateStore.wavetableOscillatorStates,
-          nodeStateStore.filterStates,
-          nodeStateStore.envelopeStates,
-          nodeStateStore.lfoStates,
-          nodeStateStore.samplerStates,
-          nodeStateStore.glideStates,
-          nodeStateStore.convolverStates,
-          nodeStateStore.delayStates,
-          nodeStateStore.chorusStates,
-          nodeStateStore.reverbStates,
-          nodeStateStore.compressorStates,
-          nodeStateStore.saturationStates,
-          nodeStateStore.bitcrusherStates,
-          nodeStateStore.noiseState,
-          nodeStateStore.velocityState,
-          allAssets,
-          mergedMetadata,
+        const patch = serializeCurrentPatch({
+          name: finalName,
+          layout: layoutStore.synthLayout,
+          oscillators: nodeStateStore.oscillatorStates,
+          wavetableOscillators: nodeStateStore.wavetableOscillatorStates,
+          filters: nodeStateStore.filterStates,
+          envelopes: nodeStateStore.envelopeStates,
+          lfos: nodeStateStore.lfoStates,
+          samplers: nodeStateStore.samplerStates,
+          glides: nodeStateStore.glideStates,
+          convolvers: nodeStateStore.convolverStates,
+          delays: nodeStateStore.delayStates,
+          choruses: nodeStateStore.chorusStates,
+          reverbs: nodeStateStore.reverbStates,
+          compressors: nodeStateStore.compressorStates,
+          saturations: nodeStateStore.saturationStates,
+          bitcrushers: nodeStateStore.bitcrusherStates,
+          noise: nodeStateStore.noiseState,
+          velocity: nodeStateStore.velocityState,
+          audioAssets: allAssets,
+          metadata: mergedMetadata,
           macros,
-          instrumentStore.instrumentGain,
-        );
+          instrumentGain: instrumentStore.instrumentGain,
+        });
 
         this.currentBank = existingPatch
           ? updatePatchInBank(this.currentBank, patch)
@@ -1070,30 +1069,30 @@ export const usePatchStore = defineStore('patchStore', {
       const existingMetadata = this.currentPatch?.metadata;
       const patchName = existingMetadata?.name || 'Patch';
 
-      const patch = serializeCurrentPatch(
-        patchName,
-        updatedLayout,
-        nodeStateStore.oscillatorStates,
-        nodeStateStore.wavetableOscillatorStates,
-        nodeStateStore.filterStates,
-        nodeStateStore.envelopeStates,
-        nodeStateStore.lfoStates,
-        nodeStateStore.samplerStates,
-        nodeStateStore.glideStates,
-        nodeStateStore.convolverStates,
-        nodeStateStore.delayStates,
-        nodeStateStore.chorusStates,
-        nodeStateStore.reverbStates,
-        nodeStateStore.compressorStates,
-        nodeStateStore.saturationStates,
-        nodeStateStore.bitcrusherStates,
-        nodeStateStore.noiseState,
-        nodeStateStore.velocityState,
-        allAssets,
-        existingMetadata ? { ...existingMetadata } : undefined,
-        macrosState,
-        instrumentStore.instrumentGain,
-      );
+      const patch = serializeCurrentPatch({
+        name: patchName,
+        layout: updatedLayout,
+        oscillators: nodeStateStore.oscillatorStates,
+        wavetableOscillators: nodeStateStore.wavetableOscillatorStates,
+        filters: nodeStateStore.filterStates,
+        envelopes: nodeStateStore.envelopeStates,
+        lfos: nodeStateStore.lfoStates,
+        samplers: nodeStateStore.samplerStates,
+        glides: nodeStateStore.glideStates,
+        convolvers: nodeStateStore.convolverStates,
+        delays: nodeStateStore.delayStates,
+        choruses: nodeStateStore.chorusStates,
+        reverbs: nodeStateStore.reverbStates,
+        compressors: nodeStateStore.compressorStates,
+        saturations: nodeStateStore.saturationStates,
+        bitcrushers: nodeStateStore.bitcrusherStates,
+        noise: nodeStateStore.noiseState,
+        velocity: nodeStateStore.velocityState,
+        audioAssets: allAssets,
+        metadata: existingMetadata ? { ...existingMetadata } : undefined,
+        macros: macrosState,
+        instrumentGain: instrumentStore.instrumentGain,
+      });
 
       // Reapply the freshly serialized patch so the engine rebuilds voices
       return await this.applyPatchObject(patch);

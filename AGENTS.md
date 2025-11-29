@@ -1425,6 +1425,6 @@ if (canReuse) {
 - `src/composables/useTrackerNavigation.ts:119-135` - `jumpToNextTrack()`/`jumpToPrevTrack()` called by Tab key
 - Keyboard note listeners now bail if `event.defaultPrevented` to avoid triggering note previews while editing tracker effect/volume fields (tracker hex handlers call `preventDefault`).
 
-### Macro serialization positional args (2025-03)
+### Macro serialization positional args (2025-03 → replaced with options object)
 
-- `serializeCurrentPatch` takes 14 state maps (oscillators..bitcrushers) **before** the optional fields (`noise`, `velocity`, `audioAssets`, `metadata`, `macros`, `instrumentGain`). Passing extra placeholder maps will shift the optional args and drop macros (they land in the `metadata` slot). Tests now wrap calls in a helper to keep defaults aligned; when calling manually, only pass the 14 maps before any optional values.
+- `serializeCurrentPatch` now takes a single options object (`SerializeCurrentPatchOptions`) with named fields instead of 20 positional params. This removes the prior footgun where extra placeholder maps would shift optional args and drop macros. Update any new call sites to pass `{ name, layout, oscillators, ... , macros?, instrumentGain? }`.

@@ -3,9 +3,34 @@ import { setActivePinia, createPinia } from 'pinia';
 import { useTrackerStore } from '../src/stores/tracker-store';
 import type { Patch } from '../src/audio/types/preset-types';
 import { createDefaultPatchMetadata } from '../src/audio/types/preset-types';
+import { VoiceNodeType } from '../src/audio/types/synth-layout';
+import type { VoiceNode } from '../src/audio/types/synth-layout';
 
 // Helper to create a test patch with specific voice count
 function createTestPatch(name: string, voiceCount: number): Patch {
+  const baseNodes: Record<VoiceNodeType, VoiceNode[]> = {
+    [VoiceNodeType.Oscillator]: [],
+    [VoiceNodeType.WavetableOscillator]: [],
+    [VoiceNodeType.Filter]: [],
+    [VoiceNodeType.Envelope]: [],
+    [VoiceNodeType.LFO]: [],
+    [VoiceNodeType.Mixer]: [],
+    [VoiceNodeType.Noise]: [],
+    [VoiceNodeType.Sampler]: [],
+    [VoiceNodeType.Glide]: [],
+    [VoiceNodeType.GlobalFrequency]: [],
+    [VoiceNodeType.GlobalVelocity]: [],
+    [VoiceNodeType.Convolver]: [],
+    [VoiceNodeType.Delay]: [],
+    [VoiceNodeType.GateMixer]: [],
+    [VoiceNodeType.ArpeggiatorGenerator]: [],
+    [VoiceNodeType.Chorus]: [],
+    [VoiceNodeType.Limiter]: [],
+    [VoiceNodeType.Reverb]: [],
+    [VoiceNodeType.Compressor]: [],
+    [VoiceNodeType.Saturation]: [],
+    [VoiceNodeType.Bitcrusher]: [],
+  };
   return {
     metadata: createDefaultPatchMetadata(name),
     synthState: {
@@ -14,19 +39,7 @@ function createTestPatch(name: string, voiceCount: number): Patch {
         canonicalVoice: {
           id: 0,
           nodes: {
-            oscillator: [],
-            wavetable_oscillator: [],
-            filter: [],
-            envelope: [],
-            lfo: [],
-            sampler: [],
-            convolver: [],
-            delay: [],
-            chorus: [],
-            reverb: [],
-            compressor: [],
-            saturation: [],
-            bitcrusher: [],
+            ...baseNodes,
           },
           connections: [],
         },
@@ -65,7 +78,7 @@ describe('tracker patch assignment', () => {
       // Verify patch was stored
       const storedPatch = store.songPatches[patch.metadata.id];
       expect(storedPatch).toBeDefined();
-      expect(storedPatch.synthState.layout.voiceCount).toBe(voiceCount);
+      expect(storedPatch!.synthState.layout.voiceCount).toBe(voiceCount);
     });
   });
 
@@ -82,8 +95,9 @@ describe('tracker patch assignment', () => {
 
     // Verify stored patch is unchanged
     const storedPatch = store.songPatches[originalPatch.metadata.id];
-    expect(storedPatch.synthState.layout.voiceCount).toBe(originalVoiceCount);
-    expect(storedPatch.metadata.name).toBe('Original');
+    expect(storedPatch).toBeDefined();
+    expect(storedPatch!.synthState.layout.voiceCount).toBe(originalVoiceCount);
+    expect(storedPatch!.metadata.name).toBe('Original');
   });
 
   it('updates slot metadata when assigning patch', () => {
@@ -197,7 +211,8 @@ describe('tracker instrument slot management', () => {
 
     // Verify patch was updated
     const storedPatch = store.songPatches[originalPatch.metadata.id];
-    expect(storedPatch.synthState.layout.voiceCount).toBe(8);
+    expect(storedPatch).toBeDefined();
+    expect(storedPatch!.synthState.layout.voiceCount).toBe(8);
   });
 });
 
@@ -256,8 +271,10 @@ describe('tracker slot initialization', () => {
     expect(store.instrumentSlots.length).toBe(25);
 
     // Slots are numbered 1-25, not 0-24
-    expect(store.instrumentSlots[0].slot).toBe(1);
-    expect(store.instrumentSlots[24].slot).toBe(25);
+    expect(store.instrumentSlots[0]).toBeDefined();
+    expect(store.instrumentSlots[24]).toBeDefined();
+    expect(store.instrumentSlots[0]!.slot).toBe(1);
+    expect(store.instrumentSlots[24]!.slot).toBe(25);
 
     // Each slot should have correct structure
     store.instrumentSlots.forEach((slot) => {

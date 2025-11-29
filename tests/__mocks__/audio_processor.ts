@@ -8,9 +8,10 @@ export enum WasmModulationType {
 }
 
 export enum ModulationTransformation {
-  Linear = 0,
-  Exponential = 1,
-  Logarithmic = 2,
+  None = 0,
+  Invert = 1,
+  Square = 2,
+  Cube = 3,
 }
 
 export enum PortId {

@@ -17,38 +17,56 @@ import type {
   BitcrusherState,
   GlideState,
   VelocityState,
+  VoiceNode,
 } from '../src/audio/types/synth-layout';
 import type { MacroState, AudioAsset, PatchMetadata } from '../src/audio/types/preset-types';
 import type { NoiseState } from '../src/audio/types/noise';
 import type OscillatorState from '../src/audio/models/OscillatorState';
+import { VoiceNodeType } from '../src/audio/types/synth-layout';
 
 // Helper to create a test synth layout with some nodes to target
 function createTestLayout(): SynthLayout {
+  const baseNodes: Record<VoiceNodeType, VoiceNode[]> = {
+    [VoiceNodeType.Oscillator]: [],
+    [VoiceNodeType.WavetableOscillator]: [],
+    [VoiceNodeType.Filter]: [],
+    [VoiceNodeType.Envelope]: [],
+    [VoiceNodeType.LFO]: [],
+    [VoiceNodeType.Mixer]: [],
+    [VoiceNodeType.Noise]: [],
+    [VoiceNodeType.Sampler]: [],
+    [VoiceNodeType.Glide]: [],
+    [VoiceNodeType.GlobalFrequency]: [],
+    [VoiceNodeType.GlobalVelocity]: [],
+    [VoiceNodeType.Convolver]: [],
+    [VoiceNodeType.Delay]: [],
+    [VoiceNodeType.GateMixer]: [],
+    [VoiceNodeType.ArpeggiatorGenerator]: [],
+    [VoiceNodeType.Chorus]: [],
+    [VoiceNodeType.Limiter]: [],
+    [VoiceNodeType.Reverb]: [],
+    [VoiceNodeType.Compressor]: [],
+    [VoiceNodeType.Saturation]: [],
+    [VoiceNodeType.Bitcrusher]: [],
+  };
+
   const canonicalVoice: VoiceLayout = {
     id: 0,
     nodes: {
-      oscillator: [
-        { id: 'osc-1', type: 'oscillator', name: 'Oscillator 1' },
-        { id: 'osc-2', type: 'oscillator', name: 'Oscillator 2' },
+      ...baseNodes,
+      [VoiceNodeType.Oscillator]: [
+        { id: 'osc-1', type: VoiceNodeType.Oscillator, name: 'Oscillator 1' },
+        { id: 'osc-2', type: VoiceNodeType.Oscillator, name: 'Oscillator 2' },
       ],
-      wavetable_oscillator: [],
-      filter: [
-        { id: 'filter-1', type: 'filter', name: 'Filter 1' },
+      [VoiceNodeType.Filter]: [
+        { id: 'filter-1', type: VoiceNodeType.Filter, name: 'Filter 1' },
       ],
-      envelope: [
-        { id: 'env-1', type: 'envelope', name: 'Envelope 1' },
+      [VoiceNodeType.Envelope]: [
+        { id: 'env-1', type: VoiceNodeType.Envelope, name: 'Envelope 1' },
       ],
-      lfo: [
-        { id: 'lfo-1', type: 'lfo', name: 'LFO 1' },
+      [VoiceNodeType.LFO]: [
+        { id: 'lfo-1', type: VoiceNodeType.LFO, name: 'LFO 1' },
       ],
-      sampler: [],
-      convolver: [],
-      delay: [],
-      chorus: [],
-      reverb: [],
-      compressor: [],
-      saturation: [],
-      bitcrusher: [],
     },
     connections: [],
   };
@@ -87,11 +105,11 @@ type StateOverrides = Partial<{
   compressors: Map<string, CompressorState>;
   saturations: Map<string, SaturationState>;
   bitcrushers: Map<string, BitcrusherState>;
-  noise: NoiseState;
-  velocity: VelocityState;
-  audioAssets: Map<string, AudioAsset>;
-  metadata: Partial<PatchMetadata>;
-  instrumentGain: number;
+  noise: NoiseState | undefined;
+  velocity: VelocityState | undefined;
+  audioAssets: Map<string, AudioAsset> | undefined;
+  metadata: Partial<PatchMetadata> | undefined;
+  instrumentGain: number | undefined;
 }>;
 
 // Helper to call serializeCurrentPatch with sensible defaults so optional args stay aligned
@@ -123,7 +141,7 @@ function serializeTestPatch(
     instrumentGain,
   } = overrides;
 
-  return serializeCurrentPatch(
+  return serializeCurrentPatch({
     name,
     layout,
     oscillators,
@@ -146,7 +164,7 @@ function serializeTestPatch(
     metadata,
     macros,
     instrumentGain,
-  );
+  });
 }
 
 describe('macro routing persistence', () => {
@@ -159,15 +177,15 @@ describe('macro routing persistence', () => {
         targetPort: PortId.FrequencyMod,
         amount: 0.5,
         modulationType: WasmModulationType.Bipolar,
-        modulationTransformation: ModulationTransformation.Linear,
+        modulationTransformation: ModulationTransformation.Square,
       },
       {
         macroIndex: 1,
         targetId: 'filter-1',
-        targetPort: PortId.FilterCutoff,
+        targetPort: PortId.CutoffMod,
         amount: 0.75,
         modulationType: WasmModulationType.VCA,
-        modulationTransformation: ModulationTransformation.Exponential,
+        modulationTransformation: ModulationTransformation.Cube,
       },
     ]);
 
@@ -179,22 +197,22 @@ describe('macro routing persistence', () => {
     expect(deserialized.macros!.routes).toHaveLength(2);
 
     // First route
-    const route1 = deserialized.macros!.routes[0];
+    const route1 = deserialized.macros!.routes[0]!;
     expect(route1.macroIndex).toBe(0);
     expect(route1.targetId).toBe('osc-1');
     expect(route1.targetPort).toBe(PortId.FrequencyMod);
     expect(route1.amount).toBe(0.5);
     expect(route1.modulationType).toBe(WasmModulationType.Bipolar);
-    expect(route1.modulationTransformation).toBe(ModulationTransformation.Linear);
+    expect(route1.modulationTransformation).toBe(ModulationTransformation.Square);
 
     // Second route
-    const route2 = deserialized.macros!.routes[1];
+    const route2 = deserialized.macros!.routes[1]!;
     expect(route2.macroIndex).toBe(1);
     expect(route2.targetId).toBe('filter-1');
-    expect(route2.targetPort).toBe(PortId.FilterCutoff);
+    expect(route2.targetPort).toBe(PortId.CutoffMod);
     expect(route2.amount).toBe(0.75);
     expect(route2.modulationType).toBe(WasmModulationType.VCA);
-    expect(route2.modulationTransformation).toBe(ModulationTransformation.Exponential);
+    expect(route2.modulationTransformation).toBe(ModulationTransformation.Cube);
   });
 
   it('preserves macro values through serialize/deserialize cycle', () => {
@@ -228,7 +246,7 @@ describe('macro routing persistence', () => {
       {
         macroIndex: 0,
         targetId: 'filter-1',
-        targetPort: PortId.FilterCutoff,
+        targetPort: PortId.CutoffMod,
         amount: 0.9,
       },
     ]);
@@ -296,7 +314,7 @@ describe('modulation amount preservation', () => {
       const deserialized = deserializePatch(patch);
 
       expect(deserialized.macros).toBeDefined();
-      expect(deserialized.macros!.routes[0].amount).toBe(amount);
+      expect(deserialized.macros!.routes[0]!.amount).toBe(amount);
     });
   });
 
@@ -316,7 +334,7 @@ describe('modulation amount preservation', () => {
     const deserialized = deserializePatch(patch);
 
     expect(deserialized.macros).toBeDefined();
-    expect(deserialized.macros!.routes[0].amount).toBe(-0.5);
+    expect(deserialized.macros!.routes[0]!.amount).toBe(-0.5);
   });
 
   it('preserves very small modulation amounts', () => {
@@ -335,7 +353,7 @@ describe('modulation amount preservation', () => {
     const deserialized = deserializePatch(patch);
 
     expect(deserialized.macros).toBeDefined();
-    expect(deserialized.macros!.routes[0].amount).toBe(0.001);
+    expect(deserialized.macros!.routes[0]!.amount).toBe(0.001);
   });
 });
 
@@ -364,16 +382,17 @@ describe('modulation type and transformation preservation', () => {
       const deserialized = deserializePatch(patch);
 
       expect(deserialized.macros).toBeDefined();
-      expect(deserialized.macros!.routes[0].modulationType).toBe(modulationType);
+      expect(deserialized.macros!.routes[0]!.modulationType).toBe(modulationType);
     });
   });
 
   it('preserves different modulation transformations', () => {
     const layout = createTestLayout();
     const transformations = [
-      ModulationTransformation.Linear,
-      ModulationTransformation.Exponential,
-      ModulationTransformation.Logarithmic,
+      ModulationTransformation.None,
+      ModulationTransformation.Invert,
+      ModulationTransformation.Square,
+      ModulationTransformation.Cube,
     ];
 
     transformations.forEach((modulationTransformation) => {
@@ -396,7 +415,7 @@ describe('modulation type and transformation preservation', () => {
       const deserialized = deserializePatch(patch);
 
       expect(deserialized.macros).toBeDefined();
-      expect(deserialized.macros!.routes[0].modulationTransformation).toBe(modulationTransformation);
+      expect(deserialized.macros!.routes[0]!.modulationTransformation).toBe(modulationTransformation);
     });
   });
 
@@ -432,15 +451,15 @@ describe('macro routing round-trip fidelity', () => {
         targetPort: PortId.FrequencyMod,
         amount: 0.33,
         modulationType: WasmModulationType.Bipolar,
-        modulationTransformation: ModulationTransformation.Exponential,
+        modulationTransformation: ModulationTransformation.Square,
       },
       {
         macroIndex: 2,
         targetId: 'filter-1',
-        targetPort: PortId.FilterResonance,
+        targetPort: PortId.ResonanceMod,
         amount: 0.66,
         modulationType: WasmModulationType.VCA,
-        modulationTransformation: ModulationTransformation.Linear,
+        modulationTransformation: ModulationTransformation.None,
       },
     ]);
     originalMacros.values = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
@@ -476,14 +495,14 @@ describe('macro routing round-trip fidelity', () => {
     expect(deserialized2.macros!.routes).toHaveLength(2);
 
     // Verify first route
-    expect(deserialized2.macros!.routes[0].macroIndex).toBe(0);
-    expect(deserialized2.macros!.routes[0].amount).toBe(0.33);
-    expect(deserialized2.macros!.routes[0].modulationType).toBe(WasmModulationType.Bipolar);
+    expect(deserialized2.macros!.routes[0]!.macroIndex).toBe(0);
+    expect(deserialized2.macros!.routes[0]!.amount).toBe(0.33);
+    expect(deserialized2.macros!.routes[0]!.modulationType).toBe(WasmModulationType.Bipolar);
 
     // Verify second route
-    expect(deserialized2.macros!.routes[1].macroIndex).toBe(2);
-    expect(deserialized2.macros!.routes[1].amount).toBe(0.66);
-    expect(deserialized2.macros!.routes[1].modulationType).toBe(WasmModulationType.VCA);
+    expect(deserialized2.macros!.routes[1]!.macroIndex).toBe(2);
+    expect(deserialized2.macros!.routes[1]!.amount).toBe(0.66);
+    expect(deserialized2.macros!.routes[1]!.modulationType).toBe(WasmModulationType.VCA);
   });
 
   it('handles complex routing scenarios', () => {
@@ -492,7 +511,7 @@ describe('macro routing round-trip fidelity', () => {
       // Macro 0 -> multiple targets
       { macroIndex: 0, targetId: 'osc-1', targetPort: PortId.FrequencyMod, amount: 0.2 },
       { macroIndex: 0, targetId: 'osc-2', targetPort: PortId.FrequencyMod, amount: 0.3 },
-      { macroIndex: 0, targetId: 'filter-1', targetPort: PortId.FilterCutoff, amount: 0.4 },
+      { macroIndex: 0, targetId: 'filter-1', targetPort: PortId.CutoffMod, amount: 0.4 },
       // Macro 1 -> single target, multiple ports
       { macroIndex: 1, targetId: 'osc-1', targetPort: PortId.PhaseMod, amount: 0.5 },
       { macroIndex: 1, targetId: 'osc-1', targetPort: PortId.GainMod, amount: 0.6 },

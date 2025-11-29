@@ -2,7 +2,32 @@ import { describe, expect, it } from 'vitest';
 import { deserializePatch, serializeCurrentPatch } from '../src/audio/serialization/patch-serializer';
 import { synthLayoutToPatchLayout, patchLayoutToSynthLayout } from '../src/audio/types/synth-layout';
 import type { Patch } from '../src/audio/types/preset-types';
-import type { SynthLayout, VoiceLayout } from '../src/audio/types/synth-layout';
+import type { SynthLayout, VoiceLayout, VoiceNode } from '../src/audio/types/synth-layout';
+import { VoiceNodeType } from '../src/audio/types/synth-layout';
+
+const createEmptyNodes = (): Record<VoiceNodeType, VoiceNode[]> => ({
+  [VoiceNodeType.Oscillator]: [],
+  [VoiceNodeType.WavetableOscillator]: [],
+  [VoiceNodeType.Filter]: [],
+  [VoiceNodeType.Envelope]: [],
+  [VoiceNodeType.LFO]: [],
+  [VoiceNodeType.Mixer]: [],
+  [VoiceNodeType.Noise]: [],
+  [VoiceNodeType.Sampler]: [],
+  [VoiceNodeType.Glide]: [],
+  [VoiceNodeType.GlobalFrequency]: [],
+  [VoiceNodeType.GlobalVelocity]: [],
+  [VoiceNodeType.Convolver]: [],
+  [VoiceNodeType.Delay]: [],
+  [VoiceNodeType.GateMixer]: [],
+  [VoiceNodeType.ArpeggiatorGenerator]: [],
+  [VoiceNodeType.Chorus]: [],
+  [VoiceNodeType.Limiter]: [],
+  [VoiceNodeType.Reverb]: [],
+  [VoiceNodeType.Compressor]: [],
+  [VoiceNodeType.Saturation]: [],
+  [VoiceNodeType.Bitcrusher]: [],
+});
 
 // Helper to create a test patch with specific configuration
 function createTestPatch(
@@ -16,23 +41,12 @@ function createTestPatch(
   const canonicalVoice: VoiceLayout = {
     id: 0,
     nodes: {
-      oscillator: [],
-      wavetable_oscillator: [],
-      filter: [],
-      envelope: [],
-      lfo: [],
-      sampler: [],
-      convolver: options?.hasConvolver ? [{
+      ...createEmptyNodes(),
+      [VoiceNodeType.Convolver]: options?.hasConvolver ? [{
         id: 'conv-1',
-        type: 'convolver',
+        type: VoiceNodeType.Convolver,
         name: 'Test Convolver',
       }] : [],
-      delay: [],
-      chorus: [],
-      reverb: [],
-      compressor: [],
-      saturation: [],
-      bitcrusher: [],
     },
     connections: [],
   };
@@ -67,24 +81,24 @@ function createTestPatch(
         }]])
       : new Map();
 
-  return serializeCurrentPatch(
+  return serializeCurrentPatch({
     name,
     layout,
-    new Map(), // oscillators
-    new Map(), // wavetableOscillators
-    new Map(), // filters
-    new Map(), // envelopes
-    new Map(), // lfos
-    new Map(), // samplers
-    new Map(), // glides
+    oscillators: new Map(), // oscillators
+    wavetableOscillators: new Map(), // wavetableOscillators
+    filters: new Map(), // filters
+    envelopes: new Map(), // envelopes
+    lfos: new Map(), // lfos
+    samplers: new Map(), // samplers
+    glides: new Map(), // glides
     convolvers,
-    new Map(), // delays
-    new Map(), // choruses
-    new Map(), // reverbs
-    new Map(), // compressors
-    new Map(), // saturations
-    new Map(), // bitcrushers
-  );
+    delays: new Map(), // delays
+    choruses: new Map(), // choruses
+    reverbs: new Map(), // reverbs
+    compressors: new Map(), // compressors
+    saturations: new Map(), // saturations
+    bitcrushers: new Map(), // bitcrushers
+  });
 }
 
 describe('song bank patch normalization', () => {
@@ -291,24 +305,24 @@ describe('round-trip normalization fidelity', () => {
 
     // First cycle
     const deserialized1 = deserializePatch(original);
-    const reserialized1 = serializeCurrentPatch(
-      deserialized1.metadata.name,
-      deserialized1.layout,
-      deserialized1.oscillators,
-      deserialized1.wavetableOscillators,
-      deserialized1.filters,
-      deserialized1.envelopes,
-      deserialized1.lfos,
-      deserialized1.samplers,
-      deserialized1.glides,
-      deserialized1.convolvers,
-      deserialized1.delays,
-      deserialized1.choruses,
-      deserialized1.reverbs,
-      deserialized1.compressors,
-      deserialized1.saturations,
-      deserialized1.bitcrushers,
-    );
+    const reserialized1 = serializeCurrentPatch({
+      name: deserialized1.metadata.name,
+      layout: deserialized1.layout,
+      oscillators: deserialized1.oscillators,
+      wavetableOscillators: deserialized1.wavetableOscillators,
+      filters: deserialized1.filters,
+      envelopes: deserialized1.envelopes,
+      lfos: deserialized1.lfos,
+      samplers: deserialized1.samplers,
+      glides: deserialized1.glides,
+      convolvers: deserialized1.convolvers,
+      delays: deserialized1.delays,
+      choruses: deserialized1.choruses,
+      reverbs: deserialized1.reverbs,
+      compressors: deserialized1.compressors,
+      saturations: deserialized1.saturations,
+      bitcrushers: deserialized1.bitcrushers,
+    });
 
     // Second cycle
     const deserialized2 = deserializePatch(reserialized1);
@@ -345,19 +359,7 @@ describe('patch layout transformation', () => {
     const canonicalVoice: VoiceLayout = {
       id: 0,
       nodes: {
-        oscillator: [],
-        wavetable_oscillator: [],
-        filter: [],
-        envelope: [],
-        lfo: [],
-        sampler: [],
-        convolver: [],
-        delay: [],
-        chorus: [],
-        reverb: [],
-        compressor: [],
-        saturation: [],
-        bitcrusher: [],
+        ...createEmptyNodes(),
       },
       connections: [],
     };
@@ -384,19 +386,7 @@ describe('patch layout transformation', () => {
     const canonicalVoice: VoiceLayout = {
       id: 0,
       nodes: {
-        oscillator: [],
-        wavetable_oscillator: [],
-        filter: [],
-        envelope: [],
-        lfo: [],
-        sampler: [],
-        convolver: [],
-        delay: [],
-        chorus: [],
-        reverb: [],
-        compressor: [],
-        saturation: [],
-        bitcrusher: [],
+        ...createEmptyNodes(),
       },
       connections: [],
     };
