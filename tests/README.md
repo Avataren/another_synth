@@ -2,6 +2,18 @@
 
 This directory contains automated tests for the synthesizer codebase.
 
+## Current Test Coverage
+
+- **Test Files:** 4 passing
+- **Total Tests:** 35 passing
+- **Test Duration:** ~700ms
+
+### Test Breakdown
+- `patch-serializer.test.ts` - 8 tests
+- `tracker-state.test.ts` - 12 tests
+- `song-bank-normalization.test.ts` - 13 tests
+- `src/tests/stores/connection.test.ts` - 2 tests
+
 ## Running Tests
 
 ```bash
@@ -36,7 +48,7 @@ npm run coverage
 
 ## Test Files
 
-### patch-serializer.test.ts
+### patch-serializer.test.ts (8 tests)
 Tests for patch serialization/deserialization functionality.
 
 **Coverage:**
@@ -54,6 +66,77 @@ Tests for patch serialization/deserialization functionality.
 - Prevents voice count bugs that would make synths unexpectedly monophonic
 - Validates the convolver optimization that reduces file sizes
 - Catches serialization bugs before they corrupt user patches
+
+### tracker-state.test.ts (12 tests)
+Tests for tracker state management and synchronization.
+
+**Coverage:**
+- **Patch Assignment:**
+  - Voice count preservation when assigning patches to slots
+  - Deep copy isolation (modifications don't affect stored patches)
+  - Slot metadata updates (patchId, patchName, bankName, source)
+  - Orphaned patch cleanup when slots are reassigned
+  - Shared patch retention when multiple slots reference same patch
+
+- **Slot Management:**
+  - Clearing slots and removing orphaned patches
+  - Custom instrument naming
+  - Patch updates through editing workflow
+
+- **History and Undo:**
+  - Undo patch assignments
+  - Redo patch assignments
+  - History stack integrity
+
+- **Slot Initialization:**
+  - Default slot creation (25 slots, numbered 1-25)
+  - Slot number preservation through operations
+
+**Why these tests matter:**
+- Prevents voice count loss when loading patches in tracker
+- Ensures patches don't corrupt when switched between slots
+- Validates undo/redo works correctly for complex state
+- Documents the 1-indexed slot numbering (prevents off-by-one bugs)
+- Catches state synchronization issues between stores
+
+### song-bank-normalization.test.ts (13 tests)
+Tests for song bank patch normalization pipeline.
+
+**Coverage:**
+- **Voice Count Normalization:**
+  - Preserves voice count through deserialize → normalize cycle
+  - Handles empty voices array with voiceCount set
+  - Generates voices from canonical when missing
+  - Maintains voice count through multiple serialize/deserialize cycles
+
+- **Canonical Voice Structure:**
+  - Preserves canonical voice through normalization
+  - Verifies all node arrays are present and correct
+  - Tests voice generation from canonical template
+
+- **Layout Transformations:**
+  - SynthLayout → PatchLayout conversion (compact format)
+  - PatchLayout → SynthLayout reconstruction (with voices)
+  - Voice ID assignment correctness
+
+- **Metadata Handling:**
+  - Metadata pass-through behavior
+  - Preservation of custom metadata fields
+
+- **Convolver State:**
+  - Generator parameter preservation
+  - Handling convolvers without generators
+
+- **Round-Trip Fidelity:**
+  - Multiple cycle stability
+  - Edge case voice counts (1, 2, 4, 8)
+
+**Why these tests matter:**
+- Catches voice count loss in the normalization pipeline (the bug we investigated!)
+- Ensures SynthLayout ↔ PatchLayout conversion is lossless
+- Documents the compact format (canonicalVoice + voiceCount, no redundant voices)
+- Validates convolver generators survive normalization
+- Prevents data corruption in the tracker's patch loading workflow
 
 ## Adding New Tests
 
@@ -93,10 +176,11 @@ describe('feature name', () => {
 ## Future Test Coverage Needs
 
 ### High Priority
-- [ ] State synchronization tests (layout-store, node-state-store interaction)
-- [ ] Tracker song bank tests (instrument loading, patch assignment)
+- [x] ~~Tracker state tests~~ (patch assignment, slot management, undo/redo) ✓
+- [x] ~~Song bank normalization tests~~ (voice count, layout transformations, round-trips) ✓
 - [ ] Macro routing tests (connection persistence, modulation amounts)
 - [ ] Audio asset restoration tests (samples, wavetables, impulses)
+- [ ] Layout-store synchronization (voice replication, node name preservation)
 
 ### Medium Priority
 - [ ] WASM integration tests (message passing, state updates)
