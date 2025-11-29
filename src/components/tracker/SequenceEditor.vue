@@ -4,18 +4,18 @@
       <div
         v-for="(patternId, index) in sequence"
         :key="`${patternId}-${index}`"
-        :ref="el => { if (index === currentSequenceIndex) activeSequenceItem = el as HTMLElement | null }"
+        :ref="el => { if (index === currentSequenceIndex || patternId === currentPatternId) activeSequenceItem = el as HTMLElement | null }"
         class="sequence-item"
         :class="{
-          'is-playing': index === currentSequenceIndex,
-          'is-inactive': index !== currentSequenceIndex
+          'is-selected': patternId === currentPatternId,
+          'is-playing': index === currentSequenceIndex && isPlaying
         }"
         @click="$emit('select-pattern', patternId)"
         @dblclick.stop="startRename(patternId)"
       >
         <div class="pattern-name-wrapper">
           <div class="sequence-number">{{ index + 1 }}.</div>
-          <div class="active-indicator" v-if="index === currentSequenceIndex">▶</div>
+          <div class="active-indicator" v-if="patternId === currentPatternId">▶</div>
           <div class="pattern-name">
             <input
               v-if="editingPatternId === patternId"
@@ -203,17 +203,21 @@ const onAddPatternToSequence = (patternId: string | null) => {
   background: rgba(0, 0, 0, 0.35);
 }
 
-.sequence-item.is-playing {
+.sequence-item.is-selected {
   background: var(--tracker-selected-bg, rgba(77, 242, 197, 0.12));
   border-color: var(--tracker-accent-primary, #4df2c5);
 }
 
-.sequence-item.is-inactive {
-  opacity: 0.5;
+.sequence-item.is-playing {
+  background: rgba(88, 176, 255, 0.12);
+  border-color: var(--tracker-accent-secondary, rgb(88, 176, 255));
 }
 
-.sequence-item.is-inactive .pattern-name {
-  color: rgba(232, 243, 255, 0.5);
+.sequence-item.is-selected.is-playing {
+  /* Both selected and playing - combine the styles */
+  background: linear-gradient(135deg, rgba(77, 242, 197, 0.12) 0%, rgba(88, 176, 255, 0.12) 100%);
+  border-color: var(--tracker-accent-primary, #4df2c5);
+  box-shadow: 0 0 0 1px var(--tracker-accent-secondary, rgb(88, 176, 255)) inset;
 }
 
 .pattern-name-wrapper {

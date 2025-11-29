@@ -58,6 +58,8 @@ export default class InstrumentV2 {
   private voiceToNote: (number | null)[] = [];
   private voiceRoundRobinIndex = 0;
   private voiceLastUsedTime: number[] = [];
+  private voiceReleaseTime: number[] = []; // Track when each voice started release
+  private maxReleaseTimeMs = 0; // Maximum release time from all envelopes
   private messageHandler: WorkletMessageHandler;
   private workletBlockSizeListener: ((event: MessageEvent) => void) | null =
     null;
@@ -80,6 +82,7 @@ export default class InstrumentV2 {
     this.voiceLimit = this.num_voices;
     this.voiceToNote = new Array(this.num_voices).fill(null);
     this.voiceLastUsedTime = new Array(this.num_voices).fill(0);
+    this.voiceReleaseTime = new Array(this.num_voices).fill(0);
 
     // Initialize message handler
     this.messageHandler = new WorkletMessageHandler({
@@ -155,6 +158,22 @@ export default class InstrumentV2 {
         this.num_voices,
         Math.max(1, Number(patchVoiceCount) || this.num_voices),
       );
+
+      // Calculate maximum release time from all envelopes for voice stealing
+      this.maxReleaseTimeMs = 0;
+      const envelopes = patch.synthState?.envelopes;
+      if (envelopes) {
+        for (const env of Object.values(envelopes)) {
+          if (env && typeof env.release === 'number') {
+            // Release time is in seconds, convert to milliseconds
+            this.maxReleaseTimeMs = Math.max(this.maxReleaseTimeMs, env.release * 1000);
+          }
+        }
+      }
+      // Add a small buffer (100ms) to ensure envelopes fully complete
+      if (this.maxReleaseTimeMs > 0) {
+        this.maxReleaseTimeMs += 100;
+      }
 
       // Strip Vue reactivity and prepare patch for WASM
       const cleanPatch = JSON.parse(
@@ -899,7 +918,8 @@ export default class InstrumentV2 {
 
   public noteOn(noteNumber: number, velocity: number, options?: { allowDuplicate?: boolean }): void {
     const allowDuplicate = options?.allowDuplicate ?? false;
-    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate);
+    const time = this.audioContext.currentTime;
+    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
 
     this.markVoiceActive(noteNumber, voiceIndex);
 
@@ -978,7 +998,7 @@ export default class InstrumentV2 {
     options?: { allowDuplicate?: boolean },
   ): number | undefined {
     const allowDuplicate = options?.allowDuplicate ?? false;
-    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate);
+    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
 
     this.markVoiceActive(noteNumber, voiceIndex);
 
@@ -1036,7 +1056,7 @@ export default class InstrumentV2 {
   }
 
   public gateOffVoiceAtTime(voiceIndex: number, time: number): void {
-    this.releaseVoice(voiceIndex);
+    this.releaseVoice(voiceIndex, time);
     if (!this.workletNode) return;
     const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
     if (gateParam) gateParam.setValueAtTime(0, time);
@@ -1243,9 +1263,11 @@ export default class InstrumentV2 {
     voices.add(voiceIndex);
     this.voiceToNote[voiceIndex] = noteNumber;
     this.voiceLastUsedTime[voiceIndex] = Date.now();
+    // Reset release time since voice is now active
+    this.voiceReleaseTime[voiceIndex] = 0;
   }
 
-  private releaseVoice(voiceIndex: number): number | null {
+  private releaseVoice(voiceIndex: number, audioTime?: number): number | null {
     if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return null;
 
     const noteNumber = this.voiceToNote[voiceIndex];
@@ -1259,16 +1281,33 @@ export default class InstrumentV2 {
       }
     }
 
+    // Record when this voice started its release phase (in audio time, seconds)
+    // If audioTime is provided, use it; otherwise use current audio context time
+    const releaseTime = audioTime ?? this.audioContext.currentTime;
+    this.voiceReleaseTime[voiceIndex] = releaseTime;
+    // Don't mark as null yet - will be cleared after release completes
     this.voiceToNote[voiceIndex] = null;
     return noteNumber ?? null;
   }
 
-  private findNextFreeVoice(): number | null {
+  private findNextFreeVoice(scheduledTime: number): number | null {
+    // scheduledTime is in audio time (seconds)
+    // voiceReleaseTime is in audio time (seconds)
+    // maxReleaseTimeMs is in milliseconds, convert to seconds
+    const maxReleaseTimeSec = this.maxReleaseTimeMs / 1000;
+
     for (let offset = 0; offset < this.voiceLimit; offset++) {
       const candidate = (this.voiceRoundRobinIndex + offset) % this.voiceLimit;
       if (this.voiceToNote[candidate] === null) {
-        this.voiceRoundRobinIndex = (candidate + 1) % this.voiceLimit;
-        return candidate;
+        // Voice is marked as free, but check if release phase has completed
+        const releaseStartTime = this.voiceReleaseTime[candidate] ?? 0;
+        const timeSinceRelease = scheduledTime - releaseStartTime;
+
+        // Only consider truly free if enough time has passed for release to complete
+        if (timeSinceRelease >= maxReleaseTimeSec || releaseStartTime === 0) {
+          this.voiceRoundRobinIndex = (candidate + 1) % this.voiceLimit;
+          return candidate;
+        }
       }
     }
     return null;
@@ -1277,6 +1316,7 @@ export default class InstrumentV2 {
   private allocateVoice(
     noteNumber: number,
     allowDuplicate: boolean,
+    scheduledTime: number,
   ): { voiceIndex: number; stolenNote: number | null; isRetrigger: boolean } {
     const existingVoices = this.activeNotes.get(noteNumber);
     if (!allowDuplicate && existingVoices && existingVoices.size > 0) {
@@ -1284,7 +1324,7 @@ export default class InstrumentV2 {
       return { voiceIndex, stolenNote: null, isRetrigger: true };
     }
 
-    const freeVoice = this.findNextFreeVoice();
+    const freeVoice = this.findNextFreeVoice(scheduledTime);
     if (freeVoice !== null) {
       return {
         voiceIndex: freeVoice,
@@ -1293,18 +1333,80 @@ export default class InstrumentV2 {
       };
     }
 
+    // No free voices - must steal one
+    // Strategy: Prefer voices in release over active voices
+    const maxReleaseTimeSec = this.maxReleaseTimeMs / 1000;
     let oldestVoice = 0;
-    let oldestTime = this.voiceLastUsedTime[0] ?? Number.POSITIVE_INFINITY;
+    let oldestTime = Number.POSITIVE_INFINITY;
+    let foundVoice = false;
 
-    for (let i = 1; i < this.voiceLimit; i++) {
-      const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
-      if (time < oldestTime) {
-        oldestTime = time;
-        oldestVoice = i;
+    // Helper to check if a voice is currently active (gate on)
+    const isVoiceActive = (voiceIndex: number): boolean => {
+      const noteNum = this.voiceToNote[voiceIndex];
+      if (noteNum === null || noteNum === undefined) return false;
+      const voices = this.activeNotes.get(noteNum);
+      return voices?.has(voiceIndex) ?? false;
+    };
+
+    // First pass: Voices that have completed their release (truly free)
+    for (let i = 0; i < this.voiceLimit; i++) {
+      const releaseStartTime = this.voiceReleaseTime[i] ?? 0;
+      if (releaseStartTime === 0) continue; // Never been used in release
+
+      const timeSinceRelease = scheduledTime - releaseStartTime;
+      const releaseCompleted = timeSinceRelease >= maxReleaseTimeSec;
+
+      if (releaseCompleted) {
+        const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
+        if (!foundVoice || time < oldestTime) {
+          oldestTime = time;
+          oldestVoice = i;
+          foundVoice = true;
+        }
       }
     }
 
-    const stolenNote = this.releaseVoice(oldestVoice);
+    // Second pass: Voices in release but not yet completed (preferred over active)
+    if (!foundVoice) {
+      for (let i = 0; i < this.voiceLimit; i++) {
+        const releaseStartTime = this.voiceReleaseTime[i] ?? 0;
+        if (releaseStartTime === 0) continue; // Not in release
+
+        const timeSinceRelease = scheduledTime - releaseStartTime;
+        const inRelease = timeSinceRelease < maxReleaseTimeSec;
+
+        if (inRelease && !isVoiceActive(i)) {
+          const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
+          if (!foundVoice || time < oldestTime) {
+            oldestTime = time;
+            oldestVoice = i;
+            foundVoice = true;
+          }
+        }
+      }
+    }
+
+    // Third pass: Fall back to oldest fully active voice (last resort)
+    if (!foundVoice) {
+      for (let i = 0; i < this.voiceLimit; i++) {
+        if (isVoiceActive(i)) {
+          const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
+          if (!foundVoice || time < oldestTime) {
+            oldestTime = time;
+            oldestVoice = i;
+            foundVoice = true;
+          }
+        }
+      }
+    }
+
+    // Final fallback: If somehow nothing was found, just use voice 0
+    if (!foundVoice) {
+      console.warn('[Instrument] Voice stealing fallback - using voice 0');
+      oldestVoice = 0;
+    }
+
+    const stolenNote = this.releaseVoice(oldestVoice, scheduledTime);
 
     return {
       voiceIndex: oldestVoice,

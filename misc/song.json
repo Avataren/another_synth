@@ -1,0 +1,1470 @@
+{
+  "version": 1,
+  "data": {
+    "currentSong": {
+      "title": "Untitled song",
+      "author": "Unknown",
+      "bpm": 120
+    },
+    "patternRows": 64,
+    "stepSize": 2,
+    "patterns": [
+      {
+        "id": "5e9cef16-19ef-4531-9ebf-d2a4b31ce365",
+        "name": "Pattern 1",
+        "tracks": [
+          {
+            "id": "T01",
+            "name": "Track 1",
+            "color": "#4df2c5",
+            "entries": [
+              {
+                "row": 0,
+                "instrument": "02",
+                "note": "D-3"
+              },
+              {
+                "row": 8,
+                "instrument": "02",
+                "note": "###"
+              },
+              {
+                "row": 16,
+                "instrument": "02",
+                "note": "D-3"
+              }
+            ],
+            "interpolations": []
+          },
+          {
+            "id": "T02",
+            "name": "Track 2",
+            "color": "#9da6ff",
+            "entries": [
+              {
+                "row": 0,
+                "instrument": "02",
+                "note": "D-4"
+              },
+              {
+                "row": 8,
+                "instrument": "02",
+                "note": "###"
+              },
+              {
+                "row": 16,
+                "instrument": "02",
+                "note": "D-4"
+              }
+            ],
+            "interpolations": []
+          },
+          {
+            "id": "T03",
+            "name": "Track 3",
+            "color": "#ffde7b",
+            "entries": [
+              {
+                "row": 0,
+                "instrument": "02",
+                "note": "G-4"
+              },
+              {
+                "row": 8,
+                "instrument": "02",
+                "note": "###"
+              },
+              {
+                "row": 16,
+                "instrument": "02",
+                "note": "G-4"
+              }
+            ],
+            "interpolations": []
+          },
+          {
+            "id": "T04",
+            "name": "Track 4",
+            "color": "#70c2ff",
+            "entries": [
+              {
+                "row": 0,
+                "instrument": "02",
+                "note": "D-5"
+              },
+              {
+                "row": 8,
+                "instrument": "02",
+                "note": "###"
+              },
+              {
+                "row": 16,
+                "instrument": "02",
+                "note": "D-5"
+              }
+            ],
+            "interpolations": []
+          },
+          {
+            "id": "T05",
+            "name": "Track 5",
+            "color": "#ff9db5",
+            "entries": [
+              {
+                "row": 0,
+                "instrument": "01",
+                "note": "D-5"
+              },
+              {
+                "row": 2,
+                "instrument": "01",
+                "note": "D-4"
+              },
+              {
+                "row": 4,
+                "instrument": "01",
+                "note": "C-5"
+              },
+              {
+                "row": 6,
+                "instrument": "01",
+                "note": "F-5"
+              },
+              {
+                "row": 8,
+                "instrument": "01",
+                "note": "D-5"
+              },
+              {
+                "row": 10,
+                "instrument": "01",
+                "note": "D-4"
+              },
+              {
+                "row": 12,
+                "instrument": "01",
+                "note": "C-5"
+              },
+              {
+                "row": 14,
+                "instrument": "01",
+                "note": "D-5"
+              },
+              {
+                "row": 16,
+                "instrument": "01",
+                "note": "D-4"
+              },
+              {
+                "row": 18,
+                "instrument": "01",
+                "note": "D-5"
+              },
+              {
+                "row": 20,
+                "instrument": "01",
+                "note": "C-5"
+              },
+              {
+                "row": 22,
+                "instrument": "01",
+                "note": "F-5"
+              },
+              {
+                "row": 24,
+                "instrument": "01",
+                "note": "D-5"
+              },
+              {
+                "row": 26,
+                "instrument": "01",
+                "note": "D-4"
+              },
+              {
+                "row": 28,
+                "instrument": "01",
+                "note": "C-5"
+              },
+              {
+                "row": 30,
+                "instrument": "01",
+                "note": "D-5"
+              }
+            ],
+            "interpolations": []
+          },
+          {
+            "id": "T06",
+            "name": "Track 6",
+            "color": "#8ef5c5",
+            "entries": [],
+            "interpolations": []
+          },
+          {
+            "id": "T07",
+            "name": "Track 7",
+            "color": "#ffa95e",
+            "entries": [],
+            "interpolations": []
+          },
+          {
+            "id": "T08",
+            "name": "Track 8",
+            "color": "#b08bff",
+            "entries": [],
+            "interpolations": []
+          }
+        ]
+      }
+    ],
+    "sequence": [
+      "5e9cef16-19ef-4531-9ebf-d2a4b31ce365"
+    ],
+    "currentPatternId": "5e9cef16-19ef-4531-9ebf-d2a4b31ce365",
+    "instrumentSlots": [
+      {
+        "slot": 1,
+        "bankName": "Default Bank",
+        "patchName": "E. Piano 1",
+        "instrumentName": "E. Piano 1",
+        "patchId": "123e4567-e89b-12d3-a456-426614174002",
+        "source": "song"
+      },
+      {
+        "slot": 2,
+        "bankName": "Default Bank",
+        "patchName": "Choir Pad (Ahh Vox DX7)",
+        "instrumentName": "Choir Pad (Ahh Vox DX7)",
+        "patchId": "patch_1764432115040_tgmywwk",
+        "source": "song"
+      },
+      {
+        "slot": 3,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 4,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 5,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 6,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 7,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 8,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 9,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 10,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 11,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 12,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 13,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 14,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 15,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 16,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 17,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 18,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 19,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 20,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 21,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 22,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 23,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 24,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      },
+      {
+        "slot": 25,
+        "bankName": "",
+        "patchName": "",
+        "instrumentName": ""
+      }
+    ],
+    "activeInstrumentId": "01",
+    "currentInstrumentPage": 0,
+    "songPatches": {
+      "123e4567-e89b-12d3-a456-426614174002": {
+        "metadata": {
+          "id": "123e4567-e89b-12d3-a456-426614174002",
+          "name": "E. Piano 1",
+          "created": 1763766554328,
+          "modified": 1764351316902,
+          "version": 1,
+          "category": "Factory/FM/Keys"
+        },
+        "synthState": {
+          "layout": {
+            "voiceCount": 8,
+            "canonicalVoice": {
+              "id": 0,
+              "nodes": {
+                "oscillator": [
+                  {
+                    "id": "610a373d-82fa-4809-9833-28681e592732",
+                    "type": "oscillator",
+                    "name": "Tine Carrier"
+                  },
+                  {
+                    "id": "9842e472-7634-4b95-a83d-157c09362734",
+                    "type": "oscillator",
+                    "name": "Body Carrier"
+                  },
+                  {
+                    "id": "313d4891-9512-4226-bf6b-f89a91832733",
+                    "type": "oscillator",
+                    "name": "Body Modulator"
+                  },
+                  {
+                    "id": "52e5055b-4861-4608-8e89-145c264a2731",
+                    "type": "oscillator",
+                    "name": "Tine Modulator (Ratio 14)"
+                  }
+                ],
+                "wavetable_oscillator": [],
+                "filter": [],
+                "envelope": [
+                  {
+                    "id": "2418e535-3c13-43c2-b14e-966967742735",
+                    "type": "envelope",
+                    "name": "Tine Pluck Env"
+                  },
+                  {
+                    "id": "1259e884-2558-4545-912f-876a16622736",
+                    "type": "envelope",
+                    "name": "Main Piano Env"
+                  }
+                ],
+                "lfo": [],
+                "mixer": [
+                  {
+                    "id": "74668212-3212-4522-8612-524125512737",
+                    "type": "mixer",
+                    "name": "Mixer"
+                  }
+                ],
+                "noise": [],
+                "sampler": [],
+                "glide": [
+                  {
+                    "id": "92151251-2215-4661-8661-625125122739",
+                    "type": "glide",
+                    "name": "Glide"
+                  }
+                ],
+                "global_frequency": [
+                  {
+                    "id": "11255211-1251-4112-8112-152215212740",
+                    "type": "global_frequency",
+                    "name": "Global Frequency"
+                  }
+                ],
+                "global_velocity": [
+                  {
+                    "id": "35122551-5125-4551-8551-255125122741",
+                    "type": "global_velocity",
+                    "name": "Global Velocity"
+                  }
+                ],
+                "convolver": [
+                  {
+                    "id": "10003",
+                    "type": "convolver",
+                    "name": "Convolver"
+                  }
+                ],
+                "delay": [
+                  {
+                    "id": "10001",
+                    "type": "delay",
+                    "name": "Delay"
+                  }
+                ],
+                "gatemixer": [
+                  {
+                    "id": "83271221-1255-4221-8221-155212512738",
+                    "type": "gatemixer",
+                    "name": "Gate Mixer"
+                  }
+                ],
+                "arpeggiator_generator": [],
+                "chorus": [
+                  {
+                    "id": "10000",
+                    "type": "chorus",
+                    "name": "Chorus"
+                  }
+                ],
+                "limiter": [
+                  {
+                    "id": "10004",
+                    "type": "limiter",
+                    "name": "Limiter"
+                  }
+                ],
+                "freeverb": [
+                  {
+                    "id": "10002",
+                    "type": "freeverb",
+                    "name": "Reverb"
+                  }
+                ],
+                "compressor": [
+                  {
+                    "id": "10005",
+                    "type": "compressor",
+                    "name": "Compressor"
+                  }
+                ],
+                "saturation": [
+                  {
+                    "id": "10006",
+                    "type": "saturation",
+                    "name": "Saturation"
+                  }
+                ],
+                "bitcrusher": [
+                  {
+                    "id": "10007",
+                    "type": "bitcrusher",
+                    "name": "Bitcrusher"
+                  }
+                ]
+              },
+              "connections": [
+                {
+                  "fromId": "11255211-1251-4112-8112-152215212740",
+                  "toId": "92151251-2215-4661-8661-625125122739",
+                  "target": 0,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "83271221-1255-4221-8221-155212512738",
+                  "toId": "2418e535-3c13-43c2-b14e-966967742735",
+                  "target": 26,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "52e5055b-4861-4608-8e89-145c264a2731",
+                  "toId": "610a373d-82fa-4809-9833-28681e592732",
+                  "target": 13,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "1259e884-2558-4545-912f-876a16622736",
+                  "toId": "9842e472-7634-4b95-a83d-157c09362734",
+                  "target": 17,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "92151251-2215-4661-8661-625125122739",
+                  "toId": "610a373d-82fa-4809-9833-28681e592732",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "2418e535-3c13-43c2-b14e-966967742735",
+                  "toId": "52e5055b-4861-4608-8e89-145c264a2731",
+                  "target": 17,
+                  "amount": 2,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "83271221-1255-4221-8221-155212512738",
+                  "toId": "92151251-2215-4661-8661-625125122739",
+                  "target": 26,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "92151251-2215-4661-8661-625125122739",
+                  "toId": "313d4891-9512-4226-bf6b-f89a91832733",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "610a373d-82fa-4809-9833-28681e592732",
+                  "toId": "74668212-3212-4522-8612-524125512737",
+                  "target": 0,
+                  "amount": 0.5,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "92151251-2215-4661-8661-625125122739",
+                  "toId": "52e5055b-4861-4608-8e89-145c264a2731",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "1259e884-2558-4545-912f-876a16622736",
+                  "toId": "610a373d-82fa-4809-9833-28681e592732",
+                  "target": 17,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "83271221-1255-4221-8221-155212512738",
+                  "toId": "1259e884-2558-4545-912f-876a16622736",
+                  "target": 26,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "9842e472-7634-4b95-a83d-157c09362734",
+                  "toId": "74668212-3212-4522-8612-524125512737",
+                  "target": 0,
+                  "amount": 0.5,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "92151251-2215-4661-8661-625125122739",
+                  "toId": "9842e472-7634-4b95-a83d-157c09362734",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "35122551-5125-4551-8551-255125122741",
+                  "toId": "313d4891-9512-4226-bf6b-f89a91832733",
+                  "target": 17,
+                  "amount": 2.5,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "1259e884-2558-4545-912f-876a16622736",
+                  "toId": "74668212-3212-4522-8612-524125512737",
+                  "target": 17,
+                  "amount": 1,
+                  "modulationType": 0,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "313d4891-9512-4226-bf6b-f89a91832733",
+                  "toId": "9842e472-7634-4b95-a83d-157c09362734",
+                  "target": 13,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "35122551-5125-4551-8551-255125122741",
+                  "toId": "52e5055b-4861-4608-8e89-145c264a2731",
+                  "target": 17,
+                  "amount": 4,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "1259e884-2558-4545-912f-876a16622736",
+                  "toId": "313d4891-9512-4226-bf6b-f89a91832733",
+                  "target": 17,
+                  "amount": 0.6000000238418579,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                }
+              ]
+            },
+            "globalNodes": {}
+          },
+          "oscillators": {
+            "52e5055b-4861-4608-8e89-145c264a2731": {
+              "id": "52e5055b-4861-4608-8e89-145c264a2731",
+              "phase_mod_amount": 0,
+              "freq_mod_amount": 0,
+              "detune_oct": 3,
+              "detune_semi": 10,
+              "detune_cents": -31,
+              "detune": 4569,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "610a373d-82fa-4809-9833-28681e592732": {
+              "id": "610a373d-82fa-4809-9833-28681e592732",
+              "phase_mod_amount": 4,
+              "freq_mod_amount": 0,
+              "detune_oct": 0,
+              "detune_semi": 0,
+              "detune_cents": 0,
+              "detune": 0,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "313d4891-9512-4226-bf6b-f89a91832733": {
+              "id": "313d4891-9512-4226-bf6b-f89a91832733",
+              "phase_mod_amount": 0,
+              "freq_mod_amount": 0,
+              "detune_oct": 0,
+              "detune_semi": 0,
+              "detune_cents": 0,
+              "detune": 0,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "9842e472-7634-4b95-a83d-157c09362734": {
+              "id": "9842e472-7634-4b95-a83d-157c09362734",
+              "phase_mod_amount": 2.5,
+              "freq_mod_amount": 0,
+              "detune_oct": 0,
+              "detune_semi": 0,
+              "detune_cents": 2,
+              "detune": 2,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            }
+          },
+          "wavetableOscillators": {},
+          "filters": {},
+          "envelopes": {
+            "2418e535-3c13-43c2-b14e-966967742735": {
+              "id": "2418e535-3c13-43c2-b14e-966967742735",
+              "attack": 0,
+              "decay": 0.15,
+              "sustain": 0,
+              "release": 0.1,
+              "active": true,
+              "attackCurve": 0,
+              "decayCurve": -4,
+              "releaseCurve": 0
+            },
+            "1259e884-2558-4545-912f-876a16622736": {
+              "id": "1259e884-2558-4545-912f-876a16622736",
+              "attack": 0,
+              "decay": 3.5,
+              "sustain": 0,
+              "release": 0.4,
+              "active": true,
+              "attackCurve": 0,
+              "decayCurve": -2,
+              "releaseCurve": 0
+            }
+          },
+          "lfos": {},
+          "samplers": {},
+          "glides": {
+            "92151251-2215-4661-8661-625125122739": {
+              "id": "92151251-2215-4661-8661-625125122739",
+              "time": 0,
+              "active": true
+            }
+          },
+          "convolvers": {
+            "10003": {
+              "id": "10003",
+              "wetMix": 0.1,
+              "active": false,
+              "generator": {
+                "type": "hall",
+                "decayTime": 2,
+                "size": 0.8,
+                "sampleRate": 48000
+              }
+            }
+          },
+          "delays": {},
+          "choruses": {
+            "10000": {
+              "id": "10000",
+              "active": true,
+              "baseDelayMs": 12,
+              "depthMs": 3,
+              "lfoRateHz": 0.8,
+              "feedback": 0,
+              "feedback_filter": 0.5,
+              "mix": 0.4,
+              "stereoPhaseOffsetDeg": 90
+            }
+          },
+          "reverbs": {},
+          "compressors": {
+            "10005": {
+              "id": "10005",
+              "active": true,
+              "thresholdDb": -12,
+              "ratio": 4,
+              "attackMs": 10,
+              "releaseMs": 80,
+              "makeupGainDb": 3,
+              "mix": 0.5
+            }
+          },
+          "saturations": {
+            "10006": {
+              "id": "10006",
+              "active": false,
+              "drive": 2,
+              "mix": 0.5
+            }
+          },
+          "bitcrushers": {
+            "10007": {
+              "id": "10007",
+              "active": false,
+              "bits": 12,
+              "downsampleFactor": 4,
+              "mix": 0.5
+            }
+          },
+          "noise": {
+            "noiseType": 1,
+            "cutoff": 0.5,
+            "gain": 0,
+            "is_enabled": false
+          },
+          "velocity": {
+            "sensitivity": 1,
+            "randomize": 0,
+            "active": true
+          },
+          "macros": {
+            "values": [
+              0,
+              0.5,
+              1,
+              0
+            ],
+            "routes": []
+          }
+        },
+        "audioAssets": {}
+      },
+      "patch_1764432115040_tgmywwk": {
+        "metadata": {
+          "id": "patch_1764432115040_tgmywwk",
+          "name": "Choir Pad (Ahh Vox DX7)",
+          "created": 1764432115040,
+          "modified": 1764432115040,
+          "version": 1
+        },
+        "synthState": {
+          "layout": {
+            "voiceCount": 8,
+            "canonicalVoice": {
+              "id": 0,
+              "nodes": {
+                "oscillator": [
+                  {
+                    "id": "b1d2f3b4-c5e6-4b77-9a88-112233445566",
+                    "type": "oscillator",
+                    "name": "Ahh Car (Op2)"
+                  },
+                  {
+                    "id": "a0c1e2a3-b4d5-4a66-8f77-102030405060",
+                    "type": "oscillator",
+                    "name": "Ahh Mod (Op1)"
+                  },
+                  {
+                    "id": "d3f4b5d6-e7a8-4d99-bcaa-334455667788",
+                    "type": "oscillator",
+                    "name": "Ooh Car (Op4)"
+                  },
+                  {
+                    "id": "c2e3a4c5-d6f7-4c88-ab99-223344556677",
+                    "type": "oscillator",
+                    "name": "Ooh Mod (Op3)"
+                  },
+                  {
+                    "id": "f5b6d7f8-a9c0-4fbb-decc-5566778899aa",
+                    "type": "oscillator",
+                    "name": "Chest Car (Op6)"
+                  },
+                  {
+                    "id": "e4a5c6e7-f8b9-4eaa-cdbb-445566778899",
+                    "type": "oscillator",
+                    "name": "Chest Mod (Op5)"
+                  }
+                ],
+                "wavetable_oscillator": [],
+                "filter": [],
+                "envelope": [
+                  {
+                    "id": "10aa20bb-30cc-40dd-8eee-111122223333",
+                    "type": "envelope",
+                    "name": "Ahh Env"
+                  },
+                  {
+                    "id": "20bb30cc-40dd-50ee-8fff-222233334444",
+                    "type": "envelope",
+                    "name": "Ooh Env"
+                  },
+                  {
+                    "id": "30cc40dd-50ee-60ff-8000-333344445555",
+                    "type": "envelope",
+                    "name": "Chest Env"
+                  }
+                ],
+                "lfo": [],
+                "mixer": [
+                  {
+                    "id": "40dd50ee-60ff-4111-8222-444455556666",
+                    "type": "mixer",
+                    "name": "Mixer"
+                  }
+                ],
+                "noise": [],
+                "sampler": [],
+                "glide": [
+                  {
+                    "id": "50ee60ff-7111-4222-8333-555566667777",
+                    "type": "glide",
+                    "name": "Glide"
+                  }
+                ],
+                "global_frequency": [
+                  {
+                    "id": "60ff7111-8222-4333-8444-666677778888",
+                    "type": "global_frequency",
+                    "name": "Global Frequency"
+                  }
+                ],
+                "global_velocity": [
+                  {
+                    "id": "71118222-9333-4444-8555-777788889999",
+                    "type": "global_velocity",
+                    "name": "Global Velocity"
+                  }
+                ],
+                "convolver": [
+                  {
+                    "id": "10003",
+                    "type": "convolver",
+                    "name": "Convolver"
+                  }
+                ],
+                "delay": [
+                  {
+                    "id": "10001",
+                    "type": "delay",
+                    "name": "Delay"
+                  }
+                ],
+                "gatemixer": [
+                  {
+                    "id": "82229333-a444-4555-8666-88889999aaaa",
+                    "type": "gatemixer",
+                    "name": "Gate Mixer"
+                  }
+                ],
+                "arpeggiator_generator": [],
+                "chorus": [
+                  {
+                    "id": "10000",
+                    "type": "chorus",
+                    "name": "Chorus"
+                  }
+                ],
+                "limiter": [
+                  {
+                    "id": "10004",
+                    "type": "limiter",
+                    "name": "Limiter"
+                  }
+                ],
+                "freeverb": [
+                  {
+                    "id": "10002",
+                    "type": "freeverb",
+                    "name": "Reverb"
+                  }
+                ],
+                "compressor": [
+                  {
+                    "id": "10005",
+                    "type": "compressor",
+                    "name": "Compressor"
+                  }
+                ],
+                "saturation": [
+                  {
+                    "id": "10006",
+                    "type": "saturation",
+                    "name": "Saturation"
+                  }
+                ],
+                "bitcrusher": [
+                  {
+                    "id": "10007",
+                    "type": "bitcrusher",
+                    "name": "Bitcrusher"
+                  }
+                ]
+              },
+              "connections": [
+                {
+                  "fromId": "71118222-9333-4444-8555-777788889999",
+                  "toId": "a0c1e2a3-b4d5-4a66-8f77-102030405060",
+                  "target": 17,
+                  "amount": 2.200000047683716,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "82229333-a444-4555-8666-88889999aaaa",
+                  "toId": "20bb30cc-40dd-50ee-8fff-222233334444",
+                  "target": 26,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "10aa20bb-30cc-40dd-8eee-111122223333",
+                  "toId": "a0c1e2a3-b4d5-4a66-8f77-102030405060",
+                  "target": 17,
+                  "amount": 1.7000000476837158,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "50ee60ff-7111-4222-8333-555566667777",
+                  "toId": "c2e3a4c5-d6f7-4c88-ab99-223344556677",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "e4a5c6e7-f8b9-4eaa-cdbb-445566778899",
+                  "toId": "f5b6d7f8-a9c0-4fbb-decc-5566778899aa",
+                  "target": 13,
+                  "amount": 0.6000000238418579,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "10aa20bb-30cc-40dd-8eee-111122223333",
+                  "toId": "b1d2f3b4-c5e6-4b77-9a88-112233445566",
+                  "target": 17,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "50ee60ff-7111-4222-8333-555566667777",
+                  "toId": "d3f4b5d6-e7a8-4d99-bcaa-334455667788",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "82229333-a444-4555-8666-88889999aaaa",
+                  "toId": "30cc40dd-50ee-60ff-8000-333344445555",
+                  "target": 26,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "71118222-9333-4444-8555-777788889999",
+                  "toId": "c2e3a4c5-d6f7-4c88-ab99-223344556677",
+                  "target": 17,
+                  "amount": 2.5999999046325684,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "a0c1e2a3-b4d5-4a66-8f77-102030405060",
+                  "toId": "b1d2f3b4-c5e6-4b77-9a88-112233445566",
+                  "target": 13,
+                  "amount": 0.8500000238418579,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "30cc40dd-50ee-60ff-8000-333344445555",
+                  "toId": "e4a5c6e7-f8b9-4eaa-cdbb-445566778899",
+                  "target": 17,
+                  "amount": 1.2999999523162842,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "82229333-a444-4555-8666-88889999aaaa",
+                  "toId": "10aa20bb-30cc-40dd-8eee-111122223333",
+                  "target": 26,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "60ff7111-8222-4333-8444-666677778888",
+                  "toId": "50ee60ff-7111-4222-8333-555566667777",
+                  "target": 0,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "50ee60ff-7111-4222-8333-555566667777",
+                  "toId": "a0c1e2a3-b4d5-4a66-8f77-102030405060",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "c2e3a4c5-d6f7-4c88-ab99-223344556677",
+                  "toId": "d3f4b5d6-e7a8-4d99-bcaa-334455667788",
+                  "target": 13,
+                  "amount": 0.949999988079071,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "50ee60ff-7111-4222-8333-555566667777",
+                  "toId": "f5b6d7f8-a9c0-4fbb-decc-5566778899aa",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "50ee60ff-7111-4222-8333-555566667777",
+                  "toId": "e4a5c6e7-f8b9-4eaa-cdbb-445566778899",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "82229333-a444-4555-8666-88889999aaaa",
+                  "toId": "50ee60ff-7111-4222-8333-555566667777",
+                  "target": 26,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "20bb30cc-40dd-50ee-8fff-222233334444",
+                  "toId": "c2e3a4c5-d6f7-4c88-ab99-223344556677",
+                  "target": 17,
+                  "amount": 2,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "20bb30cc-40dd-50ee-8fff-222233334444",
+                  "toId": "d3f4b5d6-e7a8-4d99-bcaa-334455667788",
+                  "target": 17,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "30cc40dd-50ee-60ff-8000-333344445555",
+                  "toId": "f5b6d7f8-a9c0-4fbb-decc-5566778899aa",
+                  "target": 17,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "b1d2f3b4-c5e6-4b77-9a88-112233445566",
+                  "toId": "40dd50ee-60ff-4111-8222-444455556666",
+                  "target": 0,
+                  "amount": 0.41999998688697815,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "d3f4b5d6-e7a8-4d99-bcaa-334455667788",
+                  "toId": "40dd50ee-60ff-4111-8222-444455556666",
+                  "target": 0,
+                  "amount": 0.3799999952316284,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "50ee60ff-7111-4222-8333-555566667777",
+                  "toId": "b1d2f3b4-c5e6-4b77-9a88-112233445566",
+                  "target": 9,
+                  "amount": 1,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                },
+                {
+                  "fromId": "f5b6d7f8-a9c0-4fbb-decc-5566778899aa",
+                  "toId": "40dd50ee-60ff-4111-8222-444455556666",
+                  "target": 0,
+                  "amount": 0.47999998927116394,
+                  "modulationType": 2,
+                  "modulationTransformation": 0
+                }
+              ]
+            },
+            "globalNodes": {}
+          },
+          "oscillators": {
+            "a0c1e2a3-b4d5-4a66-8f77-102030405060": {
+              "id": "a0c1e2a3-b4d5-4a66-8f77-102030405060",
+              "phase_mod_amount": 0,
+              "freq_mod_amount": 0,
+              "detune_oct": 2,
+              "detune_semi": 0,
+              "detune_cents": 0,
+              "detune": 2400,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0.08,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "b1d2f3b4-c5e6-4b77-9a88-112233445566": {
+              "id": "b1d2f3b4-c5e6-4b77-9a88-112233445566",
+              "phase_mod_amount": 1.2,
+              "freq_mod_amount": 0,
+              "detune_oct": 0,
+              "detune_semi": 0,
+              "detune_cents": 2,
+              "detune": 2,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "c2e3a4c5-d6f7-4c88-ab99-223344556677": {
+              "id": "c2e3a4c5-d6f7-4c88-ab99-223344556677",
+              "phase_mod_amount": 0,
+              "freq_mod_amount": 0,
+              "detune_oct": 3,
+              "detune_semi": 7,
+              "detune_cents": 0,
+              "detune": 4300,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0.16,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "d3f4b5d6-e7a8-4d99-bcaa-334455667788": {
+              "id": "d3f4b5d6-e7a8-4d99-bcaa-334455667788",
+              "phase_mod_amount": 1.6,
+              "freq_mod_amount": 0,
+              "detune_oct": 0,
+              "detune_semi": 0,
+              "detune_cents": -1,
+              "detune": -1,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "e4a5c6e7-f8b9-4eaa-cdbb-445566778899": {
+              "id": "e4a5c6e7-f8b9-4eaa-cdbb-445566778899",
+              "phase_mod_amount": 0,
+              "freq_mod_amount": 0,
+              "detune_oct": 0,
+              "detune_semi": 0,
+              "detune_cents": 0,
+              "detune": 0,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0.03,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            },
+            "f5b6d7f8-a9c0-4fbb-decc-5566778899aa": {
+              "id": "f5b6d7f8-a9c0-4fbb-decc-5566778899aa",
+              "phase_mod_amount": 0.9,
+              "freq_mod_amount": 0,
+              "detune_oct": -1,
+              "detune_semi": 0,
+              "detune_cents": -2,
+              "detune": -1202,
+              "hard_sync": false,
+              "gain": 0,
+              "feedback_amount": 0,
+              "waveform": 0,
+              "active": true,
+              "unison_voices": 1,
+              "spread": 0,
+              "wave_index": 0
+            }
+          },
+          "wavetableOscillators": {},
+          "filters": {},
+          "envelopes": {
+            "10aa20bb-30cc-40dd-8eee-111122223333": {
+              "id": "10aa20bb-30cc-40dd-8eee-111122223333",
+              "attack": 0.9,
+              "decay": 6,
+              "sustain": 0.85,
+              "release": 4.2,
+              "active": true,
+              "attackCurve": 0,
+              "decayCurve": -1.1,
+              "releaseCurve": 0
+            },
+            "20bb30cc-40dd-50ee-8fff-222233334444": {
+              "id": "20bb30cc-40dd-50ee-8fff-222233334444",
+              "attack": 0.7,
+              "decay": 5.2,
+              "sustain": 0.8,
+              "release": 3.8,
+              "active": true,
+              "attackCurve": 0,
+              "decayCurve": -1.2,
+              "releaseCurve": 0
+            },
+            "30cc40dd-50ee-60ff-8000-333344445555": {
+              "id": "30cc40dd-50ee-60ff-8000-333344445555",
+              "attack": 1.2,
+              "decay": 8.5,
+              "sustain": 0.95,
+              "release": 5.8,
+              "active": true,
+              "attackCurve": 0,
+              "decayCurve": -0.9,
+              "releaseCurve": 0
+            }
+          },
+          "lfos": {},
+          "samplers": {},
+          "glides": {
+            "50ee60ff-7111-4222-8333-555566667777": {
+              "id": "50ee60ff-7111-4222-8333-555566667777",
+              "time": 0,
+              "active": false
+            }
+          },
+          "convolvers": {
+            "10003": {
+              "id": "10003",
+              "wetMix": 0,
+              "active": false,
+              "generator": {
+                "type": "hall",
+                "decayTime": 2,
+                "size": 0.8,
+                "sampleRate": 48000
+              }
+            }
+          },
+          "delays": {},
+          "choruses": {
+            "10000": {
+              "id": "10000",
+              "active": true,
+              "baseDelayMs": 19,
+              "depthMs": 7,
+              "lfoRateHz": 0.22,
+              "feedback": 0.18,
+              "feedback_filter": 0.5,
+              "mix": 0.58,
+              "stereoPhaseOffsetDeg": 90
+            }
+          },
+          "reverbs": {},
+          "compressors": {
+            "10005": {
+              "id": "10005",
+              "active": false,
+              "thresholdDb": -14,
+              "ratio": 3,
+              "attackMs": 8,
+              "releaseMs": 120,
+              "makeupGainDb": 2,
+              "mix": 0.5
+            }
+          },
+          "saturations": {
+            "10006": {
+              "id": "10006",
+              "active": false,
+              "drive": 1,
+              "mix": 0.25
+            }
+          },
+          "bitcrushers": {
+            "10007": {
+              "id": "10007",
+              "active": false,
+              "bits": 12,
+              "downsampleFactor": 4,
+              "mix": 0.2
+            }
+          },
+          "noise": {
+            "noiseType": 1,
+            "cutoff": 0.5,
+            "gain": 0,
+            "is_enabled": false
+          },
+          "velocity": {
+            "sensitivity": 1,
+            "randomize": 0,
+            "active": true
+          },
+          "macros": {
+            "values": [
+              0,
+              0.5,
+              1,
+              0
+            ],
+            "routes": []
+          }
+        },
+        "audioAssets": {}
+      }
+    }
+  }
+}

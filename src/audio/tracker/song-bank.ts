@@ -522,7 +522,25 @@ export class TrackerSongBank {
     const previousVoice = this.takeLastVoiceForTrack(instrumentId, trackIndex);
     if (previousVoice !== undefined) {
       const gateLead = this.getGateLeadTime(instrument);
-      const gateTime = Math.max(this.audioContext.currentTime, time - gateLead);
+      const now = this.audioContext.currentTime;
+
+      // Calculate ideal gate-off time (gateLead before new note)
+      const idealGateTime = time - gateLead;
+
+      // Ensure we don't schedule in the past
+      // Use a small epsilon to ensure the event actually schedules
+      const minScheduleTime = now + MIN_SCHEDULE_LEAD_SECONDS;
+      const gateTime = Math.max(minScheduleTime, idealGateTime);
+
+      // Warning: If gate-off can't happen before the new note due to late scheduling
+      if (gateTime > time - (gateLead * 0.5)) {
+        console.warn(
+          `[SongBank] Gate-off timing compromised for track ${trackIndex ?? -1}: ` +
+          `gate=${gateTime.toFixed(3)}s, note=${time.toFixed(3)}s, ` +
+          `lead=${(time - gateTime).toFixed(3)}s (wanted ${gateLead.toFixed(3)}s)`
+        );
+      }
+
       instrument.gateOffVoiceAtTime(previousVoice, gateTime);
     }
   }
