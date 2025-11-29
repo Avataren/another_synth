@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { serializeCurrentPatch, deserializePatch } from '../src/audio/serialization/patch-serializer';
 import { WasmModulationType, ModulationTransformation, PortId } from 'app/public/wasm/audio_processor';
-import type { SynthLayout, VoiceLayout } from '../src/audio/types/synth-layout';
-import type { MacroState } from '../src/audio/types/preset-types';
+import type {
+  SynthLayout,
+  VoiceLayout,
+  FilterState,
+  EnvelopeConfig,
+  LfoState,
+  SamplerState,
+  ConvolverState,
+  DelayState,
+  ChorusState,
+  ReverbState,
+  CompressorState,
+  SaturationState,
+  BitcrusherState,
+  GlideState,
+  VelocityState,
+} from '../src/audio/types/synth-layout';
+import type { MacroState, AudioAsset, PatchMetadata } from '../src/audio/types/preset-types';
+import type { NoiseState } from '../src/audio/types/noise';
+import type OscillatorState from '../src/audio/models/OscillatorState';
 
 // Helper to create a test synth layout with some nodes to target
 function createTestLayout(): SynthLayout {
@@ -54,6 +72,83 @@ function createMacroState(routes: MacroState['routes']): MacroState {
   };
 }
 
+type StateOverrides = Partial<{
+  oscillators: Map<string, OscillatorState>;
+  wavetableOscillators: Map<string, OscillatorState>;
+  filters: Map<string, FilterState>;
+  envelopes: Map<string, EnvelopeConfig>;
+  lfos: Map<string, LfoState>;
+  samplers: Map<string, SamplerState>;
+  glides: Map<string, GlideState>;
+  convolvers: Map<string, ConvolverState>;
+  delays: Map<string, DelayState>;
+  choruses: Map<string, ChorusState>;
+  reverbs: Map<string, ReverbState>;
+  compressors: Map<string, CompressorState>;
+  saturations: Map<string, SaturationState>;
+  bitcrushers: Map<string, BitcrusherState>;
+  noise: NoiseState;
+  velocity: VelocityState;
+  audioAssets: Map<string, AudioAsset>;
+  metadata: Partial<PatchMetadata>;
+  instrumentGain: number;
+}>;
+
+// Helper to call serializeCurrentPatch with sensible defaults so optional args stay aligned
+function serializeTestPatch(
+  name: string,
+  layout: SynthLayout,
+  macros?: MacroState,
+  overrides: StateOverrides = {},
+) {
+  const {
+    oscillators = new Map<string, OscillatorState>(),
+    wavetableOscillators = new Map<string, OscillatorState>(),
+    filters = new Map<string, FilterState>(),
+    envelopes = new Map<string, EnvelopeConfig>(),
+    lfos = new Map<string, LfoState>(),
+    samplers = new Map<string, SamplerState>(),
+    glides = new Map<string, GlideState>(),
+    convolvers = new Map<string, ConvolverState>(),
+    delays = new Map<string, DelayState>(),
+    choruses = new Map<string, ChorusState>(),
+    reverbs = new Map<string, ReverbState>(),
+    compressors = new Map<string, CompressorState>(),
+    saturations = new Map<string, SaturationState>(),
+    bitcrushers = new Map<string, BitcrusherState>(),
+    noise,
+    velocity,
+    audioAssets,
+    metadata,
+    instrumentGain,
+  } = overrides;
+
+  return serializeCurrentPatch(
+    name,
+    layout,
+    oscillators,
+    wavetableOscillators,
+    filters,
+    envelopes,
+    lfos,
+    samplers,
+    glides,
+    convolvers,
+    delays,
+    choruses,
+    reverbs,
+    compressors,
+    saturations,
+    bitcrushers,
+    noise,
+    velocity,
+    audioAssets,
+    metadata,
+    macros,
+    instrumentGain,
+  );
+}
+
 describe('macro routing persistence', () => {
   it('preserves macro routes through serialize/deserialize cycle', () => {
     const layout = createTestLayout();
@@ -76,29 +171,7 @@ describe('macro routing persistence', () => {
       },
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Macro Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined, // noise
-      undefined, // velocity
-      undefined, // audioAssets
-      undefined, // metadata
-      macros,
-    );
+    const patch = serializeTestPatch('Macro Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 
@@ -129,29 +202,7 @@ describe('macro routing persistence', () => {
     const macros = createMacroState([]);
     macros.values = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
 
-    const patch = serializeCurrentPatch(
-      'Macro Values Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined, // noise
-      undefined, // velocity
-      undefined, // audioAssets
-      undefined, // metadata
-      macros,
-    );
+    const patch = serializeTestPatch('Macro Values Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 
@@ -182,29 +233,7 @@ describe('macro routing persistence', () => {
       },
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Multi-Route Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined, // noise
-      undefined, // velocity
-      undefined, // audioAssets
-      undefined, // metadata
-      macros,
-    );
+    const patch = serializeTestPatch('Multi-Route Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 
@@ -227,29 +256,7 @@ describe('macro routing persistence', () => {
     const layout = createTestLayout();
     const macros = createMacroState([]);
 
-    const patch = serializeCurrentPatch(
-      'Empty Routes Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined, // noise
-      undefined, // velocity
-      undefined, // audioAssets
-      undefined, // metadata
-      macros,
-    );
+    const patch = serializeTestPatch('Empty Routes Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 
@@ -261,29 +268,7 @@ describe('macro routing persistence', () => {
   it('handles patch without macros', () => {
     const layout = createTestLayout();
 
-    const patch = serializeCurrentPatch(
-      'No Macros Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined, // noise
-      undefined, // velocity
-      undefined, // audioAssets
-      undefined, // metadata
-      undefined, // No macros
-    );
+    const patch = serializeTestPatch('No Macros Test', layout);
 
     const deserialized = deserializePatch(patch);
 
@@ -306,29 +291,7 @@ describe('modulation amount preservation', () => {
         },
       ]);
 
-      const patch = serializeCurrentPatch(
-        `Amount ${amount} Test`,
-        layout,
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        undefined, // noise
-        undefined, // velocity
-        undefined, // audioAssets
-        undefined, // metadata
-        macros,
-      );
+      const patch = serializeTestPatch(`Amount ${amount} Test`, layout, macros);
 
       const deserialized = deserializePatch(patch);
 
@@ -348,29 +311,7 @@ describe('modulation amount preservation', () => {
       },
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Negative Amount Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined, // noise
-      undefined, // velocity
-      undefined, // audioAssets
-      undefined, // metadata
-      macros,
-    );
+    const patch = serializeTestPatch('Negative Amount Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 
@@ -389,29 +330,7 @@ describe('modulation amount preservation', () => {
       },
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Small Amount Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined, // noise
-      undefined, // velocity
-      undefined, // audioAssets
-      undefined, // metadata
-      macros,
-    );
+    const patch = serializeTestPatch('Small Amount Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 
@@ -440,26 +359,7 @@ describe('modulation type and transformation preservation', () => {
         },
       ]);
 
-      const patch = serializeCurrentPatch(
-        `ModType ${modulationType} Test`,
-        layout,
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        undefined,
-        macros,
-      );
+      const patch = serializeTestPatch(`ModType ${modulationType} Test`, layout, macros);
 
       const deserialized = deserializePatch(patch);
 
@@ -487,24 +387,9 @@ describe('modulation type and transformation preservation', () => {
         },
       ]);
 
-      const patch = serializeCurrentPatch(
+      const patch = serializeTestPatch(
         `ModTransform ${modulationTransformation} Test`,
         layout,
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        new Map(),
-        undefined,
         macros,
       );
 
@@ -527,26 +412,7 @@ describe('modulation type and transformation preservation', () => {
       },
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Default ModType Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined,
-      macros,
-    );
+    const patch = serializeTestPatch('Default ModType Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 
@@ -580,50 +446,27 @@ describe('macro routing round-trip fidelity', () => {
     originalMacros.values = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
 
     // First cycle
-    const patch1 = serializeCurrentPatch(
-      'Round Trip Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined,
-      originalMacros,
-    );
+    const patch1 = serializeTestPatch('Round Trip Test', layout, originalMacros);
 
     const deserialized1 = deserializePatch(patch1);
 
     // Second cycle
-    const patch2 = serializeCurrentPatch(
-      'Round Trip Test',
-      deserialized1.layout,
-      deserialized1.oscillators,
-      deserialized1.wavetableOscillators,
-      deserialized1.filters,
-      deserialized1.envelopes,
-      deserialized1.lfos,
-      deserialized1.samplers,
-      deserialized1.glides,
-      deserialized1.convolvers,
-      deserialized1.delays,
-      deserialized1.choruses,
-      deserialized1.reverbs,
-      deserialized1.compressors,
-      deserialized1.saturations,
-      deserialized1.bitcrushers,
-      undefined,
-      deserialized1.macros,
-    );
+    const patch2 = serializeTestPatch('Round Trip Test', deserialized1.layout, deserialized1.macros, {
+      oscillators: deserialized1.oscillators,
+      wavetableOscillators: deserialized1.wavetableOscillators,
+      filters: deserialized1.filters,
+      envelopes: deserialized1.envelopes,
+      lfos: deserialized1.lfos,
+      samplers: deserialized1.samplers,
+      glides: deserialized1.glides,
+      convolvers: deserialized1.convolvers,
+      delays: deserialized1.delays,
+      choruses: deserialized1.choruses,
+      reverbs: deserialized1.reverbs,
+      compressors: deserialized1.compressors,
+      saturations: deserialized1.saturations,
+      bitcrushers: deserialized1.bitcrushers,
+    });
 
     const deserialized2 = deserializePatch(patch2);
 
@@ -657,26 +500,7 @@ describe('macro routing round-trip fidelity', () => {
       { macroIndex: 2, targetId: 'lfo-1', targetPort: PortId.FrequencyMod, amount: 0.7 },
     ]);
 
-    const patch = serializeCurrentPatch(
-      'Complex Routing Test',
-      layout,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      undefined,
-      macros,
-    );
+    const patch = serializeTestPatch('Complex Routing Test', layout, macros);
 
     const deserialized = deserializePatch(patch);
 

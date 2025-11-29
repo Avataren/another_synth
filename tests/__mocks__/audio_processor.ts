@@ -2,9 +2,9 @@
 // This provides type definitions and mock implementations for testing
 
 export enum WasmModulationType {
-  Add = 0,
-  Multiply = 1,
-  Bipolar = 2,
+  VCA = 0,
+  Bipolar = 1,
+  Additive = 2,
 }
 
 export enum ModulationTransformation {
@@ -14,12 +14,33 @@ export enum ModulationTransformation {
 }
 
 export enum PortId {
-  None = 0,
-  Frequency = 1,
-  Gain = 2,
-  PhaseMod = 3,
-  FreqMod = 4,
-  // Add other port IDs as needed
+  AudioInput0 = 0,
+  AudioInput1 = 1,
+  AudioInput2 = 2,
+  AudioInput3 = 3,
+  AudioOutput0 = 4,
+  AudioOutput1 = 5,
+  AudioOutput2 = 6,
+  AudioOutput3 = 7,
+  GlobalGate = 8,
+  GlobalFrequency = 9,
+  GlobalVelocity = 10,
+  Frequency = 11,
+  FrequencyMod = 12,
+  PhaseMod = 13,
+  ModIndex = 14,
+  CutoffMod = 15,
+  ResonanceMod = 16,
+  GainMod = 17,
+  EnvelopeMod = 18,
+  StereoPan = 19,
+  FeedbackMod = 20,
+  DetuneMod = 21,
+  WavetableIndex = 22,
+  WetDryMix = 23,
+  AttackMod = 24,
+  ArpGate = 25,
+  CombinedGate = 26,
 }
 
 // Mock other exports as needed

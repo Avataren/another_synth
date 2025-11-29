@@ -17,3 +17,14 @@ beforeAll(() => {
     global.btoa = (str: string) => Buffer.from(str, 'binary').toString('base64');
   }
 });
+
+// Surface unexpected errors during test boot so the worker doesn't exit silently
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error('Uncaught exception in Vitest worker', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('Unhandled promise rejection in Vitest worker', reason);
+});

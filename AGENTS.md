@@ -1424,3 +1424,7 @@ if (canReuse) {
 - `src/pages/TrackerPage.vue:1678-1684` - Watch on `activeTrack` triggers auto-scroll
 - `src/composables/useTrackerNavigation.ts:119-135` - `jumpToNextTrack()`/`jumpToPrevTrack()` called by Tab key
 - Keyboard note listeners now bail if `event.defaultPrevented` to avoid triggering note previews while editing tracker effect/volume fields (tracker hex handlers call `preventDefault`).
+
+### Macro serialization positional args (2025-03)
+
+- `serializeCurrentPatch` takes 14 state maps (oscillators..bitcrushers) **before** the optional fields (`noise`, `velocity`, `audioAssets`, `metadata`, `macros`, `instrumentGain`). Passing extra placeholder maps will shift the optional args and drop macros (they land in the `metadata` slot). Tests now wrap calls in a helper to keep defaults aligned; when calling manually, only pass the 14 maps before any optional values.
