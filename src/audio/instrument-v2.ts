@@ -998,7 +998,7 @@ export default class InstrumentV2 {
     options?: { allowDuplicate?: boolean },
   ): number | undefined {
     const allowDuplicate = options?.allowDuplicate ?? false;
-    console.log('[noteOnAtTime] Note', noteNumber, 'at time', time.toFixed(3) + 's, vel=' + velocity + ', allowDup=' + allowDuplicate);
+    console.log('[noteOnAtTime] Note', noteNumber, 'at time', time.toFixed(3) + 's, vel=' + velocity + ', allowDup=' + allowDuplicate, ', voiceLimit=', this.voiceLimit);
     const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
 
     console.log('[noteOnAtTime] Allocated voice', voiceIndex, 'for note', noteNumber, ', stolen=', stolenNote, ', retrigger=', isRetrigger);
@@ -1340,26 +1340,17 @@ export default class InstrumentV2 {
 
     console.log('[findNextFreeVoice] Looking for free voice at time', scheduledTime.toFixed(3) + 's, maxRelease=' + maxReleaseTimeSec.toFixed(3) + 's');
 
+    // Pass 0: any released voice, pick starting from round robin to avoid sticking to one slot.
     for (let offset = 0; offset < this.voiceLimit; offset++) {
       const candidate = (this.voiceRoundRobinIndex + offset) % this.voiceLimit;
       const voiceNote = this.voiceToNote[candidate];
       const releaseStartTime = this.voiceReleaseTime[candidate] ?? 0;
       const timeSinceRelease = scheduledTime - releaseStartTime;
-
       console.log('  Voice', candidate + ': voiceToNote=' + voiceNote + ', releaseTime=' + releaseStartTime.toFixed(3) + 's, timeSince=' + timeSinceRelease.toFixed(3) + 's');
-
-      if (this.voiceToNote[candidate] === null) {
-        // Voice is marked as free, but check if release phase has completed
-
-
-        // Only consider truly free if enough time has passed for release to complete
-        if (timeSinceRelease >= maxReleaseTimeSec || releaseStartTime === 0) {
-          this.voiceRoundRobinIndex = (candidate + 1) % this.voiceLimit;
-          console.log('  ✓ Voice', candidate, 'is FREE (release completed)');
-          return candidate;
-        } else {
-          console.log('  ✗ Voice', candidate, 'still in release (' + timeSinceRelease.toFixed(3) + 's < ' + maxReleaseTimeSec.toFixed(3) + 's)');
-        }
+      if (voiceNote === null) {
+        this.voiceRoundRobinIndex = (candidate + 1) % this.voiceLimit;
+        console.log('  ✓ Voice', candidate, 'is FREE (released)');
+        return candidate;
       }
     }
     console.log('[findNextFreeVoice] No free voices found');
@@ -1495,10 +1486,6 @@ export default class InstrumentV2 {
     return false;
   }
 
-  public getVoiceLimit(): number {
-    return this.voiceLimit;
-  }
-
   private refreshGlideStatesFromPatch(patch: Patch): void {
     this.glideStates.clear();
     const patchGlides = patch?.synthState?.glides;
@@ -1523,6 +1510,10 @@ export default class InstrumentV2 {
     const frames = this.quantumFrames || 128;
     const sr = this.audioContext.sampleRate || 48000;
     return frames / sr;
+  }
+
+  public getVoiceLimit(): number {
+    return this.voiceLimit;
   }
 
   // ========================================================================

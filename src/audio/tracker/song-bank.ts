@@ -530,20 +530,24 @@ export class TrackerSongBank {
   ) {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    if (active.hasPortamento) return;
+    if (active.hasPortamento && active.instrument.getVoiceLimit() <= 1) return;
     const instrument = active.instrument;
     const previousVoice = this.takeLastVoiceForTrack(instrumentId, trackIndex);
     if (previousVoice !== undefined) {
       const gateLead = this.getGateLeadTime(instrument);
       const now = this.audioContext.currentTime;
 
-      // Calculate ideal gate-off time (gateLead before new note)
+      // Aim gate low one lead before the note; if we're late, still get under the note edge.
       const idealGateTime = time - gateLead;
+      let gateTime = idealGateTime;
 
-      // Ensure we don't schedule in the past
-      // Use a small epsilon to ensure the event actually schedules
-      const minScheduleTime = now + MIN_SCHEDULE_LEAD_SECONDS;
-      const gateTime = Math.max(minScheduleTime, idealGateTime);
+      // Don't schedule in the past; if we're already too close, bias slightly before the note.
+      if (gateTime < now) {
+        gateTime = now + 0.001;
+      }
+      if (gateTime >= time) {
+        gateTime = Math.max(now + 0.001, time - 0.003);
+      }
 
       // Warning: If gate-off can't happen before the new note due to late scheduling
       if (gateTime > time - (gateLead * 0.5)) {
@@ -930,7 +934,9 @@ export class TrackerSongBank {
       );
     }
 
-    const scheduledTime = Math.max(time, now + MIN_SCHEDULE_LEAD_SECONDS);
+    // Avoid pushing the note later than requested; only clamp if we're already in the past.
+    const scheduledTime =
+      time < now ? now + MIN_SCHEDULE_LEAD_SECONDS : time;
     console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'note', midi, 'time', scheduledTime.toFixed(3) + 's');
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
     const voiceIndex = active.instrument.noteOnAtTime(
@@ -1018,6 +1024,8 @@ export class TrackerSongBank {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
+    // Ignore invalid voice indices (tracker effects may emit -1 when no voice is assigned yet).
+    if (voiceIndex < 0 || voiceIndex >= active.instrument.getVoiceLimit()) return;
     active.instrument.setVoiceFrequencyAtTime(voiceIndex, frequency, time, rampMode);
   }
 

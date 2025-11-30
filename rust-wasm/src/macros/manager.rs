@@ -173,8 +173,7 @@ impl MacroManager {
                     // Apply modulation transformation to the macro values
                     let mut transformed = [0.0; 4];
                     for j in 0..current_chunk_size {
-                        transformed[j] =
-                            target.modulation_transform.apply(macro_chunk[j]);
+                        transformed[j] = target.modulation_transform.apply(macro_chunk[j]);
                     }
                     let transformed_simd = f32x4::from_array(transformed);
 
@@ -195,8 +194,7 @@ impl MacroManager {
                             }
                             ModulationType::VCA => current_simd * (transformed_simd * amount_simd),
                             ModulationType::Bipolar => {
-                                current_simd
-                                    * (f32x4::splat(1.0) + transformed_simd * amount_simd)
+                                current_simd * (f32x4::splat(1.0) + transformed_simd * amount_simd)
                             }
                         };
 

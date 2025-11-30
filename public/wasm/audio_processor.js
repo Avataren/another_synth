@@ -2492,6 +2492,9 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_prototypesetcall_3d4a26c1ed734349 = function(arg0, arg1, arg2) {
         Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
     };
+    imports.wbg.__wbg_prototypesetcall_5521f1dd01df76fd = function(arg0, arg1, arg2) {
+        Float32Array.prototype.set.call(getArrayF32FromWasm0(arg0, arg1), arg2);
+    };
     imports.wbg.__wbg_random_7ed63a0b38ee3b75 = function() {
         const ret = Math.random();
         return ret;

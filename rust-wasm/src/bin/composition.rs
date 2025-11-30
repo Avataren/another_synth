@@ -123,8 +123,8 @@ impl NoteSequence {
             if self.legato {
                 // Legato mode: keep gate open across consecutive non-rest notes,
                 // and only close it when we are about to move into a rest.
-                let end_of_note_after_block =
-                    self.samples_into_current_note + self.block_size >= current_note.duration_samples;
+                let end_of_note_after_block = self.samples_into_current_note + self.block_size
+                    >= current_note.duration_samples;
                 if end_of_note_after_block {
                     let next_index = (self.current_index + 1) % self.notes.len();
                     let next_note = &self.notes[next_index];
@@ -849,7 +849,7 @@ fn create_lead_sequence(timing: &TimingConfig) -> NoteSequence {
         Note::new(76, 0.8, 48),  // E5
     ];
     NoteSequence::new_legato(notes, timing)
-git pu}
+}
 
 fn create_arp_sequence(timing: &TimingConfig) -> NoteSequence {
     // Fast arpeggios

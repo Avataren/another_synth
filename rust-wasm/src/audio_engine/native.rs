@@ -620,17 +620,65 @@ impl AudioEngine {
         let mut voice_left = vec![0.0; self.block_size];
         let mut voice_right = vec![0.0; self.block_size];
 
+        let param_voice_count = if block_len > 0 && !gates.is_empty() {
+            (gates.len() / block_len).max(1)
+        } else {
+            self.voices.len().max(1)
+        };
         let voice_macro_stride = MACRO_COUNT * macro_buffer_len;
+        let block_len = self.block_size.max(1);
+        let param_voice_count = if block_len > 0 && !gates.is_empty() {
+            (gates.len() / block_len).max(1)
+        } else {
+            self.voices.len().max(1)
+        };
+        let gate_buffer_len = block_len;
+        let frequency_buffer_len = if !frequencies.is_empty() && param_voice_count > 0 {
+            frequencies
+                .len()
+                .checked_div(param_voice_count)
+                .unwrap_or(block_len)
+                .min(block_len)
+                .max(1)
+        } else {
+            block_len
+        };
 
         for (i, voice) in self.voices.iter_mut().enumerate() {
-            let gate = gates.get(i).copied().unwrap_or(0.0);
-            let frequency = frequencies.get(i).copied().unwrap_or(440.0);
+            let gate_slice = if gate_buffer_len > 0 && i < param_voice_count {
+                let start = i.saturating_mul(gate_buffer_len);
+                let end = (start + gate_buffer_len).min(gates.len());
+                gates.get(start..end).unwrap_or(&[])
+            } else {
+                &[]
+            };
+
+            let gate = if gate_slice.is_empty() {
+                gates.get(i).copied().unwrap_or(0.0)
+            } else {
+                gate_slice.iter().copied().fold(0.0_f32, f32::max)
+            };
+            let frequency_slice = if frequency_buffer_len > 0 && i < param_voice_count {
+                let start = i.saturating_mul(frequency_buffer_len);
+                let end = (start + frequency_buffer_len).min(frequencies.len());
+                frequencies.get(start..end).unwrap_or(&[])
+            } else {
+                &[]
+            };
+            let frequency = if frequency_slice.is_empty() {
+                frequencies.get(i).copied().unwrap_or(440.0)
+            } else {
+                *frequency_slice.first().unwrap_or(&440.0)
+            };
             let gain = gains.get(i).copied().unwrap_or(1.0);
             let velocity = velocities.get(i).copied().unwrap_or(0.0);
 
             // Debug: Log voice parameters when gate is on or when there's activity
             if gate > 0.0 || voice.current_gate > 0.0 {
-                eprintln!("[WASM Voice {}] gate={:.1} freq={:.1}Hz gain={:.3} vel={:.3}", i, gate, frequency, gain, velocity);
+                eprintln!(
+                    "[WASM Voice {}] gate={:.1} freq={:.1}Hz gain={:.3} vel={:.3}",
+                    i, gate, frequency, gain, velocity
+                );
             }
 
             voice.current_gate = gate;
@@ -651,7 +699,24 @@ impl AudioEngine {
             voice_right.fill(0.0);
 
             // Process the full block_size
-            voice.process_audio(&mut voice_left, &mut voice_right);
+            let zero_gate = [0.0_f32];
+            let gate_buffer = if gate_slice.is_empty() {
+                &zero_gate
+            } else {
+                gate_slice
+            };
+            let zero_frequency = [frequency];
+            let frequency_buffer = if frequency_slice.is_empty() {
+                &zero_frequency
+            } else {
+                frequency_slice
+            };
+            voice.process_audio(
+                gate_buffer,
+                frequency_buffer,
+                &mut voice_left,
+                &mut voice_right,
+            );
 
             // Mix voices together
             for (sample_idx, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate()

@@ -52,6 +52,7 @@ When debugging “envelope not reacting to gate off” after any change, always 
 - Host gate pulses (TS `instrument-v2.ts`) now retrigger stolen mono voices by sending a brief gate-off/on, but this is **suppressed when Glide/portamento is active (active && time > 0)** to preserve slides. Glide state is cached from patch `glides` and `updateGlideState`; if mono envelopes stop retriggering, check that no glide is marked active.
 - Those mono retrigger pulses need to last at least one audio quantum. A 1ms pulse was too short and occasionally got quantized away because the automation adapter only samples the first frame value; use ~5ms (>= quantumFrames/sampleRate) so the next block sees gate=0 and envelopes retrigger reliably when voiceLimit=1.
 - Worklet now broadcasts its `blockSize` (derived from the output buffer length) and InstrumentV2 tracks it per-session; the gate pulse uses this `quantumFrames` so custom/native block sizes can still guarantee a full-frame gate-low. If block size changes mid-run, the broadcast updates and pulses adapt automatically.
+- Gate automation is now per-sample: `AutomationFrame` keeps a voice-major gate buffer sized to the worklet block (or incoming gate array), and `Graph::set_gate` fills the entire gate buffer (extending with the last provided sample) so envelopes see gate changes inside a quantum. Frequency automation now mirrors this: `AutomationFrame` holds per-sample frequency buffers per voice, and the engine slices them per voice so pitch slides or automation inside a quantum reach `GlobalFrequencyNode`.
 
 ## Patch Format & Loader
 
@@ -277,6 +278,10 @@ let collection = {
 - `rust-wasm/src/nodes/wavetable_oscillator.rs:617-628`
 
 **Important**: This is a race condition between patch loading and asset restoration. The oscillator must handle the case where it exists but has no data yet.
+
+### Wavetable import clobbering bank (2025-xx fix)
+
+- `AudioEngine::import_wavetable` no longer clears the wavetable bank. It now preserves existing collections, re-adds the default if missing, and registers custom imports under `wt_<node_id>`. The previous clear would remove the default collection, so patches that relied on it (worklet/tracker/editor) went silent after loading a custom wavetable because `get_collection` returned `None`.
 
 ## Automation Adapter & Voice Count (Critical Fix - 2025)
 

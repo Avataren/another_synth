@@ -58,10 +58,8 @@ impl AudioNode for Saturation {
         buffer_size: usize,
     ) {
         // Extract the input buffers from the first modulation source for each channel.
-        let left_in = inputs.get(&PortId::AudioInput0).unwrap()[0]
-            .buffer;
-        let right_in = inputs.get(&PortId::AudioInput1).unwrap()[0]
-            .buffer;
+        let left_in = inputs.get(&PortId::AudioInput0).unwrap()[0].buffer;
+        let right_in = inputs.get(&PortId::AudioInput1).unwrap()[0].buffer;
 
         // Retrieve output buffers using nightly's get_disjoint_mut.
         let outs = outputs.get_disjoint_mut([&PortId::AudioOutput0, &PortId::AudioOutput1]);

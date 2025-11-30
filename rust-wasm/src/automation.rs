@@ -19,8 +19,10 @@ pub struct AutomationFrame {
     num_voices: usize,
     macro_count: usize,
     macro_buffer_len: usize,
+    gate_buffer_len: usize,
+    frequency_buffer_len: usize,
     gates: Vec<f32>,
-    frequencies: Vec<f32>,
+    frequencies: Vec<f32>, // Per-voice, per-sample
     velocities: Vec<f32>,
     gains: Vec<f32>,
     macro_buffers: Vec<f32>,
@@ -28,13 +30,19 @@ pub struct AutomationFrame {
 
 impl AutomationFrame {
     pub fn with_dimensions(num_voices: usize, macro_count: usize, macro_buffer_len: usize) -> Self {
+        let gate_buffer_len = macro_buffer_len.max(1);
+        let frequency_buffer_len = macro_buffer_len.max(1);
+        let gate_buffers = vec![DEFAULT_GATE; num_voices * gate_buffer_len];
+        let frequency_buffers = vec![DEFAULT_FREQUENCY; num_voices * frequency_buffer_len];
         let macro_buffers = vec![0.0; num_voices * macro_count * macro_buffer_len];
         Self {
             num_voices,
             macro_count,
             macro_buffer_len,
-            gates: vec![DEFAULT_GATE; num_voices],
-            frequencies: vec![DEFAULT_FREQUENCY; num_voices],
+            gate_buffer_len,
+            frequency_buffer_len,
+            gates: gate_buffers,
+            frequencies: frequency_buffers,
             velocities: vec![DEFAULT_VELOCITY; num_voices],
             gains: vec![DEFAULT_GAIN; num_voices],
             macro_buffers,
@@ -47,6 +55,14 @@ impl AutomationFrame {
 
     pub fn macro_count(&self) -> usize {
         self.macro_count
+    }
+
+    pub fn gate_buffer_len(&self) -> usize {
+        self.gate_buffer_len
+    }
+
+    pub fn frequency_buffer_len(&self) -> usize {
+        self.frequency_buffer_len
     }
 
     pub fn macro_buffer_len(&self) -> usize {
@@ -104,8 +120,8 @@ impl AutomationFrame {
         if voice_index >= self.num_voices {
             return;
         }
-        self.gates[voice_index] = gate;
-        self.frequencies[voice_index] = frequency;
+        self.set_gate_value(voice_index, gate);
+        self.set_frequency_value(voice_index, frequency);
         self.velocities[voice_index] = velocity;
         self.gains[voice_index] = gain;
     }
@@ -131,8 +147,124 @@ impl AutomationFrame {
         &self.macro_buffers[start..end]
     }
 
+    pub fn gate_slice(&self, voice_index: usize) -> &[f32] {
+        let start = voice_index.saturating_mul(self.gate_buffer_len);
+        let end = start + self.gate_buffer_len;
+        if end > self.gates.len() {
+            return &[];
+        }
+        &self.gates[start..end]
+    }
+
+    pub fn frequency_slice(&self, voice_index: usize) -> &[f32] {
+        let start = voice_index.saturating_mul(self.frequency_buffer_len);
+        let end = start + self.frequency_buffer_len;
+        if end > self.frequencies.len() {
+            return &[];
+        }
+        &self.frequencies[start..end]
+    }
+
     fn macro_offset(&self, voice_index: usize, macro_index: usize) -> usize {
         (voice_index * self.macro_count + macro_index) * self.macro_buffer_len
+    }
+
+    fn gate_offset(&self, voice_index: usize) -> usize {
+        voice_index * self.gate_buffer_len
+    }
+
+    fn frequency_offset(&self, voice_index: usize) -> usize {
+        voice_index * self.frequency_buffer_len
+    }
+
+    fn ensure_gate_buffer_len(&mut self, target_len: usize) {
+        let target_len = target_len.max(1);
+        if self.gate_buffer_len != target_len || self.gates.len() != self.num_voices * target_len {
+            self.gate_buffer_len = target_len;
+            self.gates = vec![DEFAULT_GATE; self.num_voices * target_len];
+        } else {
+            self.gates.fill(DEFAULT_GATE);
+        }
+    }
+
+    fn ensure_frequency_buffer_len(&mut self, target_len: usize) {
+        let target_len = target_len.max(1);
+        if self.frequency_buffer_len != target_len
+            || self.frequencies.len() != self.num_voices * target_len
+        {
+            self.frequency_buffer_len = target_len;
+            self.frequencies = vec![DEFAULT_FREQUENCY; self.num_voices * target_len];
+        } else {
+            self.frequencies.fill(DEFAULT_FREQUENCY);
+        }
+    }
+
+    fn set_gate_value(&mut self, voice_index: usize, value: f32) {
+        if voice_index >= self.num_voices {
+            return;
+        }
+        let start = self.gate_offset(voice_index);
+        let end = start + self.gate_buffer_len;
+        if end > self.gates.len() {
+            return;
+        }
+        self.gates[start..end].fill(value);
+    }
+
+    fn set_gate_buffer(&mut self, voice_index: usize, values: &[f32]) {
+        if voice_index >= self.num_voices {
+            return;
+        }
+        let start = self.gate_offset(voice_index);
+        let end = start + self.gate_buffer_len;
+        if end > self.gates.len() {
+            return;
+        }
+
+        let write_len = values.len().min(self.gate_buffer_len);
+        self.gates[start..start + write_len].copy_from_slice(&values[..write_len]);
+
+        if write_len < self.gate_buffer_len {
+            let last = values
+                .get(write_len.saturating_sub(1))
+                .copied()
+                .unwrap_or(DEFAULT_GATE);
+            self.gates[start + write_len..end].fill(last);
+        }
+    }
+
+    fn set_frequency_value(&mut self, voice_index: usize, value: f32) {
+        if voice_index >= self.num_voices {
+            return;
+        }
+        let start = self.frequency_offset(voice_index);
+        let end = start + self.frequency_buffer_len;
+        if end > self.frequencies.len() {
+            return;
+        }
+        self.frequencies[start..end].fill(value);
+    }
+
+    fn set_frequency_buffer(&mut self, voice_index: usize, values: &[f32]) {
+        if voice_index >= self.num_voices {
+            return;
+        }
+        let start = self.frequency_offset(voice_index);
+        let end = start + self.frequency_buffer_len;
+        if end > self.frequencies.len() {
+            return;
+        }
+
+        let write_len = values.len().min(self.frequency_buffer_len);
+        self.frequencies[start..start + write_len].copy_from_slice(&values[..write_len]);
+
+        if write_len < self.frequency_buffer_len {
+            let last = values
+                .get(write_len.saturating_sub(1))
+                .copied()
+                .unwrap_or(DEFAULT_FREQUENCY);
+            self.frequencies[start + write_len..end].fill(last);
+        }
     }
 
     #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
@@ -171,7 +303,72 @@ impl AutomationFrame {
     }
 
     #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-    fn populate_from_js_object(&mut self, parameters: &Object) -> Result<(), JsValue> {
+    fn read_parameter_buffer(
+        &self,
+        parameters: &Object,
+        key: &str,
+        expected_len: usize,
+        default: f32,
+    ) -> Result<Vec<f32>, JsValue> {
+        let expected_len = expected_len.max(1);
+        let value = Reflect::get(parameters, &JsValue::from_str(key))?;
+        if value.is_undefined() || value.is_null() {
+            return Ok(vec![default; expected_len]);
+        }
+
+        if let Some(array) = value.dyn_ref::<Float32Array>() {
+            let mut values = array.to_vec();
+            if values.is_empty() {
+                values = vec![default; expected_len];
+            } else if values.len() == 1 && expected_len > 1 {
+                values = vec![values[0]; expected_len];
+            } else if values.len() < expected_len {
+                let last = *values.last().unwrap_or(&default);
+                values.resize(expected_len, last);
+            } else if values.len() > expected_len {
+                values.truncate(expected_len);
+            }
+            return Ok(values);
+        }
+
+        if let Some(number) = value.as_f64() {
+            return Ok(vec![number as f32; expected_len]);
+        }
+
+        Ok(vec![default; expected_len])
+    }
+
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    fn populate_from_js_object(
+        &mut self,
+        parameters: &Object,
+        block_len_hint: usize,
+    ) -> Result<(), JsValue> {
+        // Determine gate buffer length from parameters (a-rate arrays) or fall back to hint.
+        let mut gate_buffer_len = block_len_hint.max(1);
+        let mut frequency_buffer_len = block_len_hint.max(1);
+        for voice in 0..self.num_voices {
+            let gate_key = format!("gate_{}", voice);
+            let value = Reflect::get(parameters, &JsValue::from_str(&gate_key))?;
+            if let Some(array) = value.dyn_ref::<Float32Array>() {
+                let len = array.length() as usize;
+                if len > 1 {
+                    gate_buffer_len = len;
+                }
+            }
+
+            let freq_key = format!("frequency_{}", voice);
+            let freq_value = Reflect::get(parameters, &JsValue::from_str(&freq_key))?;
+            if let Some(array) = freq_value.dyn_ref::<Float32Array>() {
+                let len = array.length() as usize;
+                if len > 1 {
+                    frequency_buffer_len = len;
+                }
+            }
+        }
+
+        self.ensure_gate_buffer_len(gate_buffer_len);
+        self.ensure_frequency_buffer_len(frequency_buffer_len);
         self.reset_defaults();
 
         for voice in 0..self.num_voices {
@@ -180,13 +377,22 @@ impl AutomationFrame {
             let gain_key = format!("gain_{}", voice);
             let velocity_key = format!("velocity_{}", voice);
 
-            let gate = self.read_parameter_scalar(parameters, &gate_key, DEFAULT_GATE)?;
-            let frequency = self.read_parameter_scalar(parameters, &freq_key, DEFAULT_FREQUENCY)?;
+            let gate_values =
+                self.read_parameter_buffer(parameters, &gate_key, gate_buffer_len, DEFAULT_GATE)?;
+            let frequency_values = self.read_parameter_buffer(
+                parameters,
+                &freq_key,
+                frequency_buffer_len,
+                DEFAULT_FREQUENCY,
+            )?;
             let gain = self.read_parameter_scalar(parameters, &gain_key, DEFAULT_GAIN)?;
             let velocity =
                 self.read_parameter_scalar(parameters, &velocity_key, DEFAULT_VELOCITY)?;
 
-            self.set_voice_values(voice, gate, frequency, velocity, gain);
+            self.set_gate_buffer(voice, &gate_values);
+            self.set_frequency_buffer(voice, &frequency_values);
+            self.velocities[voice] = velocity;
+            self.gains[voice] = gain;
 
             for macro_index in 0..self.macro_count {
                 let macro_key = format!("macro_{}_{}", voice, macro_index);
@@ -218,7 +424,7 @@ impl AutomationFrame {
         let object = parameters
             .dyn_ref::<Object>()
             .ok_or_else(|| JsValue::from_str("Expected parameter map object"))?;
-        self.populate_from_js_object(object)
+        self.populate_from_js_object(object, self.gate_buffer_len)
     }
 }
 
@@ -385,7 +591,11 @@ impl AutomationAdapter {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) -> Result<(), JsValue> {
-        self.frame.populate_from_parameters(parameters)?;
+        let object = parameters
+            .dyn_ref::<Object>()
+            .ok_or_else(|| JsValue::from_str("Expected parameter map object"))?;
+        self.frame
+            .populate_from_js_object(object, output_left.len())?;
         engine.process_with_frame(&self.frame, master_gain, output_left, output_right);
         Ok(())
     }
@@ -507,6 +717,16 @@ mod tests {
         frame.set_macro_value(0, 2, 0.75);
         frame.set_macro_value(0, 3, 1.0);
 
+        let gate_slice = frame.gate_slice(0);
+        assert_eq!(gate_slice.len(), frame.gate_buffer_len());
+        assert!(gate_slice.iter().all(|&value| (value - 1.0).abs() < 1e-6));
+
+        let frequency_slice = frame.frequency_slice(0);
+        assert_eq!(frequency_slice.len(), frame.frequency_buffer_len());
+        assert!(frequency_slice
+            .iter()
+            .all(|&value| (value - 330.0).abs() < 1e-6));
+
         let macro_slice = frame.macro_slice(0, 2);
         assert_eq!(macro_slice.len(), 8);
         assert!(macro_slice.iter().all(|&value| (value - 0.75).abs() < 1e-6));
@@ -517,7 +737,7 @@ mod tests {
         assert_eq!(frame.gains()[0], 0.75);
         assert_eq!(frame.velocities()[0], 0.5);
         assert_eq!(frame.gates()[0], 1.0);
-        assert_eq!(frame.frequencies()[1], DEFAULT_FREQUENCY);
+        assert_eq!(frame.frequencies()[frame.frequency_buffer_len()], DEFAULT_FREQUENCY);
         assert_eq!(frame.gains()[1], DEFAULT_GAIN);
     }
 

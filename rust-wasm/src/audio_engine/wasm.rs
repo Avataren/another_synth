@@ -27,7 +27,13 @@ use base64::Engine as _;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{cell::RefCell, collections::HashMap, io::Cursor, rc::Rc, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    io::Cursor,
+    rc::Rc,
+    sync::Arc,
+};
 
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -38,12 +44,12 @@ use hound;
 use std::error::Error;
 const EFFECT_NODE_ID_OFFSET: usize = 10_000;
 
-#[cfg(feature = "wasm")]
+#[cfg(target_arch = "wasm32")]
 fn log_console(message: &str) {
     console::log_1(&message.into());
 }
 
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(target_arch = "wasm32"))]
 fn log_console(_message: &str) {}
 
 fn import_wav_hound_reader<R: std::io::Read>(
@@ -748,10 +754,64 @@ impl AudioEngine {
         let mut voice_left = vec![0.0; output_left.len()];
         let mut voice_right = vec![0.0; output_right.len()];
 
+        let block_len = output_left.len().max(1);
+        // Parameter voice count is dictated by the automation adapter (fixed to descriptors, usually 8).
+        let param_voice_count = if block_len > 0 && !gates.is_empty() {
+            (gates.len() / block_len).max(1)
+        } else {
+            self.voices.len().max(1)
+        };
+
+        let gate_buffer_len = block_len;
+
+        let frequency_buffer_len = if !frequencies.is_empty() && param_voice_count > 0 {
+            frequencies
+                .len()
+                .checked_div(param_voice_count)
+                .unwrap_or(block_len)
+                .min(block_len)
+                .max(1)
+        } else {
+            block_len
+        };
+
+        let macro_buffer_len = if !macro_values.is_empty() && param_voice_count > 0 {
+            macro_values
+                .len()
+                .checked_div(param_voice_count * 4)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let voice_macro_stride = 4 * macro_buffer_len;
+
         // Process all voices and mix them
         for (i, voice) in self.voices.iter_mut().enumerate() {
-            let gate = gates.get(i).copied().unwrap_or(0.0);
-            let frequency = frequencies.get(i).copied().unwrap_or(440.0);
+            let gate_slice = if gate_buffer_len > 0 && i < param_voice_count {
+                let start = i.saturating_mul(gate_buffer_len);
+                let end = (start + gate_buffer_len).min(gates.len());
+                gates.get(start..end).unwrap_or(&[])
+            } else {
+                &[]
+            };
+
+            let gate = if gate_slice.is_empty() {
+                gates.get(i).copied().unwrap_or(0.0)
+            } else {
+                gate_slice.iter().copied().fold(0.0_f32, f32::max)
+            };
+            let frequency_slice = if frequency_buffer_len > 0 && i < param_voice_count {
+                let start = i.saturating_mul(frequency_buffer_len);
+                let end = (start + frequency_buffer_len).min(frequencies.len());
+                frequencies.get(start..end).unwrap_or(&[])
+            } else {
+                &[]
+            };
+            let frequency = if frequency_slice.is_empty() {
+                frequencies.get(i).copied().unwrap_or(440.0)
+            } else {
+                *frequency_slice.first().unwrap_or(&440.0)
+            };
             let gain = gains.get(i).copied().unwrap_or(1.0);
             let velocity = velocities.get(i).copied().unwrap_or(0.0);
 
@@ -760,11 +820,13 @@ impl AudioEngine {
             voice.current_velocity = velocity;
 
             // Update macro values
-            for macro_idx in 0..4 {
-                let macro_start = i * 4 * 128 + (macro_idx * 128);
-                if macro_start + 128 <= macro_values.len() {
-                    let values = &macro_values[macro_start..macro_start + 128];
-                    let _ = voice.update_macro(macro_idx, values);
+            if macro_buffer_len > 0 && i < param_voice_count {
+                for macro_idx in 0..4 {
+                    let macro_start = i * voice_macro_stride + (macro_idx * macro_buffer_len);
+                    if macro_start + macro_buffer_len <= macro_values.len() {
+                        let values = &macro_values[macro_start..macro_start + macro_buffer_len];
+                        let _ = voice.update_macro(macro_idx, values);
+                    }
                 }
             }
 
@@ -772,7 +834,26 @@ impl AudioEngine {
             voice_right.fill(0.0);
 
             // Process voice audio
-            voice.process_audio(&mut voice_left, &mut voice_right);
+            let zero_gate = [0.0_f32];
+            let gate_buffer = if gate_slice.is_empty() {
+                &zero_gate
+            } else {
+                gate_slice
+            };
+            let zero_frequency = [frequency];
+            let frequency_buffer = if frequency_slice.is_empty() {
+                &zero_frequency
+            } else {
+                frequency_slice
+            };
+
+            voice.process_audio(
+                gate_buffer,
+                frequency_buffer,
+                &mut voice_left,
+                &mut voice_right,
+            );
+
 
             // Mix voice into main mix buffers with gain
             for (i, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate() {
@@ -1407,21 +1488,28 @@ impl AudioEngine {
         data: &[u8],
         base_size: usize,
     ) -> Result<(), JsValue> {
+        let collection_name = format!("wt_{}", node_id);
         // Wrap the incoming data in a Cursor and call the hound helper.
         let cursor = Cursor::new(data);
         let collection = import_wav_hound_reader(cursor, base_size)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        // Clear the existing collections so only one is kept.
-        self.wavetable_synthbank.borrow_mut().clear();
-        // Add the new collection to the synth bank.
-        self.wavetable_synthbank
-            .borrow_mut()
-            .add_collection("imported", collection);
+        // Keep existing collections (including the default) and register this one by node.
+        {
+            let mut bank = self.wavetable_synthbank.borrow_mut();
+            if !bank.collections.contains_key("default") {
+                bank.add_collection(
+                    "default",
+                    WavetableMorphCollection::generate_test_collection(self.sample_rate),
+                );
+            }
+            bank.add_collection(&collection_name, collection);
+        }
 
         // Parse the target oscillator ID.
         let node_id = NodeId::from_string(node_id)
             .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
 
+        let collection_name_clone = collection_name.clone();
         // Update the oscillator's active wavetable to the newly imported collection.
         for voice in &mut self.voices {
             let node = voice
@@ -1434,7 +1522,7 @@ impl AudioEngine {
                 .ok_or_else(|| {
                     JsValue::from_str("Node is not a WavetableOscillator in one of the voices")
                 })?;
-            osc.set_current_wavetable("imported");
+            osc.set_current_wavetable(&collection_name_clone);
         }
 
         Ok(())
@@ -2474,16 +2562,18 @@ impl AudioEngine {
             return Ok(());
         }
 
-        voice.add_macro_modulation(
-            macro_index,
-            target_node_id,
-            target_port,
-            amount,
-            modulation_type
-                .map(ModulationType::from)
-                .unwrap_or_default(),
-            modulation_transform,
-        ).map_err(|e| JsValue::from_str(&e))
+        voice
+            .add_macro_modulation(
+                macro_index,
+                target_node_id,
+                target_port,
+                amount,
+                modulation_type
+                    .map(ModulationType::from)
+                    .unwrap_or_default(),
+                modulation_transform,
+            )
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     fn build_nodes_from_canonical_voice(

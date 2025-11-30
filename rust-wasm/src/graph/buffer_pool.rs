@@ -142,11 +142,15 @@ impl AudioBufferPool {
             if idx >= self.buffers.len() {
                 return Err(format!(
                     "Immutable buffer index {} out of bounds (total: {})",
-                    idx, self.buffers.len()
+                    idx,
+                    self.buffers.len()
                 ));
             }
             if !all_indices.insert(idx) {
-                return Err(format!("Duplicate index in immutable/mutable sets: {}", idx));
+                return Err(format!(
+                    "Duplicate index in immutable/mutable sets: {}",
+                    idx
+                ));
             }
         }
 
@@ -154,11 +158,15 @@ impl AudioBufferPool {
             if idx >= self.buffers.len() {
                 return Err(format!(
                     "Mutable buffer index {} out of bounds (total: {})",
-                    idx, self.buffers.len()
+                    idx,
+                    self.buffers.len()
                 ));
             }
             if !all_indices.insert(idx) {
-                return Err(format!("Duplicate index in immutable/mutable sets: {}", idx));
+                return Err(format!(
+                    "Duplicate index in immutable/mutable sets: {}",
+                    idx
+                ));
             }
         }
 

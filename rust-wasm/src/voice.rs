@@ -227,14 +227,37 @@ impl Voice {
             .update_macro(macro_index, values, &mut self.graph.buffer_pool)
     }
 
-    pub fn process_audio(&mut self, output_left: &mut [f32], output_right: &mut [f32]) {
+    pub fn process_audio(
+        &mut self,
+        gate_buffer: &[f32],
+        frequency_buffer: &[f32],
+        output_left: &mut [f32],
+        output_right: &mut [f32],
+    ) {
         // First, let's process the audio - we need to do this before checking
         // has_significant_audio_output to have valid output buffers to analyze
 
-        if self.is_active() {
+        let gate_present = gate_buffer.iter().any(|&g| g > 0.0);
+
+        if self.is_active() || gate_present {
             // Normal processing path for active voices
-            self.graph.set_gate(&[self.current_gate]);
-            self.graph.set_frequency(&[self.current_frequency]);
+            let single_gate = [self.current_gate];
+            let gate_slice = if gate_buffer.is_empty() {
+                &single_gate
+            } else {
+                gate_buffer
+            };
+
+            // Use full gate buffer so envelopes see per-sample changes.
+            self.graph.set_gate(gate_slice);
+            let single_frequency = [self.current_frequency];
+            let frequency_slice = if frequency_buffer.is_empty() {
+                &single_frequency
+            } else {
+                frequency_buffer
+            };
+
+            self.graph.set_frequency(frequency_slice);
             self.graph.set_velocity(&[self.current_velocity]);
             self.graph.process_audio_with_macros(
                 Some(&self.macro_manager),

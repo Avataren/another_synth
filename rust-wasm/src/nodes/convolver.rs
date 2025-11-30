@@ -263,15 +263,9 @@ impl AudioNode for Convolver {
                     }
                 }
             };
-            fill_or_copy(
-                outputs.get_mut(&PortId::AudioOutput0),
-                maybe_in_l_buf,
-            );
+            fill_or_copy(outputs.get_mut(&PortId::AudioOutput0), maybe_in_l_buf);
             let fallback_r_in = maybe_in_r_buf.or(maybe_in_l_buf);
-            fill_or_copy(
-                outputs.get_mut(&PortId::AudioOutput1),
-                fallback_r_in,
-            );
+            fill_or_copy(outputs.get_mut(&PortId::AudioOutput1), fallback_r_in);
             return;
         }
 

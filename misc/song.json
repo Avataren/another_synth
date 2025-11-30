@@ -7,7 +7,7 @@
       "bpm": 120
     },
     "patternRows": 64,
-    "stepSize": 2,
+    "stepSize": 1,
     "patterns": [
       {
         "id": "5e9cef16-19ef-4531-9ebf-d2a4b31ce365",
@@ -63,134 +63,21 @@
             "id": "T03",
             "name": "Track 3",
             "color": "#ffde7b",
-            "entries": [
-              {
-                "row": 0,
-                "instrument": "02",
-                "note": "G-4"
-              },
-              {
-                "row": 8,
-                "instrument": "02",
-                "note": "###"
-              },
-              {
-                "row": 16,
-                "instrument": "02",
-                "note": "G-4"
-              }
-            ],
+            "entries": [],
             "interpolations": []
           },
           {
             "id": "T04",
             "name": "Track 4",
             "color": "#70c2ff",
-            "entries": [
-              {
-                "row": 0,
-                "instrument": "02",
-                "note": "D-5"
-              },
-              {
-                "row": 8,
-                "instrument": "02",
-                "note": "###"
-              },
-              {
-                "row": 16,
-                "instrument": "02",
-                "note": "D-5"
-              }
-            ],
+            "entries": [],
             "interpolations": []
           },
           {
             "id": "T05",
             "name": "Track 5",
             "color": "#ff9db5",
-            "entries": [
-              {
-                "row": 0,
-                "instrument": "01",
-                "note": "D-5"
-              },
-              {
-                "row": 2,
-                "instrument": "01",
-                "note": "D-4"
-              },
-              {
-                "row": 4,
-                "instrument": "01",
-                "note": "C-5"
-              },
-              {
-                "row": 6,
-                "instrument": "01",
-                "note": "F-5"
-              },
-              {
-                "row": 8,
-                "instrument": "01",
-                "note": "D-5"
-              },
-              {
-                "row": 10,
-                "instrument": "01",
-                "note": "D-4"
-              },
-              {
-                "row": 12,
-                "instrument": "01",
-                "note": "C-5"
-              },
-              {
-                "row": 14,
-                "instrument": "01",
-                "note": "D-5"
-              },
-              {
-                "row": 16,
-                "instrument": "01",
-                "note": "D-4"
-              },
-              {
-                "row": 18,
-                "instrument": "01",
-                "note": "D-5"
-              },
-              {
-                "row": 20,
-                "instrument": "01",
-                "note": "C-5"
-              },
-              {
-                "row": 22,
-                "instrument": "01",
-                "note": "F-5"
-              },
-              {
-                "row": 24,
-                "instrument": "01",
-                "note": "D-5"
-              },
-              {
-                "row": 26,
-                "instrument": "01",
-                "note": "D-4"
-              },
-              {
-                "row": 28,
-                "instrument": "01",
-                "note": "C-5"
-              },
-              {
-                "row": 30,
-                "instrument": "01",
-                "note": "D-5"
-              }
-            ],
+            "entries": [],
             "interpolations": []
           },
           {
@@ -225,17 +112,17 @@
       {
         "slot": 1,
         "bankName": "Default Bank",
+        "patchId": "123e4567-e89b-12d3-a456-426614174002",
         "patchName": "E. Piano 1",
         "instrumentName": "E. Piano 1",
-        "patchId": "123e4567-e89b-12d3-a456-426614174002",
         "source": "song"
       },
       {
         "slot": 2,
         "bankName": "Default Bank",
+        "patchId": "patch_1764432115040_tgmywwk",
         "patchName": "Choir Pad (Ahh Vox DX7)",
         "instrumentName": "Choir Pad (Ahh Vox DX7)",
-        "patchId": "patch_1764432115040_tgmywwk",
         "source": "song"
       },
       {
@@ -377,7 +264,7 @@
         "instrumentName": ""
       }
     ],
-    "activeInstrumentId": "01",
+    "activeInstrumentId": "02",
     "currentInstrumentPage": 0,
     "songPatches": {
       "123e4567-e89b-12d3-a456-426614174002": {

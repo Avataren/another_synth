@@ -315,9 +315,7 @@ impl AudioGraph {
         target_port: PortId,
     ) {
         if let Some(inputs) = self.input_connections.get_mut(&target_node) {
-            inputs.retain(|(port, idx, _, _, _, _)| {
-                !(*port == target_port && *idx == buffer_idx)
-            });
+            inputs.retain(|(port, idx, _, _, _, _)| !(*port == target_port && *idx == buffer_idx));
             if inputs.is_empty() {
                 self.input_connections.remove(&target_node);
             }
@@ -595,10 +593,24 @@ impl AudioGraph {
     }
 
     pub fn set_gate(&mut self, gate: &[f32]) {
+        let buffer = &mut self.buffer_pool.buffers[self.gate_buffer_idx];
+
+        if gate.is_empty() {
+            buffer.fill(0.0);
+            return;
+        }
+
         if gate.len() == 1 {
-            self.buffer_pool.fill(self.gate_buffer_idx, gate[0]);
-        } else {
-            self.buffer_pool.copy_in(self.gate_buffer_idx, gate);
+            buffer.fill(gate[0]);
+            return;
+        }
+
+        let copy_len = gate.len().min(buffer.len());
+        buffer[..copy_len].copy_from_slice(&gate[..copy_len]);
+
+        if copy_len < buffer.len() {
+            let last = gate[copy_len - 1];
+            buffer[copy_len..].fill(last);
         }
     }
 
