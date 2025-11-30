@@ -20,7 +20,8 @@
     "build:wasm": "node build-wasm.cjs",
     "build": "npm run build:wasm && npm run build:worklets && quasar build",
     "postinstall": "quasar prepare",
-    "start": "npx serve ."
+    "start": "npx serve .",
+    "generate:port-ids": "node scripts/generate-port-ids.js"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",

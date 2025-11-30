@@ -5,7 +5,7 @@
 
 // Shared patch loading logic for both native and wasm builds
 
-use crate::audio_engine::patch::VoiceLayout as PatchVoiceLayout;
+use crate::audio_engine::patch::{PatchNode, VoiceLayout as PatchVoiceLayout};
 use crate::biquad::FilterType;
 use crate::graph::{ModulationTransformation, ModulationType, NodeId};
 use crate::traits::PortId;
@@ -139,6 +139,25 @@ pub const NODE_CREATION_ORDER: [&str; 13] = [
     "noise",
     "arpeggiator_generator",
 ];
+
+/// Iterate nodes in creation order, invoking the callback for each node.
+/// Shared by native and wasm loaders to keep ordering in sync.
+pub fn for_each_node_in_creation_order<F, E>(
+    voice_layout: &PatchVoiceLayout,
+    mut callback: F,
+) -> Result<(), E>
+where
+    F: FnMut(&str, &PatchNode) -> Result<(), E>,
+{
+    for node_type in NODE_CREATION_ORDER {
+        if let Some(nodes) = voice_layout.nodes.get(node_type) {
+            for patch_node in nodes {
+                callback(node_type, patch_node)?;
+            }
+        }
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {

@@ -8,7 +8,8 @@ import type InstrumentV2 from './instrument-v2';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { useConnectionStore } from 'src/stores/connection-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
-import { type ModulationTransformation, PortId, type WasmModulationType } from 'app/public/wasm/audio_processor';
+import { type ModulationTransformation, type WasmModulationType } from 'app/public/wasm/audio_processor';
+import { PortId } from './types/generated/port-ids';
 
 interface WasmVoice {
     id: number;

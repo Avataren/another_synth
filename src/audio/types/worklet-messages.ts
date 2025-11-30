@@ -24,7 +24,8 @@ import type {
   NodeConnectionUpdate,
   SynthLayout,
 } from './synth-layout';
-import type { PortId, WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type { WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type { PortId } from './generated/port-ids';
 
 // ============================================================================
 // Base Message Types

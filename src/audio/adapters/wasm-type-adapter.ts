@@ -10,7 +10,8 @@
  * All conversions are validated and provide clear error messages.
  */
 
-import type { ModulationTransformation, PortId } from 'app/public/wasm/audio_processor';
+import type { ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type { PortId } from '../types/generated/port-ids';
 import { WasmModulationType } from 'app/public/wasm/audio_processor';
 import { VoiceNodeType } from '../types/synth-layout';
 

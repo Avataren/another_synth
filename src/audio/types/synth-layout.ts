@@ -1,9 +1,9 @@
 // src/audio/types/synth-layout.ts
 import {
   type ModulationTransformation,
-  PortId,
   WasmModulationType,
 } from 'app/public/wasm/audio_processor';
+import { PortId } from './generated/port-ids';
 
 // Define the types of nodes we can have in a voice
 export enum VoiceNodeType {

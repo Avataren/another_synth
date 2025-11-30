@@ -32,7 +32,8 @@ import type {
 } from '../../types/worklet-messages';
 import { WorkletMessageBuilder } from '../../types/worklet-messages';
 import type { SynthLayout } from '../../types/synth-layout';
-import { PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
+import { WasmModulationType } from 'app/public/wasm/audio_processor';
+import { PortId } from '../../types/generated/port-ids';
 
 // ============================================================================
 // Base Handler Class

@@ -318,58 +318,56 @@ impl AudioEngine {
         canonical_voice: &PatchVoiceLayout,
     ) -> Result<(), String> {
         // Use the same creation order as wasm to ensure consistency
-        for node_type in NODE_CREATION_ORDER {
-            if let Some(nodes) = canonical_voice.nodes.get(node_type) {
-                for patch_node in nodes {
-                    let id = parse_node_id(&patch_node.id)?;
+        for_each_node_in_creation_order(canonical_voice, |node_type, patch_node| {
+            let id = parse_node_id(&patch_node.id)?;
 
-                    // IMPORTANT: Call create_node_from_type *before* mutably borrowing self.voices
-                    // to avoid aliasing (&self for creation vs &mut self.voices for insertion).
-                    for voice_index in 0..self.voices.len() {
-                        let node = self.create_node_from_type(node_type, &id)?;
+            // IMPORTANT: Call create_node_from_type *before* mutably borrowing self.voices
+            // to avoid aliasing (&self for creation vs &mut self.voices for insertion).
+            for voice_index in 0..self.voices.len() {
+                let node = self.create_node_from_type(node_type, &id)?;
 
-                        {
-                            let voice = &mut self.voices[voice_index];
-                            voice.graph.add_node_with_id(id, node);
+                {
+                    let voice = &mut self.voices[voice_index];
+                    voice.graph.add_node_with_id(id, node);
 
-                            // If the node is a global node, store its ID for this voice
-                            match node_type {
-                                "global_frequency" => voice.graph.global_frequency_node = Some(id),
-                                "glide" => {
-                                    voice.graph.global_glide_node = Some(id);
-                                    if let Some(global_freq) = voice.graph.global_frequency_node {
-                                        voice.graph.add_connection(Connection {
-                                            from_node: global_freq,
-                                            from_port: PortId::GlobalFrequency,
-                                            to_node: id,
-                                            to_port: PortId::AudioInput0,
-                                            amount: 1.0,
-                                            modulation_type: ModulationType::Additive,
-                                            modulation_transform: ModulationTransformation::None,
-                                        });
-                                    }
-                                    if let Some(gate_mixer) = voice.graph.global_gatemixer_node {
-                                        voice.graph.add_connection(Connection {
-                                            from_node: gate_mixer,
-                                            from_port: PortId::CombinedGate,
-                                            to_node: id,
-                                            to_port: PortId::CombinedGate,
-                                            amount: 1.0,
-                                            modulation_type: ModulationType::Additive,
-                                            modulation_transform: ModulationTransformation::None,
-                                        });
-                                    }
-                                }
-                                "global_velocity" => voice.graph.global_velocity_node = Some(id),
-                                "gatemixer" => voice.graph.global_gatemixer_node = Some(id),
-                                "mixer" => voice.graph.set_output_node(id),
-                                _ => {}
+                    // If the node is a global node, store its ID for this voice
+                    match node_type {
+                        "global_frequency" => voice.graph.global_frequency_node = Some(id),
+                        "glide" => {
+                            voice.graph.global_glide_node = Some(id);
+                            if let Some(global_freq) = voice.graph.global_frequency_node {
+                                voice.graph.add_connection(Connection {
+                                    from_node: global_freq,
+                                    from_port: PortId::GlobalFrequency,
+                                    to_node: id,
+                                    to_port: PortId::AudioInput0,
+                                    amount: 1.0,
+                                    modulation_type: ModulationType::Additive,
+                                    modulation_transform: ModulationTransformation::None,
+                                });
+                            }
+                            if let Some(gate_mixer) = voice.graph.global_gatemixer_node {
+                                voice.graph.add_connection(Connection {
+                                    from_node: gate_mixer,
+                                    from_port: PortId::CombinedGate,
+                                    to_node: id,
+                                    to_port: PortId::CombinedGate,
+                                    amount: 1.0,
+                                    modulation_type: ModulationType::Additive,
+                                    modulation_transform: ModulationTransformation::None,
+                                });
                             }
                         }
+                        "global_velocity" => voice.graph.global_velocity_node = Some(id),
+                        "gatemixer" => voice.graph.global_gatemixer_node = Some(id),
+                        "mixer" => voice.graph.set_output_node(id),
+                        _ => {}
                     }
                 }
             }
-        }
+
+            Ok::<(), String>(())
+        })?;
         // Ensure the glide hears the combined gate even though the gate mixer is created later.
         for voice in &mut self.voices {
             if let (Some(glide_id), Some(gate_mixer_id)) = (

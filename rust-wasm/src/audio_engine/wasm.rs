@@ -1,7 +1,8 @@
 use super::patch::{AudioAsset, PatchFile, VoiceLayout as PatchVoiceLayout};
 use super::patch_loader::{
-    filter_type_from_i32, find_node_id, modulation_transform_from_i32, modulation_type_from_i32,
-    parse_audio_asset_id, parse_node_id, port_id_from_u32, NODE_CREATION_ORDER,
+    filter_type_from_i32, find_node_id, for_each_node_in_creation_order,
+    modulation_transform_from_i32, modulation_type_from_i32, parse_audio_asset_id, parse_node_id,
+    port_id_from_u32,
 };
 use crate::automation::AutomationFrame;
 use crate::biquad::FilterType;
@@ -2582,16 +2583,10 @@ impl AudioEngine {
     ) -> Result<(), JsValue> {
         let mut sampler_cache: HashMap<NodeId, Rc<RefCell<SampleData>>> = HashMap::new();
 
-        for node_type in NODE_CREATION_ORDER {
-            if let Some(nodes) = voice_layout.nodes.get(node_type) {
-                for node in nodes {
-                    let node_id = parse_node_id(&node.id).map_err(|e| JsValue::from_str(&e))?;
-                    self.instantiate_node(node_type, node_id, &mut sampler_cache)?;
-                }
-            }
-        }
-
-        Ok(())
+        for_each_node_in_creation_order(voice_layout, |node_type, node| {
+            let node_id = parse_node_id(&node.id).map_err(|e| JsValue::from_str(&e))?;
+            self.instantiate_node(node_type, node_id, &mut sampler_cache)
+        })
     }
 
     fn instantiate_node(

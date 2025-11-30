@@ -35,7 +35,8 @@ import {
   type NodeConnectionUpdate,
   type FilterState,
 } from './types/synth-layout';
-import type { PortId, WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type { WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type { PortId } from './types/generated/port-ids';
 import { WorkletMessageHandler } from './adapters/message-handler';
 import { toRaw } from 'vue';
 

@@ -9,7 +9,8 @@ import {
   type NodeConnectionUpdate,
   getModulationTargetsForType,
 } from './types/synth-layout';
-import { PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
+import { WasmModulationType } from 'app/public/wasm/audio_processor';
+import { PortId } from './types/generated/port-ids';
 
 export interface TargetNode {
   id: string;

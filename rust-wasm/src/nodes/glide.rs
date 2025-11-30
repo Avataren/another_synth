@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
 use std::any::Any;
 
@@ -13,6 +14,16 @@ pub struct Glide {
     last_gate_value: f32,
     initialized: bool,
 }
+
+static PORT_MAP: Lazy<FxHashMap<PortId, bool>> = Lazy::new(|| {
+    [
+        (PortId::AudioInput0, false),
+        (PortId::CombinedGate, false),
+        (PortId::AudioOutput0, true),
+    ]
+    .into_iter()
+    .collect()
+});
 
 impl Glide {
     pub fn new(sample_rate: f32, glide_time: f32) -> Self {
@@ -61,13 +72,7 @@ impl Glide {
 
 impl AudioNode for Glide {
     fn get_ports(&self) -> FxHashMap<PortId, bool> {
-        [
-            (PortId::AudioInput0, false),
-            (PortId::CombinedGate, false),
-            (PortId::AudioOutput0, true),
-        ]
-        .into_iter()
-        .collect()
+        PORT_MAP.clone()
     }
 
     fn process<'a>(
