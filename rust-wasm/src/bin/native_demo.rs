@@ -4,7 +4,7 @@
 mod audio_buffer;
 #[path = "native_demo/audio_renderer.rs"]
 mod audio_renderer;
-#[path = "native_demo/composition.rs"]
+#[path = "composition.rs"]
 mod composition;
 #[path = "native_demo/cpal_host.rs"]
 mod cpal_host;

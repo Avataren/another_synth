@@ -48,6 +48,12 @@ pub struct AudioEngine {
     audio_time_accum: f64,
     last_cpu_usage: f32,
     block_size: usize,
+    mix_left: Vec<f32>,
+    mix_right: Vec<f32>,
+    voice_left: Vec<f32>,
+    voice_right: Vec<f32>,
+    effect_left: Vec<f32>,
+    effect_right: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,6 +151,12 @@ impl AudioEngine {
             audio_time_accum: 0.0,
             last_cpu_usage: 0.0,
             block_size,
+            mix_left: vec![0.0; block_size],
+            mix_right: vec![0.0; block_size],
+            voice_left: vec![0.0; block_size],
+            voice_right: vec![0.0; block_size],
+            effect_left: vec![0.0; block_size],
+            effect_right: vec![0.0; block_size],
         }
     }
 
@@ -597,28 +609,39 @@ impl AudioEngine {
         output_left: &mut [f32],
         output_right: &mut [f32],
     ) {
-        // DEBUG: Check what we're actually receiving
-        static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
-        let call_count = CALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-        if call_count % 1000 == 0 {
-            eprintln!("ENGINE process_audio_internal call {}:", call_count);
-            eprintln!(
-                "  output_left.len()={}, output_right.len()={}",
-                output_left.len(),
-                output_right.len()
-            );
-            eprintln!("  self.block_size={}", self.block_size);
+        #[cfg(debug_assertions)]
+        {
+            // Debug logging is expensive; keep it out of release builds.
+            static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
+            let call_count = CALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            if call_count % 1000 == 0 {
+                eprintln!("ENGINE process_audio_internal call {}:", call_count);
+                eprintln!(
+                    "  output_left.len()={}, output_right.len()={}",
+                    output_left.len(),
+                    output_right.len()
+                );
+                eprintln!("  self.block_size={}", self.block_size);
+            }
         }
 
         let start = Instant::now();
 
-        // CRITICAL FIX: Always allocate buffers at the engine's block_size,
-        // not the requested output size. This ensures the graph's buffer pool
-        // and all node processing work with consistent buffer sizes.
-        let mut mix_left = vec![0.0; self.block_size];
-        let mut mix_right = vec![0.0; self.block_size];
-        let mut voice_left = vec![0.0; self.block_size];
-        let mut voice_right = vec![0.0; self.block_size];
+        // Reuse preallocated buffers sized to the engine's block size.
+        let block_len = self.block_size.max(1);
+        self.mix_left.resize(block_len, 0.0);
+        self.mix_right.resize(block_len, 0.0);
+        self.voice_left.resize(block_len, 0.0);
+        self.voice_right.resize(block_len, 0.0);
+        self.effect_left.resize(block_len, 0.0);
+        self.effect_right.resize(block_len, 0.0);
+
+        self.mix_left.fill(0.0);
+        self.mix_right.fill(0.0);
+        self.voice_left.fill(0.0);
+        self.voice_right.fill(0.0);
+        self.effect_left.fill(0.0);
+        self.effect_right.fill(0.0);
 
         let param_voice_count = if block_len > 0 && !gates.is_empty() {
             (gates.len() / block_len).max(1)
@@ -626,12 +649,6 @@ impl AudioEngine {
             self.voices.len().max(1)
         };
         let voice_macro_stride = MACRO_COUNT * macro_buffer_len;
-        let block_len = self.block_size.max(1);
-        let param_voice_count = if block_len > 0 && !gates.is_empty() {
-            (gates.len() / block_len).max(1)
-        } else {
-            self.voices.len().max(1)
-        };
         let gate_buffer_len = block_len;
         let frequency_buffer_len = if !frequencies.is_empty() && param_voice_count > 0 {
             frequencies
@@ -695,8 +712,8 @@ impl AudioEngine {
                 }
             }
 
-            voice_left.fill(0.0);
-            voice_right.fill(0.0);
+            self.voice_left.fill(0.0);
+            self.voice_right.fill(0.0);
 
             // Process the full block_size
             let zero_gate = [0.0_f32];
@@ -714,40 +731,42 @@ impl AudioEngine {
             voice.process_audio(
                 gate_buffer,
                 frequency_buffer,
-                &mut voice_left,
-                &mut voice_right,
+                &mut self.voice_left,
+                &mut self.voice_right,
             );
 
             // Mix voices together
-            for (sample_idx, (left, right)) in voice_left.iter().zip(voice_right.iter()).enumerate()
+            for (sample_idx, (left, right)) in
+                self.voice_left.iter().zip(self.voice_right.iter()).enumerate()
             {
-                mix_left[sample_idx] += left * gain;
-                mix_right[sample_idx] += right * gain;
+                self.mix_left[sample_idx] += left * gain;
+                self.mix_right[sample_idx] += right * gain;
             }
         }
 
         // Process effects with full block_size buffers
-        // Allocate temporary output buffers at block_size
-        let mut effect_left = vec![0.0; self.block_size];
-        let mut effect_right = vec![0.0; self.block_size];
-
         self.effect_stack
-            .process_audio(&mix_left, &mix_right, &mut effect_left, &mut effect_right);
+            .process_audio(
+                &self.mix_left,
+                &self.mix_right,
+                &mut self.effect_left,
+                &mut self.effect_right,
+            );
 
         // Apply master gain
         if master_gain != 1.0 {
-            for sample in effect_left.iter_mut() {
+            for sample in self.effect_left.iter_mut() {
                 *sample *= master_gain;
             }
-            for sample in effect_right.iter_mut() {
+            for sample in self.effect_right.iter_mut() {
                 *sample *= master_gain;
             }
         }
 
         // CRITICAL: Only copy the requested number of samples to the output
         let copy_len = output_left.len().min(self.block_size);
-        output_left[..copy_len].copy_from_slice(&effect_left[..copy_len]);
-        output_right[..copy_len].copy_from_slice(&effect_right[..copy_len]);
+        output_left[..copy_len].copy_from_slice(&self.effect_left[..copy_len]);
+        output_right[..copy_len].copy_from_slice(&self.effect_right[..copy_len]);
 
         // Zero any remaining output if output buffers are longer than what we produced
         if copy_len < output_left.len() {

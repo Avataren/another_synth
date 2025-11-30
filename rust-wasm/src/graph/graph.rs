@@ -658,7 +658,15 @@ impl AudioGraph {
         type InputsMap<'a> = FxHashMap<PortId, Vec<ModulationSource<'a>>>;
         type OutputsMap<'a> = FxHashMap<PortId, &'a mut [f32]>;
 
+        let mut required_input_indices = FxHashSet::default();
+        let mut input_indices: Vec<usize> = Vec::new();
+        let mut output_indices: Vec<usize> = Vec::new();
         'node_loop: for &node_id in &self.processing_order {
+            // Drop any borrows from the previous iteration before touching the buffer pool.
+            required_input_indices.clear();
+            input_indices.clear();
+            output_indices.clear();
+
             // Added optional loop label
             let node = match self.nodes.get(&node_id) {
                 Some(n) => n,
@@ -680,8 +688,6 @@ impl AudioGraph {
             let node_ports = node.get_ports().clone();
 
             // --- Gather Input and Output Buffer Indices ---
-            let mut required_input_indices = FxHashSet::default();
-
             // Collect required input indices
             if node_ports.contains_key(&PortId::GlobalGate) {
                 required_input_indices.insert(self.gate_buffer_idx);
@@ -695,18 +701,17 @@ impl AudioGraph {
             }
 
             // Collect output buffer indices
-            let output_indices_map: FxHashMap<PortId, usize> = node_ports
-                .iter()
-                .filter(|(_, &is_output)| is_output)
-                .filter_map(|(&port, _)| {
-                    self.node_buffers
-                        .get(&(node_id, port))
-                        .map(|&idx| (port, idx))
-                })
-                .collect();
+            let mut output_indices_map: FxHashMap<PortId, usize> = FxHashMap::default();
+            for (&port, &is_output) in node_ports.iter() {
+                if is_output {
+                    if let Some(&idx) = self.node_buffers.get(&(node_id, port)) {
+                        output_indices_map.insert(port, idx);
+                    }
+                }
+            }
 
-            let input_indices: Vec<usize> = required_input_indices.iter().copied().collect();
-            let output_indices: Vec<usize> = output_indices_map.values().copied().collect();
+            input_indices.extend(required_input_indices.iter().copied());
+            output_indices.extend(output_indices_map.values().copied());
 
             // --- Get Buffers with Zero-Copy ---
             // Get both input (immutable) and output (mutable) buffers in a single call
