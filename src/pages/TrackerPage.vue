@@ -107,7 +107,7 @@
           :current-pattern-id="currentPatternId"
           :current-sequence-index="currentSequenceIndex"
           :is-playing="isPlaying"
-          @select-pattern="trackerStore.setCurrentPatternId"
+          @select-pattern="handleSelectPattern"
           @add-pattern-to-sequence="handleAddPatternToSequence"
           @remove-pattern-from-sequence="handleRemovePatternFromSequence"
           @create-pattern="handleCreatePattern"
@@ -1322,7 +1322,7 @@ async function restartPlaybackIfActive() {
   const mode = playbackMode.value;
   const startRow = playbackRow.value;
   const song = buildPlaybackSong(mode);
-  await playbackStore.play(song, mode, startRow);
+  await playbackStore.play(song, mode, startRow, currentSequenceIndex.value);
 }
 
 function transposeSelection(semitones: number) {
@@ -1345,14 +1345,24 @@ async function handlePlayPattern() {
   clearActiveNoteTracks();
   clearTrackAudioNodes();
   const song = buildPlaybackSong('pattern');
-  await playbackStore.play(song, 'pattern', activeRow.value);
+  await playbackStore.play(
+    song,
+    'pattern',
+    activeRow.value,
+    currentSequenceIndex.value,
+  );
 }
 
 async function handlePlaySong() {
   clearActiveNoteTracks();
   clearTrackAudioNodes();
   const song = buildPlaybackSong('song');
-  await playbackStore.play(song, 'song', activeRow.value);
+  await playbackStore.play(
+    song,
+    'song',
+    activeRow.value,
+    currentSequenceIndex.value,
+  );
 }
 
 function handlePause() {
@@ -1393,7 +1403,12 @@ async function initializePlayback(
 ): Promise<boolean> {
   updateTrackAudioNodes();
   const song = buildPlaybackSong(mode);
-  return await playbackStore.loadSong(song, mode, skipIfPlaying);
+  return await playbackStore.loadSong(
+    song,
+    mode,
+    skipIfPlaying,
+    currentSequenceIndex.value,
+  );
 }
 
 // Assign the refs so wrappers can use them
@@ -1620,6 +1635,12 @@ function handleCreatePattern() {
   const newPatternId = trackerStore.createPattern();
   trackerStore.addPatternToSequence(newPatternId);
   trackerStore.setCurrentPatternId(newPatternId);
+  playbackStore.setSequenceIndex(trackerStore.sequence.length - 1);
+}
+
+function handleSelectPattern(payload: { patternId: string; index: number }) {
+  trackerStore.setCurrentPatternId(payload.patternId);
+  playbackStore.setSequenceIndex(payload.index);
 }
 
 function handleAddPatternToSequence(patternId: string) {

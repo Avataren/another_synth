@@ -100,6 +100,9 @@ export class PlaybackEngine {
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
 
+  /** Row offset for the starting sequence index */
+  private sequenceStartOffsetRows = 0;
+
   /** Position/pattern commands to process (Bxx, Dxx) */
   private pendingPosCommand: { type: 'posJump' | 'patBreak'; value: number } | null = null;
 
@@ -205,13 +208,26 @@ export class PlaybackEngine {
     this.loopSong = loop;
   }
 
-  loadSong(song: Song) {
+  loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
     // Clamp BPM to valid range in case song file has invalid value
     this.bpm = Math.max(32, Math.min(255, song.bpm));
-    this.currentSequenceIndex = 0;
+    const maxIndex = Math.max(0, song.sequence.length - 1);
+    this.currentSequenceIndex = Math.max(0, Math.min(startSequenceIndex, maxIndex));
+    this.sequenceStartOffsetRows = 0;
+    for (let i = 0; i < this.currentSequenceIndex; i += 1) {
+      const id = this.song.sequence[i];
+      this.sequenceStartOffsetRows += this.getPatternLength(id);
+    }
     if (this.song.sequence.length > 0) {
-      this.loadPattern(this.song.sequence[0] as string);
+      const patternId = this.song.sequence[this.currentSequenceIndex] as string;
+      this.loadPattern(patternId, { emitPosition: false, updatePosition: false });
+      this.position = {
+        row: 0,
+        patternId,
+        sequenceIndex: this.currentSequenceIndex
+      };
+      this.emit('position', this.position);
     }
     this.emit('state', this.state);
   }
@@ -231,6 +247,12 @@ export class PlaybackEngine {
         this.emit('position', this.position);
       }
     }
+  }
+
+  private getPatternLength(id: string | undefined): number {
+    if (!id) return this.length;
+    const pattern = this.song?.patterns.find((p) => p.id === id);
+    return pattern ? Math.max(1, pattern.length) : this.length;
   }
 
   setBpm(bpm: number) {
@@ -753,20 +775,12 @@ export class PlaybackEngine {
     const secPerRow = msPerRow / 1000;
 
     const rowsElapsed = Math.floor(elapsed / secPerRow);
-    const totalRowsPlayed = this.startRow + rowsElapsed;
+    const totalRowsPlayed = this.sequenceStartOffsetRows + this.startRow + rowsElapsed;
 
     const sequence = this.song?.sequence ?? [];
-    const patterns = this.song?.patterns ?? [];
-
-    const getPatternLength = (id: string | undefined): number => {
-      if (!id) return this.length;
-      const pattern = patterns.find((p) => p.id === id);
-      return pattern ? Math.max(1, pattern.length) : this.length;
-    };
-
     // Total rows across the full song sequence (for wrapping)
     const songLengthRows = sequence.reduce(
-      (total, id) => total + getPatternLength(id),
+      (total, id) => total + this.getPatternLength(id),
       0
     );
 
@@ -777,13 +791,13 @@ export class PlaybackEngine {
     }
 
     let patternId = sequence[0];
-    let currentPatternLength = getPatternLength(patternId);
+    let currentPatternLength = this.getPatternLength(patternId);
     let remaining = effectiveRows;
     let sequenceIndex = 0;
 
     for (let i = 0; i < sequence.length; i += 1) {
       const id = sequence[i];
-      const length = getPatternLength(id);
+      const length = this.getPatternLength(id);
       if (remaining < length) {
         patternId = id;
         currentPatternLength = length;

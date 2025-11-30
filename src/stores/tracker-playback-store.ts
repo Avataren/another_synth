@@ -65,6 +65,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
   /** Current sequence index (for song mode) */
   const currentSequenceIndex = ref(0);
+  /** Manually selected sequence index for starting playback */
+  const selectedSequenceIndex = ref<number | null>(null);
 
   /** Set of muted track indices */
   const mutedTracks = ref<Set<number>>(new Set());
@@ -80,6 +82,23 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
   /** Flag to suppress position updates during seek/stop operations */
   let suppressPositionUpdates = false;
+
+  // ============================================
+  // Selection helpers
+  // ============================================
+
+  function setSequenceIndex(index: number) {
+    const max = Math.max(0, trackerStore.sequence.length - 1);
+    const clamped = Math.max(0, Math.min(index, max));
+    selectedSequenceIndex.value = clamped;
+    currentSequenceIndex.value = clamped;
+  }
+
+  function resolveStartSequenceIndex(song: PlaybackSong): number {
+    const max = Math.max(0, song.sequence.length - 1);
+    const preferred = selectedSequenceIndex.value ?? currentSequenceIndex.value ?? 0;
+    return Math.max(0, Math.min(preferred, max));
+  }
 
   // ============================================
   // Getters
@@ -261,6 +280,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
         // Update sequence index if provided
         if (pos.sequenceIndex !== undefined) {
           currentSequenceIndex.value = pos.sequenceIndex;
+          selectedSequenceIndex.value = pos.sequenceIndex;
         }
 
         // Update current pattern if changed
@@ -294,7 +314,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    * Load a song into the engine and prepare for playback.
    * If skipIfPlaying is true and playback is active, skips reloading to preserve position.
    */
-  async function loadSong(song: PlaybackSong, mode: PlaybackMode = 'song', skipIfPlaying: boolean = false): Promise<boolean> {
+  async function loadSong(
+    song: PlaybackSong,
+    mode: PlaybackMode = 'song',
+    skipIfPlaying: boolean = false,
+    startSequenceIndex: number | null = null,
+  ): Promise<boolean> {
     console.log(`[PlaybackStore] loadSong called: mode=${mode}, skipIfPlaying=${skipIfPlaying}, isPlaying=${isPlaying.value}, isPaused=${isPaused.value}, hasSongLoaded=${hasSongLoaded.value}`);
     console.log(`[PlaybackStore] Song has ${song.sequence.length} patterns, ${song.bpm} BPM`);
 
@@ -314,7 +339,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     playbackMode.value = mode;
     engine.setLoopCurrentPattern(mode === 'pattern');
     console.log('[PlaybackStore] Loading song into engine...');
-    engine.loadSong(song);
+    const sequenceIndex = startSequenceIndex ?? resolveStartSequenceIndex(song);
+    engine.loadSong(song, sequenceIndex);
     console.log('[PlaybackStore] Preparing instruments...');
     await engine.prepareInstruments();
     hasSongLoaded.value = true;
@@ -326,9 +352,21 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   /**
    * Start playback
    */
-  async function play(song: PlaybackSong, mode: PlaybackMode, startRow: number = 0): Promise<void> {
-    console.log(`[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}`);
+  async function play(
+    song: PlaybackSong,
+    mode: PlaybackMode,
+    startRow: number = 0,
+    startSequenceIndex: number | null = null,
+  ): Promise<void> {
+    console.log(
+      `[PlaybackStore] play() called: mode=${mode}, startRow=${startRow}, startSequenceIndex=${startSequenceIndex ?? 'auto'}`,
+    );
     const songBank = getSongBank();
+
+    // Resolve and persist the starting sequence index up front so UI selection stays in sync
+    const sequenceIndex = startSequenceIndex ?? resolveStartSequenceIndex(song);
+    currentSequenceIndex.value = sequenceIndex;
+    selectedSequenceIndex.value = sequenceIndex;
 
     // Stop any existing playback
     suppressPositionUpdates = true;
@@ -351,7 +389,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     }
 
     // Load song
-    const loaded = await loadSong(song, mode);
+    const loaded = await loadSong(song, mode, false, sequenceIndex);
     if (!loaded) {
       console.warn('[PlaybackStore] Failed to load song, aborting play');
       return;
@@ -555,6 +593,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // Getters
     engine,
     isTrackAudible,
+    setSequenceIndex,
 
     // Transport
     loadSong,

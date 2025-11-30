@@ -4,18 +4,22 @@
       <div
         v-for="(patternId, index) in sequence"
         :key="`${patternId}-${index}`"
-        :ref="el => { if (index === currentSequenceIndex || patternId === currentPatternId) activeSequenceItem = el as HTMLElement | null }"
+        :ref="el => {
+          if (isItemSelected(patternId, index)) {
+            activeSequenceItem = el as HTMLElement | null;
+          }
+        }"
         class="sequence-item"
         :class="{
-          'is-selected': patternId === currentPatternId,
+          'is-selected': isItemSelected(patternId, index),
           'is-playing': index === currentSequenceIndex && isPlaying
         }"
-        @click="$emit('select-pattern', patternId)"
+        @click="handleSelect(patternId, index)"
         @dblclick.stop="startRename(patternId)"
       >
         <div class="pattern-name-wrapper">
           <div class="sequence-number">{{ index + 1 }}.</div>
-          <div class="active-indicator" v-if="patternId === currentPatternId">▶</div>
+          <div class="active-indicator" v-if="isItemSelected(patternId, index)">▶</div>
           <div class="pattern-name">
             <input
               v-if="editingPatternId === patternId"
@@ -77,7 +81,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'select-pattern', patternId: string): void;
+  (e: 'select-pattern', payload: { patternId: string; index: number }): void;
   (e: 'add-pattern-to-sequence', patternId: string): void;
   (e: 'remove-pattern-from-sequence', index: number): void;
   (e: 'create-pattern'): void;
@@ -91,6 +95,36 @@ const editingPatternId = ref<string | null>(null);
 const editingName = ref('');
 const renameInput = ref<HTMLInputElement | null>(null);
 const activeSequenceItem = ref<HTMLElement | null>(null);
+const manualSelectedIndex = ref<number | null>(null);
+
+const selectedIndex = computed<number | null>(() => {
+  if (props.isPlaying && props.currentSequenceIndex !== undefined) {
+    return props.currentSequenceIndex;
+  }
+  if (manualSelectedIndex.value !== null) {
+    return manualSelectedIndex.value;
+  }
+  if (props.currentSequenceIndex !== undefined) {
+    return props.currentSequenceIndex;
+  }
+  const idx = props.sequence.findIndex(
+    (id) => id === props.currentPatternId,
+  );
+  return idx >= 0 ? idx : null;
+});
+
+const isItemSelected = (patternId: string, index: number) => {
+  const sel = selectedIndex.value;
+  if (sel !== null) {
+    return index === sel;
+  }
+  return patternId === props.currentPatternId;
+};
+
+const handleSelect = (patternId: string, index: number) => {
+  manualSelectedIndex.value = index;
+  emit('select-pattern', { patternId, index });
+};
 
 const patternOptions = computed(() =>
   props.patterns.map((pattern) => ({
@@ -112,6 +146,27 @@ watch(() => props.currentSequenceIndex, () => {
     });
   }
 });
+
+// When playback starts, defer to the live sequence index
+watch(
+  () => props.isPlaying,
+  (playing) => {
+    if (playing) {
+      manualSelectedIndex.value = null;
+    }
+  }
+);
+
+// Keep manual selection aligned when the current pattern changes externally
+watch(
+  () => props.currentPatternId,
+  (patternId) => {
+    if (manualSelectedIndex.value !== null) return;
+    if (!patternId) return;
+    const idx = props.sequence.findIndex((id) => id === patternId);
+    manualSelectedIndex.value = idx >= 0 ? idx : null;
+  }
+);
 
 const getPatternName = (patternId: string) => {
   return props.patterns.find(p => p.id === patternId)?.name ?? 'Unknown Pattern';

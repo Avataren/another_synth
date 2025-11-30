@@ -205,15 +205,7 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
   /**
    * Resolve the sequence for the given playback mode
    */
-  function resolveSequenceForMode(mode: PlaybackMode): string[] {
-    if (mode === 'pattern') {
-      const targetId =
-        context.currentPatternId.value ??
-        context.currentPattern.value?.id ??
-        context.patterns.value[0]?.id;
-      return targetId ? [targetId] : [];
-    }
-
+  function resolveSequenceForMode(_mode: PlaybackMode): string[] {
     const validPatternIds = new Set(context.patterns.value.map((p) => p.id));
     const sanitizedSequence = context.sequence.value.filter((id) => validPatternIds.has(id));
 
@@ -221,7 +213,8 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       return sanitizedSequence;
     }
 
-    const fallback = context.currentPatternId.value ?? context.patterns.value[0]?.id;
+    const fallback =
+      context.currentPatternId.value ?? context.currentPattern.value?.id ?? context.patterns.value[0]?.id;
     return fallback ? [fallback] : [];
   }
 

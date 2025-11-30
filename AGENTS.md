@@ -1445,3 +1445,8 @@ if (canReuse) {
 ### Tracker effect routing per track (2025-05)
 
 - Scheduled pitch effects now carry a required `trackIndex` through the engine to the song bank. `ScheduledPitchHandler` signature changed to `(instrumentId, voiceIndex, frequency, time, trackIndex, rampMode?)`, and `TrackerSongBank.setVoicePitchAtTime` uses that track key to pick the last voice for the originating track before falling back to the global voice. This prevents track-agnostic `-1` updates from hitting the wrong voice. Updated call sites: `packages/tracker-playback/src/engine.ts`, `src/stores/tracker-playback-store.ts`, `src/audio/tracker/song-bank.ts`. Tests cover the track-specific fallback in `src/tests/tracker-song-bank.test.ts`.
+
+### Tracker sequence selection start index (2025-05)
+
+- Sequence selection now drives playback start: clicking a pattern sets the playback store’s `currentSequenceIndex`, and both pattern and song play start from that index. `PlaybackEngine.loadSong` accepts a start sequence index and initializes position/sequenceIndex accordingly. Pattern mode keeps the full sequence (looping the current pattern when requested) so the UI highlights only the active slot instead of the first matching pattern ID.
+- Playback start now persists the resolved sequence index before stopping/reloading the engine so the selection doesn’t jump to the first slot when hitting play; `play` in `tracker-playback-store` clamps and stores the index, then passes it into `loadSong`. The playback engine tracks a `sequenceStartOffsetRows` so `updatePosition` reports the correct sequence index when starting mid-sequence.
