@@ -253,6 +253,8 @@ export type ScheduledPitchHandler = (
   frequency: number,
   /** Audio context time */
   time: number,
+  /** Track index for routing (tracker effects) */
+  trackIndex: number,
   /** Ramp mode for smooth transitions (optional, defaults to discrete setValueAtTime) */
   rampMode?: 'linear' | 'exponential'
 ) => void;

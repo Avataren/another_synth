@@ -361,6 +361,10 @@ export class TrackerSongBank {
     }
     console.log('[SongBank] setLastVoiceForTrack: track', trackIndex, '→ voice', voiceIndex);
     byTrack.set(trackKey, voiceIndex);
+    // Also record a global last voice for this instrument (trackKey = -1) so
+    // effect-driven pitch updates without a track index can target the most
+    // recently used voice instead of all voices.
+    byTrack.set(-1, voiceIndex);
   }
 
   private peekLastVoiceForTrack(
@@ -1019,11 +1023,27 @@ export class TrackerSongBank {
     voiceIndex: number,
     frequency: number,
     time: number,
+    trackIndex: number,
     rampMode?: 'linear' | 'exponential',
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
+    if (voiceIndex < 0) {
+      const byTrack = this.lastTrackVoice.get(instrumentId);
+      if (byTrack) {
+        const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+        const trackVoice = byTrack.get(trackKey);
+        if (trackVoice !== undefined) {
+          voiceIndex = trackVoice;
+        } else {
+          const fallback = byTrack.get(-1);
+          if (fallback !== undefined) {
+            voiceIndex = fallback;
+          }
+        }
+      }
+    }
     // Ignore invalid voice indices (tracker effects may emit -1 when no voice is assigned yet).
     if (voiceIndex < 0 || voiceIndex >= active.instrument.getVoiceLimit()) return;
     active.instrument.setVoiceFrequencyAtTime(voiceIndex, frequency, time, rampMode);

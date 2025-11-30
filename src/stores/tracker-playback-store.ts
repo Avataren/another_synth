@@ -187,8 +187,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       },
 
       // Effect handlers
-      scheduledPitchHandler: (instrumentId, voiceIndex, frequency, time, rampMode) => {
-        songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time, rampMode);
+      scheduledPitchHandler: (instrumentId, voiceIndex, frequency, time, trackIndex, rampMode) => {
+        songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time, trackIndex, rampMode);
       },
       scheduledVolumeHandler: (instrumentId, voiceIndex, volume, time, rampMode) => {
         songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time, rampMode);

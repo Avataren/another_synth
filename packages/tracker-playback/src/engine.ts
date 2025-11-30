@@ -584,7 +584,14 @@ export class PlaybackEngine {
 
         // Apply tick 0 frequency if we have pitch handler
         if (this.scheduledPitchHandler && tick0Result.frequency !== undefined) {
-          this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tick0Result.frequency, time);
+          this.scheduledPitchHandler(
+            instrumentId,
+            effectState.voiceIndex,
+            tick0Result.frequency,
+            time,
+            step.trackIndex,
+            undefined
+          );
         }
 
         // Apply tick 0 volume if we have volume handler
@@ -640,6 +647,7 @@ export class PlaybackEngine {
                 effectState.voiceIndex,
                 finalFrequency,
                 endTime,
+                step.trackIndex,
                 'exponential'
               );
             }
@@ -662,7 +670,14 @@ export class PlaybackEngine {
 
               // Schedule pitch change
               if (this.scheduledPitchHandler && tickResult.frequency !== undefined) {
-                this.scheduledPitchHandler(instrumentId, effectState.voiceIndex, tickResult.frequency, tickTime);
+                this.scheduledPitchHandler(
+                  instrumentId,
+                  effectState.voiceIndex,
+                  tickResult.frequency,
+                  tickTime,
+                  step.trackIndex,
+                  undefined
+                );
               }
 
               // Schedule volume change
