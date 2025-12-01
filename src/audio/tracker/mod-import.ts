@@ -50,7 +50,17 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   const mod: ModSong = parseMod(bytes);
 
   const patterns = buildTrackerPatterns(mod);
-  const sequenceIds = patterns.map((p) => p.id);
+  // Build song sequence from the MOD order table so repeated
+  // patterns (e.g. first pattern listed twice) are preserved.
+  const sequenceIds: string[] = [];
+  const orderLength = mod.songLength || mod.orders.length;
+  for (let i = 0; i < orderLength; i++) {
+    const patIndex = mod.orders[i] ?? 0;
+    const pattern = patterns[patIndex];
+    if (pattern) {
+      sequenceIds.push(pattern.id);
+    }
+  }
 
   const { slots, songPatches } = buildInstrumentSlotsAndPatches(mod);
 
@@ -65,8 +75,8 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       patternRows: PATTERN_ROWS,
       stepSize: DEFAULT_STEP_SIZE,
       patterns,
-      sequence: sequenceIds.slice(0, mod.songLength || sequenceIds.length),
-      currentPatternId: patterns[0]?.id ?? null,
+      sequence: sequenceIds,
+      currentPatternId: sequenceIds[0] ?? patterns[0]?.id ?? null,
       instrumentSlots: slots,
       activeInstrumentId: (() => {
         const firstUsed = slots.find((s) => s.patchId);
@@ -345,6 +355,10 @@ function createSamplerPatchForSample(
     loopStart: loopEnabled ? loopStartFrames / sampleLengthFrames : 0,
     loopEnd: loopEnabled ? loopEndFrames / sampleLengthFrames : 1,
     sampleLength: sampleLengthFrames,
+    // Empirically calibrated root note for MOD import.
+    // Using a fixed root of 65 keeps most instruments (including AmegAs)
+    // close to their original ProTracker pitch; per-sample finetune is
+    // currently ignored here to avoid over-shifting bright drums.
     rootNote: 65,
     triggerMode: SamplerTriggerMode.Gate,
     active: true,
@@ -485,7 +499,10 @@ function createSamplerPatchForSample(
   };
 
   const layout: PatchLayout = {
-    voiceCount: 1,
+    // Use 4 voices per imported MOD instrument so tracker playback
+    // has enough polyphony for chords / overlaps while still feeling
+    // “Amiga-like” rather than 8‑voice polysynth.
+    voiceCount: 4,
     canonicalVoice,
     globalNodes: {},
   };

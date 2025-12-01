@@ -50,8 +50,10 @@ export interface ModSong {
   samples: ModSample[];
 }
 
-const MOD_HEADER_SIZE = 1084;
-const NUM_SAMPLES = 31;
+const PT_HEADER_SIZE = 1084;
+const PT_NUM_SAMPLES = 31;
+const ST_HEADER_SIZE = 600;
+const ST_NUM_SAMPLES = 15;
 const PATTERN_ROWS = 64;
 
 const VALID_SIGNATURES_4CH = new Set<string>([
@@ -63,11 +65,8 @@ const VALID_SIGNATURES_4CH = new Set<string>([
   '4CHN',
 ]);
 
-/**
- * Heuristic check for a 4-channel ProTracker-style MOD file.
- */
-export function looksLikeMod(buffer: Uint8Array): boolean {
-  if (buffer.byteLength < MOD_HEADER_SIZE) return false;
+function looksLikeProTrackerMod(buffer: Uint8Array): boolean {
+  if (buffer.byteLength < PT_HEADER_SIZE) return false;
   const sig = String.fromCharCode(
     buffer[1080] ?? 0,
     buffer[1081] ?? 0,
@@ -75,6 +74,66 @@ export function looksLikeMod(buffer: Uint8Array): boolean {
     buffer[1083] ?? 0,
   );
   return VALID_SIGNATURES_4CH.has(sig);
+}
+
+function looksLikeSoundtrackerMod(buffer: Uint8Array): boolean {
+  if (buffer.byteLength < ST_HEADER_SIZE) return false;
+
+  // Original Soundtracker/NoiseTracker modules have no ProTracker signature at 1080.
+  const sig = String.fromCharCode(
+    buffer[1080] ?? 0,
+    buffer[1081] ?? 0,
+    buffer[1082] ?? 0,
+    buffer[1083] ?? 0,
+  );
+  if (VALID_SIGNATURES_4CH.has(sig)) return false;
+
+  // Basic plausibility checks based on the classic 15-sample layout.
+  const view = new DataView(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength,
+  );
+
+  // Song length at offset 470 should be 1..128.
+  const songLength = buffer[470] ?? 0;
+  if (songLength < 1 || songLength > 128) return false;
+
+  // Pattern order table at 472..599, values typically 0..63.
+  let maxPatternIndex = 0;
+  for (let i = 0; i < 128; i++) {
+    const pat = buffer[472 + i] ?? 0;
+    if (pat > 63) return false;
+    if (pat > maxPatternIndex) maxPatternIndex = pat;
+  }
+
+  const numPatterns = maxPatternIndex + 1;
+  const patternSize = PATTERN_ROWS * 4 * 4; // rows * channels * 4 bytes
+  const patternDataOffset = ST_HEADER_SIZE;
+  const sampleDataOffset = patternDataOffset + numPatterns * patternSize;
+  if (sampleDataOffset > buffer.byteLength) return false;
+
+  // Sample headers: 15 samples at 20..(20+15*30)
+  let headerOffset = 20;
+  let totalSampleBytes = 0;
+  for (let i = 0; i < ST_NUM_SAMPLES; i++) {
+    const lengthWords = view.getUint16(headerOffset + 22, false);
+    const lengthBytes = lengthWords * 2;
+    totalSampleBytes += lengthBytes;
+    headerOffset += 30;
+  }
+
+  // Rough check: sample region should fit in file.
+  if (sampleDataOffset + totalSampleBytes > buffer.byteLength) return false;
+
+  return true;
+}
+
+/**
+ * Heuristic check for a 4-channel ProTracker or classic Soundtracker MOD file.
+ */
+export function looksLikeMod(buffer: Uint8Array): boolean {
+  return looksLikeProTrackerMod(buffer) || looksLikeSoundtrackerMod(buffer);
 }
 
 export function parseMod(buffer: Uint8Array): ModSong {
@@ -91,11 +150,25 @@ export function parseMod(buffer: Uint8Array): ModSong {
   // Title (0..19)
   const title = readAscii(buffer, 0, 20).trimEnd();
 
-  // Sample headers (20..20+31*30)
+  // Determine layout: ProTracker (31 samples, header at 1084) or Soundtracker (15 samples, header at 600)
+  const signature = String.fromCharCode(
+    buffer[1080] ?? 0,
+    buffer[1081] ?? 0,
+    buffer[1082] ?? 0,
+    buffer[1083] ?? 0,
+  );
+
+  const isProTracker = VALID_SIGNATURES_4CH.has(signature);
+  const numSamples = isProTracker ? PT_NUM_SAMPLES : ST_NUM_SAMPLES;
+  const headerSize = isProTracker ? PT_HEADER_SIZE : ST_HEADER_SIZE;
+  const songLengthOffset = isProTracker ? 950 : 470;
+  const ordersOffset = isProTracker ? 952 : 472;
+
+  // Sample headers
   const samples: Omit<ModSample, 'data'>[] = [];
   let headerOffset = 20;
 
-  for (let i = 0; i < NUM_SAMPLES; i++) {
+  for (let i = 0; i < numSamples; i++) {
     const name = readAscii(buffer, headerOffset, 22).trimEnd();
 
     const lengthWords = view.getUint16(headerOffset + 22, false); // big-endian
@@ -124,24 +197,17 @@ export function parseMod(buffer: Uint8Array): ModSong {
   }
 
   // Song length + order table
-  const songLength = buffer[950] ?? 1;
+  const songLength = buffer[songLengthOffset] ?? 1;
   const orders: number[] = [];
   let maxPatternIndex = 0;
   for (let i = 0; i < 128; i++) {
-    const pat = buffer[952 + i] ?? 0;
+    const pat = buffer[ordersOffset + i] ?? 0;
     orders.push(pat);
     if (pat > maxPatternIndex) maxPatternIndex = pat;
   }
   const numPatterns = maxPatternIndex + 1;
 
-  // Determine channel count from signature
-  const signature = String.fromCharCode(
-    buffer[1080] ?? 0,
-    buffer[1081] ?? 0,
-    buffer[1082] ?? 0,
-    buffer[1083] ?? 0,
-  );
-
+  // Determine channel count from signature (ProTracker variants); Soundtracker is always 4 channels.
   let numChannels = 4;
   if (signature === '6CHN') numChannels = 6;
   else if (signature === '8CHN') numChannels = 8;
@@ -153,7 +219,7 @@ export function parseMod(buffer: Uint8Array): ModSong {
   // Pattern data
   const patternSize = PATTERN_ROWS * numChannels * 4;
   const patterns: ModPattern[] = [];
-  let patternDataOffset = MOD_HEADER_SIZE;
+  let patternDataOffset = headerSize;
 
   for (let p = 0; p < numPatterns; p++) {
     const rows: ModPatternCell[][] = [];
