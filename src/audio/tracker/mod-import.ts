@@ -142,12 +142,83 @@ function modCellToTrackerEntry(
   }
 
   if (hasEffect) {
-    const cmdHex = effectCmd.toString(16).toUpperCase();
     const paramHex = effectParam.toString(16).toUpperCase().padStart(2, '0');
+    let prefix: string | undefined;
 
-    // 0xy is arpeggio; treat 000 as no-op.
-    if (!(effectCmd === 0 && effectParam === 0)) {
-      entry.macro = `${cmdHex}${paramHex}`;
+    switch (effectCmd & 0x0f) {
+      case 0x0:
+        // 0xy: Arpeggio (xy != 00)
+        if (effectParam !== 0) {
+          prefix = '0';
+        }
+        break;
+      case 0x1:
+        // 1xx: Portamento up
+        prefix = '1';
+        break;
+      case 0x2:
+        // 2xx: Portamento down
+        prefix = '2';
+        break;
+      case 0x3:
+        // 3xx: Tone portamento
+        prefix = '3';
+        break;
+      case 0x4:
+        // 4xy: Vibrato
+        prefix = '4';
+        break;
+      case 0x5:
+        // 5xy: Tone portamento + volume slide
+        prefix = '5';
+        break;
+      case 0x6:
+        // 6xy: Vibrato + volume slide
+        prefix = '6';
+        break;
+      case 0x7:
+        // 7xy: Tremolo
+        prefix = '7';
+        break;
+      case 0x8:
+        // 8xx: Set panning
+        prefix = '8';
+        break;
+      case 0x9:
+        // 9xx: Sample offset
+        prefix = '9';
+        break;
+      case 0xA:
+        // Axy: Volume slide
+        prefix = 'A';
+        break;
+      case 0xB:
+        // Bxx: Position jump
+        prefix = 'B';
+        break;
+      case 0xC:
+        // Cxx: Set volume
+        prefix = 'C';
+        break;
+      case 0xD:
+        // Dxx: Pattern break
+        prefix = 'D';
+        break;
+      case 0xE:
+        // Exy: Extended effects
+        prefix = 'E';
+        break;
+      case 0xF:
+        // Fxx: Speed/tempo
+        prefix = 'F';
+        break;
+      default:
+        prefix = undefined;
+        break;
+    }
+
+    if (prefix) {
+      entry.macro = `${prefix}${paramHex}`;
     }
   }
 
