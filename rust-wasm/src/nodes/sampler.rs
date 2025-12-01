@@ -111,6 +111,8 @@ impl Default for SampleData {
     }
 }
 
+const SAMPLER_OVERSAMPLE_FACTOR: usize = 2;
+
 /// Sampler node - plays back audio samples with pitch control and looping
 pub struct Sampler {
     // Shared sample data
@@ -217,6 +219,46 @@ impl Sampler {
 
     pub fn set_root_note(&mut self, note: f32) {
         self.sample_data.borrow_mut().root_note = note;
+    }
+
+    fn step_playhead(&mut self, step: f32, loop_start: f32, loop_end: f32, sample_len: f32) {
+        match self.loop_mode {
+            SamplerLoopMode::Off => {
+                // One-shot playback - play once and stop at the end
+                self.playhead += step;
+                if self.playhead >= sample_len {
+                    self.playhead = sample_len - 1.0;
+                    self.is_playing = false;
+                    if self.trigger_mode == SamplerTriggerMode::OneShot {
+                        self.oneshot_complete = true;
+                    }
+                } else if self.playhead < 0.0 {
+                    self.playhead = 0.0;
+                }
+            }
+            SamplerLoopMode::Loop => {
+                self.playhead += step;
+                if self.playhead >= loop_end {
+                    let overflow = self.playhead - loop_end;
+                    let loop_width = loop_end - loop_start;
+                    self.playhead = loop_start + (overflow % loop_width);
+                } else if self.playhead < loop_start {
+                    let underflow = loop_start - self.playhead;
+                    let loop_width = loop_end - loop_start;
+                    self.playhead = loop_end - (underflow % loop_width);
+                }
+            }
+            SamplerLoopMode::PingPong => {
+                self.playhead += step;
+                if self.direction > 0.0 && self.playhead >= loop_end {
+                    self.playhead = loop_end - (self.playhead - loop_end);
+                    self.direction = -1.0;
+                } else if self.direction < 0.0 && self.playhead <= loop_start {
+                    self.playhead = loop_start + (loop_start - self.playhead);
+                    self.direction = 1.0;
+                }
+            }
+        }
     }
 
     fn ensure_scratch_buffers(&mut self, size: usize) {
@@ -394,10 +436,27 @@ impl AudioNode for Sampler {
             // Calculate gain for this sample
             let gain = (self.base_gain + gain_add[i]) * gain_mult[i];
 
-            // Get sample value at current playhead
+            // Get sample value at current playhead with simple 2x oversampling
             let (left, right) = if self.is_playing {
-                let (l, r) = sample_data.get_sample_interpolated(self.playhead);
-                (l * gain, r * gain)
+                let loop_start = self.loop_start.clamp(0.0, sample_len - 1.0);
+                let loop_end = self.loop_end.clamp(loop_start + 1.0, sample_len);
+                let step = (playback_rate * self.direction) / SAMPLER_OVERSAMPLE_FACTOR as f32;
+
+                let mut acc_left = 0.0;
+                let mut acc_right = 0.0;
+
+                for _ in 0..SAMPLER_OVERSAMPLE_FACTOR {
+                    let (l, r) = sample_data.get_sample_interpolated(self.playhead);
+                    acc_left += l * gain;
+                    acc_right += r * gain;
+                    self.step_playhead(step, loop_start, loop_end, sample_len);
+                    if !self.is_playing {
+                        break;
+                    }
+                }
+
+                let factor = 1.0 / SAMPLER_OVERSAMPLE_FACTOR as f32;
+                (acc_left * factor, acc_right * factor)
             } else {
                 (0.0, 0.0)
             };
@@ -405,50 +464,6 @@ impl AudioNode for Sampler {
             // Store to scratch buffers
             self.scratch_freq_add[i] = left;
             self.scratch_freq_mult[i] = right;
-
-            // Inline playhead advancement to avoid borrow issues
-            if self.is_playing {
-                let loop_start = self.loop_start.clamp(0.0, sample_len - 1.0);
-                let loop_end = self.loop_end.clamp(loop_start + 1.0, sample_len);
-
-                match self.loop_mode {
-                    SamplerLoopMode::Off => {
-                        // One-shot playback - play once and stop at the end
-                        self.playhead += playback_rate * self.direction;
-                        if self.playhead >= sample_len {
-                            self.playhead = sample_len - 1.0;
-                            self.is_playing = false;
-                            if self.trigger_mode == SamplerTriggerMode::OneShot {
-                                self.oneshot_complete = true;
-                            }
-                        } else if self.playhead < 0.0 {
-                            self.playhead = 0.0;
-                        }
-                    }
-                    SamplerLoopMode::Loop => {
-                        self.playhead += playback_rate * self.direction;
-                        if self.playhead >= loop_end {
-                            let overflow = self.playhead - loop_end;
-                            let loop_width = loop_end - loop_start;
-                            self.playhead = loop_start + (overflow % loop_width);
-                        } else if self.playhead < loop_start {
-                            let underflow = loop_start - self.playhead;
-                            let loop_width = loop_end - loop_start;
-                            self.playhead = loop_end - (underflow % loop_width);
-                        }
-                    }
-                    SamplerLoopMode::PingPong => {
-                        self.playhead += playback_rate * self.direction;
-                        if self.direction > 0.0 && self.playhead >= loop_end {
-                            self.playhead = loop_end - (self.playhead - loop_end);
-                            self.direction = -1.0;
-                        } else if self.direction < 0.0 && self.playhead <= loop_start {
-                            self.playhead = loop_start + (loop_start - self.playhead);
-                            self.direction = 1.0;
-                        }
-                    }
-                }
-            }
         }
 
         // Copy from scratch buffers to outputs
