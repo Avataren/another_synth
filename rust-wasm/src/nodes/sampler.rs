@@ -354,11 +354,12 @@ impl AudioNode for Sampler {
         // Collect gain modulation
         let (gain_add, gain_mult) = self.collect_modulation(PortId::GainMod, inputs, buffer_size);
 
-        let sample_data = self.sample_data.borrow();
-
         // Calculate playback rate based on frequency
         // Frequency is in Hz, need to convert to playback rate
-        let sample_len = sample_data.len() as f32;
+        let sample_len = {
+            let sample_data = self.sample_data.borrow();
+            sample_data.len() as f32
+        };
 
         // Get output buffers - must split to get two mutable references
         let has_left = outputs.contains_key(&PortId::AudioOutput0);
@@ -385,8 +386,12 @@ impl AudioNode for Sampler {
 
         // Calculate the base playback rate
         // Convert MIDI note to frequency: freq = 440 * 2^((note - 69) / 12)
-        let root_freq = 440.0 * 2.0_f32.powf((sample_data.root_note - 69.0) / 12.0);
-        let sample_rate_ratio = sample_data.sample_rate / self.sample_rate;
+        let (root_freq, sample_rate_ratio) = {
+            let sample_data = self.sample_data.borrow();
+            let rf = 440.0 * 2.0_f32.powf((sample_data.root_note - 69.0) / 12.0);
+            let srr = sample_data.sample_rate / self.sample_rate;
+            (rf, srr)
+        };
 
         let global_freq_source = inputs
             .get(&PortId::GlobalFrequency)
@@ -446,7 +451,10 @@ impl AudioNode for Sampler {
                 let mut acc_right = 0.0;
 
                 for _ in 0..SAMPLER_OVERSAMPLE_FACTOR {
-                    let (l, r) = sample_data.get_sample_interpolated(self.playhead);
+                    let (l, r) = {
+                        let sample_data = self.sample_data.borrow();
+                        sample_data.get_sample_interpolated(self.playhead)
+                    };
                     acc_left += l * gain;
                     acc_right += r * gain;
                     self.step_playhead(step, loop_start, loop_end, sample_len);
@@ -509,5 +517,50 @@ impl AudioNode for Sampler {
 
     fn node_type(&self) -> &str {
         "Sampler"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::ModulationSource;
+
+    #[test]
+    fn sampler_with_default_sample_produces_output() {
+        let sample_rate = 48_000.0;
+        let mut sampler = Sampler::new(sample_rate);
+
+        // Provide a simple non-zero mono sample buffer.
+        let sample_data = Rc::new(RefCell::new(SampleData::new()));
+        {
+            let mut data = sample_data.borrow_mut();
+            // 128 frames of constant 1.0
+            data.load_from_wav(vec![1.0; 128], 1, sample_rate);
+            data.root_note = 69.0;
+        }
+        sampler.set_sample_data(sample_data);
+
+        // Prepare empty modulation/gate inputs.
+        let inputs: FxHashMap<PortId, Vec<ModulationSource<'static>>> = FxHashMap::default();
+
+        // Prepare output buffers.
+        let mut left = vec![0.0_f32; 64];
+        let mut right = vec![0.0_f32; 64];
+        let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
+        outputs.insert(PortId::AudioOutput0, &mut left[..]);
+        outputs.insert(PortId::AudioOutput1, &mut right[..]);
+
+        sampler.process(&inputs, &mut outputs, 64);
+
+        // With a constant non-zero sample and gate defaulting to 1.0,
+        // the oversampled sampler should produce non-zero output.
+        assert!(
+            left.iter().any(|&v| v.abs() > 1e-6),
+            "Left channel is entirely silent"
+        );
+        assert!(
+            right.iter().any(|&v| v.abs() > 1e-6),
+            "Right channel is entirely silent"
+        );
     }
 }
