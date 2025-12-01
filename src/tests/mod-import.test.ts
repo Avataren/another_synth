@@ -5,6 +5,7 @@ import {
   parseMod,
 } from '../../packages/tracker-playback/src/mod-parser';
 import { AudioAssetType } from 'src/audio/types/preset-types';
+import { PortId } from 'app/public/wasm/audio_processor';
 import fs from 'node:fs';
 
 function createMinimalModBuffer(): Uint8Array {
@@ -166,6 +167,50 @@ describe('MOD import bridge', () => {
     expect(asset).toBeDefined();
     if (!asset) return;
     expect(asset.type).toBe(AudioAssetType.Sample);
+
+    // Envelope: should exist and be wired to mixer gain
+    const layout = patch.synthState.layout as {
+      canonicalVoice?: {
+        nodes: Record<string, { id: string; type: string; name: string }[]>;
+        connections: {
+          fromId: string;
+          toId: string;
+          target: PortId | number;
+          amount: number;
+        }[];
+      };
+    };
+    const voice = layout.canonicalVoice;
+    expect(voice).toBeDefined();
+    if (!voice) return;
+
+    const envNodes = voice.nodes['envelope'] ?? [];
+    expect(envNodes.length).toBe(1);
+    const envId = envNodes[0]?.id;
+
+    const mixerNodes = voice.nodes['mixer'] ?? [];
+    expect(mixerNodes.length).toBe(1);
+    const mixerId = mixerNodes[0]?.id;
+
+    expect(envId).toBeDefined();
+    expect(mixerId).toBeDefined();
+    if (!envId || !mixerId) return;
+
+    const gainConns = voice.connections.filter(
+      (c) =>
+        c.fromId === envId &&
+        c.toId === mixerId &&
+        (c.target as number) === PortId.GainMod,
+    );
+    expect(gainConns.length).toBe(1);
+
+    const envState = patch.synthState.envelopes[envId];
+    expect(envState).toBeDefined();
+    if (!envState) return;
+    expect(envState.sustain).toBe(1);
+    expect(envState.release).toBe(0);
+    expect(envState.attack).toBe(0);
+    expect(envState.decay).toBe(0);
   });
 
   it('imports a real MOD file without throwing', () => {

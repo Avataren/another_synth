@@ -13,6 +13,7 @@ import {
   type SamplerState,
   type VoiceLayout,
   type PatchLayout,
+  type EnvelopeConfig,
 } from 'src/audio/types/synth-layout';
 import { PortId } from 'src/audio/types/generated/port-ids';
 import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
@@ -221,6 +222,7 @@ function createSamplerPatchForSample(
 ): Patch {
   const samplerNodeId = generateNodeId('sampler');
   const mixerNodeId = generateNodeId('mixer');
+  const envelopeNodeId = generateNodeId('envelope');
   const patchName = sample.name || `Instrument ${formatInstrumentId(sampleIndex)}`;
   const metadata = createDefaultPatchMetadata(patchName, 'Imported/MOD');
 
@@ -272,7 +274,13 @@ function createSamplerPatchForSample(
       [VoiceNodeType.Oscillator]: [],
       [VoiceNodeType.WavetableOscillator]: [],
       [VoiceNodeType.Filter]: [],
-      [VoiceNodeType.Envelope]: [],
+      [VoiceNodeType.Envelope]: [
+        {
+          id: envelopeNodeId,
+          type: VoiceNodeType.Envelope,
+          name: 'Amp Envelope',
+        },
+      ],
       [VoiceNodeType.LFO]: [],
       [VoiceNodeType.Mixer]: [
         {
@@ -330,6 +338,14 @@ function createSamplerPatchForSample(
         modulationType: 2 as WasmModulationType,
         modulationTransformation: 0 as ModulationTransformation,
       },
+      {
+        fromId: envelopeNodeId,
+        toId: mixerNodeId,
+        target: PortId.GainMod,
+        amount: 1,
+        modulationType: 0 as WasmModulationType,
+        modulationTransformation: 0 as ModulationTransformation,
+      },
     ],
   };
 
@@ -346,7 +362,19 @@ function createSamplerPatchForSample(
       oscillators: {},
       wavetableOscillators: {},
       filters: {},
-      envelopes: {},
+      envelopes: {
+        [envelopeNodeId]: {
+          id: envelopeNodeId,
+          active: true,
+          attack: 0,
+          decay: 0,
+          sustain: 1,
+          release: 0,
+          attackCurve: 0,
+          decayCurve: 0,
+          releaseCurve: 0,
+        } satisfies EnvelopeConfig,
+      },
       lfos: {},
       samplers: {
         [samplerNodeId]: samplerState,
@@ -369,7 +397,7 @@ function createSamplerPatchForSample(
   return patch;
 }
 
-function convertSampleToFloat32(sample: ModSample): Float32Array {
+export function convertSampleToFloat32(sample: ModSample): Float32Array {
   const data = sample.data;
   const floats = new Float32Array(data.length);
   for (let i = 0; i < data.length; i++) {
