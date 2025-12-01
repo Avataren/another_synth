@@ -33,7 +33,7 @@
         </div>
       </div>
 
-      <div class="tracks-wrapper" ref="tracksWrapperRef">
+      <div class="tracks-wrapper" ref="tracksWrapperRef" :style="trackWrapperStyle">
         <div class="active-row-bar" :style="activeBarStyle"></div>
         <TrackerTrack
           v-for="(track, index) in tracks"
@@ -96,6 +96,10 @@ const rowGapPx = 6;
 const headerHeightPx = 46;
 const rowHeight = `${rowHeightPx}px`;
 const headerHeight = `${headerHeightPx}px`;
+const trackWidth = computed(() => (props.showExtraEffectColumn ? '240px' : '180px'));
+const trackWrapperStyle = computed(() => ({
+  '--tracker-track-width': trackWidth.value
+}));
 const accentColor = '#4df2c5';
 const rowsList = computed(() => Array.from({ length: props.rows }, (_, idx) => idx));
 const rowRefs = ref<(HTMLElement | null)[]>([]);
@@ -237,6 +241,12 @@ watch(
 
 watch(
   () => rowsList.value.length,
+  () => measureBarWidth(),
+  { flush: 'post' }
+);
+
+watch(
+  trackWidth,
   () => measureBarWidth(),
   { flush: 'post' }
 );

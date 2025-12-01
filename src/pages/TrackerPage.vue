@@ -443,6 +443,7 @@
           ref="visualizerTracksRef"
           class="visualizer-tracks visualizer-fade"
           :class="{ ready: visualizerReady }"
+          :style="{ '--tracker-track-width': trackerTrackWidth }"
         >
           <div
             v-for="(track, index) in currentPattern?.tracks"
@@ -623,6 +624,13 @@ const isEditMode = ref(false);
 const isFullscreen = ref(false);
 const columnsPerTrack = computed(() =>
   userSettings.value.showTrackerExtraEffectColumn ? 6 : 5,
+);
+const TRACK_WIDTH_BASE = '180px';
+const TRACK_WIDTH_EXTRA_EFFECT = '240px';
+const trackerTrackWidth = computed(() =>
+  userSettings.value.showTrackerExtraEffectColumn
+    ? TRACK_WIDTH_EXTRA_EFFECT
+    : TRACK_WIDTH_BASE,
 );
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const patternAreaRef = ref<HTMLDivElement | null>(null);
@@ -1793,6 +1801,15 @@ watch(
       visualizerReady.value = false;
       teardownVisualizerScrollSync?.();
     }
+  },
+);
+
+watch(
+  () => userSettings.value.showTrackerExtraEffectColumn,
+  async () => {
+    await nextTick();
+    refreshVisualizerAlignment();
+    scrollActiveTrackIntoView();
   },
 );
 

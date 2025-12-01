@@ -242,7 +242,7 @@ function onMouseEnterRow() {
 }
 
 .tracker-entry.dual-effects {
-  grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.2fr 1.2fr;
+  grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.5fr 1.5fr;
 }
 
 .tracker-entry:hover {
