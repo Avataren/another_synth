@@ -1454,6 +1454,10 @@ if (canReuse) {
 
 - Volume effect scheduling (`ScheduledVolumeHandler`) now mirrors pitch by carrying `trackIndex`, and `SongBank.setVoiceVolumeAtTime` resolves the voice strictly by instrument + track (no global fallback) and bails when unresolved, avoiding cross-track bleed. Pitch updates also skip the global fallback when a track index is present. Relevant files: `packages/tracker-playback/src/types.ts`, `packages/tracker-playback/src/engine.ts`, `src/stores/tracker-playback-store.ts`, `src/audio/tracker/song-bank.ts`.
 
+### Tracker tone portamento landing fix (2025-05)
+
+- Tone portamento (3xx/5xx) now applies a slide on tick 0 via a shared helper so 300/500 rows don’t stop one step short; speed still reuses the last non-zero parameter. File: `packages/tracker-playback/src/effect-processor.ts`. If portamento seems to stop early again, check that tick 0 still runs a slide and that `tonePortaSpeed` memory is intact.
+
 ### Tracker sequence selection start index (2025-05)
 
 - Sequence selection now drives playback start: clicking a pattern sets the playback store’s `currentSequenceIndex`, and both pattern and song play start from that index. `PlaybackEngine.loadSong` accepts a start sequence index and initializes position/sequenceIndex accordingly. Pattern mode keeps the full sequence (looping the current pattern when requested) so the UI highlights only the active slot instead of the first matching pattern ID.
