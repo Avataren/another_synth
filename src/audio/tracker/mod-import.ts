@@ -294,6 +294,14 @@ function createSamplerPatchForSample(
   const samplerNodeId = generateNodeId('sampler');
   const mixerNodeId = generateNodeId('mixer');
   const envelopeNodeId = generateNodeId('envelope');
+  const chorusNodeId = '10000';
+  const delayNodeId = '10001';
+  const reverbNodeId = '10002';
+  const convolverNodeId = '10003';
+  const limiterNodeId = '10004';
+  const compressorNodeId = '10005';
+  const saturationNodeId = '10006';
+  const bitcrusherNodeId = '10007';
   const patchName = sample.name || `Instrument ${formatInstrumentId(sampleIndex)}`;
   const metadata = createDefaultPatchMetadata(patchName, 'Imported/MOD');
 
@@ -383,8 +391,20 @@ function createSamplerPatchForSample(
           name: 'Global Velocity',
         },
       ],
-      [VoiceNodeType.Convolver]: [],
-      [VoiceNodeType.Delay]: [],
+      [VoiceNodeType.Convolver]: [
+        {
+          id: convolverNodeId,
+          type: VoiceNodeType.Convolver,
+          name: 'Convolver',
+        },
+      ],
+      [VoiceNodeType.Delay]: [
+        {
+          id: delayNodeId,
+          type: VoiceNodeType.Delay,
+          name: 'Delay',
+        },
+      ],
       [VoiceNodeType.GateMixer]: [
         {
           id: generateNodeId('gatemixer'),
@@ -393,12 +413,48 @@ function createSamplerPatchForSample(
         },
       ],
       [VoiceNodeType.ArpeggiatorGenerator]: [],
-      [VoiceNodeType.Chorus]: [],
-      [VoiceNodeType.Limiter]: [],
-      [VoiceNodeType.Reverb]: [],
-      [VoiceNodeType.Compressor]: [],
-      [VoiceNodeType.Saturation]: [],
-      [VoiceNodeType.Bitcrusher]: [],
+      [VoiceNodeType.Chorus]: [
+        {
+          id: chorusNodeId,
+          type: VoiceNodeType.Chorus,
+          name: 'Chorus',
+        },
+      ],
+      [VoiceNodeType.Limiter]: [
+        {
+          id: limiterNodeId,
+          type: VoiceNodeType.Limiter,
+          name: 'Limiter',
+        },
+      ],
+      [VoiceNodeType.Reverb]: [
+        {
+          id: reverbNodeId,
+          type: VoiceNodeType.Reverb,
+          name: 'Reverb',
+        },
+      ],
+      [VoiceNodeType.Compressor]: [
+        {
+          id: compressorNodeId,
+          type: VoiceNodeType.Compressor,
+          name: 'Compressor',
+        },
+      ],
+      [VoiceNodeType.Saturation]: [
+        {
+          id: saturationNodeId,
+          type: VoiceNodeType.Saturation,
+          name: 'Saturation',
+        },
+      ],
+      [VoiceNodeType.Bitcrusher]: [
+        {
+          id: bitcrusherNodeId,
+          type: VoiceNodeType.Bitcrusher,
+          name: 'Bitcrusher',
+        },
+      ],
     },
     connections: [
       {
@@ -451,13 +507,75 @@ function createSamplerPatchForSample(
         [samplerNodeId]: samplerState,
       },
       glides: {},
-      convolvers: {},
-      delays: {},
-      choruses: {},
-      reverbs: {},
-      compressors: {},
-      saturations: {},
-      bitcrushers: {},
+      convolvers: {
+        [convolverNodeId]: {
+          id: convolverNodeId,
+          wetMix: 0.0,
+          active: false,
+        },
+      },
+      delays: {
+        [delayNodeId]: {
+          id: delayNodeId,
+          delayMs: 250,
+          feedback: 0.5,
+          wetMix: 0.0,
+          active: false,
+        },
+      },
+      choruses: {
+        [chorusNodeId]: {
+          id: chorusNodeId,
+          active: false,
+          baseDelayMs: 15.0,
+          depthMs: 5.0,
+          lfoRateHz: 0.5,
+          feedback: 0.3,
+          feedback_filter: 0.5,
+          mix: 0.5,
+          stereoPhaseOffsetDeg: 90.0,
+        },
+      },
+      reverbs: {
+        [reverbNodeId]: {
+          id: reverbNodeId,
+          active: false,
+          room_size: 0.95,
+          damp: 0.5,
+          wet: 0.3,
+          dry: 0.7,
+          width: 1.0,
+        },
+      },
+      compressors: {
+        [compressorNodeId]: {
+          id: compressorNodeId,
+          active: false,
+          thresholdDb: -12,
+          ratio: 4,
+          attackMs: 10,
+          releaseMs: 80,
+          makeupGainDb: 3,
+          mix: 0.5,
+        },
+      },
+      saturations: {
+        [saturationNodeId]: {
+          id: saturationNodeId,
+          active: false,
+          drive: 2.0,
+          mix: 0.5,
+        },
+      },
+      bitcrushers: {
+        [bitcrusherNodeId]: {
+          id: bitcrusherNodeId,
+          active: false,
+          bits: 12,
+          downsampleFactor: 4,
+          mix: 0.5,
+        },
+      },
       instrumentGain: 1.0,
     },
     audioAssets: {
