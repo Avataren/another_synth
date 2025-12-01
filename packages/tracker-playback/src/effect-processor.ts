@@ -129,6 +129,21 @@ export function midiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
+function resolveTonePortaSpeed(
+  state: TrackEffectState,
+  paramX: number,
+  paramY: number
+): number {
+  const value = paramX * 16 + paramY;
+  if (value > 0) {
+    state.lastTonePorta = value;
+    return value;
+  }
+  // If no new value is provided, prefer the remembered last non-zero value;
+  // fall back to the current speed so 300 continues an in-flight slide.
+  return state.lastTonePorta > 0 ? state.lastTonePorta : state.tonePortaSpeed;
+}
+
 /**
  * Convert frequency to MIDI note (fractional)
  */
@@ -215,8 +230,7 @@ export function processEffectTick0(
       break;
 
     case 'tonePorta':
-      state.tonePortaSpeed = effect.paramX * 16 + effect.paramY || state.lastTonePorta;
-      state.lastTonePorta = state.tonePortaSpeed;
+      state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
       break;
 
     case 'vibrato':
@@ -227,6 +241,7 @@ export function processEffectTick0(
 
     case 'tonePortaVol':
       // Tone porta continues, volume slide applies
+      state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
       if (effect.paramX) state.volSlideSpeed = effect.paramX;
       else if (effect.paramY) state.volSlideSpeed = -effect.paramY;
       break;

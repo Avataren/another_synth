@@ -257,28 +257,8 @@ export class PlaybackEngine {
 
       if (stepsInOrder.length === 0) continue;
 
-      // For each tone portamento row without a note, assign the next note in this track as target
-      for (let i = 0; i < stepsInOrder.length; i += 1) {
-        const step = stepsInOrder[i];
-        if (!step) continue;
-        const effect = step.effect;
-        if (!effect || effect.type !== 'tonePorta') continue;
-        if (typeof step.midi === 'number') continue; // already has an explicit note
-
-        let targetMidi: number | undefined;
-        for (let j = i + 1; j < stepsInOrder.length; j += 1) {
-          const candidate = stepsInOrder[j];
-          if (!candidate) continue;
-          if (typeof candidate.midi === 'number' && !candidate.isNoteOff) {
-            targetMidi = candidate.midi;
-            break;
-          }
-        }
-
-        if (typeof targetMidi === 'number') {
-          step.midi = targetMidi;
-        }
-      }
+      // Do not overwrite tone portamento targets for rows without notes.
+      // Continuing 3xx rows should keep sliding toward the existing target/note.
     }
   }
 
