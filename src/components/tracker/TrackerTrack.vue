@@ -18,6 +18,7 @@
           :active-column="activeColumn"
           :active-macro-nibble="activeMacroNibble"
           :interpolation-type="interpolatedRows[row] ?? undefined"
+          :show-extra-effect-column="props.showExtraEffectColumn"
           @select-cell="onSelectCell"
           @start-selection="onStartSelection"
           @hover-selection="onHoverSelection"
@@ -43,6 +44,7 @@ interface Props {
   selectionRect?: TrackerSelectionRect | null;
   visibleStartRow: number;
   visibleEndRow: number;
+  showExtraEffectColumn: boolean;
 }
 
 const props = defineProps<Props>();

@@ -188,6 +188,7 @@ function modCellToTrackerEntry(
     }
   }
 
+  let effectMacro: string | undefined;
   if (hasEffect) {
     const paramHex = effectParam.toString(16).toUpperCase().padStart(2, '0');
     let prefix: string | undefined;
@@ -265,18 +266,27 @@ function modCellToTrackerEntry(
     }
 
     if (prefix) {
-      entry.macro = `${prefix}${paramHex}`;
+      effectMacro = `${prefix}${paramHex}`;
     }
   }
 
-  // If there is a note but no existing macro/effect, add a macro command
-  // that drives macro 0 for stereo pan, using the resolved channel pan.
-  if (hasNote && !entry.macro) {
+  // Always add a macro command that drives macro 0 for stereo pan, using the
+  // resolved channel pan. This lives in the second effect column so the first
+  // column can carry the original MOD effect.
+  let panMacro: string | undefined;
+  if (hasNote) {
     const clamped = Math.max(0, Math.min(1, panNorm));
     const raw = Math.round(clamped * 255);
     const hex = raw.toString(16).toUpperCase().padStart(2, '0');
     // Use 3-char macro shorthand (Mxx) for macro 0 so it fits the tracker column.
-    entry.macro = `M${hex}`;
+    panMacro = `M${hex}`;
+  }
+
+  if (effectMacro) {
+    entry.macro = effectMacro;
+  }
+  if (panMacro) {
+    entry.macro2 = panMacro;
   }
 
   return entry;

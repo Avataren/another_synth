@@ -14,7 +14,7 @@ export interface TrackerNavigationContext {
   currentPattern: ComputedRef<TrackerPattern | undefined>;
 
   // Constants
-  columnsPerTrack: number;
+  columnsPerTrack: Ref<number>;
 
   // Functions
   clearSelection: () => void;
@@ -77,7 +77,7 @@ export function useTrackerNavigation(context: TrackerNavigationContext) {
     if (!context.currentPattern.value) return;
 
     // Special handling for macro column nibble navigation
-    if (context.activeColumn.value === 4 && delta !== 0) {
+    if ((context.activeColumn.value === 4 || context.activeColumn.value === 5) && delta !== 0) {
       const nextNibble = context.activeMacroNibble.value + delta;
       if (nextNibble >= 0 && nextNibble <= 2) {
         context.activeMacroNibble.value = nextNibble;
@@ -92,13 +92,13 @@ export function useTrackerNavigation(context: TrackerNavigationContext) {
       context.activeTrack.value =
         (context.activeTrack.value - 1 + context.currentPattern.value.tracks.length) %
         context.currentPattern.value.tracks.length;
-      context.activeColumn.value = context.columnsPerTrack - 1;
+      context.activeColumn.value = context.columnsPerTrack.value - 1;
       context.activeMacroNibble.value = 0;
       return;
     }
 
     // Wrap to next track if moving right from last column
-    if (nextColumn >= context.columnsPerTrack) {
+    if (nextColumn >= context.columnsPerTrack.value) {
       context.activeTrack.value =
         (context.activeTrack.value + 1) % context.currentPattern.value.tracks.length;
       context.activeColumn.value = 0;

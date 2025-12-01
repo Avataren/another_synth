@@ -95,40 +95,75 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       const instrumentId = context.normalizeInstrumentId(entry?.instrument) ?? ctx.instrumentId;
       const { midi, isNoteOff } = parseTrackerNoteSymbol(entry?.note);
       const volumeValue = parseTrackerVolume(entry?.volume);
-      let effectCmd = parseEffectCommand(entry?.macro);
+      const effectCmd1 = parseEffectCommand(entry?.macro);
+      const effectCmd2 = parseEffectCommand(entry?.macro2);
 
       const interpolationsAtRow = getInterpolationsForRow(row);
       const startRange = interpolationsAtRow.find((r) => r.startRow === row);
       const endRange = interpolationsAtRow.find((r) => r.endRow === row && r.startRow !== row);
 
-      if (startRange && !effectCmd) {
-        effectCmd = {
-          type: 'macro',
-          index: startRange.macroIndex,
-          value: interpolateValue(startRange, row)
-        };
-      } else if (endRange && !effectCmd) {
-        effectCmd = {
-          type: 'macro',
-          index: endRange.macroIndex,
-          value: interpolateValue(endRange, row)
-        };
-      } else if (interpolationsAtRow.length > 0 && !effectCmd) {
-        // Middle rows in the interpolation should not reset the ramp
-        effectCmd = undefined;
+      // Resolve explicit commands from both effect columns
+      const explicitMacroCmd =
+        effectCmd2?.type === 'macro'
+          ? effectCmd2
+          : effectCmd1?.type === 'macro'
+            ? effectCmd1
+            : undefined;
+
+      const explicitEffectCmd =
+        effectCmd1?.type === 'effect'
+          ? effectCmd1
+          : effectCmd2?.type === 'effect'
+            ? effectCmd2
+            : undefined;
+
+      let macroCmd = explicitMacroCmd;
+
+      // Derive macro automation from interpolation ranges only when there is
+      // no explicit macro command on this row (macro column 1 drives ramps).
+      if (!macroCmd) {
+        if (startRange) {
+          macroCmd = {
+            type: 'macro',
+            index: startRange.macroIndex,
+            value: interpolateValue(startRange, row)
+          };
+        } else if (endRange) {
+          macroCmd = {
+            type: 'macro',
+            index: endRange.macroIndex,
+            value: interpolateValue(endRange, row)
+          };
+        } else if (interpolationsAtRow.length > 0) {
+          // Middle rows in the interpolation should not reset the ramp
+          macroCmd = undefined;
+        }
+      }
+
+      // Resolve speed/tempo commands (Fxx) from both columns, preferring the
+      // first column when both are present.
+      let speedCommand: number | undefined;
+      let tempoCommand: number | undefined;
+      for (const cmd of [effectCmd1, effectCmd2]) {
+        if (!cmd) continue;
+        if (cmd.type === 'speed' && speedCommand === undefined) {
+          speedCommand = cmd.speed;
+        } else if (cmd.type === 'tempo' && tempoCommand === undefined) {
+          tempoCommand = cmd.bpm;
+        }
       }
 
       // Check if this entry has any meaningful data
-      const hasMacro = effectCmd?.type === 'macro';
-      const hasTempoEffect = effectCmd?.type === 'speed' || effectCmd?.type === 'tempo';
-      const hasEffect = effectCmd?.type === 'effect';
+      const hasMacro = macroCmd?.type === 'macro';
+      const hasTempoOrSpeed = tempoCommand !== undefined || speedCommand !== undefined;
+      const hasEffect = explicitEffectCmd?.type === 'effect';
       const hasNoteData = isNoteOff || midi !== undefined;
       const hasVolumeData = volumeValue !== undefined;
 
-      // Skip if no instrument and no effect command
-      if (!instrumentId && !hasMacro && !hasTempoEffect && !hasEffect) continue;
+      // Skip if no instrument and no effect/automation
+      if (!instrumentId && !hasMacro && !hasTempoOrSpeed && !hasEffect) continue;
       // Skip if no meaningful data at all
-      if (!hasNoteData && !hasVolumeData && !hasMacro && !hasTempoEffect && !hasEffect) continue;
+      if (!hasNoteData && !hasVolumeData && !hasMacro && !hasTempoOrSpeed && !hasEffect) continue;
 
       const step: PlaybackStep = {
         row,
@@ -155,26 +190,31 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         step.velocity = scaledVelocity;
       }
 
-      // Handle effect commands
-      if (effectCmd) {
-        if (effectCmd.type === 'macro') {
-          step.macroIndex = effectCmd.index;
-          step.macroValue = effectCmd.value;
-          if (startRange && startRange.macroIndex === effectCmd.index && row < startRange.endRow) {
-            // Single ramp across the full interpolation span
-            step.macroRamp = {
-              targetRow: startRange.endRow,
-              targetValue: startRange.endValue,
-              interpolation: startRange.interpolation ?? 'linear'
-            };
-          }
-        } else if (effectCmd.type === 'speed') {
-          step.speedCommand = effectCmd.speed;
-        } else if (effectCmd.type === 'tempo') {
-          step.tempoCommand = effectCmd.bpm;
-        } else if (effectCmd.type === 'effect') {
-          step.effect = effectCmd.effect;
+      // Handle macro automation (from explicit macro commands or interpolations)
+      if (macroCmd && macroCmd.type === 'macro') {
+        step.macroIndex = macroCmd.index;
+        step.macroValue = macroCmd.value;
+        if (startRange && startRange.macroIndex === macroCmd.index && row < startRange.endRow) {
+          // Single ramp across the full interpolation span
+          step.macroRamp = {
+            targetRow: startRange.endRow,
+            targetValue: startRange.endValue,
+            interpolation: startRange.interpolation ?? 'linear'
+          };
         }
+      }
+
+      // Handle tempo/speed commands (Fxx)
+      if (typeof speedCommand === 'number') {
+        step.speedCommand = speedCommand;
+      }
+      if (typeof tempoCommand === 'number') {
+        step.tempoCommand = tempoCommand;
+      }
+
+      // Handle FastTracker-style effect commands (non-macro)
+      if (explicitEffectCmd && explicitEffectCmd.type === 'effect') {
+        step.effect = explicitEffectCmd.effect;
       }
 
       // Update context after building step

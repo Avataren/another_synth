@@ -277,7 +277,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
    */
   function handleMacroInput(hexChar: string) {
     if (!context.isEditMode.value) return;
-    if (context.activeColumn.value !== 4) return;
+    if (context.activeColumn.value !== 4 && context.activeColumn.value !== 5) return;
     context.pushHistory();
     const char = hexChar.toUpperCase();
     const nibbleIndex = context.activeMacroNibble.value;
@@ -287,13 +287,17 @@ export function useTrackerEditing(context: TrackerEditingContext) {
 
     const row = context.activeRow.value;
     const track = context.activeTrack.value;
-    context.clearInterpolationRangeAt(row, track);
+    const isSecondColumn = context.activeColumn.value === 5;
+    if (!isSecondColumn) {
+      // Interpolation ranges are tied to the primary macro column only.
+      context.clearInterpolationRangeAt(row, track);
+    }
     updateEntryAt(row, track, (entry) => {
-      const chars = context.normalizeMacroChars(entry.macro);
+      const chars = context.normalizeMacroChars(isSecondColumn ? entry.macro2 : entry.macro);
       chars[nibbleIndex] = char;
       return {
         ...entry,
-        macro: chars.join('')
+        ...(isSecondColumn ? { macro2: chars.join('') } : { macro: chars.join('') })
       };
     });
 
@@ -303,7 +307,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
       context.activeMacroNibble.value = 0;
       advanceRowByStep();
     }
-    context.activeColumn.value = 4;
+    context.activeColumn.value = isSecondColumn ? 5 : 4;
   }
 
   /**
@@ -379,7 +383,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
    */
   function clearMacroNibble() {
     if (!context.isEditMode.value) return;
-    if (context.activeColumn.value !== 4) return;
+    if (context.activeColumn.value !== 4 && context.activeColumn.value !== 5) return;
 
     context.pushHistory();
     const row = context.activeRow.value;
@@ -387,11 +391,12 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     const nibbleIndex = context.activeMacroNibble.value;
 
     updateEntryAt(row, track, (entry) => {
-      const chars = context.normalizeMacroChars(entry.macro);
+      const isSecondColumn = context.activeColumn.value === 5;
+      const chars = context.normalizeMacroChars(isSecondColumn ? entry.macro2 : entry.macro);
       chars[nibbleIndex] = '.';
       return {
         ...entry,
-        macro: chars.join('')
+        ...(isSecondColumn ? { macro2: chars.join('') } : { macro: chars.join('') })
       };
     });
   }
@@ -402,7 +407,7 @@ export function useTrackerEditing(context: TrackerEditingContext) {
   function clearMacroField() {
     if (!context.isEditMode.value) return;
     if (!context.currentPattern.value) return;
-    if (context.activeColumn.value !== 4) return;
+    if (context.activeColumn.value !== 4 && context.activeColumn.value !== 5) return;
 
     context.pushHistory();
     const track = context.currentPattern.value.tracks[context.activeTrack.value];
@@ -413,10 +418,18 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     const entry = track.entries[idx];
     if (!entry) return;
 
-    context.clearInterpolationRangeAt(context.activeRow.value, context.activeTrack.value);
+    const updatedEntry = { ...entry } as TrackerEntryData & {
+      macro?: string;
+      macro2?: string;
+    };
 
-    const updatedEntry = { ...entry } as TrackerEntryData & { macro?: string };
-    delete updatedEntry.macro;
+    if (context.activeColumn.value === 4) {
+      // Interpolation ranges are associated with the primary macro column.
+      context.clearInterpolationRangeAt(context.activeRow.value, context.activeTrack.value);
+      delete updatedEntry.macro;
+    } else {
+      delete updatedEntry.macro2;
+    }
 
     track.entries = track.entries.map((e, i) => (i === idx ? updatedEntry : e));
     context.activeMacroNibble.value = 0;

@@ -13,6 +13,8 @@ export interface UserSettings {
   showWaveformVisualizers: boolean;
   masterVolume: number; // 0.0 to 1.0
   enableMidi: boolean;
+  /** When true, show a second effect column per tracker track. */
+  showTrackerExtraEffectColumn: boolean;
 }
 
 /**
@@ -25,7 +27,8 @@ const defaultSettings: UserSettings = {
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
   masterVolume: 0.75,
-  enableMidi: false
+  enableMidi: false,
+  showTrackerExtraEffectColumn: false
 };
 
 const STORAGE_KEY = 'synth-user-settings';

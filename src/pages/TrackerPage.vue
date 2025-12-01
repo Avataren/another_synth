@@ -79,6 +79,14 @@
             />
             <span>Auto-scroll</span>
           </label>
+          <label class="toggle toolbar-toggle">
+            <input
+              v-model="userSettings.showTrackerExtraEffectColumn"
+              type="checkbox"
+              @change="blurAndRefocusTracker"
+            />
+            <span>Dual FX cols</span>
+          </label>
           <button
             type="button"
             class="edit-mode-toggle toolbar-edit-toggle"
@@ -496,6 +504,7 @@
             :scroll-top="patternAreaScrollTop"
             :container-height="patternAreaHeight"
             :is-mouse-selecting="isMouseSelecting"
+            :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"
@@ -612,7 +621,9 @@ const activeColumn = ref(0);
 const activeMacroNibble = ref(0);
 const isEditMode = ref(false);
 const isFullscreen = ref(false);
-const columnsPerTrack = 5;
+const columnsPerTrack = computed(() =>
+  userSettings.value.showTrackerExtraEffectColumn ? 6 : 5,
+);
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const patternAreaRef = ref<HTMLDivElement | null>(null);
 const patternAreaScrollTop = ref(0);

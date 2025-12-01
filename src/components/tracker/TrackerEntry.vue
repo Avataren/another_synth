@@ -58,6 +58,24 @@
         </span>
       </span>
     </span>
+    <span
+      v-if="showExtraEffectColumn"
+      class="cell effect extra-effect"
+      :class="{ 'cell-active': activeCells[5] }"
+      data-cell="5"
+    >
+      <span class="macro-digits">
+        <span
+          v-for="(digit, idx) in cells.macro2Digits"
+          :key="idx"
+          class="macro-digit"
+          :class="{ active: activeCells[5] && activeMacroNibble === idx }"
+          :data-macro="idx"
+        >
+          {{ digit }}
+        </span>
+      </span>
+    </span>
   </div>
 </template>
 
@@ -76,6 +94,7 @@ interface Props {
   activeColumn: number;
   activeMacroNibble: number;
   interpolationType?: 'linear' | 'exponential' | undefined;
+  showExtraEffectColumn: boolean;
 }
 
 const props = defineProps<Props>();
@@ -105,7 +124,8 @@ const entryClasses = computed(() => ({
   selected: props.selected,
   'row-bar': !props.active && !props.selected && rowType.value === 'bar',
   'row-beat': !props.active && !props.selected && rowType.value === 'beat',
-  'row-sub': !props.active && !props.selected && rowType.value === 'sub'
+  'row-sub': !props.active && !props.selected && rowType.value === 'sub',
+  'dual-effects': props.showExtraEffectColumn
 }));
 
 // Default cells for empty entries - reused across empty rows (frozen to prevent reactivity overhead)
@@ -114,7 +134,8 @@ const DEFAULT_CELLS = Object.freeze({
   instrument: Object.freeze({ display: '..', className: 'instrument' }),
   volumeHi: Object.freeze({ display: '.', className: 'volume volume-high' }),
   volumeLo: Object.freeze({ display: '.', className: 'volume volume-low' }),
-  macroDigits: Object.freeze(['.', '.', '.'])
+  macroDigits: Object.freeze(['.', '.', '.']),
+  macro2Digits: Object.freeze(['.', '.', '.'])
 });
 
 // Process cells only when entry exists - optimized to avoid unnecessary string operations
@@ -123,6 +144,8 @@ function processCells(entry: TrackerEntryData) {
   const volPadded = volume.length >= 2 ? volume : (volume + '..').slice(0, 2);
   const macro = entry.macro ?? '...';
   const macroPadded = macro.length >= 3 ? macro : (macro + '...').slice(0, 3);
+  const macro2 = entry.macro2 ?? '...';
+  const macro2Padded = macro2.length >= 3 ? macro2 : (macro2 + '...').slice(0, 3);
 
   let noteDisplay = '---';
   if (entry.note) {
@@ -136,7 +159,8 @@ function processCells(entry: TrackerEntryData) {
     instrument: { display: entry.instrument ?? '..', className: 'instrument' },
     volumeHi: { display: volPadded[0] ?? '.', className: 'volume volume-high' },
     volumeLo: { display: volPadded[1] ?? '.', className: 'volume volume-low' },
-    macroDigits: [macroPadded[0] ?? '.', macroPadded[1] ?? '.', macroPadded[2] ?? '.']
+    macroDigits: [macroPadded[0] ?? '.', macroPadded[1] ?? '.', macroPadded[2] ?? '.'],
+    macro2Digits: [macro2Padded[0] ?? '.', macro2Padded[1] ?? '.', macro2Padded[2] ?? '.']
   };
 }
 
@@ -148,10 +172,10 @@ const cells = computed(() => {
 // Pre-compute active cell states to avoid repeated function calls in template
 const activeCells = computed(() => {
   if (!isActiveTrack.value || !props.active) {
-    return [false, false, false, false, false];
+    return [false, false, false, false, false, false];
   }
   const col = props.activeColumn;
-  return [col === 0, col === 1, col === 2, col === 3, col === 4];
+  return [col === 0, col === 1, col === 2, col === 3, col === 4, col === 5];
 });
 
 // Event delegation handler - single click handler for all cells
@@ -162,7 +186,9 @@ function handleClick(event: MouseEvent) {
   const macroAttr = target.dataset.macro;
   if (macroAttr !== undefined) {
     const macroNibble = parseInt(macroAttr, 10);
-    emit('selectCell', { row: props.rowIndex, column: 4, trackIndex: props.trackIndex, macroNibble });
+    const cellAttr = target.closest('[data-cell]')?.getAttribute('data-cell');
+    const column = cellAttr !== undefined && cellAttr !== null ? parseInt(cellAttr, 10) : 4;
+    emit('selectCell', { row: props.rowIndex, column, trackIndex: props.trackIndex, macroNibble });
     return;
   }
 
@@ -213,6 +239,10 @@ function onMouseEnterRow() {
   will-change: auto;
   /* Prevent layout shifts */
   box-sizing: border-box;
+}
+
+.tracker-entry.dual-effects {
+  grid-template-columns: 1.6fr 1fr 0.35fr 0.35fr 1.2fr 1.2fr;
 }
 
 .tracker-entry:hover {

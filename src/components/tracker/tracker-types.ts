@@ -4,6 +4,8 @@ export interface TrackerEntryData {
   instrument?: string;
   volume?: string;
   macro?: string;
+  /** Optional second effect/macro column for the tracker row */
+  macro2?: string;
 }
 
 export interface TrackerInterpolationRange {

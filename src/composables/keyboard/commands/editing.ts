@@ -50,8 +50,8 @@ export const editingCommands: KeyboardCommand[] = [
   },
   {
     key: 'Delete',
-    columnFilter: 4,
-    description: 'Clear macro field',
+    columnFilter: [4, 5],
+    description: 'Clear effect field',
     category: 'editing',
     handler: (ctx) => {
       ctx.clearMacroField();
@@ -94,7 +94,7 @@ export function createHexInputCommands(): KeyboardCommand[] {
     // Lowercase version
     commands.push({
       key: hexChar.toLowerCase(),
-      columnFilter: [2, 3, 4],
+      columnFilter: [2, 3, 4, 5],
       description: `Enter hex digit ${hexChar}`,
       category: 'editing',
       handler: (ctx, event) => {
@@ -112,7 +112,7 @@ export function createHexInputCommands(): KeyboardCommand[] {
     if (hexChar !== hexChar.toLowerCase()) {
       commands.push({
         key: hexChar,
-        columnFilter: [2, 3, 4],
+        columnFilter: [2, 3, 4, 5],
         description: `Enter hex digit ${hexChar}`,
         category: 'editing',
         handler: (ctx, event) => {
@@ -133,7 +133,7 @@ export function createHexInputCommands(): KeyboardCommand[] {
     const lower = letter.toLowerCase();
     commands.push({
       key: lower,
-      columnFilter: 4,
+      columnFilter: [4, 5],
       description: `Enter effect letter ${letter}`,
       category: 'editing',
       handler: (ctx, event) => {
@@ -145,7 +145,7 @@ export function createHexInputCommands(): KeyboardCommand[] {
 
     commands.push({
       key: letter,
-      columnFilter: 4,
+      columnFilter: [4, 5],
       description: `Enter effect letter ${letter}`,
       category: 'editing',
       handler: (ctx, event) => {

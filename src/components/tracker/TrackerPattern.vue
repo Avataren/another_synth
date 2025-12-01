@@ -48,6 +48,7 @@
           :selection-rect="selectionRect"
           :visible-start-row="visibleRange.startRow"
           :visible-end-row="visibleRange.endRow"
+          :show-extra-effect-column="showExtraEffectColumn"
           @rowSelected="selectRow"
           @cellSelected="selectCell"
           @startSelection="startSelection"
@@ -78,6 +79,7 @@ interface Props {
   scrollTop: number;
   containerHeight: number;
   isMouseSelecting: boolean;
+  showExtraEffectColumn: boolean;
 }
 
 const props = defineProps<Props>();
