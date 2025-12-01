@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import type { JSZipObject } from 'jszip';
 import type { TrackerSongFile, useTrackerStore } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
+import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-import';
 
 /**
  * File picker types for File System Access API
@@ -104,8 +105,12 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
         (await anyWindow.showOpenFilePicker({
           types: [
             {
-              description: 'Chord Mod Song',
-              accept: { 'application/json': ['.cmod', '.json'] }
+              description: 'Chord Mod Song / MOD Module',
+              accept: {
+                'application/json': ['.cmod', '.json'],
+                'audio/x-mod': ['.mod'],
+                'audio/mod': ['.mod']
+              }
             }
           ],
           multiple: false
@@ -118,7 +123,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     return await new Promise<ArrayBuffer | null>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.cmod,application/json,.json';
+      input.accept = '.cmod,application/json,.json,.mod';
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) {
@@ -165,9 +170,14 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       if (!data) return;
 
       const buffer = new Uint8Array(data);
-      let text: string;
+
+      // Set flag to prevent watcher interference during explicit load
+      context.isLoadingSong.value = true;
+
+      let songFile: TrackerSongFile;
 
       if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+        // .cmod ZIP container
         const zip = await JSZip.loadAsync(buffer);
         const fileNames = Object.keys(zip.files);
         if (fileNames.length === 0) {
@@ -184,16 +194,17 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
         if (!zipFile) {
           throw new Error('No JSON file found in song archive');
         }
-        text = await zipFile.async('string');
+        const text = await zipFile.async('string');
+        songFile = JSON.parse(text) as TrackerSongFile;
+      } else if (looksLikeMod(buffer)) {
+        // Raw Amiga-style MOD module
+        songFile = importModToTrackerSong(data);
       } else {
+        // Plain JSON .cmod/.json file
         const decoder = new TextDecoder('utf-8');
-        text = decoder.decode(buffer);
+        const text = decoder.decode(buffer);
+        songFile = JSON.parse(text) as TrackerSongFile;
       }
-
-      const parsed = JSON.parse(text) as TrackerSongFile;
-
-      // Set flag to prevent watcher interference during explicit load
-      context.isLoadingSong.value = true;
 
       // Stop playback before loading new song to cleanup audio nodes
       console.log('[FileIO] Stopping playback before load');
@@ -204,7 +215,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
 
       // Load song data and rebuild instruments
       console.log('[FileIO] Loading song data');
-      context.trackerStore.loadSongFile(parsed);
+      context.trackerStore.loadSongFile(songFile);
       context.ensureActiveInstrument();
 
       console.log('[FileIO] Syncing song bank from slots');
