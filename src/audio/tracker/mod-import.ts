@@ -294,9 +294,9 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
     slot.patchName = patch.metadata.name;
     slot.instrumentName = patch.metadata.name;
     slot.source = 'song';
-
-    const normalizedVolume = Math.max(0, Math.min(2, sampleMeta.volume / 32));
-    slot.volume = normalizedVolume;
+    // Let samplerState.gain carry the ProTracker sample volume; keep
+    // slot volume at unity so we don't double-scale loud instruments.
+    slot.volume = 1.0;
 
     songPatches[patch.metadata.id] = patch;
   }
@@ -346,7 +346,8 @@ function createSamplerPatchForSample(
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    gain: Math.max(0, Math.min(2, sample.volume / 64)),
+    // Map ProTracker sample volume 0..64 directly into 0..1 sampler gain.
+    gain: Math.max(0, Math.min(1, sample.volume / 64)),
     detune_oct: 0,
     detune_semi: 0,
     detune_cents: 0,
