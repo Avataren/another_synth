@@ -566,6 +566,52 @@ export class TrackerSongBank {
     }
   }
 
+  /**
+   * Gate off any voices currently playing on this track for other instruments.
+   *
+   * Classic tracker channels are effectively monophonic: starting a note on a
+   * track should stop whatever was previously playing there, regardless of
+   * which instrument it came from. This helper scans the cross-instrument
+   * trackVoices map and gates off all voices on the given track for any
+   * instrument except the one currently being triggered.
+   */
+  private gateOffOtherInstrumentsForTrack(
+    excludingInstrumentId: string,
+    trackIndex: number | undefined,
+    time: number,
+  ) {
+    if (!Number.isFinite(trackIndex as number)) return;
+    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+    const now = this.audioContext.currentTime;
+
+    for (const [instrumentId, active] of this.instruments.entries()) {
+      if (instrumentId === excludingInstrumentId) continue;
+      const byTrack = this.trackVoices.get(instrumentId);
+      const voices = byTrack?.get(trackKey);
+      if (!voices || voices.size === 0) continue;
+
+      const instrument = active.instrument;
+      const gateLead = this.getGateLeadTime(instrument);
+      let gateTime = time - gateLead;
+
+      if (gateTime < now) {
+        gateTime = now + 0.001;
+      }
+      if (gateTime >= time) {
+        gateTime = Math.max(now + 0.001, time - 0.003);
+      }
+
+      for (const voiceIndex of voices) {
+        instrument.gateOffVoiceAtTime(voiceIndex, gateTime);
+      }
+
+      // Clear voice tracking for this track/instrument combo so later
+      // portamento/volume effects don't try to target a dead voice.
+      voices.clear();
+      this.clearLastVoiceForTrack(instrumentId, trackIndex);
+    }
+  }
+
   /** Return a small lead time (seconds) to drop the gate before retriggering. */
   private getGateLeadTime(instrument: InstrumentV2): number {
     // Ensure at least one quantum of gate-low so the automation frame sees the edge.
@@ -636,6 +682,8 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     const now = this.audioContext.currentTime;
+    // Ensure per-track mono behaviour across instruments on this track
+    this.gateOffOtherInstrumentsForTrack(instrumentId, trackIndex, now);
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, now);
     const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now, {
       allowDuplicate: true,
@@ -942,6 +990,9 @@ export class TrackerSongBank {
     const scheduledTime =
       time < now ? now + MIN_SCHEDULE_LEAD_SECONDS : time;
     console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'note', midi, 'time', scheduledTime.toFixed(3) + 's');
+    // First, clear any lingering voices on this track from other instruments,
+    // then gate off the previous voice for this instrument/track.
+    this.gateOffOtherInstrumentsForTrack(instrumentId, trackIndex, scheduledTime);
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
     const voiceIndex = active.instrument.noteOnAtTime(
       midi,

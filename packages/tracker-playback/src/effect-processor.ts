@@ -202,7 +202,7 @@ export function processEffectTick0(
     return result;
   }
 
-  // Handle effect parameters (use memory if param is 0)
+  // Handle effect parameters (use memory if param is 0 where applicable)
   switch (effect.type) {
     case 'portaUp':
       state.portamentoSpeed = effect.paramX * 16 + effect.paramY || state.lastPortaUp;
@@ -252,11 +252,27 @@ export function processEffectTick0(
       result.frequency = state.currentFrequency;
       break;
 
-    case 'volSlide':
-      if (effect.paramX) state.volSlideSpeed = effect.paramX / 64; // Fine adjustment
-      else if (effect.paramY) state.volSlideSpeed = -effect.paramY / 64;
-      state.lastVolSlide = (effect.paramX << 4) | effect.paramY;
+    case 'volSlide': {
+      // Distinguish between normal Axy volume slide and fine EAx/EBx slides.
+      if (effect.extSubtype === 'fineVolUp') {
+        // EAx: Fine volume slide up (tick 0 only, x = amount)
+        const amount = effect.paramY / 64;
+        state.currentVolume = Math.max(0, Math.min(1, state.currentVolume + amount));
+        result.volume = state.currentVolume;
+        // Do not alter volSlideSpeed / lastVolSlide so Axy memory stays intact.
+      } else if (effect.extSubtype === 'fineVolDown') {
+        // EBx: Fine volume slide down (tick 0 only, x = amount)
+        const amount = effect.paramY / 64;
+        state.currentVolume = Math.max(0, Math.min(1, state.currentVolume - amount));
+        result.volume = state.currentVolume;
+      } else {
+        // Axy: Per-tick volume slide (x=up, y=down)
+        if (effect.paramX) state.volSlideSpeed = effect.paramX / 64; // Fine adjustment
+        else if (effect.paramY) state.volSlideSpeed = -effect.paramY / 64;
+        state.lastVolSlide = (effect.paramX << 4) | effect.paramY;
+      }
       break;
+    }
 
     case 'setVolume':
       // Cxx: Set volume (00-40 in FT2, we scale to 0-1)
@@ -460,6 +476,10 @@ export function processEffectTickN(
       break;
 
     case 'volSlide':
+      // Skip per-tick processing for EAx/EBx fine slides – they are tick-0 only.
+      if (effect.extSubtype === 'fineVolUp' || effect.extSubtype === 'fineVolDown') {
+        break;
+      }
       state.currentVolume = Math.max(0, Math.min(1, state.currentVolume + state.volSlideSpeed));
       result.volume = state.currentVolume;
       break;

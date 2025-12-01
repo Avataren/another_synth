@@ -1,6 +1,13 @@
 import { uid } from 'quasar';
-import type { TrackerSongFile, TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
-import type { TrackerTrackData, TrackerEntryData } from 'src/components/tracker/tracker-types';
+import type {
+  TrackerSongFile,
+  TrackerPattern,
+  InstrumentSlot,
+} from 'src/stores/tracker-store';
+import type {
+  TrackerTrackData,
+  TrackerEntryData,
+} from 'src/components/tracker/tracker-types';
 import {
   type Patch,
   AudioAssetType,
@@ -16,7 +23,10 @@ import {
   type EnvelopeConfig,
 } from 'src/audio/types/synth-layout';
 import { PortId } from 'src/audio/types/generated/port-ids';
-import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
+import type {
+  ModulationTransformation,
+  WasmModulationType,
+} from 'app/public/wasm/audio_processor';
 import { encodeFloat32ArrayToBase64 } from 'src/audio/serialization/audio-asset-encoder';
 import {
   looksLikeMod as looksLikeModInternal,
@@ -188,27 +198,27 @@ function modCellToTrackerEntry(
         // 9xx: Sample offset
         prefix = '9';
         break;
-      case 0xA:
+      case 0xa:
         // Axy: Volume slide
         prefix = 'A';
         break;
-      case 0xB:
+      case 0xb:
         // Bxx: Position jump
         prefix = 'B';
         break;
-      case 0xC:
+      case 0xc:
         // Cxx: Set volume
         prefix = 'C';
         break;
-      case 0xD:
+      case 0xd:
         // Dxx: Pattern break
         prefix = 'D';
         break;
-      case 0xE:
+      case 0xe:
         // Exy: Extended effects
         prefix = 'E';
         break;
-      case 0xF:
+      case 0xf:
         // Fxx: Speed/tempo
         prefix = 'F';
         break;
@@ -275,10 +285,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
     slot.instrumentName = patch.metadata.name;
     slot.source = 'song';
 
-    const normalizedVolume = Math.max(
-      0,
-      Math.min(2, sampleMeta.volume / 32),
-    );
+    const normalizedVolume = Math.max(0, Math.min(2, sampleMeta.volume / 32));
     slot.volume = normalizedVolume;
 
     songPatches[patch.metadata.id] = patch;
@@ -302,7 +309,8 @@ function createSamplerPatchForSample(
   const compressorNodeId = '10005';
   const saturationNodeId = '10006';
   const bitcrusherNodeId = '10007';
-  const patchName = sample.name || `Instrument ${formatInstrumentId(sampleIndex)}`;
+  const patchName =
+    sample.name || `Instrument ${formatInstrumentId(sampleIndex)}`;
   const metadata = createDefaultPatchMetadata(patchName, 'Imported/MOD');
 
   const floatData = convertSampleToFloat32(sample);
@@ -337,7 +345,7 @@ function createSamplerPatchForSample(
     loopStart: loopEnabled ? loopStartFrames / sampleLengthFrames : 0,
     loopEnd: loopEnabled ? loopEndFrames / sampleLengthFrames : 1,
     sampleLength: sampleLengthFrames,
-    rootNote: 60,
+    rootNote: 65,
     triggerMode: SamplerTriggerMode.Gate,
     active: true,
     sampleRate: DEFAULT_SAMPLE_RATE,

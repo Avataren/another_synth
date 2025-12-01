@@ -11,6 +11,7 @@ import {
   type PlaybackNoteHandler,
   type ScheduledNoteHandler,
   type ScheduledNoteEvent,
+  type Step,
   type Song,
   type TransportState,
   type ScheduledAutomationHandler,
@@ -208,8 +209,85 @@ export class PlaybackEngine {
     this.loopSong = loop;
   }
 
+  /**
+   * Precompute tone portamento targets (3xx) across the full song sequence.
+   *
+   * For rows that have a 3xx effect but no note, ProTracker players often
+   * slide towards the next note in the same track, even when that note
+   * lives in the next pattern. To approximate this, we scan forward along
+   * the song's sequence and, for such rows, fill in `step.midi` with the
+   * MIDI value of the next note-on in that track. The playback engine then
+   * treats that MIDI value as the portamento target without retriggering
+   * the note (since tonePorta rows never schedule a new note-on).
+   */
+  private precomputeTonePortaTargets(): void {
+    if (!this.song) return;
+    const song = this.song;
+
+    // Build quick lookup for patterns by id
+    const patternsById = new Map<string, Pattern>();
+    for (const pattern of song.patterns) {
+      patternsById.set(pattern.id, pattern);
+    }
+
+    // Determine maximum track count across all patterns
+    let maxTracks = 0;
+    for (const pattern of song.patterns) {
+      if (pattern.tracks.length > maxTracks) {
+        maxTracks = pattern.tracks.length;
+      }
+    }
+
+      // For each track index, walk through the song sequence and collect steps
+      for (let trackIndex = 0; trackIndex < maxTracks; trackIndex += 1) {
+        const stepsInOrder: Step[] = [];
+
+      for (const patternId of song.sequence) {
+        const pattern = patternsById.get(patternId);
+        if (!pattern) continue;
+        const track = pattern.tracks[trackIndex];
+        if (!track || !track.steps || track.steps.length === 0) continue;
+
+        // Ensure steps are processed in row order within each pattern
+        const sortedSteps = [...track.steps].sort((a, b) => a.row - b.row);
+        for (const step of sortedSteps) {
+          stepsInOrder.push(step);
+        }
+      }
+
+      if (stepsInOrder.length === 0) continue;
+
+      // For each tone portamento row without a note, assign the next note in this track as target
+      for (let i = 0; i < stepsInOrder.length; i += 1) {
+        const step = stepsInOrder[i];
+        if (!step) continue;
+        const effect = step.effect;
+        if (!effect || effect.type !== 'tonePorta') continue;
+        if (typeof step.midi === 'number') continue; // already has an explicit note
+
+        let targetMidi: number | undefined;
+        for (let j = i + 1; j < stepsInOrder.length; j += 1) {
+          const candidate = stepsInOrder[j];
+          if (!candidate) continue;
+          if (typeof candidate.midi === 'number' && !candidate.isNoteOff) {
+            targetMidi = candidate.midi;
+            break;
+          }
+        }
+
+        if (typeof targetMidi === 'number') {
+          step.midi = targetMidi;
+        }
+      }
+    }
+  }
+
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
+    // Precompute tone portamento targets (3xx) across the full sequence so
+    // rows with 3xx but no note can still slide towards the next note in
+    // the same track, even when it lives in the next pattern.
+    this.precomputeTonePortaTargets();
     // Clamp BPM to valid range in case song file has invalid value
     this.bpm = Math.max(32, Math.min(255, song.bpm));
     const maxIndex = Math.max(0, song.sequence.length - 1);
@@ -585,9 +663,10 @@ export class PlaybackEngine {
 
         // Schedule note on tick 0 (unless delayed or tone portamento without new note)
         if (!hasNoteDelay && newNote !== undefined) {
-          // For tone portamento, we update frequency but don't retrigger
-          const isTonePortaContinue = (step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol')
-            && effectState.voiceIndex >= 0;
+          // For tone portamento (3xx / 5xy), ProTracker-style behavior is to slide
+          // the existing note towards the new one without retriggering the sample.
+          const isTonePortaContinue =
+            step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol';
 
           if (!isTonePortaContinue) {
             const velocity = Number.isFinite(newVelocity) ? newVelocity as number : 127;
