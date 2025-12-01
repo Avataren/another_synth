@@ -1442,9 +1442,17 @@ if (canReuse) {
 
 - Entering the song instrument editor now immediately seeds macro routes from the patch (`macroStore.setFromPatch`) before applying the patch; this prevents the macros panel from appearing empty on first open when using a live song-bank instrument (skipLoadPatch path). Added a regression test in `tests/macro-routing.test.ts` to ensure applying a patch (even with `skipLoadPatch`) populates `macroStore.routes`.
 
+### MOD import sampler gain default (2025-05)
+
+- Some `.MOD` files ship sample headers with volume `0` even though the sample is used; importing them left sampler gain at 0 and muted the instrument. `src/audio/tracker/mod-import.ts` now resolves sampler gain via `resolveSamplerGain`, defaulting to 1.0 when the header volume is zero/non-finite while still respecting explicit volumes > 0.
+
 ### Tracker effect routing per track (2025-05)
 
 - Scheduled pitch effects now carry a required `trackIndex` through the engine to the song bank. `ScheduledPitchHandler` signature changed to `(instrumentId, voiceIndex, frequency, time, trackIndex, rampMode?)`, and `TrackerSongBank.setVoicePitchAtTime` uses that track key to pick the last voice for the originating track before falling back to the global voice. This prevents track-agnostic `-1` updates from hitting the wrong voice. Updated call sites: `packages/tracker-playback/src/engine.ts`, `src/stores/tracker-playback-store.ts`, `src/audio/tracker/song-bank.ts`. Tests cover the track-specific fallback in `src/tests/tracker-song-bank.test.ts`.
+
+### Tracker effect isolation (2025-05)
+
+- Volume effect scheduling (`ScheduledVolumeHandler`) now mirrors pitch by carrying `trackIndex`, and `SongBank.setVoiceVolumeAtTime` resolves the voice strictly by instrument + track (no global fallback) and bails when unresolved, avoiding cross-track bleed. Pitch updates also skip the global fallback when a track index is present. Relevant files: `packages/tracker-playback/src/types.ts`, `packages/tracker-playback/src/engine.ts`, `src/stores/tracker-playback-store.ts`, `src/audio/tracker/song-bank.ts`.
 
 ### Tracker sequence selection start index (2025-05)
 

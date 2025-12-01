@@ -1080,24 +1080,25 @@ export class TrackerSongBank {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    if (voiceIndex < 0) {
+    let resolvedVoice = voiceIndex;
+    if (resolvedVoice < 0) {
       const byTrack = this.lastTrackVoice.get(instrumentId);
       if (byTrack) {
         const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
         const trackVoice = byTrack.get(trackKey);
         if (trackVoice !== undefined) {
-          voiceIndex = trackVoice;
-        } else {
+          resolvedVoice = trackVoice;
+        } else if (!Number.isFinite(trackIndex)) {
           const fallback = byTrack.get(-1);
           if (fallback !== undefined) {
-            voiceIndex = fallback;
+            resolvedVoice = fallback;
           }
         }
       }
     }
     // Ignore invalid voice indices (tracker effects may emit -1 when no voice is assigned yet).
-    if (voiceIndex < 0 || voiceIndex >= active.instrument.getVoiceLimit()) return;
-    active.instrument.setVoiceFrequencyAtTime(voiceIndex, frequency, time, rampMode);
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
+    active.instrument.setVoiceFrequencyAtTime(resolvedVoice, frequency, time, rampMode);
   }
 
   /**
@@ -1109,12 +1110,31 @@ export class TrackerSongBank {
     voiceIndex: number,
     volume: number,
     time: number,
+    trackIndex: number,
     rampMode?: 'linear' | 'exponential',
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    active.instrument.setVoiceGainAtTime(voiceIndex, volume, time, rampMode);
+    let resolvedVoice = voiceIndex;
+    if (resolvedVoice < 0) {
+      const byTrack = this.lastTrackVoice.get(instrumentId);
+      if (byTrack) {
+        const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+        const trackVoice = byTrack.get(trackKey);
+        if (trackVoice !== undefined) {
+          resolvedVoice = trackVoice;
+        } else if (!Number.isFinite(trackIndex)) {
+          const fallback = byTrack.get(-1);
+          if (fallback !== undefined) {
+            resolvedVoice = fallback;
+          }
+        }
+      }
+    }
+    // Ignore invalid voice indices to avoid affecting all voices inadvertently.
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
+    active.instrument.setVoiceGainAtTime(resolvedVoice, volume, time, rampMode);
   }
 
   /**

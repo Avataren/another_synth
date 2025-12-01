@@ -41,6 +41,17 @@ const DEFAULT_STEP_SIZE = 1;
 const MAX_SLOTS = 25;
 const DEFAULT_SAMPLE_RATE = 44100;
 
+function resolveSamplerGain(sample: ModSample): number {
+  const normalized = sample.volume / 64;
+  if (Number.isFinite(normalized) && normalized > 0) {
+    return Math.min(1, normalized);
+  }
+  // Some MODs ship with a zeroed volume in the sample header even though the
+  // instrument is meant to play (volume commands are used later). Default to
+  // unity so imported patches aren't silent.
+  return 1;
+}
+
 export const looksLikeMod = looksLikeModInternal;
 
 export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
@@ -394,8 +405,9 @@ function createSamplerPatchForSample(
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    // Map ProTracker sample volume 0..64 directly into 0..1 sampler gain.
-    gain: Math.max(0, Math.min(1, sample.volume / 64)),
+    // Map ProTracker sample volume 0..64 directly into 0..1 sampler gain, but
+    // treat missing/zero volumes as unity so valid samples aren't muted.
+    gain: resolveSamplerGain(sample),
     detune_oct: 0,
     detune_semi: 0,
     detune_cents: 0,

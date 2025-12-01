@@ -209,8 +209,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       scheduledPitchHandler: (instrumentId, voiceIndex, frequency, time, trackIndex, rampMode) => {
         songBank.setVoicePitchAtTime(instrumentId, voiceIndex, frequency, time, trackIndex, rampMode);
       },
-      scheduledVolumeHandler: (instrumentId, voiceIndex, volume, time, rampMode) => {
-        songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time, rampMode);
+      scheduledVolumeHandler: (instrumentId, voiceIndex, volume, time, trackIndex, rampMode) => {
+        songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time, trackIndex, rampMode);
       },
       scheduledRetriggerHandler: (instrumentId, midi, velocity, time) => {
         songBank.retriggerNoteAtTime(instrumentId, midi, velocity, time);

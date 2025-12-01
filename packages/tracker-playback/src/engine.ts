@@ -697,7 +697,14 @@ export class PlaybackEngine {
 
         // Apply tick 0 volume if we have volume handler
         if (this.scheduledVolumeHandler && tick0Result.volume !== undefined) {
-          this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tick0Result.volume, time);
+          this.scheduledVolumeHandler(
+            instrumentId,
+            effectState.voiceIndex,
+            tick0Result.volume,
+            time,
+            step.trackIndex,
+            undefined
+          );
         }
 
         // Handle volume automation (Cxx or step velocity)
@@ -760,6 +767,7 @@ export class PlaybackEngine {
                 effectState.voiceIndex,
                 finalVolume,
                 endTime,
+                step.trackIndex,
                 'linear'
               );
             }
@@ -783,7 +791,14 @@ export class PlaybackEngine {
 
               // Schedule volume change
               if (this.scheduledVolumeHandler && tickResult.volume !== undefined) {
-                this.scheduledVolumeHandler(instrumentId, effectState.voiceIndex, tickResult.volume, tickTime);
+                this.scheduledVolumeHandler(
+                  instrumentId,
+                  effectState.voiceIndex,
+                  tickResult.volume,
+                  tickTime,
+                  step.trackIndex,
+                  undefined
+                );
               }
 
               // Schedule note retrigger
