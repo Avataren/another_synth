@@ -420,12 +420,20 @@ function generateNodeId(prefix: string): string {
 
 function periodToMidi(period: number): number | undefined {
   if (!period || !Number.isFinite(period)) return undefined;
-  // Approximate Amiga PAL clock formula
+  // Approximate Amiga PAL clock formula:
+  // Paula frequency = 7093789.2 Hz (PAL), output frequency = clock / (2 * period).
   const AMIGA_CLOCK = 7093789.2;
   const freq = AMIGA_CLOCK / (2 * period);
   if (!Number.isFinite(freq) || freq <= 0) return undefined;
-  const midi = 69 + 12 * Math.log2(freq / 440);
-  const rounded = Math.round(midi);
+
+  // Map to MIDI space but with a fixed octave offset so typical MOD ranges
+  // land around C-1..C-5 instead of up around F-9.
+  //
+  // Using A4 = 440 Hz as the reference and subtracting 84 semitones (7 octaves)
+  // puts period 1712 (~C-1 in ProTracker tables) near MIDI 24 (C-1),
+  // and period 428 (~C-3) near MIDI 48 (C-3).
+  const rawMidi = 69 + 12 * Math.log2(freq / 440) - 84;
+  const rounded = Math.round(rawMidi);
   if (rounded < 0 || rounded > 127) return undefined;
   return rounded;
 }
