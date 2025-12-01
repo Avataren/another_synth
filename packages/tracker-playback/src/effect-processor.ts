@@ -144,6 +144,25 @@ function resolveTonePortaSpeed(
   return state.lastTonePorta > 0 ? state.lastTonePorta : state.tonePortaSpeed;
 }
 
+function applyTonePortaStep(state: TrackEffectState): number {
+  if (state.tonePortaSpeed <= 0) {
+    return state.currentFrequency;
+  }
+  if (state.currentFrequency < state.targetFrequency) {
+    state.currentFrequency *= Math.pow(2, state.tonePortaSpeed / (12 * 16));
+    if (state.currentFrequency >= state.targetFrequency) {
+      state.currentFrequency = state.targetFrequency;
+    }
+  } else if (state.currentFrequency > state.targetFrequency) {
+    state.currentFrequency /= Math.pow(2, state.tonePortaSpeed / (12 * 16));
+    if (state.currentFrequency <= state.targetFrequency) {
+      state.currentFrequency = state.targetFrequency;
+    }
+  }
+  state.currentMidi = frequencyToMidi(state.currentFrequency);
+  return state.currentFrequency;
+}
+
 /**
  * Convert frequency to MIDI note (fractional)
  */
@@ -231,6 +250,8 @@ export function processEffectTick0(
 
     case 'tonePorta':
       state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
+      // Apply an initial slide on tick 0 so we don't stop one step short.
+      result.frequency = applyTonePortaStep(state);
       break;
 
     case 'vibrato':
@@ -244,6 +265,8 @@ export function processEffectTick0(
       state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
       if (effect.paramX) state.volSlideSpeed = effect.paramX;
       else if (effect.paramY) state.volSlideSpeed = -effect.paramY;
+      // Apply an initial slide on tick 0 so we don't stop one step short.
+      result.frequency = applyTonePortaStep(state);
       break;
 
     case 'vibratoVol':
@@ -429,20 +452,7 @@ export function processEffectTickN(
 
     case 'tonePorta':
     case 'tonePortaVol':
-      // Slide toward target note
-      if (state.currentFrequency < state.targetFrequency) {
-        state.currentFrequency *= Math.pow(2, state.tonePortaSpeed / (12 * 16));
-        if (state.currentFrequency > state.targetFrequency) {
-          state.currentFrequency = state.targetFrequency;
-        }
-      } else if (state.currentFrequency > state.targetFrequency) {
-        state.currentFrequency /= Math.pow(2, state.tonePortaSpeed / (12 * 16));
-        if (state.currentFrequency < state.targetFrequency) {
-          state.currentFrequency = state.targetFrequency;
-        }
-      }
-      state.currentMidi = frequencyToMidi(state.currentFrequency);
-      result.frequency = state.currentFrequency;
+      result.frequency = applyTonePortaStep(state);
 
       // Handle volume slide for 5xy
       if (effect.type === 'tonePortaVol') {
