@@ -167,7 +167,7 @@ impl AudioNode for Mixer {
             PortId::StereoPan,
             &mut self.scratch_pan_add,
             &mut self.scratch_pan_mult,
-            0.0,
+            0.5, // Default to center (0.5) when no pan modulation is connected
             1.0,
         );
 
@@ -177,8 +177,6 @@ impl AudioNode for Mixer {
 
         let zero_simd = Vf32::splat(0.0);
         let one_simd = Vf32::splat(1.0);
-        let half_simd = Vf32::splat(0.5);
-        let minus_one_simd = Vf32::splat(-1.0);
 
         let chunks = buffer_size / LANES;
         for i in 0..chunks {
@@ -194,12 +192,11 @@ impl AudioNode for Mixer {
             let effective_gain_simd = (Vf32::splat(base_gain) + gain_add_simd) * gain_mult_simd;
             let gain_applied_input = audio_in_simd * effective_gain_simd.simd_max(zero_simd);
 
+            // Treat StereoPan as 0..1 where 0 = left, 0.5 = center, 1 = right.
             let effective_pan_simd = (Vf32::splat(base_pan) + pan_add_simd) * pan_mult_simd;
-            let clamped_pan_simd = effective_pan_simd.simd_clamp(minus_one_simd, one_simd);
-
-            let normalized_pan_simd = (clamped_pan_simd + one_simd) * half_simd;
-            let gain_r_simd = normalized_pan_simd.sqrt();
-            let gain_l_simd = (one_simd - normalized_pan_simd).sqrt();
+            let clamped_pan_simd = effective_pan_simd.simd_clamp(zero_simd, one_simd);
+            let gain_r_simd = clamped_pan_simd.sqrt();
+            let gain_l_simd = (one_simd - clamped_pan_simd).sqrt();
 
             let output_l_simd = gain_applied_input * gain_l_simd;
             let output_r_simd = gain_applied_input * gain_r_simd;
@@ -221,12 +218,11 @@ impl AudioNode for Mixer {
             let effective_gain = (base_gain + gain_add) * gain_mult;
             let gain_applied_input = audio_in * effective_gain.max(0.0);
 
+            // StereoPan interpreted as 0..1: 0 = left, 0.5 = center, 1 = right.
             let effective_pan = (base_pan + pan_add) * pan_mult;
-            let clamped_pan = effective_pan.clamp(-1.0, 1.0);
-
-            let normalized_pan = (clamped_pan + 1.0) * 0.5;
-            let gain_r = normalized_pan.sqrt();
-            let gain_l = (1.0 - normalized_pan).sqrt();
+            let clamped_pan = effective_pan.clamp(0.0, 1.0);
+            let gain_r = clamped_pan.sqrt();
+            let gain_l = (1.0 - clamped_pan).sqrt();
 
             // Write to temporary buffers
             self.temp_out_l[i] = gain_applied_input * gain_l;

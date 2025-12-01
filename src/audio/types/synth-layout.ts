@@ -546,6 +546,7 @@ export function getModulationTargetsForType(
       return [
         { value: PortId.FrequencyMod, label: PORT_LABELS[PortId.FrequencyMod] },
         { value: PortId.GainMod, label: PORT_LABELS[PortId.GainMod] },
+        { value: PortId.StereoPan, label: PORT_LABELS[PortId.StereoPan] },
       ];
     case VoiceNodeType.Mixer:
       return [

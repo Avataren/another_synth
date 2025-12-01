@@ -21,12 +21,10 @@ import {
   type VoiceLayout,
   type PatchLayout,
   type EnvelopeConfig,
+  type LfoState,
 } from 'src/audio/types/synth-layout';
 import { PortId } from 'src/audio/types/generated/port-ids';
-import type {
-  ModulationTransformation,
-  WasmModulationType,
-} from 'app/public/wasm/audio_processor';
+import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
 import { encodeFloat32ArrayToBase64 } from 'src/audio/serialization/audio-asset-encoder';
 import {
   looksLikeMod as looksLikeModInternal,
@@ -115,7 +113,8 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
           mod.patterns[p]?.rows[row]?.[ch];
         if (!cell) continue;
 
-        const entry = modCellToTrackerEntry(cell, row);
+        const panNorm = resolveChannelPanNorm(ch, trackCount);
+        const entry = modCellToTrackerEntry(cell, row, panNorm);
         if (!entry) continue;
 
         const track = tracks[ch];
@@ -134,9 +133,37 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
   return patterns;
 }
 
+function resolveChannelPanNorm(channelIndex: number, trackCount: number): number {
+  // Map MOD channels to stereo positions using fixed macro values:
+  // Left  ~ M040 (64/255), center ~ M080 (128/255), right ~ M0BF (191/255).
+  // These feed macro 0 (0..1) which the mixer interprets as 0 = left, 0.5 = center, 1 = right.
+  const leftNorm = 0x40 / 0xff;   // ≈ 0.25
+  const centerNorm = 0.5;         // 0x80 / 0xFF ≈ 0.5
+  const rightNorm = 0xbf / 0xff;  // ≈ 0.75
+
+  if (trackCount <= 1) {
+    return centerNorm;
+  }
+
+  if (trackCount === 2) {
+    // Two channels: left / right
+    return channelIndex === 0 ? leftNorm : rightNorm;
+  } else if (trackCount === 3) {
+    // Three channels: left / center / right
+    if (channelIndex === 0) return leftNorm;
+    if (channelIndex === 1) return centerNorm;
+    return rightNorm;
+  } else {
+    // Four channels (classic Amiga): 0 & 3 left, 1 & 2 right.
+    const isLeft = channelIndex === 0 || channelIndex === 3;
+    return isLeft ? leftNorm : rightNorm;
+  }
+}
+
 function modCellToTrackerEntry(
   cell: ModPatternCell,
   row: number,
+  panNorm: number,
 ): TrackerEntryData | undefined {
   const { period, sampleNumber, effectCmd, effectParam } = cell;
 
@@ -242,6 +269,16 @@ function modCellToTrackerEntry(
     }
   }
 
+  // If there is a note but no existing macro/effect, add a macro command
+  // that drives macro 0 for stereo pan, using the resolved channel pan.
+  if (hasNote && !entry.macro) {
+    const clamped = Math.max(0, Math.min(1, panNorm));
+    const raw = Math.round(clamped * 255);
+    const hex = raw.toString(16).toUpperCase().padStart(2, '0');
+    // Use 3-char macro shorthand (Mxx) for macro 0 so it fits the tracker column.
+    entry.macro = `M${hex}`;
+  }
+
   return entry;
 }
 
@@ -311,6 +348,7 @@ function createSamplerPatchForSample(
   const samplerNodeId = generateNodeId('sampler');
   const mixerNodeId = generateNodeId('mixer');
   const envelopeNodeId = generateNodeId('envelope');
+  const lfoNodeId = generateNodeId('lfo');
   const chorusNodeId = '10000';
   const delayNodeId = '10001';
   const reverbNodeId = '10002';
@@ -383,7 +421,13 @@ function createSamplerPatchForSample(
           name: 'Amp Envelope',
         },
       ],
-      [VoiceNodeType.LFO]: [],
+      [VoiceNodeType.LFO]: [
+        {
+          id: lfoNodeId,
+          type: VoiceNodeType.LFO,
+          name: 'LFO',
+        },
+      ],
       [VoiceNodeType.Mixer]: [
         {
           id: mixerNodeId,
@@ -528,7 +572,22 @@ function createSamplerPatchForSample(
           releaseCurve: 0,
         } satisfies EnvelopeConfig,
       },
-      lfos: {},
+      lfos: {
+        [lfoNodeId]: {
+          id: lfoNodeId,
+          frequency: 1.0,
+          phaseOffset: 0,
+          waveform: 0,
+          useAbsolute: false,
+          useNormalized: false,
+          triggerMode: 0,
+          gain: 0,
+          active: false,
+          loopMode: 0,
+          loopStart: 0,
+          loopEnd: 1,
+        } satisfies LfoState,
+      },
       samplers: {
         [samplerNodeId]: samplerState,
       },
@@ -601,6 +660,23 @@ function createSamplerPatchForSample(
           downsampleFactor: 4,
           mix: 0.5,
         },
+      },
+      macros: {
+        // Macro 0: per-instrument stereo pan for the sampler.
+        // Value domain 0..1 (0 = left, 0.5 = center, 1 = right).
+        values: [0.5],
+        routes: [
+          {
+            macroIndex: 0,
+            // For now we route pan macros to the Mixer StereoPan port
+            // so imported MOD instruments get audible stereo separation.
+            targetId: mixerNodeId,
+            targetPort: PortId.StereoPan,
+            amount: 1,
+            modulationType: 2 as WasmModulationType,
+            modulationTransformation: 0 as ModulationTransformation,
+          },
+        ],
       },
       instrumentGain: 1.0,
     },

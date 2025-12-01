@@ -318,6 +318,7 @@ impl AudioNode for Sampler {
         ports.insert(PortId::GlobalFrequency, false); // Note pitch from voice
         ports.insert(PortId::FrequencyMod, false); // Frequency modulation
         ports.insert(PortId::GainMod, false); // Gain modulation
+        ports.insert(PortId::StereoPan, false); // Stereo pan modulation (0..1 via macros)
         ports
     }
 
@@ -353,6 +354,14 @@ impl AudioNode for Sampler {
 
         // Collect gain modulation
         let (gain_add, gain_mult) = self.collect_modulation(PortId::GainMod, inputs, buffer_size);
+
+        // Collect stereo pan modulation (driven by macros for MOD imports).
+        // Expected domain: 0..1 where 0 = left, 0.5 = center, 1 = right.
+        let has_pan_mod = inputs
+            .get(&PortId::StereoPan)
+            .map_or(false, |sources| !sources.is_empty());
+        let (pan_add, _pan_mult) =
+            self.collect_modulation(PortId::StereoPan, inputs, buffer_size);
 
         // Calculate playback rate based on frequency
         // Frequency is in Hz, need to convert to playback rate
@@ -442,7 +451,7 @@ impl AudioNode for Sampler {
             let gain = (self.base_gain + gain_add[i]) * gain_mult[i];
 
             // Get sample value at current playhead with simple 2x oversampling
-            let (left, right) = if self.is_playing {
+            let (mut left, mut right) = if self.is_playing {
                 let loop_start = self.loop_start.clamp(0.0, sample_len - 1.0);
                 let loop_end = self.loop_end.clamp(loop_start + 1.0, sample_len);
                 let step = (playback_rate * self.direction) / SAMPLER_OVERSAMPLE_FACTOR as f32;
@@ -468,6 +477,18 @@ impl AudioNode for Sampler {
             } else {
                 (0.0, 0.0)
             };
+
+            // Apply stereo panning if modulation is present.
+            // Pan macro is expected as 0..1 (0 = left, 0.5 = center, 1 = right).
+            if has_pan_mod {
+                let pan_norm = pan_add[i].clamp(0.0, 1.0);
+                let pan = pan_norm * 2.0 - 1.0; // -1 (L) .. +1 (R)
+                let normalized_pan = (pan + 1.0) * 0.5;
+                let gain_r = normalized_pan.sqrt();
+                let gain_l = (1.0 - normalized_pan).sqrt();
+                left *= gain_l;
+                right *= gain_r;
+            }
 
             // Store to scratch buffers
             self.scratch_freq_add[i] = left;
