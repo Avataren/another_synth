@@ -530,10 +530,6 @@ export class PlaybackEngine {
             this.loadPattern(targetPatternId, { emitPosition: false, updatePosition: false });
             // Reset to start of target pattern
             this.lastScheduledRow = -1;
-            // Reset pattern loop state when jumping to new pattern
-            this.patternLoopStart = 0;
-            this.patternLoopCount = 0;
-            this.patternLoopTarget = 0;
           } else {
             this.stop();
             return;
@@ -555,10 +551,6 @@ export class PlaybackEngine {
             // Jump to specified row in next pattern (clamped to pattern length)
             const targetRow = Math.max(0, Math.min(cmd.value, this.length - 1));
             this.lastScheduledRow = targetRow - 1;
-            // Reset pattern loop state when breaking to new pattern
-            this.patternLoopStart = 0;
-            this.patternLoopCount = 0;
-            this.patternLoopTarget = 0;
           } else {
             this.stop();
             return;
@@ -681,17 +673,21 @@ export class PlaybackEngine {
         // and song-level global volume commands (Gxx/Hxy).
         if (step.effect) {
           if (step.effect.type === 'posJump') {
+            // Bxx overrides any earlier Dxx on the same row (PatternJump.mod behavior)
             this.pendingPosCommand = {
               type: 'posJump',
               value: step.effect.paramX * 16 + step.effect.paramY
             };
           } else if (step.effect.type === 'patBreak') {
-            const rawTarget = step.effect.paramX * 10 + step.effect.paramY; // FT2 uses decimal for Dxx
-            const adjustedTarget = rowHasPatDelay ? rawTarget + 1 : rawTarget;
-            this.pendingPosCommand = {
-              type: 'patBreak',
-              value: adjustedTarget
-            };
+            // Only set if no posJump has already claimed this row
+            if (!this.pendingPosCommand || this.pendingPosCommand.type !== 'posJump') {
+              const rawTarget = step.effect.paramX * 10 + step.effect.paramY; // FT2 uses decimal for Dxx
+              const adjustedTarget = rowHasPatDelay ? rawTarget + 1 : rawTarget;
+              this.pendingPosCommand = {
+                type: 'patBreak',
+                value: adjustedTarget
+              };
+            }
           } else if (step.effect.type === 'extEffect' && step.effect.extSubtype === 'patLoop') {
             // E6x: Pattern loop
             const loopCount = step.effect.paramY;
