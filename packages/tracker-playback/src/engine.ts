@@ -107,6 +107,14 @@ export class PlaybackEngine {
   /** Position/pattern commands to process (Bxx, Dxx) */
   private pendingPosCommand: { type: 'posJump' | 'patBreak'; value: number } | null = null;
 
+  /** Pattern loop state (E6x) */
+  private patternLoopStart = 0; // Row where loop starts (set by E60)
+  private patternLoopCount = 0; // Current loop iteration
+  private patternLoopTarget = 0; // Total number of loops requested
+
+  /** Pattern delay state (EEx) - delays current row by x ticks */
+  private patternDelayCount = 0; // Number of times to repeat current row
+
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
     this.scheduler =
@@ -461,6 +469,10 @@ export class PlaybackEngine {
         if (nextPatternId) {
           // Preload next pattern for scheduling without flipping the visible position yet
           this.loadPattern(nextPatternId, { emitPosition: false, updatePosition: false });
+          // Reset pattern loop state when entering new pattern
+          this.patternLoopStart = 0;
+          this.patternLoopCount = 0;
+          this.patternLoopTarget = 0;
         } else {
           this.stop();
           return;
@@ -482,6 +494,101 @@ export class PlaybackEngine {
       }
       if (scheduledRowTime >= now) {
         this.scheduleRow(actualRow, scheduledRowTime);
+      }
+
+      // Handle position commands (Bxx, Dxx) that affect scheduling flow
+      if (this.pendingPosCommand) {
+        const cmd = this.pendingPosCommand;
+        this.pendingPosCommand = null;
+
+        // Notify handler for UI sync
+        if (this.positionCommandHandler) {
+          this.positionCommandHandler(cmd);
+        }
+
+        const sequence = this.song?.sequence ?? [];
+        if (sequence.length === 0) {
+          this.stop();
+          return;
+        }
+
+        if (cmd.type === 'posJump') {
+          // Bxx: Jump to sequence position xx, row 0
+          const targetIndex = Math.max(0, Math.min(cmd.value, sequence.length - 1));
+          this.currentSequenceIndex = targetIndex;
+          const targetPatternId = sequence[targetIndex];
+          if (targetPatternId) {
+            this.loadPattern(targetPatternId, { emitPosition: false, updatePosition: false });
+            // Reset to start of target pattern
+            this.lastScheduledRow = -1;
+            // Reset pattern loop state when jumping to new pattern
+            this.patternLoopStart = 0;
+            this.patternLoopCount = 0;
+            this.patternLoopTarget = 0;
+          } else {
+            this.stop();
+            return;
+          }
+        } else if (cmd.type === 'patBreak') {
+          // Dxx: Break to row xx of next pattern
+          this.currentSequenceIndex += 1;
+          if (this.currentSequenceIndex >= sequence.length) {
+            if (this.loopSong) {
+              this.currentSequenceIndex = 0;
+            } else {
+              this.stop();
+              return;
+            }
+          }
+          const targetPatternId = sequence[this.currentSequenceIndex];
+          if (targetPatternId) {
+            this.loadPattern(targetPatternId, { emitPosition: false, updatePosition: false });
+            // Jump to specified row in next pattern (clamped to pattern length)
+            const targetRow = Math.max(0, Math.min(cmd.value, this.length - 1));
+            this.lastScheduledRow = targetRow - 1;
+            // Reset pattern loop state when breaking to new pattern
+            this.patternLoopStart = 0;
+            this.patternLoopCount = 0;
+            this.patternLoopTarget = 0;
+          } else {
+            this.stop();
+            return;
+          }
+        }
+
+        // Continue scheduling from new position
+        continue;
+      }
+
+      // Handle pattern delay (EEx) - repeat current row x times
+      if (this.patternDelayCount > 0) {
+        // Decrement delay counter
+        this.patternDelayCount--;
+        // Re-schedule the same row again (don't advance lastScheduledRow)
+        const msPerRow = this.getMsPerRow();
+        const secPerRow = msPerRow / 1000;
+        this.nextRowTime += secPerRow;
+        // Continue without advancing lastScheduledRow, so next iteration schedules same row
+        continue;
+      }
+
+      // Handle pattern loop (E6x) - jump back to loop start
+      if (this.patternLoopCount > 0 && this.patternLoopCount <= this.patternLoopTarget) {
+        // Increment loop counter
+        this.patternLoopCount++;
+
+        if (this.patternLoopCount <= this.patternLoopTarget) {
+          // Still looping - jump back to loop start
+          this.lastScheduledRow = this.patternLoopStart - 1;
+          const msPerRow = this.getMsPerRow();
+          const secPerRow = msPerRow / 1000;
+          this.nextRowTime += secPerRow;
+          continue;
+        } else {
+          // Finished looping - reset state and continue normally
+          this.patternLoopCount = 0;
+          this.patternLoopTarget = 0;
+        }
       }
 
       // Calculate time for next row using current speed/bpm (after F commands were applied)
@@ -526,6 +633,10 @@ export class PlaybackEngine {
   private resetEffectStates(): void {
     this.trackEffectStates.clear();
     this.pendingPosCommand = null;
+    this.patternLoopStart = 0;
+    this.patternLoopCount = 0;
+    this.patternLoopTarget = 0;
+    this.patternDelayCount = 0;
   }
 
   /**
@@ -556,7 +667,7 @@ export class PlaybackEngine {
           this.bpm = Math.max(32, Math.min(255, step.tempoCommand));
         }
 
-        // Check for position commands (Bxx, Dxx)
+        // Check for position commands (Bxx, Dxx) and pattern flow commands (E6x, EEx)
         if (step.effect) {
           if (step.effect.type === 'posJump') {
             this.pendingPosCommand = {
@@ -568,6 +679,26 @@ export class PlaybackEngine {
               type: 'patBreak',
               value: step.effect.paramX * 10 + step.effect.paramY // FT2 uses decimal for Dxx
             };
+          } else if (step.effect.type === 'extEffect' && step.effect.extSubtype === 'patLoop') {
+            // E6x: Pattern loop
+            const loopCount = step.effect.paramY;
+            if (loopCount === 0) {
+              // E60: Set loop start point
+              this.patternLoopStart = row;
+            } else {
+              // E6x (x>0): Loop back x times
+              // Only trigger if we haven't already processed this loop
+              if (this.patternLoopCount === 0) {
+                this.patternLoopTarget = loopCount;
+                this.patternLoopCount = 1; // Start counting from 1
+              }
+            }
+          } else if (step.effect.type === 'patDelay') {
+            // EEx: Pattern delay - repeat this row x times
+            const delayCount = step.effect.paramY;
+            if (delayCount > 0 && this.patternDelayCount === 0) {
+              this.patternDelayCount = delayCount;
+            }
           }
         }
       }
@@ -808,11 +939,8 @@ export class PlaybackEngine {
       }
     }
 
-    // Process position commands (handled externally)
-    if (this.pendingPosCommand && this.positionCommandHandler) {
-      this.positionCommandHandler(this.pendingPosCommand);
-      this.pendingPosCommand = null;
-    }
+    // Note: Position commands (Bxx, Dxx) are now handled in scheduleAhead()
+    // after this row is scheduled, so the scheduling loop can react immediately
   }
 
   /**
