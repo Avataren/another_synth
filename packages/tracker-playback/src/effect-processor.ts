@@ -5,6 +5,32 @@
 
 import type { EffectCommand } from './types';
 
+const AMIGA_CLOCK = 7159090.5;
+const PAULA_TO_SYNTH_SCALE = 128; // 2^7, keeps us in synth-domain Hz
+const MIN_PROTRACKER_PERIOD = 113; // ~B-3
+const MAX_PROTRACKER_PERIOD = 856; // C-1
+
+function clampProtrackerPeriod(period: number): number {
+  if (!Number.isFinite(period)) return period;
+  if (period < MIN_PROTRACKER_PERIOD) return MIN_PROTRACKER_PERIOD;
+  if (period > MAX_PROTRACKER_PERIOD) return MAX_PROTRACKER_PERIOD;
+  return period;
+}
+
+function synthFrequencyFromPeriod(period: number): number {
+  return AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
+}
+
+function protrackerArpPeriod(basePeriod: number, semitoneOffset: number): number {
+  // Higher pitch -> smaller period.
+  const shifted = basePeriod / Math.pow(2, semitoneOffset / 12);
+  if (shifted < MIN_PROTRACKER_PERIOD) {
+    // ProTracker wraps past the top of the table; the first overflow hits 0 (DC).
+    return 0;
+  }
+  return clampProtrackerPeriod(shifted);
+}
+
 /**
  * Per-track effect state
  */
@@ -170,6 +196,10 @@ function applyTonePortaStep(state: TrackEffectState): number {
     state.currentMidi = snappedMidi;
     state.currentFrequency = midiToFrequency(snappedMidi);
   }
+  if (state.currentPeriod !== undefined) {
+    const derived = AMIGA_CLOCK / (2 * state.currentFrequency * PAULA_TO_SYNTH_SCALE);
+    state.currentPeriod = clampProtrackerPeriod(derived);
+  }
   return state.currentFrequency;
 }
 
@@ -238,12 +268,8 @@ export function processEffectTick0(
 
       // For ProTracker MODs with exact frequencies, calculate period for authentic portamento
       if (noteFrequency !== undefined) {
-        const AMIGA_CLOCK = 7159090.5;
-        // noteFrequency is in the synth's \"musical\" Hz domain, which is 2^7
-        // lower than Paula's hardware playback frequency. Multiply by 2^7 to
-        // recover the original Amiga period scale used by ProTracker.
-        const PAULA_TO_SYNTH_SCALE = 128; // 2^7
-        state.currentPeriod = AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
+        const rawPeriod = AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
+        state.currentPeriod = clampProtrackerPeriod(rawPeriod);
       } else {
         // Native tracker songs don't use period-based portamento
         state.currentPeriod = undefined;
@@ -351,6 +377,9 @@ export function processEffectTick0(
         state.currentFrequency *= ratio;
         state.targetFrequency *= ratio;
         state.currentMidi = frequencyToMidi(state.currentFrequency);
+        if (state.currentPeriod !== undefined) {
+          state.currentPeriod = clampProtrackerPeriod(state.currentPeriod / ratio);
+        }
         result.frequency = state.currentFrequency;
       }
       break;
@@ -371,6 +400,11 @@ export function processEffectTick0(
       // E1x: Fine portamento up (applied once on tick 0)
       state.currentFrequency *= Math.pow(2, effect.paramY / (12 * 16));
       state.currentMidi = frequencyToMidi(state.currentFrequency);
+      if (state.currentPeriod !== undefined) {
+        state.currentPeriod = clampProtrackerPeriod(
+          AMIGA_CLOCK / (2 * state.currentFrequency * PAULA_TO_SYNTH_SCALE)
+        );
+      }
       result.frequency = state.currentFrequency;
       break;
 
@@ -378,6 +412,11 @@ export function processEffectTick0(
       // E2x: Fine portamento down (applied once on tick 0)
       state.currentFrequency /= Math.pow(2, effect.paramY / (12 * 16));
       state.currentMidi = frequencyToMidi(state.currentFrequency);
+      if (state.currentPeriod !== undefined) {
+        state.currentPeriod = clampProtrackerPeriod(
+          AMIGA_CLOCK / (2 * state.currentFrequency * PAULA_TO_SYNTH_SCALE)
+        );
+      }
       result.frequency = state.currentFrequency;
       break;
 
@@ -488,14 +527,8 @@ export function processEffectTickN(
         // ProTracker: subtract from period (makes pitch go up)
         const periodChange = Math.abs(state.portamentoSpeed);
         state.currentPeriod -= periodChange;
-        // Clamp to reasonable range (avoid going too high in frequency)
-        state.currentPeriod = Math.max(state.currentPeriod, 113); // Highest ProTracker note (B-3)
-        // Convert period back to synth frequency:
-        //   f_paula = 7159090.5 / (2 * period)
-        //   f_synth = f_paula / 2^7
-        const AMIGA_CLOCK = 7159090.5;
-        const PAULA_TO_SYNTH_SCALE = 128; // 2^7
-        state.currentFrequency = AMIGA_CLOCK / (2 * state.currentPeriod * PAULA_TO_SYNTH_SCALE);
+        state.currentPeriod = clampProtrackerPeriod(state.currentPeriod);
+        state.currentFrequency = synthFrequencyFromPeriod(state.currentPeriod);
         state.currentMidi = frequencyToMidi(state.currentFrequency);
         result.frequency = state.currentFrequency;
       } else {
@@ -513,12 +546,8 @@ export function processEffectTickN(
         // ProTracker: add to period (makes pitch go down)
         const periodChange = Math.abs(state.portamentoSpeed);
         state.currentPeriod += periodChange;
-        // Clamp to reasonable range (avoid division by zero)
-        state.currentPeriod = Math.min(state.currentPeriod, 32767);
-        // Convert period back to synth frequency (see portaUp for derivation)
-        const AMIGA_CLOCK = 7159090.5;
-        const PAULA_TO_SYNTH_SCALE = 128; // 2^7
-        state.currentFrequency = AMIGA_CLOCK / (2 * state.currentPeriod * PAULA_TO_SYNTH_SCALE);
+        state.currentPeriod = clampProtrackerPeriod(state.currentPeriod);
+        state.currentFrequency = synthFrequencyFromPeriod(state.currentPeriod);
         state.currentMidi = frequencyToMidi(state.currentFrequency);
         result.frequency = state.currentFrequency;
       } else {
@@ -567,17 +596,26 @@ export function processEffectTickN(
       result.volume = Math.max(0, Math.min(1, state.currentVolume + tremoloAmount));
       break;
 
-    case 'arpeggio':
+    case 'arpeggio': {
       // Cycle through base, +x semitones, +y semitones
       state.arpeggioTick = (state.arpeggioTick + 1) % 3;
-      let arpeggioNote = state.currentMidi;
-      if (state.arpeggioTick === 1) {
-        arpeggioNote += state.arpeggioX;
-      } else if (state.arpeggioTick === 2) {
-        arpeggioNote += state.arpeggioY;
+      const offset =
+        state.arpeggioTick === 1
+          ? state.arpeggioX
+          : state.arpeggioTick === 2
+            ? state.arpeggioY
+            : 0;
+
+      if (state.currentPeriod !== undefined) {
+        const period = protrackerArpPeriod(state.currentPeriod, offset);
+        result.frequency = period === 0 ? 0 : synthFrequencyFromPeriod(period);
+      } else {
+        let arpeggioNote = state.currentMidi;
+        arpeggioNote += offset;
+        result.frequency = midiToFrequency(arpeggioNote);
       }
-      result.frequency = midiToFrequency(arpeggioNote);
       break;
+    }
 
     case 'volSlide':
       // Skip per-tick processing for EAx/EBx fine slides – they are tick-0 only.

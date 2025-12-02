@@ -258,6 +258,7 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - Period-based portamento in the playback core (`packages/tracker-playback/src/effect-processor.ts`) still operates on true Amiga periods:
   - On tick 0, when a MOD row supplies a frequency override, `currentPeriod` is recovered as `AMIGA_CLOCK / (2 * noteFrequency * 128)`, undoing the synth scaling to get back to the original MOD period.
   - `portaUp`/`portaDown` adjust `currentPeriod` in ProTracker units and then convert it back to synth-domain Hz with `AMIGA_CLOCK / (2 * currentPeriod * 128)` so scheduled pitch updates stay in the same units that `InstrumentV2` and the sampler expect.
+- Arpeggio, fine porta, and finetune (E5x) now keep `currentPeriod` clamped to ProTracker ranges (113–856); arpeggios wrap high notes to DC/0 when the period underflows, matching ProTracker overflow behavior for imported 4-channel MODs.
 - If MOD playback suddenly sounds like broadband noise after touching period/frequency math, check:
   - `periodToFrequency` is still dividing by `128` (or equivalently subtracting 7 octaves) before storing `entry.frequency`.
   - The effect processor’s period→frequency conversions in `portaUp`/`portaDown` and the tick-0 `currentPeriod` calculation all apply the same `* 128` / `/ 128` symmetry when moving between synth Hz and ProTracker period space.
