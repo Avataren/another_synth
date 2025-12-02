@@ -385,11 +385,9 @@ export class PlaybackEngine {
     this.state = 'stopped';
     this.stopScheduledPlayback();
     this.scheduler.stop();
-    // Reset to row 0 but stay on the current pattern
-    this.position = { ...this.position, row: 0 };
     this.resetEffectStates();
     this.emit('state', this.state);
-    // Emit position without changing the pattern
+    // Emit position as-is (no forced row reset) so UI stays aligned with last played pattern/row
     this.emit('position', this.position);
   }
 
@@ -490,6 +488,9 @@ export class PlaybackEngine {
           this.loadPattern(targetPatternId, { emitPosition: true, updatePosition: true });
           // Reset to start of target pattern
           this.lastScheduledRow = -1;
+          this.resetPositionReference(this.currentSequenceIndex, 0, now);
+          this.position = { row: 0, patternId: targetPatternId, sequenceIndex: this.currentSequenceIndex };
+          this.emit('position', this.position);
         } else if (cmd.type === 'patBreak') {
           // Dxx: Break to row xx of next pattern
           this.currentSequenceIndex += 1;
@@ -507,6 +508,9 @@ export class PlaybackEngine {
             // Jump to specified row in next pattern (clamped to pattern length)
             const targetRow = Math.max(0, Math.min(cmd.value, this.length - 1));
             this.lastScheduledRow = targetRow - 1;
+            this.resetPositionReference(this.currentSequenceIndex, targetRow, now);
+            this.position = { row: targetRow, patternId: targetPatternId, sequenceIndex: this.currentSequenceIndex };
+            this.emit('position', this.position);
           } else {
             this.stop();
             return;
@@ -1074,6 +1078,21 @@ export class PlaybackEngine {
       }
       this.position = newPosition;
       this.emit('position', this.position);
+    }
+  }
+
+  /**
+   * Reset position tracking reference for jump/seek scenarios.
+   * Aligns playStartTime/startRow/sequenceStartOffsetRows to the given target.
+   */
+  private resetPositionReference(targetSequenceIndex: number, targetRow: number, now: number) {
+    this.playStartTime = now;
+    this.startRow = targetRow;
+    this.sequenceStartOffsetRows = 0;
+    const sequence = this.song?.sequence ?? [];
+    for (let i = 0; i < targetSequenceIndex; i += 1) {
+      const id = sequence[i];
+      this.sequenceStartOffsetRows += this.getPatternLength(id);
     }
   }
 
