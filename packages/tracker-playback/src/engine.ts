@@ -666,6 +666,7 @@ export class PlaybackEngine {
 
     // First pass: Apply speed/tempo commands (F commands) and position commands
     if (steps) {
+      let rowHasPatDelay = false;
       for (const step of steps) {
         if (step.speedCommand !== undefined) {
           // F01-F1F: Set speed (1-31, where 6 is normal)
@@ -685,9 +686,11 @@ export class PlaybackEngine {
               value: step.effect.paramX * 16 + step.effect.paramY
             };
           } else if (step.effect.type === 'patBreak') {
+            const rawTarget = step.effect.paramX * 10 + step.effect.paramY; // FT2 uses decimal for Dxx
+            const adjustedTarget = rowHasPatDelay ? rawTarget + 1 : rawTarget;
             this.pendingPosCommand = {
               type: 'patBreak',
-              value: step.effect.paramX * 10 + step.effect.paramY // FT2 uses decimal for Dxx
+              value: adjustedTarget
             };
           } else if (step.effect.type === 'extEffect' && step.effect.extSubtype === 'patLoop') {
             // E6x: Pattern loop
@@ -708,6 +711,7 @@ export class PlaybackEngine {
             const delayCount = step.effect.paramY;
             if (delayCount > 0 && this.patternDelayCount === 0) {
               this.patternDelayCount = delayCount;
+              rowHasPatDelay = true;
             }
           } else if (step.effect.type === 'setGlobalVol') {
             // Gxx: Set global volume (0-64 in ProTracker, 0-128 in FT2)
