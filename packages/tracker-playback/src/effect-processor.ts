@@ -99,7 +99,7 @@ export interface TrackEffectState {
   lastArpeggio: number;
 
   // Note delay overflow to next row (ProTracker EDx quirk)
-  carryDelayedNote?: { midi: number; velocity: number };
+  carryDelayedNote: { midi: number; velocity: number } | null;
 }
 
 /**
@@ -151,7 +151,8 @@ export function createTrackEffectState(): TrackEffectState {
     lastVibrato: 0,
     lastTremolo: 0,
     lastVolSlide: 0,
-    lastArpeggio: 0
+    lastArpeggio: 0,
+    carryDelayedNote: null
   };
 }
 
@@ -262,7 +263,7 @@ export function processEffectTick0(
   // no new note arrives, trigger the carried note at the start of this row.
   if (!effect && newNote === undefined && state.carryDelayedNote) {
     const carry = state.carryDelayedNote;
-    state.carryDelayedNote = undefined;
+    state.carryDelayedNote = null;
     state.currentMidi = carry.midi;
     state.currentFrequency = midiToFrequency(carry.midi);
     state.targetMidi = carry.midi;
@@ -522,7 +523,7 @@ export function processEffectTickN(
   state: TrackEffectState,
   effect: EffectCommand | undefined,
   tick: number,
-  ticksPerRow: number
+  _ticksPerRow: number
 ): TickEffectResult {
   const result: TickEffectResult = {};
 
