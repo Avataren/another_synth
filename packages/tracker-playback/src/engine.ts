@@ -765,8 +765,8 @@ export class PlaybackEngine {
           resetEffectStateForNote(effectState);
         }
 
-        // Process tick 0
-        const tick0Result = processEffectTick0(effectState, step.effect, newNote, newVelocity);
+        // Process tick 0 (pass step.frequency for ProTracker MODs)
+        const tick0Result = processEffectTick0(effectState, step.effect, newNote, newVelocity, step.frequency);
 
         // Check for note delay (EDx) - don't trigger note on tick 0
         const hasNoteDelay = step.effect?.type === 'noteDelay' ||
@@ -788,7 +788,8 @@ export class PlaybackEngine {
               row,
               trackIndex: step.trackIndex,
               time,
-              velocity
+              velocity,
+              ...(step.frequency !== undefined ? { frequency: step.frequency } : {}),
             };
             this.scheduledNoteHandler(event);
           }

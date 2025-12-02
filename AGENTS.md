@@ -239,6 +239,25 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 
 - Tracker master bus can be tapped via a recording audio worklet (`public/worklets/recording-worklet.js`) wired in `TrackerSongBank`. Recording accumulates interleaved float32 audio and a new helper (`src/audio/tracker/exporter.ts`) encodes it to MP3 via `lamejs` (loaded from CDNJS `https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js`, falling back to `public/vendor/lame.min.js` if present). `TrackerPage` exposes an “Export MP3” button that records the song playback once (auto-stops on `state == stopped`), shows progress, then downloads the MP3. Offline/faster-than-realtime rendering isn’t implemented; this records in real time.
 
+### MOD sample default volume → sampler gain (2025-12)
+
+- ProTracker MOD samples carry a header `volume` field (0..64). MOD import (`src/audio/tracker/mod-import.ts`) now maps this directly to the sampler’s base gain instead of faking it through implicit Cxx volume on every note.
+- `resolveSamplerGain(sample: ModSample)` returns `clamped(sample.volume, 0..64) / 64` and feeds `SamplerState.gain` when building sampler patches. This makes instruments that start on, e.g., `E-2` with no explicit Cxx land at the expected relative loudness from the original module.
+- To avoid double-scaling, the import no longer injects “sample default volume” as a per-note velocity when a note+instrument has no Cxx; Cxx and EAx/EBx effects still flow through the volume column and FT2-style effect processor, which drives per-voice gain via `ScheduledVolumeHandler`.
+- If a MOD instrument suddenly sounds much louder than expected, check whether its header `volume` is 64 (sampler gain 1.0) and whether the pattern also contains aggressive Cxx/EAx ramps; the former is now represented in sampler gain, the latter in per-voice gain automation.
+
+### ProTracker MOD frequency scaling (2025-12)
+
+- MOD import now converts Amiga periods into **synth-domain** frequencies instead of raw Paula hardware rates. The tracker engine and sampler expect “musical Hz” (~C-1 ≈ 32.7 Hz), but ProTracker’s playback frequencies are ~128× higher (e.g. period 856 → ~4181 Hz, while C-1 in our tuning is ~32.7 Hz).
+- `periodToFrequency` in `src/audio/tracker/mod-import.ts` therefore uses:
+  - `f_synth = AMIGA_CLOCK / (2 * period * 128)` (with `AMIGA_CLOCK = 7159090.5`), effectively dividing Paula’s rate by `2^7`. This keeps MOD rows mapped to the expected MIDI notes (C-1..B-3) without driving the sampler at 128× speed and turning playback into noise.
+- Period-based portamento in the playback core (`packages/tracker-playback/src/effect-processor.ts`) still operates on true Amiga periods:
+  - On tick 0, when a MOD row supplies a frequency override, `currentPeriod` is recovered as `AMIGA_CLOCK / (2 * noteFrequency * 128)`, undoing the synth scaling to get back to the original MOD period.
+  - `portaUp`/`portaDown` adjust `currentPeriod` in ProTracker units and then convert it back to synth-domain Hz with `AMIGA_CLOCK / (2 * currentPeriod * 128)` so scheduled pitch updates stay in the same units that `InstrumentV2` and the sampler expect.
+- If MOD playback suddenly sounds like broadband noise after touching period/frequency math, check:
+  - `periodToFrequency` is still dividing by `128` (or equivalently subtracting 7 octaves) before storing `entry.frequency`.
+  - The effect processor’s period→frequency conversions in `portaUp`/`portaDown` and the tick-0 `currentPeriod` calculation all apply the same `* 128` / `/ 128` symmetry when moving between synth Hz and ProTracker period space.
+
 ## Wavetable Missing Data Panic (Critical Fix - 2025)
 
 **Problem**: The synth would crash with "RuntimeError: unreachable" panic when loading patches with wavetable oscillators.

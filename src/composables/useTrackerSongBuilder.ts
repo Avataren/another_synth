@@ -182,6 +182,11 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         step.note = entry.note;
       }
 
+      // Pass through ProTracker frequency override (MOD imports)
+      if (entry?.frequency !== undefined) {
+        step.frequency = entry.frequency;
+      }
+
       if (volumeValue !== undefined) {
         const scaledVelocity = Math.max(
           0,

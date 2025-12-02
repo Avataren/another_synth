@@ -20,6 +20,7 @@ export interface TrackEffectState {
   // Portamento state
   portamentoSpeed: number;
   tonePortaSpeed: number;
+  currentPeriod?: number | undefined; // Amiga period for ProTracker-style portamento
 
   // Vibrato state
   vibratoSpeed: number;
@@ -209,7 +210,8 @@ export function processEffectTick0(
   state: TrackEffectState,
   effect: EffectCommand | undefined,
   newNote?: number,
-  newVelocity?: number
+  newVelocity?: number,
+  noteFrequency?: number,
 ): TickEffectResult {
   const result: TickEffectResult = {};
 
@@ -221,9 +223,22 @@ export function processEffectTick0(
       state.targetFrequency = midiToFrequency(newNote);
     } else {
       state.currentMidi = newNote;
-      state.currentFrequency = midiToFrequency(newNote);
+      state.currentFrequency = noteFrequency ?? midiToFrequency(newNote);
       state.targetMidi = newNote;
       state.targetFrequency = state.currentFrequency;
+
+      // For ProTracker MODs with exact frequencies, calculate period for authentic portamento
+      if (noteFrequency !== undefined) {
+        const AMIGA_CLOCK = 7159090.5;
+        // noteFrequency is in the synth's \"musical\" Hz domain, which is 2^7
+        // lower than Paula's hardware playback frequency. Multiply by 2^7 to
+        // recover the original Amiga period scale used by ProTracker.
+        const PAULA_TO_SYNTH_SCALE = 128; // 2^7
+        state.currentPeriod = AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
+      } else {
+        // Native tracker songs don't use period-based portamento
+        state.currentPeriod = undefined;
+      }
     }
   }
 
@@ -438,16 +453,50 @@ export function processEffectTickN(
   switch (effect.type) {
     case 'portaUp':
       // Slide pitch up
-      state.currentFrequency *= Math.pow(2, state.portamentoSpeed / (12 * 16));
-      state.currentMidi = frequencyToMidi(state.currentFrequency);
-      result.frequency = state.currentFrequency;
+      // For ProTracker MODs, use period-based portamento for authentic behavior
+      if (state.currentPeriod !== undefined) {
+        // ProTracker: subtract from period (makes pitch go up)
+        const periodChange = Math.abs(state.portamentoSpeed);
+        state.currentPeriod -= periodChange;
+        // Clamp to reasonable range (avoid going too high in frequency)
+        state.currentPeriod = Math.max(state.currentPeriod, 113); // Highest ProTracker note (B-3)
+        // Convert period back to synth frequency:
+        //   f_paula = 7159090.5 / (2 * period)
+        //   f_synth = f_paula / 2^7
+        const AMIGA_CLOCK = 7159090.5;
+        const PAULA_TO_SYNTH_SCALE = 128; // 2^7
+        state.currentFrequency = AMIGA_CLOCK / (2 * state.currentPeriod * PAULA_TO_SYNTH_SCALE);
+        state.currentMidi = frequencyToMidi(state.currentFrequency);
+        result.frequency = state.currentFrequency;
+      } else {
+        // Standard semitone-based portamento
+        state.currentFrequency *= Math.pow(2, state.portamentoSpeed / (12 * 16));
+        state.currentMidi = frequencyToMidi(state.currentFrequency);
+        result.frequency = state.currentFrequency;
+      }
       break;
 
     case 'portaDown':
       // Slide pitch down
-      state.currentFrequency *= Math.pow(2, state.portamentoSpeed / (12 * 16));
-      state.currentMidi = frequencyToMidi(state.currentFrequency);
-      result.frequency = state.currentFrequency;
+      // For ProTracker MODs, use period-based portamento for authentic behavior
+      if (state.currentPeriod !== undefined) {
+        // ProTracker: add to period (makes pitch go down)
+        const periodChange = Math.abs(state.portamentoSpeed);
+        state.currentPeriod += periodChange;
+        // Clamp to reasonable range (avoid division by zero)
+        state.currentPeriod = Math.min(state.currentPeriod, 32767);
+        // Convert period back to synth frequency (see portaUp for derivation)
+        const AMIGA_CLOCK = 7159090.5;
+        const PAULA_TO_SYNTH_SCALE = 128; // 2^7
+        state.currentFrequency = AMIGA_CLOCK / (2 * state.currentPeriod * PAULA_TO_SYNTH_SCALE);
+        state.currentMidi = frequencyToMidi(state.currentFrequency);
+        result.frequency = state.currentFrequency;
+      } else {
+        // Standard semitone-based portamento
+        state.currentFrequency *= Math.pow(2, state.portamentoSpeed / (12 * 16));
+        state.currentMidi = frequencyToMidi(state.currentFrequency);
+        result.frequency = state.currentFrequency;
+      }
       break;
 
     case 'tonePorta':

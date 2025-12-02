@@ -6,6 +6,8 @@ export interface TrackerEntryData {
   macro?: string;
   /** Optional second effect/macro column for the tracker row */
   macro2?: string;
+  /** Optional exact frequency in Hz (for ProTracker MOD imports) */
+  frequency?: number;
 }
 
 export interface TrackerInterpolationRange {

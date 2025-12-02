@@ -41,13 +41,15 @@ const DEFAULT_STEP_SIZE = 1;
 const MAX_SLOTS = 25;
 const DEFAULT_SAMPLE_RATE = 44100;
 
-function resolveSamplerGain(_sample: ModSample): number {
+function resolveSamplerGain(sample: ModSample): number {
   // ProTracker sample volumes are initial defaults that Cxx commands override.
   // Since the synth architecture multiplies samplerGain × voiceGain, and we
   // want Cxx commands to directly control volume without double-scaling, always
   // use unity gain at the sampler level. Sample default volumes are handled by
   // converting them to Cxx commands at import time.
-  return 1.0;
+  const raw = Number.isFinite(sample.volume) ? sample.volume : 64;
+  const clamped = Math.max(0, Math.min(64, raw));
+  return clamped / 64;
 }
 
 export const looksLikeMod = looksLikeModInternal;
@@ -205,6 +207,11 @@ function modCellToTrackerEntry(
     if (midi !== undefined) {
       entry.note = midiToTrackerNote(midi);
     }
+    // Store exact ProTracker frequency for accurate playback
+    const freq = periodToFrequency(period);
+    if (freq !== undefined) {
+      entry.frequency = freq;
+    }
   }
 
   let effectMacro: string | undefined;
@@ -304,21 +311,8 @@ function modCellToTrackerEntry(
     effectMacro = undefined;
   }
 
-  // ProTracker volume behavior:
-  // - Note + instrument + Cxx: Use Cxx volume
-  // - Note + instrument (no Cxx): Reset to sample's default volume
-  // - Note without instrument (no Cxx): Inherit last volume (sticky)
-  // - No note + Cxx: Sets channel volume (sticky for subsequent notes without instrument)
   if (!entry.volume) {
-    if (hasNote && hasSample && sampleNumber > 0 && sampleNumber <= mod.samples.length) {
-      // Note with instrument: reset to sample's default volume
-      const sample = mod.samples[sampleNumber - 1];
-      if (sample && sample.volume > 0) {
-        const volumeScaled = Math.round((sample.volume / 64) * 255);
-        const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
-        entry.volume = volumeHex;
-      }
-    } else if (hasNote && !hasSample && lastVolume !== undefined) {
+    if (hasNote && !hasSample && lastVolume !== undefined) {
       // Note without instrument: inherit last volume (sticky)
       entry.volume = lastVolume;
     }
@@ -775,21 +769,36 @@ function generateNodeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function periodToMidi(period: number): number | undefined {
+/**
+ * Convert Amiga period to a synth frequency in Hz.
+ *
+ * ProTracker's Paula playback frequency is:
+ *   f_paula = AMIGA_CLOCK / (2 * period)
+ *
+ * Those values are ~128× higher than the equal‑tempered note frequencies
+ * our synth expects (e.g. period 856 → ~4181 Hz, but C-1 in our tuning is
+ * ~32.7 Hz). To stay in the engine's \"musical Hz\" domain and avoid driving
+ * the sampler at 128× speed, we scale the Paula frequency down by 2^7.
+ */
+function periodToFrequency(period: number): number | undefined {
   if (!period || !Number.isFinite(period)) return undefined;
-  // Approximate Amiga PAL clock formula:
-  // Paula frequency = 7093789.2 Hz (PAL), output frequency = clock / (2 * period).
-  const AMIGA_CLOCK = 7093789.2;
-  const freq = AMIGA_CLOCK / (2 * period);
+  const AMIGA_CLOCK = 7159090.5;
+  const PAULA_TO_SYNTH_SCALE = 128; // 2^7 – matches the -84 semitone offset used previously
+  const freq = AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
   if (!Number.isFinite(freq) || freq <= 0) return undefined;
+  return freq;
+}
 
-  // Map to MIDI space but with a fixed octave offset so typical MOD ranges
-  // land around C-1..C-5 instead of up around F-9.
-  //
-  // Using A4 = 440 Hz as the reference and subtracting 84 semitones (7 octaves)
-  // puts period 1712 (~C-1 in ProTracker tables) near MIDI 24 (C-1),
-  // and period 428 (~C-3) near MIDI 48 (C-3).
-  const rawMidi = 69 + 12 * Math.log2(freq / 440) - 84;
+/**
+ * Convert Amiga period to MIDI note number (for note display only).
+ * Uses the scaled synth frequency so C-1..B-3 land at the expected MIDI
+ * positions (C-1 = 24, C-2 = 36, etc.).
+ */
+function periodToMidi(period: number): number | undefined {
+  const freq = periodToFrequency(period);
+  if (!freq) return undefined;
+
+  const rawMidi = 69 + 12 * Math.log2(freq / 440);
   const rounded = Math.round(rawMidi);
   if (rounded < 0 || rounded > 127) return undefined;
   return rounded;

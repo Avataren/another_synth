@@ -63,6 +63,7 @@ type PendingScheduledEvent =
       velocity: number;
       time: number;
       trackIndex?: number;
+      frequency?: number;
       enqueuedAt: number;
     }
   | {
@@ -510,6 +511,7 @@ export class TrackerSongBank {
             event.velocity,
             scheduledTime,
             event.trackIndex,
+            event.frequency,
           );
         } else {
           this.dispatchNoteOffAtTime(
@@ -782,6 +784,7 @@ export class TrackerSongBank {
     velocity: number,
     time: number,
     trackIndex?: number,
+    frequency?: number,
   ) {
     if (instrumentId === undefined) {
       console.warn('[SongBank] noteOnAtTime: instrumentId is undefined');
@@ -809,6 +812,7 @@ export class TrackerSongBank {
         enqueuedAt: this.getEnqueueTimestamp(),
       };
       if (trackIndex !== undefined) queued.trackIndex = trackIndex;
+      if (frequency !== undefined) queued.frequency = frequency;
       this.enqueueScheduledEvent(queued);
       this.ensureInstrumentIfDesired(instrumentId);
       return;
@@ -820,6 +824,7 @@ export class TrackerSongBank {
       velocity,
       scheduledTime,
       trackIndex,
+      frequency,
     );
   }
 
@@ -968,6 +973,7 @@ export class TrackerSongBank {
     velocity: number,
     time: number,
     trackIndex?: number,
+    frequency?: number,
   ) {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
@@ -989,7 +995,7 @@ export class TrackerSongBank {
     // Avoid pushing the note later than requested; only clamp if we're already in the past.
     const scheduledTime =
       time < now ? now + MIN_SCHEDULE_LEAD_SECONDS : time;
-    console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'note', midi, 'time', scheduledTime.toFixed(3) + 's');
+    console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'note', midi, 'time', scheduledTime.toFixed(3) + 's', frequency ? 'freq=' + frequency.toFixed(2) + 'Hz' : '');
     // First, clear any lingering voices on this track from other instruments,
     // then gate off the previous voice for this instrument/track.
     this.gateOffOtherInstrumentsForTrack(instrumentId, trackIndex, scheduledTime);
@@ -1000,6 +1006,7 @@ export class TrackerSongBank {
       scheduledTime,
       {
         allowDuplicate: true,
+        ...(frequency !== undefined ? { frequency } : {}),
       },
     );
     console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'allocated voice', voiceIndex);

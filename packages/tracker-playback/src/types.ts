@@ -108,6 +108,12 @@ export interface Step {
    */
   midi?: number;
   /**
+   * Optional frequency override in Hz. When present, this exact frequency
+   * should be used instead of converting MIDI to frequency (equal temperament).
+   * Used for ProTracker MOD imports to preserve Amiga period-based tuning.
+   */
+  frequency?: number;
+  /**
    * Marks this step as a note-off. When true, engines should release
    * any active notes for the given instrument (or the specific midi note
    * when provided).
@@ -203,6 +209,8 @@ export interface ScheduledNoteEvent {
   trackIndex: number;
   /** Audio context time when this note should be triggered */
   time: number;
+  /** Optional frequency override in Hz (for ProTracker MOD imports) */
+  frequency?: number;
 }
 
 export type ScheduledAutomationHandler = (

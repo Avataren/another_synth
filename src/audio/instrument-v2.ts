@@ -996,7 +996,7 @@ export default class InstrumentV2 {
     noteNumber: number,
     velocity: number,
     time: number,
-    options?: { allowDuplicate?: boolean },
+    options?: { allowDuplicate?: boolean; frequency?: number },
   ): number | undefined {
     const allowDuplicate = options?.allowDuplicate ?? false;
     console.log('[noteOnAtTime] Note', noteNumber, 'at time', time.toFixed(3) + 's, vel=' + velocity + ', allowDup=' + allowDuplicate, ', voiceLimit=', this.voiceLimit);
@@ -1006,7 +1006,8 @@ export default class InstrumentV2 {
 
     this.markVoiceActive(noteNumber, voiceIndex, time);
 
-    const frequency = this.midiNoteToFrequency(noteNumber);
+    // Use provided frequency override (for ProTracker MODs) or calculate from MIDI
+    const frequency = options?.frequency ?? this.midiNoteToFrequency(noteNumber);
 
     if (!this.workletNode) return;
 
