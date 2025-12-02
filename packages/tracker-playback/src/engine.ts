@@ -457,6 +457,66 @@ export class PlaybackEngine {
       const currentRow = this.lastScheduledRow + 1;
       const actualRow = currentRow % this.length;
 
+      // Apply pending position commands ASAP (before auto pattern advance)
+      if (this.pendingPosCommand) {
+        const cmd = this.pendingPosCommand;
+        this.pendingPosCommand = null;
+
+        // Notify handler for UI sync
+        if (this.positionCommandHandler) {
+          this.positionCommandHandler(cmd);
+        }
+
+        const sequence = this.song?.sequence ?? [];
+        if (sequence.length === 0) {
+          this.stop();
+          return;
+        }
+
+        if (cmd.type === 'posJump') {
+          // Bxx: Jump to sequence position xx, row 0
+          if (cmd.value >= sequence.length || sequence.length === 0) {
+            // ProTracker stops when jumping past the order list
+            this.stop();
+            return;
+          }
+          const targetIndex = cmd.value;
+          this.currentSequenceIndex = targetIndex;
+          const targetPatternId = sequence[targetIndex];
+          if (!targetPatternId) {
+            this.stop();
+            return;
+          }
+          this.loadPattern(targetPatternId, { emitPosition: true, updatePosition: true });
+          // Reset to start of target pattern
+          this.lastScheduledRow = -1;
+        } else if (cmd.type === 'patBreak') {
+          // Dxx: Break to row xx of next pattern
+          this.currentSequenceIndex += 1;
+          if (this.currentSequenceIndex >= sequence.length) {
+            if (this.loopSong) {
+              this.currentSequenceIndex = 0;
+            } else {
+              this.stop();
+              return;
+            }
+          }
+          const targetPatternId = sequence[this.currentSequenceIndex];
+          if (targetPatternId) {
+            this.loadPattern(targetPatternId, { emitPosition: true, updatePosition: true });
+            // Jump to specified row in next pattern (clamped to pattern length)
+            const targetRow = Math.max(0, Math.min(cmd.value, this.length - 1));
+            this.lastScheduledRow = targetRow - 1;
+          } else {
+            this.stop();
+            return;
+          }
+        }
+
+        // Continue scheduling from new position
+        continue;
+      }
+
       if (actualRow === 0 && currentRow > 0 && !this.loopCurrentPattern) { // Pattern finished
         const sequence = this.song?.sequence ?? [];
         if (sequence.length === 0) {
@@ -503,62 +563,6 @@ export class PlaybackEngine {
       }
       if (scheduledRowTime >= now) {
         this.scheduleRow(actualRow, scheduledRowTime);
-      }
-
-      // Handle position commands (Bxx, Dxx) that affect scheduling flow
-      if (this.pendingPosCommand) {
-        const cmd = this.pendingPosCommand;
-        this.pendingPosCommand = null;
-
-        // Notify handler for UI sync
-        if (this.positionCommandHandler) {
-          this.positionCommandHandler(cmd);
-        }
-
-        const sequence = this.song?.sequence ?? [];
-        if (sequence.length === 0) {
-          this.stop();
-          return;
-        }
-
-        if (cmd.type === 'posJump') {
-          // Bxx: Jump to sequence position xx, row 0
-          const targetIndex = Math.max(0, Math.min(cmd.value, sequence.length - 1));
-          this.currentSequenceIndex = targetIndex;
-          const targetPatternId = sequence[targetIndex];
-          if (targetPatternId) {
-            this.loadPattern(targetPatternId, { emitPosition: false, updatePosition: false });
-            // Reset to start of target pattern
-            this.lastScheduledRow = -1;
-          } else {
-            this.stop();
-            return;
-          }
-        } else if (cmd.type === 'patBreak') {
-          // Dxx: Break to row xx of next pattern
-          this.currentSequenceIndex += 1;
-          if (this.currentSequenceIndex >= sequence.length) {
-            if (this.loopSong) {
-              this.currentSequenceIndex = 0;
-            } else {
-              this.stop();
-              return;
-            }
-          }
-          const targetPatternId = sequence[this.currentSequenceIndex];
-          if (targetPatternId) {
-            this.loadPattern(targetPatternId, { emitPosition: false, updatePosition: false });
-            // Jump to specified row in next pattern (clamped to pattern length)
-            const targetRow = Math.max(0, Math.min(cmd.value, this.length - 1));
-            this.lastScheduledRow = targetRow - 1;
-          } else {
-            this.stop();
-            return;
-          }
-        }
-
-        // Continue scheduling from new position
-        continue;
       }
 
       // Handle pattern delay (EEx) - repeat current row x times
