@@ -97,6 +97,9 @@ export interface TrackEffectState {
   lastTremolo: number;
   lastVolSlide: number;
   lastArpeggio: number;
+
+  // Note delay overflow to next row (ProTracker EDx quirk)
+  carryDelayedNote?: { midi: number; velocity: number };
 }
 
 /**
@@ -251,8 +254,25 @@ export function processEffectTick0(
   newNote?: number,
   newVelocity?: number,
   noteFrequency?: number,
+  ticksPerRow?: number,
 ): TickEffectResult {
   const result: TickEffectResult = {};
+
+  // ProTracker note delay overflow: if previous row had EDx with x >= speed and
+  // no new note arrives, trigger the carried note at the start of this row.
+  if (!effect && newNote === undefined && state.carryDelayedNote) {
+    const carry = state.carryDelayedNote;
+    state.carryDelayedNote = undefined;
+    state.currentMidi = carry.midi;
+    state.currentFrequency = midiToFrequency(carry.midi);
+    state.targetMidi = carry.midi;
+    state.targetFrequency = state.currentFrequency;
+    state.currentVolume = carry.velocity / 127;
+    result.triggerNote = carry;
+    result.frequency = state.currentFrequency;
+    result.volume = state.currentVolume;
+    return result;
+  }
 
   // Update current note if we have a new one
   if (newNote !== undefined) {
@@ -436,14 +456,21 @@ export function processEffectTick0(
       }
       break;
 
-    case 'noteDelay':
+    case 'noteDelay': {
       // EDx: Note delay by x ticks
       state.noteDelayTick = effect.paramY;
       if (newNote !== undefined && newVelocity !== undefined) {
         state.delayedNote = { midi: newNote, velocity: newVelocity };
+        // If delay exceeds or equals the current speed, ProTracker spills to the next row.
+        if (ticksPerRow !== undefined && state.noteDelayTick >= ticksPerRow) {
+          state.carryDelayedNote = state.delayedNote;
+          state.delayedNote = undefined;
+          state.noteDelayTick = -1;
+        }
         // Don't trigger on tick 0
       }
       break;
+    }
 
     case 'retrigVol':
       // Rxy: Retrigger with volume slide
@@ -495,7 +522,7 @@ export function processEffectTickN(
   state: TrackEffectState,
   effect: EffectCommand | undefined,
   tick: number,
-  _ticksPerRow: number
+  ticksPerRow: number
 ): TickEffectResult {
   const result: TickEffectResult = {};
 

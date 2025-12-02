@@ -260,6 +260,7 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
   - `portaUp`/`portaDown` adjust `currentPeriod` in ProTracker units and then convert it back to synth-domain Hz with `AMIGA_CLOCK / (2 * currentPeriod * 128)` so scheduled pitch updates stay in the same units that `InstrumentV2` and the sampler expect.
 - Arpeggio, fine porta, and finetune (E5x) now keep `currentPeriod` clamped to ProTracker ranges (113–856); arpeggios wrap high notes to DC/0 when the period underflows, matching ProTracker overflow behavior for imported 4-channel MODs.
 - Pattern break with pattern delay follows ProTracker’s “skip target row” quirk: when Dxx and EEx are on the same row, the break target is incremented (row+1) so the specified row isn’t played. See `packages/tracker-playback/src/engine.ts` first-pass scheduling.
+- Note delay overflow (EDx where x >= speed) now carries the delayed note to the next row and triggers it on tick 0 when no new note arrives, matching ProTracker’s spillover behavior. Implemented in `packages/tracker-playback/src/effect-processor.ts`.
 - If MOD playback suddenly sounds like broadband noise after touching period/frequency math, check:
   - `periodToFrequency` is still dividing by `128` (or equivalently subtracting 7 octaves) before storing `entry.frequency`.
   - The effect processor’s period→frequency conversions in `portaUp`/`portaDown` and the tick-0 `currentPeriod` calculation all apply the same `* 128` / `/ 128` symmetry when moving between synth Hz and ProTracker period space.

@@ -800,7 +800,14 @@ export class PlaybackEngine {
         }
 
         // Process tick 0 (pass step.frequency for ProTracker MODs)
-        const tick0Result = processEffectTick0(effectState, step.effect, newNote, newVelocity, step.frequency);
+        const tick0Result = processEffectTick0(
+          effectState,
+          step.effect,
+          newNote,
+          newVelocity,
+          step.frequency,
+          this.ticksPerRow
+        );
 
         // Check for note delay (EDx) - don't trigger note on tick 0
         const hasNoteDelay = step.effect?.type === 'noteDelay' ||
