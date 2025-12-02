@@ -42,17 +42,19 @@ const MAX_SLOTS = 25;
 const DEFAULT_SAMPLE_RATE = 44100;
 
 function resolveSamplerGain(sample: ModSample, mod: ModSong): number {
-  // ProTracker sample volumes are initial defaults that Cxx commands override.
-  // Since the synth architecture multiplies samplerGain × voiceGain, and we
-  // want Cxx commands to directly control volume without double-scaling, always
-  // use unity gain at the sampler level. Sample default volumes are handled by
-  // converting them to Cxx commands at import time.
+  // ProTracker/NoiseTracker sample volumes map to sampler gain so imported patches
+  // respect the default instrument loudness. A header volume of 0 should still
+  // allow Cxx/Axx to fade the channel in, so we keep sampler gain at unity when
+  // the header is 0 and rely on the per-note volume column to start at 0 instead.
   const raw = Number.isFinite(sample.volume) ? sample.volume : 64;
   const flavor = mod.trackerFlavor;
   if ((flavor === 'Soundtracker' || flavor === 'Unknown') && raw <= 0) {
     return 1.0;
   }
   const clamped = Math.max(0, Math.min(64, raw));
+  if (clamped === 0) {
+    return 1.0;
+  }
   return clamped / 64;
 }
 
@@ -201,6 +203,9 @@ function modCellToTrackerEntry(
   lastVolume?: string,
 ): TrackerEntryData | undefined {
   const { period, sampleNumber, effectCmd, effectParam } = cell;
+  const effectType = effectCmd & 0x0f;
+  const isTonePorta = effectType === 0x3;      // 3xx
+  const isTonePortaVol = effectType === 0x5;   // 5xy
 
   const hasNote = period > 0;
   const hasSample = sampleNumber > 0;
@@ -332,7 +337,30 @@ function modCellToTrackerEntry(
   }
 
   if (!entry.volume) {
-    if (hasNote && !hasSample && lastVolume !== undefined) {
+    // ProTracker/NoiseTracker instruments with header volume 0 should start silent,
+    // but still allow Axx/Cxx to raise the channel. Seed the volume column with 0
+    // (velocity 0) when the sample header volume is 0 so volume slides have headroom.
+    if (
+      hasNote &&
+      hasSample &&
+      !isTonePorta &&
+      !isTonePortaVol &&
+      mod.trackerFlavor !== 'Soundtracker' &&
+      mod.trackerFlavor !== 'Unknown'
+    ) {
+      const sampleVol =
+        sampleNumber > 0 && sampleNumber <= mod.samples.length
+          ? mod.samples[sampleNumber - 1]?.volume ?? 0
+          : 0;
+      if (sampleVol <= 0) {
+        entry.volume = '00';
+      }
+    }
+
+    // For tone portamento rows (3xx/5xy), avoid overriding the carry-over volume:
+    // keep the current channel volume instead of reapplying a stale lastVolume (which
+    // may still be 00 from an initial header-volume=0 seed).
+    if (hasNote && !hasSample && lastVolume !== undefined && !isTonePorta && !isTonePortaVol) {
       // Note without instrument: inherit last volume (sticky)
       entry.volume = lastVolume;
     }
