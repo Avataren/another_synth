@@ -440,16 +440,20 @@ function createSamplerPatchForSample(
     sampleLengthFrames,
   );
 
+  // Map MOD finetune (-8..7, 1/8 semitone per step) into sampler detune.
+  const finetuneSteps = sample.finetune ?? 0;
+  const finetuneCents = (finetuneSteps / 8) * 100;
+
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    // ProTracker sample volumes are applied via Cxx commands at note-on time,
-    // not as sampler gain, to avoid volume multiplication with voice gain.
+    // Base sampler gain reflects the MOD sample's default volume (0..64),
+    // while Cxx/EAx commands modulate per-voice gain at playback time.
     gain: resolveSamplerGain(sample),
     detune_oct: 0,
     detune_semi: 0,
-    detune_cents: 0,
-    detune: 0,
+    detune_cents: finetuneCents,
+    detune: finetuneCents,
     loopMode: loopEnabled ? SamplerLoopMode.Loop : SamplerLoopMode.Off,
     loopStart: loopEnabled ? loopStartFrames / sampleLengthFrames : 0,
     loopEnd: loopEnabled ? loopEndFrames / sampleLengthFrames : 1,
@@ -457,7 +461,7 @@ function createSamplerPatchForSample(
     // Empirically calibrated root note for MOD import.
     // Using a fixed root of 65 keeps most instruments (including AmegAs)
     // close to their original ProTracker pitch; per-sample finetune is
-    // currently ignored here to avoid over-shifting bright drums.
+    // baked into detune_cents/detune so patches stay aligned with MOD tuning.
     rootNote: 65,
     triggerMode: SamplerTriggerMode.Gate,
     active: true,
