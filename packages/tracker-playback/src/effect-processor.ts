@@ -49,6 +49,8 @@ export interface TrackEffectState {
   retriggerInterval: number;
   retriggerTick: number;
   retriggerVolChange: number;
+  // Tone portamento glissando (E3x)
+  glissandoEnabled: boolean;
 
   // Note cut/delay
   noteCutTick: number;
@@ -106,6 +108,7 @@ export function createTrackEffectState(): TrackEffectState {
     retriggerInterval: 0,
     retriggerTick: 0,
     retriggerVolChange: 0,
+    glissandoEnabled: false,
 
     noteCutTick: -1,
     noteDelayTick: -1,
@@ -161,6 +164,12 @@ function applyTonePortaStep(state: TrackEffectState): number {
     }
   }
   state.currentMidi = frequencyToMidi(state.currentFrequency);
+  // When glissando control is enabled (E3x), snap to semitone grid.
+  if (state.glissandoEnabled) {
+    const snappedMidi = Math.round(state.currentMidi);
+    state.currentMidi = snappedMidi;
+    state.currentFrequency = midiToFrequency(snappedMidi);
+  }
   return state.currentFrequency;
 }
 
@@ -327,6 +336,25 @@ export function processEffectTick0(
       break;
     }
 
+    case 'extEffect':
+      // Exy sub-commands that affect per-track state but don't have dedicated types.
+      if (effect.extSubtype === 'glissandoCtrl') {
+        // E3x: Glissando control (0=off, >0=on)
+        const raw = effect.paramY | (effect.paramX << 4);
+        state.glissandoEnabled = raw !== 0;
+      } else if (effect.extSubtype === 'setFinetune') {
+        // E5x: Set finetune for current note (approximate, per-row only).
+        const nibble = effect.paramY & 0x0f;
+        const finetuneSteps = nibble < 8 ? nibble : nibble - 16; // -8..7
+        const semitones = finetuneSteps / 8;
+        const ratio = Math.pow(2, semitones / 12);
+        state.currentFrequency *= ratio;
+        state.targetFrequency *= ratio;
+        state.currentMidi = frequencyToMidi(state.currentFrequency);
+        result.frequency = state.currentFrequency;
+      }
+      break;
+
     case 'setVolume':
       // Cxx: Set volume (00-40 in FT2, we scale to 0-1)
       state.currentVolume = Math.min(1, (effect.paramX * 16 + effect.paramY) / 64);
@@ -380,9 +408,11 @@ export function processEffectTick0(
 
     case 'retrigVol':
       // Rxy: Retrigger with volume slide
+      // E9x: Retrigger without volume slide (mapped via extSubtype === 'retrigger')
       state.retriggerInterval = effect.paramY;
-      state.retriggerVolChange = effect.paramX;
       state.retriggerTick = 0;
+      state.retriggerVolChange =
+        effect.extSubtype === 'retrigger' ? 0 : effect.paramX;
       break;
 
     case 'keyOff':
@@ -569,24 +599,26 @@ export function processEffectTickN(
       if (state.retriggerInterval > 0 && state.retriggerTick >= state.retriggerInterval) {
         state.retriggerTick = 0;
 
-        // Apply volume change
-        switch (state.retriggerVolChange) {
-          case 1: state.currentVolume -= 1/64; break;
-          case 2: state.currentVolume -= 2/64; break;
-          case 3: state.currentVolume -= 4/64; break;
-          case 4: state.currentVolume -= 8/64; break;
-          case 5: state.currentVolume -= 16/64; break;
-          case 6: state.currentVolume *= 2/3; break;
-          case 7: state.currentVolume *= 0.5; break;
-          case 9: state.currentVolume += 1/64; break;
-          case 10: state.currentVolume += 2/64; break;
-          case 11: state.currentVolume += 4/64; break;
-          case 12: state.currentVolume += 8/64; break;
-          case 13: state.currentVolume += 16/64; break;
-          case 14: state.currentVolume *= 1.5; break;
-          case 15: state.currentVolume *= 2; break;
+        // Apply volume change (Rxy only; E9x uses extSubtype 'retrigger' and keeps volume)
+        if (effect.extSubtype !== 'retrigger') {
+          switch (state.retriggerVolChange) {
+            case 1: state.currentVolume -= 1/64; break;
+            case 2: state.currentVolume -= 2/64; break;
+            case 3: state.currentVolume -= 4/64; break;
+            case 4: state.currentVolume -= 8/64; break;
+            case 5: state.currentVolume -= 16/64; break;
+            case 6: state.currentVolume *= 2/3; break;
+            case 7: state.currentVolume *= 0.5; break;
+            case 9: state.currentVolume += 1/64; break;
+            case 10: state.currentVolume += 2/64; break;
+            case 11: state.currentVolume += 4/64; break;
+            case 12: state.currentVolume += 8/64; break;
+            case 13: state.currentVolume += 16/64; break;
+            case 14: state.currentVolume *= 1.5; break;
+            case 15: state.currentVolume *= 2; break;
+          }
+          state.currentVolume = Math.max(0, Math.min(1, state.currentVolume));
         }
-        state.currentVolume = Math.max(0, Math.min(1, state.currentVolume));
 
         result.triggerNote = {
           midi: state.currentMidi,

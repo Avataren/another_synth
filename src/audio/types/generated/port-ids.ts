@@ -28,4 +28,5 @@ export enum PortId {
   AttackMod = 24,
   ArpGate = 25,
   CombinedGate = 26,
+  SampleOffset = 27,
 }

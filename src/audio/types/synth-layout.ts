@@ -228,6 +228,7 @@ export const PORT_LABELS: Record<PortId, string> = {
   [PortId.AttackMod]: 'Attack',
   [PortId.ArpGate]: 'Arpeggio gate',
   [PortId.CombinedGate]: 'Combined gate',
+  [PortId.SampleOffset]: 'Sample Offset',
 };
 
 export interface ModulationTargetOption {

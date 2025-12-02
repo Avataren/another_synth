@@ -281,7 +281,7 @@ export const NoiseType = Object.freeze({
     Brownian: 2, "2": "Brownian",
 });
 /**
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27}
  */
 export const PortId = Object.freeze({
     AudioInput0: 0, "0": "AudioInput0",
@@ -311,6 +311,7 @@ export const PortId = Object.freeze({
     AttackMod: 24, "24": "AttackMod",
     ArpGate: 25, "25": "ArpGate",
     CombinedGate: 26, "26": "CombinedGate",
+    SampleOffset: 27, "27": "SampleOffset",
 });
 /**
  * Sample loop mode

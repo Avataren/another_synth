@@ -48,6 +48,9 @@ function resolveSamplerGain(sample: ModSample): number {
   // use unity gain at the sampler level. Sample default volumes are handled by
   // converting them to Cxx commands at import time.
   const raw = Number.isFinite(sample.volume) ? sample.volume : 64;
+  if (raw <= 0) {
+    return 1.0;
+  }
   const clamped = Math.max(0, Math.min(64, raw));
   return clamped / 64;
 }
@@ -303,8 +306,14 @@ function modCellToTrackerEntry(
   if (hasVolumeEffectCmd && effectMacro) {
     // Extract the Cxx parameter (00-40 hex) and convert to volume column format (00-FF hex)
     // ProTracker: C00-C40 (0-64) → Volume column: 00-FF (0-255)
-    const volumeParam = effectParam; // Already 0-64
-    const volumeScaled = Math.round((volumeParam / 64) * 255);
+    const volumeParam = effectParam; // 0-64
+    const headerVol =
+      hasSample && sampleNumber > 0 && sampleNumber <= mod.samples.length
+        ? mod.samples[sampleNumber - 1]?.volume ?? 64
+        : 64;
+    const safeHeader = headerVol > 0 ? headerVol : 64;
+    const targetGain = Math.max(0, Math.min(1, volumeParam / safeHeader));
+    const volumeScaled = Math.round(targetGain * 255);
     const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
     entry.volume = volumeHex;
     // Clear the effect macro since we moved it to volume column
@@ -726,16 +735,26 @@ function createSamplerPatchForSample(
         },
       },
       macros: {
-        // Macro 0: per-instrument stereo pan for the sampler.
-        // Value domain 0..1 (0 = left, 0.5 = center, 1 = right).
-        values: [0.5],
+        // Macro 0: per-instrument stereo pan for the sampler/mixer.
+        // Macro 1: per-note sample offset (0..1) for MOD 9xx.
+        values: [0.5, 0.0],
         routes: [
           {
             macroIndex: 0,
-            // For now we route pan macros to the Mixer StereoPan port
-            // so imported MOD instruments get audible stereo separation.
+            // Route pan macro to the Mixer StereoPan port so imported MOD
+            // instruments get audible stereo separation.
             targetId: mixerNodeId,
             targetPort: PortId.StereoPan,
+            amount: 1,
+            modulationType: 2 as WasmModulationType,
+            modulationTransformation: 0 as ModulationTransformation,
+          },
+          {
+            macroIndex: 1,
+            // Route macro 1 into the sampler's SampleOffset port so per-note
+            // MOD 9xx offsets can be applied via per-voice automation.
+            targetId: samplerNodeId,
+            targetPort: PortId.SampleOffset,
             amount: 1,
             modulationType: 2 as WasmModulationType,
             modulationTransformation: 0 as ModulationTransformation,

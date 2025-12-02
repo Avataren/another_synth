@@ -241,8 +241,8 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 
 ### MOD sample default volume → sampler gain (2025-12)
 
-- ProTracker MOD samples carry a header `volume` field (0..64). MOD import (`src/audio/tracker/mod-import.ts`) now maps this directly to the sampler’s base gain instead of faking it through implicit Cxx volume on every note.
-- `resolveSamplerGain(sample: ModSample)` returns `clamped(sample.volume, 0..64) / 64` and feeds `SamplerState.gain` when building sampler patches. This makes instruments that start on, e.g., `E-2` with no explicit Cxx land at the expected relative loudness from the original module.
+- ProTracker MOD samples carry a header `volume` field (0..64). MOD import (`src/audio/tracker/mod-import.ts`) maps this directly to the sampler’s base gain instead of faking it through implicit Cxx volume on every note.
+- `resolveSamplerGain(sample: ModSample)` returns `clamped(sample.volume, 1..64) / 64`, treating header volume `0` or non-finite values as “use unity gain” (1.0). This makes instruments that start on, e.g., `E-2` with no explicit Cxx land at the expected relative loudness from the original module, while avoiding completely muting instruments whose sample headers were erroneously saved with volume `0`.
 - To avoid double-scaling, the import no longer injects “sample default volume” as a per-note velocity when a note+instrument has no Cxx; Cxx and EAx/EBx effects still flow through the volume column and FT2-style effect processor, which drives per-voice gain via `ScheduledVolumeHandler`.
 - If a MOD instrument suddenly sounds much louder than expected, check whether its header `volume` is 64 (sampler gain 1.0) and whether the pattern also contains aggressive Cxx/EAx ramps; the former is now represented in sampler gain, the latter in per-voice gain automation.
 
@@ -1491,3 +1491,37 @@ if (canReuse) {
   - Extended volume fine slides `EAx`/`EBx` are currently mapped to `EffectType.volSlide` and treated as per-tick slides (`isTickBasedEffect`), whereas ProTracker/FT2 define them as one-shot fine adjustments on tick 0; to match the spec, they should either be handled specially in `effect-processor` (tick-0 only) or excluded from `isTickBasedEffect`.
   - `E0` filter and `EF` invert loop are ignored (no `ExtendedEffectSubtype` mapping), which is acceptable for many songs but means old filter-toggling or funk-repeat tricks will not reproduce; `E3` glissando control, `E5` set finetune, `E6` pattern loop, `E9` retrig (without volume change), and `EE` pattern delay are also parsed into `extEffect`/`patDelay`/`patLoop` subtypes but aren’t wired into `PlaybackEngine` yet.
   - Panning commands use FT2 semantics: `8xx` and `E8x` both map to `setPan`, even though classic ProTracker marks 8/E8 as “not used”. This is generally safe for genuine Amiga `.MOD`s (they rarely rely on 8/E8), but it means imported MODs can legally use modern FT2-style panning as well.
+
+### MOD global volume & extended effects (2025-12)
+
+- Global volume commands are now partially wired:
+  - `Gxx` (`setGlobalVol`) maps to a normalized master gain `x/64` and is applied via a new `ScheduledGlobalVolumeHandler` from `PlaybackEngine` into `TrackerSongBank.setMasterVolume(gain, time)` so ProTracker-style global volume jumps affect the tracker song bus.
+  - `Hxy` (`globalVolSlide`) currently behaves as a per-row coarse slide: when `x>0 && y==0` it raises global volume by `x/64`, and when `y>0 && x==0` it lowers by `y/64`, clamped to `0..1`, and schedules the new value at the row start time. Full per-tick slide fidelity isn’t implemented yet but the overall loudness contour matches simple MODs.
+- E9x retrigger is implemented by mapping `ExtendedEffectSubtype.retrigger` to `EffectType.retrigVol` in `parseExtendedEffect`:
+  - Tick 0: `processEffectTick0` initializes `retriggerInterval = y`, `retriggerTick = 0`, and `retriggerVolChange = 0` when `extSubtype === 'retrigger'`.
+  - Ticks 1..N: `processEffectTickN` reuses the `retrigVol` case but skips the volume change when `extSubtype === 'retrigger'`, emitting `triggerNote` events with the unchanged `currentVolume`. These flow into `scheduledRetriggerHandler` → `TrackerSongBank.retriggerNoteAtTime`, so E9x now behaves as “pure retrigger” (no volume ramp) alongside Rxy.
+- E3x `glissandoCtrl` and E5x `setFinetune` now update the per-track effect state instead of being metadata only:
+  - `glissandoCtrl` (`E3x`) toggles a boolean `glissandoEnabled` flag in `TrackEffectState`; `applyTonePortaStep` snaps `currentFrequency`/`currentMidi` to the nearest semitone when this flag is set, so 3xx/5xx tone portamento behaves with simple grid snapping when gliss is active.
+  - `setFinetune` (`E5x`) applies a per-row finetune to the current note only: `paramY` is decoded to `-8..7` finetune steps, mapped to semitones (`steps/8`), and `currentFrequency`/`targetFrequency` are scaled by `2^(semitones/12)`. This does not persist across rows yet, but keeps one-shot E5x uses roughly in tune for MODs.
+- `ExtendedEffectSubtype.filterToggle` (E0x) and `invertLoop` (EFx) are now parsed and typed but still have no runtime behavior; implementing them will require a sampler-level offset/loop API or a dedicated filter path (e.g., inserting a Filter node in the MOD sampler patch and toggling its state from the playback engine).
+
+### MOD 9xx sample offset and SampleOffset port (2025-12)
+
+- The Rust `PortId` enum (`rust-wasm/src/traits/mod.rs`) now includes `SampleOffset`, and the TS bindings are kept in sync via `scripts/generate-port-ids.js` (`src/audio/types/generated/port-ids.ts`). Any new modulation port must be added to `PortId::from_u32` and then regen’d so TS enums stay aligned.
+- The sampler node (`rust-wasm/src/nodes/sampler.rs`) exposes a new modulation input port:
+  - `PortId::SampleOffset` is interpreted as a per-sample, per-voice offset in **normalized units 0..1** (0 = start, 1 = end of buffer). On each gate rising edge in `Gate`/`OneShot` trigger modes, if a `SampleOffset` modulation is present for that sample index, the sampler sets `playhead = offset_norm * (sample_len - 1.0)` before starting playback; otherwise it still starts at 0. Free-running mode ignores this offset and continues as before.
+- MOD import wires a dedicated macro to the sampler’s SampleOffset port:
+  - In `createSamplerPatchForSample` (`src/audio/tracker/mod-import.ts`), the macros block now reserves:
+    - Macro 0 → per-instrument stereo pan (`targetId = mixerNodeId`, `targetPort = PortId.StereoPan`).
+    - Macro 1 → per-note sample offset (`targetId = samplerNodeId`, `targetPort = PortId.SampleOffset`).
+  - `macros.values` is `[0.5, 0.0]` so pan defaults center and offset defaults to the start of the sample.
+- Engine and SongBank handling for 9xx:
+  - 9xx is still parsed as `EffectType.sampleOffset` by `parseEffectCommand` (`src/audio/tracker/note-utils.ts`).
+  - `PlaybackEngine.scheduleRow` (`packages/tracker-playback/src/engine.ts`) now recognizes `effect.type === 'sampleOffset'` on tick 0 and computes `offsetNorm = (paramX * 16 + paramY) / 255`, clamped 0..1.
+  - A new `ScheduledSampleOffsetHandler` in `packages/tracker-playback/src/types.ts` carries `(instrumentId, voiceIndex, offsetNorm, time, trackIndex)` into the host; the tracker playback store (`src/stores/tracker-playback-store.ts`) maps this to `TrackerSongBank.setVoiceSampleOffsetAtTime`.
+  - `TrackerSongBank.setVoiceSampleOffsetAtTime` resolves `voiceIndex` via `lastTrackVoice` (per instrument + track, with global `-1` fallback) and calls `InstrumentV2.setVoiceMacroAtTime(resolvedVoice, 1, offsetNorm, time)`, so macro index 1 drives `SampleOffset` for the correct voice at the correct time.
+- Host/TS-side notes:
+  - `InstrumentV2` (`src/audio/instrument-v2.ts`) now has `setVoiceMacroAtTime(voiceIndex, macroIndex, value, time, rampToValue?, rampTime?, interpolation?)` alongside the existing `setMacro` broadcast. Both use the same macro AudioParams (`macro_<voice>_<index>`), but per-voice macros are crucial for 9xx to avoid pushing all voices to the same offset.
+  - `PORT_LABELS` in `src/audio/types/synth-layout.ts` includes a label for the new port (`Sample Offset`) so UI modulation target pickers stay exhaustive (`Record<PortId, string>` stays type-complete).
+- Behavior summary for 9xx in ProTracker MODs:
+  - 9xx now behaves as “start this note at a later point in the sample” by setting the sampler’s per-voice normalized offset at the note’s row time. The mapping is proportional across the sample length rather than strict `xx * 256` bytes, which keeps the behavior musical across arbitrary sample sizes. If a song relies on the exact ProTracker 256-byte addressing, you’ll need to adjust the offset mapping to `offsetFrames = min(sample_len - 1, xx * 256)` and normalize accordingly.

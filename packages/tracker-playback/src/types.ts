@@ -71,7 +71,9 @@ export type ExtendedEffectSubtype =
   | 'fineVolDown'    // EBx
   | 'noteCut'        // ECx
   | 'noteDelay'      // EDx
-  | 'patDelay';      // EEx
+  | 'patDelay'       // EEx
+  | 'filterToggle'   // E0x - ProTracker filter on/off (legacy)
+  | 'invertLoop';    // EFx - ProTracker invert loop / funk repeat
 
 /**
  * Parsed effect command data
@@ -170,6 +172,10 @@ export interface PlaybackOptions {
   scheduledPitchHandler?: ScheduledPitchHandler;
   /** Handler for scheduling volume changes (tremolo, volume slide) */
   scheduledVolumeHandler?: ScheduledVolumeHandler;
+  /** Handler for scheduling per-note sample offsets (9xx) */
+  scheduledSampleOffsetHandler?: ScheduledSampleOffsetHandler;
+  /** Handler for scheduling global volume changes (Gxx/Hxy) */
+  scheduledGlobalVolumeHandler?: ScheduledGlobalVolumeHandler;
   /** Handler for scheduling note retriggers */
   scheduledRetriggerHandler?: ScheduledRetriggerHandler;
   /** Handler for position commands (Bxx jump, Dxx break) */
@@ -283,6 +289,33 @@ export type ScheduledVolumeHandler = (
   trackIndex: number,
   /** Ramp mode for smooth transitions (optional, defaults to discrete setValueAtTime) */
   rampMode?: 'linear' | 'exponential'
+) => void;
+
+/**
+ * Handler for scheduling per-note sample offsets (9xx).
+ * The offset value is normalized 0-1 over the sample length.
+ */
+export type ScheduledSampleOffsetHandler = (
+  instrumentId: string,
+  /** Voice index to modify (-1 for \"last voice for track\") */
+  voiceIndex: number,
+  /** Normalized offset 0-1 (0 = start, 1 = end) */
+  offset: number,
+  /** Audio context time */
+  time: number,
+  /** Track index for routing (tracker channels) */
+  trackIndex: number
+) => void;
+
+/**
+ * Handler for scheduling song-level global volume changes.
+ * Used for ProTracker/FT2-style Gxx/Hxy commands.
+ */
+export type ScheduledGlobalVolumeHandler = (
+  /** Normalized global gain 0-1 */
+  gain: number,
+  /** Audio context time */
+  time: number
 ) => void;
 
 /**

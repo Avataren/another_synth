@@ -319,6 +319,7 @@ impl AudioNode for Sampler {
         ports.insert(PortId::FrequencyMod, false); // Frequency modulation
         ports.insert(PortId::GainMod, false); // Gain modulation
         ports.insert(PortId::StereoPan, false); // Stereo pan modulation (0..1 via macros)
+        ports.insert(PortId::SampleOffset, false); // Per-voice sample offset (0..1, normalized over sample length)
         ports
     }
 
@@ -362,6 +363,14 @@ impl AudioNode for Sampler {
             .map_or(false, |sources| !sources.is_empty());
         let (pan_add, _pan_mult) =
             self.collect_modulation(PortId::StereoPan, inputs, buffer_size);
+
+        // Collect sample offset modulation (driven by macros for MOD imports).
+        // Expected domain: 0..1 where 0 = start, 1 = end of sample.
+        let has_offset_mod = inputs
+            .get(&PortId::SampleOffset)
+            .map_or(false, |sources| !sources.is_empty());
+        let (offset_add, _offset_mult) =
+            self.collect_modulation(PortId::SampleOffset, inputs, buffer_size);
 
         // Calculate playback rate based on frequency
         // Frequency is in Hz, need to convert to playback rate
@@ -424,14 +433,25 @@ impl AudioNode for Sampler {
                 }
                 SamplerTriggerMode::Gate => {
                     if gate_rising {
-                        self.playhead = 0.0;
+                        // Start at requested sample offset (if provided), otherwise at 0.
+                        if has_offset_mod {
+                            let offset_norm = offset_add[i].clamp(0.0, 1.0);
+                            self.playhead = offset_norm * (sample_len - 1.0);
+                        } else {
+                            self.playhead = 0.0;
+                        }
                         self.direction = 1.0;
                         self.is_playing = true;
                     }
                 }
                 SamplerTriggerMode::OneShot => {
                     if gate_rising && !self.is_playing {
-                        self.playhead = 0.0;
+                        if has_offset_mod {
+                            let offset_norm = offset_add[i].clamp(0.0, 1.0);
+                            self.playhead = offset_norm * (sample_len - 1.0);
+                        } else {
+                            self.playhead = 0.0;
+                        }
                         self.direction = 1.0;
                         self.is_playing = true;
                         self.oneshot_complete = false;

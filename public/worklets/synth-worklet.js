@@ -383,7 +383,9 @@ var PortId = Object.freeze({
   ArpGate: 25,
   "25": "ArpGate",
   CombinedGate: 26,
-  "26": "CombinedGate"
+  "26": "CombinedGate",
+  SampleOffset: 27,
+  "27": "SampleOffset"
 });
 var SamplerLoopMode = Object.freeze({
   Off: 0,
@@ -2708,7 +2710,8 @@ var PORT_LABELS = {
   [23 /* WetDryMix */]: "Mix",
   [24 /* AttackMod */]: "Attack",
   [25 /* ArpGate */]: "Arpeggio gate",
-  [26 /* CombinedGate */]: "Combined gate"
+  [26 /* CombinedGate */]: "Combined gate",
+  [27 /* SampleOffset */]: "Sample Offset"
 };
 function convertRawModulationType(raw) {
   if (typeof raw === "number") {

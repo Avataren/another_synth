@@ -89,6 +89,7 @@ function normalizeEffectChars(macro?: string): [string, string, string] {
  */
 function parseExtendedEffect(x: number, y: number): EffectCommand | undefined {
   const subtypeMap: Record<number, ExtendedEffectSubtype> = {
+    0x0: 'filterToggle',
     0x1: 'finePortaUp',
     0x2: 'finePortaDown',
     0x3: 'glissandoCtrl',
@@ -102,7 +103,8 @@ function parseExtendedEffect(x: number, y: number): EffectCommand | undefined {
     0xB: 'fineVolDown',
     0xC: 'noteCut',
     0xD: 'noteDelay',
-    0xE: 'patDelay'
+    0xE: 'patDelay',
+    0xF: 'invertLoop'
   };
 
   const subtype = subtypeMap[x];
@@ -118,12 +120,14 @@ function parseExtendedEffect(x: number, y: number): EffectCommand | undefined {
     patLoop: 'extEffect',
     tremoloWave: 'setTremoloWave',
     setPan: 'setPan',
-    retrigger: 'extEffect',
+    retrigger: 'retrigVol',
     fineVolUp: 'volSlide',
     fineVolDown: 'volSlide',
     noteCut: 'noteCut',
     noteDelay: 'noteDelay',
-    patDelay: 'patDelay'
+    patDelay: 'patDelay',
+    filterToggle: 'extEffect',
+    invertLoop: 'extEffect'
   };
 
   return {

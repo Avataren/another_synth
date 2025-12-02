@@ -37,6 +37,7 @@ pub enum PortId {
     AttackMod,
     ArpGate,
     CombinedGate,
+    SampleOffset,
 }
 
 impl Default for PortId {
@@ -146,6 +147,7 @@ impl PortId {
             24 => PortId::AttackMod,
             25 => PortId::ArpGate,
             26 => PortId::CombinedGate,
+            27 => PortId::SampleOffset,
             _ => PortId::AudioInput0, // Default or error case
         }
     }

@@ -294,6 +294,43 @@ export default class InstrumentV2 {
     }
   }
 
+  /**
+   * Set a macro value for a specific voice at a specific time.
+   * Used for per-voice automation like MOD sample offset.
+   */
+  public setVoiceMacroAtTime(
+    voiceIndex: number,
+    macroIndex: number,
+    value: number,
+    time?: number,
+    rampToValue?: number,
+    rampTime?: number,
+    interpolation: 'linear' | 'exponential' = 'linear'
+  ): void {
+    if (!this.workletNode) {
+      return;
+    }
+    if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
+
+    const clampedValue = Math.min(1, Math.max(0, value));
+    const when = typeof time === 'number' ? time : this.audioContext.currentTime;
+    const param = this.workletNode.parameters.get(`macro_${voiceIndex}_${macroIndex}`);
+    if (!param) return;
+
+    param.setValueAtTime(clampedValue, when);
+    if (typeof rampToValue === 'number' && typeof rampTime === 'number') {
+      const clampedRamp = Math.min(1, Math.max(0, rampToValue));
+      if (interpolation === 'exponential') {
+        const start = clampedValue <= 0 ? 0.0001 : clampedValue;
+        const target = clampedRamp <= 0 ? 0.0001 : clampedRamp;
+        param.setValueAtTime(start, when);
+        param.exponentialRampToValueAtTime(target, rampTime);
+      } else {
+        param.linearRampToValueAtTime(clampedRamp, rampTime);
+      }
+    }
+  }
+
   public connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }): void {
     if (!this.workletNode) {
       return;

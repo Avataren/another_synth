@@ -20,6 +20,8 @@ import {
   type MacroHandler,
   type ScheduledPitchHandler,
   type ScheduledVolumeHandler,
+  type ScheduledSampleOffsetHandler,
+  type ScheduledGlobalVolumeHandler,
   type ScheduledRetriggerHandler,
   type PositionCommandHandler
 } from './types';
@@ -60,6 +62,8 @@ export class PlaybackEngine {
   private readonly macroHandler: MacroHandler | undefined;
   private readonly scheduledPitchHandler: ScheduledPitchHandler | undefined;
   private readonly scheduledVolumeHandler: ScheduledVolumeHandler | undefined;
+  private readonly scheduledSampleOffsetHandler: ScheduledSampleOffsetHandler | undefined;
+  private readonly scheduledGlobalVolumeHandler: ScheduledGlobalVolumeHandler | undefined;
   private readonly scheduledRetriggerHandler: ScheduledRetriggerHandler | undefined;
   private readonly positionCommandHandler: PositionCommandHandler | undefined;
   private readonly audioContext: AudioContext | undefined;
@@ -115,6 +119,9 @@ export class PlaybackEngine {
   /** Pattern delay state (EEx) - delays current row by x ticks */
   private patternDelayCount = 0; // Number of times to repeat current row
 
+  /** Global volume state (Gxx/Hxy), normalized 0-1 */
+  private globalVolume = 1.0;
+
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
     this.scheduler =
@@ -129,6 +136,8 @@ export class PlaybackEngine {
     this.macroHandler = options.macroHandler;
     this.scheduledPitchHandler = options.scheduledPitchHandler;
     this.scheduledVolumeHandler = options.scheduledVolumeHandler;
+    this.scheduledSampleOffsetHandler = options.scheduledSampleOffsetHandler;
+    this.scheduledGlobalVolumeHandler = options.scheduledGlobalVolumeHandler;
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
     this.audioContext = options.audioContext;
@@ -667,7 +676,8 @@ export class PlaybackEngine {
           this.bpm = Math.max(32, Math.min(255, step.tempoCommand));
         }
 
-        // Check for position commands (Bxx, Dxx) and pattern flow commands (E6x, EEx)
+        // Check for position commands (Bxx, Dxx), pattern flow commands (E6x, EEx),
+        // and song-level global volume commands (Gxx/Hxy).
         if (step.effect) {
           if (step.effect.type === 'posJump') {
             this.pendingPosCommand = {
@@ -698,6 +708,26 @@ export class PlaybackEngine {
             const delayCount = step.effect.paramY;
             if (delayCount > 0 && this.patternDelayCount === 0) {
               this.patternDelayCount = delayCount;
+            }
+          } else if (step.effect.type === 'setGlobalVol') {
+            // Gxx: Set global volume (0-64 in ProTracker, 0-128 in FT2)
+            const raw = step.effect.paramX * 16 + step.effect.paramY;
+            const clamped = Math.max(0, Math.min(64, raw));
+            this.globalVolume = clamped / 64;
+            if (this.scheduledGlobalVolumeHandler) {
+              this.scheduledGlobalVolumeHandler(this.globalVolume, time);
+            }
+          } else if (step.effect.type === 'globalVolSlide') {
+            // Hxy: Global volume slide (x=up, y=down). Apply as a per-row slide.
+            const up = step.effect.paramX;
+            const down = step.effect.paramY;
+            if (up > 0 && down === 0) {
+              this.globalVolume = Math.min(1, this.globalVolume + up / 64);
+            } else if (down > 0 && up === 0) {
+              this.globalVolume = Math.max(0, this.globalVolume - down / 64);
+            }
+            if (this.scheduledGlobalVolumeHandler) {
+              this.scheduledGlobalVolumeHandler(this.globalVolume, time);
             }
           }
         }
@@ -816,6 +846,19 @@ export class PlaybackEngine {
             time,
             step.trackIndex,
             undefined
+          );
+        }
+
+        // Apply sample offset (9xx) as a per-note, per-voice parameter via handler
+        if (this.scheduledSampleOffsetHandler && step.effect?.type === 'sampleOffset') {
+          const raw = step.effect.paramX * 16 + step.effect.paramY; // 0x00-0xFF
+          const offsetNorm = Math.max(0, Math.min(1, raw / 255));
+          this.scheduledSampleOffsetHandler(
+            instrumentId,
+            effectState.voiceIndex,
+            offsetNorm,
+            time,
+            step.trackIndex
           );
         }
 

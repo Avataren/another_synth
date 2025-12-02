@@ -147,10 +147,14 @@ export class TrackerSongBank {
     return active?.instrument ?? null;
   }
 
-  /** Set the master volume (0.0 to 1.0) */
-  setMasterVolume(volume: number): void {
+  /**
+   * Set the master volume (0.0 to 1.0).
+   * When time is provided, schedules the change at the given AudioContext time.
+   */
+  setMasterVolume(volume: number, time?: number): void {
     const clamped = Math.max(0, Math.min(1, volume));
-    this.masterGain.gain.value = clamped;
+    const when = time ?? this.audioSystem.audioContext.currentTime;
+    this.masterGain.gain.setValueAtTime(clamped, when);
   }
 
   /** Get the current master volume */
@@ -1142,6 +1146,41 @@ export class TrackerSongBank {
     // Ignore invalid voice indices to avoid affecting all voices inadvertently.
     if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
     active.instrument.setVoiceGainAtTime(resolvedVoice, volume, time, rampMode);
+  }
+
+  /**
+   * Set the sample offset (normalized 0-1) for a specific voice at a specific time.
+   * Used for ProTracker 9xx sample offset via a dedicated macro route.
+   */
+  setVoiceSampleOffsetAtTime(
+    instrumentId: string | undefined,
+    voiceIndex: number,
+    offset: number,
+    time: number,
+    trackIndex: number,
+  ) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    let resolvedVoice = voiceIndex;
+    if (resolvedVoice < 0) {
+      const byTrack = this.lastTrackVoice.get(instrumentId);
+      if (byTrack) {
+        const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+        const trackVoice = byTrack.get(trackKey);
+        if (trackVoice !== undefined) {
+          resolvedVoice = trackVoice;
+        } else if (!Number.isFinite(trackIndex)) {
+          const fallback = byTrack.get(-1);
+          if (fallback !== undefined) {
+            resolvedVoice = fallback;
+          }
+        }
+      }
+    }
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
+    // Macro index 1 is reserved for sample offset in MOD-imported sampler patches.
+    active.instrument.setVoiceMacroAtTime(resolvedVoice, 1, offset, time);
   }
 
   /**
