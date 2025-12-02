@@ -49,6 +49,8 @@ export default class ModInstrument {
   }
 
   async loadPatch(patch: Patch): Promise<void> {
+    console.log('[ModInstrument] loadPatch called for:', patch.metadata.name);
+    console.log('[ModInstrument] Available audioAssets:', Object.keys(patch.audioAssets));
     // Extract sampler state
     const samplerStates = Object.values(patch.synthState.samplers);
     if (samplerStates.length === 0) {
@@ -57,14 +59,31 @@ export default class ModInstrument {
 
     this.samplerState = samplerStates[0]!;
 
-    // Load audio asset
-    const assetId = this.samplerState.id;
-    const asset = patch.audioAssets[assetId];
+    console.log('[ModInstrument] Sampler state ID:', this.samplerState.id);
 
+    // For MOD instruments, the audio asset ID should match the sampler ID
+    // But if it doesn't (due to normalization), use the first available sample asset
+    let assetId = this.samplerState.id;
+    let asset = patch.audioAssets[assetId];
+
+    // If not found by sampler ID, try to find the first sample asset
     if (!asset || asset.type !== AudioAssetType.Sample) {
-      throw new Error(`Sample asset not found: ${assetId}`);
+      const sampleAssets = Object.entries(patch.audioAssets).filter(
+        ([, a]) => a.type === AudioAssetType.Sample
+      );
+
+      if (sampleAssets.length > 0) {
+        [assetId, asset] = sampleAssets[0]!;
+      } else {
+        throw new Error(`No sample assets found in patch. Available assets: ${Object.keys(patch.audioAssets).join(', ')}`);
+      }
     }
 
+    if (asset.type !== AudioAssetType.Sample) {
+      throw new Error(`Asset ${assetId} is not a sample (type: ${asset.type})`);
+    }
+
+    console.log('[ModInstrument] Decoding sample, sampleRate:', asset.sampleRate, 'channels:', asset.channels);
     // Decode audio asset to Float32Array
     const data = decodeAudioAssetToFloat32Array(asset);
     const sampleRate = asset.sampleRate;
@@ -86,6 +105,7 @@ export default class ModInstrument {
     }
 
     this.ready = true;
+    console.log('[ModInstrument] loadPatch complete, buffer length:', this.audioBuffer.length, 'frames');
   }
 
   noteOn(
@@ -94,8 +114,11 @@ export default class ModInstrument {
     options?: { allowDuplicate?: boolean; frequency?: number; pan?: number },
   ): void {
     if (!this.audioBuffer || !this.samplerState) {
+      console.warn('[ModInstrument] noteOn skipped - buffer or state not ready');
       return;
     }
+
+    console.log('[ModInstrument] noteOn: note', noteNumber, 'velocity', velocity, 'buffer length', this.audioBuffer.length);
 
     // Allocate a voice (round-robin for now)
     const voiceIndex = this.voiceRoundRobinIndex;
@@ -150,6 +173,8 @@ export default class ModInstrument {
     // Start playback
     source.start();
 
+    console.log('[ModInstrument] Started voice', voiceIndex, 'playbackRate', playbackRate, 'gain', noteGain, 'loop', source.loop);
+
     // Store active voice
     this.activeVoices.set(voiceIndex, {
       source,
@@ -175,7 +200,19 @@ export default class ModInstrument {
       voice.gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + releaseTime);
 
       // Stop and disconnect after release
-      voice.source.stop(this.audioContext.currentTime + releaseTime);
+      const stopTime = this.audioContext.currentTime + releaseTime;
+      voice.source.stop(stopTime);
+
+      // Disconnect nodes after the release completes
+      setTimeout(() => {
+        try {
+          voice.source.disconnect();
+          voice.gainNode.disconnect();
+          voice.panNode.disconnect();
+        } catch (e) {
+          // Nodes may already be disconnected, ignore
+        }
+      }, releaseTime * 1000 + 10);
 
       this.activeVoices.delete(voiceIndex);
       return;
@@ -187,7 +224,20 @@ export default class ModInstrument {
         const releaseTime = 0.01;
         voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, this.audioContext.currentTime);
         voice.gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + releaseTime);
-        voice.source.stop(this.audioContext.currentTime + releaseTime);
+        const stopTime = this.audioContext.currentTime + releaseTime;
+        voice.source.stop(stopTime);
+
+        // Disconnect nodes after the release completes
+        setTimeout(() => {
+          try {
+            voice.source.disconnect();
+            voice.gainNode.disconnect();
+            voice.panNode.disconnect();
+          } catch (e) {
+            // Nodes may already be disconnected, ignore
+          }
+        }, releaseTime * 1000 + 10);
+
         this.activeVoices.delete(vIdx);
       }
     }
@@ -206,7 +256,19 @@ export default class ModInstrument {
     voice.gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + releaseTime);
 
     // Stop and disconnect after release
-    voice.source.stop(this.audioContext.currentTime + releaseTime);
+    const stopTime = this.audioContext.currentTime + releaseTime;
+    voice.source.stop(stopTime);
+
+    // Disconnect nodes after the release completes
+    setTimeout(() => {
+      try {
+        voice.source.disconnect();
+        voice.gainNode.disconnect();
+        voice.panNode.disconnect();
+      } catch (e) {
+        // Nodes may already be disconnected, ignore
+      }
+    }, releaseTime * 1000 + 10);
 
     this.activeVoices.delete(voiceIndex);
   }
@@ -261,8 +323,43 @@ export default class ModInstrument {
   }
 
   destroy(): void {
-    this.allNotesOff();
-    this.outputNode.disconnect();
+    console.log('[ModInstrument] Destroying instrument, active voices:', this.activeVoices.size);
+
+    // Immediately stop and disconnect all active voices without release envelope
+    for (const voice of this.activeVoices.values()) {
+      try {
+        // Stop the source immediately
+        voice.source.stop();
+      } catch (e) {
+        // Source may already be stopped, ignore
+      }
+
+      // Disconnect all nodes immediately
+      try {
+        voice.source.disconnect();
+        voice.gainNode.disconnect();
+        voice.panNode.disconnect();
+      } catch (e) {
+        // Nodes may already be disconnected, ignore
+      }
+    }
+
+    // Clear the active voices map
+    this.activeVoices.clear();
+
+    // Disconnect output node
+    try {
+      this.outputNode.disconnect();
+    } catch (e) {
+      // Already disconnected, ignore
+    }
+
+    // Clear the audio buffer reference for GC
+    this.audioBuffer = null;
+    this.samplerState = null;
+    this.ready = false;
+
+    console.log('[ModInstrument] Destroyed successfully');
   }
 
   // Alias for compatibility with InstrumentV2 interface
@@ -323,14 +420,79 @@ export default class ModInstrument {
     time: number,
     options?: { allowDuplicate?: boolean; frequency?: number },
   ): number | undefined {
-    // ModInstrument doesn't support scheduled notes, play immediately if time is close enough
-    const now = this.audioContext.currentTime;
-    if (time <= now + 0.1) {
-      this.noteOn(noteNumber, velocity, options);
-      // Return the voice that was just allocated
-      return (this.voiceRoundRobinIndex - 1 + this.num_voices) % this.num_voices;
+    if (!this.audioBuffer || !this.samplerState) {
+      console.warn('[ModInstrument] noteOnAtTime skipped - buffer or state not ready');
+      return undefined;
     }
-    return undefined;
+
+    console.log('[ModInstrument] noteOnAtTime: note', noteNumber, 'at time', time.toFixed(3));
+
+    // Allocate a voice (round-robin)
+    const voiceIndex = this.voiceRoundRobinIndex;
+    this.voiceRoundRobinIndex = (this.voiceRoundRobinIndex + 1) % this.num_voices;
+
+    // Stop existing voice if playing (unless allowDuplicate is true)
+    if (!options?.allowDuplicate) {
+      for (const [vIdx, voice] of this.activeVoices.entries()) {
+        if (voice.noteNumber === noteNumber) {
+          this.noteOff(noteNumber, vIdx);
+          break;
+        }
+      }
+    }
+
+    // Create audio nodes for this voice
+    const source = this.audioContext.createBufferSource();
+    const gainNode = this.audioContext.createGain();
+    const panNode = this.audioContext.createStereoPanner();
+
+    source.buffer = this.audioBuffer;
+
+    // Configure looping
+    if (this.samplerState.loopMode === 1) {
+      source.loop = true;
+      const bufferLength = this.audioBuffer.length;
+      source.loopStart = this.samplerState.loopStart * bufferLength / this.audioBuffer.sampleRate;
+      source.loopEnd = this.samplerState.loopEnd * bufferLength / this.audioBuffer.sampleRate;
+    }
+
+    // Set gain based on velocity and sampler gain
+    const noteGain = (velocity / 127) * this.samplerState.gain;
+    gainNode.gain.value = noteGain;
+
+    // Set panning
+    const pan = options?.pan;
+    if (pan !== undefined) {
+      panNode.pan.value = (pan - 0.5) * 2;
+    }
+
+    // Calculate playback rate from frequency
+    const frequency = options?.frequency ?? this.midiNoteToFrequency(noteNumber);
+    const playbackRate = this.calculatePlaybackRate(frequency);
+    source.playbackRate.value = playbackRate;
+
+    // Connect audio graph
+    source.connect(gainNode);
+    gainNode.connect(panNode);
+    panNode.connect(this.outputNode);
+
+    // Schedule playback at the specified time
+    const startTime = Math.max(time, this.audioContext.currentTime);
+    source.start(startTime);
+
+    console.log('[ModInstrument] Scheduled voice', voiceIndex, 'at', startTime.toFixed(3), 'playbackRate', playbackRate);
+
+    // Store active voice
+    this.activeVoices.set(voiceIndex, {
+      source,
+      gainNode,
+      panNode,
+      noteNumber,
+      startTime: startTime,
+      frequency: frequency ?? 440,
+    });
+
+    return voiceIndex;
   }
 
   noteOffAtTime(noteNumber: number, time: number, _trackIndex?: number): void {

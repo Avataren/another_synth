@@ -767,9 +767,6 @@ export class TrackerSongBank {
       );
       return;
     }
-    console.log(
-      `[SongBank] previewNoteOn: instrument found, isReady=${active.instrument.isReady}, hasWorklet=${!!active.instrument.workletNode}`,
-    );
     const clampedMidi = Math.max(0, Math.min(127, Math.round(midi)));
     active.instrument.noteOn(clampedMidi, velocity);
   }
@@ -1032,17 +1029,17 @@ export class TrackerSongBank {
     //   );
     // }
 
+    // Only warn about missing worklet for InstrumentV2 (ModInstruments don't use worklets)
     const worklet = active.instrument.workletNode;
-    if (!worklet) {
+    if (!worklet && active.instrument instanceof InstrumentV2) {
       console.warn(
-        `[SongBank] noteOnAtTime: instrument ${instrumentId} has NO workletNode!`,
+        `[SongBank] noteOnAtTime: InstrumentV2 ${instrumentId} has NO workletNode!`,
       );
     }
 
     // Avoid pushing the note later than requested; only clamp if we're already in the past.
     const scheduledTime =
       time < now ? now + MIN_SCHEDULE_LEAD_SECONDS : time;
-    console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'note', midi, 'time', scheduledTime.toFixed(3) + 's', frequency ? 'freq=' + frequency.toFixed(2) + 'Hz' : '');
     // First, clear any lingering voices on this track from other instruments,
     // then gate off the previous voice for this instrument/track.
     this.gateOffOtherInstrumentsForTrack(instrumentId, trackIndex, scheduledTime);
@@ -1056,7 +1053,6 @@ export class TrackerSongBank {
         ...(frequency !== undefined ? { frequency } : {}),
       },
     );
-    console.log('[SongBank] dispatchNoteOnAtTime: track', trackIndex, 'allocated voice', voiceIndex);
 
     // Verify parameter presence for debugging
     if (voiceIndex !== undefined && worklet) {
@@ -1413,6 +1409,7 @@ export class TrackerSongBank {
     const userSettings = useUserSettingsStore();
     const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
     const useSimplified = userSettings.settings.useSimplifiedModInstruments;
+    console.log(`[SongBank] instrumentType=${normalizedPatch.metadata.instrumentType}, isModInstrument=${isModInstrument}, useSimplified=${useSimplified}`);
 
     let instrument: InstrumentV2 | ModInstrument;
 
@@ -1708,6 +1705,9 @@ export class TrackerSongBank {
       ...(typeof metadata?.description === 'string'
         ? { description: metadata.description }
         : {}),
+      ...(metadata?.instrumentType
+        ? { instrumentType: metadata.instrumentType }
+        : {}),
     };
   }
 
@@ -1944,6 +1944,11 @@ export class TrackerSongBank {
   private teardownInstrument(instrumentId: string) {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
+
+    const isModInstrument = !(active.instrument instanceof InstrumentV2);
+    console.log(
+      `[SongBank] Tearing down instrument ${instrumentId}, type: ${isModInstrument ? 'ModInstrument' : 'InstrumentV2'}`,
+    );
 
     try {
       active.instrument.dispose();

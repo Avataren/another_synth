@@ -339,6 +339,12 @@ this.automationAdapter = new AutomationAdapter(
 );
 ```
 
+## Update: Multiple WASM engines per worklet (2025-12)
+
+- The audio worklet can now host multiple `AudioEngine` instances (TS constant `ENGINE_INSTANCE_COUNT`, currently `4`). Patch voice count is clamped to 8 (static parameterDescriptors), evenly distributed across instances; each engine gets its own `AutomationAdapter` sized to its local voice count plus a per-instance parameter map that remaps `gate_X`/`frequency_X`/`macro_X_Y` from the global parameter arrays. Outputs are rendered into per-instance buffers and summed.
+- Patch loads clone the patch JSON per engine and override `synthState.layout.voiceCount` with the local count; UI layout still reports the total voice count via `this.numVoices`/`voiceLayouts`.
+- When adding new parameters/mod routes, update the per-instance mapper in `synth-worklet.ts` so each engine receives the right slice of the global 8-voice parameter set.
+
 **Files affected**:
 
 - `synth-worklet.ts:489` - `handleLoadPatch` method

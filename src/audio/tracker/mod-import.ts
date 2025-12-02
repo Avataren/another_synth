@@ -439,6 +439,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
     slot.instrumentName = patch.metadata.name;
     slot.source = 'song';
     slot.instrumentType = 'mod';
+    console.log('[MOD Import] Setting slot instrumentType=mod for:', patch.metadata.name, 'slot:', slot.slot);
     // MOD sample volumes are handled via Cxx commands on notes, not sampler gain,
     // so slot volume remains at unity to avoid double-scaling.
     slot.volume = 1.0;
@@ -470,6 +471,7 @@ function createSamplerPatchForSample(
     sample.name || `Instrument ${formatInstrumentId(sampleIndex)}`;
   const metadata = createDefaultPatchMetadata(patchName, 'Imported/MOD');
   metadata.instrumentType = 'mod';
+  console.log('[MOD Import] Creating patch with instrumentType=mod:', patchName);
 
   const floatData = convertSampleToFloat32(sample);
 
