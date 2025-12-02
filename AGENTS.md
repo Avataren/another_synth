@@ -242,9 +242,12 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 ### MOD sample default volume → sampler gain (2025-12)
 
 - ProTracker MOD samples carry a header `volume` field (0..64). MOD import (`src/audio/tracker/mod-import.ts`) maps this directly to the sampler’s base gain instead of faking it through implicit Cxx volume on every note.
-- `resolveSamplerGain(sample: ModSample)` returns `clamped(sample.volume, 1..64) / 64`, treating header volume `0` or non-finite values as “use unity gain” (1.0). This makes instruments that start on, e.g., `E-2` with no explicit Cxx land at the expected relative loudness from the original module, while avoiding completely muting instruments whose sample headers were erroneously saved with volume `0`.
+- `ModSong` now exposes `signature` and `trackerFlavor` from `mod-parser.ts` so import logic can branch on “ProTracker/NoiseTracker” vs “Soundtracker/Unknown” semantics. `trackerFlavor` is derived from the 4-byte signature at 1080 and the 15- vs 31-sample layout heuristic.
+- `resolveSamplerGain(sample: ModSample, mod: ModSong)` returns `clamped(sample.volume, 0..64) / 64` for ProTracker/NoiseTracker (header volume 0 is respected as true silence), but treats header volume `0` as unity gain (1.0) for classic Soundtracker or unknown flavors to avoid completely muting instruments in older or malformed modules.
 - To avoid double-scaling, the import no longer injects “sample default volume” as a per-note velocity when a note+instrument has no Cxx; Cxx and EAx/EBx effects still flow through the volume column and FT2-style effect processor, which drives per-voice gain via `ScheduledVolumeHandler`.
-- If a MOD instrument suddenly sounds much louder than expected, check whether its header `volume` is 64 (sampler gain 1.0) and whether the pattern also contains aggressive Cxx/EAx ramps; the former is now represented in sampler gain, the latter in per-voice gain automation.
+- If a MOD instrument suddenly sounds much louder or quieter than expected, check:
+  - `trackerFlavor` in the console log (`[MOD Import]` from `importModToTrackerSong`) to see whether the module is treated as ProTracker/NoiseTracker versus Soundtracker/Unknown.
+  - The sample’s header `volume` and whether the pattern also contains aggressive Cxx/EAx ramps; the former is now represented in sampler gain (flavor-dependent), the latter in per-voice gain automation.
 
 ### ProTracker MOD frequency scaling (2025-12)
 

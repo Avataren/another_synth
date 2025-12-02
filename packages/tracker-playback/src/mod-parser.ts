@@ -38,6 +38,8 @@ export interface ModPattern {
   rows: ModPatternCell[][];
 }
 
+export type ModTrackerFlavor = 'ProTracker' | 'NoiseTracker' | 'Soundtracker' | 'Unknown';
+
 export interface ModSong {
   title: string;
   numChannels: number;
@@ -48,6 +50,10 @@ export interface ModSong {
   /** Patterns indexed by pattern number */
   patterns: ModPattern[];
   samples: ModSample[];
+  /** Raw 4-byte signature at offset 1080 (e.g. M.K., N.T., FLT4), or empty string */
+  signature: string;
+  /** Heuristic tracker flavor derived from layout/signature */
+  trackerFlavor: ModTrackerFlavor;
 }
 
 const PT_HEADER_SIZE = 1084;
@@ -216,6 +222,17 @@ export function parseMod(buffer: Uint8Array): ModSong {
     throw new Error(`Only 4-channel MODs are supported (got ${numChannels})`);
   }
 
+  // Heuristic tracker flavor for import-time behavior.
+  let trackerFlavor: ModTrackerFlavor = 'Unknown';
+  if (!isProTracker) {
+    trackerFlavor = 'Soundtracker';
+  } else if (signature === 'N.T.') {
+    trackerFlavor = 'NoiseTracker';
+  } else {
+    // Treat known ProTracker-style signatures (M.K., FLT4, 4CHN, etc.) as ProTracker family.
+    trackerFlavor = 'ProTracker';
+  }
+
   // Pattern data
   const patternSize = PATTERN_ROWS * numChannels * 4;
   const patterns: ModPattern[] = [];
@@ -300,6 +317,8 @@ export function parseMod(buffer: Uint8Array): ModSong {
     orders,
     patterns,
     samples: samplesWithData,
+    signature,
+    trackerFlavor,
   };
 }
 

@@ -41,14 +41,15 @@ const DEFAULT_STEP_SIZE = 1;
 const MAX_SLOTS = 25;
 const DEFAULT_SAMPLE_RATE = 44100;
 
-function resolveSamplerGain(sample: ModSample): number {
+function resolveSamplerGain(sample: ModSample, mod: ModSong): number {
   // ProTracker sample volumes are initial defaults that Cxx commands override.
   // Since the synth architecture multiplies samplerGain × voiceGain, and we
   // want Cxx commands to directly control volume without double-scaling, always
   // use unity gain at the sampler level. Sample default volumes are handled by
   // converting them to Cxx commands at import time.
   const raw = Number.isFinite(sample.volume) ? sample.volume : 64;
-  if (raw <= 0) {
+  const flavor = mod.trackerFlavor;
+  if ((flavor === 'Soundtracker' || flavor === 'Unknown') && raw <= 0) {
     return 1.0;
   }
   const clamped = Math.max(0, Math.min(64, raw));
@@ -60,6 +61,16 @@ export const looksLikeMod = looksLikeModInternal;
 export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   const bytes = new Uint8Array(buffer);
   const mod: ModSong = parseMod(bytes);
+
+  // Log basic MOD metadata on import to help debug tracker-specific behavior.
+  // eslint-disable-next-line no-console
+  console.log('[MOD Import]', {
+    title: mod.title,
+    signature: mod.signature,
+    trackerFlavor: mod.trackerFlavor,
+    numChannels: mod.numChannels,
+    numSamples: mod.samples.length,
+  });
 
   const patterns = buildTrackerPatterns(mod);
   // Build song sequence from the MOD order table so repeated
@@ -389,7 +400,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
 
     const sampleMeta = mod.samples[sampleNumber - 1];
     if (!sampleMeta) continue;
-    const patch = createSamplerPatchForSample(sampleMeta, sampleNumber);
+    const patch = createSamplerPatchForSample(sampleMeta, sampleNumber, mod);
     const slotIndex = sampleNumber - 1;
     const slot = slots[slotIndex];
     if (!slot) continue;
@@ -412,6 +423,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
 function createSamplerPatchForSample(
   sample: ModSample,
   sampleIndex: number,
+  mod: ModSong,
 ): Patch {
   const samplerNodeId = generateNodeId('sampler');
   const mixerNodeId = generateNodeId('mixer');
@@ -456,9 +468,10 @@ function createSamplerPatchForSample(
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    // Base sampler gain reflects the MOD sample's default volume (0..64),
-    // while Cxx/EAx commands modulate per-voice gain at playback time.
-    gain: resolveSamplerGain(sample),
+    // Base sampler gain reflects the MOD sample's default volume (0..64) for
+    // ProTracker/NoiseTracker; older Soundtracker/Unknown flavors treat header
+    // volume 0 as unity to avoid silent instruments from broken headers.
+    gain: resolveSamplerGain(sample, mod),
     detune_oct: 0,
     detune_semi: 0,
     detune_cents: finetuneCents,
