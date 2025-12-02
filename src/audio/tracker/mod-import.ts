@@ -41,15 +41,13 @@ const DEFAULT_STEP_SIZE = 1;
 const MAX_SLOTS = 25;
 const DEFAULT_SAMPLE_RATE = 44100;
 
-function resolveSamplerGain(sample: ModSample): number {
-  const normalized = sample.volume / 64;
-  if (Number.isFinite(normalized) && normalized > 0) {
-    return Math.min(1, normalized);
-  }
-  // Some MODs ship with a zeroed volume in the sample header even though the
-  // instrument is meant to play (volume commands are used later). Default to
-  // unity so imported patches aren't silent.
-  return 1;
+function resolveSamplerGain(_sample: ModSample): number {
+  // ProTracker sample volumes are initial defaults that Cxx commands override.
+  // Since the synth architecture multiplies samplerGain × voiceGain, and we
+  // want Cxx commands to directly control volume without double-scaling, always
+  // use unity gain at the sampler level. Sample default volumes are handled by
+  // converting them to Cxx commands at import time.
+  return 1.0;
 }
 
 export const looksLikeMod = looksLikeModInternal;
@@ -118,6 +116,9 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
       });
     }
 
+    // Track the last volume set on each channel (ProTracker behavior: volume "sticks")
+    const channelVolumes: (string | undefined)[] = new Array(trackCount).fill(undefined);
+
     for (let row = 0; row < PATTERN_ROWS; row++) {
       for (let ch = 0; ch < trackCount; ch++) {
         const cell: ModPatternCell | undefined =
@@ -125,8 +126,13 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
         if (!cell) continue;
 
         const panNorm = resolveChannelPanNorm(ch, trackCount);
-        const entry = modCellToTrackerEntry(cell, row, panNorm);
+        const entry = modCellToTrackerEntry(cell, row, panNorm, mod, channelVolumes[ch]);
         if (!entry) continue;
+
+        // Update the channel's current volume if this entry sets one
+        if (entry.volume !== undefined) {
+          channelVolumes[ch] = entry.volume;
+        }
 
         const track = tracks[ch];
         if (!track) continue;
@@ -175,6 +181,8 @@ function modCellToTrackerEntry(
   cell: ModPatternCell,
   row: number,
   panNorm: number,
+  mod: ModSong,
+  lastVolume?: string,
 ): TrackerEntryData | undefined {
   const { period, sampleNumber, effectCmd, effectParam } = cell;
 
@@ -281,6 +289,42 @@ function modCellToTrackerEntry(
     }
   }
 
+  // Convert Cxx volume effects to the volume column (instead of macro column).
+  // This ensures notes trigger with the correct velocity, avoiding the note-on
+  // gain (velocity/127) conflicting with the Cxx effect gain.
+  const hasVolumeEffectCmd = (effectCmd & 0x0f) === 0xc;
+  if (hasVolumeEffectCmd && effectMacro) {
+    // Extract the Cxx parameter (00-40 hex) and convert to volume column format (00-FF hex)
+    // ProTracker: C00-C40 (0-64) → Volume column: 00-FF (0-255)
+    const volumeParam = effectParam; // Already 0-64
+    const volumeScaled = Math.round((volumeParam / 64) * 255);
+    const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
+    entry.volume = volumeHex;
+    // Clear the effect macro since we moved it to volume column
+    effectMacro = undefined;
+  }
+
+  // ProTracker volume behavior:
+  // - Note + instrument + Cxx: Use Cxx volume
+  // - Note + instrument (no Cxx): Reset to sample's default volume
+  // - Note without instrument (no Cxx): Inherit last volume (sticky)
+  // - No note + Cxx: Sets channel volume (sticky for subsequent notes without instrument)
+  if (!entry.volume) {
+    if (hasNote && hasSample && sampleNumber > 0 && sampleNumber <= mod.samples.length) {
+      // Note with instrument: reset to sample's default volume
+      const sample = mod.samples[sampleNumber - 1];
+      if (sample && sample.volume > 0) {
+        const volumeScaled = Math.round((sample.volume / 64) * 255);
+        const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
+        entry.volume = volumeHex;
+      }
+    } else if (hasNote && !hasSample && lastVolume !== undefined) {
+      // Note without instrument: inherit last volume (sticky)
+      entry.volume = lastVolume;
+    }
+    // If no note at all, don't set volume (only Cxx without note sets sticky volume)
+  }
+
   // Always add a macro command that drives macro 0 for stereo pan, using the
   // resolved channel pan. This lives in the second effect column so the first
   // column can carry the original MOD effect.
@@ -352,8 +396,8 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
     slot.patchName = patch.metadata.name;
     slot.instrumentName = patch.metadata.name;
     slot.source = 'song';
-    // Let samplerState.gain carry the ProTracker sample volume; keep
-    // slot volume at unity so we don't double-scale loud instruments.
+    // MOD sample volumes are handled via Cxx commands on notes, not sampler gain,
+    // so slot volume remains at unity to avoid double-scaling.
     slot.volume = 1.0;
 
     songPatches[patch.metadata.id] = patch;
@@ -405,8 +449,8 @@ function createSamplerPatchForSample(
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    // Map ProTracker sample volume 0..64 directly into 0..1 sampler gain, but
-    // treat missing/zero volumes as unity so valid samples aren't muted.
+    // ProTracker sample volumes are applied via Cxx commands at note-on time,
+    // not as sampler gain, to avoid volume multiplication with voice gain.
     gain: resolveSamplerGain(sample),
     detune_oct: 0,
     detune_semi: 0,
