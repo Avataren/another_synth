@@ -42,6 +42,7 @@ export interface TrackerFileIOContext {
   syncSongBankFromSlots: () => Promise<void>;
   initializePlayback: (mode: 'pattern' | 'song', skipIfPlaying?: boolean) => Promise<boolean>;
   stopPlayback: () => void;
+  resetSequenceIndex: () => void;
 }
 
 /**
@@ -210,6 +211,31 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       console.log('[FileIO] Stopping playback before load');
       context.stopPlayback();
 
+      // Ensure AudioContext is running before loading instruments
+      // This prevents silent playback when loading songs with many instruments
+      console.log('[FileIO] Ensuring AudioContext is running...');
+      const audioCtx = context.songBank.audioContext;
+      if (audioCtx.state !== 'running') {
+        console.log(`[FileIO] AudioContext state is ${audioCtx.state}, attempting to resume...`);
+        try {
+          await audioCtx.resume();
+          // Use string variable to avoid TypeScript's type narrowing issue
+          const currentState: string = audioCtx.state;
+          if (currentState === 'running') {
+            console.log('[FileIO] AudioContext successfully resumed');
+          } else {
+            console.warn(
+              '[FileIO] AudioContext did not resume. Click anywhere on the page to enable audio.',
+              `Current state: ${currentState}`
+            );
+          }
+        } catch (err) {
+          console.error('[FileIO] Failed to resume AudioContext:', err);
+        }
+      } else {
+        console.log('[FileIO] AudioContext already running');
+      }
+
       // Drop all existing tracker instruments before wiring up the next song
       context.songBank.resetForNewSong();
 
@@ -218,9 +244,21 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       context.trackerStore.loadSongFile(songFile);
       context.ensureActiveInstrument();
 
+      // Reset sequence index to 0 AFTER song is loaded so it operates on new data
+      console.log('[FileIO] Resetting sequence index to 0');
+      context.resetSequenceIndex();
+
       console.log('[FileIO] Syncing song bank from slots');
       await context.syncSongBankFromSlots();
       console.log('[FileIO] Song bank sync complete');
+
+      // Give worklets additional time to fully initialize voice structures
+      // With many instruments (32+), worklets need time to stabilize after batched loading
+      // This prevents "Node not found" errors and ensures audio output to speakers
+      const numSlots = context.trackerStore.instrumentSlots.filter(s => s.patchId).length;
+      const stabilizationDelay = Math.max(100, Math.min(500, numSlots * 10));
+      console.log(`[FileIO] Waiting ${stabilizationDelay}ms for ${numSlots} worklets to stabilize...`);
+      await new Promise((resolve) => setTimeout(resolve, stabilizationDelay));
 
       // Force re-initialization of playback with the new song
       console.log('[FileIO] Initializing playback');

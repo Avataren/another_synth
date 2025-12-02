@@ -1,5 +1,6 @@
 import type AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
+import ModInstrument from 'src/audio/mod-instrument';
 import type {
   AudioAsset,
   Patch,
@@ -42,6 +43,7 @@ import {
   frequencyFromDetune,
 } from 'src/audio/utils/sampler-detune';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -49,7 +51,7 @@ export interface SongBankSlot {
 }
 
 interface ActiveInstrument {
-  instrument: InstrumentV2;
+  instrument: InstrumentV2 | ModInstrument;
   patchId: string;
   patchSignature: string | null;
   hasPortamento: boolean;
@@ -142,7 +144,7 @@ export class TrackerSongBank {
   }
 
   /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
-  getInstrument(instrumentId: string): InstrumentV2 | null {
+  getInstrument(instrumentId: string): InstrumentV2 | ModInstrument | null {
     const active = this.instruments.get(instrumentId);
     return active?.instrument ?? null;
   }
@@ -240,25 +242,66 @@ export class TrackerSongBank {
         this.wasSuspended = false;
       }
 
-      const ensureTasks: Promise<void>[] = [];
-      for (const [instrumentId, patch] of nextDesired.entries()) {
-        console.log(
-          `[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`,
-        );
-        ensureTasks.push(this.ensureInstrument(instrumentId, patch));
+      // Load instruments in batches to avoid overwhelming the browser
+      // with too many concurrent AudioWorklet/WASM initializations
+      const BATCH_SIZE = 8; // Load 8 instruments at a time
+      const entries = Array.from(nextDesired.entries());
+      console.log(`[SongBank] Loading ${entries.length} instruments in batches of ${BATCH_SIZE}`);
+
+      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+        const batch = entries.slice(i, i + BATCH_SIZE);
+        console.log(`[SongBank] Loading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(entries.length / BATCH_SIZE)}: instruments ${batch.map(([id]) => id).join(', ')}`);
+
+        const ensureTasks: Promise<void>[] = [];
+        for (const [instrumentId, patch] of batch) {
+          console.log(
+            `[SongBank] Ensuring instrument: ${instrumentId}, patch: ${patch?.metadata?.id}`,
+          );
+          ensureTasks.push(this.ensureInstrument(instrumentId, patch));
+        }
+
+        await Promise.all(ensureTasks);
+
+        // Small delay between batches to let the browser breathe
+        if (i + BATCH_SIZE < entries.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
 
-      await Promise.all(ensureTasks);
-
+      const loadedCount = this.instruments.size;
+      const expectedCount = nextDesired.size;
       console.log(
-        `[SongBank] syncSlots complete, active instruments: ${Array.from(this.instruments.keys()).join(', ')}`,
+        `[SongBank] syncSlots complete: ${loadedCount}/${expectedCount} instruments loaded`,
       );
+      console.log(
+        `[SongBank] Active instruments: ${Array.from(this.instruments.keys()).join(', ')}`,
+      );
+
       // Verify all instruments are properly connected
+      let disconnectedCount = 0;
       for (const [id, active] of this.instruments.entries()) {
         const hasOutput = active.instrument.outputNode.numberOfOutputs > 0;
-        console.log(
-          `[SongBank] Instrument ${id} output connected: ${hasOutput}`,
-        );
+        if (!hasOutput) {
+          console.error(`[SongBank] ⚠️ Instrument ${id} is NOT connected to output!`);
+          disconnectedCount++;
+        }
+      }
+
+      if (disconnectedCount > 0) {
+        console.error(`[SongBank] ❌ ${disconnectedCount} instruments failed to connect!`);
+      } else if (loadedCount === expectedCount && loadedCount > 0) {
+        console.log(`[SongBank] ✅ All ${loadedCount} instruments loaded and connected`);
+      } else if (loadedCount < expectedCount) {
+        console.warn(`[SongBank] ⚠️ Only ${loadedCount}/${expectedCount} instruments loaded`);
+      }
+
+      // Verify master gain is still connected to destination
+      const masterConnected = this.masterGain.numberOfOutputs > 0;
+      if (!masterConnected) {
+        console.error('[SongBank] ❌ CRITICAL: Master gain disconnected from output! Reconnecting...');
+        this.masterGain.connect(this.audioSystem.destinationNode);
+      } else {
+        console.log('[SongBank] ✅ Master gain connected to destination');
       }
 
       // Try to flush any scheduled events that were queued while suspended/loading
@@ -619,7 +662,7 @@ export class TrackerSongBank {
   }
 
   /** Return a small lead time (seconds) to drop the gate before retriggering. */
-  private getGateLeadTime(instrument: InstrumentV2): number {
+  private getGateLeadTime(instrument: InstrumentV2 | ModInstrument): number {
     // Ensure at least one quantum of gate-low so the automation frame sees the edge.
     // Fallback to ~5ms if we don't know the block size.
     const quantum = instrument.getQuantumDurationSeconds();
@@ -1366,49 +1409,71 @@ export class TrackerSongBank {
 
     console.log(`[SongBank] Creating new instrument: ${instrumentId}`);
 
-    const memory = new WebAssembly.Memory({
-      initial: 256,
-      maximum: 1024,
-      shared: true,
-    });
-    const instrument = new InstrumentV2(
-      this.masterGain,
-      this.audioSystem.audioContext,
-      memory,
-    );
+    // Check if this is a MOD instrument and user has simplified MOD instruments enabled
+    const userSettings = useUserSettingsStore();
+    const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
+    const useSimplified = userSettings.settings.useSimplifiedModInstruments;
 
-    const ready = await this.waitForInstrumentReady(instrument);
-    if (!ready) {
-      console.warn('[TrackerSongBank] Instrument initialization timeout');
-      instrument.outputNode.disconnect();
-      return;
+    let instrument: InstrumentV2 | ModInstrument;
+
+    if (isModInstrument && useSimplified) {
+      console.log(`[SongBank] Creating ModInstrument for ${instrumentId}`);
+      instrument = new ModInstrument(
+        this.masterGain,
+        this.audioSystem.audioContext,
+      );
+
+      await instrument.loadPatch(normalizedPatch);
+      console.log(
+        `[SongBank] ModInstrument ${instrumentId} loaded, isReady=${instrument.isReady}`,
+      );
+    } else {
+      console.log(`[SongBank] Creating InstrumentV2 for ${instrumentId}`);
+      const memory = new WebAssembly.Memory({
+        initial: 256,
+        maximum: 1024,
+        shared: true,
+      });
+      instrument = new InstrumentV2(
+        this.masterGain,
+        this.audioSystem.audioContext,
+        memory,
+      );
+
+      const ready = await this.waitForInstrumentReady(instrument);
+      if (!ready) {
+        console.warn('[TrackerSongBank] Instrument initialization timeout');
+        instrument.outputNode.disconnect();
+        return;
+      }
+      console.log(
+        `[SongBank] Instrument ${instrumentId} worklet ready, loading patch...`,
+      );
+
+      await instrument.loadPatch(normalizedPatch);
+      console.log(
+        `[SongBank] Instrument ${instrumentId} patch loaded, isReady=${instrument.isReady}`,
+      );
+      // Give WASM time to finish building all voice node structures before updating states
+      // Reduced from 100ms to 20ms - loadPatch already waits for synthLayout response,
+      // this additional delay just ensures voice structures are built. Conservative reduction
+      // maintains stability while reducing stutter on laptops
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Apply assets and node state in parallel to avoid serial stalls (only for InstrumentV2)
+      await Promise.all([
+        this.restoreAudioAssets(
+          instrumentId,
+          instrument,
+          normalizedPatch,
+          deserialized,
+        ),
+        this.applyNodeStates(instrument, deserialized),
+      ]);
+
+      this.applyMacrosFromPatch(instrument, normalizedPatch);
     }
-    console.log(
-      `[SongBank] Instrument ${instrumentId} worklet ready, loading patch...`,
-    );
 
-    await instrument.loadPatch(normalizedPatch);
-    console.log(
-      `[SongBank] Instrument ${instrumentId} patch loaded, isReady=${instrument.isReady}`,
-    );
-    // Give WASM time to finish building all voice node structures before updating states
-    // Reduced from 100ms to 20ms - loadPatch already waits for synthLayout response,
-    // this additional delay just ensures voice structures are built. Conservative reduction
-    // maintains stability while reducing stutter on laptops
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    // Apply assets and node state in parallel to avoid serial stalls
-    await Promise.all([
-      this.restoreAudioAssets(
-        instrumentId,
-        instrument,
-        normalizedPatch,
-        deserialized,
-      ),
-      this.applyNodeStates(instrument, deserialized),
-    ]);
-
-    this.applyMacrosFromPatch(instrument, normalizedPatch);
     this.normalizeVoiceGain(instrument);
     if (generation !== this.generation) {
       console.warn(
@@ -1426,7 +1491,7 @@ export class TrackerSongBank {
     await this.flushPendingScheduledEvents(instrumentId);
   }
 
-  private normalizeVoiceGain(instrument: InstrumentV2) {
+  private normalizeVoiceGain(instrument: InstrumentV2 | ModInstrument) {
     // Ensure voice gains aren't left at a previous automation value (e.g. 0)
     instrument.setGainForAllVoices(1);
   }
@@ -1934,14 +1999,16 @@ export class TrackerSongBank {
       // Load the patch into the instrument (this updates all synth parameters)
       await active.instrument.loadPatch(normalizedPatch);
 
-      // Restore audio assets (samplers, convolvers) if any
-      const deserialized = deserializePatch(normalizedPatch);
-      await this.restoreAudioAssets(
-        instrumentId,
-        active.instrument,
-        normalizedPatch,
-        deserialized,
-      );
+      // Restore audio assets (samplers, convolvers) if any (only for InstrumentV2)
+      if (active.instrument instanceof InstrumentV2) {
+        const deserialized = deserializePatch(normalizedPatch);
+        await this.restoreAudioAssets(
+          instrumentId,
+          active.instrument,
+          normalizedPatch,
+          deserialized,
+        );
+      }
 
       // Update the stored patch reference and signature
       this.desired.set(instrumentId, normalizedPatch);

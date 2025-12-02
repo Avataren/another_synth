@@ -109,6 +109,7 @@
 
       <div class="top-grid" v-show="!isFullscreen">
         <SequenceEditor
+          ref="sequenceEditorRef"
           class="top-panel"
           :sequence="sequence"
           :patterns="patterns"
@@ -328,12 +329,16 @@
               :class="{
                 active: activeInstrumentId === formatInstrumentId(slot.slot),
                 empty: !slot.patchId,
+                'mod-instrument': slot.instrumentType === 'mod',
               }"
               :title="slot.patchId ? `Bank: ${slot.bankName}` : ''"
               @click="setActiveInstrument(slot.slot)"
             >
               <div class="slot-number">
                 #{{ formatInstrumentId(slot.slot) }}
+                <span v-if="slot.instrumentType === 'mod'" class="mod-badge"
+                  >MOD</span
+                >
               </div>
               <div
                 class="patch-name"
@@ -634,6 +639,7 @@ const trackerTrackWidth = computed(() =>
 );
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const patternAreaRef = ref<HTMLDivElement | null>(null);
+const sequenceEditorRef = ref<InstanceType<typeof SequenceEditor> | null>(null);
 const patternAreaScrollTop = ref(0);
 const patternAreaHeight = ref(600);
 const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
@@ -1508,6 +1514,14 @@ const fileIOContext: TrackerFileIOContext = {
   stopPlayback: () => {
     playbackStore.stop();
     clearTrackAudioNodes();
+  },
+  resetSequenceIndex: () => {
+    playbackStore.setSequenceIndex(0);
+    // Scroll the sequence list to the top and reset selection after setting index to 0
+    nextTick(() => {
+      sequenceEditorRef.value?.scrollToTop();
+      sequenceEditorRef.value?.resetSelection();
+    });
   },
 };
 
@@ -2765,6 +2779,23 @@ onBeforeUnmount(() => {
   font-weight: 700;
   font-size: 11px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mod-badge {
+  font-size: 8px;
+  font-weight: 600;
+  background: #ff9800;
+  color: #000;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.instrument-row.mod-instrument {
+  border-left: 2px solid #ff9800;
 }
 
 .instrument-volume {

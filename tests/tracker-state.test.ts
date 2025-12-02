@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
-import { useTrackerStore } from '../src/stores/tracker-store';
+import { useTrackerStore, TOTAL_SLOTS, type TrackerSongFile, type InstrumentSlot } from '../src/stores/tracker-store';
 import type { Patch } from '../src/audio/types/preset-types';
 import { createDefaultPatchMetadata } from '../src/audio/types/preset-types';
 import { VoiceNodeType } from '../src/audio/types/synth-layout';
@@ -267,14 +267,14 @@ describe('tracker slot initialization', () => {
   it('creates instrument slots on initialization', () => {
     const store = useTrackerStore();
 
-    // Should have 25 default slots
-    expect(store.instrumentSlots.length).toBe(25);
+    // Should have 35 default slots
+    expect(store.instrumentSlots.length).toBe(35);
 
-    // Slots are numbered 1-25, not 0-24
+    // Slots are numbered 1-35, not 0-34
     expect(store.instrumentSlots[0]).toBeDefined();
-    expect(store.instrumentSlots[24]).toBeDefined();
+    expect(store.instrumentSlots[34]).toBeDefined();
     expect(store.instrumentSlots[0]!.slot).toBe(1);
-    expect(store.instrumentSlots[24]!.slot).toBe(25);
+    expect(store.instrumentSlots[34]!.slot).toBe(35);
 
     // Each slot should have correct structure
     store.instrumentSlots.forEach((slot) => {
@@ -282,6 +282,45 @@ describe('tracker slot initialization', () => {
       expect(slot.patchName).toBe('');
       expect(slot.patchId).toBeUndefined();
     });
+  });
+
+  it('pads legacy song files with fewer instrument slots instead of dropping them', () => {
+    const store = useTrackerStore();
+    const legacySlotCount = 25; // Old .cmod files saved 25 slots
+    const legacyPatch = createTestPatch('Legacy', 4);
+    const legacySlots: InstrumentSlot[] = Array.from({ length: legacySlotCount }, (_, idx) => ({
+      slot: idx + 1,
+      bankId: 'song',
+      bankName: 'Song',
+      patchId: idx === 0 ? legacyPatch.metadata.id : undefined,
+      patchName: idx === 0 ? legacyPatch.metadata.name : '',
+      instrumentName: idx === 0 ? legacyPatch.metadata.name : '',
+      source: 'song' as const
+    }));
+
+    const base = store.createSnapshot();
+    const legacyFile: TrackerSongFile = {
+      version: 1,
+      data: {
+        currentSong: base.currentSong,
+        patternRows: base.patternRows,
+        stepSize: base.stepSize,
+        patterns: base.patterns,
+        sequence: base.sequence,
+        currentPatternId: base.currentPatternId,
+        instrumentSlots: legacySlots,
+        activeInstrumentId: base.activeInstrumentId,
+        currentInstrumentPage: base.currentInstrumentPage,
+        songPatches: { [legacyPatch.metadata.id]: legacyPatch }
+      }
+    };
+
+    store.loadSongFile(legacyFile);
+
+    expect(store.instrumentSlots.length).toBe(TOTAL_SLOTS);
+    expect(store.instrumentSlots[0]?.patchId).toBe(legacyPatch.metadata.id);
+    expect(store.instrumentSlots[TOTAL_SLOTS - 1]?.patchId).toBeUndefined();
+    expect(store.songPatches[legacyPatch.metadata.id]).toBeDefined();
   });
 
   it('preserves slot numbers through operations', () => {

@@ -15,6 +15,8 @@ export interface UserSettings {
   enableMidi: boolean;
   /** When true, show a second effect column per tracker track. */
   showTrackerExtraEffectColumn: boolean;
+  /** When true, MOD files use lightweight Web Audio playback instead of full WASM synth. */
+  useSimplifiedModInstruments: boolean;
 }
 
 /**
@@ -28,7 +30,8 @@ const defaultSettings: UserSettings = {
   showWaveformVisualizers: true,
   masterVolume: 0.75,
   enableMidi: false,
-  showTrackerExtraEffectColumn: false
+  showTrackerExtraEffectColumn: false,
+  useSimplifiedModInstruments: true
 };
 
 const STORAGE_KEY = 'synth-user-settings';

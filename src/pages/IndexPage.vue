@@ -310,6 +310,7 @@ import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useMacroStore } from 'src/stores/macro-store';
 import { resolvePatchVoiceCount } from 'src/audio/utils/voice-count';
+import type InstrumentV2 from 'src/audio/instrument-v2';
 import PresetManager from 'src/components/PresetManager.vue';
 import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
 
@@ -427,10 +428,11 @@ async function loadSongPatchForEditing(slotNumber: number) {
   // Try to get the actual instrument from the song bank for live editing
   const songBankInstrument = trackerAudioStore.getInstrumentForSlot(slotNumber);
 
-  if (songBankInstrument) {
+  // Only use external instrument for InstrumentV2 (not MOD instruments)
+  if (songBankInstrument && 'workletNode' in songBankInstrument && songBankInstrument.workletNode !== null) {
     // LIVE EDITING: Swap to the song bank's actual instrument
     // This means all knob turns will directly affect the playing sound
-    instrumentStore.useExternalInstrument(songBankInstrument);
+    instrumentStore.useExternalInstrument(songBankInstrument as InstrumentV2);
 
     // Make sure macro routes are visible immediately even before the patch is re-applied
     macroStore.setFromPatch(

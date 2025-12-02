@@ -74,6 +74,8 @@ export interface PatchMetadata {
   modified: number;
   /** Schema version for compatibility */
   version: number;
+  /** Type of instrument: synth uses full WASM engine, mod uses lightweight Web Audio playback */
+  instrumentType?: 'synth' | 'mod' | undefined;
 }
 
 /**

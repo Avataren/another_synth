@@ -4,6 +4,7 @@ import type {
   TrackerPattern,
   InstrumentSlot,
 } from 'src/stores/tracker-store';
+import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 import type {
   TrackerTrackData,
   TrackerEntryData,
@@ -38,7 +39,6 @@ const MAX_TRACKS = 4; // 4-channel MODs only
 const PATTERN_ROWS = 64;
 const DEFAULT_BPM = 125;
 const DEFAULT_STEP_SIZE = 1;
-const MAX_SLOTS = 25;
 const DEFAULT_SAMPLE_RATE = 44100;
 
 function resolveSamplerGain(sample: ModSample, mod: ModSong): number {
@@ -405,7 +405,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
   }
 
   const slots: InstrumentSlot[] = [];
-  for (let i = 0; i < MAX_SLOTS; i++) {
+  for (let i = 0; i < TOTAL_SLOTS; i++) {
     slots.push({
       slot: i + 1,
       bankName: '',
@@ -420,7 +420,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
 
   for (const sampleNumber of sortedSamples) {
     if (sampleNumber < 1 || sampleNumber > mod.samples.length) continue;
-    if (sampleNumber > MAX_SLOTS) {
+    if (sampleNumber > TOTAL_SLOTS) {
       // Extra samples beyond available slots are ignored for now.
       // They will show up with instrument IDs that have no patch.
       continue;
@@ -438,6 +438,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
     slot.patchName = patch.metadata.name;
     slot.instrumentName = patch.metadata.name;
     slot.source = 'song';
+    slot.instrumentType = 'mod';
     // MOD sample volumes are handled via Cxx commands on notes, not sampler gain,
     // so slot volume remains at unity to avoid double-scaling.
     slot.volume = 1.0;
@@ -468,6 +469,7 @@ function createSamplerPatchForSample(
   const patchName =
     sample.name || `Instrument ${formatInstrumentId(sampleIndex)}`;
   const metadata = createDefaultPatchMetadata(patchName, 'Imported/MOD');
+  metadata.instrumentType = 'mod';
 
   const floatData = convertSampleToFloat32(sample);
 

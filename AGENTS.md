@@ -1299,6 +1299,10 @@ After code review, InstrumentV2 was updated to work with the **current** worklet
 - Tracker songs (`TrackerSongFile`) now keep `songPatches` aligned with the visible instrument list both when saving and loading: `serializeSong` only writes patches referenced by at least one `instrumentSlot`, and `loadSongFile` filters the incoming `data.songPatches` down to those whose IDs still appear in `instrumentSlots`.
 - This prevents old, swapped-out patches (and their embedded audio assets) from accumulating in songs over time, which previously caused `.cmod` files to grow every time patches were reassigned in the tracker instrument slots.
 
+## Update: Tracker instrument slots expanded (2025-12)
+
+- Instrument slot count increased from 25 to 35. `tracker-store` now normalizes incoming `instrumentSlots` (padding legacy .cmod files with fewer slots and truncating longer arrays) instead of requiring an exact length match, so older saves keep their slot assignments and referenced `songPatches` intact. See `normalizeInstrumentSlots` in `src/stores/tracker-store.ts`.
+
 ## New discovery: Tracker voice cycling (2025-12)
 
 - `InstrumentV2` now tracks `activeNotes` as note→set-of-voices with a `voiceToNote` table and round-robin free voice search. `noteOn`/`noteOnAtTime` accept `allowDuplicate` to let the same MIDI note occupy multiple voices instead of reusing the existing one.

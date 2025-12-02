@@ -89,7 +89,7 @@ Tests for tracker state management and synchronization.
   - History stack integrity
 
 - **Slot Initialization:**
-  - Default slot creation (25 slots, numbered 1-25)
+  - Default slot creation (35 slots, numbered 1-35)
   - Slot number preservation through operations
 
 **Why these tests matter:**

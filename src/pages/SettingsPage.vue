@@ -260,6 +260,27 @@
                       >
                     </div>
                   </label>
+
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.useSimplifiedModInstruments"
+                      @change="
+                        updateSetting(
+                          'useSimplifiedModInstruments',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Simplified MOD Instruments</span>
+                      <span class="toggle-description"
+                        >Use lightweight Web Audio playback for MOD files instead of
+                        full WASM synth (recommended for files with many
+                        instruments)</span
+                      >
+                    </div>
+                  </label>
                 </div>
               </div>
             </section>

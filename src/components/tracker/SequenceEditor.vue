@@ -1,6 +1,6 @@
 <template>
   <div class="sequence-editor">
-    <div class="sequence-list-container">
+    <div ref="sequenceListContainer" class="sequence-list-container">
       <div
         v-for="(patternId, index) in sequence"
         :key="`${patternId}-${index}`"
@@ -96,6 +96,7 @@ const editingName = ref('');
 const renameInput = ref<HTMLInputElement | null>(null);
 const activeSequenceItem = ref<HTMLElement | null>(null);
 const manualSelectedIndex = ref<number | null>(null);
+const sequenceListContainer = ref<HTMLElement | null>(null);
 
 const selectedIndex = computed<number | null>(() => {
   if (props.isPlaying && props.currentSequenceIndex !== undefined) {
@@ -204,6 +205,31 @@ const onAddPatternToSequence = (patternId: string | null) => {
   }
   requestRefocus();
 };
+
+/**
+ * Scroll the sequence list to the top (first pattern)
+ */
+const scrollToTop = () => {
+  if (sequenceListContainer.value) {
+    sequenceListContainer.value.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }
+};
+
+/**
+ * Reset selection to the first pattern (index 0)
+ */
+const resetSelection = () => {
+  manualSelectedIndex.value = 0;
+};
+
+// Expose methods for parent components
+defineExpose({
+  scrollToTop,
+  resetSelection
+});
 </script>
 
 <style scoped>

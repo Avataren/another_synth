@@ -4,8 +4,8 @@ import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
 
 export const SLOTS_PER_PAGE = 5;
-export const TOTAL_PAGES = 5;
-export const TOTAL_SLOTS = SLOTS_PER_PAGE * TOTAL_PAGES; // 25 slots
+export const TOTAL_PAGES = 7;
+export const TOTAL_SLOTS = SLOTS_PER_PAGE * TOTAL_PAGES; // 35 slots
 
 export interface InstrumentSlot {
   slot: number;
@@ -17,6 +17,8 @@ export interface InstrumentSlot {
   source?: 'system' | 'user' | 'song' | undefined;
   /** Mixer volume for this instrument (0-2, default 1.0) */
   volume?: number;
+  /** Type of instrument: synth uses full WASM engine, mod uses lightweight Web Audio playback */
+  instrumentType?: 'synth' | 'mod' | undefined;
 }
 
 interface SongMeta {
@@ -94,6 +96,26 @@ function createDefaultInstrumentSlots(): InstrumentSlot[] {
     patchName: '',
     instrumentName: '',
   }));
+}
+
+function normalizeInstrumentSlots(slots: InstrumentSlot[] | undefined | null): InstrumentSlot[] {
+  const normalized = createDefaultInstrumentSlots();
+  if (!Array.isArray(slots) || slots.length === 0) {
+    return normalized;
+  }
+
+  const limit = Math.min(slots.length, TOTAL_SLOTS);
+  for (let i = 0; i < limit; i += 1) {
+    const slot = slots[i];
+    if (!slot) continue;
+    normalized[i] = {
+      ...normalized[i],
+      ...slot,
+      slot: slot.slot ?? i + 1
+    };
+  }
+
+  return normalized;
 }
 
 function createDefaultPattern(): TrackerPattern {
@@ -200,10 +222,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         ? snapshot.currentPatternId
         : this.sequence[0] ?? this.patterns[0]?.id ?? null;
 
-      const slots =
-        Array.isArray(snapshot.instrumentSlots) && snapshot.instrumentSlots.length === TOTAL_SLOTS
-          ? snapshot.instrumentSlots
-          : createDefaultInstrumentSlots();
+      const slots = normalizeInstrumentSlots(snapshot.instrumentSlots);
       this.instrumentSlots = JSON.parse(JSON.stringify(slots));
 
       this.activeInstrumentId = snapshot.activeInstrumentId ?? null;
@@ -311,7 +330,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         this.currentPatternId = defaultPattern.id;
       }
       if (!this.instrumentSlots || this.instrumentSlots.length !== TOTAL_SLOTS) {
-        this.instrumentSlots = createDefaultInstrumentSlots();
+        this.instrumentSlots = normalizeInstrumentSlots(this.instrumentSlots ?? []);
       }
     },
     createPattern() {
@@ -545,10 +564,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         ? data.currentPatternId
         : this.sequence[0] ?? this.patterns[0]?.id ?? null;
 
-      const slots =
-        Array.isArray(data.instrumentSlots) && data.instrumentSlots.length === TOTAL_SLOTS
-          ? data.instrumentSlots
-          : createDefaultInstrumentSlots();
+      const slots = normalizeInstrumentSlots(data.instrumentSlots);
       this.instrumentSlots = slots.map((slot, idx) => {
         const mapped: InstrumentSlot = {
           slot: slot?.slot ?? idx + 1,
@@ -557,7 +573,8 @@ export const useTrackerStore = defineStore('trackerStore', {
           patchId: slot?.patchId,
           patchName: slot?.patchName ?? '',
           instrumentName: slot?.instrumentName ?? '',
-          source: slot?.source
+          source: slot?.source,
+          instrumentType: slot?.instrumentType
         };
         if (slot?.volume !== undefined) {
           mapped.volume = slot.volume;
