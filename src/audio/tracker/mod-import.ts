@@ -189,6 +189,10 @@ function modCellToTrackerEntry(
   const effectType = effectCmd & 0x0f;
   const isTonePorta = effectType === 0x3;      // 3xx
   const isTonePortaVol = effectType === 0x5;   // 5xy
+  const isVolSlide = effectType === 0xa;       // Axy
+  const isExtended = effectType === 0xe;       // Exy
+  const extSubtype = isExtended ? (effectParam >> 4) : 0;
+  const isFineVolSlide = isExtended && (extSubtype === 0xa || extSubtype === 0xb); // EAx/EBx
 
   const hasNote = period > 0;
   const hasSample = sampleNumber > 0;
@@ -320,11 +324,14 @@ function modCellToTrackerEntry(
   if (!entry.volume) {
     // Set the default volume from the sample header when a note with an instrument is played.
     // ProTracker samples have a default volume (0-64) that should be used unless a Cxx command overrides it.
+    // Skip this for volume slide effects (Axy/EAx/EBx) to preserve accumulated volume changes.
     if (
       hasNote &&
       hasSample &&
       !isTonePorta &&
       !isTonePortaVol &&
+      !isVolSlide &&
+      !isFineVolSlide &&
       mod.trackerFlavor !== 'Soundtracker' &&
       mod.trackerFlavor !== 'Unknown'
     ) {
@@ -340,10 +347,11 @@ function modCellToTrackerEntry(
       entry.volume = volumeHex;
     }
 
-    // For tone portamento rows (3xx/5xy), avoid overriding the carry-over volume:
-    // keep the current channel volume instead of reapplying a stale lastVolume (which
-    // may still be 00 from an initial header-volume=0 seed).
-    if (hasNote && !hasSample && lastVolume !== undefined && !isTonePorta && !isTonePortaVol) {
+    // For tone portamento rows (3xx/5xy), volume slides (Axy), and fine volume slides (EAx/EBx),
+    // avoid overriding the carry-over volume: keep the current channel volume instead of
+    // reapplying a stale lastVolume (which may still be 00 from an initial header-volume=0 seed,
+    // or doesn't reflect Axy/EA/EB volume changes that accumulate in the effect processor state).
+    if (hasNote && !hasSample && lastVolume !== undefined && !isTonePorta && !isTonePortaVol && !isVolSlide && !isFineVolSlide) {
       // Note without instrument: inherit last volume (sticky)
       entry.volume = lastVolume;
     }

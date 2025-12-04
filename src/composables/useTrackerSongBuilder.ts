@@ -197,11 +197,9 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       }
 
       if (volumeValue !== undefined) {
-        const scaledVelocity = Math.max(
-          0,
-          Math.min(127, Math.round((volumeValue / 255) * 127))
-        );
-        step.velocity = scaledVelocity;
+        // Keep velocity in 0-255 range to preserve precision from MOD importer
+        // Effect processor will divide by 255 to normalize to 0-1
+        step.velocity = volumeValue;
       }
 
       // Handle macro automation (from explicit macro commands or interpolations)

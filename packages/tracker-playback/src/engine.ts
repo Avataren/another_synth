@@ -745,11 +745,23 @@ export class PlaybackEngine {
     // Second pass: Process each step with effects
     if (steps) {
       for (const step of steps) {
-        const instrumentId = step.instrumentId;
-        if (!instrumentId) continue;
-
         const trackIndex = step.trackIndex;
         const effectState = this.getTrackEffectState(trackIndex);
+
+        // Resolve instrumentId: use explicit step.instrumentId, or fall back to
+        // the instrument currently playing on this track (for "naked" effects)
+        let instrumentId = step.instrumentId;
+        if (!instrumentId && effectState.instrumentId) {
+          instrumentId = effectState.instrumentId;
+        }
+
+        // Skip if no instrument ID is available at all
+        if (!instrumentId) continue;
+
+        // Update effect state with current instrument (for future "naked" effects)
+        if (step.instrumentId) {
+          effectState.instrumentId = step.instrumentId;
+        }
 
         // Handle macros
           if (step.macroIndex !== undefined && step.macroValue !== undefined) {
@@ -878,10 +890,20 @@ export class PlaybackEngine {
           );
         }
 
-        // Handle volume automation (Cxx or step velocity)
-        if (this.scheduledAutomationHandler && step.velocity !== undefined && !tick0Result.volume) {
-          const gain = clamp(step.velocity / 127);
-          this.scheduledAutomationHandler(instrumentId, gain, time);
+        // Handle volume automation (Cxx or step velocity without a note)
+        // Apply to the current voice using the same mechanism as effects like EA1
+        if (step.velocity !== undefined && !tick0Result.volume && newNote === undefined) {
+          if (this.scheduledVolumeHandler) {
+            const volume = clamp(step.velocity / 255);
+            this.scheduledVolumeHandler(
+              instrumentId,
+              effectState.voiceIndex,
+              volume,
+              time,
+              step.trackIndex,
+              undefined
+            );
+          }
         }
 
         // Handle note cut on tick 0
@@ -1222,7 +1244,7 @@ export class PlaybackEngine {
       if (step.midi === undefined) continue;
 
       if (this.automationHandler && step.velocity !== undefined) {
-        const gain = clamp(step.velocity / 127);
+        const gain = clamp(step.velocity / 255);
         this.automationHandler(instrumentId, gain);
       }
 

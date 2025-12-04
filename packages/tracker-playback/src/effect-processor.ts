@@ -89,6 +89,9 @@ export interface TrackEffectState {
   // Voice tracking
   voiceIndex: number;
 
+  // Instrument tracking (for "naked" effects without explicit instrument)
+  instrumentId: string | undefined;
+
   // Effect memory (FT2 remembers last values)
   lastPortaUp: number;
   lastPortaDown: number;
@@ -144,6 +147,7 @@ export function createTrackEffectState(): TrackEffectState {
     delayedNote: undefined,
 
     voiceIndex: -1,
+    instrumentId: undefined,
 
     lastPortaUp: 0,
     lastPortaDown: 0,
@@ -268,7 +272,7 @@ export function processEffectTick0(
     state.currentFrequency = midiToFrequency(carry.midi);
     state.targetMidi = carry.midi;
     state.targetFrequency = state.currentFrequency;
-    state.currentVolume = carry.velocity / 127;
+    state.currentVolume = carry.velocity / 255;
     result.triggerNote = carry;
     result.frequency = state.currentFrequency;
     result.volume = state.currentVolume;
@@ -299,7 +303,9 @@ export function processEffectTick0(
   }
 
   if (newVelocity !== undefined) {
-    state.currentVolume = newVelocity / 127;
+    // newVelocity is in 0-255 range (from MOD importer volume column)
+    // Normalize to 0-1 for internal use
+    state.currentVolume = newVelocity / 255;
   }
 
   if (!effect) {
@@ -544,7 +550,7 @@ export function processEffectTickN(
     result.triggerNote = state.delayedNote;
     state.currentMidi = state.delayedNote.midi;
     state.currentFrequency = midiToFrequency(state.delayedNote.midi);
-    state.currentVolume = state.delayedNote.velocity / 127;
+    state.currentVolume = state.delayedNote.velocity / 255;
     state.delayedNote = undefined;
     state.noteDelayTick = -1;
   }
