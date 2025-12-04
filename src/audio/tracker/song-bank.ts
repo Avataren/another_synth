@@ -2079,6 +2079,14 @@ export class TrackerSongBank {
       active.patchId = patchId;
       active.patchSignature = this.computePatchSignature(normalizedPatch);
       active.hasPortamento = this.hasActivePortamento(normalizedPatch);
+
+      // Also push the updated patch into the live instrument so tracker playback
+      // uses the same edits heard in the instrument editor (handles multi-engine worklet).
+      if ('loadPatch' in active.instrument && typeof active.instrument.loadPatch === 'function') {
+        void active.instrument.loadPatch(normalizedPatch).catch((err: unknown) => {
+          console.warn('[SongBank] Failed to apply updated patch to active instrument', instrumentId, err);
+        });
+      }
     }
   }
 }

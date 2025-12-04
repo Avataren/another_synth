@@ -466,33 +466,40 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     data: Uint8Array;
   }) {
     const uint8Data = new Uint8Array(data.data);
-    this.audioEngines[0]!.import_wavetable(data.nodeId, uint8Data, 2048);
+    // Keep all engine instances in sync so any voice routed to engine1/2 sees the same table.
+    for (const engine of this.audioEngines) {
+      engine?.import_wavetable(data.nodeId, uint8Data, 2048);
+    }
   }
 
   private handleImportSample(data: { nodeId: string; data: ArrayBuffer }) {
-    if (!this.audioEngines[0]) return;
+    if (this.audioEngines.length === 0) return;
     try {
       const uint8Data = new Uint8Array(data.data);
-      this.audioEngines[0].import_sample(data.nodeId, uint8Data);
+      for (const engine of this.audioEngines) {
+        engine?.import_sample(data.nodeId, uint8Data);
+      }
     } catch (err) {
       console.error('Error importing sample:', err);
     }
   }
 
   private handleUpdateSampler(data: SamplerUpdateData) {
-    if (!this.audioEngines[0]) return;
+    if (this.audioEngines.length === 0) return;
     try {
-      this.audioEngines[0].update_sampler(
-        data.samplerId,
-        data.state.frequency,
-        data.state.gain,
-        data.state.loopMode,
-        data.state.loopStart,
-        data.state.loopEnd,
-        data.state.rootNote,
-        data.state.triggerMode,
-        data.state.active,
-      );
+      for (const engine of this.audioEngines) {
+        engine?.update_sampler(
+          data.samplerId,
+          data.state.frequency,
+          data.state.gain,
+          data.state.loopMode,
+          data.state.loopStart,
+          data.state.loopEnd,
+          data.state.rootNote,
+          data.state.triggerMode,
+          data.state.active,
+        );
+      }
     } catch (err) {
       console.error('Error updating sampler:', err);
     }
@@ -650,13 +657,25 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     this.isApplyingPatch = true;
     try {
-      // Initialize patch in engine 0
-      this.audioEngines[0].initWithPatch(data.patchJson);
-      // Mark engine 0 as initialized with a patch
-      this.engineInitialized[0] = true;
-      console.log('[SynthAudioProcessor] Engine 0 now active with patch');
-      // Note: patch voice count is informational only - we always use VOICES_PER_ENGINE (8)
-      // for parameter descriptors and automation adapter
+      // Parse once so we can reuse it for each engine instance
+      const basePatch = JSON.parse(data.patchJson);
+
+      // Initialize the patch in every engine instance so voices routed to engine1/2 are active.
+      for (let i = 0; i < this.audioEngines.length; i++) {
+        const engine = this.audioEngines[i];
+        if (!engine) continue;
+
+        // Clone and clamp voice count for this engine to the per-engine voice budget.
+        const patchForEngine = JSON.parse(JSON.stringify(basePatch));
+        if (patchForEngine?.synthState?.layout) {
+          patchForEngine.synthState.layout.voiceCount = this.numVoices;
+        }
+
+        const patchJsonForEngine = JSON.stringify(patchForEngine);
+        engine.initWithPatch(patchJsonForEngine);
+        this.engineInitialized[i] = true;
+        console.log(`[SynthAudioProcessor] Engine ${i} now active with patch`);
+      }
 
       // IMPORTANT: Always use VOICES_PER_ENGINE for the automation adapter to match
       // the statically-defined parameter descriptors, regardless of the patch voice count.

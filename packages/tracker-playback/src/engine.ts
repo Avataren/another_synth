@@ -255,9 +255,9 @@ export class PlaybackEngine {
       }
     }
 
-      // For each track index, walk through the song sequence and collect steps
-      for (let trackIndex = 0; trackIndex < maxTracks; trackIndex += 1) {
-        const stepsInOrder: Step[] = [];
+    // For each track index, walk through the song sequence and collect steps
+    for (let trackIndex = 0; trackIndex < maxTracks; trackIndex += 1) {
+      const stepsInOrder: Step[] = [];
 
       for (const patternId of song.sequence) {
         const pattern = patternsById.get(patternId);
@@ -274,8 +274,39 @@ export class PlaybackEngine {
 
       if (stepsInOrder.length === 0) continue;
 
-      // Do not overwrite tone portamento targets for rows without notes.
-      // Continuing 3xx rows should keep sliding toward the existing target/note.
+      let nextNoteMidi: number | undefined;
+      let nextNoteFrequency: number | undefined;
+
+      // Walk backwards so each 3xx without a note can see the next note-on ahead.
+      for (let i = stepsInOrder.length - 1; i >= 0; i -= 1) {
+        const step = stepsInOrder[i];
+        if (!step) continue;
+
+        // Stop propagation across explicit note-offs.
+        if (step.isNoteOff) {
+          nextNoteMidi = undefined;
+          nextNoteFrequency = undefined;
+          continue;
+        }
+
+        if (step.midi !== undefined) {
+          nextNoteMidi = step.midi;
+          nextNoteFrequency = step.frequency;
+          continue;
+        }
+
+        const isTonePorta =
+          step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol';
+
+        // Do not overwrite tone portamento targets for rows without notes.
+        // Continuing 3xx rows should keep sliding toward the existing target/note.
+        if (isTonePorta && nextNoteMidi !== undefined && step.midi === undefined) {
+          step.midi = nextNoteMidi;
+          if (nextNoteFrequency !== undefined) {
+            step.frequency = nextNoteFrequency;
+          }
+        }
+      }
     }
   }
 
@@ -837,7 +868,9 @@ export class PlaybackEngine {
             step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol';
 
           if (!isTonePortaContinue) {
-            const velocity = Number.isFinite(newVelocity) ? newVelocity as number : 127;
+            // Tracker volume column is applied via automation (step.velocity -> gain);
+            // keep MIDI velocity at full scale so we don't double-attenuate rows with low volume.
+            const velocity = 127;
             const event: ScheduledNoteEvent = {
               type: 'noteOn',
               instrumentId,
@@ -890,20 +923,11 @@ export class PlaybackEngine {
           );
         }
 
-        // Handle volume automation (Cxx or step velocity without a note)
-        // Apply to the current voice using the same mechanism as effects like EA1
-        if (step.velocity !== undefined && !tick0Result.volume && newNote === undefined) {
-          if (this.scheduledVolumeHandler) {
-            const volume = clamp(step.velocity / 255);
-            this.scheduledVolumeHandler(
-              instrumentId,
-              effectState.voiceIndex,
-              volume,
-              time,
-              step.trackIndex,
-              undefined
-            );
-          }
+        // Handle volume automation (Cxx or step velocity)
+        // NOTE: Effects like EA1 (fine volume slide) set tick0Result.volume and are handled above
+        if (this.scheduledAutomationHandler && step.velocity !== undefined && !tick0Result.volume) {
+          const gain = clamp(step.velocity / 255);
+          this.scheduledAutomationHandler(instrumentId, gain, time);
         }
 
         // Handle note cut on tick 0

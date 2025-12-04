@@ -3080,31 +3080,37 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   handleImportWavetableData(data) {
     const uint8Data = new Uint8Array(data.data);
-    this.audioEngines[0].import_wavetable(data.nodeId, uint8Data, 2048);
+    for (const engine of this.audioEngines) {
+      engine?.import_wavetable(data.nodeId, uint8Data, 2048);
+    }
   }
   handleImportSample(data) {
-    if (!this.audioEngines[0]) return;
+    if (this.audioEngines.length === 0) return;
     try {
       const uint8Data = new Uint8Array(data.data);
-      this.audioEngines[0].import_sample(data.nodeId, uint8Data);
+      for (const engine of this.audioEngines) {
+        engine?.import_sample(data.nodeId, uint8Data);
+      }
     } catch (err) {
       console.error("Error importing sample:", err);
     }
   }
   handleUpdateSampler(data) {
-    if (!this.audioEngines[0]) return;
+    if (this.audioEngines.length === 0) return;
     try {
-      this.audioEngines[0].update_sampler(
-        data.samplerId,
-        data.state.frequency,
-        data.state.gain,
-        data.state.loopMode,
-        data.state.loopStart,
-        data.state.loopEnd,
-        data.state.rootNote,
-        data.state.triggerMode,
-        data.state.active
-      );
+      for (const engine of this.audioEngines) {
+        engine?.update_sampler(
+          data.samplerId,
+          data.state.frequency,
+          data.state.gain,
+          data.state.loopMode,
+          data.state.loopStart,
+          data.state.loopEnd,
+          data.state.rootNote,
+          data.state.triggerMode,
+          data.state.active
+        );
+      }
     } catch (err) {
       console.error("Error updating sampler:", err);
     }
@@ -3231,9 +3237,19 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     this.isApplyingPatch = true;
     try {
-      this.audioEngines[0].initWithPatch(data.patchJson);
-      this.engineInitialized[0] = true;
-      console.log("[SynthAudioProcessor] Engine 0 now active with patch");
+      const basePatch = JSON.parse(data.patchJson);
+      for (let i = 0; i < this.audioEngines.length; i++) {
+        const engine = this.audioEngines[i];
+        if (!engine) continue;
+        const patchForEngine = JSON.parse(JSON.stringify(basePatch));
+        if (patchForEngine?.synthState?.layout) {
+          patchForEngine.synthState.layout.voiceCount = this.numVoices;
+        }
+        const patchJsonForEngine = JSON.stringify(patchForEngine);
+        engine.initWithPatch(patchJsonForEngine);
+        this.engineInitialized[i] = true;
+        console.log(`[SynthAudioProcessor] Engine ${i} now active with patch`);
+      }
       this.automationAdapter = new AutomationAdapter(
         VOICES_PER_ENGINE,
         // Fixed to match parameter descriptors
