@@ -52,7 +52,9 @@ interface SamplerUpdatePayload {
 }
 
 export default class InstrumentV2 {
-  readonly num_voices = 8;
+  readonly num_engines = 2; // Number of AudioEngine instances per worklet
+  readonly voices_per_engine = 8; // Voices per engine
+  readonly num_voices = this.num_engines * this.voices_per_engine; // Total: 16 voices
   outputNode: AudioNode;
   workletNode: AudioWorkletNode | null = null;
   private activeNotes: Map<number, Set<number>> = new Map();
@@ -70,6 +72,25 @@ export default class InstrumentV2 {
 
   public get isReady(): boolean {
     return this.messageHandler.isInitialized();
+  }
+
+  // Helper method to map global voice index to (engineId, localVoiceId)
+  private getEngineAndVoice(globalVoiceIndex: number): { engineId: number; voiceId: number } {
+    const engineId = Math.floor(globalVoiceIndex / this.voices_per_engine);
+    const voiceId = globalVoiceIndex % this.voices_per_engine;
+    return { engineId, voiceId };
+  }
+
+  // Helper method to get parameter name for a voice
+  private getParamName(paramType: string, globalVoiceIndex: number): string {
+    const { engineId, voiceId } = this.getEngineAndVoice(globalVoiceIndex);
+    return `${paramType}_engine${engineId}_voice${voiceId}`;
+  }
+
+  // Helper method to get macro parameter name
+  private getMacroParamName(globalVoiceIndex: number, macroIndex: number): string {
+    const { engineId, voiceId } = this.getEngineAndVoice(globalVoiceIndex);
+    return `macro_engine${engineId}_voice${voiceId}_${macroIndex}`;
   }
 
   constructor(
@@ -99,6 +120,17 @@ export default class InstrumentV2 {
     try {
       this.workletNode = await createStandardAudioWorklet(this.audioContext);
 
+      // Validate worklet has expected parameter names (multi-engine format)
+      // This ensures worklet code is up-to-date after parameter name changes
+      const testParam = this.workletNode.parameters.get(this.getParamName('gate', 0));
+      if (!testParam) {
+        throw new Error(
+          'Worklet parameter validation failed: Expected parameter "' +
+            this.getParamName('gate', 0) +
+            '" not found. Please do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R) to reload the worklet code.',
+        );
+      }
+
       // Attach message handler to worklet
       this.messageHandler.attachToWorklet(this.workletNode);
 
@@ -119,13 +151,13 @@ export default class InstrumentV2 {
 
       // Set up parameters for each voice
       for (let i = 0; i < this.num_voices; i++) {
-        const gateParam = this.workletNode.parameters.get(`gate_${i}`);
+        const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
         if (gateParam) gateParam.value = 0;
 
-        const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
+        const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
         if (freqParam) freqParam.value = 440;
 
-        const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+        const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
         if (gainParam) gainParam.value = 1;
       }
 
@@ -150,14 +182,15 @@ export default class InstrumentV2 {
       this.refreshGlideStatesFromPatch(patch);
 
       // Track voice limit from patch layout (clamped to available params)
+      // Only voices that are actually configured in the patch should be used
       const patchLayout = patch.synthState?.layout as
         | { voiceCount?: number; voices?: unknown[] }
         | undefined;
       const patchVoiceCount =
-        patchLayout?.voiceCount ?? patchLayout?.voices?.length ?? this.num_voices;
+        patchLayout?.voiceCount ?? patchLayout?.voices?.length ?? this.voices_per_engine;
       this.voiceLimit = Math.min(
-        this.num_voices,
-        Math.max(1, Number(patchVoiceCount) || this.num_voices),
+        this.num_voices, // Max possible voices across all engines (16)
+        Math.max(1, Number(patchVoiceCount) || this.voices_per_engine), // Voices configured in the patch
       );
 
       // Calculate maximum release time from all envelopes for voice stealing
@@ -275,7 +308,7 @@ export default class InstrumentV2 {
     const clampedValue = Math.min(1, Math.max(0, value));
     const when = typeof time === 'number' ? time : this.audioContext.currentTime;
     for (let voice = 0; voice < this.num_voices; voice++) {
-      const param = this.workletNode.parameters.get(`macro_${voice}_${macroIndex}`);
+      const param = this.workletNode.parameters.get(this.getMacroParamName(voice, macroIndex));
       if (param) {
         param.setValueAtTime(clampedValue, when);
         if (typeof rampToValue === 'number' && typeof rampTime === 'number') {
@@ -314,7 +347,7 @@ export default class InstrumentV2 {
 
     const clampedValue = Math.min(1, Math.max(0, value));
     const when = typeof time === 'number' ? time : this.audioContext.currentTime;
-    const param = this.workletNode.parameters.get(`macro_${voiceIndex}_${macroIndex}`);
+    const param = this.workletNode.parameters.get(this.getMacroParamName(voiceIndex, macroIndex));
     if (!param) return;
 
     param.setValueAtTime(clampedValue, when);
@@ -967,7 +1000,7 @@ export default class InstrumentV2 {
 
     const now = this.audioContext.currentTime;
 
-    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
     if (gateParam) {
       // Cancel any scheduled values from previous playback to ensure .value works
       gateParam.cancelScheduledValues(now);
@@ -989,13 +1022,13 @@ export default class InstrumentV2 {
       }
     }
 
-    const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+    const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
     if (freqParam) {
       freqParam.cancelScheduledValues(now);
       freqParam.value = frequency;
     }
 
-    const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+    const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
     if (gainParam) {
       gainParam.cancelScheduledValues(now);
       gainParam.value = velocity / 127;
@@ -1016,7 +1049,7 @@ export default class InstrumentV2 {
     for (const voice of voicesToRelease) {
       this.releaseVoice(voice, now);
       if (!this.workletNode) continue;
-      const gateParam = this.workletNode.parameters.get(`gate_${voice}`);
+      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voice));
       if (gateParam) {
         // Cancel any scheduled values from previous playback to ensure .value works
         gateParam.cancelScheduledValues(now);
@@ -1048,7 +1081,7 @@ export default class InstrumentV2 {
 
     if (!this.workletNode) return;
 
-    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
     if (gateParam) {
       // Cancel any previously scheduled values that might interfere with this new note
       console.log('[noteOnAtTime] Canceling scheduled gate events for voice', voiceIndex, 'from time', time.toFixed(3) + 's');
@@ -1074,7 +1107,7 @@ export default class InstrumentV2 {
       console.log('[noteOnAtTime] WARNING: No gate param for voice', voiceIndex);
     }
 
-    const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+    const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
     if (freqParam) {
       // Cancel any previously scheduled frequency changes
       freqParam.cancelScheduledValues(time);
@@ -1084,7 +1117,7 @@ export default class InstrumentV2 {
       console.log('[noteOnAtTime] WARNING: No freq param for voice', voiceIndex);
     }
 
-    const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+    const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
     if (gainParam) {
       // Cancel any previously scheduled gain changes
       gainParam.cancelScheduledValues(time);
@@ -1114,7 +1147,7 @@ export default class InstrumentV2 {
     for (const voice of voicesToRelease) {
       this.releaseVoice(voice, time);
       if (!this.workletNode) continue;
-      const gateParam = this.workletNode.parameters.get(`gate_${voice}`);
+      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voice));
       if (gateParam) {
         console.log('[noteOffAtTime] Setting gate_' + voice + ' to 0 at time ' + time.toFixed(3) + 's');
         gateParam.setValueAtTime(0, time);
@@ -1125,7 +1158,7 @@ export default class InstrumentV2 {
   public gateOffVoiceAtTime(voiceIndex: number, time: number): void {
     this.releaseVoice(voiceIndex, time);
     if (!this.workletNode) return;
-    const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
     if (gateParam) {
       console.log('[gateOffVoiceAtTime] Setting gate_' + voiceIndex + ' to 0 at time ' + time.toFixed(3) + 's');
       gateParam.setValueAtTime(0, time);
@@ -1142,14 +1175,14 @@ export default class InstrumentV2 {
     if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) return;
     const now = this.audioContext.currentTime;
     if (this.workletNode) {
-      const gateParam = this.workletNode.parameters.get(`gate_${voiceIndex}`);
+      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
       if (gateParam) {
         gateParam.cancelScheduledValues(now);
         gateParam.setValueAtTime(0, now);
       }
-      const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+      const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
       if (freqParam) freqParam.cancelScheduledValues(now);
-      const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
       if (gainParam) {
         gainParam.cancelScheduledValues(now);
         gainParam.setValueAtTime(0, now);
@@ -1165,14 +1198,14 @@ export default class InstrumentV2 {
     const now = this.audioContext.currentTime;
     if (this.workletNode) {
       for (let i = 0; i < this.voiceLimit; i++) {
-        const gateParam = this.workletNode.parameters.get(`gate_${i}`);
+        const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
         if (gateParam) {
           gateParam.cancelScheduledValues(now);
           gateParam.setValueAtTime(0, now);
         }
-        const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
+        const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
         if (freqParam) freqParam.cancelScheduledValues(now);
-        const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+        const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
         if (gainParam) {
           gainParam.cancelScheduledValues(now);
           gainParam.setValueAtTime(1, now);  // Reset gain to 1 for next playback
@@ -1188,7 +1221,7 @@ export default class InstrumentV2 {
     const clamped = Math.max(0, Math.min(1, gain));
     const when = time ?? this.audioContext.currentTime;
     for (let i = 0; i < this.voiceLimit; i++) {
-      const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
       if (gainParam) {
         gainParam.setValueAtTime(clamped, when);
       }
@@ -1228,13 +1261,13 @@ export default class InstrumentV2 {
     if (voiceIndex < 0) {
       // Set all active voices
       for (let i = 0; i < this.voiceLimit; i++) {
-        const freqParam = this.workletNode.parameters.get(`frequency_${i}`);
+        const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
         if (freqParam) {
           applyToParam(freqParam);
         }
       }
     } else if (voiceIndex < this.voiceLimit) {
-      const freqParam = this.workletNode.parameters.get(`frequency_${voiceIndex}`);
+      const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
       if (freqParam) {
         applyToParam(freqParam);
       }
@@ -1274,13 +1307,13 @@ export default class InstrumentV2 {
     if (voiceIndex < 0) {
       // Set all active voices
       for (let i = 0; i < this.voiceLimit; i++) {
-        const gainParam = this.workletNode.parameters.get(`gain_${i}`);
+        const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
         if (gainParam) {
           applyToParam(gainParam);
         }
       }
     } else if (voiceIndex < this.voiceLimit) {
-      const gainParam = this.workletNode.parameters.get(`gain_${voiceIndex}`);
+      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
       if (gainParam) {
         applyToParam(gainParam);
       }
