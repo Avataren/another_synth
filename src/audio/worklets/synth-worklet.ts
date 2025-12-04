@@ -1,4 +1,9 @@
 import './textencoder.js';
+import {
+  ENGINES_PER_WORKLET,
+  VOICES_PER_ENGINE,
+  MACROS_PER_VOICE,
+} from '../worklet-config.js';
 import type {
   ChorusState,
   ConvolverState,
@@ -120,8 +125,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private stopped: boolean = false;
   private audioEngines: AudioEngine[] = []; // Multiple AudioEngine instances
-  private numEngines: number = 2; // Number of engines per worklet
-  private numVoices: number = 8; // Voices per engine
+  private readonly numEngines = ENGINES_PER_WORKLET;
+  private readonly numVoices = VOICES_PER_ENGINE;
   private readonly maxOscillators: number = 4;
   private readonly maxEnvelopes: number = 4;
   private readonly maxLFOs: number = 4;
@@ -138,12 +143,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
   static get parameterDescriptors() {
     const parameters = [];
-    const numEngines = 2; // Support 2 AudioEngine instances per worklet
-    const numVoices = 8;  // 8 voices per engine
 
     // Create parameters for each engine
-    for (let e = 0; e < numEngines; e++) {
-      for (let v = 0; v < numVoices; v++) {
+    for (let e = 0; e < ENGINES_PER_WORKLET; e++) {
+      for (let v = 0; v < VOICES_PER_ENGINE; v++) {
         parameters.push(
           {
             name: `gate_engine${e}_voice${v}`,
@@ -175,8 +178,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           },
         );
 
-        // Macro parameters (4 per voice per engine)
-        for (let m = 0; m < 4; m++) {
+        // Macro parameters
+        for (let m = 0; m < MACROS_PER_VOICE; m++) {
           parameters.push({
             name: `macro_engine${e}_voice${v}_${m}`,
             defaultValue: 0,
@@ -643,17 +646,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     this.isApplyingPatch = true;
     try {
-      const voiceCount = this.audioEngines[0].initWithPatch(data.patchJson);
-      if (Number.isFinite(voiceCount) && voiceCount > 0) {
-        this.numVoices = voiceCount;
-      }
+      // Initialize patch in engine 0
+      this.audioEngines[0].initWithPatch(data.patchJson);
+      // Note: patch voice count is informational only - we always use VOICES_PER_ENGINE (8)
+      // for parameter descriptors and automation adapter
 
-      // IMPORTANT: Always use 8 voices for the automation adapter to match
+      // IMPORTANT: Always use VOICES_PER_ENGINE for the automation adapter to match
       // the statically-defined parameter descriptors, regardless of the patch voice count.
-      // This prevents out-of-bounds errors when parameters contain data for all 8 voices
+      // This prevents out-of-bounds errors when parameters contain data for all voices
       // but the patch uses fewer voices.
       this.automationAdapter = new AutomationAdapter(
-        8, // Fixed to match parameter descriptors
+        VOICES_PER_ENGINE, // Fixed to match parameter descriptors
         this.macroCount,
         this.macroBufferSize,
       );

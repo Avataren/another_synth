@@ -85,6 +85,24 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   typeof globalThis == "undefined" ? typeof global == "undefined" ? typeof self == "undefined" ? void 0 : self : global : globalThis
 );
 
+// src/audio/worklet-config.ts
+var ENGINES_PER_WORKLET = 3;
+var VOICES_PER_ENGINE = 8;
+var MACROS_PER_VOICE = 4;
+var TOTAL_VOICES = ENGINES_PER_WORKLET * VOICES_PER_ENGINE;
+var TOTAL_PARAMS = ENGINES_PER_WORKLET * VOICES_PER_ENGINE * 8 + 1;
+if (ENGINES_PER_WORKLET < 1) {
+  throw new Error("ENGINES_PER_WORKLET must be at least 1");
+}
+if (ENGINES_PER_WORKLET > 3) {
+  throw new Error(
+    `ENGINES_PER_WORKLET is set to ${ENGINES_PER_WORKLET}, but maximum is 3 (would create ${TOTAL_PARAMS} params, exceeding the 256 AudioParam limit). Please set ENGINES_PER_WORKLET to 3 or less.`
+  );
+}
+console.log(
+  `[WorkletConfig] ${ENGINES_PER_WORKLET} engines \xD7 ${VOICES_PER_ENGINE} voices = ${TOTAL_VOICES} total voices, ${TOTAL_PARAMS} AudioParams`
+);
+
 // public/wasm/audio_processor.js
 var wasm;
 var cachedUint8ArrayMemory0 = null;
@@ -2761,10 +2779,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "stopped", false);
     __publicField(this, "audioEngines", []);
     // Multiple AudioEngine instances
-    __publicField(this, "numEngines", 2);
-    // Number of engines per worklet
-    __publicField(this, "numVoices", 8);
-    // Voices per engine
+    __publicField(this, "numEngines", ENGINES_PER_WORKLET);
+    __publicField(this, "numVoices", VOICES_PER_ENGINE);
     __publicField(this, "maxOscillators", 4);
     __publicField(this, "maxEnvelopes", 4);
     __publicField(this, "maxLFOs", 4);
@@ -2785,10 +2801,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   static get parameterDescriptors() {
     const parameters = [];
-    const numEngines = 2;
-    const numVoices = 8;
-    for (let e = 0; e < numEngines; e++) {
-      for (let v = 0; v < numVoices; v++) {
+    for (let e = 0; e < ENGINES_PER_WORKLET; e++) {
+      for (let v = 0; v < VOICES_PER_ENGINE; v++) {
         parameters.push(
           {
             name: `gate_engine${e}_voice${v}`,
@@ -2819,7 +2833,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             automationRate: "k-rate"
           }
         );
-        for (let m = 0; m < 4; m++) {
+        for (let m = 0; m < MACROS_PER_VOICE; m++) {
           parameters.push({
             name: `macro_engine${e}_voice${v}_${m}`,
             defaultValue: 0,
@@ -3212,12 +3226,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     this.isApplyingPatch = true;
     try {
-      const voiceCount = this.audioEngines[0].initWithPatch(data.patchJson);
-      if (Number.isFinite(voiceCount) && voiceCount > 0) {
-        this.numVoices = voiceCount;
-      }
+      this.audioEngines[0].initWithPatch(data.patchJson);
       this.automationAdapter = new AutomationAdapter(
-        8,
+        VOICES_PER_ENGINE,
         // Fixed to match parameter descriptors
         this.macroCount,
         this.macroBufferSize

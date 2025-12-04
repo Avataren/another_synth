@@ -28,3 +28,12 @@
 - Rust-compiled WebAssembly for audio processing
 - DSP algorithms in TS and Rust
 - Audio worklets for real-time processing
+
+## Audio Worklet Configuration
+- Multi-engine architecture: Multiple AudioEngine instances per worklet
+- Configuration: `src/audio/worklet-config.ts`
+- Default: 2 engines × 8 voices = 16 total voices, 129 AudioParams
+- Maximum: 3 engines (193 params) due to 256 AudioParam limit
+- To change engine count: Edit `ENGINES_PER_WORKLET` constant
+- Each engine has independent effects chain (reverb, delay, etc.)
+- Voice allocation is automatic round-robin across all voices

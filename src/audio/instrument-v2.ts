@@ -12,6 +12,7 @@
  */
 
 import { createStandardAudioWorklet } from './audio-processor-loader';
+import { ENGINES_PER_WORKLET, VOICES_PER_ENGINE, TOTAL_VOICES } from './worklet-config';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
 import type { Patch } from './types/preset-types';
@@ -52,9 +53,9 @@ interface SamplerUpdatePayload {
 }
 
 export default class InstrumentV2 {
-  readonly num_engines = 2; // Number of AudioEngine instances per worklet
-  readonly voices_per_engine = 8; // Voices per engine
-  readonly num_voices = this.num_engines * this.voices_per_engine; // Total: 16 voices
+  readonly num_engines = ENGINES_PER_WORKLET;
+  readonly voices_per_engine = VOICES_PER_ENGINE;
+  readonly num_voices = TOTAL_VOICES;
   outputNode: AudioNode;
   workletNode: AudioWorkletNode | null = null;
   private activeNotes: Map<number, Set<number>> = new Map();
