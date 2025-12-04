@@ -1847,7 +1847,8 @@ export class TrackerSongBank {
 
       instrument.updateSamplerState(nodeId, {
         frequency: tuningFrequency,
-        gain: state.gain,
+        // Avoid silent samplers when gain is 0 (common for MOD imports that rely on Axx/Cxx to fade in)
+        gain: state.gain === 0 ? 1 : state.gain,
         loopMode: state.loopMode,
         loopStart: loopStartNorm * sampleLength,
         loopEnd: loopEndNorm * sampleLength,

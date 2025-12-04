@@ -491,9 +491,13 @@ function createSamplerPatchForSample(
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    // Use the sample's default volume (0-64) as the base gain.
-    // Cxx commands and EA effects then modulate from this baseline.
-    gain: (sample.volume ?? 64) / 64,
+    // Use the sample's default volume (0-64) as the base gain, but keep unity when the header volume is 0
+    // so volume slides (Axx) can fade the channel in from silence.
+    gain: (() => {
+      const sampleVol = sample.volume ?? 64;
+      if (sampleVol === 0) return 1;
+      return sampleVol / 64;
+    })(),
     detune_oct: 0,
     detune_semi: 0,
     detune_cents: finetuneCents,
