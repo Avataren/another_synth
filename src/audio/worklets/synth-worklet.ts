@@ -125,6 +125,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private stopped: boolean = false;
   private audioEngines: AudioEngine[] = []; // Multiple AudioEngine instances
+  private engineInitialized: boolean[] = []; // Track which engines have patches loaded
   private readonly numEngines = ENGINES_PER_WORKLET;
   private readonly numVoices = VOICES_PER_ENGINE;
   private readonly maxOscillators: number = 4;
@@ -534,10 +535,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
       // Create multiple AudioEngine instances
       this.audioEngines = [];
+      this.engineInitialized = [];
       for (let i = 0; i < this.numEngines; i++) {
         const engine = new AudioEngine(sampleRate);
         engine.init(sampleRate, this.numVoices);
         this.audioEngines.push(engine);
+        this.engineInitialized.push(false); // No patches loaded yet
         console.log(`[SynthAudioProcessor] Initialized engine ${i}`);
       }
 
@@ -554,7 +557,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       this.initializeState();
 
       this.ready = true;
-      console.log(`[SynthAudioProcessor] Ready with ${this.numEngines} engines`);
+      const activeEngines = this.engineInitialized.filter(Boolean).length;
+      console.log(`[SynthAudioProcessor] Ready with ${this.numEngines} engines (${activeEngines} active)`);
     } catch (error) {
       console.error('Failed to initialize WASM audio engine:', error);
       this.port.postMessage({
@@ -648,6 +652,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     try {
       // Initialize patch in engine 0
       this.audioEngines[0].initWithPatch(data.patchJson);
+      // Mark engine 0 as initialized with a patch
+      this.engineInitialized[0] = true;
+      console.log('[SynthAudioProcessor] Engine 0 now active with patch');
       // Note: patch voice count is informational only - we always use VOICES_PER_ENGINE (8)
       // for parameter descriptors and automation adapter
 
@@ -1727,6 +1734,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       for (let e = 0; e < this.audioEngines.length; e++) {
         const engine = this.audioEngines[e];
         if (!engine) continue; // Skip if engine is undefined
+        if (!this.engineInitialized[e]) continue; // Skip if engine has no patch loaded
 
         // Extract parameters for this engine
         const engineParams: Record<string, Float32Array> = {};

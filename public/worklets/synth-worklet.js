@@ -2779,6 +2779,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "stopped", false);
     __publicField(this, "audioEngines", []);
     // Multiple AudioEngine instances
+    __publicField(this, "engineInitialized", []);
+    // Track which engines have patches loaded
     __publicField(this, "numEngines", ENGINES_PER_WORKLET);
     __publicField(this, "numVoices", VOICES_PER_ENGINE);
     __publicField(this, "maxOscillators", 4);
@@ -3137,10 +3139,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       const { wasmBytes } = data;
       initSync({ module: new Uint8Array(wasmBytes) });
       this.audioEngines = [];
+      this.engineInitialized = [];
       for (let i = 0; i < this.numEngines; i++) {
         const engine = new AudioEngine(sampleRate);
         engine.init(sampleRate, this.numVoices);
         this.audioEngines.push(engine);
+        this.engineInitialized.push(false);
         console.log(`[SynthAudioProcessor] Initialized engine ${i}`);
       }
       this.automationAdapter = new AutomationAdapter(
@@ -3152,7 +3156,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       this.initializeVoices();
       this.initializeState();
       this.ready = true;
-      console.log(`[SynthAudioProcessor] Ready with ${this.numEngines} engines`);
+      const activeEngines = this.engineInitialized.filter(Boolean).length;
+      console.log(`[SynthAudioProcessor] Ready with ${this.numEngines} engines (${activeEngines} active)`);
     } catch (error) {
       console.error("Failed to initialize WASM audio engine:", error);
       this.port.postMessage({
@@ -3227,6 +3232,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     this.isApplyingPatch = true;
     try {
       this.audioEngines[0].initWithPatch(data.patchJson);
+      this.engineInitialized[0] = true;
+      console.log("[SynthAudioProcessor] Engine 0 now active with patch");
       this.automationAdapter = new AutomationAdapter(
         VOICES_PER_ENGINE,
         // Fixed to match parameter descriptors
@@ -4019,6 +4026,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       for (let e = 0; e < this.audioEngines.length; e++) {
         const engine = this.audioEngines[e];
         if (!engine) continue;
+        if (!this.engineInitialized[e]) continue;
         const engineParams = {};
         for (let v = 0; v < this.numVoices; v++) {
           const gateKey = `gate_engine${e}_voice${v}`;
