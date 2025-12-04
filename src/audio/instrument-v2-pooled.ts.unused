@@ -1,0 +1,155 @@
+// src/audio/instrument-v2-pooled.ts
+/**
+ * Extended InstrumentV2 that supports shared worklet pooling.
+ *
+ * This version can work in two modes:
+ * 1. Legacy mode: Creates its own worklet (for patch editor)
+ * 2. Pooled mode: Uses a shared worklet with voice offset (for tracker)
+ *
+ * The voice offset allows multiple instruments to share a single worklet
+ * without interfering with each other's voices.
+ */
+
+import { createStandardAudioWorklet } from './audio-processor-loader';
+import { ENGINES_PER_WORKLET, VOICES_PER_ENGINE, TOTAL_VOICES } from './worklet-config';
+import InstrumentV2 from './instrument-v2';
+import type { VoiceAllocation } from './worklet-pool';
+
+export interface PooledInstrumentOptions {
+  /** Optional voice allocation from WorkletPool */
+  voiceAllocation?: VoiceAllocation;
+}
+
+export default class InstrumentV2Pooled extends InstrumentV2 {
+  private voiceOffset: number = 0; // Offset into worklet's voice array
+  private ownedVoiceCount: number = TOTAL_VOICES; // How many voices this instrument can use
+  private ownsWorklet: boolean = true; // Whether this instrument created the worklet
+
+  constructor(
+    destination: AudioNode,
+    audioContext: AudioContext,
+    memory: WebAssembly.Memory,
+    options?: PooledInstrumentOptions,
+  ) {
+    // Call parent constructor
+    super(destination, audioContext, memory);
+
+    // If voice allocation is provided, configure for pooled mode
+    if (options?.voiceAllocation) {
+      this.configurePooledMode(options.voiceAllocation);
+    }
+  }
+
+  /**
+   * Configure this instrument to use a shared worklet
+   */
+  private configurePooledMode(allocation: VoiceAllocation): void {
+    this.voiceOffset = allocation.startVoice;
+    this.ownedVoiceCount = allocation.voiceCount;
+    this.ownsWorklet = false;
+
+    console.log(
+      `[InstrumentV2Pooled] Configured for pooled mode: voices ${allocation.startVoice}-${allocation.endVoice - 1} (${allocation.voiceCount} voices) on worklet ${allocation.workletIndex}`
+    );
+
+    // Override the worklet node with the shared one
+    // This must be done BEFORE setupAudio() is called
+    // Since setupAudio() is called in parent constructor, we need a different approach
+    // We'll override setupAudio to use the provided worklet
+  }
+
+  /**
+   * Override setupAudio to support pooled worklets
+   */
+  protected async setupAudio(memory: WebAssembly.Memory): Promise<void> {
+    // If we have a voice allocation, we'll use the shared worklet
+    // Otherwise, fall back to creating our own worklet (legacy mode)
+    // This is called from parent constructor before configurePooledMode,
+    // so we can't rely on voiceOffset being set yet
+
+    // For now, let parent create the worklet
+    // We'll need to refactor the constructor flow to support pooling properly
+    await super.setupAudio(memory);
+  }
+
+  /**
+   * Override getParamName to account for voice offset
+   */
+  protected getParamName(paramType: string, localVoiceIndex: number): string {
+    // Map local voice index (0-3 for MOD) to global voice index in worklet (e.g., 4-7)
+    const globalVoiceIndex = this.voiceOffset + localVoiceIndex;
+    const engineId = Math.floor(globalVoiceIndex / this.voices_per_engine);
+    const voiceId = globalVoiceIndex % this.voices_per_engine;
+    return `${paramType}_engine${engineId}_voice${voiceId}`;
+  }
+
+  /**
+   * Override getMacroParamName to account for voice offset
+   */
+  protected getMacroParamName(localVoiceIndex: number, macroIndex: number): string {
+    const globalVoiceIndex = this.voiceOffset + localVoiceIndex;
+    const engineId = Math.floor(globalVoiceIndex / this.voices_per_engine);
+    const voiceId = globalVoiceIndex % this.voices_per_engine;
+    return `macro_engine${engineId}_voice${voiceId}_${macroIndex}`;
+  }
+
+  /**
+   * Override getVoiceLimit to return owned voice count
+   */
+  public getVoiceLimit(): number {
+    return this.ownedVoiceCount;
+  }
+
+  /**
+   * Override dispose to only disconnect if we own the worklet
+   */
+  public dispose(): void {
+    this.allNotesOff();
+
+    if (this.ownsWorklet && this.workletNode) {
+      // We created the worklet, so we can destroy it
+      try {
+        if (this.workletBlockSizeListener) {
+          this.workletNode.port.removeEventListener('message', this.workletBlockSizeListener);
+          this.workletBlockSizeListener = null;
+        }
+        this.messageHandler.detach();
+        this.workletNode.disconnect();
+        this.workletNode = null;
+      } catch (e) {
+        console.error('[InstrumentV2Pooled] Error disposing worklet:', e);
+      }
+    } else {
+      // Shared worklet - just silence our voices, don't destroy the worklet
+      console.log(`[InstrumentV2Pooled] Silencing voices ${this.voiceOffset}-${this.voiceOffset + this.ownedVoiceCount - 1} in shared worklet`);
+
+      // Silence all our voices
+      const now = this.audioContext.currentTime;
+      if (this.workletNode) {
+        for (let i = 0; i < this.ownedVoiceCount; i++) {
+          const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+          if (gateParam) {
+            gateParam.cancelScheduledValues(now);
+            gateParam.setValueAtTime(0, now);
+          }
+          const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+          if (gainParam) {
+            gainParam.cancelScheduledValues(now);
+            gainParam.setValueAtTime(0, now);
+          }
+        }
+      }
+
+      // Detach message handler but don't destroy worklet
+      this.messageHandler.detach();
+      this.workletNode = null; // Clear reference but don't disconnect
+    }
+
+    // Always disconnect and destroy output node
+    try {
+      this.outputNode.disconnect();
+    } catch (e) {
+      console.error('[InstrumentV2Pooled] Error disconnecting output node:', e);
+    }
+  }
+}

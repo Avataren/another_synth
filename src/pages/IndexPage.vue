@@ -428,8 +428,14 @@ async function loadSongPatchForEditing(slotNumber: number) {
   // Try to get the actual instrument from the song bank for live editing
   const songBankInstrument = trackerAudioStore.getInstrumentForSlot(slotNumber);
 
-  // Only use external instrument for InstrumentV2 (not MOD instruments)
-  if (songBankInstrument && 'workletNode' in songBankInstrument && songBankInstrument.workletNode !== null) {
+  // Only use external instrument when it exposes the full editor API (InstrumentV2), not pooled tracker instruments
+  const isEditorInstrument = (inst: unknown): inst is InstrumentV2 =>
+    !!inst &&
+    typeof inst === 'object' &&
+    'updateWavetableOscillatorState' in (inst as Record<string, unknown>) &&
+    typeof (inst as InstrumentV2).updateWavetableOscillatorState === 'function';
+
+  if (isEditorInstrument(songBankInstrument)) {
     // LIVE EDITING: Swap to the song bank's actual instrument
     // This means all knob turns will directly affect the playing sound
     instrumentStore.useExternalInstrument(songBankInstrument as InstrumentV2);

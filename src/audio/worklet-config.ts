@@ -20,7 +20,7 @@
  * Maximum safe value is 3 engines (193 params).
  * Do not set this above 3!
  */
-export const ENGINES_PER_WORKLET = 3;
+export const ENGINES_PER_WORKLET = 2;
 
 /**
  * Number of voices per engine (fixed at 8)

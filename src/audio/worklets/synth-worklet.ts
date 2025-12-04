@@ -3,6 +3,7 @@ import {
   ENGINES_PER_WORKLET,
   VOICES_PER_ENGINE,
   MACROS_PER_VOICE,
+  TOTAL_VOICES,
 } from '../worklet-config.js';
 import type {
   ChorusState,
@@ -43,6 +44,7 @@ import {
   WavetableOscillatorStateUpdate,
   type Waveform,
 } from 'app/public/wasm/audio_processor.js';
+import type { LoadPatchMessage } from '../types/worklet-messages';
 import type OscillatorState from '../models/OscillatorState.js';
 interface EnvelopeUpdate {
   config: EnvelopeConfig;
@@ -121,6 +123,16 @@ interface SamplerUpdateData {
   };
 }
 
+interface InstrumentSlot {
+  instrumentId: string;
+  startVoice: number;
+  voiceCount: number;
+  voiceLimit: number;
+  engine: AudioEngine;
+  adapter: AutomationAdapter;
+  initialized: boolean;
+}
+
 class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private stopped: boolean = false;
@@ -141,6 +153,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private patchNodeNames: Map<string, string> = new Map();
   private blockSizeFrames = 128;
   private hasBroadcastBlockSize = false;
+  private instrumentSlots: Map<string, InstrumentSlot> = new Map();
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -219,6 +232,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'loadPatch':
         this.handleLoadPatch(event.data);
+        break;
+      case 'unloadInstrument':
+        this.handleUnloadInstrument(event.data);
         break;
       case 'updateModulation': // Add this case
         this.handleUpdateModulation(event.data);
@@ -356,37 +372,47 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.handleRequestSync();
   }
 
-  private handleConnectMacro(data: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }) {
-    if (!this.audioEngines[0]) return;
-    // Always wire macros across the active voice count; voiceLayouts can be a single
-    // canonical layout, so fall back to the configured voice count instead of length.
-    const voices = Math.max(1, this.numVoices);
-    const connectMacro =
-      (this.audioEngines[0] as { connect_macro?: (...args: unknown[]) => unknown })
-        .connect_macro;
-    for (let voice = 0; voice < voices; voice++) {
-      if (typeof connectMacro === 'function') {
-        // Prefer new signature with modulationType/transform; fall back to legacy 5-arg binding if present
-        if (connectMacro.length >= 7) {
-          connectMacro.call(
-            this.audioEngines[0],
-            voice,
-            data.macroIndex,
-            data.targetId,
-            data.targetPort,
-            data.amount,
-            data.modulationType,
-            data.modulationTransformation,
-          );
-        } else {
-          connectMacro.call(
-            this.audioEngines[0],
-            voice,
-            data.macroIndex,
-            data.targetId,
-            data.targetPort,
-            data.amount,
-          );
+  private handleConnectMacro(data: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation; instrumentId?: string }) {
+    const targetEngines: Array<{ engine: AudioEngine; voices: number }> = [];
+
+    if (data.instrumentId) {
+      const slot = this.instrumentSlots.get(data.instrumentId);
+      if (slot) {
+        targetEngines.push({ engine: slot.engine, voices: slot.voiceCount });
+      }
+    } else if (this.instrumentSlots.size > 0) {
+      for (const slot of this.instrumentSlots.values()) {
+        targetEngines.push({ engine: slot.engine, voices: slot.voiceCount });
+      }
+    } else if (this.audioEngines[0]) {
+      targetEngines.push({ engine: this.audioEngines[0], voices: Math.max(1, this.numVoices) });
+    }
+
+    for (const { engine, voices } of targetEngines) {
+      const connectMacro = (engine as { connect_macro?: (...args: unknown[]) => unknown }).connect_macro;
+      for (let voice = 0; voice < voices; voice++) {
+        if (typeof connectMacro === 'function') {
+          if (connectMacro.length >= 7) {
+            connectMacro.call(
+              engine,
+              voice,
+              data.macroIndex,
+              data.targetId,
+              data.targetPort,
+              data.amount,
+              data.modulationType,
+              data.modulationTransformation,
+            );
+          } else {
+            connectMacro.call(
+              engine,
+              voice,
+              data.macroIndex,
+              data.targetId,
+              data.targetPort,
+              data.amount,
+            );
+          }
         }
       }
     }
@@ -464,19 +490,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     // Using wavData.buffer transfers the ArrayBuffer
     nodeId: string;
     data: Uint8Array;
+    instrumentId?: string;
   }) {
     const uint8Data = new Uint8Array(data.data);
-    // Keep all engine instances in sync so any voice routed to engine1/2 sees the same table.
-    for (const engine of this.audioEngines) {
+    const engines = this.getTargetEngines(data.instrumentId);
+    for (const engine of engines) {
       engine?.import_wavetable(data.nodeId, uint8Data, 2048);
     }
   }
 
-  private handleImportSample(data: { nodeId: string; data: ArrayBuffer }) {
-    if (this.audioEngines.length === 0) return;
+  private handleImportSample(data: { nodeId: string; data: ArrayBuffer; instrumentId?: string }) {
+    const engines = this.getTargetEngines(data.instrumentId);
+    if (engines.length === 0) return;
     try {
       const uint8Data = new Uint8Array(data.data);
-      for (const engine of this.audioEngines) {
+      for (const engine of engines) {
         engine?.import_sample(data.nodeId, uint8Data);
       }
     } catch (err) {
@@ -484,10 +512,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleUpdateSampler(data: SamplerUpdateData) {
-    if (this.audioEngines.length === 0) return;
+  private handleUpdateSampler(data: SamplerUpdateData & { instrumentId?: string }) {
+    const engines = this.getTargetEngines(data.instrumentId);
+    if (engines.length === 0) return;
     try {
-      for (const engine of this.audioEngines) {
+      for (const engine of engines) {
         engine?.update_sampler(
           data.samplerId,
           data.state.frequency,
@@ -539,6 +568,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     try {
       const { wasmBytes } = data;
       initSync({ module: new Uint8Array(wasmBytes) });
+
+      this.instrumentSlots.clear();
 
       // Create multiple AudioEngine instances
       this.audioEngines = [];
@@ -649,12 +680,27 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     });
   }
 
-  private handleLoadPatch(data: { patchJson: string }) {
+  private handleLoadPatch(data: LoadPatchMessage) {
+    if (!this.ready) {
+      console.warn('loadPatch requested before audio engine was ready');
+      return;
+    }
+
+    if (data.instrumentId !== undefined) {
+      this.handleInstrumentLoadPatch({
+        ...data,
+        instrumentId: data.instrumentId,
+      });
+      return;
+    }
+
+    // Legacy single-patch mode (patch editor / non-pooled instruments)
     if (!this.audioEngines[0]) {
       console.warn('loadPatch requested before audio engine was ready');
       return;
     }
 
+    this.instrumentSlots.clear(); // Ensure pooled state does not leak into legacy mode
     this.isApplyingPatch = true;
     try {
       // Parse once so we can reuse it for each engine instance
@@ -701,6 +747,129 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       });
     } finally {
       this.isApplyingPatch = false;
+    }
+  }
+
+  private handleInstrumentLoadPatch(data: {
+    patchJson: string;
+    instrumentId: string;
+    startVoice?: number;
+    voiceCount?: number;
+    voiceLimit?: number;
+  }) {
+    const { instrumentId } = data;
+    const startVoice = Math.max(0, data.startVoice ?? 0);
+    const voiceCount = Math.max(1, Math.min(data.voiceCount ?? VOICES_PER_ENGINE, VOICES_PER_ENGINE));
+
+    if (startVoice >= TOTAL_VOICES || startVoice + voiceCount > TOTAL_VOICES) {
+      console.warn(
+        `[SynthAudioProcessor] Rejecting patch for ${instrumentId}: voices ${startVoice}-${startVoice + voiceCount - 1} exceed descriptor budget (${TOTAL_VOICES})`,
+      );
+      return;
+    }
+
+    // Enforce single-engine spans so pooled instruments cannot straddle engine boundaries.
+    const engineLocalStart = startVoice % VOICES_PER_ENGINE;
+    if (engineLocalStart + voiceCount > VOICES_PER_ENGINE) {
+      console.warn(
+        `[SynthAudioProcessor] Rejecting patch for ${instrumentId}: allocation ${startVoice}-${startVoice + voiceCount - 1} crosses engine boundary`,
+      );
+      return;
+    }
+
+    this.isApplyingPatch = true;
+    try {
+      const basePatch = JSON.parse(data.patchJson);
+      const patchLayout = basePatch?.synthState?.layout;
+      const patchVoiceCount =
+        patchLayout?.voiceCount ??
+        (Array.isArray(patchLayout?.voices) ? patchLayout.voices.length : undefined) ??
+        voiceCount;
+
+      const voiceLimit = Math.max(
+        1,
+        Math.min(
+          voiceCount,
+          patchVoiceCount ?? voiceCount,
+          data.voiceLimit ?? voiceCount,
+        ),
+      );
+
+      const patchForSlot = JSON.parse(JSON.stringify(basePatch));
+      if (patchForSlot?.synthState?.layout) {
+        patchForSlot.synthState.layout.voiceCount = voiceLimit;
+      }
+
+      const slot = this.getOrCreateInstrumentSlot(
+        instrumentId,
+        startVoice,
+        voiceCount,
+        voiceLimit,
+      );
+
+      slot.engine.init(sampleRate, voiceCount);
+      slot.engine.initWithPatch(JSON.stringify(patchForSlot));
+      slot.voiceLimit = voiceLimit;
+      slot.initialized = true;
+
+      console.log(
+        `[SynthAudioProcessor] Loaded patch for instrument ${instrumentId} voices ${startVoice}-${startVoice + voiceCount - 1} (limit ${voiceLimit})`,
+      );
+    } catch (error) {
+      console.error('Failed to load instrument patch in worklet:', error);
+      this.port.postMessage({
+        type: 'error',
+        source: 'loadPatch',
+        message: `Failed to load patch for ${instrumentId}`,
+      });
+    } finally {
+      this.isApplyingPatch = false;
+    }
+  }
+
+  private getOrCreateInstrumentSlot(
+    instrumentId: string,
+    startVoice: number,
+    voiceCount: number,
+    voiceLimit: number,
+  ): InstrumentSlot {
+    const existing = this.instrumentSlots.get(instrumentId);
+
+    if (existing && existing.voiceCount === voiceCount) {
+      existing.startVoice = startVoice;
+      existing.voiceLimit = voiceLimit;
+      return existing;
+    }
+
+    const engine = new AudioEngine(sampleRate);
+    engine.init(sampleRate, voiceCount);
+
+    const adapter = new AutomationAdapter(
+      voiceCount,
+      this.macroCount,
+      this.macroBufferSize,
+    );
+
+    const slot: InstrumentSlot = {
+      instrumentId,
+      startVoice,
+      voiceCount,
+      voiceLimit,
+      engine,
+      adapter,
+      initialized: false,
+    };
+
+    this.instrumentSlots.set(instrumentId, slot);
+    return slot;
+  }
+
+  private handleUnloadInstrument(data: {
+    instrumentId?: string;
+  }) {
+    if (!data.instrumentId) return;
+    if (this.instrumentSlots.delete(data.instrumentId)) {
+      console.log(`[SynthAudioProcessor] Unloaded instrument ${data.instrumentId}`);
     }
   }
 
@@ -1698,6 +1867,64 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
+  /**
+   * Map global worklet parameter arrays into a local engine parameter map for a pooled instrument slot.
+   */
+  private buildEngineParamsForSlot(
+    slot: InstrumentSlot,
+    parameters: Record<string, Float32Array>,
+  ): Record<string, Float32Array> {
+    const engineParams: Record<string, Float32Array> = {};
+
+    for (let v = 0; v < slot.voiceCount; v++) {
+      const globalVoice = slot.startVoice + v;
+      if (globalVoice >= TOTAL_VOICES) break;
+
+      const engineIndex = Math.floor(globalVoice / VOICES_PER_ENGINE);
+      const voiceIndex = globalVoice % VOICES_PER_ENGINE;
+
+      const gateKey = `gate_engine${engineIndex}_voice${voiceIndex}`;
+      const freqKey = `frequency_engine${engineIndex}_voice${voiceIndex}`;
+      const gainKey = `gain_engine${engineIndex}_voice${voiceIndex}`;
+      const velKey = `velocity_engine${engineIndex}_voice${voiceIndex}`;
+
+      if (parameters[gateKey]) {
+        engineParams[`gate_${v}`] = parameters[gateKey];
+      }
+      if (parameters[freqKey]) {
+        engineParams[`frequency_${v}`] = parameters[freqKey];
+      }
+      if (parameters[gainKey]) {
+        engineParams[`gain_${v}`] = parameters[gainKey];
+      }
+      if (parameters[velKey]) {
+        engineParams[`velocity_${v}`] = parameters[velKey];
+      }
+
+      for (let m = 0; m < MACROS_PER_VOICE; m++) {
+        const macroKey = `macro_engine${engineIndex}_voice${voiceIndex}_${m}`;
+        if (parameters[macroKey]) {
+          engineParams[`macro_${v}_${m}`] = parameters[macroKey];
+        }
+      }
+    }
+
+    return engineParams;
+  }
+
+  private getTargetEngines(instrumentId?: string): AudioEngine[] {
+    if (instrumentId) {
+      const slot = this.instrumentSlots.get(instrumentId);
+      return slot ? [slot.engine] : [];
+    }
+
+    if (this.instrumentSlots.size > 0) {
+      return Array.from(this.instrumentSlots.values()).map((slot) => slot.engine);
+    }
+
+    return this.audioEngines;
+  }
+
   override process(
     _inputs: Float32Array[][],
     outputs: Float32Array[][],
@@ -1718,6 +1945,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const outputRight = output[1];
 
     if (!outputLeft || !outputRight) return true;
+    const leftOut = outputLeft as Float32Array;
+    const rightOut = outputRight as Float32Array;
 
     const frames = outputLeft.length;
     if (!this.hasBroadcastBlockSize || frames !== this.blockSizeFrames) {
@@ -1727,100 +1956,123 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     const masterGain = parameters.master_gain?.[0] ?? 1;
-
-    if (!this.automationAdapter) {
-      // IMPORTANT: Always use 8 voices to match parameter descriptors
-      this.automationAdapter = new AutomationAdapter(
-        8, // Fixed to match parameter descriptors
-        this.macroCount,
-        this.macroBufferSize,
-      );
-    }
-
-    const adapter = this.automationAdapter;
-    if (!adapter) return true;
+    const hasInstrumentSlots = this.instrumentSlots.size > 0;
 
     // Clear output buffers
-    outputLeft.fill(0);
-    outputRight.fill(0);
+    leftOut.fill(0);
+    rightOut.fill(0);
 
-    // Temporary buffers for each engine's output
+    // Temporary buffers for each engine/instrument output
     const engineLeft = new Float32Array(frames);
     const engineRight = new Float32Array(frames);
 
     try {
-      // Process each engine
-      for (let e = 0; e < this.audioEngines.length; e++) {
-        const engine = this.audioEngines[e];
-        if (!engine) continue; // Skip if engine is undefined
-        if (!this.engineInitialized[e]) continue; // Skip if engine has no patch loaded
+      if (hasInstrumentSlots) {
+        for (const slot of this.instrumentSlots.values()) {
+          if (!slot.initialized) continue;
+          const adapter = slot.adapter;
+          if (!adapter) continue;
 
-        // Extract parameters for this engine
-        const engineParams: Record<string, Float32Array> = {};
+          const engineParams = this.buildEngineParamsForSlot(slot, parameters);
 
-        // Map engine-specific parameters (gate_engine0_voice0 -> gate_0)
-        for (let v = 0; v < this.numVoices; v++) {
-          const gateKey = `gate_engine${e}_voice${v}`;
-          const freqKey = `frequency_engine${e}_voice${v}`;
-          const gainKey = `gain_engine${e}_voice${v}`;
-          const velKey = `velocity_engine${e}_voice${v}`;
+          // Clear engine buffers
+          engineLeft.fill(0);
+          engineRight.fill(0);
 
-          if (parameters[gateKey]) {
-            engineParams[`gate_${v}`] = parameters[gateKey];
-          }
-          if (parameters[freqKey]) {
-            engineParams[`frequency_${v}`] = parameters[freqKey];
-          }
-          if (parameters[gainKey]) {
-            engineParams[`gain_${v}`] = parameters[gainKey];
-          }
-          if (parameters[velKey]) {
-            engineParams[`velocity_${v}`] = parameters[velKey];
-          }
+          adapter.processBlock(
+            slot.engine,
+            engineParams,
+            1.0,
+            engineLeft,
+            engineRight,
+          );
 
-          // Macros
-          for (let m = 0; m < 4; m++) {
-            const macroKey = `macro_engine${e}_voice${v}_${m}`;
-            if (parameters[macroKey]) {
-              engineParams[`macro_${v}_${m}`] = parameters[macroKey];
-            }
+          // Mix into output
+          for (let i = 0; i < frames; i++) {
+            const l = engineLeft[i] ?? 0;
+            const r = engineRight[i] ?? 0;
+            leftOut[i] = (leftOut[i] ?? 0) + l;
+            rightOut[i] = (rightOut[i] ?? 0) + r;
           }
         }
+      } else {
+        if (!this.automationAdapter) {
+          // IMPORTANT: Always use 8 voices to match parameter descriptors
+          this.automationAdapter = new AutomationAdapter(
+            8, // Fixed to match parameter descriptors
+            this.macroCount,
+            this.macroBufferSize,
+          );
+        }
 
-        // Clear engine buffers
-        engineLeft.fill(0);
-        engineRight.fill(0);
+        const adapter = this.automationAdapter;
+        if (!adapter) return true;
 
-        // Process this engine
-        adapter.processBlock(
-          engine,
-          engineParams,
-          1.0, // Apply master gain at the end
-          engineLeft,
-          engineRight,
-        );
+        // Process each engine
+        for (let e = 0; e < this.audioEngines.length; e++) {
+          const engine = this.audioEngines[e];
+          if (!engine) continue; // Skip if engine is undefined
+          if (!this.engineInitialized[e]) continue; // Skip if engine has no patch loaded
 
-        // Mix into output
-        for (let i = 0; i < frames; i++) {
-          const leftSample = engineLeft[i];
-          const rightSample = engineRight[i];
-          const outLeft = outputLeft[i];
-          const outRight = outputRight[i];
-          if (leftSample !== undefined && outLeft !== undefined) {
-            outputLeft[i] = outLeft + leftSample;
+          // Extract parameters for this engine
+          const engineParams: Record<string, Float32Array> = {};
+
+          // Map engine-specific parameters (gate_engine0_voice0 -> gate_0)
+          for (let v = 0; v < this.numVoices; v++) {
+            const gateKey = `gate_engine${e}_voice${v}`;
+            const freqKey = `frequency_engine${e}_voice${v}`;
+            const gainKey = `gain_engine${e}_voice${v}`;
+            const velKey = `velocity_engine${e}_voice${v}`;
+
+            if (parameters[gateKey]) {
+              engineParams[`gate_${v}`] = parameters[gateKey];
+            }
+            if (parameters[freqKey]) {
+              engineParams[`frequency_${v}`] = parameters[freqKey];
+            }
+            if (parameters[gainKey]) {
+              engineParams[`gain_${v}`] = parameters[gainKey];
+            }
+            if (parameters[velKey]) {
+              engineParams[`velocity_${v}`] = parameters[velKey];
+            }
+
+            // Macros
+            for (let m = 0; m < 4; m++) {
+              const macroKey = `macro_engine${e}_voice${v}_${m}`;
+              if (parameters[macroKey]) {
+                engineParams[`macro_${v}_${m}`] = parameters[macroKey];
+              }
+            }
           }
-          if (rightSample !== undefined && outRight !== undefined) {
-            outputRight[i] = outRight + rightSample;
+
+          // Clear engine buffers
+          engineLeft.fill(0);
+          engineRight.fill(0);
+
+          // Process this engine
+          adapter.processBlock(
+            engine,
+            engineParams,
+            1.0, // Apply master gain at the end
+            engineLeft,
+            engineRight,
+          );
+
+          // Mix into output
+          for (let i = 0; i < frames; i++) {
+            const l = engineLeft[i] ?? 0;
+            const r = engineRight[i] ?? 0;
+            leftOut[i] = (leftOut[i] ?? 0) + l;
+            rightOut[i] = (rightOut[i] ?? 0) + r;
           }
         }
       }
 
       // Apply master gain
       for (let i = 0; i < frames; i++) {
-        const left = outputLeft[i];
-        const right = outputRight[i];
-        if (left !== undefined) outputLeft[i] = left * masterGain;
-        if (right !== undefined) outputRight[i] = right * masterGain;
+        leftOut[i] = (leftOut[i] ?? 0) * masterGain;
+        rightOut[i] = (rightOut[i] ?? 0) * masterGain;
       }
     } catch (err) {
       console.error('Error processing automation block:', err);

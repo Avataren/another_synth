@@ -1,6 +1,9 @@
 import type AudioSystem from 'src/audio/AudioSystem';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
+import { WorkletPool } from 'src/audio/worklet-pool';
+import { VOICES_PER_ENGINE } from '../worklet-config';
+import { PooledInstrument } from 'src/audio/pooled-instrument-factory';
 import type {
   AudioAsset,
   Patch,
@@ -51,7 +54,7 @@ export interface SongBankSlot {
 }
 
 interface ActiveInstrument {
-  instrument: InstrumentV2 | ModInstrument;
+  instrument: InstrumentV2 | ModInstrument | PooledInstrument;
   patchId: string;
   patchSignature: string | null;
   hasPortamento: boolean;
@@ -102,12 +105,24 @@ export class TrackerSongBank {
   private recorderNode: AudioWorkletNode | null = null;
   private recordedBuffers: Float32Array[] = [];
   private recording = false;
+  private workletPool: WorkletPool | null = null;
+  // Feature flag: pooling is re-enabled after fixing instrument-scoped patch loading
+  private useWorkletPooling = true;
 
   constructor(audioSystem?: AudioSystem) {
     this.audioSystem = audioSystem ?? getSharedAudioSystem();
     this.masterGain = this.audioSystem.audioContext.createGain();
     this.masterGain.gain.value = 1.0;
     this.masterGain.connect(this.audioSystem.destinationNode);
+
+    // Initialize WorkletPool for shared worklet management
+    if (this.useWorkletPooling) {
+      this.workletPool = new WorkletPool(
+        this.audioSystem.audioContext,
+        this.masterGain
+      );
+      console.log('[SongBank] WorkletPool initialized for efficient resource usage');
+    }
 
     // If the AudioContext resumes after we deferred a sync, rebuild instruments
     // using the last requested slot state so playback doesn't stay silent.
@@ -145,9 +160,17 @@ export class TrackerSongBank {
   }
 
   /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
-  getInstrument(instrumentId: string): InstrumentV2 | ModInstrument | null {
+  getInstrument(instrumentId: string): InstrumentV2 | ModInstrument | PooledInstrument | null {
     const active = this.instruments.get(instrumentId);
     return active?.instrument ?? null;
+  }
+
+  /** Get WorkletPool statistics (for debugging and monitoring) */
+  getWorkletPoolStats() {
+    if (!this.workletPool) {
+      return null;
+    }
+    return this.workletPool.getStats();
   }
 
   /**
@@ -324,6 +347,13 @@ export class TrackerSongBank {
     this.masterGain.disconnect();
     this.recorderNode?.disconnect();
     this.recorderNode = null;
+
+    // Dispose worklet pool and clean up all shared worklets
+    if (this.workletPool) {
+      this.workletPool.dispose();
+      this.workletPool = null;
+      console.log('[SongBank] WorkletPool disposed');
+    }
   }
 
   private disposeInstruments() {
@@ -664,7 +694,7 @@ export class TrackerSongBank {
   }
 
   /** Return a small lead time (seconds) to drop the gate before retriggering. */
-  private getGateLeadTime(instrument: InstrumentV2 | ModInstrument): number {
+  private getGateLeadTime(instrument: InstrumentV2 | ModInstrument | PooledInstrument): number {
     // Ensure at least one quantum of gate-low so the automation frame sees the edge.
     // Fallback to ~5ms if we don't know the block size.
     const quantum = instrument.getQuantumDurationSeconds();
@@ -1426,11 +1456,25 @@ export class TrackerSongBank {
     const userSettings = useUserSettingsStore();
     const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
     const useSimplified = userSettings.settings.useSimplifiedModInstruments;
-    console.log(`[SongBank] instrumentType=${normalizedPatch.metadata.instrumentType}, isModInstrument=${isModInstrument}, useSimplified=${useSimplified}`);
 
-    let instrument: InstrumentV2 | ModInstrument;
+    // DETAILED DEBUGGING
+    console.log('[SongBank] === INSTRUMENT CREATION DEBUG ===');
+    console.log(`[SongBank]   instrumentId: ${instrumentId}`);
+    console.log(`[SongBank]   instrumentType: ${normalizedPatch.metadata.instrumentType}`);
+    console.log(`[SongBank]   isModInstrument: ${isModInstrument}`);
+    console.log(`[SongBank]   useSimplified: ${useSimplified}`);
+    console.log(`[SongBank]   useWorkletPooling: ${this.useWorkletPooling}`);
+    console.log(`[SongBank]   workletPool exists: ${this.workletPool !== null}`);
+    console.log(`[SongBank]   Decision: ${
+      isModInstrument && useSimplified ? 'ModInstrument' :
+      this.useWorkletPooling && isModInstrument && this.workletPool ? 'PooledInstrument' :
+      'InstrumentV2 (LEGACY - CREATES OWN WORKLET!)'
+    }`);
+
+    let instrument: InstrumentV2 | ModInstrument | PooledInstrument;
 
     if (isModInstrument && useSimplified) {
+      // Option 1: Use ModInstrument (native Web Audio API, no worklet)
       console.log(`[SongBank] Creating ModInstrument for ${instrumentId}`);
       instrument = new ModInstrument(
         this.masterGain,
@@ -1441,7 +1485,61 @@ export class TrackerSongBank {
       console.log(
         `[SongBank] ModInstrument ${instrumentId} loaded, isReady=${instrument.isReady}`,
       );
+    } else if (this.useWorkletPooling && this.workletPool) {
+      // Option 2: Use PooledInstrument (shared worklet, efficient for tracker playback)
+      console.log(`[SongBank] Creating PooledInstrument for ${instrumentId} via WorkletPool`);
+
+      // Use the patch's requested voice count (clamped to per-engine limit)
+      const requestedVoices =
+        Math.max(
+          1,
+          Math.min(
+            VOICES_PER_ENGINE,
+            normalizedPatch?.synthState?.layout?.voiceCount ??
+              normalizedPatch?.synthState?.layout?.voices?.length ??
+              VOICES_PER_ENGINE,
+          ),
+        );
+
+      const allocation = await this.workletPool.allocateVoices(
+        instrumentId,
+        requestedVoices,
+      );
+
+      console.log(
+        `[SongBank] Allocated voices ${allocation.startVoice}-${allocation.endVoice - 1} on worklet ${allocation.workletIndex} for ${instrumentId}`
+      );
+
+      // Create pooled instrument with the allocation
+      instrument = new PooledInstrument(
+        this.masterGain,
+        this.audioSystem.audioContext,
+        instrumentId,
+        allocation
+      );
+
+      await instrument.loadPatch(normalizedPatch);
+      console.log(
+        `[SongBank] PooledInstrument ${instrumentId} loaded, isReady=${instrument.isReady}`,
+      );
+
+      // Log pool statistics
+      const stats = this.workletPool.getStats();
+      console.log(
+        `[SongBank] Pool stats: ${stats.workletCount} worklets, ${stats.allocatedVoices}/${stats.totalVoices} voices allocated`
+      );
+
+      await this.restoreAudioAssets(
+        instrumentId,
+        instrument,
+        normalizedPatch,
+        deserialized,
+      );
+
+      // Apply macro values/routes so pooled instruments match the patch (e.g., vibrato depth).
+      this.applyMacrosFromPatch(instrument, normalizedPatch);
     } else {
+      // Option 3: Use InstrumentV2 (own worklet, for patch editor or non-MOD instruments)
       console.log(`[SongBank] Creating InstrumentV2 for ${instrumentId}`);
       const memory = new WebAssembly.Memory({
         initial: 256,
@@ -1505,14 +1603,14 @@ export class TrackerSongBank {
     await this.flushPendingScheduledEvents(instrumentId);
   }
 
-  private normalizeVoiceGain(instrument: InstrumentV2 | ModInstrument) {
+  private normalizeVoiceGain(instrument: InstrumentV2 | ModInstrument | PooledInstrument) {
     // Ensure voice gains aren't left at a previous automation value (e.g. 0)
     instrument.setGainForAllVoices(1);
   }
 
   private async restoreAudioAssets(
     instrumentId: string,
-    instrument: InstrumentV2,
+    instrument: InstrumentV2 | PooledInstrument,
     patch: Patch,
     deserialized: DeserializedPatch,
   ): Promise<void> {
@@ -1571,7 +1669,7 @@ export class TrackerSongBank {
     }
   }
 
-  private applyMacrosFromPatch(instrument: InstrumentV2, patch: Patch) {
+  private applyMacrosFromPatch(instrument: InstrumentV2 | PooledInstrument, patch: Patch) {
     const macros = patch?.synthState?.macros;
     if (!macros) return;
 
@@ -1963,15 +2061,23 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
 
-    const isModInstrument = !(active.instrument instanceof InstrumentV2);
+    const isPooled = active.instrument instanceof PooledInstrument;
+    const isModInstrument = active.instrument instanceof ModInstrument;
+    const instrumentType = isPooled ? 'PooledInstrument' : (isModInstrument ? 'ModInstrument' : 'InstrumentV2');
     console.log(
-      `[SongBank] Tearing down instrument ${instrumentId}, type: ${isModInstrument ? 'ModInstrument' : 'InstrumentV2'}`,
+      `[SongBank] Tearing down instrument ${instrumentId}, type: ${instrumentType}`,
     );
 
     try {
       active.instrument.dispose();
     } catch (error) {
       console.warn('[TrackerSongBank] Failed to dispose instrument', error);
+    }
+
+    // Deallocate from pool if this is a pooled instrument
+    if (isPooled && this.workletPool) {
+      this.workletPool.deallocateVoices(instrumentId);
+      console.log(`[SongBank] Deallocated ${instrumentId} from WorkletPool`);
     }
 
     this.instruments.delete(instrumentId);
@@ -1995,6 +2101,12 @@ export class TrackerSongBank {
     this.pendingInstruments.clear();
     this.disposeInstruments();
     this.desired.clear();
+
+    // Reset pool allocations but keep worklets alive for reuse
+    if (this.workletPool) {
+      this.workletPool.resetAllocations();
+      console.log('[SongBank] WorkletPool allocations reset (worklets kept alive for reuse)');
+    }
   }
 
   /**

@@ -354,6 +354,13 @@ this.automationAdapter = new AutomationAdapter(
 
 **Important**: When debugging audio processing crashes, always check that the automation adapter dimensions match the parameter descriptor definitions.
 
+### Worklet pooling multi-instrument fix (2026-03)
+
+- Shared worklets now host multiple instrument slots without clobbering patches. `loadPatch` messages carry `instrumentId`, `startVoice`, `voiceCount`, and `voiceLimit`; the worklet creates a per-instrument slot (own `AudioEngine` + `AutomationAdapter`) and only rewires that slot. `unloadInstrument` removes the slot.
+- Process path maps parameter slices (`gate_engineX_voiceY`, `frequency_engineX_voiceY`, macros) into local `gate_0..N` for each slot, mixes per-slot outputs, and applies master gain; legacy single-instrument mode still uses the previous engine array when no slots exist.
+- `PooledInstrument` now sends instrument-scoped load/unload messages; `WorkletPool` enforces allocations that stay within a single `VOICES_PER_ENGINE` slice (no cross-engine ranges).
+- SongBank pooling flag re-enabled; pooled instruments no longer overwrite each other's patches when sharing a worklet.
+
 ## CPU Usage Sampling & Borrow Conflicts
 
 **Issue**: "recursive use of an object" errors during CPU usage sampling.

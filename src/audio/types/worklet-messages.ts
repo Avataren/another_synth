@@ -68,6 +68,10 @@ export interface InitializeMessage extends BaseMessage {
 export interface LoadPatchMessage extends BaseMessage {
   type: 'loadPatch';
   patchJson: string;
+  instrumentId?: string;
+  startVoice?: number;
+  voiceCount?: number;
+  voiceLimit?: number;
 }
 
 export interface SynthLayoutMessage extends BaseMessage {
@@ -237,6 +241,7 @@ export interface ConnectMacroMessage extends BaseMessage {
   amount: number;
   modulationType: WasmModulationType;
   modulationTransformation: ModulationTransformation;
+  instrumentId?: string;
 }
 
 export interface GetConnectionsMessage extends BaseMessage {
@@ -319,12 +324,14 @@ export interface ImportWavetableMessage extends BaseMessage {
   nodeId: string;
   data: Uint8Array;
   tableSize: number;
+  instrumentId?: string;
 }
 
 export interface ImportImpulseWaveformMessage extends BaseMessage {
   type: 'importImpulseWaveform';
   nodeId: string;
   data: Uint8Array;
+  instrumentId?: string;
 }
 
 export interface GenerateHallReverbMessage extends BaseMessage {
@@ -341,6 +348,13 @@ export interface GeneratePlateReverbMessage extends BaseMessage {
   decayTime: number;
   diffusion: number;
   sampleRate: number;
+}
+
+export interface UnloadInstrumentMessage extends BaseMessage {
+  type: 'unloadInstrument';
+  instrumentId: string;
+  startVoice?: number;
+  voiceCount?: number;
 }
 
 // ============================================================================
@@ -455,7 +469,8 @@ export type WorkletMessage =
   | StopMessage
   | ErrorMessage
   | PerformanceStatsMessage
-  | OperationResponse;
+  | OperationResponse
+  | UnloadInstrumentMessage;
 
 // ============================================================================
 // Message Builders (Type-safe construction)
@@ -569,6 +584,13 @@ export class WorkletMessageValidator {
           return 'loadPatch message missing patchJson';
         }
         break;
+      case 'unloadInstrument': {
+        const unloadMsg = message as UnloadInstrumentMessage;
+        if (!unloadMsg.instrumentId) {
+          return 'unloadInstrument missing instrumentId';
+        }
+        break;
+      }
 
       case 'updateEnvelope':
         const envMsg = message as UpdateEnvelopeMessage;
