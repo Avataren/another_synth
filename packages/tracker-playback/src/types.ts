@@ -116,6 +116,11 @@ export interface Step {
    */
   frequency?: number;
   /**
+   * Optional pan value 0-1 (for stereo positioning).
+   * Used for MOD imports to preserve channel panning.
+   */
+  pan?: number;
+  /**
    * Marks this step as a note-off. When true, engines should release
    * any active notes for the given instrument (or the specific midi note
    * when provided).
@@ -217,6 +222,8 @@ export interface ScheduledNoteEvent {
   time: number;
   /** Optional frequency override in Hz (for ProTracker MOD imports) */
   frequency?: number;
+  /** Optional pan value 0-1 (for stereo positioning) */
+  pan?: number;
 }
 
 export type ScheduledAutomationHandler = (

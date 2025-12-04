@@ -187,6 +187,15 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         step.frequency = entry.frequency;
       }
 
+      // Extract pan value from macro 0 (for MOD imports and stereo positioning)
+      // Check both effect columns for macro 0 commands
+      for (const cmd of [effectCmd1, effectCmd2]) {
+        if (cmd?.type === 'macro' && cmd.index === 0) {
+          step.pan = cmd.value;
+          break;
+        }
+      }
+
       if (volumeValue !== undefined) {
         const scaledVelocity = Math.max(
           0,

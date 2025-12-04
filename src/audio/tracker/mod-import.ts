@@ -41,23 +41,6 @@ const DEFAULT_BPM = 125;
 const DEFAULT_STEP_SIZE = 1;
 const DEFAULT_SAMPLE_RATE = 44100;
 
-function resolveSamplerGain(sample: ModSample, mod: ModSong): number {
-  // ProTracker/NoiseTracker sample volumes map to sampler gain so imported patches
-  // respect the default instrument loudness. A header volume of 0 should still
-  // allow Cxx/Axx to fade the channel in, so we keep sampler gain at unity when
-  // the header is 0 and rely on the per-note volume column to start at 0 instead.
-  const raw = Number.isFinite(sample.volume) ? sample.volume : 64;
-  const flavor = mod.trackerFlavor;
-  if ((flavor === 'Soundtracker' || flavor === 'Unknown') && raw <= 0) {
-    return 1.0;
-  }
-  const clamped = Math.max(0, Math.min(64, raw));
-  if (clamped === 0) {
-    return 1.0;
-  }
-  return clamped / 64;
-}
-
 export const looksLikeMod = looksLikeModInternal;
 
 export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
@@ -322,24 +305,21 @@ function modCellToTrackerEntry(
   if (hasVolumeEffectCmd && effectMacro) {
     // Extract the Cxx parameter (00-40 hex) and convert to volume column format (00-FF hex)
     // ProTracker: C00-C40 (0-64) → Volume column: 00-FF (0-255)
+    // NOTE: Cxx sets ABSOLUTE volume in ProTracker's 0-64 range, not relative to sample's default volume.
+    // This allows EA/EB effects to boost above the sample's header volume.
     const volumeParam = effectParam; // 0-64
-    const headerVol =
-      hasSample && sampleNumber > 0 && sampleNumber <= mod.samples.length
-        ? mod.samples[sampleNumber - 1]?.volume ?? 64
-        : 64;
-    const safeHeader = headerVol > 0 ? headerVol : 64;
-    const targetGain = Math.max(0, Math.min(1, volumeParam / safeHeader));
+    const targetGain = Math.max(0, Math.min(1, volumeParam / 64));
     const volumeScaled = Math.round(targetGain * 255);
     const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
+    console.log('[MOD Import] Cxx command: C' + volumeParam.toString(16).toUpperCase().padStart(2, '0'), '→ vol:', volumeParam, '/ 64 = gain', targetGain.toFixed(3), '→ scaled:', volumeScaled, '(hex:', volumeHex, ')');
     entry.volume = volumeHex;
     // Clear the effect macro since we moved it to volume column
     effectMacro = undefined;
   }
 
   if (!entry.volume) {
-    // ProTracker/NoiseTracker instruments with header volume 0 should start silent,
-    // but still allow Axx/Cxx to raise the channel. Seed the volume column with 0
-    // (velocity 0) when the sample header volume is 0 so volume slides have headroom.
+    // Set the default volume from the sample header when a note with an instrument is played.
+    // ProTracker samples have a default volume (0-64) that should be used unless a Cxx command overrides it.
     if (
       hasNote &&
       hasSample &&
@@ -350,11 +330,14 @@ function modCellToTrackerEntry(
     ) {
       const sampleVol =
         sampleNumber > 0 && sampleNumber <= mod.samples.length
-          ? mod.samples[sampleNumber - 1]?.volume ?? 0
-          : 0;
-      if (sampleVol <= 0) {
-        entry.volume = '00';
-      }
+          ? mod.samples[sampleNumber - 1]?.volume ?? 64
+          : 64;
+      // Convert ProTracker volume (0-64) to internal volume column format (0-255)
+      // Use sample header as max volume reference
+      const volumeScaled = Math.round((sampleVol / 64) * 255);
+      const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
+      console.log('[MOD Import] Note with sample', sampleNumber, 'default vol:', sampleVol, '/ 64 → scaled:', volumeScaled, '(hex:', volumeHex, ')');
+      entry.volume = volumeHex;
     }
 
     // For tone portamento rows (3xx/5xy), avoid overriding the carry-over volume:
@@ -453,7 +436,7 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
 function createSamplerPatchForSample(
   sample: ModSample,
   sampleIndex: number,
-  mod: ModSong,
+  _mod: ModSong,
 ): Patch {
   const samplerNodeId = generateNodeId('sampler');
   const mixerNodeId = generateNodeId('mixer');
@@ -500,10 +483,9 @@ function createSamplerPatchForSample(
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    // Base sampler gain reflects the MOD sample's default volume (0..64) for
-    // ProTracker/NoiseTracker; older Soundtracker/Unknown flavors treat header
-    // volume 0 as unity to avoid silent instruments from broken headers.
-    gain: resolveSamplerGain(sample, mod),
+    // Use the sample's default volume (0-64) as the base gain.
+    // Cxx commands and EA effects then modulate from this baseline.
+    gain: (sample.volume ?? 64) / 64,
     detune_oct: 0,
     detune_semi: 0,
     detune_cents: finetuneCents,

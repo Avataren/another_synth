@@ -21,10 +21,11 @@ interface ActiveVoice {
   noteNumber: number;
   startTime: number;
   frequency: number;
+  targetGain: number; // Track scheduled gain value (Web Audio param.value doesn't reflect scheduled changes)
 }
 
 export default class ModInstrument {
-  readonly num_voices = 4; // MOD instruments use 4 voices
+  readonly num_voices = 4; // MOD instruments use 4 voices (one per channel)
   outputNode: GainNode;
 
   private audioContext: AudioContext;
@@ -38,10 +39,7 @@ export default class ModInstrument {
     return this.ready;
   }
 
-  constructor(
-    destination: AudioNode,
-    audioContext: AudioContext,
-  ) {
+  constructor(destination: AudioNode, audioContext: AudioContext) {
     this.audioContext = audioContext;
     this.outputNode = audioContext.createGain();
     this.outputNode.gain.value = 1.0;
@@ -50,7 +48,10 @@ export default class ModInstrument {
 
   async loadPatch(patch: Patch): Promise<void> {
     console.log('[ModInstrument] loadPatch called for:', patch.metadata.name);
-    console.log('[ModInstrument] Available audioAssets:', Object.keys(patch.audioAssets));
+    console.log(
+      '[ModInstrument] Available audioAssets:',
+      Object.keys(patch.audioAssets),
+    );
     // Extract sampler state
     const samplerStates = Object.values(patch.synthState.samplers);
     if (samplerStates.length === 0) {
@@ -69,13 +70,15 @@ export default class ModInstrument {
     // If not found by sampler ID, try to find the first sample asset
     if (!asset || asset.type !== AudioAssetType.Sample) {
       const sampleAssets = Object.entries(patch.audioAssets).filter(
-        ([, a]) => a.type === AudioAssetType.Sample
+        ([, a]) => a.type === AudioAssetType.Sample,
       );
 
       if (sampleAssets.length > 0) {
         [assetId, asset] = sampleAssets[0]!;
       } else {
-        throw new Error(`No sample assets found in patch. Available assets: ${Object.keys(patch.audioAssets).join(', ')}`);
+        throw new Error(
+          `No sample assets found in patch. Available assets: ${Object.keys(patch.audioAssets).join(', ')}`,
+        );
       }
     }
 
@@ -83,29 +86,45 @@ export default class ModInstrument {
       throw new Error(`Asset ${assetId} is not a sample (type: ${asset.type})`);
     }
 
-    console.log('[ModInstrument] Decoding sample, sampleRate:', asset.sampleRate, 'channels:', asset.channels);
+    console.log(
+      '[ModInstrument] Decoding sample, sampleRate:',
+      asset.sampleRate,
+      'channels:',
+      asset.channels,
+    );
     // Decode audio asset to Float32Array
     const data = decodeAudioAssetToFloat32Array(asset);
     const sampleRate = asset.sampleRate;
     const channels = asset.channels;
 
+    // Handle empty samples (0 length) - create 1 frame of silence
+    const frameCount = Math.max(1, Math.floor(data.length / channels));
+    const isEmpty = data.length === 0;
+
     // Create AudioBuffer
     this.audioBuffer = this.audioContext.createBuffer(
       channels,
-      data.length / channels,
-      sampleRate
+      frameCount,
+      sampleRate,
     );
 
-    // Copy audio data to buffer
-    for (let ch = 0; ch < channels; ch++) {
-      const channelData = this.audioBuffer.getChannelData(ch);
-      for (let i = 0; i < channelData.length; i++) {
-        channelData[i] = data[i * channels + ch] ?? 0;
+    // Copy audio data to buffer (or leave silent if empty)
+    if (!isEmpty) {
+      for (let ch = 0; ch < channels; ch++) {
+        const channelData = this.audioBuffer.getChannelData(ch);
+        for (let i = 0; i < channelData.length; i++) {
+          channelData[i] = data[i * channels + ch] ?? 0;
+        }
       }
     }
+    // If isEmpty, buffer is already initialized to silence
 
     this.ready = true;
-    console.log('[ModInstrument] loadPatch complete, buffer length:', this.audioBuffer.length, 'frames');
+    console.log(
+      '[ModInstrument] loadPatch complete, buffer length:',
+      this.audioBuffer.length,
+      'frames',
+    );
   }
 
   noteOn(
@@ -114,15 +133,16 @@ export default class ModInstrument {
     options?: { allowDuplicate?: boolean; frequency?: number; pan?: number },
   ): void {
     if (!this.audioBuffer || !this.samplerState) {
-      console.warn('[ModInstrument] noteOn skipped - buffer or state not ready');
+      console.warn(
+        '[ModInstrument] noteOn skipped - buffer or state not ready',
+      );
       return;
     }
 
-    console.log('[ModInstrument] noteOn: note', noteNumber, 'velocity', velocity, 'buffer length', this.audioBuffer.length);
-
     // Allocate a voice (round-robin for now)
     const voiceIndex = this.voiceRoundRobinIndex;
-    this.voiceRoundRobinIndex = (this.voiceRoundRobinIndex + 1) % this.num_voices;
+    this.voiceRoundRobinIndex =
+      (this.voiceRoundRobinIndex + 1) % this.num_voices;
 
     // Stop existing voice if playing (unless allowDuplicate is true)
     if (!options?.allowDuplicate) {
@@ -143,11 +163,16 @@ export default class ModInstrument {
     source.buffer = this.audioBuffer;
 
     // Configure looping
-    if (this.samplerState.loopMode === 1) { // Loop mode
+    if (this.samplerState.loopMode === 1) {
+      // Loop mode
       source.loop = true;
       const bufferLength = this.audioBuffer.length;
-      source.loopStart = this.samplerState.loopStart * bufferLength / this.audioBuffer.sampleRate;
-      source.loopEnd = this.samplerState.loopEnd * bufferLength / this.audioBuffer.sampleRate;
+      source.loopStart =
+        (this.samplerState.loopStart * bufferLength) /
+        this.audioBuffer.sampleRate;
+      source.loopEnd =
+        (this.samplerState.loopEnd * bufferLength) /
+        this.audioBuffer.sampleRate;
     }
 
     // Set gain based on velocity and sampler gain
@@ -161,7 +186,8 @@ export default class ModInstrument {
     }
 
     // Calculate playback rate from frequency
-    const frequency = options?.frequency ?? this.midiNoteToFrequency(noteNumber);
+    const frequency =
+      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
     const playbackRate = this.calculatePlaybackRate(frequency);
     source.playbackRate.value = playbackRate;
 
@@ -173,8 +199,6 @@ export default class ModInstrument {
     // Start playback
     source.start();
 
-    console.log('[ModInstrument] Started voice', voiceIndex, 'playbackRate', playbackRate, 'gain', noteGain, 'loop', source.loop);
-
     // Store active voice
     this.activeVoices.set(voiceIndex, {
       source,
@@ -183,6 +207,7 @@ export default class ModInstrument {
       noteNumber,
       startTime: this.audioContext.currentTime,
       frequency: frequency ?? 440,
+      targetGain: noteGain, // Track scheduled gain
     });
   }
 
@@ -196,23 +221,32 @@ export default class ModInstrument {
 
       // Apply quick release envelope (10ms ramp to prevent clicks)
       const releaseTime = 0.01;
-      voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, this.audioContext.currentTime);
-      voice.gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + releaseTime);
+      voice.gainNode.gain.setValueAtTime(
+        voice.gainNode.gain.value,
+        this.audioContext.currentTime,
+      );
+      voice.gainNode.gain.linearRampToValueAtTime(
+        0,
+        this.audioContext.currentTime + releaseTime,
+      );
 
       // Stop and disconnect after release
       const stopTime = this.audioContext.currentTime + releaseTime;
       voice.source.stop(stopTime);
 
       // Disconnect nodes after the release completes
-      setTimeout(() => {
-        try {
-          voice.source.disconnect();
-          voice.gainNode.disconnect();
-          voice.panNode.disconnect();
-        } catch (e) {
-          // Nodes may already be disconnected, ignore
-        }
-      }, releaseTime * 1000 + 10);
+      setTimeout(
+        () => {
+          try {
+            voice.source.disconnect();
+            voice.gainNode.disconnect();
+            voice.panNode.disconnect();
+          } catch (e) {
+            // Nodes may already be disconnected, ignore
+          }
+        },
+        releaseTime * 1000 + 10,
+      );
 
       this.activeVoices.delete(voiceIndex);
       return;
@@ -222,21 +256,30 @@ export default class ModInstrument {
     for (const [vIdx, voice] of this.activeVoices.entries()) {
       if (voice.noteNumber === noteNumber) {
         const releaseTime = 0.01;
-        voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, this.audioContext.currentTime);
-        voice.gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + releaseTime);
+        voice.gainNode.gain.setValueAtTime(
+          voice.gainNode.gain.value,
+          this.audioContext.currentTime,
+        );
+        voice.gainNode.gain.linearRampToValueAtTime(
+          0,
+          this.audioContext.currentTime + releaseTime,
+        );
         const stopTime = this.audioContext.currentTime + releaseTime;
         voice.source.stop(stopTime);
 
         // Disconnect nodes after the release completes
-        setTimeout(() => {
-          try {
-            voice.source.disconnect();
-            voice.gainNode.disconnect();
-            voice.panNode.disconnect();
-          } catch (e) {
-            // Nodes may already be disconnected, ignore
-          }
-        }, releaseTime * 1000 + 10);
+        setTimeout(
+          () => {
+            try {
+              voice.source.disconnect();
+              voice.gainNode.disconnect();
+              voice.panNode.disconnect();
+            } catch (e) {
+              // Nodes may already be disconnected, ignore
+            }
+          },
+          releaseTime * 1000 + 10,
+        );
 
         this.activeVoices.delete(vIdx);
       }
@@ -252,23 +295,32 @@ export default class ModInstrument {
 
     // Apply quick release envelope (10ms ramp to prevent clicks)
     const releaseTime = 0.01;
-    voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, this.audioContext.currentTime);
-    voice.gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + releaseTime);
+    voice.gainNode.gain.setValueAtTime(
+      voice.gainNode.gain.value,
+      this.audioContext.currentTime,
+    );
+    voice.gainNode.gain.linearRampToValueAtTime(
+      0,
+      this.audioContext.currentTime + releaseTime,
+    );
 
     // Stop and disconnect after release
     const stopTime = this.audioContext.currentTime + releaseTime;
     voice.source.stop(stopTime);
 
     // Disconnect nodes after the release completes
-    setTimeout(() => {
-      try {
-        voice.source.disconnect();
-        voice.gainNode.disconnect();
-        voice.panNode.disconnect();
-      } catch (e) {
-        // Nodes may already be disconnected, ignore
-      }
-    }, releaseTime * 1000 + 10);
+    setTimeout(
+      () => {
+        try {
+          voice.source.disconnect();
+          voice.gainNode.disconnect();
+          voice.panNode.disconnect();
+        } catch (e) {
+          // Nodes may already be disconnected, ignore
+        }
+      },
+      releaseTime * 1000 + 10,
+    );
 
     this.activeVoices.delete(voiceIndex);
   }
@@ -283,8 +335,14 @@ export default class ModInstrument {
     const now = this.audioContext.currentTime;
 
     // Smooth frequency changes to avoid clicks
-    voice.source.playbackRate.setValueAtTime(voice.source.playbackRate.value, now);
-    voice.source.playbackRate.linearRampToValueAtTime(playbackRate, now + 0.005);
+    voice.source.playbackRate.setValueAtTime(
+      voice.source.playbackRate.value,
+      now,
+    );
+    voice.source.playbackRate.linearRampToValueAtTime(
+      playbackRate,
+      now + 0.005,
+    );
     voice.frequency = frequency;
   }
 
@@ -323,7 +381,10 @@ export default class ModInstrument {
   }
 
   destroy(): void {
-    console.log('[ModInstrument] Destroying instrument, active voices:', this.activeVoices.size);
+    console.log(
+      '[ModInstrument] Destroying instrument, active voices:',
+      this.activeVoices.size,
+    );
 
     // Immediately stop and disconnect all active voices without release envelope
     for (const voice of this.activeVoices.values()) {
@@ -400,14 +461,18 @@ export default class ModInstrument {
     // Wait up to 5 seconds
     const startTime = Date.now();
     while (!this.ready && Date.now() - startTime < 5000) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     if (!this.ready) {
       throw new Error('ModInstrument failed to initialize');
     }
   }
 
-  setMacroParameter(_voiceIndex: number, _macroIndex: number, _value: number): void {
+  setMacroParameter(
+    _voiceIndex: number,
+    _macroIndex: number,
+    _value: number,
+  ): void {
     // MOD instruments don't use macro parameters
     // Macros are handled directly via setPan, setFrequency, etc.
   }
@@ -418,20 +483,21 @@ export default class ModInstrument {
     noteNumber: number,
     velocity: number,
     time: number,
-    options?: { allowDuplicate?: boolean; frequency?: number },
+    options?: { allowDuplicate?: boolean; frequency?: number; pan?: number },
   ): number | undefined {
     if (!this.audioBuffer || !this.samplerState) {
-      console.warn('[ModInstrument] noteOnAtTime skipped - buffer or state not ready');
+      console.warn(
+        '[ModInstrument] noteOnAtTime skipped - buffer or state not ready',
+      );
       return undefined;
     }
 
-    console.log('[ModInstrument] noteOnAtTime: note', noteNumber, 'at time', time.toFixed(3));
-
     // Allocate a voice (round-robin)
     const voiceIndex = this.voiceRoundRobinIndex;
-    this.voiceRoundRobinIndex = (this.voiceRoundRobinIndex + 1) % this.num_voices;
+    this.voiceRoundRobinIndex =
+      (this.voiceRoundRobinIndex + 1) % this.num_voices;
 
-    // Stop existing voice if playing (unless allowDuplicate is true)
+    // Stop existing voice with same note number if playing (unless allowDuplicate is true)
     if (!options?.allowDuplicate) {
       for (const [vIdx, voice] of this.activeVoices.entries()) {
         if (voice.noteNumber === noteNumber) {
@@ -452,12 +518,32 @@ export default class ModInstrument {
     if (this.samplerState.loopMode === 1) {
       source.loop = true;
       const bufferLength = this.audioBuffer.length;
-      source.loopStart = this.samplerState.loopStart * bufferLength / this.audioBuffer.sampleRate;
-      source.loopEnd = this.samplerState.loopEnd * bufferLength / this.audioBuffer.sampleRate;
+      source.loopStart =
+        (this.samplerState.loopStart * bufferLength) /
+        this.audioBuffer.sampleRate;
+      source.loopEnd =
+        (this.samplerState.loopEnd * bufferLength) /
+        this.audioBuffer.sampleRate;
     }
 
     // Set gain based on velocity and sampler gain
-    const noteGain = (velocity / 127) * this.samplerState.gain;
+    // NOTE: For MOD instruments, "velocity" is a misnomer - it's really ProTracker volume (0-64)
+    // that's been converted: volume(0-64) → internal(0-255) → velocity(0-127)
+    // The conversion preserves the normalized value: velocity/127 ≈ volume/64
+    const velocityNormalized = velocity / 127;
+    const noteGain = velocityNormalized * this.samplerState.gain;
+    console.log(
+      '[ModInstrument] noteOnAtTime: midi',
+      noteNumber,
+      'velocity',
+      velocity,
+      '(really PT volume) / 127 =',
+      velocityNormalized.toFixed(4),
+      '* samplerGain',
+      this.samplerState.gain.toFixed(3),
+      '= noteGain',
+      noteGain.toFixed(4),
+    );
     gainNode.gain.value = noteGain;
 
     // Set panning
@@ -467,7 +553,8 @@ export default class ModInstrument {
     }
 
     // Calculate playback rate from frequency
-    const frequency = options?.frequency ?? this.midiNoteToFrequency(noteNumber);
+    const frequency =
+      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
     const playbackRate = this.calculatePlaybackRate(frequency);
     source.playbackRate.value = playbackRate;
 
@@ -480,8 +567,6 @@ export default class ModInstrument {
     const startTime = Math.max(time, this.audioContext.currentTime);
     source.start(startTime);
 
-    console.log('[ModInstrument] Scheduled voice', voiceIndex, 'at', startTime.toFixed(3), 'playbackRate', playbackRate);
-
     // Store active voice
     this.activeVoices.set(voiceIndex, {
       source,
@@ -490,6 +575,7 @@ export default class ModInstrument {
       noteNumber,
       startTime: startTime,
       frequency: frequency ?? 440,
+      targetGain: noteGain, // Track scheduled gain
     });
 
     return voiceIndex;
@@ -502,22 +588,129 @@ export default class ModInstrument {
     }
   }
 
-  gateOffVoiceAtTime(voiceIndex: number, _time: number): void {
+  gateOffVoiceAtTime(voiceIndex: number, time: number): void {
     const voice = this.activeVoices.get(voiceIndex);
-    if (voice) {
-      this.noteOffVoice(voice.noteNumber, voiceIndex);
+    if (!voice) return;
+
+    const now = this.audioContext.currentTime;
+    const scheduledTime = Math.max(time, now);
+
+    // Apply quick release envelope at the scheduled time
+    const releaseTime = 0.01;
+    voice.gainNode.gain.setValueAtTime(
+      voice.gainNode.gain.value,
+      scheduledTime,
+    );
+    voice.gainNode.gain.linearRampToValueAtTime(0, scheduledTime + releaseTime);
+
+    // Stop source after release
+    const stopTime = scheduledTime + releaseTime;
+    voice.source.stop(stopTime);
+
+    // Disconnect nodes and remove from tracking after the release completes
+    const disconnectDelay = Math.max(0, (stopTime - now) * 1000 + 10);
+    setTimeout(() => {
+      try {
+        voice.source.disconnect();
+        voice.gainNode.disconnect();
+        voice.panNode.disconnect();
+      } catch (e) {
+        // Nodes may already be disconnected, ignore
+      }
+      // Only delete from activeVoices if this specific voice is still there
+      // (it might have been replaced by a new voice at the same index)
+      if (this.activeVoices.get(voiceIndex) === voice) {
+        this.activeVoices.delete(voiceIndex);
+      }
+    }, disconnectDelay);
+  }
+
+  setVoiceFrequencyAtTime(
+    voiceIndex: number,
+    frequency: number,
+    time: number,
+  ): void {
+    const voice = this.activeVoices.get(voiceIndex);
+    if (!voice) {
+      return;
     }
+
+    const playbackRate = this.calculatePlaybackRate(frequency);
+    const scheduledTime = Math.max(time, this.audioContext.currentTime);
+    voice.source.playbackRate.setValueAtTime(
+      voice.source.playbackRate.value,
+      scheduledTime,
+    );
+    voice.source.playbackRate.linearRampToValueAtTime(
+      playbackRate,
+      scheduledTime + 0.005,
+    );
+    voice.frequency = frequency;
   }
 
-  setVoiceFrequencyAtTime(voiceIndex: number, frequency: number, _time: number): void {
-    this.setFrequency(voiceIndex, frequency);
+  setVoiceGainAtTime(
+    voiceIndex: number,
+    gain: number,
+    time: number,
+    rampMode?: 'linear' | 'exponential',
+  ): void {
+    const voice = this.activeVoices.get(voiceIndex);
+    if (!voice) {
+      console.warn(
+        '[ModInstrument] setVoiceGainAtTime: voice not found:',
+        voiceIndex,
+        'active voices:',
+        Array.from(this.activeVoices.keys()),
+      );
+      return;
+    }
+
+    const now = this.audioContext.currentTime;
+    const scheduledTime = Math.max(time, now);
+    const timeDelta = scheduledTime - now;
+
+    // Use tracked targetGain instead of reading from audio param (which doesn't reflect scheduled changes)
+    const currentGain = voice.targetGain;
+    const actualParamValue = voice.gainNode.gain.value;
+    const percentChange =
+      ((gain - currentGain) / Math.max(currentGain, 0.001)) * 100;
+
+    console.log('[ModInstrument] setVoiceGainAtTime:', {
+      voice: voiceIndex,
+      trackedGain: currentGain.toFixed(3),
+      paramValue: actualParamValue.toFixed(3),
+      newGain: gain.toFixed(3),
+      change: `${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(1)}%`,
+      scheduledAt: scheduledTime.toFixed(3),
+      now: now.toFixed(3),
+      delta: `${timeDelta >= 0 ? '+' : ''}${(timeDelta * 1000).toFixed(1)}ms`,
+    });
+
+    // For immediate changes (delta < 10ms), apply directly
+    if (timeDelta < 0.01) {
+      voice.gainNode.gain.cancelScheduledValues(now);
+      voice.gainNode.gain.setValueAtTime(gain, now);
+      voice.targetGain = gain;
+      return;
+    }
+
+    // For scheduled changes, don't cancel pending automation - let the chain continue
+    // Use linearRampToValueAtTime which will start from the current scheduled value
+    if (rampMode === 'exponential' && gain > 0.001 && currentGain > 0.001) {
+      voice.gainNode.gain.exponentialRampToValueAtTime(gain, scheduledTime);
+    } else {
+      voice.gainNode.gain.linearRampToValueAtTime(gain, scheduledTime);
+    }
+
+    voice.targetGain = gain; // Update tracked value for next call
   }
 
-  setVoiceGainAtTime(voiceIndex: number, gain: number, _time: number): void {
-    this.setGain(voiceIndex, gain);
-  }
-
-  setVoiceMacroAtTime(voiceIndex: number, macroIndex: number, value: number, _time: number): void {
+  setVoiceMacroAtTime(
+    voiceIndex: number,
+    macroIndex: number,
+    value: number,
+    _time: number,
+  ): void {
     // Macro 0 is pan for MOD instruments
     if (macroIndex === 0) {
       this.setPan(voiceIndex, value);

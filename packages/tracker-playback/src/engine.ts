@@ -835,6 +835,7 @@ export class PlaybackEngine {
               time,
               velocity,
               ...(step.frequency !== undefined ? { frequency: step.frequency } : {}),
+              ...(step.pan !== undefined ? { pan: step.pan } : {}),
             };
             this.scheduledNoteHandler(event);
           }

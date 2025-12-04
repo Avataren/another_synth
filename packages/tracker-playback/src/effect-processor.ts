@@ -365,15 +365,21 @@ export function processEffectTick0(
       // Distinguish between normal Axy volume slide and fine EAx/EBx slides.
       if (effect.extSubtype === 'fineVolUp') {
         // EAx: Fine volume slide up (tick 0 only, x = amount)
-        const amount = effect.paramY / 64;
-        state.currentVolume = Math.max(0, Math.min(1, state.currentVolume + amount));
+        // Work in ProTracker's native 0-64 volume range for precise results
+        const currentVol64 = state.currentVolume * 64;
+        const newVol64 = Math.min(64, currentVol64 + effect.paramY);
+        state.currentVolume = newVol64 / 64;
         result.volume = state.currentVolume;
+        console.log('[EffectProcessor] EA (fineVolUp): currentVol64', currentVol64.toFixed(1), '+', effect.paramY, '→', newVol64, '(normalized:', state.currentVolume.toFixed(3), ')');
         // Do not alter volSlideSpeed / lastVolSlide so Axy memory stays intact.
       } else if (effect.extSubtype === 'fineVolDown') {
         // EBx: Fine volume slide down (tick 0 only, x = amount)
-        const amount = effect.paramY / 64;
-        state.currentVolume = Math.max(0, Math.min(1, state.currentVolume - amount));
+        // Work in ProTracker's native 0-64 volume range for precise results
+        const currentVol64 = state.currentVolume * 64;
+        const newVol64 = Math.max(0, currentVol64 - effect.paramY);
+        state.currentVolume = newVol64 / 64;
         result.volume = state.currentVolume;
+        console.log('[EffectProcessor] EB (fineVolDown): currentVol64', currentVol64.toFixed(1), '-', effect.paramY, '→', newVol64, '(normalized:', state.currentVolume.toFixed(3), ')');
       } else {
         // Axy: Per-tick volume slide (x=up, y=down)
         if (effect.paramX) state.volSlideSpeed = effect.paramX / 64; // Fine adjustment

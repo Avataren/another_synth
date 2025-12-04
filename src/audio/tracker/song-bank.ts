@@ -66,6 +66,7 @@ type PendingScheduledEvent =
       time: number;
       trackIndex?: number;
       frequency?: number;
+      pan?: number;
       enqueuedAt: number;
     }
   | {
@@ -407,7 +408,7 @@ export class TrackerSongBank {
       byTrack = new Map();
       this.lastTrackVoice.set(instrumentId, byTrack);
     }
-    console.log('[SongBank] setLastVoiceForTrack: track', trackIndex, '→ voice', voiceIndex);
+    console.log('[SongBank] setLastVoiceForTrack: inst', instrumentId, 'track', trackIndex, '(key:', trackKey, ') → voice', voiceIndex);
     byTrack.set(trackKey, voiceIndex);
     // Also record a global last voice for this instrument (trackKey = -1) so
     // effect-driven pitch updates without a track index can target the most
@@ -559,6 +560,7 @@ export class TrackerSongBank {
             scheduledTime,
             event.trackIndex,
             event.frequency,
+            event.pan,
           );
         } else {
           this.dispatchNoteOffAtTime(
@@ -829,6 +831,7 @@ export class TrackerSongBank {
     time: number,
     trackIndex?: number,
     frequency?: number,
+    pan?: number,
   ) {
     if (instrumentId === undefined) {
       console.warn('[SongBank] noteOnAtTime: instrumentId is undefined');
@@ -857,6 +860,7 @@ export class TrackerSongBank {
       };
       if (trackIndex !== undefined) queued.trackIndex = trackIndex;
       if (frequency !== undefined) queued.frequency = frequency;
+      if (pan !== undefined) queued.pan = pan;
       this.enqueueScheduledEvent(queued);
       this.ensureInstrumentIfDesired(instrumentId);
       return;
@@ -869,6 +873,7 @@ export class TrackerSongBank {
       scheduledTime,
       trackIndex,
       frequency,
+      pan,
     );
   }
 
@@ -1018,6 +1023,7 @@ export class TrackerSongBank {
     time: number,
     trackIndex?: number,
     frequency?: number,
+    pan?: number,
   ) {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
@@ -1051,6 +1057,7 @@ export class TrackerSongBank {
       {
         allowDuplicate: true,
         ...(frequency !== undefined ? { frequency } : {}),
+        ...(pan !== undefined ? { pan } : {}),
       },
     );
 
@@ -1070,6 +1077,8 @@ export class TrackerSongBank {
       this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
       // Track the voice for this track (for mute/solo)
       this.addVoiceToTrack(instrumentId, trackIndex, voiceIndex);
+    } else {
+      console.warn('[SongBank] noteOnAtTime: voice allocation failed for instrument', instrumentId, 'track', trackIndex, 'midi', midi);
     }
   }
 
@@ -1169,17 +1178,25 @@ export class TrackerSongBank {
     let resolvedVoice = voiceIndex;
     if (resolvedVoice < 0) {
       const byTrack = this.lastTrackVoice.get(instrumentId);
+      const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+      console.log('[SongBank] setVoiceVolumeAtTime: resolving voice for inst', instrumentId, 'track', trackIndex, '(key:', trackKey, ') voiceIndex', voiceIndex, 'byTrack:', byTrack ? `Map(${byTrack.size})` : 'undefined');
       if (byTrack) {
-        const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
         const trackVoice = byTrack.get(trackKey);
         if (trackVoice !== undefined) {
           resolvedVoice = trackVoice;
+          console.log('[SongBank] setVoiceVolumeAtTime: resolved from trackKey', trackKey, '→ voice', resolvedVoice);
         } else if (!Number.isFinite(trackIndex)) {
           const fallback = byTrack.get(-1);
           if (fallback !== undefined) {
             resolvedVoice = fallback;
+            console.log('[SongBank] setVoiceVolumeAtTime: resolved from fallback (-1) → voice', resolvedVoice);
           }
+        } else {
+          console.warn('[SongBank] setVoiceVolumeAtTime: trackKey', trackKey, 'not found in byTrack map. Available keys:', Array.from(byTrack.keys()));
         }
+      }
+      if (resolvedVoice < 0) {
+        console.warn('[SongBank] setVoiceVolumeAtTime: could not resolve voice for instrument', instrumentId, 'track', trackIndex, 'voiceIndex', voiceIndex);
       }
     }
     // Ignore invalid voice indices to avoid affecting all voices inadvertently.
