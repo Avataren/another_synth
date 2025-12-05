@@ -1550,9 +1550,17 @@ if (canReuse) {
   - 9xx is still parsed as `EffectType.sampleOffset` by `parseEffectCommand` (`src/audio/tracker/note-utils.ts`).
   - `PlaybackEngine.scheduleRow` (`packages/tracker-playback/src/engine.ts`) now recognizes `effect.type === 'sampleOffset'` on tick 0 and computes `offsetNorm = (paramX * 16 + paramY) / 255`, clamped 0..1.
   - A new `ScheduledSampleOffsetHandler` in `packages/tracker-playback/src/types.ts` carries `(instrumentId, voiceIndex, offsetNorm, time, trackIndex)` into the host; the tracker playback store (`src/stores/tracker-playback-store.ts`) maps this to `TrackerSongBank.setVoiceSampleOffsetAtTime`.
-  - `TrackerSongBank.setVoiceSampleOffsetAtTime` resolves `voiceIndex` via `lastTrackVoice` (per instrument + track, with global `-1` fallback) and calls `InstrumentV2.setVoiceMacroAtTime(resolvedVoice, 1, offsetNorm, time)`, so macro index 1 drives `SampleOffset` for the correct voice at the correct time.
+- `TrackerSongBank.setVoiceSampleOffsetAtTime` resolves `voiceIndex` via `lastTrackVoice` (per instrument + track, with global `-1` fallback) and calls `InstrumentV2.setVoiceMacroAtTime(resolvedVoice, 1, offsetNorm, time)`, so macro index 1 drives `SampleOffset` for the correct voice at the correct time.
 - Host/TS-side notes:
   - `InstrumentV2` (`src/audio/instrument-v2.ts`) now has `setVoiceMacroAtTime(voiceIndex, macroIndex, value, time, rampToValue?, rampTime?, interpolation?)` alongside the existing `setMacro` broadcast. Both use the same macro AudioParams (`macro_<voice>_<index>`), but per-voice macros are crucial for 9xx to avoid pushing all voices to the same offset.
   - `PORT_LABELS` in `src/audio/types/synth-layout.ts` includes a label for the new port (`Sample Offset`) so UI modulation target pickers stay exhaustive (`Record<PortId, string>` stays type-complete).
 - Behavior summary for 9xx in ProTracker MODs:
   - 9xx now behaves as “start this note at a later point in the sample” by setting the sampler’s per-voice normalized offset at the note’s row time. The mapping is proportional across the sample length rather than strict `xx * 256` bytes, which keeps the behavior musical across arbitrary sample sizes. If a song relies on the exact ProTracker 256-byte addressing, you’ll need to adjust the offset mapping to `offsetFrames = min(sample_len - 1, xx * 256)` and normalize accordingly.
+
+### Effect processor command batches (2026-xx)
+
+- `processEffectTick0`/`processEffectTickN` now return `commands: ProcessorCommand[]` instead of scalar frequency/volume fields. Commands cover `noteOn`/`noteOff`, `pitch`, `volume`, `sampleOffset`, and `retrigger`; a pitch command is always emitted on tick 0 to keep schedulers in sync.
+- `PlaybackEngine` dispatches these via `dispatchCommands`, so scheduling is centralized; sample offset now flows through the command path instead of bespoke tick-0 handling.
+- Note delay (EDx) now yields a real `noteOn` command at the delayed tick (and carries pitch/volume), instead of the previous implicit retrigger path. This also covers carried EDx pulses that spilled into the next row.
+- Tick-based ramps still work: `canUseAutomationRamp` paths fold pitch/volume commands down to a final ramp target, while other effects dispatch per-tick batches.
+- New sanity test: `packages/tracker-playback/src/__tests__/effect-processor.spec.ts` walks a delayed note and a volume slide to verify the command batches without the full engine.

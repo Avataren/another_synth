@@ -33,7 +33,8 @@ import {
   createTrackEffectState,
   processEffectTick0,
   processEffectTickN,
-  resetEffectStateForNote
+  resetEffectStateForNote,
+  type ProcessorCommand
 } from './effect-processor';
 
 type ListenerMap = {
@@ -734,28 +735,36 @@ export class PlaybackEngine {
         }
 
         // Handle macros
-          if (step.macroIndex !== undefined && step.macroValue !== undefined) {
-            if (this.scheduledMacroHandler) {
-              const ramp =
-                step.macroRamp && step.macroRamp.targetRow > row
-                  ? {
-                      targetValue: step.macroRamp.targetValue,
-                      // Nudge the ramp to end just before the target row start to avoid overlapping set/ramp at identical times
-                      targetTime: (() => {
-                        const ideal = time + (step.macroRamp.targetRow - row) * secPerRow;
-                        const epsilon = 1e-5; // 10 microseconds
-                        return Math.max(time + epsilon, ideal - epsilon);
-                      })(),
-                      ...(step.macroRamp.interpolation
-                        ? { interpolation: step.macroRamp.interpolation }
-                        : {})
-                    }
-                  : undefined;
-              this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time, ramp);
-            } else if (this.macroHandler) {
-              this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
-            }
+        if (step.macroIndex !== undefined && step.macroValue !== undefined) {
+          if (this.scheduledMacroHandler) {
+            const ramp =
+              step.macroRamp && step.macroRamp.targetRow > row
+                ? {
+                    targetValue: step.macroRamp.targetValue,
+                    // Nudge the ramp to end just before the target row start to avoid overlapping set/ramp at identical times
+                    targetTime: (() => {
+                      const ideal = time + (step.macroRamp.targetRow - row) * secPerRow;
+                      const epsilon = 1e-5; // 10 microseconds
+                      return Math.max(time + epsilon, ideal - epsilon);
+                    })(),
+                    ...(step.macroRamp.interpolation
+                      ? { interpolation: step.macroRamp.interpolation }
+                      : {})
+                  }
+                : undefined;
+            this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time, ramp);
+          } else if (this.macroHandler) {
+            this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
           }
+        }
+
+        const context = {
+          instrumentId,
+          row,
+          trackIndex: step.trackIndex,
+          time,
+          voiceIndex: effectState.voiceIndex
+        };
 
         // Handle note-off
         if (step.isNoteOff) {
@@ -786,99 +795,24 @@ export class PlaybackEngine {
         }
 
         // Process tick 0 (pass step.frequency for ProTracker MODs)
-        const tick0Result = processEffectTick0(
+        const tick0Batch = processEffectTick0(
           effectState,
           step.effect,
           newNote,
           newVelocity,
           step.frequency,
-          this.ticksPerRow
+          this.ticksPerRow,
+          step.pan
         );
 
-        // Check for note delay (EDx) - don't trigger note on tick 0
-        const hasNoteDelay = step.effect?.type === 'noteDelay' ||
-          (step.effect?.type === 'extEffect' && step.effect?.extSubtype === 'noteDelay');
-
-        // Schedule note on tick 0 (unless delayed or tone portamento without new note)
-        if (!hasNoteDelay && newNote !== undefined) {
-          // For tone portamento (3xx / 5xy), ProTracker-style behavior is to slide
-          // the existing note towards the new one without retriggering the sample.
-          const isTonePortaContinue =
-            step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol';
-
-          if (!isTonePortaContinue) {
-            // Tracker volume column is applied via automation (step.velocity -> gain);
-            // keep MIDI velocity at full scale so we don't double-attenuate rows with low volume.
-            const velocity = 127;
-            const event: ScheduledNoteEvent = {
-              type: 'noteOn',
-              instrumentId,
-              midi: newNote,
-              row,
-              trackIndex: step.trackIndex,
-              time,
-              velocity,
-              ...(step.frequency !== undefined ? { frequency: step.frequency } : {}),
-              ...(step.pan !== undefined ? { pan: step.pan } : {}),
-            };
-            this.scheduledNoteHandler(event);
-          }
-        }
-
-        // Apply tick 0 frequency if we have pitch handler
-        if (this.scheduledPitchHandler && tick0Result.frequency !== undefined) {
-          this.scheduledPitchHandler(
-            instrumentId,
-            effectState.voiceIndex,
-            tick0Result.frequency,
-            time,
-            step.trackIndex,
-            undefined
-          );
-        }
-
-        // Apply tick 0 volume if we have volume handler
-        if (this.scheduledVolumeHandler && tick0Result.volume !== undefined) {
-          this.scheduledVolumeHandler(
-            instrumentId,
-            effectState.voiceIndex,
-            tick0Result.volume,
-            time,
-            step.trackIndex,
-            undefined
-          );
-        }
-
-        // Apply sample offset (9xx) as a per-note, per-voice parameter via handler
-        if (this.scheduledSampleOffsetHandler && step.effect?.type === 'sampleOffset') {
-          const raw = step.effect.paramX * 16 + step.effect.paramY; // 0x00-0xFF
-          const offsetNorm = Math.max(0, Math.min(1, raw / 255));
-          this.scheduledSampleOffsetHandler(
-            instrumentId,
-            effectState.voiceIndex,
-            offsetNorm,
-            time,
-            step.trackIndex
-          );
-        }
+        this.dispatchCommands(tick0Batch.commands, context);
 
         // Handle volume automation (Cxx or step velocity)
-        // NOTE: Effects like EA1 (fine volume slide) set tick0Result.volume and are handled above
-        if (this.scheduledAutomationHandler && step.velocity !== undefined && !tick0Result.volume) {
+        // NOTE: Effects like EA1 (fine volume slide) emit volume commands above
+        const tick0HasVolumeCommand = tick0Batch.commands.some((cmd) => cmd.kind === 'volume');
+        if (this.scheduledAutomationHandler && step.velocity !== undefined && !tick0HasVolumeCommand) {
           const gain = clamp(step.velocity / 255);
           this.scheduledAutomationHandler(instrumentId, gain, time);
-        }
-
-        // Handle note cut on tick 0
-        if (tick0Result.cutNote) {
-          const cutEvent: ScheduledNoteEvent = {
-            type: 'noteOff',
-            instrumentId,
-            row,
-            trackIndex: step.trackIndex,
-            time
-          };
-          this.scheduledNoteHandler(cutEvent);
         }
 
         // Schedule per-tick effects for ticks 1 to ticksPerRow-1
@@ -895,10 +829,12 @@ export class PlaybackEngine {
 
             // Process all ticks to advance effect state correctly
             for (let tick = 1; tick < this.ticksPerRow; tick++) {
-              const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+              const tickBatch = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
               // Keep track of final values
-              if (tickResult.frequency !== undefined) finalFrequency = tickResult.frequency;
-              if (tickResult.volume !== undefined) finalVolume = tickResult.volume;
+              for (const cmd of tickBatch.commands) {
+                if (cmd.kind === 'pitch') finalFrequency = cmd.frequency;
+                if (cmd.kind === 'volume') finalVolume = cmd.volume;
+              }
             }
 
             // Schedule smooth ramp to final value (instead of discrete per-tick values)
@@ -931,53 +867,8 @@ export class PlaybackEngine {
             // Complex effects (vibrato, tremolo, arpeggio, etc.) still need per-tick processing
             for (let tick = 1; tick < this.ticksPerRow; tick++) {
               const tickTime = time + tick * secPerTick;
-              const tickResult = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
-
-              // Schedule pitch change
-              if (this.scheduledPitchHandler && tickResult.frequency !== undefined) {
-                this.scheduledPitchHandler(
-                  instrumentId,
-                  effectState.voiceIndex,
-                  tickResult.frequency,
-                  tickTime,
-                  step.trackIndex,
-                  undefined
-                );
-              }
-
-              // Schedule volume change
-              if (this.scheduledVolumeHandler && tickResult.volume !== undefined) {
-                this.scheduledVolumeHandler(
-                  instrumentId,
-                  effectState.voiceIndex,
-                  tickResult.volume,
-                  tickTime,
-                  step.trackIndex,
-                  undefined
-                );
-              }
-
-              // Schedule note retrigger
-              if (tickResult.triggerNote && this.scheduledRetriggerHandler) {
-                this.scheduledRetriggerHandler(
-                  instrumentId,
-                  tickResult.triggerNote.midi,
-                  tickResult.triggerNote.velocity,
-                  tickTime
-                );
-              }
-
-              // Handle note cut
-              if (tickResult.cutNote) {
-                const cutEvent: ScheduledNoteEvent = {
-                  type: 'noteOff',
-                  instrumentId,
-                  row,
-                  trackIndex: step.trackIndex,
-                  time: tickTime
-                };
-                this.scheduledNoteHandler(cutEvent);
-              }
+              const tickBatch = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+              this.dispatchCommands(tickBatch.commands, { ...context, time: tickTime });
             }
           }
         }
@@ -986,6 +877,99 @@ export class PlaybackEngine {
 
     // Note: Position commands (Bxx, Dxx) are now handled in scheduleAhead()
     // after this row is scheduled, so the scheduling loop can react immediately
+  }
+
+  private dispatchCommands(
+    commands: ProcessorCommand[],
+    context: {
+      instrumentId: string;
+      row: number;
+      trackIndex: number;
+      time: number;
+      voiceIndex: number;
+    }
+  ) {
+    if (!commands.length) return;
+
+    for (const cmd of commands) {
+      switch (cmd.kind) {
+        case 'noteOn':
+          if (!this.scheduledNoteHandler) break;
+          this.scheduledNoteHandler({
+            type: 'noteOn',
+            instrumentId: context.instrumentId,
+            midi: cmd.midi,
+            row: context.row,
+            trackIndex: context.trackIndex,
+            time: context.time,
+            velocity: cmd.velocity,
+            ...(cmd.frequency !== undefined ? { frequency: cmd.frequency } : {}),
+            ...(cmd.pan !== undefined ? { pan: cmd.pan } : {})
+          });
+          break;
+
+        case 'noteOff':
+          if (!this.scheduledNoteHandler) break;
+          this.scheduledNoteHandler({
+            type: 'noteOff',
+            instrumentId: context.instrumentId,
+            row: context.row,
+            trackIndex: context.trackIndex,
+            time: context.time,
+            ...(cmd.midi !== undefined ? { midi: cmd.midi } : {})
+          });
+          break;
+
+        case 'pitch':
+          if (!this.scheduledPitchHandler) break;
+          this.scheduledPitchHandler(
+            context.instrumentId,
+            cmd.voiceIndex ?? context.voiceIndex,
+            cmd.frequency,
+            context.time,
+            context.trackIndex,
+            cmd.glide
+          );
+          break;
+
+        case 'volume':
+          if (!this.scheduledVolumeHandler) break;
+          this.scheduledVolumeHandler(
+            context.instrumentId,
+            cmd.voiceIndex ?? context.voiceIndex,
+            cmd.volume,
+            context.time,
+            context.trackIndex,
+            cmd.ramp
+          );
+          break;
+
+        case 'sampleOffset':
+          if (!this.scheduledSampleOffsetHandler) break;
+          this.scheduledSampleOffsetHandler(
+            context.instrumentId,
+            cmd.voiceIndex ?? context.voiceIndex,
+            cmd.offset,
+            context.time,
+            context.trackIndex
+          );
+          break;
+
+        case 'retrigger':
+          if (!this.scheduledRetriggerHandler) break;
+          this.scheduledRetriggerHandler(
+            context.instrumentId,
+            cmd.midi,
+            cmd.velocity,
+            context.time
+          );
+          break;
+
+        case 'pan':
+          // No dedicated pan handler yet; pan is conveyed on noteOn events when present.
+          break;
+      }
+    }
   }
 
   /**
