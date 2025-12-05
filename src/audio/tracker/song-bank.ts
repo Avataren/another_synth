@@ -1184,6 +1184,9 @@ export class TrackerSongBank {
           }
         }
       }
+      if (resolvedVoice < 0) {
+        resolvedVoice = 0; // fallback to first voice so slides on first note don’t get dropped
+      }
     }
     // Ignore invalid voice indices (tracker effects may emit -1 when no voice is assigned yet).
     if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
@@ -1209,24 +1212,20 @@ export class TrackerSongBank {
     if (resolvedVoice < 0) {
       const byTrack = this.lastTrackVoice.get(instrumentId);
       const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
-      console.log('[SongBank] setVoiceVolumeAtTime: resolving voice for inst', instrumentId, 'track', trackIndex, '(key:', trackKey, ') voiceIndex', voiceIndex, 'byTrack:', byTrack ? `Map(${byTrack.size})` : 'undefined');
       if (byTrack) {
         const trackVoice = byTrack.get(trackKey);
         if (trackVoice !== undefined) {
           resolvedVoice = trackVoice;
-          console.log('[SongBank] setVoiceVolumeAtTime: resolved from trackKey', trackKey, '→ voice', resolvedVoice);
         } else if (!Number.isFinite(trackIndex)) {
           const fallback = byTrack.get(-1);
           if (fallback !== undefined) {
             resolvedVoice = fallback;
-            console.log('[SongBank] setVoiceVolumeAtTime: resolved from fallback (-1) → voice', resolvedVoice);
           }
-        } else {
-          console.warn('[SongBank] setVoiceVolumeAtTime: trackKey', trackKey, 'not found in byTrack map. Available keys:', Array.from(byTrack.keys()));
         }
       }
+      // Fallback to first voice if we still couldn't resolve (prevents silent slides on startup).
       if (resolvedVoice < 0) {
-        console.warn('[SongBank] setVoiceVolumeAtTime: could not resolve voice for instrument', instrumentId, 'track', trackIndex, 'voiceIndex', voiceIndex);
+        resolvedVoice = 0;
       }
     }
     // Ignore invalid voice indices to avoid affecting all voices inadvertently.
@@ -1262,6 +1261,9 @@ export class TrackerSongBank {
             resolvedVoice = fallback;
           }
         }
+      }
+      if (resolvedVoice < 0) {
+        resolvedVoice = 0; // fallback to first voice so offset commands don’t get dropped
       }
     }
     if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;

@@ -817,9 +817,22 @@ export class PlaybackEngine {
         // Handle volume automation (Cxx or step velocity)
         // NOTE: Effects like EA1 (fine volume slide) emit volume commands above
         const tick0HasVolumeCommand = tick0Batch.commands.some((cmd) => cmd.kind === 'volume');
-        if (this.scheduledAutomationHandler && step.velocity !== undefined && !tick0HasVolumeCommand) {
+        if (step.velocity !== undefined && !tick0HasVolumeCommand) {
           const gain = clamp(step.velocity / 255);
-          this.scheduledAutomationHandler(instrumentId, gain, time);
+          if (this.scheduledVolumeHandler) {
+            // Per-track velocity should drive per-voice gain, not global instrument gain.
+            this.scheduledVolumeHandler(
+              instrumentId,
+              -1, // resolve via track voice history
+              gain,
+              time,
+              step.trackIndex,
+              undefined
+            );
+          } else if (this.scheduledAutomationHandler) {
+            // Fallback: legacy global gain path
+            this.scheduledAutomationHandler(instrumentId, gain, time);
+          }
         }
 
         // Schedule per-tick effects for ticks 1 to ticksPerRow-1

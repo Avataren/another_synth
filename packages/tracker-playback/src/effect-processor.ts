@@ -494,6 +494,9 @@ export function processEffectTick0(
       // Tone porta continues, volume slide applies
       state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
       primeVolumeSlide(state, effect);
+      if (state.volumeSlide.mode === 'normal' && state.volumeSlide.delta !== 0) {
+        pushVolume(state.currentVolume);
+      }
       // Apply an initial slide on tick 0 so we don't stop one step short.
       pushPitch(applyTonePortaStep(state));
       break;
@@ -501,6 +504,9 @@ export function processEffectTick0(
     case 'vibratoVol':
       // Vibrato continues, volume slide applies
       primeVolumeSlide(state, effect);
+      if (state.volumeSlide.mode === 'normal' && state.volumeSlide.delta !== 0) {
+        pushVolume(state.currentVolume);
+      }
       break;
 
     case 'tremolo':
@@ -521,6 +527,10 @@ export function processEffectTick0(
     case 'volSlide': {
       // Distinguish between normal Axy volume slide and fine EAx/EBx slides.
       primeVolumeSlide(state, effect);
+      if (state.volumeSlide.mode === 'normal' && state.volumeSlide.delta !== 0) {
+        // Emit current volume so schedulers have a starting point before per-tick slides.
+        pushVolume(state.currentVolume);
+      }
       if (state.volumeSlide.mode === 'fine' && state.volumeSlide.delta !== 0) {
         state.currentVolume = clampVolume(state.currentVolume + state.volumeSlide.delta);
         pushVolume(state.currentVolume);
