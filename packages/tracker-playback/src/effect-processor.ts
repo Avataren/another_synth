@@ -31,6 +31,47 @@ function protrackerArpPeriod(basePeriod: number, semitoneOffset: number): number
   return clampProtrackerPeriod(shifted);
 }
 
+function updatePitchFromPeriod(state: TrackEffectState, period: number): void {
+  const clamped = clampProtrackerPeriod(period);
+  state.currentPeriod = clamped;
+  const frequency = synthFrequencyFromPeriod(clamped);
+  state.currentFrequency = frequency;
+  state.currentMidi = frequencyToMidi(frequency);
+}
+
+function updatePitchFromFrequency(state: TrackEffectState, frequency: number): void {
+  state.currentFrequency = frequency;
+  state.currentMidi = frequencyToMidi(frequency);
+  if (state.currentPeriod !== undefined) {
+    const rawPeriod = AMIGA_CLOCK / (2 * frequency * PAULA_TO_SYNTH_SCALE);
+    state.currentPeriod = clampProtrackerPeriod(rawPeriod);
+  }
+}
+
+function applyFinePortamento(state: TrackEffectState, semitoneDelta: number): void {
+  const ratio = Math.pow(2, semitoneDelta / (12 * 16));
+  if (state.currentPeriod !== undefined) {
+    const nextPeriod = state.currentPeriod / ratio;
+    updatePitchFromPeriod(state, nextPeriod);
+  } else {
+    updatePitchFromFrequency(state, state.currentFrequency * ratio);
+  }
+}
+
+function applyPortamentoStep(state: TrackEffectState): void {
+  const speed = state.portamentoSpeed;
+  if (speed === 0) return;
+
+  if (state.currentPeriod !== undefined) {
+    const delta = Math.abs(speed);
+    const nextPeriod = speed > 0 ? state.currentPeriod - delta : state.currentPeriod + delta;
+    updatePitchFromPeriod(state, nextPeriod);
+  } else {
+    const ratio = Math.pow(2, speed / (12 * 16));
+    updatePitchFromFrequency(state, state.currentFrequency * ratio);
+  }
+}
+
 /**
  * Per-track effect state
  */
@@ -186,28 +227,28 @@ function applyTonePortaStep(state: TrackEffectState): number {
   if (state.tonePortaSpeed <= 0) {
     return state.currentFrequency;
   }
+
+  const ratio = Math.pow(2, state.tonePortaSpeed / (12 * 16));
+  let nextFrequency = state.currentFrequency;
   if (state.currentFrequency < state.targetFrequency) {
-    state.currentFrequency *= Math.pow(2, state.tonePortaSpeed / (12 * 16));
-    if (state.currentFrequency >= state.targetFrequency) {
-      state.currentFrequency = state.targetFrequency;
+    nextFrequency *= ratio;
+    if (nextFrequency >= state.targetFrequency) {
+      nextFrequency = state.targetFrequency;
     }
   } else if (state.currentFrequency > state.targetFrequency) {
-    state.currentFrequency /= Math.pow(2, state.tonePortaSpeed / (12 * 16));
-    if (state.currentFrequency <= state.targetFrequency) {
-      state.currentFrequency = state.targetFrequency;
+    nextFrequency /= ratio;
+    if (nextFrequency <= state.targetFrequency) {
+      nextFrequency = state.targetFrequency;
     }
   }
-  state.currentMidi = frequencyToMidi(state.currentFrequency);
+
   // When glissando control is enabled (E3x), snap to semitone grid.
   if (state.glissandoEnabled) {
-    const snappedMidi = Math.round(state.currentMidi);
-    state.currentMidi = snappedMidi;
-    state.currentFrequency = midiToFrequency(snappedMidi);
+    const snappedMidi = Math.round(frequencyToMidi(nextFrequency));
+    nextFrequency = midiToFrequency(snappedMidi);
   }
-  if (state.currentPeriod !== undefined) {
-    const derived = AMIGA_CLOCK / (2 * state.currentFrequency * PAULA_TO_SYNTH_SCALE);
-    state.currentPeriod = clampProtrackerPeriod(derived);
-  }
+
+  updatePitchFromFrequency(state, nextFrequency);
   return state.currentFrequency;
 }
 
@@ -323,19 +364,15 @@ export function processEffectTick0(
       state.targetMidi = newNote;
       state.targetFrequency = midiToFrequency(newNote);
     } else {
-      state.currentMidi = newNote;
-      state.currentFrequency = noteFrequency ?? midiToFrequency(newNote);
-      state.targetMidi = newNote;
-      state.targetFrequency = state.currentFrequency;
-
-      // For ProTracker MODs with exact frequencies, calculate period for authentic portamento
       if (noteFrequency !== undefined) {
         const rawPeriod = AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
-        state.currentPeriod = clampProtrackerPeriod(rawPeriod);
+        updatePitchFromPeriod(state, rawPeriod);
       } else {
-        // Native tracker songs don't use period-based portamento
         state.currentPeriod = undefined;
+        updatePitchFromFrequency(state, midiToFrequency(newNote));
       }
+      state.targetMidi = newNote;
+      state.targetFrequency = state.currentFrequency;
 
       // Trigger note immediately unless delayed or a tone portamento continuation
       if (!hasNoteDelay) {
@@ -442,12 +479,9 @@ export function processEffectTick0(
         const finetuneSteps = nibble < 8 ? nibble : nibble - 16; // -8..7
         const semitones = finetuneSteps / 8;
         const ratio = Math.pow(2, semitones / 12);
-        state.currentFrequency *= ratio;
         state.targetFrequency *= ratio;
-        state.currentMidi = frequencyToMidi(state.currentFrequency);
-        if (state.currentPeriod !== undefined) {
-          state.currentPeriod = clampProtrackerPeriod(state.currentPeriod / ratio);
-        }
+        state.targetMidi = frequencyToMidi(state.targetFrequency);
+        updatePitchFromFrequency(state, state.currentFrequency * ratio);
         pushPitch(state.currentFrequency);
       }
       break;
@@ -466,25 +500,13 @@ export function processEffectTick0(
 
     case 'finePortaUp':
       // E1x: Fine portamento up (applied once on tick 0)
-      state.currentFrequency *= Math.pow(2, effect.paramY / (12 * 16));
-      state.currentMidi = frequencyToMidi(state.currentFrequency);
-      if (state.currentPeriod !== undefined) {
-        state.currentPeriod = clampProtrackerPeriod(
-          AMIGA_CLOCK / (2 * state.currentFrequency * PAULA_TO_SYNTH_SCALE)
-        );
-      }
+      applyFinePortamento(state, effect.paramY);
       pushPitch(state.currentFrequency);
       break;
 
     case 'finePortaDown':
       // E2x: Fine portamento down (applied once on tick 0)
-      state.currentFrequency /= Math.pow(2, effect.paramY / (12 * 16));
-      state.currentMidi = frequencyToMidi(state.currentFrequency);
-      if (state.currentPeriod !== undefined) {
-        state.currentPeriod = clampProtrackerPeriod(
-          AMIGA_CLOCK / (2 * state.currentFrequency * PAULA_TO_SYNTH_SCALE)
-        );
-      }
+      applyFinePortamento(state, -effect.paramY);
       pushPitch(state.currentFrequency);
       break;
 
@@ -637,40 +659,14 @@ export function processEffectTickN(
   switch (effect.type) {
     case 'portaUp':
       // Slide pitch up
-      // For ProTracker MODs, use period-based portamento for authentic behavior
-      if (state.currentPeriod !== undefined) {
-        // ProTracker: subtract from period (makes pitch go up)
-        const periodChange = Math.abs(state.portamentoSpeed);
-        state.currentPeriod -= periodChange;
-        state.currentPeriod = clampProtrackerPeriod(state.currentPeriod);
-        state.currentFrequency = synthFrequencyFromPeriod(state.currentPeriod);
-        state.currentMidi = frequencyToMidi(state.currentFrequency);
-        pushPitch(state.currentFrequency);
-      } else {
-        // Standard semitone-based portamento
-        state.currentFrequency *= Math.pow(2, state.portamentoSpeed / (12 * 16));
-        state.currentMidi = frequencyToMidi(state.currentFrequency);
-        pushPitch(state.currentFrequency);
-      }
+      applyPortamentoStep(state);
+      pushPitch(state.currentFrequency);
       break;
 
     case 'portaDown':
       // Slide pitch down
-      // For ProTracker MODs, use period-based portamento for authentic behavior
-      if (state.currentPeriod !== undefined) {
-        // ProTracker: add to period (makes pitch go down)
-        const periodChange = Math.abs(state.portamentoSpeed);
-        state.currentPeriod += periodChange;
-        state.currentPeriod = clampProtrackerPeriod(state.currentPeriod);
-        state.currentFrequency = synthFrequencyFromPeriod(state.currentPeriod);
-        state.currentMidi = frequencyToMidi(state.currentFrequency);
-        pushPitch(state.currentFrequency);
-      } else {
-        // Standard semitone-based portamento
-        state.currentFrequency *= Math.pow(2, state.portamentoSpeed / (12 * 16));
-        state.currentMidi = frequencyToMidi(state.currentFrequency);
-        pushPitch(state.currentFrequency);
-      }
+      applyPortamentoStep(state);
+      pushPitch(state.currentFrequency);
       break;
 
     case 'tonePorta':
