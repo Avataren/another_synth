@@ -23,9 +23,11 @@ import {
   type ScheduledSampleOffsetHandler,
   type ScheduledGlobalVolumeHandler,
   type ScheduledRetriggerHandler,
-  type PositionCommandHandler
+  type PositionCommandHandler,
+  type PlaybackClock
 } from './types';
 import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
+import { createVisibilityClock } from './clock';
 import {
   type TrackEffectState,
   createTrackEffectState,
@@ -54,6 +56,7 @@ export class PlaybackEngine {
   };
   private readonly resolver: InstrumentResolver | undefined;
   private readonly scheduler: PlaybackScheduler;
+  private readonly playbackClock: PlaybackClock;
   private readonly noteHandler: PlaybackNoteHandler | undefined;
   private readonly scheduledNoteHandler: ScheduledNoteHandler | undefined;
   private readonly scheduledAutomationHandler: ScheduledAutomationHandler | undefined;
@@ -81,10 +84,6 @@ export class PlaybackEngine {
   private nextRowTime = 0;
   /** Pattern loop count for scheduling */
   private scheduledLoops = 0;
-  /** RAF handle for playback loop */
-  private rafHandle: number | null = null;
-  /** Interval handle for background playback when tab is hidden */
-  private intervalHandle: number | null = null;
   /** Track if tab is currently visible */
   private isTabVisible = true;
   /** Base lookahead when visible/hidden (seconds) */
@@ -96,11 +95,6 @@ export class PlaybackEngine {
   private lateScheduleCount = 0;
   /** Track worst lead deficit observed while scheduling late */
   private maxLeadDeficit = 0;
-  /** Target FPS for scheduling loop (30fps reduces CPU usage) */
-  private readonly targetFps = 30;
-  private readonly minFrameTime = 1000 / this.targetFps; // ~33ms
-  /** Last timestamp when scheduling loop executed */
-  private lastScheduleTime = 0;
 
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
@@ -128,6 +122,7 @@ export class PlaybackEngine {
       options.scheduler ||
       createAudioContextScheduler() ||
       new IntervalScheduler();
+    this.playbackClock = options.playbackClock ?? createVisibilityClock({ targetFps: 30 });
     this.noteHandler = options.noteHandler;
     this.scheduledNoteHandler = options.scheduledNoteHandler;
     this.scheduledAutomationHandler = options.scheduledAutomationHandler;
@@ -151,61 +146,11 @@ export class PlaybackEngine {
     const handleVisibilityChange = () => {
       this.isTabVisible = !document.hidden;
       if (this.state === 'playing') {
-        // Switch between RAF and interval based on visibility
-        if (this.isTabVisible) {
-          this.switchToRAF();
-        } else {
-          this.switchToInterval();
-        }
+        this.playbackClock.setVisible?.(this.isTabVisible);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-  }
-
-  private switchToRAF() {
-    // Clear interval if it's running
-    if (this.intervalHandle !== null) {
-      clearInterval(this.intervalHandle);
-      this.intervalHandle = null;
-    }
-
-    // Start RAF loop if not already running
-    if (this.rafHandle === null && this.state === 'playing') {
-      this.lastScheduleTime = performance.now();
-      const loop = (timestamp: number) => {
-        if (this.state !== 'playing' || !this.isTabVisible) return;
-
-        // Throttle to 30fps by checking elapsed time
-        const elapsed = timestamp - this.lastScheduleTime;
-        if (elapsed >= this.minFrameTime) {
-          this.updatePosition();
-          this.scheduleAhead();
-          this.lastScheduleTime = timestamp;
-        }
-
-        this.rafHandle = requestAnimationFrame(loop);
-      };
-      this.rafHandle = requestAnimationFrame(loop);
-    }
-  }
-
-  private switchToInterval() {
-    // Clear RAF if it's running
-    if (this.rafHandle !== null) {
-      cancelAnimationFrame(this.rafHandle);
-      this.rafHandle = null;
-    }
-
-    // Start interval loop if not already running
-    if (this.intervalHandle === null && this.state === 'playing') {
-      // Use 30fps (~33ms) for efficient scheduling when hidden
-      this.intervalHandle = setInterval(() => {
-        if (this.state !== 'playing' || this.isTabVisible) return;
-        this.updatePosition();
-        this.scheduleAhead();
-      }, this.minFrameTime) as unknown as number;
-    }
   }
 
   /**
@@ -451,23 +396,17 @@ export class PlaybackEngine {
     // Schedule initial batch of notes
     this.scheduleAhead();
 
-    // Use RAF when tab is visible, setInterval when hidden
-    if (this.isTabVisible) {
-      this.switchToRAF();
-    } else {
-      this.switchToInterval();
-    }
+    // Drive ongoing scheduling via the visibility-aware clock
+    this.playbackClock.stop(); // ensure we start from a clean state
+    this.playbackClock.setVisible?.(this.isTabVisible);
+    this.playbackClock.start(() => {
+      this.updatePosition();
+      this.scheduleAhead();
+    });
   }
 
   private stopScheduledPlayback() {
-    if (this.rafHandle !== null) {
-      cancelAnimationFrame(this.rafHandle);
-      this.rafHandle = null;
-    }
-    if (this.intervalHandle !== null) {
-      clearInterval(this.intervalHandle);
-      this.intervalHandle = null;
-    }
+    this.playbackClock.stop();
     this.lastScheduledRow = -1;
     this.scheduledLoops = 0;
   }

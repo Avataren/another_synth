@@ -162,6 +162,7 @@ export type PlaybackListener<K extends PlaybackEvent> = (payload: PlaybackEventM
 export interface PlaybackOptions {
   instrumentResolver?: InstrumentResolver;
   scheduler?: PlaybackScheduler;
+  playbackClock?: PlaybackClock;
   noteHandler?: PlaybackNoteHandler;
   /** Handler for scheduling notes at specific audio times */
   scheduledNoteHandler?: ScheduledNoteHandler;
@@ -192,6 +193,12 @@ export interface PlaybackOptions {
 }
 
 export type InstrumentResolver = (instrumentId: string | undefined) => Promise<void> | void;
+
+export interface PlaybackClock {
+  start(tick: (deltaMs: number) => void): void;
+  stop(): void;
+  setVisible?(isVisible: boolean): void;
+}
 
 export interface PlaybackScheduler {
   start(tick: (deltaMs: number) => void): void;
