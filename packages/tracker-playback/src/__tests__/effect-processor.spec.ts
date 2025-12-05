@@ -30,7 +30,7 @@ describe('effect-processor command batches', () => {
     const state = createTrackEffectState();
     const volSlide: EffectCommand = { type: 'volSlide', paramX: 0, paramY: 2 };
 
-    // Prime tick 0 to capture volSlideSpeed
+    // Prime tick 0 to capture volume slide delta
     processEffectTick0(state, volSlide, 60, 255);
 
     const tick1 = processEffectTickN(state, volSlide, 1, 6);

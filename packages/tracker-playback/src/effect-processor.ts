@@ -107,7 +107,11 @@ export interface TrackEffectState {
   arpeggioTick: number;
 
   // Volume slide state
-  volSlideSpeed: number; // positive = up, negative = down
+  volumeSlide: {
+    delta: number; // positive = up, negative = down (normalized per tick)
+    mode: 'none' | 'normal' | 'fine';
+    source: 'volSlide' | 'tonePortaVol' | 'vibratoVol' | null;
+  };
 
   // Panning slide state
   panSlideSpeed: number;
@@ -175,7 +179,7 @@ export function createTrackEffectState(): TrackEffectState {
     arpeggioY: 0,
     arpeggioTick: 0,
 
-    volSlideSpeed: 0,
+    volumeSlide: { delta: 0, mode: 'none', source: null },
     panSlideSpeed: 0,
 
     retriggerInterval: 0,
@@ -279,6 +283,78 @@ function getWaveformValue(pos: number, waveform: number): number {
   }
 }
 
+function clampVolume(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function resetVolumeSlide(state: TrackEffectState): void {
+  state.volumeSlide = { delta: 0, mode: 'none', source: null };
+}
+
+function primeVolumeSlide(state: TrackEffectState, effect: EffectCommand | undefined): void {
+  if (!effect) return;
+
+  const setSlide = (
+    delta: number,
+    mode: 'normal' | 'fine',
+    source: 'volSlide' | 'tonePortaVol' | 'vibratoVol',
+  ) => {
+    state.volumeSlide = { delta, mode, source };
+  };
+
+  switch (effect.type) {
+    case 'volSlide': {
+      if (effect.extSubtype === 'fineVolUp') {
+        setSlide(effect.paramY / 64, 'fine', 'volSlide');
+        return;
+      }
+      if (effect.extSubtype === 'fineVolDown') {
+        setSlide(-effect.paramY / 64, 'fine', 'volSlide');
+        return;
+      }
+
+      let delta = 0;
+      if (effect.paramX) delta = effect.paramX / 64;
+      else if (effect.paramY) delta = -effect.paramY / 64;
+      else if (state.lastVolSlide) {
+        const lastX = (state.lastVolSlide >> 4) & 0x0f;
+        const lastY = state.lastVolSlide & 0x0f;
+        if (lastX) delta = lastX / 64;
+        else if (lastY) delta = -lastY / 64;
+      }
+
+      if (delta !== 0) {
+        setSlide(delta, 'normal', 'volSlide');
+        state.lastVolSlide = (effect.paramX << 4) | effect.paramY || state.lastVolSlide;
+      }
+      return;
+    }
+
+    case 'tonePortaVol': {
+      if (effect.paramX) setSlide(effect.paramX / 64, 'normal', 'tonePortaVol');
+      else if (effect.paramY) setSlide(-effect.paramY / 64, 'normal', 'tonePortaVol');
+      return;
+    }
+
+    case 'vibratoVol': {
+      if (effect.paramX) setSlide(effect.paramX / 64, 'normal', 'vibratoVol');
+      else if (effect.paramY) setSlide(-effect.paramY / 64, 'normal', 'vibratoVol');
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+function applyVolumeSlideIfNeeded(state: TrackEffectState): number | undefined {
+  if (state.volumeSlide.mode !== 'normal' || state.volumeSlide.delta === 0) {
+    return undefined;
+  }
+  state.currentVolume = clampVolume(state.currentVolume + state.volumeSlide.delta);
+  return state.currentVolume;
+}
+
 export type ProcessorCommand =
   | { kind: 'noteOn'; midi: number; velocity: number; frequency?: number; pan?: number }
   | { kind: 'noteOff'; midi?: number }
@@ -340,6 +416,9 @@ export function processEffectTick0(
       ...(pan !== undefined ? { pan } : {})
     });
   };
+
+  // Reset per-row volume slide accumulator (effect memory stored separately)
+  resetVolumeSlide(state);
 
   // ProTracker note delay overflow: if previous row had EDx with x >= speed and
   // no new note arrives, trigger the carried note at the start of this row.
@@ -414,16 +493,14 @@ export function processEffectTick0(
     case 'tonePortaVol':
       // Tone porta continues, volume slide applies
       state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
-      if (effect.paramX) state.volSlideSpeed = effect.paramX;
-      else if (effect.paramY) state.volSlideSpeed = -effect.paramY;
+      primeVolumeSlide(state, effect);
       // Apply an initial slide on tick 0 so we don't stop one step short.
       pushPitch(applyTonePortaStep(state));
       break;
 
     case 'vibratoVol':
       // Vibrato continues, volume slide applies
-      if (effect.paramX) state.volSlideSpeed = effect.paramX;
-      else if (effect.paramY) state.volSlideSpeed = -effect.paramY;
+      primeVolumeSlide(state, effect);
       break;
 
     case 'tremolo':
@@ -443,26 +520,11 @@ export function processEffectTick0(
 
     case 'volSlide': {
       // Distinguish between normal Axy volume slide and fine EAx/EBx slides.
-      if (effect.extSubtype === 'fineVolUp') {
-        // EAx: Fine volume slide up (tick 0 only, x = amount)
-        // Work in ProTracker's native 0-64 volume range for precise results
-        const currentVol64 = state.currentVolume * 64;
-        const newVol64 = Math.min(64, currentVol64 + effect.paramY);
-        state.currentVolume = newVol64 / 64;
+      primeVolumeSlide(state, effect);
+      if (state.volumeSlide.mode === 'fine' && state.volumeSlide.delta !== 0) {
+        state.currentVolume = clampVolume(state.currentVolume + state.volumeSlide.delta);
         pushVolume(state.currentVolume);
-        // Do not alter volSlideSpeed / lastVolSlide so Axy memory stays intact.
-      } else if (effect.extSubtype === 'fineVolDown') {
-        // EBx: Fine volume slide down (tick 0 only, x = amount)
-        // Work in ProTracker's native 0-64 volume range for precise results
-        const currentVol64 = state.currentVolume * 64;
-        const newVol64 = Math.max(0, currentVol64 - effect.paramY);
-        state.currentVolume = newVol64 / 64;
-        pushVolume(state.currentVolume);
-      } else {
-        // Axy: Per-tick volume slide (x=up, y=down)
-        if (effect.paramX) state.volSlideSpeed = effect.paramX / 64; // Fine adjustment
-        else if (effect.paramY) state.volSlideSpeed = -effect.paramY / 64;
-        state.lastVolSlide = (effect.paramX << 4) | effect.paramY;
+        resetVolumeSlide(state);
       }
       break;
     }
@@ -675,8 +737,10 @@ export function processEffectTickN(
 
       // Handle volume slide for 5xy
       if (effect.type === 'tonePortaVol') {
-        state.currentVolume = Math.max(0, Math.min(1, state.currentVolume + state.volSlideSpeed));
-        pushVolume(state.currentVolume);
+        const slid = applyVolumeSlideIfNeeded(state);
+        if (slid !== undefined) {
+          pushVolume(slid);
+        }
       }
       break;
 
@@ -695,8 +759,12 @@ export function processEffectTickN(
       const vibOffset = getWaveformValue(state.vibratoPos, state.vibratoWaveform);
       const vibSemitones = vibOffset * state.vibratoDepth / 16;
       pushPitch(state.currentFrequency * Math.pow(2, vibSemitones / 12));
-      state.currentVolume = Math.max(0, Math.min(1, state.currentVolume + state.volSlideSpeed));
-      pushVolume(state.currentVolume);
+      {
+        const slid = applyVolumeSlideIfNeeded(state);
+        if (slid !== undefined) {
+          pushVolume(slid);
+        }
+      }
       break;
 
     case 'tremolo':
@@ -729,12 +797,12 @@ export function processEffectTickN(
     }
 
     case 'volSlide':
-      // Skip per-tick processing for EAx/EBx fine slides – they are tick-0 only.
-      if (effect.extSubtype === 'fineVolUp' || effect.extSubtype === 'fineVolDown') {
-        break;
+      if (state.volumeSlide.mode === 'normal') {
+        const slid = applyVolumeSlideIfNeeded(state);
+        if (slid !== undefined) {
+          pushVolume(slid);
+        }
       }
-      state.currentVolume = Math.max(0, Math.min(1, state.currentVolume + state.volSlideSpeed));
-      pushVolume(state.currentVolume);
       break;
 
     case 'panSlide':
