@@ -392,6 +392,27 @@ export class PooledInstrument {
   }
 
   /**
+   * Update sampler state (loop points, gain, trigger mode, etc.)
+   */
+  updateSamplerState(nodeId: string, state: {
+    frequency: number;
+    gain: number;
+    loopMode: number;
+    loopStart: number;
+    loopEnd: number;
+    rootNote: number;
+    triggerMode: number;
+    active: boolean;
+  }): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateSampler',
+      samplerId: nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  /**
    * Get output gain
    */
   getOutputGain(): number {

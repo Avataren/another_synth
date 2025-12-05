@@ -143,6 +143,8 @@ export interface UpdateSamplerMessage extends BaseMessage {
   type: 'updateSampler';
   samplerId: string;
   state: Partial<SamplerState>;
+  /** Optional target instrument when using pooled worklets */
+  instrumentId?: string;
 }
 
 export interface UpdateConvolverMessage extends BaseMessage {

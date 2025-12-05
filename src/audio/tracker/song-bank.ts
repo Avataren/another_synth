@@ -1538,6 +1538,9 @@ export class TrackerSongBank {
         deserialized,
       );
 
+      // Normalize sampler loop points/detune for pooled instruments (patch stores normalized values)
+      this.applySamplerStates(instrument, deserialized.samplers);
+
       // Apply macro values/routes so pooled instruments match the patch (e.g., vibrato depth).
       this.applyMacrosFromPatch(instrument, normalizedPatch);
     } else {
@@ -1924,39 +1927,7 @@ export class TrackerSongBank {
       },
     );
 
-    deserialized.samplers.forEach((state: SamplerState, nodeId: string) => {
-      const sampleLength = Math.max(
-        1,
-        state.sampleLength || state.sampleRate || 1,
-      );
-      const loopStartNorm = this.clamp01(state.loopStart ?? 0);
-      const requestedEnd = this.clamp01(state.loopEnd ?? 1);
-      const minDelta = 1 / sampleLength;
-      const loopEndNorm =
-        requestedEnd <= loopStartNorm + minDelta
-          ? Math.min(1, loopStartNorm + minDelta)
-          : requestedEnd;
-      const detuneCents = Number.isFinite(state.detune)
-        ? (state.detune as number)
-        : combineDetuneParts(
-            state.detune_oct ?? 0,
-            state.detune_semi ?? 0,
-            state.detune_cents ?? 0,
-          );
-      const tuningFrequency = frequencyFromDetune(detuneCents);
-
-      instrument.updateSamplerState(nodeId, {
-        frequency: tuningFrequency,
-        // Avoid silent samplers when gain is 0 (common for MOD imports that rely on Axx/Cxx to fade in)
-        gain: state.gain === 0 ? 1 : state.gain,
-        loopMode: state.loopMode,
-        loopStart: loopStartNorm * sampleLength,
-        loopEnd: loopEndNorm * sampleLength,
-        rootNote: state.rootNote,
-        triggerMode: state.triggerMode,
-        active: state.active,
-      });
-    });
+    this.applySamplerStates(instrument, deserialized.samplers);
 
     await Promise.all(envelopePromises);
   }
@@ -1964,6 +1935,52 @@ export class TrackerSongBank {
   private clamp01(value: number): number {
     if (!Number.isFinite(value)) return 0;
     return Math.min(1, Math.max(0, value));
+  }
+
+  private buildSamplerUpdatePayload(state: SamplerState) {
+    const sampleLength = Math.max(
+      1,
+      state.sampleLength || state.sampleRate || 1,
+    );
+    const loopStartNorm = this.clamp01(state.loopStart ?? 0);
+    const requestedEnd = this.clamp01(state.loopEnd ?? 1);
+    const minDelta = 1 / sampleLength;
+    const loopEndNorm =
+      requestedEnd <= loopStartNorm + minDelta
+        ? Math.min(1, loopStartNorm + minDelta)
+        : requestedEnd;
+    const detuneCents = Number.isFinite(state.detune)
+      ? (state.detune as number)
+      : combineDetuneParts(
+          state.detune_oct ?? 0,
+          state.detune_semi ?? 0,
+          state.detune_cents ?? 0,
+        );
+    const tuningFrequency = frequencyFromDetune(detuneCents);
+
+    return {
+      frequency: tuningFrequency,
+      // Avoid silent samplers when gain is 0 (common for MOD imports that rely on Axx/Cxx to fade in)
+      gain: state.gain === 0 ? 1 : state.gain,
+      loopMode: state.loopMode,
+      loopStart: loopStartNorm * sampleLength,
+      loopEnd: loopEndNorm * sampleLength,
+      rootNote: state.rootNote,
+      triggerMode: state.triggerMode,
+      active: state.active,
+    };
+  }
+
+  private applySamplerStates(
+    instrument: InstrumentV2 | PooledInstrument,
+    samplers: Map<string, SamplerState>,
+  ) {
+    samplers.forEach((state: SamplerState, nodeId: string) => {
+      instrument.updateSamplerState(
+        nodeId,
+        this.buildSamplerUpdatePayload(state),
+      );
+    });
   }
 
   /**

@@ -1495,6 +1495,7 @@ if (canReuse) {
 ### MOD sampler gain guard (2025-12)
 
 - When applying sampler node state in the song bank, sampler gain now treats `gain: 0` as unity (1.0) to avoid silent instruments that rely on Axx/Cxx slides to fade in. File: `src/audio/tracker/song-bank.ts`.
+- Pooled tracker instruments were missing sampler state application, so normalized loopStart/loopEnd values were sent straight into the engine as “frames.” Looped MOD samples would collapse to the first frame (silence/clicks) even though they worked in the instrument editor. `PooledInstrument` now supports `updateSamplerState`, and `song-bank` applies sampler state (loop scaling + detune) after restoring assets for pooled instruments so loops/tuning match InstrumentV2.
 
 ### Tracker effect routing per track (2025-05)
 
