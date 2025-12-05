@@ -25,7 +25,8 @@
       "Bash(npm run test:run:*)",
       "Bash(grep:*)",
       "Bash(timeout 30 npm run lint:*)",
-      "Bash(timeout 10 npm run build:worklets:*)"
+      "Bash(timeout 10 npm run build:worklets:*)",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

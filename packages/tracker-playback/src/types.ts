@@ -353,3 +353,6 @@ export interface PositionCommand {
 }
 
 export type PositionCommandHandler = (command: PositionCommand) => void;
+
+// Re-export TimingSystem for external use
+export { TimingSystem } from './timing-system';

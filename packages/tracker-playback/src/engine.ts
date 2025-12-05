@@ -36,6 +36,7 @@ import {
   resetEffectStateForNote,
   type ProcessorCommand
 } from './effect-processor';
+import { TimingSystem } from './timing-system';
 
 type ListenerMap = {
   [K in PlaybackEvent]: Set<PlaybackListener<K>>;
@@ -45,11 +46,10 @@ export class PlaybackEngine {
   private song: Song | null = null;
   private state: TransportState = 'stopped';
   private position: PlaybackPosition = { row: 0 };
-  private bpm = 120;
-  private speed = 6; // FastTracker 2 style speed, where 6 is normal
-  private ticksPerRow = 6; // FT2 default ticks per row
   private length = 64;
   private currentSequenceIndex = 0;
+  /** Unified timing system for all timing calculations */
+  private timingSystem: TimingSystem;
   private readonly listeners: ListenerMap = {
     position: new Set(),
     state: new Set(),
@@ -75,10 +75,6 @@ export class PlaybackEngine {
   private loopCurrentPattern = false;
   private loopSong = true;
 
-  /** Audio context time when playback started */
-  private playStartTime = 0;
-  /** Row offset when playback started (for seeking) */
-  private startRow = 0;
   /** Last scheduled row (for lookahead scheduling) */
   private lastScheduledRow = -1;
   /** Exact audio time for the next row to be scheduled */
@@ -99,9 +95,6 @@ export class PlaybackEngine {
 
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
-
-  /** Row offset for the starting sequence index */
-  private sequenceStartOffsetRows = 0;
 
   /** Position/pattern commands to process (Bxx, Dxx) */
   private pendingPosCommand: { type: 'posJump' | 'patBreak'; value: number } | null = null;
@@ -137,7 +130,18 @@ export class PlaybackEngine {
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
     this.audioContext = options.audioContext;
-    this.ticksPerRow = options.ticksPerRow ?? 6;
+
+    // Initialize timing system with callbacks
+    this.timingSystem = new TimingSystem(
+      (id: string | undefined) => this.getPatternLength(id),
+      () => this.song?.sequence ?? [],
+      {
+        bpm: 120,
+        speed: 6,
+        ticksPerRow: options.ticksPerRow ?? 6
+      }
+    );
+
     this.setupVisibilityHandling();
   }
 
@@ -262,15 +266,17 @@ export class PlaybackEngine {
     // rows with 3xx but no note can still slide towards the next note in
     // the same track, even when it lives in the next pattern.
     this.precomputeTonePortaTargets();
-    // Clamp BPM to valid range in case song file has invalid value
-    this.bpm = Math.max(32, Math.min(255, song.bpm));
+    // Set BPM in timing system (will clamp to valid range)
+    this.timingSystem.setBpm(song.bpm);
     const maxIndex = Math.max(0, song.sequence.length - 1);
     this.currentSequenceIndex = Math.max(0, Math.min(startSequenceIndex, maxIndex));
-    this.sequenceStartOffsetRows = 0;
-    for (let i = 0; i < this.currentSequenceIndex; i += 1) {
-      const id = this.song.sequence[i];
-      this.sequenceStartOffsetRows += this.getPatternLength(id);
+
+    // Initialize timing system with the starting sequence index for position calculations
+    // This ensures updatePosition() works correctly even if playback hasn't started yet
+    if (this.audioContext) {
+      this.timingSystem.start(this.audioContext.currentTime, this.currentSequenceIndex, 0);
     }
+
     if (this.song.sequence.length > 0) {
       const patternId = this.song.sequence[this.currentSequenceIndex] as string;
       this.loadPattern(patternId, { emitPosition: false, updatePosition: false });
@@ -310,7 +316,7 @@ export class PlaybackEngine {
   setBpm(bpm: number) {
     if (!Number.isFinite(bpm) || bpm <= 0) return;
     // Clamp to FastTracker 2 limits (matches F command range)
-    this.bpm = Math.max(32, Math.min(255, bpm));
+    this.timingSystem.setBpm(bpm);
   }
 
   setLength(rows: number) {
@@ -371,7 +377,6 @@ export class PlaybackEngine {
   seek(row: number) {
     const clamped = ((Math.round(row) % this.length) + this.length) % this.length;
     this.position = { ...this.position, row: clamped };
-    this.startRow = clamped;
     this.emit('position', this.position);
   }
 
@@ -384,13 +389,15 @@ export class PlaybackEngine {
   private startScheduledPlayback() {
     if (!this.audioContext || !this.scheduledNoteHandler) return;
 
-    this.playStartTime = this.audioContext.currentTime;
-    this.startRow = this.position.row;
-    this.lastScheduledRow = this.startRow - 1;
+    const now = this.audioContext.currentTime;
+    // Initialize timing system for current position
+    this.timingSystem.start(now, this.currentSequenceIndex, this.position.row);
+    this.timingSystem.setSpeed(6); // Reset to normal speed
+
+    this.lastScheduledRow = this.position.row - 1;
     this.scheduledLoops = 0;
     // Initialize timing for cumulative tempo changes
-    this.nextRowTime = this.playStartTime;
-    this.speed = 6; // Reset to normal speed
+    this.nextRowTime = now;
     // Reset effect states for clean playback start
     this.resetEffectStates();
 
@@ -623,7 +630,7 @@ export class PlaybackEngine {
    * Calculate time per tick
    */
   private getMsPerTick(): number {
-    return this.getMsPerRow() / this.ticksPerRow;
+    return this.timingSystem.getTickDuration();
   }
 
   private scheduleRow(row: number, time: number) {
@@ -641,11 +648,11 @@ export class PlaybackEngine {
       for (const step of steps) {
         if (step.speedCommand !== undefined) {
           // F01-F1F: Set speed (1-31, where 6 is normal)
-          this.speed = Math.max(1, Math.min(31, step.speedCommand));
+          this.timingSystem.setSpeed(step.speedCommand);
         }
         if (step.tempoCommand !== undefined) {
           // F20-FF: Set BPM directly (32-255)
-          this.bpm = Math.max(32, Math.min(255, step.tempoCommand));
+          this.timingSystem.setBpm(step.tempoCommand);
         }
 
         // Check for position commands (Bxx, Dxx), pattern flow commands (E6x, EEx),
@@ -801,7 +808,7 @@ export class PlaybackEngine {
           newNote,
           newVelocity,
           step.frequency,
-          this.ticksPerRow,
+          this.timingSystem.getTicksPerRow(),
           step.pan
         );
 
@@ -827,9 +834,10 @@ export class PlaybackEngine {
             let finalFrequency: number | undefined;
             let finalVolume: number | undefined;
 
+            const ticksPerRow = this.timingSystem.getTicksPerRow();
             // Process all ticks to advance effect state correctly
-            for (let tick = 1; tick < this.ticksPerRow; tick++) {
-              const tickBatch = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+            for (let tick = 1; tick < ticksPerRow; tick++) {
+              const tickBatch = processEffectTickN(effectState, step.effect, tick, ticksPerRow);
               // Keep track of final values
               for (const cmd of tickBatch.commands) {
                 if (cmd.kind === 'pitch') finalFrequency = cmd.frequency;
@@ -838,7 +846,7 @@ export class PlaybackEngine {
             }
 
             // Schedule smooth ramp to final value (instead of discrete per-tick values)
-            const endTime = time + (this.ticksPerRow - 1) * secPerTick;
+            const endTime = time + (ticksPerRow - 1) * secPerTick;
 
             if (this.scheduledPitchHandler && finalFrequency !== undefined) {
               // Use exponential ramp for pitch (frequency is exponential)
@@ -865,9 +873,10 @@ export class PlaybackEngine {
             }
           } else {
             // Complex effects (vibrato, tremolo, arpeggio, etc.) still need per-tick processing
-            for (let tick = 1; tick < this.ticksPerRow; tick++) {
+            const ticksPerRow = this.timingSystem.getTicksPerRow();
+            for (let tick = 1; tick < ticksPerRow; tick++) {
               const tickTime = time + tick * secPerTick;
-              const tickBatch = processEffectTickN(effectState, step.effect, tick, this.ticksPerRow);
+              const tickBatch = processEffectTickN(effectState, step.effect, tick, ticksPerRow);
               this.dispatchCommands(tickBatch.commands, { ...context, time: tickTime });
             }
           }
@@ -1001,50 +1010,19 @@ export class PlaybackEngine {
     if (this.state !== 'playing') return;
 
     const now = this.audioContext.currentTime;
-    const elapsed = now - this.playStartTime;
-    const msPerRow = this.getMsPerRow();
-    const secPerRow = msPerRow / 1000;
+    const currentPosition = this.timingSystem.getCurrentRow(now);
 
-    const rowsElapsed = Math.floor(elapsed / secPerRow);
-    const totalRowsPlayed = this.sequenceStartOffsetRows + this.startRow + rowsElapsed;
-
-    const sequence = this.song?.sequence ?? [];
-    // Total rows across the full song sequence (for wrapping)
-    const songLengthRows = sequence.reduce(
-      (total, id) => total + this.getPatternLength(id),
-      0
-    );
-
-    let effectiveRows = totalRowsPlayed;
-    if (songLengthRows > 0) {
-      effectiveRows =
-        ((effectiveRows % songLengthRows) + songLengthRows) % songLengthRows;
-    }
-
-    let patternId = sequence[0];
-    let currentPatternLength = this.getPatternLength(patternId);
-    let remaining = effectiveRows;
-    let sequenceIndex = 0;
-
-    for (let i = 0; i < sequence.length; i += 1) {
-      const id = sequence[i];
-      const length = this.getPatternLength(id);
-      if (remaining < length) {
-        patternId = id;
-        currentPatternLength = length;
-        sequenceIndex = i;
-        break;
-      }
-      remaining -= length;
-    }
-
-    const currentRow =
-      currentPatternLength > 0 ? remaining % currentPatternLength : 0;
-
-    if (currentRow !== this.position.row || patternId !== this.position.patternId || sequenceIndex !== this.position.sequenceIndex) {
-      const newPosition: PlaybackPosition = { row: currentRow, sequenceIndex };
-      if (patternId) {
-        newPosition.patternId = patternId;
+    if (
+      currentPosition.row !== this.position.row ||
+      currentPosition.patternId !== this.position.patternId ||
+      currentPosition.sequenceIndex !== this.position.sequenceIndex
+    ) {
+      const newPosition: PlaybackPosition = {
+        row: currentPosition.row,
+        sequenceIndex: currentPosition.sequenceIndex
+      };
+      if (currentPosition.patternId) {
+        newPosition.patternId = currentPosition.patternId;
       }
       this.position = newPosition;
       this.emit('position', this.position);
@@ -1053,25 +1031,14 @@ export class PlaybackEngine {
 
   /**
    * Reset position tracking reference for jump/seek scenarios.
-   * Aligns playStartTime/startRow/sequenceStartOffsetRows to the given target.
+   * Aligns timing system to the given target position.
    */
   private resetPositionReference(targetSequenceIndex: number, targetRow: number, now: number) {
-    this.playStartTime = now;
-    this.startRow = targetRow;
-    this.sequenceStartOffsetRows = 0;
-    const sequence = this.song?.sequence ?? [];
-    for (let i = 0; i < targetSequenceIndex; i += 1) {
-      const id = sequence[i];
-      this.sequenceStartOffsetRows += this.getPatternLength(id);
-    }
+    this.timingSystem.advanceToRow(now, targetSequenceIndex, targetRow);
   }
 
   private getMsPerRow(): number {
-    const rowsPerBeat = 4; // treat one beat as 4 rows (16th grid)
-    const baseMs = (60_000 / this.bpm) / rowsPerBeat;
-    // Apply speed multiplier (speed 6 is normal, speed 3 is 2x faster, speed 12 is 0.5x)
-    const speedMultiplier = this.speed / 6.0;
-    return baseMs * speedMultiplier;
+    return this.timingSystem.getRowDuration();
   }
 
   async prepareInstruments() {
