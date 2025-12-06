@@ -45,6 +45,8 @@ export class PooledInstrument {
   private ready = false;
   private quantumFrames = 128;
   private glideStates: Map<string, GlideState> = new Map();
+  private outputGain = 1;
+  private voiceBaseGain: number[] = [];
 
   constructor(
     destination: AudioNode,
@@ -67,6 +69,7 @@ export class PooledInstrument {
     this.voiceToNote = new Array(this.num_voices).fill(null);
     this.voiceLastUsedTime = new Array(this.num_voices).fill(0);
     this.voiceReleaseTime = new Array(this.num_voices).fill(0);
+    this.voiceBaseGain = new Array(this.num_voices).fill(1);
 
     // Create message handler for this instrument
     this.messageHandler = new WorkletMessageHandler({
@@ -247,7 +250,10 @@ export class PooledInstrument {
     const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
     if (gainParam) {
       gainParam.cancelScheduledValues(time);
-      gainParam.setValueAtTime(velocity / 127, time);
+      const baseGain = velocity / 127;
+      this.voiceBaseGain[voiceIndex] = baseGain;
+      const target = Math.min(1, baseGain * this.outputGain);
+      gainParam.setValueAtTime(target, time);
     }
 
     return voiceIndex;
@@ -329,7 +335,9 @@ export class PooledInstrument {
     for (let i = 0; i < this.num_voices; i++) {
       const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
       if (gainParam) {
-        gainParam.setValueAtTime(clamped, when);
+        this.voiceBaseGain[i] = clamped;
+        const target = Math.min(1, clamped * this.outputGain);
+        gainParam.setValueAtTime(target, when);
       }
     }
   }
@@ -370,16 +378,18 @@ export class PooledInstrument {
     if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
 
     const clamped = Math.max(0, Math.min(1, gain));
+    this.voiceBaseGain[voiceIndex] = clamped;
     const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
     if (!gainParam) return;
 
+    const target = Math.min(1, clamped * this.outputGain);
     if (rampMode === 'linear') {
-      gainParam.linearRampToValueAtTime(clamped, time);
+      gainParam.linearRampToValueAtTime(target, time);
     } else if (rampMode === 'exponential') {
-      const safeGain = Math.max(0.001, clamped);
+      const safeGain = Math.max(0.001, target);
       gainParam.exponentialRampToValueAtTime(safeGain, time);
     } else {
-      gainParam.setValueAtTime(clamped, time);
+      gainParam.setValueAtTime(target, time);
     }
   }
 
@@ -387,8 +397,17 @@ export class PooledInstrument {
    * Set output gain
    */
   setOutputGain(gain: number, time?: number): void {
+    const clamped = Math.max(0, gain);
+    this.outputGain = clamped;
     const when = time ?? this.audioContext.currentTime;
-    this.outputNode.gain.setValueAtTime(gain, when);
+    // Re-apply current base gains with the new output gain multiplier.
+    for (let i = 0; i < this.num_voices; i++) {
+      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      if (!gainParam) continue;
+      const base = this.voiceBaseGain[i] ?? 1;
+      const target = Math.min(1, base * this.outputGain);
+      gainParam.setValueAtTime(target, when);
+    }
   }
 
   /**

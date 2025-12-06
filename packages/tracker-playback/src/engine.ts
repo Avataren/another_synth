@@ -792,7 +792,7 @@ export class PlaybackEngine {
           newNote === undefined &&
           step.instrumentId &&
           step.velocity === undefined &&
-          (!step.effect || step.effect.type === 'volSlide')
+          !step.effect
         ) {
           const last = this.lastTrackNote.get(step.trackIndex);
           if (last) {
