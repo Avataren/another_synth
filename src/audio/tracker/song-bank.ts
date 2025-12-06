@@ -46,7 +46,7 @@ import {
   frequencyFromDetune,
 } from 'src/audio/utils/sampler-detune';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
-//import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -1302,7 +1302,9 @@ export class TrackerSongBank {
     // Ignore invalid voice indices to avoid affecting all voices inadvertently.
     if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
       return;
-    active.instrument.setVoiceGainAtTime(resolvedVoice, volume, time, rampMode);
+    // Default to a linear ramp for smoother gain changes to avoid audible snaps.
+    const mode = rampMode ?? 'linear';
+    active.instrument.setVoiceGainAtTime(resolvedVoice, volume, time, mode);
   }
 
   /**
@@ -1530,12 +1532,12 @@ export class TrackerSongBank {
     console.log(`[SongBank] Creating new instrument: ${instrumentId}`);
 
     // Check if this is a MOD instrument and user has simplified MOD instruments enabled
-    // const userSettings = useUserSettingsStore();
+    const userSettings = useUserSettingsStore();
     const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
     // Temporarily disable the simplified ModInstrument path: it doesn't support
     // per-voice pitch automation (e.g. 3xx tone portamento), so tracker slides
     // get stuck. Always route MOD patches through the worklet-backed instruments.
-    const useSimplified = false;
+    const useSimplified = userSettings.settings.useSimplifiedModInstruments;
 
     // DETAILED DEBUGGING
     console.log('[SongBank] === INSTRUMENT CREATION DEBUG ===');

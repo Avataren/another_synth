@@ -111,6 +111,9 @@ export class PlaybackEngine {
   /** Global volume state (Gxx/Hxy), normalized 0-1 */
   private globalVolume = 1.0;
 
+  /** Last note played per track (for instrument-only retrigger rows) */
+  private lastTrackNote: Map<number, { midi: number; velocity: number }> = new Map();
+
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
     this.scheduler =
@@ -604,6 +607,7 @@ export class PlaybackEngine {
   private resetEffectStates(): void {
     this.trackEffectStates.clear();
     this.pitchLogRow.clear();
+    this.lastTrackNote.clear();
     this.pendingPosCommand = null;
     this.patternLoopStart = 0;
     this.patternLoopCount = 0;
@@ -778,8 +782,35 @@ export class PlaybackEngine {
         const hasTickEffect = step.effect && this.isTickBasedEffect(step.effect.type);
 
         // Handle note-on with effect processing
-        const newNote = step.midi;
-        const newVelocity = step.velocity;
+        let newNote = step.midi;
+        let newVelocity = step.velocity;
+
+        // If an instrument is specified but no note/effect/velocity is provided, retrigger the last
+        // note played on this track (if any). Skip when velocity is set so volume-only rows
+        // don’t restart the sample.
+        if (
+          newNote === undefined &&
+          step.instrumentId &&
+          step.velocity === undefined &&
+          (!step.effect || step.effect.type === 'volSlide')
+        ) {
+          const last = this.lastTrackNote.get(step.trackIndex);
+          if (last) {
+            newNote = last.midi;
+            if (newVelocity === undefined) {
+              newVelocity = last.velocity;
+            }
+          } else {
+            // Fallback to the track effect state's current note/volume if we
+            // don't have an explicit last note recorded yet.
+            newNote = Math.round(effectState.currentMidi);
+            if (newVelocity === undefined) {
+              newVelocity = Math.round(
+                Math.max(0, Math.min(1, effectState.currentVolume)) * 255
+              );
+            }
+          }
+        }
 
         // Reset effect state on new note (unless tone portamento)
         if (newNote !== undefined && step.effect?.type !== 'tonePorta' && step.effect?.type !== 'tonePortaVol') {
@@ -797,8 +828,8 @@ export class PlaybackEngine {
           step.pan
         );
 
-          // Debug the tone porta state for track 2 (third track) to investigate 3xx slides.
-          if (step.trackIndex === 2) {
+          // Debug the tone porta state for track 3 (fourth track) to investigate 3xx slides.
+          if (step.trackIndex === 3) {
             const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
             console.log(
               `[PitchState] row=${row} track=${step.trackIndex} note=${newNote ?? '—'} ` +
@@ -927,6 +958,15 @@ export class PlaybackEngine {
             ...(cmd.frequency !== undefined ? { frequency: cmd.frequency } : {}),
             ...(cmd.pan !== undefined ? { pan: cmd.pan } : {})
           });
+          if (cmd.midi !== undefined) {
+            this.lastTrackNote.set(context.trackIndex, {
+              midi: cmd.midi,
+              velocity:
+                cmd.velocity !== undefined
+                  ? cmd.velocity
+                  : this.lastTrackNote.get(context.trackIndex)?.velocity ?? 100
+            });
+          }
           break;
 
         case 'noteOff':
@@ -944,8 +984,8 @@ export class PlaybackEngine {
         case 'pitch':
           // Debug: log the first pitch seen for this track on this row
           {
-            // Debug log only for track index 2 (third track)
-            if (context.trackIndex === 2) {
+            // Debug log only for track index 3 (fourth track)
+            if (context.trackIndex === 3) {
               const lastRow = this.pitchLogRow.get(context.trackIndex);
               if (lastRow !== context.row) {
                 this.pitchLogRow.set(context.trackIndex, context.row);

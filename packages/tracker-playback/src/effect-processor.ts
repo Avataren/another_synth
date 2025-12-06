@@ -25,7 +25,10 @@ function periodFromFrequency(freq: number): number {
   return clampProtrackerPeriod(AMIGA_CLOCK / (2 * freq * PAULA_TO_SYNTH_SCALE));
 }
 
-function protrackerArpPeriod(basePeriod: number, semitoneOffset: number): number {
+function protrackerArpPeriod(
+  basePeriod: number,
+  semitoneOffset: number,
+): number {
   // Higher pitch -> smaller period.
   const shifted = basePeriod / Math.pow(2, semitoneOffset / 12);
   if (shifted < MIN_PROTRACKER_PERIOD) {
@@ -43,7 +46,10 @@ function updatePitchFromPeriod(state: TrackEffectState, period: number): void {
   state.currentMidi = frequencyToMidi(frequency);
 }
 
-function updatePitchFromFrequency(state: TrackEffectState, frequency: number): void {
+function updatePitchFromFrequency(
+  state: TrackEffectState,
+  frequency: number,
+): void {
   state.currentFrequency = frequency;
   state.currentMidi = frequencyToMidi(frequency);
   if (state.currentPeriod !== undefined) {
@@ -52,7 +58,10 @@ function updatePitchFromFrequency(state: TrackEffectState, frequency: number): v
   }
 }
 
-function applyFinePortamento(state: TrackEffectState, semitoneDelta: number): void {
+function applyFinePortamento(
+  state: TrackEffectState,
+  semitoneDelta: number,
+): void {
   const ratio = Math.pow(2, semitoneDelta / (12 * 16));
   if (state.currentPeriod !== undefined) {
     const nextPeriod = state.currentPeriod / ratio;
@@ -68,7 +77,8 @@ function applyPortamentoStep(state: TrackEffectState): void {
 
   if (state.currentPeriod !== undefined) {
     const delta = Math.abs(speed);
-    const nextPeriod = speed > 0 ? state.currentPeriod - delta : state.currentPeriod + delta;
+    const nextPeriod =
+      speed > 0 ? state.currentPeriod - delta : state.currentPeriod + delta;
     updatePitchFromPeriod(state, nextPeriod);
   } else {
     const ratio = Math.pow(2, speed / (12 * 16));
@@ -88,6 +98,7 @@ export interface TrackEffectState {
   targetPeriod?: number | undefined;
   lastTonePortaTargetFreq?: number | undefined;
   lastTonePortaTargetPeriod?: number | undefined;
+  tonePortaActive: boolean;
   currentVolume: number; // 0-1
   currentPan: number; // -1 to 1
 
@@ -133,10 +144,12 @@ export interface TrackEffectState {
   // Note cut/delay
   noteCutTick: number;
   noteDelayTick: number;
-  delayedNote: {
-    midi: number;
-    velocity: number;
-  } | undefined;
+  delayedNote:
+    | {
+        midi: number;
+        velocity: number;
+      }
+    | undefined;
 
   // Voice tracking
   voiceIndex: number;
@@ -169,6 +182,7 @@ export function createTrackEffectState(): TrackEffectState {
     targetPeriod: undefined,
     lastTonePortaTargetFreq: undefined,
     lastTonePortaTargetPeriod: undefined,
+    tonePortaActive: false,
     currentVolume: 1.0,
     currentPan: 0,
 
@@ -211,7 +225,7 @@ export function createTrackEffectState(): TrackEffectState {
     lastTremolo: 0,
     lastVolSlide: 0,
     lastArpeggio: 0,
-    carryDelayedNote: null
+    carryDelayedNote: null,
   };
 }
 
@@ -225,7 +239,7 @@ export function midiToFrequency(midi: number): number {
 function resolveTonePortaSpeed(
   state: TrackEffectState,
   paramX: number,
-  paramY: number
+  paramY: number,
 ): number {
   const value = paramX * 16 + paramY;
   if (value > 0) {
@@ -242,22 +256,22 @@ function applyTonePortaStep(state: TrackEffectState): number {
     return state.currentFrequency;
   }
 
-  if (
-    state.currentPeriod === undefined &&
-    state.targetPeriod !== undefined
-  ) {
+  if (state.currentPeriod === undefined && state.targetPeriod !== undefined) {
     state.currentPeriod = periodFromFrequency(state.currentFrequency);
   }
 
-  if (
-    state.currentPeriod !== undefined &&
-    state.targetPeriod !== undefined
-  ) {
+  if (state.currentPeriod !== undefined && state.targetPeriod !== undefined) {
     let nextPeriod = state.currentPeriod;
     if (state.currentPeriod > state.targetPeriod) {
-      nextPeriod = Math.max(state.targetPeriod, state.currentPeriod - state.tonePortaSpeed);
+      nextPeriod = Math.max(
+        state.targetPeriod,
+        state.currentPeriod - state.tonePortaSpeed,
+      );
     } else if (state.currentPeriod < state.targetPeriod) {
-      nextPeriod = Math.min(state.targetPeriod, state.currentPeriod + state.tonePortaSpeed);
+      nextPeriod = Math.min(
+        state.targetPeriod,
+        state.currentPeriod + state.tonePortaSpeed,
+      );
     }
     updatePitchFromPeriod(state, nextPeriod);
   } else {
@@ -322,7 +336,10 @@ function resetVolumeSlide(state: TrackEffectState): void {
   state.volumeSlide = { delta: 0, mode: 'none', source: null };
 }
 
-function primeVolumeSlide(state: TrackEffectState, effect: EffectCommand | undefined): void {
+function primeVolumeSlide(
+  state: TrackEffectState,
+  effect: EffectCommand | undefined,
+): void {
   if (!effect) return;
 
   const setSlide = (
@@ -345,31 +362,36 @@ function primeVolumeSlide(state: TrackEffectState, effect: EffectCommand | undef
       }
 
       let delta = 0;
-      if (effect.paramX) delta = effect.paramX / 64;
-      else if (effect.paramY) delta = -effect.paramY / 64;
+      // Softer slide: scale nibble by 1/256 instead of 1/64 to better match MOD feel.
+      const scale = 1 / 128;
+      if (effect.paramX) delta = effect.paramX * scale;
+      else if (effect.paramY) delta = -effect.paramY * scale;
       else if (state.lastVolSlide) {
         const lastX = (state.lastVolSlide >> 4) & 0x0f;
         const lastY = state.lastVolSlide & 0x0f;
-        if (lastX) delta = lastX / 64;
-        else if (lastY) delta = -lastY / 64;
+        if (lastX) delta = lastX * scale;
+        else if (lastY) delta = -lastY * scale;
       }
 
       if (delta !== 0) {
         setSlide(delta, 'normal', 'volSlide');
-        state.lastVolSlide = (effect.paramX << 4) | effect.paramY || state.lastVolSlide;
+        state.lastVolSlide =
+          (effect.paramX << 4) | effect.paramY || state.lastVolSlide;
       }
       return;
     }
 
     case 'tonePortaVol': {
       if (effect.paramX) setSlide(effect.paramX / 64, 'normal', 'tonePortaVol');
-      else if (effect.paramY) setSlide(-effect.paramY / 64, 'normal', 'tonePortaVol');
+      else if (effect.paramY)
+        setSlide(-effect.paramY / 64, 'normal', 'tonePortaVol');
       return;
     }
 
     case 'vibratoVol': {
       if (effect.paramX) setSlide(effect.paramX / 64, 'normal', 'vibratoVol');
-      else if (effect.paramY) setSlide(-effect.paramY / 64, 'normal', 'vibratoVol');
+      else if (effect.paramY)
+        setSlide(-effect.paramY / 64, 'normal', 'vibratoVol');
       return;
     }
 
@@ -382,15 +404,33 @@ function applyVolumeSlideIfNeeded(state: TrackEffectState): number | undefined {
   if (state.volumeSlide.mode !== 'normal' || state.volumeSlide.delta === 0) {
     return undefined;
   }
-  state.currentVolume = clampVolume(state.currentVolume + state.volumeSlide.delta);
+  state.currentVolume = clampVolume(
+    state.currentVolume + state.volumeSlide.delta,
+  );
   return state.currentVolume;
 }
 
 export type ProcessorCommand =
-  | { kind: 'noteOn'; midi: number; velocity: number; frequency?: number; pan?: number }
+  | {
+      kind: 'noteOn';
+      midi: number;
+      velocity: number;
+      frequency?: number;
+      pan?: number;
+    }
   | { kind: 'noteOff'; midi?: number }
-  | { kind: 'pitch'; frequency: number; voiceIndex?: number; glide?: 'linear' | 'exponential' }
-  | { kind: 'volume'; volume: number; voiceIndex?: number; ramp?: 'linear' | 'exponential' }
+  | {
+      kind: 'pitch';
+      frequency: number;
+      voiceIndex?: number;
+      glide?: 'linear' | 'exponential';
+    }
+  | {
+      kind: 'volume';
+      volume: number;
+      voiceIndex?: number;
+      ramp?: 'linear' | 'exponential';
+    }
   | { kind: 'pan'; pan: number }
   | { kind: 'sampleOffset'; offset: number; voiceIndex?: number }
   | { kind: 'retrigger'; midi: number; velocity: number };
@@ -410,7 +450,7 @@ export function processEffectTick0(
   newVelocity?: number,
   noteFrequency?: number,
   ticksPerRow?: number,
-  pan?: number
+  pan?: number,
 ): TickCommandBatch {
   const commands: ProcessorCommand[] = [];
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
@@ -444,7 +484,7 @@ export function processEffectTick0(
       midi,
       velocity,
       frequency: state.currentFrequency,
-      ...(pan !== undefined ? { pan } : {})
+      ...(pan !== undefined ? { pan } : {}),
     });
   };
 
@@ -485,9 +525,11 @@ export function processEffectTick0(
       }
       state.lastTonePortaTargetFreq = state.targetFrequency;
       state.lastTonePortaTargetPeriod = state.targetPeriod;
+      state.tonePortaActive = state.tonePortaSpeed > 0;
     } else {
       if (noteFrequency !== undefined) {
-        const rawPeriod = AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
+        const rawPeriod =
+          AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
         updatePitchFromPeriod(state, rawPeriod);
       } else {
         state.currentPeriod = undefined;
@@ -513,17 +555,24 @@ export function processEffectTick0(
   // Handle effect parameters (use memory if param is 0 where applicable)
   switch (effect?.type) {
     case 'portaUp':
-      state.portamentoSpeed = effect.paramX * 16 + effect.paramY || state.lastPortaUp;
+      state.portamentoSpeed =
+        effect.paramX * 16 + effect.paramY || state.lastPortaUp;
       state.lastPortaUp = state.portamentoSpeed;
       break;
 
     case 'portaDown':
-      state.portamentoSpeed = -(effect.paramX * 16 + effect.paramY || state.lastPortaDown);
+      state.portamentoSpeed = -(
+        effect.paramX * 16 + effect.paramY || state.lastPortaDown
+      );
       state.lastPortaDown = Math.abs(state.portamentoSpeed);
       break;
 
     case 'tonePorta':
-      state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
+      state.tonePortaSpeed = resolveTonePortaSpeed(
+        state,
+        effect.paramX,
+        effect.paramY,
+      );
       // Always restore remembered target so 3xx rows without notes keep sliding.
       if (state.lastTonePortaTargetFreq !== undefined) {
         state.targetFrequency = state.lastTonePortaTargetFreq;
@@ -531,8 +580,15 @@ export function processEffectTick0(
       if (state.lastTonePortaTargetPeriod !== undefined) {
         state.targetPeriod = state.lastTonePortaTargetPeriod;
       }
+      state.tonePortaActive = state.tonePortaSpeed > 0;
       // Apply an initial slide on tick 0 so we don't stop one step short.
-      pushPitch(applyTonePortaStep(state));
+      {
+        const freq = applyTonePortaStep(state);
+        pushPitch(freq);
+        if (state.targetFrequency === state.currentFrequency) {
+          state.tonePortaActive = false;
+        }
+      }
       break;
 
     case 'vibrato':
@@ -543,25 +599,42 @@ export function processEffectTick0(
 
     case 'tonePortaVol':
       // Tone porta continues, volume slide applies
-      state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
+      state.tonePortaSpeed = resolveTonePortaSpeed(
+        state,
+        effect.paramX,
+        effect.paramY,
+      );
       if (state.lastTonePortaTargetFreq !== undefined) {
         state.targetFrequency = state.lastTonePortaTargetFreq;
       }
       if (state.lastTonePortaTargetPeriod !== undefined) {
         state.targetPeriod = state.lastTonePortaTargetPeriod;
       }
+      state.tonePortaActive = state.tonePortaSpeed > 0;
       primeVolumeSlide(state, effect);
-      if (state.volumeSlide.mode === 'normal' && state.volumeSlide.delta !== 0) {
+      if (
+        state.volumeSlide.mode === 'normal' &&
+        state.volumeSlide.delta !== 0
+      ) {
         pushVolume(state.currentVolume);
       }
       // Apply an initial slide on tick 0 so we don't stop one step short.
-      pushPitch(applyTonePortaStep(state));
+      {
+        const freq = applyTonePortaStep(state);
+        pushPitch(freq);
+        if (state.targetFrequency === state.currentFrequency) {
+          state.tonePortaActive = false;
+        }
+      }
       break;
 
     case 'vibratoVol':
       // Vibrato continues, volume slide applies
       primeVolumeSlide(state, effect);
-      if (state.volumeSlide.mode === 'normal' && state.volumeSlide.delta !== 0) {
+      if (
+        state.volumeSlide.mode === 'normal' &&
+        state.volumeSlide.delta !== 0
+      ) {
         pushVolume(state.currentVolume);
       }
       break;
@@ -584,12 +657,17 @@ export function processEffectTick0(
     case 'volSlide': {
       // Distinguish between normal Axy volume slide and fine EAx/EBx slides.
       primeVolumeSlide(state, effect);
-      if (state.volumeSlide.mode === 'normal' && state.volumeSlide.delta !== 0) {
+      if (
+        state.volumeSlide.mode === 'normal' &&
+        state.volumeSlide.delta !== 0
+      ) {
         // Emit current volume so schedulers have a starting point before per-tick slides.
         pushVolume(state.currentVolume);
       }
       if (state.volumeSlide.mode === 'fine' && state.volumeSlide.delta !== 0) {
-        state.currentVolume = clampVolume(state.currentVolume + state.volumeSlide.delta);
+        state.currentVolume = clampVolume(
+          state.currentVolume + state.volumeSlide.delta,
+        );
         pushVolume(state.currentVolume);
         resetVolumeSlide(state);
       }
@@ -618,13 +696,16 @@ export function processEffectTick0(
 
     case 'setVolume':
       // Cxx: Set volume (00-40 in FT2, we scale to 0-1)
-      state.currentVolume = Math.min(1, (effect.paramX * 16 + effect.paramY) / 64);
+      state.currentVolume = Math.min(
+        1,
+        (effect.paramX * 16 + effect.paramY) / 64,
+      );
       pushVolume(state.currentVolume);
       break;
 
     case 'setPan':
       // 8xx: Set panning (00=left, 80=center, FF=right)
-      state.currentPan = ((effect.paramX * 16 + effect.paramY) - 128) / 128;
+      state.currentPan = (effect.paramX * 16 + effect.paramY - 128) / 128;
       pushPan(state.currentPan);
       break;
 
@@ -733,7 +814,7 @@ export function processEffectTickN(
   state: TrackEffectState,
   effect: EffectCommand | undefined,
   tick: number,
-  _ticksPerRow: number
+  _ticksPerRow: number,
 ): TickCommandBatch {
   const commands: ProcessorCommand[] = [];
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
@@ -771,7 +852,7 @@ export function processEffectTickN(
       kind: 'noteOn',
       midi: delayed.midi,
       velocity: 127,
-      frequency: midiToFrequency(delayed.midi)
+      frequency: midiToFrequency(delayed.midi),
     });
     state.currentMidi = delayed.midi;
     state.currentFrequency = midiToFrequency(delayed.midi);
@@ -786,6 +867,14 @@ export function processEffectTickN(
   }
 
   if (!effect) {
+    // Continue an active tone portamento when no effect is present (e.g., across pattern boundaries).
+    if (state.tonePortaActive && state.tonePortaSpeed > 0) {
+      const freq = applyTonePortaStep(state);
+      pushPitch(freq);
+      if (state.targetFrequency === state.currentFrequency) {
+        state.tonePortaActive = false;
+      }
+    }
     return { commands };
   }
 
@@ -803,8 +892,12 @@ export function processEffectTickN(
       break;
 
     case 'tonePorta':
-    case 'tonePortaVol':
-      pushPitch(applyTonePortaStep(state));
+    case 'tonePortaVol': {
+      const freq = applyTonePortaStep(state);
+      pushPitch(freq);
+      if (state.targetFrequency === state.currentFrequency) {
+        state.tonePortaActive = false;
+      }
 
       // Handle volume slide for 5xy
       if (effect.type === 'tonePortaVol') {
@@ -814,21 +907,28 @@ export function processEffectTickN(
         }
       }
       break;
+    }
 
     case 'vibrato':
     case 'fineVibrato':
       // Apply vibrato
       state.vibratoPos += state.vibratoSpeed;
-      const vibratoOffset = getWaveformValue(state.vibratoPos, state.vibratoWaveform);
-      const vibratoSemitones = vibratoOffset * state.vibratoDepth / 16;
+      const vibratoOffset = getWaveformValue(
+        state.vibratoPos,
+        state.vibratoWaveform,
+      );
+      const vibratoSemitones = (vibratoOffset * state.vibratoDepth) / 16;
       pushPitch(state.currentFrequency * Math.pow(2, vibratoSemitones / 12));
       break;
 
     case 'vibratoVol':
       // Vibrato + volume slide
       state.vibratoPos += state.vibratoSpeed;
-      const vibOffset = getWaveformValue(state.vibratoPos, state.vibratoWaveform);
-      const vibSemitones = vibOffset * state.vibratoDepth / 16;
+      const vibOffset = getWaveformValue(
+        state.vibratoPos,
+        state.vibratoWaveform,
+      );
+      const vibSemitones = (vibOffset * state.vibratoDepth) / 16;
       pushPitch(state.currentFrequency * Math.pow(2, vibSemitones / 12));
       {
         const slid = applyVolumeSlideIfNeeded(state);
@@ -841,8 +941,11 @@ export function processEffectTickN(
     case 'tremolo':
       // Apply tremolo (volume oscillation)
       state.tremoloPos += state.tremoloSpeed;
-      const tremoloOffset = getWaveformValue(state.tremoloPos, state.tremoloWaveform);
-      const tremoloAmount = tremoloOffset * state.tremoloDepth / 64;
+      const tremoloOffset = getWaveformValue(
+        state.tremoloPos,
+        state.tremoloWaveform,
+      );
+      const tremoloAmount = (tremoloOffset * state.tremoloDepth) / 64;
       pushVolume(Math.max(0, Math.min(1, state.currentVolume + tremoloAmount)));
       break;
 
@@ -877,33 +980,67 @@ export function processEffectTickN(
       break;
 
     case 'panSlide':
-      state.currentPan = Math.max(-1, Math.min(1, state.currentPan + state.panSlideSpeed));
+      state.currentPan = Math.max(
+        -1,
+        Math.min(1, state.currentPan + state.panSlideSpeed),
+      );
       pushPan(state.currentPan);
       break;
 
     case 'retrigVol':
       // Retrigger note
       state.retriggerTick++;
-      if (state.retriggerInterval > 0 && state.retriggerTick >= state.retriggerInterval) {
+      if (
+        state.retriggerInterval > 0 &&
+        state.retriggerTick >= state.retriggerInterval
+      ) {
         state.retriggerTick = 0;
 
         // Apply volume change (Rxy only; E9x uses extSubtype 'retrigger' and keeps volume)
         if (effect.extSubtype !== 'retrigger') {
           switch (state.retriggerVolChange) {
-            case 1: state.currentVolume -= 1/64; break;
-            case 2: state.currentVolume -= 2/64; break;
-            case 3: state.currentVolume -= 4/64; break;
-            case 4: state.currentVolume -= 8/64; break;
-            case 5: state.currentVolume -= 16/64; break;
-            case 6: state.currentVolume *= 2/3; break;
-            case 7: state.currentVolume *= 0.5; break;
-            case 9: state.currentVolume += 1/64; break;
-            case 10: state.currentVolume += 2/64; break;
-            case 11: state.currentVolume += 4/64; break;
-            case 12: state.currentVolume += 8/64; break;
-            case 13: state.currentVolume += 16/64; break;
-            case 14: state.currentVolume *= 1.5; break;
-            case 15: state.currentVolume *= 2; break;
+            case 1:
+              state.currentVolume -= 1 / 64;
+              break;
+            case 2:
+              state.currentVolume -= 2 / 64;
+              break;
+            case 3:
+              state.currentVolume -= 4 / 64;
+              break;
+            case 4:
+              state.currentVolume -= 8 / 64;
+              break;
+            case 5:
+              state.currentVolume -= 16 / 64;
+              break;
+            case 6:
+              state.currentVolume *= 2 / 3;
+              break;
+            case 7:
+              state.currentVolume *= 0.5;
+              break;
+            case 9:
+              state.currentVolume += 1 / 64;
+              break;
+            case 10:
+              state.currentVolume += 2 / 64;
+              break;
+            case 11:
+              state.currentVolume += 4 / 64;
+              break;
+            case 12:
+              state.currentVolume += 8 / 64;
+              break;
+            case 13:
+              state.currentVolume += 16 / 64;
+              break;
+            case 14:
+              state.currentVolume *= 1.5;
+              break;
+            case 15:
+              state.currentVolume *= 2;
+              break;
           }
           state.currentVolume = Math.max(0, Math.min(1, state.currentVolume));
         }
@@ -911,7 +1048,7 @@ export function processEffectTickN(
         commands.push({
           kind: 'retrigger',
           midi: state.currentMidi,
-          velocity: Math.round(state.currentVolume * 127)
+          velocity: Math.round(state.currentVolume * 127),
         });
       }
       break;
@@ -949,4 +1086,5 @@ export function resetEffectStateForNote(state: TrackEffectState): void {
   state.noteCutTick = -1;
   state.noteDelayTick = -1;
   state.delayedNote = undefined;
+  state.tonePortaActive = false;
 }
