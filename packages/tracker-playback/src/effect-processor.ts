@@ -869,8 +869,12 @@ export function processEffectTickN(
   if (!effect) {
     // Continue an active tone portamento when no effect is present (e.g., across pattern boundaries).
     if (state.tonePortaActive && state.tonePortaSpeed > 0) {
+      const beforeFreq = state.currentFrequency;
       const freq = applyTonePortaStep(state);
-      pushPitch(freq);
+      const moved = Math.abs(freq - beforeFreq) > 1e-9;
+      if (moved) {
+        pushPitch(freq);
+      }
       if (state.targetFrequency === state.currentFrequency) {
         state.tonePortaActive = false;
       }
@@ -893,8 +897,12 @@ export function processEffectTickN(
 
     case 'tonePorta':
     case 'tonePortaVol': {
+      const beforeFreq = state.currentFrequency;
       const freq = applyTonePortaStep(state);
-      pushPitch(freq);
+      const moved = Math.abs(freq - beforeFreq) > 1e-9;
+      if (moved) {
+        pushPitch(freq);
+      }
       if (state.targetFrequency === state.currentFrequency) {
         state.tonePortaActive = false;
       }
