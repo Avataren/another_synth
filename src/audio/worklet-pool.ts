@@ -22,6 +22,18 @@ import {
   VOICES_PER_ENGINE,
 } from './worklet-config';
 
+interface WorkletCpuBreakdown {
+  workletIndex: number;
+  total: number;
+  perEngine: Array<{
+    id: string;
+    cpu: number;
+    instrumentId?: string;
+    voices?: number;
+  }>;
+  perInstrument: Record<string, number>;
+}
+
 /**
  * Voice allocation record for an instrument
  */
@@ -214,6 +226,26 @@ export class WorkletPool {
   }
 
   /**
+  * Aggregate CPU usage across all pooled worklets.
+  * Returns per-worklet detail plus the summed total (percent of audio budget).
+  */
+  async getCpuUsage(): Promise<{
+    total: number;
+    worklets: WorkletCpuBreakdown[];
+  }> {
+    const results = await Promise.all(
+      this.worklets.map((worklet, index) => this.queryCpuUsage(worklet, index)),
+    );
+
+    const worklets = results.filter(
+      (r): r is WorkletCpuBreakdown => r !== null,
+    );
+    const total = worklets.reduce((sum, entry) => sum + entry.total, 0);
+
+    return { total, worklets };
+  }
+
+  /**
    * Dispose of all worklets and clear allocations
    */
   dispose(): void {
@@ -363,5 +395,66 @@ export class WorkletPool {
       total += range.endVoice - range.startVoice;
     }
     return total;
+  }
+
+  private queryCpuUsage(
+    worklet: PooledWorklet,
+    workletIndex: number,
+  ): Promise<WorkletCpuBreakdown | null> {
+    return new Promise((resolve) => {
+      const port = worklet.node.port;
+      const messageId = `cpu-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+      const timeout = window.setTimeout(() => {
+        port.removeEventListener('message', handleMessage as EventListener);
+        resolve(null);
+      }, 100);
+
+      const handleMessage = (event: MessageEvent) => {
+        const data = event.data as {
+          type?: string;
+          cpu?: number;
+          total?: number;
+          perEngine?: Array<{ id?: string; cpu?: number; instrumentId?: string; voices?: number }>;
+          perInstrument?: Record<string, number>;
+          messageId?: string;
+        };
+
+        if (data?.type !== 'cpuUsage') return;
+        if (data.messageId && data.messageId !== messageId) return;
+
+        port.removeEventListener('message', handleMessage as EventListener);
+        window.clearTimeout(timeout);
+
+        const total = Number.isFinite(data.total) ? Number(data.total) : Number(data.cpu ?? 0);
+
+        const perEngine: WorkletCpuBreakdown['perEngine'] = [];
+        if (Array.isArray(data.perEngine)) {
+          for (let idx = 0; idx < data.perEngine.length; idx++) {
+            const entry = data.perEngine[idx];
+            const cpu = Number(entry?.cpu);
+            if (!Number.isFinite(cpu)) continue;
+
+            const sample: WorkletCpuBreakdown['perEngine'][number] = {
+              id: entry?.id ?? `engine-${idx}`,
+              cpu,
+            };
+            if (entry?.instrumentId !== undefined) sample.instrumentId = entry.instrumentId;
+            if (entry?.voices !== undefined) sample.voices = entry.voices;
+            perEngine.push(sample);
+          }
+        }
+
+        resolve({
+          workletIndex,
+          total: Number.isFinite(total) ? total : 0,
+          perEngine,
+          perInstrument: data?.perInstrument ?? {},
+        });
+      };
+
+      port.addEventListener('message', handleMessage as EventListener);
+      port.postMessage({ type: 'cpuUsage', messageId });
+    });
   }
 }

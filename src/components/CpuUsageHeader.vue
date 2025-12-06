@@ -17,38 +17,98 @@
 
 <script lang="ts">
 import { useInstrumentStore } from 'src/stores/instrument-store';
+import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
 import { defineComponent, onMounted, onUnmounted, ref } from 'vue';
 
-const store = useInstrumentStore();
-
+const instrumentStore = useInstrumentStore();
+const trackerAudioStore = useTrackerAudioStore();
 const cpuTimer = ref<NodeJS.Timeout | null>(null);
 export default defineComponent({
   name: 'CpuUsageHeader',
   setup() {
-    // Temporary CPU usage value set to 30%
     const cpuUsage = ref(0);
-    const updateCpuUsage = () => {
-      //console.log('post');
-      store.currentInstrument?.workletNode?.port.postMessage({
-        type: 'cpuUsage',
+    const polling = ref(false);
+
+    const requestWorkletCpu = (
+      workletNode: AudioWorkletNode | null | undefined,
+    ): Promise<number> => {
+      if (!workletNode) return Promise.resolve(0);
+
+      return new Promise((resolve) => {
+        const messageId = `cpu-${Date.now()}-${Math.random()
+          .toString(16)
+          .slice(2)}`;
+        const { port } = workletNode;
+
+        const timeout = window.setTimeout(() => {
+          port.removeEventListener('message', handleMessage as EventListener);
+          resolve(0);
+        }, 100);
+
+        const handleMessage = (event: MessageEvent) => {
+          const data = event.data as {
+            type?: string;
+            cpu?: number;
+            total?: number;
+            messageId?: string;
+          };
+
+          if (data?.type !== 'cpuUsage') return;
+          if (data.messageId && data.messageId !== messageId) return;
+
+          port.removeEventListener('message', handleMessage as EventListener);
+          window.clearTimeout(timeout);
+
+          const value = Number.isFinite(data.total)
+            ? Number(data.total)
+            : Number(data.cpu ?? 0);
+          resolve(Number.isFinite(value) ? value : 0);
+        };
+
+        port.addEventListener('message', handleMessage as EventListener);
+        port.postMessage({ type: 'cpuUsage', messageId });
       });
     };
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data.type === 'cpuUsage') {
-        // console.log('reply', e.data.cpu);
-        cpuUsage.value = e.data.cpu << 0;
+
+    const updateCpuUsage = async () => {
+      if (polling.value) return;
+      polling.value = true;
+      try {
+        let total = 0;
+
+        // Aggregate tracker worklet pool + standalone tracker instruments
+        const songBank = trackerAudioStore.songBank;
+        try {
+          const usage = await songBank.getCpuUsage();
+          if (usage && Number.isFinite(usage.total)) {
+            total += usage.total;
+          }
+        } catch (err) {
+          console.warn('[CpuUsageHeader] Failed to query tracker CPU usage', err);
+        }
+
+        // Include the patch editor instrument (if active)
+        if (!instrumentStore.usingExternalInstrument) {
+          const editorCpu = await requestWorkletCpu(
+            instrumentStore.currentInstrument?.workletNode ?? null,
+          );
+          total += editorCpu;
+        }
+
+        cpuUsage.value = Math.max(0, Math.round(total));
+      } finally {
+        polling.value = false;
       }
     };
+
     onMounted(() => {
       setTimeout(() => {
         if (cpuTimer.value != null) {
           clearInterval(cpuTimer.value);
         }
-        cpuTimer.value = setInterval(updateCpuUsage, 1000 / 10);
-        store.currentInstrument?.workletNode?.port.addEventListener(
-          'message',
-          handleMessage,
-        );
+        cpuTimer.value = setInterval(() => {
+          void updateCpuUsage();
+        }, 1000 / 10);
       }, 500);
     });
     onUnmounted(() => {

@@ -362,7 +362,6 @@ function primeVolumeSlide(
       }
 
       let delta = 0;
-      // Softer slide: scale nibble by 1/256 instead of 1/64 to better match MOD feel.
       const scale = 1 / 128;
       if (effect.paramX) delta = effect.paramX * scale;
       else if (effect.paramY) delta = -effect.paramY * scale;

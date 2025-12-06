@@ -177,6 +177,61 @@ export class TrackerSongBank {
     return this.workletPool.getStats();
   }
 
+  /** Aggregate CPU usage across all active instruments/worklets (for tracker UI). */
+  async getCpuUsage(): Promise<{
+    total: number;
+    worklets: Array<{
+      workletIndex: number;
+      total: number;
+      perEngine: Array<{
+        id: string;
+        cpu: number;
+        instrumentId?: string;
+        voices?: number;
+      }>;
+      perInstrument: Record<string, number>;
+    }>;
+    standalone: Array<{ instrumentId: string; cpu: number }>;
+  }> {
+    let total = 0;
+    const worklets: Array<{
+      workletIndex: number;
+      total: number;
+      perEngine: Array<{
+        id: string;
+        cpu: number;
+        instrumentId?: string;
+        voices?: number;
+      }>;
+      perInstrument: Record<string, number>;
+    }> = [];
+    const standalone: Array<{ instrumentId: string; cpu: number }> = [];
+
+    if (this.workletPool) {
+      const poolUsage = await this.workletPool.getCpuUsage();
+      total += poolUsage.total;
+      worklets.push(...poolUsage.worklets);
+    }
+
+    for (const [instrumentId, active] of this.instruments.entries()) {
+      const instrument = active.instrument;
+      if (instrument instanceof PooledInstrument) {
+        // Counted via pooled worklet aggregation above.
+        continue;
+      }
+
+      if (instrument instanceof InstrumentV2) {
+        const cpu = await this.queryWorkletCpu(instrument.workletNode);
+        if (cpu !== null) {
+          total += cpu;
+          standalone.push({ instrumentId, cpu });
+        }
+      }
+    }
+
+    return { total, worklets, standalone };
+  }
+
   /**
    * Set the master volume (0.0 to 1.0).
    * When time is provided, schedules the change at the given AudioContext time.
@@ -2329,5 +2384,45 @@ export class TrackerSongBank {
           });
       }
     }
+  }
+
+  /** Query CPU usage from a single worklet-backed instrument. */
+  private queryWorkletCpu(
+    workletNode: AudioWorkletNode | null,
+  ): Promise<number | null> {
+    if (!workletNode) return Promise.resolve(null);
+
+    return new Promise((resolve) => {
+      const messageId = `cpu-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const { port } = workletNode;
+
+      const timeout = window.setTimeout(() => {
+        port.removeEventListener('message', handleMessage as EventListener);
+        resolve(null);
+      }, 100);
+
+      const handleMessage = (event: MessageEvent) => {
+        const data = event.data as {
+          type?: string;
+          cpu?: number;
+          total?: number;
+          messageId?: string;
+        };
+
+        if (data?.type !== 'cpuUsage') return;
+        if (data.messageId && data.messageId !== messageId) return;
+
+        port.removeEventListener('message', handleMessage as EventListener);
+        window.clearTimeout(timeout);
+
+        const value = Number.isFinite(data.total)
+          ? Number(data.total)
+          : Number(data.cpu ?? 0);
+        resolve(Number.isFinite(value) ? value : 0);
+      };
+
+      port.addEventListener('message', handleMessage as EventListener);
+      port.postMessage({ type: 'cpuUsage', messageId });
+    });
   }
 }

@@ -341,7 +341,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         this.handleGeneratePlateReverb(event.data);
         break;
       case 'cpuUsage':
-        this.handleCpuUsage();
+        this.handleCpuUsage(event.data);
         break;
       case 'stop':
         this.handleStop();
@@ -353,18 +353,69 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     this.stopped = true;
   }
 
-  private handleCpuUsage() {
-    if (!this.audioEngines[0] || this.isApplyingPatch || !this.ready) {
+  private handleCpuUsage(request?: { messageId?: string }) {
+    if (this.isApplyingPatch || !this.ready) {
       return;
     }
 
-    try {
-      const cpu = this.audioEngines[0].get_cpu_usage();
-      this.port.postMessage({ type: 'cpuUsage', cpu });
-    } catch (error) {
-      // Silently skip if there's a borrow conflict (happens during audio processing)
-      // This is expected and not an error condition
+    type EngineCpuSample = {
+      id: string;
+      cpu: number;
+      voices?: number;
+      instrumentId?: string;
+    };
+
+    const perEngine: EngineCpuSample[] = [];
+    const perInstrument: Record<string, number> = {};
+    let total = 0;
+
+    const addUsage = (
+      id: string,
+      engine: AudioEngine | undefined,
+      context?: { voices?: number; instrumentId?: string },
+    ) => {
+      if (!engine) return;
+      try {
+        const cpu = engine.get_cpu_usage();
+        if (!Number.isFinite(cpu)) return;
+        const sample: EngineCpuSample = { id, cpu };
+        if (context?.voices !== undefined) sample.voices = context.voices;
+        if (context?.instrumentId !== undefined) sample.instrumentId = context.instrumentId;
+        perEngine.push(sample);
+        if (context?.instrumentId) {
+          perInstrument[context.instrumentId] =
+            (perInstrument[context.instrumentId] ?? 0) + cpu;
+        }
+        total += cpu;
+      } catch (error) {
+        // Borrow conflicts are expected occasionally; skip this sample.
+      }
+    };
+
+    if (this.instrumentSlots.size > 0) {
+      for (const slot of this.instrumentSlots.values()) {
+        if (!slot.initialized) continue;
+        addUsage(
+          `instrument-${slot.instrumentId}`,
+          slot.engine,
+          { voices: slot.voiceCount, instrumentId: slot.instrumentId },
+        );
+      }
+    } else {
+      for (let i = 0; i < this.audioEngines.length; i++) {
+        if (!this.engineInitialized[i]) continue;
+        addUsage(`engine-${i}`, this.audioEngines[i], { voices: this.numVoices });
+      }
     }
+
+    this.port.postMessage({
+      type: 'cpuUsage',
+      cpu: total,
+      total,
+      perEngine,
+      perInstrument,
+      messageId: request?.messageId,
+    });
   }
 
   private handleDeleteNode(data: { nodeId: string }) {
