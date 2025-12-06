@@ -23,7 +23,8 @@ import {
   type ScheduledGlobalVolumeHandler,
   type ScheduledRetriggerHandler,
   type PositionCommandHandler,
-  type PlaybackClock
+  type PlaybackClock,
+  type Step
 } from './types';
 import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
 import { createVisibilityClock } from './clock';
@@ -40,6 +41,24 @@ import { TimingSystem } from './timing-system';
 type ListenerMap = {
   [K in PlaybackEvent]: Set<PlaybackListener<K>>;
 };
+
+export function shouldRetriggerLastNote(
+  newNote: number | undefined,
+  step: Pick<Step, 'instrumentId' | 'velocity' | 'effect'>,
+): boolean {
+  if (newNote !== undefined) return false;
+  if (!step.instrumentId) return false;
+  if (step.velocity !== undefined) return false;
+  const effectType = step.effect?.type;
+  if (effectType === undefined) return true;
+  if (effectType === 'volSlide') {
+    // Only retrigger on vol slides when the row also carries a note.
+    // Naked Axx rows should not revive the last note.
+    return (step as { midi?: number; note?: string }).midi !== undefined ||
+      (step as { midi?: number; note?: string }).note !== undefined;
+  }
+  return false;
+}
 
 export class PlaybackEngine {
   private song: Song | null = null;
@@ -788,12 +807,7 @@ export class PlaybackEngine {
         // If an instrument is specified but no note/effect/velocity is provided, retrigger the last
         // note played on this track (if any). Skip when velocity is set so volume-only rows
         // don’t restart the sample.
-        if (
-          newNote === undefined &&
-          step.instrumentId &&
-          step.velocity === undefined &&
-          (!step.effect || step.effect.type === 'volSlide')
-        ) {
+        if (shouldRetriggerLastNote(newNote, step)) {
           const last = this.lastTrackNote.get(step.trackIndex);
           if (last) {
             newNote = last.midi;

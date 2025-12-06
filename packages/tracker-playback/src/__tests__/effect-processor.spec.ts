@@ -39,7 +39,8 @@ describe('effect-processor command batches', () => {
     const vol1 = tick1.commands.find((cmd) => cmd.kind === 'volume');
     const vol2 = tick2.commands.find((cmd) => cmd.kind === 'volume');
 
-    expect(vol1 && 'volume' in vol1 ? vol1.volume : undefined).toBeCloseTo(1 - 2 / 64, 5);
-    expect(vol2 && 'volume' in vol2 ? vol2.volume : undefined).toBeCloseTo(1 - 4 / 64, 5);
+    const step = 1 / 128; // matches vol slide scaling in effect-processor
+    expect(vol1 && 'volume' in vol1 ? vol1.volume : undefined).toBeCloseTo(1 - 2 * step, 5);
+    expect(vol2 && 'volume' in vol2 ? vol2.volume : undefined).toBeCloseTo(1 - 4 * step, 5);
   });
 });

@@ -1302,9 +1302,6 @@ export class TrackerSongBank {
           }
         }
       }
-      if (resolvedVoice < 0) {
-        resolvedVoice = 0; // fallback to first voice so slides on first note don’t get dropped
-      }
     }
     // Ignore invalid voice indices (tracker effects may emit -1 when no voice is assigned yet).
     if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())

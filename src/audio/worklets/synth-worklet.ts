@@ -154,6 +154,15 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private blockSizeFrames = 128;
   private hasBroadcastBlockSize = false;
   private instrumentSlots: Map<string, InstrumentSlot> = new Map();
+  private scratchLeft: Float32Array = new Float32Array(0);
+  private scratchRight: Float32Array = new Float32Array(0);
+  private engineParamCache: Array<Record<string, Float32Array>> = [];
+  private slotParamCache: Map<
+    string,
+    { record: Record<string, Float32Array>; voiceCount: number }
+  > = new Map();
+  private lastCpuResponseMs = 0;
+  private readonly cpuResponseIntervalMs = 50;
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -357,6 +366,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (this.isApplyingPatch || !this.ready) {
       return;
     }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - this.lastCpuResponseMs < this.cpuResponseIntervalMs) {
+      return;
+    }
+    this.lastCpuResponseMs = now;
 
     type EngineCpuSample = {
       id: string;
@@ -1924,8 +1939,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private buildEngineParamsForSlot(
     slot: InstrumentSlot,
     parameters: Record<string, Float32Array>,
+    target?: Record<string, Float32Array>,
   ): Record<string, Float32Array> {
-    const engineParams: Record<string, Float32Array> = {};
+    const engineParams: Record<string, Float32Array> = target ?? {};
 
     for (let v = 0; v < slot.voiceCount; v++) {
       const globalVoice = slot.startVoice + v;
@@ -1961,6 +1977,27 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     return engineParams;
+  }
+
+  private getSlotParamRecord(slot: InstrumentSlot): Record<string, Float32Array> {
+    const cached = this.slotParamCache.get(slot.instrumentId);
+    if (cached && cached.voiceCount === slot.voiceCount) {
+      return cached.record;
+    }
+
+    const record: Record<string, Float32Array> = {};
+    this.slotParamCache.set(slot.instrumentId, {
+      record,
+      voiceCount: slot.voiceCount,
+    });
+    return record;
+  }
+
+  private ensureScratchLength(frames: number) {
+    if (this.scratchLeft.length !== frames) {
+      this.scratchLeft = new Float32Array(frames);
+      this.scratchRight = new Float32Array(frames);
+    }
   }
 
   private getTargetEngines(instrumentId?: string): AudioEngine[] {
@@ -2000,6 +2037,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const rightOut = outputRight as Float32Array;
 
     const frames = outputLeft.length;
+    this.ensureScratchLength(frames);
     if (!this.hasBroadcastBlockSize || frames !== this.blockSizeFrames) {
       this.blockSizeFrames = frames;
       this.hasBroadcastBlockSize = true;
@@ -2014,8 +2052,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     rightOut.fill(0);
 
     // Temporary buffers for each engine/instrument output
-    const engineLeft = new Float32Array(frames);
-    const engineRight = new Float32Array(frames);
+    const engineLeft = this.scratchLeft;
+    const engineRight = this.scratchRight;
 
     try {
       if (hasInstrumentSlots) {
@@ -2024,7 +2062,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           const adapter = slot.adapter;
           if (!adapter) continue;
 
-          const engineParams = this.buildEngineParamsForSlot(slot, parameters);
+          const engineParams = this.buildEngineParamsForSlot(
+            slot,
+            parameters,
+            this.getSlotParamRecord(slot),
+          );
 
           // Clear engine buffers
           engineLeft.fill(0);
@@ -2066,7 +2108,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
           if (!this.engineInitialized[e]) continue; // Skip if engine has no patch loaded
 
           // Extract parameters for this engine
-          const engineParams: Record<string, Float32Array> = {};
+          let engineParams = this.engineParamCache[e];
+          if (!engineParams) {
+            engineParams = {};
+            this.engineParamCache[e] = engineParams;
+          }
 
           // Map engine-specific parameters (gate_engine0_voice0 -> gate_0)
           for (let v = 0; v < this.numVoices; v++) {

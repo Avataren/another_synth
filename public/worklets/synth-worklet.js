@@ -2797,6 +2797,12 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     __publicField(this, "blockSizeFrames", 128);
     __publicField(this, "hasBroadcastBlockSize", false);
     __publicField(this, "instrumentSlots", /* @__PURE__ */ new Map());
+    __publicField(this, "scratchLeft", new Float32Array(0));
+    __publicField(this, "scratchRight", new Float32Array(0));
+    __publicField(this, "engineParamCache", []);
+    __publicField(this, "slotParamCache", /* @__PURE__ */ new Map());
+    __publicField(this, "lastCpuResponseMs", 0);
+    __publicField(this, "cpuResponseIntervalMs", 50);
     this.port.onmessage = (event) => {
       this.handleMessage(event);
     };
@@ -2986,6 +2992,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     if (this.isApplyingPatch || !this.ready) {
       return;
     }
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (now - this.lastCpuResponseMs < this.cpuResponseIntervalMs) {
+      return;
+    }
+    this.lastCpuResponseMs = now;
     const perEngine = [];
     const perInstrument = {};
     let total = 0;
@@ -4168,8 +4179,8 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   /**
    * Map global worklet parameter arrays into a local engine parameter map for a pooled instrument slot.
    */
-  buildEngineParamsForSlot(slot, parameters) {
-    const engineParams = {};
+  buildEngineParamsForSlot(slot, parameters, target) {
+    const engineParams = target ?? {};
     for (let v = 0; v < slot.voiceCount; v++) {
       const globalVoice = slot.startVoice + v;
       if (globalVoice >= TOTAL_VOICES) break;
@@ -4200,6 +4211,24 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     return engineParams;
   }
+  getSlotParamRecord(slot) {
+    const cached = this.slotParamCache.get(slot.instrumentId);
+    if (cached && cached.voiceCount === slot.voiceCount) {
+      return cached.record;
+    }
+    const record = {};
+    this.slotParamCache.set(slot.instrumentId, {
+      record,
+      voiceCount: slot.voiceCount
+    });
+    return record;
+  }
+  ensureScratchLength(frames) {
+    if (this.scratchLeft.length !== frames) {
+      this.scratchLeft = new Float32Array(frames);
+      this.scratchRight = new Float32Array(frames);
+    }
+  }
   getTargetEngines(instrumentId) {
     if (instrumentId) {
       const slot = this.instrumentSlots.get(instrumentId);
@@ -4225,6 +4254,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const leftOut = outputLeft;
     const rightOut = outputRight;
     const frames = outputLeft.length;
+    this.ensureScratchLength(frames);
     if (!this.hasBroadcastBlockSize || frames !== this.blockSizeFrames) {
       this.blockSizeFrames = frames;
       this.hasBroadcastBlockSize = true;
@@ -4234,15 +4264,19 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     const hasInstrumentSlots = this.instrumentSlots.size > 0;
     leftOut.fill(0);
     rightOut.fill(0);
-    const engineLeft = new Float32Array(frames);
-    const engineRight = new Float32Array(frames);
+    const engineLeft = this.scratchLeft;
+    const engineRight = this.scratchRight;
     try {
       if (hasInstrumentSlots) {
         for (const slot of this.instrumentSlots.values()) {
           if (!slot.initialized) continue;
           const adapter = slot.adapter;
           if (!adapter) continue;
-          const engineParams = this.buildEngineParamsForSlot(slot, parameters);
+          const engineParams = this.buildEngineParamsForSlot(
+            slot,
+            parameters,
+            this.getSlotParamRecord(slot)
+          );
           engineLeft.fill(0);
           engineRight.fill(0);
           adapter.processBlock(
@@ -4274,7 +4308,11 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
           const engine = this.audioEngines[e];
           if (!engine) continue;
           if (!this.engineInitialized[e]) continue;
-          const engineParams = {};
+          let engineParams = this.engineParamCache[e];
+          if (!engineParams) {
+            engineParams = {};
+            this.engineParamCache[e] = engineParams;
+          }
           for (let v = 0; v < this.numVoices; v++) {
             const gateKey = `gate_engine${e}_voice${v}`;
             const freqKey = `frequency_engine${e}_voice${v}`;
