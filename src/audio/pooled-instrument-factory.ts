@@ -442,9 +442,27 @@ export class PooledInstrument {
    * Stop all notes
    */
   allNotesOff(): void {
+    const now = this.audioContext.currentTime;
     for (const noteNumber of Array.from(this.activeNotes.keys())) {
       this.noteOff(noteNumber);
     }
+
+    // Force-silence every local voice to avoid any stuck gates
+    for (let i = 0; i < this.num_voices; i++) {
+      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+      if (gateParam) {
+        gateParam.cancelScheduledValues(now);
+        gateParam.setValueAtTime(0, now);
+      }
+      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      if (gainParam) {
+        gainParam.cancelScheduledValues(now);
+        gainParam.setValueAtTime(0, now);
+      }
+    }
+
+    this.voiceToNote.fill(null);
+    this.activeNotes.clear();
   }
 
   /**

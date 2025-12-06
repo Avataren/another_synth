@@ -1500,9 +1500,34 @@ export default class InstrumentV2 {
   }
 
   public allNotesOff(): void {
+    const now = this.audioContext.currentTime;
+    // Send noteOff for tracked notes to keep voice bookkeeping consistent
     for (const noteNumber of Array.from(this.activeNotes.keys())) {
       this.noteOff(noteNumber);
     }
+
+    // Force-silence every voice to catch any untracked/stuck gates
+    for (let i = 0; i < this.voiceLimit; i++) {
+      this.releaseVoice(i, now);
+      if (!this.workletNode) continue;
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', i),
+      );
+      if (gateParam) {
+        gateParam.cancelScheduledValues(now);
+        gateParam.setValueAtTime(0, now);
+      }
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
+      if (gainParam) {
+        gainParam.cancelScheduledValues(now);
+        gainParam.setValueAtTime(0, now);
+      }
+    }
+
+    this.voiceToNote.fill(null);
+    this.activeNotes.clear();
   }
 
   // Compatibility aliases for old naming convention

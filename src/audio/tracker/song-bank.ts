@@ -511,16 +511,7 @@ export class TrackerSongBank {
       byTrack = new Map();
       this.lastTrackVoice.set(instrumentId, byTrack);
     }
-    console.log(
-      '[SongBank] setLastVoiceForTrack: inst',
-      instrumentId,
-      'track',
-      trackIndex,
-      '(key:',
-      trackKey,
-      ') → voice',
-      voiceIndex,
-    );
+
     byTrack.set(trackKey, voiceIndex);
     // Also record a global last voice for this instrument (trackKey = -1) so
     // effect-driven pitch updates without a track index can target the most
@@ -551,12 +542,6 @@ export class TrackerSongBank {
     const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
     const byTrack = this.lastTrackVoice.get(instrumentId);
     const voice = byTrack?.get(trackKey);
-    console.log(
-      '[SongBank] takeLastVoiceForTrack: track',
-      trackIndex,
-      '← voice',
-      voice,
-    );
     if (voice !== undefined) {
       byTrack?.delete(trackKey);
     }
@@ -1555,9 +1540,9 @@ export class TrackerSongBank {
       existing.patchSignature === patchSignature;
 
     if (canReuse) {
-      console.log(
-        `[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`,
-      );
+      // console.log(
+      //   `[SongBank] Reusing existing instrument: ${instrumentId} (skipping state reapplication to preserve live audio)`,
+      // );
       existing.hasPortamento = hasPortamento;
       this.normalizeVoiceGain(existing.instrument);
       // Skip restoreAudioAssets, applyNodeStates, and applyMacros when reusing

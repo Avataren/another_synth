@@ -24,7 +24,7 @@ import {
   type ScheduledRetriggerHandler,
   type PositionCommandHandler,
   type PlaybackClock,
-  type Step
+  type Step,
 } from './types';
 import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
 import { createVisibilityClock } from './clock';
@@ -34,7 +34,7 @@ import {
   processEffectTick0,
   processEffectTickN,
   resetEffectStateForNote,
-  type ProcessorCommand
+  type ProcessorCommand,
 } from './effect-processor';
 import { TimingSystem } from './timing-system';
 
@@ -54,8 +54,10 @@ export function shouldRetriggerLastNote(
   if (effectType === 'volSlide') {
     // Only retrigger on vol slides when the row also carries a note.
     // Naked Axx rows should not revive the last note.
-    return (step as { midi?: number; note?: string }).midi !== undefined ||
-      (step as { midi?: number; note?: string }).note !== undefined;
+    return (
+      (step as { midi?: number; note?: string }).midi !== undefined ||
+      (step as { midi?: number; note?: string }).note !== undefined
+    );
   }
   return false;
 }
@@ -71,22 +73,30 @@ export class PlaybackEngine {
   private readonly listeners: ListenerMap = {
     position: new Set(),
     state: new Set(),
-    error: new Set()
+    error: new Set(),
   };
   private readonly resolver: InstrumentResolver | undefined;
   private readonly scheduler: PlaybackScheduler;
   private readonly playbackClock: PlaybackClock;
   private readonly noteHandler: PlaybackNoteHandler | undefined;
   private readonly scheduledNoteHandler: ScheduledNoteHandler | undefined;
-  private readonly scheduledAutomationHandler: ScheduledAutomationHandler | undefined;
+  private readonly scheduledAutomationHandler:
+    | ScheduledAutomationHandler
+    | undefined;
   private readonly automationHandler: AutomationHandler | undefined;
   private readonly scheduledMacroHandler: ScheduledMacroHandler | undefined;
   private readonly macroHandler: MacroHandler | undefined;
   private readonly scheduledPitchHandler: ScheduledPitchHandler | undefined;
   private readonly scheduledVolumeHandler: ScheduledVolumeHandler | undefined;
-  private readonly scheduledSampleOffsetHandler: ScheduledSampleOffsetHandler | undefined;
-  private readonly scheduledGlobalVolumeHandler: ScheduledGlobalVolumeHandler | undefined;
-  private readonly scheduledRetriggerHandler: ScheduledRetriggerHandler | undefined;
+  private readonly scheduledSampleOffsetHandler:
+    | ScheduledSampleOffsetHandler
+    | undefined;
+  private readonly scheduledGlobalVolumeHandler:
+    | ScheduledGlobalVolumeHandler
+    | undefined;
+  private readonly scheduledRetriggerHandler:
+    | ScheduledRetriggerHandler
+    | undefined;
   private readonly positionCommandHandler: PositionCommandHandler | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
@@ -117,7 +127,10 @@ export class PlaybackEngine {
   private pitchLogRow: Map<number, number> = new Map();
 
   /** Position/pattern commands to process (Bxx, Dxx) */
-  private pendingPosCommand: { type: 'posJump' | 'patBreak'; value: number } | null = null;
+  private pendingPosCommand: {
+    type: 'posJump' | 'patBreak';
+    value: number;
+  } | null = null;
 
   /** Pattern loop state (E6x) */
   private patternLoopStart = 0; // Row where loop starts (set by E60)
@@ -131,7 +144,8 @@ export class PlaybackEngine {
   private globalVolume = 1.0;
 
   /** Last note played per track (for instrument-only retrigger rows) */
-  private lastTrackNote: Map<number, { midi: number; velocity: number }> = new Map();
+  private lastTrackNote: Map<number, { midi: number; velocity: number }> =
+    new Map();
 
   constructor(options: PlaybackOptions = {}) {
     this.resolver = options.instrumentResolver;
@@ -139,7 +153,8 @@ export class PlaybackEngine {
       options.scheduler ||
       createAudioContextScheduler() ||
       new IntervalScheduler();
-    this.playbackClock = options.playbackClock ?? createVisibilityClock({ targetFps: 30 });
+    this.playbackClock =
+      options.playbackClock ?? createVisibilityClock({ targetFps: 30 });
     this.noteHandler = options.noteHandler;
     this.scheduledNoteHandler = options.scheduledNoteHandler;
     this.scheduledAutomationHandler = options.scheduledAutomationHandler;
@@ -161,8 +176,8 @@ export class PlaybackEngine {
       {
         bpm: 120,
         speed: 6,
-        ticksPerRow: options.ticksPerRow ?? 6
-      }
+        ticksPerRow: options.ticksPerRow ?? 6,
+      },
     );
 
     this.setupVisibilityHandling();
@@ -186,7 +201,9 @@ export class PlaybackEngine {
    * Expands when tab is hidden or when we’ve observed consecutive “late” loops.
    */
   private getLookaheadSeconds(): number {
-    const base = this.isTabVisible ? this.baseLookaheadVisible : this.baseLookaheadHidden;
+    const base = this.isTabVisible
+      ? this.baseLookaheadVisible
+      : this.baseLookaheadHidden;
     const latePenalty = this.lateScheduleCount >= 3 ? 0.5 : 0; // widen window after repeated lateness
     return base + latePenalty;
   }
@@ -248,13 +265,18 @@ export class PlaybackEngine {
           }
 
           const isTonePorta =
-            step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol';
+            step.effect?.type === 'tonePorta' ||
+            step.effect?.type === 'tonePortaVol';
 
           if (isTonePorta && step.midi !== undefined) {
             // Tone porta with an explicit note: update the target.
             lastTargetMidi = step.midi;
             lastTargetFrequency = step.frequency;
-          } else if (isTonePorta && step.midi === undefined && lastTargetMidi !== undefined) {
+          } else if (
+            isTonePorta &&
+            step.midi === undefined &&
+            lastTargetMidi !== undefined
+          ) {
             // Tone porta continuation without a note: inherit the last target so we keep sliding.
             step.midi = lastTargetMidi;
             if (lastTargetFrequency !== undefined) {
@@ -275,29 +297,42 @@ export class PlaybackEngine {
     // Set BPM in timing system (will clamp to valid range)
     this.timingSystem.setBpm(song.bpm);
     const maxIndex = Math.max(0, song.sequence.length - 1);
-    this.currentSequenceIndex = Math.max(0, Math.min(startSequenceIndex, maxIndex));
+    this.currentSequenceIndex = Math.max(
+      0,
+      Math.min(startSequenceIndex, maxIndex),
+    );
 
     // Initialize timing system with the starting sequence index for position calculations
     // This ensures updatePosition() works correctly even if playback hasn't started yet
     if (this.audioContext) {
-      this.timingSystem.start(this.audioContext.currentTime, this.currentSequenceIndex, 0);
+      this.timingSystem.start(
+        this.audioContext.currentTime,
+        this.currentSequenceIndex,
+        0,
+      );
     }
 
     if (this.song.sequence.length > 0) {
       const patternId = this.song.sequence[this.currentSequenceIndex] as string;
-      this.loadPattern(patternId, { emitPosition: false, updatePosition: false });
+      this.loadPattern(patternId, {
+        emitPosition: false,
+        updatePosition: false,
+      });
       this.position = {
         row: 0,
         patternId,
-        sequenceIndex: this.currentSequenceIndex
+        sequenceIndex: this.currentSequenceIndex,
       };
       this.emit('position', this.position);
     }
     this.emit('state', this.state);
   }
 
-  loadPattern(patternId: string, options?: { emitPosition?: boolean; updatePosition?: boolean }) {
-    const pattern = this.song?.patterns.find(p => p.id === patternId);
+  loadPattern(
+    patternId: string,
+    options?: { emitPosition?: boolean; updatePosition?: boolean },
+  ) {
+    const pattern = this.song?.patterns.find((p) => p.id === patternId);
     if (!pattern) {
       this.emit('error', new Error(`Pattern with id ${patternId} not found.`));
       return;
@@ -340,8 +375,8 @@ export class PlaybackEngine {
         ...this.song,
         patterns: this.song.patterns.map((pattern) => ({
           ...pattern,
-          length: clamped
-        }))
+          length: clamped,
+        })),
       };
     }
   }
@@ -381,12 +416,16 @@ export class PlaybackEngine {
   }
 
   seek(row: number) {
-    const clamped = ((Math.round(row) % this.length) + this.length) % this.length;
+    const clamped =
+      ((Math.round(row) % this.length) + this.length) % this.length;
     this.position = { ...this.position, row: clamped };
     this.emit('position', this.position);
   }
 
-  on<K extends PlaybackEvent>(event: K, listener: PlaybackListener<K>): () => void {
+  on<K extends PlaybackEvent>(
+    event: K,
+    listener: PlaybackListener<K>,
+  ): () => void {
     const set = this.listeners[event];
     set.add(listener as PlaybackListener<K>);
     return () => set.delete(listener as PlaybackListener<K>);
@@ -469,11 +508,18 @@ export class PlaybackEngine {
             this.stop();
             return;
           }
-          this.loadPattern(targetPatternId, { emitPosition: true, updatePosition: true });
+          this.loadPattern(targetPatternId, {
+            emitPosition: true,
+            updatePosition: true,
+          });
           // Reset to start of target pattern
           this.lastScheduledRow = -1;
           this.resetPositionReference(this.currentSequenceIndex, 0, now);
-          this.position = { row: 0, patternId: targetPatternId, sequenceIndex: this.currentSequenceIndex };
+          this.position = {
+            row: 0,
+            patternId: targetPatternId,
+            sequenceIndex: this.currentSequenceIndex,
+          };
           this.emit('position', this.position);
         } else if (cmd.type === 'patBreak') {
           // Dxx: Break to row xx of next pattern
@@ -488,12 +534,23 @@ export class PlaybackEngine {
           }
           const targetPatternId = sequence[this.currentSequenceIndex];
           if (targetPatternId) {
-            this.loadPattern(targetPatternId, { emitPosition: true, updatePosition: true });
+            this.loadPattern(targetPatternId, {
+              emitPosition: true,
+              updatePosition: true,
+            });
             // Jump to specified row in next pattern (clamped to pattern length)
             const targetRow = Math.max(0, Math.min(cmd.value, this.length - 1));
             this.lastScheduledRow = targetRow - 1;
-            this.resetPositionReference(this.currentSequenceIndex, targetRow, now);
-            this.position = { row: targetRow, patternId: targetPatternId, sequenceIndex: this.currentSequenceIndex };
+            this.resetPositionReference(
+              this.currentSequenceIndex,
+              targetRow,
+              now,
+            );
+            this.position = {
+              row: targetRow,
+              patternId: targetPatternId,
+              sequenceIndex: this.currentSequenceIndex,
+            };
             this.emit('position', this.position);
           } else {
             this.stop();
@@ -505,7 +562,8 @@ export class PlaybackEngine {
         continue;
       }
 
-      if (actualRow === 0 && currentRow > 0 && !this.loopCurrentPattern) { // Pattern finished
+      if (actualRow === 0 && currentRow > 0 && !this.loopCurrentPattern) {
+        // Pattern finished
         const sequence = this.song?.sequence ?? [];
         if (sequence.length === 0) {
           this.stop();
@@ -525,7 +583,10 @@ export class PlaybackEngine {
         const nextPatternId = sequence[this.currentSequenceIndex];
         if (nextPatternId) {
           // Preload next pattern for scheduling without flipping the visible position yet
-          this.loadPattern(nextPatternId, { emitPosition: false, updatePosition: false });
+          this.loadPattern(nextPatternId, {
+            emitPosition: false,
+            updatePosition: false,
+          });
           // Reset pattern loop state when entering new pattern
           this.patternLoopStart = 0;
           this.patternLoopCount = 0;
@@ -544,9 +605,9 @@ export class PlaybackEngine {
       const scheduledRowTime = isLate ? now + catchUpLead : rowTime;
       if (isLate) {
         console.warn(
-          `[PlaybackEngine] Scheduling row ${actualRow} late by ${(now - rowTime).toFixed(
-            3,
-          )}s, using catch-up lead ${catchUpLead}s`,
+          `[PlaybackEngine] Scheduling row ${actualRow} late by ${(
+            now - rowTime
+          ).toFixed(3)}s, using catch-up lead ${catchUpLead}s`,
         );
       }
       if (scheduledRowTime >= now) {
@@ -566,7 +627,10 @@ export class PlaybackEngine {
       }
 
       // Handle pattern loop (E6x) - jump back to loop start
-      if (this.patternLoopCount > 0 && this.patternLoopCount <= this.patternLoopTarget) {
+      if (
+        this.patternLoopCount > 0 &&
+        this.patternLoopCount <= this.patternLoopTarget
+      ) {
         // Increment loop counter
         this.patternLoopCount++;
 
@@ -670,19 +734,25 @@ export class PlaybackEngine {
             // Bxx overrides any earlier Dxx on the same row (PatternJump.mod behavior)
             this.pendingPosCommand = {
               type: 'posJump',
-              value: step.effect.paramX * 16 + step.effect.paramY
+              value: step.effect.paramX * 16 + step.effect.paramY,
             };
           } else if (step.effect.type === 'patBreak') {
             // Only set if no posJump has already claimed this row
-            if (!this.pendingPosCommand || this.pendingPosCommand.type !== 'posJump') {
+            if (
+              !this.pendingPosCommand ||
+              this.pendingPosCommand.type !== 'posJump'
+            ) {
               const rawTarget = step.effect.paramX * 10 + step.effect.paramY; // FT2 uses decimal for Dxx
               const adjustedTarget = rowHasPatDelay ? rawTarget + 1 : rawTarget;
               this.pendingPosCommand = {
                 type: 'patBreak',
-                value: adjustedTarget
+                value: adjustedTarget,
               };
             }
-          } else if (step.effect.type === 'extEffect' && step.effect.extSubtype === 'patLoop') {
+          } else if (
+            step.effect.type === 'extEffect' &&
+            step.effect.extSubtype === 'patLoop'
+          ) {
             // E6x: Pattern loop
             const loopCount = step.effect.paramY;
             if (loopCount === 0) {
@@ -758,16 +828,23 @@ export class PlaybackEngine {
                     targetValue: step.macroRamp.targetValue,
                     // Nudge the ramp to end just before the target row start to avoid overlapping set/ramp at identical times
                     targetTime: (() => {
-                      const ideal = time + (step.macroRamp.targetRow - row) * secPerRow;
+                      const ideal =
+                        time + (step.macroRamp.targetRow - row) * secPerRow;
                       const epsilon = 1e-5; // 10 microseconds
                       return Math.max(time + epsilon, ideal - epsilon);
                     })(),
                     ...(step.macroRamp.interpolation
                       ? { interpolation: step.macroRamp.interpolation }
-                      : {})
+                      : {}),
                   }
                 : undefined;
-            this.scheduledMacroHandler(instrumentId, step.macroIndex, step.macroValue, time, ramp);
+            this.scheduledMacroHandler(
+              instrumentId,
+              step.macroIndex,
+              step.macroValue,
+              time,
+              ramp,
+            );
           } else if (this.macroHandler) {
             this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
           }
@@ -778,7 +855,7 @@ export class PlaybackEngine {
           row,
           trackIndex: step.trackIndex,
           time,
-          voiceIndex: effectState.voiceIndex
+          voiceIndex: effectState.voiceIndex,
         };
 
         // Handle note-off
@@ -788,7 +865,7 @@ export class PlaybackEngine {
             instrumentId,
             row,
             trackIndex: step.trackIndex,
-            time
+            time,
           };
           if (step.midi !== undefined) {
             event.midi = step.midi;
@@ -798,7 +875,8 @@ export class PlaybackEngine {
         }
 
         // Check if we have an effect that needs per-tick processing
-        const hasTickEffect = step.effect && this.isTickBasedEffect(step.effect.type);
+        const hasTickEffect =
+          step.effect && this.isTickBasedEffect(step.effect.type);
 
         // Handle note-on with effect processing
         let newNote = step.midi;
@@ -820,14 +898,18 @@ export class PlaybackEngine {
             newNote = Math.round(effectState.currentMidi);
             if (newVelocity === undefined) {
               newVelocity = Math.round(
-                Math.max(0, Math.min(1, effectState.currentVolume)) * 255
+                Math.max(0, Math.min(1, effectState.currentVolume)) * 255,
               );
             }
           }
         }
 
         // Reset effect state on new note (unless tone portamento)
-        if (newNote !== undefined && step.effect?.type !== 'tonePorta' && step.effect?.type !== 'tonePortaVol') {
+        if (
+          newNote !== undefined &&
+          step.effect?.type !== 'tonePorta' &&
+          step.effect?.type !== 'tonePortaVol'
+        ) {
           resetEffectStateForNote(effectState);
         }
 
@@ -839,28 +921,30 @@ export class PlaybackEngine {
           newVelocity,
           step.frequency,
           this.timingSystem.getTicksPerRow(),
-          step.pan
+          step.pan,
         );
 
-          // Debug the tone porta state for track 3 (fourth track) to investigate 3xx slides.
-          if (step.trackIndex === 3) {
-            const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
-            console.log(
-              `[PitchState] row=${row} track=${step.trackIndex} note=${newNote ?? '—'} ` +
-                `effect=${step.effect?.type ?? 'none'} speed=${effectState.tonePortaSpeed} ` +
-                `curr=${effectState.currentFrequency.toFixed(4)}Hz ` +
-                `target=${effectState.targetFrequency.toFixed(4)}Hz ` +
-                `period=${effectState.currentPeriod ?? '—'} ` +
-                `pitchCmd=${pitchCmd && 'frequency' in pitchCmd ? pitchCmd.frequency.toFixed(4) : 'none'} ` +
-                `voice=${effectState.voiceIndex}`,
-            );
-          }
+        // // Debug the tone porta state for track 3 (fourth track) to investigate 3xx slides.
+        // if (step.trackIndex === 3) {
+        //   const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
+        //   console.log(
+        //     `[PitchState] row=${row} track=${step.trackIndex} note=${newNote ?? '—'} ` +
+        //       `effect=${step.effect?.type ?? 'none'} speed=${effectState.tonePortaSpeed} ` +
+        //       `curr=${effectState.currentFrequency.toFixed(4)}Hz ` +
+        //       `target=${effectState.targetFrequency.toFixed(4)}Hz ` +
+        //       `period=${effectState.currentPeriod ?? '—'} ` +
+        //       `pitchCmd=${pitchCmd && 'frequency' in pitchCmd ? pitchCmd.frequency.toFixed(4) : 'none'} ` +
+        //       `voice=${effectState.voiceIndex}`,
+        //   );
+        // }
 
         this.dispatchCommands(tick0Batch.commands, context);
 
         // Handle volume automation (Cxx or step velocity)
         // NOTE: Effects like EA1 (fine volume slide) emit volume commands above
-        const tick0HasVolumeCommand = tick0Batch.commands.some((cmd) => cmd.kind === 'volume');
+        const tick0HasVolumeCommand = tick0Batch.commands.some(
+          (cmd) => cmd.kind === 'volume',
+        );
         if (step.velocity !== undefined && !tick0HasVolumeCommand) {
           const gain = clamp(step.velocity / 255);
           if (this.scheduledVolumeHandler) {
@@ -871,7 +955,7 @@ export class PlaybackEngine {
               gain,
               time,
               step.trackIndex,
-              undefined
+              undefined,
             );
           } else if (this.scheduledAutomationHandler) {
             // Fallback: legacy global gain path
@@ -894,7 +978,12 @@ export class PlaybackEngine {
             const ticksPerRow = this.timingSystem.getTicksPerRow();
             // Process all ticks to advance effect state correctly
             for (let tick = 1; tick < ticksPerRow; tick++) {
-              const tickBatch = processEffectTickN(effectState, step.effect, tick, ticksPerRow);
+              const tickBatch = processEffectTickN(
+                effectState,
+                step.effect,
+                tick,
+                ticksPerRow,
+              );
               // Keep track of final values
               for (const cmd of tickBatch.commands) {
                 if (cmd.kind === 'pitch') finalFrequency = cmd.frequency;
@@ -913,7 +1002,7 @@ export class PlaybackEngine {
                 finalFrequency,
                 endTime,
                 step.trackIndex,
-                'exponential'
+                'exponential',
               );
             }
 
@@ -925,7 +1014,7 @@ export class PlaybackEngine {
                 finalVolume,
                 endTime,
                 step.trackIndex,
-                'linear'
+                'linear',
               );
             }
           } else {
@@ -933,8 +1022,16 @@ export class PlaybackEngine {
             const ticksPerRow = this.timingSystem.getTicksPerRow();
             for (let tick = 1; tick < ticksPerRow; tick++) {
               const tickTime = time + tick * secPerTick;
-              const tickBatch = processEffectTickN(effectState, step.effect, tick, ticksPerRow);
-              this.dispatchCommands(tickBatch.commands, { ...context, time: tickTime });
+              const tickBatch = processEffectTickN(
+                effectState,
+                step.effect,
+                tick,
+                ticksPerRow,
+              );
+              this.dispatchCommands(tickBatch.commands, {
+                ...context,
+                time: tickTime,
+              });
             }
           }
         }
@@ -953,7 +1050,7 @@ export class PlaybackEngine {
       trackIndex: number;
       time: number;
       voiceIndex: number;
-    }
+    },
   ) {
     if (!commands.length) return;
 
@@ -969,8 +1066,10 @@ export class PlaybackEngine {
             trackIndex: context.trackIndex,
             time: context.time,
             velocity: cmd.velocity,
-            ...(cmd.frequency !== undefined ? { frequency: cmd.frequency } : {}),
-            ...(cmd.pan !== undefined ? { pan: cmd.pan } : {})
+            ...(cmd.frequency !== undefined
+              ? { frequency: cmd.frequency }
+              : {}),
+            ...(cmd.pan !== undefined ? { pan: cmd.pan } : {}),
           });
           if (cmd.midi !== undefined) {
             this.lastTrackNote.set(context.trackIndex, {
@@ -978,7 +1077,8 @@ export class PlaybackEngine {
               velocity:
                 cmd.velocity !== undefined
                   ? cmd.velocity
-                  : this.lastTrackNote.get(context.trackIndex)?.velocity ?? 100
+                  : (this.lastTrackNote.get(context.trackIndex)?.velocity ??
+                    100),
             });
           }
           break;
@@ -991,7 +1091,7 @@ export class PlaybackEngine {
             row: context.row,
             trackIndex: context.trackIndex,
             time: context.time,
-            ...(cmd.midi !== undefined ? { midi: cmd.midi } : {})
+            ...(cmd.midi !== undefined ? { midi: cmd.midi } : {}),
           });
           break;
 
@@ -1003,9 +1103,6 @@ export class PlaybackEngine {
               const lastRow = this.pitchLogRow.get(context.trackIndex);
               if (lastRow !== context.row) {
                 this.pitchLogRow.set(context.trackIndex, context.row);
-                console.log(
-                  `[PitchDebug] row=${context.row} track=${context.trackIndex} freq=${cmd.frequency.toFixed(2)}Hz`,
-                );
               }
             }
           }
@@ -1016,7 +1113,7 @@ export class PlaybackEngine {
             cmd.frequency,
             context.time,
             context.trackIndex,
-            cmd.glide
+            cmd.glide,
           );
           break;
 
@@ -1028,7 +1125,7 @@ export class PlaybackEngine {
             cmd.volume,
             context.time,
             context.trackIndex,
-            cmd.ramp
+            cmd.ramp,
           );
           break;
 
@@ -1039,7 +1136,7 @@ export class PlaybackEngine {
             cmd.voiceIndex ?? context.voiceIndex,
             cmd.offset,
             context.time,
-            context.trackIndex
+            context.trackIndex,
           );
           break;
 
@@ -1049,7 +1146,7 @@ export class PlaybackEngine {
             context.instrumentId,
             cmd.midi,
             cmd.velocity,
-            context.time
+            context.time,
           );
           break;
 
@@ -1065,10 +1162,22 @@ export class PlaybackEngine {
    */
   private isTickBasedEffect(type: string): boolean {
     const tickEffects = [
-      'portaUp', 'portaDown', 'tonePorta', 'vibrato',
-      'tonePortaVol', 'vibratoVol', 'tremolo', 'arpeggio',
-      'volSlide', 'panSlide', 'retrigVol', 'tremor',
-      'fineVibrato', 'noteCut', 'noteDelay', 'keyOff'
+      'portaUp',
+      'portaDown',
+      'tonePorta',
+      'vibrato',
+      'tonePortaVol',
+      'vibratoVol',
+      'tremolo',
+      'arpeggio',
+      'volSlide',
+      'panSlide',
+      'retrigVol',
+      'tremor',
+      'fineVibrato',
+      'noteCut',
+      'noteDelay',
+      'keyOff',
     ];
     return tickEffects.includes(type);
   }
@@ -1078,9 +1187,7 @@ export class PlaybackEngine {
    * Simple linear/exponential slides can use ramps for better performance and smoother audio.
    */
   private canUseAutomationRamp(type: string): boolean {
-    const rampableEffects = [
-      'portaUp', 'portaDown', 'volSlide'
-    ];
+    const rampableEffects = ['portaUp', 'portaDown', 'volSlide'];
     return rampableEffects.includes(type);
   }
 
@@ -1098,7 +1205,7 @@ export class PlaybackEngine {
     ) {
       const newPosition: PlaybackPosition = {
         row: currentPosition.row,
-        sequenceIndex: currentPosition.sequenceIndex
+        sequenceIndex: currentPosition.sequenceIndex,
       };
       if (currentPosition.patternId) {
         newPosition.patternId = currentPosition.patternId;
@@ -1112,7 +1219,11 @@ export class PlaybackEngine {
    * Reset position tracking reference for jump/seek scenarios.
    * Aligns timing system to the given target position.
    */
-  private resetPositionReference(targetSequenceIndex: number, targetRow: number, now: number) {
+  private resetPositionReference(
+    targetSequenceIndex: number,
+    targetRow: number,
+    now: number,
+  ) {
     this.timingSystem.advanceToRow(now, targetSequenceIndex, targetRow);
   }
 
@@ -1141,7 +1252,10 @@ export class PlaybackEngine {
       try {
         resolverTasks.push(Promise.resolve(this.resolver(id)));
       } catch (error) {
-        this.emit('error', error instanceof Error ? error : new Error(String(error)));
+        this.emit(
+          'error',
+          error instanceof Error ? error : new Error(String(error)),
+        );
       }
     }
     await Promise.all(resolverTasks);
@@ -1156,7 +1270,7 @@ export class PlaybackEngine {
 
     while (this.tickAccumulator >= msPerRow && msPerRow > 0) {
       this.tickAccumulator -= msPerRow;
-      let nextRow = (this.position.row + 1);
+      let nextRow = this.position.row + 1;
 
       if (nextRow >= this.length) {
         if (this.loopCurrentPattern) {
@@ -1195,13 +1309,19 @@ export class PlaybackEngine {
     }
   }
 
-  private emit<K extends PlaybackEvent>(event: K, payload: PlaybackEventMap[K]) {
+  private emit<K extends PlaybackEvent>(
+    event: K,
+    payload: PlaybackEventMap[K],
+  ) {
     const set = this.listeners[event];
     for (const listener of set) {
       try {
         (listener as PlaybackListener<K>)(payload);
       } catch (error) {
-        console.error(`PlaybackEngine listener error for event "${event}":`, error);
+        console.error(
+          `PlaybackEngine listener error for event "${event}":`,
+          error,
+        );
       }
     }
   }
@@ -1216,7 +1336,11 @@ export class PlaybackEngine {
       const instrumentId = step.instrumentId;
       if (!instrumentId) continue;
 
-      if (this.macroHandler && step.macroIndex !== undefined && step.macroValue !== undefined) {
+      if (
+        this.macroHandler &&
+        step.macroIndex !== undefined &&
+        step.macroValue !== undefined
+      ) {
         this.macroHandler(instrumentId, step.macroIndex, step.macroValue);
       }
 
@@ -1225,7 +1349,7 @@ export class PlaybackEngine {
           type: 'noteOff',
           instrumentId,
           row,
-          trackIndex: step.trackIndex
+          trackIndex: step.trackIndex,
         };
         if (step.midi !== undefined) {
           event.midi = step.midi;
@@ -1246,7 +1370,7 @@ export class PlaybackEngine {
         instrumentId,
         midi: step.midi,
         row,
-        trackIndex: step.trackIndex
+        trackIndex: step.trackIndex,
       };
       const velocity = step.velocity;
       if (velocity !== undefined) {
@@ -1271,7 +1395,9 @@ export class PlaybackEngine {
   }
 }
 
-type PlaybackPatternStep = Pattern['tracks'][number]['steps'][number] & { trackIndex: number };
+type PlaybackPatternStep = Pattern['tracks'][number]['steps'][number] & {
+  trackIndex: number;
+};
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
