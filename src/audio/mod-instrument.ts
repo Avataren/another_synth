@@ -532,18 +532,7 @@ export default class ModInstrument {
     // The conversion preserves the normalized value: velocity/127 ≈ volume/64
     const velocityNormalized = velocity / 127;
     const noteGain = velocityNormalized * this.samplerState.gain;
-    console.log(
-      '[ModInstrument] noteOnAtTime: midi',
-      noteNumber,
-      'velocity',
-      velocity,
-      '(really PT volume) / 127 =',
-      velocityNormalized.toFixed(4),
-      '* samplerGain',
-      this.samplerState.gain.toFixed(3),
-      '= noteGain',
-      noteGain.toFixed(4),
-    );
+
     gainNode.gain.value = noteGain;
 
     // Set panning
@@ -671,20 +660,6 @@ export default class ModInstrument {
 
     // Use tracked targetGain instead of reading from audio param (which doesn't reflect scheduled changes)
     const currentGain = voice.targetGain;
-    const actualParamValue = voice.gainNode.gain.value;
-    const percentChange =
-      ((gain - currentGain) / Math.max(currentGain, 0.001)) * 100;
-
-    console.log('[ModInstrument] setVoiceGainAtTime:', {
-      voice: voiceIndex,
-      trackedGain: currentGain.toFixed(3),
-      paramValue: actualParamValue.toFixed(3),
-      newGain: gain.toFixed(3),
-      change: `${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(1)}%`,
-      scheduledAt: scheduledTime.toFixed(3),
-      now: now.toFixed(3),
-      delta: `${timeDelta >= 0 ? '+' : ''}${(timeDelta * 1000).toFixed(1)}ms`,
-    });
 
     // For immediate changes (delta < 10ms), apply directly
     if (timeDelta < 0.01) {

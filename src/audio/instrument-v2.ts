@@ -12,7 +12,11 @@
  */
 
 import { createStandardAudioWorklet } from './audio-processor-loader';
-import { ENGINES_PER_WORKLET, VOICES_PER_ENGINE, TOTAL_VOICES } from './worklet-config';
+import {
+  ENGINES_PER_WORKLET,
+  VOICES_PER_ENGINE,
+  TOTAL_VOICES,
+} from './worklet-config';
 import type OscillatorState from './models/OscillatorState';
 import { type NoiseState, type NoiseUpdate } from './types/noise';
 import type { Patch } from './types/preset-types';
@@ -36,7 +40,10 @@ import {
   type NodeConnectionUpdate,
   type FilterState,
 } from './types/synth-layout';
-import type { WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type {
+  WasmModulationType,
+  ModulationTransformation,
+} from 'app/public/wasm/audio_processor';
 import type { PortId } from './types/generated/port-ids';
 import { WorkletMessageHandler } from './adapters/message-handler';
 import { toRaw } from 'vue';
@@ -76,7 +83,10 @@ export default class InstrumentV2 {
   }
 
   // Helper method to map global voice index to (engineId, localVoiceId)
-  private getEngineAndVoice(globalVoiceIndex: number): { engineId: number; voiceId: number } {
+  private getEngineAndVoice(globalVoiceIndex: number): {
+    engineId: number;
+    voiceId: number;
+  } {
     const engineId = Math.floor(globalVoiceIndex / this.voices_per_engine);
     const voiceId = globalVoiceIndex % this.voices_per_engine;
     return { engineId, voiceId };
@@ -89,7 +99,10 @@ export default class InstrumentV2 {
   }
 
   // Helper method to get macro parameter name
-  private getMacroParamName(globalVoiceIndex: number, macroIndex: number): string {
+  private getMacroParamName(
+    globalVoiceIndex: number,
+    macroIndex: number,
+  ): string {
     const { engineId, voiceId } = this.getEngineAndVoice(globalVoiceIndex);
     return `macro_engine${engineId}_voice${voiceId}_${macroIndex}`;
   }
@@ -123,7 +136,9 @@ export default class InstrumentV2 {
 
       // Validate worklet has expected parameter names (multi-engine format)
       // This ensures worklet code is up-to-date after parameter name changes
-      const testParam = this.workletNode.parameters.get(this.getParamName('gate', 0));
+      const testParam = this.workletNode.parameters.get(
+        this.getParamName('gate', 0),
+      );
       if (!testParam) {
         throw new Error(
           'Worklet parameter validation failed: Expected parameter "' +
@@ -152,13 +167,19 @@ export default class InstrumentV2 {
 
       // Set up parameters for each voice
       for (let i = 0; i < this.num_voices; i++) {
-        const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+        const gateParam = this.workletNode.parameters.get(
+          this.getParamName('gate', i),
+        );
         if (gateParam) gateParam.value = 0;
 
-        const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
+        const freqParam = this.workletNode.parameters.get(
+          this.getParamName('frequency', i),
+        );
         if (freqParam) freqParam.value = 440;
 
-        const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+        const gainParam = this.workletNode.parameters.get(
+          this.getParamName('gain', i),
+        );
         if (gainParam) gainParam.value = 1;
       }
 
@@ -188,7 +209,9 @@ export default class InstrumentV2 {
         | { voiceCount?: number; voices?: unknown[] }
         | undefined;
       const patchVoiceCount =
-        patchLayout?.voiceCount ?? patchLayout?.voices?.length ?? this.voices_per_engine;
+        patchLayout?.voiceCount ??
+        patchLayout?.voices?.length ??
+        this.voices_per_engine;
       this.voiceLimit = Math.min(
         this.num_voices, // Max possible voices across all engines (16)
         Math.max(1, Number(patchVoiceCount) || this.voices_per_engine), // Voices configured in the patch
@@ -201,7 +224,10 @@ export default class InstrumentV2 {
         for (const env of Object.values(envelopes)) {
           if (env && typeof env.release === 'number') {
             // Release time is in seconds, convert to milliseconds
-            this.maxReleaseTimeMs = Math.max(this.maxReleaseTimeMs, env.release * 1000);
+            this.maxReleaseTimeMs = Math.max(
+              this.maxReleaseTimeMs,
+              env.release * 1000,
+            );
           }
         }
       }
@@ -219,7 +245,7 @@ export default class InstrumentV2 {
             return 0;
           }
           return value;
-        })
+        }),
       ) as Patch;
 
       // Remove audioAssets to reduce JSON size (loaded separately)
@@ -300,16 +326,19 @@ export default class InstrumentV2 {
     time?: number,
     rampToValue?: number,
     rampTime?: number,
-    interpolation: 'linear' | 'exponential' = 'linear'
+    interpolation: 'linear' | 'exponential' = 'linear',
   ): void {
     if (!this.workletNode) {
       return;
     }
 
     const clampedValue = Math.min(1, Math.max(0, value));
-    const when = typeof time === 'number' ? time : this.audioContext.currentTime;
+    const when =
+      typeof time === 'number' ? time : this.audioContext.currentTime;
     for (let voice = 0; voice < this.num_voices; voice++) {
-      const param = this.workletNode.parameters.get(this.getMacroParamName(voice, macroIndex));
+      const param = this.workletNode.parameters.get(
+        this.getMacroParamName(voice, macroIndex),
+      );
       if (param) {
         param.setValueAtTime(clampedValue, when);
         if (typeof rampToValue === 'number' && typeof rampTime === 'number') {
@@ -339,7 +368,7 @@ export default class InstrumentV2 {
     time?: number,
     rampToValue?: number,
     rampTime?: number,
-    interpolation: 'linear' | 'exponential' = 'linear'
+    interpolation: 'linear' | 'exponential' = 'linear',
   ): void {
     if (!this.workletNode) {
       return;
@@ -347,8 +376,11 @@ export default class InstrumentV2 {
     if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
 
     const clampedValue = Math.min(1, Math.max(0, value));
-    const when = typeof time === 'number' ? time : this.audioContext.currentTime;
-    const param = this.workletNode.parameters.get(this.getMacroParamName(voiceIndex, macroIndex));
+    const when =
+      typeof time === 'number' ? time : this.audioContext.currentTime;
+    const param = this.workletNode.parameters.get(
+      this.getMacroParamName(voiceIndex, macroIndex),
+    );
     if (!param) return;
 
     param.setValueAtTime(clampedValue, when);
@@ -365,7 +397,14 @@ export default class InstrumentV2 {
     }
   }
 
-  public connectMacroRoute(payload: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation }): void {
+  public connectMacroRoute(payload: {
+    macroIndex: number;
+    targetId: string;
+    targetPort: PortId;
+    amount: number;
+    modulationType: WasmModulationType;
+    modulationTransformation: ModulationTransformation;
+  }): void {
     if (!this.workletNode) {
       return;
     }
@@ -474,7 +513,10 @@ export default class InstrumentV2 {
     });
   }
 
-  public updateWavetableOscillatorState(nodeId: string, newState: OscillatorState): void {
+  public updateWavetableOscillatorState(
+    nodeId: string,
+    newState: OscillatorState,
+  ): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateWavetableOscillator',
       oscillatorId: nodeId,
@@ -482,7 +524,10 @@ export default class InstrumentV2 {
     });
   }
 
-  public updateOscillatorState(nodeId: string, newState: OscillatorState): void {
+  public updateOscillatorState(
+    nodeId: string,
+    newState: OscillatorState,
+  ): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateOscillator',
       oscillatorId: nodeId,
@@ -545,7 +590,10 @@ export default class InstrumentV2 {
   }
 
   // PROMISE-BASED: Envelope updates - worklet sends updateEnvelopeProcessed
-  public updateEnvelopeState(nodeId: string, newState: EnvelopeConfig): Promise<void> {
+  public updateEnvelopeState(
+    nodeId: string,
+    newState: EnvelopeConfig,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.workletNode) {
         resolve(); // Fail silently like original
@@ -556,7 +604,11 @@ export default class InstrumentV2 {
 
       const listener = (event: MessageEvent) => {
         const data = event.data;
-        if (data && data.type === 'updateEnvelopeProcessed' && data.messageId === messageId) {
+        if (
+          data &&
+          data.type === 'updateEnvelopeProcessed' &&
+          data.messageId === messageId
+        ) {
           this.workletNode?.port.removeEventListener('message', listener);
           resolve();
         }
@@ -589,7 +641,11 @@ export default class InstrumentV2 {
     });
   }
 
-  public remove_specific_connection(from_node: string, to_node: string, to_port: number): void {
+  public remove_specific_connection(
+    from_node: string,
+    to_node: string,
+    to_port: number,
+  ): void {
     this.messageHandler.sendFireAndForget({
       type: 'removeConnection',
       fromId: from_node,
@@ -604,17 +660,20 @@ export default class InstrumentV2 {
 
   public updateArpeggiatorPattern(
     nodeId: string,
-    pattern: { value: number; active: boolean }[]
+    pattern: { value: number; active: boolean }[],
   ): void {
     // Extract just the values for the pattern
-    const numericPattern = pattern.map(p => p.value);
+    const numericPattern = pattern.map((p) => p.value);
     this.messageHandler.sendFireAndForget({
       type: 'updateArpeggiatorPattern',
       pattern: numericPattern,
     });
   }
 
-  public updateArpeggiatorStepDuration(nodeId: string, stepDurationMs: number): void {
+  public updateArpeggiatorStepDuration(
+    nodeId: string,
+    stepDurationMs: number,
+  ): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateArpeggiatorStepDuration',
       stepDuration: stepDurationMs,
@@ -642,7 +701,10 @@ export default class InstrumentV2 {
   // Asset Import (fire-and-forget for large transfers)
   // ========================================================================
 
-  public async importWavetableData(nodeId: string, wavData: Uint8Array): Promise<void> {
+  public async importWavetableData(
+    nodeId: string,
+    wavData: Uint8Array,
+  ): Promise<void> {
     this.messageHandler.sendFireAndForget({
       type: 'importWavetable',
       nodeId,
@@ -651,7 +713,7 @@ export default class InstrumentV2 {
     });
     // Reduced from 10ms to 2ms - fire-and-forget still needs minimal delay for message processing,
     // but 2ms is sufficient for the worklet to receive the message while reducing load stutter
-    await new Promise(resolve => setTimeout(resolve, 2));
+    await new Promise((resolve) => setTimeout(resolve, 2));
   }
 
   public importImpulseWaveformData(nodeId: string, wavData: Uint8Array): void {
@@ -662,7 +724,11 @@ export default class InstrumentV2 {
     });
   }
 
-  public generateHallReverb(nodeId: string, decayTime: number, roomSize: number): void {
+  public generateHallReverb(
+    nodeId: string,
+    decayTime: number,
+    roomSize: number,
+  ): void {
     this.messageHandler.sendFireAndForget({
       type: 'generateHallReverb',
       nodeId,
@@ -672,7 +738,11 @@ export default class InstrumentV2 {
     });
   }
 
-  public generatePlateReverb(nodeId: string, decayTime: number, diffusion: number): void {
+  public generatePlateReverb(
+    nodeId: string,
+    decayTime: number,
+    diffusion: number,
+  ): void {
     this.messageHandler.sendFireAndForget({
       type: 'generatePlateReverb',
       nodeId,
@@ -690,7 +760,7 @@ export default class InstrumentV2 {
         nodeId,
         data: wavData.buffer,
       },
-      [wavData.buffer]
+      [wavData.buffer],
     );
   }
 
@@ -698,7 +768,10 @@ export default class InstrumentV2 {
   // Data Export (Promise-based - worklet sends responses)
   // ========================================================================
 
-  public async getSamplerWaveform(nodeId: string, maxLength = 512): Promise<Float32Array> {
+  public async getSamplerWaveform(
+    nodeId: string,
+    maxLength = 512,
+  ): Promise<Float32Array> {
     if (!this.workletNode) {
       throw new Error('Audio system not ready');
     }
@@ -707,12 +780,20 @@ export default class InstrumentV2 {
     return new Promise<Float32Array>((resolve, reject) => {
       const messageId = `sampler-waveform-${nodeId}-${performance.now()}`;
       const handleMessage = (event: MessageEvent) => {
-        if (event.data.type === 'samplerWaveform' && event.data.messageId === messageId) {
+        if (
+          event.data.type === 'samplerWaveform' &&
+          event.data.messageId === messageId
+        ) {
           port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(event.data.waveform));
-        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+        } else if (
+          event.data.type === 'error' &&
+          event.data.messageId === messageId
+        ) {
           port.removeEventListener('message', handleMessage);
-          reject(new Error(event.data.message ?? 'Failed to fetch sampler waveform'));
+          reject(
+            new Error(event.data.message ?? 'Failed to fetch sampler waveform'),
+          );
         }
       };
 
@@ -747,7 +828,10 @@ export default class InstrumentV2 {
     return new Promise((resolve, reject) => {
       const messageId = `export-sample-${nodeId}-${performance.now()}`;
       const handleMessage = (event: MessageEvent) => {
-        if (event.data.type === 'sampleData' && event.data.messageId === messageId) {
+        if (
+          event.data.type === 'sampleData' &&
+          event.data.messageId === messageId
+        ) {
           port.removeEventListener('message', handleMessage);
           const data = event.data.sampleData;
           resolve({
@@ -756,9 +840,14 @@ export default class InstrumentV2 {
             channels: data.channels,
             rootNote: data.rootNote,
           });
-        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+        } else if (
+          event.data.type === 'error' &&
+          event.data.messageId === messageId
+        ) {
           port.removeEventListener('message', handleMessage);
-          reject(new Error(event.data.message ?? 'Failed to export sample data'));
+          reject(
+            new Error(event.data.message ?? 'Failed to export sample data'),
+          );
         }
       };
 
@@ -791,7 +880,10 @@ export default class InstrumentV2 {
     return new Promise((resolve, reject) => {
       const messageId = `export-convolver-${nodeId}-${performance.now()}`;
       const handleMessage = (event: MessageEvent) => {
-        if (event.data.type === 'convolverData' && event.data.messageId === messageId) {
+        if (
+          event.data.type === 'convolverData' &&
+          event.data.messageId === messageId
+        ) {
           port.removeEventListener('message', handleMessage);
           const data = event.data.convolverData;
           resolve({
@@ -799,9 +891,14 @@ export default class InstrumentV2 {
             sampleRate: data.sampleRate,
             channels: data.channels,
           });
-        } else if (event.data.type === 'error' && event.data.messageId === messageId) {
+        } else if (
+          event.data.type === 'error' &&
+          event.data.messageId === messageId
+        ) {
           port.removeEventListener('message', handleMessage);
-          reject(new Error(event.data.message ?? 'Failed to export convolver data'));
+          reject(
+            new Error(event.data.message ?? 'Failed to export convolver data'),
+          );
         }
       };
 
@@ -820,7 +917,10 @@ export default class InstrumentV2 {
     });
   }
 
-  public async getFilterIRWaveform(nodeId: string, maxLength = 512): Promise<Float32Array> {
+  public async getFilterIRWaveform(
+    nodeId: string,
+    maxLength = 512,
+  ): Promise<Float32Array> {
     if (!this.workletNode) {
       throw new Error('Audio system not ready');
     }
@@ -831,7 +931,10 @@ export default class InstrumentV2 {
         if (e.data.type === 'FilterIrWaveform') {
           port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(e.data.waveform));
-        } else if (e.data.type === 'error' && e.data.source === 'getFilterIRWaveform') {
+        } else if (
+          e.data.type === 'error' &&
+          e.data.source === 'getFilterIRWaveform'
+        ) {
           port.removeEventListener('message', handleMessage);
           reject(new Error(e.data.message));
         }
@@ -869,7 +972,10 @@ export default class InstrumentV2 {
         if (e.data.type === 'lfoWaveform') {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(e.data.waveform));
-        } else if (e.data.type === 'error' && e.data.source === 'getLfoWaveform') {
+        } else if (
+          e.data.type === 'error' &&
+          e.data.source === 'getLfoWaveform'
+        ) {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           reject(new Error(e.data.message));
         }
@@ -951,10 +1057,16 @@ export default class InstrumentV2 {
 
     return new Promise<Float32Array>((resolve, reject) => {
       const handleMessage = (e: MessageEvent) => {
-        if (e.data.type === 'envelopePreview' && e.data.source === 'getEnvelopePreview') {
+        if (
+          e.data.type === 'envelopePreview' &&
+          e.data.source === 'getEnvelopePreview'
+        ) {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(e.data.preview));
-        } else if (e.data.type === 'error' && e.data.source === 'getEnvelopePreview') {
+        } else if (
+          e.data.type === 'error' &&
+          e.data.source === 'getEnvelopePreview'
+        ) {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           reject(new Error(e.data.message));
         }
@@ -980,7 +1092,10 @@ export default class InstrumentV2 {
     });
   }
 
-  public async getFilterResponse(node_id: string, length: number): Promise<Float32Array> {
+  public async getFilterResponse(
+    node_id: string,
+    length: number,
+  ): Promise<Float32Array> {
     return this.getFilterIRWaveform(node_id, length);
   }
 
@@ -988,10 +1103,18 @@ export default class InstrumentV2 {
   // MIDI / Performance (fire-and-forget for low latency)
   // ========================================================================
 
-  public noteOn(noteNumber: number, velocity: number, options?: { allowDuplicate?: boolean }): void {
+  public noteOn(
+    noteNumber: number,
+    velocity: number,
+    options?: { allowDuplicate?: boolean },
+  ): void {
     const allowDuplicate = options?.allowDuplicate ?? false;
     const time = this.audioContext.currentTime;
-    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
+    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(
+      noteNumber,
+      allowDuplicate,
+      time,
+    );
 
     this.markVoiceActive(noteNumber, voiceIndex, time);
 
@@ -1001,7 +1124,9 @@ export default class InstrumentV2 {
 
     const now = this.audioContext.currentTime;
 
-    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
+    const gateParam = this.workletNode.parameters.get(
+      this.getParamName('gate', voiceIndex),
+    );
     if (gateParam) {
       // Cancel any scheduled values from previous playback to ensure .value works
       gateParam.cancelScheduledValues(now);
@@ -1023,13 +1148,17 @@ export default class InstrumentV2 {
       }
     }
 
-    const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
+    const freqParam = this.workletNode.parameters.get(
+      this.getParamName('frequency', voiceIndex),
+    );
     if (freqParam) {
       freqParam.cancelScheduledValues(now);
       freqParam.value = frequency;
     }
 
-    const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
+    const gainParam = this.workletNode.parameters.get(
+      this.getParamName('gain', voiceIndex),
+    );
     if (gainParam) {
       gainParam.cancelScheduledValues(now);
       gainParam.value = velocity / 127;
@@ -1050,7 +1179,9 @@ export default class InstrumentV2 {
     for (const voice of voicesToRelease) {
       this.releaseVoice(voice, now);
       if (!this.workletNode) continue;
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voice));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', voice),
+      );
       if (gateParam) {
         // Cancel any scheduled values from previous playback to ensure .value works
         gateParam.cancelScheduledValues(now);
@@ -1070,22 +1201,25 @@ export default class InstrumentV2 {
     options?: { allowDuplicate?: boolean; frequency?: number },
   ): number | undefined {
     const allowDuplicate = options?.allowDuplicate ?? false;
-    console.log('[noteOnAtTime] Note', noteNumber, 'at time', time.toFixed(3) + 's, vel=' + velocity + ', allowDup=' + allowDuplicate, ', voiceLimit=', this.voiceLimit);
-    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
-
-    console.log('[noteOnAtTime] Allocated voice', voiceIndex, 'for note', noteNumber, ', stolen=', stolenNote, ', retrigger=', isRetrigger);
+    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(
+      noteNumber,
+      allowDuplicate,
+      time,
+    );
 
     this.markVoiceActive(noteNumber, voiceIndex, time);
 
     // Use provided frequency override (for ProTracker MODs) or calculate from MIDI
-    const frequency = options?.frequency ?? this.midiNoteToFrequency(noteNumber);
+    const frequency =
+      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
 
     if (!this.workletNode) return;
 
-    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
+    const gateParam = this.workletNode.parameters.get(
+      this.getParamName('gate', voiceIndex),
+    );
     if (gateParam) {
       // Cancel any previously scheduled values that might interfere with this new note
-      console.log('[noteOnAtTime] Canceling scheduled gate events for voice', voiceIndex, 'from time', time.toFixed(3) + 's');
       gateParam.cancelScheduledValues(time);
 
       const retriggering = isRetrigger || stolenNote !== null;
@@ -1097,35 +1231,35 @@ export default class InstrumentV2 {
           0.005,
           this.quantumFrames / this.audioContext.sampleRate,
         );
-        console.log('[noteOnAtTime] GATE PULSE: voice', voiceIndex, 'time=' + time.toFixed(3) + 's, pulse=' + gatePulseDuration.toFixed(4) + 's, stolen=', stolenNote, 'retrigger=', isRetrigger);
         gateParam.setValueAtTime(0, time);
         gateParam.setValueAtTime(1, time + gatePulseDuration);
       } else {
-        console.log('[noteOnAtTime] GATE ON: voice', voiceIndex, 'time=' + time.toFixed(3) + 's, stolen=', stolenNote, 'retrigger=', isRetrigger);
         gateParam.setValueAtTime(1, time);
       }
     } else {
-      console.log('[noteOnAtTime] WARNING: No gate param for voice', voiceIndex);
+      console.log(
+        '[noteOnAtTime] WARNING: No gate param for voice',
+        voiceIndex,
+      );
     }
 
-    const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
+    const freqParam = this.workletNode.parameters.get(
+      this.getParamName('frequency', voiceIndex),
+    );
     if (freqParam) {
       // Cancel any previously scheduled frequency changes
       freqParam.cancelScheduledValues(time);
-      console.log('[noteOnAtTime] FREQ: voice', voiceIndex, 'freq=' + frequency.toFixed(2) + 'Hz, time=' + time.toFixed(3) + 's');
       freqParam.setValueAtTime(frequency, time);
-    } else {
-      console.log('[noteOnAtTime] WARNING: No freq param for voice', voiceIndex);
     }
 
-    const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
+    const gainParam = this.workletNode.parameters.get(
+      this.getParamName('gain', voiceIndex),
+    );
     if (gainParam) {
       // Cancel any previously scheduled gain changes
       gainParam.cancelScheduledValues(time);
-      console.log('[noteOnAtTime] GAIN: voice', voiceIndex, 'gain=' + (velocity / 127).toFixed(3) + ', time=' + time.toFixed(3) + 's');
+
       gainParam.setValueAtTime(velocity / 127, time);
-    } else {
-      console.log('[noteOnAtTime] WARNING: No gain param for voice', voiceIndex);
     }
 
     return voiceIndex;
@@ -1135,7 +1269,11 @@ export default class InstrumentV2 {
    * Schedule a note off at a specific audio context time.
    * Used for sample-accurate playback scheduling.
    */
-  public noteOffAtTime(noteNumber: number, time: number, voiceIndex?: number): void {
+  public noteOffAtTime(
+    noteNumber: number,
+    time: number,
+    voiceIndex?: number,
+  ): void {
     const voicesToRelease =
       voiceIndex !== undefined
         ? [voiceIndex]
@@ -1148,9 +1286,10 @@ export default class InstrumentV2 {
     for (const voice of voicesToRelease) {
       this.releaseVoice(voice, time);
       if (!this.workletNode) continue;
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voice));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', voice),
+      );
       if (gateParam) {
-        console.log('[noteOffAtTime] Setting gate_' + voice + ' to 0 at time ' + time.toFixed(3) + 's');
         gateParam.setValueAtTime(0, time);
       }
     }
@@ -1159,12 +1298,11 @@ export default class InstrumentV2 {
   public gateOffVoiceAtTime(voiceIndex: number, time: number): void {
     this.releaseVoice(voiceIndex, time);
     if (!this.workletNode) return;
-    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
+    const gateParam = this.workletNode.parameters.get(
+      this.getParamName('gate', voiceIndex),
+    );
     if (gateParam) {
-      console.log('[gateOffVoiceAtTime] Setting gate_' + voiceIndex + ' to 0 at time ' + time.toFixed(3) + 's');
       gateParam.setValueAtTime(0, time);
-    } else {
-      console.log('[gateOffVoiceAtTime] WARNING: No gate param for voice', voiceIndex);
     }
   }
 
@@ -1176,14 +1314,20 @@ export default class InstrumentV2 {
     if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) return;
     const now = this.audioContext.currentTime;
     if (this.workletNode) {
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', voiceIndex),
+      );
       if (gateParam) {
         gateParam.cancelScheduledValues(now);
         gateParam.setValueAtTime(0, now);
       }
-      const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
+      const freqParam = this.workletNode.parameters.get(
+        this.getParamName('frequency', voiceIndex),
+      );
       if (freqParam) freqParam.cancelScheduledValues(now);
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', voiceIndex),
+      );
       if (gainParam) {
         gainParam.cancelScheduledValues(now);
         gainParam.setValueAtTime(0, now);
@@ -1199,17 +1343,23 @@ export default class InstrumentV2 {
     const now = this.audioContext.currentTime;
     if (this.workletNode) {
       for (let i = 0; i < this.voiceLimit; i++) {
-        const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+        const gateParam = this.workletNode.parameters.get(
+          this.getParamName('gate', i),
+        );
         if (gateParam) {
           gateParam.cancelScheduledValues(now);
           gateParam.setValueAtTime(0, now);
         }
-        const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
+        const freqParam = this.workletNode.parameters.get(
+          this.getParamName('frequency', i),
+        );
         if (freqParam) freqParam.cancelScheduledValues(now);
-        const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+        const gainParam = this.workletNode.parameters.get(
+          this.getParamName('gain', i),
+        );
         if (gainParam) {
           gainParam.cancelScheduledValues(now);
-          gainParam.setValueAtTime(1, now);  // Reset gain to 1 for next playback
+          gainParam.setValueAtTime(1, now); // Reset gain to 1 for next playback
         }
       }
     }
@@ -1222,7 +1372,9 @@ export default class InstrumentV2 {
     const clamped = Math.max(0, Math.min(1, gain));
     const when = time ?? this.audioContext.currentTime;
     for (let i = 0; i < this.voiceLimit; i++) {
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
       if (gainParam) {
         gainParam.setValueAtTime(clamped, when);
       }
@@ -1241,7 +1393,7 @@ export default class InstrumentV2 {
     voiceIndex: number,
     frequency: number,
     time: number,
-    rampMode?: 'linear' | 'exponential'
+    rampMode?: 'linear' | 'exponential',
   ): void {
     if (!this.workletNode) return;
 
@@ -1262,13 +1414,17 @@ export default class InstrumentV2 {
     if (voiceIndex < 0) {
       // Set all active voices
       for (let i = 0; i < this.voiceLimit; i++) {
-        const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
+        const freqParam = this.workletNode.parameters.get(
+          this.getParamName('frequency', i),
+        );
         if (freqParam) {
           applyToParam(freqParam);
         }
       }
     } else if (voiceIndex < this.voiceLimit) {
-      const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
+      const freqParam = this.workletNode.parameters.get(
+        this.getParamName('frequency', voiceIndex),
+      );
       if (freqParam) {
         applyToParam(freqParam);
       }
@@ -1287,7 +1443,7 @@ export default class InstrumentV2 {
     voiceIndex: number,
     gain: number,
     time: number,
-    rampMode?: 'linear' | 'exponential'
+    rampMode?: 'linear' | 'exponential',
   ): void {
     if (!this.workletNode) return;
     const clamped = Math.max(0, Math.min(1, gain));
@@ -1308,13 +1464,17 @@ export default class InstrumentV2 {
     if (voiceIndex < 0) {
       // Set all active voices
       for (let i = 0; i < this.voiceLimit; i++) {
-        const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+        const gainParam = this.workletNode.parameters.get(
+          this.getParamName('gain', i),
+        );
         if (gainParam) {
           applyToParam(gainParam);
         }
       }
     } else if (voiceIndex < this.voiceLimit) {
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', voiceIndex),
+      );
       if (gainParam) {
         applyToParam(gainParam);
       }
@@ -1358,7 +1518,11 @@ export default class InstrumentV2 {
   // Voice Allocation
   // ========================================================================
 
-  private markVoiceActive(noteNumber: number, voiceIndex: number, audioTime: number): void {
+  private markVoiceActive(
+    noteNumber: number,
+    voiceIndex: number,
+    audioTime: number,
+  ): void {
     if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return;
 
     let voices = this.activeNotes.get(noteNumber);
@@ -1377,12 +1541,23 @@ export default class InstrumentV2 {
     if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return null;
 
     const noteNumber = this.voiceToNote[voiceIndex];
-    console.log('[releaseVoice] Releasing voice', voiceIndex, ', note=', noteNumber, ', audioTime=', audioTime?.toFixed(3) + 's');
+    console.log(
+      '[releaseVoice] Releasing voice',
+      voiceIndex,
+      ', note=',
+      noteNumber,
+      ', audioTime=',
+      audioTime?.toFixed(3) + 's',
+    );
 
     // If voice is already released (note is null), don't update release time
     // This prevents the tracker from incorrectly updating releaseTime when calling gateOff on already-free voices
     if (noteNumber === null || noteNumber === undefined) {
-      console.log('[releaseVoice] Voice', voiceIndex, 'already released - skipping to preserve original releaseTime');
+      console.log(
+        '[releaseVoice] Voice',
+        voiceIndex,
+        'already released - skipping to preserve original releaseTime',
+      );
       return null;
     }
 
@@ -1392,14 +1567,22 @@ export default class InstrumentV2 {
       if (voices.size === 0) {
         this.activeNotes.delete(noteNumber);
       }
-      console.log('[releaseVoice] Removed voice', voiceIndex, 'from activeNotes for note', noteNumber);
+      console.log(
+        '[releaseVoice] Removed voice',
+        voiceIndex,
+        'from activeNotes for note',
+        noteNumber,
+      );
     }
 
     // Record when this voice started its release phase (in audio time, seconds)
     // If audioTime is provided, use it; otherwise use current audio context time
     const releaseTime = audioTime ?? this.audioContext.currentTime;
     this.voiceReleaseTime[voiceIndex] = releaseTime;
-    console.log('[releaseVoice] Set voiceReleaseTime[' + voiceIndex + '] =', releaseTime.toFixed(3) + 's');
+    console.log(
+      '[releaseVoice] Set voiceReleaseTime[' + voiceIndex + '] =',
+      releaseTime.toFixed(3) + 's',
+    );
     // Don't mark as null yet - will be cleared after release completes
     this.voiceToNote[voiceIndex] = null;
     return noteNumber;
@@ -1411,7 +1594,13 @@ export default class InstrumentV2 {
     // maxReleaseTimeMs is in milliseconds, convert to seconds
     const maxReleaseTimeSec = this.maxReleaseTimeMs / 1000;
 
-    console.log('[findNextFreeVoice] Looking for free voice at time', scheduledTime.toFixed(3) + 's, maxRelease=' + maxReleaseTimeSec.toFixed(3) + 's');
+    console.log(
+      '[findNextFreeVoice] Looking for free voice at time',
+      scheduledTime.toFixed(3) +
+        's, maxRelease=' +
+        maxReleaseTimeSec.toFixed(3) +
+        's',
+    );
 
     // Pass 0: any released voice, pick starting from round robin to avoid sticking to one slot.
     for (let offset = 0; offset < this.voiceLimit; offset++) {
@@ -1419,7 +1608,17 @@ export default class InstrumentV2 {
       const voiceNote = this.voiceToNote[candidate];
       const releaseStartTime = this.voiceReleaseTime[candidate] ?? 0;
       const timeSinceRelease = scheduledTime - releaseStartTime;
-      console.log('  Voice', candidate + ': voiceToNote=' + voiceNote + ', releaseTime=' + releaseStartTime.toFixed(3) + 's, timeSince=' + timeSinceRelease.toFixed(3) + 's');
+      console.log(
+        '  Voice',
+        candidate +
+          ': voiceToNote=' +
+          voiceNote +
+          ', releaseTime=' +
+          releaseStartTime.toFixed(3) +
+          's, timeSince=' +
+          timeSinceRelease.toFixed(3) +
+          's',
+      );
       if (voiceNote === null) {
         this.voiceRoundRobinIndex = (candidate + 1) % this.voiceLimit;
         console.log('  ✓ Voice', candidate, 'is FREE (released)');
@@ -1435,12 +1634,25 @@ export default class InstrumentV2 {
     allowDuplicate: boolean,
     scheduledTime: number,
   ): { voiceIndex: number; stolenNote: number | null; isRetrigger: boolean } {
-    console.log('[allocateVoice] Allocating for note', noteNumber + ', allowDup=' + allowDuplicate + ', time=' + scheduledTime.toFixed(3) + 's');
+    console.log(
+      '[allocateVoice] Allocating for note',
+      noteNumber +
+        ', allowDup=' +
+        allowDuplicate +
+        ', time=' +
+        scheduledTime.toFixed(3) +
+        's',
+    );
 
     const existingVoices = this.activeNotes.get(noteNumber);
     if (!allowDuplicate && existingVoices && existingVoices.size > 0) {
       const voiceIndex = existingVoices.values().next().value as number;
-      console.log('[allocateVoice] Retriggering existing voice', voiceIndex, 'for note', noteNumber);
+      console.log(
+        '[allocateVoice] Retriggering existing voice',
+        voiceIndex,
+        'for note',
+        noteNumber,
+      );
       return { voiceIndex, stolenNote: null, isRetrigger: true };
     }
 
@@ -1471,7 +1683,9 @@ export default class InstrumentV2 {
     };
 
     // First pass: Voices that have completed their release (truly free)
-    console.log('[allocateVoice] Pass 1: Looking for voices with completed release');
+    console.log(
+      '[allocateVoice] Pass 1: Looking for voices with completed release',
+    );
     for (let i = 0; i < this.voiceLimit; i++) {
       const releaseStartTime = this.voiceReleaseTime[i] ?? 0;
       if (releaseStartTime === 0) continue; // Never been used in release
@@ -1479,7 +1693,16 @@ export default class InstrumentV2 {
       const timeSinceRelease = scheduledTime - releaseStartTime;
       const releaseCompleted = timeSinceRelease >= maxReleaseTimeSec;
 
-      console.log('  Voice', i + ': releaseTime=' + releaseStartTime.toFixed(3) + 's, timeSince=' + timeSinceRelease.toFixed(3) + 's, completed=' + releaseCompleted);
+      console.log(
+        '  Voice',
+        i +
+          ': releaseTime=' +
+          releaseStartTime.toFixed(3) +
+          's, timeSince=' +
+          timeSinceRelease.toFixed(3) +
+          's, completed=' +
+          releaseCompleted,
+      );
 
       if (releaseCompleted) {
         const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
@@ -1493,7 +1716,9 @@ export default class InstrumentV2 {
 
     // Second pass: Voices in release but not yet completed (preferred over active)
     if (!foundVoice) {
-      console.log('[allocateVoice] Pass 2: Looking for voices in release (not completed)');
+      console.log(
+        '[allocateVoice] Pass 2: Looking for voices in release (not completed)',
+      );
       for (let i = 0; i < this.voiceLimit; i++) {
         const releaseStartTime = this.voiceReleaseTime[i] ?? 0;
         if (releaseStartTime === 0) continue; // Not in release
@@ -1502,7 +1727,10 @@ export default class InstrumentV2 {
         const inRelease = timeSinceRelease < maxReleaseTimeSec;
         const active = isVoiceActive(i);
 
-        console.log('  Voice', i + ': inRelease=' + inRelease + ', isActive=' + active);
+        console.log(
+          '  Voice',
+          i + ': inRelease=' + inRelease + ', isActive=' + active,
+        );
 
         if (inRelease && !isVoiceActive(i)) {
           const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
@@ -1517,11 +1745,16 @@ export default class InstrumentV2 {
 
     // Third pass: Fall back to oldest fully active voice (last resort)
     if (!foundVoice) {
-      console.log('[allocateVoice] Pass 3: Looking for active voices (last resort)');
+      console.log(
+        '[allocateVoice] Pass 3: Looking for active voices (last resort)',
+      );
       for (let i = 0; i < this.voiceLimit; i++) {
         const active = isVoiceActive(i);
         const noteNum = this.voiceToNote[i];
-        console.log('  Voice', i + ': isActive=' + active + ', note=' + noteNum);
+        console.log(
+          '  Voice',
+          i + ': isActive=' + active + ', note=' + noteNum,
+        );
 
         if (isVoiceActive(i)) {
           const time = this.voiceLastUsedTime[i] ?? Number.POSITIVE_INFINITY;
@@ -1540,7 +1773,10 @@ export default class InstrumentV2 {
       oldestVoice = 0;
     }
 
-    console.log('[allocateVoice] Stealing voice', oldestVoice + ', voiceToNote=' + this.voiceToNote[oldestVoice]);
+    console.log(
+      '[allocateVoice] Stealing voice',
+      oldestVoice + ', voiceToNote=' + this.voiceToNote[oldestVoice],
+    );
     const stolenNote = this.releaseVoice(oldestVoice, scheduledTime);
 
     return {
@@ -1599,7 +1835,10 @@ export default class InstrumentV2 {
       try {
         this.messageHandler.sendFireAndForget({ type: 'stop' });
       } catch (error) {
-        console.warn('[InstrumentV2] Failed to send stop to worklet during dispose', error);
+        console.warn(
+          '[InstrumentV2] Failed to send stop to worklet during dispose',
+          error,
+        );
       }
     }
     this.messageHandler.clear();
@@ -1617,7 +1856,10 @@ export default class InstrumentV2 {
       try {
         this.workletNode.port.close();
       } catch (error) {
-        console.warn('[InstrumentV2] Failed to close worklet port during dispose', error);
+        console.warn(
+          '[InstrumentV2] Failed to close worklet port during dispose',
+          error,
+        );
       }
       this.workletNode = null;
     }

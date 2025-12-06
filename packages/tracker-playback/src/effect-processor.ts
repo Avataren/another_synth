@@ -21,6 +21,10 @@ function synthFrequencyFromPeriod(period: number): number {
   return AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
 }
 
+function periodFromFrequency(freq: number): number {
+  return clampProtrackerPeriod(AMIGA_CLOCK / (2 * freq * PAULA_TO_SYNTH_SCALE));
+}
+
 function protrackerArpPeriod(basePeriod: number, semitoneOffset: number): number {
   // Higher pitch -> smaller period.
   const shifted = basePeriod / Math.pow(2, semitoneOffset / 12);
@@ -81,6 +85,9 @@ export interface TrackEffectState {
   currentFrequency: number;
   targetMidi: number;
   targetFrequency: number;
+  targetPeriod?: number | undefined;
+  lastTonePortaTargetFreq?: number | undefined;
+  lastTonePortaTargetPeriod?: number | undefined;
   currentVolume: number; // 0-1
   currentPan: number; // -1 to 1
 
@@ -159,6 +166,9 @@ export function createTrackEffectState(): TrackEffectState {
     currentFrequency: 261.63,
     targetMidi: 60,
     targetFrequency: 261.63,
+    targetPeriod: undefined,
+    lastTonePortaTargetFreq: undefined,
+    lastTonePortaTargetPeriod: undefined,
     currentVolume: 1.0,
     currentPan: 0,
 
@@ -232,27 +242,48 @@ function applyTonePortaStep(state: TrackEffectState): number {
     return state.currentFrequency;
   }
 
-  const ratio = Math.pow(2, state.tonePortaSpeed / (12 * 16));
-  let nextFrequency = state.currentFrequency;
-  if (state.currentFrequency < state.targetFrequency) {
-    nextFrequency *= ratio;
-    if (nextFrequency >= state.targetFrequency) {
-      nextFrequency = state.targetFrequency;
+  if (
+    state.currentPeriod === undefined &&
+    state.targetPeriod !== undefined
+  ) {
+    state.currentPeriod = periodFromFrequency(state.currentFrequency);
+  }
+
+  if (
+    state.currentPeriod !== undefined &&
+    state.targetPeriod !== undefined
+  ) {
+    let nextPeriod = state.currentPeriod;
+    if (state.currentPeriod > state.targetPeriod) {
+      nextPeriod = Math.max(state.targetPeriod, state.currentPeriod - state.tonePortaSpeed);
+    } else if (state.currentPeriod < state.targetPeriod) {
+      nextPeriod = Math.min(state.targetPeriod, state.currentPeriod + state.tonePortaSpeed);
     }
-  } else if (state.currentFrequency > state.targetFrequency) {
-    nextFrequency /= ratio;
-    if (nextFrequency <= state.targetFrequency) {
-      nextFrequency = state.targetFrequency;
+    updatePitchFromPeriod(state, nextPeriod);
+  } else {
+    const ratio = Math.pow(2, state.tonePortaSpeed / (12 * 16));
+    let nextFrequency = state.currentFrequency;
+    if (state.currentFrequency < state.targetFrequency) {
+      nextFrequency *= ratio;
+      if (nextFrequency >= state.targetFrequency) {
+        nextFrequency = state.targetFrequency;
+      }
+    } else if (state.currentFrequency > state.targetFrequency) {
+      nextFrequency /= ratio;
+      if (nextFrequency <= state.targetFrequency) {
+        nextFrequency = state.targetFrequency;
+      }
     }
+    updatePitchFromFrequency(state, nextFrequency);
   }
 
   // When glissando control is enabled (E3x), snap to semitone grid.
   if (state.glissandoEnabled) {
-    const snappedMidi = Math.round(frequencyToMidi(nextFrequency));
-    nextFrequency = midiToFrequency(snappedMidi);
+    const snappedMidi = Math.round(frequencyToMidi(state.currentFrequency));
+    const snappedFrequency = midiToFrequency(snappedMidi);
+    updatePitchFromFrequency(state, snappedFrequency);
   }
 
-  updatePitchFromFrequency(state, nextFrequency);
   return state.currentFrequency;
 }
 
@@ -429,6 +460,7 @@ export function processEffectTick0(
     state.currentFrequency = midiToFrequency(carry.midi);
     state.targetMidi = carry.midi;
     state.targetFrequency = state.currentFrequency;
+    state.targetPeriod = undefined;
     state.currentVolume = carry.velocity / 255;
     pushNoteOn(carry.midi, 127);
     pushPitch(state.currentFrequency);
@@ -441,7 +473,18 @@ export function processEffectTick0(
     // For tone portamento, new note sets target, not current
     if (effect?.type === 'tonePorta' || effect?.type === 'tonePortaVol') {
       state.targetMidi = newNote;
-      state.targetFrequency = midiToFrequency(newNote);
+      const targetFreq = noteFrequency ?? midiToFrequency(newNote);
+      state.targetFrequency = targetFreq;
+      // Only use ProTracker-style periods when we have period context
+      // (MOD imports provide noteFrequency/currentPeriod). Otherwise keep
+      // frequency-based slides for normal tracker notes.
+      if (noteFrequency !== undefined || state.currentPeriod !== undefined) {
+        state.targetPeriod = periodFromFrequency(targetFreq);
+      } else {
+        state.targetPeriod = undefined;
+      }
+      state.lastTonePortaTargetFreq = state.targetFrequency;
+      state.lastTonePortaTargetPeriod = state.targetPeriod;
     } else {
       if (noteFrequency !== undefined) {
         const rawPeriod = AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
@@ -452,6 +495,7 @@ export function processEffectTick0(
       }
       state.targetMidi = newNote;
       state.targetFrequency = state.currentFrequency;
+      state.targetPeriod = state.currentPeriod;
 
       // Trigger note immediately unless delayed or a tone portamento continuation
       if (!hasNoteDelay) {
@@ -480,6 +524,13 @@ export function processEffectTick0(
 
     case 'tonePorta':
       state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
+      // Always restore remembered target so 3xx rows without notes keep sliding.
+      if (state.lastTonePortaTargetFreq !== undefined) {
+        state.targetFrequency = state.lastTonePortaTargetFreq;
+      }
+      if (state.lastTonePortaTargetPeriod !== undefined) {
+        state.targetPeriod = state.lastTonePortaTargetPeriod;
+      }
       // Apply an initial slide on tick 0 so we don't stop one step short.
       pushPitch(applyTonePortaStep(state));
       break;
@@ -493,6 +544,12 @@ export function processEffectTick0(
     case 'tonePortaVol':
       // Tone porta continues, volume slide applies
       state.tonePortaSpeed = resolveTonePortaSpeed(state, effect.paramX, effect.paramY);
+      if (state.lastTonePortaTargetFreq !== undefined) {
+        state.targetFrequency = state.lastTonePortaTargetFreq;
+      }
+      if (state.lastTonePortaTargetPeriod !== undefined) {
+        state.targetPeriod = state.lastTonePortaTargetPeriod;
+      }
       primeVolumeSlide(state, effect);
       if (state.volumeSlide.mode === 'normal' && state.volumeSlide.delta !== 0) {
         pushVolume(state.currentVolume);
@@ -553,6 +610,7 @@ export function processEffectTick0(
         const ratio = Math.pow(2, semitones / 12);
         state.targetFrequency *= ratio;
         state.targetMidi = frequencyToMidi(state.targetFrequency);
+        state.targetPeriod = periodFromFrequency(state.targetFrequency);
         updatePitchFromFrequency(state, state.currentFrequency * ratio);
         pushPitch(state.currentFrequency);
       }
@@ -717,6 +775,9 @@ export function processEffectTickN(
     });
     state.currentMidi = delayed.midi;
     state.currentFrequency = midiToFrequency(delayed.midi);
+    state.targetMidi = delayed.midi;
+    state.targetFrequency = state.currentFrequency;
+    state.targetPeriod = undefined;
     state.currentVolume = delayed.velocity / 255;
     state.delayedNote = undefined;
     state.noteDelayTick = -1;

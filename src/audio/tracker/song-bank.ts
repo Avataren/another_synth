@@ -46,7 +46,7 @@ import {
   frequencyFromDetune,
 } from 'src/audio/utils/sampler-detune';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
-import { useUserSettingsStore } from 'src/stores/user-settings-store';
+//import { useUserSettingsStore } from 'src/stores/user-settings-store';
 
 export interface SongBankSlot {
   instrumentId: string;
@@ -119,9 +119,11 @@ export class TrackerSongBank {
     if (this.useWorkletPooling) {
       this.workletPool = new WorkletPool(
         this.audioSystem.audioContext,
-        this.masterGain
+        this.masterGain,
       );
-      console.log('[SongBank] WorkletPool initialized for efficient resource usage');
+      console.log(
+        '[SongBank] WorkletPool initialized for efficient resource usage',
+      );
     }
 
     // If the AudioContext resumes after we deferred a sync, rebuild instruments
@@ -160,7 +162,9 @@ export class TrackerSongBank {
   }
 
   /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
-  getInstrument(instrumentId: string): InstrumentV2 | ModInstrument | PooledInstrument | null {
+  getInstrument(
+    instrumentId: string,
+  ): InstrumentV2 | ModInstrument | PooledInstrument | null {
     const active = this.instruments.get(instrumentId);
     return active?.instrument ?? null;
   }
@@ -270,11 +274,15 @@ export class TrackerSongBank {
       // with too many concurrent AudioWorklet/WASM initializations
       const BATCH_SIZE = 8; // Load 8 instruments at a time
       const entries = Array.from(nextDesired.entries());
-      console.log(`[SongBank] Loading ${entries.length} instruments in batches of ${BATCH_SIZE}`);
+      console.log(
+        `[SongBank] Loading ${entries.length} instruments in batches of ${BATCH_SIZE}`,
+      );
 
       for (let i = 0; i < entries.length; i += BATCH_SIZE) {
         const batch = entries.slice(i, i + BATCH_SIZE);
-        console.log(`[SongBank] Loading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(entries.length / BATCH_SIZE)}: instruments ${batch.map(([id]) => id).join(', ')}`);
+        console.log(
+          `[SongBank] Loading batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(entries.length / BATCH_SIZE)}: instruments ${batch.map(([id]) => id).join(', ')}`,
+        );
 
         const ensureTasks: Promise<void>[] = [];
         for (const [instrumentId, patch] of batch) {
@@ -288,7 +296,7 @@ export class TrackerSongBank {
 
         // Small delay between batches to let the browser breathe
         if (i + BATCH_SIZE < entries.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -306,23 +314,33 @@ export class TrackerSongBank {
       for (const [id, active] of this.instruments.entries()) {
         const hasOutput = active.instrument.outputNode.numberOfOutputs > 0;
         if (!hasOutput) {
-          console.error(`[SongBank] ⚠️ Instrument ${id} is NOT connected to output!`);
+          console.error(
+            `[SongBank] ⚠️ Instrument ${id} is NOT connected to output!`,
+          );
           disconnectedCount++;
         }
       }
 
       if (disconnectedCount > 0) {
-        console.error(`[SongBank] ❌ ${disconnectedCount} instruments failed to connect!`);
+        console.error(
+          `[SongBank] ❌ ${disconnectedCount} instruments failed to connect!`,
+        );
       } else if (loadedCount === expectedCount && loadedCount > 0) {
-        console.log(`[SongBank] ✅ All ${loadedCount} instruments loaded and connected`);
+        console.log(
+          `[SongBank] ✅ All ${loadedCount} instruments loaded and connected`,
+        );
       } else if (loadedCount < expectedCount) {
-        console.warn(`[SongBank] ⚠️ Only ${loadedCount}/${expectedCount} instruments loaded`);
+        console.warn(
+          `[SongBank] ⚠️ Only ${loadedCount}/${expectedCount} instruments loaded`,
+        );
       }
 
       // Verify master gain is still connected to destination
       const masterConnected = this.masterGain.numberOfOutputs > 0;
       if (!masterConnected) {
-        console.error('[SongBank] ❌ CRITICAL: Master gain disconnected from output! Reconnecting...');
+        console.error(
+          '[SongBank] ❌ CRITICAL: Master gain disconnected from output! Reconnecting...',
+        );
         this.masterGain.connect(this.audioSystem.destinationNode);
       } else {
         console.log('[SongBank] ✅ Master gain connected to destination');
@@ -438,7 +456,16 @@ export class TrackerSongBank {
       byTrack = new Map();
       this.lastTrackVoice.set(instrumentId, byTrack);
     }
-    console.log('[SongBank] setLastVoiceForTrack: inst', instrumentId, 'track', trackIndex, '(key:', trackKey, ') → voice', voiceIndex);
+    console.log(
+      '[SongBank] setLastVoiceForTrack: inst',
+      instrumentId,
+      'track',
+      trackIndex,
+      '(key:',
+      trackKey,
+      ') → voice',
+      voiceIndex,
+    );
     byTrack.set(trackKey, voiceIndex);
     // Also record a global last voice for this instrument (trackKey = -1) so
     // effect-driven pitch updates without a track index can target the most
@@ -453,7 +480,12 @@ export class TrackerSongBank {
     const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
     const byTrack = this.lastTrackVoice.get(instrumentId);
     const voice = byTrack?.get(trackKey);
-    console.log('[SongBank] peekLastVoiceForTrack: track', trackIndex, '← voice', voice);
+    console.log(
+      '[SongBank] peekLastVoiceForTrack: track',
+      trackIndex,
+      '← voice',
+      voice,
+    );
     return voice;
   }
 
@@ -464,7 +496,12 @@ export class TrackerSongBank {
     const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
     const byTrack = this.lastTrackVoice.get(instrumentId);
     const voice = byTrack?.get(trackKey);
-    console.log('[SongBank] takeLastVoiceForTrack: track', trackIndex, '← voice', voice);
+    console.log(
+      '[SongBank] takeLastVoiceForTrack: track',
+      trackIndex,
+      '← voice',
+      voice,
+    );
     if (voice !== undefined) {
       byTrack?.delete(trackKey);
     }
@@ -635,11 +672,11 @@ export class TrackerSongBank {
       }
 
       // Warning: If gate-off can't happen before the new note due to late scheduling
-      if (gateTime > time - (gateLead * 0.5)) {
+      if (gateTime > time - gateLead * 0.5) {
         console.warn(
           `[SongBank] Gate-off timing compromised for track ${trackIndex ?? -1}: ` +
-          `gate=${gateTime.toFixed(3)}s, note=${time.toFixed(3)}s, ` +
-          `lead=${(time - gateTime).toFixed(3)}s (wanted ${gateLead.toFixed(3)}s)`
+            `gate=${gateTime.toFixed(3)}s, note=${time.toFixed(3)}s, ` +
+            `lead=${(time - gateTime).toFixed(3)}s (wanted ${gateLead.toFixed(3)}s)`,
         );
       }
 
@@ -694,7 +731,9 @@ export class TrackerSongBank {
   }
 
   /** Return a small lead time (seconds) to drop the gate before retriggering. */
-  private getGateLeadTime(instrument: InstrumentV2 | ModInstrument | PooledInstrument): number {
+  private getGateLeadTime(
+    instrument: InstrumentV2 | ModInstrument | PooledInstrument,
+  ): number {
     // Ensure at least one quantum of gate-low so the automation frame sees the edge.
     // Fallback to ~5ms if we don't know the block size.
     const quantum = instrument.getQuantumDurationSeconds();
@@ -1074,11 +1113,14 @@ export class TrackerSongBank {
     }
 
     // Avoid pushing the note later than requested; only clamp if we're already in the past.
-    const scheduledTime =
-      time < now ? now + MIN_SCHEDULE_LEAD_SECONDS : time;
+    const scheduledTime = time < now ? now + MIN_SCHEDULE_LEAD_SECONDS : time;
     // First, clear any lingering voices on this track from other instruments,
     // then gate off the previous voice for this instrument/track.
-    this.gateOffOtherInstrumentsForTrack(instrumentId, trackIndex, scheduledTime);
+    this.gateOffOtherInstrumentsForTrack(
+      instrumentId,
+      trackIndex,
+      scheduledTime,
+    );
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
     const voiceIndex = active.instrument.noteOnAtTime(
       midi,
@@ -1093,11 +1135,23 @@ export class TrackerSongBank {
 
     // Verify parameter presence for debugging
     if (voiceIndex !== undefined && worklet) {
-      const gateParam = worklet.parameters.get(`gate_${voiceIndex}`);
-      const freqParam = worklet.parameters.get(`frequency_${voiceIndex}`);
+      const instrumentWithParamName = active.instrument as unknown as {
+        getParamName?: (paramType: string, voiceIndex: number) => string;
+      };
+      const getParamName = instrumentWithParamName?.getParamName;
+      const gateName =
+        typeof getParamName === 'function'
+          ? getParamName.call(active.instrument, 'gate', voiceIndex)
+          : `gate_${voiceIndex}`;
+      const freqName =
+        typeof getParamName === 'function'
+          ? getParamName.call(active.instrument, 'frequency', voiceIndex)
+          : `frequency_${voiceIndex}`;
+      const gateParam = worklet.parameters.get(gateName);
+      const freqParam = worklet.parameters.get(freqName);
       if (!gateParam || !freqParam) {
         console.warn(
-          `[SongBank] noteOnAtTime: instrument ${instrumentId} voice ${voiceIndex} missing params! gate=${!!gateParam}, freq=${!!freqParam}`,
+          `[SongBank] noteOnAtTime: instrument ${instrumentId} voice ${voiceIndex} missing params! gate=${!!gateParam} (${gateName}), freq=${!!freqParam} (${freqName})`,
         );
       }
     }
@@ -1108,7 +1162,14 @@ export class TrackerSongBank {
       // Track the voice for this track (for mute/solo)
       this.addVoiceToTrack(instrumentId, trackIndex, voiceIndex);
     } else {
-      console.warn('[SongBank] noteOnAtTime: voice allocation failed for instrument', instrumentId, 'track', trackIndex, 'midi', midi);
+      console.warn(
+        '[SongBank] noteOnAtTime: voice allocation failed for instrument',
+        instrumentId,
+        'track',
+        trackIndex,
+        'midi',
+        midi,
+      );
     }
   }
 
@@ -1173,7 +1234,9 @@ export class TrackerSongBank {
     if (resolvedVoice < 0) {
       const byTrack = this.lastTrackVoice.get(instrumentId);
       if (byTrack) {
-        const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+        const trackKey = Number.isFinite(trackIndex)
+          ? (trackIndex as number)
+          : -1;
         const trackVoice = byTrack.get(trackKey);
         if (trackVoice !== undefined) {
           resolvedVoice = trackVoice;
@@ -1189,8 +1252,14 @@ export class TrackerSongBank {
       }
     }
     // Ignore invalid voice indices (tracker effects may emit -1 when no voice is assigned yet).
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
-    active.instrument.setVoiceFrequencyAtTime(resolvedVoice, frequency, time, rampMode);
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
+      return;
+    active.instrument.setVoiceFrequencyAtTime(
+      resolvedVoice,
+      frequency,
+      time,
+      rampMode,
+    );
   }
 
   /**
@@ -1211,7 +1280,9 @@ export class TrackerSongBank {
     let resolvedVoice = voiceIndex;
     if (resolvedVoice < 0) {
       const byTrack = this.lastTrackVoice.get(instrumentId);
-      const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+      const trackKey = Number.isFinite(trackIndex)
+        ? (trackIndex as number)
+        : -1;
       if (byTrack) {
         const trackVoice = byTrack.get(trackKey);
         if (trackVoice !== undefined) {
@@ -1229,7 +1300,8 @@ export class TrackerSongBank {
       }
     }
     // Ignore invalid voice indices to avoid affecting all voices inadvertently.
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
+      return;
     active.instrument.setVoiceGainAtTime(resolvedVoice, volume, time, rampMode);
   }
 
@@ -1251,7 +1323,9 @@ export class TrackerSongBank {
     if (resolvedVoice < 0) {
       const byTrack = this.lastTrackVoice.get(instrumentId);
       if (byTrack) {
-        const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+        const trackKey = Number.isFinite(trackIndex)
+          ? (trackIndex as number)
+          : -1;
         const trackVoice = byTrack.get(trackKey);
         if (trackVoice !== undefined) {
           resolvedVoice = trackVoice;
@@ -1266,7 +1340,8 @@ export class TrackerSongBank {
         resolvedVoice = 0; // fallback to first voice so offset commands don’t get dropped
       }
     }
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit()) return;
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
+      return;
     // Macro index 1 is reserved for sample offset in MOD-imported sampler patches.
     active.instrument.setVoiceMacroAtTime(resolvedVoice, 1, offset, time);
   }
@@ -1455,23 +1530,34 @@ export class TrackerSongBank {
     console.log(`[SongBank] Creating new instrument: ${instrumentId}`);
 
     // Check if this is a MOD instrument and user has simplified MOD instruments enabled
-    const userSettings = useUserSettingsStore();
+    // const userSettings = useUserSettingsStore();
     const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
-    const useSimplified = userSettings.settings.useSimplifiedModInstruments;
+    // Temporarily disable the simplified ModInstrument path: it doesn't support
+    // per-voice pitch automation (e.g. 3xx tone portamento), so tracker slides
+    // get stuck. Always route MOD patches through the worklet-backed instruments.
+    const useSimplified = false;
 
     // DETAILED DEBUGGING
     console.log('[SongBank] === INSTRUMENT CREATION DEBUG ===');
     console.log(`[SongBank]   instrumentId: ${instrumentId}`);
-    console.log(`[SongBank]   instrumentType: ${normalizedPatch.metadata.instrumentType}`);
+    console.log(
+      `[SongBank]   instrumentType: ${normalizedPatch.metadata.instrumentType}`,
+    );
     console.log(`[SongBank]   isModInstrument: ${isModInstrument}`);
     console.log(`[SongBank]   useSimplified: ${useSimplified}`);
     console.log(`[SongBank]   useWorkletPooling: ${this.useWorkletPooling}`);
-    console.log(`[SongBank]   workletPool exists: ${this.workletPool !== null}`);
-    console.log(`[SongBank]   Decision: ${
-      isModInstrument && useSimplified ? 'ModInstrument' :
-      this.useWorkletPooling && isModInstrument && this.workletPool ? 'PooledInstrument' :
-      'InstrumentV2 (LEGACY - CREATES OWN WORKLET!)'
-    }`);
+    console.log(
+      `[SongBank]   workletPool exists: ${this.workletPool !== null}`,
+    );
+    console.log(
+      `[SongBank]   Decision: ${
+        isModInstrument && useSimplified
+          ? 'ModInstrument'
+          : this.useWorkletPooling && isModInstrument && this.workletPool
+            ? 'PooledInstrument'
+            : 'InstrumentV2 (LEGACY - CREATES OWN WORKLET!)'
+      }`,
+    );
 
     let instrument: InstrumentV2 | ModInstrument | PooledInstrument;
 
@@ -1489,19 +1575,20 @@ export class TrackerSongBank {
       );
     } else if (this.useWorkletPooling && this.workletPool) {
       // Option 2: Use PooledInstrument (shared worklet, efficient for tracker playback)
-      console.log(`[SongBank] Creating PooledInstrument for ${instrumentId} via WorkletPool`);
+      console.log(
+        `[SongBank] Creating PooledInstrument for ${instrumentId} via WorkletPool`,
+      );
 
       // Use the patch's requested voice count (clamped to per-engine limit)
-      const requestedVoices =
-        Math.max(
-          1,
-          Math.min(
+      const requestedVoices = Math.max(
+        1,
+        Math.min(
+          VOICES_PER_ENGINE,
+          normalizedPatch?.synthState?.layout?.voiceCount ??
+            normalizedPatch?.synthState?.layout?.voices?.length ??
             VOICES_PER_ENGINE,
-            normalizedPatch?.synthState?.layout?.voiceCount ??
-              normalizedPatch?.synthState?.layout?.voices?.length ??
-              VOICES_PER_ENGINE,
-          ),
-        );
+        ),
+      );
 
       const allocation = await this.workletPool.allocateVoices(
         instrumentId,
@@ -1509,7 +1596,7 @@ export class TrackerSongBank {
       );
 
       console.log(
-        `[SongBank] Allocated voices ${allocation.startVoice}-${allocation.endVoice - 1} on worklet ${allocation.workletIndex} for ${instrumentId}`
+        `[SongBank] Allocated voices ${allocation.startVoice}-${allocation.endVoice - 1} on worklet ${allocation.workletIndex} for ${instrumentId}`,
       );
 
       // Create pooled instrument with the allocation
@@ -1517,7 +1604,7 @@ export class TrackerSongBank {
         this.masterGain,
         this.audioSystem.audioContext,
         instrumentId,
-        allocation
+        allocation,
       );
 
       await instrument.loadPatch(normalizedPatch);
@@ -1528,7 +1615,7 @@ export class TrackerSongBank {
       // Log pool statistics
       const stats = this.workletPool.getStats();
       console.log(
-        `[SongBank] Pool stats: ${stats.workletCount} worklets, ${stats.allocatedVoices}/${stats.totalVoices} voices allocated`
+        `[SongBank] Pool stats: ${stats.workletCount} worklets, ${stats.allocatedVoices}/${stats.totalVoices} voices allocated`,
       );
 
       await this.restoreAudioAssets(
@@ -1608,7 +1695,9 @@ export class TrackerSongBank {
     await this.flushPendingScheduledEvents(instrumentId);
   }
 
-  private normalizeVoiceGain(instrument: InstrumentV2 | ModInstrument | PooledInstrument) {
+  private normalizeVoiceGain(
+    instrument: InstrumentV2 | ModInstrument | PooledInstrument,
+  ) {
     // Ensure voice gains aren't left at a previous automation value (e.g. 0)
     instrument.setGainForAllVoices(1);
   }
@@ -1674,7 +1763,10 @@ export class TrackerSongBank {
     }
   }
 
-  private applyMacrosFromPatch(instrument: InstrumentV2 | PooledInstrument, patch: Patch) {
+  private applyMacrosFromPatch(
+    instrument: InstrumentV2 | PooledInstrument,
+    patch: Patch,
+  ) {
     const macros = patch?.synthState?.macros;
     if (!macros) return;
 
@@ -2082,7 +2174,11 @@ export class TrackerSongBank {
 
     const isPooled = active.instrument instanceof PooledInstrument;
     const isModInstrument = active.instrument instanceof ModInstrument;
-    const instrumentType = isPooled ? 'PooledInstrument' : (isModInstrument ? 'ModInstrument' : 'InstrumentV2');
+    const instrumentType = isPooled
+      ? 'PooledInstrument'
+      : isModInstrument
+        ? 'ModInstrument'
+        : 'InstrumentV2';
     console.log(
       `[SongBank] Tearing down instrument ${instrumentId}, type: ${instrumentType}`,
     );
@@ -2124,7 +2220,9 @@ export class TrackerSongBank {
     // Reset pool allocations but keep worklets alive for reuse
     if (this.workletPool) {
       this.workletPool.resetAllocations();
-      console.log('[SongBank] WorkletPool allocations reset (worklets kept alive for reuse)');
+      console.log(
+        '[SongBank] WorkletPool allocations reset (worklets kept alive for reuse)',
+      );
     }
   }
 
@@ -2214,10 +2312,19 @@ export class TrackerSongBank {
 
       // Also push the updated patch into the live instrument so tracker playback
       // uses the same edits heard in the instrument editor (handles multi-engine worklet).
-      if ('loadPatch' in active.instrument && typeof active.instrument.loadPatch === 'function') {
-        void active.instrument.loadPatch(normalizedPatch).catch((err: unknown) => {
-          console.warn('[SongBank] Failed to apply updated patch to active instrument', instrumentId, err);
-        });
+      if (
+        'loadPatch' in active.instrument &&
+        typeof active.instrument.loadPatch === 'function'
+      ) {
+        void active.instrument
+          .loadPatch(normalizedPatch)
+          .catch((err: unknown) => {
+            console.warn(
+              '[SongBank] Failed to apply updated patch to active instrument',
+              instrumentId,
+              err,
+            );
+          });
       }
     }
   }

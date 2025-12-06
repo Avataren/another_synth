@@ -11,7 +11,6 @@ import {
   type PlaybackNoteHandler,
   type ScheduledNoteHandler,
   type ScheduledNoteEvent,
-  type Step,
   type Song,
   type TransportState,
   type ScheduledAutomationHandler,
@@ -95,6 +94,8 @@ export class PlaybackEngine {
 
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
+  /** Debug: last row we logged a pitch per track */
+  private pitchLogRow: Map<number, number> = new Map();
 
   /** Position/pattern commands to process (Bxx, Dxx) */
   private pendingPosCommand: { type: 'posJump' | 'patBreak'; value: number } | null = null;
@@ -205,9 +206,11 @@ export class PlaybackEngine {
       }
     }
 
-    // For each track index, walk through the song sequence and collect steps
+    // For each track index, walk forward and let 3xx rows inherit the most recent
+    // tone porta target (the last tonePorta/tonePortaVol row that specified a note).
     for (let trackIndex = 0; trackIndex < maxTracks; trackIndex += 1) {
-      const stepsInOrder: Step[] = [];
+      let lastTargetMidi: number | undefined;
+      let lastTargetFrequency: number | undefined;
 
       for (const patternId of song.sequence) {
         const pattern = patternsById.get(patternId);
@@ -215,45 +218,26 @@ export class PlaybackEngine {
         const track = pattern.tracks[trackIndex];
         if (!track || !track.steps || track.steps.length === 0) continue;
 
-        // Ensure steps are processed in row order within each pattern
+        // Process rows in order within the pattern
         const sortedSteps = [...track.steps].sort((a, b) => a.row - b.row);
         for (const step of sortedSteps) {
-          stepsInOrder.push(step);
-        }
-      }
+          if (step.isNoteOff) {
+            continue;
+          }
 
-      if (stepsInOrder.length === 0) continue;
+          const isTonePorta =
+            step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol';
 
-      let nextNoteMidi: number | undefined;
-      let nextNoteFrequency: number | undefined;
-
-      // Walk backwards so each 3xx without a note can see the next note-on ahead.
-      for (let i = stepsInOrder.length - 1; i >= 0; i -= 1) {
-        const step = stepsInOrder[i];
-        if (!step) continue;
-
-        // Stop propagation across explicit note-offs.
-        if (step.isNoteOff) {
-          nextNoteMidi = undefined;
-          nextNoteFrequency = undefined;
-          continue;
-        }
-
-        if (step.midi !== undefined) {
-          nextNoteMidi = step.midi;
-          nextNoteFrequency = step.frequency;
-          continue;
-        }
-
-        const isTonePorta =
-          step.effect?.type === 'tonePorta' || step.effect?.type === 'tonePortaVol';
-
-        // Do not overwrite tone portamento targets for rows without notes.
-        // Continuing 3xx rows should keep sliding toward the existing target/note.
-        if (isTonePorta && nextNoteMidi !== undefined && step.midi === undefined) {
-          step.midi = nextNoteMidi;
-          if (nextNoteFrequency !== undefined) {
-            step.frequency = nextNoteFrequency;
+          if (isTonePorta && step.midi !== undefined) {
+            // Tone porta with an explicit note: update the target.
+            lastTargetMidi = step.midi;
+            lastTargetFrequency = step.frequency;
+          } else if (isTonePorta && step.midi === undefined && lastTargetMidi !== undefined) {
+            // Tone porta continuation without a note: inherit the last target so we keep sliding.
+            step.midi = lastTargetMidi;
+            if (lastTargetFrequency !== undefined) {
+              step.frequency = lastTargetFrequency;
+            }
           }
         }
       }
@@ -619,6 +603,7 @@ export class PlaybackEngine {
    */
   private resetEffectStates(): void {
     this.trackEffectStates.clear();
+    this.pitchLogRow.clear();
     this.pendingPosCommand = null;
     this.patternLoopStart = 0;
     this.patternLoopCount = 0;
@@ -812,6 +797,20 @@ export class PlaybackEngine {
           step.pan
         );
 
+          // Debug the tone porta state for track 2 (third track) to investigate 3xx slides.
+          if (step.trackIndex === 2) {
+            const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
+            console.log(
+              `[PitchState] row=${row} track=${step.trackIndex} note=${newNote ?? '—'} ` +
+                `effect=${step.effect?.type ?? 'none'} speed=${effectState.tonePortaSpeed} ` +
+                `curr=${effectState.currentFrequency.toFixed(4)}Hz ` +
+                `target=${effectState.targetFrequency.toFixed(4)}Hz ` +
+                `period=${effectState.currentPeriod ?? '—'} ` +
+                `pitchCmd=${pitchCmd && 'frequency' in pitchCmd ? pitchCmd.frequency.toFixed(4) : 'none'} ` +
+                `voice=${effectState.voiceIndex}`,
+            );
+          }
+
         this.dispatchCommands(tick0Batch.commands, context);
 
         // Handle volume automation (Cxx or step velocity)
@@ -943,6 +942,19 @@ export class PlaybackEngine {
           break;
 
         case 'pitch':
+          // Debug: log the first pitch seen for this track on this row
+          {
+            // Debug log only for track index 2 (third track)
+            if (context.trackIndex === 2) {
+              const lastRow = this.pitchLogRow.get(context.trackIndex);
+              if (lastRow !== context.row) {
+                this.pitchLogRow.set(context.trackIndex, context.row);
+                console.log(
+                  `[PitchDebug] row=${context.row} track=${context.trackIndex} freq=${cmd.frequency.toFixed(2)}Hz`,
+                );
+              }
+            }
+          }
           if (!this.scheduledPitchHandler) break;
           this.scheduledPitchHandler(
             context.instrumentId,
@@ -1013,7 +1025,7 @@ export class PlaybackEngine {
    */
   private canUseAutomationRamp(type: string): boolean {
     const rampableEffects = [
-      'portaUp', 'portaDown', 'tonePorta', 'tonePortaVol', 'volSlide'
+      'portaUp', 'portaDown', 'volSlide'
     ];
     return rampableEffects.includes(type);
   }

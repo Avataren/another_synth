@@ -1508,6 +1508,10 @@ if (canReuse) {
 ### Tracker tone portamento landing fix (2025-05)
 
 - Tone portamento (3xx/5xx) now applies a slide on tick 0 via a shared helper so 300/500 rows don’t stop one step short; speed still reuses the last non-zero parameter. File: `packages/tracker-playback/src/effect-processor.ts`. If portamento seems to stop early again, check that tick 0 still runs a slide and that `tonePortaSpeed` memory is intact.
+- Tone portamento is now period-based like FT2/ProTracker: `TrackEffectState` tracks `targetPeriod` and `applyTonePortaStep` moves `currentPeriod` toward it using the raw 3xx speed, snapping to semitone grid when E3x is enabled. The helper backfills `currentPeriod` from `currentFrequency` when needed so slides work even for equal-temperament notes. File: `packages/tracker-playback/src/effect-processor.ts`.
+- Tone porta now only enters “period mode” when MOD/period data is present (noteFrequency or an existing currentPeriod). Normal tracker notes keep the old frequency-based slide so high notes above the ProTracker range no longer clamp back to the source pitch. Files: `packages/tracker-playback/src/effect-processor.ts`.
+- Tone portamento no longer uses the automation ramp fast-path; we now schedule per-tick pitch commands for 3xx/5xy so the target can’t be lost to a misaligned ramp. File: `packages/tracker-playback/src/engine.ts` (`canUseAutomationRamp` drops tonePorta/tonePortaVol).
+- Simplified `ModInstrument` (native Web Audio) must not be used for tracker playback right now: it lacks per-voice pitch automation (`setVoicePitchAtTime`), so 3xx/5xx slides collapse after the first tick. SongBank now forces MOD patches through worklet-backed instruments (InstrumentV2/PooledInstrument) even if `useSimplifiedModInstruments` is enabled.
 
 ### Tracker sequence selection start index (2025-05)
 
