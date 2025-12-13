@@ -139,11 +139,6 @@ export default class ModInstrument {
       return;
     }
 
-    // Allocate a voice (round-robin for now)
-    const voiceIndex = this.voiceRoundRobinIndex;
-    this.voiceRoundRobinIndex =
-      (this.voiceRoundRobinIndex + 1) % this.num_voices;
-
     // Stop existing voice if playing (unless allowDuplicate is true)
     if (!options?.allowDuplicate) {
       // Check if this note is already playing on another voice
@@ -152,6 +147,38 @@ export default class ModInstrument {
           this.noteOff(noteNumber, vIdx);
           break;
         }
+      }
+    }
+
+    // Allocate a voice: prefer free voices, then use round-robin for voice stealing
+    let voiceIndex = -1;
+
+    // First, try to find a free voice
+    for (let i = 0; i < this.num_voices; i++) {
+      if (!this.activeVoices.has(i)) {
+        voiceIndex = i;
+        break;
+      }
+    }
+
+    // If no free voice, use round-robin to steal one
+    if (voiceIndex === -1) {
+      voiceIndex = this.voiceRoundRobinIndex;
+      this.voiceRoundRobinIndex =
+        (this.voiceRoundRobinIndex + 1) % this.num_voices;
+
+      // Stop the old voice on this voice slot before reusing it
+      const oldVoice = this.activeVoices.get(voiceIndex);
+      if (oldVoice) {
+        try {
+          oldVoice.source.stop();
+        } catch {
+          // Source may have already stopped naturally
+        }
+        oldVoice.source.disconnect();
+        oldVoice.gainNode.disconnect();
+        oldVoice.panNode.disconnect();
+        this.activeVoices.delete(voiceIndex);
       }
     }
 
@@ -209,6 +236,16 @@ export default class ModInstrument {
       frequency: frequency ?? 440,
       targetGain: noteGain, // Track scheduled gain
     });
+
+    // Clean up activeVoices when the sample finishes playing naturally
+    // BUT: Only for non-looped samples! Looped samples never end, so onended never fires
+    if (!source.loop) {
+      source.onended = () => {
+        if (this.activeVoices.get(voiceIndex)?.source === source) {
+          this.activeVoices.delete(voiceIndex);
+        }
+      };
+    }
   }
 
   noteOff(noteNumber: number, voiceIndex?: number): void {
@@ -492,11 +529,6 @@ export default class ModInstrument {
       return undefined;
     }
 
-    // Allocate a voice (round-robin)
-    const voiceIndex = this.voiceRoundRobinIndex;
-    this.voiceRoundRobinIndex =
-      (this.voiceRoundRobinIndex + 1) % this.num_voices;
-
     // Stop existing voice with same note number if playing (unless allowDuplicate is true)
     if (!options?.allowDuplicate) {
       for (const [vIdx, voice] of this.activeVoices.entries()) {
@@ -504,6 +536,38 @@ export default class ModInstrument {
           this.noteOff(noteNumber, vIdx);
           break;
         }
+      }
+    }
+
+    // Allocate a voice: prefer free voices, then use round-robin for voice stealing
+    let voiceIndex = -1;
+
+    // First, try to find a free voice
+    for (let i = 0; i < this.num_voices; i++) {
+      if (!this.activeVoices.has(i)) {
+        voiceIndex = i;
+        break;
+      }
+    }
+
+    // If no free voice, use round-robin to steal one
+    if (voiceIndex === -1) {
+      voiceIndex = this.voiceRoundRobinIndex;
+      this.voiceRoundRobinIndex =
+        (this.voiceRoundRobinIndex + 1) % this.num_voices;
+
+      // Stop the old voice on this voice slot before reusing it
+      const oldVoice = this.activeVoices.get(voiceIndex);
+      if (oldVoice) {
+        try {
+          oldVoice.source.stop();
+        } catch {
+          // Source may have already stopped naturally
+        }
+        oldVoice.source.disconnect();
+        oldVoice.gainNode.disconnect();
+        oldVoice.panNode.disconnect();
+        this.activeVoices.delete(voiceIndex);
       }
     }
 
@@ -567,6 +631,19 @@ export default class ModInstrument {
       targetGain: noteGain, // Track scheduled gain
     });
 
+    // Clean up activeVoices when the sample finishes playing naturally
+    // BUT: Only for non-looped samples! Looped samples never end, so onended never fires
+    if (!source.loop) {
+      source.onended = () => {
+        if (this.activeVoices.get(voiceIndex)?.source === source) {
+          this.activeVoices.delete(voiceIndex);
+          console.warn(`[ModInstrument] Voice ${voiceIndex} auto-freed (one-shot ended), activeVoices now=${this.activeVoices.size}`);
+        }
+      };
+    }
+
+    console.warn(`[ModInstrument] noteOnAtTime allocated voice ${voiceIndex} for note ${noteNumber}, loop=${source.loop}, activeVoices=${this.activeVoices.size}`);
+
     return voiceIndex;
   }
 
@@ -596,7 +673,11 @@ export default class ModInstrument {
     const stopTime = scheduledTime + releaseTime;
     voice.source.stop(stopTime);
 
-    // Disconnect nodes and remove from tracking after the release completes
+    // IMMEDIATELY remove from activeVoices to free the voice slot for reuse
+    // This is critical for voice allocation to work correctly
+    this.activeVoices.delete(voiceIndex);
+
+    // Disconnect nodes after the release completes
     const disconnectDelay = Math.max(0, (stopTime - now) * 1000 + 10);
     setTimeout(() => {
       try {
@@ -605,11 +686,6 @@ export default class ModInstrument {
         voice.panNode.disconnect();
       } catch (e) {
         // Nodes may already be disconnected, ignore
-      }
-      // Only delete from activeVoices if this specific voice is still there
-      // (it might have been replaced by a new voice at the same index)
-      if (this.activeVoices.get(voiceIndex) === voice) {
-        this.activeVoices.delete(voiceIndex);
       }
     }, disconnectDelay);
   }

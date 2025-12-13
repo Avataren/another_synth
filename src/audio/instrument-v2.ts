@@ -373,7 +373,12 @@ export default class InstrumentV2 {
     if (!this.workletNode) {
       return;
     }
-    if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.warn(
+        `[setVoiceMacroAtTime] Voice index ${voiceIndex} out of bounds (limit: ${this.voiceLimit})`,
+      );
+      return;
+    }
 
     const clampedValue = Math.min(1, Math.max(0, value));
     const when =
@@ -1116,6 +1121,14 @@ export default class InstrumentV2 {
       time,
     );
 
+    // Safety check: allocateVoice should never return out of bounds, but verify
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.error(
+        `[noteOn] CRITICAL: allocateVoice returned out-of-bounds voice ${voiceIndex} (limit: ${this.voiceLimit})`,
+      );
+      return;
+    }
+
     this.markVoiceActive(noteNumber, voiceIndex, time);
 
     const frequency = this.midiNoteToFrequency(noteNumber);
@@ -1140,11 +1153,12 @@ export default class InstrumentV2 {
           this.quantumFrames / this.audioContext.sampleRate,
         );
         // Force envelope retrigger by creating a brief gate off-on pulse
+        // Use setValueAtTime instead of .value to ensure timing precision
         gateParam.setValueAtTime(0, now);
         gateParam.setValueAtTime(1, now + gatePulseDuration);
       } else {
         // Monophonic/legato: keep gate high to avoid killing the stolen note
-        gateParam.value = 1;
+        gateParam.setValueAtTime(1, now);
       }
     }
 
@@ -1198,7 +1212,7 @@ export default class InstrumentV2 {
     noteNumber: number,
     velocity: number,
     time: number,
-    options?: { allowDuplicate?: boolean; frequency?: number },
+    options?: { allowDuplicate?: boolean; frequency?: number; pan?: number },
   ): number | undefined {
     const allowDuplicate = options?.allowDuplicate ?? false;
     const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(
@@ -1206,6 +1220,14 @@ export default class InstrumentV2 {
       allowDuplicate,
       time,
     );
+
+    // Safety check: allocateVoice should never return out of bounds, but verify
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.error(
+        `[noteOnAtTime] CRITICAL: allocateVoice returned out-of-bounds voice ${voiceIndex} (limit: ${this.voiceLimit})`,
+      );
+      return undefined;
+    }
 
     this.markVoiceActive(noteNumber, voiceIndex, time);
 
@@ -1296,6 +1318,12 @@ export default class InstrumentV2 {
   }
 
   public gateOffVoiceAtTime(voiceIndex: number, time: number): void {
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.warn(
+        `[gateOffVoiceAtTime] Voice index ${voiceIndex} out of bounds (limit: ${this.voiceLimit})`,
+      );
+      return;
+    }
     this.releaseVoice(voiceIndex, time);
     if (!this.workletNode) return;
     const gateParam = this.workletNode.parameters.get(
@@ -1395,6 +1423,12 @@ export default class InstrumentV2 {
     time: number,
     rampMode?: 'linear' | 'exponential',
   ): void {
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.warn(
+        `[setVoiceFrequencyAtTime] Voice index ${voiceIndex} out of bounds (limit: ${this.voiceLimit})`,
+      );
+      return;
+    }
     if (!this.workletNode) return;
 
     const applyToParam = (param: AudioParam) => {
@@ -1445,6 +1479,12 @@ export default class InstrumentV2 {
     time: number,
     rampMode?: 'linear' | 'exponential',
   ): void {
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.warn(
+        `[setVoiceGainAtTime] Voice index ${voiceIndex} out of bounds (limit: ${this.voiceLimit})`,
+      );
+      return;
+    }
     if (!this.workletNode) return;
     const clamped = Math.max(0, Math.min(1, gain));
 
@@ -1548,7 +1588,12 @@ export default class InstrumentV2 {
     voiceIndex: number,
     audioTime: number,
   ): void {
-    if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return;
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.warn(
+        `[markVoiceActive] Voice index ${voiceIndex} out of bounds (limit: ${this.voiceLimit})`,
+      );
+      return;
+    }
 
     let voices = this.activeNotes.get(noteNumber);
     if (!voices) {
@@ -1563,7 +1608,12 @@ export default class InstrumentV2 {
   }
 
   private releaseVoice(voiceIndex: number, audioTime?: number): number | null {
-    if (voiceIndex < 0 || voiceIndex >= this.voiceToNote.length) return null;
+    if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
+      console.warn(
+        `[releaseVoice] Voice index ${voiceIndex} out of bounds (limit: ${this.voiceLimit})`,
+      );
+      return null;
+    }
 
     const noteNumber = this.voiceToNote[voiceIndex];
     console.log(
@@ -1659,31 +1709,14 @@ export default class InstrumentV2 {
     allowDuplicate: boolean,
     scheduledTime: number,
   ): { voiceIndex: number; stolenNote: number | null; isRetrigger: boolean } {
-    console.log(
-      '[allocateVoice] Allocating for note',
-      noteNumber +
-        ', allowDup=' +
-        allowDuplicate +
-        ', time=' +
-        scheduledTime.toFixed(3) +
-        's',
-    );
-
     const existingVoices = this.activeNotes.get(noteNumber);
     if (!allowDuplicate && existingVoices && existingVoices.size > 0) {
       const voiceIndex = existingVoices.values().next().value as number;
-      console.log(
-        '[allocateVoice] Retriggering existing voice',
-        voiceIndex,
-        'for note',
-        noteNumber,
-      );
       return { voiceIndex, stolenNote: null, isRetrigger: true };
     }
 
     const freeVoice = this.findNextFreeVoice(scheduledTime);
     if (freeVoice !== null) {
-      console.log('[allocateVoice] Using free voice', freeVoice);
       return {
         voiceIndex: freeVoice,
         stolenNote: null,
@@ -1692,7 +1725,6 @@ export default class InstrumentV2 {
     }
 
     // No free voices - must steal one
-    console.log('[allocateVoice] No free voices - need to steal');
     // Strategy: Prefer voices in release over active voices
     const maxReleaseTimeSec = this.maxReleaseTimeMs / 1000;
     let oldestVoice = 0;
@@ -1798,9 +1830,8 @@ export default class InstrumentV2 {
       oldestVoice = 0;
     }
 
-    console.log(
-      '[allocateVoice] Stealing voice',
-      oldestVoice + ', voiceToNote=' + this.voiceToNote[oldestVoice],
+    console.warn(
+      `[allocateVoice] STEALING voice ${oldestVoice}, was playing note ${this.voiceToNote[oldestVoice]}, foundVoice=${foundVoice}`,
     );
     const stolenNote = this.releaseVoice(oldestVoice, scheduledTime);
 
