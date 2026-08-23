@@ -261,8 +261,11 @@ let envThemeObserver: MutationObserver | null = null;
 
 function updateEnvThemeColors() {
   const style = getComputedStyle(document.documentElement);
-  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
-  cachedAccentColor = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedBgColor =
+    style.getPropertyValue('--app-background').trim() || '#0b111a';
+  cachedAccentColor =
+    style.getPropertyValue('--tracker-accent-primary').trim() ||
+    'rgb(77, 242, 197)';
 }
 
 /** Envelope preview drawing logic **/

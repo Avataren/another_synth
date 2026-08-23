@@ -893,6 +893,18 @@ impl AudioEngine {
         }
     }
 
+    pub fn preview_envelope_from_js(
+        &self,
+        js_config: &[u8],
+        preview_duration: f32,
+    ) -> Result<Vec<f32>, String> {
+        let config: crate::nodes::envelope::EnvelopeConfig =
+            serde_json::from_slice(js_config)
+                .map_err(|err| format!("Invalid envelope config: {err}"))?;
+
+        Ok(Envelope::new(self.sample_rate, config).preview(preview_duration))
+    }
+
     pub fn update_compressor(
         &mut self,
         node_id: usize,

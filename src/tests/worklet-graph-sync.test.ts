@@ -118,7 +118,10 @@ class TestSynthAudioProcessor extends SynthAudioProcessor {
     (this as any).audioEngines = engines;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).instrumentSlots = new Map([
-      ['instrument-01', { engine: engines[0], adapter: null, initialized: true }],
+      [
+        'instrument-01',
+        { engine: engines[0], adapter: null, initialized: true },
+      ],
     ]);
   }
 
@@ -378,18 +381,17 @@ describe('filter IR request contract', () => {
     expect(message?.type).toBe('FilterIrWaveform');
     expect(Array.from(message!.waveform!)).toEqual([0, 0.5, 1, 0.5]);
 
-    const calls = harness.engines.flatMap(({ engine }) =>
-      // Engine doubles are intentionally loosely typed.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (engine.get_filter_ir_waveform as any).mock.calls,
+    const calls = harness.engines.flatMap(
+      ({ engine }) =>
+        // Engine doubles are intentionally loosely typed.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (engine.get_filter_ir_waveform as any).mock.calls,
     );
 
-    expect(calls).toContainEqual(
-      expect.arrayContaining(['10003', 4]),
+    expect(calls).toContainEqual(expect.arrayContaining(['10003', 4]));
+    expect(calls.some((call) => call[0] === '10003' && call[1] === 4)).toBe(
+      true,
     );
-    expect(
-      calls.some((call) => call[0] === '10003' && call[1] === 4),
-    ).toBe(true);
   });
 });
 
@@ -452,7 +454,8 @@ describe('pooled instrument postMessage safety', () => {
       }),
     );
 
-    const posted = (port.postMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+    const posted = (port.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as {
       state: object;
     };
     expect(posted.state).not.toBe(reactiveState);
