@@ -1159,6 +1159,8 @@ export default class InstrumentV2 {
     config: EnvelopeConfig,
     previewDuration: number,
   ): Promise<Float32Array> {
+    const instrumentId = this.instrumentId;
+    const messageId = `envelope-preview:${Date.now()}:${Math.random()}`;
     if (!this.workletNode) {
       throw new Error('Audio system not ready');
     }
@@ -1167,13 +1169,15 @@ export default class InstrumentV2 {
       const handleMessage = (e: MessageEvent) => {
         if (
           e.data.type === 'envelopePreview' &&
-          e.data.source === 'getEnvelopePreview'
+          e.data.source === 'getEnvelopePreview' &&
+          e.data.messageId === messageId
         ) {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(e.data.preview));
         } else if (
           e.data.type === 'error' &&
-          e.data.source === 'getEnvelopePreview'
+          e.data.source === 'getEnvelopePreview' &&
+          e.data.messageId === messageId
         ) {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           reject(new Error(e.data.message));
@@ -1191,11 +1195,13 @@ export default class InstrumentV2 {
         type: 'getEnvelopePreview',
         config: JSON.parse(JSON.stringify(config)),
         previewDuration,
+        messageId,
+        instrumentId,
       });
 
       setTimeout(() => {
         this.workletNode?.port.removeEventListener('message', handleMessage);
-        reject(new Error('Timeout waiting for envelope preview'));
+        resolve(new Float32Array());
       }, 1000);
     });
   }

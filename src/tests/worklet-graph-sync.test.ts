@@ -458,3 +458,36 @@ describe('pooled instrument postMessage safety', () => {
     expect(posted.state).not.toBe(reactiveState);
   });
 });
+
+describe('envelope preview request contract', () => {
+  it('correlates preview response by messageId', () => {
+    const harness = createProcessorHarness();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const processor = harness.processor as any;
+
+    const config = {
+      id: 'env-node',
+      attack: 0,
+      decay: 0.1,
+      sustain: 0.5,
+      release: 0.1,
+      active: true,
+    };
+
+    processor.handleGetEnvelopePreview({
+      config,
+      previewDuration: 1,
+      messageId: 'preview-request-1',
+      instrumentId: 'instrument-01',
+    });
+
+    expect(harness.posted).toContainEqual(
+      expect.objectContaining({
+        type: 'envelopePreview',
+        source: 'getEnvelopePreview',
+        messageId: 'preview-request-1',
+        instrumentId: 'instrument-01',
+      }),
+    );
+  });
+});

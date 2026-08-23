@@ -176,7 +176,6 @@ const envelopeState = computed<EnvelopeConfig>({
   get: () => {
     const state = envelopeStates.value.get(props.nodeId);
     if (!state) {
-      console.warn(`No state found for envelope ${props.nodeId}`);
       return {
         id: props.nodeId,
         attack: 0.0,
@@ -338,7 +337,11 @@ function drawEnvelopePreviewWithData(previewData: Float32Array) {
 onMounted(() => {
   // Ensure an EnvelopeState entry exists for this node
   if (!envelopeStates.value.has(props.nodeId)) {
-    envelopeStates.value.set(props.nodeId, envelopeState.value);
+    const fallback = envelopeState.value;
+    envelopeStates.value.set(props.nodeId, {
+      ...fallback,
+      id: props.nodeId,
+    });
   }
 
   // Initialize theme colors

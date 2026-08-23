@@ -38,12 +38,18 @@ export class NoiseUpdateParams {
 export class AudioEngine {
   init() {}
   initWithPatch() {}
+
+  static get_envelope_preview = vi.fn(() => new Float32Array([0, 0.5, 1, 0.5]));
 }
 
 export class AutomationAdapter {
   processBlock = vi.fn();
   applyConnectionUpdate = vi.fn();
   free = vi.fn();
+}
+
+export class AudioEnginePreview {
+  static get_envelope_preview = vi.fn(() => new Float32Array([0, 0.5, 1, 0.5]));
 }
 
 export class AnalogOscillatorStateUpdate {
