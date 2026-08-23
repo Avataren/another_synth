@@ -2297,7 +2297,13 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
   private getTargetEngines(instrumentId?: string): AudioEngine[] {
     if (instrumentId) {
       const slot = this.instrumentSlots.get(instrumentId);
-      return slot ? [slot.engine] : [];
+      if (slot) {
+        return [slot.engine];
+      }
+      // Standalone/editor instruments (InstrumentV2) generate their own IDs but
+      // load patches through the legacy path, so no slot exists for them.
+      // Fall back to the shared engines rather than dropping the message.
+      return this.audioEngines;
     }
 
     if (this.instrumentSlots.size > 0) {

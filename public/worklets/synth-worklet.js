@@ -4421,7 +4421,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   getTargetEngines(instrumentId) {
     if (instrumentId) {
       const slot = this.instrumentSlots.get(instrumentId);
-      return slot ? [slot.engine] : [];
+      if (slot) {
+        return [slot.engine];
+      }
+      return this.audioEngines;
     }
     if (this.instrumentSlots.size > 0) {
       return Array.from(this.instrumentSlots.values()).map(
