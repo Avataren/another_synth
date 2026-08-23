@@ -5,10 +5,13 @@ repository = "https://github.com/avataren/"
 license = "MIT"
 version = "0.1.0"
 edition = "2021"
+autobins = false
+autotests = true
 
 [features]
 default = ["wasm"]
 simd = []
+legacy-composition = []
 # Enables the WebAssembly build with JavaScript bindings for the web app.
 wasm = [
     "dep:wasm-bindgen",
@@ -68,6 +71,6 @@ name = "graph_benchmark"
 harness = true
 
 [[bin]]
-name = "native_demo"
-path = "src/bin/native_demo.rs"
-required-features = ["native-host"]
+name = "composition"
+path = "src/bin/composition.rs"
+required-features = ["legacy-composition"]

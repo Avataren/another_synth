@@ -1,3 +1,4 @@
+#[cfg(all(not(test), feature = "native-host"))]
 use audio_processor::audio_engine::native::AudioEngine;
 use audio_processor::automation::AutomationFrame;
 use audio_processor::biquad::FilterType;
@@ -392,7 +393,7 @@ fn create_bass_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     )?;
 
     // Configure filter - OPEN IT UP for more bass presence
-    engine.update_filters(
+    engine.update_filters_by_index(
         filter_id,
         1500.0,
         0.4, // Less resonance
@@ -537,7 +538,7 @@ fn create_pad_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
     )?;
 
     // Warm filter
-    engine.update_filters(
+    engine.update_filters_by_index(
         filter_id,
         2500.0, // Cutoff
         0.3,    // Resonance
@@ -664,7 +665,7 @@ fn create_lead_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine,
     engine.update_envelope(filter_env_id, 0.01, 0.2, 0.3, 0.2, 0.0, 0.0, 0.0, true)?;
 
     // Bright filter that's modulated
-    engine.update_filters(
+    engine.update_filters_by_index(
         filter_id,
         6500.0,
         0.5,
@@ -748,7 +749,7 @@ fn create_arp_synth(sample_rate: f32, block_size: usize) -> Result<AudioEngine, 
     engine.update_envelope(env_id, 0.001, 0.02, 0.0, 0.05, 0.0, 0.0, 0.0, true)?;
 
     // Bright filter
-    engine.update_filters(
+    engine.update_filters_by_index(
         filter_id,
         4000.0,
         0.4,

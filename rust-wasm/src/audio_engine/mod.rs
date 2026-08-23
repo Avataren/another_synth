@@ -4,7 +4,7 @@ mod patch_loader;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub mod wasm;
 
-#[cfg(feature = "native-host")]
+#[cfg(any(feature = "native-host", test))]
 pub mod native;
 
 #[cfg(all(feature = "wasm", not(feature = "native-host"), target_arch = "wasm32"))]

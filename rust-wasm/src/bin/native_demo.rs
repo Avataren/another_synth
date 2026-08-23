@@ -4,8 +4,6 @@
 mod audio_buffer;
 #[path = "native_demo/audio_renderer.rs"]
 mod audio_renderer;
-#[path = "composition.rs"]
-mod composition;
 #[path = "native_demo/cpal_host.rs"]
 mod cpal_host;
 
@@ -13,7 +11,6 @@ use std::env;
 use std::time::Duration;
 
 use audio_renderer::AudioRenderer;
-use composition::Composition;
 use cpal_host::{AudioHost, AudioHostOptions};
 
 fn main() -> anyhow::Result<()> {

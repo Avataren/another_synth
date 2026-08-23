@@ -1,7 +1,6 @@
-use crate::audio_engine::patch::{
-    BitcrusherState, CompressorState, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout,
-};
-use crate::audio_engine::patch_loader::{parse_node_id, NODE_CREATION_ORDER};
+use crate::audio_engine::patch::{GlideState, PatchFile, PatchNode, VoiceLayout as PatchVoiceLayout};
+use crate::audio_engine::patch_loader::for_each_node_in_creation_order;
+use crate::audio_engine::patch_loader::parse_node_id;
 use crate::automation::AutomationFrame;
 use crate::biquad::FilterType;
 use crate::effect_stack::EffectStack;
@@ -34,7 +33,7 @@ const DEFAULT_NUM_VOICES: usize = 8;
 const MAX_TABLE_SIZE: usize = 2048;
 const DEFAULT_BLOCK_SIZE: usize = 128;
 const MACRO_COUNT: usize = 4;
-const EFFECT_NODE_ID_OFFSET: usize = 10_000;
+pub const EFFECT_NODE_ID_OFFSET: usize = 10_000;
 
 pub struct AudioEngine {
     voices: Vec<Voice>,
@@ -139,7 +138,7 @@ impl AudioEngine {
             num_voices
         };
 
-        Self {
+        let mut engine = Self {
             voices: Vec::new(),
             sample_rate,
             num_voices: initial_voice_count,
@@ -157,7 +156,9 @@ impl AudioEngine {
             voice_right: vec![0.0; block_size],
             effect_left: vec![0.0; block_size],
             effect_right: vec![0.0; block_size],
-        }
+        };
+        engine.init(sample_rate, initial_voice_count);
+        engine
     }
 
     pub fn init(&mut self, sample_rate: f32, num_voices: usize) {
@@ -210,6 +211,9 @@ impl AudioEngine {
         let mut bitcrusher = Bitcrusher::new(12, 4, 0.5);
         bitcrusher.set_active(false);
         self.effect_stack.add_effect(Box::new(bitcrusher));
+
+        // Voice graphs own global frequency/velocity/gate nodes; effects remain
+        // separate. `init` only needs to rebuild the shared effect chain.
     }
 
     pub fn init_with_patch(&mut self, patch_json: &str) -> Result<usize, String> {
@@ -835,6 +839,60 @@ impl AudioEngine {
         self.set_effect_active(2, active);
     }
 
+    pub fn set_convolver_active(&mut self, node_id: usize, active: bool, wet_level: f32) -> Result<(), String> {
+        let effect_id = node_id
+            .checked_sub(EFFECT_NODE_ID_OFFSET)
+            .ok_or_else(|| "Invalid convolver node id".to_string())?;
+
+        let effect = self
+            .effect_stack
+            .effects
+            .get_mut(effect_id)
+            .ok_or_else(|| format!("No effect found at index {}", effect_id))?;
+
+        if let Some(convolver) = effect.node.as_any_mut().downcast_mut::<Convolver>() {
+            convolver.set_wet_level(wet_level.clamp(0.0, 1.0));
+            convolver.set_enabled(active);
+            Ok(())
+        } else {
+            Err(format!("Effect at index {} is not a Convolver", effect_id))
+        }
+    }
+
+    pub fn generate_hall_impulse(&self, decay_time: f32, room_size: f32) -> Vec<f32> {
+        self.ir_generator.hall(decay_time.clamp(0.1, 10.0), room_size.clamp(0.0, 1.0))
+    }
+
+    pub fn generate_plate_impulse(&self, decay_time: f32, diffusion: f32) -> Vec<f32> {
+        self.ir_generator.plate(decay_time.clamp(0.1, 10.0), diffusion.clamp(0.0, 1.0))
+    }
+
+    pub fn update_effect_impulse(
+        &mut self,
+        effect_index: usize,
+        impulse_response: Vec<f32>,
+    ) -> Result<(), String> {
+        if effect_index >= self.effect_stack.effects.len() {
+            return Err("Effect index out of bounds".to_string());
+        }
+        if impulse_response.is_empty() {
+            return Err("Impulse response cannot be empty".to_string());
+        }
+
+        let effect = self
+            .effect_stack
+            .effects
+            .get_mut(effect_index)
+            .ok_or_else(|| "Failed to get effect".to_string())?;
+
+        if let Some(convolver) = effect.node.as_any_mut().downcast_mut::<Convolver>() {
+            convolver.set_impulse_response(impulse_response);
+            Ok(())
+        } else {
+            Err("Effect is not a Convolver".to_string())
+        }
+    }
+
     pub fn update_compressor(
         &mut self,
         node_id: usize,
@@ -932,8 +990,21 @@ impl AudioEngine {
         }
     }
 
+    fn ensure_global_nodes(&mut self) -> Result<(), String> {
+        if !self.voices.is_empty() {
+            return Ok(());
+        }
+
+        let voice_count = 1;
+        self.voices = (0..voice_count)
+            .map(|id| Voice::new(id, self.block_size))
+            .collect();
+        Ok(())
+    }
+
     // Node creation methods
     pub fn create_oscillator(&mut self) -> Result<usize, String> {
+        self.ensure_global_nodes()?;
         let osc_id = NodeId::new();
         for voice in &mut self.voices {
             voice.graph.add_node_with_id(
@@ -946,6 +1017,22 @@ impl AudioEngine {
             );
         }
         Ok(osc_id.0.as_u128() as usize)
+    }
+
+    pub fn create_oscillator_node(&mut self) -> Result<NodeId, String> {
+        self.ensure_global_nodes()?;
+        let osc_id = NodeId::new();
+        for voice in &mut self.voices {
+            voice.graph.add_node_with_id(
+                osc_id,
+                Box::new(AnalogOscillator::new(
+                    self.sample_rate,
+                    Waveform::Sine,
+                    self.wavetable_banks.clone(),
+                )),
+            );
+        }
+        Ok(osc_id)
     }
 
     pub fn create_wavetable_oscillator(&mut self) -> Result<usize, String> {
@@ -963,6 +1050,7 @@ impl AudioEngine {
     }
 
     pub fn create_mixer(&mut self) -> Result<usize, String> {
+        self.ensure_global_nodes()?;
         let mixer_id = NodeId::new();
         for voice in &mut self.voices {
             voice
@@ -973,7 +1061,20 @@ impl AudioEngine {
         Ok(mixer_id.0.as_u128() as usize)
     }
 
+    pub fn create_mixer_node(&mut self) -> Result<NodeId, String> {
+        self.ensure_global_nodes()?;
+        let mixer_id = NodeId::new();
+        for voice in &mut self.voices {
+            voice
+                .graph
+                .add_node_with_id(mixer_id, Box::new(Mixer::new()));
+            voice.graph.set_output_node(mixer_id);
+        }
+        Ok(mixer_id)
+    }
+
     pub fn create_envelope(&mut self) -> Result<usize, String> {
+        self.ensure_global_nodes()?;
         let envelope_id = NodeId::new();
         for voice in &mut self.voices {
             voice.graph.add_node_with_id(
@@ -982,6 +1083,18 @@ impl AudioEngine {
             );
         }
         Ok(envelope_id.0.as_u128() as usize)
+    }
+
+    pub fn create_envelope_node(&mut self) -> Result<NodeId, String> {
+        self.ensure_global_nodes()?;
+        let envelope_id = NodeId::new();
+        for voice in &mut self.voices {
+            voice.graph.add_node_with_id(
+                envelope_id,
+                Box::new(Envelope::new(self.sample_rate, EnvelopeConfig::default())),
+            );
+        }
+        Ok(envelope_id)
     }
 
     pub fn create_lfo(&mut self) -> Result<usize, String> {
@@ -995,6 +1108,7 @@ impl AudioEngine {
     }
 
     pub fn create_filter(&mut self) -> Result<usize, String> {
+        self.ensure_global_nodes()?;
         let filter_id = NodeId::new();
         for voice in &mut self.voices {
             voice
@@ -1004,7 +1118,19 @@ impl AudioEngine {
         Ok(filter_id.0.as_u128() as usize)
     }
 
+    pub fn create_filter_node(&mut self) -> Result<NodeId, String> {
+        self.ensure_global_nodes()?;
+        let filter_id = NodeId::new();
+        for voice in &mut self.voices {
+            voice
+                .graph
+                .add_node_with_id(filter_id, Box::new(FilterCollection::new(self.sample_rate)));
+        }
+        Ok(filter_id)
+    }
+
     pub fn create_glide(&mut self, glide_time: f32) -> Result<usize, String> {
+        self.ensure_global_nodes()?;
         let glide_id = NodeId::new();
         for voice in &mut self.voices {
             voice
@@ -1037,15 +1163,58 @@ impl AudioEngine {
         Ok(glide_id.0.as_u128() as usize)
     }
 
+    pub fn create_glide_node(&mut self, glide_time: f32) -> Result<NodeId, String> {
+        self.ensure_global_nodes()?;
+        let glide_id = NodeId::new();
+        for voice in &mut self.voices {
+            voice.graph.add_node_with_id(glide_id, Box::new(Glide::new(self.sample_rate, glide_time)));
+            voice.graph.global_glide_node = Some(glide_id);
+            if let Some(global_freq) = voice.graph.global_frequency_node {
+                voice.graph.add_connection(Connection {
+                    from_node: global_freq,
+                    from_port: PortId::GlobalFrequency,
+                    to_node: glide_id,
+                    to_port: PortId::AudioInput0,
+                    amount: 1.0,
+                    modulation_type: ModulationType::Additive,
+                    modulation_transform: ModulationTransformation::None,
+                });
+            }
+            if let Some(gate_mixer_id) = voice.graph.global_gatemixer_node {
+                voice.graph.add_connection(Connection {
+                    from_node: gate_mixer_id,
+                    from_port: PortId::CombinedGate,
+                    to_node: glide_id,
+                    to_port: PortId::CombinedGate,
+                    amount: 1.0,
+                    modulation_type: ModulationType::Additive,
+                    modulation_transform: ModulationTransformation::None,
+                });
+            }
+        }
+        Ok(glide_id)
+    }
+
     /// Insert a Glide node between the global frequency source and the target node's
     /// GlobalFrequency input, so that pitch changes are slewed.
-    pub fn insert_glide_on_global_frequency(
+    pub fn insert_glide_on_global_frequency_by_index(
         &mut self,
         glide_id: usize,
         target_node: usize,
     ) -> Result<(), String> {
-        let glide_node = NodeId(Uuid::from_u128(glide_id as u128));
-        let target_node_id = NodeId(Uuid::from_u128(target_node as u128));
+        self.insert_glide_on_global_frequency(
+            NodeId(Uuid::from_u128(glide_id as u128)),
+            NodeId(Uuid::from_u128(target_node as u128)),
+        )
+    }
+
+    pub fn insert_glide_on_global_frequency(
+        &mut self,
+        glide_id: NodeId,
+        target_node: NodeId,
+    ) -> Result<(), String> {
+        let glide_node = glide_id;
+        let target_node_id = target_node;
 
         for voice in &mut self.voices {
             let global_freq_id = voice
@@ -1097,7 +1266,7 @@ impl AudioEngine {
     // }
 
     // Connection methods
-    pub fn connect_nodes(
+    pub fn connect_nodes_by_index(
         &mut self,
         from_node: usize,
         from_port: PortId,
@@ -1107,10 +1276,31 @@ impl AudioEngine {
         modulation_type: ModulationType,
         modulation_transform: ModulationTransformation,
     ) -> Result<(), String> {
-        let connection = Connection {
-            from_node: NodeId(Uuid::from_u128(from_node as u128)),
+        self.connect_nodes(
+            NodeId(Uuid::from_u128(from_node as u128)),
             from_port,
-            to_node: NodeId(Uuid::from_u128(to_node as u128)),
+            NodeId(Uuid::from_u128(to_node as u128)),
+            to_port,
+            amount,
+            modulation_type,
+            modulation_transform,
+        )
+    }
+
+    pub fn connect_nodes(
+        &mut self,
+        from_node: NodeId,
+        from_port: PortId,
+        to_node: NodeId,
+        to_port: PortId,
+        amount: f32,
+        modulation_type: ModulationType,
+        modulation_transform: ModulationTransformation,
+    ) -> Result<(), String> {
+        let connection = Connection {
+            from_node,
+            from_port,
+            to_node,
             to_port,
             amount,
             modulation_type,
@@ -1178,6 +1368,46 @@ impl AudioEngine {
         release_curve: f32,
         active: bool,
     ) -> Result<(), String> {
+        self.update_envelope_node(node_id, attack, decay, sustain, release, attack_curve, decay_curve, release_curve, active)
+    }
+
+    pub fn update_envelope_by_index(
+        &mut self,
+        node_id: usize,
+        attack: f32,
+        decay: f32,
+        sustain: f32,
+        release: f32,
+        attack_curve: f32,
+        decay_curve: f32,
+        release_curve: f32,
+        active: bool,
+    ) -> Result<(), String> {
+        self.update_envelope_node(
+            NodeId(Uuid::from_u128(node_id as u128)),
+            attack,
+            decay,
+            sustain,
+            release,
+            attack_curve,
+            decay_curve,
+            release_curve,
+            active,
+        )
+    }
+
+    pub fn update_envelope_node(
+        &mut self,
+        node_id: NodeId,
+        attack: f32,
+        decay: f32,
+        sustain: f32,
+        release: f32,
+        attack_curve: f32,
+        decay_curve: f32,
+        release_curve: f32,
+        active: bool,
+    ) -> Result<(), String> {
         let mut errors: Vec<String> = Vec::new();
 
         for (i, voice) in self.voices.iter_mut().enumerate() {
@@ -1211,9 +1441,25 @@ impl AudioEngine {
         }
     }
 
-    pub fn update_filters(
+    pub fn update_filters_by_index(
         &mut self,
         filter_id: usize,
+        cutoff: f32,
+        resonance: f32,
+        gain: f32,
+        key_tracking: f32,
+        comb_frequency: f32,
+        comb_dampening: f32,
+        _oversampling: u32,
+        filter_type: FilterType,
+        filter_slope: FilterSlope,
+    ) -> Result<(), String> {
+        self.update_filters(NodeId(Uuid::from_u128(filter_id as u128)), cutoff, resonance, gain, key_tracking, comb_frequency, comb_dampening, _oversampling, filter_type, filter_slope)
+    }
+
+    pub fn update_filters(
+        &mut self,
+        filter_id: NodeId,
         cutoff: f32,
         resonance: f32,
         gain: f32,
@@ -1227,7 +1473,7 @@ impl AudioEngine {
         for voice in &mut self.voices {
             if let Some(node) = voice
                 .graph
-                .get_node_mut(NodeId(Uuid::from_u128(filter_id as u128)))
+                .get_node_mut(filter_id)
             {
                 if let Some(filter) = node.as_any_mut().downcast_mut::<FilterCollection>() {
                     filter.set_filter_type(filter_type);
