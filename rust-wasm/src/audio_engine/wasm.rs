@@ -1230,10 +1230,12 @@ impl AudioEngine {
         let node_id = NodeId::from_string(node_id)
             .map_err(|e| JsValue::from_str(&format!("Invalid node_id UUID: {}", e)))?;
 
+        let mut found_any = false;
         // Iterate over all voices and attempt to update the envelope.
         for (i, voice) in self.voices.iter_mut().enumerate() {
             if let Some(node) = voice.graph.get_node_mut(node_id) {
                 if let Some(env) = node.as_any_mut().downcast_mut::<Envelope>() {
+                    found_any = true;
                     let config = EnvelopeConfig {
                         attack,
                         decay,
@@ -1255,7 +1257,7 @@ impl AudioEngine {
             }
         }
 
-        if errors.is_empty() {
+        if found_any && errors.is_empty() {
             Ok(())
         } else {
             Err(JsValue::from_str(&errors.join("; ")))
