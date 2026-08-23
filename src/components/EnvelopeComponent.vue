@@ -119,6 +119,7 @@ import AudioCardHeader from './AudioCardHeader.vue';
 import AudioKnobComponent from './AudioKnobComponent.vue';
 import RoutingComponent from './RoutingComponent.vue';
 import { useInstrumentStore } from 'src/stores/instrument-store';
+import { usePatchStore } from 'src/stores/patch-store';
 import { useNodeStateStore } from 'src/stores/node-state-store';
 import { useLayoutStore } from 'src/stores/layout-store';
 import { storeToRefs } from 'pinia';
@@ -155,6 +156,7 @@ function forwardClose() {
 const instrumentStore = useInstrumentStore();
 const nodeStateStore = useNodeStateStore();
 const layoutStore = useLayoutStore();
+const patchStore = usePatchStore();
 const { envelopeStates } = storeToRefs(nodeStateStore);
 
 const displayName = computed(
@@ -185,7 +187,7 @@ const envelopeState = computed<EnvelopeConfig>({
         attackCurve: 0.0,
         decayCurve: 0.0,
         releaseCurve: 0.0,
-        active: true,
+        active: !patchStore.isLoadingPatch,
       } as EnvelopeConfig;
     }
     return state;
