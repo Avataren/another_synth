@@ -3255,18 +3255,36 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
   }
   // Inside SynthAudioProcessor's handleMessage method:
   handleGetEnvelopePreview(data) {
-    const engine = this.getTargetEngines(data.instrumentId)[0];
-    if (!engine) return;
+    const engines = this.getTargetEngines(data.instrumentId);
+    if (engines.length === 0) {
+      this.port.postMessage({
+        type: "error",
+        source: "getEnvelopePreview",
+        message: `No engine found for instrument ${data.instrumentId ?? "(legacy)"}`,
+        messageId: data.messageId,
+        instrumentId: data.instrumentId
+      });
+      return;
+    }
     try {
-      const envelopePreviewData = AudioEngine.get_envelope_preview(
-        sampleRate,
-        data.config,
-        // The envelope configuration (should match EnvelopeConfig)
-        data.previewDuration
-      );
+      let preview = null;
+      for (const engine of engines) {
+        try {
+          preview = AudioEngine.get_envelope_preview(
+            sampleRate,
+            data.config,
+            data.previewDuration
+          );
+          break;
+        } catch (_error) {
+          continue;
+        }
+      }
+      if (!preview)
+        throw new Error("No engine could generate envelope preview");
       this.port.postMessage({
         type: "envelopePreview",
-        preview: envelopePreviewData,
+        preview,
         messageId: data.messageId,
         source: "getEnvelopePreview",
         instrumentId: data.instrumentId
@@ -3276,7 +3294,9 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       this.port.postMessage({
         type: "error",
         source: "getEnvelopePreview",
-        message: "Failed to generate envelope preview"
+        message: err instanceof Error ? err.message : "Failed to generate envelope preview",
+        messageId: data.messageId,
+        instrumentId: data.instrumentId
       });
     }
   }
@@ -4251,8 +4271,18 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
   }
   handleUpdateEnvelope(data) {
+    const targetEngines = this.getTargetEngines(data.instrumentId);
+    if (targetEngines.length === 0) {
+      this.port.postMessage({
+        type: "error",
+        source: "updateEnvelope",
+        message: `No engine found for instrument ${data.instrumentId ?? "(legacy)"}`
+      });
+      return;
+    }
+    const errors = [];
     try {
-      this.getTargetEngines(data.instrumentId).forEach((engine) => {
+      targetEngines.forEach((engine, index) => {
         try {
           engine.update_envelope(
             data.envelopeId,
@@ -4266,15 +4296,28 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             data.config.active
           );
         } catch (error) {
-          if (!data.instrumentId) throw error;
+          errors.push(
+            `engine ${index}: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       });
+      if (errors.length > 0) {
+        throw new Error(errors.join("; "));
+      }
       this.port.postMessage({
         type: "updateEnvelopeProcessed",
-        messageId: data.messageId
+        messageId: data.messageId,
+        instrumentId: data.instrumentId
       });
     } catch (err) {
-      console.error("Error updating LFO:", err);
+      console.error("Error updating envelope:", err);
+      this.port.postMessage({
+        type: "error",
+        source: "updateEnvelope",
+        message: err instanceof Error ? err.message : "Failed to update envelope",
+        messageId: data.messageId,
+        instrumentId: data.instrumentId
+      });
     }
   }
   handleUpdateLfo(data) {

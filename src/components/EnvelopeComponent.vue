@@ -275,34 +275,6 @@ function updateEnvelopePreview() {
   const config = envelopeState.value;
   const previewDuration = config.attack + config.decay + 1 + config.release;
 
-  // Compute locally so the shape is always correct, even if the engine-side
-  // preview request is delayed or routed elsewhere.
-  const sampleCount = Math.max(256, Math.ceil(previewDuration * 1000));
-  const localPreview = new Float32Array(sampleCount);
-  const attackSamples = Math.max(1, config.attack * 1000);
-  const decaySamples = Math.max(1, config.decay * 1000);
-  const sustainSamples = 1000;
-  const releaseSamples = Math.max(1, config.release * 1000);
-
-  let index = 0;
-  for (let i = 0; i < attackSamples && index < sampleCount; i++, index++) {
-    localPreview[index] = i / attackSamples;
-  }
-  for (let i = 0; i < decaySamples && index < sampleCount; i++, index++) {
-    localPreview[index] = 1 - (i / decaySamples) * (1 - config.sustain);
-  }
-  for (let i = 0; i < sustainSamples && index < sampleCount; i++, index++) {
-    localPreview[index] = config.sustain;
-  }
-  for (let i = 0; i < releaseSamples && index < sampleCount; i++, index++) {
-    localPreview[index] = config.sustain * (1 - i / releaseSamples);
-  }
-  while (index < sampleCount) {
-    localPreview[index++] = 0;
-  }
-
-  drawEnvelopePreviewWithData(localPreview);
-
   instrumentStore.currentInstrument
     ?.getEnvelopePreview(config, previewDuration)
     .then((previewData) => {
@@ -314,8 +286,8 @@ function updateEnvelopePreview() {
       if (maxVal <= 0.0001) return;
       drawEnvelopePreviewWithData(previewData);
     })
-    .catch(() => {
-      // Silently fail or handle error
+    .catch((error) => {
+      console.error('Envelope preview failed:', error);
     });
 }
 

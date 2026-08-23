@@ -1201,7 +1201,7 @@ export default class InstrumentV2 {
 
       setTimeout(() => {
         this.workletNode?.port.removeEventListener('message', handleMessage);
-        resolve(new Float32Array());
+        reject(new Error('Timeout waiting for envelope preview'));
       }, 1000);
     });
   }
