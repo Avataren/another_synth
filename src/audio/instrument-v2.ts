@@ -786,13 +786,29 @@ export default class InstrumentV2 {
     nodeId: string,
     decayTime: number,
     roomSize: number,
-  ): void {
-    this.messageHandler.sendFireAndForget({
-      type: 'generateHallReverb',
-      nodeId,
-      decayTime,
-      roomSize,
-      sampleRate: this.audioContext.sampleRate,
+  ): Promise<void> {
+    const messageId = `reverb-hall:${nodeId}:${Date.now()}`;
+    const port = this.workletNode?.port;
+    if (!port) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          resolve();
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'generateHallReverb',
+        nodeId,
+        decayTime,
+        roomSize,
+        sampleRate: this.audioContext.sampleRate,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(resolve, 2000);
     });
   }
 
@@ -800,13 +816,29 @@ export default class InstrumentV2 {
     nodeId: string,
     decayTime: number,
     diffusion: number,
-  ): void {
-    this.messageHandler.sendFireAndForget({
-      type: 'generatePlateReverb',
-      nodeId,
-      decayTime,
-      diffusion,
-      sampleRate: this.audioContext.sampleRate,
+  ): Promise<void> {
+    const messageId = `reverb-plate:${nodeId}:${Date.now()}`;
+    const port = this.workletNode?.port;
+    if (!port) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          resolve();
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'generatePlateReverb',
+        nodeId,
+        decayTime,
+        diffusion,
+        sampleRate: this.audioContext.sampleRate,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(resolve, 2000);
     });
   }
 

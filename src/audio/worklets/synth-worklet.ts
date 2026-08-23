@@ -2021,31 +2021,10 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
     decayTime: number;
     roomSize: number;
     sampleRate: number;
+    messageId?: string;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-    try {
-      // Generate the impulse response
-      const impulse = this.audioEngines[0].generate_hall_impulse(
-        data.decayTime,
-        data.roomSize,
-      );
-
-      // Convert nodeId to effect index (nodeId includes EFFECT_NODE_ID_OFFSET)
-      const nodeIdNum = Number(data.nodeId);
-      const EFFECT_NODE_ID_OFFSET = 10_000;
-      const effectIndex = nodeIdNum - EFFECT_NODE_ID_OFFSET;
-
-      // Update the existing convolver's impulse
-      this.audioEngines[0].update_effect_impulse(effectIndex, impulse);
-      console.log(
-        `Updated convolver at index ${effectIndex} with hall reverb impulse`,
-      );
-
-      // Trigger layout sync to update UI
-      this.handleRequestSync();
-    } catch (err) {
-      console.error('Error generating hall reverb:', err);
-    }
+    this.generateReverbImpulse('hall', data, () => data.decayTime);
   }
 
   private handleGeneratePlateReverb(data: {
@@ -2053,30 +2032,55 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
     decayTime: number;
     diffusion: number;
     sampleRate: number;
+    messageId?: string;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
+    this.generateReverbImpulse('plate', data, () => data.diffusion);
+  }
+
+  private generateReverbImpulse(
+    type: 'hall' | 'plate',
+    data: {
+      nodeId: string;
+      decayTime: number;
+      messageId?: string;
+      instrumentId?: string;
+    },
+    secondary: () => number,
+  ) {
+    const engines = this.getTargetEngines(data.instrumentId);
+    const primary = data.decayTime;
+
     try {
-      // Generate the impulse response
-      const impulse = this.audioEngines[0].generate_plate_impulse(
-        data.decayTime,
-        data.diffusion,
-      );
+      for (const engine of engines) {
+        const impulse =
+          type === 'hall'
+            ? engine.generate_hall_impulse(primary, secondary())
+            : engine.generate_plate_impulse(primary, secondary());
 
-      // Convert nodeId to effect index (nodeId includes EFFECT_NODE_ID_OFFSET)
-      const nodeIdNum = Number(data.nodeId);
-      const EFFECT_NODE_ID_OFFSET = 10_000;
-      const effectIndex = nodeIdNum - EFFECT_NODE_ID_OFFSET;
+        const nodeIdNum = Number(data.nodeId);
+        const EFFECT_NODE_ID_OFFSET = 10_000;
+        const effectIndex = nodeIdNum - EFFECT_NODE_ID_OFFSET;
+        engine.update_effect_impulse(effectIndex, impulse);
+      }
 
-      // Update the existing convolver's impulse
-      this.audioEngines[0].update_effect_impulse(effectIndex, impulse);
-      console.log(
-        `Updated convolver at index ${effectIndex} with plate reverb impulse`,
-      );
-
-      // Trigger layout sync to update UI
+      this.port.postMessage({
+        type: 'reverbImpulseGenerated',
+        kind: type,
+        nodeId: data.nodeId,
+        messageId: data.messageId,
+        instrumentId: data.instrumentId,
+      });
       this.handleRequestSync();
     } catch (err) {
-      console.error('Error generating plate reverb:', err);
+      console.error(`Error generating ${type} reverb:`, err);
+      this.port.postMessage({
+        type: 'error',
+        source: `generate${type === 'hall' ? 'Hall' : 'Plate'}Reverb`,
+        message: `Failed to generate ${type} reverb`,
+        messageId: data.messageId,
+        instrumentId: data.instrumentId,
+      });
     }
   }
 

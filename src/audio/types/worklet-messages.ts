@@ -364,6 +364,8 @@ export interface GenerateHallReverbMessage extends BaseMessage {
   decayTime: number;
   roomSize: number;
   sampleRate: number;
+  messageId?: string;
+  instrumentId?: string;
 }
 
 export interface GeneratePlateReverbMessage extends BaseMessage {
@@ -372,6 +374,8 @@ export interface GeneratePlateReverbMessage extends BaseMessage {
   decayTime: number;
   diffusion: number;
   sampleRate: number;
+  messageId?: string;
+  instrumentId?: string;
 }
 
 export interface UnloadInstrumentMessage extends BaseMessage {

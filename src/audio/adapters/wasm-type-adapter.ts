@@ -10,7 +10,9 @@
  * All conversions are validated and provide clear error messages.
  */
 
-import type { ModulationTransformation } from 'app/public/wasm/audio_processor';
+import {
+  ModulationTransformation,
+} from 'app/public/wasm/audio_processor';
 import type { PortId } from '../types/generated/port-ids';
 import { WasmModulationType } from 'app/public/wasm/audio_processor';
 import { VoiceNodeType } from '../types/synth-layout';
@@ -21,28 +23,28 @@ import { VoiceNodeType } from '../types/synth-layout';
 
 /** Mapping from Rust node type strings to TypeScript enum */
 const RUST_TO_TS_NODE_TYPE: Record<string, VoiceNodeType> = {
-  'analog_oscillator': VoiceNodeType.Oscillator,
-  'wavetable_oscillator': VoiceNodeType.WavetableOscillator,
-  'filtercollection': VoiceNodeType.Filter,
-  'envelope': VoiceNodeType.Envelope,
-  'lfo': VoiceNodeType.LFO,
-  'mixer': VoiceNodeType.Mixer,
-  'noise_generator': VoiceNodeType.Noise,
-  'sampler': VoiceNodeType.Sampler,
-  'Sampler': VoiceNodeType.Sampler, // Handle inconsistent casing
-  'glide': VoiceNodeType.Glide,
-  'global_frequency': VoiceNodeType.GlobalFrequency,
-  'global_velocity': VoiceNodeType.GlobalVelocity,
-  'convolver': VoiceNodeType.Convolver,
-  'delay': VoiceNodeType.Delay,
-  'gatemixer': VoiceNodeType.GateMixer,
-  'arpeggiator_generator': VoiceNodeType.ArpeggiatorGenerator,
-  'chorus': VoiceNodeType.Chorus,
-  'limiter': VoiceNodeType.Limiter,
-  'freeverb': VoiceNodeType.Reverb,
-  'compressor': VoiceNodeType.Compressor,
-  'saturation': VoiceNodeType.Saturation,
-  'bitcrusher': VoiceNodeType.Bitcrusher,
+  analog_oscillator: VoiceNodeType.Oscillator,
+  wavetable_oscillator: VoiceNodeType.WavetableOscillator,
+  filtercollection: VoiceNodeType.Filter,
+  envelope: VoiceNodeType.Envelope,
+  lfo: VoiceNodeType.LFO,
+  mixer: VoiceNodeType.Mixer,
+  noise_generator: VoiceNodeType.Noise,
+  sampler: VoiceNodeType.Sampler,
+  Sampler: VoiceNodeType.Sampler, // Handle inconsistent casing
+  glide: VoiceNodeType.Glide,
+  global_frequency: VoiceNodeType.GlobalFrequency,
+  global_velocity: VoiceNodeType.GlobalVelocity,
+  convolver: VoiceNodeType.Convolver,
+  delay: VoiceNodeType.Delay,
+  gatemixer: VoiceNodeType.GateMixer,
+  arpeggiator_generator: VoiceNodeType.ArpeggiatorGenerator,
+  chorus: VoiceNodeType.Chorus,
+  limiter: VoiceNodeType.Limiter,
+  freeverb: VoiceNodeType.Reverb,
+  compressor: VoiceNodeType.Compressor,
+  saturation: VoiceNodeType.Saturation,
+  bitcrusher: VoiceNodeType.Bitcrusher,
 };
 
 /** Reverse mapping for TypeScript → Rust */
@@ -79,7 +81,10 @@ export function rustNodeTypeToTS(rustType: string): VoiceNodeType {
   const tsType = RUST_TO_TS_NODE_TYPE[normalized];
 
   if (!tsType) {
-    console.warn(`Unknown Rust node type: "${rustType}". Available types:`, Object.keys(RUST_TO_TS_NODE_TYPE));
+    console.warn(
+      `Unknown Rust node type: "${rustType}". Available types:`,
+      Object.keys(RUST_TO_TS_NODE_TYPE),
+    );
     // Return as-is for forward compatibility, but log warning
     return normalized as VoiceNodeType;
   }
@@ -114,9 +119,9 @@ const RUST_NUM_TO_TS_MODULATION: Record<number, WasmModulationType> = {
 
 /** Mapping from Rust string enum values to TypeScript */
 const RUST_STR_TO_TS_MODULATION: Record<string, WasmModulationType> = {
-  'VCA': WasmModulationType.VCA,
-  'Bipolar': WasmModulationType.Bipolar,
-  'Additive': WasmModulationType.Additive,
+  VCA: WasmModulationType.VCA,
+  Bipolar: WasmModulationType.Bipolar,
+  Additive: WasmModulationType.Additive,
 };
 
 /** Default fallback for unknown modulation types */
@@ -132,7 +137,7 @@ const DEFAULT_MODULATION_TYPE = WasmModulationType.Additive;
  */
 export function rustModulationTypeToTS(
   raw: number | string | undefined,
-  defaultValue: WasmModulationType = DEFAULT_MODULATION_TYPE
+  defaultValue: WasmModulationType = DEFAULT_MODULATION_TYPE,
 ): WasmModulationType {
   // Handle undefined
   if (raw === undefined) {
@@ -145,7 +150,9 @@ export function rustModulationTypeToTS(
     if (tsType !== undefined) {
       return tsType;
     }
-    console.warn(`Unknown numeric modulation type: ${raw}, defaulting to ${defaultValue}`);
+    console.warn(
+      `Unknown numeric modulation type: ${raw}, defaulting to ${defaultValue}`,
+    );
     return defaultValue;
   }
 
@@ -155,7 +162,9 @@ export function rustModulationTypeToTS(
     return tsType;
   }
 
-  console.warn(`Unknown string modulation type: "${raw}", defaulting to ${defaultValue}`);
+  console.warn(
+    `Unknown string modulation type: "${raw}", defaulting to ${defaultValue}`,
+  );
   return defaultValue;
 }
 
@@ -171,7 +180,9 @@ export function tsModulationTypeToRust(tsType: WasmModulationType): number {
     case WasmModulationType.Additive:
       return 2;
     default:
-      console.warn(`Unknown TypeScript modulation type: ${tsType}, defaulting to Additive (2)`);
+      console.warn(
+        `Unknown TypeScript modulation type: ${tsType}, defaulting to Additive (2)`,
+      );
       return 2;
   }
 }
@@ -185,18 +196,44 @@ export function tsModulationTypeToRust(tsType: WasmModulationType): number {
  * ModulationTransformation is a numeric enum in Rust.
  */
 export function validateModulationTransformation(
-  raw: number | ModulationTransformation | undefined
+  raw:
+    | number
+    | ModulationTransformation
+    | 'None'
+    | 'Invert'
+    | 'Square'
+    | 'Cube'
+    | undefined,
 ): ModulationTransformation {
   if (raw === undefined) {
     return 0 as ModulationTransformation; // None = 0
   }
 
-  // Ensure it's a number
-  const num = typeof raw === 'number' ? raw : Number(raw);
+  if (typeof raw === 'string') {
+    switch (raw) {
+      case 'None':
+        return ModulationTransformation.None;
+      case 'Invert':
+        return ModulationTransformation.Invert;
+      case 'Square':
+        return ModulationTransformation.Square;
+      case 'Cube':
+        return ModulationTransformation.Cube;
+      default:
+        console.warn(
+          `Invalid modulation transformation: ${raw}, defaulting to 0 (None)`,
+        );
+        return 0 as ModulationTransformation;
+    }
+  }
+
+  const num = raw;
 
   // Basic validation (adjust range as needed based on Rust enum)
   if (isNaN(num) || num < 0 || num > 10) {
-    console.warn(`Invalid modulation transformation: ${raw}, defaulting to 0 (None)`);
+    console.warn(
+      `Invalid modulation transformation: ${raw}, defaulting to 0 (None)`,
+    );
     return 0 as ModulationTransformation;
   }
 
@@ -280,7 +317,9 @@ export function normalizeConnection(raw: RawConnection): NormalizedConnection {
     target: validatePortId(raw.target),
     amount: raw.amount,
     modulationType: rustModulationTypeToTS(raw.modulation_type),
-    modulationTransformation: validateModulationTransformation(raw.modulation_transform),
+    modulationTransformation: validateModulationTransformation(
+      raw.modulation_transform,
+    ),
   };
 }
 
@@ -288,7 +327,9 @@ export function normalizeConnection(raw: RawConnection): NormalizedConnection {
  * Converts a normalized TypeScript connection to raw Rust format.
  * Handles camelCase → snake_case and type conversions.
  */
-export function denormalizeConnection(normalized: NormalizedConnection): RawConnection {
+export function denormalizeConnection(
+  normalized: NormalizedConnection,
+): RawConnection {
   return {
     from_id: normalized.fromId,
     to_id: normalized.toId,
@@ -317,9 +358,16 @@ export function validateFiniteNumber(value: unknown, name: string): number {
 /**
  * Validates that a value is in a specific range.
  */
-export function validateRange(value: number, min: number, max: number, name: string): number {
+export function validateRange(
+  value: number,
+  min: number,
+  max: number,
+  name: string,
+): number {
   if (value < min || value > max) {
-    console.warn(`${name} value ${value} out of range [${min}, ${max}], clamping`);
+    console.warn(
+      `${name} value ${value} out of range [${min}, ${max}], clamping`,
+    );
     return Math.max(min, Math.min(max, value));
   }
   return value;
