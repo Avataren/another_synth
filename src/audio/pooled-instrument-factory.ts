@@ -1208,7 +1208,7 @@ export class PooledInstrument {
       setTimeout(() => {
         port.removeEventListener('message', handleMessage);
         resolve(new Float32Array());
-      }, 5000);
+      }, 1000);
     });
   }
 

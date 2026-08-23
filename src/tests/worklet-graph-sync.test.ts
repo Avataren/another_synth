@@ -72,6 +72,7 @@ const createEngine = (name: string) => {
     update_oscillator: vi.fn(),
     update_wavetable_oscillator: vi.fn(),
     update_envelope: vi.fn(),
+    get_filter_ir_waveform: vi.fn(() => new Float32Array([0, 0.5, 1, 0.5])),
     update_lfos: vi.fn(),
     connect_nodes: vi.fn(
       (
@@ -352,6 +353,43 @@ describe('worklet graph editing synchronization', () => {
     expect(reused.voiceLimit).toBe(4);
     expect(reused.adapter).toBe(poly.adapter);
     expect(poly.adapter.free).not.toHaveBeenCalled();
+  });
+});
+
+describe('filter IR request contract', () => {
+  it('correlates responses by messageId and instrument', () => {
+    const harness = createProcessorHarness();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const processor = harness.processor as any;
+
+    processor.handleGetFilterIrWaveform({
+      node_id: '10003',
+      length: 4,
+      messageId: 'ir-request-1',
+      instrumentId: 'instrument-01',
+    });
+
+    const message = harness.posted.find(
+      (item) =>
+        (item as { type?: string; messageId?: string }).messageId ===
+        'ir-request-1',
+    ) as { type?: string; waveform?: Float32Array } | undefined;
+
+    expect(message?.type).toBe('FilterIrWaveform');
+    expect(Array.from(message!.waveform!)).toEqual([0, 0.5, 1, 0.5]);
+
+    const calls = harness.engines.flatMap(({ engine }) =>
+      // Engine doubles are intentionally loosely typed.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (engine.get_filter_ir_waveform as any).mock.calls,
+    );
+
+    expect(calls).toContainEqual(
+      expect.arrayContaining(['10003', 4]),
+    );
+    expect(
+      calls.some((call) => call[0] === '10003' && call[1] === 4),
+    ).toBe(true);
   });
 });
 

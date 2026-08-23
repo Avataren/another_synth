@@ -1012,6 +1012,7 @@ export default class InstrumentV2 {
     maxLength = 512,
   ): Promise<Float32Array> {
     const instrumentId = this.instrumentId;
+    const messageId = `filter-ir:${nodeId}:${Date.now()}`;
     if (!this.workletNode) {
       throw new Error('Audio system not ready');
     }
@@ -1019,14 +1020,18 @@ export default class InstrumentV2 {
 
     return new Promise<Float32Array>((resolve, reject) => {
       const handleMessage = (e: MessageEvent) => {
-        if (e.data.type === 'FilterIrWaveform') {
+        if (
+          e.data.type === 'FilterIrWaveform' &&
+          e.data.messageId === messageId
+        ) {
           if (e.data.instrumentId && e.data.instrumentId !== instrumentId)
             return;
           port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(e.data.waveform));
         } else if (
           e.data.type === 'error' &&
-          e.data.source === 'getFilterIRWaveform'
+          e.data.source === 'getFilterIRWaveform' &&
+          e.data.messageId === messageId
         ) {
           if (e.data.instrumentId && e.data.instrumentId !== instrumentId)
             return;
@@ -1041,13 +1046,14 @@ export default class InstrumentV2 {
         type: 'getFilterIRWaveform',
         node_id: nodeId,
         length: maxLength,
+        messageId,
         instrumentId,
       });
 
       setTimeout(() => {
         port.removeEventListener('message', handleMessage);
-        reject(new Error('Timeout waiting for waveform data'));
-      }, 5000);
+        resolve(new Float32Array());
+      }, 1000);
     });
   }
 
