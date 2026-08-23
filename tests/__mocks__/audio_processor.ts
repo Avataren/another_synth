@@ -1,5 +1,6 @@
 // Mock for WASM audio processor module
 // This provides type definitions and mock implementations for testing
+import { vi } from 'vitest';
 
 export enum WasmModulationType {
   VCA = 0,
@@ -12,6 +13,82 @@ export enum ModulationTransformation {
   Invert = 1,
   Square = 2,
   Cube = 3,
+}
+
+export enum VoiceNodeType {
+  Oscillator = 'oscillator',
+  WavetableOscillator = 'wavetable_oscillator',
+  Filter = 'filter',
+  Envelope = 'envelope',
+  LFO = 'lfo',
+  Mixer = 'mixer',
+  Noise = 'noise',
+  Sampler = 'sampler',
+}
+
+export class NoiseUpdateParams {
+  constructor(
+    public noise_type: number,
+    public cutoff: number,
+    public gain: number,
+    public enabled: boolean,
+  ) {}
+}
+
+export class AudioEngine {
+  init() {}
+  initWithPatch() {}
+}
+
+export class AutomationAdapter {
+  processBlock = vi.fn();
+  applyConnectionUpdate = vi.fn();
+  free = vi.fn();
+}
+
+export class AnalogOscillatorStateUpdate {
+  constructor(
+    public phase_mod_amount: number,
+    public detune: number,
+    public hard_sync: boolean,
+    public gain: number,
+    public active: boolean,
+    public feedback_amount: number,
+    public waveform: unknown,
+    public unison_voices: number,
+    public spread: number,
+  ) {}
+}
+
+export class WavetableOscillatorStateUpdate {
+  constructor(
+    public phase_mod_amount: number,
+    public detune: number,
+    public hard_sync: boolean,
+    public gain: number,
+    public active: boolean,
+    public feedback_amount: number,
+    public unison_voices: number,
+    public spread: number,
+    public wave_index: number,
+  ) {}
+}
+
+export class WasmLfoUpdateParams {
+  constructor(
+    public lfoId: string,
+    public frequency: number,
+    public phaseOffset: number,
+    public waveform: number,
+    public useAbsolute: boolean,
+    public useNormalized: boolean,
+    public triggerMode: number,
+    public gain: number,
+    public active: boolean,
+    public loopMode: number,
+    public loopStart: number,
+    public loopEnd: number,
+  ) {}
 }
 
 export enum PortId {

@@ -17,8 +17,28 @@ import type { Patch, MacroRouteState } from './types/preset-types';
 import type { VoiceAllocation } from './worklet-pool';
 import type { GlideState } from './types/synth-layout';
 import { WorkletMessageHandler } from './adapters/message-handler';
-import { VOICES_PER_ENGINE } from './worklet-config';
-import { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor.js';
+import type OscillatorState from './models/OscillatorState';
+import type {
+  ChorusState,
+  CompressorState,
+  ConvolverState,
+  DelayState,
+  EnvelopeConfig,
+  FilterState,
+  LfoState,
+  ReverbState,
+  SaturationState,
+  BitcrusherState,
+  VelocityState,
+} from './types/synth-layout';
+import type { NodeConnectionUpdate } from './types/synth-layout';
+import type { NoiseState } from './types/noise';
+import { ENGINES_PER_WORKLET, VOICES_PER_ENGINE } from './worklet-config';
+import { toRaw } from 'vue';
+import {
+  ModulationTransformation,
+  WasmModulationType,
+} from 'app/public/wasm/audio_processor.js';
 
 /**
  * Lightweight instrument wrapper for shared worklets.
@@ -90,12 +110,15 @@ export class PooledInstrument {
         this.workletNode.connect(destination);
         PooledInstrument.connectedWorklets.add(this.workletNode);
       } catch (err) {
-        console.warn('[PooledInstrument] Failed to connect worklet to destination', err);
+        console.warn(
+          '[PooledInstrument] Failed to connect worklet to destination',
+          err,
+        );
       }
     }
 
     console.log(
-      `[PooledInstrument:${this.instrumentId}] Created with ${this.num_voices} voices (global indices ${allocation.startVoice}-${allocation.endVoice - 1})`
+      `[PooledInstrument:${this.instrumentId}] Created with ${this.num_voices} voices (global indices ${allocation.startVoice}-${allocation.endVoice - 1})`,
     );
   }
 
@@ -125,13 +148,18 @@ export class PooledInstrument {
    */
   async loadPatch(patch: Patch): Promise<void> {
     // Extract voice limit from patch
-    const patchLayout = patch.synthState?.layout as { voiceCount?: number; voices?: unknown[] } | undefined;
-    const patchVoiceCount = patchLayout?.voiceCount ?? patchLayout?.voices?.length ?? this.num_voices;
+    const patchLayout = patch.synthState?.layout as
+      | { voiceCount?: number; voices?: unknown[] }
+      | undefined;
+    const patchVoiceCount =
+      patchLayout?.voiceCount ?? patchLayout?.voices?.length ?? this.num_voices;
 
     // Voice limit is the minimum of what the patch expects and what we allocated
     const voiceLimit = Math.min(this.num_voices, Math.max(1, patchVoiceCount));
 
-    console.log(`[PooledInstrument:${this.instrumentId}] Loading patch "${patch.metadata.name}" with voice limit ${voiceLimit}/${this.num_voices}`);
+    console.log(
+      `[PooledInstrument:${this.instrumentId}] Loading patch "${patch.metadata.name}" with voice limit ${voiceLimit}/${this.num_voices}`,
+    );
 
     // Calculate max release time
     this.maxReleaseTimeMs = 0;
@@ -139,7 +167,10 @@ export class PooledInstrument {
     if (envelopes) {
       for (const env of Object.values(envelopes)) {
         if (env && typeof env.release === 'number') {
-          this.maxReleaseTimeMs = Math.max(this.maxReleaseTimeMs, env.release * 1000);
+          this.maxReleaseTimeMs = Math.max(
+            this.maxReleaseTimeMs,
+            env.release * 1000,
+          );
         }
       }
     }
@@ -153,7 +184,12 @@ export class PooledInstrument {
     if (patchGlides) {
       Object.entries(patchGlides).forEach(([id, glide]) => {
         if (glide) {
-          this.glideStates.set(id, { ...glide, id, time: glide.time ?? 0, active: !!glide.active });
+          this.glideStates.set(id, {
+            ...glide,
+            id,
+            time: glide.time ?? 0,
+            active: !!glide.active,
+          });
         }
       });
     }
@@ -164,7 +200,7 @@ export class PooledInstrument {
         if (value === undefined) return null;
         if (typeof value === 'number' && !Number.isFinite(value)) return 0;
         return value;
-      })
+      }),
     ) as Patch;
 
     // Remove audio assets (loaded separately)
@@ -190,17 +226,23 @@ export class PooledInstrument {
     // Initialize voice parameters
     const now = this.audioContext.currentTime;
     for (let i = 0; i < voiceLimit; i++) {
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', i),
+      );
       if (gateParam) {
         gateParam.cancelScheduledValues(now);
         gateParam.value = 0;
       }
-      const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
+      const freqParam = this.workletNode.parameters.get(
+        this.getParamName('frequency', i),
+      );
       if (freqParam) {
         freqParam.cancelScheduledValues(now);
         freqParam.value = 440;
       }
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
       if (gainParam) {
         gainParam.cancelScheduledValues(now);
         gainParam.value = 1;
@@ -218,22 +260,33 @@ export class PooledInstrument {
     options?: { allowDuplicate?: boolean; frequency?: number; pan?: number },
   ): number | undefined {
     const allowDuplicate = options?.allowDuplicate ?? false;
-    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(noteNumber, allowDuplicate, time);
+    const { voiceIndex, stolenNote, isRetrigger } = this.allocateVoice(
+      noteNumber,
+      allowDuplicate,
+      time,
+    );
 
     this.markVoiceActive(noteNumber, voiceIndex, time);
 
-    const frequency = options?.frequency ?? this.midiNoteToFrequency(noteNumber);
+    const frequency =
+      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
 
     // Set voice parameters
-    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
+    const gateParam = this.workletNode.parameters.get(
+      this.getParamName('gate', voiceIndex),
+    );
     if (gateParam) {
       gateParam.cancelScheduledValues(time);
       const retriggering = isRetrigger || stolenNote !== null;
       const portamentoEnabled = this.isPortamentoEnabled();
-      const shouldPulseGate = retriggering && (this.num_voices > 1 || !portamentoEnabled);
+      const shouldPulseGate =
+        retriggering && (this.num_voices > 1 || !portamentoEnabled);
 
       if (shouldPulseGate) {
-        const gatePulseDuration = Math.max(0.005, this.quantumFrames / this.audioContext.sampleRate);
+        const gatePulseDuration = Math.max(
+          0.005,
+          this.quantumFrames / this.audioContext.sampleRate,
+        );
         gateParam.setValueAtTime(0, time);
         gateParam.setValueAtTime(1, time + gatePulseDuration);
       } else {
@@ -241,13 +294,17 @@ export class PooledInstrument {
       }
     }
 
-    const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
+    const freqParam = this.workletNode.parameters.get(
+      this.getParamName('frequency', voiceIndex),
+    );
     if (freqParam) {
       freqParam.cancelScheduledValues(time);
       freqParam.setValueAtTime(frequency, time);
     }
 
-    const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
+    const gainParam = this.workletNode.parameters.get(
+      this.getParamName('gain', voiceIndex),
+    );
     if (gainParam) {
       gainParam.cancelScheduledValues(time);
       const baseGain = velocity / 127;
@@ -264,7 +321,9 @@ export class PooledInstrument {
    */
   noteOffAtTime(noteNumber: number, time: number, voiceIndex?: number): void {
     const voicesToRelease =
-      voiceIndex !== undefined ? [voiceIndex] : Array.from(this.activeNotes.get(noteNumber) ?? []);
+      voiceIndex !== undefined
+        ? [voiceIndex]
+        : Array.from(this.activeNotes.get(noteNumber) ?? []);
 
     if (voiceIndex === undefined) {
       this.activeNotes.delete(noteNumber);
@@ -272,7 +331,9 @@ export class PooledInstrument {
 
     for (const voice of voicesToRelease) {
       this.releaseVoice(voice, time);
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voice));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', voice),
+      );
       if (gateParam) {
         gateParam.setValueAtTime(0, time);
       }
@@ -293,12 +354,22 @@ export class PooledInstrument {
     this.noteOffAtTime(noteNumber, this.audioContext.currentTime, voiceIndex);
   }
 
+  note_on(noteNumber: number, velocity: number): void {
+    this.noteOn(noteNumber, velocity);
+  }
+
+  note_off(noteNumber: number): void {
+    this.noteOff(noteNumber);
+  }
+
   /**
    * Gate off a specific voice at a specific time
    */
   gateOffVoiceAtTime(voiceIndex: number, time: number): void {
     this.releaseVoice(voiceIndex, time);
-    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
+    const gateParam = this.workletNode.parameters.get(
+      this.getParamName('gate', voiceIndex),
+    );
     if (gateParam) {
       gateParam.setValueAtTime(0, time);
     }
@@ -311,13 +382,17 @@ export class PooledInstrument {
     if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
     const now = this.audioContext.currentTime;
 
-    const gateParam = this.workletNode.parameters.get(this.getParamName('gate', voiceIndex));
+    const gateParam = this.workletNode.parameters.get(
+      this.getParamName('gate', voiceIndex),
+    );
     if (gateParam) {
       gateParam.cancelScheduledValues(now);
       gateParam.setValueAtTime(0, now);
     }
 
-    const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
+    const gainParam = this.workletNode.parameters.get(
+      this.getParamName('gain', voiceIndex),
+    );
     if (gainParam) {
       gainParam.cancelScheduledValues(now);
       gainParam.setValueAtTime(0, now);
@@ -333,7 +408,9 @@ export class PooledInstrument {
     const clamped = Math.max(0, Math.min(1, gain));
     const when = time ?? this.audioContext.currentTime;
     for (let i = 0; i < this.num_voices; i++) {
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
       if (gainParam) {
         this.voiceBaseGain[i] = clamped;
         const target = Math.min(1, clamped * this.outputGain);
@@ -349,11 +426,13 @@ export class PooledInstrument {
     voiceIndex: number,
     frequency: number,
     time: number,
-    rampMode?: 'linear' | 'exponential'
+    rampMode?: 'linear' | 'exponential',
   ): void {
     if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
 
-    const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', voiceIndex));
+    const freqParam = this.workletNode.parameters.get(
+      this.getParamName('frequency', voiceIndex),
+    );
     if (!freqParam) return;
 
     if (rampMode === 'exponential') {
@@ -373,13 +452,15 @@ export class PooledInstrument {
     voiceIndex: number,
     gain: number,
     time: number,
-    rampMode?: 'linear' | 'exponential'
+    rampMode?: 'linear' | 'exponential',
   ): void {
     if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
 
     const clamped = Math.max(0, Math.min(1, gain));
     this.voiceBaseGain[voiceIndex] = clamped;
-    const gainParam = this.workletNode.parameters.get(this.getParamName('gain', voiceIndex));
+    const gainParam = this.workletNode.parameters.get(
+      this.getParamName('gain', voiceIndex),
+    );
     if (!gainParam) return;
 
     const target = Math.min(1, clamped * this.outputGain);
@@ -402,7 +483,9 @@ export class PooledInstrument {
     const when = time ?? this.audioContext.currentTime;
     // Re-apply current base gains with the new output gain multiplier.
     for (let i = 0; i < this.num_voices; i++) {
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
       if (!gainParam) continue;
       const base = this.voiceBaseGain[i] ?? 1;
       const target = Math.min(1, base * this.outputGain);
@@ -413,16 +496,19 @@ export class PooledInstrument {
   /**
    * Update sampler state (loop points, gain, trigger mode, etc.)
    */
-  updateSamplerState(nodeId: string, state: {
-    frequency: number;
-    gain: number;
-    loopMode: number;
-    loopStart: number;
-    loopEnd: number;
-    rootNote: number;
-    triggerMode: number;
-    active: boolean;
-  }): void {
+  updateSamplerState(
+    nodeId: string,
+    state: {
+      frequency: number;
+      gain: number;
+      loopMode: number;
+      loopStart: number;
+      loopEnd: number;
+      rootNote: number;
+      triggerMode: number;
+      active: boolean;
+    },
+  ): void {
     this.messageHandler.sendFireAndForget({
       type: 'updateSampler',
       samplerId: nodeId,
@@ -449,12 +535,16 @@ export class PooledInstrument {
 
     // Force-silence every local voice to avoid any stuck gates
     for (let i = 0; i < this.num_voices; i++) {
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', i),
+      );
       if (gateParam) {
         gateParam.cancelScheduledValues(now);
         gateParam.setValueAtTime(0, now);
       }
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
       if (gainParam) {
         gainParam.cancelScheduledValues(now);
         gainParam.setValueAtTime(0, now);
@@ -471,14 +561,20 @@ export class PooledInstrument {
   cancelScheduledNotes(): void {
     const now = this.audioContext.currentTime;
     for (let i = 0; i < this.num_voices; i++) {
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', i),
+      );
       if (gateParam) {
         gateParam.cancelScheduledValues(now);
         gateParam.setValueAtTime(0, now);
       }
-      const freqParam = this.workletNode.parameters.get(this.getParamName('frequency', i));
+      const freqParam = this.workletNode.parameters.get(
+        this.getParamName('frequency', i),
+      );
       if (freqParam) freqParam.cancelScheduledValues(now);
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
       if (gainParam) {
         gainParam.cancelScheduledValues(now);
         gainParam.setValueAtTime(1, now);
@@ -506,19 +602,25 @@ export class PooledInstrument {
    * Dispose (doesn't disconnect worklet, just cleans up this instrument)
    */
   dispose(): void {
-    console.log(`[PooledInstrument] Disposing (silencing voices ${this.allocation.startVoice}-${this.allocation.endVoice - 1})`);
+    console.log(
+      `[PooledInstrument] Disposing (silencing voices ${this.allocation.startVoice}-${this.allocation.endVoice - 1})`,
+    );
 
     this.allNotesOff();
 
     // Silence all our voices
     const now = this.audioContext.currentTime;
     for (let i = 0; i < this.num_voices; i++) {
-      const gateParam = this.workletNode.parameters.get(this.getParamName('gate', i));
+      const gateParam = this.workletNode.parameters.get(
+        this.getParamName('gate', i),
+      );
       if (gateParam) {
         gateParam.cancelScheduledValues(now);
         gateParam.setValueAtTime(0, now);
       }
-      const gainParam = this.workletNode.parameters.get(this.getParamName('gain', i));
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
       if (gainParam) {
         gainParam.cancelScheduledValues(now);
         gainParam.setValueAtTime(0, now);
@@ -547,7 +649,11 @@ export class PooledInstrument {
   // Private Helper Methods
   // ========================================================================
 
-  private markVoiceActive(noteNumber: number, voiceIndex: number, audioTime: number): void {
+  private markVoiceActive(
+    noteNumber: number,
+    voiceIndex: number,
+    audioTime: number,
+  ): void {
     if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
 
     let voices = this.activeNotes.get(noteNumber);
@@ -630,7 +736,10 @@ export class PooledInstrument {
       const releaseStartTime = this.voiceReleaseTime[candidate] ?? 0;
       const timeSinceRelease = scheduledTime - releaseStartTime;
 
-      if (voiceNote === null && (releaseStartTime === 0 || timeSinceRelease >= maxReleaseTimeSec)) {
+      if (
+        voiceNote === null &&
+        (releaseStartTime === 0 || timeSinceRelease >= maxReleaseTimeSec)
+      ) {
         this.voiceRoundRobinIndex = (candidate + 1) % this.num_voices;
         return candidate;
       }
@@ -653,13 +762,26 @@ export class PooledInstrument {
   }
 
   // Additional compatibility methods
-  setVoiceMacroAtTime(_voiceIndex: number, _macroIndex: number, _value: number, _time: number): void {
+  setVoiceMacroAtTime(
+    _voiceIndex: number,
+    _macroIndex: number,
+    _value: number,
+    _time: number,
+  ): void {
     // Stub: MOD instruments don't use voice macros during playback
   }
 
-  setMacro(macroIndex: number, value: number, time?: number, rampToValue?: number, rampTime?: number, interpolation: 'linear' | 'exponential' = 'linear'): void {
+  setMacro(
+    macroIndex: number,
+    value: number,
+    time?: number,
+    rampToValue?: number,
+    rampTime?: number,
+    interpolation: 'linear' | 'exponential' = 'linear',
+  ): void {
     const clampedValue = Math.min(1, Math.max(0, value));
-    const when = typeof time === 'number' ? time : this.audioContext.currentTime;
+    const when =
+      typeof time === 'number' ? time : this.audioContext.currentTime;
     for (let voice = 0; voice < this.num_voices; voice++) {
       const globalVoice = this.localToGlobal(voice);
       const engineId = Math.floor(globalVoice / VOICES_PER_ENGINE);
@@ -695,13 +817,210 @@ export class PooledInstrument {
         (_route.modulationType as WasmModulationType | undefined) ??
         WasmModulationType.Additive,
       modulationTransformation:
-        (_route.modulationTransformation as ModulationTransformation | undefined) ??
-        ModulationTransformation.None,
+        (_route.modulationTransformation as
+          | ModulationTransformation
+          | undefined) ?? ModulationTransformation.None,
       instrumentId: this.instrumentId,
     });
   }
 
-  async importWavetableData(nodeId: string, wavData: Uint8Array): Promise<void> {
+  updateOscillatorState(nodeId: string, newState: OscillatorState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateOscillator',
+      oscillatorId: nodeId,
+      newState,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateWavetableOscillatorState(
+    nodeId: string,
+    newState: OscillatorState,
+  ): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateWavetableOscillator',
+      oscillatorId: nodeId,
+      newState,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateEnvelopeState(nodeId: string, state: EnvelopeConfig): Promise<void> {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateEnvelope',
+      envelopeId: nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+    return Promise.resolve();
+  }
+
+  updateLfoState(nodeId: string, state: LfoState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateLfo',
+      lfoId: nodeId,
+      params: {
+        lfoId: nodeId,
+        frequency: state.frequency,
+        phaseOffset: state.phaseOffset ?? 0,
+        waveform: state.waveform,
+        useAbsolute: state.useAbsolute,
+        useNormalized: state.useNormalized,
+        triggerMode: state.triggerMode,
+        gain: state.gain,
+        active: state.active,
+        loopMode: state.loopMode,
+        loopStart: state.loopStart,
+        loopEnd: state.loopEnd,
+      },
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateFilterState(nodeId: string, config: FilterState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateFilter',
+      filterId: nodeId,
+      config: JSON.parse(JSON.stringify(toRaw(config))) as FilterState,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateConvolverState(nodeId: string, state: ConvolverState): void {
+    const plainState = JSON.parse(JSON.stringify(toRaw(state))) as ConvolverState;
+    this.messageHandler.sendFireAndForget({
+      type: 'updateConvolver',
+      nodeId,
+      state: plainState,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateDelayState(nodeId: string, state: DelayState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateDelay',
+      nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateChorusState(nodeId: string, state: ChorusState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateChorus',
+      nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateReverbState(nodeId: string, state: ReverbState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateReverb',
+      nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateCompressorState(nodeId: string, state: CompressorState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateCompressor',
+      nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateSaturationState(nodeId: string, state: SaturationState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateSaturation',
+      nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateBitcrusherState(nodeId: string, state: BitcrusherState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateBitcrusher',
+      nodeId,
+      state,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateVelocityState(nodeId: string, state: VelocityState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateVelocity',
+      nodeId,
+      config: {
+        sensitivity: state.sensitivity,
+        randomize: state.randomize,
+        active: state.active,
+      },
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateNoiseState(nodeId: string, state: NoiseState): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateNoise',
+      noiseId: nodeId,
+      config: {
+        noise_type: state.noiseType,
+        cutoff: state.cutoff,
+        gain: state.gain || 1,
+        enabled: !!state.is_enabled,
+      },
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateConnection(connection: NodeConnectionUpdate): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateConnection',
+      connection,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  removeSpecificConnection(
+    fromId: string,
+    toId: string,
+    targetPort: number,
+  ): void {
+    this.workletNode.port.postMessage({
+      type: 'removeConnection',
+      fromId,
+      toId,
+      targetPort,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateGlideState(nodeId: string, state: GlideState): void {
+    const glideState = {
+      ...state,
+      id: state.id ?? nodeId,
+      time: state.time ?? 0,
+      active: !!state.active,
+    };
+    this.glideStates.set(nodeId, glideState);
+
+    this.messageHandler.sendFireAndForget({
+      type: 'updateGlide',
+      glideId: nodeId,
+      time: glideState.time,
+      active: glideState.active,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  async importWavetableData(
+    nodeId: string,
+    wavData: Uint8Array,
+  ): Promise<void> {
     this.messageHandler.sendFireAndForget({
       type: 'importWavetable',
       nodeId,
@@ -733,4 +1052,355 @@ export class PooledInstrument {
     });
   }
 
+  updateArpeggiatorPattern(
+    nodeId: string,
+    pattern: number[] | { value: number; active: boolean }[],
+  ): void {
+    const numericPattern = (pattern as { value: number; active: boolean }[]).map(
+      (step) => step.value,
+    );
+    this.messageHandler.sendFireAndForget({
+      type: 'updateArpeggiatorPattern',
+      pattern: numericPattern,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  updateArpeggiatorPatternSteps(nodeId: string, pattern: { value: number; active: boolean }[]): void {
+    this.updateArpeggiatorPattern(nodeId, pattern.map((step) => step.value));
+  }
+
+  createNode(_nodeType: unknown): Promise<string> {
+    // Structural graph editing is not supported for pooled tracker slots yet.
+    return Promise.reject(
+      new Error('Structural graph editing is not available for pooled slots'),
+    );
+  }
+
+  deleteNode(_nodeId: string): void {
+    // Structural graph editing is not supported for pooled tracker slots yet.
+  }
+
+  getEnvelopePreview(
+    config: EnvelopeConfig,
+    previewDuration: number,
+  ): Promise<Float32Array> {
+    const messageId = `envelope-preview:${Date.now()}:${Math.random()}`;
+    const port = this.workletNode.port;
+    return new Promise((resolve, _reject) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (
+          event.data?.type === 'envelopePreview' &&
+          event.data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(event.data.preview));
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'getEnvelopePreview',
+        config,
+        previewDuration,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        resolve(new Float32Array());
+      }, 2000);
+    });
+  }
+
+  async getSamplerWaveformEarlyUnused(
+    nodeId: string,
+    maxLength = 512,
+  ): Promise<Float32Array> {
+    const messageId = `sampler-waveform:${nodeId}:${Date.now()}`;
+    const port = this.workletNode.port;
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (
+          event.data?.type === 'samplerWaveform' &&
+          event.data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(event.data.waveform));
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'getSamplerWaveform',
+        samplerId: nodeId,
+        maxLength,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(() => resolve(new Float32Array()), 5000);
+    });
+  }
+
+  updateArpeggiatorStepDuration(nodeId: string, stepDurationMs: number): void {
+    this.messageHandler.sendFireAndForget({
+      type: 'updateArpeggiatorStepDuration',
+      stepDuration: stepDurationMs,
+      instrumentId: this.instrumentId,
+    });
+  }
+
+  async getWasmNodeConnections(): Promise<string> {
+    const messageId = `${Date.now()}-${Math.random()}`;
+    const port = this.workletNode.port;
+
+    return new Promise<string>((resolve, reject) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (
+          event.data?.type === 'nodeLayout' &&
+          event.data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          resolve(event.data.layout);
+        } else if (
+          event.data?.type === 'error' &&
+          event.data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          reject(new Error(event.data.message));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'getNodeLayout',
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for node layout'));
+      }, 5000);
+    });
+  }
+
+  async getFilterResponse(nodeId: string, length = 512): Promise<Float32Array> {
+    const messageId = `${nodeId}:${Date.now()}:${Math.random()}`;
+    const port = this.workletNode.port;
+
+    return new Promise<Float32Array>((resolve, _reject) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (
+          event.data?.type === 'FilterIrWaveform' &&
+          event.data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(event.data.waveform));
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'getFilterIRWaveform',
+        node_id: nodeId,
+        length,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        resolve(new Float32Array());
+      }, 5000);
+    });
+  }
+
+  async getLfoWaveform(
+    waveform: number,
+    phaseOffset: number,
+    frequency: number,
+    bufferSize: number,
+    useAbsolute: boolean,
+    useNormalized: boolean,
+  ): Promise<Float32Array> {
+    const messageId = `lfo-waveform:${Date.now()}`;
+    const port = this.workletNode.port;
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (
+          event.data?.type === 'lfoWaveform' &&
+          event.data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(event.data.waveform));
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'getLfoWaveform',
+        waveform,
+        phaseOffset,
+        frequency,
+        bufferSize,
+        use_absolute: useAbsolute,
+        use_normalized: useNormalized,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(() => resolve(new Float32Array()), 5000);
+    });
+  }
+
+  async getSamplerWaveform(
+    nodeId: string,
+    maxLength = 512,
+  ): Promise<Float32Array> {
+    const messageId = `sampler-waveform:${nodeId}:${Date.now()}`;
+    const port = this.workletNode.port;
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (
+          event.data?.type === 'samplerWaveform' &&
+          event.data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          resolve(new Float32Array(event.data.waveform));
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'getSamplerWaveform',
+        samplerId: nodeId,
+        maxLength,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(() => resolve(new Float32Array()), 5000);
+    });
+  }
+
+  generateHallReverb(nodeId: string, decayTime: number, roomSize: number): Promise<void> {
+    return this.generateReverbImpulse('hall', nodeId, decayTime, roomSize);
+  }
+
+  generatePlateReverb(nodeId: string, decayTime: number, diffusion: number): Promise<void> {
+    return this.generateReverbImpulse('plate', nodeId, decayTime, diffusion);
+  }
+
+  private generateReverbImpulse(
+    type: 'hall' | 'plate',
+    nodeId: string,
+    primary: number,
+    secondary: number,
+  ): Promise<void> {
+    const messageId = `reverb:${type}:${Date.now()}`;
+    const port = this.workletNode.port;
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          resolve();
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: type === 'hall' ? 'generateHallReverb' : 'generatePlateReverb',
+        nodeId,
+        [type === 'hall' ? 'roomSize' : 'diffusion']: secondary,
+        decayTime: primary,
+        sampleRate: this.audioContext.sampleRate,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(resolve, 2000);
+    });
+  }
+
+  readonly num_engines = ENGINES_PER_WORKLET;
+  readonly voices_per_engine = VOICES_PER_ENGINE;
+
+  remove_specific_connection(fromId: string, toId: string, targetPort: number): void {
+    this.removeSpecificConnection(fromId, toId, targetPort);
+  }
+
+  updateWavetable(_nodeId: string, _newWavetable: unknown): void {}
+
+  updateLayout(_layout: unknown): void {}
+
+  async exportSamplerData(
+    nodeId: string,
+  ): Promise<{
+    samples: Float32Array;
+    sampleRate: number;
+    channels: number;
+    rootNote: number;
+  }> {
+    const messageId = `export-sample:${nodeId}`;
+    const port = this.workletNode.port;
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          resolve(event.data.sampleData ?? {
+            samples: new Float32Array(),
+            sampleRate: 44100,
+            channels: 1,
+            rootNote: 60,
+          });
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'exportSampleData',
+        samplerId: nodeId,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(
+        () =>
+          resolve({
+            samples: new Float32Array(),
+            sampleRate: 44100,
+            channels: 1,
+            rootNote: 60,
+          }),
+        5000,
+      );
+    });
+  }
+
+  async exportConvolverData(
+    nodeId: string,
+  ): Promise<{ samples: Float32Array; sampleRate: number; channels: number }> {
+    const messageId = `export-convolver:${nodeId}`;
+    const port = this.workletNode.port;
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.messageId === messageId) {
+          port.removeEventListener('message', handleMessage);
+          resolve(event.data.convolverData ?? {
+            samples: new Float32Array(),
+            sampleRate: 44100,
+            channels: 1,
+          });
+        }
+      };
+      port.addEventListener('message', handleMessage);
+      port.postMessage({
+        type: 'exportConvolverData',
+        convolverId: nodeId,
+        messageId,
+        instrumentId: this.instrumentId,
+      });
+      setTimeout(
+        () => resolve({ samples: new Float32Array(), sampleRate: 44100, channels: 1 }),
+        5000,
+      );
+    });
+  }
+
+  getFilterIRWaveform(nodeId: string, length = 512): Promise<Float32Array> {
+    return this.getFilterResponse(nodeId, length);
+  }
+
+  async waitForInstrumentReady(_instrument?: unknown): Promise<boolean> {
+    return true;
+  }
 }

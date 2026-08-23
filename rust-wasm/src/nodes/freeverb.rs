@@ -456,7 +456,7 @@ mod tests {
         inputs.insert(
             PortId::AudioInput0,
             vec![ModulationSource {
-                buffer: input_left.clone(),
+                buffer: &input_left,
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
@@ -465,7 +465,7 @@ mod tests {
         inputs.insert(
             PortId::AudioInput1,
             vec![ModulationSource {
-                buffer: input_right.clone(),
+                buffer: &input_right,
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
@@ -526,7 +526,7 @@ mod tests {
         inputs.insert(
             PortId::AudioInput0,
             vec![ModulationSource {
-                buffer: input_left.clone(),
+                buffer: &input_left,
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
@@ -535,7 +535,7 @@ mod tests {
         inputs.insert(
             PortId::AudioInput1,
             vec![ModulationSource {
-                buffer: input_right.clone(),
+                buffer: &input_right,
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,

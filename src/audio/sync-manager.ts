@@ -292,7 +292,6 @@ export class AudioSyncManager {
             if (wasmState === this.lastWasmState) return;
 
             this.lastWasmState = wasmState;
-            console.log('# wasmState:', wasmState);
             const wasmLayout = JSON.parse(wasmState) as WasmLayout;
             const wasmConnections = wasmLayout.voices.flatMap(
                 (voice) => voice.connections || [],

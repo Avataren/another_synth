@@ -30,8 +30,10 @@ pub struct AutomationFrame {
 
 impl AutomationFrame {
     pub fn with_dimensions(num_voices: usize, macro_count: usize, macro_buffer_len: usize) -> Self {
+        let macro_count = macro_count.max(1);
         let gate_buffer_len = macro_buffer_len.max(1);
         let frequency_buffer_len = macro_buffer_len.max(1);
+        let macro_buffer_len = macro_buffer_len.max(1);
         let gate_buffers = vec![DEFAULT_GATE; num_voices * gate_buffer_len];
         let frequency_buffers = vec![DEFAULT_FREQUENCY; num_voices * frequency_buffer_len];
         let macro_buffers = vec![0.0; num_voices * macro_count * macro_buffer_len];
@@ -169,6 +171,29 @@ impl AutomationFrame {
         (voice_index * self.macro_count + macro_index) * self.macro_buffer_len
     }
 
+    pub fn ensure_macro_dimensions(
+        &mut self,
+        voice_count: usize,
+        macro_count: usize,
+        buffer_len: usize,
+    ) {
+        let voice_count = voice_count.max(1);
+        let macro_count = macro_count.max(1);
+        let buffer_len = buffer_len.max(1);
+        let expected_len = voice_count * macro_count * buffer_len;
+
+        if self.macro_count != macro_count
+            || self.macro_buffer_len != buffer_len
+            || self.macro_buffers.len() < expected_len
+        {
+            self.macro_count = macro_count;
+            self.macro_buffer_len = buffer_len;
+            self.macro_buffers = vec![0.0; expected_len];
+        } else {
+            self.macro_buffers.fill(0.0);
+        }
+    }
+
     fn gate_offset(&self, voice_index: usize) -> usize {
         voice_index * self.gate_buffer_len
     }
@@ -179,7 +204,7 @@ impl AutomationFrame {
 
     fn ensure_gate_buffer_len(&mut self, target_len: usize) {
         let target_len = target_len.max(1);
-        if self.gate_buffer_len != target_len || self.gates.len() != self.num_voices * target_len {
+        if self.gate_buffer_len != target_len || self.gates.len() < self.num_voices * target_len {
             self.gate_buffer_len = target_len;
             self.gates = vec![DEFAULT_GATE; self.num_voices * target_len];
         } else {
@@ -190,7 +215,7 @@ impl AutomationFrame {
     fn ensure_frequency_buffer_len(&mut self, target_len: usize) {
         let target_len = target_len.max(1);
         if self.frequency_buffer_len != target_len
-            || self.frequencies.len() != self.num_voices * target_len
+            || self.frequencies.len() < self.num_voices * target_len
         {
             self.frequency_buffer_len = target_len;
             self.frequencies = vec![DEFAULT_FREQUENCY; self.num_voices * target_len];
@@ -369,6 +394,7 @@ impl AutomationFrame {
 
         self.ensure_gate_buffer_len(gate_buffer_len);
         self.ensure_frequency_buffer_len(frequency_buffer_len);
+        self.ensure_macro_dimensions(self.num_voices, self.macro_count, block_len_hint);
         self.reset_defaults();
 
         for voice in 0..self.num_voices {
@@ -707,6 +733,22 @@ pub fn apply_connection_update(
 mod tests {
     use super::*;
     use crate::graph::ModulationTransformation;
+    #[test]
+    fn frame_resizes_macro_buffers_for_block_length_changes() {
+        let mut frame = AutomationFrame::with_dimensions(1, 4, 8);
+        assert_eq!(frame.macro_buffer_len(), 8);
+
+        // Simulate an audio host whose quantum is larger than the adapter's
+        // initial buffer size. This must resize every per-voice dimension.
+        frame.ensure_macro_dimensions(1, 4, 128);
+
+        assert_eq!(frame.macro_buffer_len(), 128);
+        assert_eq!(frame.macro_slice(0, 3).len(), 128);
+        assert_eq!(frame.macro_buffers.len(), 512);
+
+        frame.set_macro_value(0, 0, 0.5);
+        assert!(frame.macro_slice(0, 0).iter().all(|&v| v == 0.5));
+    }
 
     #[test]
     fn macro_expansion_matches_worklet_behavior() {
@@ -809,7 +851,7 @@ mod tests {
             engine.connections[0].clone();
         assert_eq!(from, "1");
         assert_eq!(from_port, PortId::AudioOutput0);
-        assert_eq!(to, 2);
+        assert_eq!(to, "2");
         assert_eq!(to_port, PortId::GainMod);
         assert_eq!(amount, 0.75);
         assert_eq!(modulation_type, Some(WasmModulationType::VCA));
@@ -820,8 +862,8 @@ mod tests {
     fn apply_connection_update_removes_connection() {
         let mut engine = MockEngine::default();
         let update = ConnectionUpdate::new(
-            4,
-            7,
+            "4".to_string(),
+            "7".to_string(),
             PortId::FrequencyMod,
             1.0,
             ModulationTransformation::None,

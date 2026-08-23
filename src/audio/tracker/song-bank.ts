@@ -510,7 +510,10 @@ export class TrackerSongBank {
     const existing = this.lastTrackVoice.get(instrumentId);
     if (existing) {
       for (const [key, val] of Array.from(existing.entries())) {
-        if (val === voiceIndex && key !== (Number.isFinite(trackIndex) ? (trackIndex as number) : -1)) {
+        if (
+          val === voiceIndex &&
+          key !== (Number.isFinite(trackIndex) ? (trackIndex as number) : -1)
+        ) {
           existing.delete(key);
         }
       }
@@ -648,11 +651,11 @@ export class TrackerSongBank {
       }
 
       // Warning: If gate-off can't happen before the new note due to late scheduling
-        if (gateTime > time - gateLead * 0.5) {
-          console.warn(
-            `[SongBank] Gate-off timing compromised for track ${trackIndex ?? -1}: ` +
-              `gate=${gateTime.toFixed(3)}s, note=${time.toFixed(3)}s, ` +
-              `lead=${(time - gateTime).toFixed(3)}s (wanted ${gateLead.toFixed(3)}s)`,
+      if (gateTime > time - gateLead * 0.5) {
+        console.warn(
+          `[SongBank] Gate-off timing compromised for track ${trackIndex ?? -1}: ` +
+            `gate=${gateTime.toFixed(3)}s, note=${time.toFixed(3)}s, ` +
+            `lead=${(time - gateTime).toFixed(3)}s (wanted ${gateLead.toFixed(3)}s)`,
         );
         if (gateTime >= time) {
           instrument.cancelAndSilenceVoice(previousVoice);
@@ -1154,7 +1157,8 @@ export class TrackerSongBank {
           const gateLead = this.getGateLeadTime(owner.instrument);
           let gateTime = scheduledTime - gateLead;
           if (gateTime < now) gateTime = now + 0.001;
-          if (gateTime >= scheduledTime) gateTime = Math.max(now, scheduledTime - 0.0005);
+          if (gateTime >= scheduledTime)
+            gateTime = Math.max(now, scheduledTime - 0.0005);
           owner.instrument.gateOffVoiceAtTime(existing.voiceIndex, gateTime);
         }
         this.trackVoiceOwner.delete(trackIndex as number);
@@ -2356,6 +2360,25 @@ export class TrackerSongBank {
     // Update the active instrument's stored signature so it matches
     const active = this.instruments.get(instrumentId);
     if (active) {
+      const requestedVoices = Math.max(
+        1,
+        Math.min(
+          VOICES_PER_ENGINE,
+          normalizedPatch?.synthState?.layout?.voiceCount ??
+            normalizedPatch?.synthState?.layout?.voices?.length ??
+            VOICES_PER_ENGINE,
+        ),
+      );
+      if (
+        this.useWorkletPooling &&
+        active.instrument instanceof PooledInstrument &&
+        active.instrument.num_voices !== requestedVoices
+      ) {
+        console.warn(
+          `[SongBank] Ignoring live patch for ${instrumentId}: voice count ${requestedVoices} does not match allocated ${active.instrument.num_voices}. Re-sync slots to rebuild the instrument.`,
+        );
+        return;
+      }
       active.patchId = patchId;
       active.patchSignature = this.computePatchSignature(normalizedPatch);
       active.hasPortamento = this.hasActivePortamento(normalizedPatch);

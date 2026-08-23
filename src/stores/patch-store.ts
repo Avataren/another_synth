@@ -27,16 +27,29 @@ import {
   getConvolverNodeIds,
   getSamplerNodeIds,
 } from 'src/audio/serialization/audio-asset-extractor';
-import { createDefaultPatchMetadata, PRESET_SCHEMA_VERSION } from 'src/audio/types/preset-types';
+import {
+  createDefaultPatchMetadata,
+  PRESET_SCHEMA_VERSION,
+} from 'src/audio/types/preset-types';
 import { useInstrumentStore } from './instrument-store';
 import { useLayoutStore } from './layout-store';
 import { useNodeStateStore } from './node-state-store';
 import { useAssetStore } from './asset-store';
 import { useMacroStore } from './macro-store';
 import type { MacroRoute } from './macro-store';
-import type { WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type {
+  WasmModulationType,
+  ModulationTransformation,
+} from 'app/public/wasm/audio_processor';
 import type InstrumentV2 from 'src/audio/instrument-v2';
-import { VoiceNodeType, getNodesOfType, cloneVoiceLayout, type SynthLayout, type ConvolverState } from 'src/audio/types/synth-layout';
+import { VOICES_PER_ENGINE } from 'src/audio/worklet-config';
+import {
+  VoiceNodeType,
+  getNodesOfType,
+  cloneVoiceLayout,
+  type SynthLayout,
+  type ConvolverState,
+} from 'src/audio/types/synth-layout';
 import { normalizePatchCategory } from 'src/utils/patch-category';
 
 /**
@@ -291,9 +304,12 @@ export const usePatchStore = defineStore('patchStore', {
                   targetId: route.targetId,
                   targetPort: route.targetPort,
                   amount: route.amount,
-                  modulationType: route.modulationType as WasmModulationType | undefined,
-                  modulationTransformation:
-                    route.modulationTransformation as ModulationTransformation | undefined,
+                  modulationType: route.modulationType as
+                    | WasmModulationType
+                    | undefined,
+                  modulationTransformation: route.modulationTransformation as
+                    | ModulationTransformation
+                    | undefined,
                 })) as {
                   macroIndex: number;
                   targetId: string;
@@ -325,10 +341,15 @@ export const usePatchStore = defineStore('patchStore', {
         // Skip asset restoration and state application when skipLoadPatch is true
         // (the external instrument already has these loaded)
         if (!options?.skipLoadPatch) {
-          await assetStore.restoreAudioAssets(instrumentStore.currentInstrument as InstrumentV2 | null);
+          await assetStore.restoreAudioAssets(
+            instrumentStore.currentInstrument as InstrumentV2 | null,
+          );
 
           // Regenerate convolvers with procedural generator params
-          await this.restoreGeneratedConvolvers(deserialized.convolvers, instrumentStore.currentInstrument as InstrumentV2 | null);
+          await this.restoreGeneratedConvolvers(
+            deserialized.convolvers,
+            instrumentStore.currentInstrument as InstrumentV2 | null,
+          );
 
           // Ensure all node states (including LFO trigger modes) are pushed into WASM after load
           nodeStateStore.applyPreservedStatesToWasm();
@@ -708,16 +729,16 @@ export const usePatchStore = defineStore('patchStore', {
         console.error('Failed to save patch:', error);
         return null;
       }
-  },
-  async updateCurrentPatch(
-    name?: string,
-    metadata?: PatchMetadataUpdates,
-  ): Promise<Patch | null> {
+    },
+    async updateCurrentPatch(
+      name?: string,
+      metadata?: PatchMetadataUpdates,
+    ): Promise<Patch | null> {
       const layoutStore = useLayoutStore();
-    const nodeStateStore = useNodeStateStore();
-    const assetStore = useAssetStore();
-    const instrumentStore = useInstrumentStore();
-    const macroStore = useMacroStore();
+      const nodeStateStore = useNodeStateStore();
+      const assetStore = useAssetStore();
+      const instrumentStore = useInstrumentStore();
+      const macroStore = useMacroStore();
       if (!layoutStore.synthLayout) {
         console.error('Cannot update patch: no synth layout');
         return null;
@@ -1011,7 +1032,10 @@ export const usePatchStore = defineStore('patchStore', {
         return false;
       }
 
-      const clamped = Math.min(8, Math.max(1, Math.round(newCount)));
+      const clamped = Math.min(
+        VOICES_PER_ENGINE,
+        Math.max(1, Math.round(newCount)),
+      );
       const canonical =
         layoutStore.synthLayout.canonicalVoice ??
         layoutStore.synthLayout.voices?.[0];

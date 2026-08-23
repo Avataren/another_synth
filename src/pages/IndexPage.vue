@@ -6,7 +6,9 @@
         <div class="song-patch-banner__info">
           <q-icon name="edit" size="sm" />
           <span class="song-patch-banner__label">Editing Song Patch</span>
-          <span class="song-patch-banner__slot">Slot #{{ String(editingSlotNumber).padStart(2, '0') }}</span>
+          <span class="song-patch-banner__slot"
+            >Slot #{{ String(editingSlotNumber).padStart(2, '0') }}</span
+          >
           <span class="song-patch-banner__name">{{ editingPatchName }}</span>
           <span v-if="isPlaying" class="song-patch-banner__live">
             <span class="live-dot"></span>
@@ -67,7 +69,9 @@
             class="tool-menu__portamento-slider"
             @change="commitPortamento"
           />
-          <div class="tool-menu__portamento-value">{{ portamentoTimeLabel }}</div>
+          <div class="tool-menu__portamento-value">
+            {{ portamentoTimeLabel }}
+          </div>
         </div>
         <div class="tool-menu__gain" @mousedown.stop>
           <AudioKnobComponent
@@ -310,9 +314,12 @@ import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useMacroStore } from 'src/stores/macro-store';
 import { resolvePatchVoiceCount } from 'src/audio/utils/voice-count';
-import type InstrumentV2 from 'src/audio/instrument-v2';
+import ModInstrument from 'src/audio/mod-instrument';
 import PresetManager from 'src/components/PresetManager.vue';
-import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
+import type {
+  ModulationTransformation,
+  WasmModulationType,
+} from 'app/public/wasm/audio_processor';
 
 // Components moved from the top row (now in the bottom row)
 import OscilloscopeComponent from 'src/components/OscilloscopeComponent.vue';
@@ -351,6 +358,7 @@ import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 // Node type definitions
 import { VoiceNodeType } from 'src/audio/types/synth-layout';
 import type { GlideState } from 'src/audio/types/synth-layout';
+import { VOICES_PER_ENGINE } from 'src/audio/worklet-config';
 import ChorusComponent from 'src/components/ChorusComponent.vue';
 
 type AddMenuItem = {
@@ -385,9 +393,9 @@ const { destinationNode, instrumentGain } = storeToRefs(instrumentStore);
 const { editingSlot, songPatches } = storeToRefs(trackerStore);
 const { isPlaying } = storeToRefs(playbackStore);
 const songPatchVoiceCount = ref(1);
-const voiceOptions = Array.from({ length: 8 }, (_, idx) => ({
+const voiceOptions = Array.from({ length: VOICES_PER_ENGINE }, (_, idx) => ({
   label: `${idx + 1} voice${idx === 0 ? '' : 's'}`,
-  value: idx + 1
+  value: idx + 1,
 }));
 
 const addMenuVisible = ref(false);
@@ -400,15 +408,21 @@ const isEditingSongPatch = computed(() => editingSlot.value !== null);
 const editingSlotNumber = computed(() => editingSlot.value);
 const editingPatchName = computed(() => {
   if (!editingSlot.value) return '';
-  const slot = trackerStore.instrumentSlots.find(s => s.slot === editingSlot.value);
+  const slot = trackerStore.instrumentSlots.find(
+    (s) => s.slot === editingSlot.value,
+  );
   return slot?.instrumentName || slot?.patchName || 'Song Patch';
 });
-const isInstrumentEditorRoute = computed(() => route.name === 'patch-instrument-editor');
+const isInstrumentEditorRoute = computed(
+  () => route.name === 'patch-instrument-editor',
+);
 const songPatchRouteSlot = computed<number | null>(() => {
   if (!isInstrumentEditorRoute.value) {
     return null;
   }
-  const slotParam = Array.isArray(route.params.slot) ? route.params.slot[0] : route.params.slot;
+  const slotParam = Array.isArray(route.params.slot)
+    ? route.params.slot[0]
+    : route.params.slot;
   if (typeof slotParam !== 'string' && typeof slotParam !== 'number') {
     return null;
   }
@@ -417,7 +431,7 @@ const songPatchRouteSlot = computed<number | null>(() => {
 });
 
 async function loadSongPatchForEditing(slotNumber: number) {
-  const slot = trackerStore.instrumentSlots.find(s => s.slot === slotNumber);
+  const slot = trackerStore.instrumentSlots.find((s) => s.slot === slotNumber);
   if (!slot?.patchId) return;
 
   const patch = songPatches.value[slot.patchId];
@@ -428,17 +442,10 @@ async function loadSongPatchForEditing(slotNumber: number) {
   // Try to get the actual instrument from the song bank for live editing
   const songBankInstrument = trackerAudioStore.getInstrumentForSlot(slotNumber);
 
-  // Only use external instrument when it exposes the full editor API (InstrumentV2), not pooled tracker instruments
-  const isEditorInstrument = (inst: unknown): inst is InstrumentV2 =>
-    !!inst &&
-    typeof inst === 'object' &&
-    'updateWavetableOscillatorState' in (inst as Record<string, unknown>) &&
-    typeof (inst as InstrumentV2).updateWavetableOscillatorState === 'function';
-
-  if (isEditorInstrument(songBankInstrument)) {
+  if (songBankInstrument && !(songBankInstrument instanceof ModInstrument)) {
     // LIVE EDITING: Swap to the song bank's actual instrument
     // This means all knob turns will directly affect the playing sound
-    instrumentStore.useExternalInstrument(songBankInstrument as InstrumentV2);
+    instrumentStore.useExternalInstrument(songBankInstrument);
 
     // Make sure macro routes are visible immediately even before the patch is re-applied
     macroStore.setFromPatch(
@@ -452,11 +459,15 @@ async function loadSongPatchForEditing(slotNumber: number) {
                 targetPort: route.targetPort,
                 amount: route.amount,
                 ...(route.modulationType !== undefined
-                  ? { modulationType: route.modulationType as WasmModulationType }
+                  ? {
+                      modulationType:
+                        route.modulationType as WasmModulationType,
+                    }
                   : {}),
                 ...(route.modulationTransformation !== undefined
                   ? {
-                      modulationTransformation: route.modulationTransformation as ModulationTransformation,
+                      modulationTransformation:
+                        route.modulationTransformation as ModulationTransformation,
                     }
                   : {}),
               })) ?? [],
@@ -466,7 +477,10 @@ async function loadSongPatchForEditing(slotNumber: number) {
 
     // Load the patch state into the UI stores (layout, node states, etc.)
     // Skip loadPatch because the instrument is already loaded and playing
-    await patchStore.applyPatchObject(patch, { setCurrentPatchId: true, skipLoadPatch: true });
+    await patchStore.applyPatchObject(patch, {
+      setCurrentPatchId: true,
+      skipLoadPatch: true,
+    });
   } else {
     macroStore.setFromPatch(
       patch.synthState.macros
@@ -479,11 +493,15 @@ async function loadSongPatchForEditing(slotNumber: number) {
                 targetPort: route.targetPort,
                 amount: route.amount,
                 ...(route.modulationType !== undefined
-                  ? { modulationType: route.modulationType as WasmModulationType }
+                  ? {
+                      modulationType:
+                        route.modulationType as WasmModulationType,
+                    }
                   : {}),
                 ...(route.modulationTransformation !== undefined
                   ? {
-                      modulationTransformation: route.modulationTransformation as ModulationTransformation,
+                      modulationTransformation:
+                        route.modulationTransformation as ModulationTransformation,
                     }
                   : {}),
               })) ?? [],
@@ -540,7 +558,7 @@ watch(
     trackerStore.stopEditing();
     instrumentStore.restoreDefaultInstrument();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // Ensure standalone patch editor always uses the default instrument
@@ -552,7 +570,7 @@ watch(
       instrumentStore.restoreDefaultInstrument();
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // Keyboard handler for Escape to return to tracker
@@ -687,7 +705,7 @@ const addMenuSections: AddMenuSection[] = [
 ];
 
 const handleAddNode = (nodeType: VoiceNodeType) => {
-  instrumentStore.currentInstrument?.createNode(nodeType);
+  void instrumentStore.currentInstrument?.createNode(nodeType);
   addMenuVisible.value = false;
   addMenu.value?.hide();
 };
@@ -711,7 +729,11 @@ const openAddMenu = (event?: Event) => {
 
 const openAddMenuFromButton = (
   event: Event,
-  _go?: (opts?: { to?: unknown; replace?: boolean; returnRouterError?: boolean }) => Promise<unknown>,
+  _go?: (opts?: {
+    to?: unknown;
+    replace?: boolean;
+    returnRouterError?: boolean;
+  }) => Promise<unknown>,
 ) => {
   openAddMenu(event);
 };
@@ -820,7 +842,10 @@ const noiseNodes = computed(() => {
 });
 
 const arpeggiatorNodes = computed(() => {
-  const nodes = layoutStore.getVoiceNodes(0, VoiceNodeType.ArpeggiatorGenerator);
+  const nodes = layoutStore.getVoiceNodes(
+    0,
+    VoiceNodeType.ArpeggiatorGenerator,
+  );
   return Array.isArray(nodes) ? nodes : [];
 });
 
@@ -885,7 +910,11 @@ const bitcrusherNodes = computed(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 16px;
-  background: linear-gradient(90deg, var(--tracker-active-bg), var(--button-background));
+  background: linear-gradient(
+    90deg,
+    var(--tracker-active-bg),
+    var(--button-background)
+  );
   border-bottom: 1px solid var(--tracker-accent-secondary);
 }
 
@@ -952,8 +981,15 @@ const bitcrusherNodes = computed(() => {
 }
 
 @keyframes live-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 4px #4caf50; }
-  50% { opacity: 0.6; box-shadow: 0 0 8px #4caf50; }
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 4px #4caf50;
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px #4caf50;
+  }
 }
 
 /* Full viewport container */
@@ -1158,7 +1194,10 @@ const bitcrusherNodes = computed(() => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  background-image: linear-gradient(var(--panel-background-alt), var(--panel-background));
+  background-image: linear-gradient(
+    var(--panel-background-alt),
+    var(--panel-background)
+  );
 }
 
 .add-node-menu {
@@ -1219,15 +1258,27 @@ const bitcrusherNodes = computed(() => {
 }
 
 .generators {
-  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
+  background: linear-gradient(
+    135deg,
+    var(--panel-background-alt),
+    var(--panel-background)
+  );
 }
 
 .modulators {
-  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
+  background: linear-gradient(
+    135deg,
+    var(--panel-background-alt),
+    var(--panel-background)
+  );
 }
 
 .effects {
-  background: linear-gradient(135deg, var(--panel-background-alt), var(--panel-background));
+  background: linear-gradient(
+    135deg,
+    var(--panel-background-alt),
+    var(--panel-background)
+  );
   grid-column: span 2;
   display: block;
 }

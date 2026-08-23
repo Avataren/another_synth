@@ -75,8 +75,10 @@ export default class InstrumentV2 {
   private workletBlockSizeListener: ((event: MessageEvent) => void) | null =
     null;
   private voiceLimit: number;
+  private readonly instrumentId = `instrument-${Math.random().toString(36).slice(2)}`;
   private glideStates: Map<string, GlideState> = new Map();
   private quantumFrames = 128;
+  private defaultOperationTimeoutMs = 5000;
 
   public get isReady(): boolean {
     return this.messageHandler.isInitialized();
@@ -303,7 +305,7 @@ export default class InstrumentV2 {
   }
 
   // ========================================================================
-  // Node Operations (fire-and-forget for now)
+  // Node Operations
   // ========================================================================
 
   public deleteNode(nodeId: string): void {
@@ -313,10 +315,41 @@ export default class InstrumentV2 {
     });
   }
 
-  public createNode(node: VoiceNodeType): void {
+  public createNode(node: VoiceNodeType): Promise<string> {
+    const creation = this.waitForNodeCreation();
     this.messageHandler.sendFireAndForget({
       type: 'createNode',
       nodeType: node,
+    });
+    return creation;
+  }
+
+  private waitForNodeCreation(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (!this.workletNode) {
+        reject(new Error('Worklet node not initialized'));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Timeout waiting for node creation'));
+      }, this.defaultOperationTimeoutMs);
+
+      const handleMessage = (event: MessageEvent) => {
+        const data = event.data as { type?: string; nodeId?: unknown };
+        if (data?.type === 'nodeCreated' && typeof data.nodeId === 'string') {
+          cleanup();
+          resolve(data.nodeId);
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        this.workletNode?.port.removeEventListener('message', handleMessage);
+      };
+
+      this.workletNode.port.addEventListener('message', handleMessage);
     });
   }
 
@@ -421,6 +454,7 @@ export default class InstrumentV2 {
       amount: payload.amount,
       modulationType: payload.modulationType,
       modulationTransformation: payload.modulationTransformation,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -433,6 +467,7 @@ export default class InstrumentV2 {
       type: 'updateReverb',
       nodeId,
       state,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -441,6 +476,7 @@ export default class InstrumentV2 {
       type: 'updateCompressor',
       nodeId,
       state,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -449,6 +485,7 @@ export default class InstrumentV2 {
       type: 'updateSaturation',
       nodeId,
       state,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -457,6 +494,7 @@ export default class InstrumentV2 {
       type: 'updateBitcrusher',
       nodeId,
       state,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -465,6 +503,7 @@ export default class InstrumentV2 {
       type: 'updateChorus',
       nodeId,
       state,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -477,6 +516,7 @@ export default class InstrumentV2 {
         randomize: state.randomize,
         active: state.active,
       } as VelocityState,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -494,6 +534,7 @@ export default class InstrumentV2 {
       glideId: nodeId,
       time: glideState.time,
       active: glideState.active,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -501,6 +542,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateNoise',
       noiseId: nodeId,
+      instrumentId: this.instrumentId,
       config: {
         noise_type: state.noiseType,
         cutoff: state.cutoff,
@@ -526,6 +568,7 @@ export default class InstrumentV2 {
       type: 'updateWavetableOscillator',
       oscillatorId: nodeId,
       newState,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -537,6 +580,7 @@ export default class InstrumentV2 {
       type: 'updateOscillator',
       oscillatorId: nodeId,
       newState,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -560,6 +604,7 @@ export default class InstrumentV2 {
       type: 'updateLfo',
       lfoId: nodeId,
       params,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -568,6 +613,7 @@ export default class InstrumentV2 {
       type: 'updateFilter',
       filterId: nodeId,
       config: newState,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -583,6 +629,7 @@ export default class InstrumentV2 {
       type: 'updateConvolver',
       nodeId,
       state: plainState,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -591,6 +638,7 @@ export default class InstrumentV2 {
       type: 'updateDelay',
       nodeId,
       state,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -631,6 +679,7 @@ export default class InstrumentV2 {
         envelopeId: nodeId,
         config: newState,
         messageId: messageId,
+        instrumentId: this.instrumentId,
       });
     });
   }
@@ -643,6 +692,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateConnection',
       connection,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -656,6 +706,7 @@ export default class InstrumentV2 {
       fromId: from_node,
       toId: to_node,
       targetPort: to_port,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -672,6 +723,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateArpeggiatorPattern',
       pattern: numericPattern,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -682,6 +734,7 @@ export default class InstrumentV2 {
     this.messageHandler.sendFireAndForget({
       type: 'updateArpeggiatorStepDuration',
       stepDuration: stepDurationMs,
+      instrumentId: this.instrumentId,
     });
   }
 
@@ -926,6 +979,7 @@ export default class InstrumentV2 {
     nodeId: string,
     maxLength = 512,
   ): Promise<Float32Array> {
+    const instrumentId = this.instrumentId;
     if (!this.workletNode) {
       throw new Error('Audio system not ready');
     }
@@ -934,12 +988,16 @@ export default class InstrumentV2 {
     return new Promise<Float32Array>((resolve, reject) => {
       const handleMessage = (e: MessageEvent) => {
         if (e.data.type === 'FilterIrWaveform') {
+          if (e.data.instrumentId && e.data.instrumentId !== instrumentId)
+            return;
           port.removeEventListener('message', handleMessage);
           resolve(new Float32Array(e.data.waveform));
         } else if (
           e.data.type === 'error' &&
           e.data.source === 'getFilterIRWaveform'
         ) {
+          if (e.data.instrumentId && e.data.instrumentId !== instrumentId)
+            return;
           port.removeEventListener('message', handleMessage);
           reject(new Error(e.data.message));
         }
@@ -951,6 +1009,7 @@ export default class InstrumentV2 {
         type: 'getFilterIRWaveform',
         node_id: nodeId,
         length: maxLength,
+        instrumentId,
       });
 
       setTimeout(() => {
@@ -1011,6 +1070,7 @@ export default class InstrumentV2 {
   }
 
   public async getWasmNodeConnections(): Promise<string> {
+    const instrumentId = this.instrumentId;
     if (!this.workletNode) {
       throw new Error('Audio system not ready');
     }
@@ -1020,7 +1080,11 @@ export default class InstrumentV2 {
       let timeoutId = setTimeout(() => {}, 0);
 
       const handleMessage = (e: MessageEvent) => {
-        if (e.data.type === 'nodeLayout' && e.data.messageId === messageId) {
+        if (
+          e.data.type === 'nodeLayout' &&
+          e.data.messageId === messageId &&
+          (!e.data.instrumentId || e.data.instrumentId === instrumentId)
+        ) {
           this.workletNode?.port.removeEventListener('message', handleMessage);
           clearTimeout(timeoutId);
           resolve(e.data.layout);
@@ -1042,6 +1106,7 @@ export default class InstrumentV2 {
       this.workletNode.port.postMessage({
         type: 'getNodeLayout',
         messageId: messageId,
+        instrumentId,
       });
 
       clearTimeout(timeoutId);

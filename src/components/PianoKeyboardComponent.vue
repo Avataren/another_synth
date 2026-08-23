@@ -80,9 +80,18 @@ watch(
   (event) => {
     if (!event) return;
     if (event.velocity < 0.0001) {
-      currentInstrument.value?.note_off(event.note);
+      if (currentInstrument.value) {
+        currentInstrument.value.noteOff(event.note);
+      }
     } else {
-      currentInstrument.value?.note_on(event.note, event.velocity);
+      if (currentInstrument.value && 'noteOn' in currentInstrument.value) {
+        currentInstrument.value.noteOn(event.note, event.velocity);
+      } else {
+        const legacyInstrument = currentInstrument.value as unknown as {
+          note_on?: (note: number, velocity: number) => void;
+        };
+        legacyInstrument.note_on?.(event.note, event.velocity);
+      }
     }
   },
 );

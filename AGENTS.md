@@ -1570,3 +1570,10 @@ if (canReuse) {
 - Note delay (EDx) now yields a real `noteOn` command at the delayed tick (and carries pitch/volume), instead of the previous implicit retrigger path. This also covers carried EDx pulses that spilled into the next row.
 - Tick-based ramps still work: `canUseAutomationRamp` paths fold pitch/volume commands down to a final ramp target, while other effects dispatch per-tick batches.
 - New sanity test: `packages/tracker-playback/src/__tests__/effect-processor.spec.ts` walks a delayed note and a volume slide to verify the command batches without the full engine.
+
+### Worklet graph editing sync (2026-08)
+
+- Live graph mutations (`createNode`, `deleteNode`, and `updateConnection`) must fan out to every pooled `AudioEngine`, never only `audioEngines[0]`; otherwise only the first instrument slot hears the edit. `SynthAudioProcessor::getGraphEngines()` is the single source for this target set.
+- Node creation must produce one shared UUID across all engines. The worklet now broadcasts `nodeCreated`, and `InstrumentV2.createNode()` awaits that broadcast before returning, so the UI can immediately select/route the deterministic node ID.
+- Do not reintroduce fire-and-forget node creation: it loses the generated ID and causes UI/engine divergence. The real-worklet regression coverage is in `src/tests/worklet-graph-sync.test.ts`.
+- Rust nightly 1.97 removed `LaneCount`/`SupportedLaneCount` from the portable SIMD surface. Constrain generic SIMD helpers with `Simd<f32, LANES>: Sized` (or `[f32; LANES]: Sized`) instead of importing the removed types.

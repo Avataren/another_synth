@@ -50,6 +50,7 @@ interface EnvelopeUpdate {
   config: EnvelopeConfig;
   envelopeId: string;
   messageId: string;
+  instrumentId?: string;
 }
 
 declare const sampleRate: number;
@@ -107,6 +108,7 @@ export interface LfoUpdateData {
     loopStart: number;
     loopEnd: number;
   };
+  instrumentId?: string;
 }
 
 interface SamplerUpdateData {
@@ -133,10 +135,10 @@ interface InstrumentSlot {
   initialized: boolean;
 }
 
-class SynthAudioProcessor extends AudioWorkletProcessor {
+export class SynthAudioProcessor extends AudioWorkletProcessor {
   private ready: boolean = false;
   private stopped: boolean = false;
-  private audioEngines: AudioEngine[] = []; // Multiple AudioEngine instances
+  protected audioEngines: AudioEngine[] = []; // Multiple AudioEngine instances
   private engineInitialized: boolean[] = []; // Track which engines have patches loaded
   private readonly numEngines = ENGINES_PER_WORKLET;
   private readonly numVoices = VOICES_PER_ENGINE;
@@ -153,7 +155,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private patchNodeNames: Map<string, string> = new Map();
   private blockSizeFrames = 128;
   private hasBroadcastBlockSize = false;
-  private instrumentSlots: Map<string, InstrumentSlot> = new Map();
+  protected instrumentSlots: Map<string, InstrumentSlot> = new Map();
   private scratchLeft: Float32Array = new Float32Array(0);
   private scratchRight: Float32Array = new Float32Array(0);
   private engineParamCache: Array<Record<string, Float32Array>> = [];
@@ -163,6 +165,25 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   > = new Map();
   private lastCpuResponseMs = 0;
   private readonly cpuResponseIntervalMs = 50;
+
+  protected getGraphEngines(): AudioEngine[] {
+    return this.getTargetEngines();
+  }
+
+  private updateTargetEngines(
+    instrumentId: string | undefined,
+    update: (engine: AudioEngine) => void,
+  ): void {
+    this.getTargetEngines(instrumentId).forEach((engine) => {
+      try {
+        update(engine);
+      } catch (error) {
+        // A pooled editor instrument may contain nodes that do not exist in
+        // another slot's engine. Those are expected and must not break audio.
+        if (!instrumentId) throw error;
+      }
+    });
+  }
 
   static get parameterDescriptors() {
     const parameters = [];
@@ -281,6 +302,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case 'getEnvelopePreview':
         this.handleGetEnvelopePreview(event.data);
         break;
+      case 'updateArpeggiatorPattern':
+        this.handleUpdateArpeggiatorPattern(event.data);
+        break;
+      case 'updateArpeggiatorStepDuration':
+        this.handleUpdateArpeggiatorStepDuration(event.data);
+        break;
       case 'getFilterIRWaveform':
         this.handleGetFilterIrWaveform(event.data);
         break;
@@ -367,7 +394,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (now - this.lastCpuResponseMs < this.cpuResponseIntervalMs) {
       return;
     }
@@ -395,7 +423,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         if (!Number.isFinite(cpu)) return;
         const sample: EngineCpuSample = { id, cpu };
         if (context?.voices !== undefined) sample.voices = context.voices;
-        if (context?.instrumentId !== undefined) sample.instrumentId = context.instrumentId;
+        if (context?.instrumentId !== undefined)
+          sample.instrumentId = context.instrumentId;
         perEngine.push(sample);
         if (context?.instrumentId) {
           perInstrument[context.instrumentId] =
@@ -410,16 +439,17 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     if (this.instrumentSlots.size > 0) {
       for (const slot of this.instrumentSlots.values()) {
         if (!slot.initialized) continue;
-        addUsage(
-          `instrument-${slot.instrumentId}`,
-          slot.engine,
-          { voices: slot.voiceCount, instrumentId: slot.instrumentId },
-        );
+        addUsage(`instrument-${slot.instrumentId}`, slot.engine, {
+          voices: slot.voiceCount,
+          instrumentId: slot.instrumentId,
+        });
       }
     } else {
       for (let i = 0; i < this.audioEngines.length; i++) {
         if (!this.engineInitialized[i]) continue;
-        addUsage(`engine-${i}`, this.audioEngines[i], { voices: this.numVoices });
+        addUsage(`engine-${i}`, this.audioEngines[i], {
+          voices: this.numVoices,
+        });
       }
     }
 
@@ -434,11 +464,21 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleDeleteNode(data: { nodeId: string }) {
-    this.audioEngines[0]!.delete_node(data.nodeId);
+    this.getGraphEngines().forEach((engine) => {
+      engine.delete_node(data.nodeId);
+    });
     this.handleRequestSync();
   }
 
-  private handleConnectMacro(data: { macroIndex: number; targetId: string; targetPort: PortId; amount: number; modulationType: WasmModulationType; modulationTransformation: ModulationTransformation; instrumentId?: string }) {
+  private handleConnectMacro(data: {
+    macroIndex: number;
+    targetId: string;
+    targetPort: PortId;
+    amount: number;
+    modulationType: WasmModulationType;
+    modulationTransformation: ModulationTransformation;
+    instrumentId?: string;
+  }) {
     const targetEngines: Array<{ engine: AudioEngine; voices: number }> = [];
 
     if (data.instrumentId) {
@@ -451,11 +491,16 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         targetEngines.push({ engine: slot.engine, voices: slot.voiceCount });
       }
     } else if (this.audioEngines[0]) {
-      targetEngines.push({ engine: this.audioEngines[0], voices: Math.max(1, this.numVoices) });
+      targetEngines.push({
+        engine: this.audioEngines[0],
+        voices: Math.max(1, this.numVoices),
+      });
     }
 
     for (const { engine, voices } of targetEngines) {
-      const connectMacro = (engine as { connect_macro?: (...args: unknown[]) => unknown }).connect_macro;
+      const connectMacro = (
+        engine as { connect_macro?: (...args: unknown[]) => unknown }
+      ).connect_macro;
       for (let voice = 0; voice < voices; voice++) {
         if (typeof connectMacro === 'function') {
           if (connectMacro.length >= 7) {
@@ -484,34 +529,47 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleCreateNode(data: { node?: VoiceNodeType; nodeType?: VoiceNodeType }) {
+  private handleCreateNode(data: {
+    node?: VoiceNodeType;
+    nodeType?: VoiceNodeType;
+  }) {
     const nodeType = data.node ?? data.nodeType;
     if (nodeType === undefined) {
       console.error('handleCreateNode received no node type payload', data);
       return;
     }
 
+    let nodeId: string | undefined;
+
     switch (nodeType) {
       case VoiceNodeType.Oscillator:
-        this.audioEngines[0]!.create_oscillator();
+        nodeId = this.createNodeInAllEngines((engine) =>
+          engine.create_oscillator(),
+        );
         break;
       case VoiceNodeType.Filter:
-        this.audioEngines[0]!.create_filter();
+        nodeId = this.createNodeInAllEngines((engine) =>
+          engine.create_filter(),
+        );
         break;
       case VoiceNodeType.LFO:
-        this.audioEngines[0]!.create_lfo();
+        nodeId = this.createNodeInAllEngines((engine) => engine.create_lfo());
         break;
       case VoiceNodeType.WavetableOscillator:
-        this.audioEngines[0]!.create_wavetable_oscillator();
+        nodeId = this.createNodeInAllEngines((engine) =>
+          engine.create_wavetable_oscillator(),
+        );
         break;
       case VoiceNodeType.Noise:
-        this.audioEngines[0]!.create_noise();
+        nodeId = this.createNodeInAllEngines((engine) => engine.create_noise());
         break;
       case VoiceNodeType.Sampler:
-        this.audioEngines[0]!.create_sampler();
+        nodeId = this.createNodeInAllEngines((engine) =>
+          engine.create_sampler(),
+        );
         break;
       case VoiceNodeType.Envelope:
-        this.audioEngines[0]!.create_envelope();
+        nodeId = this.createEnvelopeInAllEngines();
         break;
       case VoiceNodeType.Convolver:
       case VoiceNodeType.Delay:
@@ -521,13 +579,53 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       case VoiceNodeType.Saturation:
       case VoiceNodeType.Bitcrusher:
         // Effects live on the global stack and are created during engine init.
-        console.warn('Effect nodes are created by default; skipping explicit creation for', nodeType);
+        console.warn(
+          'Effect nodes are created by default; skipping explicit creation for',
+          nodeType,
+        );
         break;
       default:
         console.error('Missing creation case for: ', nodeType);
         break;
     }
+    if (nodeId) {
+      this.port.postMessage({
+        type: 'nodeCreated',
+        nodeType,
+        nodeId,
+      });
+    }
     this.handleRequestSync();
+  }
+
+  private createNodeInAllEngines(
+    create: (engine: AudioEngine) => string,
+  ): string | undefined {
+    let nodeId: string | undefined;
+    for (const [index, engine] of this.getGraphEngines().entries()) {
+      const createdNodeId = create(engine);
+      if (index === 0) {
+        nodeId = createdNodeId;
+      } else if (createdNodeId !== nodeId) {
+        console.error('Pooled engines generated mismatched node IDs');
+      }
+    }
+    return nodeId;
+  }
+
+  private createEnvelopeInAllEngines(): string | undefined {
+    let nodeId: string | undefined;
+    for (const [index, engine] of this.getGraphEngines().entries()) {
+      const result = engine.create_envelope() as { envelopeId?: string };
+      const envelopeId = result?.envelopeId;
+      if (!envelopeId) continue;
+      if (index === 0) {
+        nodeId = envelopeId;
+      } else if (envelopeId !== nodeId) {
+        console.error('Pooled engines generated mismatched envelope IDs');
+      }
+    }
+    return nodeId;
   }
 
   private handleImportImpulseWaveformData(data: {
@@ -565,7 +663,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleImportSample(data: { nodeId: string; data: ArrayBuffer; instrumentId?: string }) {
+  private handleImportSample(data: {
+    nodeId: string;
+    data: ArrayBuffer;
+    instrumentId?: string;
+  }) {
     const engines = this.getTargetEngines(data.instrumentId);
     if (engines.length === 0) return;
     try {
@@ -578,7 +680,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleUpdateSampler(data: SamplerUpdateData & { instrumentId?: string }) {
+  private handleUpdateSampler(
+    data: SamplerUpdateData & { instrumentId?: string },
+  ) {
     const engines = this.getTargetEngines(data.instrumentId);
     if (engines.length === 0) return;
     try {
@@ -604,8 +708,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleGetEnvelopePreview(data: {
     config: EnvelopeConfig;
     previewDuration: number;
+    messageId?: string;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
+    const engine = this.getTargetEngines(data.instrumentId)[0];
+    if (!engine) return;
     try {
       // Call the wasm-bound function on the AudioEngine instance.
       // Ensure you pass the envelope config and preview duration.
@@ -617,8 +724,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       // Send the preview data (a Float32Array) back to the main thread.
       this.port.postMessage({
         type: 'envelopePreview',
-        preview: envelopePreviewData, // This is already a Float32Array.
+        preview: envelopePreviewData,
+        messageId: data.messageId,
         source: 'getEnvelopePreview',
+        instrumentId: data.instrumentId,
       });
     } catch (err) {
       console.error('Error generating envelope preview:', err);
@@ -662,7 +771,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
       this.ready = true;
       const activeEngines = this.engineInitialized.filter(Boolean).length;
-      console.log(`[SynthAudioProcessor] Ready with ${this.numEngines} engines (${activeEngines} active)`);
+      console.log(
+        `[SynthAudioProcessor] Ready with ${this.numEngines} engines (${activeEngines} active)`,
+      );
     } catch (error) {
       console.error('Failed to initialize WASM audio engine:', error);
       this.port.postMessage({
@@ -693,7 +804,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       if (!nodes || typeof nodes !== 'object') return;
 
       const nameById = new Map<string, string>();
-      const isNamedNode = (value: unknown): value is { id: string; name?: unknown } =>
+      const isNamedNode = (
+        value: unknown,
+      ): value is { id: string; name?: unknown } =>
         !!value &&
         typeof value === 'object' &&
         'id' in value &&
@@ -825,7 +938,10 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }) {
     const { instrumentId } = data;
     const startVoice = Math.max(0, data.startVoice ?? 0);
-    const voiceCount = Math.max(1, Math.min(data.voiceCount ?? VOICES_PER_ENGINE, VOICES_PER_ENGINE));
+    const voiceCount = Math.max(
+      1,
+      Math.min(data.voiceCount ?? VOICES_PER_ENGINE, VOICES_PER_ENGINE),
+    );
 
     if (startVoice >= TOTAL_VOICES || startVoice + voiceCount > TOTAL_VOICES) {
       console.warn(
@@ -849,7 +965,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       const patchLayout = basePatch?.synthState?.layout;
       const patchVoiceCount =
         patchLayout?.voiceCount ??
-        (Array.isArray(patchLayout?.voices) ? patchLayout.voices.length : undefined) ??
+        (Array.isArray(patchLayout?.voices)
+          ? patchLayout.voices.length
+          : undefined) ??
         voiceCount;
 
       const voiceLimit = Math.max(
@@ -907,6 +1025,16 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       return existing;
     }
 
+    const oldSlot = this.instrumentSlots.get(instrumentId);
+    if (oldSlot) {
+      try {
+        oldSlot.adapter.free();
+      } catch (_error) {
+        // WASM adapters can already be detached during teardown.
+      }
+      this.slotParamCache.delete(instrumentId);
+    }
+
     const engine = new AudioEngine(sampleRate);
     engine.init(sampleRate, voiceCount);
 
@@ -930,12 +1058,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     return slot;
   }
 
-  private handleUnloadInstrument(data: {
-    instrumentId?: string;
-  }) {
+  private handleUnloadInstrument(data: { instrumentId?: string }) {
     if (!data.instrumentId) return;
     if (this.instrumentSlots.delete(data.instrumentId)) {
-      console.log(`[SynthAudioProcessor] Unloaded instrument ${data.instrumentId}`);
+      console.log(
+        `[SynthAudioProcessor] Unloaded instrument ${data.instrumentId}`,
+      );
     }
   }
 
@@ -1116,8 +1244,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     // Retrieve and cast the raw WASM state.
     const wasmState = this.audioEngines[0].get_current_state() as WasmState;
-    console.log('Raw WASM state:', wasmState);
-
     if (!wasmState.voices || wasmState.voices.length === 0) {
       throw new Error('No voices available in WASM state');
     }
@@ -1154,7 +1280,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
     for (const rawNode of rawCanonicalVoice.nodes) {
       let type: VoiceNodeType;
-      console.log('## checking rawNode.node_type:', rawNode.node_type);
       switch (rawNode.node_type.trim()) {
         case 'analog_oscillator':
           type = VoiceNodeType.Oscillator;
@@ -1262,77 +1387,77 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     from_node: string,
     to_node: string,
     to_port: PortId,
+    instrumentId?: string,
   ) {
-    if (!this.audioEngines[0]) return;
-    this.audioEngines[0].remove_specific_connection(from_node, to_node, to_port);
+    this.getTargetEngines(instrumentId).forEach((engine) => {
+      engine.remove_specific_connection(from_node, to_node, to_port);
+    });
   }
 
-  private handleUpdateConnection(data: { connection: NodeConnectionUpdate }) {
+  private handleUpdateConnection(data: {
+    connection: NodeConnectionUpdate;
+    instrumentId?: string;
+  }) {
     const { connection } = data;
-    if (!this.audioEngines[0]) return;
+    const targetEngines = this.getTargetEngines(data.instrumentId);
+    if (targetEngines.length === 0) return;
 
     try {
-      console.log('Worklet handling connection update:', {
-        connection,
-        type: connection.isRemoving ? 'remove' : 'update',
-        targetPort: connection.target,
-      });
+      if (import.meta.env.DEV) {
+        console.debug('Worklet handling connection update:', {
+          connection,
+          type: connection.isRemoving ? 'remove' : 'update',
+          targetPort: connection.target,
+        });
+      }
 
       // Always use remove_specific_connection when removing
       if (connection.isRemoving) {
-        this.audioEngines[0].remove_specific_connection(
-          connection.fromId,
-          connection.toId,
-          connection.target,
-        );
-
-        console.log('Removed connection:', {
-          from: connection.fromId,
-          to: connection.toId,
-          target: connection.target,
+        targetEngines.forEach((engine) => {
+          try {
+            engine.remove_specific_connection(
+              connection.fromId,
+              connection.toId,
+              connection.target,
+            );
+          } catch (error) {
+            if (!data.instrumentId) throw error;
+          }
         });
+
         return; // Exit early after removal
       }
 
       // For updates/adds:
       // First remove any existing connection with the same target
-      this.audioEngines[0].remove_specific_connection(
-        connection.fromId,
-        connection.toId,
-        connection.target,
-      );
-
-      // Then add the new connection
-      console.log('Adding new connection:', {
-        from: connection.fromId,
-        fromPort: PortId.AudioOutput0,
-        to: connection.toId,
-        target: connection.target,
-        amount: connection.amount,
-        modulationType: connection.modulationType,
-        modulationTransformation: connection.modulationTransformation,
+      targetEngines.forEach((engine) => {
+        try {
+          engine.remove_specific_connection(
+            connection.fromId,
+            connection.toId,
+            connection.target,
+          );
+        } catch (error) {
+          if (!data.instrumentId) throw error;
+        }
       });
 
-      const numericTransformValue = connection.modulationTransformation; // It's already a number (e.g., 1)
-
-      console.log('Adding new connection (sending numeric transform):', {
-        from: connection.fromId,
-        to: connection.toId,
-        target: connection.target,
-        amount: connection.amount,
-        modulationType: connection.modulationType, // Check type consistency here too
-        modulationTransformation: numericTransformValue, // Log the number (e.g., 1)
+      // Then add the new connection.
+      targetEngines.forEach((engine) => {
+        try {
+          engine.connect_nodes(
+            connection.fromId,
+            PortId.AudioOutput0,
+            connection.toId,
+            connection.target,
+            connection.amount,
+            connection.modulationType,
+            connection.modulationTransformation,
+          );
+        } catch (error) {
+          if (!data.instrumentId) throw error;
+        }
       });
-
-      this.audioEngines[0].connect_nodes(
-        connection.fromId,
-        PortId.AudioOutput0,
-        connection.toId,
-        connection.target,
-        connection.amount,
-        connection.modulationType,
-        connection.modulationTransformation,
-      );
 
       // Verify connection was added
       this.handleRequestSync();
@@ -1356,10 +1481,11 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleNoiseUpdate(data: { noiseId: string; config: NoiseUpdate }) {
-    if (!this.audioEngines[0]) return;
-    console.log('noiseData:', data);
-
+  private handleNoiseUpdate(data: {
+    noiseId: string;
+    config: NoiseUpdate;
+    instrumentId?: string;
+  }) {
     const params = new NoiseUpdateParams(
       data.config.noise_type,
       data.config.cutoff,
@@ -1367,115 +1493,125 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
       data.config.enabled,
     );
 
-    this.audioEngines[0].update_noise(data.noiseId, params);
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_noise(data.noiseId, params);
+    });
   }
 
   private handleUpdateChorus(data: {
     type: string;
     nodeId: string;
     state: ChorusState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const nodeId = Number(data.nodeId);
     if (!Number.isFinite(nodeId)) {
       console.error('handleUpdateChorus: invalid nodeId:', data.nodeId);
       return;
     }
 
-    this.audioEngines[0].update_chorus(
-      nodeId,
-      data.state.active,
-      data.state.baseDelayMs,
-      data.state.depthMs,
-      data.state.lfoRateHz,
-      data.state.feedback,
-      data.state.feedback_filter,
-      data.state.mix,
-      data.state.stereoPhaseOffsetDeg,
-    );
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_chorus(
+        nodeId,
+        data.state.active,
+        data.state.baseDelayMs,
+        data.state.depthMs,
+        data.state.lfoRateHz,
+        data.state.feedback,
+        data.state.feedback_filter,
+        data.state.mix,
+        data.state.stereoPhaseOffsetDeg,
+      );
+    });
   }
 
   private handleUpdateCompressor(data: {
     type: string;
     nodeId: string;
     state: CompressorState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const nodeId = Number(data.nodeId);
     if (!Number.isFinite(nodeId)) {
       console.error('handleUpdateCompressor: invalid nodeId:', data.nodeId);
       return;
     }
 
-    this.audioEngines[0].update_compressor(
-      nodeId,
-      data.state.active,
-      data.state.thresholdDb,
-      data.state.ratio,
-      data.state.attackMs,
-      data.state.releaseMs,
-      data.state.makeupGainDb,
-      data.state.mix,
-    );
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_compressor(
+        nodeId,
+        data.state.active,
+        data.state.thresholdDb,
+        data.state.ratio,
+        data.state.attackMs,
+        data.state.releaseMs,
+        data.state.makeupGainDb,
+        data.state.mix,
+      );
+    });
   }
 
   private handleUpdateReverb(data: {
     type: string;
     nodeId: string;
     state: ReverbState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const nodeId = Number(data.nodeId);
     if (!Number.isFinite(nodeId)) {
       console.error('handleUpdateReverb: invalid nodeId:', data.nodeId);
       return;
     }
 
-    this.audioEngines[0].update_reverb(
-      nodeId,
-      data.state.active,
-      data.state.room_size,
-      data.state.damp,
-      data.state.wet,
-      data.state.dry,
-      data.state.width,
-    );
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_reverb(
+        nodeId,
+        data.state.active,
+        data.state.room_size,
+        data.state.damp,
+        data.state.wet,
+        data.state.dry,
+        data.state.width,
+      );
+    });
   }
 
   private handleUpdateFilter(data: {
     type: string;
     filterId: string;
     config: FilterState;
+    instrumentId?: string;
   }) {
     // console.log('handle filter update:', data);
-    this.audioEngines[0]!.update_filters(
-      data.filterId,
-      data.config.cutoff,
-      data.config.resonance,
-      data.config.gain,
-      data.config.keytracking,
-      data.config.comb_frequency,
-      data.config.comb_dampening,
-      data.config.oversampling,
-      data.config.filter_type,
-      data.config.filter_slope,
-    );
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_filters(
+        data.filterId,
+        data.config.cutoff,
+        data.config.resonance,
+        data.config.gain,
+        data.config.keytracking,
+        data.config.comb_frequency,
+        data.config.comb_dampening,
+        data.config.oversampling,
+        data.config.filter_type,
+        data.config.filter_slope,
+      );
+    });
   }
 
   private handleUpdateVelocity(data: {
     type: string;
     nodeId: string;
     config: VelocityState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-    this.audioEngines[0].update_velocity(
-      data.nodeId,
-      data.config.sensitivity,
-      data.config.randomize,
-    );
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_velocity(
+        data.nodeId,
+        data.config.sensitivity,
+        data.config.randomize,
+      );
+    });
   }
 
   private handleUpdateGlide(data: {
@@ -1485,89 +1621,92 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     riseTime?: number;
     fallTime?: number;
     active: boolean;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
     const glideTime =
-      data.time ??
-      Math.max(
-        data.riseTime ?? 0,
-        data.fallTime ?? 0,
-      );
-    this.audioEngines[0].update_glide(
-      data.glideId,
-      glideTime,
-      data.active,
-    );
+      data.time ?? Math.max(data.riseTime ?? 0, data.fallTime ?? 0);
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_glide(data.glideId, glideTime, data.active);
+    });
   }
 
   private handleUpdateConvolver(data: {
     type: string;
     nodeId: string;
     state: ConvolverState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const nodeId = Number(data.nodeId);
     if (!Number.isFinite(nodeId)) {
       console.error('handleUpdateConvolver: invalid nodeId:', data.nodeId);
       return;
     }
 
-    this.audioEngines[0].update_convolver(nodeId, data.state.wetMix, data.state.active);
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_convolver(nodeId, data.state.wetMix, data.state.active);
+    });
   }
 
   private handleUpdateDelay(data: {
     type: string;
     nodeId: string;
     state: DelayState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const nodeId = Number(data.nodeId);
     if (!Number.isFinite(nodeId)) {
       console.error('handleUpdateDelay: invalid nodeId:', data.nodeId);
       return;
     }
 
-    this.audioEngines[0].update_delay(
-      nodeId,
-      data.state.delayMs,
-      data.state.feedback,
-      data.state.wetMix,
-      data.state.active,
-    );
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      engine.update_delay(
+        nodeId,
+        data.state.delayMs,
+        data.state.feedback,
+        data.state.wetMix,
+        data.state.active,
+      );
+    });
   }
 
   private handleUpdateSaturation(data: {
     type: string;
     nodeId: string;
     state: SaturationState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const nodeId = Number(data.nodeId);
     if (!Number.isFinite(nodeId)) {
       console.error('handleUpdateSaturation: invalid nodeId:', data.nodeId);
       return;
     }
 
-    (this.audioEngines[0] as unknown as {
-      update_saturation: (id: number, drive: number, mix: number, active: boolean) => void;
-    }).update_saturation(
-      nodeId,
-      data.state.drive,
-      data.state.mix,
-      data.state.active,
-    );
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      (
+        engine as unknown as {
+          update_saturation: (
+            id: number,
+            drive: number,
+            mix: number,
+            active: boolean,
+          ) => void;
+        }
+      ).update_saturation(
+        nodeId,
+        data.state.drive,
+        data.state.mix,
+        data.state.active,
+      );
+    });
   }
 
   private handleUpdateBitcrusher(data: {
     type: string;
     nodeId: string;
     state: BitcrusherState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const nodeId = Number(data.nodeId);
     if (!Number.isFinite(nodeId)) {
       console.error('handleUpdateBitcrusher: invalid nodeId:', data.nodeId);
@@ -1578,17 +1717,26 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     const downsample = Math.max(1, Math.round(data.state.downsampleFactor));
     const mix = Math.min(1, Math.max(0, data.state.mix));
 
-    (this.audioEngines[0] as unknown as {
-      update_bitcrusher: (id: number, bits: number, downsampleFactor: number, mix: number, active: boolean) => void;
-    }).update_bitcrusher(nodeId, bits, downsample, mix, data.state.active);
+    this.updateTargetEngines(data.instrumentId, (engine) => {
+      (
+        engine as unknown as {
+          update_bitcrusher: (
+            id: number,
+            bits: number,
+            downsampleFactor: number,
+            mix: number,
+            active: boolean,
+          ) => void;
+        }
+      ).update_bitcrusher(nodeId, bits, downsample, mix, data.state.active);
+    });
   }
 
   private handleUpdateModulation(data: {
     connection: NodeConnectionUpdate;
     messageId: string;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const { connection } = data;
     const transformation =
       connection.modulationTransformation ?? ModulationTransformation.None;
@@ -1603,11 +1751,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     );
 
     try {
-      if (this.automationAdapter) {
-        this.automationAdapter.applyConnectionUpdate(this.audioEngines[0], update);
-      } else {
-        apply_modulation_update(this.audioEngines[0], update);
-      }
+      this.getTargetEngines(data.instrumentId).forEach((engine) => {
+        if (this.automationAdapter) {
+          this.automationAdapter.applyConnectionUpdate(engine, update);
+        } else {
+          apply_modulation_update(engine, update);
+        }
+      });
     } catch (err) {
       console.error('Error updating modulation:', err);
     }
@@ -1616,9 +1766,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleUpdateWavetableOscillator(data: {
     oscillatorId: string;
     newState: OscillatorState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const oscStateUpdate = new WavetableOscillatorStateUpdate(
       data.newState.phase_mod_amount,
       data.newState.detune,
@@ -1632,10 +1781,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     );
 
     try {
-      this.audioEngines[0].update_wavetable_oscillator(
-        data.oscillatorId,
-        oscStateUpdate,
-      );
+      this.getTargetEngines(data.instrumentId).forEach((engine) => {
+        try {
+          engine.update_wavetable_oscillator(data.oscillatorId, oscStateUpdate);
+        } catch (error) {
+          if (!data.instrumentId) throw error;
+        }
+      });
     } catch (err) {
       console.error('Failed to update oscillator:', err);
     }
@@ -1644,9 +1796,8 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleUpdateOscillator(data: {
     oscillatorId: string;
     newState: OscillatorState;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
-
     const oscStateUpdate = new AnalogOscillatorStateUpdate(
       data.newState.phase_mod_amount,
       data.newState.detune,
@@ -1660,14 +1811,24 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     );
 
     try {
-      this.audioEngines[0].update_oscillator(data.oscillatorId, oscStateUpdate);
+      this.getTargetEngines(data.instrumentId).forEach((engine) => {
+        try {
+          engine.update_oscillator(data.oscillatorId, oscStateUpdate);
+        } catch (error) {
+          if (!data.instrumentId) throw error;
+        }
+      });
     } catch (err) {
       console.error('Failed to update oscillator:', err);
     }
   }
 
-  private handleGetNodeLayout(data: { messageId: string }) {
-    if (!this.audioEngines[0]) {
+  private handleGetNodeLayout(data: {
+    messageId: string;
+    instrumentId?: string;
+  }) {
+    const engines = this.getTargetEngines(data.instrumentId);
+    if (engines.length === 0) {
       this.port.postMessage({
         type: 'error',
         messageId: data.messageId,
@@ -1677,13 +1838,13 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     try {
-      const layout = this.audioEngines[0].get_current_state();
+      const layout = engines[0]!.get_current_state();
 
-      console.log('synth-worklet::handleGetNodeLayer layout:', layout);
       this.port.postMessage({
         type: 'nodeLayout',
         messageId: data.messageId,
         layout: JSON.stringify(layout),
+        instrumentId: data.instrumentId,
       });
     } catch (err) {
       this.port.postMessage({
@@ -1695,23 +1856,41 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private handleGetFilterIrWaveform(data: { node_id: string; length: number }) {
-    if (!this.audioEngines[0]) return;
+  private handleGetFilterIrWaveform(data: {
+    node_id: string;
+    length: number;
+    messageId?: string;
+    instrumentId?: string;
+  }) {
+    const engines = this.getTargetEngines(data.instrumentId);
+    if (engines.length === 0) return;
 
     try {
-      const waveformData = this.audioEngines[0].get_filter_ir_waveform(
-        data.node_id,
-        data.length,
-      );
-      this.port.postMessage({
-        type: 'FilterIrWaveform',
-        waveform: waveformData,
-      });
+      for (const engine of engines) {
+        const waveformData = engine.get_filter_ir_waveform(
+          data.node_id,
+          data.length,
+        );
+        if (waveformData instanceof Float32Array && waveformData.length > 0) {
+          this.port.postMessage({
+            type: 'FilterIrWaveform',
+            waveform: waveformData,
+            messageId: data.messageId,
+            instrumentId: data.instrumentId,
+          });
+          return;
+        }
+      }
+
+      throw new Error('Node not found');
     } catch (err) {
-      console.error('Error generating Filter IR waveform:', err);
+      console.warn('Filter IR unavailable for requested node:', data.node_id);
       this.port.postMessage({
         type: 'error',
+        source: 'getFilterIRWaveform',
+        messageId: data.messageId,
         message: 'Failed to generate Filter IR waveform',
+        instrumentId: data.instrumentId,
       });
     }
   }
@@ -1723,11 +1902,14 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     bufferSize: number;
     use_absolute: boolean;
     use_normalized: boolean;
+    messageId?: string;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
+    const engine = this.getTargetEngines(data.instrumentId)[0];
+    if (!engine) return;
 
     try {
-      const waveformData = this.audioEngines[0].get_lfo_waveform(
+      const waveformData = engine.get_lfo_waveform(
         data.waveform,
         data.phaseOffset,
         data.frequency,
@@ -1738,7 +1920,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
       this.port.postMessage({
         type: 'lfoWaveform',
+        messageId: data.messageId,
         waveform: waveformData,
+        instrumentId: data.instrumentId,
       });
     } catch (err) {
       console.error('Error generating LFO waveform:', err);
@@ -1753,10 +1937,12 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     samplerId: string;
     maxLength?: number;
     messageId: string;
+    instrumentId?: string;
   }) {
-    if (!this.audioEngines[0]) return;
+    const engine = this.getTargetEngines(data.instrumentId)[0];
+    if (!engine) return;
     try {
-      const waveform = this.audioEngines[0].get_sampler_waveform(
+      const waveform = engine.get_sampler_waveform(
         data.samplerId,
         data.maxLength ?? 512,
       );
@@ -1765,6 +1951,7 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         samplerId: data.samplerId,
         messageId: data.messageId,
         waveform,
+        instrumentId: data.instrumentId,
       });
     } catch (err) {
       console.error('Error getting sampler waveform:', err);
@@ -1783,7 +1970,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }) {
     if (!this.audioEngines[0]) return;
     try {
-      const sampleData = this.audioEngines[0].export_sample_data(data.samplerId);
+      const sampleData = this.audioEngines[0].export_sample_data(
+        data.samplerId,
+      );
       this.port.postMessage({
         type: 'sampleData',
         samplerId: data.samplerId,
@@ -1807,7 +1996,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }) {
     if (!this.audioEngines[0]) return;
     try {
-      const convolverData = this.audioEngines[0].export_convolver_data(data.convolverId);
+      const convolverData = this.audioEngines[0].export_convolver_data(
+        data.convolverId,
+      );
       this.port.postMessage({
         type: 'convolverData',
         convolverId: data.convolverId,
@@ -1846,7 +2037,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
       // Update the existing convolver's impulse
       this.audioEngines[0].update_effect_impulse(effectIndex, impulse);
-      console.log(`Updated convolver at index ${effectIndex} with hall reverb impulse`);
+      console.log(
+        `Updated convolver at index ${effectIndex} with hall reverb impulse`,
+      );
 
       // Trigger layout sync to update UI
       this.handleRequestSync();
@@ -1876,7 +2069,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
 
       // Update the existing convolver's impulse
       this.audioEngines[0].update_effect_impulse(effectIndex, impulse);
-      console.log(`Updated convolver at index ${effectIndex} with plate reverb impulse`);
+      console.log(
+        `Updated convolver at index ${effectIndex} with plate reverb impulse`,
+      );
 
       // Trigger layout sync to update UI
       this.handleRequestSync();
@@ -1886,20 +2081,24 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleUpdateEnvelope(data: EnvelopeUpdate) {
-    if (!this.audioEngines[0]) return;
-    //console.log('handleUpdateEnvelope:', data);
     try {
-      this.audioEngines[0].update_envelope(
-        data.envelopeId,
-        data.config.attack,
-        data.config.decay,
-        data.config.sustain,
-        data.config.release,
-        data.config.attackCurve,
-        data.config.decayCurve,
-        data.config.releaseCurve,
-        data.config.active,
-      );
+      this.getTargetEngines(data.instrumentId).forEach((engine) => {
+        try {
+          engine.update_envelope(
+            data.envelopeId,
+            data.config.attack,
+            data.config.decay,
+            data.config.sustain,
+            data.config.release,
+            data.config.attackCurve,
+            data.config.decayCurve,
+            data.config.releaseCurve,
+            data.config.active,
+          );
+        } catch (error) {
+          if (!data.instrumentId) throw error;
+        }
+      });
       this.port.postMessage({
         type: 'updateEnvelopeProcessed',
         messageId: data.messageId,
@@ -1910,8 +2109,6 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
   }
 
   private handleUpdateLfo(data: LfoUpdateData) {
-    if (!this.audioEngines[0]) return;
-
     try {
       const lfoParams = new WasmLfoUpdateParams(
         data.params.lfoId,
@@ -1927,10 +2124,50 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
         data.params.loopStart,
         data.params.loopEnd,
       );
-      this.audioEngines[0].update_lfos(lfoParams);
+      this.getTargetEngines(data.instrumentId).forEach((engine) => {
+        try {
+          engine.update_lfos(lfoParams);
+        } catch (error) {
+          if (!data.instrumentId) throw error;
+        }
+      });
     } catch (err) {
       console.error('Error updating LFO:', err);
     }
+  }
+
+  private handleUpdateArpeggiatorPattern(data: {
+    pattern: number[];
+    instrumentId?: string;
+  }) {
+    this.getTargetEngines(data.instrumentId).forEach((engine) => {
+      try {
+        (
+          engine as unknown as {
+            update_arpeggiator_pattern?: (pattern: number[]) => void;
+          }
+        ).update_arpeggiator_pattern?.(data.pattern);
+      } catch (error) {
+        if (!data.instrumentId) throw error;
+      }
+    });
+  }
+
+  private handleUpdateArpeggiatorStepDuration(data: {
+    stepDuration: number;
+    instrumentId?: string;
+  }) {
+    this.getTargetEngines(data.instrumentId).forEach((engine) => {
+      try {
+        (
+          engine as unknown as {
+            update_arpeggiator_step_duration?: (stepDuration: number) => void;
+          }
+        ).update_arpeggiator_step_duration?.(data.stepDuration);
+      } catch (error) {
+        if (!data.instrumentId) throw error;
+      }
+    });
   }
 
   /**
@@ -1979,7 +2216,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     return engineParams;
   }
 
-  private getSlotParamRecord(slot: InstrumentSlot): Record<string, Float32Array> {
+  private getSlotParamRecord(
+    slot: InstrumentSlot,
+  ): Record<string, Float32Array> {
     const cached = this.slotParamCache.get(slot.instrumentId);
     if (cached && cached.voiceCount === slot.voiceCount) {
       return cached.record;
@@ -2007,7 +2246,9 @@ class SynthAudioProcessor extends AudioWorkletProcessor {
     }
 
     if (this.instrumentSlots.size > 0) {
-      return Array.from(this.instrumentSlots.values()).map((slot) => slot.engine);
+      return Array.from(this.instrumentSlots.values()).map(
+        (slot) => slot.engine,
+      );
     }
 
     return this.audioEngines;

@@ -129,10 +129,18 @@ function handleStepCountChange() {
   }
 
   if (store.currentInstrument) {
-    store.currentInstrument.updateArpeggiatorPattern(
+    const instrument = store.currentInstrument;
+    const numericPattern = getPlainPattern().map((step) => step.value);
+    instrument.updateArpeggiatorPattern(
+      props.nodeId,
+      numericPattern as unknown as number[] & { value: number; active: boolean }[],
+    );
+    if ('updateArpeggiatorPatternSteps' in instrument && typeof instrument.updateArpeggiatorPatternSteps === 'function') {
+      instrument.updateArpeggiatorPatternSteps(
       props.nodeId,
       getPlainPattern(),
     );
+    }
   }
 }
 
@@ -140,9 +148,10 @@ function handleStepCountChange() {
 function handleStepValueChange(index: number, val: number) {
   pattern.splice(index, 1, { ...pattern[index]!, value: val });
   if (store.currentInstrument) {
+    const numericPattern = getPlainPattern().map((step) => step.value);
     store.currentInstrument.updateArpeggiatorPattern(
       props.nodeId,
-      getPlainPattern(),
+      numericPattern as unknown as number[] & { value: number; active: boolean }[],
     );
   }
 }
@@ -151,9 +160,10 @@ function handleStepValueChange(index: number, val: number) {
 function handleStepActiveChange(index: number, val: boolean) {
   pattern[index]!.active = val;
   if (store.currentInstrument) {
+    const numericPattern = getPlainPattern().map((step) => step.value);
     store.currentInstrument.updateArpeggiatorPattern(
       props.nodeId,
-      getPlainPattern(),
+      numericPattern as unknown as number[] & { value: number; active: boolean }[],
     );
   }
 }
@@ -163,9 +173,10 @@ watch(
   pattern,
   (_newVal) => {
     if (store.currentInstrument) {
+      const numericPattern = getPlainPattern().map((step) => step.value);
       store.currentInstrument.updateArpeggiatorPattern(
         props.nodeId,
-        getPlainPattern(),
+        numericPattern as unknown as number[] & { value: number; active: boolean }[],
       );
     }
   },

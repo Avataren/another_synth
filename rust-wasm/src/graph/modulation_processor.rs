@@ -1,6 +1,6 @@
 use super::ModulationSource;
 use crate::graph::{ModulationTransformation, ModulationType};
-use core::simd::{LaneCount, Simd, SupportedLaneCount};
+use core::simd::Simd;
 
 // ModulationResult is no longer needed as we process inplace or directly to target buffers
 // pub struct ModulationResult {
@@ -120,7 +120,7 @@ pub trait ModulationProcessor {
         one: Simd<f32, LANES>,
     ) -> Simd<f32, LANES>
     where
-        LaneCount<LANES>: SupportedLaneCount,
+        [f32; LANES]: Sized,
     {
         match transform {
             ModulationTransformation::None => x,
@@ -153,7 +153,7 @@ pub trait ModulationProcessor {
     ) where
         F: Fn(Simd<f32, LANES>, Simd<f32, LANES>, Simd<f32, LANES>) -> Simd<f32, LANES>,
         FS: Fn(f32, f32, f32) -> f32,
-        LaneCount<LANES>: SupportedLaneCount,
+        [f32; LANES]: Sized,
     {
         let simd_amt = Simd::<f32, LANES>::splat(amt);
         let simd_one = Simd::<f32, LANES>::splat(1.0);
@@ -214,7 +214,7 @@ pub trait ModulationProcessor {
     ) where
         F: Fn(Simd<f32, LANES>, Simd<f32, LANES>, Simd<f32, LANES>) -> Simd<f32, LANES>,
         FS: Fn(f32, f32, f32) -> f32,
-        LaneCount<LANES>: SupportedLaneCount,
+        [f32; LANES]: Sized,
     {
         // Basic bounds check (optional, as simd_process_unchecked does min length)
         // assert!(target.len() >= source.len());

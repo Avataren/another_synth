@@ -1182,14 +1182,14 @@ mod tests {
         outputs.insert(PortId::AudioOutput0, output_buffer.as_mut_slice());
 
         let audio_input_data = vec![0.0; buffer_size];
-        let audio_source = ModulationSource {
-            buffer: audio_input_data,
+        let audio_source = || ModulationSource {
+            buffer: &audio_input_data,
             amount: 1.0,
             mod_type: ModulationType::Additive,
             transformation: ModulationTransformation::None,
         };
         let mut inputs = FxHashMap::default();
-        inputs.insert(PortId::AudioInput0, vec![audio_source]);
+        inputs.insert(PortId::AudioInput0, vec![audio_source()]);
 
         for _ in 0..5 {
             fc.process(&inputs, &mut outputs, buffer_size);
@@ -1242,14 +1242,14 @@ mod tests {
         outputs_low.insert(PortId::AudioOutput0, output_low.as_mut_slice());
         outputs_high.insert(PortId::AudioOutput0, output_high.as_mut_slice());
 
-        let audio_source = ModulationSource {
-            buffer: input_buffer.clone(),
+        let make_audio_source = || ModulationSource {
+            buffer: &input_buffer,
             amount: 1.0,
             mod_type: ModulationType::Additive,
             transformation: ModulationTransformation::None,
         };
         let mut inputs = FxHashMap::default();
-        inputs.insert(PortId::AudioInput0, vec![audio_source]);
+        inputs.insert(PortId::AudioInput0, vec![make_audio_source()]);
 
         fc_low_drive.process(&inputs, &mut outputs_low, buffer_size);
         fc_high_drive.process(&inputs, &mut outputs_high, buffer_size);
@@ -1413,19 +1413,19 @@ mod tests {
         outputs_clean.insert(PortId::AudioOutput0, output_clean.as_mut_slice());
         outputs_driven.insert(PortId::AudioOutput0, output_driven.as_mut_slice());
 
-        let audio_source = ModulationSource {
-            buffer: input_buffer.clone(),
+        let make_audio_source = || ModulationSource {
+            buffer: &input_buffer,
             amount: 1.0,
             mod_type: ModulationType::Additive,
             transformation: ModulationTransformation::None,
         };
         let mut inputs = FxHashMap::default();
-        inputs.insert(PortId::AudioInput0, vec![audio_source.clone()]);
+        inputs.insert(PortId::AudioInput0, vec![make_audio_source()]);
 
         fc_clean.process(&inputs, &mut outputs_clean, buffer_size);
 
         // Reset inputs for driven version
-        inputs.insert(PortId::AudioInput0, vec![audio_source]);
+        inputs.insert(PortId::AudioInput0, vec![make_audio_source()]);
         fc_driven.process(&inputs, &mut outputs_driven, buffer_size);
 
         // Calculate RMS and peak values
@@ -1486,7 +1486,7 @@ mod tests {
         outputs.insert(PortId::AudioOutput0, output_buffer.as_mut_slice());
 
         let audio_source = ModulationSource {
-            buffer: input_buffer,
+            buffer: &input_buffer,
             amount: 1.0,
             mod_type: ModulationType::Additive,
             transformation: ModulationTransformation::None,

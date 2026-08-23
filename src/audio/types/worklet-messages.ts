@@ -24,7 +24,10 @@ import type {
   NodeConnectionUpdate,
   SynthLayout,
 } from './synth-layout';
-import type { WasmModulationType, ModulationTransformation } from 'app/public/wasm/audio_processor';
+import type {
+  WasmModulationType,
+  ModulationTransformation,
+} from 'app/public/wasm/audio_processor';
 import type { PortId } from './generated/port-ids';
 
 // ============================================================================
@@ -98,24 +101,28 @@ export interface UpdateOscillatorMessage extends BaseMessage {
   type: 'updateOscillator';
   oscillatorId: string;
   newState: OscillatorState;
+  instrumentId?: string;
 }
 
 export interface UpdateWavetableOscillatorMessage extends BaseMessage {
   type: 'updateWavetableOscillator';
   oscillatorId: string;
   newState: OscillatorState;
+  instrumentId?: string;
 }
 
 export interface UpdateEnvelopeMessage extends BaseMessage {
   type: 'updateEnvelope';
   envelopeId: string;
   state: EnvelopeConfig;
+  instrumentId?: string;
 }
 
 export interface UpdateFilterMessage extends BaseMessage {
   type: 'updateFilter';
   filterId: string;
   config: FilterState;
+  instrumentId?: string;
 }
 
 export interface LfoUpdateParams {
@@ -137,6 +144,7 @@ export interface UpdateLfoMessage extends BaseMessage {
   type: 'updateLfo';
   lfoId: string;
   params: LfoUpdateParams;
+  instrumentId?: string;
 }
 
 export interface UpdateSamplerMessage extends BaseMessage {
@@ -151,42 +159,49 @@ export interface UpdateConvolverMessage extends BaseMessage {
   type: 'updateConvolver';
   nodeId: string;
   state: ConvolverState;
+  instrumentId?: string;
 }
 
 export interface UpdateDelayMessage extends BaseMessage {
   type: 'updateDelay';
   nodeId: string;
   state: DelayState;
+  instrumentId?: string;
 }
 
 export interface UpdateChorusMessage extends BaseMessage {
   type: 'updateChorus';
   nodeId: string;
   state: ChorusState;
+  instrumentId?: string;
 }
 
 export interface UpdateReverbMessage extends BaseMessage {
   type: 'updateReverb';
   nodeId: string;
   state: ReverbState;
+  instrumentId?: string;
 }
 
 export interface UpdateCompressorMessage extends BaseMessage {
   type: 'updateCompressor';
   nodeId: string;
   state: CompressorState;
+  instrumentId?: string;
 }
 
 export interface UpdateSaturationMessage extends BaseMessage {
   type: 'updateSaturation';
   nodeId: string;
   state: SaturationState;
+  instrumentId?: string;
 }
 
 export interface UpdateBitcrusherMessage extends BaseMessage {
   type: 'updateBitcrusher';
   nodeId: string;
   state: BitcrusherState;
+  instrumentId?: string;
 }
 
 export interface UpdateVelocityMessage extends BaseMessage {
@@ -197,6 +212,7 @@ export interface UpdateVelocityMessage extends BaseMessage {
     randomize: number;
     active: boolean;
   };
+  instrumentId?: string;
 }
 
 export interface UpdateGlideMessage extends BaseMessage {
@@ -206,6 +222,7 @@ export interface UpdateGlideMessage extends BaseMessage {
   time: number;
   riseTime?: number;
   fallTime?: number;
+  instrumentId?: string;
 }
 
 export interface UpdateNoiseMessage extends BaseMessage {
@@ -217,6 +234,7 @@ export interface UpdateNoiseMessage extends BaseMessage {
     gain: number;
     enabled: boolean;
   };
+  instrumentId?: string;
 }
 
 // ============================================================================
@@ -226,6 +244,7 @@ export interface UpdateNoiseMessage extends BaseMessage {
 export interface UpdateConnectionMessage extends BaseMessage {
   type: 'updateConnection';
   connection: NodeConnectionUpdate;
+  instrumentId?: string;
 }
 
 export interface RemoveConnectionMessage extends BaseMessage {
@@ -233,6 +252,7 @@ export interface RemoveConnectionMessage extends BaseMessage {
   fromId: string;
   toId: string;
   targetPort: number;
+  instrumentId?: string;
 }
 
 export interface ConnectMacroMessage extends BaseMessage {
@@ -263,11 +283,13 @@ export interface ConnectionsResponseMessage extends BaseMessage {
 export interface UpdateArpeggiatorPatternMessage extends BaseMessage {
   type: 'updateArpeggiatorPattern';
   pattern: number[];
+  instrumentId?: string;
 }
 
 export interface UpdateArpeggiatorStepDurationMessage extends BaseMessage {
   type: 'updateArpeggiatorStepDuration';
   stepDuration: number;
+  instrumentId?: string;
 }
 
 // ============================================================================
@@ -491,7 +513,11 @@ export class WorkletMessageBuilder {
     };
   }
 
-  static updateEnvelope(envelopeId: string, state: EnvelopeConfig, withResponse = true): UpdateEnvelopeMessage {
+  static updateEnvelope(
+    envelopeId: string,
+    state: EnvelopeConfig,
+    withResponse = true,
+  ): UpdateEnvelopeMessage {
     return {
       type: 'updateEnvelope',
       envelopeId,
@@ -500,7 +526,10 @@ export class WorkletMessageBuilder {
     };
   }
 
-  static updateConnection(connection: NodeConnectionUpdate, withResponse = true): UpdateConnectionMessage {
+  static updateConnection(
+    connection: NodeConnectionUpdate,
+    withResponse = true,
+  ): UpdateConnectionMessage {
     return {
       type: 'updateConnection',
       connection,
@@ -516,7 +545,11 @@ export class WorkletMessageBuilder {
     };
   }
 
-  static createNode(nodeType: string, nodeId?: string, withResponse = true): CreateNodeMessage {
+  static createNode(
+    nodeType: string,
+    nodeId?: string,
+    withResponse = true,
+  ): CreateNodeMessage {
     const message: CreateNodeMessage = {
       type: 'createNode',
       nodeType,
@@ -549,7 +582,7 @@ export class WorkletMessageBuilder {
     messageId: string,
     success: boolean,
     data?: unknown,
-    error?: string
+    error?: string,
   ): OperationResponse {
     const response: OperationResponse = {
       type: 'operationResponse',
@@ -617,7 +650,10 @@ export class WorkletMessageValidator {
 
       case 'noteOn':
         const noteOnMsg = message as NoteOnMessage;
-        if (typeof noteOnMsg.noteNumber !== 'number' || typeof noteOnMsg.velocity !== 'number') {
+        if (
+          typeof noteOnMsg.noteNumber !== 'number' ||
+          typeof noteOnMsg.velocity !== 'number'
+        ) {
           return 'noteOn missing noteNumber or velocity';
         }
         break;
@@ -640,7 +676,7 @@ export class WorkletMessageValidator {
    */
   static isMessageType<T extends WorkletMessage>(
     message: WorkletMessage,
-    type: string
+    type: string,
   ): message is T {
     return message.type === type;
   }

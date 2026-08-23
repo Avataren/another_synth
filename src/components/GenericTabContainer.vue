@@ -130,7 +130,7 @@ watch(
  * Handle the plus click signal from any component.
  */
 function handlePlus(nodeType: VoiceNodeType): void {
-  store.currentInstrument?.createNode(nodeType);
+  void store.currentInstrument?.createNode(nodeType);
 }
 
 /**

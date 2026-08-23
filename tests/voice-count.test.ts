@@ -90,4 +90,19 @@ describe('resolvePatchVoiceCount', () => {
 
     expect(resolvePatchVoiceCount(patch)).toBe(1);
   });
+
+  it('clamps voice counts above the single-engine automation budget', () => {
+    const patch = buildPatchWithVoiceCount(
+      {
+        id: 'patch-3',
+        name: 'Too Many Voices',
+        created: Date.now(),
+        modified: Date.now(),
+        version: 1,
+      },
+      12,
+    );
+
+    expect(resolvePatchVoiceCount(patch)).toBe(8);
+  });
 });

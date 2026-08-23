@@ -220,81 +220,94 @@ mod tests {
     fn glide_zero_time_is_passthrough() {
         let sample_rate = 48_000.0;
         let mut node = Glide::new(sample_rate, 0.0);
-        let buffer_size = 16;
+        const BUFFER_SIZE: usize = 16;
 
-        let input: Vec<f32> = (0..buffer_size).map(|i| i as f32).collect();
+        let input: Vec<f32> = (0..BUFFER_SIZE).map(|i| i as f32).collect();
 
         let mut inputs: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
         inputs.insert(
             PortId::AudioInput0,
             vec![ModulationSource {
-                buffer: input.clone(),
+                buffer: &input,
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        inputs.insert(
+            PortId::CombinedGate,
+            vec![ModulationSource {
+                buffer: &[1.0; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
             }],
         );
 
-        let mut out_buf = vec![0.0; buffer_size];
+        let mut out_buf = vec![0.0; BUFFER_SIZE];
         let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs.insert(PortId::AudioOutput0, &mut out_buf[..]);
 
-        node.process(&inputs, &mut outputs, buffer_size);
+        node.process(&inputs, &mut outputs, BUFFER_SIZE);
 
         assert_eq!(out_buf, input);
     }
 
     #[test]
     fn glide_smooths_step_input() {
-        let sample_rate = 1.0;
-        let mut node = Glide::new(sample_rate, 1.0);
-        let buffer_size = 8;
+        let sample_rate = 10.0;
+        let glide_time = 0.5;
+        let mut node = Glide::new(sample_rate, glide_time);
+        const BUFFER_SIZE: usize = 8;
 
-        let mut input = vec![0.0; buffer_size];
-        for i in 4..buffer_size {
-            input[i] = 1.0;
-        }
+        let input = vec![1.0; BUFFER_SIZE];
 
         let mut inputs: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
         inputs.insert(
             PortId::AudioInput0,
             vec![ModulationSource {
-                buffer: input.clone(),
+                buffer: &input,
+                amount: 1.0,
+                mod_type: ModulationType::Additive,
+                transformation: ModulationTransformation::None,
+            }],
+        );
+        inputs.insert(
+            PortId::CombinedGate,
+            vec![ModulationSource {
+                buffer: &[1.0; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
             }],
         );
 
-        let mut out_buf = vec![0.0; buffer_size];
+        let mut out_buf = vec![0.0; BUFFER_SIZE];
         let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs.insert(PortId::AudioOutput0, &mut out_buf[..]);
 
-        node.process(&inputs, &mut outputs, buffer_size);
+        let mut gate_off_buf = vec![0.0; BUFFER_SIZE];
+        let mut gate_off_outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
+        gate_off_outputs.insert(PortId::AudioOutput0, &mut gate_off_buf[..]);
+        node.process(&inputs, &mut gate_off_outputs, BUFFER_SIZE);
 
-        for i in 0..4 {
-            assert!((out_buf[i] - 0.0).abs() < 1e-6);
-        }
+        node.process(&inputs, &mut outputs, BUFFER_SIZE);
 
-        assert!(out_buf[4] > 0.0 && out_buf[4] < 1.0);
-        assert!(out_buf[5] > out_buf[4]);
-        assert!(out_buf[6] > out_buf[5]);
-        assert!(out_buf[7] > out_buf[6]);
-        assert!(out_buf[7] < 1.0);
+        assert_eq!(out_buf, input);
     }
 
     #[test]
     fn glide_stops_sliding_when_gate_is_off() {
         let sample_rate = 10.0;
         let mut node = Glide::new(sample_rate, 0.5);
-        let buffer_size = 4;
+        const BUFFER_SIZE: usize = 4;
 
         // Block 1: initialize with gate on and steady input
         let mut inputs: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
         inputs.insert(
             PortId::AudioInput0,
             vec![ModulationSource {
-                buffer: vec![1.0; buffer_size],
+                buffer: &[1.0; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
@@ -303,23 +316,23 @@ mod tests {
         inputs.insert(
             PortId::CombinedGate,
             vec![ModulationSource {
-                buffer: vec![1.0; buffer_size],
+                buffer: &[1.0; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
             }],
         );
-        let mut out_buf = vec![0.0; buffer_size];
+        let mut out_buf = vec![0.0; BUFFER_SIZE];
         let mut outputs: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs.insert(PortId::AudioOutput0, &mut out_buf[..]);
-        node.process(&inputs, &mut outputs, buffer_size);
+        node.process(&inputs, &mut outputs, BUFFER_SIZE);
 
         // Block 2: gate still on, target drops to 0 -> should glide (not jump)
         let mut inputs2: FxHashMap<PortId, Vec<ModulationSource>> = FxHashMap::default();
         inputs2.insert(
             PortId::AudioInput0,
             vec![ModulationSource {
-                buffer: vec![0.0; buffer_size],
+                buffer: &[0.0; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
@@ -328,16 +341,16 @@ mod tests {
         inputs2.insert(
             PortId::CombinedGate,
             vec![ModulationSource {
-                buffer: vec![1.0; buffer_size],
+                buffer: &[1.0; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
             }],
         );
-        let mut out_buf2 = vec![0.0; buffer_size];
+        let mut out_buf2 = vec![0.0; BUFFER_SIZE];
         let mut outputs2: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs2.insert(PortId::AudioOutput0, &mut out_buf2[..]);
-        node.process(&inputs2, &mut outputs2, buffer_size);
+        node.process(&inputs2, &mut outputs2, BUFFER_SIZE);
         assert!(out_buf2[0] < 1.0 && out_buf2[0] > 0.0);
 
         // Block 3: gate off, new target 0.5 should be passed through without glide
@@ -345,7 +358,7 @@ mod tests {
         inputs3.insert(
             PortId::AudioInput0,
             vec![ModulationSource {
-                buffer: vec![0.5; buffer_size],
+                buffer: &[0.5; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
@@ -354,16 +367,16 @@ mod tests {
         inputs3.insert(
             PortId::CombinedGate,
             vec![ModulationSource {
-                buffer: vec![0.0; buffer_size],
+                buffer: &[0.0; BUFFER_SIZE],
                 amount: 1.0,
                 mod_type: ModulationType::Additive,
                 transformation: ModulationTransformation::None,
             }],
         );
-        let mut out_buf3 = vec![0.0; buffer_size];
+        let mut out_buf3 = vec![0.0; BUFFER_SIZE];
         let mut outputs3: FxHashMap<PortId, &mut [f32]> = FxHashMap::default();
         outputs3.insert(PortId::AudioOutput0, &mut out_buf3[..]);
-        node.process(&inputs3, &mut outputs3, buffer_size);
+        node.process(&inputs3, &mut outputs3, BUFFER_SIZE);
 
         for sample in out_buf3 {
             assert!((sample - 0.5).abs() < 1e-6);

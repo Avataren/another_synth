@@ -28,7 +28,7 @@ use rustfft::num_traits::Float;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::f32::consts::PI;
-use std::simd::{LaneCount, Simd, SupportedLaneCount};
+use std::simd::Simd;
 use std::sync::Arc;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -119,7 +119,7 @@ fn simd_apply<const LANES: usize>(
     f: impl Fn(f32) -> f32 + Copy,
 ) -> Simd<f32, LANES>
 where
-    LaneCount<LANES>: SupportedLaneCount,
+    [f32; LANES]: Sized,
 {
     Simd::<f32, LANES>::from_array(core::array::from_fn(|i| f(v[i])))
 }
@@ -127,7 +127,7 @@ where
 #[inline(always)]
 fn simd_exp<const LANES: usize>(v: Simd<f32, LANES>) -> Simd<f32, LANES>
 where
-    LaneCount<LANES>: SupportedLaneCount,
+    [f32; LANES]: Sized,
 {
     simd_apply(v, f32::exp)
 }
@@ -135,7 +135,7 @@ where
 #[inline(always)]
 fn simd_rem_euclid<const LANES: usize>(v: Simd<f32, LANES>, d: f32) -> Simd<f32, LANES>
 where
-    LaneCount<LANES>: SupportedLaneCount,
+    [f32; LANES]: Sized,
 {
     simd_apply(v, |x| x.rem_euclid(d))
 }
@@ -367,7 +367,7 @@ impl AnalogOscillator {
         base_freq: f32,
     ) -> (f32, f32)
     where
-        LaneCount<LANES>: SupportedLaneCount,
+        [f32; LANES]: Sized,
     {
         let _lanes = LANES;
         let idx0 = i;
