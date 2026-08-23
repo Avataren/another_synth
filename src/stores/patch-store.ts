@@ -339,7 +339,8 @@ export const usePatchStore = defineStore('patchStore', {
         }
 
         // Skip asset restoration and state application when skipLoadPatch is true
-        // (the external instrument already has these loaded)
+        // The external instrument already has the patch loaded, but we still need
+        // to push node states so the UI and engine agree on current values.
         if (!options?.skipLoadPatch) {
           await assetStore.restoreAudioAssets(
             instrumentStore.currentInstrument as InstrumentV2 | null,
@@ -354,6 +355,10 @@ export const usePatchStore = defineStore('patchStore', {
           // Ensure all node states (including LFO trigger modes) are pushed into WASM after load
           nodeStateStore.applyPreservedStatesToWasm();
           // Reapply macro routes after voices are rebuilt so every voice gets connected
+          macroStore.reapplyAllRoutes();
+        } else {
+          await nextTick();
+          nodeStateStore.applyPreservedStatesToWasm();
           macroStore.reapplyAllRoutes();
         }
 

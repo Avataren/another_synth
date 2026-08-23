@@ -219,6 +219,10 @@ export class PooledInstrument {
       patchJson,
     });
 
+    // Wait for the worklet to finish applying the patch before allowing state
+    // updates, otherwise they race with graph rebuilds.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
     // Set output gain from patch
     const instrumentGain = patch.synthState?.instrumentGain ?? 1.0;
     this.setOutputGain(instrumentGain);
@@ -887,7 +891,9 @@ export class PooledInstrument {
   }
 
   updateConvolverState(nodeId: string, state: ConvolverState): void {
-    const plainState = JSON.parse(JSON.stringify(toRaw(state))) as ConvolverState;
+    const plainState = JSON.parse(
+      JSON.stringify(toRaw(state)),
+    ) as ConvolverState;
     this.messageHandler.sendFireAndForget({
       type: 'updateConvolver',
       nodeId,
@@ -1056,9 +1062,9 @@ export class PooledInstrument {
     nodeId: string,
     pattern: number[] | { value: number; active: boolean }[],
   ): void {
-    const numericPattern = (pattern as { value: number; active: boolean }[]).map(
-      (step) => step.value,
-    );
+    const numericPattern = (
+      pattern as { value: number; active: boolean }[]
+    ).map((step) => step.value);
     this.messageHandler.sendFireAndForget({
       type: 'updateArpeggiatorPattern',
       pattern: numericPattern,
@@ -1066,8 +1072,14 @@ export class PooledInstrument {
     });
   }
 
-  updateArpeggiatorPatternSteps(nodeId: string, pattern: { value: number; active: boolean }[]): void {
-    this.updateArpeggiatorPattern(nodeId, pattern.map((step) => step.value));
+  updateArpeggiatorPatternSteps(
+    nodeId: string,
+    pattern: { value: number; active: boolean }[],
+  ): void {
+    this.updateArpeggiatorPattern(
+      nodeId,
+      pattern.map((step) => step.value),
+    );
   }
 
   createNode(_nodeType: unknown): Promise<string> {
@@ -1276,11 +1288,19 @@ export class PooledInstrument {
     });
   }
 
-  generateHallReverb(nodeId: string, decayTime: number, roomSize: number): Promise<void> {
+  generateHallReverb(
+    nodeId: string,
+    decayTime: number,
+    roomSize: number,
+  ): Promise<void> {
     return this.generateReverbImpulse('hall', nodeId, decayTime, roomSize);
   }
 
-  generatePlateReverb(nodeId: string, decayTime: number, diffusion: number): Promise<void> {
+  generatePlateReverb(
+    nodeId: string,
+    decayTime: number,
+    diffusion: number,
+  ): Promise<void> {
     return this.generateReverbImpulse('plate', nodeId, decayTime, diffusion);
   }
 
@@ -1316,7 +1336,11 @@ export class PooledInstrument {
   readonly num_engines = ENGINES_PER_WORKLET;
   readonly voices_per_engine = VOICES_PER_ENGINE;
 
-  remove_specific_connection(fromId: string, toId: string, targetPort: number): void {
+  remove_specific_connection(
+    fromId: string,
+    toId: string,
+    targetPort: number,
+  ): void {
     this.removeSpecificConnection(fromId, toId, targetPort);
   }
 
@@ -1324,9 +1348,7 @@ export class PooledInstrument {
 
   updateLayout(_layout: unknown): void {}
 
-  async exportSamplerData(
-    nodeId: string,
-  ): Promise<{
+  async exportSamplerData(nodeId: string): Promise<{
     samples: Float32Array;
     sampleRate: number;
     channels: number;
@@ -1338,12 +1360,14 @@ export class PooledInstrument {
       const handleMessage = (event: MessageEvent) => {
         if (event.data?.messageId === messageId) {
           port.removeEventListener('message', handleMessage);
-          resolve(event.data.sampleData ?? {
-            samples: new Float32Array(),
-            sampleRate: 44100,
-            channels: 1,
-            rootNote: 60,
-          });
+          resolve(
+            event.data.sampleData ?? {
+              samples: new Float32Array(),
+              sampleRate: 44100,
+              channels: 1,
+              rootNote: 60,
+            },
+          );
         }
       };
       port.addEventListener('message', handleMessage);
@@ -1375,11 +1399,13 @@ export class PooledInstrument {
       const handleMessage = (event: MessageEvent) => {
         if (event.data?.messageId === messageId) {
           port.removeEventListener('message', handleMessage);
-          resolve(event.data.convolverData ?? {
-            samples: new Float32Array(),
-            sampleRate: 44100,
-            channels: 1,
-          });
+          resolve(
+            event.data.convolverData ?? {
+              samples: new Float32Array(),
+              sampleRate: 44100,
+              channels: 1,
+            },
+          );
         }
       };
       port.addEventListener('message', handleMessage);
@@ -1390,7 +1416,12 @@ export class PooledInstrument {
         instrumentId: this.instrumentId,
       });
       setTimeout(
-        () => resolve({ samples: new Float32Array(), sampleRate: 44100, channels: 1 }),
+        () =>
+          resolve({
+            samples: new Float32Array(),
+            sampleRate: 44100,
+            channels: 1,
+          }),
         5000,
       );
     });

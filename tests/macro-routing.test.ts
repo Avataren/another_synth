@@ -589,8 +589,10 @@ describe('macro store integration', () => {
     expect(applied).toBe(true);
     expect(macroStore.routes).toHaveLength(1);
     expect(macroStore.routes[0]!.targetId).toBe('osc-1');
+    // With skipLoadPatch we now reapply preserved state and routes so the UI and
+    // engine agree; this intentionally triggers the route once during patch apply.
     expect(
       (instrumentStore.currentInstrument as unknown as { connectMacroRoute: ReturnType<typeof vi.fn> }).connectMacroRoute,
-    ).toHaveBeenCalledTimes(1);
+    ).toHaveBeenCalledTimes(2);
   });
 });
