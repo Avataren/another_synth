@@ -337,13 +337,20 @@ let themeObserver: MutationObserver | null = null;
 
 function updateThemeColors() {
   const style = getComputedStyle(document.documentElement);
-  cachedBgColor = style.getPropertyValue('--app-background').trim() || '#0b111a';
-  cachedGridColor = style.getPropertyValue('--panel-border').trim() || 'rgba(255, 255, 255, 0.08)';
-  const accent = style.getPropertyValue('--tracker-accent-primary').trim() || 'rgb(77, 242, 197)';
+  cachedBgColor =
+    style.getPropertyValue('--app-background').trim() || '#0b111a';
+  cachedGridColor =
+    style.getPropertyValue('--panel-border').trim() ||
+    'rgba(255, 255, 255, 0.08)';
+  const accent =
+    style.getPropertyValue('--tracker-accent-primary').trim() ||
+    'rgb(77, 242, 197)';
   cachedAccentColor = accent;
   // Create alpha version for fill
   if (accent.startsWith('rgb(')) {
-    cachedAccentColorAlpha = accent.replace('rgb(', 'rgba(').replace(')', ', 0.3)');
+    cachedAccentColorAlpha = accent
+      .replace('rgb(', 'rgba(')
+      .replace(')', ', 0.3)');
   } else {
     cachedAccentColorAlpha = 'rgba(77, 242, 197, 0.3)';
   }
@@ -401,11 +408,23 @@ async function updateCachedWaveform() {
   }
 
   // 3) Fetch the filter response data (same length as canvas width)
-  const filterData = await instrumentStore.currentInstrument?.getFilterResponse(
-    props.nodeId,
-    width,
-  );
+  let filterData: Float32Array | undefined;
+  try {
+    filterData = await instrumentStore.currentInstrument?.getFilterResponse(
+      props.nodeId,
+      width,
+    );
+  } catch (_err) {
+    // Keep the last good curve when a request fails.
+    return;
+  }
   if (!filterData) return;
+  if (filterData.length === 0) return;
+
+  // Reject flat responses caused by stale or failed engine queries; these are
+  // almost always all-zero buffers from an unavailable node.
+  const maxVal = filterData.reduce((max, v) => Math.max(max, v), -Infinity);
+  if (maxVal <= 0.0001) return;
 
   // 4) Draw the filter response path
   offCtx.beginPath();
@@ -460,7 +479,9 @@ watch(
 onMounted(() => {
   // Ensure there's a FilterState entry in the store for this node
   if (!filterStates.value.has(props.nodeId)) {
-    nodeStateStore.filterStates.set(props.nodeId, { ...toRaw(filterState.value) });
+    nodeStateStore.filterStates.set(props.nodeId, {
+      ...toRaw(filterState.value),
+    });
   }
 
   // Initialize theme colors

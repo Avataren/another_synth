@@ -306,6 +306,12 @@ function updateEnvelopePreview() {
   instrumentStore.currentInstrument
     ?.getEnvelopePreview(config, previewDuration)
     .then((previewData) => {
+      if (!previewData || previewData.length === 0) return;
+      const maxVal = Array.from(previewData).reduce(
+        (max, v) => Math.max(max, v),
+        -Infinity,
+      );
+      if (maxVal <= 0.0001) return;
       drawEnvelopePreviewWithData(previewData);
     })
     .catch(() => {
