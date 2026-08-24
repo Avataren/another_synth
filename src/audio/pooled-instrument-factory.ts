@@ -853,7 +853,7 @@ export class PooledInstrument {
     this.messageHandler.sendFireAndForget({
       type: 'updateEnvelope',
       envelopeId: nodeId,
-      state,
+      state: JSON.parse(JSON.stringify(toRaw(state))) as EnvelopeConfig,
       instrumentId: this.instrumentId,
     });
     return Promise.resolve();
@@ -1112,7 +1112,7 @@ export class PooledInstrument {
       port.addEventListener('message', handleMessage);
       port.postMessage({
         type: 'getEnvelopePreview',
-        config,
+        config: JSON.parse(JSON.stringify(toRaw(config))),
         previewDuration,
         messageId,
         instrumentId: this.instrumentId,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortId, WasmModulationType } from 'app/public/wasm/audio_processor';
 import { VoiceNodeType } from '../../src/audio/types/synth-layout';
+import type { EnvelopeConfig } from '../../src/audio/types/synth-layout';
 import { PooledInstrument } from '../../src/audio/pooled-instrument-factory';
 import { SynthAudioProcessor } from './synth-worklet-testable';
 
@@ -69,9 +70,9 @@ const createEngine = (name: string) => {
     initWithPatch: vi.fn(),
     get_current_state: vi.fn(() => ({ voices: [] })),
     update_noise: vi.fn(),
+    update_envelope: vi.fn(),
     update_oscillator: vi.fn(),
     update_wavetable_oscillator: vi.fn(),
-    update_envelope: vi.fn(),
     get_filter_ir_waveform: vi.fn(() => new Float32Array([0, 0.5, 1, 0.5])),
     update_lfos: vi.fn(),
     connect_nodes: vi.fn(
@@ -459,6 +460,135 @@ describe('pooled instrument postMessage safety', () => {
       state: object;
     };
     expect(posted.state).not.toBe(reactiveState);
+  });
+
+  it('accepts pooled envelope updates using the documented state field', () => {
+    const harness = createProcessorHarness();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const processor = harness.processor as any;
+    const slots = processor.exposeInstrumentSlots();
+    const existingSlot = slots.get('instrument-01');
+    slots.set('instrument-01', {
+      ...existingSlot,
+      voiceCount: 1,
+      voiceLimit: 1,
+      startVoice: 0,
+    });
+
+    processor.handleUpdateEnvelope({
+      envelopeId: 'env-node',
+      messageId: 'env-update-1',
+      instrumentId: 'instrument-01',
+      state: {
+        id: 'env-node',
+        attack: 0.01,
+        decay: 0.2,
+        sustain: 0.4,
+        release: 0.8,
+        attackCurve: -2,
+        decayCurve: 3,
+        releaseCurve: 1,
+        active: false,
+      },
+    });
+
+    expect(
+      harness.engines[0]!.engine.update_envelope,
+    ).toHaveBeenCalledWith(
+      'env-node',
+      0.01,
+      0.2,
+      0.4,
+      0.8,
+      -2,
+      3,
+      1,
+      false,
+    );
+    expect(
+      harness.engines[1]!.engine.update_envelope,
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe('pooled envelope message serialization', () => {
+  const createPooledInstrument = () => {
+    const port = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    const allocation = {
+      workletNode: { port } as unknown as AudioWorkletNode,
+      workletIndex: 0,
+      startVoice: 0,
+      endVoice: 1,
+      voiceCount: 1,
+      memory: {} as WebAssembly.Memory,
+    };
+
+    const instrument = new PooledInstrument(
+      { connect: vi.fn() } as unknown as AudioNode,
+      {
+        createGain: () => ({ gain: { value: 1 }, connect: vi.fn() }),
+        currentTime: 0,
+      } as unknown as AudioContext,
+      'instrument-01',
+      allocation,
+    );
+
+    return { instrument, port };
+  };
+
+  it('clones reactive envelope updates before posting', () => {
+    const { instrument, port } = createPooledInstrument();
+    const reactiveState = {
+      id: 'env-node',
+      attack: 0.02,
+      decay: 0.3,
+      sustain: 0.6,
+      release: 0.9,
+      attackCurve: 1,
+      decayCurve: 2,
+      releaseCurve: 3,
+      active: true,
+    };
+
+    void instrument.updateEnvelopeState('env-node', reactiveState);
+
+    const posted = (port.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { state: object };
+    expect(posted.state).toEqual({
+      id: 'env-node',
+      attack: 0.02,
+      decay: 0.3,
+      sustain: 0.6,
+      release: 0.9,
+      active: true,
+    });
+    expect(posted.state).not.toBe(reactiveState);
+  });
+
+  it('clones reactive envelope preview configs before posting', () => {
+    const { instrument, port } = createPooledInstrument();
+    const reactiveConfig = {
+      id: 'env-node',
+      attack: 0.03,
+      decay: 0.25,
+      sustain: 0.7,
+      release: 0.5,
+      attackCurve: 0,
+      decayCurve: 0,
+      releaseCurve: 0,
+      active: true,
+    } as EnvelopeConfig;
+
+    void instrument.getEnvelopePreview(reactiveConfig, 2);
+
+    const posted = (port.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { config: EnvelopeConfig };
+    expect(posted.config).toEqual(reactiveConfig);
+    expect(posted.config).not.toBe(reactiveConfig);
   });
 });
 

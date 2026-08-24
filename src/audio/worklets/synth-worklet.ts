@@ -47,10 +47,11 @@ import {
 import type { LoadPatchMessage } from '../types/worklet-messages';
 import type OscillatorState from '../models/OscillatorState.js';
 interface EnvelopeUpdate {
-  config: EnvelopeConfig;
+  config?: EnvelopeConfig;
   envelopeId: string;
   messageId: string;
   instrumentId?: string;
+  state?: EnvelopeConfig;
 }
 
 declare const sampleRate: number;
@@ -2119,20 +2120,37 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
+    const envelopeConfig = data.config ?? data.state;
+    if (!envelopeConfig) {
+      const message = 'Envelope update missing config/state';
+      console.error(message, {
+        envelopeId: data.envelopeId,
+        instrumentId: data.instrumentId,
+      });
+      this.port.postMessage({
+        type: 'error',
+        source: 'updateEnvelope',
+        message,
+        messageId: data.messageId,
+        instrumentId: data.instrumentId,
+      });
+      return;
+    }
+
     const errors: string[] = [];
     try {
       targetEngines.forEach((engine, index) => {
         try {
           engine.update_envelope(
             data.envelopeId,
-            data.config.attack,
-            data.config.decay,
-            data.config.sustain,
-            data.config.release,
-            data.config.attackCurve,
-            data.config.decayCurve,
-            data.config.releaseCurve,
-            data.config.active,
+            envelopeConfig.attack,
+            envelopeConfig.decay,
+            envelopeConfig.sustain,
+            envelopeConfig.release,
+            envelopeConfig.attackCurve,
+            envelopeConfig.decayCurve,
+            envelopeConfig.releaseCurve,
+            envelopeConfig.active,
           );
         } catch (error) {
           errors.push(
