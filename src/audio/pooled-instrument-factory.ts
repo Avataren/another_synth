@@ -394,13 +394,16 @@ export class PooledInstrument {
       gateParam.setValueAtTime(0, now);
     }
 
-    const gainParam = this.workletNode.parameters.get(
-      this.getParamName('gain', voiceIndex),
-    );
-    if (gainParam) {
-      gainParam.cancelScheduledValues(now);
-      gainParam.setValueAtTime(0, now);
-    }
+      const gainParam = this.workletNode.parameters.get(
+        this.getParamName('gain', voiceIndex),
+      );
+      if (gainParam) {
+        gainParam.cancelScheduledValues(now);
+        // Keep the voice gain ready for the next scheduled note. The gate is
+        // the authoritative silence control; zeroing gain here can leave later
+        // note-ons silent if their velocity is applied before a stale ramp.
+        gainParam.setValueAtTime(1, now);
+      }
 
     this.releaseVoice(voiceIndex, now);
   }
@@ -468,6 +471,7 @@ export class PooledInstrument {
     if (!gainParam) return;
 
     const target = Math.min(1, clamped * this.outputGain);
+    gainParam.cancelScheduledValues(time);
     if (rampMode === 'linear') {
       gainParam.linearRampToValueAtTime(target, time);
     } else if (rampMode === 'exponential') {
@@ -551,7 +555,10 @@ export class PooledInstrument {
       );
       if (gainParam) {
         gainParam.cancelScheduledValues(now);
-        gainParam.setValueAtTime(0, now);
+        // Keep voice gain ready for the next scheduled note. The gate is the
+        // authoritative silence control; zeroing gain here can leave later
+        // note-ons silent if their velocity is applied before a stale ramp.
+        gainParam.setValueAtTime(1, now);
       }
     }
 

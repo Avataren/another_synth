@@ -512,14 +512,58 @@ describe('pooled instrument postMessage safety', () => {
 });
 
 describe('pooled envelope message serialization', () => {
+  type GainParamCalls = Array<
+    | { method: 'cancelScheduledValues'; time: number }
+    | { method: 'setValueAtTime'; value: number; time: number }
+    | { method: 'linearRampToValueAtTime'; value: number; time: number }
+    | { method: 'exponentialRampToValueAtTime'; value: number; time: number }
+  >;
+
   const createPooledInstrument = () => {
     const port = {
       postMessage: vi.fn(),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     };
+    const gainCalls: Record<string, GainParamCalls> = {};
+    const createGainParam = (name: string): AudioParam => {
+      gainCalls[name] = [];
+      const calls = gainCalls[name]!;
+      const record = (call: GainParamCalls[number]) => {
+        calls.push(call);
+        return 'value' in call ? call.value : undefined;
+      };
+      return {
+        value: 1,
+        cancelScheduledValues: vi.fn((time: number) =>
+          record({ method: 'cancelScheduledValues', time }),
+        ),
+        setValueAtTime: vi.fn((value: number, time: number) =>
+          record({ method: 'setValueAtTime', value, time }),
+        ),
+        linearRampToValueAtTime: vi.fn((value: number, time: number) =>
+          record({ method: 'linearRampToValueAtTime', value, time }),
+        ),
+        exponentialRampToValueAtTime: vi.fn((value: number, time: number) =>
+          record({ method: 'exponentialRampToValueAtTime', value, time }),
+        ),
+      } as unknown as AudioParam;
+    };
+    const parameters = new Map<string, AudioParam>();
+    for (const voice of [0, 1]) {
+      for (const kind of ['gate', 'frequency', 'gain']) {
+        parameters.set(`${kind}_engine0_voice${voice}`, createGainParam(`${kind}_${voice}`));
+      }
+    }
+    const workletNode = {
+      port,
+      connect: vi.fn(),
+      parameters: {
+        get: (name: string) => parameters.get(name),
+      },
+    };
     const allocation = {
-      workletNode: { port } as unknown as AudioWorkletNode,
+      workletNode: workletNode as unknown as AudioWorkletNode,
       workletIndex: 0,
       startVoice: 0,
       endVoice: 1,
@@ -531,13 +575,13 @@ describe('pooled envelope message serialization', () => {
       { connect: vi.fn() } as unknown as AudioNode,
       {
         createGain: () => ({ gain: { value: 1 }, connect: vi.fn() }),
-        currentTime: 0,
+        currentTime: 1,
       } as unknown as AudioContext,
       'instrument-01',
       allocation,
     );
 
-    return { instrument, port };
+    return { instrument, port, gainCalls };
   };
 
   it('clones reactive envelope updates before posting', () => {
@@ -564,6 +608,9 @@ describe('pooled envelope message serialization', () => {
       decay: 0.3,
       sustain: 0.6,
       release: 0.9,
+      attackCurve: 1,
+      decayCurve: 2,
+      releaseCurve: 3,
       active: true,
     });
     expect(posted.state).not.toBe(reactiveState);
@@ -589,6 +636,37 @@ describe('pooled envelope message serialization', () => {
       .calls[0]![0] as { config: EnvelopeConfig };
     expect(posted.config).toEqual(reactiveConfig);
     expect(posted.config).not.toBe(reactiveConfig);
+  });
+
+  it('anchors later volume ramps after transport silence', () => {
+    const { instrument, gainCalls } = createPooledInstrument();
+    const gain = gainCalls['gain_0']!;
+
+    instrument.noteOn(60, 127);
+    instrument.setVoiceGainAtTime(0, 0.5, 2, 'linear');
+    instrument.allNotesOff();
+    instrument.setVoiceGainAtTime(0, 0.75, 3, 'linear');
+    instrument.noteOnAtTime(61, 100, 4);
+
+    expect(gain).toContainEqual({
+      method: 'cancelScheduledValues',
+      time: 3,
+    });
+    expect(gain).toContainEqual({
+      method: 'linearRampToValueAtTime',
+      value: 0.75,
+      time: 3,
+    });
+
+    const noteOnIndex = gain.findIndex(
+      (call) => call.method === 'setValueAtTime' && call.time === 4,
+    );
+    expect(noteOnIndex).toBeGreaterThan(
+      gain.findIndex((call) => call.method === 'linearRampToValueAtTime'),
+    );
+    expect(
+      (gain[noteOnIndex] as { method: 'setValueAtTime'; value: number }).value,
+    ).toBeCloseTo(100 / 127, 10);
   });
 });
 
