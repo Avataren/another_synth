@@ -516,8 +516,35 @@ async function loadSongPatchForEditing(slotNumber: number) {
 async function saveSongPatch() {
   if (!editingSlot.value) return;
 
+  const slot = trackerStore.instrumentSlots.find(
+    (s) => s.slot === editingSlot.value,
+  );
+  // Preserve the existing patch's identity (id/created/category) so saving
+  // doesn't mint a brand-new metadata.id every time the editor is closed.
+  // Without this, TrackerSongBank's patch-signature comparison (which keys
+  // off metadata.id) never matches the previous instrument, so it tears
+  // down and rebuilds the instrument from scratch on every return to the
+  // tracker -- resetting envelope/oscillator/LFO phase and any other
+  // transient voice state, which is what makes the instrument sound
+  // different even when no audible parameter actually changed.
+  const existingPatch = slot?.patchId
+    ? songPatches.value[slot.patchId]
+    : undefined;
+  const identityMetadata = existingPatch
+    ? {
+        id: existingPatch.metadata.id,
+        created: existingPatch.metadata.created,
+        ...(existingPatch.metadata.category !== undefined
+          ? { category: existingPatch.metadata.category }
+          : {}),
+      }
+    : undefined;
+
   // Serialize current patch state from the UI stores
-  const patch = await patchStore.serializePatch(editingPatchName.value);
+  const patch = await patchStore.serializePatch(
+    editingPatchName.value,
+    identityMetadata,
+  );
   if (!patch) return;
 
   // Update the song patch in tracker store for persistence

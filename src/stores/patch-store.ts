@@ -80,6 +80,9 @@ type PatchMetadataUpdates = {
   tags?: string[];
   description?: string;
   category?: string | undefined;
+  /** Preserve the original patch identity/creation time across a re-save (e.g. song patch edits). */
+  id?: string;
+  created?: number;
 };
 
 const sanitizeMetadataUpdates = (

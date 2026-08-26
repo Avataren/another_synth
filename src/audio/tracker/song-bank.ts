@@ -2185,7 +2185,15 @@ export class TrackerSongBank {
     const id = patch?.metadata?.id;
     if (!id) return null;
 
-    const modified = patch?.metadata?.modified ?? patch?.metadata?.created ?? 0;
+    // Deliberately content-based only (no metadata.modified timestamp): the
+    // instrument editor bumps `modified` on every save, even when nothing
+    // audible actually changed (e.g. simply opening and leaving the editor).
+    // Signing off of the timestamp would force a full instrument
+    // teardown/rebuild on every such no-op save, discarding the live voice
+    // state (envelope/oscillator/LFO phase, etc.) that the user was just
+    // hearing while editing. Hashing the actual synth state + assets means
+    // an unchanged patch is correctly recognized as reusable, while a real
+    // edit (which does change the hash) still triggers a rebuild.
     const stateHash = this.simpleHash(
       this.safeStringify(patch?.synthState ?? {}),
     );
@@ -2200,7 +2208,7 @@ export class TrackerSongBank {
         .join('|'),
     );
 
-    return `${id}:${modified}:${stateHash}:${assetHash}`;
+    return `${id}:${stateHash}:${assetHash}`;
   }
 
   private safeStringify(value: unknown): string {
