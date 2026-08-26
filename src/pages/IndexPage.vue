@@ -14,6 +14,13 @@
             <span class="live-dot"></span>
             LIVE
           </span>
+          <span
+            v-if="isEditingSimplifiedModInstrument"
+            class="song-patch-banner__simplified"
+            title="This instrument plays through the lightweight sample engine (Settings > Simplified MOD Instruments), which only uses Sample/Gain/Pan/Pitch -- envelope, filter, LFO and effects sections are hidden because they wouldn't affect playback."
+          >
+            Simplified engine
+          </span>
         </div>
         <div class="song-patch-banner__actions">
           <q-select
@@ -165,7 +172,7 @@
               nodeLabel="Arp"
             />
             <generic-tab-container
-              v-if="velocityNodes.length"
+              v-if="velocityNodes.length && !isEditingSimplifiedModInstrument"
               :nodes="velocityNodes"
               :destinationNode="destinationNode"
               :componentName="VelocityComponent"
@@ -173,7 +180,10 @@
             />
           </div>
 
-          <div class="node-bg column modulators">
+          <div
+            v-if="!isEditingSimplifiedModInstrument"
+            class="node-bg column modulators"
+          >
             <div class="header">Modulators</div>
             <generic-tab-container
               v-if="lfoNodes.length"
@@ -191,7 +201,7 @@
             />
           </div>
 
-          <div class="node-bg effects">
+          <div v-if="!isEditingSimplifiedModInstrument" class="node-bg effects">
             <div class="header">Effects</div>
             <div class="effects-grid">
               <generic-tab-container
@@ -311,6 +321,7 @@ import { useNodeStateStore } from 'src/stores/node-state-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
+import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useMacroStore } from 'src/stores/macro-store';
 import { resolvePatchVoiceCount } from 'src/audio/utils/voice-count';
@@ -389,6 +400,7 @@ const trackerStore = useTrackerStore();
 const playbackStore = useTrackerPlaybackStore();
 const trackerAudioStore = useTrackerAudioStore();
 const macroStore = useMacroStore();
+const userSettingsStore = useUserSettingsStore();
 const { destinationNode, instrumentGain } = storeToRefs(instrumentStore);
 const { editingSlot, songPatches } = storeToRefs(trackerStore);
 const { isPlaying } = storeToRefs(playbackStore);
@@ -412,6 +424,23 @@ const editingPatchName = computed(() => {
     (s) => s.slot === editingSlot.value,
   );
   return slot?.instrumentName || slot?.patchName || 'Song Patch';
+});
+// True when the slot being edited is a MOD instrument that will actually
+// play through the lightweight ModInstrument engine (Settings > Simplified
+// MOD Instruments), not the full WASM synth. ModInstrument only implements
+// sample playback + gain/pan/pitch -- it has no envelope/filter/LFO/effects
+// support at all, and the editor doesn't even live-edit it (it falls back
+// to a standalone preview instrument for those patches, see
+// loadSongPatchForEditing). Showing those sections there would just be
+// dead, misleading controls, so they're hidden below instead.
+const isEditingSimplifiedModInstrument = computed(() => {
+  if (!editingSlot.value) return false;
+  if (!userSettingsStore.settings.useSimplifiedModInstruments) return false;
+  const slot = trackerStore.instrumentSlots.find(
+    (s) => s.slot === editingSlot.value,
+  );
+  const patch = slot?.patchId ? songPatches.value[slot.patchId] : undefined;
+  return patch?.metadata.instrumentType === 'mod';
 });
 const isInstrumentEditorRoute = computed(
   () => route.name === 'patch-instrument-editor',
@@ -442,90 +471,110 @@ async function loadSongPatchForEditing(slotNumber: number) {
   // Try to get the actual instrument from the song bank for live editing
   const songBankInstrument = trackerAudioStore.getInstrumentForSlot(slotNumber);
 
-  if (songBankInstrument && !(songBankInstrument instanceof ModInstrument)) {
-    // LIVE EDITING: Swap to the song bank's actual instrument
-    // This means all knob turns will directly affect the playing sound
-    instrumentStore.useExternalInstrument(songBankInstrument);
+  // macroStore.setFromPatch() below (which mutates macro routes/values) runs
+  // before patchStore.applyPatchObject() gets a chance to set its own
+  // isLoadingPatch guard, so set it here first -- otherwise the
+  // nodeStateStore/macroStore $subscribe hooks that mark the patch dirty
+  // (see boot/pinia-audio-system.ts) would fire on this initial load and
+  // the editor would open already "dirty" with nothing actually edited.
+  // applyPatchObject() resets the flag to false (in both its success and
+  // error paths) once loading finishes; the finally below covers it too in
+  // case applyPatchObject bails out before that point.
+  patchStore.isLoadingPatch = true;
+  try {
+    if (songBankInstrument && !(songBankInstrument instanceof ModInstrument)) {
+      // LIVE EDITING: Swap to the song bank's actual instrument
+      // This means all knob turns will directly affect the playing sound
+      instrumentStore.useExternalInstrument(songBankInstrument);
 
-    // Make sure macro routes are visible immediately even before the patch is re-applied
-    macroStore.setFromPatch(
-      patch.synthState.macros
-        ? {
-            values: patch.synthState.macros.values,
-            routes:
-              patch.synthState.macros.routes?.map((route) => ({
-                macroIndex: route.macroIndex,
-                targetId: route.targetId,
-                targetPort: route.targetPort,
-                amount: route.amount,
-                ...(route.modulationType !== undefined
-                  ? {
-                      modulationType:
-                        route.modulationType as WasmModulationType,
-                    }
-                  : {}),
-                ...(route.modulationTransformation !== undefined
-                  ? {
-                      modulationTransformation:
-                        route.modulationTransformation as ModulationTransformation,
-                    }
-                  : {}),
-              })) ?? [],
-          }
-        : undefined,
-    );
+      // Make sure macro routes are visible immediately even before the patch is re-applied
+      macroStore.setFromPatch(
+        patch.synthState.macros
+          ? {
+              values: patch.synthState.macros.values,
+              routes:
+                patch.synthState.macros.routes?.map((route) => ({
+                  macroIndex: route.macroIndex,
+                  targetId: route.targetId,
+                  targetPort: route.targetPort,
+                  amount: route.amount,
+                  ...(route.modulationType !== undefined
+                    ? {
+                        modulationType:
+                          route.modulationType as WasmModulationType,
+                      }
+                    : {}),
+                  ...(route.modulationTransformation !== undefined
+                    ? {
+                        modulationTransformation:
+                          route.modulationTransformation as ModulationTransformation,
+                      }
+                    : {}),
+                })) ?? [],
+            }
+          : undefined,
+      );
 
-    // Load the patch state into the UI stores (layout, node states, etc.)
-    // Skip loadPatch because the instrument is already loaded and playing
-    await patchStore.applyPatchObject(patch, {
-      setCurrentPatchId: true,
-      skipLoadPatch: true,
-    });
-  } else {
-    macroStore.setFromPatch(
-      patch.synthState.macros
-        ? {
-            values: patch.synthState.macros.values,
-            routes:
-              patch.synthState.macros.routes?.map((route) => ({
-                macroIndex: route.macroIndex,
-                targetId: route.targetId,
-                targetPort: route.targetPort,
-                amount: route.amount,
-                ...(route.modulationType !== undefined
-                  ? {
-                      modulationType:
-                        route.modulationType as WasmModulationType,
-                    }
-                  : {}),
-                ...(route.modulationTransformation !== undefined
-                  ? {
-                      modulationTransformation:
-                        route.modulationTransformation as ModulationTransformation,
-                    }
-                  : {}),
-              })) ?? [],
-          }
-        : undefined,
-    );
-    // Fallback: No active instrument in song bank, use standalone mode
-    await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
+      // Load the patch state into the UI stores (layout, node states, etc.)
+      // Skip loadPatch because the instrument is already loaded and playing
+      await patchStore.applyPatchObject(patch, {
+        setCurrentPatchId: true,
+        skipLoadPatch: true,
+      });
+    } else {
+      macroStore.setFromPatch(
+        patch.synthState.macros
+          ? {
+              values: patch.synthState.macros.values,
+              routes:
+                patch.synthState.macros.routes?.map((route) => ({
+                  macroIndex: route.macroIndex,
+                  targetId: route.targetId,
+                  targetPort: route.targetPort,
+                  amount: route.amount,
+                  ...(route.modulationType !== undefined
+                    ? {
+                        modulationType:
+                          route.modulationType as WasmModulationType,
+                      }
+                    : {}),
+                  ...(route.modulationTransformation !== undefined
+                    ? {
+                        modulationTransformation:
+                          route.modulationTransformation as ModulationTransformation,
+                      }
+                    : {}),
+                })) ?? [],
+            }
+          : undefined,
+      );
+      // Fallback: No active instrument in song bank, use standalone mode
+      await patchStore.applyPatchObject(patch, { setCurrentPatchId: true });
+    }
+  } finally {
+    patchStore.isLoadingPatch = false;
   }
 }
 
 async function saveSongPatch() {
   if (!editingSlot.value) return;
 
+  // Nothing was actually edited since this patch was loaded (or last
+  // saved) -- skip serializing/writing/syncing entirely. Besides being
+  // wasted work, this is what used to force TrackerSongBank to rebuild the
+  // live instrument on every no-op editor visit (see patchStore.isDirty).
+  if (!patchStore.isDirty) return;
+
   const slot = trackerStore.instrumentSlots.find(
     (s) => s.slot === editingSlot.value,
   );
   // Preserve the existing patch's identity (id/created/category) so saving
   // doesn't mint a brand-new metadata.id every time the editor is closed.
-  // Without this, TrackerSongBank's patch-signature comparison (which keys
-  // off metadata.id) never matches the previous instrument, so it tears
-  // down and rebuilds the instrument from scratch on every return to the
-  // tracker -- resetting envelope/oscillator/LFO phase and any other
-  // transient voice state, which is what makes the instrument sound
+  // Without this, TrackerSongBank's patch-reuse-key comparison (which keys
+  // off metadata.id + revision) never matches the previous instrument, so
+  // it tears down and rebuilds the instrument from scratch on every return
+  // to the tracker -- resetting envelope/oscillator/LFO phase and any
+  // other transient voice state, which is what makes the instrument sound
   // different even when no audible parameter actually changed.
   const existingPatch = slot?.patchId
     ? songPatches.value[slot.patchId]
@@ -534,6 +583,7 @@ async function saveSongPatch() {
     ? {
         id: existingPatch.metadata.id,
         created: existingPatch.metadata.created,
+        revision: (existingPatch.metadata.revision ?? 0) + 1,
         ...(existingPatch.metadata.category !== undefined
           ? { category: existingPatch.metadata.category }
           : {}),
@@ -554,6 +604,10 @@ async function saveSongPatch() {
   // Also update the song bank's stored patch to keep it in sync
   // This prevents the old patch from being reapplied on next playback start
   trackerAudioStore.updateStoredPatch(editingSlot.value, patch);
+
+  // The edit is now persisted -- clear the dirty flag so a subsequent
+  // no-op visit to the editor doesn't re-save/re-sync.
+  patchStore.lastSavedVersion = patchStore.patchVersion;
 }
 
 async function handleSongPatchVoiceChange(value: number) {
@@ -993,6 +1047,21 @@ const bitcrusherNodes = computed(() => {
   letter-spacing: 0.08em;
   color: #4caf50;
   margin-left: 8px;
+}
+
+.song-patch-banner__simplified {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #ffc107;
+  margin-left: 8px;
+  cursor: help;
 }
 
 .song-patch-voice-select :deep(.q-field__control) {

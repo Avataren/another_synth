@@ -56,7 +56,7 @@ export interface SongBankSlot {
 interface ActiveInstrument {
   instrument: InstrumentV2 | ModInstrument | PooledInstrument;
   patchId: string;
-  patchSignature: string | null;
+  patchReuseKey: string | null;
   hasPortamento: boolean;
 }
 
@@ -1545,15 +1545,15 @@ export class TrackerSongBank {
     const deserialized = deserializePatch(normalizedPatch);
     const patchId = normalizedPatch?.metadata?.id;
     if (!patchId) return;
-    const patchSignature = this.computePatchSignature(normalizedPatch);
+    const patchReuseKey = this.getPatchReuseKey(normalizedPatch);
     const hasPortamento = this.hasActivePortamento(normalizedPatch);
 
     const existing = this.instruments.get(instrumentId);
     const canReuse =
       existing &&
       existing.patchId === patchId &&
-      patchSignature !== null &&
-      existing.patchSignature === patchSignature;
+      patchReuseKey !== null &&
+      existing.patchReuseKey === patchReuseKey;
 
     if (canReuse) {
       // console.log(
@@ -1587,9 +1587,11 @@ export class TrackerSongBank {
     // Check if this is a MOD instrument and user has simplified MOD instruments enabled
     const userSettings = useUserSettingsStore();
     const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
-    // Temporarily disable the simplified ModInstrument path: it doesn't support
-    // per-voice pitch automation (e.g. 3xx tone portamento), so tracker slides
-    // get stuck. Always route MOD patches through the worklet-backed instruments.
+    // ModInstrument's per-voice pitch automation (e.g. 3xx tone portamento)
+    // is now scheduled directly on the native AudioParam (see
+    // ModInstrument.setVoiceFrequencyAtTime), so it's a real, working
+    // opt-in playback path -- not just for MOD instruments. Still defaults
+    // to off (see user-settings-store.ts) until it's had more real-world use.
     const useSimplified = userSettings.settings.useSimplifiedModInstruments;
 
     // DETAILED DEBUGGING
@@ -1744,7 +1746,7 @@ export class TrackerSongBank {
     this.instruments.set(instrumentId, {
       instrument,
       patchId,
-      patchSignature,
+      patchReuseKey,
       hasPortamento,
     });
     await this.flushPendingScheduledEvents(instrumentId);
@@ -2181,54 +2183,23 @@ export class TrackerSongBank {
     };
   }
 
-  private computePatchSignature(patch: Patch): string | null {
+  /**
+   * Key used to decide whether a slot's currently-live instrument can be
+   * reused as-is (same key) or must be torn down and rebuilt (different
+   * key). Deliberately just `id:revision`, not a hash of the patch's
+   * content: `metadata.revision` is only ever incremented by patchStore
+   * when a real, detected edit is saved (see patchStore.isDirty /
+   * IndexPage.vue saveSongPatch) -- unlike `metadata.modified`, which used
+   * to be bumped on every save regardless of whether anything actually
+   * changed, forcing a rebuild (and losing live envelope/oscillator/LFO
+   * phase) on every no-op editor visit. Comparing the explicit revision is
+   * both cheaper and more honest about what it's actually testing than
+   * hashing a multi-KB JSON blob of synthState + audioAssets on every sync.
+   */
+  private getPatchReuseKey(patch: Patch): string | null {
     const id = patch?.metadata?.id;
     if (!id) return null;
-
-    // Deliberately content-based only (no metadata.modified timestamp): the
-    // instrument editor bumps `modified` on every save, even when nothing
-    // audible actually changed (e.g. simply opening and leaving the editor).
-    // Signing off of the timestamp would force a full instrument
-    // teardown/rebuild on every such no-op save, discarding the live voice
-    // state (envelope/oscillator/LFO phase, etc.) that the user was just
-    // hearing while editing. Hashing the actual synth state + assets means
-    // an unchanged patch is correctly recognized as reusable, while a real
-    // edit (which does change the hash) still triggers a rebuild.
-    const stateHash = this.simpleHash(
-      this.safeStringify(patch?.synthState ?? {}),
-    );
-    const assets = patch?.audioAssets ?? {};
-    const assetHash = this.simpleHash(
-      Object.entries(assets)
-        .map(
-          ([assetId, asset]) =>
-            `${assetId}:${this.simpleHash(asset?.base64Data ?? '')}`,
-        )
-        .sort()
-        .join('|'),
-    );
-
-    return `${id}:${stateHash}:${assetHash}`;
-  }
-
-  private safeStringify(value: unknown): string {
-    try {
-      return JSON.stringify(value) ?? '';
-    } catch (error) {
-      console.warn(
-        '[TrackerSongBank] Failed to stringify patch for signature:',
-        error,
-      );
-      return '';
-    }
-  }
-
-  private simpleHash(input: string): string {
-    let hash = 0;
-    for (let i = 0; i < input.length; i += 1) {
-      hash = (hash * 31 + input.charCodeAt(i)) | 0;
-    }
-    return hash.toString();
+    return `${id}:${patch?.metadata?.revision ?? 0}`;
   }
 
   private teardownInstrument(instrumentId: string) {
@@ -2327,7 +2298,7 @@ export class TrackerSongBank {
       // Update the stored patch reference and signature
       this.desired.set(instrumentId, normalizedPatch);
       active.patchId = normalizedPatch.metadata.id;
-      active.patchSignature = this.computePatchSignature(normalizedPatch);
+      active.patchReuseKey = this.getPatchReuseKey(normalizedPatch);
 
       // Update portamento state based on new patch
       active.hasPortamento = this.hasActivePortamento(normalizedPatch);
@@ -2388,7 +2359,7 @@ export class TrackerSongBank {
         return;
       }
       active.patchId = patchId;
-      active.patchSignature = this.computePatchSignature(normalizedPatch);
+      active.patchReuseKey = this.getPatchReuseKey(normalizedPatch);
       active.hasPortamento = this.hasActivePortamento(normalizedPatch);
 
       // Also push the updated patch into the live instrument so tracker playback

@@ -487,6 +487,7 @@
         <TrackerSpectrumAnalyzer
           v-if="userSettings.showSpectrumAnalyzer"
           :node="masterOutputNode"
+          :track-nodes="spectrumTrackNodes"
           :is-playing="isPlaying"
         />
         <div
@@ -1283,6 +1284,12 @@ async function syncSongBankFromSlots() {
 // Track audio nodes for visualization (simplified from old composable)
 const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
 const tracksWithActiveNotes = ref<Set<number>>(new Set());
+
+// Ordered array (by track index) for TrackerSpectrumAnalyzer's per-channel
+// mode, which only applies for the classic 4-channel Amiga layout.
+const spectrumTrackNodes = computed<(AudioNode | null)[]>(() =>
+  Array.from({ length: trackCount.value }, (_, i) => trackAudioNodes.value[i] ?? null),
+);
 
 function setTrackAudioNodeForInstrument(
   trackIndex: number,

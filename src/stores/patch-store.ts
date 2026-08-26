@@ -83,6 +83,8 @@ type PatchMetadataUpdates = {
   /** Preserve the original patch identity/creation time across a re-save (e.g. song patch edits). */
   id?: string;
   created?: number;
+  /** Next revision number for this re-save (see PatchMetadata.revision). */
+  revision?: number;
 };
 
 const sanitizeMetadataUpdates = (
@@ -106,9 +108,13 @@ export const usePatchStore = defineStore('patchStore', {
     defaultPatchTemplate: null as Patch | null,
     defaultPatchLoadAttempted: false,
     isLoadingPatch: false,
-    /** Version counter that increments when any patch parameter changes.
-     *  Used by IndexPage to trigger debounced live updates during song patch editing. */
+    /** Version counter that increments when any patch parameter changes. */
     patchVersion: 0,
+    /** Snapshot of patchVersion as of the last successful load or save.
+     *  isDirty compares against this instead of re-deriving "did anything
+     *  change" from serialized content (see TrackerSongBank.getPatchReuseKey
+     *  for the same principle applied to instrument reuse). */
+    lastSavedVersion: 0,
   }),
   getters: {
     currentPatch(state): Patch | null {
@@ -121,12 +127,19 @@ export const usePatchStore = defineStore('patchStore', {
         ) || null
       );
     },
+    /** True if a mutation has been reported (via notifyPatchChanged) since
+     *  the currently-loaded patch was last loaded or saved. */
+    isDirty(state): boolean {
+      return state.patchVersion !== state.lastSavedVersion;
+    },
   },
   actions: {
     /**
-     * Notify that a patch parameter has changed.
-     * This increments the patchVersion counter, which can be watched
-     * by components to trigger debounced live updates.
+     * Notify that a patch parameter has changed. Increments patchVersion,
+     * which isDirty compares against lastSavedVersion. Called from the
+     * nodeStateStore/macroStore $subscribe hooks set up in
+     * boot/pinia-audio-system.ts, and directly by instrumentStore's
+     * gain/macro setters (see setMacro/setMacros/setInstrumentGain).
      */
     notifyPatchChanged(): void {
       // Don't notify during patch loading to avoid false positives
@@ -366,6 +379,12 @@ export const usePatchStore = defineStore('patchStore', {
         }
 
         this.isLoadingPatch = false;
+        // Establish a clean dirty-tracking baseline for whatever patch was
+        // just loaded (notifyPatchChanged() no-ops while isLoadingPatch is
+        // true, so patchVersion itself won't have moved during this load --
+        // this just realigns lastSavedVersion in case a previous patch left
+        // it out of sync).
+        this.lastSavedVersion = this.patchVersion;
         return true;
       } catch (error) {
         console.error('Failed to apply patch:', error);
@@ -1126,8 +1145,15 @@ export const usePatchStore = defineStore('patchStore', {
         instrumentGain: instrumentStore.instrumentGain,
       });
 
-      // Reapply the freshly serialized patch so the engine rebuilds voices
-      return await this.applyPatchObject(patch);
+      // Reapply the freshly serialized patch so the engine rebuilds voices.
+      // applyPatchObject() treats this as a "load" and resets the dirty
+      // baseline, but a voice-count change is a real edit that must still
+      // be saved -- re-flag it dirty immediately after.
+      const applied = await this.applyPatchObject(patch);
+      if (applied) {
+        this.notifyPatchChanged();
+      }
+      return applied;
     },
   },
 });

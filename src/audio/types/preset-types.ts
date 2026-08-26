@@ -76,6 +76,15 @@ export interface PatchMetadata {
   version: number;
   /** Type of instrument: synth uses full WASM engine, mod uses lightweight Web Audio playback */
   instrumentType?: 'synth' | 'mod' | undefined;
+  /**
+   * Monotonically incremented each time a real content edit is saved
+   * (see patchStore.isDirty / IndexPage.vue saveSongPatch). Unlike
+   * `modified`, this only changes when something audible actually changed,
+   * so it's safe to use as a cheap instrument-reuse key (see
+   * TrackerSongBank.getPatchReuseKey) without forcing a rebuild on every
+   * no-op save.
+   */
+  revision?: number;
 }
 
 /**

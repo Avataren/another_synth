@@ -35,146 +35,33 @@ interface WasmNode {
     name: string;
 }
 
-// interface WasmVoiceState {
-//     id: number;
-//     nodes: WasmNode[];
-//     connections: WasmConnection[];
-// }
-
-export interface WasmState {
-    voices: WasmVoice[];
-    version: number;
-}
-
+/**
+ * Does a single, one-shot reconciliation of the layout store's connections
+ * against what WASM actually reports, right after the instrument boots.
+ * (Despite the class name, there is no ongoing "management" here: this used
+ * to also support periodic re-syncing via setInterval, but that was never
+ * enabled -- see git history -- so it's been removed. If you need to force
+ * a re-sync later, call start() again; it's idempotent per lastWasmState.)
+ */
 export class AudioSyncManager {
-    private syncInterval: number | null = null;
     private readonly resolveInstrument: () => InstrumentV2 | null;
     private layoutStore = useLayoutStore();
     private connectionStore = useConnectionStore();
     private nodeStateStore = useNodeStateStore();
-    private stateVersion: number = 0;
     private lastWasmState: string = '';
-    private failedAttempts = 0;
-    private readonly maxFailedAttempts = 3;
 
     constructor(instrumentProvider: () => InstrumentV2 | null) {
         this.resolveInstrument = instrumentProvider;
     }
 
     async start() {
-        if (this.syncInterval) {
-            return;
-        }
-
         try {
             await this.syncWithWasm();
-            //uncomment to check periodically
-            // this.syncInterval = window.setInterval(() => {
-            //     this.syncWithWasm().catch(error => {
-            //         console.warn('Sync attempt failed:', error);
-            //         this.failedAttempts++;
-
-            //         if (this.failedAttempts >= this.maxFailedAttempts) {
-            //             console.error('Max sync attempts reached, stopping sync manager');
-            //             this.stop();
-            //         }
-            //     });
-            // }, this.syncIntervalMs);
         } catch (error) {
             console.error('Failed to start sync manager:', error);
             throw error;
         }
     }
-
-    stop() {
-        if (this.syncInterval) {
-            clearInterval(this.syncInterval);
-            this.syncInterval = null;
-        }
-        this.failedAttempts = 0;
-    }
-
-    public async forceSync(): Promise<void> {
-        const instrument = this.resolveInstrument();
-        if (!instrument?.isReady) return;
-
-        try {
-            const wasmState =
-                await instrument.getWasmNodeConnections();
-            const stateData: WasmState = JSON.parse(wasmState);
-
-            // Compare current state with new state
-            const currentState = JSON.stringify(
-                this.layoutStore.synthLayout?.voices.map((v) => v.connections),
-            );
-            const newState = JSON.stringify(
-                stateData.voices.map((v: WasmVoice) => v.connections),
-            );
-
-            if (currentState !== newState) {
-                console.log('State mismatch detected, updating from WASM');
-                this.stateVersion = stateData.version;
-                await this.updateStoreState(stateData);
-            }
-        } catch (error) {
-            console.error('Force sync failed:', error);
-            throw error;
-        }
-    }
-
-    private async updateStoreState(stateData: WasmState) {
-        if (!this.layoutStore.synthLayout) return;
-
-        try {
-            console.log('Updating store state from WASM:', {
-                incoming: stateData,
-                current: this.layoutStore.synthLayout,
-            });
-
-            this.layoutStore.isUpdatingFromWasm = true;
-
-            this.layoutStore.synthLayout.voices.forEach((voice, index) => {
-                const wasmVoice = stateData.voices[index];
-                if (wasmVoice) {
-                    // Create new array to prevent mutation
-                    const newConnections = wasmVoice.connections.map((conn) => ({
-                        fromId: conn.from_id,
-                        toId: conn.to_id,
-                        target: conn.target, // PortId is used directly
-                        amount: conn.amount,
-                        modulationType: conn.modulationType,
-                        modulationTransformation: conn.modulationTransform
-                    }));
-
-                    voice.connections = newConnections;
-                }
-            });
-
-            if (this.layoutStore.synthLayout.metadata) {
-                this.layoutStore.synthLayout.metadata.stateVersion = this.stateVersion;
-            }
-
-            // Force update
-            this.layoutStore.synthLayout = { ...this.layoutStore.synthLayout };
-            this.nodeStateStore.initializeDefaultStates();
-        } catch (error) {
-            console.error('Failed to update store state:', error);
-        } finally {
-            this.layoutStore.isUpdatingFromWasm = false;
-        }
-    }
-
-    // public async validateState(): Promise<boolean> {
-    //     if (!this.store.currentInstrument?.isReady) return true;
-
-    //     const wasmState = await this.store.currentInstrument.getWasmNodeConnections();
-    //     const stateData: WasmState = JSON.parse(wasmState);
-
-    //     const currentState = JSON.stringify(this.store.synthLayout?.voices.map(v => v.connections));
-    //     const wasmStateStr = JSON.stringify(stateData.voices.map((v: WasmVoice) => v.connections));
-
-    //     return currentState === wasmStateStr;
-    // }
 
     public async updateConnection(
         connection: NodeConnectionUpdate,

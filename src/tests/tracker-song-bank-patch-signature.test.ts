@@ -33,6 +33,7 @@ function makePatch(overrides: Partial<Patch> = {}): Patch {
       created: 1000,
       modified: 1000,
       version: 1,
+      revision: 0,
     },
     synthState: {
       layout: {
@@ -65,32 +66,32 @@ function makePatch(overrides: Partial<Patch> = {}): Patch {
 
 /**
  * Regression coverage for the "editing a song patch and returning to the
- * tracker doesn't sound the same" bug.
+ * tracker doesn't sound the same" bug, and its follow-up fix.
  *
- * Root cause: the instrument editor always re-minted a fresh metadata.id
- * and always bumped `modified` on save (see IndexPage.vue saveSongPatch /
- * patch-store.ts serializePatch), and TrackerSongBank decided whether to
- * reuse the live-edited instrument or rebuild it from scratch by hashing
- * `id:modified:stateHash:assetHash`. That meant *every* return trip through
- * the editor -- even one where nothing was actually changed -- looked like
- * a content change, so the song bank tore down the live instrument (losing
- * its envelope/oscillator/LFO/etc. phase) and rebuilt a fresh one from the
- * serialized patch.
+ * Originally: the instrument editor always re-minted a fresh metadata.id
+ * and always bumped `modified` on save. Even after fixing identity
+ * preservation, TrackerSongBank still decided reuse-vs-rebuild by hashing
+ * `id:stateHash:assetHash` (a JSON.stringify of the whole synthState) --
+ * which worked, but meant "did this patch change" was re-derived from a
+ * content hash on every sync instead of being tracked explicitly.
  *
- * The fix: `computePatchSignature` is content-based only (id + hash of
- * synthState/audioAssets), so a no-op save reuses the exact live instrument,
- * while a genuine edit (which changes the hashed content) still correctly
- * triggers a rebuild.
+ * Now: TrackerSongBank.getPatchReuseKey is just `id:revision`.
+ * `metadata.revision` is incremented exactly once, by patchStore, each time
+ * a real edit is detected and saved (see patchStore.isDirty / IndexPage.vue
+ * saveSongPatch) -- so comparing it is both cheaper and a more honest
+ * change signal than hashing synthState: a key that no longer depends on
+ * synthState content directly is intentional, not a regression, because by
+ * construction any real edit must bump the revision to be saved at all.
  */
-describe('TrackerSongBank patch signature', () => {
-  function getSignature(bank: TrackerSongBank, patch: Patch): string | null {
-    const fn = Reflect.get(bank as object, 'computePatchSignature') as (
+describe('TrackerSongBank patch reuse key', () => {
+  function getReuseKey(bank: TrackerSongBank, patch: Patch): string | null {
+    const fn = Reflect.get(bank as object, 'getPatchReuseKey') as (
       p: Patch,
     ) => string | null;
     return fn.call(bank, patch);
   }
 
-  it('is stable across a re-save that only bumps `modified` with unchanged content', () => {
+  it('is stable across a re-save that only bumps `modified` with the same revision', () => {
     const bank = new TrackerSongBank(
       createMockAudioSystem() as unknown as AudioSystem,
     );
@@ -99,15 +100,19 @@ describe('TrackerSongBank patch signature', () => {
       metadata: { ...original.metadata, modified: 999999 },
     });
 
-    expect(getSignature(bank, resavedNoOp)).toBe(getSignature(bank, original));
+    expect(getReuseKey(bank, resavedNoOp)).toBe(getReuseKey(bank, original));
   });
 
-  it('changes when the actual synth state changes', () => {
+  it('is stable even if synthState content differs, as long as the revision is unchanged', () => {
+    // Intentional: the reuse key no longer inspects synthState at all.
+    // Content changes are only ever recognized via a bumped revision --
+    // patchStore.isDirty/notifyPatchChanged is what's responsible for
+    // ensuring a real edit always bumps it before a save can happen.
     const bank = new TrackerSongBank(
       createMockAudioSystem() as unknown as AudioSystem,
     );
     const original = makePatch();
-    const edited = makePatch({
+    const differentContentSameRevision = makePatch({
       synthState: {
         ...original.synthState,
         oscillators: {
@@ -119,7 +124,21 @@ describe('TrackerSongBank patch signature', () => {
       },
     });
 
-    expect(getSignature(bank, edited)).not.toBe(getSignature(bank, original));
+    expect(getReuseKey(bank, differentContentSameRevision)).toBe(
+      getReuseKey(bank, original),
+    );
+  });
+
+  it('changes when the revision is bumped (a real, saved edit)', () => {
+    const bank = new TrackerSongBank(
+      createMockAudioSystem() as unknown as AudioSystem,
+    );
+    const original = makePatch();
+    const edited = makePatch({
+      metadata: { ...original.metadata, revision: 1 },
+    });
+
+    expect(getReuseKey(bank, edited)).not.toBe(getReuseKey(bank, original));
   });
 
   it('changes when the patch identity (metadata.id) changes', () => {
@@ -131,8 +150,8 @@ describe('TrackerSongBank patch signature', () => {
       metadata: { ...original.metadata, id: 'patch_2' },
     });
 
-    expect(getSignature(bank, rebornWithNewId)).not.toBe(
-      getSignature(bank, original),
+    expect(getReuseKey(bank, rebornWithNewId)).not.toBe(
+      getReuseKey(bank, original),
     );
   });
 });

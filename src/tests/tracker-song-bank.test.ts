@@ -33,7 +33,7 @@ type InstrumentEntry = {
     getQuantumDurationSeconds: () => number;
   };
   patchId: string;
-  patchSignature: string | null;
+  patchReuseKey: string | null;
   hasPortamento: boolean;
 };
 
@@ -47,7 +47,7 @@ const makeMockInstrumentEntry = (overrides: Partial<InstrumentEntry['instrument'
     ...overrides,
   },
   patchId: 'p',
-  patchSignature: null,
+  patchReuseKey: null,
   hasPortamento: false,
 });
 
@@ -66,7 +66,7 @@ describe('TrackerSongBank.setVoicePitchAtTime', () => {
     mutableInstruments.set('inst', {
       instrument,
       patchId: 'p',
-      patchSignature: null,
+      patchReuseKey: null,
       hasPortamento: false,
     });
 
@@ -98,7 +98,7 @@ describe('TrackerSongBank.setVoicePitchAtTime', () => {
     mutableInstruments.set('inst', {
       instrument,
       patchId: 'p',
-      patchSignature: null,
+      patchReuseKey: null,
       hasPortamento: false,
     });
     mutableLastTrackVoice.set(
@@ -126,7 +126,7 @@ describe('TrackerSongBank.gateOffPreviousTrackVoice', () => {
     instruments.set('inst', {
       instrument,
       patchId: 'p',
-      patchSignature: null,
+      patchReuseKey: null,
       hasPortamento: false,
     });
 

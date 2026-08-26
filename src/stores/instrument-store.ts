@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { markRaw } from 'vue';
+import { usePatchStore } from './patch-store';
 import type AudioSystem from 'src/audio/AudioSystem';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
 import InstrumentV2 from 'src/audio/instrument-v2';
@@ -133,6 +134,7 @@ export const useInstrumentStore = defineStore<
       const next = [...this.macros];
       next[clampedIndex] = clampedValue;
       this.macros = next;
+      usePatchStore().notifyPatchChanged();
 
       if (this.currentInstrument) {
         this.currentInstrument.setMacro(clampedIndex, clampedValue);
@@ -162,12 +164,14 @@ export const useInstrumentStore = defineStore<
       this.macros = values
         .slice(0, this.macros.length)
         .map((v) => Math.min(1, Math.max(0, v)));
+      usePatchStore().notifyPatchChanged();
       this.applyMacrosToInstrument();
     },
 
     setInstrumentGain(gain: number) {
       const clamped = Math.max(0, Math.min(2, gain)); // Allow up to 2x gain
       this.instrumentGain = clamped;
+      usePatchStore().notifyPatchChanged();
       if (this.currentInstrument) {
         this.currentInstrument.setOutputGain(clamped);
       }

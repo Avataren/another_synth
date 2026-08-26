@@ -694,6 +694,7 @@ export default class ModInstrument {
     voiceIndex: number,
     frequency: number,
     time: number,
+    rampMode?: 'linear' | 'exponential',
   ): void {
     const voice = this.activeVoices.get(voiceIndex);
     if (!voice) {
@@ -701,15 +702,23 @@ export default class ModInstrument {
     }
 
     const playbackRate = this.calculatePlaybackRate(frequency);
-    const scheduledTime = Math.max(time, this.audioContext.currentTime);
-    voice.source.playbackRate.setValueAtTime(
-      voice.source.playbackRate.value,
-      scheduledTime,
-    );
-    voice.source.playbackRate.linearRampToValueAtTime(
-      playbackRate,
-      scheduledTime + 0.005,
-    );
+
+    // Tracker playback schedules a whole row's worth of ticks synchronously,
+    // ahead of real time. `AudioParam.value` only reflects automation that
+    // has already executed on the audio thread, so reading it here (as this
+    // used to) returns a stale value and, combined with a fixed 5ms ramp,
+    // produced a discontinuous jump-then-plateau on every tick instead of a
+    // smooth slide. Schedule directly on the native AudioParam instead and
+    // let its automation-event queue chain from whatever was previously
+    // scheduled -- exactly what PooledInstrument/InstrumentV2 already do.
+    if (rampMode === 'exponential') {
+      const safeRate = Math.max(0.0001, playbackRate);
+      voice.source.playbackRate.exponentialRampToValueAtTime(safeRate, time);
+    } else if (rampMode === 'linear') {
+      voice.source.playbackRate.linearRampToValueAtTime(playbackRate, time);
+    } else {
+      voice.source.playbackRate.setValueAtTime(playbackRate, time);
+    }
     voice.frequency = frequency;
   }
 

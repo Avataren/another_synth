@@ -10,7 +10,7 @@ type InstrumentEntry = {
     getQuantumDurationSeconds: () => number;
   };
   patchId: string;
-  patchSignature: string | null;
+  patchReuseKey: string | null;
   hasPortamento: boolean;
 };
 
@@ -66,7 +66,7 @@ describe('TrackerSongBank.gateOffOtherTracksForInstrument (mono)', () => {
     const entry: InstrumentEntry = {
       instrument,
       patchId: 'p',
-      patchSignature: null,
+      patchReuseKey: null,
       hasPortamento: false,
     };
     instruments.set('inst', entry);

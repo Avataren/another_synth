@@ -324,14 +324,20 @@ function modCellToTrackerEntry(
   if (!entry.volume) {
     // Set the default volume from the sample header when a note with an instrument is played.
     // ProTracker samples have a default volume (0-64) that should be used unless a Cxx command overrides it.
-    // Skip this for volume slide effects (Axy/EAx/EBx) to preserve accumulated volume changes.
+    // This intentionally applies even when the same row also carries a volume-slide effect
+    // (Axy/EAx/EBx): a genuine new note+instrument trigger always resets to that instrument's
+    // default volume in real ProTracker, and the slide then proceeds from that fresh baseline --
+    // NOT from whatever the channel's volume had decayed to on the *previous* note. Without this,
+    // a note like "D#2 <newSample> A0A" inherits the prior note's already-slid-down volume, gets
+    // immediately pushed to (near-)zero by the volSlide tick-0 handling, and never recovers until
+    // an explicit Cxx/volume-column value appears -- audibly, the note "dies" right after it
+    // triggers. Tone portamento (3xx/5xy) is still excluded: it doesn't retrigger the sample at
+    // all, so resetting volume there would be wrong.
     if (
       hasNote &&
       hasSample &&
       !isTonePorta &&
       !isTonePortaVol &&
-      !isVolSlide &&
-      !isFineVolSlide &&
       mod.trackerFlavor !== 'Soundtracker' &&
       mod.trackerFlavor !== 'Unknown'
     ) {
