@@ -533,6 +533,8 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
   private handleCreateNode(data: {
     node?: VoiceNodeType;
     nodeType?: VoiceNodeType;
+    messageId?: string;
+    instrumentId?: string;
   }) {
     const nodeType = data.node ?? data.nodeType;
     if (nodeType === undefined) {
@@ -542,35 +544,59 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
 
     let nodeId: string | undefined;
 
+    const createInTargets = (create: (engine: AudioEngine) => string) => {
+      const engines = data.instrumentId
+        ? [this.instrumentSlots.get(data.instrumentId)?.engine]
+        : this.getGraphEngines();
+
+      let createdNodeId: string | undefined;
+      engines.forEach((engine, index) => {
+        if (!engine) return;
+        const nextId = create(engine);
+        if (index === 0) {
+          createdNodeId = nextId;
+        } else if (nextId !== createdNodeId) {
+          console.error('Pooled engines generated mismatched node IDs');
+        }
+      });
+      return createdNodeId;
+    };
+
     switch (nodeType) {
       case VoiceNodeType.Oscillator:
-        nodeId = this.createNodeInAllEngines((engine) =>
-          engine.create_oscillator(),
-        );
+        nodeId = createInTargets((engine) => engine.create_oscillator());
         break;
       case VoiceNodeType.Filter:
-        nodeId = this.createNodeInAllEngines((engine) =>
-          engine.create_filter(),
-        );
+        nodeId = createInTargets((engine) => engine.create_filter());
         break;
       case VoiceNodeType.LFO:
-        nodeId = this.createNodeInAllEngines((engine) => engine.create_lfo());
+        nodeId = createInTargets((engine) => {
+          const result = engine.create_lfo() as { lfoId?: string };
+          if (!result?.lfoId) {
+            throw new Error('Failed to create LFO');
+          }
+          return result.lfoId;
+        });
         break;
       case VoiceNodeType.WavetableOscillator:
-        nodeId = this.createNodeInAllEngines((engine) =>
+        nodeId = createInTargets((engine) =>
           engine.create_wavetable_oscillator(),
         );
         break;
       case VoiceNodeType.Noise:
-        nodeId = this.createNodeInAllEngines((engine) => engine.create_noise());
+        nodeId = createInTargets((engine) => engine.create_noise());
         break;
       case VoiceNodeType.Sampler:
-        nodeId = this.createNodeInAllEngines((engine) =>
-          engine.create_sampler(),
-        );
+        nodeId = createInTargets((engine) => engine.create_sampler());
         break;
       case VoiceNodeType.Envelope:
-        nodeId = this.createEnvelopeInAllEngines();
+        nodeId = createInTargets((engine) => {
+          const result = engine.create_envelope() as { envelopeId?: string };
+          if (!result?.envelopeId) {
+            throw new Error('Failed to create envelope');
+          }
+          return result.envelopeId;
+        });
         break;
       case VoiceNodeType.Convolver:
       case VoiceNodeType.Delay:
@@ -594,39 +620,25 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
         type: 'nodeCreated',
         nodeType,
         nodeId,
+        messageId: data.messageId,
+        instrumentId: data.instrumentId,
       });
     }
-    this.handleRequestSync();
-  }
-
-  private createNodeInAllEngines(
-    create: (engine: AudioEngine) => string,
-  ): string | undefined {
-    let nodeId: string | undefined;
-    for (const [index, engine] of this.getGraphEngines().entries()) {
-      const createdNodeId = create(engine);
-      if (index === 0) {
-        nodeId = createdNodeId;
-      } else if (createdNodeId !== nodeId) {
-        console.error('Pooled engines generated mismatched node IDs');
-      }
+    if (!data.instrumentId) {
+      this.handleRequestSync();
+      return;
     }
-    return nodeId;
-  }
 
-  private createEnvelopeInAllEngines(): string | undefined {
-    let nodeId: string | undefined;
-    for (const [index, engine] of this.getGraphEngines().entries()) {
-      const result = engine.create_envelope() as { envelopeId?: string };
-      const envelopeId = result?.envelopeId;
-      if (!envelopeId) continue;
-      if (index === 0) {
-        nodeId = envelopeId;
-      } else if (envelopeId !== nodeId) {
-        console.error('Pooled engines generated mismatched envelope IDs');
-      }
+    const slot = this.instrumentSlots.get(data.instrumentId);
+    const layout = slot?.engine.get_current_state();
+    if (layout) {
+      this.port.postMessage({
+        type: 'stateUpdated',
+        version: this.stateVersion,
+        state: layout,
+        instrumentId: data.instrumentId,
+      });
     }
-    return nodeId;
   }
 
   private handleImportImpulseWaveformData(data: {
@@ -726,7 +738,7 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
 
     try {
       let preview: Float32Array | null = null;
-      for (const engine of engines) {
+      for (let engineIndex = 0; engineIndex < engines.length; engineIndex++) {
         try {
           preview = AudioEngine.get_envelope_preview(
             sampleRate,
@@ -734,7 +746,10 @@ export class SynthAudioProcessor extends AudioWorkletProcessor {
             data.previewDuration,
           );
           break;
-        } catch (_error) {
+        } catch (error) {
+          if (engineIndex === engines.length - 1) {
+            throw error;
+          }
           continue;
         }
       }

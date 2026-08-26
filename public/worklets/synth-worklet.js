@@ -3119,35 +3119,55 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       return;
     }
     let nodeId;
+    const createInTargets = (create) => {
+      const engines = data.instrumentId ? [this.instrumentSlots.get(data.instrumentId)?.engine] : this.getGraphEngines();
+      let createdNodeId;
+      engines.forEach((engine, index) => {
+        if (!engine) return;
+        const nextId = create(engine);
+        if (index === 0) {
+          createdNodeId = nextId;
+        } else if (nextId !== createdNodeId) {
+          console.error("Pooled engines generated mismatched node IDs");
+        }
+      });
+      return createdNodeId;
+    };
     switch (nodeType) {
       case "oscillator" /* Oscillator */:
-        nodeId = this.createNodeInAllEngines(
-          (engine) => engine.create_oscillator()
-        );
+        nodeId = createInTargets((engine) => engine.create_oscillator());
         break;
       case "filter" /* Filter */:
-        nodeId = this.createNodeInAllEngines(
-          (engine) => engine.create_filter()
-        );
+        nodeId = createInTargets((engine) => engine.create_filter());
         break;
       case "lfo" /* LFO */:
-        nodeId = this.createNodeInAllEngines((engine) => engine.create_lfo());
+        nodeId = createInTargets((engine) => {
+          const result = engine.create_lfo();
+          if (!result?.lfoId) {
+            throw new Error("Failed to create LFO");
+          }
+          return result.lfoId;
+        });
         break;
       case "wavetable_oscillator" /* WavetableOscillator */:
-        nodeId = this.createNodeInAllEngines(
+        nodeId = createInTargets(
           (engine) => engine.create_wavetable_oscillator()
         );
         break;
       case "noise" /* Noise */:
-        nodeId = this.createNodeInAllEngines((engine) => engine.create_noise());
+        nodeId = createInTargets((engine) => engine.create_noise());
         break;
       case "sampler" /* Sampler */:
-        nodeId = this.createNodeInAllEngines(
-          (engine) => engine.create_sampler()
-        );
+        nodeId = createInTargets((engine) => engine.create_sampler());
         break;
       case "envelope" /* Envelope */:
-        nodeId = this.createEnvelopeInAllEngines();
+        nodeId = createInTargets((engine) => {
+          const result = engine.create_envelope();
+          if (!result?.envelopeId) {
+            throw new Error("Failed to create envelope");
+          }
+          return result.envelopeId;
+        });
         break;
       case "convolver" /* Convolver */:
       case "delay" /* Delay */:
@@ -3169,36 +3189,25 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
       this.port.postMessage({
         type: "nodeCreated",
         nodeType,
-        nodeId
+        nodeId,
+        messageId: data.messageId,
+        instrumentId: data.instrumentId
       });
     }
-    this.handleRequestSync();
-  }
-  createNodeInAllEngines(create) {
-    let nodeId;
-    for (const [index, engine] of this.getGraphEngines().entries()) {
-      const createdNodeId = create(engine);
-      if (index === 0) {
-        nodeId = createdNodeId;
-      } else if (createdNodeId !== nodeId) {
-        console.error("Pooled engines generated mismatched node IDs");
-      }
+    if (!data.instrumentId) {
+      this.handleRequestSync();
+      return;
     }
-    return nodeId;
-  }
-  createEnvelopeInAllEngines() {
-    let nodeId;
-    for (const [index, engine] of this.getGraphEngines().entries()) {
-      const result = engine.create_envelope();
-      const envelopeId = result?.envelopeId;
-      if (!envelopeId) continue;
-      if (index === 0) {
-        nodeId = envelopeId;
-      } else if (envelopeId !== nodeId) {
-        console.error("Pooled engines generated mismatched envelope IDs");
-      }
+    const slot = this.instrumentSlots.get(data.instrumentId);
+    const layout = slot?.engine.get_current_state();
+    if (layout) {
+      this.port.postMessage({
+        type: "stateUpdated",
+        version: this.stateVersion,
+        state: layout,
+        instrumentId: data.instrumentId
+      });
     }
-    return nodeId;
   }
   handleImportImpulseWaveformData(data) {
     if (!this.audioEngines[0]) return;
@@ -3268,7 +3277,7 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
     }
     try {
       let preview = null;
-      for (const engine of engines) {
+      for (let engineIndex = 0; engineIndex < engines.length; engineIndex++) {
         try {
           preview = AudioEngine.get_envelope_preview(
             sampleRate,
@@ -3276,7 +3285,10 @@ var SynthAudioProcessor = class extends AudioWorkletProcessor {
             data.previewDuration
           );
           break;
-        } catch (_error) {
+        } catch (error) {
+          if (engineIndex === engines.length - 1) {
+            throw error;
+          }
           continue;
         }
       }

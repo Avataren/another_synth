@@ -300,6 +300,7 @@ export interface CreateNodeMessage extends BaseMessage {
   type: 'createNode';
   nodeType: string;
   nodeId?: string;
+  instrumentId?: string;
 }
 
 export interface DeleteNodeMessage extends BaseMessage {

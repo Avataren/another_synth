@@ -14,6 +14,7 @@
  */
 
 import type { Patch, MacroRouteState } from './types/preset-types';
+import type { VoiceNodeType } from './types/synth-layout';
 import type { VoiceAllocation } from './worklet-pool';
 import type { GlideState } from './types/synth-layout';
 import { WorkletMessageHandler } from './adapters/message-handler';
@@ -1089,11 +1090,15 @@ export class PooledInstrument {
     );
   }
 
-  createNode(_nodeType: unknown): Promise<string> {
-    // Structural graph editing is not supported for pooled tracker slots yet.
-    return Promise.reject(
-      new Error('Structural graph editing is not available for pooled slots'),
-    );
+  createNode(nodeType: VoiceNodeType): Promise<string> {
+    const creation = this.waitForNodeCreation();
+    this.messageHandler.sendFireAndForget({
+      type: 'createNode',
+      nodeType,
+      instrumentId: this.instrumentId,
+      messageId: creation.messageId,
+    });
+    return creation.promise;
   }
 
   deleteNode(_nodeId: string): void {
@@ -1199,6 +1204,51 @@ export class PooledInstrument {
         reject(new Error('Timeout waiting for node layout'));
       }, 5000);
     });
+  }
+
+  private waitForNodeCreation(): {
+    messageId: string;
+    promise: Promise<string>;
+  } {
+    const messageId = `node-created:${Date.now()}:${Math.random()}`;
+    const port = this.workletNode.port;
+
+    const promise = new Promise<string>((resolve, reject) => {
+      const handleMessage = (event: MessageEvent) => {
+        const data = event.data as {
+          type?: string;
+          nodeId?: unknown;
+          messageId?: string;
+          message?: string;
+        };
+
+        if (data?.type === 'nodeCreated' && data.messageId === messageId) {
+          if (typeof data.nodeId === 'string') {
+            port.removeEventListener('message', handleMessage);
+            resolve(data.nodeId);
+          }
+          return;
+        }
+
+        if (
+          data?.type === 'error' &&
+          data.messageId === messageId
+        ) {
+          port.removeEventListener('message', handleMessage);
+          reject(
+            new Error(String(data.message ?? 'Node creation failed')),
+          );
+        }
+      };
+
+      port.addEventListener('message', handleMessage);
+      setTimeout(() => {
+        port.removeEventListener('message', handleMessage);
+        reject(new Error('Timeout waiting for node creation'));
+      }, 5000);
+    });
+
+    return { messageId, promise };
   }
 
   async getFilterResponse(nodeId: string, length = 512): Promise<Float32Array> {

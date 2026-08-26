@@ -198,6 +198,39 @@ describe('worklet graph editing synchronization', () => {
     );
   });
 
+  it('correlates pooled node creation and syncs the owning slot', () => {
+    const harness = createProcessorHarness();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const processor = harness.processor as any;
+    const slots = processor.exposeInstrumentSlots();
+    slots.set('instrument-01', {
+      instrumentId: 'instrument-01',
+      startVoice: 0,
+      voiceCount: 1,
+      voiceLimit: 1,
+      engine: harness.engines[0]!.engine,
+      adapter: null,
+      initialized: true,
+    });
+
+    processor.handleCreateNode({
+      nodeType: VoiceNodeType.Oscillator,
+      messageId: 'create-node-1',
+      instrumentId: 'instrument-01',
+    });
+
+    expect(harness.posted).toContainEqual(
+      expect.objectContaining({
+        type: 'nodeCreated',
+        nodeId: harness.engines[0]!.calls.createdNodes[0],
+        messageId: 'create-node-1',
+        instrumentId: 'instrument-01',
+      }),
+    );
+    expect(harness.engines[1]!.engine.create_oscillator).not.toHaveBeenCalled();
+    expect(harness.engines[0]!.engine.get_current_state).toHaveBeenCalled();
+  });
+
   it('applies node state updates to every pooled engine', () => {
     const harness = createProcessorHarness();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -667,6 +700,43 @@ describe('pooled envelope message serialization', () => {
     expect(
       (gain[noteOnIndex] as { method: 'setValueAtTime'; value: number }).value,
     ).toBeCloseTo(100 / 127, 10);
+  });
+
+  it('requests and awaits correlated node creation', async () => {
+    const { instrument, port } = createPooledInstrument();
+    const creationPromise = instrument.createNode(VoiceNodeType.Oscillator);
+
+    const postedMessage = (port.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls.map((call) => call[0])
+      .find(
+        (message): message is { messageId: string } =>
+          typeof message === 'object' &&
+          message !== null &&
+          (message as { type?: string }).type === 'createNode',
+      );
+
+    expect(postedMessage).toEqual(
+      expect.objectContaining({
+        type: 'createNode',
+        nodeType: VoiceNodeType.Oscillator,
+        instrumentId: 'instrument-01',
+      }),
+    );
+
+    (port.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[1])
+      .filter((listener) => typeof listener === 'function')
+      .forEach((listener) => {
+        listener({
+          data: {
+            type: 'nodeCreated',
+            nodeId: 'created-node-id',
+            messageId: postedMessage!.messageId,
+          },
+        });
+      });
+
+    await expect(creationPromise).resolves.toBe('created-node-id');
   });
 });
 
