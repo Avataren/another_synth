@@ -105,6 +105,9 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
         bpm: xm.defaultBpm || 125,
       },
       moduleFormat: 'xm',
+      // XM declares its own ticks-per-row; most modules use something other
+      // than the tracker default of 6.
+      initialSpeed: xm.defaultSpeed || 6,
       patternRows: clampPatternRows(patterns[0]?.rows),
       stepSize: DEFAULT_STEP_SIZE,
       patterns,

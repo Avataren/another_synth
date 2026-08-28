@@ -606,6 +606,7 @@ const keyboardStore = useKeyboardStore();
 const {
   currentSong,
   moduleFormat,
+  initialSpeed,
   defaultPatternRows,
   stepSize,
   patterns,
@@ -1248,6 +1249,7 @@ function handleGlobalMouseUp() {
 const songBuilderContext: TrackerSongBuilderContext = {
   currentSong,
   moduleFormat,
+  initialSpeed,
   patterns,
   sequence,
   currentPatternId,

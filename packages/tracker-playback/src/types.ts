@@ -34,6 +34,15 @@ export interface Song {
    */
   moduleFormat?: ModuleFormat;
   /**
+   * Ticks per row the song starts at, as tracker "speed" (the Fxx 01-1F
+   * parameter). Absent means the tracker default of 6.
+   *
+   * XM carries this in its header and most modules use something other than 6
+   * -- 3 is common -- so ignoring it plays the song at the wrong tempo even
+   * though the BPM is right.
+   */
+  initialSpeed?: number;
+  /**
    * XM only: whether the module header selected the linear frequency table.
    * XM carries this per file rather than per format -- roughly half of real
    * modules use the Amiga table -- so it cannot live in `moduleFormat`.

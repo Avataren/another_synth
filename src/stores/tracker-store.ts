@@ -42,6 +42,9 @@ interface SongMeta {
   bpm: number;
 }
 
+/** Tracker default ticks per row. */
+export const DEFAULT_SPEED = 6;
+
 export const DEFAULT_PATTERN_ROWS = 64;
 export const MIN_PATTERN_ROWS = 1;
 /** FastTracker 2's per-pattern maximum. */
@@ -67,6 +70,7 @@ export interface TrackerPattern {
 interface TrackerSnapshot {
   currentSong: SongMeta;
   moduleFormat: ModuleFormat;
+  initialSpeed: number;
   defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
@@ -83,6 +87,11 @@ interface TrackerStoreState {
   currentSong: SongMeta;
   /** Which tracker's playback semantics this song follows. */
   moduleFormat: ModuleFormat;
+  /**
+   * Ticks per row the song starts at (tracker "speed", the Fxx 01-1F
+   * parameter). The tracker default is 6; XM songs commonly declare 3.
+   */
+  initialSpeed: number;
   /**
    * Row count applied to newly created patterns. Existing patterns carry
    * their own `rows`; this is only a seed for new ones.
@@ -215,6 +224,12 @@ export interface TrackerSongFile {
     /** Absent in v1 files; inferred on load. See `inferLegacyModuleFormat`. */
     moduleFormat?: ModuleFormat;
     /**
+     * Ticks per row at the start of the song. Optional and additive: files
+     * without it use the tracker default of 6, which is what every song saved
+     * before this field existed assumed.
+     */
+    initialSpeed?: number;
+    /**
      * Pre-v3: the row count for every pattern in the song.
      * v3+: only the default applied to newly created patterns. Per-pattern
      * counts live on `patterns[].rows`.
@@ -241,6 +256,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         bpm: 120
       },
       moduleFormat: DEFAULT_MODULE_FORMAT,
+      initialSpeed: DEFAULT_SPEED,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
       stepSize: 1,
@@ -299,6 +315,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       return {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
+        initialSpeed: this.initialSpeed,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
@@ -315,6 +332,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     applySnapshot(snapshot: TrackerSnapshot) {
       this.currentSong = { ...snapshot.currentSong };
       this.moduleFormat = snapshot.moduleFormat ?? DEFAULT_MODULE_FORMAT;
+      this.initialSpeed = snapshot.initialSpeed ?? DEFAULT_SPEED;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
@@ -360,6 +378,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         bpm: 120
       };
       this.moduleFormat = DEFAULT_MODULE_FORMAT;
+      this.initialSpeed = DEFAULT_SPEED;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
       this.stepSize = 1;
@@ -652,6 +671,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       const data: TrackerSongFile['data'] = {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
+        initialSpeed: this.initialSpeed,
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
@@ -676,6 +696,9 @@ export const useTrackerStore = defineStore('trackerStore', {
       };
       // v1 files predate the tag, so fall back to inferring it from the slots.
       this.moduleFormat = data.moduleFormat ?? inferLegacyModuleFormat(data.instrumentSlots);
+      this.initialSpeed = Number.isFinite(data.initialSpeed)
+        ? Math.max(1, Math.min(31, data.initialSpeed as number))
+        : DEFAULT_SPEED;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;
       this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;

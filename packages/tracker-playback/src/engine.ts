@@ -93,6 +93,8 @@ export class PlaybackEngine {
   private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
   /** Playback semantics derived from moduleFormat; handed to each track state. */
   private formatProfile: FormatProfile = profileForFormat(DEFAULT_MODULE_FORMAT);
+  /** Ticks per row the loaded song starts at; the tracker default is 6. */
+  private initialSpeed = 6;
   private state: TransportState = 'stopped';
   private position: PlaybackPosition = { row: 0 };
   private length = 64;
@@ -369,6 +371,10 @@ export class PlaybackEngine {
     this.precomputeTonePortaTargets();
     // Set BPM in timing system (will clamp to valid range)
     this.timingSystem.setBpm(song.bpm);
+    // Ticks per row is a separate setting from BPM, and songs that declare
+    // their own must not be played at the default 6.
+    this.initialSpeed = song.initialSpeed ?? 6;
+    this.timingSystem.setSpeed(this.initialSpeed);
     const maxIndex = Math.max(0, song.sequence.length - 1);
     this.currentSequenceIndex = Math.max(
       0,
@@ -522,7 +528,9 @@ export class PlaybackEngine {
     const now = this.audioContext.currentTime;
     // Initialize timing system for current position
     this.timingSystem.start(now, this.currentSequenceIndex, this.position.row);
-    this.timingSystem.setSpeed(6); // Reset to normal speed
+    // Back to the song's own starting speed, not a hardcoded 6: any Fxx
+    // changes from a previous run must not carry into this one.
+    this.timingSystem.setSpeed(this.initialSpeed);
 
     this.lastScheduledRow = this.position.row - 1;
     this.scheduledLoops = 0;

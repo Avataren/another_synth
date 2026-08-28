@@ -684,6 +684,19 @@ releases lasted 10ms; obvious once XM fadeouts stretched them past a second. Rel
 voices are now tracked and cut by the next note on that channel, by `allNotesOff`, and by
 `destroy`.
 
+**D37 — Ticks per row is carried per song; XM declares its own and it is rarely 6.**
+"Speed" (the Fxx 01-1F parameter) is ticks per row and is independent of BPM. The engine
+hardcoded `setSpeed(6)` on every play and the XM importer never read `defaultSpeed` from
+the header — so XM songs played at the right BPM but the wrong tempo. Most of the corpus
+declares 3 (`rose`, `jt_letgo`, `sweetdre`, `xyce`) or 5 (`an-path`, `elw-sick`,
+`BUTTERFL`); at the default 6 a speed-3 song runs at exactly half tempo.
+
+`Song.initialSpeed` now carries it, the engine applies it at `loadSong` *and* when
+scheduled playback starts (that reset previously reverted to a hardcoded 6, so any Fxx
+from a previous run had to be undone but the song's own speed was lost with it). The
+song file field is optional and additive: files without it get the tracker default of 6,
+which is exactly what every song saved before it existed assumed, so no version bump.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -784,6 +797,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | XM tempo fixed (D37): "speed" (ticks per row) is separate from BPM, and the importer never read the header's `defaultSpeed` while the engine hardcoded 6. Most XM files declare 3, so they played at exactly half tempo. Now carried on `Song.initialSpeed` and through the song file. |
 | 2026-08-29 | 4 | Note release fixed (D36): `noteOffAtTime` dropped every release scheduled more than 100ms ahead — i.e. all of them — so notes were never released and XM key-off did nothing. Releasing voices are now also cut by the next note on the channel, which previously played over them. |
 | 2026-08-29 | 4 | Ping-pong sample loops now loop, by mirroring the loop region into the buffer at load (D35). They previously failed a `loopMode === 1` check and played as one-shots — 27 samples in the corpus. Tests go through the normalized patch, and were confirmed to fail with the handling disabled. |
 | 2026-08-29 | 4 | **Volume envelopes never actually ran.** `normalizeSamplerStateWithDefaults` rebuilds sampler state from a field whitelist and dropped `trackerEnvelope` on the path to every instrument, while eleven unit tests passed by injecting state directly (D34). Fixed, plus two pipeline tests confirmed to fail against the drop. |

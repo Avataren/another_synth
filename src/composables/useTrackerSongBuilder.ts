@@ -36,6 +36,8 @@ interface TrackPlaybackContext {
 export interface TrackerSongBuilderContext {
   // State refs
   currentSong: Ref<{ title: string; author: string; bpm: number }>;
+  /** Ticks per row the song starts at; omitted means the tracker default of 6. */
+  initialSpeed?: Ref<number>;
   /**
    * Which tracker's semantics the song follows. Optional so existing tests
    * and callers keep working; omitted means DEFAULT_MODULE_FORMAT.
@@ -311,7 +313,8 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       bpm: context.currentSong.value.bpm,
       patterns: buildPlaybackPatterns(),
       sequence: resolveSequenceForMode(mode),
-      moduleFormat: context.moduleFormat?.value ?? DEFAULT_MODULE_FORMAT
+      moduleFormat: context.moduleFormat?.value ?? DEFAULT_MODULE_FORMAT,
+      ...(context.initialSpeed ? { initialSpeed: context.initialSpeed.value } : {})
     };
   }
 
