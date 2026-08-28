@@ -4,6 +4,7 @@
  */
 
 import type { EffectCommand } from './types';
+import { type FormatProfile, PROTRACKER_PROFILE } from './format-profile';
 
 const AMIGA_CLOCK = 7159090.5;
 const PAULA_TO_SYNTH_SCALE = 128; // 2^7, keeps us in synth-domain Hz
@@ -65,6 +66,7 @@ function nearestPeriodTableIndex(period: number): number {
 function protrackerArpPeriod(
   basePeriod: number,
   semitoneOffset: number,
+  wrapsToDC: boolean,
 ): number {
   // Real ProTracker arpeggio looks up the base period's row in the period
   // table and steps by semitoneOffset table entries, rather than scaling
@@ -72,8 +74,11 @@ function protrackerArpPeriod(
   const baseIndex = nearestPeriodTableIndex(basePeriod);
   const shiftedIndex = baseIndex + semitoneOffset;
   if (shiftedIndex < 0 || shiftedIndex >= PT_PERIOD_TABLE.length) {
-    // ProTracker wraps past the top of the table; the first overflow hits 0 (DC).
-    return 0;
+    // ProTracker wraps past the top of the table; the first overflow hits 0
+    // (DC). Formats without that artefact clamp to the table's edge instead.
+    if (wrapsToDC) return 0;
+    const clamped = Math.max(0, Math.min(PT_PERIOD_TABLE.length - 1, shiftedIndex));
+    return PT_PERIOD_TABLE[clamped]!;
   }
   return PT_PERIOD_TABLE[shiftedIndex]!;
 }
@@ -130,6 +135,13 @@ function applyPortamentoStep(state: TrackEffectState): void {
  * Per-track effect state
  */
 export interface TrackEffectState {
+  /**
+   * Playback semantics for the song this track belongs to. Held per track so
+   * the effect handlers can read it without threading a parameter through
+   * every helper; the object itself is shared and immutable.
+   */
+  profile: FormatProfile;
+
   // Current note state
   currentMidi: number;
   currentFrequency: number;
@@ -220,8 +232,11 @@ export interface TrackEffectState {
 /**
  * Create default track effect state
  */
-export function createTrackEffectState(): TrackEffectState {
+export function createTrackEffectState(
+  profile: FormatProfile = PROTRACKER_PROFILE,
+): TrackEffectState {
   return {
+    profile,
     currentMidi: 60,
     currentFrequency: 261.63,
     targetMidi: 60,
@@ -419,9 +434,10 @@ function primeVolumeSlide(
       }
 
       let delta = 0;
-      // ProTracker volume is 0-64 and ours is 0-1, so one volume unit is
-      // 1/64 -- the same scale the fine slides (EAx/EBx) above and
-      // tonePortaVol/vibratoVol below already use.
+      // One volume unit as a fraction of full scale, from the format profile
+      // (1/64 for the 0-64 ranges ProTracker and FT2 both use) -- the same
+      // scale the fine slides (EAx/EBx) above and tonePortaVol/vibratoVol
+      // below already use.
       //
       // This was 1/128 ("softer slide ... to better match MOD feel"), which
       // made every Axy slide run at exactly half the authentic rate: at speed
@@ -431,7 +447,7 @@ function primeVolumeSlide(
       // slide is now applied once per tick for ticks 1..speed-1, five times at
       // speed 6, which is exactly what ProTracker does. Its own comment said
       // 1/256 while the code said 1/128, so it was never a derived value.
-      const scale = 1 / 64;
+      const scale = state.profile.volumeSlideUnit;
       if (effect.paramX) delta = effect.paramX * scale;
       else if (effect.paramY) delta = -effect.paramY * scale;
       else if (state.lastVolSlide) {
@@ -868,7 +884,11 @@ export function processEffectTick0(
         };
         // If delay exceeds or equals the current speed, ProTracker spills to the next row.
         if (ticksPerRow !== undefined && state.noteDelayTick >= ticksPerRow) {
-          state.carryDelayedNote = state.delayedNote;
+          // ProTracker leaks an over-long EDx into the next row; formats
+          // without that quirk simply drop the note.
+          state.carryDelayedNote = state.profile.noteDelayOverflowCarries
+            ? state.delayedNote
+            : null;
           state.delayedNote = undefined;
           state.noteDelayTick = -1;
         }
@@ -1105,7 +1125,11 @@ export function processEffectTickN(
             : 0;
 
       if (state.currentPeriod !== undefined) {
-        const period = protrackerArpPeriod(state.currentPeriod, offset);
+        const period = protrackerArpPeriod(
+          state.currentPeriod,
+          offset,
+          state.profile.arpeggioWrapsToDC,
+        );
         pushPitch(period === 0 ? 0 : synthFrequencyFromPeriod(period));
       } else {
         let arpeggioNote = state.currentMidi;

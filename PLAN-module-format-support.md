@@ -185,10 +185,14 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [ ] Per-channel voice allocation in `song-bank.ts` / `worklet-pool.ts`
 
 ### Phase 2 — Format profile refactor (B4, B6, B7)
+- [x] Introduce `FormatProfile`; reach it from the effect processor
+      (attached to each `TrackEffectState` rather than threaded as a parameter — D17)
 - [ ] Extract `PitchModel` interface; move PT period logic into `AmigaPitchModel`
 - [ ] Add `LinearPitchModel` (XM linear table)
-- [ ] Introduce `FormatProfile`; pass it through `processEffectTick0` / `TickN`
-- [ ] Move each ProTracker quirk (B6 list) behind a profile flag
+- [ ] Move each remaining ProTracker quirk (B6 list) behind a profile flag
+      — done: volume-slide unit, arpeggio DC wrap, EDx overflow carry
+      — todo: period clamping (with `PitchModel`), LRRL import panning,
+        tick-0 volume-slide policy, Axy effect-memory semantics
 - [ ] Carry raw `(cmd, param)` bytes on `TrackerEntryData` alongside the text macro;
       retire the 9xx synthetic-param hack
 - [ ] MOD regression suite green with the profile in place
@@ -354,6 +358,19 @@ agreed with the halved rate rather than catching it. It now states ProTracker's 
 **Verified by ear on the test deploy.** Every Axy fade is now twice as fast; this is the
 authentic rate and it sounds correct.
 
+**D17 — The profile lives on `TrackEffectState`, not in the function signatures.**
+`processEffectTick0` / `TickN` already take seven positional parameters, and the quirks
+are read from a dozen private helpers below them. Threading a profile argument through
+all of those would be churn with no benefit, so each track's state carries a reference to
+the song's (shared, immutable) profile, set when the engine creates the state. The engine
+clears its track states on `loadSong` so a profile change cannot leak across songs.
+
+All four profiles currently hold identical, ProTracker-derived values. That is
+deliberate: the plumbing lands first so each behaviour can be migrated and tested on its
+own, rather than as one sweeping rewrite. `NATIVE_PROFILE` keeps the ProTracker values
+indefinitely for now — songs authored against the current engine were composed by ear
+with those behaviours in place.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -415,6 +432,7 @@ for the `FormatProfile` work.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 2 | `FormatProfile` introduced and reaching the effect processor via `TrackEffectState` (D17). Three quirks migrated behind it: volume-slide unit, arpeggio DC wrap, EDx overflow carry. All profiles hold identical values, so no behaviour change — 416 tests green. Tests: `src/tests/format-profile.test.ts`. |
 | 2026-08-28 | fix | **Verified by ear — Axy now sounds right.** Axy volume slides corrected from half-rate to ProTracker's 1/64 per tick (D16). Audible on any song using Axy. Test rewritten to assert the format's rule rather than mirror the constant. |
 | 2026-08-28 | fix | A bare sample number (no note) now resets the channel volume to the sample default, restoring the Axy pump idiom and removing a spurious retrigger (D15). Found via musiklinjen.mod pattern 5 channel 2. Tests: `src/tests/mod-import-sample-number-volume-reset.test.ts` (3 of 5 confirmed failing against the old code). |
 | 2026-08-28 | fix | Effect audit: 8xx / E8x / Pxy panning was discarded by a `break;` in the engine's pan dispatch; added a real pan handler through to the instrument (D14). Tests: `src/tests/mod-pan-effects.test.ts` (all 4 confirmed failing against the dead end). |

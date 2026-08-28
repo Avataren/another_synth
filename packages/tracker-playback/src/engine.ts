@@ -40,6 +40,7 @@ import {
   type ProcessorCommand,
 } from './effect-processor';
 import { TimingSystem } from './timing-system';
+import { type FormatProfile, profileForFormat } from './format-profile';
 
 type ListenerMap = {
   [K in PlaybackEvent]: Set<PlaybackListener<K>>;
@@ -90,6 +91,8 @@ export class PlaybackEngine {
    * PLAN-module-format-support.md).
    */
   private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
+  /** Playback semantics derived from moduleFormat; handed to each track state. */
+  private formatProfile: FormatProfile = profileForFormat(DEFAULT_MODULE_FORMAT);
   private state: TransportState = 'stopped';
   private position: PlaybackPosition = { row: 0 };
   private length = 64;
@@ -321,9 +324,17 @@ export class PlaybackEngine {
     return this.moduleFormat;
   }
 
+  /** The resolved playback profile for the loaded song. */
+  getFormatProfile(): FormatProfile {
+    return this.formatProfile;
+  }
+
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
     this.moduleFormat = song.moduleFormat ?? DEFAULT_MODULE_FORMAT;
+    this.formatProfile = profileForFormat(this.moduleFormat);
+    // Track states cache the profile, so drop any built for the previous song.
+    this.trackEffectStates.clear();
     // Precompute tone portamento targets (3xx) across the full sequence so
     // rows with 3xx but no note can still slide towards the next note in
     // the same track, even when it lives in the next pattern.
@@ -732,7 +743,7 @@ export class PlaybackEngine {
   private getTrackEffectState(trackIndex: number): TrackEffectState {
     let state = this.trackEffectStates.get(trackIndex);
     if (!state) {
-      state = createTrackEffectState();
+      state = createTrackEffectState(this.formatProfile);
       this.trackEffectStates.set(trackIndex, state);
     }
     return state;
