@@ -265,7 +265,9 @@ describe('tracker volume envelope', () => {
 });
 
 describe('XM import carries envelopes onto the patch', () => {
-  function importWith(instrumentSpec: Parameters<typeof buildXm>[0]['instruments']) {
+  function importWith(
+    instrumentSpec: NonNullable<Parameters<typeof buildXm>[0]['instruments']>,
+  ) {
     const song = importXmToTrackerSong(
       buildXm({
         numChannels: 1,
