@@ -631,6 +631,28 @@ differs — linear slides are constant in cents, Amiga slides are not.
 **Still unscaled:** fine portamento (E1x/E2x) works in semitone fractions rather than
 period units, so it is unaffected by this scale and has not been checked against FT2.
 
+**D34 — The envelope was silently dropped in `normalizeSamplerStateWithDefaults`, and the
+unit tests could not see it.**
+`normalizeSamplerStateWithDefaults` rebuilds `SamplerState` from an explicit field list,
+so `trackerEnvelope` — reached the patch correctly, present after import, present after a
+JSON round-trip — vanished the moment `song-bank.normalizePatch` ran, which is on the path
+to *every* instrument. Envelopes did nothing at all while eleven unit tests passed.
+
+The tests could not catch it because they injected `samplerState` via `Reflect.set`,
+verifying the scheduling maths in isolation and bypassing the pipeline entirely. This is
+the same shape as D11 (9xx terminating in a stub) — plumbing that looks complete at every
+layer and drops the value at one of them — arrived at from the opposite direction: there
+the *code* was missing, here the *test coverage* was.
+
+Two pipeline tests now cover it, both confirmed to fail against the drop: the envelope
+survives `deserializePatch`, and it reaches `ModInstrument` and schedules automation via a
+*normalized* patch rather than the raw one. A test that loads the patch directly does not
+count — it passes either way.
+
+**Rule for anything added to `SamplerState` from now on:** add it to
+`normalizeSamplerStateWithDefaults` too, and assert it through `deserializePatch`, not
+just at the point of use.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -731,6 +753,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | **Volume envelopes never actually ran.** `normalizeSamplerStateWithDefaults` rebuilds sampler state from a field whitelist and dropped `trackerEnvelope` on the path to every instrument, while eleven unit tests passed by injecting state directly (D34). Fixed, plus two pipeline tests confirmed to fail against the drop. |
 | 2026-08-28 | 4 | Per-channel voice ownership (D32): `ModInstrument` no longer hardcodes 4 voices or pools them across channels, and XM patches are sized by distinct channels per instrument. Fixes notes going missing — `an-path` exceeded 4 voices on 2566 rows. XM portamento scaled by 4 to match FT2's finer period scale (D33), fixing out-of-tune slides. 516 tests green. |
 | 2026-08-28 | 4 | XM volume envelopes and fadeout implemented (D31), on a dedicated per-voice gain stage so they multiply with effect-driven volume. Chosen by measurement: 92–100% of notes in most modules need them, vs 19%/10% in `rose` — the reason rose alone sounded right. Tick duration now travels with each note so envelope timing follows tempo. Tests: `src/tests/xm-volume-envelope.test.ts`. 511 green. |
 | 2026-08-28 | fix | Pattern display no longer desyncs from playback (D30). It followed elapsed-time ÷ current-row-duration, which broke permanently at the first `Fxx` speed/tempo change and could not represent `EEx`/`E6x`/`Bxx`/`Dxx` at all. Now driven by the scheduler's recorded per-row audio times. Audio was always correct; only the display was wrong. Tests: `src/tests/tracker-position-sync.test.ts`. |

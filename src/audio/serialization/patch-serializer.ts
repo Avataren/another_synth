@@ -342,6 +342,15 @@ function normalizeSamplerStateWithDefaults(
     sampleRate: toNumber(sampler.sampleRate, 44100),
     channels: toNumber(sampler.channels, 1),
     ...(sampler.fileName ? { fileName: sampler.fileName } : {}),
+    // Tracker instruments carry a volume envelope that has no ADSR
+    // equivalent. This builder rebuilds SamplerState from an explicit field
+    // list, so anything not named here is silently dropped -- which is exactly
+    // what happened to the envelope: it reached the patch, then vanished on
+    // the way to the instrument, and playback looked implemented while doing
+    // nothing.
+    ...(sampler.trackerEnvelope
+      ? { trackerEnvelope: sampler.trackerEnvelope }
+      : {}),
   };
 
   return normalizeSamplerState(base);

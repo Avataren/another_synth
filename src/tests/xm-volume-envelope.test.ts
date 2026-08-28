@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import ModInstrument from 'src/audio/mod-instrument';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
+import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 import { buildXm, cell } from './helpers/xm-builder';
 
 /**
@@ -336,5 +337,141 @@ describe('XM import carries envelopes onto the patch', () => {
   it('adds no envelope when the instrument has neither', () => {
     const sampler = importWith([{ samples: [{ frames: [0, 1, 2] }] }]);
     expect(sampler.trackerEnvelope).toBeUndefined();
+  });
+});
+
+/**
+ * End-to-end: the envelope must survive every stage between the importer and
+ * the instrument.
+ *
+ * The tests above inject `samplerState` directly, which verifies the
+ * scheduling maths but bypasses the patch pipeline entirely. That gap hid a
+ * real fault: `normalizeSamplerStateWithDefaults` rebuilds SamplerState from an
+ * explicit field list, so `trackerEnvelope` was silently dropped on the way to
+ * the instrument. Every unit test passed while envelopes did nothing at all.
+ *
+ * These go through the real path instead.
+ */
+describe('envelope survives the patch pipeline', () => {
+  function importedPatch() {
+    const song = importXmToTrackerSong(
+      buildXm({
+        numChannels: 1,
+        instruments: [
+          {
+            samples: [{ frames: [0, 1, 2, 3] }],
+            volumeFadeout: 512,
+            volumeEnvelope: {
+              points: [
+                [0, 64],
+                [20, 0],
+              ],
+              type: 0x01,
+            },
+          },
+        ],
+        patterns: [{ numRows: 1, cells: [[cell(49, { instrument: 1 })]] }],
+      }).buffer as ArrayBuffer,
+    );
+    return Object.values(song.data.songPatches)[0]!;
+  }
+
+  it('survives deserializePatch, which rebuilds sampler state field by field', () => {
+    const deserialized = deserializePatch(importedPatch());
+    const sampler = [...deserialized.samplers.values()][0]!;
+
+    expect(sampler.trackerEnvelope).toBeDefined();
+    expect(sampler.trackerEnvelope!.fadeout).toBe(512);
+    expect(sampler.trackerEnvelope!.points).toEqual([
+      { tick: 0, value: 64 },
+      { tick: 20, value: 0 },
+    ]);
+  });
+
+  it('survives a JSON round-trip, as saved songs take', () => {
+    const roundTripped = JSON.parse(JSON.stringify(importedPatch())) as ReturnType<
+      typeof importedPatch
+    >;
+    const sampler = Object.values(roundTripped.synthState.samplers)[0]!;
+    expect(sampler.trackerEnvelope?.fadeout).toBe(512);
+  });
+
+  it('reaches the instrument and schedules automation, via the normalized patch', async () => {
+    // The decisive check: no injected state, no reflection. The patch is
+    // normalized first, exactly as song-bank does before handing it to the
+    // instrument, so a field dropped anywhere in that path fails here.
+    const envelopeCalls: ParamCall[] = [];
+    let gainNodes = 0;
+    const audioContext = {
+      currentTime: 0,
+      sampleRate: 44100,
+      createBuffer: (channels: number, length: number, sampleRate: number) => ({
+        duration: length / sampleRate,
+        sampleRate,
+        length,
+        getChannelData: () => new Float32Array(length),
+      }),
+      createBufferSource: () => ({
+        buffer: null as unknown,
+        loop: false,
+        loopStart: 0,
+        loopEnd: 0,
+        playbackRate: {
+          value: 1,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        stop: vi.fn(),
+        start: vi.fn(),
+        onended: null as unknown,
+      }),
+      createGain: () => {
+        gainNodes++;
+        const isEnvelope = gainNodes > 2; // output node, then channel, then envelope
+        return {
+          gain: makeParam(isEnvelope ? envelopeCalls : []),
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      },
+      createStereoPanner: () => ({
+        pan: {
+          value: 0,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+          cancelScheduledValues: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    } as unknown as AudioContext;
+
+    const instrument = new ModInstrument(
+      { connect: vi.fn() } as unknown as AudioNode,
+      audioContext,
+    );
+    // Round-trip through the serializer the way song-bank's normalizePatch
+    // does, so this covers the pipeline rather than just loadPatch.
+    const patch = importedPatch();
+    const deserialized = deserializePatch(patch);
+    const normalized = {
+      ...patch,
+      synthState: {
+        ...patch.synthState,
+        samplers: Object.fromEntries(deserialized.samplers),
+      },
+    };
+
+    await instrument.loadPatch(normalized);
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02, trackIndex: 0 });
+
+    // Envelope: full at the note, silent 20 ticks later.
+    expect(envelopeCalls.length).toBeGreaterThan(0);
+    expect(envelopeCalls[0]!.value).toBe(1);
+    const decay = envelopeCalls.find((c) => c.kind === 'linearRamp')!;
+    expect(decay.value).toBe(0);
+    expect(decay.time).toBeCloseTo(0.4, 6);
   });
 });
