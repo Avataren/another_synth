@@ -325,6 +325,25 @@ effect processor works in −1..1 and the instrument pan API takes 0..1, so the 
 converts; the pan command also carries a voice index now, and resolution uses the strict
 no-voice-0-fallback rule from D13.
 
+**D15 — A bare sample number resets the channel volume.**
+ProTracker reloads a sample's default volume into the channel whenever a sample number
+appears, note or no note. Composers depend on it: PT has one effect column, so Axy alone
+only moves volume one way, and the standard hand-rolled tremolo alternates
+"sample-number-only" rows (reset to full) against Axy rows (slide down). The importer
+applied the reset only on rows that also carried a note, so the slide walked the volume
+down with nothing to restore it. musiklinjen.mod pattern 5 channel 2 — a pumping string
+built from `smp=13 A06` and bare `smp=13` — faded out and stayed quiet.
+
+Setting the volume on those rows also stops them tripping the engine's "naked instrument
+number revives the last note" convention, which is correct: ProTracker does not
+retrigger on a bare sample number either. So this fixed a spurious retrigger as well.
+
+**Open observation, not yet changed:** `primeVolumeSlide` scales Axy by `1/128` while
+`tonePortaVol` / `vibratoVol` use `1/64`. Since PT volume is 0-64 and our range is 0-1,
+`1/64` looks like the correct unit and Axy may be sliding at half speed. Left alone
+because it is audibly calibrated today and the direction of error (too little slide)
+does not match any reported symptom — revisit under the `FormatProfile` work.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -386,6 +405,7 @@ for the `FormatProfile` work.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | fix | A bare sample number (no note) now resets the channel volume to the sample default, restoring the Axy pump idiom and removing a spurious retrigger (D15). Found via musiklinjen.mod pattern 5 channel 2. Tests: `src/tests/mod-import-sample-number-volume-reset.test.ts` (3 of 5 confirmed failing against the old code). |
 | 2026-08-28 | fix | Effect audit: 8xx / E8x / Pxy panning was discarded by a `break;` in the engine's pan dispatch; added a real pan handler through to the instrument (D14). Tests: `src/tests/mod-pan-effects.test.ts` (all 4 confirmed failing against the dead end). |
 | 2026-08-28 | fix | Voice resolution no longer falls back to voice 0, which let one track's volume/offset commands hit another track's voice when both used the same sample (D13). Found via GSLINGER.MOD pattern 2. Tests: `src/tests/tracker-song-bank-cross-track-volume.test.ts` (confirmed failing against the old code). |
 | 2026-08-28 | fix | 5xy no longer reads its pitch-slide speed from the volume-slide parameter, and no longer clobbers the 3xx speed memory (D12). Found via GSLINGER.MOD pattern 4 track 1. Tests: `src/tests/mod-toneporta-volslide-speed.test.ts` (3 of 5 confirmed failing against the old code). |

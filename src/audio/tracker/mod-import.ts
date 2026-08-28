@@ -393,8 +393,23 @@ function modCellToTrackerEntry(
     // an explicit Cxx/volume-column value appears -- audibly, the note "dies" right after it
     // triggers. Tone portamento (3xx/5xy) is still excluded: it doesn't retrigger the sample at
     // all, so resetting volume there would be wrong.
+    //
+    // The same reset happens for a sample number with NO note. In ProTracker
+    // a bare sample number does not retrigger anything, but it *does* reload
+    // that sample's default volume into the channel. Composers lean on this:
+    // alternating "sample number only" rows against volume-slide rows is the
+    // standard hand-rolled tremolo/pump, since PT has one effect column and
+    // Axy alone can only travel in one direction. musiklinjen.mod pattern 4
+    // channel 2 is exactly this -- rows of "smp=13 A06" and bare "smp=13"
+    // pumping a string. Dropping the reset left the slide free to walk the
+    // volume down with nothing to restore it, so the part faded out and
+    // stayed "mostly quiet" for the rest of the pattern.
+    //
+    // Setting the volume here also stops these rows being mistaken for the
+    // engine's "naked instrument number revives the last note" convention
+    // (shouldRetriggerLastNote bails once velocity is present), which is
+    // right: ProTracker does not retrigger on a bare sample number either.
     if (
-      hasNote &&
       hasSample &&
       !isTonePorta &&
       !isTonePortaVol &&
