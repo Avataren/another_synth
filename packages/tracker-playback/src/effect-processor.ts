@@ -686,12 +686,22 @@ export function processEffectTick0(
       break;
 
     case 'tonePortaVol':
-      // Tone porta continues, volume slide applies
-      state.tonePortaSpeed = resolveTonePortaSpeed(
-        state,
-        effect.paramX,
-        effect.paramY,
-      );
+      // 5xy: tone portamento continues *and* a volume slide applies.
+      //
+      // The parameter belongs entirely to the volume slide (x = up, y = down)
+      // -- see primeVolumeSlide below, which reads the very same nibbles. The
+      // slide speed is NOT in this command; it carries over from the last 3xx.
+      //
+      // Feeding these nibbles to resolveTonePortaSpeed (as this used to do)
+      // therefore reinterprets a volume-slide parameter as a pitch-slide
+      // speed, and because that helper also *writes* state.lastTonePorta it
+      // destroys the remembered 3xx speed for every following row. A run like
+      // GSLINGER.MOD pattern 4 -- "3F0" (speed 240) then a long tail of
+      // 300/500/501 -- collapsed to speed 1 the moment the first 501 landed,
+      // so the pitch crawled instead of reaching each target and the whole
+      // passage drifted badly out of tune.
+      state.tonePortaSpeed =
+        state.lastTonePorta > 0 ? state.lastTonePorta : state.tonePortaSpeed;
       if (state.lastTonePortaTargetFreq !== undefined) {
         state.targetFrequency = state.lastTonePortaTargetFreq;
       }
