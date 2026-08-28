@@ -695,20 +695,75 @@ export default class ModInstrument {
       return;
     }
 
-    const sustain =
-      envelope.sustainPoint >= 0 && envelope.sustainPoint < points.length
-        ? envelope.sustainPoint
-        : points.length - 1;
-
     const level = (value: number) => Math.max(0, Math.min(1, value / 64));
+    const hasSustain =
+      envelope.sustainPoint >= 0 && envelope.sustainPoint < points.length;
 
     param.setValueAtTime(level(points[0]!.value), startTime);
-    for (let i = 1; i <= sustain; i++) {
+
+    // Sustain wins: the envelope runs to that point and waits for key-off.
+    if (hasSustain) {
+      for (let i = 1; i <= envelope.sustainPoint; i++) {
+        const point = points[i]!;
+        param.linearRampToValueAtTime(
+          level(point.value),
+          startTime + point.tick * tickSeconds,
+        );
+      }
+      return;
+    }
+
+    const loopStart = envelope.loopStart;
+    const loopEnd = envelope.loopEnd;
+    const loops =
+      envelope.loopEnabled &&
+      loopEnd > loopStart &&
+      loopEnd < points.length &&
+      loopStart >= 0;
+
+    if (!loops) {
+      for (let i = 1; i < points.length; i++) {
+        const point = points[i]!;
+        param.linearRampToValueAtTime(
+          level(point.value),
+          startTime + point.tick * tickSeconds,
+        );
+      }
+      return;
+    }
+
+    // A looping envelope repeats loopStart..loopEnd for as long as the note
+    // is held. AudioParam automation cannot loop, so unroll enough passes to
+    // outlast any realistic note. Without this the envelope was played once
+    // and then held at its final value -- silence for most instruments, which
+    // is what made looping instruments drop out.
+    for (let i = 1; i <= loopEnd; i++) {
       const point = points[i]!;
       param.linearRampToValueAtTime(
         level(point.value),
         startTime + point.tick * tickSeconds,
       );
+    }
+
+    const loopTicks = points[loopEnd]!.tick - points[loopStart]!.tick;
+    if (loopTicks <= 0) return;
+
+    const maxUnrollSeconds = 30;
+    let elapsed = points[loopEnd]!.tick * tickSeconds;
+    let pass = 0;
+    while (elapsed < maxUnrollSeconds && pass < 256) {
+      const offsetTicks = points[loopEnd]!.tick + pass * loopTicks;
+      for (let i = loopStart; i <= loopEnd; i++) {
+        const point = points[i]!;
+        const tick =
+          offsetTicks + (point.tick - points[loopStart]!.tick);
+        param.linearRampToValueAtTime(
+          level(point.value),
+          startTime + tick * tickSeconds,
+        );
+      }
+      elapsed = (offsetTicks + loopTicks) * tickSeconds;
+      pass++;
     }
   }
 

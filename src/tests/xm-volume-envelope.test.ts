@@ -716,3 +716,79 @@ describe('a new note cuts a note still fading on the same channel', () => {
     expect(stopped.length).toBeGreaterThan(afterRelease);
   });
 });
+
+/**
+ * Envelope loops. FT2 repeats loopStart..loopEnd for as long as the note is
+ * held; AudioParam automation cannot loop, so the passes are unrolled.
+ *
+ * Playing a looping envelope once and holding its final value silences most
+ * instruments that use one -- all 16 envelopes in external.xm loop, and 23
+ * across the corpus do.
+ */
+describe('looping volume envelopes', () => {
+  const loopingEnvelope = {
+    // Rises, dips, and loops points 1..2 forever.
+    points: [
+      { tick: 0, value: 0 },
+      { tick: 5, value: 64 },
+      { tick: 15, value: 16 },
+    ],
+    sustainPoint: -1,
+    loopStart: 1,
+    loopEnd: 2,
+    loopEnabled: true,
+    fadeout: 0,
+  };
+
+  it('keeps scheduling past the last point instead of holding it', () => {
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope(loopingEnvelope);
+
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 });
+
+    // Without loop support this would stop at the third point, 0.3s in.
+    const last = envelopeCalls[envelopeCalls.length - 1]!;
+    expect(last.time).toBeGreaterThan(1);
+  });
+
+  it('repeats the loop segment’s values', () => {
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope(loopingEnvelope);
+
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 });
+
+    // The peak (64 -> 1.0) recurs rather than appearing once.
+    const peaks = envelopeCalls.filter((c) => c.value === 1);
+    expect(peaks.length).toBeGreaterThan(3);
+  });
+
+  it('does not loop when the envelope has a sustain point', () => {
+    // Sustain wins: the envelope waits for key-off instead of looping.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({ ...loopingEnvelope, sustainPoint: 1 });
+
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 });
+
+    expect(envelopeCalls).toHaveLength(2);
+    expect(envelopeCalls[1]!.time).toBeCloseTo(0.1, 6);
+  });
+
+  it('plays a non-looping envelope through to its end', () => {
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({ ...loopingEnvelope, loopEnabled: false });
+
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 });
+
+    expect(envelopeCalls).toHaveLength(3);
+    expect(envelopeCalls[2]!.time).toBeCloseTo(0.3, 6);
+  });
+
+  it('ignores a degenerate loop rather than scheduling forever', () => {
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({ ...loopingEnvelope, loopStart: 2, loopEnd: 2 });
+
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 });
+
+    expect(envelopeCalls.length).toBeLessThan(10);
+  });
+});

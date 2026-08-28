@@ -212,7 +212,7 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [ ] Multi-sample instruments with note→sample keymap — see D26
 
 ### Phase 4 — XM instrument fidelity
-- [x] Volume envelope (points + sustain) — loop not yet applied, see D31
+- [x] Volume envelope (points, sustain, and loop)
 - [ ] Panning envelope
 - [x] `volumeFadeout` on key-off
 - [ ] Autovibrato
@@ -594,10 +594,11 @@ Fadeout is exact: XM subtracts `fadeout` from a 65536 counter each tick and scal
 by `counter/65536`, so silence arrives after `65536/fadeout` ticks and the decay is linear
 — one linear ramp reproduces it.
 
-**Known approximations:** the envelope's own points past the sustain also continue in FT2,
+**Known approximation:** the envelope's own points past the sustain also continue in FT2,
 multiplying with the fadeout; only the fadeout is applied on release, since it is the term
-that reaches silence. Envelope *loops* are parsed and carried but not yet applied. Both
-matter most for long sustained notes.
+that reaches silence. This matters most for long sustained notes.
+
+Envelope loops are implemented as of D38.
 
 **D32 — Voices are owned per tracker channel, not pooled per instrument.**
 A tracker channel is monophonic, so a note on a channel should only ever replace *that*
@@ -696,6 +697,21 @@ scheduled playback starts (that reset previously reverted to a hardcoded 6, so a
 from a previous run had to be undone but the song's own speed was lost with it). The
 song file field is optional and additive: files without it get the tracker default of 6,
 which is exactly what every song saved before it existed assumed, so no version bump.
+
+**D38 — Envelope loops are unrolled, not held.**
+FT2 repeats `loopStart..loopEnd` for as long as a note is held. Deferring that (D31) meant
+a looping envelope was played once and then held at its final value — silence for most
+instruments that use one. 23 of the 95 envelopes in the corpus loop, including **all 16 in
+`external.xm`**.
+
+AudioParam automation cannot loop, so the passes are unrolled at note-on to cover 30
+seconds or 256 passes, whichever comes first. Sustain still takes precedence: an envelope
+with a sustain point waits for key-off rather than looping, which is what FT2 does.
+
+**Caveat:** this was found by measurement while chasing a report of samples going silent,
+and it is a genuine gap, but it has *not* been confirmed as the cause of that report. 31
+of 95 envelopes legitimately end at zero and hold, which is correct FT2 behaviour for a
+non-looping, non-sustaining envelope, so some silence is expected and correct.
 
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
@@ -797,6 +813,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | Envelope loops implemented (D38). A looping envelope was previously played once and held at its final value, silencing most instruments that use one — 23 envelopes in the corpus loop, including all 16 in `external.xm`. Not confirmed as the cause of the reported silence; see the caveat in D38. |
 | 2026-08-29 | 4 | XM tempo fixed (D37): "speed" (ticks per row) is separate from BPM, and the importer never read the header's `defaultSpeed` while the engine hardcoded 6. Most XM files declare 3, so they played at exactly half tempo. Now carried on `Song.initialSpeed` and through the song file. |
 | 2026-08-29 | 4 | Note release fixed (D36): `noteOffAtTime` dropped every release scheduled more than 100ms ahead — i.e. all of them — so notes were never released and XM key-off did nothing. Releasing voices are now also cut by the next note on the channel, which previously played over them. |
 | 2026-08-29 | 4 | Ping-pong sample loops now loop, by mirroring the loop region into the buffer at load (D35). They previously failed a `loopMode === 1` check and played as one-shots — 27 samples in the corpus. Tests go through the normalized patch, and were confirmed to fail with the handling disabled. |
