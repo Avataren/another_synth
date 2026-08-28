@@ -751,6 +751,24 @@ happened constantly.
 already releasing. Every note-on path in song-bank uses it — same-instrument, cross-
 instrument and the mono-patch case — while genuine note-offs keep the release.
 
+**D42 — MOD voice sizing was never given the per-channel treatment XM got.**
+`mod-import` kept a hardcoded `voiceCount: 4` after the XM importer moved to sizing by
+distinct channels (D32). Fine for a classic four-channel module, badly short beyond it:
+`DOPE.MOD` is a **28-channel** module (`28CH`) whose busiest sample appears on **19
+channels**, so notes were constantly stolen from channels still sounding. Now sized the
+same way as XM, with four as a floor.
+
+Worth noting the multi-channel MOD support (Phase 1) had been landed and tested against
+synthetic buffers and 4-channel files only; the first real high-channel module found this
+immediately.
+
+**D43 — Track columns tighten as the channel count grows.**
+Columns already scrolled horizontally, but at full width very few of 28 or 32 channels are
+visible at once. Width and gap now tighten above 8 tracks, with a floor at the entry's own
+`min-width` (156px) plus padding — below that the note, instrument, volume and effect
+columns clip rather than merely crowd. Genuinely fitting 28 channels on screen would need
+a compact entry rendering, which is a larger UI change and not attempted here.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -873,6 +891,7 @@ as an expected state, not an error.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | MOD instruments are sized by the channels that play them, not a fixed 4 (D42) — `DOPE.MOD` has 28 channels and one sample on 19 of them. Track columns tighten for high channel counts (D43). |
 | 2026-08-29 | 4 | New notes now *cut* the previous note on their channel instead of releasing it (D41). Making key-off perform an envelope release had turned every replacement into a fadeout, so previous notes rang on underneath — worst when a channel switches instrument, where nothing ever cut the old voice. Tracker channels are monophonic. |
 | 2026-08-29 | 4 | Two fixes for notes going missing: voice replacement is now scheduled at the replacing note's time rather than immediately (D40 — self-inflicted by the D36 fix, and the cause of the `external.xm` report), and key-off is a real envelope release rather than a 10ms cut (D39, corrected by the user). |
 | 2026-08-29 | 4 | Envelope loops implemented (D38). A looping envelope was previously played once and held at its final value, silencing most instruments that use one — 23 envelopes in the corpus loop, including all 16 in `external.xm`. Not confirmed as the cause of the reported silence; see the caveat in D38. |

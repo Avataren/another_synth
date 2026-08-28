@@ -19,6 +19,8 @@ const CHANNELS = 4;
 
 interface CellSpec {
   row: number;
+  /** Defaults to channel 0. */
+  channel?: number;
   period?: number;
   sampleNumber?: number;
   effectCmd?: number;
@@ -215,5 +217,92 @@ describe('bare sample number does not switch the sounding instrument', () => {
     ]);
 
     expect(track.entries.find((e) => e.row === 1)?.instrument).toBe('02');
+  });
+});
+
+/**
+ * Voice sizing for multi-channel modules.
+ *
+ * One sample is one instrument, so every channel playing it shares that
+ * instrument's voice pool and each channel needs a voice of its own. Four was
+ * right for a classic 4-channel module and badly short beyond it: DOPE.MOD has
+ * 28 channels and its busiest sample appears on 19 of them, so notes were
+ * stolen from channels that were still sounding.
+ */
+describe('voice count follows the channels that use a sample', () => {
+  function voiceCountFor(cells: CellSpec[], channels: number) {
+    const patternSize = ROWS * channels * 4;
+    const sampleLengthWords = 4;
+    const buf = new Uint8Array(HEADER_SIZE + patternSize + sampleLengthWords * 2);
+    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+
+    writeAscii(buf, 0, 'MULTI', 20);
+    let offset = 20;
+    for (let i = 0; i < 31; i++) {
+      writeAscii(buf, offset, i === 0 ? 'S' : '', 22);
+      view.setUint16(offset + 22, i === 0 ? sampleLengthWords : 0, false);
+      buf[offset + 24] = 0;
+      buf[offset + 25] = 64;
+      view.setUint16(offset + 26, 0, false);
+      view.setUint16(offset + 28, 0, false);
+      offset += 30;
+    }
+    buf[950] = 1;
+    buf[952] = 0;
+    // Signature form depends on the count: the classic tag for 4, <n>CHN for
+    // a single digit, <nn>CH for two.
+    const signature =
+      channels === 4
+        ? 'M.K.'
+        : channels < 10
+          ? `${channels}CHN`
+          : `${channels}CH`;
+    writeAscii(buf, 1080, signature, 4);
+
+    for (const cell of cells) {
+      const at = HEADER_SIZE + (cell.row * channels + (cell.channel ?? 0)) * 4;
+      const period = cell.period ?? 0;
+      const sampleNumber = cell.sampleNumber ?? 0;
+      buf[at] = (sampleNumber & 0xf0) | ((period >> 8) & 0x0f);
+      buf[at + 1] = period & 0xff;
+      buf[at + 2] = ((sampleNumber & 0x0f) << 4) | (cell.effectCmd ?? 0);
+      buf[at + 3] = cell.effectParam ?? 0;
+    }
+
+    const song = importModToTrackerSong(buf.buffer as ArrayBuffer);
+    const patch = Object.values(song.data.songPatches)[0]!;
+    return patch.synthState.layout.voiceCount;
+  }
+
+  it('keeps four voices for a classic four-channel module', () => {
+    expect(
+      voiceCountFor(
+        [
+          { row: 0, channel: 0, period: 202, sampleNumber: 1 },
+          { row: 1, channel: 1, period: 202, sampleNumber: 1 },
+        ],
+        4,
+      ),
+    ).toBe(4);
+  });
+
+  it('allocates a voice per channel when a sample is spread widely', () => {
+    // Twelve channels all playing sample 1.
+    const cells = Array.from({ length: 12 }, (_, channel) => ({
+      row: channel,
+      channel,
+      period: 202,
+      sampleNumber: 1,
+    }));
+    expect(voiceCountFor(cells, 16)).toBe(12);
+  });
+
+  it('does not count channels that never play the sample', () => {
+    const cells = [
+      { row: 0, channel: 0, period: 202, sampleNumber: 1 },
+      { row: 1, channel: 5, period: 202, sampleNumber: 1 },
+    ];
+    // Two channels use it, so the four-voice floor still applies.
+    expect(voiceCountFor(cells, 16)).toBe(4);
   });
 });

@@ -476,10 +476,42 @@ function modCellToTrackerEntry(
   return entry;
 }
 
+/**
+ * How many distinct channels ever play each sample.
+ *
+ * One sample is one instrument here, so every channel playing it shares that
+ * instrument's voice pool, and a tracker channel needs a voice of its own -- a
+ * smaller pool makes new notes steal voices from channels that are still
+ * sounding, heard as notes going missing.
+ *
+ * This matters far beyond the classic four channels: DOPE.MOD is a 28-channel
+ * module whose busiest sample appears on 19 of them, against the fixed four
+ * voices every MOD instrument used to get.
+ */
+function measureChannelsPerSample(mod: ModSong): Map<number, Set<number>> {
+  const channels = new Map<number, Set<number>>();
+  for (const pattern of mod.patterns) {
+    for (const row of pattern.rows) {
+      row.forEach((cell, channel) => {
+        if (cell.sampleNumber > 0) {
+          let set = channels.get(cell.sampleNumber);
+          if (!set) {
+            set = new Set<number>();
+            channels.set(cell.sampleNumber, set);
+          }
+          set.add(channel);
+        }
+      });
+    }
+  }
+  return channels;
+}
+
 function buildInstrumentSlotsAndPatches(mod: ModSong): {
   slots: InstrumentSlot[];
   songPatches: Record<string, Patch>;
 } {
+  const channelsPerSample = measureChannelsPerSample(mod);
   const usedSamples = new Set<number>();
   for (const pattern of mod.patterns) {
     for (const row of pattern.rows) {
@@ -515,7 +547,12 @@ function buildInstrumentSlotsAndPatches(mod: ModSong): {
 
     const sampleMeta = mod.samples[sampleNumber - 1];
     if (!sampleMeta) continue;
-    const patch = createSamplerPatchForSample(sampleMeta, sampleNumber, mod);
+    const patch = createSamplerPatchForSample(
+      sampleMeta,
+      sampleNumber,
+      mod,
+      channelsPerSample.get(sampleNumber)?.size ?? 1,
+    );
     const slotIndex = sampleNumber - 1;
     const slot = slots[slotIndex];
     if (!slot) continue;
@@ -541,6 +578,7 @@ function createSamplerPatchForSample(
   sample: ModSample,
   sampleIndex: number,
   _mod: ModSong,
+  channelCount: number,
 ): Patch {
   const sampleLengthFrames = Math.max(1, sample.length);
   // ProTracker marks "no loop" with a loop length of 2 words or less.
@@ -565,9 +603,10 @@ function createSamplerPatchForSample(
     loopMode: loopEnabled ? SamplerLoopMode.Loop : SamplerLoopMode.Off,
     loopStartFrames: loopEnabled ? sample.loopStart : 0,
     loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,
-    // 4 voices per imported MOD instrument: enough polyphony for chords and
-    // overlaps while still feeling Amiga-like rather than an 8-voice polysynth.
-    voiceCount: 4,
+    // One voice per channel that ever plays this sample, so every channel owns
+    // one and none has to steal. Four is right for a classic 4-channel module
+    // and badly short for the multi-channel ones.
+    voiceCount: Math.max(4, Math.min(32, channelCount)),
   });
 
   console.log(
