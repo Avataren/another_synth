@@ -553,6 +553,27 @@ routed to a silent instrument.
 `peacedroid.mod` — the checked-in reference the user described as "pretty broken" from
 the start of this work — is on that list, so this fix plausibly improves it too.
 
+**D30 — The position display follows the scheduler's row timeline, not elapsed time.**
+`updatePosition` derived the current row as `elapsed / currentRowDuration`. That silently
+assumes the row duration never changes: the instant a song hits an `Fxx` speed or tempo
+command, the new duration is applied retroactively to *all* previously elapsed time, so
+the displayed row jumps and stays wrong for the rest of the song. `EEx` pattern delay,
+`E6x` pattern loop and `Bxx`/`Dxx` jumps break the same assumption by making rows
+non-linear in time — a pattern-delayed row cannot be expressed as a time division at all.
+
+Audio was never affected: the scheduler advances `nextRowTime` cumulatively with the
+tempo in force at each row, so it was already correct. Only the *display* re-derived the
+position, and re-derivation was the bug.
+
+The engine now records `(time, row, sequenceIndex, patternId)` as each row is scheduled
+and the display reports the latest entry whose time has been reached. That is exact under
+tempo changes, pattern delay, loops and jumps, because it reuses the scheduler's own
+timeline rather than trying to reconstruct it. The queue is cleared on stop, seek and
+`loadSong` so stale rows cannot leak between runs.
+
+`TimingSystem.getCurrentRow` is now unused by the display. It is left in place — it still
+serves seek/anchor maths — but it should not be reintroduced as a position source.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -653,6 +674,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | fix | Pattern display no longer desyncs from playback (D30). It followed elapsed-time ÷ current-row-duration, which broke permanently at the first `Fxx` speed/tempo change and could not represent `EEx`/`E6x`/`Bxx`/`Dxx` at all. Now driven by the scheduler's recorded per-row audio times. Audio was always correct; only the display was wrong. Tests: `src/tests/tracker-position-sync.test.ts`. |
 | 2026-08-28 | fix | Measured the D29 idiom across the collection: 18 of 30 modules, 8005 bare sample-number rows, 6166 carrying misrouted effects. Not a C64-conversion curiosity — ordinary Amiga practice. |
 | 2026-08-28 | fix | A bare sample number no longer switches the sounding instrument, so per-voice effects keep addressing the voice that is playing (D29). Found via `think_twice_iii.mod`, where a hand-made decay envelope and a continuous arpeggio were both being routed to silent instruments. Tests appended to `src/tests/mod-import-sample-number-volume-reset.test.ts` (3 of 5 confirmed failing against the old code). |
 | 2026-08-28 | 3 | **XM files now import and are selectable in the file picker.** `xm-import.ts` maps notes (with exact frequencies from the per-song pitch model), key-off, set-volume, effects (including FT2's G+ extras), per-pattern rows and instrument slots. `TOTAL_SLOTS` 35 → 65, allocating only for *used* instruments (D26–D28). Verified: all 9 real modules import — 4–32 tracks, 8–42 slots, frequencies 32.7–3947 Hz. 487 tests green. |

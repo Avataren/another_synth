@@ -173,6 +173,29 @@ export class PlaybackEngine {
   /** Global volume state (Gxx/Hxy), normalized 0-1 */
   private globalVolume = 1.0;
 
+  /**
+   * Audio-time timeline of rows the scheduler has queued, used to drive the
+   * position display.
+   *
+   * The display used to be derived by dividing elapsed audio time by the
+   * *current* row duration. That silently assumes the duration never changed:
+   * the moment a song hits an Fxx speed or tempo command, the new duration is
+   * applied retroactively to all previously elapsed time, so the displayed row
+   * jumps and then stays wrong. Pattern delay (EEx), pattern loop (E6x) and
+   * position jumps (Bxx/Dxx) break the same assumption by making the row count
+   * non-linear in time.
+   *
+   * The scheduler already computes each row's exact start time cumulatively,
+   * with the tempo in force at that row, so recording those times and looking
+   * up the latest one that has been reached is both simpler and exact.
+   */
+  private scheduledPositions: Array<{
+    time: number;
+    row: number;
+    sequenceIndex: number;
+    patternId: string | undefined;
+  }> = [];
+
   /** Last note played per track (for instrument-only retrigger rows) */
   private lastTrackNote: Map<number, { midi: number; velocity: number }> =
     new Map();
@@ -332,6 +355,7 @@ export class PlaybackEngine {
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
     this.moduleFormat = song.moduleFormat ?? DEFAULT_MODULE_FORMAT;
+    this.scheduledPositions.length = 0;
     this.formatProfile = profileForFormat(this.moduleFormat, {
       ...(song.linearFrequency !== undefined
         ? { linearFrequency: song.linearFrequency }
@@ -468,6 +492,7 @@ export class PlaybackEngine {
     this.stopScheduledPlayback();
     this.scheduler.stop();
     this.resetEffectStates();
+    this.scheduledPositions.length = 0;
     this.emit('state', this.state);
     // Emit position as-is (no forced row reset) so UI stays aligned with last played pattern/row
     this.emit('position', this.position);
@@ -477,6 +502,8 @@ export class PlaybackEngine {
     const clamped =
       ((Math.round(row) % this.length) + this.length) % this.length;
     this.position = { ...this.position, row: clamped };
+    // Rows queued for display belong to the position we just left.
+    this.scheduledPositions.length = 0;
     this.emit('position', this.position);
   }
 
@@ -503,6 +530,8 @@ export class PlaybackEngine {
     this.nextRowTime = now;
     // Reset effect states for clean playback start
     this.resetEffectStates();
+    // Discard any rows queued for display by a previous run.
+    this.scheduledPositions.length = 0;
 
     // Schedule initial batch of notes
     this.scheduleAhead();
@@ -670,6 +699,7 @@ export class PlaybackEngine {
       }
       if (scheduledRowTime >= now) {
         this.scheduleRow(actualRow, scheduledRowTime);
+        this.recordScheduledPosition(actualRow, scheduledRowTime);
       }
 
       // Handle pattern delay (EEx) - repeat current row x times
@@ -1289,24 +1319,54 @@ export class PlaybackEngine {
     return rampableEffects.includes(type);
   }
 
+  /** Note when a scheduled row will actually be heard, for the display. */
+  private recordScheduledPosition(row: number, time: number) {
+    this.scheduledPositions.push({
+      time,
+      row,
+      sequenceIndex: this.currentSequenceIndex,
+      patternId: this.song?.sequence[this.currentSequenceIndex],
+    });
+    // The queue only ever holds the lookahead window plus the entry currently
+    // being displayed, but cap it so a long run cannot grow it without bound.
+    const MAX_SCHEDULED_POSITIONS = 512;
+    if (this.scheduledPositions.length > MAX_SCHEDULED_POSITIONS) {
+      this.scheduledPositions.splice(
+        0,
+        this.scheduledPositions.length - MAX_SCHEDULED_POSITIONS,
+      );
+    }
+  }
+
   private updatePosition() {
     if (!this.audioContext) return;
     if (this.state !== 'playing') return;
 
     const now = this.audioContext.currentTime;
-    const currentPosition = this.timingSystem.getCurrentRow(now);
 
+    // Advance to the most recent row whose scheduled time has been reached,
+    // keeping it as the head of the queue so it stays current until the next
+    // row is due.
+    let reached = -1;
+    for (let i = 0; i < this.scheduledPositions.length; i++) {
+      if (this.scheduledPositions[i]!.time <= now) reached = i;
+      else break;
+    }
+    if (reached < 0) return;
+    if (reached > 0) this.scheduledPositions.splice(0, reached);
+
+    const current = this.scheduledPositions[0]!;
     if (
-      currentPosition.row !== this.position.row ||
-      currentPosition.patternId !== this.position.patternId ||
-      currentPosition.sequenceIndex !== this.position.sequenceIndex
+      current.row !== this.position.row ||
+      current.patternId !== this.position.patternId ||
+      current.sequenceIndex !== this.position.sequenceIndex
     ) {
       const newPosition: PlaybackPosition = {
-        row: currentPosition.row,
-        sequenceIndex: currentPosition.sequenceIndex,
+        row: current.row,
+        sequenceIndex: current.sequenceIndex,
       };
-      if (currentPosition.patternId) {
-        newPosition.patternId = currentPosition.patternId;
+      if (current.patternId) {
+        newPosition.patternId = current.patternId;
       }
       this.position = newPosition;
       this.emit('position', this.position);
