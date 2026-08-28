@@ -8,8 +8,8 @@ import ModInstrument from 'src/audio/mod-instrument';
  * starts. These tests capture the actual start() arguments.
  */
 interface StartCall {
-  when?: number;
-  offset?: number;
+  when: number | undefined;
+  offset: number | undefined;
 }
 
 function makeInstrument(durationSeconds = 2, sampleRate = 8000) {
