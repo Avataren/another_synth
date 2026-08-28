@@ -419,7 +419,19 @@ function primeVolumeSlide(
       }
 
       let delta = 0;
-      const scale = 1 / 128;
+      // ProTracker volume is 0-64 and ours is 0-1, so one volume unit is
+      // 1/64 -- the same scale the fine slides (EAx/EBx) above and
+      // tonePortaVol/vibratoVol below already use.
+      //
+      // This was 1/128 ("softer slide ... to better match MOD feel"), which
+      // made every Axy slide run at exactly half the authentic rate: at speed
+      // 6 an A06 row dropped 0.234 instead of ProTracker's 5 x 6/64 = 0.469.
+      // That constant looks like an ear-made compensation for a
+      // double-application bug that has since been fixed independently -- the
+      // slide is now applied once per tick for ticks 1..speed-1, five times at
+      // speed 6, which is exactly what ProTracker does. Its own comment said
+      // 1/256 while the code said 1/128, so it was never a derived value.
+      const scale = 1 / 64;
       if (effect.paramX) delta = effect.paramX * scale;
       else if (effect.paramY) delta = -effect.paramY * scale;
       else if (state.lastVolSlide) {

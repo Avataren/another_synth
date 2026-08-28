@@ -209,9 +209,29 @@ describe('effect-processor command batches', () => {
     const vol1 = tick1.commands.find((cmd) => cmd.kind === 'volume');
     const vol2 = tick2.commands.find((cmd) => cmd.kind === 'volume');
 
-    const step = 1 / 128; // matches vol slide scaling in effect-processor
+    // One ProTracker volume unit is 1/64 of full scale (PT volume is 0-64,
+    // ours is 0-1), applied once per tick from tick 1. A02 therefore drops
+    // 2/64 per tick. This deliberately states the format's rule rather than
+    // mirroring the implementation constant -- it previously asserted 1/128
+    // "matches vol slide scaling in effect-processor", which made the test
+    // agree with a halved slide rate instead of checking it.
+    const step = 1 / 64;
     expect(vol1 && 'volume' in vol1 ? vol1.volume : undefined).toBeCloseTo(1 - 2 * step, 5);
     expect(vol2 && 'volume' in vol2 ? vol2.volume : undefined).toBeCloseTo(1 - 4 * step, 5);
+  });
+
+  it('slides a full row at the authentic ProTracker rate', () => {
+    // At speed 6 the slide runs on ticks 1-5, so A06 drops 5 x 6/64.
+    const state = createTrackEffectState();
+    const volSlide: EffectCommand = { type: 'volSlide', paramX: 0, paramY: 6 };
+
+    processEffectTick0(state, undefined, 60, 255);
+    processEffectTick0(state, volSlide, undefined);
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, volSlide, tick, 6);
+    }
+
+    expect(state.currentVolume).toBeCloseTo(1 - (5 * 6) / 64, 5);
   });
 
   /**
