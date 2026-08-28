@@ -72,6 +72,8 @@ type PendingScheduledEvent =
       pan?: number;
       /** Normalized 0-1 sample start offset (ProTracker 9xx). */
       sampleOffset?: number;
+      /** Tick duration in seconds, for tick-timed instrument envelopes. */
+      tickSeconds?: number;
       enqueuedAt: number;
     }
   | {
@@ -651,6 +653,7 @@ export class TrackerSongBank {
             event.frequency,
             event.pan,
             event.sampleOffset,
+            event.tickSeconds,
           );
         } else {
           this.dispatchNoteOffAtTime(
@@ -984,6 +987,8 @@ export class TrackerSongBank {
      * source, so it has to arrive with the note rather than as automation.
      */
     sampleOffset?: number,
+    /** Tick duration in seconds, for tick-timed instrument envelopes. */
+    tickSeconds?: number,
   ) {
     if (instrumentId === undefined) {
       console.warn('[SongBank] noteOnAtTime: instrumentId is undefined');
@@ -1014,6 +1019,7 @@ export class TrackerSongBank {
       if (frequency !== undefined) queued.frequency = frequency;
       if (pan !== undefined) queued.pan = pan;
       if (sampleOffset !== undefined) queued.sampleOffset = sampleOffset;
+      if (tickSeconds !== undefined) queued.tickSeconds = tickSeconds;
       this.enqueueScheduledEvent(queued);
       this.ensureInstrumentIfDesired(instrumentId);
       return;
@@ -1028,6 +1034,7 @@ export class TrackerSongBank {
       frequency,
       pan,
       sampleOffset,
+      tickSeconds,
     );
   }
 
@@ -1181,6 +1188,7 @@ export class TrackerSongBank {
     frequency?: number,
     pan?: number,
     sampleOffset?: number,
+    tickSeconds?: number,
   ) {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
@@ -1229,6 +1237,7 @@ export class TrackerSongBank {
         ...(frequency !== undefined ? { frequency } : {}),
         ...(pan !== undefined ? { pan } : {}),
         ...(sampleOffset !== undefined ? { sampleOffset } : {}),
+        ...(tickSeconds !== undefined ? { tickSeconds } : {}),
       },
     );
 

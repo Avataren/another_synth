@@ -212,9 +212,9 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [ ] Multi-sample instruments with note→sample keymap — see D26
 
 ### Phase 4 — XM instrument fidelity
-- [ ] Volume envelope (12 points, sustain, loop)
+- [x] Volume envelope (points + sustain) — loop not yet applied, see D31
 - [ ] Panning envelope
-- [ ] `volumeFadeout`
+- [x] `volumeFadeout` on key-off
 - [ ] Autovibrato
 - [ ] Remaining XM effects: Kxx, Lxx, Rxy, Txy, Xxy, Gxx/Hxy
 
@@ -574,7 +574,32 @@ timeline rather than trying to reconstruct it. The queue is cleared on stop, see
 `TimingSystem.getCurrentRow` is now unused by the display. It is left in place — it still
 serves seek/anchor maths — but it should not be reintroduced as a position source.
 
-**D5 — Open: envelope execution site.**
+**D31 — Volume envelopes run as Web Audio automation on a dedicated gain stage.**
+Resolves D5. Measured across the corpus, **92–100% of notes in most modules are played by
+instruments with a volume envelope or fadeout** — `4-mat_-_rose` is the outlier at 19%/10%,
+which is exactly why it was the one module that already sounded close to right. This was
+the dominant XM quality gap, well ahead of the volume-column commands (D27).
+
+Each voice gets its own envelope gain node ahead of the channel-volume node, so the
+envelope *multiplies* with the volume that effects automate instead of overwriting it —
+the same conflict that made 9xx and pan collide before. Points are scheduled as
+`linearRampToValueAtTime` at note-on, which needs no per-tick JS work at all: the
+JS-tick-loop option in D5 would have cost per-tick automation across up to 32 channels for
+a curve the audio thread can interpolate itself.
+
+Envelope positions are in ticks, so the note carries the tick duration in force at its
+position (`ScheduledNoteEvent.tickSeconds`) and timing follows the song's tempo.
+
+Fadeout is exact: XM subtracts `fadeout` from a 65536 counter each tick and scales volume
+by `counter/65536`, so silence arrives after `65536/fadeout` ticks and the decay is linear
+— one linear ramp reproduces it.
+
+**Known approximations:** the envelope's own points past the sustain also continue in FT2,
+multiplying with the fadeout; only the fadeout is applied on release, since it is the term
+that reaches silence. Envelope *loops* are parsed and carried but not yet applied. Both
+matter most for long sustained notes.
+
+**D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
 runtime, more work). Decide at the start of Phase 4, informed by measured Phase 3 cost.
@@ -674,6 +699,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 4 | XM volume envelopes and fadeout implemented (D31), on a dedicated per-voice gain stage so they multiply with effect-driven volume. Chosen by measurement: 92–100% of notes in most modules need them, vs 19%/10% in `rose` — the reason rose alone sounded right. Tick duration now travels with each note so envelope timing follows tempo. Tests: `src/tests/xm-volume-envelope.test.ts`. 511 green. |
 | 2026-08-28 | fix | Pattern display no longer desyncs from playback (D30). It followed elapsed-time ÷ current-row-duration, which broke permanently at the first `Fxx` speed/tempo change and could not represent `EEx`/`E6x`/`Bxx`/`Dxx` at all. Now driven by the scheduler's recorded per-row audio times. Audio was always correct; only the display was wrong. Tests: `src/tests/tracker-position-sync.test.ts`. |
 | 2026-08-28 | fix | Measured the D29 idiom across the collection: 18 of 30 modules, 8005 bare sample-number rows, 6166 carrying misrouted effects. Not a C64-conversion curiosity — ordinary Amiga practice. |
 | 2026-08-28 | fix | A bare sample number no longer switches the sounding instrument, so per-voice effects keep addressing the voice that is playing (D29). Found via `think_twice_iii.mod`, where a hand-made decay envelope and a continuous arpeggio were both being routed to silent instruments. Tests appended to `src/tests/mod-import-sample-number-volume-reset.test.ts` (3 of 5 confirmed failing against the old code). |

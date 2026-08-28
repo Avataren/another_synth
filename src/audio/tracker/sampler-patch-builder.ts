@@ -21,6 +21,7 @@ import {
   SamplerTriggerMode,
   VoiceNodeType,
   type SamplerState,
+  type TrackerVolumeEnvelope,
   type VoiceLayout,
   type PatchLayout,
   type EnvelopeConfig,
@@ -57,6 +58,8 @@ export interface SamplerPatchSpec {
   loopLengthFrames: number;
   /** Voices allocated to this instrument. */
   voiceCount: number;
+  /** Optional tracker volume envelope (XM/IT style). */
+  trackerEnvelope?: TrackerVolumeEnvelope;
 }
 
 function generateNodeId(prefix: string): string {
@@ -122,6 +125,9 @@ export function createSamplerPatch(spec: SamplerPatchSpec): Patch {
   };
   if (spec.name) {
     samplerState.fileName = spec.name;
+  }
+  if (spec.trackerEnvelope) {
+    samplerState.trackerEnvelope = spec.trackerEnvelope;
   }
 
   const canonicalVoice: VoiceLayout = {

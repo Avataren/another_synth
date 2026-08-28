@@ -99,6 +99,32 @@ export enum SamplerTriggerMode {
   OneShot = 2,
 }
 
+/**
+ * A tracker volume envelope, as XM (and IT) define them: an arbitrary point
+ * list rather than an ADSR, with an optional sustain point the envelope holds
+ * at until key-off and an optional loop.
+ *
+ * Positions are in *ticks*, the tracker's own time unit, since that is how the
+ * file expresses them and a tick's wall-clock duration depends on the song's
+ * BPM at the moment the note plays.
+ */
+export interface TrackerVolumeEnvelope {
+  /** Envelope points; `value` is 0..64. */
+  points: Array<{ tick: number; value: number }>;
+  /** Index of the point to hold at until key-off, or -1 for none. */
+  sustainPoint: number;
+  /** Loop point indices; only meaningful when `loopEnabled`. */
+  loopStart: number;
+  loopEnd: number;
+  loopEnabled: boolean;
+  /**
+   * Fadeout rate, subtracted from a 65536 counter each tick after key-off.
+   * 0 means the note does not fade. Time to silence is
+   * (65536 / fadeout) ticks.
+   */
+  fadeout: number;
+}
+
 export interface SamplerState {
   id: string;
   frequency: number;
@@ -117,6 +143,12 @@ export interface SamplerState {
   sampleRate: number;
   channels: number;
   fileName?: string;
+  /**
+   * Volume envelope for tracker instruments that carry one. Applied on its own
+   * gain stage so it multiplies with, rather than overwrites, the channel
+   * volume that effects automate.
+   */
+  trackerEnvelope?: TrackerVolumeEnvelope;
 }
 
 /**

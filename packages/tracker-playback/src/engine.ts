@@ -1184,6 +1184,7 @@ export class PlaybackEngine {
             ...(cmd.sampleOffset !== undefined
               ? { sampleOffset: cmd.sampleOffset }
               : {}),
+            tickSeconds: this.timingSystem.getTickDurationSeconds(),
           });
           if (cmd.midi !== undefined) {
             this.lastTrackNote.set(context.trackIndex, {

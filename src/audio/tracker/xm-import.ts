@@ -14,7 +14,10 @@ import type {
   TrackerEntryData,
 } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
-import { SamplerLoopMode } from 'src/audio/types/synth-layout';
+import {
+  SamplerLoopMode,
+  type TrackerVolumeEnvelope,
+} from 'src/audio/types/synth-layout';
 import { createSamplerPatch } from 'src/audio/tracker/sampler-patch-builder';
 import {
   looksLikeXm as looksLikeXmInternal,
@@ -321,6 +324,33 @@ function buildInstrumentSlotsAndPatches(xm: XmSong): {
   return { slots, songPatches, slotForInstrument };
 }
 
+/**
+ * Convert an XM instrument's volume envelope into the engine's form.
+ *
+ * Returns undefined when the instrument has neither an enabled envelope nor a
+ * fadeout, so instruments that do not need one carry no extra state.
+ */
+function toTrackerEnvelope(
+  instrument: XmInstrument,
+): TrackerVolumeEnvelope | undefined {
+  const env = instrument.volumeEnvelope;
+  const hasEnvelope = env.enabled && env.points.length > 0;
+  if (!hasEnvelope && instrument.volumeFadeout <= 0) return undefined;
+
+  return {
+    points: hasEnvelope
+      ? env.points.map((p) => ({ tick: p.frame, value: p.value }))
+      : [],
+    // A sustain point only applies when the instrument enables sustain;
+    // otherwise the envelope runs straight through.
+    sustainPoint: hasEnvelope && env.sustainEnabled ? env.sustainPoint : -1,
+    loopStart: env.loopStart,
+    loopEnd: env.loopEnd,
+    loopEnabled: hasEnvelope && env.loopEnabled,
+    fadeout: instrument.volumeFadeout,
+  };
+}
+
 function createSamplerPatchForXmSample(
   instrument: XmInstrument,
   sample: XmSample,
@@ -328,6 +358,7 @@ function createSamplerPatchForXmSample(
 ): Patch {
   const sampleLengthFrames = Math.max(1, sample.data.length);
   const loopEnabled = sample.loopType !== 'none' && sample.loopLength > 0;
+  const envelope = toTrackerEnvelope(instrument);
 
   return createSamplerPatch({
     name: instrument.name || sample.name,
@@ -349,6 +380,7 @@ function createSamplerPatchForXmSample(
     loopStartFrames: loopEnabled ? sample.loopStart : 0,
     loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,
     voiceCount: 4,
+    ...(envelope ? { trackerEnvelope: envelope } : {}),
   });
 }
 

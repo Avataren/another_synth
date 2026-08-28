@@ -272,6 +272,11 @@ export interface ScheduledNoteEvent {
    * applied when the voice starts -- it cannot be set after the fact.
    */
   sampleOffset?: number;
+  /**
+   * Duration of one tracker tick in seconds at this note's position, so
+   * instruments can time tick-based envelopes against the song's tempo.
+   */
+  tickSeconds?: number;
 }
 
 export type ScheduledAutomationHandler = (

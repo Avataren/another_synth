@@ -10,16 +10,33 @@
  */
 
 import type { Patch } from './types/preset-types';
-import type { SamplerState } from './types/synth-layout';
+import type {
+  SamplerState,
+  TrackerVolumeEnvelope,
+} from './types/synth-layout';
 import { decodeAudioAssetToFloat32Array } from './serialization/audio-asset-encoder';
 import { AudioAssetType } from './types/preset-types';
+
+/**
+ * Fallback tick duration when a caller does not supply one: 2.5 / 125 BPM,
+ * the tracker default. A tick is 2.5/BPM seconds in both ProTracker and FT2.
+ */
+const DEFAULT_TICK_SECONDS = 2.5 / 125;
 
 interface ActiveVoice {
   source: AudioBufferSourceNode;
   gainNode: GainNode;
+  /**
+   * Separate stage for the instrument's volume envelope, so it multiplies with
+   * the channel volume on `gainNode` rather than fighting the automation that
+   * volume effects schedule there.
+   */
+  envelopeGain: GainNode | null;
   panNode: StereoPannerNode;
   noteNumber: number;
   startTime: number;
+  /** Tick duration in force when this voice started, for envelope release. */
+  tickSeconds: number;
   frequency: number;
   targetGain: number; // Track scheduled gain value (Web Audio param.value doesn't reflect scheduled changes)
 }
@@ -185,6 +202,7 @@ export default class ModInstrument {
         oldVoice.source.disconnect();
         oldVoice.gainNode.disconnect();
         oldVoice.panNode.disconnect();
+        oldVoice.envelopeGain?.disconnect();
         this.activeVoices.delete(voiceIndex);
       }
     }
@@ -237,7 +255,11 @@ export default class ModInstrument {
     this.activeVoices.set(voiceIndex, {
       source,
       gainNode,
+      // The immediate (non-scheduled) path is used for previews, which do not
+      // run tracker envelopes.
+      envelopeGain: null,
       panNode,
+      tickSeconds: DEFAULT_TICK_SECONDS,
       noteNumber,
       startTime: this.audioContext.currentTime,
       frequency: frequency ?? 440,
@@ -285,6 +307,7 @@ export default class ModInstrument {
             voice.source.disconnect();
             voice.gainNode.disconnect();
             voice.panNode.disconnect();
+            voice.envelopeGain?.disconnect();
           } catch (e) {
             // Nodes may already be disconnected, ignore
           }
@@ -318,6 +341,7 @@ export default class ModInstrument {
               voice.source.disconnect();
               voice.gainNode.disconnect();
               voice.panNode.disconnect();
+              voice.envelopeGain?.disconnect();
             } catch (e) {
               // Nodes may already be disconnected, ignore
             }
@@ -359,6 +383,7 @@ export default class ModInstrument {
           voice.source.disconnect();
           voice.gainNode.disconnect();
           voice.panNode.disconnect();
+          voice.envelopeGain?.disconnect();
         } catch (e) {
           // Nodes may already be disconnected, ignore
         }
@@ -444,6 +469,7 @@ export default class ModInstrument {
         voice.source.disconnect();
         voice.gainNode.disconnect();
         voice.panNode.disconnect();
+        voice.envelopeGain?.disconnect();
       } catch (e) {
         // Nodes may already be disconnected, ignore
       }
@@ -524,6 +550,95 @@ export default class ModInstrument {
 
   // Additional compatibility methods for InstrumentV2 interface
 
+  /**
+   * Schedule an XM-style volume envelope onto a voice's dedicated gain stage.
+   *
+   * Envelope positions are in ticks, so they are converted with the tick
+   * duration in force when the note starts. A sustain point holds the envelope
+   * until key-off; everything up to it is scheduled now, and the remainder is
+   * scheduled by `releaseTrackerEnvelope` when the note is released.
+   *
+   * Returns the envelope value being held at, so the release can ramp from it.
+   */
+  private scheduleTrackerEnvelope(
+    param: AudioParam,
+    envelope: TrackerVolumeEnvelope,
+    startTime: number,
+    tickSeconds: number,
+  ): void {
+    const points = envelope.points;
+    if (points.length === 0) {
+      param.setValueAtTime(1, startTime);
+      return;
+    }
+
+    const sustain =
+      envelope.sustainPoint >= 0 && envelope.sustainPoint < points.length
+        ? envelope.sustainPoint
+        : points.length - 1;
+
+    const level = (value: number) => Math.max(0, Math.min(1, value / 64));
+
+    param.setValueAtTime(level(points[0]!.value), startTime);
+    for (let i = 1; i <= sustain; i++) {
+      const point = points[i]!;
+      param.linearRampToValueAtTime(
+        level(point.value),
+        startTime + point.tick * tickSeconds,
+      );
+    }
+  }
+
+  /**
+   * Release an XM-style envelope: the note keeps sounding and fades out rather
+   * than being cut.
+   *
+   * XM decrements a 65536 counter by `fadeout` every tick after key-off and
+   * scales the instrument's volume by counter/65536, so silence arrives after
+   * 65536/fadeout ticks and the decay is linear -- which a single linear ramp
+   * reproduces exactly.
+   *
+   * APPROXIMATION: the envelope's own points past the sustain also continue in
+   * FastTracker 2, multiplying with the fadeout. Only the fadeout is applied
+   * here, since it is the term that actually takes the note to silence.
+   * Instruments with a shaped release tail will decay a little differently.
+   *
+   * Returns how long the release lasts, so the caller can stop the source.
+   */
+  private scheduleTrackerRelease(
+    param: AudioParam,
+    envelope: TrackerVolumeEnvelope,
+    releaseTime: number,
+    tickSeconds: number,
+  ): number {
+    const MAX_RELEASE_SECONDS = 10;
+    const MIN_RELEASE_SECONDS = 0.01;
+
+    const seconds =
+      envelope.fadeout > 0
+        ? Math.min(
+            MAX_RELEASE_SECONDS,
+            (65536 / envelope.fadeout) * tickSeconds,
+          )
+        : MIN_RELEASE_SECONDS;
+
+    // Freeze the envelope where it currently is, then decay from there.
+    // cancelAndHoldAtTime is the correct primitive but is not universally
+    // available, so fall back to sampling the parameter.
+    const holdable = param as AudioParam & {
+      cancelAndHoldAtTime?: (time: number) => void;
+    };
+    if (typeof holdable.cancelAndHoldAtTime === 'function') {
+      holdable.cancelAndHoldAtTime(releaseTime);
+    } else {
+      param.cancelScheduledValues(releaseTime);
+      param.setValueAtTime(param.value, releaseTime);
+    }
+    param.linearRampToValueAtTime(0, releaseTime + seconds);
+
+    return seconds;
+  }
+
   noteOnAtTime(
     noteNumber: number,
     velocity: number,
@@ -534,6 +649,8 @@ export default class ModInstrument {
       pan?: number;
       /** Normalized 0-1 start offset into the sample (ProTracker 9xx). */
       sampleOffset?: number;
+      /** Duration of one tracker tick in seconds, for envelope timing. */
+      tickSeconds?: number;
     },
   ): number | undefined {
     if (!this.audioBuffer || !this.samplerState) {
@@ -581,6 +698,7 @@ export default class ModInstrument {
         oldVoice.source.disconnect();
         oldVoice.gainNode.disconnect();
         oldVoice.panNode.disconnect();
+        oldVoice.envelopeGain?.disconnect();
         this.activeVoices.delete(voiceIndex);
       }
     }
@@ -625,8 +743,26 @@ export default class ModInstrument {
     const playbackRate = this.calculatePlaybackRate(frequency);
     source.playbackRate.value = playbackRate;
 
-    // Connect audio graph
-    source.connect(gainNode);
+    // Connect audio graph. The envelope, when the instrument has one, gets its
+    // own stage ahead of the channel-volume node.
+    const envelope = this.samplerState.trackerEnvelope;
+    const tickSeconds = options?.tickSeconds ?? DEFAULT_TICK_SECONDS;
+    let envelopeGain: GainNode | null = null;
+    if (envelope && (envelope.points.length > 0 || envelope.fadeout > 0)) {
+      envelopeGain = this.audioContext.createGain();
+      envelopeGain.gain.value = 1;
+      const envelopeStart = Math.max(time, this.audioContext.currentTime);
+      this.scheduleTrackerEnvelope(
+        envelopeGain.gain,
+        envelope,
+        envelopeStart,
+        tickSeconds,
+      );
+      source.connect(envelopeGain);
+      envelopeGain.connect(gainNode);
+    } else {
+      source.connect(gainNode);
+    }
     gainNode.connect(panNode);
     panNode.connect(this.outputNode);
 
@@ -656,7 +792,9 @@ export default class ModInstrument {
     this.activeVoices.set(voiceIndex, {
       source,
       gainNode,
+      envelopeGain,
       panNode,
+      tickSeconds,
       noteNumber,
       startTime: startTime,
       frequency: frequency ?? 440,
@@ -693,13 +831,28 @@ export default class ModInstrument {
     const now = this.audioContext.currentTime;
     const scheduledTime = Math.max(time, now);
 
-    // Apply quick release envelope at the scheduled time
-    const releaseTime = 0.01;
-    voice.gainNode.gain.setValueAtTime(
-      voice.gainNode.gain.value,
-      scheduledTime,
-    );
-    voice.gainNode.gain.linearRampToValueAtTime(0, scheduledTime + releaseTime);
+    // An instrument with a tracker envelope fades out on its own terms rather
+    // than being cut: XM key-off starts the fadeout and the note rings on.
+    const envelope = this.samplerState?.trackerEnvelope;
+    let releaseTime = 0.01;
+    if (voice.envelopeGain && envelope) {
+      releaseTime = this.scheduleTrackerRelease(
+        voice.envelopeGain.gain,
+        envelope,
+        scheduledTime,
+        voice.tickSeconds,
+      );
+    } else {
+      // Quick release to avoid a click.
+      voice.gainNode.gain.setValueAtTime(
+        voice.gainNode.gain.value,
+        scheduledTime,
+      );
+      voice.gainNode.gain.linearRampToValueAtTime(
+        0,
+        scheduledTime + releaseTime,
+      );
+    }
 
     // Stop source after release
     const stopTime = scheduledTime + releaseTime;
@@ -716,6 +869,7 @@ export default class ModInstrument {
         voice.source.disconnect();
         voice.gainNode.disconnect();
         voice.panNode.disconnect();
+        voice.envelopeGain?.disconnect();
       } catch (e) {
         // Nodes may already be disconnected, ignore
       }
