@@ -70,6 +70,8 @@ type PendingScheduledEvent =
       trackIndex?: number;
       frequency?: number;
       pan?: number;
+      /** Normalized 0-1 sample start offset (ProTracker 9xx). */
+      sampleOffset?: number;
       enqueuedAt: number;
     }
   | {
@@ -648,6 +650,7 @@ export class TrackerSongBank {
             event.trackIndex,
             event.frequency,
             event.pan,
+            event.sampleOffset,
           );
         } else {
           this.dispatchNoteOffAtTime(
@@ -975,6 +978,12 @@ export class TrackerSongBank {
     trackIndex?: number,
     frequency?: number,
     pan?: number,
+    /**
+     * Normalized 0-1 start offset into the sample (ProTracker 9xx). Applied
+     * at voice start -- it cannot be set afterwards on a Web Audio buffer
+     * source, so it has to arrive with the note rather than as automation.
+     */
+    sampleOffset?: number,
   ) {
     if (instrumentId === undefined) {
       console.warn('[SongBank] noteOnAtTime: instrumentId is undefined');
@@ -1004,6 +1013,7 @@ export class TrackerSongBank {
       if (trackIndex !== undefined) queued.trackIndex = trackIndex;
       if (frequency !== undefined) queued.frequency = frequency;
       if (pan !== undefined) queued.pan = pan;
+      if (sampleOffset !== undefined) queued.sampleOffset = sampleOffset;
       this.enqueueScheduledEvent(queued);
       this.ensureInstrumentIfDesired(instrumentId);
       return;
@@ -1017,6 +1027,7 @@ export class TrackerSongBank {
       trackIndex,
       frequency,
       pan,
+      sampleOffset,
     );
   }
 
@@ -1169,6 +1180,7 @@ export class TrackerSongBank {
     trackIndex?: number,
     frequency?: number,
     pan?: number,
+    sampleOffset?: number,
   ) {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
@@ -1216,6 +1228,7 @@ export class TrackerSongBank {
         allowDuplicate: true,
         ...(frequency !== undefined ? { frequency } : {}),
         ...(pan !== undefined ? { pan } : {}),
+        ...(sampleOffset !== undefined ? { sampleOffset } : {}),
       },
     );
 

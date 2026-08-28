@@ -775,12 +775,28 @@ export class PooledInstrument {
 
   // Additional compatibility methods
   setVoiceMacroAtTime(
-    _voiceIndex: number,
-    _macroIndex: number,
-    _value: number,
-    _time: number,
+    voiceIndex: number,
+    macroIndex: number,
+    value: number,
+    time?: number,
   ): void {
-    // Stub: MOD instruments don't use voice macros during playback
+    // This was a no-op stub claiming MOD instruments don't use voice macros
+    // during playback. They do: MOD-imported patches route macro 0 to the
+    // mixer's stereo pan and macro 1 to the sampler's sample-offset port (see
+    // mod-import.ts). Dropping them here silently killed per-channel panning
+    // and every 9xx sample-offset command on the pooled path.
+    if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
+    const clampedValue = Math.min(1, Math.max(0, value));
+    const when =
+      typeof time === 'number' ? time : this.audioContext.currentTime;
+    const globalVoice = this.localToGlobal(voiceIndex);
+    const engineId = Math.floor(globalVoice / VOICES_PER_ENGINE);
+    const voiceId = globalVoice % VOICES_PER_ENGINE;
+    const param = this.workletNode.parameters.get(
+      `macro_engine${engineId}_voice${voiceId}_${macroIndex}`,
+    );
+    if (!param) return;
+    param.setValueAtTime(clampedValue, when);
   }
 
   setMacro(

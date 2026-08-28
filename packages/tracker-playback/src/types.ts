@@ -258,6 +258,11 @@ export interface ScheduledNoteEvent {
   frequency?: number;
   /** Optional pan value 0-1 (for stereo positioning) */
   pan?: number;
+  /**
+   * Normalized 0-1 start offset into the sample (ProTracker 9xx). Must be
+   * applied when the voice starts -- it cannot be set after the fact.
+   */
+  sampleOffset?: number;
 }
 
 export type ScheduledAutomationHandler = (

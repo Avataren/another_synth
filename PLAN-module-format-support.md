@@ -274,6 +274,24 @@ what multi-channel MOD players do. The 1/2/3-channel special cases and the 4-cha
 result are unchanged — pinned by a test, since panning feeds macro 0 and a regression
 here would be audible on every existing MOD.
 
+**D11 — 9xx sample offset rides on the noteOn, not on separate automation.**
+9xx was a no-op end to end, in three independent ways: the offset was emitted as a
+standalone command *after* the noteOn (too late — a Web Audio `AudioBufferSourceNode`
+cannot be repositioned once started); `ModInstrument.setVoiceMacroAtTime` handled only
+macro 0 and dropped macro 1, which is the offset route; and
+`PooledInstrument.setVoiceMacroAtTime` was an empty stub, which also silently killed
+per-channel panning on that path. History: the stub arrived with `3dea12d "wip pooled
+engines"` (which also made pooling the default), and `a77b8f9` later corrected the
+*import-side* arithmetic — a right number routed into a dead end. The offset is now
+carried on the noteOn command and applied at `source.start(when, offset)`. A 9xx row
+with no note still emits the standalone command, which the instrument remembers and
+applies to the next note, matching ProTracker's per-channel offset memory.
+
+**Lesson for Phase 2:** an effect can look fully implemented across the parser, effect
+processor, engine and song-bank and still terminate in a stub. When verifying an effect,
+trace it to the point where it touches an AudioParam or a buffer — not to the point
+where it stops being interesting.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -301,5 +319,6 @@ runtime, more work). Decide at the start of Phase 4, informed by measured Phase 
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | fix | 9xx sample offset fixed end to end (D11): offset now rides on the noteOn and is applied at voice start; `ModInstrument` honours macro 1 with ProTracker-style offset memory; `PooledInstrument.setVoiceMacroAtTime` implemented (also restores per-channel pan on the pooled path). Tests: `src/tests/mod-sample-offset-playback.test.ts`, `src/tests/mod-instrument-sample-offset.test.ts`. |
 | 2026-08-28 | 1 | MOD parser accepts up to 32 channels (`channelsForSignature`: `<n>CHN`, `<nn>CH/CN`, `TDZ<n>`, CD81/OKTA/OCTA); FLT8 explicitly rejected (D9). Importer derives track count from the module and repeats L-R-R-L panning past 4 channels (D10). Verified `misc/peacedroid.mod` parses byte-identically before/after. Tests: `src/tests/mod-parser-multichannel.test.ts` (includes per-channel effect-routing coverage). |
 | 2026-08-28 | 1 | Row count moved onto `TrackerPattern.rows`; song file v3 backfills pre-v3 files from `data.patternRows` (D7). `engine.setLength` no longer flattens pattern lengths; added `setPatternLength` (D8). Song builder, playback store, export duration and the pattern UI all read per-pattern counts. Tests: `src/tests/stores/tracker-store-pattern-rows.test.ts`, `src/tests/tracker-engine-pattern-length.test.ts`. |

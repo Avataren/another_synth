@@ -34,6 +34,13 @@ export default class ModInstrument {
   private activeVoices: Map<number, ActiveVoice> = new Map();
   private voiceRoundRobinIndex = 0;
   private ready = false;
+  /**
+   * Sample offset (0-1) set by a 9xx row that carried no note of its own,
+   * waiting to be consumed by the next note. Mirrors ProTracker's per-channel
+   * offset memory. Offsets that arrive *with* a note bypass this and are
+   * passed straight to noteOnAtTime.
+   */
+  private pendingSampleOffset: number | undefined;
 
   public get isReady(): boolean {
     return this.ready;
@@ -520,7 +527,13 @@ export default class ModInstrument {
     noteNumber: number,
     velocity: number,
     time: number,
-    options?: { allowDuplicate?: boolean; frequency?: number; pan?: number },
+    options?: {
+      allowDuplicate?: boolean;
+      frequency?: number;
+      pan?: number;
+      /** Normalized 0-1 start offset into the sample (ProTracker 9xx). */
+      sampleOffset?: number;
+    },
   ): number | undefined {
     if (!this.audioBuffer || !this.samplerState) {
       console.warn(
@@ -616,9 +629,27 @@ export default class ModInstrument {
     gainNode.connect(panNode);
     panNode.connect(this.outputNode);
 
-    // Schedule playback at the specified time
+    // Schedule playback at the specified time.
+    //
+    // ProTracker 9xx has to be applied here: an AudioBufferSourceNode cannot
+    // be seeked once started, so passing the offset to start() is the only
+    // way to honour it. Clamp just inside the buffer -- an offset at or past
+    // the end would start a node that produces nothing and never fires
+    // onended for looped samples, leaking the voice slot.
     const startTime = Math.max(time, this.audioContext.currentTime);
-    source.start(startTime);
+    const offsetNorm = options?.sampleOffset ?? this.pendingSampleOffset;
+    this.pendingSampleOffset = undefined;
+    if (offsetNorm !== undefined && offsetNorm > 0) {
+      const duration = this.audioBuffer.duration;
+      const maxOffset = Math.max(0, duration - 1 / this.audioBuffer.sampleRate);
+      const offsetSeconds = Math.min(
+        Math.max(0, offsetNorm) * duration,
+        maxOffset,
+      );
+      source.start(startTime, offsetSeconds);
+    } else {
+      source.start(startTime);
+    }
 
     // Store active voice
     this.activeVoices.set(voiceIndex, {
@@ -771,9 +802,18 @@ export default class ModInstrument {
     value: number,
     _time: number,
   ): void {
-    // Macro 0 is pan for MOD instruments
+    // Macro 0 is pan for MOD instruments.
     if (macroIndex === 0) {
       this.setPan(voiceIndex, value);
+      return;
+    }
+    // Macro 1 is the MOD 9xx sample offset. A voice that has already started
+    // cannot be repositioned (see noteOnAtTime), so an offset arriving as
+    // automation -- a 9xx row with no note of its own -- is remembered and
+    // consumed by the next note on this instrument, which is also what
+    // ProTracker does with its per-channel offset memory.
+    if (macroIndex === 1) {
+      this.pendingSampleOffset = Math.max(0, Math.min(1, value));
     }
   }
 

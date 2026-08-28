@@ -236,7 +236,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
         if (event.type === 'noteOn') {
           if (event.instrumentId === undefined || event.midi === undefined) return;
           const velocity = Number.isFinite(event.velocity) ? (event.velocity as number) : 100;
-          songBank.noteOnAtTime(event.instrumentId, event.midi, velocity, event.time, event.trackIndex, event.frequency, event.pan);
+          songBank.noteOnAtTime(event.instrumentId, event.midi, velocity, event.time, event.trackIndex, event.frequency, event.pan, event.sampleOffset);
         } else {
           if (event.instrumentId === undefined) return;
           songBank.noteOffAtTime(event.instrumentId, event.midi, event.time, event.trackIndex);

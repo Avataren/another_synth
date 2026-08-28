@@ -1133,6 +1133,9 @@ export class PlaybackEngine {
               ? { frequency: cmd.frequency }
               : {}),
             ...(cmd.pan !== undefined ? { pan: cmd.pan } : {}),
+            ...(cmd.sampleOffset !== undefined
+              ? { sampleOffset: cmd.sampleOffset }
+              : {}),
           });
           if (cmd.midi !== undefined) {
             this.lastTrackNote.set(context.trackIndex, {

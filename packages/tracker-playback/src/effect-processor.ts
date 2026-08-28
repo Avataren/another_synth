@@ -210,6 +210,8 @@ export interface TrackEffectState {
   lastTremolo: number;
   lastVolSlide: number;
   lastArpeggio: number;
+  /** 9xx offset memory (ProTracker reuses the last value for a bare 900). */
+  lastSampleOffset: number;
 
   // Note delay overflow to next row (ProTracker EDx quirk)
   carryDelayedNote: { midi: number; velocity: number; frequency?: number } | null;
@@ -270,6 +272,7 @@ export function createTrackEffectState(): TrackEffectState {
     lastTremolo: 0,
     lastVolSlide: 0,
     lastArpeggio: 0,
+    lastSampleOffset: 0,
     carryDelayedNote: null,
   };
 }
@@ -470,6 +473,16 @@ export type ProcessorCommand =
       velocity: number;
       frequency?: number;
       pan?: number;
+      /**
+       * Normalized 0-1 start offset into the sample (ProTracker 9xx).
+       *
+       * This rides along with the note rather than arriving as a separate
+       * command because a sample offset can only be applied *at* the moment
+       * playback starts -- a Web Audio AudioBufferSourceNode cannot be seeked
+       * once started, and the standalone `sampleOffset` command is emitted
+       * after the noteOn, i.e. always too late.
+       */
+      sampleOffset?: number;
     }
   | { kind: 'noteOff'; midi?: number }
   | {
@@ -531,6 +544,17 @@ export function processEffectTick0(
     commands.push({ kind: 'pan', pan: value });
   };
 
+  // ProTracker 9xx sets where in the sample a note starts, so it has to be
+  // resolved before the note-trigger block below rather than in the effect
+  // switch further down (which runs after the noteOn has already been
+  // emitted). A bare 900 reuses the channel's remembered value.
+  let pendingSampleOffset: number | undefined;
+  if (effect?.type === 'sampleOffset') {
+    const raw = effect.paramX * 16 + effect.paramY || state.lastSampleOffset;
+    state.lastSampleOffset = raw;
+    pendingSampleOffset = Math.max(0, Math.min(1, raw / 255));
+  }
+
   const pushNoteOn = (midi: number, velocity: number) => {
     commands.push({
       kind: 'noteOn',
@@ -538,6 +562,9 @@ export function processEffectTick0(
       velocity,
       frequency: state.currentFrequency,
       ...(pan !== undefined ? { pan } : {}),
+      ...(pendingSampleOffset !== undefined
+        ? { sampleOffset: pendingSampleOffset }
+        : {}),
     });
   };
 
@@ -856,12 +883,18 @@ export function processEffectTick0(
       break;
 
     case 'sampleOffset': {
-      const raw = effect.paramX * 16 + effect.paramY; // 0x00-0xFF
-      const offsetNorm = Math.max(0, Math.min(1, raw / 255));
+      // When a note starts on this row the offset already rode along with the
+      // noteOn (see pendingSampleOffset). Emitting it again here would apply
+      // it a second time, after the voice has started -- too late to affect
+      // playback, and on the WASM path it would leave the macro latched for
+      // the *next* note. Only emit the standalone command for a 9xx with no
+      // note of its own.
+      const startedNote = commands.some((c) => c.kind === 'noteOn');
+      if (startedNote || pendingSampleOffset === undefined) break;
       const cmd: ProcessorCommand =
         voiceIndex !== undefined
-          ? { kind: 'sampleOffset', offset: offsetNorm, voiceIndex }
-          : { kind: 'sampleOffset', offset: offsetNorm };
+          ? { kind: 'sampleOffset', offset: pendingSampleOffset, voiceIndex }
+          : { kind: 'sampleOffset', offset: pendingSampleOffset };
       commands.push(cmd);
       break;
     }
