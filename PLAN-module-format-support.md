@@ -594,11 +594,7 @@ Fadeout is exact: XM subtracts `fadeout` from a 65536 counter each tick and scal
 by `counter/65536`, so silence arrives after `65536/fadeout` ticks and the decay is linear
 — one linear ramp reproduces it.
 
-**Known approximation:** the envelope's own points past the sustain also continue in FT2,
-multiplying with the fadeout; only the fadeout is applied on release, since it is the term
-that reaches silence. This matters most for long sustained notes.
-
-Envelope loops are implemented as of D38.
+Envelope loops are implemented as of D38, and the release segment as of D39.
 
 **D32 — Voices are owned per tracker channel, not pooled per instrument.**
 A tracker channel is monophonic, so a note on a channel should only ever replace *that*
@@ -713,6 +709,29 @@ and it is a genuine gap, but it has *not* been confirmed as the cause of that re
 of 95 envelopes legitimately end at zero and hold, which is correct FT2 behaviour for a
 non-looping, non-sustaining envelope, so some silence is expected and correct.
 
+**D39 — Key-off is an envelope release, not a mute.**
+Corrected by the user. XM's note 97 releases the envelope: the note carries on, the
+envelope continues past its sustain point, and the fadeout (if any) takes it to silence.
+
+The release was cutting the note in 10ms whenever an instrument had no fadeout, which is
+a mute in all but name — notes that were meant to ring simply disappeared. Release now
+follows the envelope's own points past the sustain point, and ends at whichever of the
+release tail or the fadeout reaches zero first. An envelope with *neither* has no defined
+end in FT2: the note sustains until the channel plays again, so no stop is scheduled at
+all and the voice is left for the next note on that channel to replace.
+
+**D40 — Replacing a voice must be scheduled, not immediate.**
+`stopReleasingVoice` and the note-on retirement path both called `source.stop()` with no
+argument, which stops *now*. Rows are scheduled up to a second ahead, so this silenced a
+note at the moment its successor was *scheduled* rather than when that successor sounded.
+For any part with notes close together — `external.xm` pattern 1 puts a note, a key-off a
+row later, and the next note a few rows on — scheduling a batch of rows destroyed most of
+the notes in it. Both paths now stop at the replacing note's start time.
+
+This was introduced by the D36 fix for "notes don't get stopped", and is a good argument
+for treating "stop the previous thing" as always needing an explicit time in a
+lookahead scheduler.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -813,6 +832,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | Two fixes for notes going missing: voice replacement is now scheduled at the replacing note's time rather than immediately (D40 — self-inflicted by the D36 fix, and the cause of the `external.xm` report), and key-off is a real envelope release rather than a 10ms cut (D39, corrected by the user). |
 | 2026-08-29 | 4 | Envelope loops implemented (D38). A looping envelope was previously played once and held at its final value, silencing most instruments that use one — 23 envelopes in the corpus loop, including all 16 in `external.xm`. Not confirmed as the cause of the reported silence; see the caveat in D38. |
 | 2026-08-29 | 4 | XM tempo fixed (D37): "speed" (ticks per row) is separate from BPM, and the importer never read the header's `defaultSpeed` while the engine hardcoded 6. Most XM files declare 3, so they played at exactly half tempo. Now carried on `Song.initialSpeed` and through the song file. |
 | 2026-08-29 | 4 | Note release fixed (D36): `noteOffAtTime` dropped every release scheduled more than 100ms ahead — i.e. all of them — so notes were never released and XM key-off did nothing. Releasing voices are now also cut by the next note on the channel, which previously played over them. |

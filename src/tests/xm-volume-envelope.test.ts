@@ -245,7 +245,11 @@ describe('tracker volume envelope', () => {
     expect(ramp.time).toBeCloseTo(1.0 + 1.28, 6);
   });
 
-  it('cuts quickly when the instrument has no fadeout', () => {
+  it('sustains rather than cutting when there is no fadeout or release tail', () => {
+    // Key-off is an envelope release, not a mute. An envelope with nothing
+    // after its sustain point and no fadeout has no defined end in FT2: the
+    // note rings until the channel plays again. Cutting it instead removes
+    // notes that were meant to sound.
     const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
     setEnvelope({
       points: [{ tick: 0, value: 64 }],
@@ -260,8 +264,39 @@ describe('tracker volume envelope', () => {
     envelopeCalls.length = 0;
     instrument.gateOffVoiceAtTime(voice, 1.0);
 
-    const ramp = envelopeCalls.find((c) => c.kind === 'linearRamp')!;
-    expect(ramp.time).toBeCloseTo(1.01, 6);
+    expect(envelopeCalls.some((c) => c.kind === 'linearRamp' && c.value === 0))
+      .toBe(false);
+  });
+
+  it('follows the envelope’s release segment past the sustain point', () => {
+    // The points after the sustain are the instrument's own release shape.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      points: [
+        { tick: 0, value: 64 },
+        { tick: 10, value: 64 },
+        { tick: 20, value: 32 },
+        { tick: 40, value: 0 },
+      ],
+      sustainPoint: 1,
+      loopStart: 0,
+      loopEnd: 0,
+      loopEnabled: false,
+      fadeout: 0,
+    });
+
+    const voice = instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 })!;
+    envelopeCalls.length = 0;
+    instrument.gateOffVoiceAtTime(voice, 1.0);
+
+    // Tail runs 10 -> 40 ticks after the sustain point: 0.6s of release,
+    // passing through the half-level point on the way.
+    const half = envelopeCalls.find((c) => c.value === 0.5);
+    expect(half).toBeDefined();
+    expect(half!.time).toBeCloseTo(1.0 + 0.2, 6);
+    const end = envelopeCalls[envelopeCalls.length - 1]!;
+    expect(end.value).toBe(0);
+    expect(end.time).toBeCloseTo(1.0 + 0.6, 6);
   });
 });
 
@@ -790,5 +825,120 @@ describe('looping volume envelopes', () => {
     instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 });
 
     expect(envelopeCalls.length).toBeLessThan(10);
+  });
+});
+
+/**
+ * Replacing a voice must not silence it before it has been heard.
+ *
+ * Rows are scheduled up to a second ahead of the audio, so when a note is
+ * scheduled the note it replaces has usually not started playing yet. Stopping
+ * the old source with no time argument stopped it *immediately*, killing notes
+ * at the moment their successor was scheduled rather than when it sounded.
+ *
+ * external.xm is the case that exposed it: every note is followed by a key-off
+ * a row later and the next note a few rows on, so scheduling a batch of rows
+ * wiped out most of the notes in it.
+ */
+describe('replacing a voice waits for the replacing note', () => {
+  function harness() {
+    const stops: Array<{ when: number | undefined }> = [];
+    const audioContext = {
+      currentTime: 0,
+      createBufferSource: () => ({
+        buffer: null as unknown,
+        loop: false,
+        loopStart: 0,
+        loopEnd: 0,
+        playbackRate: {
+          value: 1,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        stop: (when?: number) => stops.push({ when }),
+        start: vi.fn(),
+        onended: null as unknown,
+      }),
+      createGain: () => ({
+        gain: makeParam([]),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+      createStereoPanner: () => ({
+        pan: {
+          value: 0,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+          cancelScheduledValues: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    } as unknown as AudioContext;
+
+    const instrument = new ModInstrument(
+      { connect: vi.fn() } as unknown as AudioNode,
+      audioContext,
+    );
+    Reflect.set(instrument as object, 'audioBuffer', {
+      duration: 1,
+      sampleRate: 8000,
+      length: 8000,
+    });
+    Reflect.set(instrument as object, 'ready', true);
+    Reflect.set(instrument as object, 'samplerState', {
+      gain: 1,
+      loopMode: 0,
+      loopStart: 0,
+      loopEnd: 1,
+      rootNote: 60,
+      sampleRate: 8000,
+      trackerEnvelope: {
+        points: [{ tick: 0, value: 64 }],
+        sustainPoint: 0,
+        loopStart: 0,
+        loopEnd: 0,
+        loopEnabled: false,
+        fadeout: 512,
+      },
+    });
+
+    return { instrument, stops };
+  }
+
+  it('stops a still-sounding note at the replacing note’s time', () => {
+    const { instrument, stops } = harness();
+    // Both scheduled ahead: the first at 0.5s, its replacement at 0.9s.
+    instrument.noteOnAtTime(60, 127, 0.5, { tickSeconds: 0.02, trackIndex: 0 });
+    stops.length = 0;
+    instrument.noteOnAtTime(64, 127, 0.9, { tickSeconds: 0.02, trackIndex: 0 });
+
+    expect(stops).toHaveLength(1);
+    // Not "now" (0), which would silence a note that has not played yet.
+    expect(stops[0]!.when).toBeCloseTo(0.9, 6);
+  });
+
+  it('stops a releasing note at the replacing note’s time', () => {
+    const { instrument, stops } = harness();
+    instrument.noteOnAtTime(60, 127, 0.5, { tickSeconds: 0.02, trackIndex: 0 });
+    instrument.noteOffAtTime(60, 0.6, 0);
+    stops.length = 0;
+
+    instrument.noteOnAtTime(64, 127, 0.9, { tickSeconds: 0.02, trackIndex: 0 });
+
+    expect(stops.length).toBeGreaterThan(0);
+    expect(stops[0]!.when).toBeCloseTo(0.9, 6);
+  });
+
+  it('never schedules a stop before the present', () => {
+    const { instrument, stops } = harness();
+    instrument.noteOnAtTime(60, 127, 0.5, { tickSeconds: 0.02, trackIndex: 0 });
+    stops.length = 0;
+    // A late row, already behind the clock.
+    instrument.noteOnAtTime(64, 127, -1, { tickSeconds: 0.02, trackIndex: 0 });
+
+    expect(stops[0]!.when).toBeGreaterThanOrEqual(0);
   });
 });

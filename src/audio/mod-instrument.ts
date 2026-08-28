@@ -768,41 +768,49 @@ export default class ModInstrument {
   }
 
   /**
-   * Release an XM-style envelope: the note keeps sounding and fades out rather
-   * than being cut.
+   * Release an XM-style envelope.
+   *
+   * Key-off is an envelope *release*, not a mute: the note carries on, the
+   * envelope continues past its sustain point, and the instrument's fadeout
+   * (when it has one) takes it to silence. Cutting the note instead -- which a
+   * short fixed release amounts to -- removes notes that were meant to ring,
+   * which is what made parts sound like they had notes missing.
    *
    * XM decrements a 65536 counter by `fadeout` every tick after key-off and
-   * scales the instrument's volume by counter/65536, so silence arrives after
-   * 65536/fadeout ticks and the decay is linear -- which a single linear ramp
-   * reproduces exactly.
+   * scales volume by counter/65536, so silence arrives after 65536/fadeout
+   * ticks with a linear decay, which one linear ramp reproduces.
    *
-   * APPROXIMATION: the envelope's own points past the sustain also continue in
-   * FastTracker 2, multiplying with the fadeout. Only the fadeout is applied
-   * here, since it is the term that actually takes the note to silence.
-   * Instruments with a shaped release tail will decay a little differently.
-   *
-   * Returns how long the release lasts, so the caller can stop the source.
+   * Returns how long the release lasts, or null when the note has no defined
+   * end -- an envelope with neither a fadeout nor points past its sustain
+   * sustains indefinitely in FT2, and is left to ring until the channel plays
+   * something else.
    */
   private scheduleTrackerRelease(
     param: AudioParam,
     envelope: TrackerVolumeEnvelope,
     releaseTime: number,
     tickSeconds: number,
-  ): number {
+  ): number | null {
     const MAX_RELEASE_SECONDS = 10;
-    const MIN_RELEASE_SECONDS = 0.01;
+    const points = envelope.points;
+    const level = (value: number) => Math.max(0, Math.min(1, value / 64));
 
-    const seconds =
+    // Points after the sustain are the envelope's own release segment.
+    const hasSustain =
+      envelope.sustainPoint >= 0 && envelope.sustainPoint < points.length;
+    const tailStart = hasSustain ? envelope.sustainPoint : -1;
+    const tailSeconds =
+      tailStart >= 0 && tailStart < points.length - 1
+        ? (points[points.length - 1]!.tick - points[tailStart]!.tick) *
+          tickSeconds
+        : Infinity;
+
+    const fadeoutSeconds =
       envelope.fadeout > 0
-        ? Math.min(
-            MAX_RELEASE_SECONDS,
-            (65536 / envelope.fadeout) * tickSeconds,
-          )
-        : MIN_RELEASE_SECONDS;
+        ? (65536 / envelope.fadeout) * tickSeconds
+        : Infinity;
 
-    // Freeze the envelope where it currently is, then decay from there.
-    // cancelAndHoldAtTime is the correct primitive but is not universally
-    // available, so fall back to sampling the parameter.
+    // Freeze wherever the envelope currently is, then release from there.
     const holdable = param as AudioParam & {
       cancelAndHoldAtTime?: (time: number) => void;
     };
@@ -812,9 +820,33 @@ export default class ModInstrument {
       param.cancelScheduledValues(releaseTime);
       param.setValueAtTime(param.value, releaseTime);
     }
-    param.linearRampToValueAtTime(0, releaseTime + seconds);
 
-    return seconds;
+    // Whichever of the two release terms ends first decides the note's end.
+    // Clamp only after that test, so an envelope with neither term is
+    // correctly reported as having no end rather than being cut at the cap.
+    const naturalEnd = Math.min(tailSeconds, fadeoutSeconds);
+    if (!Number.isFinite(naturalEnd)) {
+      // Sustains indefinitely; leave the envelope held where it is.
+      return null;
+    }
+    const end = Math.min(naturalEnd, MAX_RELEASE_SECONDS);
+
+    // Follow the envelope's release segment for as long as it runs inside the
+    // release window, so a shaped release is heard rather than a plain fade.
+    if (tailStart >= 0) {
+      const tailBaseTick = points[tailStart]!.tick;
+      for (let i = tailStart + 1; i < points.length; i++) {
+        const offset = (points[i]!.tick - tailBaseTick) * tickSeconds;
+        if (offset >= end) break;
+        param.linearRampToValueAtTime(
+          level(points[i]!.value),
+          releaseTime + offset,
+        );
+      }
+    }
+
+    param.linearRampToValueAtTime(0, releaseTime + end);
+    return end;
   }
 
   /**
@@ -896,23 +928,37 @@ export default class ModInstrument {
 
     // A note still fading out on this slot belongs to the same channel and
     // must be cut, not left ringing under the new note.
+    // The replacing note's start time; everything this voice was doing must
+    // continue until then, not stop the moment this row is scheduled.
+    const replaceAt = Math.max(time, this.audioContext.currentTime);
+
     // A note still fading out on this slot belongs to the same channel and
-    // must be cut, not left ringing under the new note.
-    this.stopReleasingVoice(voiceIndex);
+    // must be cut when the new note begins.
+    this.stopReleasingVoice(voiceIndex, replaceAt);
 
     // Retire whatever this voice was playing before reusing it.
     const oldVoice = this.activeVoices.get(voiceIndex);
     if (oldVoice) {
       try {
-        oldVoice.source.stop();
+        oldVoice.source.stop(replaceAt);
       } catch {
         // Source may have already stopped naturally
       }
-      oldVoice.source.disconnect();
-      oldVoice.gainNode.disconnect();
-      oldVoice.panNode.disconnect();
-      oldVoice.envelopeGain?.disconnect();
       this.activeVoices.delete(voiceIndex);
+      const delay = Math.max(
+        0,
+        (replaceAt - this.audioContext.currentTime) * 1000 + 10,
+      );
+      setTimeout(() => {
+        try {
+          oldVoice.source.disconnect();
+          oldVoice.gainNode.disconnect();
+          oldVoice.panNode.disconnect();
+          oldVoice.envelopeGain?.disconnect();
+        } catch {
+          // Already disconnected
+        }
+      }, delay);
     }
 
     // Create audio nodes for this voice
@@ -1061,12 +1107,22 @@ export default class ModInstrument {
     const envelope = this.samplerState?.trackerEnvelope;
     let releaseTime = 0.01;
     if (voice.envelopeGain && envelope) {
-      releaseTime = this.scheduleTrackerRelease(
+      const released = this.scheduleTrackerRelease(
         voice.envelopeGain.gain,
         envelope,
         scheduledTime,
         voice.tickSeconds,
       );
+      if (released === null) {
+        // No defined end: the note sustains until the channel plays again.
+        // Hand it to the releasing set so a later note can still cut it, but
+        // schedule no stop of its own.
+        this.activeVoices.delete(voiceIndex);
+        this.stopReleasingVoice(voiceIndex, scheduledTime);
+        this.releasingVoices.set(voiceIndex, voice);
+        return;
+      }
+      releaseTime = released;
     } else {
       // Quick release to avoid a click.
       voice.gainNode.gain.setValueAtTime(
@@ -1112,23 +1168,37 @@ export default class ModInstrument {
    * A tracker channel is monophonic: a new note replaces whatever the channel
    * was doing, including a note that is part-way through its release.
    */
-  private stopReleasingVoice(voiceIndex: number): void {
+  private stopReleasingVoice(voiceIndex: number, atTime?: number): void {
     const releasing = this.releasingVoices.get(voiceIndex);
     if (!releasing) return;
     this.releasingVoices.delete(voiceIndex);
+
+    // Stop when the replacing note actually starts, NOT immediately.
+    //
+    // Rows are scheduled up to a second ahead, so "now" is nowhere near the
+    // moment this voice is being replaced. Calling stop() with no argument
+    // silenced a note the instant its *successor was scheduled* -- which, for
+    // any part with notes close together, meant killing notes before they had
+    // been heard at all.
+    const now = this.audioContext.currentTime;
+    const stopAt = Math.max(atTime ?? now, now);
     try {
-      releasing.source.stop();
+      releasing.source.stop(stopAt);
     } catch {
       // Already stopped
     }
-    try {
-      releasing.source.disconnect();
-      releasing.gainNode.disconnect();
-      releasing.panNode.disconnect();
-      releasing.envelopeGain?.disconnect();
-    } catch {
-      // Already disconnected
-    }
+
+    const disconnectDelay = Math.max(0, (stopAt - now) * 1000 + 10);
+    setTimeout(() => {
+      try {
+        releasing.source.disconnect();
+        releasing.gainNode.disconnect();
+        releasing.panNode.disconnect();
+        releasing.envelopeGain?.disconnect();
+      } catch {
+        // Already disconnected
+      }
+    }, disconnectDelay);
   }
 
   setVoiceFrequencyAtTime(
