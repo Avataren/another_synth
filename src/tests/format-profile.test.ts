@@ -6,6 +6,7 @@ import {
   profileForFormat,
   type FormatProfile,
 } from '../../packages/tracker-playback/src/format-profile';
+import { createAmigaPitchModel } from '../../packages/tracker-playback/src/pitch-model';
 import {
   createTrackEffectState,
   processEffectTick0,
@@ -47,9 +48,9 @@ describe('profileForFormat', () => {
   });
 
   it('describes ProTracker with its known quirks enabled', () => {
-    expect(PROTRACKER_PROFILE.arpeggioWrapsToDC).toBe(true);
     expect(PROTRACKER_PROFILE.noteDelayOverflowCarries).toBe(true);
     expect(PROTRACKER_PROFILE.volumeSlideUnit).toBeCloseTo(1 / 64, 10);
+    expect(PROTRACKER_PROFILE.pitch.kind).toBe('amiga');
   });
 });
 
@@ -115,7 +116,7 @@ describe('the effect processor reads the profile', () => {
     const wrapped = runArpeggio(PROTRACKER_PROFILE);
     const clamped = runArpeggio({
       ...PROTRACKER_PROFILE,
-      arpeggioWrapsToDC: false,
+      pitch: createAmigaPitchModel({ arpeggioWrapsToDC: false }),
     });
 
     const pitchOf = (batch: ReturnType<typeof processEffectTickN>) => {

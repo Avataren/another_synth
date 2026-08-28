@@ -13,6 +13,7 @@
  */
 
 import type { ModuleFormat } from './types';
+import { type PitchModel, createAmigaPitchModel } from './pitch-model';
 
 export interface FormatProfile {
   /** The format this profile describes. */
@@ -27,13 +28,12 @@ export interface FormatProfile {
   readonly volumeSlideUnit: number;
 
   /**
-   * ProTracker's arpeggio steps through its period *table* rather than
-   * scaling the period continuously, and running off the top of that table
-   * wraps to period 0 (DC) instead of clamping.
-   *
-   * FT2 computes arpeggio arithmetically and does not have this artefact.
+   * How pitch is represented and slid. ProTracker uses Amiga periods against
+   * a hand-tuned table; XM defaults to a linear frequency table. Arpeggio's
+   * table-overflow behaviour belongs to the model, since it is a consequence
+   * of stepping through a table at all.
    */
-  readonly arpeggioWrapsToDC: boolean;
+  readonly pitch: PitchModel;
 
   /**
    * ProTracker quirk: an EDx note delay longer than the row's tick count
@@ -49,7 +49,7 @@ export interface FormatProfile {
 export const PROTRACKER_PROFILE: FormatProfile = {
   format: 'protracker',
   volumeSlideUnit: 1 / 64,
-  arpeggioWrapsToDC: true,
+  pitch: createAmigaPitchModel({ arpeggioWrapsToDC: true }),
   noteDelayOverflowCarries: true,
 };
 

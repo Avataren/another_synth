@@ -6,87 +6,11 @@
 import type { EffectCommand } from './types';
 import { type FormatProfile, PROTRACKER_PROFILE } from './format-profile';
 
-const AMIGA_CLOCK = 7159090.5;
-const PAULA_TO_SYNTH_SCALE = 128; // 2^7, keeps us in synth-domain Hz
-const MIN_PROTRACKER_PERIOD = 113; // ~B-3
-const MAX_PROTRACKER_PERIOD = 856; // C-1
-
-/**
- * The real ProTracker note-period table (finetune 0), C-1 through B-3.
- * ProTracker's table is *not* a clean formula -- see e.g. Raylight's "Karsten-
- * Lars Manuscript" writeup for the history -- so a continuous period/frequency
- * formula can be off by a period unit (or land on a different pitch entirely
- * near octave boundaries) compared to authentic playback. We only need the
- * finetune-0 row: per-sample finetune in this codebase is applied as a
- * constant instrument-level detune (see mod-import.ts), not baked into which
- * table row gets selected at note-trigger time the way real ProTracker does,
- * so a single 36-entry table (not the full 576-entry finetune x note table)
- * is sufficient and exact for our architecture.
- *
- * Used only where we need to *derive* a period from a note position
- * (arpeggio's semitone offsets, glissando-control snapping) -- normal note
- * playback already uses the literal period read straight from the MOD file
- * and never needs this table at all.
- */
-const PT_PERIOD_TABLE: readonly number[] = [
-  856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, // C-1..B-1
-  428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226, // C-2..B-2
-  214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113, // C-3..B-3
-];
-
-function clampProtrackerPeriod(period: number): number {
-  if (!Number.isFinite(period)) return period;
-  if (period < MIN_PROTRACKER_PERIOD) return MIN_PROTRACKER_PERIOD;
-  if (period > MAX_PROTRACKER_PERIOD) return MAX_PROTRACKER_PERIOD;
-  return period;
-}
-
-function synthFrequencyFromPeriod(period: number): number {
-  return AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
-}
-
-function periodFromFrequency(freq: number): number {
-  return clampProtrackerPeriod(AMIGA_CLOCK / (2 * freq * PAULA_TO_SYNTH_SCALE));
-}
-
-/** Index into PT_PERIOD_TABLE of the entry closest to the given period. */
-function nearestPeriodTableIndex(period: number): number {
-  let bestIndex = 0;
-  let bestDelta = Infinity;
-  for (let i = 0; i < PT_PERIOD_TABLE.length; i++) {
-    const delta = Math.abs(PT_PERIOD_TABLE[i]! - period);
-    if (delta < bestDelta) {
-      bestDelta = delta;
-      bestIndex = i;
-    }
-  }
-  return bestIndex;
-}
-
-function protrackerArpPeriod(
-  basePeriod: number,
-  semitoneOffset: number,
-  wrapsToDC: boolean,
-): number {
-  // Real ProTracker arpeggio looks up the base period's row in the period
-  // table and steps by semitoneOffset table entries, rather than scaling
-  // continuously -- so do the same here instead of basePeriod/2^(n/12).
-  const baseIndex = nearestPeriodTableIndex(basePeriod);
-  const shiftedIndex = baseIndex + semitoneOffset;
-  if (shiftedIndex < 0 || shiftedIndex >= PT_PERIOD_TABLE.length) {
-    // ProTracker wraps past the top of the table; the first overflow hits 0
-    // (DC). Formats without that artefact clamp to the table's edge instead.
-    if (wrapsToDC) return 0;
-    const clamped = Math.max(0, Math.min(PT_PERIOD_TABLE.length - 1, shiftedIndex));
-    return PT_PERIOD_TABLE[clamped]!;
-  }
-  return PT_PERIOD_TABLE[shiftedIndex]!;
-}
-
 function updatePitchFromPeriod(state: TrackEffectState, period: number): void {
-  const clamped = clampProtrackerPeriod(period);
+  const pitch = state.profile.pitch;
+  const clamped = pitch.clampPeriod(period);
   state.currentPeriod = clamped;
-  const frequency = synthFrequencyFromPeriod(clamped);
+  const frequency = pitch.frequencyFromPeriod(clamped);
   state.currentFrequency = frequency;
   state.currentMidi = frequencyToMidi(frequency);
 }
@@ -98,8 +22,10 @@ function updatePitchFromFrequency(
   state.currentFrequency = frequency;
   state.currentMidi = frequencyToMidi(frequency);
   if (state.currentPeriod !== undefined) {
-    const rawPeriod = AMIGA_CLOCK / (2 * frequency * PAULA_TO_SYNTH_SCALE);
-    state.currentPeriod = clampProtrackerPeriod(rawPeriod);
+    const pitch = state.profile.pitch;
+    state.currentPeriod = pitch.clampPeriod(
+      pitch.rawPeriodFromFrequency(frequency),
+    );
   }
 }
 
@@ -320,7 +246,9 @@ function applyTonePortaStep(state: TrackEffectState): number {
   }
 
   if (state.currentPeriod === undefined && state.targetPeriod !== undefined) {
-    state.currentPeriod = periodFromFrequency(state.currentFrequency);
+    state.currentPeriod = state.profile.pitch.periodFromFrequency(
+      state.currentFrequency,
+    );
   }
 
   if (state.currentPeriod !== undefined && state.targetPeriod !== undefined) {
@@ -361,8 +289,10 @@ function applyTonePortaStep(state: TrackEffectState): number {
       // period-table entry, matching authentic glissando behavior, instead
       // of the nearest equal-tempered MIDI note (which can disagree with
       // the table near octave boundaries).
-      const snappedIndex = nearestPeriodTableIndex(state.currentPeriod);
-      updatePitchFromPeriod(state, PT_PERIOD_TABLE[snappedIndex]!);
+      updatePitchFromPeriod(
+        state,
+        state.profile.pitch.snapPeriod(state.currentPeriod),
+      );
     } else {
       const snappedMidi = Math.round(frequencyToMidi(state.currentFrequency));
       const snappedFrequency = midiToFrequency(snappedMidi);
@@ -613,7 +543,10 @@ export function processEffectTick0(
       // Preserve the MOD's exact period-derived pitch instead of
       // recomputing it from the rounded MIDI note (which discards
       // finetune/period precision and can land several cents off).
-      updatePitchFromPeriod(state, periodFromFrequency(carry.frequency));
+      updatePitchFromPeriod(
+        state,
+        state.profile.pitch.periodFromFrequency(carry.frequency),
+      );
       state.currentFrequency = carry.frequency;
     } else {
       state.currentFrequency = midiToFrequency(carry.midi);
@@ -639,7 +572,7 @@ export function processEffectTick0(
       // (MOD imports provide noteFrequency/currentPeriod). Otherwise keep
       // frequency-based slides for normal tracker notes.
       if (noteFrequency !== undefined || state.currentPeriod !== undefined) {
-        state.targetPeriod = periodFromFrequency(targetFreq);
+        state.targetPeriod = state.profile.pitch.periodFromFrequency(targetFreq);
       } else {
         state.targetPeriod = undefined;
       }
@@ -649,7 +582,7 @@ export function processEffectTick0(
     } else {
       if (noteFrequency !== undefined) {
         const rawPeriod =
-          AMIGA_CLOCK / (2 * noteFrequency * PAULA_TO_SYNTH_SCALE);
+          state.profile.pitch.rawPeriodFromFrequency(noteFrequency);
         updatePitchFromPeriod(state, rawPeriod);
       } else {
         state.currentPeriod = undefined;
@@ -811,7 +744,9 @@ export function processEffectTick0(
         const ratio = Math.pow(2, semitones / 12);
         state.targetFrequency *= ratio;
         state.targetMidi = frequencyToMidi(state.targetFrequency);
-        state.targetPeriod = periodFromFrequency(state.targetFrequency);
+        state.targetPeriod = state.profile.pitch.periodFromFrequency(
+          state.targetFrequency,
+        );
         updatePitchFromFrequency(state, state.currentFrequency * ratio);
         pushPitch(state.currentFrequency);
       }
@@ -1010,7 +945,10 @@ export function processEffectTickN(
     });
     state.currentMidi = delayed.midi;
     if (delayed.frequency !== undefined) {
-      updatePitchFromPeriod(state, periodFromFrequency(delayed.frequency));
+      updatePitchFromPeriod(
+        state,
+        state.profile.pitch.periodFromFrequency(delayed.frequency),
+      );
     }
     state.currentFrequency = frequency;
     state.targetMidi = delayed.midi;
@@ -1125,12 +1063,13 @@ export function processEffectTickN(
             : 0;
 
       if (state.currentPeriod !== undefined) {
-        const period = protrackerArpPeriod(
+        const period = state.profile.pitch.arpeggioPeriod(
           state.currentPeriod,
           offset,
-          state.profile.arpeggioWrapsToDC,
         );
-        pushPitch(period === 0 ? 0 : synthFrequencyFromPeriod(period));
+        pushPitch(
+          period === 0 ? 0 : state.profile.pitch.frequencyFromPeriod(period),
+        );
       } else {
         let arpeggioNote = state.currentMidi;
         arpeggioNote += offset;

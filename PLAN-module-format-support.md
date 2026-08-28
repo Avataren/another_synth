@@ -187,12 +187,13 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 ### Phase 2 — Format profile refactor (B4, B6, B7)
 - [x] Introduce `FormatProfile`; reach it from the effect processor
       (attached to each `TrackEffectState` rather than threaded as a parameter — D17)
-- [ ] Extract `PitchModel` interface; move PT period logic into `AmigaPitchModel`
+- [x] Extract `PitchModel` interface; move PT period logic into `AmigaPitchModel`
 - [ ] Add `LinearPitchModel` (XM linear table)
 - [ ] Move each remaining ProTracker quirk (B6 list) behind a profile flag
-      — done: volume-slide unit, arpeggio DC wrap, EDx overflow carry
-      — todo: period clamping (with `PitchModel`), LRRL import panning,
-        tick-0 volume-slide policy, Axy effect-memory semantics
+      — done: volume-slide unit, arpeggio DC wrap, EDx overflow carry,
+        period clamping (now inside `PitchModel`)
+      — todo: LRRL import panning, tick-0 volume-slide policy,
+        Axy effect-memory semantics
 - [ ] Carry raw `(cmd, param)` bytes on `TrackerEntryData` alongside the text macro;
       retire the 9xx synthetic-param hack
 - [ ] MOD regression suite green with the profile in place
@@ -371,6 +372,19 @@ own, rather than as one sweeping rewrite. `NATIVE_PROFILE` keeps the ProTracker 
 indefinitely for now — songs authored against the current engine were composed by ear
 with those behaviours in place.
 
+**D18 — Arpeggio's table-overflow behaviour belongs to the `PitchModel`, not the profile.**
+`arpeggioWrapsToDC` was briefly a `FormatProfile` flag (D17). It moved into
+`createAmigaPitchModel(options)` because the artefact only exists as a consequence of
+stepping through a period *table* at all — a linear model computes arpeggio
+arithmetically and has nowhere to overflow. Period clamping moved with it for the same
+reason: the playable range is a property of the representation.
+
+The model exposes both `rawPeriodFromFrequency` (unclamped) and `periodFromFrequency`
+(clamped) because the processor genuinely needs both — clamping when converting a note's
+literal frequency back to a period would silently retune notes sitting outside the
+nominal table, which is exactly the MOD pitch precision earlier commits worked to
+preserve.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -432,6 +446,7 @@ for the `FormatProfile` work.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 2 | `PitchModel` extracted to `pitch-model.ts`; the ProTracker period table, clamp range, Paula scaling, arpeggio table-stepping and glissando snapping now live in `createAmigaPitchModel` and are reached via `state.profile.pitch` (D18). `effect-processor.ts` no longer contains any Amiga-specific pitch constant. No behaviour change — 425 tests green. Tests: `src/tests/pitch-model.test.ts`. |
 | 2026-08-28 | 2 | `FormatProfile` introduced and reaching the effect processor via `TrackEffectState` (D17). Three quirks migrated behind it: volume-slide unit, arpeggio DC wrap, EDx overflow carry. All profiles hold identical values, so no behaviour change — 416 tests green. Tests: `src/tests/format-profile.test.ts`. |
 | 2026-08-28 | fix | **Verified by ear — Axy now sounds right.** Axy volume slides corrected from half-rate to ProTracker's 1/64 per tick (D16). Audible on any song using Axy. Test rewritten to assert the format's rule rather than mirror the constant. |
 | 2026-08-28 | fix | A bare sample number (no note) now resets the channel volume to the sample default, restoring the Axy pump idiom and removing a spurious retrigger (D15). Found via musiklinjen.mod pattern 5 channel 2. Tests: `src/tests/mod-import-sample-number-volume-reset.test.ts` (3 of 5 confirmed failing against the old code). |

@@ -5,3 +5,4 @@ export * from './clock';
 export * from './instrument-resolver';
 export * from './effect-processor';
 export * from './format-profile';
+export * from './pitch-model';
