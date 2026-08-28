@@ -1,6 +1,6 @@
 # Multi-Format Module Support (MOD / XM / S3M)
 
-**Status:** Phase 2 complete. Next: Phase 3 (XM parser + instrument model).
+**Status:** Phase 3 in progress — XM parser done; next is the `ModuleSong` IR.
 Phase 1 still has one open item — per-channel voice allocation (B2) — deferred as
 speculative until a high-channel module needs it; see D13 for why it also matters.
 **Last updated:** 2026-08-28
@@ -201,8 +201,8 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [ ] MOD regression suite green with the profile in place
 
 ### Phase 3 — XM parser and import (B3, B5, B8)
-- [ ] `formats/xm.ts`: header, pattern decode (packed cells), instrument + sample headers
-- [ ] 8/16-bit delta sample decoding
+- [x] `formats/xm.ts`: header, pattern decode (packed cells), instrument + sample headers
+- [x] 8/16-bit delta sample decoding
 - [ ] `ModuleSong` IR + refactor the MOD path to produce it too
 - [ ] Format-agnostic importer IR → `TrackerSongFile`
 - [ ] Multi-sample instruments with note→sample keymap
@@ -429,6 +429,19 @@ by measurement under D16). The genuinely tick-0 commands are the *fine* slides
 (`EAx`/`EBx`), which are already handled separately and identically in both formats. No
 flag added rather than inventing a distinction to fill a checklist row.
 
+**D22 — Delta accumulation wraps within the sample's word size.**
+XM stores PCM as running deltas. Accumulating them in JavaScript's wider numbers instead
+of masking to 8 or 16 bits lets the running value drift outside the sample's range on long
+samples and clip audibly. `decodeDeltaSample` masks (`& 0xff` / `& 0xffff`) and then
+reinterprets as signed, which is what the format's 8/16-bit accumulators do.
+
+**D23 — The XM parser stays close to the file and makes no interpretation decisions.**
+It reports what the file says — note 97 as key-off, volume-column bytes uninterpreted,
+loop points converted from bytes to frames only because that is a unit fix rather than a
+judgement. Mapping to instrument slots, tracker entries and effect commands belongs to
+the import layer, so the parser can be tested purely against the layout and the import
+rules stay in one place.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -490,6 +503,7 @@ for the `FormatProfile` work.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 3 | XM parser added (`packages/tracker-playback/src/formats/xm.ts`): header, per-pattern row counts, packed + unpacked cell decoding, instruments with 96-note keymaps, volume/panning envelopes, fadeout, autovibrato fields, per-sample tuning/loop settings, and 8/16-bit delta decoding (D22). Reports the file faithfully and interprets nothing (D23). 21 tests against synthetic modules; 459 total green. Not yet reachable from the UI. |
 | 2026-08-28 | 2 | `volumeSlideHasMemory` added: ProTracker `A00` now holds volume steady instead of continuing the last slide, matching PT (D20). **Audible on MOD playback** — 569 affected commands across the local collection, 27% of `resii.mod`'s slides. XM and native keep memory. Two remaining B6 items investigated and deliberately not moved (D21). **Phase 2 complete.** Tests: `src/tests/format-profile.test.ts`. |
 | 2026-08-28 | 2 | `createLinearPitchModel` added (XM default frequency table) and assigned to `XM_PROFILE`; emits musical Hz via a /32 scale (D19). Nothing selects the XM profile yet, so MOD playback is untouched — 434 tests green. XM Amiga-mode still needs its own profile, which arrives with the parser in Phase 3. |
 | 2026-08-28 | 2 | `PitchModel` extracted to `pitch-model.ts`; the ProTracker period table, clamp range, Paula scaling, arpeggio table-stepping and glissando snapping now live in `createAmigaPitchModel` and are reached via `state.profile.pitch` (D18). `effect-processor.ts` no longer contains any Amiga-specific pitch constant. No behaviour change — 425 tests green. Tests: `src/tests/pitch-model.test.ts`. |
