@@ -732,6 +732,25 @@ This was introduced by the D36 fix for "notes don't get stopped", and is a good 
 for treating "stop the previous thing" as always needing an explicit time in a
 lookahead scheduler.
 
+**D41 — Replacing a note and releasing one are different operations.**
+A tracker channel has no polyphony: a new note *ends* the previous note on that channel.
+Key-off is the other thing entirely — the envelope release runs, the fadeout takes the
+note to silence, and it is meant to ring on.
+
+Making `gateOffVoiceAtTime` perform the envelope release (D31/D39) quietly turned every
+*replacement* into a release, because song-bank used that one method for both. A new note
+therefore started a fadeout on the previous note instead of ending it, leaving it sounding
+underneath — seconds of it, on XM.
+
+Worst where a channel switches instrument: the old instrument's voice went into *its*
+releasing set, and nothing on the new instrument ever came back to cut it, so it ran the
+full fadeout every time. `4-mat_-_rose.xm` has 30 instruments across 4 channels, so this
+happened constantly.
+
+`cutVoiceAtTime` now ends a voice with a 3ms de-click ramp and reaches voices that are
+already releasing. Every note-on path in song-bank uses it — same-instrument, cross-
+instrument and the mono-patch case — while genuine note-offs keep the release.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -854,6 +873,7 @@ as an expected state, not an error.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | New notes now *cut* the previous note on their channel instead of releasing it (D41). Making key-off perform an envelope release had turned every replacement into a fadeout, so previous notes rang on underneath — worst when a channel switches instrument, where nothing ever cut the old voice. Tracker channels are monophonic. |
 | 2026-08-29 | 4 | Two fixes for notes going missing: voice replacement is now scheduled at the replacing note's time rather than immediately (D40 — self-inflicted by the D36 fix, and the cause of the `external.xm` report), and key-off is a real envelope release rather than a 10ms cut (D39, corrected by the user). |
 | 2026-08-29 | 4 | Envelope loops implemented (D38). A looping envelope was previously played once and held at its final value, silencing most instruments that use one — 23 envelopes in the corpus loop, including all 16 in `external.xm`. Not confirmed as the cause of the reported silence; see the caveat in D38. |
 | 2026-08-29 | 4 | XM tempo fixed (D37): "speed" (ticks per row) is separate from BPM, and the importer never read the header's `defaultSpeed` while the engine hardcoded 6. Most XM files declare 3, so they played at exactly half tempo. Now carried on `Song.initialSpeed` and through the song file. |

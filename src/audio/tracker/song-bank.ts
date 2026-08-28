@@ -671,6 +671,27 @@ export class TrackerSongBank {
     }
   }
 
+  /**
+   * End a voice because a *new note* is taking over its channel.
+   *
+   * Distinct from gating off for key-off: a tracker channel has no polyphony,
+   * so retriggering it ends the previous note rather than releasing it. Going
+   * through the release path here left the previous note ringing under the new
+   * one for the whole envelope fadeout.
+   */
+  private cutVoiceForReplacement(
+    instrument: ActiveInstrument['instrument'],
+    voiceIndex: number,
+    time: number,
+  ) {
+    const cuttable = instrument as { cutVoiceAtTime?: (v: number, t: number) => void };
+    if (typeof cuttable.cutVoiceAtTime === 'function') {
+      cuttable.cutVoiceAtTime(voiceIndex, time);
+      return;
+    }
+    instrument.gateOffVoiceAtTime(voiceIndex, time);
+  }
+
   private gateOffPreviousTrackVoice(
     instrumentId: string,
     trackIndex: number | undefined,
@@ -710,7 +731,7 @@ export class TrackerSongBank {
         }
       }
 
-      instrument.gateOffVoiceAtTime(previousVoice, gateTime);
+      this.cutVoiceForReplacement(instrument, previousVoice, gateTime);
       return;
     }
 
@@ -762,7 +783,7 @@ export class TrackerSongBank {
         }
       }
 
-      instrument.gateOffVoiceAtTime(voiceIndex, gateTime);
+      this.cutVoiceForReplacement(instrument, voiceIndex, gateTime);
 
       // Note: We don't clear lastTrackVoice here because the voice tracking
       // will be updated by setLastVoiceForTrack when the new note is allocated.
@@ -802,7 +823,8 @@ export class TrackerSongBank {
       if (gateTime > time - gateLead * 0.5 && gateTime >= time) {
         active.instrument.cancelAndSilenceVoice(voiceIndex);
       } else {
-        active.instrument.gateOffVoiceAtTime(voiceIndex, gateTime);
+        // A mono patch stealing its own voice across tracks is a replacement.
+        this.cutVoiceForReplacement(active.instrument, voiceIndex, gateTime);
       }
 
       // Note: We don't clear lastTrackVoice here because the tracking
@@ -1221,7 +1243,13 @@ export class TrackerSongBank {
           if (gateTime < now) gateTime = now + 0.001;
           if (gateTime >= scheduledTime)
             gateTime = Math.max(now, scheduledTime - 0.0005);
-          owner.instrument.gateOffVoiceAtTime(existing.voiceIndex, gateTime);
+          // The channel is switching instrument, so nothing on the old
+          // instrument will ever come back to stop this voice.
+          this.cutVoiceForReplacement(
+            owner.instrument,
+            existing.voiceIndex,
+            gateTime,
+          );
         }
         this.trackVoiceOwner.delete(trackIndex as number);
       }

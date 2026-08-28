@@ -1095,6 +1095,64 @@ export default class ModInstrument {
     }
   }
 
+  /**
+   * Stop a voice outright at a given time, with a short de-click ramp.
+   *
+   * This is what a *new note* does to the note it replaces. A tracker channel
+   * is monophonic and has no polyphony at all, so retriggering a channel ends
+   * the previous note; it does not release it. gateOffVoiceAtTime is the
+   * different operation of key-off, where the envelope release and fadeout run
+   * and the note is meant to ring on -- using that here left the previous note
+   * sounding underneath the new one for the whole fadeout, which on XM can be
+   * seconds.
+   *
+   * Also reaches voices already in the releasing set, since a channel that
+   * was keyed off and then replaced must still be cut.
+   */
+  cutVoiceAtTime(voiceIndex: number, time: number): void {
+    const voice =
+      this.activeVoices.get(voiceIndex) ?? this.releasingVoices.get(voiceIndex);
+    if (!voice) return;
+
+    const now = this.audioContext.currentTime;
+    const cutAt = Math.max(time, now);
+    const rampSeconds = 0.003;
+
+    try {
+      voice.gainNode.gain.cancelScheduledValues(cutAt);
+      voice.gainNode.gain.setValueAtTime(voice.targetGain, cutAt);
+      voice.gainNode.gain.linearRampToValueAtTime(0, cutAt + rampSeconds);
+    } catch {
+      // Parameter may already be past this point
+    }
+
+    const stopAt = cutAt + rampSeconds;
+    try {
+      voice.source.stop(stopAt);
+    } catch {
+      // Already stopped
+    }
+
+    this.activeVoices.delete(voiceIndex);
+    if (this.releasingVoices.get(voiceIndex) === voice) {
+      this.releasingVoices.delete(voiceIndex);
+    }
+
+    setTimeout(
+      () => {
+        try {
+          voice.source.disconnect();
+          voice.gainNode.disconnect();
+          voice.panNode.disconnect();
+          voice.envelopeGain?.disconnect();
+        } catch {
+          // Already disconnected
+        }
+      },
+      Math.max(0, (stopAt - now) * 1000 + 10),
+    );
+  }
+
   gateOffVoiceAtTime(voiceIndex: number, time: number): void {
     const voice = this.activeVoices.get(voiceIndex);
     if (!voice) return;
