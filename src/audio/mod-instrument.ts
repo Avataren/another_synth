@@ -517,8 +517,9 @@ export default class ModInstrument {
     _macroIndex: number,
     _value: number,
   ): void {
-    // MOD instruments don't use macro parameters
-    // Macros are handled directly via setPan, setFrequency, etc.
+    // Intentionally empty: nothing calls this on the tracker path. Per-voice
+    // macros arrive via setVoiceMacroAtTime (macro 0 = pan, macro 1 = 9xx
+    // sample offset), which is implemented.
   }
 
   // Additional compatibility methods for InstrumentV2 interface
@@ -818,7 +819,12 @@ export default class ModInstrument {
   }
 
   cancelScheduledNotes(): void {
-    // ModInstrument doesn't schedule notes
+    // Deliberately empty. ModInstrument *does* schedule notes ahead --
+    // noteOnAtTime calls source.start(startTime) up to the engine's lookahead
+    // in the future -- but the transport's stop path calls allNotesOff()
+    // straight after cancelAllScheduled(), and noteOff()'s source.stop() on a
+    // not-yet-started source cancels it outright. Adding cancellation here
+    // would duplicate that.
   }
 
   cancelAndSilenceVoice(voiceIndex: number): void {
@@ -842,7 +848,18 @@ export default class ModInstrument {
   }
 
   setMacro(_macroIndex: number, _value: number): void {
-    // MOD instruments don't use global macros
+    // Intentionally a no-op, and NOT an oversight.
+    //
+    // This is the instrument-wide macro path (songBank.setInstrumentMacro).
+    // Applying it here would set the value on every voice of this instrument
+    // -- but instruments are per-sample, so voices belonging to *other* tracks
+    // share this instrument, and an instrument-wide pan write would stomp
+    // their per-voice pan. That is exactly the cross-track corruption class
+    // described in D13 of PLAN-module-format-support.md.
+    //
+    // MOD playback does not need it: macro 0 (pan) also travels on the note-on
+    // as step.pan, and mid-note pan changes go through the per-voice
+    // setVoicePanAtTime path instead.
   }
 
   getVoiceLimit(): number {

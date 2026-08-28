@@ -332,6 +332,36 @@ runtime, more work). Decide at the start of Phase 4, informed by measured Phase 
 
 ---
 
+## 6b. Effect audit (2026-08-28)
+
+Every effect traced from the parser to the point where it touches an AudioParam or a
+buffer, prompted by D11. Findings:
+
+**Dead ends found and fixed**
+- 9xx sample offset — three independent breaks (D11).
+- Volume/offset voice resolution falling back to voice 0 across tracks (D13).
+- 8xx / E8x / Pxy panning — discarded by `case 'pan': break;` in the engine (D14).
+
+**No-ops that are correct, now documented as such in code**
+- `ModInstrument.setMacro` (instrument-wide macro). Implementing it naively would write
+  pan to every voice of a shared instrument and reintroduce the D13 cross-track class.
+  MOD playback does not need it: macro 0 rides on the note-on as `step.pan`, and mid-note
+  changes go through the per-voice pan path.
+- `ModInstrument.setMacroParameter` — unreachable on the tracker path.
+- `ModInstrument.cancelScheduledNotes` — it does schedule ahead, but the transport calls
+  `allNotesOff()` right after, and `source.stop()` on a not-yet-started source cancels it.
+
+**Confirmed wired correctly**
+- ECx note cut (handled per-tick outside the effect switch), E6x pattern loop, Gxx/Hxy
+  global volume (all handled in the engine rather than the processor), EAx/EBx (mapped to
+  volSlide), E4x/E7x waveform selects, E9x/Rxy retrigger, EDx note delay.
+
+**Known unimplemented** (declared but no behaviour): `filterToggle` (E0x, Amiga hardware
+filter) and `invertLoop` (EFx funk repeat). Both are ProTracker-specific and rare; left
+for the `FormatProfile` work.
+
+---
+
 ## 7. Testing
 
 - MOD regression suite is the contract for "no regression": `src/tests/mod-*.test.ts`,
