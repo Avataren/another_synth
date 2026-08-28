@@ -57,6 +57,18 @@ export interface FormatProfile {
   readonly volumeSlideHasMemory: boolean;
 
   /**
+   * Period units a portamento parameter of 1 moves per tick.
+   *
+   * ProTracker subtracts the parameter straight from an Amiga period whose
+   * C-2 is 428. XM's period scale is four times finer -- its Amiga C-4 is
+   * 1712, and its linear table uses 64 units per semitone -- and FastTracker 2
+   * correspondingly slides by `param * 4`, so the two formats reach the same
+   * musical rate. Using ProTracker's scale for XM slides at a quarter speed,
+   * which leaves every slide short of its target and audibly out of tune.
+   */
+  readonly portamentoUnitScale: number;
+
+  /**
    * ProTracker quirk: an EDx note delay longer than the row's tick count
    * leaks the note into the following row instead of dropping it.
    */
@@ -72,6 +84,7 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   volumeSlideUnit: 1 / 64,
   pitch: createAmigaPitchModel({ arpeggioWrapsToDC: true }),
   volumeSlideHasMemory: false,
+  portamentoUnitScale: 1,
   noteDelayOverflowCarries: true,
 };
 
@@ -91,6 +104,7 @@ export const XM_PROFILE: FormatProfile = {
   format: 'xm',
   pitch: createLinearPitchModel(),
   volumeSlideHasMemory: true,
+  portamentoUnitScale: 4,
 };
 
 /**

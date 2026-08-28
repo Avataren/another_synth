@@ -599,6 +599,38 @@ multiplying with the fadeout; only the fadeout is applied on release, since it i
 that reaches silence. Envelope *loops* are parsed and carried but not yet applied. Both
 matter most for long sustained notes.
 
+**D32 — Voices are owned per tracker channel, not pooled per instrument.**
+A tracker channel is monophonic, so a note on a channel should only ever replace *that*
+channel's note. `ModInstrument` instead allocated from a pool shared by every channel
+using the instrument, and — worse — `num_voices` was hardcoded to 4 and never read the
+patch's `voiceCount`. One sample is one instrument here, so an instrument played on more
+than four channels had notes stolen from channels that were still sounding. Measured:
+`an-path.xm` exceeds four on **2566 rows**, `jt_letgo.xm` on 1520, `elw-sick.xm` on 890.
+Heard as notes simply missing.
+
+Voices are now assigned per channel and held for the life of the instrument, and the XM
+importer sizes each patch by the number of *distinct channels* that ever play it — not
+the peak overlap, since sizing by peak would leave some channel without a voice of its
+own and put it back to stealing. Real allocations: `an-path` up to 26 voices for one
+instrument, `sweetdre` 21, `elw-sick` 15, where every instrument previously got 4.
+Voices are free until a note sounds: audio nodes are built at note-on.
+
+**D33 — XM portamento moves four period units per parameter unit.**
+XM's period scale is four times finer than ProTracker's — its Amiga C-4 is 1712 against
+ProTracker's C-2 of 428, and its linear table uses 64 units per semitone — and
+FastTracker 2 correspondingly slides by `param * 4`. Using ProTracker's scale left every
+XM slide at a quarter speed, so slides never reached their target and the pitch sat
+wrong: audibly "out of tune slides".
+
+`portamentoUnitScale` on the profile is 1 for ProTracker/native and 4 for XM in both
+frequency modes. The invariant worth keeping: XM **Amiga** mode then slides at exactly
+ProTracker's musical rate (asserted to within 0.001 cent), because a 4x finer period
+scale and a 4x larger step cover the same interval. XM **linear** mode deliberately
+differs — linear slides are constant in cents, Amiga slides are not.
+
+**Still unscaled:** fine portamento (E1x/E2x) works in semitone fractions rather than
+period units, so it is unaffected by this scale and has not been checked against FT2.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -699,6 +731,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 4 | Per-channel voice ownership (D32): `ModInstrument` no longer hardcodes 4 voices or pools them across channels, and XM patches are sized by distinct channels per instrument. Fixes notes going missing — `an-path` exceeded 4 voices on 2566 rows. XM portamento scaled by 4 to match FT2's finer period scale (D33), fixing out-of-tune slides. 516 tests green. |
 | 2026-08-28 | 4 | XM volume envelopes and fadeout implemented (D31), on a dedicated per-voice gain stage so they multiply with effect-driven volume. Chosen by measurement: 92–100% of notes in most modules need them, vs 19%/10% in `rose` — the reason rose alone sounded right. Tick duration now travels with each note so envelope timing follows tempo. Tests: `src/tests/xm-volume-envelope.test.ts`. 511 green. |
 | 2026-08-28 | fix | Pattern display no longer desyncs from playback (D30). It followed elapsed-time ÷ current-row-duration, which broke permanently at the first `Fxx` speed/tempo change and could not represent `EEx`/`E6x`/`Bxx`/`Dxx` at all. Now driven by the scheduler's recorded per-row audio times. Audio was always correct; only the display was wrong. Tests: `src/tests/tracker-position-sync.test.ts`. |
 | 2026-08-28 | fix | Measured the D29 idiom across the collection: 18 of 30 modules, 8005 bare sample-number rows, 6166 carrying misrouted effects. Not a C64-conversion curiosity — ordinary Amiga practice. |

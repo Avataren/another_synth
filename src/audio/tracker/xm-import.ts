@@ -263,6 +263,39 @@ function firstSampleOf(instrument: XmInstrument | undefined): XmSample | undefin
   return instrument.samples.find((s) => s.data.length > 0) ?? instrument.samples[0];
 }
 
+/**
+ * How many distinct channels ever play each instrument.
+ *
+ * A tracker channel is monophonic and owns a voice of its own, so an
+ * instrument needs one voice per channel that ever uses it -- not merely
+ * enough for the peak overlap. Sizing by peak would leave a channel without a
+ * voice of its own and put it back to stealing from another channel, which is
+ * heard as notes going missing.
+ *
+ * Voices cost nothing until a note actually sounds on them: the instrument
+ * only builds audio nodes at note-on.
+ */
+function measureChannelsPerInstrument(xm: XmSong): Map<number, Set<number>> {
+  const channels = new Map<number, Set<number>>();
+
+  for (const pattern of xm.patterns) {
+    for (const row of pattern.rows) {
+      row.forEach((cell, channel) => {
+        if (cell.instrument > 0) {
+          let set = channels.get(cell.instrument);
+          if (!set) {
+            set = new Set<number>();
+            channels.set(cell.instrument, set);
+          }
+          set.add(channel);
+        }
+      });
+    }
+  }
+
+  return channels;
+}
+
 function buildInstrumentSlotsAndPatches(xm: XmSong): {
   slots: InstrumentSlot[];
   songPatches: Record<string, Patch>;
@@ -290,6 +323,7 @@ function buildInstrumentSlotsAndPatches(xm: XmSong): {
 
   const songPatches: Record<string, Patch> = {};
   const slotForInstrument = new Map<number, number>();
+  const channelsPerInstrument = measureChannelsPerInstrument(xm);
 
   let nextSlot = 1;
   for (const instrumentNumber of [...referenced].sort((a, b) => a - b)) {
@@ -304,7 +338,12 @@ function buildInstrumentSlotsAndPatches(xm: XmSong): {
       break;
     }
 
-    const patch = createSamplerPatchForXmSample(instrument, sample, instrumentNumber);
+    const patch = createSamplerPatchForXmSample(
+      instrument,
+      sample,
+      instrumentNumber,
+      channelsPerInstrument.get(instrumentNumber)?.size ?? 1,
+    );
     const slot = slots[nextSlot - 1];
     if (!slot) break;
 
@@ -355,6 +394,7 @@ function createSamplerPatchForXmSample(
   instrument: XmInstrument,
   sample: XmSample,
   instrumentNumber: number,
+  channelCount: number,
 ): Patch {
   const sampleLengthFrames = Math.max(1, sample.data.length);
   const loopEnabled = sample.loopType !== 'none' && sample.loopLength > 0;
@@ -379,7 +419,9 @@ function createSamplerPatchForXmSample(
       : SamplerLoopMode.Off,
     loopStartFrames: loopEnabled ? sample.loopStart : 0,
     loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,
-    voiceCount: 4,
+    // One voice per channel that ever plays this instrument, so every channel
+    // owns one and none has to steal.
+    voiceCount: Math.max(1, Math.min(32, channelCount)),
     ...(envelope ? { trackerEnvelope: envelope } : {}),
   });
 }

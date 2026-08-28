@@ -1238,6 +1238,8 @@ export class TrackerSongBank {
         ...(pan !== undefined ? { pan } : {}),
         ...(sampleOffset !== undefined ? { sampleOffset } : {}),
         ...(tickSeconds !== undefined ? { tickSeconds } : {}),
+        // The channel owns a voice, so notes never cut another channel's.
+        ...(trackIndex !== undefined ? { trackIndex } : {}),
       },
     );
 

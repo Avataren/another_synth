@@ -23,6 +23,12 @@ import { AudioAssetType } from './types/preset-types';
  */
 const DEFAULT_TICK_SECONDS = 2.5 / 125;
 
+/** Voices assumed when a patch does not state a count. */
+const DEFAULT_VOICE_COUNT = 4;
+
+/** Upper bound, so a malformed patch cannot allocate unbounded voices. */
+const MAX_VOICE_COUNT = 64;
+
 interface ActiveVoice {
   source: AudioBufferSourceNode;
   gainNode: GainNode;
@@ -42,7 +48,20 @@ interface ActiveVoice {
 }
 
 export default class ModInstrument {
-  readonly num_voices = 4; // MOD instruments use 4 voices (one per channel)
+  /**
+   * Voices available to this instrument.
+   *
+   * Taken from the patch layout rather than fixed. One sample is one
+   * instrument here, so an instrument played on several channels at once
+   * shares this pool -- an XM module can have nine channels sounding the same
+   * instrument, and a fixed four meant the fifth onward stole a voice from a
+   * note that was still playing. Audibly: notes simply missing.
+   */
+  private voiceCount = DEFAULT_VOICE_COUNT;
+
+  get num_voices(): number {
+    return this.voiceCount;
+  }
   outputNode: GainNode;
 
   private audioContext: AudioContext;
@@ -58,6 +77,18 @@ export default class ModInstrument {
    * passed straight to noteOnAtTime.
    */
   private pendingSampleOffset: number | undefined;
+
+  /**
+   * Which voice each tracker channel owns.
+   *
+   * A tracker channel is monophonic, so a channel's note should only ever
+   * replace that channel's own note. Allocating from a shared pool instead let
+   * a new note on one channel steal a voice from a different channel that was
+   * still sounding, which is heard as notes going missing. Ownership is
+   * permanent for the life of the instrument so a channel keeps its voice
+   * across notes.
+   */
+  private trackVoices: Map<number, number> = new Map();
 
   public get isReady(): boolean {
     return this.ready;
@@ -83,6 +114,12 @@ export default class ModInstrument {
     }
 
     this.samplerState = samplerStates[0]!;
+
+    const requested = patch.synthState.layout?.voiceCount;
+    this.voiceCount = Math.max(
+      1,
+      Math.min(MAX_VOICE_COUNT, requested ?? DEFAULT_VOICE_COUNT),
+    );
 
     console.log('[ModInstrument] Sampler state ID:', this.samplerState.id);
 
@@ -639,6 +676,46 @@ export default class ModInstrument {
     return seconds;
   }
 
+  /**
+   * The voice belonging to a tracker channel, assigning one on first use.
+   *
+   * Falls back to the old free-then-round-robin search when no channel is
+   * given, which is the preview path rather than tracker playback.
+   */
+  private resolveVoiceForTrack(trackIndex: number | undefined): number {
+    if (trackIndex === undefined) return this.allocateAnyVoice();
+
+    const owned = this.trackVoices.get(trackIndex);
+    if (owned !== undefined) return owned;
+
+    const taken = new Set(this.trackVoices.values());
+    for (let i = 0; i < this.voiceCount; i++) {
+      if (!taken.has(i)) {
+        this.trackVoices.set(trackIndex, i);
+        return i;
+      }
+    }
+
+    // More channels than voices: fall back rather than dropping the note, but
+    // say so, since it means the patch was sized too small at import.
+    console.warn(
+      `[ModInstrument] No free voice for track ${trackIndex} (limit ${this.voiceCount}); reusing`,
+    );
+    const reused = this.allocateAnyVoice();
+    this.trackVoices.set(trackIndex, reused);
+    return reused;
+  }
+
+  /** Free voice if there is one, else round-robin. */
+  private allocateAnyVoice(): number {
+    for (let i = 0; i < this.voiceCount; i++) {
+      if (!this.activeVoices.has(i)) return i;
+    }
+    const index = this.voiceRoundRobinIndex;
+    this.voiceRoundRobinIndex = (this.voiceRoundRobinIndex + 1) % this.voiceCount;
+    return index;
+  }
+
   noteOnAtTime(
     noteNumber: number,
     velocity: number,
@@ -651,6 +728,8 @@ export default class ModInstrument {
       sampleOffset?: number;
       /** Duration of one tracker tick in seconds, for envelope timing. */
       tickSeconds?: number;
+      /** Tracker channel this note belongs to; owns a voice of its own. */
+      trackIndex?: number;
     },
   ): number | undefined {
     if (!this.audioBuffer || !this.samplerState) {
@@ -670,37 +749,23 @@ export default class ModInstrument {
       }
     }
 
-    // Allocate a voice: prefer free voices, then use round-robin for voice stealing
-    let voiceIndex = -1;
+    // A tracker channel owns its voice, so a note replaces that channel's own
+    // note and can never cut one sounding on a different channel.
+    const voiceIndex = this.resolveVoiceForTrack(options?.trackIndex);
 
-    // First, try to find a free voice
-    for (let i = 0; i < this.num_voices; i++) {
-      if (!this.activeVoices.has(i)) {
-        voiceIndex = i;
-        break;
+    // Retire whatever this voice was playing before reusing it.
+    const oldVoice = this.activeVoices.get(voiceIndex);
+    if (oldVoice) {
+      try {
+        oldVoice.source.stop();
+      } catch {
+        // Source may have already stopped naturally
       }
-    }
-
-    // If no free voice, use round-robin to steal one
-    if (voiceIndex === -1) {
-      voiceIndex = this.voiceRoundRobinIndex;
-      this.voiceRoundRobinIndex =
-        (this.voiceRoundRobinIndex + 1) % this.num_voices;
-
-      // Stop the old voice on this voice slot before reusing it
-      const oldVoice = this.activeVoices.get(voiceIndex);
-      if (oldVoice) {
-        try {
-          oldVoice.source.stop();
-        } catch {
-          // Source may have already stopped naturally
-        }
-        oldVoice.source.disconnect();
-        oldVoice.gainNode.disconnect();
-        oldVoice.panNode.disconnect();
-        oldVoice.envelopeGain?.disconnect();
-        this.activeVoices.delete(voiceIndex);
-      }
+      oldVoice.source.disconnect();
+      oldVoice.gainNode.disconnect();
+      oldVoice.panNode.disconnect();
+      oldVoice.envelopeGain?.disconnect();
+      this.activeVoices.delete(voiceIndex);
     }
 
     // Create audio nodes for this voice

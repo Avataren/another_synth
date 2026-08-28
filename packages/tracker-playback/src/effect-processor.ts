@@ -47,7 +47,7 @@ function applyPortamentoStep(state: TrackEffectState): void {
   if (speed === 0) return;
 
   if (state.currentPeriod !== undefined) {
-    const delta = Math.abs(speed);
+    const delta = Math.abs(speed) * state.profile.portamentoUnitScale;
     const nextPeriod =
       speed > 0 ? state.currentPeriod - delta : state.currentPeriod + delta;
     updatePitchFromPeriod(state, nextPeriod);
@@ -252,17 +252,12 @@ function applyTonePortaStep(state: TrackEffectState): number {
   }
 
   if (state.currentPeriod !== undefined && state.targetPeriod !== undefined) {
+    const step = state.tonePortaSpeed * state.profile.portamentoUnitScale;
     let nextPeriod = state.currentPeriod;
     if (state.currentPeriod > state.targetPeriod) {
-      nextPeriod = Math.max(
-        state.targetPeriod,
-        state.currentPeriod - state.tonePortaSpeed,
-      );
+      nextPeriod = Math.max(state.targetPeriod, state.currentPeriod - step);
     } else if (state.currentPeriod < state.targetPeriod) {
-      nextPeriod = Math.min(
-        state.targetPeriod,
-        state.currentPeriod + state.tonePortaSpeed,
-      );
+      nextPeriod = Math.min(state.targetPeriod, state.currentPeriod + step);
     }
     updatePitchFromPeriod(state, nextPeriod);
   } else {

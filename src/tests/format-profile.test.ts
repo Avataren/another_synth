@@ -234,3 +234,63 @@ describe('XM frequency table selection', () => {
     expect(engine.getFormatProfile().pitch.kind).toBe('amiga');
   });
 });
+
+/**
+ * Portamento scale. ProTracker subtracts the parameter straight from an Amiga
+ * period whose C-2 is 428. XM's period scale is four times finer -- Amiga C-4
+ * is 1712, and the linear table uses 64 units per semitone -- and FT2 slides
+ * by param*4 so both formats reach the same musical rate.
+ */
+describe('portamento unit scale', () => {
+  const portaUp: EffectCommand = { type: 'portaUp', paramX: 0, paramY: 4 };
+
+  function slideOneTick(profile: FormatProfile, startPeriod: number) {
+    const state = createTrackEffectState(profile);
+    state.currentPeriod = startPeriod;
+    state.currentFrequency = profile.pitch.frequencyFromPeriod(startPeriod);
+    processEffectTick0(state, portaUp, undefined);
+    processEffectTickN(state, portaUp, 1, 6);
+    return startPeriod - (state.currentPeriod ?? startPeriod);
+  }
+
+  it('moves ProTracker by the raw parameter', () => {
+    expect(slideOneTick(PROTRACKER_PROFILE, 428)).toBeCloseTo(4, 6);
+  });
+
+  it('moves XM by four times the parameter', () => {
+    expect(slideOneTick(XM_PROFILE, 4608)).toBeCloseTo(16, 6);
+  });
+
+  it('makes XM Amiga mode slide at exactly ProTracker\'s musical rate', () => {
+    // This is the invariant the scale exists for: XM's Amiga period is 4x
+    // ProTracker's (C-4 = 1712 against C-2 = 428), so sliding 4x as many
+    // units covers the same pitch interval. XM *linear* mode deliberately
+    // differs -- linear slides are constant in cents, Amiga slides are not.
+    const amiga = profileForFormat('xm', { linearFrequency: false });
+
+    const ptRatio =
+      PROTRACKER_PROFILE.pitch.frequencyFromPeriod(428 - 4) /
+      PROTRACKER_PROFILE.pitch.frequencyFromPeriod(428);
+    const xmRatio =
+      amiga.pitch.frequencyFromPeriod(1712 - 16) /
+      amiga.pitch.frequencyFromPeriod(1712);
+
+    const cents = 1200 * Math.abs(Math.log2(ptRatio / xmRatio));
+    expect(cents).toBeLessThan(0.001);
+  });
+
+  it('slides XM linear mode by a quarter semitone per unit of 4', () => {
+    // 64 units per semitone, times the scale of 4, gives 16/64 semitone.
+    const before = XM_PROFILE.pitch.frequencyFromPeriod(4608);
+    const after = XM_PROFILE.pitch.frequencyFromPeriod(4608 - 16);
+    expect(1200 * Math.log2(after / before)).toBeCloseTo(25, 6);
+  });
+
+  it('declares the expected scale per format', () => {
+    expect(PROTRACKER_PROFILE.portamentoUnitScale).toBe(1);
+    expect(NATIVE_PROFILE.portamentoUnitScale).toBe(1);
+    expect(XM_PROFILE.portamentoUnitScale).toBe(4);
+    expect(profileForFormat('xm', { linearFrequency: false }).portamentoUnitScale)
+      .toBe(4);
+  });
+});
