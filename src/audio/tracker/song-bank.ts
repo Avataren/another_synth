@@ -1402,9 +1402,25 @@ export class TrackerSongBank {
           }
         }
       }
-      // Fallback to first voice if we still couldn't resolve (prevents silent slides on startup).
+      // No fallback to voice 0 here.
+      //
+      // Instruments are per-sample, so two tracks playing the same sample
+      // share one instrument and its voice pool. Defaulting to voice 0 when
+      // *this* track has no voice yet therefore aims the command at whichever
+      // track happens to own voice 0, silently rewriting another channel's
+      // gain. GSLINGER.MOD pattern 2 is the case that exposed it: channels 1
+      // and 3 both play sample 9, and channel 3's row-0 "C00" (volume zero,
+      // no note) landed on channel 1's just-started lead and killed it.
+      //
+      // A volume command on a track with nothing sounding has nothing to
+      // apply to. ProTracker keeps it as the channel's volume and uses it for
+      // that channel's next note, which is exactly what the importer's sticky
+      // volume column already reproduces -- so dropping it here is correct,
+      // not merely safe. A row that starts a note records its voice before
+      // this runs (dispatchCommands precedes the velocity block in the
+      // engine), so genuine note+volume rows still resolve.
       if (resolvedVoice < 0) {
-        resolvedVoice = 0;
+        return;
       }
     }
     // Ignore invalid voice indices to avoid affecting all voices inadvertently.
@@ -1446,8 +1462,12 @@ export class TrackerSongBank {
           }
         }
       }
+      // Same cross-track hazard as setVoiceVolumeAtTime: two tracks sharing a
+      // sample share this instrument's voices, so voice 0 may belong to a
+      // different channel. A 9xx with no sounding voice on this track has
+      // nothing to offset.
       if (resolvedVoice < 0) {
-        resolvedVoice = 0; // fallback to first voice so offset commands don’t get dropped
+        return;
       }
     }
     if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
