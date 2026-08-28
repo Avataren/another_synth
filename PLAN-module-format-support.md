@@ -205,10 +205,11 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [x] 8/16-bit delta sample decoding
 - [x] Shared import layer — a `SamplerPatchSpec` builder rather than the planned
       `ModuleSong` IR (see D25 for why the abstraction moved)
-- [ ] Multi-sample instruments with note→sample keymap
-- [ ] Volume-column field on `TrackerEntryData` + XM volume-column commands
-- [ ] Key-off (note 97) handling
-- [ ] Raise `TOTAL_SLOTS` or introduce instrument paging beyond 35
+- [x] Key-off (note 97) handling — mapped to the tracker's `###` note-off
+- [x] Raise `TOTAL_SLOTS` (35 → 65) and allocate only for *used* instruments (F2)
+- [x] Volume column: "set volume" (0x10–0x50) imported
+- [ ] Volume-column *commands* (0x60+: slides, pan, vibrato, tone porta) — see D27
+- [ ] Multi-sample instruments with note→sample keymap — see D26
 
 ### Phase 4 — XM instrument fidelity
 - [ ] Volume envelope (12 points, sustain, loop)
@@ -482,6 +483,35 @@ payoff. And the genuinely shared code turned out to be below the parser boundary
 it. Revisit when S3M lands and there are two real implementations to generalise from
 rather than one plus an assumption.
 
+**D26 — One sample per XM instrument, for now.**
+XM instruments carry up to 16 samples with a 96-note keymap. Measured across the corpus,
+**only 3 instruments in one file (an-path.xm) have more than one sample, and not a single
+instrument anywhere uses a non-uniform keymap.** The importer therefore takes each
+instrument's first sample with data and ignores the keymap. That is lossy for exactly 3
+instruments out of 268, against a large amount of machinery — and slot pressure would
+double or worse if each sample needed its own slot. Revisit if a real song sounds wrong
+because of it; the parser already reads the full keymap, so only the importer changes.
+
+**D27 — Volume-column commands beyond "set volume" are not interpreted yet.**
+XM's volume column is heavily used (686–17101 cells per module) but mostly for plain
+volume: e.g. an-path.xm uses it 17101 times, 12735 of them set-volume. The remaining
+0x60+ range (volume slides, fine slides, vibrato, panning, pan slide, tone portamento)
+is imported as nothing. That is a real gap — roughly 25% of volume-column usage in the
+busiest files — and needs a dedicated field on `TrackerEntryData`, since the existing
+`volume` column is a plain gain and cannot carry a command.
+
+**D28 — XM's sampler root note is derived, not fitted.**
+`rootNote = 69 + 12*log2(44100/32/440) = 88.77`, from requiring
+`playbackRate = scheduledFrequency / f(rootNote)` to equal the XM rate for a buffer
+declared at 44100. The identical derivation with MOD's /128 scale yields 64.77 — which is
+where mod-import's empirically calibrated 65 came from. Getting the existing magic number
+to fall out of the formula is good evidence the relation is right.
+
+A sample's `relativeNote` is folded into its root note rather than into the scheduled
+note frequency, since the root is per-instrument while frequency is per-note. Applying it
+in both places would transpose twice; a test asserts the frequency stays put while the
+root moves.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -582,6 +612,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 3 | **XM files now import and are selectable in the file picker.** `xm-import.ts` maps notes (with exact frequencies from the per-song pitch model), key-off, set-volume, effects (including FT2's G+ extras), per-pattern rows and instrument slots. `TOTAL_SLOTS` 35 → 65, allocating only for *used* instruments (D26–D28). Verified: all 9 real modules import — 4–32 tracks, 8–42 slots, frequencies 32.7–3947 Hz. 487 tests green. |
 | 2026-08-28 | 3 | Sampler patch construction extracted from `mod-import.ts` (368 lines) into `sampler-patch-builder.ts`, ready for the XM importer to share (D25). mod-import 950 → 625 lines. Pure refactor — 472 tests green, including the MOD import tests that assert patch structure. The planned `ModuleSong` IR is deliberately not built; see D25. |
 | 2026-08-28 | 3 | XM Amiga-mode pitch model added (`createXmAmigaPitchModel`) plus `XM_AMIGA_PROFILE`, selected per song via `Song.linearFrequency` (D24). Closes F1. Both XM modes verified to agree exactly on note pitch. 472 tests green; still not reachable from the UI. |
 | 2026-08-28 | 3 | XM parser validated against 9 real modules (see §6c). All parse cleanly with sane sample statistics. Surfaced F1 (Amiga-mode XM is 4 of 9 files and needs its own pitch model), F2 (128 instruments confirms the slot blocker), F3 (row counts 5..256 confirm Phase 1). |

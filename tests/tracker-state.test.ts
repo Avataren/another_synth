@@ -267,14 +267,16 @@ describe('tracker slot initialization', () => {
   it('creates instrument slots on initialization', () => {
     const store = useTrackerStore();
 
-    // Should have 35 default slots
-    expect(store.instrumentSlots.length).toBe(35);
+    // One slot per available instrument position. Asserted against the
+    // constant rather than a literal so raising the limit (as XM support did)
+    // does not require editing the expectation.
+    expect(store.instrumentSlots.length).toBe(TOTAL_SLOTS);
 
-    // Slots are numbered 1-35, not 0-34
+    // Slots are numbered from 1, not 0.
     expect(store.instrumentSlots[0]).toBeDefined();
-    expect(store.instrumentSlots[34]).toBeDefined();
+    expect(store.instrumentSlots[TOTAL_SLOTS - 1]).toBeDefined();
     expect(store.instrumentSlots[0]!.slot).toBe(1);
-    expect(store.instrumentSlots[34]!.slot).toBe(35);
+    expect(store.instrumentSlots[TOTAL_SLOTS - 1]!.slot).toBe(TOTAL_SLOTS);
 
     // Each slot should have correct structure
     store.instrumentSlots.forEach((slot) => {

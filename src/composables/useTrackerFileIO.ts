@@ -4,6 +4,7 @@ import type { JSZipObject } from 'jszip';
 import type { TrackerSongFile, useTrackerStore } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-import';
+import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 
 /**
  * File picker types for File System Access API
@@ -106,11 +107,12 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
         (await anyWindow.showOpenFilePicker({
           types: [
             {
-              description: 'Chord Mod Song / MOD Module',
+              description: 'Chord Mod Song / Tracker Module',
               accept: {
                 'application/json': ['.cmod', '.json'],
                 'audio/x-mod': ['.mod'],
-                'audio/mod': ['.mod']
+                'audio/mod': ['.mod'],
+                'audio/x-xm': ['.xm']
               }
             }
           ],
@@ -124,7 +126,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     return await new Promise<ArrayBuffer | null>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.cmod,application/json,.json,.mod';
+      input.accept = '.cmod,application/json,.json,.mod,.xm';
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) {
@@ -200,6 +202,9 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       } else if (looksLikeMod(buffer)) {
         // Raw Amiga-style MOD module
         songFile = importModToTrackerSong(data);
+      } else if (looksLikeXm(buffer)) {
+        // FastTracker 2 module
+        songFile = importXmToTrackerSong(data);
       } else {
         // Plain JSON .cmod/.json file
         const decoder = new TextDecoder('utf-8');

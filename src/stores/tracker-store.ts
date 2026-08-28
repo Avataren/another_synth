@@ -10,8 +10,17 @@ import {
 export type { ModuleFormat };
 
 export const SLOTS_PER_PAGE = 5;
-export const TOTAL_PAGES = 7;
-export const TOTAL_SLOTS = SLOTS_PER_PAGE * TOTAL_PAGES; // 35 slots
+/**
+ * Raised from 7 to 13 (35 -> 65 slots) for XM support.
+ *
+ * XM allows 128 instruments. In practice most are empty: jt_letgo.xm declares
+ * 128 but only 9 carry samples. Measured across the local corpus, the highest
+ * count of instruments that actually have sample data is 42 (an-path.xm),
+ * which 35 slots could not hold. 65 covers that with headroom while leaving
+ * the 5-per-page UI layout untouched.
+ */
+export const TOTAL_PAGES = 13;
+export const TOTAL_SLOTS = SLOTS_PER_PAGE * TOTAL_PAGES; // 65 slots
 
 export interface InstrumentSlot {
   slot: number;
