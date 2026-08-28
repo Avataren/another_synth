@@ -203,8 +203,8 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 ### Phase 3 — XM parser and import (B3, B5, B8)
 - [x] `formats/xm.ts`: header, pattern decode (packed cells), instrument + sample headers
 - [x] 8/16-bit delta sample decoding
-- [ ] `ModuleSong` IR + refactor the MOD path to produce it too
-- [ ] Format-agnostic importer IR → `TrackerSongFile`
+- [x] Shared import layer — a `SamplerPatchSpec` builder rather than the planned
+      `ModuleSong` IR (see D25 for why the abstraction moved)
 - [ ] Multi-sample instruments with note→sample keymap
 - [ ] Volume-column field on `TrackerEntryData` + XM volume-column commands
 - [ ] Key-off (note 97) handling
@@ -462,6 +462,26 @@ formula by up to about a period unit. Inaudible for note playback, possibly audi
 long slides. Swap in FT2's literal table if XM slides sound subtly off against a
 reference player.
 
+**D25 — The shared import layer is a patch builder, not the planned `ModuleSong` IR.**
+Section 4.4 called for both parsers to emit a common `ModuleSong` that one importer
+consumes. Measuring the actual duplication changed the answer.
+
+`createSamplerPatchForSample` was **368 of mod-import.ts's 950 lines** and is almost
+entirely format-agnostic node-graph construction — sampler → mixer, amp envelope, the
+standard effect nodes, and the two macro routes playback depends on (macro 0 = pan,
+macro 1 = sample offset). *That* is what would have been duplicated for XM, and it sits
+well below where a parser-level IR would have helped. It is now
+`sampler-patch-builder.ts`, taking a `SamplerPatchSpec` of plain numbers; mod-import
+dropped to 625 lines and supplies its own ProTracker-specific values (root note 65,
+finetune/8 × 100 cents, the `loopLength > 2` no-loop convention).
+
+The `ModuleSong` IR is **not** being built for now, for two reasons. It would have one
+real consumer (XM) plus a guess, since migrating the MOD path to it means rewriting
+import logic the user has verified by ear across many songs — risk with no functional
+payoff. And the genuinely shared code turned out to be below the parser boundary, not at
+it. Revisit when S3M lands and there are two real implementations to generalise from
+rather than one plus an assumption.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -562,6 +582,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 3 | Sampler patch construction extracted from `mod-import.ts` (368 lines) into `sampler-patch-builder.ts`, ready for the XM importer to share (D25). mod-import 950 → 625 lines. Pure refactor — 472 tests green, including the MOD import tests that assert patch structure. The planned `ModuleSong` IR is deliberately not built; see D25. |
 | 2026-08-28 | 3 | XM Amiga-mode pitch model added (`createXmAmigaPitchModel`) plus `XM_AMIGA_PROFILE`, selected per song via `Song.linearFrequency` (D24). Closes F1. Both XM modes verified to agree exactly on note pitch. 472 tests green; still not reachable from the UI. |
 | 2026-08-28 | 3 | XM parser validated against 9 real modules (see §6c). All parse cleanly with sane sample statistics. Surfaced F1 (Amiga-mode XM is 4 of 9 files and needs its own pitch model), F2 (128 instruments confirms the slot blocker), F3 (row counts 5..256 confirm Phase 1). |
 | 2026-08-28 | 3 | XM parser added (`packages/tracker-playback/src/formats/xm.ts`): header, per-pattern row counts, packed + unpacked cell decoding, instruments with 96-note keymaps, volume/panning envelopes, fadeout, autovibrato fields, per-sample tuning/loop settings, and 8/16-bit delta decoding (D22). Reports the file faithfully and interprets nothing (D23). 21 tests against synthetic modules; 459 total green. Not yet reachable from the UI. |

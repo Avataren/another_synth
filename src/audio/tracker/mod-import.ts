@@ -9,24 +9,11 @@ import type {
   TrackerTrackData,
   TrackerEntryData,
 } from 'src/components/tracker/tracker-types';
+import type { Patch } from 'src/audio/types/preset-types';
+import { SamplerLoopMode } from 'src/audio/types/synth-layout';
 import {
-  type Patch,
-  AudioAssetType,
-  createDefaultPatchMetadata,
-} from 'src/audio/types/preset-types';
-import {
-  SamplerLoopMode,
-  SamplerTriggerMode,
-  VoiceNodeType,
-  type SamplerState,
-  type VoiceLayout,
-  type PatchLayout,
-  type EnvelopeConfig,
-  type LfoState,
-} from 'src/audio/types/synth-layout';
-import { PortId } from 'src/audio/types/generated/port-ids';
-import type { ModulationTransformation, WasmModulationType } from 'app/public/wasm/audio_processor';
-import { encodeFloat32ArrayToBase64 } from 'src/audio/serialization/audio-asset-encoder';
+  createSamplerPatch,
+} from 'src/audio/tracker/sampler-patch-builder';
 import {
   looksLikeMod as looksLikeModInternal,
   parseMod,
@@ -526,370 +513,40 @@ function createSamplerPatchForSample(
   sampleIndex: number,
   _mod: ModSong,
 ): Patch {
-  const samplerNodeId = generateNodeId('sampler');
-  const mixerNodeId = generateNodeId('mixer');
-  const envelopeNodeId = generateNodeId('envelope');
-  const lfoNodeId = generateNodeId('lfo');
-  const chorusNodeId = '10000';
-  const delayNodeId = '10001';
-  const reverbNodeId = '10002';
-  const convolverNodeId = '10003';
-  const limiterNodeId = '10004';
-  const compressorNodeId = '10005';
-  const saturationNodeId = '10006';
-  const bitcrusherNodeId = '10007';
-  const patchName =
-    sample.name || `Instrument ${formatInstrumentId(sampleIndex)}`;
-  const metadata = createDefaultPatchMetadata(patchName, 'Imported/MOD');
-  metadata.instrumentType = 'mod';
-  console.log('[MOD Import] Creating patch with instrumentType=mod:', patchName);
-
-  const floatData = convertSampleToFloat32(sample);
-
-  const audioAsset = encodeFloat32ArrayToBase64(
-    floatData,
-    DEFAULT_SAMPLE_RATE,
-    1,
-    AudioAssetType.Sample,
-    samplerNodeId,
-    sample.name || undefined,
-    60,
-  );
-
   const sampleLengthFrames = Math.max(1, sample.length);
+  // ProTracker marks "no loop" with a loop length of 2 words or less.
   const loopEnabled = sample.loopLength > 2;
-  const loopStartFrames = Math.min(sample.loopStart, sampleLengthFrames - 1);
-  const loopEndFrames = Math.min(
-    loopStartFrames + sample.loopLength,
-    sampleLengthFrames,
-  );
 
-  // Map MOD finetune (-8..7, 1/8 semitone per step) into sampler detune.
-  const finetuneSteps = sample.finetune ?? 0;
-  const finetuneCents = (finetuneSteps / 8) * 100;
-
-  const samplerState: SamplerState = {
-    id: samplerNodeId,
-    frequency: 440,
-    // Use the sample's default volume (0-64) as the base gain, but keep unity when the header volume is 0
-    // so volume slides (Axx) can fade the channel in from silence.
-    gain: (() => {
-      const sampleVol = sample.volume ?? 64;
-      if (sampleVol === 0) return 1;
-      return sampleVol / 64;
-    })(),
-    detune_oct: 0,
-    detune_semi: 0,
-    detune_cents: finetuneCents,
-    detune: finetuneCents,
-    loopMode: loopEnabled ? SamplerLoopMode.Loop : SamplerLoopMode.Off,
-    loopStart: loopEnabled ? loopStartFrames / sampleLengthFrames : 0,
-    loopEnd: loopEnabled ? loopEndFrames / sampleLengthFrames : 1,
-    sampleLength: sampleLengthFrames,
-    // Empirically calibrated root note for MOD import.
-    // Using a fixed root of 65 keeps most instruments (including AmegAs)
-    // close to their original ProTracker pitch; per-sample finetune is
-    // baked into detune_cents/detune so patches stay aligned with MOD tuning.
-    rootNote: 65,
-    triggerMode: SamplerTriggerMode.Gate,
-    active: true,
+  const patch = createSamplerPatch({
+    name: sample.name,
+    fallbackName: `Instrument ${formatInstrumentId(sampleIndex)}`,
+    category: 'Imported/MOD',
+    data: convertSampleToFloat32(sample),
     sampleRate: DEFAULT_SAMPLE_RATE,
-    channels: 1,
-  };
-  if (sample.name) {
-    samplerState.fileName = sample.name;
-  }
-
-  const canonicalVoice: VoiceLayout = {
-    id: 0,
-    nodes: {
-      [VoiceNodeType.Oscillator]: [],
-      [VoiceNodeType.WavetableOscillator]: [],
-      [VoiceNodeType.Filter]: [],
-      [VoiceNodeType.Envelope]: [
-        {
-          id: envelopeNodeId,
-          type: VoiceNodeType.Envelope,
-          name: 'Amp Envelope',
-        },
-      ],
-      [VoiceNodeType.LFO]: [
-        {
-          id: lfoNodeId,
-          type: VoiceNodeType.LFO,
-          name: 'LFO',
-        },
-      ],
-      [VoiceNodeType.Mixer]: [
-        {
-          id: mixerNodeId,
-          type: VoiceNodeType.Mixer,
-          name: 'Mixer',
-        },
-      ],
-      [VoiceNodeType.Noise]: [],
-      [VoiceNodeType.Sampler]: [
-        {
-          id: samplerNodeId,
-          type: VoiceNodeType.Sampler,
-          name: sample.name || `Sampler ${sampleIndex}`,
-        },
-      ],
-      [VoiceNodeType.Glide]: [],
-      [VoiceNodeType.GlobalFrequency]: [
-        {
-          id: generateNodeId('global_frequency'),
-          type: VoiceNodeType.GlobalFrequency,
-          name: 'Global Frequency',
-        },
-      ],
-      [VoiceNodeType.GlobalVelocity]: [
-        {
-          id: generateNodeId('global_velocity'),
-          type: VoiceNodeType.GlobalVelocity,
-          name: 'Global Velocity',
-        },
-      ],
-      [VoiceNodeType.Convolver]: [
-        {
-          id: convolverNodeId,
-          type: VoiceNodeType.Convolver,
-          name: 'Convolver',
-        },
-      ],
-      [VoiceNodeType.Delay]: [
-        {
-          id: delayNodeId,
-          type: VoiceNodeType.Delay,
-          name: 'Delay',
-        },
-      ],
-      [VoiceNodeType.GateMixer]: [
-        {
-          id: generateNodeId('gatemixer'),
-          type: VoiceNodeType.GateMixer,
-          name: 'Gate Mixer',
-        },
-      ],
-      [VoiceNodeType.ArpeggiatorGenerator]: [],
-      [VoiceNodeType.Chorus]: [
-        {
-          id: chorusNodeId,
-          type: VoiceNodeType.Chorus,
-          name: 'Chorus',
-        },
-      ],
-      [VoiceNodeType.Limiter]: [
-        {
-          id: limiterNodeId,
-          type: VoiceNodeType.Limiter,
-          name: 'Limiter',
-        },
-      ],
-      [VoiceNodeType.Reverb]: [
-        {
-          id: reverbNodeId,
-          type: VoiceNodeType.Reverb,
-          name: 'Reverb',
-        },
-      ],
-      [VoiceNodeType.Compressor]: [
-        {
-          id: compressorNodeId,
-          type: VoiceNodeType.Compressor,
-          name: 'Compressor',
-        },
-      ],
-      [VoiceNodeType.Saturation]: [
-        {
-          id: saturationNodeId,
-          type: VoiceNodeType.Saturation,
-          name: 'Saturation',
-        },
-      ],
-      [VoiceNodeType.Bitcrusher]: [
-        {
-          id: bitcrusherNodeId,
-          type: VoiceNodeType.Bitcrusher,
-          name: 'Bitcrusher',
-        },
-      ],
-    },
-    connections: [
-      {
-        fromId: samplerNodeId,
-        toId: mixerNodeId,
-        target: PortId.AudioInput0,
-        amount: 1,
-        modulationType: 2 as WasmModulationType,
-        modulationTransformation: 0 as ModulationTransformation,
-      },
-      {
-        fromId: envelopeNodeId,
-        toId: mixerNodeId,
-        target: PortId.GainMod,
-        amount: 1,
-        modulationType: 0 as WasmModulationType,
-        modulationTransformation: 0 as ModulationTransformation,
-      },
-    ],
-  };
-
-  const layout: PatchLayout = {
-    // Use 4 voices per imported MOD instrument so tracker playback
-    // has enough polyphony for chords / overlaps while still feeling
-    // “Amiga-like” rather than 8‑voice polysynth.
+    // Empirically calibrated root note for MOD import. A fixed root of 65
+    // keeps most instruments (including AmegAs) close to their original
+    // ProTracker pitch; per-sample finetune is baked into detune instead.
+    rootNote: 65,
+    // MOD finetune is -8..7 in 1/8 semitone steps.
+    detuneCents: ((sample.finetune ?? 0) / 8) * 100,
+    // Use the sample's default volume (0-64) as the base gain, but keep unity
+    // when the header volume is 0 so volume slides (Axx) can fade the channel
+    // in from silence.
+    gain: (sample.volume ?? 64) === 0 ? 1 : (sample.volume ?? 64) / 64,
+    loopMode: loopEnabled ? SamplerLoopMode.Loop : SamplerLoopMode.Off,
+    loopStartFrames: loopEnabled ? sample.loopStart : 0,
+    loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,
+    // 4 voices per imported MOD instrument: enough polyphony for chords and
+    // overlaps while still feeling Amiga-like rather than an 8-voice polysynth.
     voiceCount: 4,
-    canonicalVoice,
-    globalNodes: {},
-  };
+  });
 
-  const patch: Patch = {
-    metadata,
-    synthState: {
-      layout,
-      oscillators: {},
-      wavetableOscillators: {},
-      filters: {},
-      envelopes: {
-        [envelopeNodeId]: {
-          id: envelopeNodeId,
-          active: true,
-          attack: 0,
-          decay: 0,
-          sustain: 1,
-          release: 0,
-          attackCurve: 0,
-          decayCurve: 0,
-          releaseCurve: 0,
-        } satisfies EnvelopeConfig,
-      },
-      lfos: {
-        [lfoNodeId]: {
-          id: lfoNodeId,
-          frequency: 1.0,
-          phaseOffset: 0,
-          waveform: 0,
-          useAbsolute: false,
-          useNormalized: false,
-          triggerMode: 0,
-          gain: 0,
-          active: false,
-          loopMode: 0,
-          loopStart: 0,
-          loopEnd: 1,
-        } satisfies LfoState,
-      },
-      samplers: {
-        [samplerNodeId]: samplerState,
-      },
-      glides: {},
-      convolvers: {
-        [convolverNodeId]: {
-          id: convolverNodeId,
-          wetMix: 0.0,
-          active: false,
-        },
-      },
-      delays: {
-        [delayNodeId]: {
-          id: delayNodeId,
-          delayMs: 250,
-          feedback: 0.5,
-          wetMix: 0.0,
-          active: false,
-        },
-      },
-      choruses: {
-        [chorusNodeId]: {
-          id: chorusNodeId,
-          active: false,
-          baseDelayMs: 15.0,
-          depthMs: 5.0,
-          lfoRateHz: 0.5,
-          feedback: 0.3,
-          feedback_filter: 0.5,
-          mix: 0.5,
-          stereoPhaseOffsetDeg: 90.0,
-        },
-      },
-      reverbs: {
-        [reverbNodeId]: {
-          id: reverbNodeId,
-          active: false,
-          room_size: 0.95,
-          damp: 0.5,
-          wet: 0.3,
-          dry: 0.7,
-          width: 1.0,
-        },
-      },
-      compressors: {
-        [compressorNodeId]: {
-          id: compressorNodeId,
-          active: false,
-          thresholdDb: -12,
-          ratio: 4,
-          attackMs: 10,
-          releaseMs: 80,
-          makeupGainDb: 3,
-          mix: 0.5,
-        },
-      },
-      saturations: {
-        [saturationNodeId]: {
-          id: saturationNodeId,
-          active: false,
-          drive: 2.0,
-          mix: 0.5,
-        },
-      },
-      bitcrushers: {
-        [bitcrusherNodeId]: {
-          id: bitcrusherNodeId,
-          active: false,
-          bits: 12,
-          downsampleFactor: 4,
-          mix: 0.5,
-        },
-      },
-      macros: {
-        // Macro 0: per-instrument stereo pan for the sampler/mixer.
-        // Macro 1: per-note sample offset (0..1) for MOD 9xx.
-        values: [0.5, 0.0],
-        routes: [
-          {
-            macroIndex: 0,
-            // Route pan macro to the Mixer StereoPan port so imported MOD
-            // instruments get audible stereo separation.
-            targetId: mixerNodeId,
-            targetPort: PortId.StereoPan,
-            amount: 1,
-            modulationType: 2 as WasmModulationType,
-            modulationTransformation: 0 as ModulationTransformation,
-          },
-          {
-            macroIndex: 1,
-            // Route macro 1 into the sampler's SampleOffset port so per-note
-            // MOD 9xx offsets can be applied via per-voice automation.
-            targetId: samplerNodeId,
-            targetPort: PortId.SampleOffset,
-            amount: 1,
-            modulationType: 2 as WasmModulationType,
-            modulationTransformation: 0 as ModulationTransformation,
-          },
-        ],
-      },
-      instrumentGain: 1.0,
-    },
-    audioAssets: {
-      [audioAsset.id]: audioAsset,
-    },
-  };
-
+  console.log(
+    '[MOD Import] Creating patch with instrumentType=mod:',
+    patch.metadata.name,
+  );
   return patch;
 }
-
 export function convertSampleToFloat32(sample: ModSample): Float32Array {
   const data = sample.data;
   const floats = new Float32Array(data.length);
@@ -902,13 +559,6 @@ export function convertSampleToFloat32(sample: ModSample): Float32Array {
 
 function formatInstrumentId(slotNumber: number): string {
   return slotNumber.toString().padStart(2, '0');
-}
-
-function generateNodeId(prefix: string): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return (crypto as unknown as { randomUUID: () => string }).randomUUID();
-  }
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
 /**
