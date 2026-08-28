@@ -71,6 +71,14 @@
           >
             Save Song
           </button>
+          <button
+            type="button"
+            class="song-button ghost"
+            @click="showDemoBrowser = true"
+            :disabled="isLoadingSong"
+          >
+            Demos
+          </button>
           <label class="toggle toolbar-toggle">
             <input
               v-model="autoScroll"
@@ -520,6 +528,11 @@
         </div>
       </div>
     </div>
+    <DemoSongBrowser
+      v-model="showDemoBrowser"
+      @select="handleDemoSelect"
+    />
+
     <div v-if="showExportModal" class="export-modal">
       <div class="export-dialog">
         <div class="export-title">Exporting song</div>
@@ -564,6 +577,7 @@ import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
+import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
@@ -1542,7 +1556,15 @@ const fileIOContext: TrackerFileIOContext = {
   },
 };
 
-const { handleSaveSongFile, handleLoadSongFile } =
+const showDemoBrowser = ref(false);
+
+/** Load a demo module from the server, then close the browser. */
+async function handleDemoSelect(url: string) {
+  showDemoBrowser.value = false;
+  await loadSongFromUrl(url);
+}
+
+const { handleSaveSongFile, handleLoadSongFile, loadSongFromUrl } =
   useTrackerFileIO(fileIOContext);
 
 // New Song with confirmation

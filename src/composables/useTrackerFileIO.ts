@@ -168,10 +168,37 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    * Load a song from a .cmod or .json file
    */
   async function handleLoadSongFile() {
-    try {
-      const data = await promptOpenFile();
-      if (!data) return;
+    const data = await promptOpenFile();
+    if (!data) return;
+    await loadSongFromBuffer(data);
+  }
 
+  /**
+   * Load a song served over HTTP, e.g. one of the bundled demo modules.
+   */
+  async function loadSongFromUrl(url: string): Promise<void> {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      await loadSongFromBuffer(await response.arrayBuffer());
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to load song from ${url}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load a song from raw bytes, whatever their origin.
+   *
+   * Shared by the file picker and the demo browser so both take exactly the
+   * same path through format detection, instrument rebuild and playback
+   * re-initialisation.
+   */
+  async function loadSongFromBuffer(data: ArrayBuffer) {
+    try {
       const buffer = new Uint8Array(data);
 
       // Set flag to prevent watcher interference during explicit load
@@ -282,6 +309,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     promptSaveFile,
     promptOpenFile,
     handleSaveSongFile,
-    handleLoadSongFile
+    handleLoadSongFile,
+    loadSongFromUrl
   };
 }

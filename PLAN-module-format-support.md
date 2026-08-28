@@ -808,6 +808,28 @@ No real module is checked into the repo — these are the user's files, parsed i
 
 ---
 
+## 6d. Demo song browser
+
+The app can load modules published alongside it. `scripts/build-demo-manifest.mjs` stages
+a collection and writes `demos/index.json`, parsing each module for its real title and
+channel count rather than trusting filenames. `scripts/publish-demos.sh` uploads it;
+`scripts/deploy.sh` builds and deploys the app.
+
+Two things that are load-bearing rather than incidental:
+
+- **The app deploy must pass `--exclude=demos/`.** It uses `rsync --delete` on the same
+  directory, so without the exclusion every deploy would wipe the collection.
+- **`publish-demos.sh` must pass `--chmod=D755,F644`.** The staging directory comes from
+  `mktemp -d`, which is 0700, and plain `rsync -a` carries that to the server. The web
+  server can then stat the directory but not traverse it, serving 403 for the directory
+  and 404 for every file in it — which is exactly what happened first time.
+
+The modules are third-party music and several megabytes of it, so they are deliberately
+outside the repository and outside the Quasar build. The browser treats a missing manifest
+as an expected state, not an error.
+
+---
+
 ## 7. Testing
 
 - MOD regression suite is the contract for "no regression": `src/tests/mod-*.test.ts`,
