@@ -204,7 +204,22 @@ function modCellToTrackerEntry(
 
   const entry: TrackerEntryData = { row };
 
-  if (hasSample) {
+  // ProTracker quirk: a sample number given on a tone-portamento row (3xx/
+  // 5xy) does NOT switch the currently-sounding sample -- the slide
+  // continues on whatever instrument is already playing; only the volume
+  // *would* be affected (and even that is intentionally not applied here,
+  // matching the exclusion below). If we still stamped entry.instrument
+  // here, the engine would route this row's pitch-slide automation to the
+  // *new* instrument's voice instead of the one actually playing, so the
+  // note that's really sounding would never receive the slide at all
+  // (silently stuck at its old pitch) while the new instrument -- not
+  // triggered, nothing playing on it -- gets a pointless pitch command.
+  // Audibly: a tone-porta run that changes instrument number sounds
+  // "stuck"/out of tune against the rest of the mix. Leaving
+  // entry.instrument unset here lets the track builder's sticky
+  // last-instrument tracking correctly keep routing to the instrument
+  // that's actually sounding.
+  if (hasSample && !isTonePorta && !isTonePortaVol) {
     entry.instrument = formatInstrumentId(sampleNumber);
   }
 
