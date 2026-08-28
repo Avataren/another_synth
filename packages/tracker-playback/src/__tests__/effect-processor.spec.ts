@@ -112,12 +112,14 @@ describe('effect-processor command batches', () => {
     processEffectTick0(state, glissCtrl);
     expect(state.glissandoEnabled).toBe(true);
 
-    // 3xx: tone porta with a large speed (30) towards a much lower period,
-    // so tick 0's initial step lands at exactly period 826 (856 - 30)
-    // before snapping -- not on a table entry.
+    // 3xx: tone porta with a large speed (30) towards a much lower period.
+    // Real ProTracker never slides on tick 0 (tick 0 only triggers/targets
+    // the row); the slide starts on tick 1, landing at exactly period 826
+    // (856 - 30) before snapping -- not on a table entry.
     const tonePorta: EffectCommand = { type: 'tonePorta', paramX: 0, paramY: 30 };
-    const tick0 = processEffectTick0(state, tonePorta, 12, 200, freqForPeriod(400));
-    const pitchCmd = tick0.commands.find((cmd) => cmd.kind === 'pitch');
+    processEffectTick0(state, tonePorta, 12, 200, freqForPeriod(400));
+    const tick1 = processEffectTickN(state, tonePorta, 1, 6);
+    const pitchCmd = tick1.commands.find((cmd) => cmd.kind === 'pitch');
     expect(pitchCmd).toBeDefined();
     if (!pitchCmd || pitchCmd.kind !== 'pitch') return;
 
@@ -127,6 +129,44 @@ describe('effect-processor command batches', () => {
     // detectably different frequency (~0.037Hz / ~2 cents off here).
     const oldEqualTemperedSnap = 34.64782887210901;
     expect(pitchCmd.frequency).not.toBeCloseTo(oldEqualTemperedSnap, 4);
+  });
+
+  /**
+   * Regression coverage found while auditing all effect commands: E8y
+   * (extended/coarse set-pan) shares the 'setPan' EffectType with the
+   * full-byte 8xx command, but encodes its value completely differently
+   * (a 4-bit nibble vs. a full 0-255 byte across two params). Running E8y
+   * through the 8xx formula treated its subtype marker as part of the pan
+   * byte, producing a near-center-left result for every E8y value.
+   */
+  it('E8y (extended set-pan) uses its own 4-bit formula, not the 8xx byte formula', () => {
+    const state = createTrackEffectState();
+    // E8F: hard right (nibble value 15/15).
+    const e8f: EffectCommand = {
+      type: 'setPan',
+      paramX: 8,
+      paramY: 15,
+      extSubtype: 'setPan',
+    };
+    processEffectTick0(state, e8f);
+    expect(state.currentPan).toBeCloseTo(1, 5);
+
+    const state2 = createTrackEffectState();
+    // E80: hard left (nibble value 0/15).
+    const e80: EffectCommand = {
+      type: 'setPan',
+      paramX: 8,
+      paramY: 0,
+      extSubtype: 'setPan',
+    };
+    processEffectTick0(state2, e80);
+    expect(state2.currentPan).toBeCloseTo(-1, 5);
+
+    // The plain 8xx command still uses the full-byte formula unchanged.
+    const state3 = createTrackEffectState();
+    const eightFF: EffectCommand = { type: 'setPan', paramX: 15, paramY: 15 };
+    processEffectTick0(state3, eightFF);
+    expect(state3.currentPan).toBeCloseTo((255 - 128) / 128, 5);
   });
 
   /**

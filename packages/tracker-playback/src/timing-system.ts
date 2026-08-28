@@ -54,7 +54,7 @@ export class TimingSystem {
     this.getSequence = getSequence;
     this.currentBpm = options.bpm ?? 120;
     this.currentSpeed = options.speed ?? 6;
-    this.ticksPerRow = options.ticksPerRow ?? 6;
+    this.ticksPerRow = options.ticksPerRow ?? this.currentSpeed;
   }
 
   /**
@@ -233,6 +233,21 @@ export class TimingSystem {
    */
   setSpeed(speed: number): void {
     this.currentSpeed = Math.max(1, Math.min(31, speed));
+    // In ProTracker/FT2, "speed" (F01-F1F) *is* ticks-per-row -- they're
+    // the same parameter, not two independent ones. ticksPerRow used to
+    // stay frozen at its constructor default (6) regardless of Fxx speed
+    // changes, while getRowDuration() correctly scaled the row's total
+    // wall-clock duration by speed. The combination meant getTickDuration()
+    // (row duration / ticksPerRow) scaled *with* speed instead of staying
+    // constant (tick duration in real ProTracker depends only on BPM, via
+    // 2500/BPM ms, never on speed), and every per-tick effect loop (vibrato,
+    // tone porta, volume slide, tremor, retrigger, note cut/delay tick
+    // offsets) ran a fixed 5 update steps per row regardless of the actual
+    // speed, instead of (speed - 1) steps. Both are wrong on any row using
+    // a speed other than the default 6 -- which is extremely common in
+    // real tracker music. Keeping ticksPerRow permanently in sync with
+    // speed here fixes both at the root.
+    this.ticksPerRow = this.currentSpeed;
   }
 
   /**

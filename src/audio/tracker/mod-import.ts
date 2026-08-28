@@ -368,7 +368,6 @@ function modCellToTrackerEntry(
     const targetGain = Math.max(0, Math.min(1, volumeParam / 64));
     const volumeScaled = Math.round(targetGain * 255);
     const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
-    console.log('[MOD Import] Cxx command: C' + volumeParam.toString(16).toUpperCase().padStart(2, '0'), '→ vol:', volumeParam, '/ 64 = gain', targetGain.toFixed(3), '→ scaled:', volumeScaled, '(hex:', volumeHex, ')');
     entry.volume = volumeHex;
     // Clear the effect macro since we moved it to volume column
     effectMacro = undefined;
@@ -402,7 +401,6 @@ function modCellToTrackerEntry(
       // Use sample header as max volume reference
       const volumeScaled = Math.round((sampleVol / 64) * 255);
       const volumeHex = volumeScaled.toString(16).toUpperCase().padStart(2, '0');
-      console.log('[MOD Import] Note with sample', sampleNumber, 'default vol:', sampleVol, '/ 64 → scaled:', volumeScaled, '(hex:', volumeHex, ')');
       entry.volume = volumeHex;
     }
 

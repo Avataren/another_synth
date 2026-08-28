@@ -642,14 +642,14 @@ export function processEffectTick0(
         state.targetPeriod = state.lastTonePortaTargetPeriod;
       }
       state.tonePortaActive = state.tonePortaSpeed > 0;
-      // Apply an initial slide on tick 0 so we don't stop one step short.
-      {
-        const freq = applyTonePortaStep(state);
-        pushPitch(freq);
-        if (state.targetFrequency === state.currentFrequency) {
-          state.tonePortaActive = false;
-        }
-      }
+      // Real ProTracker/FT2 never applies tone portamento (or any other
+      // per-tick slide effect) on tick 0 -- tick 0 is only when the row is
+      // read and any new note triggered; the target set here starts
+      // sliding from tick 1 (see processEffectTickN's 'tonePorta' case).
+      // An "apply on tick 0 too" step used to live here, which -- now that
+      // TimingSystem.setSpeed() correctly keeps ticksPerRow in sync with
+      // speed (see its comment) -- would double up with tick 1's own step
+      // and slide one increment further per row than authentic ProTracker.
       break;
 
     case 'vibrato':
@@ -679,14 +679,7 @@ export function processEffectTick0(
       ) {
         pushVolume(state.currentVolume);
       }
-      // Apply an initial slide on tick 0 so we don't stop one step short.
-      {
-        const freq = applyTonePortaStep(state);
-        pushPitch(freq);
-        if (state.targetFrequency === state.currentFrequency) {
-          state.tonePortaActive = false;
-        }
-      }
+      // No slide on tick 0 -- see the 'tonePorta' case above for why.
       break;
 
     case 'vibratoVol':
@@ -765,8 +758,21 @@ export function processEffectTick0(
       break;
 
     case 'setPan':
-      // 8xx: Set panning (00=left, 80=center, FF=right)
-      state.currentPan = (effect.paramX * 16 + effect.paramY - 128) / 128;
+      if (effect.extSubtype === 'setPan') {
+        // E8y: coarse panning, a single 4-bit nibble (0=left, 15=right).
+        // This shares the 'setPan' EffectType with the full-byte 8xx
+        // command, but encodes its value completely differently: 8xx's
+        // paramX/paramY are the two nibbles of one 0-255 byte, while E8y's
+        // paramX is just the extended-effect subtype marker (8) and paramY
+        // is the real (0-15) value. Running E8y through the 8xx formula
+        // (paramX*16+paramY-128)/128 treats the "8" subtype marker as part
+        // of the pan byte, producing a near-silent, barely-left-of-center
+        // result regardless of the actual nibble.
+        state.currentPan = (effect.paramY / 15) * 2 - 1;
+      } else {
+        // 8xx: Set panning (00=left, 80=center, FF=right)
+        state.currentPan = (effect.paramX * 16 + effect.paramY - 128) / 128;
+      }
       pushPan(state.currentPan);
       break;
 
