@@ -40,6 +40,22 @@ export interface FormatProfile {
   readonly pitch: PitchModel;
 
   /**
+   * Whether a volume slide with a zero parameter (A00) reuses the channel's
+   * last non-zero slide.
+   *
+   * FastTracker 2 keeps volume-slide memory; ProTracker does not -- there A00
+   * simply means "no volume change". The difference is not academic: across a
+   * 20-module sample, 569 of 27378 Axx commands carry a zero parameter, and in
+   * one module (resii.mod) it is 27% of them. Treating those as "continue the
+   * previous slide" makes volume drift where ProTracker holds it steady.
+   *
+   * Note this is specifically volume-slide memory. Vibrato's per-nibble memory
+   * (4xy, used with a zero parameter in over half of all occurrences) and tone
+   * portamento's speed memory (3xx) exist in both formats and are unaffected.
+   */
+  readonly volumeSlideHasMemory: boolean;
+
+  /**
    * ProTracker quirk: an EDx note delay longer than the row's tick count
    * leaks the note into the following row instead of dropping it.
    */
@@ -54,6 +70,7 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   format: 'protracker',
   volumeSlideUnit: 1 / 64,
   pitch: createAmigaPitchModel({ arpeggioWrapsToDC: true }),
+  volumeSlideHasMemory: false,
   noteDelayOverflowCarries: true,
 };
 
@@ -72,6 +89,7 @@ export const XM_PROFILE: FormatProfile = {
   ...PROTRACKER_PROFILE,
   format: 'xm',
   pitch: createLinearPitchModel(),
+  volumeSlideHasMemory: true,
 };
 
 /** Scream Tracker 3 semantics. Placeholder, as for XM_PROFILE. */
@@ -91,6 +109,9 @@ export const S3M_PROFILE: FormatProfile = {
 export const NATIVE_PROFILE: FormatProfile = {
   ...PROTRACKER_PROFILE,
   format: 'native',
+  // Songs written against this engine were composed with volume-slide memory
+  // in place, so keep it rather than silently altering existing work.
+  volumeSlideHasMemory: true,
 };
 
 const PROFILES: Record<ModuleFormat, FormatProfile> = {

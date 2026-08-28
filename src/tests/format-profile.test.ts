@@ -130,3 +130,59 @@ describe('the effect processor reads the profile', () => {
     expect(pitchOf(clamped)).toBeGreaterThan(0);
   });
 });
+
+/**
+ * ProTracker has no volume-slide memory: A00 means "no volume change".
+ * FastTracker 2 reuses the last non-zero parameter. Across a 20-module
+ * sample, 569 of 27378 Axx commands carry a zero parameter (27% of them in
+ * resii.mod), so this is a difference real songs depend on.
+ */
+describe('volume slide memory differs by format', () => {
+  const slide = (param: number): EffectCommand => ({
+    type: 'volSlide',
+    paramX: (param >> 4) & 0x0f,
+    paramY: param & 0x0f,
+  });
+
+  /** Runs "A06" then "A00" and returns the volume change over the A00 row. */
+  function volumeChangeOverZeroParamRow(profile: FormatProfile) {
+    const state = createTrackEffectState(profile);
+    processEffectTick0(state, undefined, 60, 255);
+
+    // Establish a remembered slide.
+    processEffectTick0(state, slide(0x06), undefined);
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, slide(0x06), tick, 6);
+    }
+
+    const before = state.currentVolume;
+    processEffectTick0(state, slide(0x00), undefined);
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, slide(0x00), tick, 6);
+    }
+    return before - state.currentVolume;
+  }
+
+  it('holds volume steady on A00 under ProTracker', () => {
+    expect(volumeChangeOverZeroParamRow(PROTRACKER_PROFILE)).toBeCloseTo(0, 9);
+  });
+
+  it('continues the remembered slide on A00 under XM', () => {
+    expect(volumeChangeOverZeroParamRow(XM_PROFILE)).toBeCloseTo((5 * 6) / 64, 6);
+  });
+
+  it('keeps memory for native songs so existing work is unchanged', () => {
+    expect(NATIVE_PROFILE.volumeSlideHasMemory).toBe(true);
+  });
+
+  it('still slides normally when A00 is not involved', () => {
+    // Guard against "fixing" A00 by breaking ordinary slides.
+    const state = createTrackEffectState(PROTRACKER_PROFILE);
+    processEffectTick0(state, undefined, 60, 255);
+    processEffectTick0(state, slide(0x06), undefined);
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, slide(0x06), tick, 6);
+    }
+    expect(1 - state.currentVolume).toBeCloseTo((5 * 6) / 64, 6);
+  });
+});

@@ -1,6 +1,8 @@
 # Multi-Format Module Support (MOD / XM / S3M)
 
-**Status:** Phase 1 in progress (per-pattern rows done; channel count next)
+**Status:** Phase 2 complete. Next: Phase 3 (XM parser + instrument model).
+Phase 1 still has one open item — per-channel voice allocation (B2) — deferred as
+speculative until a high-channel module needs it; see D13 for why it also matters.
 **Last updated:** 2026-08-28
 **Owner doc for:** extending the tracker from ProTracker-only `.mod` playback to a
 mode-driven player that also handles FastTracker 2 `.xm` and (later) Scream Tracker `.s3m`.
@@ -189,11 +191,11 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
       (attached to each `TrackEffectState` rather than threaded as a parameter — D17)
 - [x] Extract `PitchModel` interface; move PT period logic into `AmigaPitchModel`
 - [x] Add `LinearPitchModel` (XM linear table) — inert until an XM song selects it
-- [ ] Move each remaining ProTracker quirk (B6 list) behind a profile flag
-      — done: volume-slide unit, arpeggio DC wrap, EDx overflow carry,
-        period clamping (now inside `PitchModel`)
-      — todo: LRRL import panning, tick-0 volume-slide policy,
-        Axy effect-memory semantics
+- [x] Move each remaining ProTracker quirk (B6 list) behind a profile flag
+      — moved: volume-slide unit, arpeggio DC wrap, EDx overflow carry,
+        period clamping (inside `PitchModel`), volume-slide memory
+      — investigated and deliberately *not* moved: LRRL import panning,
+        tick-0 volume-slide policy (see D21)
 - [ ] Carry raw `(cmd, param)` bytes on `TrackerEntryData` alongside the text macro;
       retire the 9xx synthetic-param hack
 - [ ] MOD regression suite green with the profile in place
@@ -399,6 +401,34 @@ rather than measured against FastTracker 2. In particular it is not confirmed wh
 lets portamento run past B-7 instead of clamping. Nothing selects this model yet, so the
 guess is currently harmless.
 
+**D20 — Volume-slide memory is a real format difference; MOD now matches ProTracker.**
+ProTracker has no volume-slide memory: `A00` means "no volume change". FastTracker 2
+reuses the last non-zero parameter. The engine did the FT2 thing for every format.
+
+Measured across the 20 modules in the local collection: 569 of 27378 `Axx` commands carry
+a zero parameter, concentrated heavily — 330 of 1224 in `resii.mod` (27%), 157 of 1164 in
+`playingw.mod`. Those rows were continuing a remembered slide where ProTracker holds the
+volume steady, so volume drifted.
+
+Scoped deliberately to *volume*-slide memory. The same survey showed portamento
+(`1xx`/`2xx`) uses a zero parameter only 2 times in 1501, so its memory semantics are not
+worth changing, and vibrato's per-nibble memory is used in 2463 of 4452 `4xy` commands and
+already behaves correctly in both formats. `NATIVE_PROFILE` keeps memory so existing
+songs written against this engine are unchanged.
+
+**D21 — Two listed B6 quirks were investigated and left alone, on purpose.**
+
+*LRRL import panning* lives in `mod-import.ts`, which is by definition the MOD importer;
+LRRL is correct there and the XM importer will set XM's own panning (centre, plus
+per-instrument pan) when it is written. Routing it through a playback profile would add
+indirection without expressing anything the file layout does not already decide.
+
+*Tick-0 volume-slide policy* — no actionable difference found. Both ProTracker and FT2
+apply volume slides on ticks 1..speed-1, which is what the engine already does (verified
+by measurement under D16). The genuinely tick-0 commands are the *fine* slides
+(`EAx`/`EBx`), which are already handled separately and identically in both formats. No
+flag added rather than inventing a distinction to fill a checklist row.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -460,6 +490,7 @@ for the `FormatProfile` work.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 2 | `volumeSlideHasMemory` added: ProTracker `A00` now holds volume steady instead of continuing the last slide, matching PT (D20). **Audible on MOD playback** — 569 affected commands across the local collection, 27% of `resii.mod`'s slides. XM and native keep memory. Two remaining B6 items investigated and deliberately not moved (D21). **Phase 2 complete.** Tests: `src/tests/format-profile.test.ts`. |
 | 2026-08-28 | 2 | `createLinearPitchModel` added (XM default frequency table) and assigned to `XM_PROFILE`; emits musical Hz via a /32 scale (D19). Nothing selects the XM profile yet, so MOD playback is untouched — 434 tests green. XM Amiga-mode still needs its own profile, which arrives with the parser in Phase 3. |
 | 2026-08-28 | 2 | `PitchModel` extracted to `pitch-model.ts`; the ProTracker period table, clamp range, Paula scaling, arpeggio table-stepping and glissando snapping now live in `createAmigaPitchModel` and are reached via `state.profile.pitch` (D18). `effect-processor.ts` no longer contains any Amiga-specific pitch constant. No behaviour change — 425 tests green. Tests: `src/tests/pitch-model.test.ts`. |
 | 2026-08-28 | 2 | `FormatProfile` introduced and reaching the effect processor via `TrackEffectState` (D17). Three quirks migrated behind it: volume-slide unit, arpeggio DC wrap, EDx overflow carry. All profiles hold identical values, so no behaviour change — 416 tests green. Tests: `src/tests/format-profile.test.ts`. |

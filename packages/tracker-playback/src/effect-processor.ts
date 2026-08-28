@@ -380,7 +380,11 @@ function primeVolumeSlide(
       const scale = state.profile.volumeSlideUnit;
       if (effect.paramX) delta = effect.paramX * scale;
       else if (effect.paramY) delta = -effect.paramY * scale;
-      else if (state.lastVolSlide) {
+      else if (state.profile.volumeSlideHasMemory && state.lastVolSlide) {
+        // FT2 reuses the last non-zero slide for A00. ProTracker has no
+        // volume-slide memory at all -- there A00 means "no volume change" --
+        // so continuing the previous slide would make the volume drift where
+        // ProTracker holds it.
         const lastX = (state.lastVolSlide >> 4) & 0x0f;
         const lastY = state.lastVolSlide & 0x0f;
         if (lastX) delta = lastX * scale;
