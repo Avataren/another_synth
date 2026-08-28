@@ -1187,6 +1187,7 @@ export class PlaybackEngine {
             cmd.midi,
             cmd.velocity,
             context.time,
+            cmd.frequency,
           );
           break;
 

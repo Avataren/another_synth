@@ -26,6 +26,136 @@ describe('effect-processor command batches', () => {
     expect(tick1.commands.find((cmd) => cmd.kind === 'volume')).toBeDefined();
   });
 
+  /**
+   * Regression coverage found while auditing all effect commands: a
+   * delayed note (EDx) was triggered via `midiToFrequency(Math.round(...))`,
+   * discarding the MOD's exact period-derived frequency (which encodes
+   * finetune and the discrete ProTracker period table, not pure 12-TET).
+   * That can land a delayed note several cents off pitch compared to an
+   * immediate trigger of the same period, which normal (non-delayed) notes
+   * already avoid by using the precise `noteFrequency` argument directly.
+   */
+  it('preserves the exact MOD period-derived frequency for a delayed note, not a MIDI-rounded one', () => {
+    const state = createTrackEffectState();
+    const ticksPerRow = 6;
+    const delayEffect: EffectCommand = { type: 'noteDelay', paramX: 0, paramY: 1 };
+    // Period 320 -> ~87.395Hz, which does not land exactly on a 12-TET
+    // semitone (nearest MIDI note 41 is ~87.12Hz -- a ~5 cent difference).
+    const preciseFrequency = 87.394822438;
+
+    processEffectTick0(state, delayEffect, 41, 200, preciseFrequency, ticksPerRow);
+    const tick1 = processEffectTickN(state, delayEffect, 1, ticksPerRow);
+    const noteOn = tick1.commands.find((cmd) => cmd.kind === 'noteOn');
+    expect(noteOn).toBeDefined();
+    if (!noteOn || noteOn.kind !== 'noteOn') return;
+    expect(noteOn.frequency).toBeCloseTo(preciseFrequency, 5);
+
+    const pitchCmd = tick1.commands.find((cmd) => cmd.kind === 'pitch');
+    expect(pitchCmd).toBeDefined();
+    if (!pitchCmd || pitchCmd.kind !== 'pitch') return;
+    expect(pitchCmd.frequency).toBeCloseTo(preciseFrequency, 5);
+  });
+
+  /**
+   * Regression coverage for using the real ProTracker period table (rather
+   * than a continuous period/frequency formula) for arpeggio's semitone
+   * offsets. ProTracker's table isn't a clean formula (see e.g. Raylight's
+   * "Karsten-Lars Manuscript" writeup), so basePeriod/2^(n/12) can land on
+   * a different period than the table -- period 856 shifted by 2
+   * semitones continuously rounds to 763, but the real table entry two
+   * positions up from 856 is 762.
+   */
+  it('arpeggio uses the real ProTracker period table, not a continuous formula', () => {
+    const state = createTrackEffectState();
+    const AMIGA_CLOCK = 7159090.5;
+    const PAULA_TO_SYNTH_SCALE = 128;
+    const freqForPeriod = (period: number) =>
+      AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
+
+    const arp: EffectCommand = { type: 'arpeggio', paramX: 2, paramY: 0 };
+    // Trigger a note at period 856 (period-domain, as MOD imports do via
+    // noteFrequency) so arpeggio takes the table-lookup path.
+    processEffectTick0(state, arp, 24, 200, freqForPeriod(856));
+    const tick1 = processEffectTickN(state, arp, 1, 6); // arpeggioTick 1 -> +paramX semitones
+    const pitchCmd = tick1.commands.find((cmd) => cmd.kind === 'pitch');
+    expect(pitchCmd).toBeDefined();
+    if (!pitchCmd || pitchCmd.kind !== 'pitch') return;
+
+    const tableFrequency = freqForPeriod(762); // real table entry, 2 up from 856
+    const continuousFrequency = freqForPeriod(763); // old formula's rounded result
+    expect(pitchCmd.frequency).toBeCloseTo(tableFrequency, 6);
+    expect(pitchCmd.frequency).not.toBeCloseTo(continuousFrequency, 6);
+  });
+
+  /**
+   * Regression coverage for glissando control (E3x) snapping to the real
+   * ProTracker period table instead of the nearest equal-tempered MIDI
+   * note -- the two disagree by a fraction of a semitone in general.
+   */
+  it('glissando control snaps to the real ProTracker period table on a MOD/period-domain track', () => {
+    const state = createTrackEffectState();
+    const AMIGA_CLOCK = 7159090.5;
+    const PAULA_TO_SYNTH_SCALE = 128;
+    const freqForPeriod = (period: number) =>
+      AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
+
+    // Trigger a note at period 856 (period-domain).
+    processEffectTick0(state, undefined, 24, 200, freqForPeriod(856));
+
+    // E3x: enable glissando control.
+    const glissCtrl: EffectCommand = {
+      type: 'extEffect',
+      extSubtype: 'glissandoCtrl',
+      paramX: 0,
+      paramY: 1,
+    };
+    processEffectTick0(state, glissCtrl);
+    expect(state.glissandoEnabled).toBe(true);
+
+    // 3xx: tone porta with a large speed (30) towards a much lower period,
+    // so tick 0's initial step lands at exactly period 826 (856 - 30)
+    // before snapping -- not on a table entry.
+    const tonePorta: EffectCommand = { type: 'tonePorta', paramX: 0, paramY: 30 };
+    const tick0 = processEffectTick0(state, tonePorta, 12, 200, freqForPeriod(400));
+    const pitchCmd = tick0.commands.find((cmd) => cmd.kind === 'pitch');
+    expect(pitchCmd).toBeDefined();
+    if (!pitchCmd || pitchCmd.kind !== 'pitch') return;
+
+    const tableFrequency = freqForPeriod(808); // nearest real table entry to 826
+    expect(pitchCmd.frequency).toBeCloseTo(tableFrequency, 6);
+    // The old equal-tempered-MIDI snap for period 826 lands on a
+    // detectably different frequency (~0.037Hz / ~2 cents off here).
+    const oldEqualTemperedSnap = 34.64782887210901;
+    expect(pitchCmd.frequency).not.toBeCloseTo(oldEqualTemperedSnap, 4);
+  });
+
+  /**
+   * Same class of bug, for Rxy/E9x retrigger: the retrigger command only
+   * carried a rounded `midi` value, forcing the downstream handler to
+   * fall back to an equal-tempered midiToFrequency() reconstruction
+   * instead of the exact pitch that was actually sounding.
+   */
+  it('carries the exact currently-sounding frequency on a retrigger command', () => {
+    const state = createTrackEffectState();
+    const preciseFrequency = 87.394822438;
+    // Establish a precise (non-12-TET-aligned) current pitch, as a normal
+    // MOD note trigger would via noteFrequency.
+    processEffectTick0(state, undefined, 41, 200, preciseFrequency);
+
+    const retrigger: EffectCommand = {
+      type: 'retrigVol',
+      paramX: 0,
+      paramY: 1,
+      extSubtype: 'retrigger',
+    };
+    processEffectTick0(state, retrigger);
+    const tick1 = processEffectTickN(state, retrigger, 1, 6);
+    const retriggerCmd = tick1.commands.find((cmd) => cmd.kind === 'retrigger');
+    expect(retriggerCmd).toBeDefined();
+    if (!retriggerCmd || retriggerCmd.kind !== 'retrigger') return;
+    expect(retriggerCmd.frequency).toBeCloseTo(preciseFrequency, 5);
+  });
+
   it('emits volume slide commands across ticks', () => {
     const state = createTrackEffectState();
     const volSlide: EffectCommand = { type: 'volSlide', paramX: 0, paramY: 2 };

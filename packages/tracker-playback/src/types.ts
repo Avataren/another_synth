@@ -340,7 +340,13 @@ export type ScheduledRetriggerHandler = (
   instrumentId: string,
   midi: number,
   velocity: number,
-  time: number
+  time: number,
+  /**
+   * Precise ProTracker period-derived frequency for the note being
+   * retriggered, when known. Preferred over deriving frequency from
+   * `midi` (which discards finetune/period precision).
+   */
+  frequency?: number
 ) => void;
 
 /**

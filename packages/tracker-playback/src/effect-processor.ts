@@ -10,6 +10,29 @@ const PAULA_TO_SYNTH_SCALE = 128; // 2^7, keeps us in synth-domain Hz
 const MIN_PROTRACKER_PERIOD = 113; // ~B-3
 const MAX_PROTRACKER_PERIOD = 856; // C-1
 
+/**
+ * The real ProTracker note-period table (finetune 0), C-1 through B-3.
+ * ProTracker's table is *not* a clean formula -- see e.g. Raylight's "Karsten-
+ * Lars Manuscript" writeup for the history -- so a continuous period/frequency
+ * formula can be off by a period unit (or land on a different pitch entirely
+ * near octave boundaries) compared to authentic playback. We only need the
+ * finetune-0 row: per-sample finetune in this codebase is applied as a
+ * constant instrument-level detune (see mod-import.ts), not baked into which
+ * table row gets selected at note-trigger time the way real ProTracker does,
+ * so a single 36-entry table (not the full 576-entry finetune x note table)
+ * is sufficient and exact for our architecture.
+ *
+ * Used only where we need to *derive* a period from a note position
+ * (arpeggio's semitone offsets, glissando-control snapping) -- normal note
+ * playback already uses the literal period read straight from the MOD file
+ * and never needs this table at all.
+ */
+const PT_PERIOD_TABLE: readonly number[] = [
+  856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, // C-1..B-1
+  428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226, // C-2..B-2
+  214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113, // C-3..B-3
+];
+
 function clampProtrackerPeriod(period: number): number {
   if (!Number.isFinite(period)) return period;
   if (period < MIN_PROTRACKER_PERIOD) return MIN_PROTRACKER_PERIOD;
@@ -25,17 +48,34 @@ function periodFromFrequency(freq: number): number {
   return clampProtrackerPeriod(AMIGA_CLOCK / (2 * freq * PAULA_TO_SYNTH_SCALE));
 }
 
+/** Index into PT_PERIOD_TABLE of the entry closest to the given period. */
+function nearestPeriodTableIndex(period: number): number {
+  let bestIndex = 0;
+  let bestDelta = Infinity;
+  for (let i = 0; i < PT_PERIOD_TABLE.length; i++) {
+    const delta = Math.abs(PT_PERIOD_TABLE[i]! - period);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestIndex = i;
+    }
+  }
+  return bestIndex;
+}
+
 function protrackerArpPeriod(
   basePeriod: number,
   semitoneOffset: number,
 ): number {
-  // Higher pitch -> smaller period.
-  const shifted = basePeriod / Math.pow(2, semitoneOffset / 12);
-  if (shifted < MIN_PROTRACKER_PERIOD) {
+  // Real ProTracker arpeggio looks up the base period's row in the period
+  // table and steps by semitoneOffset table entries, rather than scaling
+  // continuously -- so do the same here instead of basePeriod/2^(n/12).
+  const baseIndex = nearestPeriodTableIndex(basePeriod);
+  const shiftedIndex = baseIndex + semitoneOffset;
+  if (shiftedIndex < 0 || shiftedIndex >= PT_PERIOD_TABLE.length) {
     // ProTracker wraps past the top of the table; the first overflow hits 0 (DC).
     return 0;
   }
-  return clampProtrackerPeriod(shifted);
+  return PT_PERIOD_TABLE[shiftedIndex]!;
 }
 
 function updatePitchFromPeriod(state: TrackEffectState, period: number): void {
@@ -148,6 +188,11 @@ export interface TrackEffectState {
     | {
         midi: number;
         velocity: number;
+        // Precise ProTracker period-derived frequency for this note, when
+        // known (MOD imports supply this). Falling back to
+        // midiToFrequency(midi) alone discards finetune/period precision
+        // and can land several cents off pitch.
+        frequency?: number;
       }
     | undefined;
 
@@ -167,7 +212,7 @@ export interface TrackEffectState {
   lastArpeggio: number;
 
   // Note delay overflow to next row (ProTracker EDx quirk)
-  carryDelayedNote: { midi: number; velocity: number } | null;
+  carryDelayedNote: { midi: number; velocity: number; frequency?: number } | null;
 }
 
 /**
@@ -293,9 +338,18 @@ function applyTonePortaStep(state: TrackEffectState): number {
 
   // When glissando control is enabled (E3x), snap to semitone grid.
   if (state.glissandoEnabled) {
-    const snappedMidi = Math.round(frequencyToMidi(state.currentFrequency));
-    const snappedFrequency = midiToFrequency(snappedMidi);
-    updatePitchFromFrequency(state, snappedFrequency);
+    if (state.currentPeriod !== undefined) {
+      // MOD/period-domain track: snap to the nearest real ProTracker
+      // period-table entry, matching authentic glissando behavior, instead
+      // of the nearest equal-tempered MIDI note (which can disagree with
+      // the table near octave boundaries).
+      const snappedIndex = nearestPeriodTableIndex(state.currentPeriod);
+      updatePitchFromPeriod(state, PT_PERIOD_TABLE[snappedIndex]!);
+    } else {
+      const snappedMidi = Math.round(frequencyToMidi(state.currentFrequency));
+      const snappedFrequency = midiToFrequency(snappedMidi);
+      updatePitchFromFrequency(state, snappedFrequency);
+    }
   }
 
   return state.currentFrequency;
@@ -432,7 +486,7 @@ export type ProcessorCommand =
     }
   | { kind: 'pan'; pan: number }
   | { kind: 'sampleOffset'; offset: number; voiceIndex?: number }
-  | { kind: 'retrigger'; midi: number; velocity: number };
+  | { kind: 'retrigger'; midi: number; velocity: number; frequency?: number };
 
 export interface TickCommandBatch {
   commands: ProcessorCommand[];
@@ -496,7 +550,15 @@ export function processEffectTick0(
     const carry = state.carryDelayedNote;
     state.carryDelayedNote = null;
     state.currentMidi = carry.midi;
-    state.currentFrequency = midiToFrequency(carry.midi);
+    if (carry.frequency !== undefined) {
+      // Preserve the MOD's exact period-derived pitch instead of
+      // recomputing it from the rounded MIDI note (which discards
+      // finetune/period precision and can land several cents off).
+      updatePitchFromPeriod(state, periodFromFrequency(carry.frequency));
+      state.currentFrequency = carry.frequency;
+    } else {
+      state.currentFrequency = midiToFrequency(carry.midi);
+    }
     state.targetMidi = carry.midi;
     state.targetFrequency = state.currentFrequency;
     state.targetPeriod = undefined;
@@ -740,7 +802,11 @@ export function processEffectTick0(
       // EDx: Note delay by x ticks
       state.noteDelayTick = effect.paramY;
       if (newNote !== undefined && newVelocity !== undefined) {
-        state.delayedNote = { midi: newNote, velocity: newVelocity };
+        state.delayedNote = {
+          midi: newNote,
+          velocity: newVelocity,
+          ...(noteFrequency !== undefined ? { frequency: noteFrequency } : {}),
+        };
         // If delay exceeds or equals the current speed, ProTracker spills to the next row.
         if (ticksPerRow !== undefined && state.noteDelayTick >= ticksPerRow) {
           state.carryDelayedNote = state.delayedNote;
@@ -847,14 +913,21 @@ export function processEffectTickN(
   // Check for note delay
   if (state.noteDelayTick === tick && state.delayedNote) {
     const delayed = state.delayedNote;
+    // Preserve the MOD's exact period-derived pitch instead of recomputing
+    // it from the rounded MIDI note (which discards finetune/period
+    // precision and can land several cents off).
+    const frequency = delayed.frequency ?? midiToFrequency(delayed.midi);
     commands.push({
       kind: 'noteOn',
       midi: delayed.midi,
       velocity: 127,
-      frequency: midiToFrequency(delayed.midi),
+      frequency,
     });
     state.currentMidi = delayed.midi;
-    state.currentFrequency = midiToFrequency(delayed.midi);
+    if (delayed.frequency !== undefined) {
+      updatePitchFromPeriod(state, periodFromFrequency(delayed.frequency));
+    }
+    state.currentFrequency = frequency;
     state.targetMidi = delayed.midi;
     state.targetFrequency = state.currentFrequency;
     state.targetPeriod = undefined;
@@ -1056,6 +1129,12 @@ export function processEffectTickN(
           kind: 'retrigger',
           midi: state.currentMidi,
           velocity: Math.round(state.currentVolume * 127),
+          // state.currentFrequency already tracks the exact ProTracker
+          // period-derived pitch of whatever's currently sounding; use it
+          // instead of letting the downstream handler fall back to
+          // midiToFrequency(currentMidi), which discards finetune/period
+          // precision and can land the retrigger several cents off pitch.
+          frequency: state.currentFrequency,
         });
       }
       break;

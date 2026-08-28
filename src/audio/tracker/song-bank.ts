@@ -1452,6 +1452,7 @@ export class TrackerSongBank {
     velocity: number,
     time: number,
     trackIndex?: number,
+    frequency?: number,
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
@@ -1460,6 +1461,10 @@ export class TrackerSongBank {
     // This requires briefly gating off then back on
     const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, {
       allowDuplicate: true,
+      // Prefer the exact ProTracker period-derived frequency over letting
+      // the instrument fall back to an equal-tempered midiToFrequency(midi)
+      // conversion, which discards finetune/period precision.
+      ...(frequency !== undefined ? { frequency } : {}),
     });
     this.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
