@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
+import { CURRENT_SONG_FILE_VERSION } from 'src/stores/tracker-store';
 import {
   looksLikeMod,
   parseMod,
@@ -117,9 +118,11 @@ describe('MOD import bridge', () => {
 
     const songFile = importModToTrackerSong(buf.buffer);
 
-    expect(songFile.version).toBe(1);
+    expect(songFile.version).toBe(CURRENT_SONG_FILE_VERSION);
     const data = songFile.data;
 
+    // MOD imports must be tagged so playback picks the ProTracker profile.
+    expect(data.moduleFormat).toBe('protracker');
     expect(data.currentSong.title).toBe('TEST MOD');
     expect(data.patternRows).toBe(64);
     expect(data.patterns.length).toBe(1);

@@ -172,8 +172,8 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 ### Phase 0 — Groundwork
 - [x] Make the MOD-instrument path the default (see D3 — needs a settings-version
       migration, not just a default flip)
-- [ ] Add `ModuleFormat` to the song-file schema with a version bump; default existing
-      songs to `'protracker'` on load
+- [x] Add `ModuleFormat` to the song-file schema with a version bump; infer the format
+      for pre-tag songs on load (see D6)
 - [ ] Thread the format tag from the store through `useTrackerSongBuilder` into the engine
 
 ### Phase 1 — Structural (B1, B2)
@@ -242,6 +242,13 @@ envelopes plus fadeout and autovibrato. That argues for XM on the WASM synth pat
 MOD defaults to `ModInstrument` — which means "which engine" belongs in `FormatProfile`
 rather than being one global default. Confirm during Phase 4.
 
+**D6 — Legacy songs infer their format rather than all defaulting to `'protracker'`.**
+Section 5 originally said to default pre-tag (v1) song files to `'protracker'`. That is
+wrong: it would later apply Amiga period clamping, LRRL panning and ProTracker effect
+quirks to songs hand-authored in this tracker. A MOD import is identifiable — it is the
+only producer of `instrumentType: 'mod'` slots (`mod-import.ts`) — so v1 files key off
+that and fall back to `'native'`. See `inferLegacyModuleFormat` in `tracker-store.ts`.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -267,3 +274,4 @@ runtime, more work). Decide at the start of Phase 4, informed by measured Phase 
 |---|---|---|
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
+| 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |

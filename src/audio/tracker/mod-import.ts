@@ -4,7 +4,7 @@ import type {
   TrackerPattern,
   InstrumentSlot,
 } from 'src/stores/tracker-store';
-import { TOTAL_SLOTS } from 'src/stores/tracker-store';
+import { TOTAL_SLOTS, CURRENT_SONG_FILE_VERSION } from 'src/stores/tracker-store';
 import type {
   TrackerTrackData,
   TrackerEntryData,
@@ -73,13 +73,14 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   const { slots, songPatches } = buildInstrumentSlotsAndPatches(mod);
 
   const songFile: TrackerSongFile = {
-    version: 1,
+    version: CURRENT_SONG_FILE_VERSION,
     data: {
       currentSong: {
         title: mod.title || 'Imported MOD',
         author: 'Unknown',
         bpm: DEFAULT_BPM,
       },
+      moduleFormat: 'protracker',
       patternRows: PATTERN_ROWS,
       stepSize: DEFAULT_STEP_SIZE,
       patterns,

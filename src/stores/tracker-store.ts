@@ -2,6 +2,12 @@ import { defineStore } from 'pinia';
 import { uid } from 'quasar';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
+import {
+  DEFAULT_MODULE_FORMAT,
+  type ModuleFormat,
+} from '../../packages/tracker-playback/src/types';
+
+export type { ModuleFormat };
 
 export const SLOTS_PER_PAGE = 5;
 export const TOTAL_PAGES = 7;
@@ -35,6 +41,7 @@ export interface TrackerPattern {
 
 interface TrackerSnapshot {
   currentSong: SongMeta;
+  moduleFormat: ModuleFormat;
   patternRows: number;
   stepSize: number;
   baseOctave: number;
@@ -49,6 +56,8 @@ interface TrackerSnapshot {
 
 interface TrackerStoreState {
   currentSong: SongMeta;
+  /** Which tracker's playback semantics this song follows. */
+  moduleFormat: ModuleFormat;
   patternRows: number;
   stepSize: number;
   baseOctave: number;
@@ -118,6 +127,21 @@ function normalizeInstrumentSlots(slots: InstrumentSlot[] | undefined | null): I
   return normalized;
 }
 
+/**
+ * Guess the module format for a v1 song file, which predates the tag.
+ *
+ * Defaulting every legacy file to 'protracker' would be wrong: it would later
+ * apply Amiga period clamping, LRRL panning and ProTracker effect quirks to
+ * songs hand-authored in this tracker. A MOD import is identifiable, though --
+ * it is the only thing that stamps `instrumentType: 'mod'` onto slots (see
+ * mod-import.ts) -- so key off that and treat everything else as native.
+ */
+function inferLegacyModuleFormat(slots: InstrumentSlot[] | undefined | null): ModuleFormat {
+  if (!Array.isArray(slots)) return DEFAULT_MODULE_FORMAT;
+  const hasModInstrument = slots.some((slot) => slot?.instrumentType === 'mod');
+  return hasModInstrument ? 'protracker' : DEFAULT_MODULE_FORMAT;
+}
+
 function createDefaultPattern(): TrackerPattern {
   return {
     id: uid(),
@@ -126,10 +150,24 @@ function createDefaultPattern(): TrackerPattern {
   };
 }
 
+/**
+ * Song-file schema versions.
+ *
+ * v1: original format, no `moduleFormat` field.
+ * v2: adds `data.moduleFormat`.
+ *
+ * The reader accepts every version in this range; the writer always emits
+ * `CURRENT_SONG_FILE_VERSION`.
+ */
+export type TrackerSongFileVersion = 1 | 2;
+export const CURRENT_SONG_FILE_VERSION = 2;
+
 export interface TrackerSongFile {
-  version: 1;
+  version: TrackerSongFileVersion;
   data: {
     currentSong: SongMeta;
+    /** Absent in v1 files; inferred on load. See `inferLegacyModuleFormat`. */
+    moduleFormat?: ModuleFormat;
     patternRows: number;
     stepSize: number;
     patterns: TrackerPattern[];
@@ -151,6 +189,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         author: 'Unknown',
         bpm: 120
       },
+      moduleFormat: DEFAULT_MODULE_FORMAT,
       baseOctave: 4,
       patternRows: 64,
       stepSize: 1,
@@ -192,6 +231,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     createSnapshot(): TrackerSnapshot {
       return {
         currentSong: { ...this.currentSong },
+        moduleFormat: this.moduleFormat,
         patternRows: this.patternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
@@ -207,6 +247,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     /** Apply a snapshot back into the store state. */
     applySnapshot(snapshot: TrackerSnapshot) {
       this.currentSong = { ...snapshot.currentSong };
+      this.moduleFormat = snapshot.moduleFormat ?? DEFAULT_MODULE_FORMAT;
       this.patternRows = snapshot.patternRows;
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
@@ -251,6 +292,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         author: 'Unknown',
         bpm: 120
       };
+      this.moduleFormat = DEFAULT_MODULE_FORMAT;
       this.baseOctave = 4;
       this.patternRows = 64;
       this.stepSize = 1;
@@ -526,6 +568,7 @@ export const useTrackerStore = defineStore('trackerStore', {
 
       const data: TrackerSongFile['data'] = {
         currentSong: { ...this.currentSong },
+        moduleFormat: this.moduleFormat,
         patternRows: this.patternRows,
         stepSize: this.stepSize,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
@@ -536,10 +579,11 @@ export const useTrackerStore = defineStore('trackerStore', {
         currentInstrumentPage: this.currentInstrumentPage,
         songPatches: filteredSongPatches
       };
-      return { version: 1, data };
+      return { version: CURRENT_SONG_FILE_VERSION, data };
     },
     loadSongFile(file: TrackerSongFile) {
-      if (!file || file.version !== 1 || !file.data) return;
+      if (!file || !file.data) return;
+      if (file.version !== 1 && file.version !== 2) return;
       const data = file.data;
 
       this.currentSong = {
@@ -547,6 +591,8 @@ export const useTrackerStore = defineStore('trackerStore', {
         author: data.currentSong?.author ?? 'Unknown',
         bpm: data.currentSong?.bpm ?? 120
       };
+      // v1 files predate the tag, so fall back to inferring it from the slots.
+      this.moduleFormat = data.moduleFormat ?? inferLegacyModuleFormat(data.instrumentSlots);
       this.patternRows = Number.isFinite(data.patternRows) ? data.patternRows : 64;
       this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;
 

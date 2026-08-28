@@ -1,5 +1,26 @@
 export type TransportState = 'stopped' | 'playing' | 'paused';
 
+/**
+ * Which tracker format a song's playback semantics should follow.
+ *
+ * This is deliberately a property of the *song*, not an app-wide preference:
+ * one session can have a ProTracker MOD and a FastTracker 2 XM open, and the
+ * two disagree on enough behaviour (pitch model, effect memory, tick-0
+ * semantics, default panning) that they cannot share one code path without
+ * degrading both.
+ *
+ * 'native' means a song authored in this tracker, with no legacy quirks.
+ *
+ * See PLAN-module-format-support.md for the roadmap this belongs to.
+ */
+export type ModuleFormat = 'native' | 'protracker' | 'xm' | 's3m';
+
+/**
+ * Format assumed for songs saved before the format tag existed, when nothing
+ * in the song suggests otherwise.
+ */
+export const DEFAULT_MODULE_FORMAT: ModuleFormat = 'native';
+
 export interface Song {
   title: string;
   author: string;
