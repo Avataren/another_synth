@@ -44,10 +44,10 @@ wrong and should be revisited before pressing on.
 
 | Layer | File | Assumption |
 |---|---|---|
-| Parser | `packages/tracker-playback/src/mod-parser.ts` | 4 channels only (throws at `:222`), 64 rows fixed, 15/31-sample layouts |
-| Import | `src/audio/tracker/mod-import.ts` | `MAX_TRACKS = 4` (`:38`), `PATTERN_ROWS = 64` (`:39`), one sample → one slot patch |
-| Song state | `src/stores/tracker-store.ts` | `patternRows` is song-level (`:38`, `:52`) |
-| Engine | `packages/tracker-playback/src/engine.ts` | `setLength` comment at `:384` confirms pattern length is song-global |
+| Parser | `packages/tracker-playback/src/mod-parser.ts` | ~~4 channels only~~ (resolved: up to 32 via `channelsForSignature`), 64 rows fixed, 15/31-sample layouts |
+| Import | `src/audio/tracker/mod-import.ts` | ~~`MAX_TRACKS = 4`~~ (resolved), `PATTERN_ROWS = 64`, one sample → one slot patch |
+| Song state | `src/stores/tracker-store.ts` | ~~`patternRows` is song-level~~ (resolved: `TrackerPattern.rows`) |
+| Engine | `packages/tracker-playback/src/engine.ts` | ~~`setLength` flattens all pattern lengths~~ (resolved: `setPatternLength`) |
 | Effects | `packages/tracker-playback/src/effect-processor.ts` | Amiga periods throughout: `PT_PERIOD_TABLE` (`:30`), clamp 113–856 (`:11-12`), Paula/128 scaling (`:9`) |
 | Entries | `src/components/tracker/tracker-types.ts` | `volume` is a plain 00–FF gain string; effects are 3-char text macros |
 | Dispatch | `src/audio/tracker/song-bank.ts:1634-1670` | `instrumentType === 'mod'` + **global** `useSimplifiedModInstruments` setting |
@@ -180,8 +180,8 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [x] Move row count from song-level `patternRows` onto each pattern; migrate saved songs
 - [x] Engine + song builder honour per-pattern lengths
 - [x] Pattern UI handles varying lengths
-- [ ] Parser: accept 6CHN/8CHN/xxCH MOD signatures instead of throwing
-- [ ] Importer: drop `MAX_TRACKS = 4`, derive track count from the module
+- [x] Parser: accept 6CHN/8CHN/xxCH MOD signatures instead of throwing
+- [x] Importer: drop `MAX_TRACKS = 4`, derive track count from the module
 - [ ] Per-channel voice allocation in `song-bank.ts` / `worklet-pool.ts`
 
 ### Phase 2 — Format profile refactor (B4, B6, B7)
@@ -262,6 +262,18 @@ XM needs. It now only sets the fallback used when no pattern is loaded; per-patt
 go through the new `engine.setPatternLength(patternId, rows)`. Regression-guarded in
 `src/tests/tracker-engine-pattern-length.test.ts`.
 
+**D9 — Startrekker FLT8 is rejected, not decoded.**
+FLT8 stores an 8-channel pattern as two consecutive 4-channel blocks, with an order
+table indexing blocks rather than patterns. Decoding it as a flat 8-channel pattern
+silently interleaves the wrong channels. `looksLikeMod` still accepts it (so the user
+gets the real reason) but `parseMod` throws. Revisit if an FLT8 module actually turns up.
+
+**D10 — Multi-channel panning repeats the Amiga L-R-R-L grouping.**
+For 5+ channels the pan is `channelIndex % 4` into the classic L-R-R-L layout, matching
+what multi-channel MOD players do. The 1/2/3-channel special cases and the 4-channel
+result are unchanged — pinned by a test, since panning feeds macro 0 and a regression
+here would be audible on every existing MOD.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -289,4 +301,5 @@ runtime, more work). Decide at the start of Phase 4, informed by measured Phase 
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 1 | MOD parser accepts up to 32 channels (`channelsForSignature`: `<n>CHN`, `<nn>CH/CN`, `TDZ<n>`, CD81/OKTA/OCTA); FLT8 explicitly rejected (D9). Importer derives track count from the module and repeats L-R-R-L panning past 4 channels (D10). Verified `misc/peacedroid.mod` parses byte-identically before/after. Tests: `src/tests/mod-parser-multichannel.test.ts` (includes per-channel effect-routing coverage). |
 | 2026-08-28 | 1 | Row count moved onto `TrackerPattern.rows`; song file v3 backfills pre-v3 files from `data.patternRows` (D7). `engine.setLength` no longer flattens pattern lengths; added `setPatternLength` (D8). Song builder, playback store, export duration and the pattern UI all read per-pattern counts. Tests: `src/tests/stores/tracker-store-pattern-rows.test.ts`, `src/tests/tracker-engine-pattern-length.test.ts`. |

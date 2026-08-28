@@ -1,10 +1,16 @@
 /**
  * Very small ProTracker/Amiga-style MOD parser used by the tracker.
  *
- * Scope (v1):
- * - 4-channel “old Amiga” modules with signatures like M.K., M!K!, M&K!, N.T., FLT4, 4CHN.
- * - 31-sample layout.
+ * Scope:
+ * - Classic 4-channel “old Amiga” modules (M.K., M!K!, M&K!, N.T., FLT4, 4CHN)
+ *   and the 15-sample Soundtracker layout.
+ * - Multi-channel variants up to 32 channels (`<n>CHN`, `<nn>CH`, `TDZ<n>`,
+ *   plus the fixed 8-channel CD81/OKTA/OCTA tags). See `channelsForSignature`.
+ * - 31-sample layout (15 for Soundtracker).
  * - 64 rows per pattern.
+ *
+ * Not supported: Startrekker FLT8, whose 8 channels are stored as two separate
+ * 4-channel pattern blocks; `parseMod` rejects it explicitly.
  *
  * The parser stays deliberately dumb and only exposes enough structure for
  * the tracker bridge to build patterns + sampler instruments.
@@ -71,28 +77,75 @@ const VALID_SIGNATURES_4CH = new Set<string>([
   '4CHN',
 ]);
 
-function looksLikeProTrackerMod(buffer: Uint8Array): boolean {
-  if (buffer.byteLength < PT_HEADER_SIZE) return false;
-  const sig = String.fromCharCode(
+/** Fixed 8-channel signatures (Oktalyzer / Atari Falcon variants). */
+const SIGNATURES_8CH = new Set<string>(['CD81', 'OKTA', 'OCTA']);
+
+export const MAX_MOD_CHANNELS = 32;
+
+/**
+ * Channel count implied by a 4-byte signature, or undefined if unrecognised.
+ *
+ * Beyond the classic 4-channel tags, the multi-channel conventions are:
+ *   `<n>CHN`  single digit, 1-9 channels (6CHN, 8CHN)
+ *   `<nn>CH`  two digits, 10-32 channels (16CH, 32CH)
+ *   `TDZ<n>`  TakeTracker, 1-3 channels
+ * plus the fixed 8-channel tags above.
+ *
+ * FLT8 is deliberately absent -- see `parseMod`.
+ */
+export function channelsForSignature(signature: string): number | undefined {
+  if (VALID_SIGNATURES_4CH.has(signature)) return 4;
+  if (SIGNATURES_8CH.has(signature)) return 8;
+
+  // <n>CHN
+  const chn = /^(\d)CHN$/.exec(signature);
+  if (chn) {
+    const n = Number(chn[1]);
+    return n >= 1 ? n : undefined;
+  }
+
+  // <nn>CH — also seen as <nn>CN in the wild.
+  const ch = /^(\d{2})C[HN]$/.exec(signature);
+  if (ch) {
+    const n = Number(ch[1]);
+    return n >= 1 && n <= MAX_MOD_CHANNELS ? n : undefined;
+  }
+
+  // TDZ<n> (TakeTracker, 1-3 channels)
+  const tdz = /^TDZ(\d)$/.exec(signature);
+  if (tdz) {
+    const n = Number(tdz[1]);
+    return n >= 1 && n <= 3 ? n : undefined;
+  }
+
+  return undefined;
+}
+
+function readSignature(buffer: Uint8Array): string {
+  return String.fromCharCode(
     buffer[1080] ?? 0,
     buffer[1081] ?? 0,
     buffer[1082] ?? 0,
     buffer[1083] ?? 0,
   );
-  return VALID_SIGNATURES_4CH.has(sig);
+}
+
+function looksLikeProTrackerMod(buffer: Uint8Array): boolean {
+  if (buffer.byteLength < PT_HEADER_SIZE) return false;
+  const sig = readSignature(buffer);
+  // FLT8 is a recognised signature we cannot yet decode (see parseMod), but
+  // reporting it as "not a MOD" would be misleading -- accept it here so the
+  // caller reaches parseMod's explicit error instead of a generic one.
+  if (sig === 'FLT8') return true;
+  return channelsForSignature(sig) !== undefined;
 }
 
 function looksLikeSoundtrackerMod(buffer: Uint8Array): boolean {
   if (buffer.byteLength < ST_HEADER_SIZE) return false;
 
   // Original Soundtracker/NoiseTracker modules have no ProTracker signature at 1080.
-  const sig = String.fromCharCode(
-    buffer[1080] ?? 0,
-    buffer[1081] ?? 0,
-    buffer[1082] ?? 0,
-    buffer[1083] ?? 0,
-  );
-  if (VALID_SIGNATURES_4CH.has(sig)) return false;
+  const sig = readSignature(buffer);
+  if (sig === 'FLT8' || channelsForSignature(sig) !== undefined) return false;
 
   // Basic plausibility checks based on the classic 15-sample layout.
   const view = new DataView(
@@ -157,14 +210,20 @@ export function parseMod(buffer: Uint8Array): ModSong {
   const title = readAscii(buffer, 0, 20).trimEnd();
 
   // Determine layout: ProTracker (31 samples, header at 1084) or Soundtracker (15 samples, header at 600)
-  const signature = String.fromCharCode(
-    buffer[1080] ?? 0,
-    buffer[1081] ?? 0,
-    buffer[1082] ?? 0,
-    buffer[1083] ?? 0,
-  );
+  const signature = readSignature(buffer);
 
-  const isProTracker = VALID_SIGNATURES_4CH.has(signature);
+  // Startrekker FLT8 stores an 8-channel pattern as two consecutive 4-channel
+  // blocks, and its order table indexes those blocks rather than patterns.
+  // Decoding it as a flat 8-channel pattern would silently interleave the
+  // wrong data, so refuse it outright rather than play something wrong.
+  if (signature === 'FLT8') {
+    throw new Error(
+      'Startrekker FLT8 modules are not supported yet (split 4+4 channel pattern layout)',
+    );
+  }
+
+  const signatureChannels = channelsForSignature(signature);
+  const isProTracker = signatureChannels !== undefined;
   const numSamples = isProTracker ? PT_NUM_SAMPLES : ST_NUM_SAMPLES;
   const headerSize = isProTracker ? PT_HEADER_SIZE : ST_HEADER_SIZE;
   const songLengthOffset = isProTracker ? 950 : 470;
@@ -213,13 +272,13 @@ export function parseMod(buffer: Uint8Array): ModSong {
   }
   const numPatterns = maxPatternIndex + 1;
 
-  // Determine channel count from signature (ProTracker variants); Soundtracker is always 4 channels.
-  let numChannels = 4;
-  if (signature === '6CHN') numChannels = 6;
-  else if (signature === '8CHN') numChannels = 8;
+  // Channel count comes from the signature; Soundtracker is always 4 channels.
+  const numChannels = signatureChannels ?? 4;
 
-  if (numChannels !== 4) {
-    throw new Error(`Only 4-channel MODs are supported (got ${numChannels})`);
+  if (numChannels < 1 || numChannels > MAX_MOD_CHANNELS) {
+    throw new Error(
+      `Unsupported MOD channel count ${numChannels} (signature "${signature}")`,
+    );
   }
 
   // Heuristic tracker flavor for import-time behavior.

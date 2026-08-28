@@ -35,7 +35,6 @@ import {
   type ModSample,
 } from '../../../packages/tracker-playback/src/mod-parser';
 
-const MAX_TRACKS = 4; // 4-channel MODs only
 const PATTERN_ROWS = 64;
 const DEFAULT_BPM = 125;
 const DEFAULT_STEP_SIZE = 1;
@@ -101,7 +100,7 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
 
 function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
   const patternCount = mod.patterns.length;
-  const trackCount = Math.min(mod.numChannels, MAX_TRACKS);
+  const trackCount = Math.max(1, mod.numChannels);
 
   const patterns: TrackerPattern[] = [];
 
@@ -169,16 +168,22 @@ function resolveChannelPanNorm(channelIndex: number, trackCount: number): number
   if (trackCount === 2) {
     // Two channels: left / right
     return channelIndex === 0 ? leftNorm : rightNorm;
-  } else if (trackCount === 3) {
+  }
+
+  if (trackCount === 3) {
     // Three channels: left / center / right
     if (channelIndex === 0) return leftNorm;
     if (channelIndex === 1) return centerNorm;
     return rightNorm;
-  } else {
-    // Four channels (classic Amiga): 0 & 3 left, 1 & 2 right.
-    const isLeft = channelIndex === 0 || channelIndex === 3;
-    return isLeft ? leftNorm : rightNorm;
   }
+
+  // Four or more channels: repeat the classic Amiga L-R-R-L grouping, which is
+  // what multi-channel MOD players do for 6CHN/8CHN/xxCH modules. Channels
+  // 0 and 3 (mod 4) go left, 1 and 2 go right, so an 8-channel module reads
+  // L R R L L R R L -- keeping the 4-channel case bit-for-bit unchanged.
+  const positionInGroup = channelIndex % 4;
+  const isLeft = positionInGroup === 0 || positionInGroup === 3;
+  return isLeft ? leftNorm : rightNorm;
 }
 
 function modCellToTrackerEntry(
