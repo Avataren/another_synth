@@ -110,6 +110,12 @@ export class TrackerSongBank {
   private workletPool: WorkletPool | null = null;
   // Feature flag: pooling is re-enabled after fixing instrument-scoped patch loading
   private useWorkletPooling = true;
+  // The user's explicitly-chosen master volume (from the settings slider),
+  // as distinct from the *current* masterGain.gain value, which a song's own
+  // Gxx/Hxy (global volume/slide) effects can ramp away from this baseline
+  // while playing. Kept separately so stopping/switching songs can restore
+  // the real baseline instead of whatever a song's effects last left it at.
+  private userMasterVolume = 1.0;
 
   constructor(audioSystem?: AudioSystem) {
     this.audioSystem = audioSystem ?? getSharedAudioSystem();
@@ -242,6 +248,41 @@ export class TrackerSongBank {
     const clamped = Math.max(0, Math.min(1, volume));
     const when = time ?? this.audioSystem.audioContext.currentTime;
     this.masterGain.gain.setValueAtTime(clamped, when);
+  }
+
+  /**
+   * Set the master volume from an explicit user action (e.g. the settings
+   * slider), and remember it as the baseline to restore to whenever
+   * playback stops or a new song is loaded. Unlike setMasterVolume(), this
+   * also cancels any pending scheduled ramp (from a song's own Gxx/Hxy
+   * global-volume effects) so the user's choice always wins immediately.
+   */
+  setUserMasterVolume(volume: number): void {
+    const clamped = Math.max(0, Math.min(1, volume));
+    this.userMasterVolume = clamped;
+    const now = this.audioSystem.audioContext.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(clamped, now);
+  }
+
+  /**
+   * Restore master gain to the user's chosen baseline and drop any
+   * still-pending scheduled ramp left over from the previous song.
+   *
+   * Tracker look-ahead scheduling schedules effect automation (including
+   * Gxx/Hxy global-volume changes) up to several seconds ahead of real
+   * playback time. If playback is stopped -- e.g. to load a different song
+   * -- while one of those events is still in the future, it stays queued on
+   * masterGain.gain and fires later regardless of what's now loaded,
+   * silently (or partially) muting the *new* song. Without this, "load a
+   * song, let it play through a global-volume fade, then load another
+   * song" intermittently produces no sound, depending on exactly where
+   * playback was stopped relative to any pending fade.
+   */
+  private resetMasterVolumeToBaseline(): void {
+    const now = this.audioSystem.audioContext.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.userMasterVolume, now);
   }
 
   /** Get the current master volume */
@@ -1028,6 +1069,7 @@ export class TrackerSongBank {
     this.activeNotes.clear();
     this.lastTrackVoice.clear();
     this.trackVoiceOwner.clear();
+    this.resetMasterVolumeToBaseline();
   }
 
   /**
@@ -2249,6 +2291,7 @@ export class TrackerSongBank {
     this.pendingInstruments.clear();
     this.disposeInstruments();
     this.desired.clear();
+    this.resetMasterVolumeToBaseline();
 
     // Reset pool allocations but keep worklets alive for reuse
     if (this.workletPool) {

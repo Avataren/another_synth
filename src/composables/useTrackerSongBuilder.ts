@@ -200,6 +200,20 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         // Keep velocity in 0-255 range to preserve precision from MOD importer
         // Effect processor will divide by 255 to normalize to 0-1
         step.velocity = volumeValue;
+      } else if (midi !== undefined && entry?.instrument) {
+        // A genuine new note+instrument trigger with no explicit volume
+        // column value must still reset to a known volume, not silently
+        // inherit whatever this track's currentVolume last decayed to via
+        // an earlier (possibly much earlier -- even a previous pattern's)
+        // volume slide. Real trackers only preserve the running volume
+        // when the row deliberately omits the instrument number (the
+        // "sample 0" convention); an explicit instrument number always
+        // resets. Without this, a note like "C-4 01 .." right after a
+        // channel that faded out via Axy plays back muted even though
+        // it's a fresh trigger -- this is what made one pattern appear to
+        // "mute" the next while that same pattern played back fine when
+        // started from a clean state.
+        step.velocity = 255;
       }
 
       // Handle macro automation (from explicit macro commands or interpolations)

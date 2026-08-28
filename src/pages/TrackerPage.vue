@@ -1502,7 +1502,7 @@ const onSlotVolumeChange = (slotNumber: number, volume: number) => {
 const onMasterVolumeChange = (event: Event) => {
   const volume = parseFloat((event.target as HTMLInputElement).value);
   userSettingsStore.updateSetting('masterVolume', volume);
-  songBank.setMasterVolume(volume);
+  songBank.setUserMasterVolume(volume);
 };
 
 // Flag to prevent watcher interference during explicit file load
@@ -1715,7 +1715,7 @@ onMounted(async () => {
   await loadSystemBankOptions({ skipSync: isPlaying.value || isPaused.value });
   ensureActiveInstrument();
   // Apply master volume from user settings
-  songBank.setMasterVolume(userSettings.value.masterVolume);
+  songBank.setUserMasterVolume(userSettings.value.masterVolume);
   // Skip reloading song if playback is already active (returning to page while playing)
   void initializePlayback(playbackMode.value, true);
   keyboardStore.setupGlobalKeyboardListeners();

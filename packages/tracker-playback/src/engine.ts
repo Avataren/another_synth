@@ -44,11 +44,28 @@ type ListenerMap = {
 
 export function shouldRetriggerLastNote(
   newNote: number | undefined,
-  step: Pick<Step, 'instrumentId' | 'velocity' | 'effect'>,
+  step: Pick<
+    Step,
+    'instrumentId' | 'velocity' | 'effect' | 'speedCommand' | 'tempoCommand'
+  >,
 ): boolean {
   if (newNote !== undefined) return false;
   if (!step.instrumentId) return false;
   if (step.velocity !== undefined) return false;
+  // Fxx (speed/tempo) is tracked on its own step fields, not step.effect,
+  // so a row carrying *only* a speed/tempo change (no note, no other
+  // effect) falls through to the "naked instrument number" case below and
+  // looks identical to it. But a bare speed/tempo change is never a
+  // note-retrigger convention in any tracker format -- and
+  // useTrackerSongBuilder stamps instrumentId onto every row sticky, so
+  // real-world patterns that alternate speed every row (a common
+  // shuffle/groove trick, e.g. repeated F05/F06) used to replay the
+  // track's last note from scratch on every single row instead of letting
+  // it sustain, which is audible as a sample retriggering nonstop instead
+  // of playing normally.
+  if (step.speedCommand !== undefined || step.tempoCommand !== undefined) {
+    return false;
+  }
   const effectType = step.effect?.type;
   if (effectType === undefined) return true;
   if (effectType === 'volSlide') {
@@ -618,12 +635,23 @@ export class PlaybackEngine {
       if (this.patternDelayCount > 0) {
         // Decrement delay counter
         this.patternDelayCount--;
-        // Re-schedule the same row again (don't advance lastScheduledRow)
         const msPerRow = this.getMsPerRow();
         const secPerRow = msPerRow / 1000;
         this.nextRowTime += secPerRow;
-        // Continue without advancing lastScheduledRow, so next iteration schedules same row
-        continue;
+        if (this.patternDelayCount > 0) {
+          // Still repeating -- schedule the same row again next iteration
+          // (don't advance lastScheduledRow yet).
+          continue;
+        }
+        // This was the last repeat: fall through to advance lastScheduledRow
+        // normally below. Without this, the row where the counter first
+        // reaches 0 would *also* `continue`, leaving lastScheduledRow
+        // stuck -- the next iteration re-runs scheduleRow() for the same
+        // row, which sees patternDelayCount === 0 and re-arms it right
+        // back to the full delay count, looping forever and never
+        // advancing past this row (audibly: playback hangs on this row
+        // indefinitely instead of just holding it for the requested
+        // number of extra rows).
       }
 
       // Handle pattern loop (E6x) - jump back to loop start
@@ -709,10 +737,6 @@ export class PlaybackEngine {
     if (!this.scheduledNoteHandler) return;
 
     const steps = this.stepIndex.get(row);
-    const msPerRow = this.getMsPerRow();
-    const msPerTick = this.getMsPerTick();
-    const secPerTick = msPerTick / 1000;
-    const secPerRow = msPerRow / 1000;
 
     // First pass: Apply speed/tempo commands (F commands) and position commands
     if (steps) {
@@ -797,6 +821,22 @@ export class PlaybackEngine {
         }
       }
     }
+
+    // Compute row/tick durations *after* the first pass above has applied
+    // any F05/F06-style speed (or tempo) command carried by this row.
+    // ProTracker semantics: a speed/tempo change on a row takes effect
+    // immediately -- it governs that same row's own remaining ticks, not
+    // just rows after it. Capturing these before the first pass (as this
+    // used to) left every per-tick effect on a speed-changing row (note
+    // delay, retrigger, vibrato/tremolo, tremor, ramped porta/volslide)
+    // using the *previous* row's tick duration paired with the *new*
+    // row's tick count from timingSystem.getTicksPerRow() -- a mismatch
+    // that scrambled sub-row timing specifically on rows that change
+    // speed, e.g. a shuffle/groove pattern alternating F05/F06 every row.
+    const msPerRow = this.getMsPerRow();
+    const msPerTick = this.getMsPerTick();
+    const secPerTick = msPerTick / 1000;
+    const secPerRow = msPerRow / 1000;
 
     // Second pass: Process each step with effects
     if (steps) {
