@@ -12,8 +12,10 @@ import {
 import type {
   Pattern as PlaybackPattern,
   Song as PlaybackSong,
-  Step as PlaybackStep
+  Step as PlaybackStep,
+  ModuleFormat
 } from '../../packages/tracker-playback/src/types';
+import { DEFAULT_MODULE_FORMAT } from '../../packages/tracker-playback/src/types';
 
 /**
  * Playback mode type
@@ -34,6 +36,11 @@ interface TrackPlaybackContext {
 export interface TrackerSongBuilderContext {
   // State refs
   currentSong: Ref<{ title: string; author: string; bpm: number }>;
+  /**
+   * Which tracker's semantics the song follows. Optional so existing tests
+   * and callers keep working; omitted means DEFAULT_MODULE_FORMAT.
+   */
+  moduleFormat?: Ref<ModuleFormat>;
   patterns: Ref<TrackerPattern[]>;
   sequence: Ref<string[]>;
   currentPatternId: Ref<string | null>;
@@ -293,7 +300,8 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       author: context.currentSong.value.author,
       bpm: context.currentSong.value.bpm,
       patterns: buildPlaybackPatterns(),
-      sequence: resolveSequenceForMode(mode)
+      sequence: resolveSequenceForMode(mode),
+      moduleFormat: context.moduleFormat?.value ?? DEFAULT_MODULE_FORMAT
     };
   }
 

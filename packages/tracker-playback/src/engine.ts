@@ -25,6 +25,8 @@ import {
   type PositionCommandHandler,
   type PlaybackClock,
   type Step,
+  type ModuleFormat,
+  DEFAULT_MODULE_FORMAT,
 } from './types';
 import { createAudioContextScheduler, IntervalScheduler } from './scheduler';
 import { createVisibilityClock } from './clock';
@@ -81,6 +83,12 @@ export function shouldRetriggerLastNote(
 
 export class PlaybackEngine {
   private song: Song | null = null;
+  /**
+   * Format semantics for the loaded song. Nothing branches on this yet --
+   * it becomes the FormatProfile selector in Phase 2 (see
+   * PLAN-module-format-support.md).
+   */
+  private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
   private state: TransportState = 'stopped';
   private position: PlaybackPosition = { row: 0 };
   private length = 64;
@@ -305,8 +313,14 @@ export class PlaybackEngine {
     }
   }
 
+  /** Format semantics the currently loaded song plays under. */
+  getModuleFormat(): ModuleFormat {
+    return this.moduleFormat;
+  }
+
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
+    this.moduleFormat = song.moduleFormat ?? DEFAULT_MODULE_FORMAT;
     // Precompute tone portamento targets (3xx) across the full sequence so
     // rows with 3xx but no note can still slide towards the next note in
     // the same track, even when it lives in the next pattern.

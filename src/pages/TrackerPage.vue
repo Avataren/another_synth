@@ -601,6 +601,7 @@ trackerStore.initializeIfNeeded();
 const keyboardStore = useKeyboardStore();
 const {
   currentSong,
+  moduleFormat,
   patternRows,
   stepSize,
   patterns,
@@ -1240,6 +1241,7 @@ function handleGlobalMouseUp() {
 // Set up song builder composable (must be before playback)
 const songBuilderContext: TrackerSongBuilderContext = {
   currentSong,
+  moduleFormat,
   patterns,
   sequence,
   currentPatternId,

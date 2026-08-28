@@ -27,6 +27,12 @@ export interface Song {
   bpm: number;
   patterns: Pattern[];
   sequence: string[];
+  /**
+   * Which tracker's playback semantics to apply. Optional so callers that
+   * predate the tag keep working; the engine falls back to
+   * DEFAULT_MODULE_FORMAT.
+   */
+  moduleFormat?: ModuleFormat;
 }
 
 export interface Pattern {

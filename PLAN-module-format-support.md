@@ -1,6 +1,6 @@
 # Multi-Format Module Support (MOD / XM / S3M)
 
-**Status:** Phase 0 in progress
+**Status:** Phase 0 complete — next up is Phase 1 (per-pattern row counts)
 **Last updated:** 2026-08-28
 **Owner doc for:** extending the tracker from ProTracker-only `.mod` playback to a
 mode-driven player that also handles FastTracker 2 `.xm` and (later) Scream Tracker `.s3m`.
@@ -174,7 +174,7 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
       migration, not just a default flip)
 - [x] Add `ModuleFormat` to the song-file schema with a version bump; infer the format
       for pre-tag songs on load (see D6)
-- [ ] Thread the format tag from the store through `useTrackerSongBuilder` into the engine
+- [x] Thread the format tag from the store through `useTrackerSongBuilder` into the engine
 
 ### Phase 1 — Structural (B1, B2)
 - [ ] Move row count from song-level `patternRows` onto each pattern; migrate saved songs
@@ -275,3 +275,4 @@ runtime, more work). Decide at the start of Phase 4, informed by measured Phase 
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
+| 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
