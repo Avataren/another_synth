@@ -276,8 +276,9 @@
                       <span class="toggle-label">Simplified MOD Instruments</span>
                       <span class="toggle-description"
                         >Use lightweight Web Audio playback for MOD files instead of
-                        full WASM synth (recommended for files with many
-                        instruments)</span
+                        the full WASM synth. On by default — MOD playback is tuned
+                        against this path. Turn off to route MOD instruments through
+                        the full synth engine.</span
                       >
                     </div>
                   </label>

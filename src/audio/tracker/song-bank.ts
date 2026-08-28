@@ -1635,10 +1635,15 @@ export class TrackerSongBank {
     const userSettings = useUserSettingsStore();
     const isModInstrument = normalizedPatch.metadata.instrumentType === 'mod';
     // ModInstrument's per-voice pitch automation (e.g. 3xx tone portamento)
-    // is now scheduled directly on the native AudioParam (see
-    // ModInstrument.setVoiceFrequencyAtTime), so it's a real, working
-    // opt-in playback path -- not just for MOD instruments. Still defaults
-    // to off (see user-settings-store.ts) until it's had more real-world use.
+    // is scheduled directly on the native AudioParam (see
+    // ModInstrument.setVoiceFrequencyAtTime), and MOD import/playback is
+    // tuned against this path, so it defaults to ON (see SETTINGS_VERSION v1
+    // in user-settings-store.ts). Users can still opt back into routing MOD
+    // instruments through the full WASM synth.
+    //
+    // NOTE: this is app-global today. Per PLAN-module-format-support.md (D4),
+    // engine choice should move into the per-song FormatProfile once XM lands,
+    // since XM needs envelopes that ModInstrument does not implement.
     const useSimplified = userSettings.settings.useSimplifiedModInstruments;
 
     // DETAILED DEBUGGING

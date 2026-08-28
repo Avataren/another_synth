@@ -6,6 +6,11 @@ import { ref, watch } from 'vue';
  * Centralized storage for all user preferences
  */
 export interface UserSettings {
+  /**
+   * Schema version of the persisted settings blob. Absent (or 0) means the
+   * pre-versioning format. See `migrateSettingsVersion`.
+   */
+  settingsVersion: number;
   theme: string;
   trackerFont: string;
   uiFont: string;
@@ -15,14 +20,22 @@ export interface UserSettings {
   enableMidi: boolean;
   /** When true, show a second effect column per tracker track. */
   showTrackerExtraEffectColumn: boolean;
-  /** When true, MOD files use lightweight Web Audio playback instead of full WASM synth. Default: false (use full synth). */
+  /** When true, MOD files use lightweight Web Audio playback instead of full WASM synth. Default: true. */
   useSimplifiedModInstruments: boolean;
 }
+
+/**
+ * Current settings schema version.
+ *
+ * v1: `useSimplifiedModInstruments` became the default for MOD playback.
+ */
+export const SETTINGS_VERSION = 1;
 
 /**
  * Default user settings
  */
 const defaultSettings: UserSettings = {
+  settingsVersion: SETTINGS_VERSION,
   theme: 'custom',
   trackerFont: 'JetBrains Mono',
   uiFont: 'Inter',
@@ -31,7 +44,7 @@ const defaultSettings: UserSettings = {
   masterVolume: 0.75,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
-  useSimplifiedModInstruments: false
+  useSimplifiedModInstruments: true
 };
 
 const STORAGE_KEY = 'synth-user-settings';
@@ -59,6 +72,36 @@ function migrateOldSettings(): Partial<UserSettings> {
 }
 
 /**
+ * Upgrade a persisted settings blob to the current schema version.
+ *
+ * Merging stored-over-defaults is NOT enough to roll out a changed default:
+ * `saveSettings` persists the entire object on any change, so every existing
+ * user already has an explicit value for every key and would never observe a
+ * new default. Version-gated rewrites are how a default change actually
+ * reaches them.
+ *
+ * Exported for tests.
+ */
+export function migrateSettingsVersion(
+  stored: Partial<UserSettings>
+): Partial<UserSettings> {
+  const migrated: Partial<UserSettings> = { ...stored };
+  const version = migrated.settingsVersion ?? 0;
+
+  // v0 -> v1: MOD files now default to the ModInstrument playback path, which
+  // is what MOD imports are actually tuned against. The stored `false` here is
+  // almost always the old default rather than a deliberate choice, so it is
+  // overwritten once. Users who prefer the full WASM synth can turn it back
+  // off in Settings, and that choice sticks (this branch never runs again).
+  if (version < 1) {
+    migrated.useSimplifiedModInstruments = true;
+  }
+
+  migrated.settingsVersion = SETTINGS_VERSION;
+  return migrated;
+}
+
+/**
  * Load settings from localStorage
  */
 function loadSettings(): UserSettings {
@@ -67,7 +110,7 @@ function loadSettings(): UserSettings {
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<UserSettings>;
       // Merge with defaults to handle missing keys
-      return { ...defaultSettings, ...parsed };
+      return { ...defaultSettings, ...migrateSettingsVersion(parsed) };
     } else {
       // Check for old format settings to migrate
       const migrated = migrateOldSettings();
