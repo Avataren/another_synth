@@ -1310,7 +1310,7 @@ export class TrackerSongBank {
         }
       } else if (notes && notes.size > 0) {
         for (const note of notes) {
-          active.instrument.noteOffAtTime(note, scheduledTime);
+          active.instrument.noteOffAtTime(note, scheduledTime, trackIndex);
         }
       } else {
         active.instrument.cancelScheduledNotes();
@@ -1325,14 +1325,18 @@ export class TrackerSongBank {
     }
 
     if (voiceIndex !== undefined) {
-      active.instrument.noteOffAtTime(midi, scheduledTime, voiceIndex);
+      // The voice is already known, so release it directly. This used to call
+      // noteOffAtTime(midi, time, voiceIndex), passing a *voice* index into a
+      // parameter that means the *track* index -- harmless only because the
+      // callee ignored it.
+      active.instrument.gateOffVoiceAtTime(voiceIndex, scheduledTime);
       // Remove voice from track tracking
       this.clearLastVoiceForTrack(instrumentId, trackIndex);
       if (Number.isFinite(trackIndex as number)) {
         this.trackVoiceOwner.delete(trackIndex as number);
       }
     } else {
-      active.instrument.noteOffAtTime(midi, scheduledTime);
+      active.instrument.noteOffAtTime(midi, scheduledTime, trackIndex);
     }
     notes.delete(midi);
   }

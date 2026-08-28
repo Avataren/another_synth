@@ -663,6 +663,27 @@ halves; playing that forwards reproduces the bounce exactly.
 Loop bounds are resolved once in `prepareLoop` rather than recomputed per note, which also
 removes the duplicated loop arithmetic that existed in both note-on paths.
 
+**D36 — Note-off was scheduled-away entirely, and releases had nothing to cut them.**
+Two faults in the release path, both found by the user's ear rather than by tests.
+
+`ModInstrument.noteOffAtTime` acted only when the release fell within 100ms of the
+current time and silently dropped it otherwise. The engine schedules half a second to a
+second ahead, so *every* note-off was discarded: notes were never released, XM key-off did
+nothing, and the fadeout added in D31 never ran because nothing reached
+`gateOffVoiceAtTime`. It now releases at the scheduled time, and releases the channel's
+own voice whatever note it holds — a tracker key-off releases a channel, not a pitch.
+
+`song-bank.dispatchNoteOffAtTime` also passed a *voice* index into `noteOffAtTime`'s
+*track* index parameter. Harmless only because the callee ignored the argument; it now
+gates the known voice directly.
+
+Separately, `gateOffVoiceAtTime` removes a voice from the active set immediately so the
+slot can be reused, which left nothing able to stop a voice still fading. A new note on
+the channel played *over* the released one instead of replacing it. Invisible while
+releases lasted 10ms; obvious once XM fadeouts stretched them past a second. Releasing
+voices are now tracked and cut by the next note on that channel, by `allNotesOff`, and by
+`destroy`.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -763,6 +784,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | Note release fixed (D36): `noteOffAtTime` dropped every release scheduled more than 100ms ahead — i.e. all of them — so notes were never released and XM key-off did nothing. Releasing voices are now also cut by the next note on the channel, which previously played over them. |
 | 2026-08-29 | 4 | Ping-pong sample loops now loop, by mirroring the loop region into the buffer at load (D35). They previously failed a `loopMode === 1` check and played as one-shots — 27 samples in the corpus. Tests go through the normalized patch, and were confirmed to fail with the handling disabled. |
 | 2026-08-29 | 4 | **Volume envelopes never actually ran.** `normalizeSamplerStateWithDefaults` rebuilds sampler state from a field whitelist and dropped `trackerEnvelope` on the path to every instrument, while eleven unit tests passed by injecting state directly (D34). Fixed, plus two pipeline tests confirmed to fail against the drop. |
 | 2026-08-28 | 4 | Per-channel voice ownership (D32): `ModInstrument` no longer hardcodes 4 voices or pools them across channels, and XM patches are sized by distinct channels per instrument. Fixes notes going missing — `an-path` exceeded 4 voices on 2566 rows. XM portamento scaled by 4 to match FT2's finer period scale (D33), fixing out-of-tune slides. 516 tests green. |

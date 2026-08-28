@@ -475,3 +475,244 @@ describe('envelope survives the patch pipeline', () => {
     expect(decay.time).toBeCloseTo(0.4, 6);
   });
 });
+
+/**
+ * Note release.
+ *
+ * `noteOffAtTime` used to act only when the release was within 100ms of the
+ * current time and silently drop it otherwise. The engine schedules half a
+ * second to a second ahead, so in practice every note-off was discarded:
+ * notes were never released, and XM key-off did nothing at all. The fadeout
+ * never ran either, because nothing reached gateOffVoiceAtTime.
+ */
+describe('note release is scheduled, not dropped', () => {
+  function harness() {
+    const stops: number[] = [];
+    const envelopeCalls: ParamCall[] = [];
+    let gainNodes = 0;
+    const audioContext = {
+      currentTime: 0,
+      createBufferSource: () => ({
+        buffer: null as unknown,
+        loop: false,
+        loopStart: 0,
+        loopEnd: 0,
+        playbackRate: {
+          value: 1,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        stop: (when?: number) => stops.push(when ?? -1),
+        start: vi.fn(),
+        onended: null as unknown,
+      }),
+      createGain: () => {
+        gainNodes++;
+        return {
+          gain: makeParam(gainNodes > 1 ? envelopeCalls : []),
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      },
+      createStereoPanner: () => ({
+        pan: {
+          value: 0,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+          cancelScheduledValues: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    } as unknown as AudioContext;
+
+    const instrument = new ModInstrument(
+      { connect: vi.fn() } as unknown as AudioNode,
+      audioContext,
+    );
+    Reflect.set(instrument as object, 'audioBuffer', {
+      duration: 1,
+      sampleRate: 8000,
+      length: 8000,
+    });
+    Reflect.set(instrument as object, 'ready', true);
+    Reflect.set(instrument as object, 'samplerState', {
+      gain: 1,
+      loopMode: 0,
+      loopStart: 0,
+      loopEnd: 1,
+      rootNote: 60,
+      sampleRate: 8000,
+      trackerEnvelope: {
+        points: [{ tick: 0, value: 64 }],
+        sustainPoint: 0,
+        loopStart: 0,
+        loopEnd: 0,
+        loopEnabled: false,
+        fadeout: 1024,
+      },
+    });
+
+    return { instrument, stops, envelopeCalls };
+  }
+
+  it('releases a note scheduled well beyond the old 100ms window', () => {
+    const { instrument, stops } = harness();
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02, trackIndex: 3 });
+
+    // Far outside the window that used to be required.
+    instrument.noteOffAtTime(60, 0.8, 3);
+
+    expect(stops.length).toBeGreaterThan(0);
+    // 65536/1024 = 64 ticks at 0.02s = 1.28s of fadeout after the release.
+    expect(stops[0]).toBeCloseTo(0.8 + 1.28, 6);
+  });
+
+  it('runs the fadeout on release', () => {
+    const { instrument, envelopeCalls } = harness();
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02, trackIndex: 3 });
+    envelopeCalls.length = 0;
+
+    instrument.noteOffAtTime(60, 0.8, 3);
+
+    const ramp = envelopeCalls.find((c) => c.kind === 'linearRamp');
+    expect(ramp).toBeDefined();
+    expect(ramp!.value).toBe(0);
+  });
+
+  it('releases the channel’s own voice whatever note it holds', () => {
+    // A tracker key-off releases the channel, not a pitch.
+    const { instrument, stops } = harness();
+    instrument.noteOnAtTime(64, 127, 0, { tickSeconds: 0.02, trackIndex: 3 });
+
+    instrument.noteOffAtTime(60, 0.5, 3);
+
+    expect(stops.length).toBeGreaterThan(0);
+  });
+
+  it('falls back to matching the note when no channel is given', () => {
+    const { instrument, stops } = harness();
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02, trackIndex: 3 });
+
+    instrument.noteOffAtTime(60, 0.5);
+
+    expect(stops.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A tracker channel is monophonic, so a new note replaces whatever the channel
+ * was doing - including a note part-way through its release. Released voices
+ * are removed from the active set immediately so the slot can be reused, which
+ * left nothing able to stop them; the released note carried on underneath the
+ * new one. Inaudible while releases lasted 10ms, obvious once XM fadeouts
+ * stretched them past a second.
+ */
+describe('a new note cuts a note still fading on the same channel', () => {
+  function harness() {
+    const stopped: object[] = [];
+    const audioContext = {
+      currentTime: 0,
+      createBufferSource: () => {
+        const source: Record<string, unknown> = {
+          buffer: null,
+          loop: false,
+          loopStart: 0,
+          loopEnd: 0,
+          playbackRate: {
+            value: 1,
+            setValueAtTime: vi.fn(),
+            linearRampToValueAtTime: vi.fn(),
+          },
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          start: vi.fn(),
+          onended: null,
+        };
+        source.stop = () => stopped.push(source);
+        return source;
+      },
+      createGain: () => ({
+        gain: makeParam([]),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+      createStereoPanner: () => ({
+        pan: {
+          value: 0,
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+          cancelScheduledValues: vi.fn(),
+        },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    } as unknown as AudioContext;
+
+    const instrument = new ModInstrument(
+      { connect: vi.fn() } as unknown as AudioNode,
+      audioContext,
+    );
+    Reflect.set(instrument as object, 'audioBuffer', {
+      duration: 1,
+      sampleRate: 8000,
+      length: 8000,
+    });
+    Reflect.set(instrument as object, 'ready', true);
+    Reflect.set(instrument as object, 'samplerState', {
+      gain: 1,
+      loopMode: 0,
+      loopStart: 0,
+      loopEnd: 1,
+      rootNote: 60,
+      sampleRate: 8000,
+      trackerEnvelope: {
+        points: [{ tick: 0, value: 64 }],
+        sustainPoint: 0,
+        loopStart: 0,
+        loopEnd: 0,
+        loopEnabled: false,
+        fadeout: 256, // long fadeout: 256 ticks
+      },
+    });
+
+    return { instrument, stopped };
+  }
+
+  it('stops a releasing voice when the channel plays again', () => {
+    const { instrument, stopped } = harness();
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02, trackIndex: 2 });
+    instrument.noteOffAtTime(60, 0.1, 2);
+
+    const afterRelease = stopped.length;
+    // The released note is still fading; a new note on the channel must cut it.
+    instrument.noteOnAtTime(64, 127, 0.2, { tickSeconds: 0.02, trackIndex: 2 });
+
+    expect(stopped.length).toBeGreaterThan(afterRelease);
+  });
+
+  it('leaves another channel’s fading note alone', () => {
+    const { instrument, stopped } = harness();
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02, trackIndex: 2 });
+    instrument.noteOffAtTime(60, 0.1, 2);
+    const afterRelease = stopped.length;
+
+    // A different channel must not cut it.
+    instrument.noteOnAtTime(64, 127, 0.2, { tickSeconds: 0.02, trackIndex: 5 });
+
+    expect(stopped.length).toBe(afterRelease);
+  });
+
+  it('stops fading voices when all notes are cut', () => {
+    const { instrument, stopped } = harness();
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02, trackIndex: 2 });
+    instrument.noteOffAtTime(60, 0.1, 2);
+    const afterRelease = stopped.length;
+
+    instrument.allNotesOff();
+
+    expect(stopped.length).toBeGreaterThan(afterRelease);
+  });
+});

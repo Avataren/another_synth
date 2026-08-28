@@ -91,6 +91,17 @@ export default class ModInstrument {
    */
   private trackVoices: Map<number, number> = new Map();
 
+  /**
+   * Voices that have been released but are still sounding out their fadeout.
+   *
+   * They are removed from `activeVoices` at release so the slot can be reused
+   * immediately, which means a later note on the same channel would otherwise
+   * have no way to find and stop them -- the released note simply carried on
+   * underneath the new one. That was inaudible while releases lasted 10ms and
+   * obvious once XM fadeouts stretched them past a second.
+   */
+  private releasingVoices: Map<number, ActiveVoice> = new Map();
+
   /** Loop bounds in buffer seconds, resolved once at load time. */
   private loopEnabled = false;
   private loopStartSeconds = 0;
@@ -546,6 +557,11 @@ export default class ModInstrument {
     for (const [voiceIndex, voice] of this.activeVoices.entries()) {
       this.noteOff(voice.noteNumber, voiceIndex);
     }
+    // Voices part-way through a fadeout would otherwise keep sounding after
+    // the transport stops.
+    for (const voiceIndex of [...this.releasingVoices.keys()]) {
+      this.stopReleasingVoice(voiceIndex);
+    }
   }
 
   setInstrumentGain(gain: number): void {
@@ -557,6 +573,10 @@ export default class ModInstrument {
       '[ModInstrument] Destroying instrument, active voices:',
       this.activeVoices.size,
     );
+
+    for (const voiceIndex of [...this.releasingVoices.keys()]) {
+      this.stopReleasingVoice(voiceIndex);
+    }
 
     // Immediately stop and disconnect all active voices without release envelope
     for (const voice of this.activeVoices.values()) {
@@ -819,6 +839,12 @@ export default class ModInstrument {
     // note and can never cut one sounding on a different channel.
     const voiceIndex = this.resolveVoiceForTrack(options?.trackIndex);
 
+    // A note still fading out on this slot belongs to the same channel and
+    // must be cut, not left ringing under the new note.
+    // A note still fading out on this slot belongs to the same channel and
+    // must be cut, not left ringing under the new note.
+    this.stopReleasingVoice(voiceIndex);
+
     // Retire whatever this voice was playing before reusing it.
     const oldVoice = this.activeVoices.get(voiceIndex);
     if (oldVoice) {
@@ -939,10 +965,32 @@ export default class ModInstrument {
     return voiceIndex;
   }
 
-  noteOffAtTime(noteNumber: number, time: number, _trackIndex?: number): void {
-    const now = this.audioContext.currentTime;
-    if (time <= now + 0.1) {
-      this.noteOff(noteNumber);
+  noteOffAtTime(noteNumber: number, time: number, trackIndex?: number): void {
+    // Release at the scheduled time rather than only when it is nearly due.
+    //
+    // This used to act only if `time` was within 100ms of now and drop the
+    // event otherwise. The engine schedules half a second to a second ahead,
+    // so in practice every note-off was discarded: notes were never released
+    // at all, and only stopped when their voice was stolen or the sample ran
+    // out. XM key-off therefore did nothing, and the volume fadeout on release
+    // never ran because nothing reached gateOffVoiceAtTime.
+    //
+    // A tracker channel owns its voice, so releasing that channel's voice is
+    // the correct action whatever note it happens to be holding -- a key-off
+    // releases the channel, not a pitch.
+    if (trackIndex !== undefined) {
+      const owned = this.trackVoices.get(trackIndex);
+      if (owned !== undefined && this.activeVoices.has(owned)) {
+        this.gateOffVoiceAtTime(owned, time);
+        return;
+      }
+    }
+
+    for (const [voiceIndex, voice] of this.activeVoices.entries()) {
+      if (voice.noteNumber === noteNumber) {
+        this.gateOffVoiceAtTime(voiceIndex, time);
+        return;
+      }
     }
   }
 
@@ -980,13 +1028,18 @@ export default class ModInstrument {
     const stopTime = scheduledTime + releaseTime;
     voice.source.stop(stopTime);
 
-    // IMMEDIATELY remove from activeVoices to free the voice slot for reuse
-    // This is critical for voice allocation to work correctly
+    // Free the slot immediately so allocation can reuse it, but keep hold of
+    // the voice while it fades so a later note on this channel can cut it.
     this.activeVoices.delete(voiceIndex);
+    this.stopReleasingVoice(voiceIndex);
+    this.releasingVoices.set(voiceIndex, voice);
 
     // Disconnect nodes after the release completes
     const disconnectDelay = Math.max(0, (stopTime - now) * 1000 + 10);
     setTimeout(() => {
+      if (this.releasingVoices.get(voiceIndex) === voice) {
+        this.releasingVoices.delete(voiceIndex);
+      }
       try {
         voice.source.disconnect();
         voice.gainNode.disconnect();
@@ -996,6 +1049,31 @@ export default class ModInstrument {
         // Nodes may already be disconnected, ignore
       }
     }, disconnectDelay);
+  }
+
+  /**
+   * Cut a voice that is still fading out on this slot.
+   *
+   * A tracker channel is monophonic: a new note replaces whatever the channel
+   * was doing, including a note that is part-way through its release.
+   */
+  private stopReleasingVoice(voiceIndex: number): void {
+    const releasing = this.releasingVoices.get(voiceIndex);
+    if (!releasing) return;
+    this.releasingVoices.delete(voiceIndex);
+    try {
+      releasing.source.stop();
+    } catch {
+      // Already stopped
+    }
+    try {
+      releasing.source.disconnect();
+      releasing.gainNode.disconnect();
+      releasing.panNode.disconnect();
+      releasing.envelopeGain?.disconnect();
+    } catch {
+      // Already disconnected
+    }
   }
 
   setVoiceFrequencyAtTime(
