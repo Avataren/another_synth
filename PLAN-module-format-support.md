@@ -479,6 +479,48 @@ for the `FormatProfile` work.
 
 ---
 
+## 6c. XM parser validated against real files (2026-08-28)
+
+Parsed all nine `.xm` files in `~/Downloads/mods/ft2` plus one `.s3m` (correctly rejected
+by `looksLikeXm`). Every module parsed without error, with plausible structure and
+sample statistics — decoded audio roughness 0.04–0.11 and DC offset near zero, where a
+broken delta decode shows roughness near 0.5 and large DC drift.
+
+| File | Ch | Pats | Ins | Row counts | Freq table |
+|---|---|---|---|---|---|
+| 4-mat_-_rose | 4 | 51 | 32 | 64 | **Amiga** |
+| 4-mat_-_rose_intro | 4 | 48 | 32 | **5, 64** | **Amiga** |
+| BUTTERFL | 16 | 28 | 55 | **8, 16, 32, 64** | **Amiga** |
+| an-path | **32** | 50 | 62 | 64 | linear |
+| elw-sick | 24 | 47 | 30 | 64 | linear |
+| external | 10 | 15 | 22 | 64 | **Amiga** |
+| jt_letgo | 26 | 9 | **128** | **256** | linear |
+| sweetdre | 24 | 53 | 24 | 64 | linear |
+| xyce-dans_la_rue | 22 | 35 | 11 | **32, 64, 96** | linear |
+
+Three findings that change the plan:
+
+**F1 — Amiga-mode XM is common, not exotic: 4 of 9 files.** `XM_PROFILE` currently
+hardcodes the linear model, so those songs would play at the wrong pitch throughout.
+`createAmigaPitchModel` is *not* directly reusable for them: it carries ProTracker's
+113–856 clamp and 36-entry table covering three octaves, while XM spans eight octaves
+with finetune interpolation. XM Amiga mode needs its own model and profile. Must be done
+before XM playback is wired up, or half the test corpus is wrong.
+
+**F2 — `TOTAL_SLOTS = 35` is confirmed as a hard blocker (B3).** `jt_letgo.xm` declares
+128 instruments. Instrument paging or a raised limit is required, not optional.
+
+**F3 — Per-pattern row counts (B1) were essential, and the range is wide.** Real files
+use 5, 8, 16, 32, 64, 96 and 256 rows, sometimes several within one song. The Phase 1
+work is load-bearing rather than speculative, and `MAX_PATTERN_ROWS = 256` is exactly
+right.
+
+Also confirmed: channel counts reach 32 (`an-path.xm`), the B2 ceiling.
+
+No real module is checked into the repo — these are the user's files, parsed in place.
+
+---
+
 ## 7. Testing
 
 - MOD regression suite is the contract for "no regression": `src/tests/mod-*.test.ts`,
@@ -503,6 +545,7 @@ for the `FormatProfile` work.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 3 | XM parser validated against 9 real modules (see §6c). All parse cleanly with sane sample statistics. Surfaced F1 (Amiga-mode XM is 4 of 9 files and needs its own pitch model), F2 (128 instruments confirms the slot blocker), F3 (row counts 5..256 confirm Phase 1). |
 | 2026-08-28 | 3 | XM parser added (`packages/tracker-playback/src/formats/xm.ts`): header, per-pattern row counts, packed + unpacked cell decoding, instruments with 96-note keymaps, volume/panning envelopes, fadeout, autovibrato fields, per-sample tuning/loop settings, and 8/16-bit delta decoding (D22). Reports the file faithfully and interprets nothing (D23). 21 tests against synthetic modules; 459 total green. Not yet reachable from the UI. |
 | 2026-08-28 | 2 | `volumeSlideHasMemory` added: ProTracker `A00` now holds volume steady instead of continuing the last slide, matching PT (D20). **Audible on MOD playback** — 569 affected commands across the local collection, 27% of `resii.mod`'s slides. XM and native keep memory. Two remaining B6 items investigated and deliberately not moved (D21). **Phase 2 complete.** Tests: `src/tests/format-profile.test.ts`. |
 | 2026-08-28 | 2 | `createLinearPitchModel` added (XM default frequency table) and assigned to `XM_PROFILE`; emits musical Hz via a /32 scale (D19). Nothing selects the XM profile yet, so MOD playback is untouched — 434 tests green. XM Amiga-mode still needs its own profile, which arrives with the parser in Phase 3. |
