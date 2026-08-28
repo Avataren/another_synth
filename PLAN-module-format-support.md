@@ -512,6 +512,27 @@ note frequency, since the root is per-instrument while frequency is per-note. Ap
 in both places would transpose twice; a test asserts the frequency stays put while the
 root moves.
 
+**D29 — Only a row that starts a note may stamp `entry.instrument`.**
+In ProTracker a bare sample number does not change the sounding sample: it selects the
+sample for the channel's *next* note and reloads the channel volume. One MOD sample is
+one instrument here, so stamping the instrument on such a row re-routes every per-voice
+effect on it — arpeggio pitch, volume, slides — to an instrument with nothing playing,
+and the sounding voice receives none of them.
+
+`think_twice_iii.mod` exposed it: a C64-style channel holds one note and steps the sample
+number through 11..18, whose header volumes descend 64..13 to form a hand-made decay
+envelope, with an arpeggio (`05A`) repeated on every row. The arpeggio was audible for
+exactly one row and the envelope never applied at all.
+
+The importer now stamps the instrument only on note rows (tone portamento still excluded,
+for the same "keep addressing the sounding voice" reason), and tracks each channel's
+latched sample number so a note written without one still resolves correctly.
+
+**This interacts with D13.** Before the voice-0 fallback was removed, these misrouted
+commands landed on some arbitrary voice and did *something*; afterwards they were
+correctly dropped, which made the symptom starker. D13 was still right — the misrouting
+was the actual bug, and it had simply been masked by a second one.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -612,6 +633,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | fix | A bare sample number no longer switches the sounding instrument, so per-voice effects keep addressing the voice that is playing (D29). Found via `think_twice_iii.mod`, where a hand-made decay envelope and a continuous arpeggio were both being routed to silent instruments. Tests appended to `src/tests/mod-import-sample-number-volume-reset.test.ts` (3 of 5 confirmed failing against the old code). |
 | 2026-08-28 | 3 | **XM files now import and are selectable in the file picker.** `xm-import.ts` maps notes (with exact frequencies from the per-song pitch model), key-off, set-volume, effects (including FT2's G+ extras), per-pattern rows and instrument slots. `TOTAL_SLOTS` 35 → 65, allocating only for *used* instruments (D26–D28). Verified: all 9 real modules import — 4–32 tracks, 8–42 slots, frequencies 32.7–3947 Hz. 487 tests green. |
 | 2026-08-28 | 3 | Sampler patch construction extracted from `mod-import.ts` (368 lines) into `sampler-patch-builder.ts`, ready for the XM importer to share (D25). mod-import 950 → 625 lines. Pure refactor — 472 tests green, including the MOD import tests that assert patch structure. The planned `ModuleSong` IR is deliberately not built; see D25. |
 | 2026-08-28 | 3 | XM Amiga-mode pitch model added (`createXmAmigaPitchModel`) plus `XM_AMIGA_PROFILE`, selected per song via `Song.linearFrequency` (D24). Closes F1. Both XM modes verified to agree exactly on note pitch. 472 tests green; still not reachable from the UI. |

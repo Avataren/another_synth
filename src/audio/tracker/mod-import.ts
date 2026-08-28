@@ -106,6 +106,11 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
 
     // Track the last volume set on each channel (ProTracker behavior: volume "sticks")
     const channelVolumes: (string | undefined)[] = new Array(trackCount).fill(undefined);
+    // Track the sample number each channel has selected. A bare sample number
+    // latches the sample for the channel's *next* note without switching what
+    // is currently sounding, so this has to be followed separately from the
+    // instrument stamped on each entry.
+    const channelSamples: number[] = new Array(trackCount).fill(0);
 
     for (let row = 0; row < PATTERN_ROWS; row++) {
       for (let ch = 0; ch < trackCount; ch++) {
@@ -114,7 +119,19 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
         if (!cell) continue;
 
         const panNorm = resolveChannelPanNorm(ch, trackCount);
-        const entry = modCellToTrackerEntry(cell, row, panNorm, mod, channelVolumes[ch]);
+        const entry = modCellToTrackerEntry(
+          cell,
+          row,
+          panNorm,
+          mod,
+          channelVolumes[ch],
+          channelSamples[ch] ?? 0,
+        );
+        // A sample number latches for the channel whether or not an entry
+        // results from this cell.
+        if (cell.sampleNumber > 0) {
+          channelSamples[ch] = cell.sampleNumber;
+        }
         if (!entry) continue;
 
         // Update the channel's current volume if this entry sets one
@@ -178,7 +195,8 @@ function modCellToTrackerEntry(
   row: number,
   panNorm: number,
   mod: ModSong,
-  lastVolume?: string,
+  lastVolume: string | undefined,
+  selectedSample: number,
 ): TrackerEntryData | undefined {
   const { period, sampleNumber, effectCmd, effectParam } = cell;
   const effectType = effectCmd & 0x0f;
@@ -199,23 +217,34 @@ function modCellToTrackerEntry(
 
   const entry: TrackerEntryData = { row };
 
-  // ProTracker quirk: a sample number given on a tone-portamento row (3xx/
-  // 5xy) does NOT switch the currently-sounding sample -- the slide
-  // continues on whatever instrument is already playing; only the volume
-  // *would* be affected (and even that is intentionally not applied here,
-  // matching the exclusion below). If we still stamped entry.instrument
-  // here, the engine would route this row's pitch-slide automation to the
-  // *new* instrument's voice instead of the one actually playing, so the
-  // note that's really sounding would never receive the slide at all
-  // (silently stuck at its old pitch) while the new instrument -- not
-  // triggered, nothing playing on it -- gets a pointless pitch command.
-  // Audibly: a tone-porta run that changes instrument number sounds
-  // "stuck"/out of tune against the rest of the mix. Leaving
-  // entry.instrument unset here lets the track builder's sticky
-  // last-instrument tracking correctly keep routing to the instrument
-  // that's actually sounding.
-  if (hasSample && !isTonePorta && !isTonePortaVol) {
-    entry.instrument = formatInstrumentId(sampleNumber);
+  // Only a row that actually starts a note switches which instrument this
+  // channel is playing.
+  //
+  // In ProTracker a sample number alone does not change the sounding sample;
+  // it selects the sample for the channel's *next* note and reloads the
+  // channel volume. Here one MOD sample is one instrument, so stamping
+  // entry.instrument on such a row re-routes every per-voice effect on it --
+  // arpeggio pitch, volume, slides -- to an instrument that has nothing
+  // playing, and the sounding voice receives none of them.
+  //
+  // think_twice_iii.mod is the case that exposed it: a C64-style channel
+  // holds one note and steps the sample number through 11..18, whose header
+  // volumes descend 64..13 to form a hand-made decay envelope, with an
+  // arpeggio (05A) repeated on every row. Stamping those rows sent both the
+  // envelope and the arpeggio to silent instruments, so the arpeggio was
+  // audible for exactly one row and the envelope never applied at all.
+  //
+  // Tone portamento (3xx/5xy) is excluded for the same underlying reason: it
+  // does not retrigger, so the slide must keep addressing the voice that is
+  // already sounding.
+  //
+  // `selectedSample` carries the channel's latched sample number so a note
+  // written without one still resolves to the right instrument.
+  if (hasNote && !isTonePorta && !isTonePortaVol) {
+    const instrumentNumber = hasSample ? sampleNumber : selectedSample;
+    if (instrumentNumber > 0) {
+      entry.instrument = formatInstrumentId(instrumentNumber);
+    }
   }
 
   if (hasNote) {

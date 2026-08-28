@@ -138,3 +138,82 @@ describe('bare sample number resets channel volume', () => {
     expect(track.entries.find((e) => e.row === 0)?.volume).toBe('80');
   });
 });
+
+/**
+ * A bare sample number must not change which instrument the channel is
+ * playing. In ProTracker it selects the sample for the *next* note and
+ * reloads the channel volume; the sounding sample carries on.
+ *
+ * One MOD sample is one instrument here, so stamping the instrument on such a
+ * row re-routes every per-voice effect on it to an instrument with nothing
+ * playing, and the sounding voice receives none of them.
+ *
+ * think_twice_iii.mod is the case that exposed it: a C64-style channel holds
+ * one note and steps the sample number through 11..18 (header volumes
+ * descending 64..13, a hand-made decay envelope) with an arpeggio repeated on
+ * every row. The arpeggio was audible for exactly one row and the envelope
+ * never applied.
+ */
+describe('bare sample number does not switch the sounding instrument', () => {
+  it('leaves the instrument unstamped on a row with no note', () => {
+    const track = importTrack0([
+      { row: 0, period: 202, sampleNumber: 1 },
+      { row: 1, sampleNumber: 2 },
+    ]);
+
+    expect(track.entries.find((e) => e.row === 0)?.instrument).toBe('01');
+    // Row 1 must not re-route to instrument 2; sticky tracking keeps 1.
+    expect(track.entries.find((e) => e.row === 1)?.instrument).toBeUndefined();
+  });
+
+  it('keeps effects on the sounding instrument across a sample-number run', () => {
+    // The think_twice_iii shape: one note, then bare sample numbers carrying
+    // the same arpeggio on every row.
+    const track = importTrack0([
+      { row: 0, period: 202, sampleNumber: 1, effectCmd: 0x0, effectParam: 0x5a },
+      { row: 1, sampleNumber: 2, effectCmd: 0x0, effectParam: 0x5a },
+      { row: 2, sampleNumber: 3, effectCmd: 0x0, effectParam: 0x5a },
+    ]);
+
+    for (const row of [0, 1, 2]) {
+      expect(track.entries.find((e) => e.row === row)?.macro).toBe('05A');
+    }
+    // Only the note row addresses an instrument.
+    expect(track.entries.find((e) => e.row === 1)?.instrument).toBeUndefined();
+    expect(track.entries.find((e) => e.row === 2)?.instrument).toBeUndefined();
+  });
+
+  it('still reloads the channel volume from each sample number', () => {
+    // The envelope must survive even though the instrument does not change.
+    const track = importTrack0([
+      { row: 0, period: 202, sampleNumber: 1 },
+      { row: 1, sampleNumber: 2 },
+    ]);
+
+    // Sample 1 has volume 43; sample 2 keeps the builder default of 64.
+    expect(track.entries.find((e) => e.row === 0)?.volume).toBe(
+      SAMPLE_1_VOLUME_HEX,
+    );
+    expect(track.entries.find((e) => e.row === 1)?.volume).toBe('FF');
+  });
+
+  it('latches the sample for a later note written without one', () => {
+    // ProTracker plays the most recently selected sample.
+    const track = importTrack0([
+      { row: 0, period: 202, sampleNumber: 1 },
+      { row: 1, sampleNumber: 2 },
+      { row: 2, period: 202 },
+    ]);
+
+    expect(track.entries.find((e) => e.row === 2)?.instrument).toBe('02');
+  });
+
+  it('still stamps the instrument on an ordinary note+sample row', () => {
+    const track = importTrack0([
+      { row: 0, period: 202, sampleNumber: 1 },
+      { row: 1, period: 180, sampleNumber: 2 },
+    ]);
+
+    expect(track.entries.find((e) => e.row === 1)?.instrument).toBe('02');
+  });
+});
