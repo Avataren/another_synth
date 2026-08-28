@@ -1432,6 +1432,48 @@ export class TrackerSongBank {
   }
 
   /**
+   * Set the stereo pan (0-1, 0 = hard left) for a specific voice at a
+   * specific time. Used for 8xx / E8x / Pxy, which pan a note that is already
+   * sounding, unlike the per-note pan carried on a note-on.
+   *
+   * Pan rides on macro 0 for MOD-imported patches (see mod-import.ts), which
+   * every instrument implementation routes to its pan control.
+   */
+  setVoicePanAtTime(
+    instrumentId: string | undefined,
+    voiceIndex: number,
+    pan: number,
+    time: number,
+    trackIndex: number,
+  ) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+    let resolvedVoice = voiceIndex;
+    if (resolvedVoice < 0) {
+      const byTrack = this.lastTrackVoice.get(instrumentId);
+      const trackKey = Number.isFinite(trackIndex) ? trackIndex : -1;
+      const trackVoice = byTrack?.get(trackKey);
+      if (trackVoice !== undefined) {
+        resolvedVoice = trackVoice;
+      }
+      // No voice-0 fallback: tracks sharing a sample share this instrument's
+      // voice pool, so that would pan another channel's note. See D13 in
+      // PLAN-module-format-support.md.
+      if (resolvedVoice < 0) return;
+    }
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
+      return;
+    // Macro index 0 is pan in MOD-imported sampler patches.
+    active.instrument.setVoiceMacroAtTime(
+      resolvedVoice,
+      0,
+      Math.max(0, Math.min(1, pan)),
+      time,
+    );
+  }
+
+  /**
    * Set the sample offset (normalized 0-1) for a specific voice at a specific time.
    * Used for ProTracker 9xx sample offset via a dedicated macro route.
    */

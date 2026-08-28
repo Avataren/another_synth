@@ -19,6 +19,7 @@ import {
   type MacroHandler,
   type ScheduledPitchHandler,
   type ScheduledVolumeHandler,
+  type ScheduledPanHandler,
   type ScheduledSampleOffsetHandler,
   type ScheduledGlobalVolumeHandler,
   type ScheduledRetriggerHandler,
@@ -113,6 +114,7 @@ export class PlaybackEngine {
   private readonly macroHandler: MacroHandler | undefined;
   private readonly scheduledPitchHandler: ScheduledPitchHandler | undefined;
   private readonly scheduledVolumeHandler: ScheduledVolumeHandler | undefined;
+  private readonly scheduledPanHandler: ScheduledPanHandler | undefined;
   private readonly scheduledSampleOffsetHandler:
     | ScheduledSampleOffsetHandler
     | undefined;
@@ -188,6 +190,7 @@ export class PlaybackEngine {
     this.macroHandler = options.macroHandler;
     this.scheduledPitchHandler = options.scheduledPitchHandler;
     this.scheduledVolumeHandler = options.scheduledVolumeHandler;
+    this.scheduledPanHandler = options.scheduledPanHandler;
     this.scheduledSampleOffsetHandler = options.scheduledSampleOffsetHandler;
     this.scheduledGlobalVolumeHandler = options.scheduledGlobalVolumeHandler;
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
@@ -1218,7 +1221,20 @@ export class PlaybackEngine {
           break;
 
         case 'pan':
-          // No dedicated pan handler yet; pan is conveyed on noteOn events when present.
+          // 8xx / E8x / Pxy change panning on a *sounding* voice, so they need
+          // their own handler -- conveying pan only on noteOn (as this used to
+          // do) silently discarded every mid-note pan change.
+          //
+          // The effect processor works in -1..1; the instrument pan API takes
+          // 0..1 (0 = hard left, 0.5 = centre).
+          if (!this.scheduledPanHandler) break;
+          this.scheduledPanHandler(
+            context.instrumentId,
+            cmd.voiceIndex ?? context.voiceIndex,
+            Math.max(0, Math.min(1, (cmd.pan + 1) / 2)),
+            context.time,
+            context.trackIndex,
+          );
           break;
       }
     }

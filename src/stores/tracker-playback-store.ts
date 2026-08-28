@@ -212,6 +212,17 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       scheduledVolumeHandler: (instrumentId, voiceIndex, volume, time, trackIndex, rampMode) => {
         songBank.setVoiceVolumeAtTime(instrumentId, voiceIndex, volume, time, trackIndex, rampMode);
       },
+      scheduledPanHandler: (
+        instrumentId: string,
+        voiceIndex: number,
+        pan: number,
+        time: number,
+        trackIndex: number,
+      ) => {
+        if (!isTrackAudible(trackIndex)) return;
+        songBank.setVoicePanAtTime(instrumentId, voiceIndex, pan, time, trackIndex);
+      },
+
       scheduledSampleOffsetHandler: (instrumentId, voiceIndex, offset, time, trackIndex) => {
         songBank.setVoiceSampleOffsetAtTime(instrumentId, voiceIndex, offset, time, trackIndex);
       },

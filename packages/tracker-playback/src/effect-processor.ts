@@ -497,7 +497,7 @@ export type ProcessorCommand =
       voiceIndex?: number;
       ramp?: 'linear' | 'exponential';
     }
-  | { kind: 'pan'; pan: number }
+  | { kind: 'pan'; pan: number; voiceIndex?: number }
   | { kind: 'sampleOffset'; offset: number; voiceIndex?: number }
   | { kind: 'retrigger'; midi: number; velocity: number; frequency?: number };
 
@@ -541,7 +541,11 @@ export function processEffectTick0(
   };
 
   const pushPan = (value: number) => {
-    commands.push({ kind: 'pan', pan: value });
+    const cmd: ProcessorCommand =
+      voiceIndex !== undefined
+        ? { kind: 'pan', pan: value, voiceIndex }
+        : { kind: 'pan', pan: value };
+    commands.push(cmd);
   };
 
   // ProTracker 9xx sets where in the sample a note starts, so it has to be

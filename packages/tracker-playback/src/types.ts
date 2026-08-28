@@ -205,6 +205,8 @@ export interface PlaybackOptions {
   scheduledPitchHandler?: ScheduledPitchHandler;
   /** Handler for scheduling volume changes (tremolo, volume slide) */
   scheduledVolumeHandler?: ScheduledVolumeHandler;
+  /** Handler for scheduling panning changes (8xx, E8x, Pxy) */
+  scheduledPanHandler?: ScheduledPanHandler;
   /** Handler for scheduling per-note sample offsets (9xx) */
   scheduledSampleOffsetHandler?: ScheduledSampleOffsetHandler;
   /** Handler for scheduling global volume changes (Gxx/Hxy) */
@@ -335,6 +337,22 @@ export type ScheduledVolumeHandler = (
   trackIndex: number,
   /** Ramp mode for smooth transitions (optional, defaults to discrete setValueAtTime) */
   rampMode?: 'linear' | 'exponential'
+) => void;
+
+/**
+ * Handler for scheduling panning changes at specific audio times.
+ * Used for 8xx (set pan), E8x (coarse pan) and Pxy (pan slide).
+ */
+export type ScheduledPanHandler = (
+  instrumentId: string,
+  /** Voice index to modify (-1 to resolve from the track's voice history) */
+  voiceIndex: number,
+  /** Pan 0-1, where 0 = hard left, 0.5 = centre, 1 = hard right */
+  pan: number,
+  /** Audio context time */
+  time: number,
+  /** Track index for routing (tracker channels) */
+  trackIndex: number
 ) => void;
 
 /**
