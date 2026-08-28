@@ -17,6 +17,7 @@ import {
   type PitchModel,
   createAmigaPitchModel,
   createLinearPitchModel,
+  createXmAmigaPitchModel,
 } from './pitch-model';
 
 export interface FormatProfile {
@@ -92,6 +93,19 @@ export const XM_PROFILE: FormatProfile = {
   volumeSlideHasMemory: true,
 };
 
+/**
+ * FastTracker 2 with the Amiga frequency table selected in the module header.
+ *
+ * Not a rare variant: 4 of the 9 modules in the local corpus use it (see
+ * PLAN-module-format-support.md section 6c). Identical to XM_PROFILE apart
+ * from the pitch model, since the flag only changes how pitch is represented
+ * and slid.
+ */
+export const XM_AMIGA_PROFILE: FormatProfile = {
+  ...XM_PROFILE,
+  pitch: createXmAmigaPitchModel(),
+};
+
 /** Scream Tracker 3 semantics. Placeholder, as for XM_PROFILE. */
 export const S3M_PROFILE: FormatProfile = {
   ...PROTRACKER_PROFILE,
@@ -121,8 +135,23 @@ const PROFILES: Record<ModuleFormat, FormatProfile> = {
   s3m: S3M_PROFILE,
 };
 
+export interface ProfileOptions {
+  /**
+   * XM only: which frequency table the module header selected. XM songs carry
+   * this per file, so it cannot be folded into the ModuleFormat tag.
+   * Defaults to linear, XM's own default.
+   */
+  linearFrequency?: boolean;
+}
+
 /** The playback semantics to apply for a given module format. */
-export function profileForFormat(format: ModuleFormat | undefined): FormatProfile {
+export function profileForFormat(
+  format: ModuleFormat | undefined,
+  options?: ProfileOptions,
+): FormatProfile {
   if (!format) return PROTRACKER_PROFILE;
+  if (format === 'xm' && options?.linearFrequency === false) {
+    return XM_AMIGA_PROFILE;
+  }
   return PROFILES[format] ?? PROTRACKER_PROFILE;
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createAmigaPitchModel,
   createLinearPitchModel,
+  createXmAmigaPitchModel,
 } from '../../packages/tracker-playback/src/pitch-model';
 
 /**
@@ -150,5 +151,69 @@ describe('LinearPitchModel (XM)', () => {
     // Grid points are multiples of 64; 4608 and 4544 are adjacent semitones.
     expect(linear.snapPeriod(4600)).toBe(4608);
     expect(linear.snapPeriod(4560)).toBe(4544);
+  });
+});
+
+/**
+ * XM's Amiga mode. The two XM modes must agree exactly on the pitch of every
+ * note -- they differ only in how slides interpolate between notes -- so these
+ * tests check the agreement rather than just the formula in isolation.
+ */
+describe('XmAmigaPitchModel', () => {
+  const amiga = createXmAmigaPitchModel();
+  const linear = createLinearPitchModel();
+
+  /** XM Amiga period for a 0-based note index (48 = C-4). */
+  const periodForNote = (note: number) => 1712 * Math.pow(2, (48 - note) / 12);
+
+  it('puts C-4 at period 1712 and the 8363 Hz reference', () => {
+    expect(periodForNote(48)).toBeCloseTo(1712, 9);
+    expect(amiga.frequencyFromPeriod(1712)).toBeCloseTo(8363 / 32, 6);
+  });
+
+  it('agrees with the linear model on note pitches', () => {
+    // A song must sound the same in either mode; only slides differ.
+    for (const note of [12, 36, 48, 60, 72, 95]) {
+      const amigaHz = amiga.frequencyFromPeriod(periodForNote(note));
+      const linearHz = linear.frequencyFromPeriod(7680 - note * 64);
+      expect(amigaHz).toBeCloseTo(linearHz, 6);
+    }
+  });
+
+  it('reproduces the classic ProTracker periods', () => {
+    // XM note 60 is Amiga C-1 (856) and note 72 is C-2 (428).
+    expect(periodForNote(60)).toBeCloseTo(856, 6);
+    expect(periodForNote(72)).toBeCloseTo(428, 6);
+  });
+
+  it('halves the period one octave up, as Paula periods do', () => {
+    expect(amiga.frequencyFromPeriod(856) / amiga.frequencyFromPeriod(1712))
+      .toBeCloseTo(2, 9);
+  });
+
+  it('round-trips period -> frequency -> period', () => {
+    for (const period of [113, 428, 1712, 27392]) {
+      expect(
+        amiga.rawPeriodFromFrequency(amiga.frequencyFromPeriod(period)),
+      ).toBeCloseTo(period, 4);
+    }
+  });
+
+  it('covers XM’s full note range without clamping a legal note', () => {
+    expect(amiga.clampPeriod(periodForNote(0))).toBeCloseTo(periodForNote(0), 4);
+    expect(amiga.clampPeriod(periodForNote(95))).toBeCloseTo(periodForNote(95), 4);
+    // ProTracker's 113-856 range would have clamped most of that away.
+    expect(periodForNote(0)).toBeGreaterThan(856);
+  });
+
+  it('scales arpeggio by semitones with no wrap to DC', () => {
+    expect(amiga.arpeggioPeriod(1712, 12)).toBeCloseTo(856, 6);
+    expect(amiga.arpeggioPeriod(1712, 0)).toBeCloseTo(1712, 9);
+    expect(amiga.arpeggioPeriod(113, 12)).not.toBe(0);
+  });
+
+  it('snaps glissando to the nearest semitone', () => {
+    expect(amiga.snapPeriod(1700)).toBeCloseTo(1712, 4);
+    expect(amiga.snapPeriod(870)).toBeCloseTo(856, 4);
   });
 });

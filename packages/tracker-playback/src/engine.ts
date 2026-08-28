@@ -332,7 +332,11 @@ export class PlaybackEngine {
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
     this.moduleFormat = song.moduleFormat ?? DEFAULT_MODULE_FORMAT;
-    this.formatProfile = profileForFormat(this.moduleFormat);
+    this.formatProfile = profileForFormat(this.moduleFormat, {
+      ...(song.linearFrequency !== undefined
+        ? { linearFrequency: song.linearFrequency }
+        : {}),
+    });
     // Track states cache the profile, so drop any built for the previous song.
     this.trackEffectStates.clear();
     // Precompute tone portamento targets (3xx) across the full sequence so

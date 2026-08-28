@@ -33,6 +33,13 @@ export interface Song {
    * DEFAULT_MODULE_FORMAT.
    */
   moduleFormat?: ModuleFormat;
+  /**
+   * XM only: whether the module header selected the linear frequency table.
+   * XM carries this per file rather than per format -- roughly half of real
+   * modules use the Amiga table -- so it cannot live in `moduleFormat`.
+   * Absent means XM's own default, linear.
+   */
+  linearFrequency?: boolean;
 }
 
 export interface Pattern {

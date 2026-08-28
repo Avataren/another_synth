@@ -442,6 +442,26 @@ judgement. Mapping to instrument slots, tracker entries and effect commands belo
 the import layer, so the parser can be tested purely against the layout and the import
 rules stay in one place.
 
+**D24 — XM's frequency table is selected per file, so it rides on `Song`, not `ModuleFormat`.**
+Half the real corpus uses XM's Amiga table (F1), and the choice lives in the module
+header rather than being a property of "being an XM". Adding an `xm-amiga` member to
+`ModuleFormat` would have made a file-level flag masquerade as a format. Instead
+`Song.linearFrequency` carries it and `profileForFormat(format, options)` selects
+`XM_AMIGA_PROFILE`, which differs from `XM_PROFILE` only in its pitch model — the flag
+genuinely changes nothing else.
+
+`createXmAmigaPitchModel` uses the Paula relation `rate = 8363*1712/period` with C-4 at
+period 1712. Both XM modes agree *exactly* on every note's pitch — verified by test —
+and differ only in how slides interpolate between notes, which is the actual purpose of
+the flag. ProTracker's table is visible inside it: XM note 60 is period 856 and note 72
+is 428, the classic Amiga C-1 and C-2.
+
+**Known approximation:** FT2 ships a precomputed table with logarithmic interpolation
+across eight finetune steps per semitone, whose entries deviate from this continuous
+formula by up to about a period unit. Inaudible for note playback, possibly audible on
+long slides. Swap in FT2's literal table if XM slides sound subtly off against a
+reference player.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -500,12 +520,9 @@ broken delta decode shows roughness near 0.5 and large DC drift.
 
 Three findings that change the plan:
 
-**F1 — Amiga-mode XM is common, not exotic: 4 of 9 files.** `XM_PROFILE` currently
-hardcodes the linear model, so those songs would play at the wrong pitch throughout.
-`createAmigaPitchModel` is *not* directly reusable for them: it carries ProTracker's
-113–856 clamp and 36-entry table covering three octaves, while XM spans eight octaves
-with finetune interpolation. XM Amiga mode needs its own model and profile. Must be done
-before XM playback is wired up, or half the test corpus is wrong.
+**F1 — Amiga-mode XM is common, not exotic: 4 of 9 files.** ✅ **Resolved** — see D24.
+`createAmigaPitchModel` was *not* reusable for them: it carries ProTracker's 113–856
+clamp and 36-entry three-octave table, while XM spans eight octaves.
 
 **F2 — `TOTAL_SLOTS = 35` is confirmed as a hard blocker (B3).** `jt_letgo.xm` declares
 128 instruments. Instrument paging or a raised limit is required, not optional.
@@ -545,6 +562,7 @@ No real module is checked into the repo — these are the user's files, parsed i
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 3 | XM Amiga-mode pitch model added (`createXmAmigaPitchModel`) plus `XM_AMIGA_PROFILE`, selected per song via `Song.linearFrequency` (D24). Closes F1. Both XM modes verified to agree exactly on note pitch. 472 tests green; still not reachable from the UI. |
 | 2026-08-28 | 3 | XM parser validated against 9 real modules (see §6c). All parse cleanly with sane sample statistics. Surfaced F1 (Amiga-mode XM is 4 of 9 files and needs its own pitch model), F2 (128 instruments confirms the slot blocker), F3 (row counts 5..256 confirm Phase 1). |
 | 2026-08-28 | 3 | XM parser added (`packages/tracker-playback/src/formats/xm.ts`): header, per-pattern row counts, packed + unpacked cell decoding, instruments with 96-note keymaps, volume/panning envelopes, fadeout, autovibrato fields, per-sample tuning/loop settings, and 8/16-bit delta decoding (D22). Reports the file faithfully and interprets nothing (D23). 21 tests against synthetic modules; 459 total green. Not yet reachable from the UI. |
 | 2026-08-28 | 2 | `volumeSlideHasMemory` added: ProTracker `A00` now holds volume steady instead of continuing the last slide, matching PT (D20). **Audible on MOD playback** — 569 affected commands across the local collection, 27% of `resii.mod`'s slides. XM and native keep memory. Two remaining B6 items investigated and deliberately not moved (D21). **Phase 2 complete.** Tests: `src/tests/format-profile.test.ts`. |

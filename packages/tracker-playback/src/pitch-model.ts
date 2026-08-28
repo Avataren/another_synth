@@ -225,3 +225,81 @@ export function createLinearPitchModel(): PitchModel {
       ),
   };
 }
+
+/**
+ * FastTracker 2 Amiga-mode frequency table.
+ *
+ * Roughly half of real XM modules use this rather than the linear table (4 of
+ * the 9 in the local corpus, including both 4-mat tunes -- see
+ * PLAN-module-format-support.md section 6c), so it is not an exotic path.
+ *
+ * XM's Amiga periods follow the Paula convention:
+ *
+ *   rate   = 8363 * 1712 / period
+ *   period = 1712 * 2^((48 - note - finetune/128) / 12)
+ *
+ * where note 48 is C-4 and period 1712 is its reference. Both XM modes agree
+ * exactly on the pitch of every note -- period 1712 gives 8363 Hz in either --
+ * and differ only in how slides interpolate between notes: linear mode moves
+ * uniformly in semitones, Amiga mode uniformly in period. That is why this
+ * model shares the linear model's /32 scale into musical Hz.
+ *
+ * ProTracker's own table is visible inside this one: XM note 60 lands on
+ * period 856 and note 72 on 428, the classic Amiga C-1 and C-2 values.
+ *
+ * APPROXIMATION: FastTracker 2 ships a precomputed table with logarithmic
+ * interpolation between eight finetune steps per semitone, and its entries
+ * deviate from this continuous formula by up to about a period unit. That is
+ * inaudible for note playback but can differ slightly on long slides. Replacing
+ * this with FT2's literal table is worth doing if XM slides ever sound subtly
+ * off against a reference player.
+ */
+const XM_AMIGA_REFERENCE_PERIOD = 1712; // C-4
+const XM_AMIGA_REFERENCE_NOTE = 48; // C-4
+const XM_AMIGA_RATE_NUMERATOR = XM_REFERENCE_RATE * XM_AMIGA_REFERENCE_PERIOD;
+
+/**
+ * Periods for XM's note range 1-96 (C-0..B-7): note 0 gives 27392 and note 95
+ * about 113. Rounded outward so a legal note is never clamped away.
+ */
+const MIN_XM_AMIGA_PERIOD = 113;
+const MAX_XM_AMIGA_PERIOD = 27392;
+
+export function createXmAmigaPitchModel(): PitchModel {
+  const clampPeriod = (period: number): number => {
+    if (!Number.isFinite(period)) return period;
+    if (period < MIN_XM_AMIGA_PERIOD) return MIN_XM_AMIGA_PERIOD;
+    if (period > MAX_XM_AMIGA_PERIOD) return MAX_XM_AMIGA_PERIOD;
+    return period;
+  };
+
+  const frequencyFromPeriod = (period: number): number =>
+    XM_AMIGA_RATE_NUMERATOR / period / LINEAR_TO_SYNTH_SCALE;
+
+  const rawPeriodFromFrequency = (frequency: number): number =>
+    XM_AMIGA_RATE_NUMERATOR / (frequency * LINEAR_TO_SYNTH_SCALE);
+
+  /** Fractional note index for a period, where 48 is C-4. */
+  const noteFromPeriod = (period: number): number =>
+    XM_AMIGA_REFERENCE_NOTE -
+    12 * Math.log2(period / XM_AMIGA_REFERENCE_PERIOD);
+
+  const periodFromNote = (note: number): number =>
+    XM_AMIGA_REFERENCE_PERIOD *
+    Math.pow(2, (XM_AMIGA_REFERENCE_NOTE - note) / 12);
+
+  return {
+    kind: 'amiga',
+    clampPeriod,
+    frequencyFromPeriod,
+    rawPeriodFromFrequency,
+    periodFromFrequency: (frequency) =>
+      clampPeriod(rawPeriodFromFrequency(frequency)),
+    // Unlike ProTracker there is no 36-entry table to step through, so
+    // arpeggio scales the period directly and cannot overflow into DC.
+    arpeggioPeriod: (basePeriod, semitoneOffset) =>
+      clampPeriod(basePeriod * Math.pow(2, -semitoneOffset / 12)),
+    snapPeriod: (period) =>
+      clampPeriod(periodFromNote(Math.round(noteFromPeriod(period)))),
+  };
+}

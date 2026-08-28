@@ -186,3 +186,51 @@ describe('volume slide memory differs by format', () => {
     expect(1 - state.currentVolume).toBeCloseTo((5 * 6) / 64, 6);
   });
 });
+
+/**
+ * XM carries its frequency-table choice in the module header, not in the
+ * format tag: 4 of the 9 real modules in the local corpus use the Amiga
+ * table, so selecting the wrong one detunes half the corpus.
+ */
+describe('XM frequency table selection', () => {
+  it('uses the linear model by default', () => {
+    expect(profileForFormat('xm').pitch.kind).toBe('linear');
+    expect(profileForFormat('xm', { linearFrequency: true }).pitch.kind).toBe(
+      'linear',
+    );
+  });
+
+  it('switches to the Amiga model when the header says so', () => {
+    expect(profileForFormat('xm', { linearFrequency: false }).pitch.kind).toBe(
+      'amiga',
+    );
+  });
+
+  it('keeps every other XM behaviour identical between the two', () => {
+    const linear = profileForFormat('xm', { linearFrequency: true });
+    const amiga = profileForFormat('xm', { linearFrequency: false });
+    expect(amiga.volumeSlideHasMemory).toBe(linear.volumeSlideHasMemory);
+    expect(amiga.volumeSlideUnit).toBe(linear.volumeSlideUnit);
+    expect(amiga.noteDelayOverflowCarries).toBe(linear.noteDelayOverflowCarries);
+  });
+
+  it('ignores the flag for non-XM formats', () => {
+    expect(
+      profileForFormat('protracker', { linearFrequency: false }),
+    ).toBe(PROTRACKER_PROFILE);
+  });
+
+  it('is selected by the engine from the song', () => {
+    const engine = new PlaybackEngine();
+    engine.loadSong({
+      title: '',
+      author: '',
+      bpm: 125,
+      moduleFormat: 'xm',
+      linearFrequency: false,
+      patterns: [{ id: 'p', length: 4, tracks: [] }],
+      sequence: ['p'],
+    });
+    expect(engine.getFormatProfile().pitch.kind).toBe('amiga');
+  });
+});
