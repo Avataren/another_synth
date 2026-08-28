@@ -13,7 +13,11 @@
  */
 
 import type { ModuleFormat } from './types';
-import { type PitchModel, createAmigaPitchModel } from './pitch-model';
+import {
+  type PitchModel,
+  createAmigaPitchModel,
+  createLinearPitchModel,
+} from './pitch-model';
 
 export interface FormatProfile {
   /** The format this profile describes. */
@@ -54,16 +58,20 @@ export const PROTRACKER_PROFILE: FormatProfile = {
 };
 
 /**
- * FastTracker 2 semantics.
+ * FastTracker 2 semantics, using XM's default linear frequency table.
  *
- * Currently identical to ProTracker: the plumbing lands first so that moving
- * a behaviour behind the profile is a separate, individually testable change
- * rather than a single sweeping rewrite. Fields are corrected for FT2 as each
- * behaviour is migrated -- see PLAN-module-format-support.md Phase 2.
+ * XM can also be flagged into Amiga mode, which needs its own profile with an
+ * Amiga-style model; that arrives with the XM parser in Phase 3, since only
+ * the file header says which mode a song wants.
+ *
+ * The remaining fields still hold ProTracker values and are corrected as each
+ * behaviour is migrated -- see PLAN-module-format-support.md Phase 2. Nothing
+ * selects this profile yet, so MOD playback is unaffected either way.
  */
 export const XM_PROFILE: FormatProfile = {
   ...PROTRACKER_PROFILE,
   format: 'xm',
+  pitch: createLinearPitchModel(),
 };
 
 /** Scream Tracker 3 semantics. Placeholder, as for XM_PROFILE. */

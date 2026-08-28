@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createAmigaPitchModel } from '../../packages/tracker-playback/src/pitch-model';
+import {
+  createAmigaPitchModel,
+  createLinearPitchModel,
+} from '../../packages/tracker-playback/src/pitch-model';
 
 /**
  * The Amiga model has to reproduce the exact numbers the effect processor
@@ -69,5 +72,83 @@ describe('AmigaPitchModel', () => {
     expect(model.snapPeriod(430)).toBe(428);
     expect(model.snapPeriod(210)).toBe(214);
     expect(model.snapPeriod(856)).toBe(856);
+  });
+});
+
+/**
+ * The linear model implements XM's default frequency table:
+ *
+ *   period = 7680 - note*64 - finetune/2
+ *   rate   = 8363 * 2^((4608 - period) / 768)
+ *
+ * These assertions state those relations directly. The engine works in
+ * musical Hz, so the model scales the XM sample rate down by 32 the same way
+ * the Amiga model scales the Paula rate by 128.
+ */
+describe('LinearPitchModel (XM)', () => {
+  const linear = createLinearPitchModel();
+
+  /** XM period for a 0-based note index (0 = C-0), finetune 0. */
+  const periodForNote = (note: number) => 7680 - note * 64;
+
+  it('identifies itself as the linear model', () => {
+    expect(linear.kind).toBe('linear');
+  });
+
+  it('puts C-4 at the 8363 Hz reference, scaled to musical Hz', () => {
+    // Note 48 = C-4, period 4608, XM rate 8363 -> 8363/32 musical Hz.
+    expect(periodForNote(48)).toBe(4608);
+    expect(linear.frequencyFromPeriod(4608)).toBeCloseTo(8363 / 32, 6);
+    // Which should land on a recognisable C-4, near 261.6 Hz.
+    expect(linear.frequencyFromPeriod(4608)).toBeGreaterThan(255);
+    expect(linear.frequencyFromPeriod(4608)).toBeLessThan(266);
+  });
+
+  it('spaces semitones exactly 64 period units apart', () => {
+    const c4 = linear.frequencyFromPeriod(4608);
+    const cs4 = linear.frequencyFromPeriod(4608 - 64);
+    expect(cs4 / c4).toBeCloseTo(Math.pow(2, 1 / 12), 9);
+  });
+
+  it('doubles frequency exactly one octave (768 units) up', () => {
+    const c4 = linear.frequencyFromPeriod(4608);
+    const c5 = linear.frequencyFromPeriod(4608 - 768);
+    expect(c5 / c4).toBeCloseTo(2, 9);
+  });
+
+  it('keeps larger period meaning lower pitch', () => {
+    // The invariant the effect processor relies on across both models.
+    expect(linear.frequencyFromPeriod(7680)).toBeLessThan(
+      linear.frequencyFromPeriod(1600),
+    );
+  });
+
+  it('round-trips period -> frequency -> period', () => {
+    for (const period of [1600, 3000, 4608, 7680]) {
+      expect(
+        linear.rawPeriodFromFrequency(linear.frequencyFromPeriod(period)),
+      ).toBeCloseTo(period, 6);
+    }
+  });
+
+  it('clamps to XM’s C-0..B-7 note range', () => {
+    expect(linear.clampPeriod(0)).toBe(1600); // above B-7
+    expect(linear.clampPeriod(9000)).toBe(7680); // below C-0
+    expect(linear.clampPeriod(4608)).toBe(4608);
+  });
+
+  it('computes arpeggio arithmetically with no wrap to DC', () => {
+    // Unlike ProTracker there is no table to run off, so an overflowing
+    // arpeggio clamps to a real pitch instead of dropping to DC.
+    expect(linear.arpeggioPeriod(4608, 12)).toBe(4608 - 768);
+    expect(linear.arpeggioPeriod(4608, 0)).toBe(4608);
+    expect(linear.arpeggioPeriod(1600, 12)).toBe(1600);
+    expect(linear.arpeggioPeriod(1600, 12)).not.toBe(0);
+  });
+
+  it('snaps glissando to the semitone grid', () => {
+    // Grid points are multiples of 64; 4608 and 4544 are adjacent semitones.
+    expect(linear.snapPeriod(4600)).toBe(4608);
+    expect(linear.snapPeriod(4560)).toBe(4544);
   });
 });

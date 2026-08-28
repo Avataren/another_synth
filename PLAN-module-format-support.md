@@ -188,7 +188,7 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [x] Introduce `FormatProfile`; reach it from the effect processor
       (attached to each `TrackEffectState` rather than threaded as a parameter — D17)
 - [x] Extract `PitchModel` interface; move PT period logic into `AmigaPitchModel`
-- [ ] Add `LinearPitchModel` (XM linear table)
+- [x] Add `LinearPitchModel` (XM linear table) — inert until an XM song selects it
 - [ ] Move each remaining ProTracker quirk (B6 list) behind a profile flag
       — done: volume-slide unit, arpeggio DC wrap, EDx overflow carry,
         period clamping (now inside `PitchModel`)
@@ -385,6 +385,20 @@ literal frequency back to a period would silently retune notes sitting outside t
 nominal table, which is exactly the MOD pitch precision earlier commits worked to
 preserve.
 
+**D19 — The linear model emits musical Hz, scaled by 32.**
+XM's table gives a sample *playback rate*: period 4608 (C-4) yields 8363 Hz, the Amiga
+convention for a sample played at its recorded rate. The engine works in musical Hz —
+`ModInstrument.calculatePlaybackRate` compares the frequency against
+`440*2^((rootNote-69)/12)` — so the linear model divides by 32, exactly as the Amiga
+model divides the Paula rate by 128. 8363/32 = 261.3 Hz, i.e. C-4. Emitting raw XM rates
+would drive the sampler ~32x too fast, the same failure the Paula scaling exists to avoid.
+
+**Needs validation against real XM playback in Phase 3:** the linear period clamp is set
+to XM's own note range (1600 = B-7 .. 7680 = C-0), derived from the format's note range
+rather than measured against FastTracker 2. In particular it is not confirmed whether FT2
+lets portamento run past B-7 instead of clamping. Nothing selects this model yet, so the
+guess is currently harmless.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -446,6 +460,7 @@ for the `FormatProfile` work.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 2 | `createLinearPitchModel` added (XM default frequency table) and assigned to `XM_PROFILE`; emits musical Hz via a /32 scale (D19). Nothing selects the XM profile yet, so MOD playback is untouched — 434 tests green. XM Amiga-mode still needs its own profile, which arrives with the parser in Phase 3. |
 | 2026-08-28 | 2 | `PitchModel` extracted to `pitch-model.ts`; the ProTracker period table, clamp range, Paula scaling, arpeggio table-stepping and glissando snapping now live in `createAmigaPitchModel` and are reached via `state.profile.pitch` (D18). `effect-processor.ts` no longer contains any Amiga-specific pitch constant. No behaviour change — 425 tests green. Tests: `src/tests/pitch-model.test.ts`. |
 | 2026-08-28 | 2 | `FormatProfile` introduced and reaching the effect processor via `TrackEffectState` (D17). Three quirks migrated behind it: volume-slide unit, arpeggio DC wrap, EDx overflow carry. All profiles hold identical values, so no behaviour change — 416 tests green. Tests: `src/tests/format-profile.test.ts`. |
 | 2026-08-28 | fix | **Verified by ear — Axy now sounds right.** Axy volume slides corrected from half-rate to ProTracker's 1/64 per tick (D16). Audible on any song using Axy. Test rewritten to assert the format's rule rather than mirror the constant. |

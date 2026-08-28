@@ -147,3 +147,81 @@ export function createAmigaPitchModel(
     snapPeriod: (period) => PT_PERIOD_TABLE[nearestPeriodTableIndex(period)]!,
   };
 }
+
+/**
+ * FastTracker 2 linear frequency table (XM's default; the alternative is its
+ * Amiga mode, which needs its own model).
+ *
+ * XM's period is linear in semitones rather than an Amiga divisor:
+ *
+ *   period = 10*12*16*4 - note*16*4 - finetune/2   = 7680 - note*64 - finetune/2
+ *   rate   = 8363 * 2^((6*12*16*4 - period) / (12*16*4))
+ *          = 8363 * 2^((4608 - period) / 768)
+ *
+ * so one semitone is exactly 64 period units across eight octaves, and larger
+ * period still means lower pitch -- the invariant the effect processor relies
+ * on.
+ *
+ * `rate` is a sample playback rate in Hz, not a musical pitch: period 4608 is
+ * C-4 and yields 8363 Hz, the Amiga convention for a sample played at its
+ * recorded rate. The engine works in musical Hz (see
+ * ModInstrument.calculatePlaybackRate, which compares against
+ * 440*2^((rootNote-69)/12)), so this model divides by
+ * LINEAR_TO_SYNTH_SCALE the same way the Amiga model divides the Paula rate
+ * by 128. 8363/32 = 261.3 Hz, i.e. C-4, as intended.
+ */
+const XM_REFERENCE_RATE = 8363;
+const XM_REFERENCE_PERIOD = 4608; // 6*12*16*4, i.e. C-4
+const XM_UNITS_PER_SEMITONE = 64; // 16*4
+const XM_UNITS_PER_OCTAVE = 768; // 12*16*4
+const LINEAR_TO_SYNTH_SCALE = 32;
+
+/**
+ * XM's note range is 1-96 (C-0..B-7), giving periods from 7680 (C-0) down to
+ * 7680 - 95*64 = 1600 (B-7). Portamento is clamped to that range.
+ *
+ * NOTE: this bound is taken from the format's own note range rather than
+ * measured against FastTracker 2, and nothing selects this model yet. It wants
+ * checking against real XM playback when Phase 3 lands -- particularly whether
+ * FT2 lets a slide run past B-7 rather than clamping.
+ */
+const MIN_LINEAR_PERIOD = 1600;
+const MAX_LINEAR_PERIOD = 7680;
+
+export function createLinearPitchModel(): PitchModel {
+  const clampPeriod = (period: number): number => {
+    if (!Number.isFinite(period)) return period;
+    if (period < MIN_LINEAR_PERIOD) return MIN_LINEAR_PERIOD;
+    if (period > MAX_LINEAR_PERIOD) return MAX_LINEAR_PERIOD;
+    return period;
+  };
+
+  const frequencyFromPeriod = (period: number): number =>
+    (XM_REFERENCE_RATE *
+      Math.pow(2, (XM_REFERENCE_PERIOD - period) / XM_UNITS_PER_OCTAVE)) /
+    LINEAR_TO_SYNTH_SCALE;
+
+  const rawPeriodFromFrequency = (frequency: number): number =>
+    XM_REFERENCE_PERIOD -
+    XM_UNITS_PER_OCTAVE *
+      Math.log2((frequency * LINEAR_TO_SYNTH_SCALE) / XM_REFERENCE_RATE);
+
+  return {
+    kind: 'linear',
+    clampPeriod,
+    frequencyFromPeriod,
+    rawPeriodFromFrequency,
+    periodFromFrequency: (frequency) =>
+      clampPeriod(rawPeriodFromFrequency(frequency)),
+    // Linear periods are arithmetic in semitones, so arpeggio is a
+    // subtraction rather than a table walk -- and there is no table to run
+    // off, hence no ProTracker-style wrap to DC.
+    arpeggioPeriod: (basePeriod, semitoneOffset) =>
+      clampPeriod(basePeriod - semitoneOffset * XM_UNITS_PER_SEMITONE),
+    // Glissando quantises to the semitone grid.
+    snapPeriod: (period) =>
+      clampPeriod(
+        Math.round(period / XM_UNITS_PER_SEMITONE) * XM_UNITS_PER_SEMITONE,
+      ),
+  };
+}
