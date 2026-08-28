@@ -32,7 +32,7 @@ function makeContext(): TrackerSongBuilderContext {
     sequence: ref([]),
     currentPatternId: ref(null),
     currentPattern: ref(undefined),
-    patternRows: ref(4),
+    defaultPatternRows: ref(4),
     instrumentSlots: ref([]),
     songPatches: ref({}),
     songBank: {} as TrackerSongBuilderContext['songBank'],

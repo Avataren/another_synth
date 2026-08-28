@@ -45,7 +45,11 @@ export interface TrackerSongBuilderContext {
   sequence: Ref<string[]>;
   currentPatternId: Ref<string | null>;
   currentPattern: Ref<TrackerPattern | undefined>;
-  patternRows: Ref<number>;
+  /**
+   * Row count used when a pattern does not specify its own. Patterns carry
+   * `rows` since song-file v3; this is only the fallback.
+   */
+  defaultPatternRows: Ref<number>;
   instrumentSlots: Ref<InstrumentSlot[]>;
   songPatches: Ref<Record<string, Patch>>;
 
@@ -74,10 +78,13 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
   /**
    * Build playback steps for a single track
    */
-  function buildPlaybackStepsForTrack(track: TrackerTrackData): PlaybackStep[] {
+  function buildPlaybackStepsForTrack(
+    track: TrackerTrackData,
+    rows?: number
+  ): PlaybackStep[] {
     const ctx: TrackPlaybackContext = {};
     const steps: PlaybackStep[] = [];
-    const patternRows = context.patternRows.value;
+    const patternRows = rows ?? context.defaultPatternRows.value;
     const entryByRow = new Map<number, TrackerEntryData>();
     for (const entry of track.entries) {
       entryByRow.set(entry.row, entry);
@@ -265,14 +272,17 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
    * Build all playback patterns
    */
   function buildPlaybackPatterns(): PlaybackPattern[] {
-    return context.patterns.value.map((p) => ({
-      id: p.id,
-      length: context.patternRows.value,
-      tracks: p.tracks.map((track) => ({
-        id: track.id,
-        steps: buildPlaybackStepsForTrack(track)
-      }))
-    }));
+    return context.patterns.value.map((p) => {
+      const rows = p.rows ?? context.defaultPatternRows.value;
+      return {
+        id: p.id,
+        length: rows,
+        tracks: p.tracks.map((track) => ({
+          id: track.id,
+          steps: buildPlaybackStepsForTrack(track, rows)
+        }))
+      };
+    });
   }
 
   /**

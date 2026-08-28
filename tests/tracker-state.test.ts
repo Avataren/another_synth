@@ -303,7 +303,7 @@ describe('tracker slot initialization', () => {
       version: 1,
       data: {
         currentSong: base.currentSong,
-        patternRows: base.patternRows,
+        patternRows: base.defaultPatternRows,
         stepSize: base.stepSize,
         patterns: base.patterns,
         sequence: base.sequence,

@@ -391,24 +391,33 @@ export class PlaybackEngine {
     this.timingSystem.setBpm(bpm);
   }
 
+  /**
+   * Set the fallback row count used when no pattern is loaded.
+   *
+   * This used to overwrite *every* pattern's length, back when row count was
+   * a song-level setting. Patterns now carry their own length (XM varies it
+   * per pattern), so stomping them here would flatten exactly the thing the
+   * format needs. Use `setPatternLength` to change one pattern.
+   */
   setLength(rows: number) {
-    const clamped = Math.max(1, Math.round(rows));
-    this.length = clamped;
+    this.length = Math.max(1, Math.round(rows));
+  }
 
-    // For tracker usage today, pattern length is effectively
-    // a song-level setting. Keep the Song's pattern lengths in
-    // sync so position tracking and scheduling both see the
-    // updated row count. If per-pattern lengths are introduced
-    // later, prefer updating `song.patterns` directly instead
-    // of calling `setLength` for all patterns.
-    if (this.song) {
-      this.song = {
-        ...this.song,
-        patterns: this.song.patterns.map((pattern) => ({
-          ...pattern,
-          length: clamped,
-        })),
-      };
+  /** Change the row count of a single pattern in the loaded song. */
+  setPatternLength(patternId: string, rows: number) {
+    if (!this.song) return;
+    const clamped = Math.max(1, Math.round(rows));
+    let found = false;
+    const patterns = this.song.patterns.map((pattern) => {
+      if (pattern.id !== patternId) return pattern;
+      found = true;
+      return { ...pattern, length: clamped };
+    });
+    if (!found) return;
+    this.song = { ...this.song, patterns };
+    // Keep the active pattern's scheduling length in step with the edit.
+    if (this.position.patternId === patternId) {
+      this.length = clamped;
     }
   }
 

@@ -1,6 +1,6 @@
 # Multi-Format Module Support (MOD / XM / S3M)
 
-**Status:** Phase 0 complete — next up is Phase 1 (per-pattern row counts)
+**Status:** Phase 1 in progress (per-pattern rows done; channel count next)
 **Last updated:** 2026-08-28
 **Owner doc for:** extending the tracker from ProTracker-only `.mod` playback to a
 mode-driven player that also handles FastTracker 2 `.xm` and (later) Scream Tracker `.s3m`.
@@ -177,9 +177,9 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [x] Thread the format tag from the store through `useTrackerSongBuilder` into the engine
 
 ### Phase 1 — Structural (B1, B2)
-- [ ] Move row count from song-level `patternRows` onto each pattern; migrate saved songs
-- [ ] Engine + song builder honour per-pattern lengths
-- [ ] Pattern UI handles varying lengths
+- [x] Move row count from song-level `patternRows` onto each pattern; migrate saved songs
+- [x] Engine + song builder honour per-pattern lengths
+- [x] Pattern UI handles varying lengths
 - [ ] Parser: accept 6CHN/8CHN/xxCH MOD signatures instead of throwing
 - [ ] Importer: drop `MAX_TRACKS = 4`, derive track count from the module
 - [ ] Per-channel voice allocation in `song-bank.ts` / `worklet-pool.ts`
@@ -249,6 +249,19 @@ quirks to songs hand-authored in this tracker. A MOD import is identifiable — 
 only producer of `instrumentType: 'mod'` slots (`mod-import.ts`) — so v1 files key off
 that and fall back to `'native'`. See `inferLegacyModuleFormat` in `tracker-store.ts`.
 
+**D7 — `defaultPatternRows` kept as a seed rather than deleted.**
+Row count moved onto `TrackerPattern.rows`, but the song-level value survives
+(renamed `patternRows` -> `defaultPatternRows`) as the count applied to newly created
+patterns. `setPatternRows` also writes it, so editing the length of the pattern you are
+on and then adding a pattern behaves the way the old single control did. It is also what
+pre-v3 files backfill from.
+
+**D8 — `engine.setLength` no longer rewrites pattern lengths.**
+It used to overwrite every pattern's `length`, which would flatten exactly the variation
+XM needs. It now only sets the fallback used when no pattern is loaded; per-pattern edits
+go through the new `engine.setPatternLength(patternId, rows)`. Regression-guarded in
+`src/tests/tracker-engine-pattern-length.test.ts`.
+
 **D5 — Open: envelope execution site.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -276,3 +289,4 @@ runtime, more work). Decide at the start of Phase 4, informed by measured Phase 
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-28 | 1 | Row count moved onto `TrackerPattern.rows`; song file v3 backfills pre-v3 files from `data.patternRows` (D7). `engine.setLength` no longer flattens pattern lengths; added `setPatternLength` (D8). Song builder, playback store, export duration and the pattern UI all read per-pattern counts. Tests: `src/tests/stores/tracker-store-pattern-rows.test.ts`, `src/tests/tracker-engine-pattern-length.test.ts`. |

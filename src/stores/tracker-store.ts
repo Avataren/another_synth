@@ -33,16 +33,32 @@ interface SongMeta {
   bpm: number;
 }
 
+export const DEFAULT_PATTERN_ROWS = 64;
+export const MIN_PATTERN_ROWS = 1;
+/** FastTracker 2's per-pattern maximum. */
+export const MAX_PATTERN_ROWS = 256;
+
+export function clampPatternRows(rows: number | undefined | null): number {
+  if (!Number.isFinite(rows as number)) return DEFAULT_PATTERN_ROWS;
+  return Math.max(MIN_PATTERN_ROWS, Math.min(MAX_PATTERN_ROWS, Math.round(rows as number)));
+}
+
 export interface TrackerPattern {
   id: string;
   name: string;
+  /**
+   * Row count for this pattern. XM (and IT) allow this to vary per pattern,
+   * so it lives here rather than on the song. Songs saved before v3 have it
+   * backfilled from the old song-level `patternRows` on load.
+   */
+  rows: number;
   tracks: TrackerTrackData[];
 }
 
 interface TrackerSnapshot {
   currentSong: SongMeta;
   moduleFormat: ModuleFormat;
-  patternRows: number;
+  defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
   patterns: TrackerPattern[];
@@ -58,7 +74,11 @@ interface TrackerStoreState {
   currentSong: SongMeta;
   /** Which tracker's playback semantics this song follows. */
   moduleFormat: ModuleFormat;
-  patternRows: number;
+  /**
+   * Row count applied to newly created patterns. Existing patterns carry
+   * their own `rows`; this is only a seed for new ones.
+   */
+  defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
   patterns: TrackerPattern[];
@@ -142,12 +162,27 @@ function inferLegacyModuleFormat(slots: InstrumentSlot[] | undefined | null): Mo
   return hasModInstrument ? 'protracker' : DEFAULT_MODULE_FORMAT;
 }
 
-function createDefaultPattern(): TrackerPattern {
+function createDefaultPattern(rows: number = DEFAULT_PATTERN_ROWS): TrackerPattern {
   return {
     id: uid(),
     name: 'Pattern 1',
+    rows: clampPatternRows(rows),
     tracks: createDefaultTracks()
   };
+}
+
+/**
+ * Backfill `rows` on patterns loaded from a pre-v3 song file, where the row
+ * count lived on the song rather than the pattern.
+ */
+function normalizePatternRows(
+  patterns: TrackerPattern[],
+  legacySongRows: number
+): TrackerPattern[] {
+  return patterns.map((pattern) => ({
+    ...pattern,
+    rows: clampPatternRows(pattern.rows ?? legacySongRows)
+  }));
 }
 
 /**
@@ -155,12 +190,14 @@ function createDefaultPattern(): TrackerPattern {
  *
  * v1: original format, no `moduleFormat` field.
  * v2: adds `data.moduleFormat`.
+ * v3: row count moves onto each pattern (`patterns[].rows`); the song-level
+ *     `patternRows` is retained only as the seed for newly created patterns.
  *
  * The reader accepts every version in this range; the writer always emits
  * `CURRENT_SONG_FILE_VERSION`.
  */
-export type TrackerSongFileVersion = 1 | 2;
-export const CURRENT_SONG_FILE_VERSION = 2;
+export type TrackerSongFileVersion = 1 | 2 | 3;
+export const CURRENT_SONG_FILE_VERSION = 3;
 
 export interface TrackerSongFile {
   version: TrackerSongFileVersion;
@@ -168,6 +205,11 @@ export interface TrackerSongFile {
     currentSong: SongMeta;
     /** Absent in v1 files; inferred on load. See `inferLegacyModuleFormat`. */
     moduleFormat?: ModuleFormat;
+    /**
+     * Pre-v3: the row count for every pattern in the song.
+     * v3+: only the default applied to newly created patterns. Per-pattern
+     * counts live on `patterns[].rows`.
+     */
     patternRows: number;
     stepSize: number;
     patterns: TrackerPattern[];
@@ -191,7 +233,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       },
       moduleFormat: DEFAULT_MODULE_FORMAT,
       baseOctave: 4,
-      patternRows: 64,
+      defaultPatternRows: DEFAULT_PATTERN_ROWS,
       stepSize: 1,
       patterns: [defaultPattern],
       sequence: [defaultPattern.id],
@@ -206,6 +248,22 @@ export const useTrackerStore = defineStore('trackerStore', {
     };
   },
   getters: {
+    /**
+     * Row count of the pattern currently being edited. This is what the grid,
+     * navigation and selection should size themselves against -- not the
+     * song-level default, which only seeds new patterns.
+     */
+    currentPatternRows(): number {
+      const pattern = this.patterns.find(p => p.id === this.currentPatternId);
+      return clampPatternRows(pattern?.rows ?? this.defaultPatternRows);
+    },
+    /** Row count for a specific pattern, falling back to the song default. */
+    rowsForPattern(): (patternId: string | null | undefined) => number {
+      return (patternId) => {
+        const pattern = this.patterns.find(p => p.id === patternId);
+        return clampPatternRows(pattern?.rows ?? this.defaultPatternRows);
+      };
+    },
     currentPageSlots(): InstrumentSlot[] {
       const start = this.currentInstrumentPage * SLOTS_PER_PAGE;
       return this.instrumentSlots.slice(start, start + SLOTS_PER_PAGE);
@@ -232,7 +290,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       return {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
-        patternRows: this.patternRows,
+        defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
@@ -248,7 +306,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     applySnapshot(snapshot: TrackerSnapshot) {
       this.currentSong = { ...snapshot.currentSong };
       this.moduleFormat = snapshot.moduleFormat ?? DEFAULT_MODULE_FORMAT;
-      this.patternRows = snapshot.patternRows;
+      this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
 
@@ -294,7 +352,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       };
       this.moduleFormat = DEFAULT_MODULE_FORMAT;
       this.baseOctave = 4;
-      this.patternRows = 64;
+      this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
       this.stepSize = 1;
       this.patterns = [defaultPattern];
       this.sequence = [defaultPattern.id];
@@ -379,10 +437,26 @@ export const useTrackerStore = defineStore('trackerStore', {
       const newPattern: TrackerPattern = {
         id: uid(),
         name: `Pattern ${this.patterns.length + 1}`,
+        rows: clampPatternRows(this.defaultPatternRows),
         tracks: createDefaultTracks()
       };
       this.patterns.push(newPattern);
       return newPattern.id;
+    },
+    /**
+     * Set the row count of one pattern (defaults to the current one).
+     *
+     * Also updates `defaultPatternRows` so subsequently created patterns
+     * inherit the count the user just chose, which matches how the single
+     * song-level control behaved before per-pattern lengths existed.
+     */
+    setPatternRows(rows: number, patternId?: string) {
+      const targetId = patternId ?? this.currentPatternId;
+      const pattern = this.patterns.find(p => p.id === targetId);
+      if (!pattern) return;
+      const clamped = clampPatternRows(rows);
+      pattern.rows = clamped;
+      this.defaultPatternRows = clamped;
     },
     deletePattern(patternId: string) {
       if (this.patterns.length <= 1) {
@@ -569,7 +643,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       const data: TrackerSongFile['data'] = {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
-        patternRows: this.patternRows,
+        patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
         sequence: [...this.sequence],
@@ -583,7 +657,7 @@ export const useTrackerStore = defineStore('trackerStore', {
     },
     loadSongFile(file: TrackerSongFile) {
       if (!file || !file.data) return;
-      if (file.version !== 1 && file.version !== 2) return;
+      if (file.version !== 1 && file.version !== 2 && file.version !== 3) return;
       const data = file.data;
 
       this.currentSong = {
@@ -593,12 +667,15 @@ export const useTrackerStore = defineStore('trackerStore', {
       };
       // v1 files predate the tag, so fall back to inferring it from the slots.
       this.moduleFormat = data.moduleFormat ?? inferLegacyModuleFormat(data.instrumentSlots);
-      this.patternRows = Number.isFinite(data.patternRows) ? data.patternRows : 64;
+      const legacySongRows = clampPatternRows(data.patternRows);
+      this.defaultPatternRows = legacySongRows;
       this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;
 
+      // Pre-v3 files have no per-pattern `rows`; backfill from the song-level
+      // value so an old song keeps exactly the shape it was saved with.
       const patterns = Array.isArray(data.patterns) && data.patterns.length > 0
-        ? data.patterns
-        : [createDefaultPattern()];
+        ? normalizePatternRows(data.patterns, legacySongRows)
+        : [createDefaultPattern(legacySongRows)];
       this.patterns = patterns;
 
       const patternIds = new Set(this.patterns.map((p) => p.id));

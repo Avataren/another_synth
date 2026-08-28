@@ -145,6 +145,8 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
     patterns.push({
       id: patternId,
       name: `Pattern ${p + 1}`,
+      // ProTracker patterns are always 64 rows; XM will vary this per pattern.
+      rows: PATTERN_ROWS,
       tracks,
     });
   }

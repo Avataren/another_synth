@@ -16,6 +16,7 @@ function makeContext(moduleFormat?: ModuleFormat): TrackerSongBuilderContext {
   const pattern = {
     id: 'p1',
     name: 'Pattern 1',
+    rows: 4,
     tracks: [{ id: 't1', name: 'Track 1', entries: [], interpolations: [] }],
   };
   return {
@@ -25,7 +26,7 @@ function makeContext(moduleFormat?: ModuleFormat): TrackerSongBuilderContext {
     sequence: ref(['p1']),
     currentPatternId: ref('p1'),
     currentPattern: ref(pattern),
-    patternRows: ref(4),
+    defaultPatternRows: ref(4),
     instrumentSlots: ref([]),
     songPatches: ref({}),
     songBank: {} as TrackerSongBuilderContext['songBank'],

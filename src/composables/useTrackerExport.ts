@@ -90,13 +90,16 @@ export function useTrackerExport(context: TrackerExportContext) {
   }
 
   /**
-   * Get the length of a pattern in rows
-   * Currently uses the global patternRows value
+   * Get the length of a pattern in rows.
+   *
+   * Patterns carry their own row count since song-file v3, so an export must
+   * look it up rather than assuming every pattern matches the current one --
+   * otherwise a song with mixed lengths gets the wrong expected duration and
+   * the recording is cut short or padded.
    */
-  function getPatternLengthForExport(_patternId: string | undefined): number {
-    // Tracker currently uses a single patternRows value for all patterns.
-    // When per-pattern lengths are added, look up the pattern's own length here.
-    return context.rowsCount.value;
+  function getPatternLengthForExport(patternId: string | undefined): number {
+    const pattern = context.patterns.value.find((p) => p.id === patternId);
+    return pattern?.rows ?? context.rowsCount.value;
   }
 
   /**
@@ -227,7 +230,10 @@ export function useTrackerExport(context: TrackerExportContext) {
       const expectedRows =
         totalRows > 0
           ? totalRows
-          : context.rowsCount.value * Math.max(1, context.sequence.value.length || 1);
+          : context.sequence.value.reduce(
+              (sum, patternId) => sum + getPatternLengthForExport(patternId),
+              0,
+            ) || context.rowsCount.value;
       const expectedDurationMs = expectedRows * getMsPerRow(context.currentSong.value.bpm);
       const waitPromise = waitForPlaybackStop(expectedDurationMs + 2000);
 

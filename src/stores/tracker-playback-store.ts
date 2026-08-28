@@ -279,7 +279,11 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       positionUnsubscribe = playbackEngineInstance.on('position', (pos) => {
         if (suppressPositionUpdates) return;
 
-        const rowsCount = trackerStore.patternRows;
+        // Wrap against the row count of the pattern the position refers to:
+        // patterns can differ in length since song-file v3.
+        const rowsCount = trackerStore.rowsForPattern(
+          pos.patternId ?? trackerStore.currentPatternId,
+        );
         const row = ((pos.row % rowsCount) + rowsCount) % rowsCount;
         playbackRow.value = row;
 
@@ -404,9 +408,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     const engine = ensureEngine();
 
     // Configure and start
-    console.log(`[PlaybackStore] Starting playback: bpm=${song.bpm}, length=${trackerStore.patternRows}`);
+    console.log(`[PlaybackStore] Starting playback: bpm=${song.bpm}`);
     engine.setBpm(song.bpm);
-    engine.setLength(trackerStore.patternRows);
+    // Pattern lengths travel on the Song itself now; no song-level override.
     engine.seek(startRow);
 
     await engine.play();
@@ -456,11 +460,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   }
 
   /**
-   * Update pattern length
+   * Update the row count of a single pattern in the loaded song, so an edit
+   * takes effect without restarting playback.
    */
-  function setLength(rows: number): void {
-    if (!playbackEngineInstance) return;
-    playbackEngineInstance.setLength(rows);
+  function setPatternLength(patternId: string | null, rows: number): void {
+    if (!playbackEngineInstance || !patternId) return;
+    playbackEngineInstance.setPatternLength(patternId, rows);
   }
 
   // ============================================
@@ -608,7 +613,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     stop,
     seek,
     setBpm,
-    setLength,
+    setPatternLength,
 
     // Mute/Solo
     toggleMute,

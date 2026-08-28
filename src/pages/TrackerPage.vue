@@ -568,7 +568,11 @@ import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { parseEffectCommand, parseTrackerNoteSymbol } from 'src/audio/tracker/note-utils';
-import { useTrackerStore, TOTAL_PAGES } from 'src/stores/tracker-store';
+import {
+  useTrackerStore,
+  TOTAL_PAGES,
+  clampPatternRows,
+} from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
 import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
@@ -602,7 +606,7 @@ const keyboardStore = useKeyboardStore();
 const {
   currentSong,
   moduleFormat,
-  patternRows,
+  defaultPatternRows,
   stepSize,
   patterns,
   sequence,
@@ -644,7 +648,8 @@ const patternAreaRef = ref<HTMLDivElement | null>(null);
 const sequenceEditorRef = ref<InstanceType<typeof SequenceEditor> | null>(null);
 const patternAreaScrollTop = ref(0);
 const patternAreaHeight = ref(600);
-const rowsCount = computed(() => Math.max(patternRows.value ?? 64, 1));
+// Grid/navigation/selection all size against the *current* pattern.
+const rowsCount = computed(() => trackerStore.currentPatternRows);
 const trackerAudioStore = useTrackerAudioStore();
 const songBank = trackerAudioStore.songBank;
 
@@ -1217,11 +1222,12 @@ function setBaseOctaveInput(value: number) {
 }
 
 function setPatternRows(count: number) {
-  const clamped = Math.max(1, Math.min(256, Math.round(count)));
+  const clamped = clampPatternRows(count);
   trackerStore.pushHistory();
-  patternRows.value = clamped;
+  // Applies to the pattern being edited; patterns may differ in length.
+  trackerStore.setPatternRows(clamped);
   setActiveRow(activeRow.value);
-  playbackStore.setLength(clamped);
+  playbackStore.setPatternLength(currentPatternId.value, clamped);
 }
 
 function onPatternLengthInput(event: Event) {
@@ -1246,7 +1252,7 @@ const songBuilderContext: TrackerSongBuilderContext = {
   sequence,
   currentPatternId,
   currentPattern,
-  patternRows,
+  defaultPatternRows,
   instrumentSlots,
   songPatches,
   songBank,
@@ -1784,7 +1790,7 @@ watch(
 
 watch(
   () => rowsCount.value,
-  (rows) => playbackStore.setLength(rows),
+  (rows) => playbackStore.setPatternLength(currentPatternId.value, rows),
   { immediate: true },
 );
 
