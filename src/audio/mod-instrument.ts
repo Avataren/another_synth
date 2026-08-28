@@ -10,9 +10,10 @@
  */
 
 import type { Patch } from './types/preset-types';
-import type {
-  SamplerState,
-  TrackerVolumeEnvelope,
+import {
+  SamplerLoopMode,
+  type SamplerState,
+  type TrackerVolumeEnvelope,
 } from './types/synth-layout';
 import { decodeAudioAssetToFloat32Array } from './serialization/audio-asset-encoder';
 import { AudioAssetType } from './types/preset-types';
@@ -89,6 +90,11 @@ export default class ModInstrument {
    * across notes.
    */
   private trackVoices: Map<number, number> = new Map();
+
+  /** Loop bounds in buffer seconds, resolved once at load time. */
+  private loopEnabled = false;
+  private loopStartSeconds = 0;
+  private loopEndSeconds = 0;
 
   public get isReady(): boolean {
     return this.ready;
@@ -180,12 +186,82 @@ export default class ModInstrument {
     }
     // If isEmpty, buffer is already initialized to silence
 
+    this.prepareLoop(channels, frameCount, sampleRate);
+
     this.ready = true;
     console.log(
       '[ModInstrument] loadPatch complete, buffer length:',
       this.audioBuffer.length,
       'frames',
     );
+  }
+
+  /**
+   * Work out the loop this instrument plays, once at load time.
+   *
+   * Ping-pong needs materialising: an AudioBufferSourceNode can only loop
+   * forwards, so the loop region is followed by a reversed copy of itself and
+   * the loop is widened to span both halves. Playing that forwards reproduces
+   * the bounce exactly. Without this, ping-pong samples fell through the
+   * `loopMode === 1` check and did not loop at all -- 27 samples across the
+   * local XM corpus, including 10 in an-path.xm and 8 in elw-sick.xm.
+   */
+  private prepareLoop(
+    channels: number,
+    frameCount: number,
+    sampleRate: number,
+  ): void {
+    this.loopStartSeconds = 0;
+    this.loopEndSeconds = 0;
+    this.loopEnabled = false;
+
+    const state = this.samplerState;
+    if (!state || !this.audioBuffer) return;
+    if (state.loopMode === SamplerLoopMode.Off) return;
+
+    const startFrame = Math.max(
+      0,
+      Math.min(frameCount - 1, Math.round(state.loopStart * frameCount)),
+    );
+    const endFrame = Math.max(
+      startFrame + 1,
+      Math.min(frameCount, Math.round(state.loopEnd * frameCount)),
+    );
+    const loopFrames = endFrame - startFrame;
+    if (loopFrames < 2) return;
+
+    if (state.loopMode === SamplerLoopMode.PingPong) {
+      // [0 .. endFrame) then the loop region reversed.
+      const mirrored = this.audioContext.createBuffer(
+        channels,
+        endFrame + loopFrames,
+        sampleRate,
+      );
+      for (let ch = 0; ch < channels; ch++) {
+        const source = this.audioBuffer.getChannelData(ch);
+        const target = mirrored.getChannelData(ch);
+        target.set(source.subarray(0, endFrame), 0);
+        for (let i = 0; i < loopFrames; i++) {
+          target[endFrame + i] = source[endFrame - 1 - i] ?? 0;
+        }
+      }
+      this.audioBuffer = mirrored;
+      this.loopStartSeconds = startFrame / sampleRate;
+      this.loopEndSeconds = (endFrame + loopFrames) / sampleRate;
+    } else {
+      this.loopStartSeconds = startFrame / sampleRate;
+      this.loopEndSeconds = endFrame / sampleRate;
+    }
+
+    this.loopEnabled = true;
+  }
+
+  /** Apply the prepared loop to a freshly created source. */
+  private applyLoop(source: AudioBufferSourceNode): void {
+    if (!this.loopEnabled) return;
+    source.loop = true;
+    source.loopStart = this.loopStartSeconds;
+    source.loopEnd = this.loopEndSeconds;
   }
 
   noteOn(
@@ -251,18 +327,8 @@ export default class ModInstrument {
 
     source.buffer = this.audioBuffer;
 
-    // Configure looping
-    if (this.samplerState.loopMode === 1) {
-      // Loop mode
-      source.loop = true;
-      const bufferLength = this.audioBuffer.length;
-      source.loopStart =
-        (this.samplerState.loopStart * bufferLength) /
-        this.audioBuffer.sampleRate;
-      source.loopEnd =
-        (this.samplerState.loopEnd * bufferLength) /
-        this.audioBuffer.sampleRate;
-    }
+    // Configure looping (prepared once at load time; see prepareLoop)
+    this.applyLoop(source);
 
     // Set gain based on velocity and sampler gain
     const noteGain = (velocity / 127) * this.samplerState.gain;
@@ -775,17 +841,8 @@ export default class ModInstrument {
 
     source.buffer = this.audioBuffer;
 
-    // Configure looping
-    if (this.samplerState.loopMode === 1) {
-      source.loop = true;
-      const bufferLength = this.audioBuffer.length;
-      source.loopStart =
-        (this.samplerState.loopStart * bufferLength) /
-        this.audioBuffer.sampleRate;
-      source.loopEnd =
-        (this.samplerState.loopEnd * bufferLength) /
-        this.audioBuffer.sampleRate;
-    }
+    // Configure looping (prepared once at load time; see prepareLoop)
+    this.applyLoop(source);
 
     // Set gain based on velocity and sampler gain
     // NOTE: For MOD instruments, "velocity" is a misnomer - it's really ProTracker volume (0-64)
