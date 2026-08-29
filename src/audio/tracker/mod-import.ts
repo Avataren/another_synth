@@ -420,8 +420,23 @@ function modCellToTrackerEntry(
     // a note like "D#2 <newSample> A0A" inherits the prior note's already-slid-down volume, gets
     // immediately pushed to (near-)zero by the volSlide tick-0 handling, and never recovers until
     // an explicit Cxx/volume-column value appears -- audibly, the note "dies" right after it
-    // triggers. Tone portamento (3xx/5xy) is still excluded: it doesn't retrigger the sample at
-    // all, so resetting volume there would be wrong.
+    // triggers.
+    //
+    // It applies to tone-portamento rows (3xx/5xy) too. Those were excluded on
+    // the grounds that a tone portamento does not retrigger the sample, so
+    // resetting the volume "would be wrong" -- but that conflates two things
+    // ProTracker keeps separate. A *sample number* loads the sample's volume
+    // into the channel whether or not anything retriggers; that is the same
+    // rule a bare sample number follows (see below). The tone-porta check only
+    // decides whether the sample restarts and how the period is used.
+    //
+    // nexus_seven.mod pattern 6 is what this cost: channel 1 alternates
+    // "C-3 12 3F0" against "A06" volume-slide rows, the classic pumped
+    // portamento bassline. Each sample number is meant to reload volume 58 and
+    // each A06 to walk it back down. Without the reload the slides only ever
+    // subtract: the channel reached zero by row 3 and every one of the
+    // pattern's remaining notes was silent, since a tone portamento never
+    // retriggers and so never brings a volume of its own.
     //
     // The same reset happens for a sample number with NO note. In ProTracker
     // a bare sample number does not retrigger anything, but it *does* reload
@@ -440,8 +455,6 @@ function modCellToTrackerEntry(
     // right: ProTracker does not retrigger on a bare sample number either.
     if (
       hasSample &&
-      !isTonePorta &&
-      !isTonePortaVol &&
       mod.trackerFlavor !== 'Soundtracker' &&
       mod.trackerFlavor !== 'Unknown'
     ) {

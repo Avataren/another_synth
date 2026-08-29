@@ -121,14 +121,51 @@ describe('bare sample number resets channel volume', () => {
     expect(track.entries.find((e) => e.row === 3)?.volume).toBeUndefined();
   });
 
-  it('does not reset on a tone-portamento row', () => {
-    // 3xx does not retrigger the sample, so the volume must carry over.
+  it('resets on a tone-portamento row that names a sample', () => {
+    // This used to assert the opposite, reasoning that 3xx does not retrigger
+    // the sample so the volume must carry over. That conflates two things
+    // ProTracker keeps apart: in mt_PlayVoice the sample-number block, which
+    // writes n_volume, runs *before* the tone-porta check, and that check only
+    // decides whether the sample restarts and how the period is used. A sample
+    // number loads its volume into the channel either way -- the same rule the
+    // bare-sample-number cases above already assert.
+    //
+    // nexus_seven.mod pattern 6 is what the old reading cost: channel 1
+    // alternates "C-3 12 3F0" against "A06" rows, the pumped portamento
+    // bassline, and with no reload the slides only ever subtracted. The
+    // channel hit zero by row 3 and every remaining note in the pattern was
+    // silent, a tone portamento never retriggering and so never bringing a
+    // volume of its own.
     const track = importTrack0([
       { row: 0, period: 202, sampleNumber: 1 },
       { row: 1, period: 180, sampleNumber: 1, effectCmd: 0x3, effectParam: 0x40 },
     ]);
 
+    expect(track.entries.find((e) => e.row === 1)?.volume).toBe(
+      SAMPLE_1_VOLUME_HEX,
+    );
+  });
+
+  it('leaves a tone-portamento row with no sample number alone', () => {
+    // No sample number, nothing to load: the channel keeps whatever volume the
+    // slides have left it at, which is the whole point of the idiom.
+    const track = importTrack0([
+      { row: 0, period: 202, sampleNumber: 1 },
+      { row: 1, period: 180, effectCmd: 0x3, effectParam: 0x40 },
+    ]);
+
     expect(track.entries.find((e) => e.row === 1)?.volume).toBeUndefined();
+  });
+
+  it('still does not stamp an instrument on a tone-portamento row', () => {
+    // Reloading the volume must not become a retrigger: the row still has to
+    // keep addressing the voice that is already sounding (D29).
+    const track = importTrack0([
+      { row: 0, period: 202, sampleNumber: 1 },
+      { row: 1, period: 180, sampleNumber: 1, effectCmd: 0x3, effectParam: 0x40 },
+    ]);
+
+    expect(track.entries.find((e) => e.row === 1)?.instrument).toBeUndefined();
   });
 
   it('leaves a Cxx on the same row in charge', () => {

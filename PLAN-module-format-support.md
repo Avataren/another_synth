@@ -1172,6 +1172,38 @@ other default is the bank quietly disagreeing with the rest of the pipeline abou
 is playing. Every real module sets the format from `loadSong` before a note is scheduled,
 so the default is not load-bearing anyway.
 
+**D61 — A sample number loads its volume even when the row is a tone portamento.**
+Reported as nexus_seven.mod, UI pattern 6 (index 5), channel 1: "a ton of notes there, but
+90% of them make no sound", and silent the same way with the pattern played alone and
+every other track muted.
+
+The channel alternates `C-3 12 3F0` against bare `A06` rows -- the pumped portamento
+bassline, where each sample number reloads the sample's volume and each slide walks it back
+down. The importer skipped the volume reload on tone-portamento rows, on the reasoning
+(recorded in D15's comment and pinned by a test) that "3xx doesn't retrigger the sample, so
+resetting volume there would be wrong".
+
+That conflates two things ProTracker keeps apart. In `mt_PlayVoice` the sample-number
+block, which writes `n_volume`, runs *before* the tone-porta check; that check only decides
+whether the sample restarts and how the period is used. A sample number loads its volume
+into the channel either way -- the same rule D15 already established for a *bare* sample
+number, just never carried across to this case.
+
+With no reload the `A06` rows could only subtract: the channel reached zero by row 3 and
+every remaining note in the pattern was silent, since a tone portamento never retriggers
+and so never brings a volume of its own. Traced through the engine the channel now pumps
+58 -> 22 -> 58 instead of collapsing to 0 and staying there.
+
+The instrument stamp stays suppressed on these rows (D29): reloading the volume must not
+become a retrigger, and the row still has to address the voice that is already sounding.
+
+Worth noting how it presented. The reporter's first reading was that "notes without an
+instrument don't retrigger the previous instrument" -- and the imported pattern really does
+show `..` in the instrument column on those rows. But the rows *do* carry sample 12 in the
+file, and they are tone portamentos, which correctly never retrigger; nothing was wrong
+with the triggering at all. The audible fault was entirely the missing volume reload, two
+columns away from where it looked like it was.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1388,6 +1420,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **A sample number reloads its volume on a tone-portamento row too** (D61). The reload was skipped there, so nexus_seven.mod's pumped portamento bassline could only slide down: the channel hit zero within four rows and every remaining note in the pattern was silent. ProTracker writes `n_volume` from the sample number before it checks for tone porta; that check only governs the retrigger. 637 green. |
 | 2026-08-29 | fix | **A new note on a module channel now kills everything the channel was sounding** (D60). A key-off released the voice and then cleared the track's voice tracking, which made it unkillable — so a released note rang on under the next one for its whole fadeout whenever the channel changed instrument. Released voices are tracked per track and cut by the next note. The bank also learns the song's format: module channels cut on replacement, native songs release and let the note ring. Tests: `src/tests/tracker-channel-monophony.test.ts` (3 of 7 confirmed failing against the old code). 634 green. |
 | 2026-08-29 | fix | **The XM frequency table now reaches the engine** (D59). `xm-import` put `linearFrequency` in a console.log rather than the song data, so `profileForFormat` never selected `XM_AMIGA_PROFILE` and every Amiga-table XM computed its pitch *effects* in linear period space — in tune, but every slide moving the wrong distance. Roughly half of real XM files are Amiga-table. Found via 4-mat's "rose". Tests: `src/tests/xm-amiga-frequency-table.test.ts`. 627 green. |
 | 2026-08-29 | fix | **Instantaneous volume commands step instead of ramping** (D58). A scheduled volume change defaulted to a linear ramp, which runs from the previous automation event — so ECx, Cxx and the fine slides were smeared backwards across the preceding row. Found via 4-mat's "rose", whose pattern 44 is the first in the song to use ECx: track 2's short `G-4 .. EC2` notes faded across their whole length at speed 3. 621 green. |
