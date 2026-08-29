@@ -92,14 +92,32 @@ describe('PlaybackEngine pattern delay (EEx)', () => {
     });
     engine.loadSong(song, 0);
 
+    // Record the rows actually handed to the scheduler. Reading
+    // lastScheduledRow instead would not answer the question: the cursor
+    // restarts at each pattern boundary, so a small value there means either
+    // "stuck on row 0" or "already looped round" and the two are
+    // indistinguishable.
+    const scheduled: number[] = [];
+    const scheduleRow = Reflect.get(engine, 'scheduleRow') as (
+      row: number,
+      time: number,
+    ) => void;
+    Reflect.set(engine, 'scheduleRow', (row: number, time: number) => {
+      scheduled.push(row);
+      scheduleRow.call(engine, row, time);
+    });
+
     driveScheduling(engine, 30, 0.4);
 
-    const lastScheduledRow = Reflect.get(engine, 'lastScheduledRow') as number;
-    // Before the fix this stayed stuck at 0 (never even reaching row 1's
-    // *last* repeat) no matter how many iterations were driven. After the
-    // fix it should comfortably clear all 4 rows and wrap the pattern at
-    // least once (row index resets/continues past length-1).
-    expect(lastScheduledRow).toBeGreaterThanOrEqual(3);
+    // Before the fix this never got past row 0. Row 1 is held, and then
+    // playback carries on through the rest of the pattern and wraps.
+    //
+    // Note the repeat count: EE2 gives two plays of row 1 here, where
+    // ProTracker plays the row param+1 times. That off-by-one is not what this
+    // test is about -- it is recorded as an open item in
+    // PLAN-module-format-support.md -- but it is pinned so a change to it is a
+    // deliberate one rather than a surprise.
+    expect(scheduled.slice(0, 6)).toEqual([0, 1, 1, 2, 3, 0]);
   });
 
   it('holds the delayed row for exactly the requested number of extra repeats', () => {

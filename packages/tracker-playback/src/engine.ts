@@ -195,8 +195,8 @@ export class PlaybackEngine {
 
   /** Pattern loop state (E6x) */
   private patternLoopStart = 0; // Row where loop starts (set by E60)
-  private patternLoopCount = 0; // Current loop iteration
-  private patternLoopTarget = 0; // Total number of loops requested
+  private patternLoopCount = 0; // Jumps still owed (E6x countdown)
+  private patternLoopPending = false; // The row just scheduled owes a jump back
 
   /** Pattern delay state (EEx) - delays current row by x ticks */
   private patternDelayCount = 0; // Number of times to repeat current row
@@ -719,7 +719,18 @@ export class PlaybackEngine {
           // Reset pattern loop state when entering new pattern
           this.patternLoopStart = 0;
           this.patternLoopCount = 0;
-          this.patternLoopTarget = 0;
+          this.patternLoopPending = false;
+          // Restart the row cursor. `actualRow` above is `currentRow % length`
+          // using the *outgoing* pattern's length, so carrying `currentRow`
+          // forward only lands on row 0 by luck -- when the next pattern has a
+          // different length the modulo lands somewhere else entirely, and the
+          // pattern audibly starts partway in. (xyce-dans_la_rue: a 96-row
+          // pattern followed by a 64-row one skipped straight from row 0 to
+          // row 33.) Re-enter the loop so the row is derived from the pattern
+          // that is actually playing; nextRowTime is untouched, so no time is
+          // lost.
+          this.lastScheduledRow = -1;
+          continue;
         } else {
           this.stop();
           return;
@@ -767,26 +778,15 @@ export class PlaybackEngine {
         // number of extra rows).
       }
 
-      // Handle pattern loop (E6x) - jump back to loop start
-      if (
-        this.patternLoopCount > 0 &&
-        this.patternLoopCount <= this.patternLoopTarget
-      ) {
-        // Increment loop counter
-        this.patternLoopCount++;
-
-        if (this.patternLoopCount <= this.patternLoopTarget) {
-          // Still looping - jump back to loop start
-          this.lastScheduledRow = this.patternLoopStart - 1;
-          const msPerRow = this.getMsPerRow();
-          const secPerRow = msPerRow / 1000;
-          this.nextRowTime += secPerRow;
-          continue;
-        } else {
-          // Finished looping - reset state and continue normally
-          this.patternLoopCount = 0;
-          this.patternLoopTarget = 0;
-        }
+      // Handle pattern loop (E6x) - jump back to loop start. scheduleRow()
+      // decided whether this row owes a jump; all that is left is to take it.
+      if (this.patternLoopPending) {
+        this.patternLoopPending = false;
+        this.lastScheduledRow = this.patternLoopStart - 1;
+        const msPerRow = this.getMsPerRow();
+        const secPerRow = msPerRow / 1000;
+        this.nextRowTime += secPerRow;
+        continue;
       }
 
       // Calculate time for next row using current speed/bpm (after F commands were applied)
@@ -865,8 +865,12 @@ export class PlaybackEngine {
     this.pendingPosCommand = null;
     this.patternLoopStart = 0;
     this.patternLoopCount = 0;
-    this.patternLoopTarget = 0;
+    this.patternLoopPending = false;
     this.patternDelayCount = 0;
+    // Gxx/Hxy are effect state too. Leaving this behind meant a song stopped
+    // partway through a fade started the next time at whatever volume the fade
+    // had reached, with nothing to restore it until the next Gxx.
+    this.globalVolume = 1.0;
   }
 
   /**
@@ -920,18 +924,25 @@ export class PlaybackEngine {
             step.effect.type === 'extEffect' &&
             step.effect.extSubtype === 'patLoop'
           ) {
-            // E6x: Pattern loop
+            // E6x: Pattern loop.
+            //
+            // ProTracker and FT2 both keep a single countdown rather than a
+            // "how many times have I been here" tally: the first visit to
+            // E6x loads the counter, every later visit decrements it, and the
+            // jump happens while it is still above zero. Counting upward
+            // toward a target instead -- as this did -- re-arms the effect on
+            // the row it lands back on and either never jumps or never stops.
             const loopCount = step.effect.paramY;
             if (loopCount === 0) {
-              // E60: Set loop start point
+              // E60: Set loop start point.
               this.patternLoopStart = row;
             } else {
-              // E6x (x>0): Loop back x times
-              // Only trigger if we haven't already processed this loop
               if (this.patternLoopCount === 0) {
-                this.patternLoopTarget = loopCount;
-                this.patternLoopCount = 1; // Start counting from 1
+                this.patternLoopCount = loopCount;
+              } else {
+                this.patternLoopCount--;
               }
+              this.patternLoopPending = this.patternLoopCount > 0;
             }
           } else if (step.effect.type === 'patDelay') {
             // EEx: Pattern delay - repeat this row x times

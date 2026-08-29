@@ -1403,6 +1403,82 @@ for the builder, now XM key-offs). **Only a row that starts a note changes what 
 playing** is worth stating once as a rule of the pipeline rather than rediscovering per
 format.
 
+### D69 — The row cursor has to restart at a pattern boundary; E6x is a countdown
+
+Both found in xyce-dans_la_rue.xm, at the transition the user pointed at (order 37, the
+pattern after a 96-row one), by walking the whole order list and asserting that every
+pattern gets its own rows starting at 0.
+
+```
+seq 36 pattern 28: rows 0..95 count=96 expected=96
+seq 37 pattern 29: 0,33,34,35,...,63          <- 32 rows missing
+seq 18 pattern 15: 0,33,34,35,...,63          <- same shape
+```
+
+**The cursor.** `scheduleAhead` counts `lastScheduledRow` monotonically and folds it into a
+row with `actualRow = currentRow % this.length`. On a pattern boundary it loaded the next
+pattern but left the cursor where it was, so the first row of the new pattern was
+`oldLength % oldLength = 0` — right — and the *second* was `(oldLength + 1) % newLength`.
+That is only row 1 when the two patterns are the same length. After the 96-row pattern:
+`97 % 64 = 33`. After a 32-row one: `33 % 64 = 33`. Both jumped to exactly row 33, which is
+what made it look like a shared cause rather than a length coincidence.
+
+Every module in the corpus that sounded right was one where consecutive patterns happened to
+share a length. The fix is to reset the cursor to `-1` and re-enter the loop, so the row is
+derived from the pattern actually playing.
+
+**E6x.** The loop-back was written as a tally counting up toward a target:
+
+```ts
+if (this.patternLoopCount === 0) { this.patternLoopTarget = loopCount; this.patternLoopCount = 1; }
+// later, after scheduling the row:
+this.patternLoopCount++;
+if (this.patternLoopCount <= this.patternLoopTarget) { /* jump */ } else { /* reset */ }
+```
+
+With `E61` — one repeat, the common case — the count goes 1 → 2, `2 <= 1` is false, and it
+resets **without ever jumping**. The section simply plays once and the effect is silent, so
+nothing in the corpus flagged it. Counting up cannot work in general either: the jump lands
+back on a row that re-arms the effect, so a tally either never jumps or never stops.
+
+ProTracker and FT2 both keep a single countdown instead: the first visit to `E6x` loads the
+counter, every later visit decrements it, and the jump happens while it is still above zero.
+That terminates because the row that re-arms is the same row that decrements. `patternLoopTarget`
+is gone, replaced by `patternLoopPending` — "the row just scheduled owes a jump back".
+
+Pattern 15 now plays rows 0-31 twice before continuing to 32, which is what its
+`E60`/`E61`/`E60` triplet asks for.
+
+### D70 — Global volume is effect state and has to be reset with the rest
+
+Second bug the user reported on the same song: *"whenever I start the song after having
+stopped it, the volume is really low."*
+
+`globalVolume` was reset in exactly one place — `restartSong`, added by D66 for the sequence
+wrap. `resetEffectStates()`, which runs on stop and on load, cleared every other effect
+state and left this one. xyce fades out with `G00`, so stopping anywhere near the end left
+the field at ~0; pressing play started from the stored sequence position, and with no `Gxx`
+between there and the next one, nothing restored it.
+
+Gxx/Hxy are per-song effect state exactly like vibrato memory or the loop counter. Reset
+moved into `resetEffectStates()`, which makes `restartSong`'s own line redundant but
+harmless — it keeps the handler call that pushes the value to the audio graph.
+
+### D71 — Open: EEx repeats one time short
+
+Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
+`lastScheduledRow` — a value the D69 fix legitimately changes, since the cursor now restarts
+at each boundary. Rewritten to record the rows actually scheduled, which is what the test was
+always about.
+
+Doing so made the repeat count visible: `EE2` yields **two** plays of the row, where
+ProTracker plays it `param + 1` times. The counter is decremented before the row that would
+have been its last repeat. Not fixed here — it is unrelated to the two reported bugs and
+touches timing on every module that uses `EEx` — but pinned in the test so changing it is
+deliberate.
+
+---
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1619,6 +1695,8 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **Patterns start at row 0 again, and `E6x` actually loops** (D69). The row cursor is folded into a row with `% length` but was carried across pattern boundaries, so a pattern following one of a different length started partway in — after xyce's 96-row pattern, order 37 played row 0 then jumped to row 33 (`97 % 64`). Separately `E6x` counted up toward a target and reset without ever jumping, making pattern loops silent. Both now match ProTracker. Tests: `src/tests/tracker-sequence-walk.test.ts`. 698 green. |
+| 2026-08-29 | fix | **Global volume resets on stop** (D70). `Gxx` state lived only through `restartSong`, so stopping during xyce's closing `G00` fade meant the next play started near-silent with nothing to restore it. Moved into `resetEffectStates()`, alongside every other effect state. |
 | 2026-08-29 | fix | **A key-off follows the channel, not the instrument on the row** (D68). `=== 11` names the sample for the channel's *next* note; routing the release there sent it to an instrument with nothing playing, and stamping it re-routed the volume slides that were meant to fade the note out — so it neither faded nor stopped. 689 green. |
 | 2026-08-29 | ui | **Per-track waveforms now show their own track** (D67). They read the instrument's output, which one sample-per-instrument makes shared across every channel playing it — so channels on the same sample drew each other's audio. Voices now also connect to a per-track tap. Tests: `src/tests/tracker-track-monitor.test.ts`. 685 green. |
 | 2026-08-29 | fix | **Looping the song now restarts it** (D66) — voices stopped, effect state cleared, global volume restored. xyce-dans_la_rue.xm fades out with `Gxx` and opens with `G80`, so the eight channels still holding looping samples came back at full volume on the wrap. FT2 does the same, so this is a player decision rather than a fidelity fix; it also makes a second pass sound like the first. 678 green. |
