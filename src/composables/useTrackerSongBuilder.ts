@@ -107,6 +107,11 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       return range.startValue + (range.endValue - range.startValue) * t;
     }
 
+    // Imported modules carry their own volume semantics; see the velocity
+    // fallback below for why that distinction has to be made here.
+    const isNativeSong =
+      (context.moduleFormat?.value ?? DEFAULT_MODULE_FORMAT) === 'native';
+
     for (let row = 0; row < patternRows; row += 1) {
       const entry = entryByRow.get(row);
       const instrumentId = context.normalizeInstrumentId(entry?.instrument) ?? ctx.instrumentId;
@@ -230,7 +235,7 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         // Keep velocity in 0-255 range to preserve precision from MOD importer
         // Effect processor will divide by 255 to normalize to 0-1
         step.velocity = volumeValue;
-      } else if (midi !== undefined && entry?.instrument) {
+      } else if (midi !== undefined && entry?.instrument && isNativeSong) {
         // A genuine new note+instrument trigger with no explicit volume
         // column value must still reset to a known volume, not silently
         // inherit whatever this track's currentVolume last decayed to via
@@ -243,6 +248,21 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         // it's a fresh trigger -- this is what made one pattern appear to
         // "mute" the next while that same pattern played back fine when
         // started from a clean state.
+        //
+        // Native songs only. `entry.instrument` cannot carry that meaning for
+        // an imported module, because the importers stamp it onto *every* row
+        // of a track so the builder knows which instrument a naked effect
+        // addresses -- exactly the "row deliberately omits the instrument
+        // number" case this is meant to exclude. The importers already write a
+        // volume wherever the tracker resets one (the sample's default on a
+        // real sample number, the Cxx or volume-column value otherwise), so
+        // for those formats the absence of a volume here is meaningful and
+        // must be respected.
+        //
+        // It also resets to *full*, where a tracker resets to the sample's
+        // default. On GSLINGER.MOD pattern 2 that turned the flute echo --
+        // channel 3 shadowing channel 1 at volume 11 against the lead's 24 --
+        // into 64 on every row that omitted the sample number.
         step.velocity = 255;
       }
 

@@ -981,6 +981,34 @@ fixing this: `lastTrackNote` stored a note-on's 0-127 velocity but the "naked in
 number revives the last note" path reads it back as a 0-255 volume-column value, so a
 revived note played at roughly half its recorded volume. Now converted on the way in.
 
+**D55 — "Has an instrument id" does not mean "named an instrument" (second D53 regression).**
+Also caught by ear, on the same passage as D54: GSLINGER.MOD pattern 2's flute echo was
+still blaring after that fix.
+
+`useTrackerSongBuilder` resets a note's velocity to 255 -- full scale -- when the row has
+a note and `entry.instrument` but no volume column. The reasoning is sound for a song
+authored here: a tracker resets the channel volume on an explicit instrument number, and
+only preserves it when the row deliberately omits one. But `entry.instrument` cannot carry
+that meaning for an imported module, because both importers stamp it onto *every* row of
+a track so the builder knows which instrument a naked effect addresses. Every
+sample-number-less note therefore looked like an explicit trigger. Channel 3's echo, which
+plays at volume 11 against the lead's 24, came out at 64 on exactly those rows.
+
+The branch was unreachable for MOD imports until D53, because mod-import used to stamp a
+volume on every note row. Removing that stamp exposed it. It is now gated to native songs,
+where `entry.instrument` really is explicit; for imported formats the importer already
+writes a volume wherever the tracker resets one, so the *absence* of a volume is
+meaningful and has to be respected. (It also reset to full, where a tracker resets to the
+sample's default -- a second thing wrong with it for module playback.)
+
+**Verify at the level the bug can occur at.** D53 and D54 were both verified by driving
+`processEffectTick0` directly with a velocity, which passes whether or not the builder is
+doing the right thing, and both shipped a regression that lived in the builder. The
+regression tests for this now run a real `Step` from `useTrackerSongBuilder` through a
+`PlaybackEngine` with recording handlers, which is the smallest harness that could have
+caught any of the three. `engine.scheduleRow(row, time)` is directly callable, so this
+costs very little; there is no excuse for asserting note volume anywhere shallower.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1167,6 +1195,7 @@ scratchpad) and are not checked in; the numbers are reproducible from the file f
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **The song builder no longer reads a stamped instrument id as an explicit one** (D55), the second regression from D53 and again caught by ear on GSLINGER.MOD pattern 2's flute echo. It reset any note+instrument row without a volume column to velocity 255, and the importers stamp `entry.instrument` onto every row — so every sample-number-less note played at full scale. Now gated to native songs. Regression tests moved up to engine level, which is where all three of these bugs were actually reachable. 604 green. |
 | 2026-08-29 | fix | **A note-on now carries its own level** (D54), caught by ear as GSLINGER.MOD pattern 2's flute echo blaring. D53 removed the sample volume from the instrument gain but left the note-on velocity hardcoded at 127, and `setVoiceVolumeAtTime` legitimately drops a volume command it cannot resolve to a voice on this track (D13) — so the fallback level went from "roughly right by accident" to full scale. Also fixes a 0-127 vs 0-255 mismatch in `lastTrackNote`. 601 green. |
 | 2026-08-29 | fix | **Channel volume is no longer guessed at import time** (D53). A note with no sample number was stamped with the importer's running volume, which knows nothing about slides — GSLINGER.MOD pattern 36's flute swells 8→33 under `A50` and the next row reset it to 8. The stamp is gone and the effect processor states `currentVolume` on every note trigger instead. The sample header volume is also no longer baked into the patch gain on top of the volume column, which had left 271 of the corpus's 524 samples permanently attenuated when auditioned from the keyboard. Tests: `src/tests/mod-channel-volume-carry.test.ts`. 598 green. |
 | 2026-08-29 | 3/4 | **XM volume-column commands implemented** (D50) — 8789 cells across the corpus, 5602 of them panning, previously dropped wholesale. New `TrackerEntryData.volumeCommand` → `parseVolumeColumnCommand` → `Step.volumeCommand` → `processVolumeColumnTick0/TickN`, with slide accumulators kept separate from the effect column's. Also `Xxy` (was unparseable), `Txy` tremor's continuous counter and parameter memory, `Rxy` per-nibble memory, and E4x/E7x's "don't retrigger waveform" bit. Tests: `src/tests/xm-volume-column.test.ts`, `src/tests/ft2-effect-details.test.ts`. 592 green. |

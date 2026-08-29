@@ -1,4 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { ref } from 'vue';
+import {
+  useTrackerSongBuilder,
+  type TrackerSongBuilderContext,
+} from 'src/composables/useTrackerSongBuilder';
+import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import {
   createTrackEffectState,
@@ -221,5 +227,91 @@ describe('a note-on carries the level the note starts at', () => {
 
     const batch = processEffectTick0(state, undefined, 62, undefined, 261.63, 6);
     expect((noteOnVelocityOf(batch.commands)[0]! / 127) * 64).toBeCloseTo(33, 0);
+  });
+});
+
+
+/**
+ * End to end, through the song builder and the engine.
+ *
+ * The unit-level checks above pass whether or not `useTrackerSongBuilder` is
+ * doing the right thing, because they hand `processEffectTick0` a velocity
+ * directly. That gap is not hypothetical: the first attempt at this fix was
+ * verified exactly that way and shipped a regression, because the builder was
+ * quietly resetting these very rows to full velocity. Anything about note
+ * volume has to be asserted from a `Step` the builder actually produced.
+ */
+function noteOnLevelsThroughEngine(cells: CellSpec[]) {
+  const file = importModToTrackerSong(
+    createModBuffer(cells).buffer as ArrayBuffer,
+  );
+  const pattern = file.data.patterns[0]!;
+  const ctx: TrackerSongBuilderContext = {
+    currentSong: ref(file.data.currentSong),
+    moduleFormat: ref(file.data.moduleFormat!),
+    patterns: ref([pattern]),
+    sequence: ref([pattern.id]),
+    currentPatternId: ref(pattern.id),
+    currentPattern: ref(pattern),
+    defaultPatternRows: ref(ROWS),
+    instrumentSlots: ref(file.data.instrumentSlots),
+    songPatches: ref(file.data.songPatches ?? {}),
+    songBank: {} as TrackerSongBuilderContext['songBank'],
+    normalizeInstrumentId: (id) => (id ? id : undefined),
+    formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
+  };
+  const song = useTrackerSongBuilder(ctx).buildPlaybackSong('song');
+
+  const levels = new Map<number, number>();
+  const engine = new PlaybackEngine({
+    scheduler: { start: vi.fn(), stop: vi.fn() },
+    audioContext: { currentTime: 0 } as unknown as AudioContext,
+    scheduledNoteHandler: (e) => {
+      if (e.type === 'noteOn' && e.trackIndex === 0) {
+        levels.set(e.row, ((e.velocity ?? 0) / 127) * 64);
+      }
+    },
+  });
+  engine.loadSong(song);
+  const internals = engine as unknown as {
+    scheduleRow: (row: number, time: number) => void;
+  };
+  for (let row = 0; row < 8; row++) internals.scheduleRow(row, row * 0.1);
+  return levels;
+}
+
+describe('note levels survive the song builder', () => {
+  it('keeps a bare note at the channel volume instead of resetting it to full', () => {
+    // The importer stamps `entry.instrument` onto every row so the builder
+    // knows which instrument a naked effect addresses, so "has an instrument
+    // id" cannot mean "named an instrument". Reading it that way reset every
+    // sample-number-less note to velocity 255 -- full scale -- which is what
+    // made GSLINGER.MOD pattern 2's flute echo blare over its own lead.
+    const levels = noteOnLevelsThroughEngine([
+      { row: 0, period: PERIOD, sampleNumber: 1 },
+      { row: 1, period: PERIOD },
+    ]);
+
+    expect(levels.get(0)).toBeCloseTo(SAMPLE_VOLUME, 0);
+    expect(levels.get(1)).toBeCloseTo(SAMPLE_VOLUME, 0);
+  });
+
+  it('keeps a swell a volume slide has built', () => {
+    const levels = noteOnLevelsThroughEngine([
+      { row: 0, period: PERIOD, sampleNumber: 1, effectCmd: 0xa, effectParam: 0x50 },
+      { row: 1, period: PERIOD },
+    ]);
+
+    // 8 + 5 a tick for five ticks.
+    expect(levels.get(1)).toBeCloseTo(33, 0);
+  });
+
+  it('still resets to the sample default when the row names the sample', () => {
+    const levels = noteOnLevelsThroughEngine([
+      { row: 0, period: PERIOD, sampleNumber: 1, effectCmd: 0xa, effectParam: 0x50 },
+      { row: 1, period: PERIOD, sampleNumber: 1 },
+    ]);
+
+    expect(levels.get(1)).toBeCloseTo(SAMPLE_VOLUME, 0);
   });
 });
