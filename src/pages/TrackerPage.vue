@@ -329,115 +329,122 @@
               </button>
             </div>
           </div>
-          <div class="instrument-list">
-            <div
-              v-for="slot in currentPageSlots"
-              :key="slot.slot"
-              class="instrument-row"
-              :class="{
-                active: activeInstrumentId === formatInstrumentId(slot.slot),
-                empty: !slot.patchId,
-                'mod-instrument': slot.instrumentType === 'mod',
-              }"
-              :title="slot.patchId ? `Bank: ${slot.bankName}` : ''"
-              @click="setActiveInstrument(slot.slot)"
-            >
-              <div class="slot-number">
-                #{{ formatInstrumentId(slot.slot) }}
-                <span v-if="slot.instrumentType === 'mod'" class="mod-badge"
-                  >MOD</span
-                >
-              </div>
+          <div class="instrument-panel-body">
+            <div class="instrument-list">
               <div
-                class="patch-name"
-                @dblclick.stop="beginInstrumentRename(slot)"
+                v-for="slot in currentPageSlots"
+                :key="slot.slot"
+                class="instrument-row"
+                :class="{
+                  active: activeInstrumentId === formatInstrumentId(slot.slot),
+                  empty: !slot.patchId,
+                  'mod-instrument': slot.instrumentType === 'mod',
+                }"
+                :title="slot.patchId ? `Bank: ${slot.bankName}` : ''"
+                @click="setActiveInstrument(slot.slot)"
               >
-                <input
-                  v-if="instrumentNameEditSlot === slot.slot"
-                  :ref="(el) => setInstrumentNameInputRef(slot.slot, el)"
-                  v-model="instrumentNameDraft"
-                  type="text"
-                  class="instrument-name-input"
-                  @keydown.enter.prevent="
-                    commitInstrumentRename(slot.slot);
-                    refocusTracker();
+                <div class="slot-number">
+                  #{{ formatInstrumentId(slot.slot) }}
+                  <span v-if="slot.instrumentType === 'mod'" class="mod-badge"
+                    >MOD</span
+                  >
+                </div>
+                <div
+                  class="patch-name"
+                  @dblclick.stop="beginInstrumentRename(slot)"
+                >
+                  <input
+                    v-if="instrumentNameEditSlot === slot.slot"
+                    :ref="(el) => setInstrumentNameInputRef(slot.slot, el)"
+                    v-model="instrumentNameDraft"
+                    type="text"
+                    class="instrument-name-input"
+                    @keydown.enter.prevent="
+                      commitInstrumentRename(slot.slot);
+                      refocusTracker();
+                    "
+                    @keydown.esc.prevent="
+                      cancelInstrumentRename();
+                      refocusTracker();
+                    "
+                    @blur="
+                      commitInstrumentRename(slot.slot);
+                      refocusTracker();
+                    "
+                  />
+                  <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
+                </div>
+                <PatchPicker
+                  :model-value="slot.patchId ?? null"
+                  :patches="availablePatches"
+                  placeholder="Select patch"
+                  @select="
+                    (p) => {
+                      onPatchSelect(slot.slot, p.id);
+                      refocusTracker();
+                    }
                   "
-                  @keydown.esc.prevent="
-                    cancelInstrumentRename();
-                    refocusTracker();
-                  "
-                  @blur="
-                    commitInstrumentRename(slot.slot);
-                    refocusTracker();
-                  "
+                  @close="refocusTracker"
+                  @click.stop
                 />
-                <span v-else>{{ getInstrumentDisplayName(slot) }}</span>
-              </div>
-              <PatchPicker
-                :model-value="slot.patchId ?? null"
-                :patches="availablePatches"
-                placeholder="Select patch"
-                @select="
-                  (p) => {
-                    onPatchSelect(slot.slot, p.id);
-                    refocusTracker();
-                  }
-                "
-                @close="refocusTracker"
-                @click.stop
-              />
-              <div
-                class="instrument-volume"
-                @click.stop
-                @mousedown.stop
-                @pointerup="blurAndRefocusTracker"
-              >
-                <AudioKnobComponent
-                  :model-value="slot.volume ?? 1.0"
-                  label=""
-                  :min="0"
-                  :max="2"
-                  :decimals="2"
-                  scale="mini"
-                  :unitFunc="formatGainAsDb"
-                  @update:model-value="onSlotVolumeChange(slot.slot, $event)"
-                />
-              </div>
-              <div class="instrument-actions">
-                <button
-                  type="button"
-                  class="icon-action-button"
-                  title="New patch"
-                  @click.stop="
-                    createNewSongPatch(slot.slot);
-                    refocusTracker();
-                  "
+                <div
+                  class="instrument-volume"
+                  @click.stop
+                  @mousedown.stop
+                  @pointerup="blurAndRefocusTracker"
                 >
-                  <q-icon name="add" size="16px" />
-                </button>
-                <button
-                  type="button"
-                  class="icon-action-button"
-                  title="Edit patch"
-                  :disabled="!slot.patchId"
-                  @click.stop="editSlotPatch(slot.slot)"
-                >
-                  <q-icon name="edit" size="16px" />
-                </button>
-                <button
-                  type="button"
-                  class="icon-action-button danger"
-                  title="Clear instrument"
-                  :disabled="!slot.patchId"
-                  @click.stop="
-                    clearInstrument(slot.slot);
-                    refocusTracker();
-                  "
-                >
-                  <q-icon name="close" size="16px" />
-                </button>
+                  <AudioKnobComponent
+                    :model-value="slot.volume ?? 1.0"
+                    label=""
+                    :min="0"
+                    :max="2"
+                    :decimals="2"
+                    scale="mini"
+                    :unitFunc="formatGainAsDb"
+                    @update:model-value="onSlotVolumeChange(slot.slot, $event)"
+                  />
+                </div>
+                <div class="instrument-actions">
+                  <button
+                    type="button"
+                    class="icon-action-button"
+                    title="New patch"
+                    @click.stop="
+                      createNewSongPatch(slot.slot);
+                      refocusTracker();
+                    "
+                  >
+                    <q-icon name="add" size="16px" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-action-button"
+                    title="Edit patch"
+                    :disabled="!slot.patchId"
+                    @click.stop="editSlotPatch(slot.slot)"
+                  >
+                    <q-icon name="edit" size="16px" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-action-button danger"
+                    title="Clear instrument"
+                    :disabled="!slot.patchId"
+                    @click.stop="
+                      clearInstrument(slot.slot);
+                      refocusTracker();
+                    "
+                  >
+                    <q-icon name="close" size="16px" />
+                  </button>
+                </div>
               </div>
             </div>
+            <StereoLevelMeter
+              :node="masterOutputNode"
+              :audio-context="audioContext"
+              :is-playing="isPlaying"
+            />
           </div>
         </div>
       </div>
@@ -578,6 +585,7 @@ import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
+import StereoLevelMeter from 'src/components/tracker/StereoLevelMeter.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
@@ -2749,11 +2757,19 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
+.instrument-panel-body {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
 .instrument-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
 }
 
