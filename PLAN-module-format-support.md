@@ -1491,6 +1491,60 @@ Worth noting the bug was latent long before the restart made it audible: any mod
 the slider said. D66 only made a *silent* song do it too, which is what made it loud enough
 to notice.
 
+### D73 — Ultimate Soundtracker is a different format wearing the same layout
+
+lepeltheme.mod, reported as *"track 1 on the first pattern sounds wrong"*. Channel 0 carries
+`137` on **all 64 rows** — as ProTracker that is portamento up at 55 units per tick, which
+runs the pitch off the top of the range and never stops.
+
+The parse was faithful; the bytes really are `01 37`. What is wrong is the assumption that a
+15-sample module uses ProTracker's command numbering. Two measurements settled it:
+
+**The effect histogram.** The module uses command `1` and *nothing else* — no `C` volume, no
+`F` speed, no `D` break. A ProTracker or NoiseTracker module essentially always uses `C` and
+`F`. And the parameters are `0x47`, `0x37`, `0x59`, `0x58`: major triad, minor triad, sixth,
+fifth. Those are arpeggio chords, not slide rates.
+
+**The loop offsets.** Every looped sample overruns its own length when loopStart is read as
+words and fits *exactly* when read as bytes:
+
+```
+lepeltheme sample 2: len=8800 rs=3326 rl=4970   words -> 11622 (over)   bytes -> 8296
+```
+
+So Ultimate Soundtracker (Obarski, 1987) differs from every later tracker in two ways, and
+declares neither — it shares the signature-less 15-sample layout with the other early
+Soundtrackers:
+
+1. **Arpeggio is command 1.** ProTracker moved it to 0 and gave 1 to portamento up.
+2. **Sample loop start is a byte offset**, not a word offset.
+
+Both are detected from the data, separately, because a given module only carries evidence for
+what it uses: one with no looped samples cannot show the second, one with no effects cannot
+show the first. Either is taken as proof and both behaviours then apply — harmlessly, where
+there is nothing to apply them to.
+
+**The over-detection risk is the real constraint**, and jackdance.mod is what pins it: a
+15-sample module that uses command `0` with exactly the same arpeggio parameters. It is a
+*later* Soundtracker, and remapping it would delete every arpeggio it has. So the command
+test requires command 0 to be entirely unused, not merely that command 1 is present. Across
+the ten 15-sample modules in the collection this classifies six as Ultimate Soundtracker
+(amegas, blueberry, crystalhammer, lepeltheme, pretend, sleepwalk) and leaves AXELF,
+jackdance and telephone as later Soundtracker — and no module in the corpus loops past the
+end of its own sample any more, which is asserted over the collection.
+
+One part is not established from the corpus: command `2` is a pitch bend whose direction
+depends on which nibble is set, and which nibble means which way appears five times in one
+module. Either reading beats leaving it as ProTracker portamento down, where a parameter of
+`0x80` is a slide of 128 units per tick.
+
+**A note on the corpus rule.** D55/D64 recorded that "the corpus tells you what is common,
+never what is correct". This is the inverse case and worth stating alongside it: here the
+corpus was the *only* available evidence, because the format carries no declaration of
+itself. What made that sound rather than circular is that the two signals are structural and
+independent — a loop that overruns its sample is wrong under any interpretation, and it
+agreed with a command histogram derived separately.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -1722,6 +1776,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **Ultimate Soundtracker read as its own format** (D73). Arpeggio is command 1 there, not 0, so lepeltheme.mod's `137` minor triad on all 64 rows of a channel played as a runaway portamento; and sample loop starts are byte offsets, so every looped sample looped past its own end. Both detected from the data, with jackdance.mod (command 0 arpeggio, 15 samples) pinning the over-detection boundary. Tests: `src/tests/mod-ultimate-soundtracker.test.ts`. 824 green. |
 | 2026-08-29 | fix | **Song global volume now scales the user's master level** (D72). `setMasterVolume` wrote `Gxx` values absolutely, so D66's restart pushing global volume 1.0 overrode a 50% master setting — sweetdre.xm (24 channels, no `Gxx`) clipped hard on every loop. Latent for any `Gxx` module before that. Tests: `src/tests/tracker-song-bank-master-volume.test.ts`. 702 green. |
 | 2026-08-29 | fix | **Patterns start at row 0 again, and `E6x` actually loops** (D69). The row cursor is folded into a row with `% length` but was carried across pattern boundaries, so a pattern following one of a different length started partway in — after xyce's 96-row pattern, order 37 played row 0 then jumped to row 33 (`97 % 64`). Separately `E6x` counted up toward a target and reset without ever jumping, making pattern loops silent. Both now match ProTracker. Tests: `src/tests/tracker-sequence-walk.test.ts`. 698 green. |
 | 2026-08-29 | fix | **Global volume resets on stop** (D70). `Gxx` state lived only through `restartSong`, so stopping during xyce's closing `G00` fade meant the next play started near-silent with nothing to restore it. Moved into `resetEffectStates()`, alongside every other effect state. |

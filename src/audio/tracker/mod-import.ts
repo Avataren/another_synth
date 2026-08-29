@@ -234,6 +234,45 @@ function resolveChannelPanNorm(channelIndex: number, trackCount: number): number
   return centerNorm;
 }
 
+/**
+ * Ultimate Soundtracker's command numbering, translated to ProTracker's.
+ *
+ * UST puts arpeggio on 1; ProTracker moved it to 0 and gave 1 to portamento
+ * up. Read as ProTracker, every arpeggio in a UST module becomes a fast
+ * upward slide -- lepeltheme.mod carries `137` (a minor triad) on all 64 rows
+ * of a channel, which as portamento runs the pitch off the top instead of
+ * playing the chord.
+ *
+ * Command 0 carries no effect in UST, so a stray parameter on it is dropped
+ * rather than read as an arpeggio that was never written.
+ *
+ * Command 2 is a pitch bend with the direction chosen by which nibble is set.
+ * Which nibble means which way is the one part of this not established from
+ * the corpus -- it appears five times in one module, always with a single
+ * nibble set. Either reading beats leaving it as ProTracker portamento down,
+ * where a parameter like 0x80 is a slide rate of 128 units per tick.
+ */
+function ultimateSoundtrackerEffect(
+  effectCmd: number,
+  effectParam: number,
+): { effectCmd: number; effectParam: number } {
+  switch (effectCmd) {
+    case 0x0:
+      return { effectCmd: 0, effectParam: 0 };
+    case 0x1:
+      return { effectCmd: 0x0, effectParam };
+    case 0x2: {
+      const down = effectParam >> 4;
+      const up = effectParam & 0x0f;
+      if (down) return { effectCmd: 0x2, effectParam: down };
+      if (up) return { effectCmd: 0x1, effectParam: up };
+      return { effectCmd: 0, effectParam: 0 };
+    }
+    default:
+      return { effectCmd, effectParam };
+  }
+}
+
 function modCellToTrackerEntry(
   cell: ModPatternCell,
   row: number,
@@ -241,7 +280,11 @@ function modCellToTrackerEntry(
   mod: ModSong,
   selectedSample: number,
 ): TrackerEntryData | undefined {
-  const { period, sampleNumber, effectCmd, effectParam } = cell;
+  const { period, sampleNumber } = cell;
+  const { effectCmd, effectParam } =
+    mod.trackerFlavor === 'UltimateSoundtracker'
+      ? ultimateSoundtrackerEffect(cell.effectCmd, cell.effectParam)
+      : cell;
   const effectType = effectCmd & 0x0f;
   const isTonePorta = effectType === 0x3;      // 3xx
   const isTonePortaVol = effectType === 0x5;   // 5xy

@@ -44,7 +44,12 @@ export interface ModPattern {
   rows: ModPatternCell[][];
 }
 
-export type ModTrackerFlavor = 'ProTracker' | 'NoiseTracker' | 'Soundtracker' | 'Unknown';
+export type ModTrackerFlavor =
+  | 'ProTracker'
+  | 'NoiseTracker'
+  | 'Soundtracker'
+  | 'UltimateSoundtracker'
+  | 'Unknown';
 
 export interface ModSong {
   title: string;
@@ -60,6 +65,71 @@ export interface ModSong {
   signature: string;
   /** Heuristic tracker flavor derived from layout/signature */
   trackerFlavor: ModTrackerFlavor;
+}
+
+/**
+ * Ultimate Soundtracker -- Karsten Obarski's original, 1987 -- differs from
+ * every later tracker in two ways that matter, and says so nowhere in the
+ * file. It has no signature to check (that is the 15-sample layout it shares
+ * with the other early Soundtrackers), so both have to be inferred from the
+ * data itself.
+ *
+ *  1. Arpeggio is command 1. ProTracker moved it to 0 and gave 1 to
+ *     portamento up, so a UST module read as ProTracker slides the pitch away
+ *     on every row that meant to play a chord.
+ *  2. Sample loop start is a byte offset, not a word offset. Doubling it
+ *     sends the loop past the end of the sample.
+ *
+ * These are detected separately because a given module only carries evidence
+ * for the ones it uses: a module with no looped samples cannot show the second
+ * and one with no effects cannot show the first. Either is taken as proof of
+ * the format, and both behaviours then apply -- harmlessly, where there is
+ * nothing to apply them to.
+ */
+
+/**
+ * True when a sample's loop only makes sense read as bytes.
+ *
+ * Word offsets are the later convention, so a loop that runs past the end of
+ * its sample when doubled but fits exactly when not is the file telling us
+ * which units it was written in.
+ */
+function loopOffsetsLookLikeBytes(
+  samples: Array<{ length: number; loopStart: number; loopLength: number }>,
+): boolean {
+  return samples.some((sample) => {
+    // loopStart is held in bytes here, already doubled from the raw words.
+    const asWords = sample.loopStart;
+    const asBytes = sample.loopStart / 2;
+    if (sample.length === 0 || sample.loopLength <= 2) return false;
+    return (
+      asWords + sample.loopLength > sample.length &&
+      asBytes + sample.loopLength <= sample.length
+    );
+  });
+}
+
+/**
+ * True when the module puts arpeggio on command 1 rather than command 0.
+ *
+ * Both trackers write arpeggio as a pair of semitone offsets, so the
+ * parameters look alike; what separates them is which command carries them.
+ * Requiring command 0 to be entirely unused is what keeps a later Soundtracker
+ * module -- which uses 0 for arpeggio and may use 1 for portamento -- from
+ * being mistaken for this one.
+ */
+function usesUltimateSoundtrackerCommands(patterns: ModPattern[]): boolean {
+  let sawCommandOne = false;
+  for (const pattern of patterns) {
+    for (const row of pattern.rows) {
+      for (const cell of row) {
+        if (cell.effectParam === 0) continue;
+        if (cell.effectCmd === 0) return false;
+        if (cell.effectCmd === 1) sawCommandOne = true;
+      }
+    }
+  }
+  return sawCommandOne;
 }
 
 const PT_HEADER_SIZE = 1084;
@@ -340,6 +410,20 @@ export function parseMod(buffer: Uint8Array): ModSong {
 
     patterns.push({ rows });
     patternDataOffset += patternSize;
+  }
+
+  // Ultimate Soundtracker can only be recognised now: one of its two tells is
+  // in the pattern data. Both behaviours follow from either tell (see above).
+  if (
+    !isProTracker &&
+    (loopOffsetsLookLikeBytes(samples) ||
+      usesUltimateSoundtrackerCommands(patterns))
+  ) {
+    trackerFlavor = 'UltimateSoundtracker';
+    for (const sample of samples) {
+      // Undo the word doubling applied when the header was read.
+      sample.loopStart = Math.floor(sample.loopStart / 2);
+    }
   }
 
   // Sample data region
