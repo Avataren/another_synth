@@ -85,13 +85,60 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
   return songFile;
 }
 
-function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
+/**
+ * The order patterns are *converted* in, which is the order they are *played*
+ * in, not the order they are stored in.
+ *
+ * The channel's latched sample number has to survive a pattern boundary --
+ * ProTracker keeps it as channel state -- so conversion has to follow the
+ * order list to know what each pattern inherits. Patterns the order list never
+ * reaches are converted afterwards, from a clean latch, so an unused or
+ * orphaned pattern still imports.
+ *
+ * A pattern played at more than one order position inherits whatever the
+ * *first* of those positions had, since one pattern converts to one object
+ * that every position shares. Resolving that properly means latching at
+ * playback time rather than at import; see the note on `channelSamples`.
+ */
+function conversionOrder(mod: ModSong): number[] {
   const patternCount = mod.patterns.length;
+  const seen = new Set<number>();
+  const order: number[] = [];
+  const orderLength = mod.songLength || mod.orders.length;
+  for (let i = 0; i < orderLength; i++) {
+    const index = mod.orders[i] ?? 0;
+    if (index < patternCount && !seen.has(index)) {
+      seen.add(index);
+      order.push(index);
+    }
+  }
+  for (let p = 0; p < patternCount; p++) {
+    if (!seen.has(p)) order.push(p);
+  }
+  return order;
+}
+
+function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
   const trackCount = Math.max(1, mod.numChannels);
 
   const patterns: TrackerPattern[] = [];
 
-  for (let p = 0; p < patternCount; p++) {
+  // Which sample each channel has selected, carried across pattern boundaries.
+  //
+  // A bare sample number latches the sample for the channel's *next* note
+  // without switching what is currently sounding (see the note on
+  // `selectedSample`), and in ProTracker that latch is channel state that
+  // outlives the pattern. This used to be re-created per pattern, so a note
+  // written without a sample number in the first rows of a pattern resolved to
+  // no instrument at all. GSLINGER.MOD is the case: channel 1 latches sample
+  // 24 at row 32 of pattern 24 (displayed numbering) and plays `D-2 ... C10`
+  // at row 0 of pattern 25 with no sample number. That row imported with no
+  // instrument, so it was silent when the pattern was played on its own, and
+  // fell back to whatever the engine had last seen -- sample 4, the wrong
+  // guitar -- when reached from the previous pattern.
+  const channelSamples: number[] = new Array(trackCount).fill(0);
+
+  for (const p of conversionOrder(mod)) {
     const patternId = uid();
 
     const tracks: TrackerTrackData[] = [];
@@ -103,12 +150,6 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
         interpolations: [],
       });
     }
-
-    // Track the sample number each channel has selected. A bare sample number
-    // latches the sample for the channel's *next* note without switching what
-    // is currently sounding, so this has to be followed separately from the
-    // instrument stamped on each entry.
-    const channelSamples: number[] = new Array(trackCount).fill(0);
 
     for (let row = 0; row < PATTERN_ROWS; row++) {
       for (let ch = 0; ch < trackCount; ch++) {
@@ -137,13 +178,15 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
       }
     }
 
-    patterns.push({
+    // Assigned by pattern index, not appended: the loop runs in play order,
+    // but the caller indexes this array by the order list's pattern numbers.
+    patterns[p] = {
       id: patternId,
       name: `Pattern ${p + 1}`,
       // ProTracker patterns are always 64 rows; XM will vary this per pattern.
       rows: PATTERN_ROWS,
       tracks,
-    });
+    };
   }
 
   return patterns;
