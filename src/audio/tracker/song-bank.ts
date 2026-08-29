@@ -157,6 +157,14 @@ export class TrackerSongBank {
   // while playing. Kept separately so stopping/switching songs can restore
   // the real baseline instead of whatever a song's effects last left it at.
   private userMasterVolume = 1.0;
+  /**
+   * The song's own global volume (Gxx/Hxy), 0..1.
+   *
+   * Kept apart from the user's baseline because the two are independent: the
+   * song says how loud this moment is relative to the rest of itself, and the
+   * user says how loud the app is. What reaches masterGain is the product.
+   */
+  private songGlobalVolume = 1.0;
 
   constructor(audioSystem?: AudioSystem) {
     this.audioSystem = audioSystem ?? getSharedAudioSystem();
@@ -340,13 +348,23 @@ export class TrackerSongBank {
   }
 
   /**
-   * Set the master volume (0.0 to 1.0).
+   * Set the song's global volume (Gxx/Hxy), 0.0 to 1.0, scaling the user's
+   * chosen master level rather than replacing it.
+   *
+   * Writing the song's value straight onto masterGain would make every module
+   * that touches global volume override the user's setting -- and, worse, make
+   * one that never touches it override the setting anyway the moment anything
+   * pushed a default. A song looping back to the start restores global volume
+   * to full, so with a 24-channel module and the master at 50%, the wrap
+   * doubled the level and clipped hard (sweetdre.xm).
+   *
    * When time is provided, schedules the change at the given AudioContext time.
    */
   setMasterVolume(volume: number, time?: number): void {
     const clamped = Math.max(0, Math.min(1, volume));
+    this.songGlobalVolume = clamped;
     const when = time ?? this.audioSystem.audioContext.currentTime;
-    this.masterGain.gain.setValueAtTime(clamped, when);
+    this.masterGain.gain.setValueAtTime(this.userMasterVolume * clamped, when);
   }
 
   /**
@@ -361,7 +379,7 @@ export class TrackerSongBank {
     this.userMasterVolume = clamped;
     const now = this.audioSystem.audioContext.currentTime;
     this.masterGain.gain.cancelScheduledValues(now);
-    this.masterGain.gain.setValueAtTime(clamped, now);
+    this.masterGain.gain.setValueAtTime(clamped * this.songGlobalVolume, now);
   }
 
   /**
@@ -380,6 +398,7 @@ export class TrackerSongBank {
    */
   private resetMasterVolumeToBaseline(): void {
     const now = this.audioSystem.audioContext.currentTime;
+    this.songGlobalVolume = 1.0;
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(this.userMasterVolume, now);
   }

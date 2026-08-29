@@ -1464,6 +1464,33 @@ Gxx/Hxy are per-song effect state exactly like vibrato memory or the loop counte
 moved into `resetEffectStates()`, which makes `restartSong`'s own line redundant but
 harmless — it keeps the handler call that pushes the value to the audio graph.
 
+### D72 — The song's global volume scales the user's master level, it does not replace it
+
+Reported as *"sweet dreams got super loud and clipping like crazy when it restarted."*
+
+sweetdre.xm has **no `Gxx` at all**, every pattern is 64 rows, and no `E6x` — so neither
+D69 nor D70 touches it. The cause is older: `songBank.setMasterVolume()`, the only consumer
+of `scheduledGlobalVolumeHandler`, wrote its argument straight onto `masterGain`:
+
+```ts
+this.masterGain.gain.setValueAtTime(clamped, when);   // ignores userMasterVolume
+```
+
+The user's master level was 50%, and with no `Gxx` in the song nothing touched the gain
+while it played. Then D66's restart pushed global volume `1.0` on the sequence wrap — and
+that landed as an absolute `1.0`, doubling the level. On 24 channels it clipped hard.
+
+Two independent quantities had been sharing one field. The song's global volume says how
+loud this moment is relative to the rest of the song; the user's master says how loud the
+app is. What reaches `masterGain` is the product. `songGlobalVolume` is now tracked
+alongside `userMasterVolume`, every write multiplies them, and `resetMasterVolumeToBaseline`
+clears the song's half back to 1.
+
+Worth noting the bug was latent long before the restart made it audible: any module using
+`Gxx` already overrode the user's setting outright — `G40` forced the master to 0.5 whatever
+the slider said. D66 only made a *silent* song do it too, which is what made it loud enough
+to notice.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -1695,6 +1722,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **Song global volume now scales the user's master level** (D72). `setMasterVolume` wrote `Gxx` values absolutely, so D66's restart pushing global volume 1.0 overrode a 50% master setting — sweetdre.xm (24 channels, no `Gxx`) clipped hard on every loop. Latent for any `Gxx` module before that. Tests: `src/tests/tracker-song-bank-master-volume.test.ts`. 702 green. |
 | 2026-08-29 | fix | **Patterns start at row 0 again, and `E6x` actually loops** (D69). The row cursor is folded into a row with `% length` but was carried across pattern boundaries, so a pattern following one of a different length started partway in — after xyce's 96-row pattern, order 37 played row 0 then jumped to row 33 (`97 % 64`). Separately `E6x` counted up toward a target and reset without ever jumping, making pattern loops silent. Both now match ProTracker. Tests: `src/tests/tracker-sequence-walk.test.ts`. 698 green. |
 | 2026-08-29 | fix | **Global volume resets on stop** (D70). `Gxx` state lived only through `restartSong`, so stopping during xyce's closing `G00` fade meant the next play started near-silent with nothing to restore it. Moved into `resetEffectStates()`, alongside every other effect state. |
 | 2026-08-29 | fix | **A key-off follows the channel, not the instrument on the row** (D68). `=== 11` names the sample for the channel's *next* note; routing the release there sent it to an instrument with nothing playing, and stamping it re-routed the volume slides that were meant to fade the note out — so it neither faded nor stopped. 689 green. |
