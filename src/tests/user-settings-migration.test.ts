@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  defaultSettings,
   migrateSettingsVersion,
   SETTINGS_VERSION,
   type UserSettings,
@@ -45,5 +46,32 @@ describe('migrateSettingsVersion', () => {
     const migrated = migrateSettingsVersion(stored);
 
     expect(migrated.useSimplifiedModInstruments).toBe(false);
+  });
+});
+
+/**
+ * The master-volume default is headroom, not taste.
+ *
+ * Nothing in the tracker path limits -- FT2 sums into an accumulator and
+ * clamps, Paula sums in analog -- so a multi-channel module runs past full
+ * scale at unity. elw-sick.xm (24 channels) needs roughly half to stay under,
+ * which is what the level meters beside the instrument list are for.
+ *
+ * It is deliberately *not* version-gated: unlike the v1 rewrite above this is
+ * a starting point rather than a correction, so a level someone has already
+ * chosen is theirs to keep.
+ */
+describe('master volume default', () => {
+  it('starts at half scale', () => {
+    expect(defaultSettings.masterVolume).toBe(0.5);
+  });
+
+  it('leaves an already-stored level alone', () => {
+    const migrated = migrateSettingsVersion({
+      settingsVersion: 0,
+      masterVolume: 0.9,
+    });
+
+    expect(migrated.masterVolume).toBe(0.9);
   });
 });

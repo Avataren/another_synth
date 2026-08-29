@@ -16,7 +16,12 @@ export interface UserSettings {
   uiFont: string;
   showSpectrumAnalyzer: boolean;
   showWaveformVisualizers: boolean;
-  masterVolume: number; // 0.0 to 1.0
+  /**
+   * 0.0 to 1.0. Defaults to half scale for headroom, not to taste: nothing in
+   * the tracker path limits, so a multi-channel module sums straight past full
+   * scale -- see the level meters beside the instrument list.
+   */
+  masterVolume: number;
   enableMidi: boolean;
   /** When true, show a second effect column per tracker track. */
   showTrackerExtraEffectColumn: boolean;
@@ -28,20 +33,25 @@ export interface UserSettings {
  * Current settings schema version.
  *
  * v1: `useSimplifiedModInstruments` became the default for MOD playback.
+ *
+ * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
+ * *not* get a version bump: it is a starting point rather than a correction, so
+ * anyone who has already set their own level keeps it.
  */
 export const SETTINGS_VERSION = 1;
 
 /**
- * Default user settings
+ * Default user settings. Exported so tests can pin the ones that are
+ * deliberate rather than arbitrary.
  */
-const defaultSettings: UserSettings = {
+export const defaultSettings: UserSettings = {
   settingsVersion: SETTINGS_VERSION,
   theme: 'custom',
   trackerFont: 'JetBrains Mono',
   uiFont: 'Inter',
   showSpectrumAnalyzer: true,
   showWaveformVisualizers: true,
-  masterVolume: 0.75,
+  masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
   useSimplifiedModInstruments: true
