@@ -121,10 +121,13 @@ function main() {
       copied++;
 
       songs.push({
-        file: `${dir}/${file}`,
-        // Fall back to the filename when a module has no embedded title.
-        title: described.title || path.basename(file, path.extname(file)),
         ...described,
+        file: `${dir}/${file}`,
+        // Fall back to the filename when a module carries no embedded title.
+        // This has to come *after* the spread: DOPE.MOD's title field is 20
+        // NUL bytes, and spreading `described` last put the empty title back
+        // and left the browser showing a blank row.
+        title: described.title || path.basename(file, path.extname(file)),
         bytes: buf.length,
       });
     }

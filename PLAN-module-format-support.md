@@ -277,10 +277,11 @@ silently interleaves the wrong channels. `looksLikeMod` still accepts it (so the
 gets the real reason) but `parseMod` throws. Revisit if an FLT8 module actually turns up.
 
 **D10 — Multi-channel panning repeats the Amiga L-R-R-L grouping.**
-For 5+ channels the pan is `channelIndex % 4` into the classic L-R-R-L layout, matching
-what multi-channel MOD players do. The 1/2/3-channel special cases and the 4-channel
-result are unchanged — pinned by a test, since panning feeds macro 0 and a regression
-here would be audible on every existing MOD.
+~~For 5+ channels the pan is `channelIndex % 4` into the classic L-R-R-L layout, matching
+what multi-channel MOD players do.~~ **Reversed by D44** — that claim was asserted without
+being checked against a real multi-channel module. The 1/2/3-channel special cases and the
+4-channel result are unchanged and pinned by a test, since panning feeds macro 0 and a
+regression there would be audible on every existing MOD.
 
 **D11 — 9xx sample offset rides on the noteOn, not on separate automation.**
 9xx was a no-op end to end, in three independent ways: the offset was emitted as a
@@ -769,6 +770,27 @@ visible at once. Width and gap now tighten above 8 tracks, with a floor at the e
 columns clip rather than merely crowd. Genuinely fitting 28 channels on screen would need
 a compact entry rendering, which is a larger UI change and not attempted here.
 
+**D44 — Channels past the classic four default to centre, not L-R-R-L.**
+Reverses D10. The Amiga layout exists because Paula's four hardware voices are wired two
+left and two right; a PC-tracker extension (`6CHN`, `8CHN`, `xxCH`) has no such wiring.
+Modules written for those expect centred channels and place anything they care about with
+`8xx`.
+
+`DOPE.MOD` is the case that showed it: 28 channels, and just **54 panning commands in the
+entire module**. Repeating the grouping hard-panned alternating channels, splitting the
+mix into two halves the composer never heard. Verified after the change: `peacedroid.mod`
+(4 channels) still yields only the L and R pan values, `DOPE.MOD` yields centre throughout.
+
+D10 was reached by reasoning about what "multi-channel MOD players do" rather than by
+checking one, and the test written alongside it pinned the assumption rather than the
+behaviour — so it defended the bug instead of catching it.
+
+**D45 — Demo manifest title fallback was overwritten by a spread.**
+`DOPE.MOD`'s title field is 20 NUL bytes. The generator computed a filename fallback and
+then spread the parsed description *after* it, putting the empty title back — the browser
+showed a blank row. Field order in an object literal is not cosmetic when a spread is
+involved.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -891,6 +913,7 @@ as an expected state, not an error.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | Channels beyond the classic four now default to centre panning rather than repeating the Amiga L-R-R-L grouping (D44, reversing D10) — `DOPE.MOD` has 28 channels and 54 pan commands, so the grouping hard-split the mix. Demo browser no longer shows blank names for modules with an empty title field (D45). |
 | 2026-08-29 | fix | MOD instruments are sized by the channels that play them, not a fixed 4 (D42) — `DOPE.MOD` has 28 channels and one sample on 19 of them. Track columns tighten for high channel counts (D43). |
 | 2026-08-29 | 4 | New notes now *cut* the previous note on their channel instead of releasing it (D41). Making key-off perform an envelope release had turned every replacement into a fadeout, so previous notes rang on underneath — worst when a channel switches instrument, where nothing ever cut the old voice. Tracker channels are monophonic. |
 | 2026-08-29 | 4 | Two fixes for notes going missing: voice replacement is now scheduled at the replacing note's time rather than immediately (D40 — self-inflicted by the D36 fix, and the cause of the `external.xm` report), and key-off is a real envelope release rather than a 10ms cut (D39, corrected by the user). |

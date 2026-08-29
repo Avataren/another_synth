@@ -177,7 +177,14 @@ describe('multi-channel MOD import', () => {
     expect(row0(6)?.macro).toBeUndefined();
   });
 
-  it('repeats the Amiga L-R-R-L grouping past four channels', () => {
+  it('centres channels past the classic four', () => {
+    // This previously asserted a repeating L-R-R-L grouping, which was an
+    // assumption never checked against a real module. The Amiga layout comes
+    // from Paula's four hardware voices being wired 2 left / 2 right; a
+    // PC-tracker extension has no such wiring, and modules written for one
+    // expect centred channels and place anything they care about with 8xx.
+    // DOPE.MOD is 28 channels with 54 panning commands in total, so repeating
+    // the grouping split it into two hard-panned halves.
     const buf = createModBuffer(
       '8CHN',
       8,
@@ -192,8 +199,8 @@ describe('multi-channel MOD import', () => {
     const tracks = importModToTrackerSong(buf.buffer as ArrayBuffer).data.patterns[0]!.tracks;
     const pans = tracks.map((t) => t.entries.find((e) => e.row === 0)?.macro2);
 
-    // M40 = left, MBF = right.
-    expect(pans).toEqual(['M40', 'MBF', 'MBF', 'M40', 'M40', 'MBF', 'MBF', 'M40']);
+    // M80 = centre.
+    expect(pans).toEqual(new Array(8).fill('M80'));
   });
 
   it('leaves 4-channel panning exactly as before', () => {

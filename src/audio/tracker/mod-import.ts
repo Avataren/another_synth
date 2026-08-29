@@ -181,13 +181,22 @@ function resolveChannelPanNorm(channelIndex: number, trackCount: number): number
     return rightNorm;
   }
 
-  // Four or more channels: repeat the classic Amiga L-R-R-L grouping, which is
-  // what multi-channel MOD players do for 6CHN/8CHN/xxCH modules. Channels
-  // 0 and 3 (mod 4) go left, 1 and 2 go right, so an 8-channel module reads
-  // L R R L L R R L -- keeping the 4-channel case bit-for-bit unchanged.
-  const positionInGroup = channelIndex % 4;
-  const isLeft = positionInGroup === 0 || positionInGroup === 3;
-  return isLeft ? leftNorm : rightNorm;
+  if (trackCount === 4) {
+    // Classic Amiga: Paula's four hardware voices are wired 2 left, 2 right,
+    // so channels 0 and 3 go left and 1 and 2 go right.
+    const isLeft = channelIndex === 0 || channelIndex === 3;
+    return isLeft ? leftNorm : rightNorm;
+  }
+
+  // More than four channels means a PC-tracker extension (6CHN, 8CHN, xxCH),
+  // which has no Paula wiring to reproduce: those modules are written against
+  // centred channels and place anything they care about with 8xx.
+  //
+  // Repeating the L-R-R-L grouping here -- as this used to, on an assumption
+  // never checked against a real module -- hard-pans alternating channels. On
+  // DOPE.MOD, a 28-channel module carrying just 54 panning commands in total,
+  // that splits the mix into two hard-panned halves the composer never heard.
+  return centerNorm;
 }
 
 function modCellToTrackerEntry(
