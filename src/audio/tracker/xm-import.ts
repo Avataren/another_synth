@@ -386,26 +386,37 @@ function buildInstrumentSlotsAndPatches(xm: XmSong): {
 /**
  * Convert an XM instrument's volume envelope into the engine's form.
  *
- * Returns undefined when the instrument has neither an enabled envelope nor a
- * fadeout, so instruments that do not need one carry no extra state.
+ * Returns undefined when the instrument has no *enabled* volume envelope, and
+ * deliberately ignores the fadeout in that case.
+ *
+ * FastTracker 2's key-off branches on exactly that flag: with a volume
+ * envelope it clears sustain and lets the envelope and fadeout run, and
+ * without one it sets the channel volume to zero on the spot. The fadeout
+ * field still holds a value on such instruments -- it is simply never heard,
+ * because the volume is already zero.
+ *
+ * Building an envelope out of the fadeout alone therefore turns an instant cut
+ * into a long fade. `elw-sick.xm` is where that showed: eleven of the
+ * instruments playing into order 10 have the envelope switched off with
+ * fadeout 128, which is 65536/128 = 512 ticks, over ten seconds at its tempo.
+ * The pattern opens with key-offs on six channels meant to clear the way, and
+ * instead every one of those notes ran on into the next pattern.
  */
 function toTrackerEnvelope(
   instrument: XmInstrument,
 ): TrackerVolumeEnvelope | undefined {
   const env = instrument.volumeEnvelope;
   const hasEnvelope = env.enabled && env.points.length > 0;
-  if (!hasEnvelope && instrument.volumeFadeout <= 0) return undefined;
+  if (!hasEnvelope) return undefined;
 
   return {
-    points: hasEnvelope
-      ? env.points.map((p) => ({ tick: p.frame, value: p.value }))
-      : [],
+    points: env.points.map((p) => ({ tick: p.frame, value: p.value })),
     // A sustain point only applies when the instrument enables sustain;
     // otherwise the envelope runs straight through.
-    sustainPoint: hasEnvelope && env.sustainEnabled ? env.sustainPoint : -1,
+    sustainPoint: env.sustainEnabled ? env.sustainPoint : -1,
     loopStart: env.loopStart,
     loopEnd: env.loopEnd,
-    loopEnabled: hasEnvelope && env.loopEnabled,
+    loopEnabled: env.loopEnabled,
     fadeout: instrument.volumeFadeout,
   };
 }

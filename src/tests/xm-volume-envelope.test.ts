@@ -358,15 +358,36 @@ describe('XM import carries envelopes onto the patch', () => {
     expect(sampler.trackerEnvelope!.sustainPoint).toBe(-1);
   });
 
-  it('carries fadeout even when the envelope is disabled', () => {
-    // Most modules in the corpus use fadeout far more than envelopes.
+  it('ignores the fadeout when the envelope is disabled', () => {
+    // This used to assert the opposite, on the observation that most corpus
+    // modules set a fadeout without enabling an envelope. The observation is
+    // right and the conclusion was wrong: FT2's keyOff branches on the
+    // envelope-enabled flag, and with no volume envelope it sets the channel
+    // volume to zero on the spot. Such an instrument's fadeout field is never
+    // heard, because the volume is already gone.
+    //
+    // Carrying it turned an instant cut into a fade of 65536/fadeout ticks.
+    // elw-sick.xm is the case: eleven instruments playing into order 10 have
+    // the envelope off with fadeout 128 -- 512 ticks, over ten seconds at its
+    // tempo -- and the pattern opens with key-offs on six channels meant to
+    // clear the way. Every one of those notes ran on into the next pattern.
     const sampler = importWith([
       { samples: [{ frames: [0, 1, 2] }], volumeFadeout: 512 },
     ]);
 
-    expect(sampler.trackerEnvelope).toBeDefined();
+    expect(sampler.trackerEnvelope).toBeUndefined();
+  });
+
+  it('still carries the fadeout when the envelope is enabled', () => {
+    const sampler = importWith([
+      {
+        samples: [{ frames: [0, 1, 2] }],
+        volumeFadeout: 512,
+        volumeEnvelope: { points: [[0, 64], [20, 0]], type: 0x01 },
+      },
+    ]);
+
     expect(sampler.trackerEnvelope!.fadeout).toBe(512);
-    expect(sampler.trackerEnvelope!.points).toEqual([]);
   });
 
   it('adds no envelope when the instrument has neither', () => {

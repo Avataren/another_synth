@@ -1234,6 +1234,34 @@ Both new sampler-state fields are named in the patch normalizer's whitelist, and
 tests assert *through* `deserializePatch` rather than against the raw patch -- the D34/D57
 trap, now guarded by habit rather than by memory.
 
+**D63 — Without a volume envelope, XM key-off cuts; the fadeout is never heard.**
+Reported on `elw-sick.xm`: at order 10 the pattern opens with key-offs on six channels,
+and notes from the previous pattern carried on underneath instead of stopping.
+
+FastTracker 2's `keyOff` branches on the volume envelope's enabled flag. With an envelope
+it clears sustain and lets the envelope and fadeout run. **Without one it sets the channel
+volume to zero on the spot** -- the instrument's `volumeFadeout` field still holds a value,
+it is simply never audible, because the volume has already gone.
+
+`toTrackerEnvelope` built an envelope out of the fadeout alone when the envelope was
+disabled, on the (correct) observation that most corpus modules set a fadeout without
+enabling an envelope. The conclusion was the wrong way round: that turned an instant cut
+into `65536 / fadeout` ticks of fade, which for `elw-sick`'s fadeout of 128 is 512 ticks --
+over ten seconds at its tempo, and clamped only by the 10-second release cap. `ModInstrument`
+already did the right thing for an instrument with *no* envelope at all (a 10 ms de-click
+ramp), so the fix is simply to stop manufacturing one.
+
+68 of the 219 corpus instruments have the envelope off with a fadeout set. 90 key-offs land
+on one, concentrated in `sweetdre.xm` (69) and `elw-sick.xm` (15) -- and each one was worth
+up to ten seconds of a note that should have stopped instantly, on a 24-channel module.
+Worth noting the second-order effect: notes that never stop also pile up in the mix, so
+this was feeding the clipping the level meters had just made visible.
+
+Third time a test has pinned the wrong behaviour with a plausible rationale attached
+(D61, D59's F1 note, now this). The pattern is the same each time: a true observation about
+the corpus, and a conclusion about semantics that does not follow from it. The corpus tells
+you what is *common*, never what is *correct*.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1450,6 +1478,8 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **A key-off on an instrument with no volume envelope now cuts** (D63). The importer built an envelope out of the fadeout alone, turning FT2's instant cut into up to ten seconds of fade — 68 of 219 corpus instruments, and the reason `elw-sick.xm`'s order 10 had the previous pattern still sounding under it. 661 green. |
+| 2026-08-29 | ui | **Stereo peak meter beside the instrument list.** dBFS scale with 0 dB marked, peak hold, and a latching CLIP readout, so headroom is visible rather than guessed. Trackers do not limit (FT2 clamps, Paula sums in analog), so a busy module genuinely can run over. Arithmetic in `level-meter-math.ts` with its own tests. |
 | 2026-08-29 | 4 | **Panning envelopes and Lxx implemented** (D62) — the last two Phase 4 items. The panning envelope is an offset *around* the channel pan scaled by that pan's headroom, not an absolute position, so the pan parameter carries both combined and `setPan` re-derives the remainder around a new base. `Lxx` repositions both envelopes, via a `fromTick` on the envelope scheduler that the panning rebuild also uses. Tests: `src/tests/xm-panning-envelope.test.ts`. 647 green. |
 | 2026-08-29 | fix | **A sample number reloads its volume on a tone-portamento row too** (D61). The reload was skipped there, so nexus_seven.mod's pumped portamento bassline could only slide down: the channel hit zero within four rows and every remaining note in the pattern was silent. ProTracker writes `n_volume` from the sample number before it checks for tone porta; that check only governs the retrigger. 637 green. |
 | 2026-08-29 | fix | **A new note on a module channel now kills everything the channel was sounding** (D60). A key-off released the voice and then cleared the track's voice tracking, which made it unkillable — so a released note rang on under the next one for its whole fadeout whenever the channel changed instrument. Released voices are tracked per track and cut by the next note. The bank also learns the song's format: module channels cut on replacement, native songs release and let the note ring. Tests: `src/tests/tracker-channel-monophony.test.ts` (3 of 7 confirmed failing against the old code). 634 green. |
