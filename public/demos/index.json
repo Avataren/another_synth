@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-29T21:47:54.675Z",
+  "generated": "2026-08-29T22:34:18.787Z",
   "collections": [
     {
       "id": "amiga",
@@ -339,15 +339,6 @@
           "instruments": 128,
           "file": "ft2/jt_911.xm",
           "bytes": 973769
-        },
-        {
-          "title": "Letting Go",
-          "format": "XM",
-          "channels": 26,
-          "patterns": 9,
-          "instruments": 128,
-          "file": "ft2/jt_letgo (1).xm",
-          "bytes": 99410
         },
         {
           "title": "Letting Go",
