@@ -292,3 +292,35 @@ describe('cutAllVoicesAtTime', () => {
     expect(one.cutVoiceAtTime.mock.calls[0]![1]).toBe(5);
   });
 });
+
+/**
+ * A key-off releases the channel, not the instrument named on the row.
+ *
+ * XM rows carry an instrument number alongside `===` all the time -- in FT2
+ * that selects the sample for the channel's next note and has nothing to do
+ * with what is being released. Routing the release by that number sends it to
+ * an instrument with nothing sounding on the channel, and the held note simply
+ * carries on.
+ */
+describe('a note-off follows the channel, not the row', () => {
+  it('releases the instrument actually sounding on the track', () => {
+    const { bank, one, two } = makeBank('xm');
+    // Track 0 is playing instrument 01.
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+
+    // The key-off row names instrument 02, which has nothing on this track.
+    bank.noteOffAtTime('02', undefined, 2, TRACK);
+
+    expect(one.gateOffVoiceAtTime).toHaveBeenCalled();
+    expect(two.gateOffVoiceAtTime).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the named instrument when the track owns nothing', () => {
+    const { bank, two } = makeBank('xm');
+
+    bank.noteOffAtTime('02', undefined, 2, TRACK);
+
+    // Nothing to release, but it must not throw or misroute.
+    expect(two.gateOffVoiceAtTime).not.toHaveBeenCalled();
+  });
+});

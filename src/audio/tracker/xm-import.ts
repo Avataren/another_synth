@@ -202,7 +202,17 @@ function xmCellToTrackerEntry(
 
   const entry: TrackerEntryData = { row };
 
-  if (hasInstrument) {
+  // Only a row that starts a note switches which instrument this channel is
+  // playing. An instrument number on a *key-off* row selects the sample for the
+  // channel's next note; it does not change what is currently sounding, and
+  // stamping it here re-routes every per-voice effect that follows to an
+  // instrument with nothing playing. Same rule mod-import follows for a bare
+  // sample number (D29).
+  //
+  // xyce-dans_la_rue.xm is full of `=== <instrument>` rows on channels holding
+  // a note from an earlier pattern; the volume slides that follow them were
+  // landing on the wrong instrument, so the note carried on at full level.
+  if (hasInstrument && !isKeyOff) {
     const slot = slotForInstrument.get(cell.instrument);
     if (slot !== undefined) entry.instrument = formatInstrumentId(slot);
   }

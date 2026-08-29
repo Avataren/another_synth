@@ -1373,6 +1373,36 @@ Only `ModInstrument` routes per voice, so `getTrackVisualizationNode` keeps the 
 instrument-output behaviour for other instrument types rather than showing a flat line for
 native songs.
 
+**D68 — A key-off releases the channel, not the instrument named on the row.**
+Reported on `xyce-dans_la_rue.xm`: a note from order 27 bleeds into order 28, where row
+`0C` has a key-off that "seems to have no effect -- the note just keeps playing at full
+volume".
+
+The row is `=== 11` on channel 1, and the 11 is an **instrument number**, not a volume. XM
+rows carry one alongside `===` routinely: in FT2 it selects the sample for the channel's
+*next* note and has nothing to do with what is being released. Channel 1 had been holding a
+note from an earlier pattern on **instrument 10**.
+
+Two consequences, both fixed:
+
+- The note-off was routed to instrument 11, which has nothing sounding on that channel, so
+  the held voice was never released. `dispatchNoteOffAtTime` now asks `trackVoiceOwner`
+  which instrument actually owns the channel's voice, and only falls back to the row's own.
+- `xm-import` stamped the instrument onto the key-off row, so `effectState.instrumentId`
+  switched to 11 and *every per-voice effect after it* went the same wrong way. The rows
+  before the key-off are `62` volume-column slides meant to fade the note out; they were
+  landing on instrument 11 too, which is why the note stayed at full volume rather than
+  merely failing to stop. Only a row that starts a note now switches the channel's
+  instrument -- exactly the rule mod-import has followed since D29.
+
+Traced after the fix, the slides run 64 → 48 across rows 8-11 and the key-off lands, both on
+instrument 10.
+
+Third time D29's rule has had to be re-derived somewhere else (D56 for the MOD latch, D55
+for the builder, now XM key-offs). **Only a row that starts a note changes what a channel is
+playing** is worth stating once as a rule of the pipeline rather than rediscovering per
+format.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1589,6 +1619,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **A key-off follows the channel, not the instrument on the row** (D68). `=== 11` names the sample for the channel's *next* note; routing the release there sent it to an instrument with nothing playing, and stamping it re-routed the volume slides that were meant to fade the note out — so it neither faded nor stopped. 689 green. |
 | 2026-08-29 | ui | **Per-track waveforms now show their own track** (D67). They read the instrument's output, which one sample-per-instrument makes shared across every channel playing it — so channels on the same sample drew each other's audio. Voices now also connect to a per-track tap. Tests: `src/tests/tracker-track-monitor.test.ts`. 685 green. |
 | 2026-08-29 | fix | **Looping the song now restarts it** (D66) — voices stopped, effect state cleared, global volume restored. xyce-dans_la_rue.xm fades out with `Gxx` and opens with `G80`, so the eight channels still holding looping samples came back at full volume on the wrap. FT2 does the same, so this is a player decision rather than a fidelity fix; it also makes a second pass sound like the first. 678 green. |
 | 2026-08-29 | fix | **A retrigger now takes the channel like any other note** (D65). `retriggerNoteAtTime` passed no track index, so `E9x`/`Rxy` repeats were allocated from the instrument's round-robin pool instead of the channel's own voice — invisible to everything that cuts a channel, so they stacked and played on through later notes. peacedroid.mod patterns 16 and 17 end on `E93 E92 E91`, eight repeats in three rows. 671 green. |

@@ -1523,11 +1523,27 @@ export class TrackerSongBank {
   }
 
   private dispatchNoteOffAtTime(
-    instrumentId: string,
+    requestedInstrumentId: string,
     midi: number | undefined,
     time: number,
     trackIndex?: number,
   ) {
+    // A key-off releases the *channel*, not the instrument named on the row.
+    //
+    // XM rows routinely carry an instrument number alongside `===` -- in FT2
+    // that selects the sample for the channel's *next* note, and has nothing
+    // to do with what is being released. xyce-dans_la_rue.xm pattern 22 row 12
+    // is `=== 11` on a channel that has been holding a note from an earlier
+    // pattern on a different instrument: routing the release to instrument 11,
+    // which has nothing sounding there, left the held note playing.
+    //
+    // `trackVoiceOwner` knows which instrument actually owns the channel's
+    // voice, so ask it first and fall back to the row's own instrument.
+    const owner = Number.isFinite(trackIndex as number)
+      ? this.trackVoiceOwner.get(trackIndex as number)
+      : undefined;
+    const instrumentId = owner?.instrumentId ?? requestedInstrumentId;
+
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     const notes = this.getTrackNotes(instrumentId, trackIndex);

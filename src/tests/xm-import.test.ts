@@ -287,3 +287,50 @@ describe('XM import', () => {
     expect(song.data.sequence).toEqual([ids[1], ids[0], ids[1]]);
   });
 });
+
+/**
+ * An instrument number on a key-off row selects the sample for the channel's
+ * *next* note. It does not change what is currently sounding, so it must not
+ * be stamped as the row's instrument -- doing so re-routes every per-voice
+ * effect that follows to an instrument with nothing playing on that channel.
+ * Same rule mod-import follows for a bare sample number (D29).
+ *
+ * xyce-dans_la_rue.xm pattern 22 is full of `=== <instrument>` on channels
+ * holding a note from an earlier pattern, with volume slides after them. Those
+ * slides landed on the wrong instrument and the held note carried on at full
+ * level.
+ */
+describe('a key-off row does not switch the channel instrument', () => {
+  const keyOffWithInstrument = () =>
+    importXmToTrackerSong(
+      buildXm({
+        numChannels: 1,
+        instruments: [
+          { samples: [{ frames: [0, 1, 0, -1] }] },
+          { samples: [{ frames: [0, 1, 0, -1] }] },
+        ],
+        patterns: [
+          {
+            numRows: 4,
+            cells: [
+              [cell(49, { instrument: 1 })],
+              [cell(97, { instrument: 2 })],
+            ],
+          },
+        ],
+      }).buffer as ArrayBuffer,
+    ).data.patterns[0]!.tracks[0]!.entries;
+
+  it('keeps the key-off but drops the instrument', () => {
+    const row1 = keyOffWithInstrument().find((e) => e.row === 1);
+
+    expect(row1?.note).toBe('###');
+    expect(row1?.instrument).toBeUndefined();
+  });
+
+  it('still stamps the instrument on a row that starts a note', () => {
+    const row0 = keyOffWithInstrument().find((e) => e.row === 0);
+
+    expect(row0?.instrument).toBeDefined();
+  });
+});
