@@ -1107,6 +1107,40 @@ Checked and *not* changed while looking: the pitches on that track are exactly r
 available. Vibrato is used from order 0 of this song and sounds right, which is useful
 independent evidence that the Amiga-mode vibrato depth (D48) is calibrated correctly.
 
+**D59 — The XM frequency table never reached the engine, so every Amiga-mode slide was wrong.**
+Reported as 4-mat's "rose" -- an Amiga-table module -- having a lead on track 2 that
+"lands about a semitone short of where it's supposed to be".
+
+`xm-import` read `xm.linearFrequency` from the parser and put it in its `console.log`
+instead of the song data. `Song.linearFrequency` was therefore always undefined,
+`profileForFormat` requires `linearFrequency === false` to pick `XM_AMIGA_PROFILE`, and so
+**every XM played with the linear pitch model** regardless of what its header said. D24
+built that profile and nothing ever selected it.
+
+The reason this survived so long is the shape of the failure. Note frequencies are
+resolved at *import*, with the correct model, and travel on the step as `frequency`. So
+every note is perfectly in tune and the song sounds right until something slides: the
+effect processor computes portamento, tone portamento, vibrato, arpeggio and glissando in
+period space, and it had the wrong period space. Rose's `104` moved 0.5 of a semitone
+(4 linear units a tick, 64 to a semitone) where its Amiga periods call for 0.886 --
+and across the `20A`/`214` bend two rows later the landing was out by more than three
+semitones. A tone portamento clamps to its target, which hides the error completely; a
+plain `1xx`/`2xx` has no target, so its landing *is* the rate, which is why the symptom
+appeared on exactly the patterns that use one.
+
+Now carried the way `initialSpeed` is: song file -> store (with snapshot and
+serialize/load) -> builder context -> `Song` -> engine. Absent means linear, XM's own
+default, which is also what every song saved before the field existed was played as.
+
+Two things worth taking from this. First, it is the fourth instance of the same class in
+this document -- D34 (`trackerEnvelope` dropped by the sampler-state whitelist), D57 (the
+same whitelist, avoided by testing through the normalizer), D55 (the builder's meaning of
+`entry.instrument`) and now this: **a value that is read correctly, then dropped at a layer
+boundary, while every layer looks right in isolation.** Second, the tell was that the
+failure was *musical rather than structural* -- in tune but sliding the wrong distance.
+Anything that resolves a value at import and also needs it at playback should be tested
+end to end, at the engine, not at either end.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1173,7 +1207,9 @@ broken delta decode shows roughness near 0.5 and large DC drift.
 
 Three findings that change the plan:
 
-**F1 — Amiga-mode XM is common, not exotic: 4 of 9 files.** ✅ **Resolved** — see D24.
+**F1 — Amiga-mode XM is common, not exotic: 4 of 9 files.** ✅ **Resolved** — see D24,
+and D59: the model was built by D24 but nothing selected it until then, because the header
+flag stopped at the importer's console.log.
 `createAmigaPitchModel` was *not* reusable for them: it carries ProTracker's 113–856
 clamp and 36-entry three-octave table, while XM spans eight octaves.
 
@@ -1321,6 +1357,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **The XM frequency table now reaches the engine** (D59). `xm-import` put `linearFrequency` in a console.log rather than the song data, so `profileForFormat` never selected `XM_AMIGA_PROFILE` and every Amiga-table XM computed its pitch *effects* in linear period space — in tune, but every slide moving the wrong distance. Roughly half of real XM files are Amiga-table. Found via 4-mat's "rose". Tests: `src/tests/xm-amiga-frequency-table.test.ts`. 627 green. |
 | 2026-08-29 | fix | **Instantaneous volume commands step instead of ramping** (D58). A scheduled volume change defaulted to a linear ramp, which runs from the previous automation event — so ECx, Cxx and the fine slides were smeared backwards across the preceding row. Found via 4-mat's "rose", whose pattern 44 is the first in the song to use ECx: track 2's short `G-4 .. EC2` notes faded across their whole length at speed 3. 621 green. |
 | 2026-08-29 | 4 | **XM autovibrato implemented** (D57) — instrument-level vibrato, 13.4% of corpus notes, parsed since the beginning and never consumed. Runs as an OscillatorNode into the source's `detune`, which composes with the channel's `playbackRate` automation instead of fighting it. Tests: `src/tests/xm-autovibrato.test.ts`. 616 green. |
 | 2026-08-29 | fix | **MOD patterns are converted in play order so the channel sample latch survives a pattern boundary** (D56). A note with no sample number in a pattern's opening rows resolved to no instrument — silent when the pattern was played alone, wrong sample when reached in sequence. 320 notes across 13 of 28 corpus modules. Tests: `src/tests/mod-import-sample-latch.test.ts`. 608 green. |

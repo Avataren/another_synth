@@ -109,6 +109,12 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
       // XM declares its own ticks-per-row; most modules use something other
       // than the tracker default of 6.
       initialSpeed: xm.defaultSpeed || 6,
+      // Which frequency table the module selected. This decides the pitch
+      // model every pitch *effect* runs in, so it has to reach the engine --
+      // note frequencies are resolved here and are correct either way, which
+      // is why losing it leaves a song in tune but with every slide moving the
+      // wrong distance.
+      linearFrequency: xm.linearFrequency,
       patternRows: clampPatternRows(patterns[0]?.rows),
       stepSize: DEFAULT_STEP_SIZE,
       patterns,

@@ -39,6 +39,8 @@ export interface TrackerSongBuilderContext {
   currentSong: Ref<{ title: string; author: string; bpm: number }>;
   /** Ticks per row the song starts at; omitted means the tracker default of 6. */
   initialSpeed?: Ref<number>;
+  /** XM only: whether the module selected the linear frequency table. */
+  linearFrequency?: Ref<boolean>;
   /**
    * Which tracker's semantics the song follows. Optional so existing tests
    * and callers keep working; omitted means DEFAULT_MODULE_FORMAT.
@@ -352,7 +354,10 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       patterns: buildPlaybackPatterns(),
       sequence: resolveSequenceForMode(mode),
       moduleFormat: context.moduleFormat?.value ?? DEFAULT_MODULE_FORMAT,
-      ...(context.initialSpeed ? { initialSpeed: context.initialSpeed.value } : {})
+      ...(context.initialSpeed ? { initialSpeed: context.initialSpeed.value } : {}),
+      ...(context.linearFrequency
+        ? { linearFrequency: context.linearFrequency.value }
+        : {})
     };
   }
 

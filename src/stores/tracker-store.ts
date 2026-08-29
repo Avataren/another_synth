@@ -71,6 +71,7 @@ interface TrackerSnapshot {
   currentSong: SongMeta;
   moduleFormat: ModuleFormat;
   initialSpeed: number;
+  linearFrequency: boolean;
   defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
@@ -92,6 +93,17 @@ interface TrackerStoreState {
    * parameter). The tracker default is 6; XM songs commonly declare 3.
    */
   initialSpeed: number;
+  /**
+   * XM only: whether the module selected the linear frequency table.
+   *
+   * Carried per song rather than per format -- roughly half of real XM files
+   * use the Amiga table instead (4 of the 9 in the local corpus). It selects
+   * the pitch model every pitch *effect* is computed in, so losing it plays
+   * portamento, vibrato and arpeggio in the wrong period space even though
+   * the notes themselves are in tune, the note frequencies having been
+   * resolved at import.
+   */
+  linearFrequency: boolean;
   /**
    * Row count applied to newly created patterns. Existing patterns carry
    * their own `rows`; this is only a seed for new ones.
@@ -229,6 +241,8 @@ export interface TrackerSongFile {
      * before this field existed assumed.
      */
     initialSpeed?: number;
+    /** XM only; absent means XM's own default, linear. */
+    linearFrequency?: boolean;
     /**
      * Pre-v3: the row count for every pattern in the song.
      * v3+: only the default applied to newly created patterns. Per-pattern
@@ -257,6 +271,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       },
       moduleFormat: DEFAULT_MODULE_FORMAT,
       initialSpeed: DEFAULT_SPEED,
+      linearFrequency: true,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
       stepSize: 1,
@@ -316,6 +331,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
         initialSpeed: this.initialSpeed,
+        linearFrequency: this.linearFrequency,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
@@ -333,6 +349,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.currentSong = { ...snapshot.currentSong };
       this.moduleFormat = snapshot.moduleFormat ?? DEFAULT_MODULE_FORMAT;
       this.initialSpeed = snapshot.initialSpeed ?? DEFAULT_SPEED;
+      this.linearFrequency = snapshot.linearFrequency ?? true;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
@@ -379,6 +396,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       };
       this.moduleFormat = DEFAULT_MODULE_FORMAT;
       this.initialSpeed = DEFAULT_SPEED;
+      this.linearFrequency = true;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
       this.stepSize = 1;
@@ -672,6 +690,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         currentSong: { ...this.currentSong },
         moduleFormat: this.moduleFormat,
         initialSpeed: this.initialSpeed,
+        linearFrequency: this.linearFrequency,
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
@@ -699,6 +718,10 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.initialSpeed = Number.isFinite(data.initialSpeed)
         ? Math.max(1, Math.min(31, data.initialSpeed as number))
         : DEFAULT_SPEED;
+      // Absent means XM's own default. Songs saved before this field existed
+      // were played with the linear model regardless, so nothing changes for
+      // them.
+      this.linearFrequency = data.linearFrequency ?? true;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;
       this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;
