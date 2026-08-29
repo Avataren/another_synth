@@ -135,6 +135,9 @@ describe('the sample default volume is not baked into the patch gain', () => {
 const volumesOf = (commands: ProcessorCommand[]) =>
   commands.filter((c) => c.kind === 'volume').map((c) => c.volume);
 
+const noteOnVelocityOf = (commands: ProcessorCommand[]) =>
+  commands.filter((c) => c.kind === 'noteOn').map((c) => c.velocity);
+
 describe('a note trigger states the channel volume', () => {
   const slide = { type: 'volSlide' as const, paramX: 5, paramY: 0 };
 
@@ -172,5 +175,51 @@ describe('a note trigger states the channel volume', () => {
     const state = createTrackEffectState(PROTRACKER_PROFILE);
     const batch = processEffectTick0(state, undefined, undefined);
     expect(volumesOf(batch.commands)).toHaveLength(0);
+  });
+});
+
+
+describe('a note-on carries the level the note starts at', () => {
+  // The follow-up volume command is allowed to fail: SongBank drops one it
+  // cannot resolve to a voice on this track, which is correct, because two
+  // tracks sharing a sample share a voice pool. So whatever the note-on says
+  // is the level the note is heard at whenever that happens, and a hardcoded
+  // 127 means full scale.
+  //
+  // GSLINGER.MOD pattern 2 is the case: channels 1 and 3 play the same flute,
+  // channel 3 three rows behind as an echo at volume 11 against the lead's 24.
+  // With a hardcoded note-on velocity the echo came out at 64.
+  const slide = { type: 'volSlide' as const, paramX: 5, paramY: 0 };
+
+  it('states the row own volume', () => {
+    const state = createTrackEffectState(PROTRACKER_PROFILE);
+    const batch = processEffectTick0(
+      state,
+      undefined,
+      60,
+      Math.round((11 / 64) * 255),
+      261.63,
+      6,
+    );
+    const velocity = noteOnVelocityOf(batch.commands)[0]!;
+    expect((velocity / 127) * 64).toBeCloseTo(11, 0);
+    expect(velocity).toBeLessThan(127);
+  });
+
+  it('states an inherited volume on a note that supplies none', () => {
+    const state = createTrackEffectState(PROTRACKER_PROFILE);
+    processEffectTick0(state, undefined, 60, Math.round((11 / 64) * 255), 261.63, 6);
+
+    const batch = processEffectTick0(state, undefined, 62, undefined, 261.63, 6);
+    expect((noteOnVelocityOf(batch.commands)[0]! / 127) * 64).toBeCloseTo(11, 0);
+  });
+
+  it('states a volume a slide has moved', () => {
+    const state = createTrackEffectState(PROTRACKER_PROFILE);
+    processEffectTick0(state, slide, 60, Math.round((8 / 64) * 255), 261.63, 6);
+    for (let tick = 1; tick < 6; tick++) processEffectTickN(state, slide, tick, 6);
+
+    const batch = processEffectTick0(state, undefined, 62, undefined, 261.63, 6);
+    expect((noteOnVelocityOf(batch.commands)[0]! / 127) * 64).toBeCloseTo(33, 0);
   });
 });

@@ -953,6 +953,34 @@ Worth noting what this does *not* fix: pattern 36 really is written at Cxx volum
 to 8 out of 64 on that flute, so the passage stays quiet. What comes back is the swell
 and the ability to hear the instrument on its own.
 
+**D54 — A note-on has to carry its own level (follow-up to D53, caught by ear).**
+D53 left the note-on velocity at its hardcoded 127 and relied on the volume command that
+follows it. That was survivable only while the sample's default volume was baked into the
+instrument gain: the note-on's own gain landed near the right level by accident, so a
+volume command that failed to apply was not obviously wrong. Removing the baked-in gain
+turned that same fallback into *full scale*.
+
+And the volume command genuinely can fail to apply. `setVoiceVolumeAtTime` drops a
+command it cannot resolve to a voice on this track rather than falling back to voice 0 —
+which is correct, and is D13 — so the note-on's velocity is the level the note is heard at
+whenever that happens. GSLINGER.MOD pattern 2 is the case, and it is the same file and
+the same pair of channels as D13: channels 1 and 3 play the same flute, channel 3 three
+rows behind as an echo at volume 11 against the lead's 24, and the echo came out at 64.
+
+The note-on now carries `velocityFromVolume(currentVolume)`, so it starts at the right
+level whether or not anything else lands, and the volume command that follows is
+belt-and-braces. This also required moving the row's own volume assignment *above* the
+note-trigger block in `processEffectTick0`, since the note-on now reads it.
+
+Two things this exposes about the D53 change. The comment inside `setVoiceVolumeAtTime`
+explicitly justified dropping unresolvable commands on the grounds that "the importer's
+sticky volume column already reproduces" ProTracker's behaviour — so removing that stamp
+invalidated a documented assumption elsewhere in the pipeline, and grepping for what
+*cites* a behaviour is part of removing it. And a latent unit mismatch surfaced while
+fixing this: `lastTrackNote` stored a note-on's 0-127 velocity but the "naked instrument
+number revives the last note" path reads it back as a 0-255 volume-column value, so a
+revived note played at roughly half its recorded volume. Now converted on the way in.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1139,6 +1167,7 @@ scratchpad) and are not checked in; the numbers are reproducible from the file f
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **A note-on now carries its own level** (D54), caught by ear as GSLINGER.MOD pattern 2's flute echo blaring. D53 removed the sample volume from the instrument gain but left the note-on velocity hardcoded at 127, and `setVoiceVolumeAtTime` legitimately drops a volume command it cannot resolve to a voice on this track (D13) — so the fallback level went from "roughly right by accident" to full scale. Also fixes a 0-127 vs 0-255 mismatch in `lastTrackNote`. 601 green. |
 | 2026-08-29 | fix | **Channel volume is no longer guessed at import time** (D53). A note with no sample number was stamped with the importer's running volume, which knows nothing about slides — GSLINGER.MOD pattern 36's flute swells 8→33 under `A50` and the next row reset it to 8. The stamp is gone and the effect processor states `currentVolume` on every note trigger instead. The sample header volume is also no longer baked into the patch gain on top of the volume column, which had left 271 of the corpus's 524 samples permanently attenuated when auditioned from the keyboard. Tests: `src/tests/mod-channel-volume-carry.test.ts`. 598 green. |
 | 2026-08-29 | 3/4 | **XM volume-column commands implemented** (D50) — 8789 cells across the corpus, 5602 of them panning, previously dropped wholesale. New `TrackerEntryData.volumeCommand` → `parseVolumeColumnCommand` → `Step.volumeCommand` → `processVolumeColumnTick0/TickN`, with slide accumulators kept separate from the effect column's. Also `Xxy` (was unparseable), `Txy` tremor's continuous counter and parameter memory, `Rxy` per-nibble memory, and E4x/E7x's "don't retrigger waveform" bit. Tests: `src/tests/xm-volume-column.test.ts`, `src/tests/ft2-effect-details.test.ts`. 592 green. |
 | 2026-08-29 | fix | **E5x was a full semitone off on XM** (D51). ProTracker reads the nibble as signed eighths of a semitone, FT2 as a position in its −128..127 finetune range; they disagree by exactly one semitone for every nibble under 8, and all 840 E5x commands in the XM corpus use nibble 1 or 6. Now `FormatProfile.finetuneFromNibble`; MOD unchanged. |

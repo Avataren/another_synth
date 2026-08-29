@@ -445,6 +445,28 @@ function clampVolume(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+/**
+ * The channel volume as a note-on velocity.
+ *
+ * A note has to *start* at the channel's volume, not merely be corrected to it
+ * afterwards. The instrument sets a fresh voice's gain from the velocity it is
+ * handed, and the volume command that follows can legitimately fail to apply
+ * -- `TrackerSongBank.setVoiceVolumeAtTime` drops a command it cannot resolve
+ * to a voice on this track, which is the right call because two tracks sharing
+ * a sample share a voice pool. Whatever the note-on carries is therefore the
+ * level the note is heard at whenever that happens.
+ *
+ * This used to be a hardcoded 127. That was survivable only because the
+ * sample's default volume was also baked into the instrument gain, so the
+ * fallback landed on roughly the right level by accident; with that removed
+ * (D53) a hardcoded 127 means full scale. GSLINGER.MOD pattern 2 is the case:
+ * the flute echo on channel 3 plays at volume 11 against the lead's 24, and
+ * any note whose volume command did not land came out at 64.
+ */
+function velocityFromVolume(volume: number): number {
+  return Math.round(clampVolume(volume) * 127);
+}
+
 function resetVolumeSlide(state: TrackEffectState): void {
   state.volumeSlide = { delta: 0, mode: 'none', source: null };
 }
@@ -687,10 +709,18 @@ export function processEffectTick0(
     state.targetFrequency = state.currentFrequency;
     state.targetPeriod = undefined;
     state.currentVolume = carry.velocity / 255;
-    pushNoteOn(carry.midi, 127);
+    pushNoteOn(carry.midi, velocityFromVolume(state.currentVolume));
     pushPitch(state.currentFrequency);
     pushVolume(state.currentVolume);
     return { commands };
+  }
+
+  // Apply the row's own volume before the note is triggered, so the note-on
+  // can carry the level the note should start at.
+  if (newVelocity !== undefined) {
+    // newVelocity is in 0-255 range (from MOD importer volume column)
+    // Normalize to 0-1 for internal use
+    state.currentVolume = newVelocity / 255;
   }
 
   // Update current note if we have a new one
@@ -726,16 +756,10 @@ export function processEffectTick0(
 
       // Trigger note immediately unless delayed or a tone portamento continuation
       if (!hasNoteDelay) {
-        pushNoteOn(newNote, 127);
+        pushNoteOn(newNote, velocityFromVolume(state.currentVolume));
         triggeredNote = true;
       }
     }
-  }
-
-  if (newVelocity !== undefined) {
-    // newVelocity is in 0-255 range (from MOD importer volume column)
-    // Normalize to 0-1 for internal use
-    state.currentVolume = newVelocity / 255;
   }
 
   // A note that starts always states the channel's volume, even when the row
@@ -1147,7 +1171,7 @@ export function processEffectTickN(
     commands.push({
       kind: 'noteOn',
       midi: delayed.midi,
-      velocity: 127,
+      velocity: velocityFromVolume(delayed.velocity / 255),
       frequency,
     });
     state.currentMidi = delayed.midi;
@@ -1371,7 +1395,7 @@ export function processEffectTickN(
         commands.push({
           kind: 'retrigger',
           midi: state.currentMidi,
-          velocity: Math.round(state.currentVolume * 127),
+          velocity: velocityFromVolume(state.currentVolume),
           // state.currentFrequency already tracks the exact ProTracker
           // period-derived pitch of whatever's currently sounding; use it
           // instead of letting the downstream handler fall back to

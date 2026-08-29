@@ -1231,11 +1231,18 @@ export class PlaybackEngine {
             tickSeconds: this.timingSystem.getTickDurationSeconds(),
           });
           if (cmd.midi !== undefined) {
+            // Recorded on the 0-255 volume-column scale, because that is what
+            // reads it back: the "naked instrument number revives the last
+            // note" path below feeds it to processEffectTick0 as `newVelocity`,
+            // which divides by 255. A note-on command's own velocity is on the
+            // instrument's 0-127 scale, so it has to be converted rather than
+            // stored as-is -- doing that made a revived note play at roughly
+            // half the volume it was recorded at.
             this.lastTrackNote.set(context.trackIndex, {
               midi: cmd.midi,
               velocity:
                 cmd.velocity !== undefined
-                  ? cmd.velocity
+                  ? Math.round((cmd.velocity / 127) * 255)
                   : (this.lastTrackNote.get(context.trackIndex)?.velocity ??
                     100),
             });
