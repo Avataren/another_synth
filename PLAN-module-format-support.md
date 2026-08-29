@@ -1262,6 +1262,42 @@ Third time a test has pinned the wrong behaviour with a plausible rationale atta
 the corpus, and a conclusion about semantics that does not follow from it. The corpus tells
 you what is *common*, never what is *correct*.
 
+**D64 — Two more sources of notes that would not stop, found by counting.**
+Same report as D63 -- `elw-sick.xm` carrying sound between patterns -- but D63 only fixed
+part of it. Rather than reason about the file again, this was found by **accounting**:
+drive the engine over orders 0-16 and compare, per channel, the note-ons and note-offs it
+emits against the notes and key-offs actually in the file. Every discrepancy is either a
+bug or a rule worth being able to name.
+
+**Key-offs opening a pattern were dropped.** `ctx.instrumentId` in the song builder only
+remembers what the *current pattern* has played, so a `###` on a channel before that
+channel's first note in the pattern resolved to no instrument, failed the "skip rows with
+nothing on them" test, and never became a step at all. elw-sick is built out of patterns
+that open exactly that way, clearing the tail of the one before: 31 key-offs in the file
+produced 14 note-offs. The engine keeps its own per-track instrument *across* patterns, so
+the row only has to survive the builder for it to resolve; it is now kept whenever it
+carries a note or a note-off.
+
+**Volume-column rows were reviving the channel's last note.** "A naked instrument number
+revives the last note" is this tracker's own convention and no module format has it -- in
+ProTracker and FT2 alike an instrument number alone selects the sample and reloads the
+volume, never retriggering (D15, D29). It went unnoticed for MOD because mod-import stamps
+a volume on such rows for unrelated reasons, which trips the function's velocity guard.
+XM has no such accident, and once the volume column started producing steps for rows that
+previously made none (D50), every row carrying nothing but a volume-column command revived
+the last note: 26 spurious retriggers per channel on three channels, 18 on a fourth. Now
+gated on the song being native, which is the only place the convention was ever meant to
+apply.
+
+After both, the accounting comes out clean: every remaining difference is a tone
+portamento (which correctly does not retrigger) or a key-off on a channel that has never
+played.
+
+**Counting beats listening for this class of bug.** Three separate "notes that should have
+stopped" reports (D60, D63, this) were all diagnosed from the same question -- does the
+engine emit exactly the events the file asks for -- and the harness is a dozen lines on top
+of `engine.scheduleRow`. Reach for it before reasoning about pattern data.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1478,6 +1514,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **Dropped key-offs and spurious retriggers** (D64), found by counting the engine's note events against the file. A `###` opening a pattern was dropped by the builder when that channel had not played yet in the pattern (31 key-offs → 14 note-offs), and every XM row carrying only a volume-column command revived the channel's last note — a native-only convention that D50 made reachable. 665 green. |
 | 2026-08-29 | fix | **A key-off on an instrument with no volume envelope now cuts** (D63). The importer built an envelope out of the fadeout alone, turning FT2's instant cut into up to ten seconds of fade — 68 of 219 corpus instruments, and the reason `elw-sick.xm`'s order 10 had the previous pattern still sounding under it. 661 green. |
 | 2026-08-29 | ui | **Stereo peak meter beside the instrument list.** dBFS scale with 0 dB marked, peak hold, and a latching CLIP readout, so headroom is visible rather than guessed. Trackers do not limit (FT2 clamps, Paula sums in analog), so a busy module genuinely can run over. Arithmetic in `level-meter-math.ts` with its own tests. |
 | 2026-08-29 | 4 | **Panning envelopes and Lxx implemented** (D62) — the last two Phase 4 items. The panning envelope is an offset *around* the channel pan scaled by that pan's headroom, not an absolute position, so the pan parameter carries both combined and `setPan` re-derives the remainder around a new base. `Lxx` repositions both envelopes, via a `fromTick` on the envelope scheduler that the panning rebuild also uses. Tests: `src/tests/xm-panning-envelope.test.ts`. 647 green. |

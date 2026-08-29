@@ -56,8 +56,26 @@ export function shouldRetriggerLastNote(
     Step,
     'instrumentId' | 'velocity' | 'effect' | 'speedCommand' | 'tempoCommand'
   >,
+  /**
+   * Whether the song is one authored here.
+   *
+   * "A naked instrument number revives the last note" is this tracker's own
+   * convention. No module format has it: in ProTracker and FT2 alike a sample
+   * or instrument number on its own selects the sample and reloads the channel
+   * volume, and never retriggers (D15, D29).
+   *
+   * It went unnoticed for MOD because mod-import stamps a volume on those rows
+   * for unrelated reasons, and `velocity` being present bails out below. XM has
+   * no such accident, so every row carrying nothing but a volume-column command
+   * revived the channel's last note -- 26 spurious retriggers per channel on
+   * three channels of elw-sick.xm, and 18 on another. Those rows only started
+   * reaching the engine at all when the volume column landed (D50), which is
+   * what turned a latent wrong rule into an audible one.
+   */
+  isNativeSong = true,
 ): boolean {
   if (newNote !== undefined) return false;
+  if (!isNativeSong) return false;
   if (!step.instrumentId) return false;
   if (step.velocity !== undefined) return false;
   // Fxx (speed/tempo) is tracked on its own step fields, not step.effect,
@@ -1013,7 +1031,9 @@ export class PlaybackEngine {
         // If an instrument is specified but no note/effect/velocity is provided, retrigger the last
         // note played on this track (if any). Skip when velocity is set so volume-only rows
         // don’t restart the sample.
-        if (shouldRetriggerLastNote(newNote, step)) {
+        if (
+          shouldRetriggerLastNote(newNote, step, this.moduleFormat === 'native')
+        ) {
           const last = this.lastTrackNote.get(step.trackIndex);
           if (last) {
             newNote = last.midi;

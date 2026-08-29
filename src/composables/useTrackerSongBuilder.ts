@@ -188,8 +188,23 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       const hasVolumeData = volumeValue !== undefined;
       const hasVolumeCommand = volumeCmd !== undefined;
 
-      // Skip if no instrument and no effect/automation
-      if (!instrumentId && !hasMacro && !hasTempoOrSpeed && !hasEffect && !hasVolumeCommand)
+      // Skip if no instrument and no effect/automation.
+      //
+      // A row carrying a note or a note-off is kept even with no instrument
+      // resolved here: `ctx.instrumentId` only remembers what this *pattern*
+      // has played, so a pattern that opens with `###` on a channel before its
+      // first note had the key-off dropped outright. The engine keeps its own
+      // per-track instrument across patterns and resolves it there. elw-sick.xm
+      // is full of patterns that open exactly that way -- key-offs meant to
+      // clear what the previous pattern left ringing.
+      if (
+        !instrumentId &&
+        !hasNoteData &&
+        !hasMacro &&
+        !hasTempoOrSpeed &&
+        !hasEffect &&
+        !hasVolumeCommand
+      )
         continue;
       // Skip if no meaningful data at all
       if (

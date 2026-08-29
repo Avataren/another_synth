@@ -112,3 +112,55 @@ describe('an imported module reaches playback tagged', () => {
     expect(buildPlaybackSong('song').moduleFormat).toBe('xm');
   });
 });
+
+/**
+ * A pattern that opens with a key-off, before that channel has played anything
+ * in *this* pattern.
+ *
+ * `ctx.instrumentId` in the song builder only remembers what the current
+ * pattern has played, so such a row resolved to no instrument and was dropped
+ * outright -- the key-off never reached the engine, and whatever the previous
+ * pattern left ringing carried straight on. elw-sick.xm is built this way:
+ * patterns routinely open with `###` on several channels to clear the tail of
+ * the one before.
+ *
+ * The engine keeps its own per-track instrument across patterns, so the step
+ * only has to survive the builder for it to resolve.
+ */
+describe('a key-off opening a pattern survives the builder', () => {
+  it('produces a note-off step even with no instrument on the row', () => {
+    const pattern = {
+      id: 'p1',
+      name: 'Pattern 1',
+      rows: 4,
+      tracks: [
+        {
+          id: 't1',
+          name: 'Track 1',
+          entries: [{ row: 0, note: '###' }],
+          interpolations: [],
+        },
+      ],
+    };
+    const { buildPlaybackSong } = useTrackerSongBuilder({
+      currentSong: ref({ title: 'T', author: 'A', bpm: 125 }),
+      moduleFormat: ref('xm' as ModuleFormat),
+      patterns: ref([pattern]),
+      sequence: ref(['p1']),
+      currentPatternId: ref('p1'),
+      currentPattern: ref(pattern),
+      defaultPatternRows: ref(4),
+      instrumentSlots: ref([]),
+      songPatches: ref({}),
+      songBank: {} as TrackerSongBuilderContext['songBank'],
+      normalizeInstrumentId: (id) => (id ? id : undefined),
+      formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
+    });
+
+    const step = buildPlaybackSong('song').patterns[0]!.tracks[0]!.steps.find(
+      (s) => s.row === 0,
+    );
+    expect(step).toBeDefined();
+    expect(step!.isNoteOff).toBe(true);
+  });
+});

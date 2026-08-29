@@ -78,3 +78,45 @@ describe('shouldRetriggerLastNote', () => {
     expect(shouldRetriggerLastNote(undefined, step)).toBe(true);
   });
 });
+
+/**
+ * The convention belongs to songs authored here, and to nothing else.
+ *
+ * No module format has it: in ProTracker and FT2 alike an instrument number on
+ * its own selects the sample and reloads the channel volume, and never
+ * retriggers (D15, D29). It survived unnoticed for MOD only because
+ * mod-import stamps a volume on those rows for unrelated reasons, which trips
+ * the velocity guard above.
+ *
+ * XM has no such accident. Once the volume column started producing steps for
+ * rows that previously made none (D50), every row carrying nothing but a
+ * volume-column command began reviving the channel's last note -- 26 spurious
+ * retriggers per channel on three channels of elw-sick.xm and 18 on another,
+ * heard as samples restarting under the music.
+ */
+describe('shouldRetriggerLastNote is a native-song convention', () => {
+  const nakedInstrument = makeStep({ instrumentId: '01' });
+
+  it('revives the last note for a song authored here', () => {
+    expect(shouldRetriggerLastNote(undefined, nakedInstrument, true)).toBe(true);
+  });
+
+  it('never revives one for an imported module', () => {
+    expect(shouldRetriggerLastNote(undefined, nakedInstrument, false)).toBe(
+      false,
+    );
+  });
+
+  it('does not revive on a row carrying only a volume-column command', () => {
+    // Those rows have an instrument (sticky), no note, no velocity and no
+    // effect-column command, so they satisfy every other condition.
+    const volumeColumnOnly = makeStep({
+      instrumentId: '01',
+      volumeCommand: { type: 'fineVolUp', value: 3 },
+    });
+
+    expect(shouldRetriggerLastNote(undefined, volumeColumnOnly, false)).toBe(
+      false,
+    );
+  });
+});
