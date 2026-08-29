@@ -1,11 +1,12 @@
 # Multi-Format Module Support (MOD / XM / S3M)
 
 **Status:** Phase 3 essentially complete — XM parses, imports and plays, including the
-volume column (D50). Phase 4 has three items left: panning envelopes, autovibrato, and
-`Lxx`. Phase 1 still has one open item — per-channel voice allocation (B2) — deferred as
-speculative until a high-channel module needs it; see D13 for why it also matters.
-Multi-sample instruments with a note→sample keymap (D26) remain the largest known gap in
-XM fidelity.
+volume column (D50). The largest remaining gaps in XM fidelity are **autovibrato** (13.4%
+of corpus notes) and **panning envelopes** (7.3%); both are already parsed and then
+dropped at import. Phase 1 still has one open item — per-channel voice allocation (B2) —
+deferred as speculative until a high-channel module needs it; see D13 for why it also
+matters. Multi-sample keymaps (D26) are **not** the priority this document previously
+claimed: 0 of 219 corpus instruments use one (§6f).
 **Last updated:** 2026-08-29
 **Owner doc for:** extending the tracker from ProTracker-only `.mod` playback to a
 mode-driven player that also handles FastTracker 2 `.xm` and (later) Scream Tracker `.s3m`.
@@ -1161,6 +1162,34 @@ MOD corpus is exactly how a bug survives a MOD-only audit; see the correction in
 
 The counting scripts were throwaway (`modstat`/`xmstat`/`offseterr` in the session
 scratchpad) and are not checked in; the numbers are reproducible from the file formats.
+
+---
+
+## 6f. What is actually left in XM, measured (2026-08-29)
+
+Counted with the real parser over all nine corpus modules — 219 instruments, 72172 played
+notes — after the volume column landed, to decide what to do next rather than work down
+the phase list in order.
+
+| Gap | Instruments | Notes affected | Status |
+|---|---|---|---|
+| Autovibrato | 20 | 9683 (13.4%) | parsed, dropped at import |
+| Panning envelope | 20 | 5261 (7.3%) | parsed, dropped at import |
+| Multi-sample keymap (D26) | **0** | **0** | not exercised at all |
+| `Lxx` set envelope position | — | 0 | unparsed |
+| `Pxy` panning slide (D52) | — | 0 | shadowed by the macro-3 shorthand |
+
+**F4 — D26 is not the blocker this document called it.** Not one instrument in the corpus
+maps more than one sample across its keymap, and not one stores more than a single sample.
+The "largest known gap in XM fidelity" label it carried (repeated in the status header
+until now) was inherited from the format's capabilities rather than measured against real
+files. It stays on the list — a sample library or a drum-kit instrument would need it —
+but behind the two envelope features.
+
+**F5 — The two envelope gaps are cheap.** `formats/xm.ts` already reads `vibratoType`,
+`vibratoSweep`, `vibratoDepth`, `vibratoRate` and `panningEnvelope`; `xm-import.ts`
+consumes none of them. The volume envelope (D31, D38) is the working template for the
+panning one, and it already has a per-voice stage to hang automation on.
 
 ---
 
