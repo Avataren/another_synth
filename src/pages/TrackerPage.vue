@@ -463,7 +463,10 @@
           ref="visualizerTracksRef"
           class="visualizer-tracks visualizer-fade"
           :class="{ ready: visualizerReady }"
-          :style="{ '--tracker-track-width': trackerTrackWidth }"
+          :style="{
+            '--tracker-track-width': trackerTrackWidth,
+            '--tracker-track-gap': trackerTrackGap,
+          }"
         >
           <div
             v-for="(track, index) in currentPattern?.tracks"
@@ -603,6 +606,10 @@ import {
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
+import {
+  trackGapPx,
+  trackWidthPx,
+} from 'src/components/tracker/track-metrics';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
@@ -682,13 +689,22 @@ const isFullscreen = ref(false);
 const columnsPerTrack = computed(() =>
   userSettings.value.showTrackerExtraEffectColumn ? 6 : 5,
 );
-const TRACK_WIDTH_BASE = '180px';
-const TRACK_WIDTH_EXTRA_EFFECT = '240px';
-const trackerTrackWidth = computed(() =>
-  userSettings.value.showTrackerExtraEffectColumn
-    ? TRACK_WIDTH_EXTRA_EFFECT
-    : TRACK_WIDTH_BASE,
+/**
+ * Column metrics for the waveform row, which must match the pattern grid's
+ * exactly or the waveforms drift off the tracks they meter.
+ *
+ * Both width and gap depend on the channel count: this used to be a fixed
+ * 180px with a 10px gap in CSS, while the pattern tightened past eight
+ * channels, so every column added 16px of error (24px past sixteen).
+ */
+const trackerTrackWidth = computed(
+  () =>
+    `${trackWidthPx(
+      trackCount.value,
+      userSettings.value.showTrackerExtraEffectColumn,
+    )}px`,
 );
+const trackerTrackGap = computed(() => `${trackGapPx(trackCount.value)}px`);
 const trackerContainer = ref<HTMLDivElement | null>(null);
 const patternAreaRef = ref<HTMLDivElement | null>(null);
 const sequenceEditorRef = ref<InstanceType<typeof SequenceEditor> | null>(null);

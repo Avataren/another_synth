@@ -63,6 +63,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import TrackerTrack from './TrackerTrack.vue';
 import type { TrackerSelectionRect, TrackerTrackData } from './tracker-types';
+import { trackGapPx, trackWidthPx } from './track-metrics';
 
 interface Props {
   tracks: TrackerTrackData[];
@@ -96,27 +97,12 @@ const rowGapPx = 6;
 const headerHeightPx = 46;
 const rowHeight = `${rowHeightPx}px`;
 const headerHeight = `${headerHeightPx}px`;
-/**
- * Track column width.
- *
- * Multi-channel modules go well beyond the classic four: DOPE.MOD has 28
- * channels and XM allows 32. The columns still scroll horizontally, but at the
- * full width very few are on screen at once, so they tighten as the channel
- * count grows. The floor is the entry's own `min-width` (156px) plus its
- * padding -- below that the note, instrument, volume and effect columns clip
- * rather than merely getting close together.
- */
-const trackWidth = computed(() => {
-  const base = props.showExtraEffectColumn ? 240 : 180;
-  const count = props.tracks.length;
-  if (count <= 8) return `${base}px`;
-  const floor = props.showExtraEffectColumn ? 216 : 160;
-  const tightened = count <= 16 ? base - 12 : base - 20;
-  return `${Math.max(floor, tightened)}px`;
-});
-
-/** Gap between track columns; also tightened for many channels. */
-const trackGap = computed(() => (props.tracks.length > 8 ? '6px' : '10px'));
+// Shared with the waveform row above the pattern, which has to line up with
+// these exactly -- see track-metrics.ts.
+const trackWidth = computed(
+  () => `${trackWidthPx(props.tracks.length, props.showExtraEffectColumn)}px`,
+);
+const trackGap = computed(() => `${trackGapPx(props.tracks.length)}px`);
 
 const trackWrapperStyle = computed(() => ({
   '--tracker-track-width': trackWidth.value,
