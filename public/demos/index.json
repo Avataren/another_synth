@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-29T21:36:06.180Z",
+  "generated": "2026-08-29T21:47:54.675Z",
   "collections": [
     {
       "id": "amiga",
@@ -251,6 +251,15 @@
       "name": "FastTracker 2",
       "songs": [
         {
+          "title": "One fine day...",
+          "format": "XM",
+          "channels": 24,
+          "patterns": 39,
+          "instruments": 32,
+          "file": "ft2/1fineday.xm",
+          "bytes": 803601
+        },
+        {
           "title": "Rose",
           "format": "XM",
           "channels": 4,
@@ -276,6 +285,15 @@
           "instruments": 55,
           "file": "ft2/BUTTERFL.XM",
           "bytes": 329081
+        },
+        {
+          "title": "Dead lock",
+          "format": "XM",
+          "channels": 24,
+          "patterns": 59,
+          "instruments": 32,
+          "file": "ft2/DEADLOCK.XM",
+          "bytes": 505489
         },
         {
           "title": "Path to Nowhere",
@@ -305,6 +323,33 @@
           "bytes": 51355
         },
         {
+          "title": "Fall from sky",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 28,
+          "instruments": 27,
+          "file": "ft2/fall.xm",
+          "bytes": 620874
+        },
+        {
+          "title": "Nine One One",
+          "format": "XM",
+          "channels": 28,
+          "patterns": 31,
+          "instruments": 128,
+          "file": "ft2/jt_911.xm",
+          "bytes": 973769
+        },
+        {
+          "title": "Letting Go",
+          "format": "XM",
+          "channels": 26,
+          "patterns": 9,
+          "instruments": 128,
+          "file": "ft2/jt_letgo (1).xm",
+          "bytes": 99410
+        },
+        {
           "title": "Letting Go",
           "format": "XM",
           "channels": 26,
@@ -312,6 +357,33 @@
           "instruments": 128,
           "file": "ft2/jt_letgo.xm",
           "bytes": 99410
+        },
+        {
+          "title": "STRANGLEHOLD (C)JT",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 8,
+          "instruments": 26,
+          "file": "ft2/jt_strng.xm",
+          "bytes": 14622
+        },
+        {
+          "title": "unreal superhero",
+          "format": "XM",
+          "channels": 8,
+          "patterns": 6,
+          "instruments": 14,
+          "file": "ft2/radix-unreal_superhero.xm",
+          "bytes": 28841
+        },
+        {
+          "title": "yuki satellites",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 56,
+          "instruments": 117,
+          "file": "ft2/radix_-_yuki_satellites.xm",
+          "bytes": 15421279
         },
         {
           "title": "Sweet dreams",

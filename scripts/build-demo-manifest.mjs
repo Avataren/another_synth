@@ -7,8 +7,11 @@
  * alongside them. Titles and channel counts come from parsing each file rather
  * than from the filename, so the browser can show what a module actually is.
  *
- * Output goes to public/demos/, which is committed and picked up by the Quasar
- * build. Run it through scripts/refresh-demos.sh rather than directly.
+ * public/demos/ is committed and picked up by the Quasar build, and is the
+ * source of truth for what the collection contains -- modules are added by
+ * dropping them in. Pointing this at that directory as both source and output
+ * re-indexes it in place; pointing it at some other source root imports from
+ * there instead. Run it through scripts/refresh-demos.sh rather than directly.
  *
  *   node scripts/build-demo-manifest.mjs <source-root> <output-dir>
  *
@@ -87,6 +90,11 @@ function main() {
     process.exit(1);
   }
 
+  // Re-indexing public/demos in place: the files are already where they need
+  // to be, and copyFileSync onto itself is a good way to truncate one.
+  const inPlace =
+    path.resolve(sourceRoot) === path.resolve(outputDir);
+
   const collections = [];
   let copied = 0;
   let skipped = 0;
@@ -116,7 +124,9 @@ function main() {
         continue;
       }
 
-      fs.copyFileSync(path.join(dirPath, file), path.join(targetDir, file));
+      if (!inPlace) {
+        fs.copyFileSync(path.join(dirPath, file), path.join(targetDir, file));
+      }
       copied++;
 
       songs.push({
@@ -148,7 +158,9 @@ function main() {
 
   const total = collections.reduce((n, c) => n + c.songs.length, 0);
   console.log(
-    `Staged ${copied} module(s) in ${collections.length} collection(s) -> ${outputDir}`,
+    inPlace
+      ? `Indexed ${copied} module(s) in ${collections.length} collection(s) in ${outputDir}`
+      : `Staged ${copied} module(s) in ${collections.length} collection(s) -> ${outputDir}`,
   );
   console.log(`Manifest lists ${total} song(s)${skipped ? `, ${skipped} skipped` : ''}`);
 }

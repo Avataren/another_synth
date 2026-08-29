@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
 #
-# Regenerate the demo module collection in public/demos/.
+# Rebuild the demo collection manifest, public/demos/index.json.
 #
-# The modules are committed to the repository, so this only needs running when
-# the collection itself changes -- adding a module, dropping one, or picking up
-# a manifest-format change. The Quasar build copies public/demos/ into
-# dist/spa, and scripts/deploy.sh ships it from there.
+# public/demos/ is committed and copied into dist/spa by the Quasar build, so
+# it is the source of truth for what the collection contains: add a module by
+# dropping it in there and running this to re-index. The browser reads the
+# manifest, not the directory, so a module that is not listed will not appear.
 #
-# They were previously kept out of the repo and pushed straight to the server,
-# which meant the app's own deploy had to remember `--exclude=demos/` against
-# its `--delete`. Any deploy that did not -- including a hand-written rsync --
-# silently wiped the collection. Roughly ten megabytes of never-changing binary
-# is a cheap price for making that unrepresentable.
+# With no argument it re-indexes public/demos/ in place. Given a source root it
+# imports from there first -- one directory per collection, e.g. amiga/ and
+# ft2/ -- copying modules in before indexing. Importing never removes anything;
+# delete unwanted modules from public/demos/ by hand so the removal is a
+# reviewable part of the commit.
+#
+# Only .mod and .xm are recognised. Anything else in the directory (an .s3m,
+# say) is left alone and stays out of the manifest.
 #
 #   scripts/refresh-demos.sh [source-root]
-#
-# <source-root> holds one directory per collection, e.g. amiga/ and ft2/.
 set -euo pipefail
 
-SOURCE_ROOT="${1:-$HOME/Downloads/mods}"
-DEST="$(dirname "$0")/../public/demos"
+DEST="$(cd "$(dirname "$0")/.." && pwd)/public/demos"
+SOURCE_ROOT="${1:-$DEST}"
 
 if [ ! -d "$SOURCE_ROOT" ]; then
   echo "No such source root: $SOURCE_ROOT" >&2
@@ -27,4 +28,4 @@ if [ ! -d "$SOURCE_ROOT" ]; then
 fi
 
 node "$(dirname "$0")/build-demo-manifest.mjs" "$SOURCE_ROOT" "$DEST"
-echo "Wrote $DEST -- review with 'git status' and commit."
+echo "Review with 'git status' and commit."
