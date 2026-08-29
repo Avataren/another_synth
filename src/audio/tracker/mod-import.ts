@@ -350,43 +350,17 @@ function modCellToTrackerEntry(
     }
   }
 
-  // Correct 9xx sample-offset effects for the sample's real length.
-  // ProTracker's 9xx parameter is a byte offset in units of 256 bytes into
-  // the sample, but the downstream (generic, sample-length-unaware) effect
-  // processor maps the raw 0-255 param straight to a 0-1 "normalized
-  // offset" fraction via raw/255 -- only correct for a sample that happens
-  // to be exactly 255*256 = 65280 bytes long. For any other length
-  // (virtually all real samples) that lands at the wrong position
-  // entirely, which is what made 9xx-driven retriggers (a common
-  // "re-pick the chord" guitar technique) sound wrong.
+  // 9xx sample offset is passed through unchanged.
   //
-  // Rather than route this through the generic macro command path
-  // (which sets an instrument-wide macro with no per-voice/per-track
-  // targeting -- see TrackerSongBank.setInstrumentMacro vs. the
-  // per-voice setVoiceSampleOffsetAtTime the dedicated 9xx path uses),
-  // keep the original "9xx" effect prefix and instead re-encode a
-  // *synthetic* param byte here: the value that, when the generic
-  // processor later divides it by 255, reproduces the fraction computed
-  // from the real sample length. This preserves all existing routing/
-  // voice-resolution behavior and only corrects the number.
-  const hasSampleOffsetCmd = (effectCmd & 0x0f) === 0x9;
-  if (hasSampleOffsetCmd && effectMacro) {
-    const targetSample = sampleNumber > 0 ? sampleNumber : undefined;
-    const sampleLengthBytes = targetSample
-      ? mod.samples[targetSample - 1]?.length
-      : undefined;
-    if (sampleLengthBytes && sampleLengthBytes > 0) {
-      const byteOffset = effectParam * 256;
-      const norm = Math.max(0, Math.min(1, byteOffset / sampleLengthBytes));
-      const syntheticRaw = Math.round(norm * 255);
-      const offsetHex = syntheticRaw.toString(16).toUpperCase().padStart(2, '0');
-      effectMacro = `9${offsetHex}`;
-    }
-    // If the sample length isn't known (e.g. no explicit instrument on
-    // this row to resolve it from), leave effectMacro as the raw "9xx" --
-    // the generic processor's imprecise fallback is still better than
-    // dropping the effect entirely.
-  }
+  // It used to be re-encoded here against the sample's byte length, because
+  // the effect processor treated the parameter as a 0-1 fraction of the
+  // sample (raw/255) rather than ProTracker's absolute "param * 256 frames".
+  // That correction could only fire on rows naming an instrument -- 13 of
+  // peacedroid.mod's 205 9xx rows do not, and those fell back to the raw
+  // (wrong by a factor of four or more) fraction -- it quantised the position
+  // back down to 8 bits, and being an import-time fixup it did nothing for
+  // XM. The processor now carries the offset in frames, so the parameter
+  // needs no adjustment and every row gets the right position.
 
   // Convert Cxx volume effects to the volume column (instead of macro column).
   // This ensures notes trigger with the correct velocity, avoiding the note-on

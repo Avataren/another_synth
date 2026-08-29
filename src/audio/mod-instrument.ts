@@ -77,7 +77,15 @@ export default class ModInstrument {
    * offset memory. Offsets that arrive *with* a note bypass this and are
    * passed straight to noteOnAtTime.
    */
-  private pendingSampleOffset: number | undefined;
+  /**
+   * Length of the sample itself, in frames.
+   *
+   * Kept separately from `audioBuffer.length` because a ping-pong sample's
+   * buffer is longer than the sample (prepareLoop appends a reversed copy of
+   * the loop region), and a 9xx offset must be measured against the real
+   * sample.
+   */
+  private sampleFrames = 0;
 
   /**
    * Which voice each tracker channel owns.
@@ -197,6 +205,7 @@ export default class ModInstrument {
     }
     // If isEmpty, buffer is already initialized to silence
 
+    this.sampleFrames = frameCount;
     this.prepareLoop(channels, frameCount, sampleRate);
 
     this.ready = true;
@@ -265,6 +274,30 @@ export default class ModInstrument {
     }
 
     this.loopEnabled = true;
+  }
+
+  /**
+   * Where a 9xx offset of `frames` starts, in seconds into the buffer.
+   *
+   * ProTracker adds the offset to the sample pointer and subtracts it from the
+   * remaining length; if that would run past the end it sets the length to a
+   * single word instead, so the one-shot part is effectively skipped and the
+   * channel drops straight into the sample's loop (or falls silent when the
+   * sample has none). Reproduce that rather than clamping to the end of the
+   * buffer, which for a looped sample would restart the loop from an
+   * arbitrary point.
+   */
+  private offsetSecondsForFrame(frames: number): number {
+    const buffer = this.audioBuffer;
+    if (!buffer) return 0;
+    const rate = buffer.sampleRate;
+    const sampleFrames = this.sampleFrames || buffer.length;
+    if (frames < sampleFrames) return frames / rate;
+    if (this.loopEnabled) return this.loopStartSeconds;
+    // No loop: start one frame from the end so the voice produces (almost)
+    // nothing and still ends normally. Starting exactly at or past the end
+    // yields a node that never fires onended, leaking the voice slot.
+    return Math.max(0, (sampleFrames - 1) / rate);
   }
 
   /** Apply the prepared loop to a freshly created source. */
@@ -897,8 +930,10 @@ export default class ModInstrument {
       allowDuplicate?: boolean;
       frequency?: number;
       pan?: number;
-      /** Normalized 0-1 start offset into the sample (ProTracker 9xx). */
-      sampleOffset?: number;
+      /**
+       * Start offset into the sample in *frames* (ProTracker 9xx: param*256).
+       */
+      sampleOffsetFrames?: number;
       /** Duration of one tracker tick in seconds, for envelope timing. */
       tickSeconds?: number;
       /** Tracker channel this note belongs to; owns a voice of its own. */
@@ -1019,20 +1054,11 @@ export default class ModInstrument {
     //
     // ProTracker 9xx has to be applied here: an AudioBufferSourceNode cannot
     // be seeked once started, so passing the offset to start() is the only
-    // way to honour it. Clamp just inside the buffer -- an offset at or past
-    // the end would start a node that produces nothing and never fires
-    // onended for looped samples, leaking the voice slot.
+    // way to honour it.
     const startTime = Math.max(time, this.audioContext.currentTime);
-    const offsetNorm = options?.sampleOffset ?? this.pendingSampleOffset;
-    this.pendingSampleOffset = undefined;
-    if (offsetNorm !== undefined && offsetNorm > 0) {
-      const duration = this.audioBuffer.duration;
-      const maxOffset = Math.max(0, duration - 1 / this.audioBuffer.sampleRate);
-      const offsetSeconds = Math.min(
-        Math.max(0, offsetNorm) * duration,
-        maxOffset,
-      );
-      source.start(startTime, offsetSeconds);
+    const offsetFrames = options?.sampleOffsetFrames;
+    if (offsetFrames !== undefined && offsetFrames > 0) {
+      source.start(startTime, this.offsetSecondsForFrame(offsetFrames));
     } else {
       source.start(startTime);
     }
@@ -1345,14 +1371,14 @@ export default class ModInstrument {
       this.setPan(voiceIndex, value);
       return;
     }
-    // Macro 1 is the MOD 9xx sample offset. A voice that has already started
-    // cannot be repositioned (see noteOnAtTime), so an offset arriving as
-    // automation -- a 9xx row with no note of its own -- is remembered and
-    // consumed by the next note on this instrument, which is also what
-    // ProTracker does with its per-channel offset memory.
-    if (macroIndex === 1) {
-      this.pendingSampleOffset = Math.max(0, Math.min(1, value));
-    }
+    // Macro 1 used to latch a 9xx sample offset here, to be consumed by the
+    // next note this instrument played. That is not what ProTracker does: its
+    // offset memory is per *channel* and is only consulted when a row carries
+    // a 9xx of its own, so latching applied the offset to unrelated notes --
+    // on other channels, and with no 9xx anywhere near them -- which starts a
+    // sample mid-waveform and clicks. A 9xx with no note is silent in
+    // ProTracker, so the effect processor no longer emits anything for it and
+    // there is nothing to latch.
   }
 
   cancelScheduledNotes(): void {

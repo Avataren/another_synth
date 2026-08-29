@@ -1,4 +1,9 @@
-import type { EffectCommand, EffectType, ExtendedEffectSubtype } from '../../../packages/tracker-playback/src/types';
+import type {
+  EffectCommand,
+  EffectType,
+  ExtendedEffectSubtype,
+  VolumeColumnCommand,
+} from '../../../packages/tracker-playback/src/types';
 
 export interface ParsedNote {
   midi?: number;
@@ -59,6 +64,52 @@ export function parseTrackerVolume(volume?: string): number | undefined {
   const value = Number.parseInt(trimmed, 16);
   if (!Number.isFinite(value)) return undefined;
   return Math.max(0, Math.min(255, value));
+}
+
+/**
+ * Parse a FastTracker 2 volume-column command.
+ *
+ * The input is the raw XM volume-column byte as two hex characters. Values
+ * below 0x60 are not commands -- 0x10-0x50 is "set volume", which travels as
+ * the step's ordinary volume/velocity -- so they parse to undefined here.
+ *
+ * The high nibble selects the command and the low nibble is its parameter,
+ * except for 0xFx tone portamento, whose parameter is the nibble scaled by 16
+ * (FT2 stores the volume column's tone-porta speed in the high nibble only, so
+ * the volume column can express speeds 0x10..0xF0 but nothing finer).
+ */
+export function parseVolumeColumnCommand(
+  volumeCommand?: string,
+): VolumeColumnCommand | undefined {
+  if (!volumeCommand) return undefined;
+  const raw = Number.parseInt(volumeCommand.trim(), 16);
+  if (!Number.isFinite(raw) || raw < 0x60 || raw > 0xff) return undefined;
+
+  const value = raw & 0x0f;
+  switch (raw >> 4) {
+    case 0x6:
+      return { type: 'volSlideDown', value };
+    case 0x7:
+      return { type: 'volSlideUp', value };
+    case 0x8:
+      return { type: 'fineVolDown', value };
+    case 0x9:
+      return { type: 'fineVolUp', value };
+    case 0xa:
+      return { type: 'vibratoSpeed', value };
+    case 0xb:
+      return { type: 'vibrato', value };
+    case 0xc:
+      return { type: 'setPan', value };
+    case 0xd:
+      return { type: 'panSlideLeft', value };
+    case 0xe:
+      return { type: 'panSlideRight', value };
+    case 0xf:
+      return { type: 'tonePorta', value: value * 16 };
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -235,7 +286,10 @@ export function parseEffectCommand(macro?: string): EffectCommandResult {
     'P': 'panSlide',
     'R': 'retrigVol',
     'T': 'tremor',
-    'U': 'fineVibrato'
+    'U': 'fineVibrato',
+    // XM effect 0x21. Continues the alphabet past F the same way
+    // xmEffectToMacro numbers them, so 0x10 is G and 0x21 is X.
+    'X': 'extraFinePorta'
   };
 
   // Handle F command (speed/tempo) - preserve existing behavior

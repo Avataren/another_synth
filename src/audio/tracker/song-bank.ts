@@ -71,7 +71,7 @@ type PendingScheduledEvent =
       frequency?: number;
       pan?: number;
       /** Normalized 0-1 sample start offset (ProTracker 9xx). */
-      sampleOffset?: number;
+      sampleOffsetFrames?: number;
       /** Tick duration in seconds, for tick-timed instrument envelopes. */
       tickSeconds?: number;
       enqueuedAt: number;
@@ -652,7 +652,7 @@ export class TrackerSongBank {
             event.trackIndex,
             event.frequency,
             event.pan,
-            event.sampleOffset,
+            event.sampleOffsetFrames,
             event.tickSeconds,
           );
         } else {
@@ -1004,11 +1004,12 @@ export class TrackerSongBank {
     frequency?: number,
     pan?: number,
     /**
-     * Normalized 0-1 start offset into the sample (ProTracker 9xx). Applied
-     * at voice start -- it cannot be set afterwards on a Web Audio buffer
-     * source, so it has to arrive with the note rather than as automation.
+     * Start offset into the sample in *frames* (ProTracker 9xx: param * 256).
+     * Applied at voice start -- it cannot be set afterwards on a Web Audio
+     * buffer source, so it has to arrive with the note rather than as
+     * automation.
      */
-    sampleOffset?: number,
+    sampleOffsetFrames?: number,
     /** Tick duration in seconds, for tick-timed instrument envelopes. */
     tickSeconds?: number,
   ) {
@@ -1040,7 +1041,7 @@ export class TrackerSongBank {
       if (trackIndex !== undefined) queued.trackIndex = trackIndex;
       if (frequency !== undefined) queued.frequency = frequency;
       if (pan !== undefined) queued.pan = pan;
-      if (sampleOffset !== undefined) queued.sampleOffset = sampleOffset;
+      if (sampleOffsetFrames !== undefined) queued.sampleOffsetFrames = sampleOffsetFrames;
       if (tickSeconds !== undefined) queued.tickSeconds = tickSeconds;
       this.enqueueScheduledEvent(queued);
       this.ensureInstrumentIfDesired(instrumentId);
@@ -1055,7 +1056,7 @@ export class TrackerSongBank {
       trackIndex,
       frequency,
       pan,
-      sampleOffset,
+      sampleOffsetFrames,
       tickSeconds,
     );
   }
@@ -1209,7 +1210,7 @@ export class TrackerSongBank {
     trackIndex?: number,
     frequency?: number,
     pan?: number,
-    sampleOffset?: number,
+    sampleOffsetFrames?: number,
     tickSeconds?: number,
   ) {
     const active = this.instruments.get(instrumentId);
@@ -1264,7 +1265,7 @@ export class TrackerSongBank {
         allowDuplicate: true,
         ...(frequency !== undefined ? { frequency } : {}),
         ...(pan !== undefined ? { pan } : {}),
-        ...(sampleOffset !== undefined ? { sampleOffset } : {}),
+        ...(sampleOffsetFrames !== undefined ? { sampleOffsetFrames } : {}),
         ...(tickSeconds !== undefined ? { tickSeconds } : {}),
         // The channel owns a voice, so notes never cut another channel's.
         ...(trackIndex !== undefined ? { trackIndex } : {}),
@@ -1517,8 +1518,13 @@ export class TrackerSongBank {
   }
 
   /**
-   * Set the sample offset (normalized 0-1) for a specific voice at a specific time.
-   * Used for ProTracker 9xx sample offset via a dedicated macro route.
+   * Set the sample offset (normalized 0-1) for a specific voice at a specific
+   * time, via a dedicated macro route.
+   *
+   * Nothing in tracker playback drives this any more: 9xx is applied when the
+   * voice starts (it cannot be applied later on a Web Audio buffer source), so
+   * it rides on the noteOn as `sampleOffsetFrames`, and a 9xx row that carries
+   * no note is silent in ProTracker. Kept for direct/manual macro use.
    */
   setVoiceSampleOffsetAtTime(
     instrumentId: string | undefined,

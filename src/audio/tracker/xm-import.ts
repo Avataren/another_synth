@@ -208,9 +208,18 @@ function xmCellToTrackerEntry(
     if (frequency !== undefined) entry.frequency = frequency;
   }
 
-  // Volume column: 0x10..0x50 is "set volume" 0..64. Higher ranges are
-  // commands (slides, panning, vibrato, tone portamento) which are not
-  // interpreted yet -- see the note in PLAN-module-format-support.md.
+  // Volume column: 0x10..0x50 is "set volume" 0..64, which is a velocity like
+  // any other. From 0x60 up it holds commands -- volume and pan slides, fine
+  // slides, panning, vibrato, tone portamento -- which are carried separately
+  // (see TrackerEntryData.volumeCommand) because they have no velocity
+  // meaning and run alongside the effect column rather than replacing it.
+  if (cell.volumeColumn >= 0x60) {
+    entry.volumeCommand = cell.volumeColumn
+      .toString(16)
+      .toUpperCase()
+      .padStart(2, '0');
+  }
+
   if (cell.volumeColumn >= 0x10 && cell.volumeColumn <= 0x50) {
     const volume = cell.volumeColumn - 0x10; // 0..64
     entry.volume = Math.round((volume / 64) * 255)

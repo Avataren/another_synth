@@ -2,26 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 
 /**
- * Regression coverage for "guitar strumming that doesn't sound right" from
- * a certain point in a MOD file onward -- traced to GSLINGER.MOD, whose
- * second pattern repeatedly retriggers the same note with a 9xx
- * (sample-offset) effect.
+ * 9xx sample offset survives import unchanged.
  *
- * Root cause: ProTracker's 9xx parameter is a byte offset in units of 256
- * bytes into the *current* sample, but the generic (sample-length-unaware)
- * playback effect processor (packages/tracker-playback/effect-processor.ts)
- * maps the raw 0-255 param straight to a 0-1 "normalized offset" fraction
- * via `raw / 255` -- only correct for a sample that happens to be exactly
- * 255*256 = 65280 bytes long. Any other length (virtually all real
- * samples) lands the playback position at the wrong point in the sample
- * entirely.
+ * Import used to rewrite the parameter, because the playback effect processor
+ * treated it as a 0-1 fraction of the sample (`raw / 255`) instead of
+ * ProTracker's absolute `param * 256` frames. Recomputing the fraction from
+ * `mod.samples[sampleNumber-1].length` fixed the common case but could only
+ * fire on rows that name an instrument, quantised the position back down to
+ * eight bits, and did nothing for XM, which does not go through this
+ * importer at all.
  *
- * Fix: mod-import.ts has access to the real sample length at import time
- * (mod.samples[sampleNumber-1].length, already in bytes), so it now
- * recomputes the correct 0-1 fraction there and re-encodes it as a
- * *synthetic* 9xx param -- the value that reproduces the correct fraction
- * once the generic processor later divides it by 255 -- rather than
- * passing the raw MOD param through unchanged.
+ * The processor now carries the offset in frames and the instrument resolves
+ * it against its own buffer, so the parameter must reach playback untouched.
+ * These tests pin that -- in particular that a row *without* an instrument
+ * number, which the old fixup silently skipped, is treated no differently.
  */
 
 function writeAscii(buf: Uint8Array, offset: number, text: string, maxLen: number) {
@@ -101,8 +95,8 @@ function createSampleOffsetModBuffer(): Uint8Array {
   return buf;
 }
 
-describe('MOD import: 9xx sample offset scales to the real sample length', () => {
-  it('re-encodes the offset param using the sample byte length, not a fixed 65280 assumption', () => {
+describe('MOD import: 9xx sample offset passes through unchanged', () => {
+  it('keeps the raw ProTracker parameter', () => {
     const buf = createSampleOffsetModBuffer();
     const songFile = importModToTrackerSong(buf.buffer);
     const track0 = songFile.data.patterns[0]?.tracks[0];
@@ -113,16 +107,13 @@ describe('MOD import: 9xx sample offset scales to the real sample length', () =>
     expect(row0).toBeDefined();
     if (!row0) return;
 
-    // effectParam 0x15 (21) * 256 = 5376 bytes into a 10000-byte sample
-    // = 0.5376 fraction -> synthetic raw = round(0.5376 * 255) = 137 = 0x89.
-    // The old (buggy) behavior would have passed "915" straight through
-    // unchanged (raw/255 = 21/255 ≈ 0.0824 -- a completely different,
-    // much-too-early position).
-    expect(row0.macro).toBe('989');
-    expect(row0.macro).not.toBe('915');
+    // 0x15 * 256 = 5376 frames into the sample, which is what playback now
+    // resolves. The interim fixup rewrote this to "989" (the synthetic byte
+    // that reproduced 5376/10000 once divided by 255).
+    expect(row0.macro).toBe('915');
   });
 
-  it('falls back to the raw (imprecise) param when the sample length is unknown', () => {
+  it('is unaffected by a row that names no resolvable sample', () => {
     const buf = createSampleOffsetModBuffer();
     // Corrupt: point the row's sample number at an empty/unused sample
     // slot so mod-import can't resolve a length for it.
@@ -138,6 +129,8 @@ describe('MOD import: 9xx sample offset scales to the real sample length', () =>
     const row0 = track0?.entries.find((e) => e.row === 0);
     expect(row0).toBeDefined();
     if (!row0) return;
+    // Same parameter as the resolvable case above: the offset no longer
+    // depends on import knowing which sample the row will play.
     expect(row0.macro).toBe('915');
   });
 });

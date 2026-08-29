@@ -6,20 +6,19 @@ import {
 import type { EffectCommand } from '../../packages/tracker-playback/src/types';
 
 /**
- * Regression coverage for 9xx sample offset, which was a complete no-op end
- * to end:
+ * Regression coverage for 9xx sample offset.
  *
- *  1. The offset was emitted as a standalone command *after* the noteOn, so
- *     it always arrived too late -- a Web Audio AudioBufferSourceNode cannot
- *     be repositioned once started.
- *  2. `ModInstrument.setVoiceMacroAtTime` handled only macro 0 (pan) and
- *     silently dropped macro 1, which is the sample-offset route.
- *  3. `PooledInstrument.setVoiceMacroAtTime` was an empty stub, which also
- *     killed per-channel panning on that path.
+ * Two rounds of bugs are pinned here. First, the offset used to be emitted as
+ * a standalone command *after* the noteOn, so it always arrived too late -- a
+ * Web Audio AudioBufferSourceNode cannot be repositioned once started -- and
+ * it now rides on the noteOn itself.
  *
- * The offset now rides on the noteOn command so it can be applied at voice
- * start. These tests pin (1); the instrument-level fixes are exercised
- * through the DOM-less classes below.
+ * Second, the value was expressed as a 0-1 fraction of the sample
+ * (`param / 255`). ProTracker's 9xx is an absolute distance, `param * 256`
+ * frames, so the fraction was only right for a sample of exactly 65280
+ * frames; everything else started somewhere else entirely, which is heard as
+ * a click where the sample should have been picked up cleanly. The command
+ * now carries frames, and the instrument that owns the buffer resolves them.
  */
 function offsetEffect(param: number): EffectCommand {
   return {
@@ -30,16 +29,15 @@ function offsetEffect(param: number): EffectCommand {
 }
 
 describe('9xx sample offset command routing', () => {
-  it('attaches the offset to the noteOn instead of a later command', () => {
+  it('attaches the offset to the noteOn, in frames', () => {
     const state = createTrackEffectState();
     const { commands } = processEffectTick0(state, offsetEffect(0x80), 60, 255);
 
     const noteOn = commands.find((c) => c.kind === 'noteOn');
     expect(noteOn).toBeDefined();
-    expect(noteOn && 'sampleOffset' in noteOn && noteOn.sampleOffset).toBeCloseTo(
-      0x80 / 255,
-      5,
-    );
+    expect(
+      noteOn && 'sampleOffsetFrames' in noteOn && noteOn.sampleOffsetFrames,
+    ).toBe(0x80 * 256);
   });
 
   it('does not also emit a standalone offset command when a note starts', () => {
@@ -51,16 +49,16 @@ describe('9xx sample offset command routing', () => {
     expect(commands.filter((c) => c.kind === 'sampleOffset')).toHaveLength(0);
   });
 
-  it('emits a standalone offset command for a 9xx row with no note', () => {
+  it('emits nothing audible for a 9xx row with no note', () => {
+    // ProTracker only consults the offset where a note arms the sample
+    // pointer, so a bare 9xx just updates the channel's memory. Emitting a
+    // standalone command latched the offset onto whatever note came next --
+    // possibly on another channel, and carrying no 9xx of its own.
     const state = createTrackEffectState();
     const { commands } = processEffectTick0(state, offsetEffect(0x40), undefined);
 
-    const offsetCmd = commands.find((c) => c.kind === 'sampleOffset');
-    expect(offsetCmd).toBeDefined();
-    expect(offsetCmd && 'offset' in offsetCmd && offsetCmd.offset).toBeCloseTo(
-      0x40 / 255,
-      5,
-    );
+    expect(commands.find((c) => c.kind === 'sampleOffset')).toBeUndefined();
+    expect(commands.find((c) => c.kind === 'noteOn')).toBeUndefined();
   });
 
   it('reuses the remembered offset for a bare 900', () => {
@@ -70,10 +68,20 @@ describe('9xx sample offset command routing', () => {
 
     const { commands } = processEffectTick0(state, offsetEffect(0x00), 62, 255);
     const noteOn = commands.find((c) => c.kind === 'noteOn');
-    expect(noteOn && 'sampleOffset' in noteOn && noteOn.sampleOffset).toBeCloseTo(
-      0x30 / 255,
-      5,
-    );
+    expect(
+      noteOn && 'sampleOffsetFrames' in noteOn && noteOn.sampleOffsetFrames,
+    ).toBe(0x30 * 256);
+  });
+
+  it('remembers an offset set by a 9xx row that carried no note', () => {
+    const state = createTrackEffectState();
+    processEffectTick0(state, offsetEffect(0x30), undefined);
+
+    const { commands } = processEffectTick0(state, offsetEffect(0x00), 60, 255);
+    const noteOn = commands.find((c) => c.kind === 'noteOn');
+    expect(
+      noteOn && 'sampleOffsetFrames' in noteOn && noteOn.sampleOffsetFrames,
+    ).toBe(0x30 * 256);
   });
 
   it('leaves notes without a 9xx untouched', () => {
@@ -84,17 +92,18 @@ describe('9xx sample offset command routing', () => {
     expect(noteOn).toBeDefined();
     // The key must be absent entirely, not present-and-undefined, so the
     // instrument's own offset memory is left alone.
-    expect(noteOn && 'sampleOffset' in noteOn).toBe(false);
+    expect(noteOn && 'sampleOffsetFrames' in noteOn).toBe(false);
   });
 
-  it('clamps an out-of-range offset into 0..1', () => {
+  it('does not clamp a large offset -- the instrument resolves overruns', () => {
+    // Only the instrument knows how long its sample is, so clamping here
+    // (as the old 0-1 fraction had to) would throw the position away.
     const state = createTrackEffectState();
     const { commands } = processEffectTick0(state, offsetEffect(0xff), 60, 255);
 
     const noteOn = commands.find((c) => c.kind === 'noteOn');
-    const offset =
-      noteOn && 'sampleOffset' in noteOn ? (noteOn.sampleOffset as number) : -1;
-    expect(offset).toBeGreaterThanOrEqual(0);
-    expect(offset).toBeLessThanOrEqual(1);
+    expect(
+      noteOn && 'sampleOffsetFrames' in noteOn && noteOn.sampleOffsetFrames,
+    ).toBe(0xff * 256);
   });
 });

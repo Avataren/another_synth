@@ -36,6 +36,9 @@ import {
   createTrackEffectState,
   processEffectTick0,
   processEffectTickN,
+  processVolumeColumnTick0,
+  processVolumeColumnTickN,
+  volumeCommandIsTickBased,
   resetEffectStateForNote,
   type ProcessorCommand,
 } from './effect-processor';
@@ -1043,6 +1046,16 @@ export class PlaybackEngine {
           step.pan,
         );
 
+        // FT2's volume column runs alongside the effect column, after the
+        // row's own volume has been established: its fine slides and pan
+        // commands adjust the note's volume rather than being overwritten by
+        // it, and its tone portamento needs the target the note above just
+        // resolved.
+        const volume0Batch = processVolumeColumnTick0(
+          effectState,
+          step.volumeCommand,
+        );
+
         // // Debug the tone porta state for track 3 (fourth track) to investigate 3xx slides.
         // if (step.trackIndex === 3) {
         //   const pitchCmd = tick0Batch.commands.find((cmd) => cmd.kind === 'pitch');
@@ -1058,12 +1071,17 @@ export class PlaybackEngine {
         // }
 
         this.dispatchCommands(tick0Batch.commands, context);
+        this.dispatchCommands(volume0Batch.commands, context);
 
         // Handle volume automation (Cxx or step velocity)
-        // NOTE: Effects like EA1 (fine volume slide) emit volume commands above
-        const tick0HasVolumeCommand = tick0Batch.commands.some(
-          (cmd) => cmd.kind === 'volume',
-        );
+        // NOTE: Effects like EA1 (fine volume slide) emit volume commands
+        // above, and so do the volume column's own 0x8x/0x9x fine slides --
+        // both have already folded step.velocity into their result, so
+        // applying it again here would undo them.
+        const tick0HasVolumeCommand = [
+          ...tick0Batch.commands,
+          ...volume0Batch.commands,
+        ].some((cmd) => cmd.kind === 'volume');
         if (step.velocity !== undefined && !tick0HasVolumeCommand) {
           const gain = clamp(step.velocity / 255);
           if (this.scheduledVolumeHandler) {
@@ -1083,10 +1101,21 @@ export class PlaybackEngine {
         }
 
         // Schedule per-tick effects for ticks 1 to ticksPerRow-1
-        if (hasTickEffect && step.effect) {
-          const canUseRamp = this.canUseAutomationRamp(step.effect.type);
+        const hasTickVolumeCommand = volumeCommandIsTickBased(
+          step.volumeCommand,
+        );
+        if ((hasTickEffect && step.effect) || hasTickVolumeCommand) {
+          // The ramp shortcut below collapses the whole row into one
+          // automation ramp, so it can only be taken when the effect column is
+          // the only thing with per-tick work. A volume-column slide running
+          // at the same time needs its own commands at their own times.
+          const canUseRamp =
+            !!step.effect &&
+            hasTickEffect &&
+            !hasTickVolumeCommand &&
+            this.canUseAutomationRamp(step.effect.type);
 
-          if (canUseRamp) {
+          if (canUseRamp && step.effect) {
             // Optimization: Process all ticks to maintain correct state, but use a single
             // ramp to the final value instead of scheduling each tick discretely.
             // This reduces scheduling calls from 5 per row to 1 per row (83% reduction)
@@ -1141,16 +1170,23 @@ export class PlaybackEngine {
             const ticksPerRow = this.timingSystem.getTicksPerRow();
             for (let tick = 1; tick < ticksPerRow; tick++) {
               const tickTime = time + tick * secPerTick;
-              const tickBatch = processEffectTickN(
-                effectState,
-                step.effect,
-                tick,
-                ticksPerRow,
-              );
-              this.dispatchCommands(tickBatch.commands, {
-                ...context,
-                time: tickTime,
-              });
+              const tickContext = { ...context, time: tickTime };
+              if (hasTickEffect && step.effect) {
+                const tickBatch = processEffectTickN(
+                  effectState,
+                  step.effect,
+                  tick,
+                  ticksPerRow,
+                );
+                this.dispatchCommands(tickBatch.commands, tickContext);
+              }
+              if (hasTickVolumeCommand) {
+                const volumeBatch = processVolumeColumnTickN(
+                  effectState,
+                  step.volumeCommand,
+                );
+                this.dispatchCommands(volumeBatch.commands, tickContext);
+              }
             }
           }
         }
@@ -1189,8 +1225,8 @@ export class PlaybackEngine {
               ? { frequency: cmd.frequency }
               : {}),
             ...(cmd.pan !== undefined ? { pan: cmd.pan } : {}),
-            ...(cmd.sampleOffset !== undefined
-              ? { sampleOffset: cmd.sampleOffset }
+            ...(cmd.sampleOffsetFrames !== undefined
+              ? { sampleOffsetFrames: cmd.sampleOffsetFrames }
               : {}),
             tickSeconds: this.timingSystem.getTickDurationSeconds(),
           });

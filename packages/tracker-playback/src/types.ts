@@ -93,6 +93,7 @@ export type EffectType =
   | 'setTremoloWave' // E7x - Set tremolo waveform
   | 'finePortaUp'    // E1x - Fine portamento up
   | 'finePortaDown'  // E2x - Fine portamento down
+  | 'extraFinePorta' // Xxy - Extra fine portamento up (x=1) / down (x=2)
   | 'noteCut'        // ECx - Note cut after x ticks
   | 'noteDelay'      // EDx - Note delay by x ticks
   | 'patDelay';      // EEx - Pattern delay by x rows
@@ -117,6 +118,44 @@ export type ExtendedEffectSubtype =
   | 'patDelay'       // EEx
   | 'filterToggle'   // E0x - ProTracker filter on/off (legacy)
   | 'invertLoop';    // EFx - ProTracker invert loop / funk repeat
+
+/**
+ * A FastTracker 2 volume-column command.
+ *
+ * XM's volume column is one byte whose high nibble selects a command and
+ * whose low nibble is its parameter. 0x10-0x50 is a plain "set volume" and is
+ * carried by the step's `velocity` like any other volume; everything from
+ * 0x60 up is a *command*, and those are what this describes.
+ *
+ * They are not simply duplicates of their effect-column namesakes: the
+ * volume-column tone portamento scales its parameter by 16, its vibrato
+ * supplies only a depth (reusing the channel's stored speed), and it can slide
+ * panning, which the effect column does only via Pxy. They also run
+ * *alongside* an effect-column command on the same row rather than replacing
+ * it, so a row can slide volume from the volume column while sliding pitch
+ * from the effect column.
+ */
+export type VolumeColumnCommand =
+  /** 0x6x: volume slide down by x, on every tick after the first. */
+  | { type: 'volSlideDown'; value: number }
+  /** 0x7x: volume slide up by x. */
+  | { type: 'volSlideUp'; value: number }
+  /** 0x8x: fine volume slide down by x, once, on tick 0. */
+  | { type: 'fineVolDown'; value: number }
+  /** 0x9x: fine volume slide up by x, once, on tick 0. */
+  | { type: 'fineVolUp'; value: number }
+  /** 0xAx: set the channel's vibrato speed without starting vibrato. */
+  | { type: 'vibratoSpeed'; value: number }
+  /** 0xBx: vibrato at depth x, using the channel's stored speed. */
+  | { type: 'vibrato'; value: number }
+  /** 0xCx: set panning. */
+  | { type: 'setPan'; value: number }
+  /** 0xDx: pan slide left by x. */
+  | { type: 'panSlideLeft'; value: number }
+  /** 0xEx: pan slide right by x. */
+  | { type: 'panSlideRight'; value: number }
+  /** 0xFx: tone portamento at speed x*16. */
+  | { type: 'tonePorta'; value: number };
 
 /**
  * Parsed effect command data
@@ -184,6 +223,13 @@ export interface Step {
    * FastTracker 2-style effect command
    */
   effect?: EffectCommand;
+  /**
+   * FastTracker 2 volume-column command (XM volume column 0x60-0xFF).
+   *
+   * Independent of `effect`: FT2 runs the volume column and the effect column
+   * on the same row, volume column first.
+   */
+  volumeCommand?: VolumeColumnCommand;
 }
 
 export interface PlaybackPosition {
@@ -277,10 +323,10 @@ export interface ScheduledNoteEvent {
   /** Optional pan value 0-1 (for stereo positioning) */
   pan?: number;
   /**
-   * Normalized 0-1 start offset into the sample (ProTracker 9xx). Must be
-   * applied when the voice starts -- it cannot be set after the fact.
+   * Start offset into the sample in *frames* (ProTracker 9xx: param * 256).
+   * Must be applied when the voice starts -- it cannot be set after the fact.
    */
-  sampleOffset?: number;
+  sampleOffsetFrames?: number;
   /**
    * Duration of one tracker tick in seconds at this note's position, so
    * instruments can time tick-based envelopes against the song's tempo.

@@ -1,9 +1,12 @@
 # Multi-Format Module Support (MOD / XM / S3M)
 
-**Status:** Phase 3 in progress — XM parser done; next is the `ModuleSong` IR.
-Phase 1 still has one open item — per-channel voice allocation (B2) — deferred as
+**Status:** Phase 3 essentially complete — XM parses, imports and plays, including the
+volume column (D50). Phase 4 has three items left: panning envelopes, autovibrato, and
+`Lxx`. Phase 1 still has one open item — per-channel voice allocation (B2) — deferred as
 speculative until a high-channel module needs it; see D13 for why it also matters.
-**Last updated:** 2026-08-28
+Multi-sample instruments with a note→sample keymap (D26) remain the largest known gap in
+XM fidelity.
+**Last updated:** 2026-08-29
 **Owner doc for:** extending the tracker from ProTracker-only `.mod` playback to a
 mode-driven player that also handles FastTracker 2 `.xm` and (later) Scream Tracker `.s3m`.
 
@@ -51,7 +54,7 @@ wrong and should be revisited before pressing on.
 | Song state | `src/stores/tracker-store.ts` | ~~`patternRows` is song-level~~ (resolved: `TrackerPattern.rows`) |
 | Engine | `packages/tracker-playback/src/engine.ts` | ~~`setLength` flattens all pattern lengths~~ (resolved: `setPatternLength`) |
 | Effects | `packages/tracker-playback/src/effect-processor.ts` | Amiga periods throughout: `PT_PERIOD_TABLE` (`:30`), clamp 113–856 (`:11-12`), Paula/128 scaling (`:9`) |
-| Entries | `src/components/tracker/tracker-types.ts` | `volume` is a plain 00–FF gain string; effects are 3-char text macros |
+| Entries | `src/components/tracker/tracker-types.ts` | `volume` is a plain 00–FF gain string (XM's volume-column *commands* now ride alongside on `volumeCommand` — D50); effects are still 3-char text macros, with the `Pxy` collision D52 records |
 | Dispatch | `src/audio/tracker/song-bank.ts:1634-1670` | `instrumentType === 'mod'` + **global** `useSimplifiedModInstruments` setting |
 
 ### 2.3 What already works in our favour
@@ -108,11 +111,14 @@ close to but not identical with ProTracker's. Every pitch helper is affected:
 `updatePitchFromPeriod`, `updatePitchFromFrequency`, `applyPortamentoStep`,
 `applyFinePortamento`, `protrackerArpPeriod`, glissando snapping.
 
-### B5 — Volume column
+### B5 — Volume column ✅ **Resolved** — see D50
 `TrackerEntryData.volume` is a gain string. XM's volume column is a *command byte*:
 `0x10-0x50` set volume, `0x60/0x70` volume slide down/up, `0x80/0x90` fine slide,
 `0xA0` vibrato speed, `0xB0` vibrato, `0xC0` set panning, `0xD0/0xE0` pan slide,
 `0xF0` tone portamento. Needs its own field on the entry; it cannot share the gain column.
+
+Resolved as predicted: the commands live on a new `TrackerEntryData.volumeCommand`
+holding the raw XM byte, while `0x10-0x50` continues to import as an ordinary velocity.
 
 ### B6 — ProTracker quirks that must become conditional
 Currently unconditional, and wrong for XM:
@@ -122,11 +128,16 @@ Currently unconditional, and wrong for XM:
 - LRRL default channel panning (`mod-import.ts:154-179`) — XM defaults to centre
 - Tick-0 volume-slide handling and Axy effect-memory semantics
 
-### B7 — Lossy effect encoding
+### B7 — Lossy effect encoding — *partly* resolved
 Effects round-trip through a 3-character text macro (`"3A0"`) and are re-parsed in
 `note-utils.ts:172`. The synthetic-parameter hack at `mod-import.ts:339-356` — re-encoding
 a 9xx offset so a later `/255` yields the right fraction — is the symptom of that
 lossiness. XM needs raw `(cmd, param, volumeColumn)` to survive to playback intact.
+
+The 9xx hack is gone (D46) and `volumeColumn` now survives on its own field (D50), so
+the two concrete symptoms are dealt with. The encoding itself is unchanged, and D52
+records what it still costs: a leading `P` is this tracker's macro-3 shorthand *and*
+XM's panning-slide letter, and the string carries nothing to tell them apart.
 
 ### B8 — Key-off and fadeout
 XM note 97 is key-off: it releases the envelope and starts `volumeFadeout`, rather than
@@ -196,9 +207,13 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
         period clamping (inside `PitchModel`), volume-slide memory
       — investigated and deliberately *not* moved: LRRL import panning,
         tick-0 volume-slide policy (see D21)
-- [ ] Carry raw `(cmd, param)` bytes on `TrackerEntryData` alongside the text macro;
-      retire the 9xx synthetic-param hack
-- [ ] MOD regression suite green with the profile in place
+- [x] Retire the 9xx synthetic-param hack — the offset is now carried in sample
+      *frames* and resolved by the instrument that owns the buffer (D46)
+- [ ] Carry raw `(cmd, param)` bytes on `TrackerEntryData` alongside the text macro
+      — still outstanding; the volume column got its own field rather than raw
+        bytes (D50), and the `Pxy`/macro-3 letter collision (D52) is the
+        remaining symptom of the text encoding
+- [x] MOD regression suite green with the profile in place
 
 ### Phase 3 — XM parser and import (B3, B5, B8)
 - [x] `formats/xm.ts`: header, pattern decode (packed cells), instrument + sample headers
@@ -208,7 +223,8 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [x] Key-off (note 97) handling — mapped to the tracker's `###` note-off
 - [x] Raise `TOTAL_SLOTS` (35 → 65) and allocate only for *used* instruments (F2)
 - [x] Volume column: "set volume" (0x10–0x50) imported
-- [ ] Volume-column *commands* (0x60+: slides, pan, vibrato, tone porta) — see D27
+- [x] Volume-column *commands* (0x60+: slides, pan, vibrato, tone porta) — D50.
+      8789 cells across the corpus, 5602 of them panning
 - [ ] Multi-sample instruments with note→sample keymap — see D26
 
 ### Phase 4 — XM instrument fidelity
@@ -216,7 +232,10 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [ ] Panning envelope
 - [x] `volumeFadeout` on key-off
 - [ ] Autovibrato
-- [ ] Remaining XM effects: Kxx, Lxx, Rxy, Txy, Xxy, Gxx/Hxy
+- [x] Remaining XM effects: Kxx, Rxy, Txy, Xxy, Gxx/Hxy (D48, D51, §6e)
+- [ ] `Lxx` set envelope position — the one XM effect still unhandled; needs to
+      reach into a running envelope in `ModInstrument`, and has zero occurrences
+      in the corpus
 
 ### Phase 5 — S3M
 - [ ] `formats/s3m.ts` → `ModuleSong`
@@ -791,6 +810,114 @@ then spread the parsed description *after* it, putting the empty title back — 
 showed a blank row. Field order in an object literal is not cosmetic when a spread is
 involved.
 
+**D46 — A 9xx offset is a distance in frames, not a fraction of the sample.**
+Reverses the import-side half of D11. ProTracker's 9xx means "start `param * 256` frames
+in" — an absolute distance with nothing to do with how long the sample is. The processor
+was normalising it to `param / 255` and treating that as a fraction of the buffer, which
+is only correct for a sample of exactly `255 * 256 = 65280` frames.
+
+D11 papered over this in `mod-import.ts` by recomputing the fraction from
+`mod.samples[n].length` and re-encoding a *synthetic* parameter byte. That had three
+holes, all measured across the 26-module Amiga corpus (2087 resolvable 9xx rows):
+
+- It could only fire on rows naming an instrument. 60 rows do not — `GSLINGER.MOD`, the
+  file D11 was written for, has 32 of its 104 — and those fell back to the raw fraction,
+  landing a mean of 5556 frames (~0.66 s) away, worst case 12534.
+- It requantised the position to eight bits: 1682 rows were off by up to 127 frames
+  (~15 ms), which on a drum or guitar attack is audible as a click. This was the
+  "slightly wrong sample offset" the user reported by ear.
+- Being an import-time fixup it did nothing for XM, whose 2775 9xx cells were all wrong.
+
+The offset now travels as `sampleOffsetFrames` (noteOn → `ScheduledNoteEvent` → song bank
+→ instrument) and `ModInstrument` resolves it against its own buffer. That also fixes
+ping-pong samples, whose buffer is longer than the sample, and lets overruns follow
+ProTracker — which clamps the remaining one-shot length to a single word, so the channel
+drops into the sample's loop rather than being clamped to the end of the buffer and
+restarting the loop from an arbitrary point.
+
+**D47 — A 9xx on a row with no note is silent.**
+Also reverses part of D11. ProTracker consults the offset where a note arms the sample
+pointer, so a bare 9xx only updates the channel's memory. D11 had the processor emit a
+standalone offset command that latched a pending offset on the *instrument*, to be
+consumed by the next note — which meant a note on a different channel, carrying no 9xx of
+its own, could start mid-waveform. That is a click manufactured out of nothing. The
+memory (`state.lastSampleOffset`) is per channel and was already correct; only the latch
+was wrong. `SongBank.setVoiceSampleOffsetAtTime` is now unreachable from playback and
+documented as such rather than deleted.
+
+**D48 — Effects defined in period or volume units cannot be implemented as musical amounts.**
+Four effects were written as fixed fractions of a semitone or of full volume. The
+trackers define them against the *period* and the 0-64 volume, so the two only agree at
+one pitch and one depth:
+
+- **Vibrato** used `wave * depth / 16` semitones. ProTracker uses
+  `(table * depth) / 128` period units with a table peaking at 255, so the musical width
+  of a given depth depends on the note: the old code under-swung ~23% at C-2 and
+  over-swung ~55% an octave lower. 12155 occurrences in the MOD corpus and 16241 in the
+  XM one — the most-used pitch effect after volume.
+- **Tremolo** divided the −1..1 waveform by 64 and dropped the table's 255 peak, making
+  every tremolo a quarter as deep as it should be.
+- **E1x/E2x fine portamento** applied `2^(x/192)`, i.e. read the parameter as sixteenths
+  of a semitone. ProTracker subtracts it from the period directly; FT2 subtracts `x*4`,
+  which is `portamentoUnitScale`.
+- **Xxy extra-fine portamento** (XM 0x21) was dropped entirely — `parseEffectCommand` had
+  no `X`. It is a quarter of E1x's step, so it passes an explicit unit scale of 1.
+
+`vibratoFrequency` deliberately computes from `currentPeriod` without mutating it:
+vibrato is a deviation around the note, not a slide.
+
+**D49 — ECx cuts by zeroing the volume, not by releasing the note.**
+Both trackers write `volume = 0`; the channel then stays silent until something sets it
+again. Sending a `noteOff` runs the release path instead, which on XM means the
+instrument's `volumeFadeout` — seconds long where FT2 stops dead. 3693 ECx cells in the
+XM corpus, and none at all in the MOD one, which is why this survived the §6b audit that
+listed ECx as "confirmed wired correctly": that audit traced MOD playback.
+
+**D50 — The XM volume column gets its own entry field.**
+Three candidates: overload `TrackerEntryData.volume`, reuse the `macro2` second effect
+column, or add a field. The gain column is out — this tracker's own `volume` is a plain
+00-FF velocity and FT2's byte is a tagged union, so overloading it would break native
+songs. `macro2` is displayed and editable, which is attractive, but `mod-import` already
+uses it for panning and a user's own second-column effect would collide. So:
+`TrackerEntryData.volumeCommand`, holding the raw XM byte in hex, parsed by
+`parseVolumeColumnCommand` into a `VolumeColumnCommand` on the step.
+
+Two things needed care in playback. FT2 runs both columns on the same row, so the volume
+column has its own slide accumulators (`volumeColumnSlide`, `volumeColumnPanSlide`) —
+sharing the effect column's would let whichever was primed last cancel the other. And the
+engine's ramp shortcut, which collapses a whole row into one automation ramp, has to step
+back to discrete per-tick commands when the volume column also has work.
+
+`processVolumeColumnTick0` runs *after* `processEffectTick0` rather than before it as FT2
+does, because the note's own velocity has to be established first or the column's fine
+slides are simply overwritten. The cost is that where both columns write the same thing
+the volume column wins rather than the effect column; no corpus row does that.
+
+The field has no editor UI yet. It round-trips through save/load for free, since
+`serializeSong` deep-copies pattern entries wholesale.
+
+**D51 — E5x's nibble means something different in each format, by a full semitone.**
+ProTracker reads it as a *signed* 4-bit value in eighths of a semitone (0-7 up, 8-15
+down). FT2 reads it as an unsigned position in its −128..127 finetune range
+(`finetune = x*16 - 128`, 128 units to the semitone), so 8 is neutral and 0 is a full
+semitone flat. For every nibble below 8 they disagree by exactly one semitone.
+
+All 840 E5x commands in the XM corpus use nibble 1 or 6, so every one of those notes was
+playing a semitone sharp. Now `FormatProfile.finetuneFromNibble`.
+
+Still applied only to the note on its own row, and not remembered for later notes on the
+channel as the trackers do. Every E5x in both corpora sits on a row carrying a note, so
+the difference has not come up; persisting it properly means undoing the sample's own
+finetune, which this engine bakes into the instrument patch as a fixed detune.
+
+**D52 — `Pxy` collides with the macro-3 shorthand, and is left colliding.**
+`parseEffectCommand` checks the `M`/`N`/`O`/`P` macro-shorthand letters before the effect
+table, so XM's `Pxy` panning slide (effect 0x19, written `P` by `xmEffectToMacro`) parses
+as macro 3 and never reaches the pan-slide handler. The string carries no format tag, so
+the two readings are genuinely ambiguous, and resolving it in favour of XM would break
+native songs that use the shorthand. Zero occurrences in the corpus. Left as is, and
+recorded here as the concrete remaining cost of B7's text encoding.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -825,6 +952,14 @@ buffer, prompted by D11. Findings:
 **Known unimplemented** (declared but no behaviour): `filterToggle` (E0x, Amiga hardware
 filter) and `invertLoop` (EFx funk repeat). Both are ProTracker-specific and rare; left
 for the `FormatProfile` work.
+
+**Correction (2026-08-29).** Three entries in the "confirmed wired correctly" list above
+were confirmed *reachable*, not *correct* — the audit traced dispatch, and stopped at the
+point where an effect touched an AudioParam without checking what value it wrote. ECx
+reached the engine and released the note where it should have zeroed the volume (D49);
+E4x/E7x reached the waveform state and discarded the "don't retrigger" bit with `& 3`;
+Rxy reached the retrigger handler with no parameter memory. Tracing reachability is not
+the same test as checking the number, and §6e is the audit that does the second one.
 
 ---
 
@@ -889,6 +1024,55 @@ as an expected state, not an error.
 
 ---
 
+## 6e. Effect usage measured across both corpora (2026-08-29)
+
+Counted from the raw files rather than after import, so the figures say what the music
+actually asks for and can be used to rank work by audible impact. 26 modules in
+`~/Downloads/mods/amiga`, 9 in `~/Downloads/mods/ft2`.
+
+| Effect | MOD | XM | Note |
+|---|---|---|---|
+| Cxx set volume | 35244 | 951 | |
+| Axy volume slide | 30953 | 8900 | |
+| 4xy vibrato | 6880 | 14615 | depth was wrong at every pitch (D48) |
+| 6xy vibrato + vol | 5275 | 1626 | |
+| 0xy arpeggio | 4338 | 5973 | |
+| 3xx tone porta | 4277 | 4205 | |
+| 8xx panning | 54 | 12386 | |
+| 9xx sample offset | 2087 | 2775 | every XM one was wrong (D46) |
+| EBx fine vol down | 2068 | 2414 | |
+| ECx note cut | 0 | 3693 | faded instead of cutting (D49) |
+| E5x set finetune | 0 | 840 | a semitone sharp on XM (D51) |
+| 7xy tremolo | 546 | 0 | 4× too weak (D48) |
+| E1x/E2x fine porta | 114 | 3 | wrong unit (D48) |
+| Gxx global volume | 0 | 257 | |
+| E9x / Rxy retrigger | 55 | 42 | no Rxy memory |
+| EDx note delay | 140 | 264 | |
+| E6x pattern loop | 8 | 3 | |
+| EEx pattern delay | 2 | 0 | |
+| Txy tremor, Xxy, Lxx, Pxy | 0 | 0 | |
+
+XM volume column, which was dropped wholesale before D50:
+
+| Command | Cells |
+|---|---|
+| `Cx` set panning | 5602 |
+| `8x` fine volume down | 2699 |
+| `9x` fine volume up | 322 |
+| `7x` volume slide up | 201 |
+| `Ex` pan slide right | 124 |
+| `6x` volume slide down | 122 |
+
+Two things worth carrying forward. First, the two formats rank effects very differently —
+`8xx` is 54 commands in the MOD corpus and 12386 in the XM one, `ECx` is 0 and 3693 — so
+"rare enough to skip" has to be asked per format. Second, an effect being absent from the
+MOD corpus is exactly how a bug survives a MOD-only audit; see the correction in §6b.
+
+The counting scripts were throwaway (`modstat`/`xmstat`/`offseterr` in the session
+scratchpad) and are not checked in; the numbers are reproducible from the file formats.
+
+---
+
 ## 7. Testing
 
 - MOD regression suite is the contract for "no regression": `src/tests/mod-*.test.ts`,
@@ -899,6 +1083,13 @@ as an expected state, not an error.
   reference (does it sound the same as before?), not a correctness one.
 - Structural checks are not enough for effects. See D11: 9xx looked implemented at every
   layer and still terminated in a stub. Confirm changes on the deployed build by ear.
+- *Reachability* is not correctness. D46/D48/D49 were all effects that reached the right
+  handler and wrote the wrong number, and §6b's audit passed them for that reason. Where
+  a tracker defines an effect arithmetically (period units, volume units, a table peak, a
+  nibble convention), assert the arithmetic against the format's own formula rather than
+  against what the code currently produces.
+- Count the effect in the corpus before deciding it is too rare to fix, and count it *per
+  format* — §6e has entries that are 0 in one corpus and in the thousands in the other.
 - Add an XM equivalent to `misc/` when Phase 3 starts, plus parser unit tests covering:
   packed-cell decoding, 16-bit delta samples, linear vs Amiga frequency flag, and
   per-pattern row counts.
@@ -913,6 +1104,11 @@ as an expected state, not an error.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 3/4 | **XM volume-column commands implemented** (D50) — 8789 cells across the corpus, 5602 of them panning, previously dropped wholesale. New `TrackerEntryData.volumeCommand` → `parseVolumeColumnCommand` → `Step.volumeCommand` → `processVolumeColumnTick0/TickN`, with slide accumulators kept separate from the effect column's. Also `Xxy` (was unparseable), `Txy` tremor's continuous counter and parameter memory, `Rxy` per-nibble memory, and E4x/E7x's "don't retrigger waveform" bit. Tests: `src/tests/xm-volume-column.test.ts`, `src/tests/ft2-effect-details.test.ts`. 592 green. |
+| 2026-08-29 | fix | **E5x was a full semitone off on XM** (D51). ProTracker reads the nibble as signed eighths of a semitone, FT2 as a position in its −128..127 finetune range; they disagree by exactly one semitone for every nibble under 8, and all 840 E5x commands in the XM corpus use nibble 1 or 6. Now `FormatProfile.finetuneFromNibble`; MOD unchanged. |
+| 2026-08-29 | fix | **Vibrato, tremolo and fine portamento recalibrated to period/volume units** (D48). Vibrato was ±23% to ±55% off depending on pitch (12155 MOD + 16241 XM occurrences), tremolo was 4× too weak, E1x/E2x used a semitone ratio instead of period units. **ECx now zeroes the volume instead of releasing the note** (D49) — on XM that was running a multi-second fadeout where FT2 stops dead, on 3693 cells. Tests: `src/tests/mod-effect-depths.test.ts`. |
+| 2026-08-29 | fix | **9xx sample offset corrected end to end, again** (D46, D47), reversing the import-side half of D11. The offset is a distance in frames (`param * 256`), not a fraction of the sample; the import-time re-encode is retired. Measured across 2087 MOD rows: 60 rows (no instrument number, so the old fixup skipped them) were a mean 5556 frames out, and 1682 more were off by up to 127 frames from 8-bit requantisation — the audible click the user reported. All 2775 XM 9xx cells were unhandled. A bare 9xx no longer latches an offset onto an unrelated later note. |
+| 2026-08-29 | — | Effect usage measured across both corpora (§6e), and §6b corrected: three effects it listed as "confirmed wired correctly" were confirmed reachable, not correct. |
 | 2026-08-29 | fix | Channels beyond the classic four now default to centre panning rather than repeating the Amiga L-R-R-L grouping (D44, reversing D10) — `DOPE.MOD` has 28 channels and 54 pan commands, so the grouping hard-split the mix. Demo browser no longer shows blank names for modules with an empty title field (D45). |
 | 2026-08-29 | fix | MOD instruments are sized by the channels that play them, not a fixed 4 (D42) — `DOPE.MOD` has 28 channels and one sample on 19 of them. Track columns tighten for high channel counts (D43). |
 | 2026-08-29 | 4 | New notes now *cut* the previous note on their channel instead of releasing it (D41). Making key-off perform an envelope release had turned every replacement into a fadeout, so previous notes rang on underneath — worst when a channel switches instrument, where nothing ever cut the old voice. Tracker channels are monophonic. |

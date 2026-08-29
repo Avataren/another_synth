@@ -7,7 +7,8 @@ import type { Patch } from 'src/audio/types/preset-types';
 import {
   parseTrackerNoteSymbol,
   parseTrackerVolume,
-  parseEffectCommand
+  parseEffectCommand,
+  parseVolumeColumnCommand
 } from 'src/audio/tracker/note-utils';
 import type {
   Pattern as PlaybackPattern,
@@ -113,6 +114,9 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       const volumeValue = parseTrackerVolume(entry?.volume);
       const effectCmd1 = parseEffectCommand(entry?.macro);
       const effectCmd2 = parseEffectCommand(entry?.macro2);
+      // XM volume-column command (0x60-0xFF). Independent of the effect
+      // columns: FT2 runs both on the same row.
+      const volumeCmd = parseVolumeColumnCommand(entry?.volumeCommand);
 
       const interpolationsAtRow = getInterpolationsForRow(row);
       const startRange = interpolationsAtRow.find((r) => r.startRow === row);
@@ -175,11 +179,21 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       const hasEffect = explicitEffectCmd?.type === 'effect';
       const hasNoteData = isNoteOff || midi !== undefined;
       const hasVolumeData = volumeValue !== undefined;
+      const hasVolumeCommand = volumeCmd !== undefined;
 
       // Skip if no instrument and no effect/automation
-      if (!instrumentId && !hasMacro && !hasTempoOrSpeed && !hasEffect) continue;
+      if (!instrumentId && !hasMacro && !hasTempoOrSpeed && !hasEffect && !hasVolumeCommand)
+        continue;
       // Skip if no meaningful data at all
-      if (!hasNoteData && !hasVolumeData && !hasMacro && !hasTempoOrSpeed && !hasEffect) continue;
+      if (
+        !hasNoteData &&
+        !hasVolumeData &&
+        !hasMacro &&
+        !hasTempoOrSpeed &&
+        !hasEffect &&
+        !hasVolumeCommand
+      )
+        continue;
 
       const step: PlaybackStep = {
         row,
@@ -257,6 +271,10 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       // Handle FastTracker-style effect commands (non-macro)
       if (explicitEffectCmd && explicitEffectCmd.type === 'effect') {
         step.effect = explicitEffectCmd.effect;
+      }
+
+      if (volumeCmd) {
+        step.volumeCommand = volumeCmd;
       }
 
       // Update context after building step

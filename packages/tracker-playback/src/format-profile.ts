@@ -73,6 +73,23 @@ export interface FormatProfile {
    * leaks the note into the following row instead of dropping it.
    */
   readonly noteDelayOverflowCarries: boolean;
+
+  /**
+   * The finetune offset an E5x nibble asks for, in semitones.
+   *
+   * The two formats read the same nibble completely differently. ProTracker
+   * treats it as a *signed* 4-bit value in eighths of a semitone, so 0-7 tune
+   * up and 8-15 tune down. FastTracker 2 treats it as an unsigned position in
+   * its -128..127 finetune range (`finetune = x*16 - 128`, and 128 finetune
+   * units is one semitone), so 8 is the neutral middle and 0 is a full
+   * semitone flat.
+   *
+   * The upshot is that for every nibble below 8 the two disagree by exactly
+   * one semitone -- not a subtle mistuning. All 840 E5x commands in the local
+   * XM corpus use nibbles 1 and 6, so reading them ProTracker-style put every
+   * one of those notes a semitone sharp.
+   */
+  readonly finetuneFromNibble: (nibble: number) => number;
 }
 
 /**
@@ -86,6 +103,8 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   volumeSlideHasMemory: false,
   portamentoUnitScale: 1,
   noteDelayOverflowCarries: true,
+  // Signed 4-bit, in eighths of a semitone.
+  finetuneFromNibble: (nibble) => (nibble < 8 ? nibble : nibble - 16) / 8,
 };
 
 /**
@@ -105,6 +124,9 @@ export const XM_PROFILE: FormatProfile = {
   pitch: createLinearPitchModel(),
   volumeSlideHasMemory: true,
   portamentoUnitScale: 4,
+  // Unsigned position in FT2's -128..127 finetune range: finetune = x*16-128,
+  // and 128 finetune units is one semitone.
+  finetuneFromNibble: (nibble) => (nibble - 8) / 8,
 };
 
 /**
