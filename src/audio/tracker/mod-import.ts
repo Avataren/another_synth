@@ -104,8 +104,6 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
       });
     }
 
-    // Track the last volume set on each channel (ProTracker behavior: volume "sticks")
-    const channelVolumes: (string | undefined)[] = new Array(trackCount).fill(undefined);
     // Track the sample number each channel has selected. A bare sample number
     // latches the sample for the channel's *next* note without switching what
     // is currently sounding, so this has to be followed separately from the
@@ -124,7 +122,6 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
           row,
           panNorm,
           mod,
-          channelVolumes[ch],
           channelSamples[ch] ?? 0,
         );
         // A sample number latches for the channel whether or not an entry
@@ -133,11 +130,6 @@ function buildTrackerPatterns(mod: ModSong): TrackerPattern[] {
           channelSamples[ch] = cell.sampleNumber;
         }
         if (!entry) continue;
-
-        // Update the channel's current volume if this entry sets one
-        if (entry.volume !== undefined) {
-          channelVolumes[ch] = entry.volume;
-        }
 
         const track = tracks[ch];
         if (!track) continue;
@@ -204,17 +196,12 @@ function modCellToTrackerEntry(
   row: number,
   panNorm: number,
   mod: ModSong,
-  lastVolume: string | undefined,
   selectedSample: number,
 ): TrackerEntryData | undefined {
   const { period, sampleNumber, effectCmd, effectParam } = cell;
   const effectType = effectCmd & 0x0f;
   const isTonePorta = effectType === 0x3;      // 3xx
   const isTonePortaVol = effectType === 0x5;   // 5xy
-  const isVolSlide = effectType === 0xa;       // Axy
-  const isExtended = effectType === 0xe;       // Exy
-  const extSubtype = isExtended ? (effectParam >> 4) : 0;
-  const isFineVolSlide = isExtended && (extSubtype === 0xa || extSubtype === 0xb); // EAx/EBx
 
   const hasNote = period > 0;
   const hasSample = sampleNumber > 0;
@@ -426,15 +413,24 @@ function modCellToTrackerEntry(
       entry.volume = volumeHex;
     }
 
-    // For tone portamento rows (3xx/5xy), volume slides (Axy), and fine volume slides (EAx/EBx),
-    // avoid overriding the carry-over volume: keep the current channel volume instead of
-    // reapplying a stale lastVolume (which may still be 00 from an initial header-volume=0 seed,
-    // or doesn't reflect Axy/EA/EB volume changes that accumulate in the effect processor state).
-    if (hasNote && !hasSample && lastVolume !== undefined && !isTonePorta && !isTonePortaVol && !isVolSlide && !isFineVolSlide) {
-      // Note without instrument: inherit last volume (sticky)
-      entry.volume = lastVolume;
-    }
-    // If no note at all, don't set volume (only Cxx without note sets sticky volume)
+    // A note with no sample number deliberately gets *no* volume.
+    //
+    // ProTracker leaves the channel volume alone there, and the channel volume
+    // is playback state: it is whatever Cxx, the sample defaults and any
+    // running Axy/EAx/EBx slide have left it at. The effect processor tracks
+    // exactly that in `currentVolume`, and now emits it on every note trigger.
+    //
+    // This used to stamp the importer's own running channel volume here, a
+    // snapshot of the last volume *written into a cell* that knows nothing
+    // about slides. GSLINGER.MOD pattern 36 is the case that exposes the
+    // difference: channel 4 plays the flute with `D-3 23 A50`, swelling from
+    // the sample's default 8 up to 33 across the row, and the next row's bare
+    // `C#3 ... ED3` was stamped back down to 8 -- the swell the passage is
+    // built on, discarded every time. Guarding the stamp against rows that
+    // themselves carry a slide (as it did) does not help, because the slide
+    // that matters ran on an *earlier* row.
+    //
+    // If no note at all, no volume either; only Cxx without a note sets one.
   }
 
   // Always add a macro command that drives macro 0 for stereo pan, using the
@@ -579,10 +575,15 @@ function createSamplerPatchForSample(
     rootNote: 65,
     // MOD finetune is -8..7 in 1/8 semitone steps.
     detuneCents: ((sample.finetune ?? 0) / 8) * 100,
-    // Use the sample's default volume (0-64) as the base gain, but keep unity
-    // when the header volume is 0 so volume slides (Axx) can fade the channel
-    // in from silence.
-    gain: (sample.volume ?? 64) === 0 ? 1 : (sample.volume ?? 64) / 64,
+    // Unity. The sample's default volume (0-64) is a *channel* volume in
+    // ProTracker, not a property of the sample, and it already reaches
+    // playback through the volume column -- every note with a sample number is
+    // stamped with it above. Baking it in here as well made the instrument
+    // permanently quiet everywhere the volume column is not in charge, most
+    // visibly when auditioning it from the keyboard: sample 23 of
+    // GSLINGER.MOD has a header volume of 8, so it played at an eighth of the
+    // level of any sample whose header says 64, with no way to turn it up.
+    gain: 1,
     loopMode: loopEnabled ? SamplerLoopMode.Loop : SamplerLoopMode.Off,
     loopStartFrames: loopEnabled ? sample.loopStart : 0,
     loopLengthFrames: loopEnabled ? sample.loopLength : sampleLengthFrames,

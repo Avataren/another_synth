@@ -423,7 +423,11 @@ function createSamplerPatchForXmSample(
     // of per-sample tuning.
     rootNote: XM_ROOT_NOTE - sample.relativeNote,
     detuneCents: (sample.finetune / FINETUNE_UNITS_PER_SEMITONE) * 100,
-    gain: sample.volume === 0 ? 1 : sample.volume / 64,
+    // Unity -- the sample's default volume reaches playback through the volume
+    // column, which stamps it on every note carrying an instrument. Baking it
+    // in here too left quiet-headered samples permanently attenuated; see the
+    // same note in mod-import.ts.
+    gain: 1,
     loopMode: loopEnabled
       ? sample.loopType === 'pingpong'
         ? SamplerLoopMode.PingPong

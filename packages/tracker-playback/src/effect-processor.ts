@@ -662,6 +662,9 @@ export function processEffectTick0(
   // Reset per-row volume slide accumulator (effect memory stored separately)
   resetVolumeSlide(state);
 
+  /** Whether this row started a note, i.e. whether a voice was allocated. */
+  let triggeredNote = false;
+
   // ProTracker note delay overflow: if previous row had EDx with x >= speed and
   // no new note arrives, trigger the carried note at the start of this row.
   if (!effect && newNote === undefined && state.carryDelayedNote) {
@@ -724,6 +727,7 @@ export function processEffectTick0(
       // Trigger note immediately unless delayed or a tone portamento continuation
       if (!hasNoteDelay) {
         pushNoteOn(newNote, 127);
+        triggeredNote = true;
       }
     }
   }
@@ -732,6 +736,27 @@ export function processEffectTick0(
     // newVelocity is in 0-255 range (from MOD importer volume column)
     // Normalize to 0-1 for internal use
     state.currentVolume = newVelocity / 255;
+  }
+
+  // A note that starts always states the channel's volume, even when the row
+  // supplies no volume of its own.
+  //
+  // A note with no sample number keeps whatever volume the channel has
+  // reached -- including one a volume slide has been walking up or down for
+  // several rows -- and that lives here in `currentVolume`. It cannot be left
+  // implicit, because a note allocates a fresh voice whose gain node starts at
+  // the instrument's own gain rather than at the channel's volume, so without
+  // this the new voice plays at the wrong level until something else happens
+  // to set it.
+  //
+  // mod-import used to compensate by stamping its own running volume onto
+  // every note that lacked a sample number, but an importer cannot know what
+  // the slides will have done by the time the row plays: in GSLINGER.MOD
+  // pattern 36 a flute swells from 8 to 33 under `A50`, and the very next row
+  // -- a plain note with no sample number -- reset it to the sample's default
+  // 8 and threw the swell away.
+  if (triggeredNote) {
+    pushVolume(state.currentVolume);
   }
 
   // Handle effect parameters (use memory if param is 0 where applicable)

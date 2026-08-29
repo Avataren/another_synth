@@ -918,6 +918,41 @@ the two readings are genuinely ambiguous, and resolving it in favour of XM would
 native songs that use the shorthand. Zero occurrences in the corpus. Left as is, and
 recorded here as the concrete remaining cost of B7's text encoding.
 
+**D53 — Channel volume is playback state; the importer must not guess at it.**
+Reported as "the flute in GSLINGER.MOD pattern 36 is way too quiet". Two separate causes,
+both of which come from treating a *channel* volume as if it belonged to the sample.
+
+First, `mod-import` stamped its own running volume onto every note that carried no sample
+number, on the reasoning that ProTracker's channel volume "sticks". It does — but it
+sticks to whatever Cxx, the sample defaults *and any running Axy/EAx/EBx slide* have left
+it at, and an importer has no idea what the slides will have done by the time the row
+plays. Its `lastVolume` is a snapshot of the last value written into a cell. Pattern 36
+channel 4 is the case: `D-3 23 A50` swells the flute from the sample's default 8 up to
+33 across the row, and the next row's bare `C#3 ... ED3` was stamped straight back down
+to 8, throwing the swell away every time. The existing guard — skip the stamp when *this*
+row carries a slide — cannot help, because the slide that matters ran on an earlier row.
+
+The stamp is gone. A note with no sample number now gets no volume at all, and the effect
+processor emits `currentVolume` on every note trigger instead. That last part is load
+bearing rather than tidy: a note allocates a fresh voice whose gain node starts from the
+instrument's own gain, so the channel volume has to be stated explicitly or the new voice
+plays at the wrong level. `channelVolumes` and the `lastVolume` parameter are now dead
+and removed.
+
+Second, the sample's header volume was baked into the sampler patch's `gain` *as well as*
+being stamped into the volume column. During pattern playback that is harmless — the
+volume column's value is absolute and lands on the voice before it sounds — but it makes
+the instrument permanently quiet everywhere the volume column is not in charge, which is
+exactly what auditioning it from the keyboard is. GSLINGER's sample 23 declares volume 8,
+so it played at an eighth of the level of any sample declaring 64, with no way to turn it
+up. 271 of the 524 samples in the local MOD corpus declare a header volume below 64, so
+this was not an edge case. Both importers now build the sampler at unity; the "keep unity
+when the header volume is 0" special case disappears with it.
+
+Worth noting what this does *not* fix: pattern 36 really is written at Cxx volumes of 1
+to 8 out of 64 on that flute, so the passage stays quiet. What comes back is the swell
+and the ability to hear the instrument on its own.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1104,6 +1139,7 @@ scratchpad) and are not checked in; the numbers are reproducible from the file f
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **Channel volume is no longer guessed at import time** (D53). A note with no sample number was stamped with the importer's running volume, which knows nothing about slides — GSLINGER.MOD pattern 36's flute swells 8→33 under `A50` and the next row reset it to 8. The stamp is gone and the effect processor states `currentVolume` on every note trigger instead. The sample header volume is also no longer baked into the patch gain on top of the volume column, which had left 271 of the corpus's 524 samples permanently attenuated when auditioned from the keyboard. Tests: `src/tests/mod-channel-volume-carry.test.ts`. 598 green. |
 | 2026-08-29 | 3/4 | **XM volume-column commands implemented** (D50) — 8789 cells across the corpus, 5602 of them panning, previously dropped wholesale. New `TrackerEntryData.volumeCommand` → `parseVolumeColumnCommand` → `Step.volumeCommand` → `processVolumeColumnTick0/TickN`, with slide accumulators kept separate from the effect column's. Also `Xxy` (was unparseable), `Txy` tremor's continuous counter and parameter memory, `Rxy` per-nibble memory, and E4x/E7x's "don't retrigger waveform" bit. Tests: `src/tests/xm-volume-column.test.ts`, `src/tests/ft2-effect-details.test.ts`. 592 green. |
 | 2026-08-29 | fix | **E5x was a full semitone off on XM** (D51). ProTracker reads the nibble as signed eighths of a semitone, FT2 as a position in its −128..127 finetune range; they disagree by exactly one semitone for every nibble under 8, and all 840 E5x commands in the XM corpus use nibble 1 or 6. Now `FormatProfile.finetuneFromNibble`; MOD unchanged. |
 | 2026-08-29 | fix | **Vibrato, tremolo and fine portamento recalibrated to period/volume units** (D48). Vibrato was ±23% to ±55% off depending on pitch (12155 MOD + 16241 XM occurrences), tremolo was 4× too weak, E1x/E2x used a semitone ratio instead of period units. **ECx now zeroes the volume instead of releasing the note** (D49) — on XM that was running a multi-second fadeout where FT2 stops dead, on 3693 cells. Tests: `src/tests/mod-effect-depths.test.ts`. |
