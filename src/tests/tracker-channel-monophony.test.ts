@@ -155,15 +155,15 @@ describe('a native song lets a replaced note ring out', () => {
   });
 });
 
-describe('an unloaded bank assumes a module channel', () => {
-  it('cuts, because a note ringing under another is the audible fault', () => {
-    // Of the two ways to be wrong, letting a released note ring on is heard as
-    // a bug; cutting one that could have rung is merely drier.
+describe('a bank with no song loaded is native', () => {
+  it('matches DEFAULT_MODULE_FORMAT and the engine default', () => {
+    // A song carrying no format tag is a native song, and every real module
+    // sets the format from loadSong before a note is scheduled.
     const { bank, one } = makeBank(undefined);
     bank.noteOnAtTime('01', 60, 100, 1, TRACK);
     bank.noteOffAtTime('01', undefined, 2, TRACK);
     bank.noteOnAtTime('02', 62, 100, 3, TRACK);
 
-    expect(one.cutVoiceAtTime).toHaveBeenCalled();
+    expect(one.cutVoiceAtTime).not.toHaveBeenCalled();
   });
 });

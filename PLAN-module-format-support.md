@@ -1164,10 +1164,13 @@ here, where overlapping notes on a track are a feature. The bank now knows the s
 format (`setModuleFormat`, set from `loadSong` alongside the engine's own copy) and
 branches: module formats cut, native releases and lets the note ring.
 
-The default when no song has been loaded is *module*, deliberately, even though
-`DEFAULT_MODULE_FORMAT` is `'native'`. Of the two ways to be wrong here, a note ringing on
-under another is heard as a fault, while cutting one that could have rung is merely drier;
-the default should fail toward the one nobody files a bug about.
+The default when no song has been loaded is native, matching `DEFAULT_MODULE_FORMAT` and
+the engine's own default. It was briefly the other way -- reasoning that a note ringing on
+under another is heard as a fault while an unnecessary cut is merely drier -- but the user
+called it, and they are right: a song carrying no format tag *is* a native song, so any
+other default is the bank quietly disagreeing with the rest of the pipeline about what it
+is playing. Every real module sets the format from `loadSong` before a note is scheduled,
+so the default is not load-bearing anyway.
 
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick

@@ -1,5 +1,8 @@
 import type AudioSystem from 'src/audio/AudioSystem';
-import type { ModuleFormat } from '../../../packages/tracker-playback/src/types';
+import {
+  DEFAULT_MODULE_FORMAT,
+  type ModuleFormat,
+} from '../../../packages/tracker-playback/src/types';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';
@@ -128,12 +131,11 @@ export class TrackerSongBank {
    * are a feature -- so there a new note releases the previous one and lets it
    * ring out.
    *
-   * Undefined until a song is loaded, and read as "module" until then: of the
-   * two ways to be wrong, letting a released note ring on under a new one is
-   * the one that is audible as a fault, while cutting one that could have rung
-   * is merely drier.
+   * Defaults to native, matching DEFAULT_MODULE_FORMAT and the engine's own
+   * default: a song with no format tag *is* a native song, and every real
+   * module sets this from `loadSong` before a note is scheduled.
    */
-  private moduleFormat: ModuleFormat | undefined;
+  private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
   private readonly restoredAssets: Map<string, Set<string>> = new Map();
   private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
   private pendingScheduledEvents: PendingScheduledEvent[] = [];
@@ -711,7 +713,7 @@ export class TrackerSongBank {
    * Only the channel-replacement policy depends on it: see `moduleFormat`.
    */
   setModuleFormat(format: ModuleFormat | undefined) {
-    this.moduleFormat = format;
+    this.moduleFormat = format ?? DEFAULT_MODULE_FORMAT;
   }
 
   /**
