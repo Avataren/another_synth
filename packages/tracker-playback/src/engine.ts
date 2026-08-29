@@ -1350,6 +1350,7 @@ export class PlaybackEngine {
             cmd.midi,
             cmd.velocity,
             context.time,
+            context.trackIndex,
             cmd.frequency,
           );
           break;

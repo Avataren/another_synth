@@ -1741,19 +1741,26 @@ export class TrackerSongBank {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    // For retrigger, we want to trigger the same note again
-    // This requires briefly gating off then back on
-    const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, time, {
-      allowDuplicate: true,
-      // Prefer the exact ProTracker period-derived frequency over letting
-      // the instrument fall back to an equal-tempered midiToFrequency(midi)
-      // conversion, which discards finetune/period precision.
-      ...(frequency !== undefined ? { frequency } : {}),
-    });
-    this.getTrackNotes(instrumentId, trackIndex).add(midi);
-    if (voiceIndex !== undefined) {
-      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
-    }
+
+    // A retrigger is a note-on on the same channel -- E9x and Rxy restart the
+    // sample from the beginning -- so it has to take the channel over exactly
+    // as a new note does, cutting whatever was sounding there.
+    //
+    // This used to call `noteOnAtTime` directly with `allowDuplicate` and no
+    // track index, which skipped every one of those steps: with no track the
+    // instrument allocates from its round-robin pool rather than the channel's
+    // own voice, so each repeat stacked another voice and none of them was
+    // ever cut. `E91` at speed 6 is five repeats in a single row.
+    // peacedroid.mod patterns 16 and 17 end their track-1 phrase on
+    // `E93 E92 E91`, which is where it was heard.
+    this.dispatchNoteOnAtTime(
+      instrumentId,
+      midi,
+      velocity,
+      Math.max(time, this.audioContext.currentTime),
+      trackIndex,
+      frequency,
+    );
   }
 
   /** Ensure the audio context is running (resume if suspended) */

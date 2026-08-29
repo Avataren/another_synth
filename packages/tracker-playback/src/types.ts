@@ -486,6 +486,14 @@ export type ScheduledRetriggerHandler = (
   velocity: number,
   time: number,
   /**
+   * The channel being retriggered.
+   *
+   * Load-bearing rather than informational: a retrigger *is* a note-on on a
+   * monophonic channel, so without it the bank cannot tell which voice the
+   * retrigger replaces and allocates a fresh one for every repeat.
+   */
+  trackIndex: number,
+  /**
    * Precise ProTracker period-derived frequency for the note being
    * retriggered, when known. Preferred over deriving frequency from
    * `midi` (which discards finetune/period precision).

@@ -39,7 +39,14 @@ function makeInstrument(voiceIndex: number) {
   return {
     getVoiceLimit: () => 4,
     getQuantumDurationSeconds: () => 128 / 48000,
-    noteOnAtTime: vi.fn(() => voiceIndex),
+    noteOnAtTime: vi.fn(
+      (
+        _midi: number,
+        _velocity: number,
+        _time: number,
+        _options?: { trackIndex?: number },
+      ) => voiceIndex,
+    ),
     gateOffVoiceAtTime: vi.fn(),
     cutVoiceAtTime: vi.fn(),
     cancelAndSilenceVoice: vi.fn(),
@@ -165,5 +172,64 @@ describe('a bank with no song loaded is native', () => {
     bank.noteOnAtTime('02', 62, 100, 3, TRACK);
 
     expect(one.cutVoiceAtTime).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A retrigger is a note-on on the same channel.
+ *
+ * E9x and Rxy restart the sample from the beginning, so a retrigger has to
+ * take the channel over exactly as a new note does. `retriggerNoteAtTime` used
+ * to call the instrument directly with `allowDuplicate` and *no track index*,
+ * which skipped all of it: with no track the instrument allocates from its
+ * round-robin pool rather than the channel's own voice, so every repeat stacked
+ * another voice and none was ever cut -- nor could be, since nothing that cuts
+ * a channel could see them.
+ *
+ * peacedroid.mod patterns 16 and 17 end their track-1 phrase on `E93 E92 E91`,
+ * which at speed 6 is eight repeats across three rows. They piled up and went
+ * on sounding into the next pattern, through the notes that followed.
+ */
+describe('a retrigger takes the channel like any other note', () => {
+  it('uses the channel voice rather than allocating a fresh one', () => {
+    const { bank, one } = makeBank('protracker');
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+    one.noteOnAtTime.mockClear();
+
+    bank.retriggerNoteAtTime('01', 60, 100, 2, TRACK);
+
+    expect(one.noteOnAtTime).toHaveBeenCalledTimes(1);
+    expect(one.noteOnAtTime.mock.calls[0]![3]?.trackIndex).toBe(TRACK);
+  });
+
+  it('cuts what the channel was playing', () => {
+    const { bank, one } = makeBank('protracker');
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+
+    bank.retriggerNoteAtTime('01', 60, 100, 2, TRACK);
+
+    expect(one.cutVoiceAtTime).toHaveBeenCalled();
+  });
+
+  it('cuts a voice left ringing by an earlier key-off', () => {
+    const { bank, one } = makeBank('xm');
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+    bank.noteOffAtTime('01', undefined, 2, TRACK);
+
+    bank.retriggerNoteAtTime('01', 60, 100, 3, TRACK);
+
+    expect(one.cutVoiceAtTime).toHaveBeenCalled();
+  });
+
+  it('carries the retrigger level through', () => {
+    const { bank, one } = makeBank('protracker');
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+    one.noteOnAtTime.mockClear();
+
+    bank.retriggerNoteAtTime('01', 60, 69, 2, TRACK);
+
+    // E9x leaves the channel volume alone, so the retrigger sounds at whatever
+    // the slides have left it at rather than resetting.
+    expect(one.noteOnAtTime.mock.calls[0]![1]).toBe(69);
   });
 });

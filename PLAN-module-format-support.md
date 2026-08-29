@@ -1298,6 +1298,32 @@ stopped" reports (D60, D63, this) were all diagnosed from the same question -- d
 engine emit exactly the events the file asks for -- and the harness is a dozen lines on top
 of `engine.scheduleRow`. Reach for it before reasoning about pattern data.
 
+**D65 — A retrigger is a note-on, and was not being treated as one.**
+Reported on `peacedroid.mod` patterns 16 and 17: noise on track 1 that lingers when new
+notes trigger, and carries into the next pattern *through* the notes that follow.
+
+Both patterns end their track-1 phrase on `E93 E92 E91` -- eight retriggers across three
+rows at speed 6. `retriggerNoteAtTime` called the instrument's `noteOnAtTime` directly
+with `allowDuplicate: true` and **no track index**, which skipped the entire
+channel-replacement path. With no track index `ModInstrument.resolveVoiceForTrack` falls
+through to `allocateAnyVoice()`, its round-robin pool, so each repeat took a *different*
+voice from the one the channel owns. None of them was cut, and none of them ever could be:
+`trackVoiceOwner`, `gateOffPreviousTrackVoice` and `trackReleasingVoices` all find their
+target through the channel's voice mapping, and these were not in it. They were invisible
+to every mechanism that stops a channel, which is exactly why a later note did not silence
+them.
+
+E9x and Rxy restart the sample from the beginning, so a retrigger simply *is* a note-on on
+that channel. It now goes through `dispatchNoteOnAtTime` like any other, which gets the
+cut, the ownership and the releasing-voice sweep for free.
+
+Checked and correct, so not changed: the retrigger counts (1, 2 and 5 for `E93`/`E92`/`E91`
+at speed 6, matching ProTracker's tick arithmetic) and the levels -- the phrase slides from
+40 up to 55 under `A30` and back down to 35 under four rows of `A01`, and every retrigger
+carries 35, because E9x leaves the channel volume alone. The reporter's suspicion that the
+retriggers were resetting volume turned out to be the stacking heard from the outside:
+each fresh voice started at the channel level while the previous ones kept going.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1514,6 +1540,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **A retrigger now takes the channel like any other note** (D65). `retriggerNoteAtTime` passed no track index, so `E9x`/`Rxy` repeats were allocated from the instrument's round-robin pool instead of the channel's own voice — invisible to everything that cuts a channel, so they stacked and played on through later notes. peacedroid.mod patterns 16 and 17 end on `E93 E92 E91`, eight repeats in three rows. 671 green. |
 | 2026-08-29 | fix | **Dropped key-offs and spurious retriggers** (D64), found by counting the engine's note events against the file. A `###` opening a pattern was dropped by the builder when that channel had not played yet in the pattern (31 key-offs → 14 note-offs), and every XM row carrying only a volume-column command revived the channel's last note — a native-only convention that D50 made reachable. 665 green. |
 | 2026-08-29 | fix | **A key-off on an instrument with no volume envelope now cuts** (D63). The importer built an envelope out of the fadeout alone, turning FT2's instant cut into up to ten seconds of fade — 68 of 219 corpus instruments, and the reason `elw-sick.xm`'s order 10 had the previous pattern still sounding under it. 661 green. |
 | 2026-08-29 | ui | **Stereo peak meter beside the instrument list.** dBFS scale with 0 dB marked, peak hold, and a latching CLIP readout, so headroom is visible rather than guessed. Trackers do not limit (FT2 clamps, Paula sums in analog), so a busy module genuinely can run over. Arithmetic in `level-meter-math.ts` with its own tests. |

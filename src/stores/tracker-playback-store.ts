@@ -232,8 +232,8 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       scheduledGlobalVolumeHandler: (gain, time) => {
         songBank.setMasterVolume(gain, time);
       },
-      scheduledRetriggerHandler: (instrumentId, midi, velocity, time, frequency) => {
-        songBank.retriggerNoteAtTime(instrumentId, midi, velocity, time, undefined, frequency);
+      scheduledRetriggerHandler: (instrumentId, midi, velocity, time, trackIndex, frequency) => {
+        songBank.retriggerNoteAtTime(instrumentId, midi, velocity, time, trackIndex, frequency);
       },
 
       // Note handlers
