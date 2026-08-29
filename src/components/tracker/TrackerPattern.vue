@@ -424,7 +424,6 @@ defineExpose({
   display: flex;
   gap: var(--tracker-track-gap);
   overflow-x: auto;
-  padding-bottom: 4px;
   width: 100%;
   z-index: 1;
   position: relative;
@@ -453,18 +452,19 @@ defineExpose({
   border: 2px solid var(--tracker-accent-secondary, rgb(88, 176, 255));
 }
 
+/*
+ * This element is as tall as the whole pattern, so its scrollbar renders at the
+ * foot of that -- far below the visible area on anything but a short pattern.
+ * TrackerPage draws a proxy bar pinned under the pattern area and keeps the two
+ * in sync, so the real one is hidden rather than shown somewhere unreachable.
+ */
+.tracks-wrapper {
+  scrollbar-width: none;
+}
+
 .tracks-wrapper::-webkit-scrollbar {
-  height: 10px;
-}
-
-.tracks-wrapper::-webkit-scrollbar-thumb {
-  background: var(--button-background, rgba(255, 255, 255, 0.08));
-  border-radius: 999px;
-}
-
-.tracks-wrapper::-webkit-scrollbar-track {
-  background: var(--input-background, rgba(255, 255, 255, 0.03));
-  border-radius: 999px;
+  height: 0;
+  display: none;
 }
 
 @media (max-width: 900px) {

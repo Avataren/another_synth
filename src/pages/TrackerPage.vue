@@ -498,7 +498,7 @@
         </div>
       </div>
 
-      <div class="pattern-area-wrapper">
+      <div class="pattern-area-wrapper" ref="patternAreaWrapperRef">
         <TrackerSpectrumAnalyzer
           v-if="userSettings.showSpectrumAnalyzer"
           :node="masterOutputNode"
@@ -532,6 +532,28 @@
             @startSelection="onPatternStartSelection"
             @hoverSelection="onPatternHoverSelection"
           />
+        </div>
+
+        <!--
+          The tracks scroll horizontally inside an element as tall as every row
+          in the pattern, so its own scrollbar sits far below the viewport. This
+          is a proxy for it: pinned under the pattern area, scrolling nothing of
+          its own, kept in sync both ways with the real scroller.
+        -->
+        <div
+          v-show="trackScrollbarWidth > 0"
+          ref="trackScrollbarRef"
+          class="track-scrollbar"
+          :style="{
+            marginLeft: `${trackScrollbarInset.left}px`,
+            marginRight: `${trackScrollbarInset.right}px`,
+          }"
+          aria-hidden="true"
+        >
+          <div
+            class="track-scrollbar-extent"
+            :style="{ width: `${trackScrollbarWidth}px` }"
+          ></div>
         </div>
       </div>
     </div>
@@ -914,10 +936,17 @@ const trackerPatternRef = ref<TrackerPatternInstance | null>(null);
 const visualizerRowRef = ref<HTMLDivElement | null>(null);
 const visualizerTracksRef = ref<HTMLDivElement | null>(null);
 const patternTracksWrapper = ref<HTMLElement | null>(null);
+const patternAreaWrapperRef = ref<HTMLElement | null>(null);
+const trackScrollbarRef = ref<HTMLElement | null>(null);
+/** Scrollable width of the tracks, or 0 when they all fit and no bar is needed. */
+const trackScrollbarWidth = ref(0);
+/** Aligns the proxy bar under the tracks rather than the whole pattern panel. */
+const trackScrollbarInset = ref({ left: 0, right: 0 });
 const visualizerPadding = ref({ left: 18, right: 18 });
 const VISUALIZER_PADDING_BIAS = 25;
-let teardownVisualizerScrollSync: (() => void) | null = null;
-let isSyncingVisualizerScroll = false;
+let teardownTrackScrollSync: (() => void) | null = null;
+let isSyncingTrackScroll = false;
+let trackScrollbarObserver: ResizeObserver | null = null;
 const TRACK_SCROLL_MARGIN = 16;
 let teardownTrackWheelScroll: (() => void) | null = null;
 
@@ -1025,10 +1054,44 @@ function updateVisualizerPadding() {
   visualizerPadding.value = { left, right };
 }
 
-function syncVisualizerScroll(scrollLeft: number) {
+/**
+ * Measure the proxy scrollbar against the real one.
+ *
+ * Width 0 means the tracks fit and the bar hides itself; anything else is the
+ * scroll width it has to reproduce. The insets put it under the tracks rather
+ * than under the whole pattern panel, so it lines up with what it scrolls.
+ */
+function measureTrackScrollbar() {
+  const wrapper = resolvePatternTracksWrapper();
+  const host = patternAreaWrapperRef.value;
+  if (!wrapper || !host) {
+    trackScrollbarWidth.value = 0;
+    return;
+  }
+
+  // Sub-pixel layout leaves a fraction of overflow on exact fits.
+  const overflows = wrapper.scrollWidth - wrapper.clientWidth > 1;
+  trackScrollbarWidth.value = overflows ? wrapper.scrollWidth : 0;
+  if (!overflows) return;
+
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const hostRect = host.getBoundingClientRect();
+  trackScrollbarInset.value = {
+    left: Math.max(0, wrapperRect.left - hostRect.left),
+    right: Math.max(0, hostRect.right - wrapperRect.right),
+  };
+}
+
+/**
+ * Drive every horizontal view of the tracks from one scroll position: the real
+ * scroller, the waveform strip above it, and the proxy scrollbar below.
+ *
+ * The guard is what keeps this from ringing -- assigning scrollLeft fires
+ * `scroll` on the element assigned to, which would call straight back in.
+ */
+function syncTrackScroll(scrollLeft: number) {
   const patternWrapper = resolvePatternTracksWrapper();
-  const visualizer = visualizerTracksRef.value;
-  if (!patternWrapper || !visualizer) return;
+  if (!patternWrapper) return;
 
   patternTracksWrapper.value = patternWrapper;
   const maxScroll = Math.max(
@@ -1037,60 +1100,89 @@ function syncVisualizerScroll(scrollLeft: number) {
   );
   const clamped = Math.min(scrollLeft, maxScroll);
 
-  if (isSyncingVisualizerScroll) return;
-  isSyncingVisualizerScroll = true;
+  if (isSyncingTrackScroll) return;
+  isSyncingTrackScroll = true;
 
   if (patternWrapper.scrollLeft !== clamped) {
     patternWrapper.scrollLeft = clamped;
   }
 
-  if (visualizer.scrollLeft !== clamped) {
+  const visualizer = visualizerTracksRef.value;
+  if (visualizer && visualizer.scrollLeft !== clamped) {
     visualizer.scrollLeft = clamped;
   }
 
+  const scrollbar = trackScrollbarRef.value;
+  if (scrollbar && scrollbar.scrollLeft !== clamped) {
+    scrollbar.scrollLeft = clamped;
+  }
+
   requestAnimationFrame(() => {
-    isSyncingVisualizerScroll = false;
+    isSyncingTrackScroll = false;
   });
 }
 
-function setupVisualizerScrollSync() {
-  teardownVisualizerScrollSync?.();
+/**
+ * Wire whichever horizontal views are currently mounted.
+ *
+ * The waveform strip is optional (a setting) but the proxy scrollbar is not, so
+ * this runs regardless of whether the strip is showing -- an earlier version
+ * only ran on the visualizer path and left the bar dead when they were off.
+ */
+function setupTrackScrollSync() {
+  teardownTrackScrollSync?.();
 
   const patternWrapper = resolvePatternTracksWrapper();
   const visualizer = visualizerTracksRef.value;
+  const scrollbar = trackScrollbarRef.value;
   patternTracksWrapper.value = patternWrapper;
 
-  if (!patternWrapper || !visualizer) return;
+  if (!patternWrapper) return;
 
-  const handlePatternScroll = () =>
-    syncVisualizerScroll(patternWrapper.scrollLeft);
+  const handlePatternScroll = () => syncTrackScroll(patternWrapper.scrollLeft);
   const handleVisualizerScroll = () =>
-    syncVisualizerScroll(visualizer.scrollLeft);
+    syncTrackScroll(visualizer!.scrollLeft);
+  const handleScrollbarScroll = () => syncTrackScroll(scrollbar!.scrollLeft);
 
   patternWrapper.addEventListener('scroll', handlePatternScroll, {
     passive: true,
   });
-  visualizer.addEventListener('scroll', handleVisualizerScroll, {
+  visualizer?.addEventListener('scroll', handleVisualizerScroll, {
+    passive: true,
+  });
+  scrollbar?.addEventListener('scroll', handleScrollbarScroll, {
     passive: true,
   });
 
-  teardownVisualizerScrollSync = () => {
+  // The tracks change width with the channel count and the window, and neither
+  // fires a scroll event, so the bar has to be re-measured on resize.
+  trackScrollbarObserver?.disconnect();
+  trackScrollbarObserver = new ResizeObserver(() => measureTrackScrollbar());
+  trackScrollbarObserver.observe(patternWrapper);
+
+  teardownTrackScrollSync = () => {
     patternWrapper.removeEventListener('scroll', handlePatternScroll);
-    visualizer.removeEventListener('scroll', handleVisualizerScroll);
+    visualizer?.removeEventListener('scroll', handleVisualizerScroll);
+    scrollbar?.removeEventListener('scroll', handleScrollbarScroll);
+    trackScrollbarObserver?.disconnect();
+    trackScrollbarObserver = null;
   };
 
-  syncVisualizerScroll(patternWrapper.scrollLeft);
+  measureTrackScrollbar();
+  syncTrackScroll(patternWrapper.scrollLeft);
 }
 
 function refreshVisualizerAlignment() {
   if (!userSettings.value.showWaveformVisualizers) {
-    teardownVisualizerScrollSync?.();
     visualizerPadding.value = { left: 18, right: 18 };
+    // Re-wire rather than tear down: the waveform strip is gone but the proxy
+    // scrollbar is not, and it shares this sync.
+    void nextTick(() => setupTrackScrollSync());
     return;
   }
   void nextTick(() => {
     updateVisualizerPadding();
-    setupVisualizerScrollSync();
+    setupTrackScrollSync();
   });
 }
 
@@ -1792,6 +1884,7 @@ onMounted(async () => {
     () => trackCount.value,
     () => {
       setupTrackWheelScroll();
+      setupTrackScrollSync();
     },
     { immediate: true, flush: 'post' },
   );
@@ -1865,7 +1958,7 @@ watch(
       visualizerReady.value = true;
     } else {
       visualizerReady.value = false;
-      teardownVisualizerScrollSync?.();
+      refreshVisualizerAlignment();
     }
   },
 );
@@ -1913,7 +2006,7 @@ onBeforeUnmount(() => {
   keyboardStore.cleanupMidiListeners();
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('resize', handleWindowResize);
-  teardownVisualizerScrollSync?.();
+  teardownTrackScrollSync?.();
   teardownTrackWheelScroll?.();
   // Cancel pending scroll RAF
   if (scrollRafId !== null) {
@@ -2103,12 +2196,58 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* Column so the proxy scrollbar takes its height off the pattern area and
+     sits at the bottom of the screen rather than the bottom of the pattern. */
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Proxy for the tracks' own horizontal scrollbar.
+ *
+ * It scrolls nothing: the extent element only gives it a scroll width to match
+ * the real scroller's, and the two are kept in sync in both directions. What it
+ * buys is position -- the real bar lives at the foot of an element as tall as
+ * the whole pattern, which is well off screen on any pattern worth scrolling.
+ */
+.track-scrollbar {
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--input-background, rgba(255, 255, 255, 0.03));
+}
+
+.track-scrollbar-extent {
+  height: 1px;
+}
+
+.track-scrollbar::-webkit-scrollbar {
+  height: 14px;
+}
+
+.track-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--button-background, rgba(255, 255, 255, 0.14));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.track-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.24));
+  background-clip: content-box;
+}
+
+.track-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .pattern-area {
   position: relative;
   z-index: 1;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: auto;
   padding: 0 18px 18px;
