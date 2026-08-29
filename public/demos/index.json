@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-29T22:34:18.787Z",
+  "generated": "2026-08-29T22:46:09.158Z",
   "collections": [
     {
       "id": "amiga",
@@ -21,6 +21,14 @@
           "signature": "M.K.",
           "file": "amiga/4mat-menu12.mod",
           "bytes": 6582
+        },
+        {
+          "title": "7",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/7.mod",
+          "bytes": 102768
         },
         {
           "title": "axel f",
@@ -70,6 +78,30 @@
           "bytes": 203278
         },
         {
+          "title": "action1",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/action1.mod",
+          "bytes": 33308
+        },
+        {
+          "title": "action2",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/action2.mod",
+          "bytes": 31260
+        },
+        {
+          "title": "action3",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/action3.mod",
+          "bytes": 32284
+        },
+        {
           "title": "amegas",
           "format": "MOD",
           "channels": 4,
@@ -85,12 +117,26 @@
           "bytes": 67532
         },
         {
+          "title": "blueberry",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/blueberry.mod",
+          "bytes": 71564
+        },
+        {
           "title": "butterfly syndrome",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/butterfly_syndrome.mod",
           "bytes": 276712
+        },
+        {
+          "title": "crystalhammer",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/crystalhammer.mod",
+          "bytes": 68950
         },
         {
           "title": "fred1",
@@ -117,12 +163,34 @@
           "bytes": 156768
         },
         {
+          "title": "jackdance ii",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/jackdance ii.mod",
+          "bytes": 35856
+        },
+        {
+          "title": "jackdance",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/jackdance.mod",
+          "bytes": 63364
+        },
+        {
           "title": "addiction",
           "format": "MOD",
           "channels": 4,
           "signature": "M.K.",
           "file": "amiga/jogeir_liljedahl_-_addiction.mod",
           "bytes": 93758
+        },
+        {
+          "title": "lepeltheme",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/lepeltheme.mod",
+          "bytes": 76412
         },
         {
           "title": "musiklinjen",
@@ -149,6 +217,14 @@
           "bytes": 95386
         },
         {
+          "title": "obarski mega-mix",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/obarski mega-mix.mod",
+          "bytes": 141812
+        },
+        {
           "title": "peace droid",
           "format": "MOD",
           "channels": 4,
@@ -173,6 +249,13 @@
           "bytes": 25398
         },
         {
+          "title": "pretend",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/pretend.mod",
+          "bytes": 25220
+        },
+        {
           "title": "Sundance",
           "format": "MOD",
           "channels": 4,
@@ -187,6 +270,13 @@
           "signature": "M.K.",
           "file": "amiga/resii.mod",
           "bytes": 188416
+        },
+        {
+          "title": "sleepwalk",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/sleepwalk.mod",
+          "bytes": 62316
         },
         {
           "title": "Sound o'da lunatic",
@@ -211,6 +301,13 @@
           "signature": "M.K.",
           "file": "amiga/stardstm.mod",
           "bytes": 153676
+        },
+        {
+          "title": "telephone",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/telephone.mod",
+          "bytes": 45544
         },
         {
           "title": "acidjazzed evening",
