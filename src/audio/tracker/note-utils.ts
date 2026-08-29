@@ -283,6 +283,8 @@ export function parseEffectCommand(macro?: string): EffectCommandResult {
     'G': 'setGlobalVol',
     'H': 'globalVolSlide',
     'K': 'keyOff',
+    // XM effect 0x15.
+    'L': 'setEnvelopePos',
     'P': 'panSlide',
     'R': 'retrigVol',
     'T': 'tremor',

@@ -94,6 +94,7 @@ export type EffectType =
   | 'finePortaUp'    // E1x - Fine portamento up
   | 'finePortaDown'  // E2x - Fine portamento down
   | 'extraFinePorta' // Xxy - Extra fine portamento up (x=1) / down (x=2)
+  | 'setEnvelopePos'  // Lxx - Set envelope position (XM)
   | 'noteCut'        // ECx - Note cut after x ticks
   | 'noteDelay'      // EDx - Note delay by x ticks
   | 'patDelay';      // EEx - Pattern delay by x rows
@@ -271,6 +272,8 @@ export interface PlaybackOptions {
   scheduledPanHandler?: ScheduledPanHandler;
   /** Handler for scheduling per-note sample offsets (9xx) */
   scheduledSampleOffsetHandler?: ScheduledSampleOffsetHandler;
+  /** Handler for Lxx envelope-position jumps */
+  scheduledEnvelopePositionHandler?: ScheduledEnvelopePositionHandler;
   /** Handler for scheduling global volume changes (Gxx/Hxy) */
   scheduledGlobalVolumeHandler?: ScheduledGlobalVolumeHandler;
   /** Handler for scheduling note retriggers */
@@ -392,6 +395,18 @@ export type ScheduledPitchHandler = (
  * Handler for scheduling volume changes at specific audio times.
  * Used for tremolo, volume slide effects.
  */
+/**
+ * Handler for Lxx: move a voice's envelopes to a tick position.
+ */
+export type ScheduledEnvelopePositionHandler = (
+  instrumentId: string,
+  voiceIndex: number,
+  /** Envelope tick to jump to. */
+  tick: number,
+  time: number,
+  trackIndex: number
+) => void;
+
 export type ScheduledVolumeHandler = (
   instrumentId: string,
   /** Voice index to modify (-1 for all active voices) */

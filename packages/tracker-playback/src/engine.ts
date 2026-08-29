@@ -21,6 +21,7 @@ import {
   type ScheduledVolumeHandler,
   type ScheduledPanHandler,
   type ScheduledSampleOffsetHandler,
+  type ScheduledEnvelopePositionHandler,
   type ScheduledGlobalVolumeHandler,
   type ScheduledRetriggerHandler,
   type PositionCommandHandler,
@@ -126,6 +127,9 @@ export class PlaybackEngine {
   private readonly scheduledSampleOffsetHandler:
     | ScheduledSampleOffsetHandler
     | undefined;
+  private readonly scheduledEnvelopePositionHandler:
+    | ScheduledEnvelopePositionHandler
+    | undefined;
   private readonly scheduledGlobalVolumeHandler:
     | ScheduledGlobalVolumeHandler
     | undefined;
@@ -223,6 +227,8 @@ export class PlaybackEngine {
     this.scheduledVolumeHandler = options.scheduledVolumeHandler;
     this.scheduledPanHandler = options.scheduledPanHandler;
     this.scheduledSampleOffsetHandler = options.scheduledSampleOffsetHandler;
+    this.scheduledEnvelopePositionHandler =
+      options.scheduledEnvelopePositionHandler;
     this.scheduledGlobalVolumeHandler = options.scheduledGlobalVolumeHandler;
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
@@ -1292,6 +1298,17 @@ export class PlaybackEngine {
             context.time,
             context.trackIndex,
             cmd.ramp,
+          );
+          break;
+
+        case 'envelopePosition':
+          if (!this.scheduledEnvelopePositionHandler) break;
+          this.scheduledEnvelopePositionHandler(
+            context.instrumentId,
+            cmd.voiceIndex ?? context.voiceIndex,
+            cmd.tick,
+            context.time,
+            context.trackIndex,
           );
           break;
 

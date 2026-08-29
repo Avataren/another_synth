@@ -230,13 +230,11 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 
 ### Phase 4 — XM instrument fidelity
 - [x] Volume envelope (points, sustain, and loop)
-- [ ] Panning envelope
+- [x] Panning envelope (D62)
 - [x] `volumeFadeout` on key-off
 - [x] Autovibrato (D57)
 - [x] Remaining XM effects: Kxx, Rxy, Txy, Xxy, Gxx/Hxy (D48, D51, §6e)
-- [ ] `Lxx` set envelope position — the one XM effect still unhandled; needs to
-      reach into a running envelope in `ModInstrument`, and has zero occurrences
-      in the corpus
+- [x] `Lxx` set envelope position (D62)
 
 ### Phase 5 — S3M
 - [ ] `formats/s3m.ts` → `ModuleSong`
@@ -1204,6 +1202,38 @@ file, and they are tone portamentos, which correctly never retrigger; nothing wa
 with the triggering at all. The audible fault was entirely the missing volume reload, two
 columns away from where it looked like it was.
 
+**D62 — Panning envelopes offset the channel pan, and Lxx repositions both envelopes.**
+The last two Phase 4 items. Panning envelopes are 20 of the 219 corpus instruments and
+7.3% of played notes (§6f); `Lxx` has no corpus occurrences and is here for completeness.
+
+**Why the panning envelope could not reuse the volume envelope's shape.** The volume
+envelope gets a dedicated gain stage that *multiplies* with the channel volume, so the two
+never have to know about each other (D31). Panning does not compose that way: two panners
+in series are not the sum of their pans, and there is only one `pan` parameter. FT2 also
+does not treat the envelope as a position -- it is an offset around the channel pan, scaled
+by the room that pan leaves:
+
+    final = pan + (envelope - 32) * (128 - |pan - 128|) / 32
+
+so a centred channel can swing the whole field while a hard-panned one barely moves, and
+the envelope can never push a channel past the edge. The consequence for the
+implementation is that the pan parameter holds *pan and envelope already combined*, so a
+mid-note pan command cannot simply write to it -- `setPan` re-derives the remaining
+envelope around the new base, from the envelope tick the note has reached.
+
+**Lxx** moves both envelopes' read position without touching the note. That needed
+`scheduleTrackerEnvelope` to gain a `fromTick`: it sets the envelope's interpolated value
+at that tick immediately and schedules everything after it relative to now. The same
+parameter is what lets `setPan` rebuild a panning envelope mid-flight, so the two features
+paid for each other.
+
+`envelopeValueAtTick` interpolates between points, since a jump target rarely lands exactly
+on one.
+
+Both new sampler-state fields are named in the patch normalizer's whitelist, and the import
+tests assert *through* `deserializePatch` rather than against the raw patch -- the D34/D57
+trap, now guarded by habit rather than by memory.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1420,6 +1450,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | **Panning envelopes and Lxx implemented** (D62) — the last two Phase 4 items. The panning envelope is an offset *around* the channel pan scaled by that pan's headroom, not an absolute position, so the pan parameter carries both combined and `setPan` re-derives the remainder around a new base. `Lxx` repositions both envelopes, via a `fromTick` on the envelope scheduler that the panning rebuild also uses. Tests: `src/tests/xm-panning-envelope.test.ts`. 647 green. |
 | 2026-08-29 | fix | **A sample number reloads its volume on a tone-portamento row too** (D61). The reload was skipped there, so nexus_seven.mod's pumped portamento bassline could only slide down: the channel hit zero within four rows and every remaining note in the pattern was silent. ProTracker writes `n_volume` from the sample number before it checks for tone porta; that check only governs the retrigger. 637 green. |
 | 2026-08-29 | fix | **A new note on a module channel now kills everything the channel was sounding** (D60). A key-off released the voice and then cleared the track's voice tracking, which made it unkillable — so a released note rang on under the next one for its whole fadeout whenever the channel changed instrument. Released voices are tracked per track and cut by the next note. The bank also learns the song's format: module channels cut on replacement, native songs release and let the note ring. Tests: `src/tests/tracker-channel-monophony.test.ts` (3 of 7 confirmed failing against the old code). 634 green. |
 | 2026-08-29 | fix | **The XM frequency table now reaches the engine** (D59). `xm-import` put `linearFrequency` in a console.log rather than the song data, so `profileForFormat` never selected `XM_AMIGA_PROFILE` and every Amiga-table XM computed its pitch *effects* in linear period space — in tune, but every slide moving the wrong distance. Roughly half of real XM files are Amiga-table. Found via 4-mat's "rose". Tests: `src/tests/xm-amiga-frequency-table.test.ts`. 627 green. |

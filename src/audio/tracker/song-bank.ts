@@ -1642,6 +1642,42 @@ export class TrackerSongBank {
   }
 
   /**
+   * Move a voice's envelopes to a tick position (Lxx).
+   *
+   * Resolves the track's voice the same way the volume and pan commands do,
+   * and drops the command when the track has nothing sounding -- there is no
+   * envelope to reposition, and aiming at voice 0 would hit whichever track
+   * happens to own it (D13).
+   */
+  setVoiceEnvelopePositionAtTime(
+    instrumentId: string | undefined,
+    voiceIndex: number,
+    tick: number,
+    time: number,
+    trackIndex: number,
+  ) {
+    if (!instrumentId) return;
+    const active = this.instruments.get(instrumentId);
+    if (!active) return;
+
+    let resolvedVoice = voiceIndex;
+    if (resolvedVoice < 0) {
+      const byTrack = this.lastTrackVoice.get(instrumentId);
+      const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
+      const trackVoice = byTrack?.get(trackKey);
+      if (trackVoice === undefined) return;
+      resolvedVoice = trackVoice;
+    }
+    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
+      return;
+
+    const target = active.instrument as {
+      setEnvelopePositionAtTime?: (v: number, t: number, when: number) => void;
+    };
+    target.setEnvelopePositionAtTime?.(resolvedVoice, tick, time);
+  }
+
+  /**
    * Set the sample offset (normalized 0-1) for a specific voice at a specific
    * time, via a dedicated macro route.
    *

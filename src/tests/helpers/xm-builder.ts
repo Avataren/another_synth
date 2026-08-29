@@ -32,6 +32,7 @@ export interface InstrumentSpec {
   keymap?: number[];
   volumeFadeout?: number;
   volumeEnvelope?: { points: Array<[number, number]>; type?: number; sustain?: number };
+  panningEnvelope?: { points: Array<[number, number]>; type?: number; sustain?: number };
   /** Instrument-level vibrato (XM autovibrato). */
   autoVibrato?: { type?: number; sweep?: number; depth?: number; rate?: number };
 }
@@ -196,20 +197,21 @@ export function buildXm(spec: XmSpec): Uint8Array {
       w.u16(volPoints[i]?.[0] ?? 0);
       w.u16(volPoints[i]?.[1] ?? 0);
     }
+    const panPoints = instrument.panningEnvelope?.points ?? [];
     for (let i = 0; i < 12; i++) {
-      w.u16(0);
-      w.u16(0);
+      w.u16(panPoints[i]?.[0] ?? 0);
+      w.u16(panPoints[i]?.[1] ?? 0);
     }
     w.u8(volPoints.length); // number of volume points
-    w.u8(0); // number of panning points
+    w.u8(panPoints.length); // number of panning points
     w.u8(instrument.volumeEnvelope?.sustain ?? 0);
     w.u8(0); // volume loop start
     w.u8(0); // volume loop end
-    w.u8(0); // panning sustain
+    w.u8(instrument.panningEnvelope?.sustain ?? 0); // panning sustain
     w.u8(0); // panning loop start
     w.u8(0); // panning loop end
     w.u8(instrument.volumeEnvelope?.type ?? 0);
-    w.u8(0); // panning type
+    w.u8(instrument.panningEnvelope?.type ?? 0); // panning type
     w.u8(instrument.autoVibrato?.type ?? 0); // vibrato type
     w.u8(instrument.autoVibrato?.sweep ?? 0); // vibrato sweep
     w.u8(instrument.autoVibrato?.depth ?? 0); // vibrato depth

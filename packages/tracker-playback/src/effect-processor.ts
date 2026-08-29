@@ -608,6 +608,15 @@ export type ProcessorCommand =
     }
   | { kind: 'pan'; pan: number; voiceIndex?: number }
   | { kind: 'sampleOffset'; offset: number; voiceIndex?: number }
+  | {
+      /**
+       * Lxx: jump the instrument's envelopes to a tick position, without
+       * retriggering anything.
+       */
+      kind: 'envelopePosition';
+      tick: number;
+      voiceIndex?: number;
+    }
   | { kind: 'retrigger'; midi: number; velocity: number; frequency?: number };
 
 export interface TickCommandBatch {
@@ -986,6 +995,18 @@ export function processEffectTick0(
       applyFinePortamento(state, -effect.paramY);
       pushPitch(state.currentFrequency);
       break;
+
+    case 'setEnvelopePos': {
+      // Lxx (XM 0x15): move the envelopes to tick xx. The note keeps playing
+      // from where it is; only the envelope's read position moves.
+      const tick = effect.paramX * 16 + effect.paramY;
+      commands.push(
+        voiceIndex !== undefined
+          ? { kind: 'envelopePosition', tick, voiceIndex }
+          : { kind: 'envelopePosition', tick },
+      );
+      break;
+    }
 
     case 'extraFinePorta':
       // Xxy (XM 0x21): x=1 up, x=2 down, by y period units -- a quarter of

@@ -108,7 +108,13 @@ export enum SamplerTriggerMode {
  * file expresses them and a tick's wall-clock duration depends on the song's
  * BPM at the moment the note plays.
  */
-export interface TrackerVolumeEnvelope {
+/**
+ * The point/sustain/loop shape XM's volume and panning envelopes share.
+ *
+ * They differ only in what the value means and what it drives: volume also
+ * carries a fadeout, panning does not.
+ */
+export interface TrackerEnvelopeShape {
   /** Envelope points; `value` is 0..64. */
   points: Array<{ tick: number; value: number }>;
   /** Index of the point to hold at until key-off, or -1 for none. */
@@ -117,6 +123,19 @@ export interface TrackerVolumeEnvelope {
   loopStart: number;
   loopEnd: number;
   loopEnabled: boolean;
+}
+
+/**
+ * XM panning envelope. 32 is centre; 0 and 64 are the extremes.
+ *
+ * FastTracker 2 does not use it as an absolute position -- it is an *offset*
+ * around the channel's own pan, scaled by how much room that pan leaves, so
+ * the envelope can never push a channel past the edge of the field. See
+ * ModInstrument.combinePan.
+ */
+export type TrackerPanningEnvelope = TrackerEnvelopeShape;
+
+export interface TrackerVolumeEnvelope extends TrackerEnvelopeShape {
   /**
    * Fadeout rate, subtracted from a 65536 counter each tick after key-off.
    * 0 means the note does not fade. Time to silence is
@@ -168,6 +187,7 @@ export interface SamplerState {
    * volume that effects automate.
    */
   trackerEnvelope?: TrackerVolumeEnvelope;
+  trackerPanEnvelope?: TrackerPanningEnvelope;
   trackerAutoVibrato?: TrackerAutoVibrato;
 }
 

@@ -226,6 +226,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       scheduledSampleOffsetHandler: (instrumentId, voiceIndex, offset, time, trackIndex) => {
         songBank.setVoiceSampleOffsetAtTime(instrumentId, voiceIndex, offset, time, trackIndex);
       },
+      scheduledEnvelopePositionHandler: (instrumentId, voiceIndex, tick, time, trackIndex) => {
+        songBank.setVoiceEnvelopePositionAtTime(instrumentId, voiceIndex, tick, time, trackIndex);
+      },
       scheduledGlobalVolumeHandler: (gain, time) => {
         songBank.setMasterVolume(gain, time);
       },

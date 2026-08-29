@@ -14,6 +14,7 @@ import {
   SamplerLoopMode,
   type SamplerState,
   type TrackerVolumeEnvelope,
+  type TrackerEnvelopeShape,
   type TrackerAutoVibrato,
 } from './types/synth-layout';
 import { decodeAudioAssetToFloat32Array } from './serialization/audio-asset-encoder';
@@ -24,6 +25,51 @@ import { AudioAssetType } from './types/preset-types';
  * the tracker default. A tick is 2.5/BPM seconds in both ProTracker and FT2.
  */
 const DEFAULT_TICK_SECONDS = 2.5 / 125;
+
+/**
+ * An envelope's value at an arbitrary tick, interpolating between points.
+ *
+ * Needed wherever an envelope is started from somewhere other than its
+ * beginning -- Lxx, and re-scheduling a panning envelope when the channel pan
+ * moves under it -- since that tick rarely lands exactly on a point.
+ */
+function envelopeValueAtTick(
+  points: ReadonlyArray<{ tick: number; value: number }>,
+  tick: number,
+): number {
+  const first = points[0];
+  if (!first) return 32;
+  if (tick <= first.tick) return first.value;
+  for (let i = 1; i < points.length; i++) {
+    const previous = points[i - 1]!;
+    const point = points[i]!;
+    if (tick > point.tick) continue;
+    const span = point.tick - previous.tick;
+    if (span <= 0) return point.value;
+    const t = (tick - previous.tick) / span;
+    return previous.value + (point.value - previous.value) * t;
+  }
+  return points[points.length - 1]!.value;
+}
+
+/**
+ * Combine a channel's pan with a panning-envelope value, as FastTracker 2 does.
+ *
+ * The envelope is an *offset* around the channel pan, not a position: FT2
+ * scales it by how much room the channel pan leaves, so a hard-panned channel
+ * barely moves and a centred one can swing the whole field. That is what stops
+ * an envelope pushing a channel past the edge.
+ *
+ *   final = pan + (envelope - 32) * (128 - |pan - 128|) / 32     [0..255]
+ *
+ * `base` and the result are in the StereoPanner's -1..1.
+ */
+function combinePan(base: number, envelopeValue: number): number {
+  const pan255 = (Math.max(-1, Math.min(1, base)) + 1) * 127.5;
+  const headroom = (128 - Math.abs(pan255 - 128)) / 32;
+  const combined = pan255 + (envelopeValue - 32) * headroom;
+  return Math.max(-1, Math.min(1, combined / 127.5 - 1));
+}
 
 /** Voices assumed when a patch does not state a count. */
 const DEFAULT_VOICE_COUNT = 4;
@@ -51,6 +97,14 @@ interface ActiveVoice {
    */
   autoVibrato: { osc: OscillatorNode; depth: GainNode } | null;
   panNode: StereoPannerNode;
+  /**
+   * The channel's own pan, before any panning envelope.
+   *
+   * Kept because FT2's envelope is an offset *around* this rather than an
+   * absolute position, so a mid-note pan command has to re-derive the whole
+   * remaining envelope rather than simply overwrite the parameter.
+   */
+  basePan: number;
   noteNumber: number;
   startTime: number;
   /** Tick duration in force when this voice started, for envelope release. */
@@ -525,6 +579,7 @@ export default class ModInstrument {
       // run tracker envelopes or the instrument's own vibrato.
       envelopeGain: null,
       autoVibrato: null,
+      basePan: 0,
       panNode,
       tickSeconds: DEFAULT_TICK_SECONDS,
       noteNumber,
@@ -710,7 +765,31 @@ export default class ModInstrument {
 
     // Pan value 0-1 maps to -1 to 1
     const panValue = (pan - 0.5) * 2;
+    voice.basePan = panValue;
     const now = this.audioContext.currentTime;
+
+    // With a panning envelope the parameter is not the channel pan -- it is
+    // the channel pan with the envelope's offset already folded in -- so a pan
+    // command cannot simply write to it. Re-derive the rest of the envelope
+    // around the new base, from wherever the envelope has got to.
+    const panEnvelope = this.samplerState?.trackerPanEnvelope;
+    if (panEnvelope) {
+      const elapsedTicks =
+        voice.tickSeconds > 0
+          ? Math.max(0, (now - voice.startTime) / voice.tickSeconds)
+          : 0;
+      voice.panNode.pan.cancelScheduledValues(now);
+      this.scheduleTrackerEnvelope(
+        voice.panNode.pan,
+        panEnvelope,
+        now,
+        voice.tickSeconds,
+        (value) => combinePan(panValue, value),
+        elapsedTicks,
+      );
+      return;
+    }
+
     voice.panNode.pan.setValueAtTime(voice.panNode.pan.value, now);
     voice.panNode.pan.linearRampToValueAtTime(panValue, now + 0.005);
   }
@@ -848,30 +927,46 @@ export default class ModInstrument {
    */
   private scheduleTrackerEnvelope(
     param: AudioParam,
-    envelope: TrackerVolumeEnvelope,
+    envelope: TrackerEnvelopeShape,
     startTime: number,
     tickSeconds: number,
+    /**
+     * Maps an envelope value (0-64) onto the parameter's own units. Volume
+     * wants 0..1; panning wants the channel pan combined with the envelope's
+     * offset, so it cannot be a fixed division.
+     */
+    level: (value: number) => number = (value) =>
+      Math.max(0, Math.min(1, value / 64)),
+    /**
+     * Envelope tick to start from, for Lxx (set envelope position) and for
+     * re-scheduling a panning envelope after the channel pan moves. The
+     * envelope's value at this tick is set immediately and everything after it
+     * is scheduled relative to `startTime`.
+     */
+    fromTick = 0,
   ): void {
     const points = envelope.points;
     if (points.length === 0) {
-      param.setValueAtTime(1, startTime);
+      param.setValueAtTime(level(32), startTime);
       return;
     }
 
-    const level = (value: number) => Math.max(0, Math.min(1, value / 64));
+    /** Audio time for an envelope tick, with `fromTick` landing on now. */
+    const at = (tick: number) => startTime + (tick - fromTick) * tickSeconds;
+
     const hasSustain =
       envelope.sustainPoint >= 0 && envelope.sustainPoint < points.length;
 
-    param.setValueAtTime(level(points[0]!.value), startTime);
+    // Start from wherever `fromTick` falls, interpolating between points if it
+    // lands mid-segment.
+    param.setValueAtTime(level(envelopeValueAtTick(points, fromTick)), startTime);
 
     // Sustain wins: the envelope runs to that point and waits for key-off.
     if (hasSustain) {
       for (let i = 1; i <= envelope.sustainPoint; i++) {
         const point = points[i]!;
-        param.linearRampToValueAtTime(
-          level(point.value),
-          startTime + point.tick * tickSeconds,
-        );
+        if (point.tick <= fromTick) continue;
+        param.linearRampToValueAtTime(level(point.value), at(point.tick));
       }
       return;
     }
@@ -887,10 +982,8 @@ export default class ModInstrument {
     if (!loops) {
       for (let i = 1; i < points.length; i++) {
         const point = points[i]!;
-        param.linearRampToValueAtTime(
-          level(point.value),
-          startTime + point.tick * tickSeconds,
-        );
+        if (point.tick <= fromTick) continue;
+        param.linearRampToValueAtTime(level(point.value), at(point.tick));
       }
       return;
     }
@@ -902,10 +995,8 @@ export default class ModInstrument {
     // is what made looping instruments drop out.
     for (let i = 1; i <= loopEnd; i++) {
       const point = points[i]!;
-      param.linearRampToValueAtTime(
-        level(point.value),
-        startTime + point.tick * tickSeconds,
-      );
+      if (point.tick <= fromTick) continue;
+      param.linearRampToValueAtTime(level(point.value), at(point.tick));
     }
 
     const loopTicks = points[loopEnd]!.tick - points[loopStart]!.tick;
@@ -918,12 +1009,9 @@ export default class ModInstrument {
       const offsetTicks = points[loopEnd]!.tick + pass * loopTicks;
       for (let i = loopStart; i <= loopEnd; i++) {
         const point = points[i]!;
-        const tick =
-          offsetTicks + (point.tick - points[loopStart]!.tick);
-        param.linearRampToValueAtTime(
-          level(point.value),
-          startTime + tick * tickSeconds,
-        );
+        const tick = offsetTicks + (point.tick - points[loopStart]!.tick);
+        if (tick <= fromTick) continue;
+        param.linearRampToValueAtTime(level(point.value), at(tick));
       }
       elapsed = (offsetTicks + loopTicks) * tickSeconds;
       pass++;
@@ -1202,12 +1290,26 @@ export default class ModInstrument {
       ? this.startAutoVibrato(source, autoVibratoSpec, startTime, tickSeconds)
       : null;
 
+    // The channel's pan, which a panning envelope offsets around.
+    const basePan = pan !== undefined ? (pan - 0.5) * 2 : 0;
+    const panEnvelope = this.samplerState.trackerPanEnvelope;
+    if (panEnvelope) {
+      this.scheduleTrackerEnvelope(
+        panNode.pan,
+        panEnvelope,
+        startTime,
+        tickSeconds,
+        (value) => combinePan(basePan, value),
+      );
+    }
+
     // Store active voice
     this.activeVoices.set(voiceIndex, {
       source,
       gainNode,
       envelopeGain,
       autoVibrato,
+      basePan,
       panNode,
       tickSeconds,
       noteNumber,
@@ -1514,6 +1616,56 @@ export default class ModInstrument {
     }
 
     voice.targetGain = gain; // Update tracked value for next call
+  }
+
+  /**
+   * Lxx: move a voice's envelopes to a tick position.
+   *
+   * The note carries on untouched -- only the envelopes' read position moves,
+   * which is the whole point of the command. Both envelopes are repositioned
+   * together, as FastTracker 2 does.
+   *
+   * `startTime` stays put so `setPan` keeps measuring elapsed ticks from the
+   * note's own beginning; the jump is expressed by re-scheduling from
+   * `fromTick` rather than by pretending the note started elsewhere.
+   */
+  setEnvelopePositionAtTime(
+    voiceIndex: number,
+    tick: number,
+    time: number,
+  ): void {
+    const voice = this.activeVoices.get(voiceIndex);
+    if (!voice || !this.samplerState) return;
+
+    const at = Math.max(time, this.audioContext.currentTime);
+    const fromTick = Math.max(0, tick);
+
+    const envelope = this.samplerState.trackerEnvelope;
+    if (voice.envelopeGain && envelope && envelope.points.length > 0) {
+      voice.envelopeGain.gain.cancelScheduledValues(at);
+      this.scheduleTrackerEnvelope(
+        voice.envelopeGain.gain,
+        envelope,
+        at,
+        voice.tickSeconds,
+        undefined,
+        fromTick,
+      );
+    }
+
+    const panEnvelope = this.samplerState.trackerPanEnvelope;
+    if (panEnvelope && panEnvelope.points.length > 0) {
+      const base = voice.basePan;
+      voice.panNode.pan.cancelScheduledValues(at);
+      this.scheduleTrackerEnvelope(
+        voice.panNode.pan,
+        panEnvelope,
+        at,
+        voice.tickSeconds,
+        (value) => combinePan(base, value),
+        fromTick,
+      );
+    }
   }
 
   setVoiceMacroAtTime(

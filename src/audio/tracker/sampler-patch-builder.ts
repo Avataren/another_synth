@@ -22,6 +22,7 @@ import {
   VoiceNodeType,
   type SamplerState,
   type TrackerVolumeEnvelope,
+  type TrackerPanningEnvelope,
   type TrackerAutoVibrato,
   type VoiceLayout,
   type PatchLayout,
@@ -61,6 +62,8 @@ export interface SamplerPatchSpec {
   voiceCount: number;
   /** Optional tracker volume envelope (XM/IT style). */
   trackerEnvelope?: TrackerVolumeEnvelope;
+  /** Optional XM panning envelope. */
+  panEnvelope?: TrackerPanningEnvelope;
   /** Optional XM instrument-level vibrato. */
   autoVibrato?: TrackerAutoVibrato;
 }
@@ -131,6 +134,9 @@ export function createSamplerPatch(spec: SamplerPatchSpec): Patch {
   }
   if (spec.trackerEnvelope) {
     samplerState.trackerEnvelope = spec.trackerEnvelope;
+  }
+  if (spec.panEnvelope) {
+    samplerState.trackerPanEnvelope = spec.panEnvelope;
   }
   if (spec.autoVibrato) {
     samplerState.trackerAutoVibrato = spec.autoVibrato;
