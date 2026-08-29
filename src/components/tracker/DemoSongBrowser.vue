@@ -55,9 +55,10 @@ import { computed, ref, watch } from 'vue';
 /**
  * Browser for the demo modules published alongside the app.
  *
- * The manifest is fetched rather than bundled: the modules are third-party
- * music published separately from the build, so the app must cope with the
- * collection being absent entirely.
+ * The manifest is fetched rather than imported, so a missing or unreachable
+ * collection stays an expected state rather than a build error -- the modules
+ * are third-party music served as plain files, and the app should still come
+ * up without them.
  */
 export interface DemoSong {
   /** Path relative to the manifest, e.g. "amiga/song.mod". */

@@ -1,0 +1,337 @@
+{
+  "version": 1,
+  "generated": "2026-08-29T21:36:06.180Z",
+  "collections": [
+    {
+      "id": "amiga",
+      "name": "Amiga / ProTracker",
+      "songs": [
+        {
+          "title": "12Th Warrior",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/12TH.MOD",
+          "bytes": 143039
+        },
+        {
+          "title": "anarchymenu12",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/4mat-menu12.mod",
+          "bytes": 6582
+        },
+        {
+          "title": "axel f",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/AXELF.MOD",
+          "bytes": 113192
+        },
+        {
+          "title": "DOPE",
+          "format": "MOD",
+          "channels": 28,
+          "signature": "28CH",
+          "file": "amiga/DOPE.MOD",
+          "bytes": 957334
+        },
+        {
+          "title": "elysium",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/ELYSIUM.MOD",
+          "bytes": 130010
+        },
+        {
+          "title": "fountain of sighs",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/FOUNTAIN.MOD",
+          "bytes": 654502
+        },
+        {
+          "title": "guitar slinger",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/GSLINGER.MOD",
+          "bytes": 406354
+        },
+        {
+          "title": "a city at night",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/a_city_at_night.mod",
+          "bytes": 203278
+        },
+        {
+          "title": "amegas",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/amegas.mod",
+          "bytes": 68864
+        },
+        {
+          "title": "black-hole",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/black-hole.mod",
+          "bytes": 67532
+        },
+        {
+          "title": "butterfly syndrome",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/butterfly_syndrome.mod",
+          "bytes": 276712
+        },
+        {
+          "title": "fred1",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/dear_rob.mod",
+          "bytes": 66236
+        },
+        {
+          "title": "hymn to aurora",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/hymn_to_aurora.mod",
+          "bytes": 112590
+        },
+        {
+          "title": "escapade",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/interphace_-_escapade.mod",
+          "bytes": 156768
+        },
+        {
+          "title": "addiction",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/jogeir_liljedahl_-_addiction.mod",
+          "bytes": 93758
+        },
+        {
+          "title": "musiklinjen",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/musiklinjen.mod",
+          "bytes": 184930
+        },
+        {
+          "title": "nexus seven",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/nexus_seven.mod",
+          "bytes": 253012
+        },
+        {
+          "title": "night-club-theme",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/night-club-theme.mod",
+          "bytes": 95386
+        },
+        {
+          "title": "peace droid",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/peacedroid.mod",
+          "bytes": 225224
+        },
+        {
+          "title": "physical presence",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/physical_presence.mod",
+          "bytes": 285004
+        },
+        {
+          "title": "playing with delay",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/playingw.mod",
+          "bytes": 25398
+        },
+        {
+          "title": "Sundance",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/purple_motion_-_sundance.mod",
+          "bytes": 309020
+        },
+        {
+          "title": "resonance ii",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/resii.mod",
+          "bytes": 188416
+        },
+        {
+          "title": "Sound o'da lunatic",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/sound.mod",
+          "bytes": 321846
+        },
+        {
+          "title": "space_debris",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/space_debris.mod",
+          "bytes": 347582
+        },
+        {
+          "title": "stardust memories",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/stardstm.mod",
+          "bytes": 153676
+        },
+        {
+          "title": "acidjazzed evening",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/tempest-acidjazz.mod",
+          "bytes": 57762
+        },
+        {
+          "title": "the ancient orient",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/the_ancient_orient.mod",
+          "bytes": 108798
+        },
+        {
+          "title": "Think Twice III",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/think_twice_iii.mod",
+          "bytes": 81414
+        },
+        {
+          "title": "toy story",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/toytitle.mod",
+          "bytes": 93996
+        }
+      ]
+    },
+    {
+      "id": "ft2",
+      "name": "FastTracker 2",
+      "songs": [
+        {
+          "title": "Rose",
+          "format": "XM",
+          "channels": 4,
+          "patterns": 51,
+          "instruments": 32,
+          "file": "ft2/4-mat_-_rose.xm",
+          "bytes": 57215
+        },
+        {
+          "title": "Rose",
+          "format": "XM",
+          "channels": 4,
+          "patterns": 48,
+          "instruments": 32,
+          "file": "ft2/4-mat_-_rose_intro_version.xm",
+          "bytes": 54555
+        },
+        {
+          "title": "Butterfly Flew Away",
+          "format": "XM",
+          "channels": 16,
+          "patterns": 28,
+          "instruments": 55,
+          "file": "ft2/BUTTERFL.XM",
+          "bytes": 329081
+        },
+        {
+          "title": "Path to Nowhere",
+          "format": "XM",
+          "channels": 32,
+          "patterns": 50,
+          "instruments": 62,
+          "file": "ft2/an-path.xm",
+          "bytes": 1504269
+        },
+        {
+          "title": "Sick on Monday",
+          "format": "XM",
+          "channels": 24,
+          "patterns": 47,
+          "instruments": 30,
+          "file": "ft2/elw-sick.xm",
+          "bytes": 802116
+        },
+        {
+          "title": "Hybrid song 2:20",
+          "format": "XM",
+          "channels": 10,
+          "patterns": 15,
+          "instruments": 22,
+          "file": "ft2/external.xm",
+          "bytes": 51355
+        },
+        {
+          "title": "Letting Go",
+          "format": "XM",
+          "channels": 26,
+          "patterns": 9,
+          "instruments": 128,
+          "file": "ft2/jt_letgo.xm",
+          "bytes": 99410
+        },
+        {
+          "title": "Sweet dreams",
+          "format": "XM",
+          "channels": 24,
+          "patterns": 53,
+          "instruments": 24,
+          "file": "ft2/sweetdre.xm",
+          "bytes": 700313
+        },
+        {
+          "title": "Dans la rue",
+          "format": "XM",
+          "channels": 22,
+          "patterns": 35,
+          "instruments": 11,
+          "file": "ft2/xyce-dans_la_rue.xm",
+          "bytes": 87100
+        }
+      ]
+    }
+  ]
+}

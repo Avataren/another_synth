@@ -7,9 +7,8 @@
  * alongside them. Titles and channel counts come from parsing each file rather
  * than from the filename, so the browser can show what a module actually is.
  *
- * The modules are deliberately NOT part of the repository or the Quasar build:
- * they are third-party music, and several megabytes of it. They are published
- * separately and the deploy step leaves them alone.
+ * Output goes to public/demos/, which is committed and picked up by the Quasar
+ * build. Run it through scripts/refresh-demos.sh rather than directly.
  *
  *   node scripts/build-demo-manifest.mjs <source-root> <output-dir>
  *

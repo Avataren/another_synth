@@ -2,10 +2,11 @@
 #
 # Build and deploy the app to the web host.
 #
-# `--exclude=demos/` matters: the deploy uses `--delete` to remove stale build
-# output, and the demo module collection lives in the same directory but is
-# published separately by scripts/publish-demos.sh. Without the exclusion every
-# deploy would delete it.
+# The demo modules live in public/demos/, so the Quasar build copies them into
+# dist/spa and this deploy carries them like any other asset. They used to be
+# published separately and excluded from the `--delete` here; that exclusion is
+# gone, and with it the failure mode where deploying with plain rsync -- or
+# forgetting the exclusion -- wiped the whole collection off the server.
 #
 # The Rust toolchain needs the nightly bin directory on PATH: rust-wasm pins
 # nightly via rust-toolchain.toml, but that file is only honoured by rustup's
@@ -26,8 +27,14 @@ fi
 echo "Building…"
 npm run build
 
+if [ ! -f dist/spa/demos/index.json ]; then
+  echo "dist/spa/demos/index.json is missing -- refusing to deploy." >&2
+  echo "The demo browser would come up empty. Check public/demos/." >&2
+  exit 1
+fi
+
 echo "Deploying to $REMOTE_HOST:$REMOTE_DIR"
-rsync -az --delete --exclude=demos/ dist/spa/ "$REMOTE_HOST:$REMOTE_DIR/"
+rsync -az --delete dist/spa/ "$REMOTE_HOST:$REMOTE_DIR/"
 
 echo "Verifying…"
 LOCAL_SUM="$(md5sum dist/spa/index.html | cut -d' ' -f1)"
