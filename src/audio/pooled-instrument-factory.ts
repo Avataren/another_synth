@@ -460,7 +460,9 @@ export class PooledInstrument {
     voiceIndex: number,
     gain: number,
     time: number,
-    rampMode?: 'linear' | 'exponential',
+    // 'step' falls through to the setValueAtTime branch below, which is
+    // exactly what it asks for.
+    rampMode?: 'linear' | 'exponential' | 'step',
   ): void {
     if (voiceIndex < 0 || voiceIndex >= this.num_voices) return;
 

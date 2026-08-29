@@ -1078,6 +1078,35 @@ every pitch and the constant is an approximation; worth revisiting against a ref
 player if an Amiga-table module sounds off. Getting a depth scaling wrong is exactly the
 class of bug D48 was, so this one is written down rather than left implicit.
 
+**D58 — An instantaneous volume command must step, not ramp.**
+Reported as 4-mat's "rose" playing perfectly until pattern 44 (order index 63), with the
+trouble on track 2. That pattern is the **first in the whole song to use ECx** -- every
+other effect and instrument in it has appeared many patterns earlier -- which is what
+pointed at the note cut.
+
+`TrackerSongBank.setVoiceVolumeAtTime` defaults to a linear ramp, and
+`linearRampToValueAtTime` runs from the *previous* automation event. For a per-tick slide
+that is the intended approximation: one ramp across the row instead of a write every tick.
+For a command the tracker applies instantly it is wrong -- the change is smeared backwards
+across the whole preceding row. Track 2's figure is `F-5`, a `309` tone portamento up to
+`G-5`, then a short `G-4 .. EC2`; at the song's speed of 3 that cut lands on the last of
+three ticks, so the note faded across its entire length instead of sounding and stopping.
+The handler's own doc comment claimed it defaulted to "discrete setValueAtTime", so the
+ramping default was never intended in the first place.
+
+Volume commands can now ask for `'step'`, and the four instantaneous ones do: ECx note cut,
+Cxx, the fine volume slides (EAx/EBx and the volume column's 0x8x/0x9x), and the level a
+note starts at. Per-tick slides still ramp. `PooledInstrument` and `InstrumentV2` already
+fell through to `setValueAtTime` for any unrecognised mode, so they needed only the wider
+type; `ModInstrument` needed a real branch, which also cancels automation from that point
+so a ramp already aimed past the cut cannot keep pulling the gain afterwards.
+
+Checked and *not* changed while looking: the pitches on that track are exactly right --
+`F-5`, `G-5` and `G-4` come out as Amiga periods 641, 571 and 1143, which are ProTracker's
+160, 143 and 285 times four -- and the `309` slide reaches its target in the two ticks
+available. Vibrato is used from order 0 of this song and sounds right, which is useful
+independent evidence that the Amiga-mode vibrato depth (D48) is calibrated correctly.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1292,6 +1321,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **Instantaneous volume commands step instead of ramping** (D58). A scheduled volume change defaulted to a linear ramp, which runs from the previous automation event — so ECx, Cxx and the fine slides were smeared backwards across the preceding row. Found via 4-mat's "rose", whose pattern 44 is the first in the song to use ECx: track 2's short `G-4 .. EC2` notes faded across their whole length at speed 3. 621 green. |
 | 2026-08-29 | 4 | **XM autovibrato implemented** (D57) — instrument-level vibrato, 13.4% of corpus notes, parsed since the beginning and never consumed. Runs as an OscillatorNode into the source's `detune`, which composes with the channel's `playbackRate` automation instead of fighting it. Tests: `src/tests/xm-autovibrato.test.ts`. 616 green. |
 | 2026-08-29 | fix | **MOD patterns are converted in play order so the channel sample latch survives a pattern boundary** (D56). A note with no sample number in a pattern's opening rows resolved to no instrument — silent when the pattern was played alone, wrong sample when reached in sequence. 320 notes across 13 of 28 corpus modules. Tests: `src/tests/mod-import-sample-latch.test.ts`. 608 green. |
 | 2026-08-29 | fix | **The song builder no longer reads a stamped instrument id as an explicit one** (D55), the second regression from D53 and again caught by ear on GSLINGER.MOD pattern 2's flute echo. It reset any note+instrument row without a volume column to velocity 255, and the importers stamp `entry.instrument` onto every row — so every sample-number-less note played at full scale. Now gated to native songs. Regression tests moved up to engine level, which is where all three of these bugs were actually reachable. 604 green. |

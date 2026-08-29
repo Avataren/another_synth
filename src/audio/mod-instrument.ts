@@ -1467,7 +1467,7 @@ export default class ModInstrument {
     voiceIndex: number,
     gain: number,
     time: number,
-    rampMode?: 'linear' | 'exponential',
+    rampMode?: 'linear' | 'exponential' | 'step',
   ): void {
     const voice = this.activeVoices.get(voiceIndex);
     if (!voice) {
@@ -1491,6 +1491,16 @@ export default class ModInstrument {
     if (timeDelta < 0.01) {
       voice.gainNode.gain.cancelScheduledValues(now);
       voice.gainNode.gain.setValueAtTime(gain, now);
+      voice.targetGain = gain;
+      return;
+    }
+
+    // An instantaneous command sets the value at its own time and cancels
+    // whatever was scheduled from there on. Without the cancel, a ramp already
+    // aimed past this point would keep pulling the gain afterwards.
+    if (rampMode === 'step') {
+      voice.gainNode.gain.cancelScheduledValues(scheduledTime);
+      voice.gainNode.gain.setValueAtTime(gain, scheduledTime);
       voice.targetGain = gain;
       return;
     }

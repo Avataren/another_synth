@@ -1589,7 +1589,8 @@ export default class InstrumentV2 {
     voiceIndex: number,
     gain: number,
     time: number,
-    rampMode?: 'linear' | 'exponential',
+    // 'step' falls through to the discrete setValueAtTime branch below.
+    rampMode?: 'linear' | 'exponential' | 'step',
   ): void {
     if (voiceIndex < 0 || voiceIndex >= this.voiceLimit) {
       console.warn(

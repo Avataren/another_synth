@@ -384,7 +384,7 @@ export type ScheduledPitchHandler = (
   time: number,
   /** Track index for routing (tracker effects) */
   trackIndex: number,
-  /** Ramp mode for smooth transitions (optional, defaults to discrete setValueAtTime) */
+  /** Ramp mode for smooth transitions (exponential recommended for frequency) */
   rampMode?: 'linear' | 'exponential'
 ) => void;
 
@@ -402,8 +402,20 @@ export type ScheduledVolumeHandler = (
   time: number,
   /** Track index for routing (tracker effects) */
   trackIndex: number,
-  /** Ramp mode for smooth transitions (optional, defaults to discrete setValueAtTime) */
-  rampMode?: 'linear' | 'exponential'
+  /**
+   * How to get to the new volume.
+   *
+   * 'step' sets it instantly, which is what a tracker's *instantaneous* volume
+   * commands (Cxx, ECx note cut) do. The ramping modes are for per-tick slides,
+   * where a ramp across the row is a deliberate and much cheaper approximation
+   * of stepping every tick.
+   *
+   * Omitting it ramps linearly. That default is load-bearing for slides and
+   * wrong for anything instant: a linear ramp runs from the *previous*
+   * automation event, so an unqualified "set volume to 0" glides down across
+   * the whole preceding row instead of cutting.
+   */
+  rampMode?: 'linear' | 'exponential' | 'step'
 ) => void;
 
 /**

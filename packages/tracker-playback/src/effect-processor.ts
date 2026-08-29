@@ -604,7 +604,7 @@ export type ProcessorCommand =
       kind: 'volume';
       volume: number;
       voiceIndex?: number;
-      ramp?: 'linear' | 'exponential';
+      ramp?: 'linear' | 'exponential' | 'step';
     }
   | { kind: 'pan'; pan: number; voiceIndex?: number }
   | { kind: 'sampleOffset'; offset: number; voiceIndex?: number }
@@ -641,11 +641,14 @@ export function processEffectTick0(
     commands.push(cmd);
   };
 
-  const pushVolume = (volume: number) => {
+  const pushVolume = (
+    volume: number,
+    ramp?: 'linear' | 'exponential' | 'step',
+  ) => {
     const cmd: ProcessorCommand =
       voiceIndex !== undefined
-        ? { kind: 'volume', volume, voiceIndex }
-        : { kind: 'volume', volume };
+        ? { kind: 'volume', volume, voiceIndex, ...(ramp ? { ramp } : {}) }
+        : { kind: 'volume', volume, ...(ramp ? { ramp } : {}) };
     commands.push(cmd);
   };
 
@@ -780,7 +783,7 @@ export function processEffectTick0(
   // -- a plain note with no sample number -- reset it to the sample's default
   // 8 and threw the swell away.
   if (triggeredNote) {
-    pushVolume(state.currentVolume);
+    pushVolume(state.currentVolume, 'step');
   }
 
   // Handle effect parameters (use memory if param is 0 where applicable)
@@ -902,7 +905,8 @@ export function processEffectTick0(
         state.currentVolume = clampVolume(
           state.currentVolume + state.volumeSlide.delta,
         );
-        pushVolume(state.currentVolume);
+        // A *fine* slide is a single instantaneous step, not a slide.
+        pushVolume(state.currentVolume, 'step');
         resetVolumeSlide(state);
       }
       break;
@@ -948,7 +952,8 @@ export function processEffectTick0(
         1,
         (effect.paramX * 16 + effect.paramY) / 64,
       );
-      pushVolume(state.currentVolume);
+      // Cxx sets the volume, it does not slide to it.
+      pushVolume(state.currentVolume, 'step');
       break;
 
     case 'setPan':
@@ -1018,7 +1023,9 @@ export function processEffectTick0(
       state.noteCutTick = effect.paramY;
       if (state.noteCutTick === 0) {
         state.currentVolume = 0;
-        pushVolume(0);
+        // Instant: a cut that ramps is a fade, and at speed 3 that is the
+        // whole note. See the 'step' note on ScheduledVolumeHandler.
+        pushVolume(0, 'step');
         state.noteCutTick = -1;
       }
       break;
@@ -1141,11 +1148,14 @@ export function processEffectTickN(
     commands.push(cmd);
   };
 
-  const pushVolume = (volume: number) => {
+  const pushVolume = (
+    volume: number,
+    ramp?: 'linear' | 'exponential' | 'step',
+  ) => {
     const cmd: ProcessorCommand =
       voiceIndex !== undefined
-        ? { kind: 'volume', volume, voiceIndex }
-        : { kind: 'volume', volume };
+        ? { kind: 'volume', volume, voiceIndex, ...(ramp ? { ramp } : {}) }
+        : { kind: 'volume', volume, ...(ramp ? { ramp } : {}) };
     commands.push(cmd);
   };
 
@@ -1157,7 +1167,7 @@ export function processEffectTickN(
   // the note -- see the 'noteCut' case in processEffectTick0.
   if (state.noteCutTick === tick) {
     state.currentVolume = 0;
-    pushVolume(0);
+    pushVolume(0, 'step');
     state.noteCutTick = -1;
   }
 
@@ -1470,11 +1480,14 @@ export function processVolumeColumnTick0(
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
 
   const push = (cmd: ProcessorCommand) => commands.push(cmd);
-  const pushVolume = (volume: number) =>
+  const pushVolume = (
+    volume: number,
+    ramp?: 'linear' | 'exponential' | 'step',
+  ) =>
     push(
       voiceIndex !== undefined
-        ? { kind: 'volume', volume, voiceIndex }
-        : { kind: 'volume', volume },
+        ? { kind: 'volume', volume, voiceIndex, ...(ramp ? { ramp } : {}) }
+        : { kind: 'volume', volume, ...(ramp ? { ramp } : {}) },
     );
   const pushPan = (pan: number) =>
     push(
@@ -1506,12 +1519,12 @@ export function processVolumeColumnTick0(
 
     case 'fineVolDown':
       state.currentVolume = clampVolume(state.currentVolume - command.value * unit);
-      pushVolume(state.currentVolume);
+      pushVolume(state.currentVolume, 'step');
       break;
 
     case 'fineVolUp':
       state.currentVolume = clampVolume(state.currentVolume + command.value * unit);
-      pushVolume(state.currentVolume);
+      pushVolume(state.currentVolume, 'step');
       break;
 
     case 'vibratoSpeed':

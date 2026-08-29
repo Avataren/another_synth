@@ -241,3 +241,82 @@ describe('E5x finetune follows the format convention', () => {
     expect(centsShift(XM_PROFILE, 8)).toBeCloseTo(0, 3);
   });
 });
+
+describe('instantaneous volume commands do not glide', () => {
+  /**
+   * A scheduled volume change defaults to a linear ramp, which for a per-tick
+   * slide is a deliberate (and much cheaper) approximation of stepping every
+   * tick. For a command that is instantaneous in the tracker it is simply
+   * wrong: `linearRampToValueAtTime` runs from the *previous* automation
+   * event, so an unqualified "set volume to 0" glides down across the whole
+   * preceding row instead of cutting.
+   *
+   * 4-mat's "rose" is where this surfaced. Its pattern 44 is the first in the
+   * song to use ECx, and track 2 plays a figure whose short `G-4 .. EC2` notes
+   * became 2-tick fades at speed 3 -- which is the entire note.
+   */
+  const rampOf = (commands: { kind: string }[]) => {
+    const volumes = commands.filter((c) => c.kind === 'volume') as {
+      ramp?: string;
+    }[];
+    return volumes[volumes.length - 1]?.ramp;
+  };
+
+  it('steps for ECx at the cut tick', () => {
+    const state = stateOnC2();
+    startNote(state, { type: 'noteCut', paramX: 0xc, paramY: 2, extSubtype: 'noteCut' });
+    const cut = processEffectTickN(
+      state,
+      { type: 'noteCut', paramX: 0xc, paramY: 2, extSubtype: 'noteCut' },
+      2,
+      6,
+    );
+
+    expect(rampOf(cut.commands)).toBe('step');
+  });
+
+  it('steps for EC0', () => {
+    const state = stateOnC2();
+    const { commands } = startNote(state, {
+      type: 'noteCut',
+      paramX: 0xc,
+      paramY: 0,
+      extSubtype: 'noteCut',
+    });
+
+    expect(rampOf(commands)).toBe('step');
+  });
+
+  it('steps for Cxx, which sets the volume rather than sliding to it', () => {
+    const state = stateOnC2();
+    const { commands } = startNote(state, {
+      type: 'setVolume',
+      paramX: 2,
+      paramY: 0,
+    });
+
+    expect(rampOf(commands)).toBe('step');
+  });
+
+  it('steps for a fine volume slide, which applies once', () => {
+    const state = stateOnC2();
+    const { commands } = startNote(state, {
+      type: 'volSlide',
+      paramX: 0xa,
+      paramY: 3,
+      extSubtype: 'fineVolUp',
+    });
+
+    expect(rampOf(commands)).toBe('step');
+  });
+
+  it('leaves a per-tick volume slide ramping', () => {
+    // Axy is a slide; the ramp across the row is the intended approximation.
+    const state = stateOnC2();
+    const slide: EffectCommand = { type: 'volSlide', paramX: 0, paramY: 4 };
+    startNote(state, slide);
+    const tick = processEffectTickN(state, slide, 1, 6);
+
+    expect(rampOf(tick.commands)).toBeUndefined();
+  });
+});

@@ -1424,7 +1424,7 @@ export class TrackerSongBank {
     volume: number,
     time: number,
     trackIndex: number,
-    rampMode?: 'linear' | 'exponential',
+    rampMode?: 'linear' | 'exponential' | 'step',
   ) {
     if (!instrumentId) return;
     const active = this.instruments.get(instrumentId);
@@ -1470,7 +1470,11 @@ export class TrackerSongBank {
     // Ignore invalid voice indices to avoid affecting all voices inadvertently.
     if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
       return;
-    // Default to a linear ramp for smoother gain changes to avoid audible snaps.
+    // Default to a linear ramp for smoother gain changes to avoid audible
+    // snaps. Instantaneous commands (Cxx, ECx, fine slides, a note's own
+    // starting level) ask for 'step' explicitly, because a ramp there runs
+    // from the previous automation event and turns an instant change into a
+    // glide across the whole preceding row.
     const mode = rampMode ?? 'linear';
     active.instrument.setVoiceGainAtTime(resolvedVoice, volume, time, mode);
   }
