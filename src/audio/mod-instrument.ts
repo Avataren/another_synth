@@ -1156,6 +1156,12 @@ export default class ModInstrument {
       tickSeconds?: number;
       /** Tracker channel this note belongs to; owns a voice of its own. */
       trackIndex?: number;
+      /**
+       * Per-track visualiser tap. The voice connects here *in addition* to the
+       * instrument output, so the tap carries one channel rather than every
+       * channel that happens to share this instrument.
+       */
+      monitorNode?: AudioNode;
     },
   ): number | undefined {
     if (!this.audioBuffer || !this.samplerState) {
@@ -1270,6 +1276,10 @@ export default class ModInstrument {
     }
     gainNode.connect(panNode);
     panNode.connect(this.outputNode);
+    // A second, silent destination used only for this channel's visualiser.
+    // Taken after panning so the tap shows what the channel actually sounds
+    // like, and disconnected with the rest of the voice's graph.
+    if (options?.monitorNode) panNode.connect(options.monitorNode);
 
     // Schedule playback at the specified time.
     //

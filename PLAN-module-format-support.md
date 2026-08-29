@@ -1353,6 +1353,26 @@ decides this while scheduling ahead and "now" still belongs to the previous pass
 Known cost, accepted: a song that loops seamlessly with a note held across the boundary now
 has that note cut.
 
+**D67 — The per-track waveforms were showing the instrument, not the track.**
+Reported as the waveform strips above each track being "very inaccurate".
+
+They read `songBank.getInstrumentOutput(instrumentId)`. One MOD sample is one instrument
+here, and an instrument is shared by every channel that plays it, so that node carries the
+*sum* of every track using it. Two channels on the same sample drew identical waveforms,
+each showing both; a channel's display jumped to an unrelated mix the moment it changed
+instrument; and a channel showed sound it was not making.
+
+There is no per-track node in the graph to read instead -- the mixing happens inside the
+instrument -- so one had to be created. Each voice now connects to a per-track tap
+(`getTrackMonitor`) in addition to its instrument's output, taken after panning so the tap
+shows what the channel actually sounds like. The taps end in a zero-gain node wired to the
+destination: a branch ending in nothing is not guaranteed to be processed, and this
+guarantees it at no audible cost.
+
+Only `ModInstrument` routes per voice, so `getTrackVisualizationNode` keeps the old
+instrument-output behaviour for other instrument types rather than showing a flat line for
+native songs.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1569,6 +1589,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | ui | **Per-track waveforms now show their own track** (D67). They read the instrument's output, which one sample-per-instrument makes shared across every channel playing it — so channels on the same sample drew each other's audio. Voices now also connect to a per-track tap. Tests: `src/tests/tracker-track-monitor.test.ts`. 685 green. |
 | 2026-08-29 | fix | **Looping the song now restarts it** (D66) — voices stopped, effect state cleared, global volume restored. xyce-dans_la_rue.xm fades out with `Gxx` and opens with `G80`, so the eight channels still holding looping samples came back at full volume on the wrap. FT2 does the same, so this is a player decision rather than a fidelity fix; it also makes a second pass sound like the first. 678 green. |
 | 2026-08-29 | fix | **A retrigger now takes the channel like any other note** (D65). `retriggerNoteAtTime` passed no track index, so `E9x`/`Rxy` repeats were allocated from the instrument's round-robin pool instead of the channel's own voice — invisible to everything that cuts a channel, so they stacked and played on through later notes. peacedroid.mod patterns 16 and 17 end on `E93 E92 E91`, eight repeats in three rows. 671 green. |
 | 2026-08-29 | fix | **Dropped key-offs and spurious retriggers** (D64), found by counting the engine's note events against the file. A `###` opening a pattern was dropped by the builder when that channel had not played yet in the pattern (31 key-offs → 14 note-offs), and every XM row carrying only a volume-column command revived the channel's last note — a native-only convention that D50 made reachable. 665 green. |

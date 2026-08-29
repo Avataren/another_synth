@@ -1330,7 +1330,10 @@ function setTrackAudioNodeForInstrument(
   instrumentId?: string,
 ) {
   const normalized = normalizeInstrumentId(instrumentId);
-  const node = normalized ? songBank.getInstrumentOutput(normalized) : null;
+  // Not the instrument's output: one sample is one instrument, shared by every
+  // channel that plays it, so that node carries other tracks too. The bank
+  // hands back a per-track tap where it can.
+  const node = songBank.getTrackVisualizationNode(trackIndex, normalized);
   if (trackAudioNodes.value[trackIndex] === node) return;
   trackAudioNodes.value = {
     ...trackAudioNodes.value,
@@ -1347,7 +1350,7 @@ function updateTrackAudioNodes() {
     // This allows sound from previous patterns to continue showing on the visualizer
     const resolvedId = resolveInstrumentForTrack(tracks[i], i);
     if (resolvedId) {
-      nodes[i] = songBank.getInstrumentOutput(resolvedId);
+      nodes[i] = songBank.getTrackVisualizationNode(i, resolvedId);
     } else if (isPlaying.value || isPaused.value) {
       // During playback, preserve existing node assignment (might be from previous pattern)
       nodes[i] = trackAudioNodes.value[i] ?? null;

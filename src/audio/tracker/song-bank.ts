@@ -136,6 +136,9 @@ export class TrackerSongBank {
    * module sets this from `loadSong` before a note is scheduled.
    */
   private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
+  /** Per-track taps for the visualisers; see getTrackMonitor. */
+  private readonly trackMonitors: Map<number, GainNode> = new Map();
+  private monitorSink: GainNode | null = null;
   private readonly restoredAssets: Map<string, Set<string>> = new Map();
   private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
   private pendingScheduledEvents: PendingScheduledEvent[] = [];
@@ -205,6 +208,64 @@ export class TrackerSongBank {
   getInstrumentOutput(instrumentId: string): AudioNode | null {
     const active = this.instruments.get(instrumentId);
     return active?.instrument.outputNode ?? null;
+  }
+
+  /**
+   * A tap carrying only the voices of one tracker channel.
+   *
+   * The per-track visualisers used to read `getInstrumentOutput`, which is the
+   * wrong node by a wide margin: one sample is one instrument here, and an
+   * instrument is shared by every channel that plays it. Two channels on the
+   * same sample therefore drew the *same* waveform -- their sum -- and a
+   * channel's display jumped to a completely different mix the moment it
+   * changed instrument.
+   *
+   * Voices connect here in addition to their instrument's output, so the tap
+   * carries that channel and nothing else.
+   */
+  getTrackMonitor(trackIndex: number): GainNode {
+    let monitor = this.trackMonitors.get(trackIndex);
+    if (!monitor) {
+      monitor = this.audioContext.createGain();
+      monitor.gain.value = 1;
+      monitor.connect(this.getMonitorSink());
+      this.trackMonitors.set(trackIndex, monitor);
+    }
+    return monitor;
+  }
+
+  /**
+   * Silent terminus for the monitor taps.
+   *
+   * A branch that ends in nothing is not guaranteed to be processed, so the
+   * taps are given a path to the destination at zero gain. It contributes
+   * nothing audible and exists only to keep them alive.
+   */
+  private getMonitorSink(): GainNode {
+    if (!this.monitorSink) {
+      this.monitorSink = this.audioContext.createGain();
+      this.monitorSink.gain.value = 0;
+      this.monitorSink.connect(this.audioContext.destination);
+    }
+    return this.monitorSink;
+  }
+
+  /**
+   * The node a track's visualiser should analyse.
+   *
+   * Per-track monitoring needs each voice to connect somewhere of its own,
+   * which only `ModInstrument` does. Everything else keeps the old
+   * instrument-output behaviour rather than showing a flat line.
+   */
+  getTrackVisualizationNode(
+    trackIndex: number,
+    instrumentId: string | undefined,
+  ): AudioNode | null {
+    const active = instrumentId ? this.instruments.get(instrumentId) : undefined;
+    if (active?.instrument instanceof ModInstrument) {
+      return this.getTrackMonitor(trackIndex);
+    }
+    return instrumentId ? this.getInstrumentOutput(instrumentId) : null;
   }
 
   /** Get the InstrumentV2 instance for a specific instrument (for live editing) */
@@ -1410,6 +1471,10 @@ export class TrackerSongBank {
         ...(tickSeconds !== undefined ? { tickSeconds } : {}),
         // The channel owns a voice, so notes never cut another channel's.
         ...(trackIndex !== undefined ? { trackIndex } : {}),
+        // Per-track visualiser tap; carries this channel alone.
+        ...(Number.isFinite(trackIndex as number)
+          ? { monitorNode: this.getTrackMonitor(trackIndex as number) }
+          : {}),
       },
     );
 
