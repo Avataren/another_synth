@@ -22,6 +22,7 @@ import {
   type ScheduledPanHandler,
   type ScheduledSampleOffsetHandler,
   type ScheduledEnvelopePositionHandler,
+  type ScheduledAllNotesOffHandler,
   type ScheduledGlobalVolumeHandler,
   type ScheduledRetriggerHandler,
   type PositionCommandHandler,
@@ -148,6 +149,9 @@ export class PlaybackEngine {
   private readonly scheduledEnvelopePositionHandler:
     | ScheduledEnvelopePositionHandler
     | undefined;
+  private readonly scheduledAllNotesOffHandler:
+    | ScheduledAllNotesOffHandler
+    | undefined;
   private readonly scheduledGlobalVolumeHandler:
     | ScheduledGlobalVolumeHandler
     | undefined;
@@ -247,6 +251,7 @@ export class PlaybackEngine {
     this.scheduledSampleOffsetHandler = options.scheduledSampleOffsetHandler;
     this.scheduledEnvelopePositionHandler =
       options.scheduledEnvelopePositionHandler;
+    this.scheduledAllNotesOffHandler = options.scheduledAllNotesOffHandler;
     this.scheduledGlobalVolumeHandler = options.scheduledGlobalVolumeHandler;
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
@@ -649,6 +654,7 @@ export class PlaybackEngine {
           if (this.currentSequenceIndex >= sequence.length) {
             if (this.loopSong) {
               this.currentSequenceIndex = 0;
+              this.restartSong(this.nextRowTime);
             } else {
               this.stop();
               return;
@@ -696,6 +702,7 @@ export class PlaybackEngine {
         if (this.currentSequenceIndex >= sequence.length) {
           if (this.loopSong) {
             this.currentSequenceIndex = 0;
+            this.restartSong(this.nextRowTime);
           } else {
             this.stop();
             return;
@@ -816,6 +823,36 @@ export class PlaybackEngine {
       this.trackEffectStates.set(trackIndex, state);
     }
     return state;
+  }
+
+  /**
+   * The song has reached the end of its sequence and is starting over.
+   *
+   * A loop is a restart, and a restart begins from a clean state: notes
+   * stopped, per-track effect state cleared, global volume back to full.
+   *
+   * Without it a second pass does not match the first. Songs that end on a
+   * fade are the visible case -- the fade is usually a global-volume ramp
+   * (`Gxx`), which turns the mix down without stopping anything, so every note
+   * still running at the last row stays running, and the first pattern
+   * restoring the volume reveals the lot. xyce-dans_la_rue.xm ends exactly
+   * that way: `G1F` counting down to `G00` while eight channels hold
+   * single-cycle looping samples whose envelopes have no sustain, no loop and
+   * a non-zero final point, so they ring on forever at their last envelope
+   * value. Its first pattern opens with `G80`, and the drone comes back.
+   *
+   * FastTracker 2 does the same thing, so this is a player decision rather
+   * than a fidelity fix: a song written to fade out simply is not written to
+   * loop. The cost is that a song which *does* loop seamlessly, holding a note
+   * across the boundary, now has that note cut.
+   */
+  private restartSong(time: number): void {
+    this.scheduledAllNotesOffHandler?.(time);
+    this.resetEffectStates();
+    this.globalVolume = 1.0;
+    if (this.scheduledGlobalVolumeHandler) {
+      this.scheduledGlobalVolumeHandler(this.globalVolume, time);
+    }
   }
 
   /**
@@ -1534,6 +1571,7 @@ export class PlaybackEngine {
           if (this.currentSequenceIndex >= sequence.length) {
             if (this.loopSong) {
               this.currentSequenceIndex = 0;
+              this.restartSong(this.nextRowTime);
             } else {
               this.stop();
               return;

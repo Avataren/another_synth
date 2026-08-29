@@ -1324,6 +1324,35 @@ carries 35, because E9x leaves the channel volume alone. The reporter's suspicio
 retriggers were resetting volume turned out to be the stacking heard from the outside:
 each fresh voice started at the channel level while the previous ones kept going.
 
+**D66 — Looping the song is a restart, so it starts from silence.**
+Reported on `xyce-dans_la_rue.xm`: the last pattern fades out, and when the song loops a
+sample is left looping that should not be there.
+
+The fade is a *global volume* ramp -- channel 3 counts `G1F` down to `G00` over the final
+pattern -- which turns the mix down without stopping anything. Eight channels are still
+holding notes at the last row, on instruments 5, 7, 8 and 9: fifty-frame forward-looping
+samples whose volume envelopes have no sustain point, no loop, and a final point above zero
+(5 and 10 of 64). Such a note runs to the end of its envelope, holds there, and loops its
+sample forever; fadeout only applies after a key-off and there is none. The first pattern
+then opens with `G80`, restoring the volume and bringing all of it back.
+
+**FastTracker 2 behaves identically**, so this is not a fidelity fix. A song written to fade
+out is not written to loop, and the composer ended it with the fade. The judgement is that a
+player looping such a song should restart it rather than run over the top of itself.
+
+The wrap now stops every voice, clears per-track effect state and restores the global
+volume. The second reason is plainer than the first: without it a second pass does not
+sound like the first, because effect state and global volume carry over -- which is a
+correctness problem regardless of any particular song.
+
+`cutAllVoicesAtTime` sweeps voice *indices* rather than the tracking maps, deliberately: a
+voice the maps have lost sight of is exactly the kind that needs catching (D65 is what
+happens when one escapes them). It is scheduled rather than immediate, because the engine
+decides this while scheduling ahead and "now" still belongs to the previous pass.
+
+Known cost, accepted: a song that loops seamlessly with a note held across the boundary now
+has that note cut.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1540,6 +1569,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **Looping the song now restarts it** (D66) — voices stopped, effect state cleared, global volume restored. xyce-dans_la_rue.xm fades out with `Gxx` and opens with `G80`, so the eight channels still holding looping samples came back at full volume on the wrap. FT2 does the same, so this is a player decision rather than a fidelity fix; it also makes a second pass sound like the first. 678 green. |
 | 2026-08-29 | fix | **A retrigger now takes the channel like any other note** (D65). `retriggerNoteAtTime` passed no track index, so `E9x`/`Rxy` repeats were allocated from the instrument's round-robin pool instead of the channel's own voice — invisible to everything that cuts a channel, so they stacked and played on through later notes. peacedroid.mod patterns 16 and 17 end on `E93 E92 E91`, eight repeats in three rows. 671 green. |
 | 2026-08-29 | fix | **Dropped key-offs and spurious retriggers** (D64), found by counting the engine's note events against the file. A `###` opening a pattern was dropped by the builder when that channel had not played yet in the pattern (31 key-offs → 14 note-offs), and every XM row carrying only a volume-column command revived the channel's last note — a native-only convention that D50 made reachable. 665 green. |
 | 2026-08-29 | fix | **A key-off on an instrument with no volume envelope now cuts** (D63). The importer built an envelope out of the fadeout alone, turning FT2's instant cut into up to ten seconds of fade — 68 of 219 corpus instruments, and the reason `elw-sick.xm`'s order 10 had the previous pattern still sounding under it. 661 green. |

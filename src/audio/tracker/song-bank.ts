@@ -753,6 +753,31 @@ export class TrackerSongBank {
     instrument.gateOffVoiceAtTime(voiceIndex, time);
   }
 
+  /**
+   * Silence every voice on every instrument at a given time.
+   *
+   * Used when the song loops back to the start: a loop is a restart, and a
+   * restart begins from silence. Scheduled rather than immediate because the
+   * engine decides this while scheduling ahead, so "now" is still part of the
+   * previous pass.
+   *
+   * Voice indices are swept rather than tracked: a voice the maps have lost
+   * sight of is exactly the kind this needs to catch.
+   */
+  cutAllVoicesAtTime(time: number) {
+    const at = Math.max(time, this.audioContext.currentTime);
+    for (const active of this.instruments.values()) {
+      const limit = active.instrument.getVoiceLimit();
+      for (let voiceIndex = 0; voiceIndex < limit; voiceIndex++) {
+        this.endVoiceForReplacement(active.instrument, voiceIndex, at);
+      }
+    }
+    this.activeNotes.clear();
+    this.lastTrackVoice.clear();
+    this.trackVoiceOwner.clear();
+    this.trackReleasingVoices.clear();
+  }
+
   /** Remember a voice that a key-off left sounding out its release. */
   private rememberReleasingVoice(
     instrumentId: string,

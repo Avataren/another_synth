@@ -274,6 +274,8 @@ export interface PlaybackOptions {
   scheduledSampleOffsetHandler?: ScheduledSampleOffsetHandler;
   /** Handler for Lxx envelope-position jumps */
   scheduledEnvelopePositionHandler?: ScheduledEnvelopePositionHandler;
+  /** Handler for silencing everything when the song loops back to the start */
+  scheduledAllNotesOffHandler?: ScheduledAllNotesOffHandler;
   /** Handler for scheduling global volume changes (Gxx/Hxy) */
   scheduledGlobalVolumeHandler?: ScheduledGlobalVolumeHandler;
   /** Handler for scheduling note retriggers */
@@ -500,6 +502,16 @@ export type ScheduledRetriggerHandler = (
    */
   frequency?: number
 ) => void;
+
+/**
+ * Handler for "the song has wrapped back to the start; silence everything".
+ *
+ * A song that ends on a fade leaves notes running -- the fade is usually a
+ * global-volume ramp, which turns the mix down without stopping anything -- so
+ * looping back and restoring the volume would otherwise reveal whatever was
+ * still sounding. See D66.
+ */
+export type ScheduledAllNotesOffHandler = (time: number) => void;
 
 /**
  * Handler for position jump/pattern break commands.

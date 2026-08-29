@@ -233,3 +233,62 @@ describe('a retrigger takes the channel like any other note', () => {
     expect(one.noteOnAtTime.mock.calls[0]![1]).toBe(69);
   });
 });
+
+/**
+ * Looping the song is a restart, and a restart begins from silence.
+ *
+ * A song that ends on a fade leaves notes running: the fade is usually a
+ * global-volume ramp, which turns the mix down without stopping anything. Wrap
+ * back to the start, restore the volume, and whatever was still sounding comes
+ * back with it. xyce-dans_la_rue.xm ends that way and opens with `G80`.
+ */
+describe('cutAllVoicesAtTime', () => {
+  it('silences voices the track maps have lost sight of', () => {
+    // The point of sweeping voice indices rather than the tracking maps: a
+    // voice nothing is tracking is exactly the kind this has to catch.
+    const { bank, one } = makeBank('xm');
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+    bank.noteOffAtTime('01', undefined, 2, TRACK);
+    one.cutVoiceAtTime.mockClear();
+
+    bank.cutAllVoicesAtTime(5);
+
+    expect(one.cutVoiceAtTime).toHaveBeenCalled();
+  });
+
+  it('cuts across every instrument, not just the one last played', () => {
+    const { bank, one, two } = makeBank('xm');
+    bank.noteOnAtTime('01', 60, 100, 1, 0);
+    bank.noteOnAtTime('02', 62, 100, 1, 1);
+    one.cutVoiceAtTime.mockClear();
+    two.cutVoiceAtTime.mockClear();
+
+    bank.cutAllVoicesAtTime(5);
+
+    expect(one.cutVoiceAtTime).toHaveBeenCalled();
+    expect(two.cutVoiceAtTime).toHaveBeenCalled();
+  });
+
+  it('releases rather than cutting for a native song', () => {
+    const { bank, one } = makeBank('native');
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+    one.gateOffVoiceAtTime.mockClear();
+
+    bank.cutAllVoicesAtTime(5);
+
+    expect(one.cutVoiceAtTime).not.toHaveBeenCalled();
+    expect(one.gateOffVoiceAtTime).toHaveBeenCalled();
+  });
+
+  it('schedules the cut rather than doing it now', () => {
+    // The engine decides this while scheduling ahead, so "now" is still part
+    // of the previous pass through the song.
+    const { bank, one } = makeBank('xm');
+    bank.noteOnAtTime('01', 60, 100, 1, TRACK);
+    one.cutVoiceAtTime.mockClear();
+
+    bank.cutAllVoicesAtTime(5);
+
+    expect(one.cutVoiceAtTime.mock.calls[0]![1]).toBe(5);
+  });
+});
