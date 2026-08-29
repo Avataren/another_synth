@@ -1,4 +1,5 @@
 import type AudioSystem from 'src/audio/AudioSystem';
+import type { ModuleFormat } from '../../../packages/tracker-playback/src/types';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';
@@ -102,6 +103,37 @@ export class TrackerSongBank {
     number,
     { instrumentId: string; voiceIndex: number }
   > = new Map();
+  /**
+   * Voices still sounding out a release on each track, across instruments.
+   *
+   * A key-off releases a voice and stops tracking it as the track's current
+   * voice -- correctly, since it is no longer what the track is playing. But
+   * on a MOD or XM channel the next note has to *kill* it, and something that
+   * is not tracked anywhere cannot be killed: the released note went on
+   * sounding underneath the new one for its whole fadeout, which on XM can be
+   * seconds. `ModInstrument` already cuts a releasing voice occupying the slot
+   * it is about to reuse, so this only ever bit when the channel changed
+   * instrument -- exactly the case the reporter heard.
+   */
+  private readonly trackReleasingVoices: Map<
+    number,
+    Array<{ instrumentId: string; voiceIndex: number }>
+  > = new Map();
+  /**
+   * Playback semantics of the loaded song.
+   *
+   * A MOD or XM channel is monophonic in the hardware sense: it has one voice,
+   * and a new note takes it over, so nothing of the previous note can survive.
+   * A song authored here has no such limit -- overlapping notes on one track
+   * are a feature -- so there a new note releases the previous one and lets it
+   * ring out.
+   *
+   * Undefined until a song is loaded, and read as "module" until then: of the
+   * two ways to be wrong, letting a released note ring on under a new one is
+   * the one that is audible as a fault, while cutting one that could have rung
+   * is merely drier.
+   */
+  private moduleFormat: ModuleFormat | undefined;
   private readonly restoredAssets: Map<string, Set<string>> = new Map();
   private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
   private pendingScheduledEvents: PendingScheduledEvent[] = [];
@@ -483,6 +515,7 @@ export class TrackerSongBank {
     this.activeNotes.clear();
     this.lastTrackVoice.clear();
     this.trackVoiceOwner.clear();
+    this.trackReleasingVoices.clear();
     this.restoredAssets.clear();
   }
 
@@ -503,6 +536,7 @@ export class TrackerSongBank {
     }
     this.lastTrackVoice.clear();
     this.trackVoiceOwner.clear();
+    this.trackReleasingVoices.clear();
   }
 
   /**
@@ -672,24 +706,98 @@ export class TrackerSongBank {
   }
 
   /**
+   * Tell the bank which playback semantics the loaded song follows.
+   *
+   * Only the channel-replacement policy depends on it: see `moduleFormat`.
+   */
+  setModuleFormat(format: ModuleFormat | undefined) {
+    this.moduleFormat = format;
+  }
+
+  /**
+   * Whether a track is a hardware-style monophonic channel, where a new note
+   * leaves nothing of the previous one.
+   */
+  private get channelsAreMonophonic(): boolean {
+    return this.moduleFormat !== 'native';
+  }
+
+  /**
    * End a voice because a *new note* is taking over its channel.
    *
-   * Distinct from gating off for key-off: a tracker channel has no polyphony,
-   * so retriggering it ends the previous note rather than releasing it. Going
-   * through the release path here left the previous note ringing under the new
-   * one for the whole envelope fadeout.
+   * On a module channel this is a cut, not a release: the channel has one
+   * voice and the new note takes it, so the previous note stops making sound
+   * outright. Going through the release path here left it ringing under the
+   * new note for the whole envelope fadeout.
+   *
+   * A song authored in this tracker has no such constraint -- overlapping
+   * notes on a track are allowed -- so there the previous note is released and
+   * allowed to ring out.
    */
-  private cutVoiceForReplacement(
+  private endVoiceForReplacement(
     instrument: ActiveInstrument['instrument'],
     voiceIndex: number,
     time: number,
   ) {
+    if (!this.channelsAreMonophonic) {
+      instrument.gateOffVoiceAtTime(voiceIndex, time);
+      return;
+    }
     const cuttable = instrument as { cutVoiceAtTime?: (v: number, t: number) => void };
     if (typeof cuttable.cutVoiceAtTime === 'function') {
       cuttable.cutVoiceAtTime(voiceIndex, time);
       return;
     }
     instrument.gateOffVoiceAtTime(voiceIndex, time);
+  }
+
+  /** Remember a voice that a key-off left sounding out its release. */
+  private rememberReleasingVoice(
+    instrumentId: string,
+    trackIndex: number | undefined,
+    voiceIndex: number,
+  ) {
+    if (!Number.isFinite(trackIndex as number)) return;
+    const key = trackIndex as number;
+    const list = this.trackReleasingVoices.get(key) ?? [];
+    if (
+      !list.some(
+        (v) => v.instrumentId === instrumentId && v.voiceIndex === voiceIndex,
+      )
+    ) {
+      list.push({ instrumentId, voiceIndex });
+    }
+    this.trackReleasingVoices.set(key, list);
+  }
+
+  /**
+   * Silence anything still ringing on a track from an earlier key-off, because
+   * a new note is taking the channel.
+   *
+   * Module formats only: on a native song those releases are meant to ring
+   * through the next note.
+   */
+  private cutReleasingVoicesForTrack(
+    trackIndex: number | undefined,
+    time: number,
+  ) {
+    if (!Number.isFinite(trackIndex as number)) return;
+    const key = trackIndex as number;
+    const list = this.trackReleasingVoices.get(key);
+    if (!list || list.length === 0) return;
+    if (!this.channelsAreMonophonic) return;
+
+    const now = this.audioContext.currentTime;
+    for (const { instrumentId, voiceIndex } of list) {
+      const active = this.instruments.get(instrumentId);
+      if (!active) continue;
+      const gateLead = this.getGateLeadTime(active.instrument);
+      let gateTime = time - gateLead;
+      if (gateTime < now) gateTime = now + 0.001;
+      if (gateTime >= time) gateTime = Math.max(now, time - 0.0005);
+      this.endVoiceForReplacement(active.instrument, voiceIndex, gateTime);
+    }
+    this.trackReleasingVoices.delete(key);
   }
 
   private gateOffPreviousTrackVoice(
@@ -731,7 +839,7 @@ export class TrackerSongBank {
         }
       }
 
-      this.cutVoiceForReplacement(instrument, previousVoice, gateTime);
+      this.endVoiceForReplacement(instrument, previousVoice, gateTime);
       return;
     }
 
@@ -783,7 +891,7 @@ export class TrackerSongBank {
         }
       }
 
-      this.cutVoiceForReplacement(instrument, voiceIndex, gateTime);
+      this.endVoiceForReplacement(instrument, voiceIndex, gateTime);
 
       // Note: We don't clear lastTrackVoice here because the voice tracking
       // will be updated by setLastVoiceForTrack when the new note is allocated.
@@ -824,7 +932,7 @@ export class TrackerSongBank {
         active.instrument.cancelAndSilenceVoice(voiceIndex);
       } else {
         // A mono patch stealing its own voice across tracks is a replacement.
-        this.cutVoiceForReplacement(active.instrument, voiceIndex, gateTime);
+        this.endVoiceForReplacement(active.instrument, voiceIndex, gateTime);
       }
 
       // Note: We don't clear lastTrackVoice here because the tracking
@@ -905,6 +1013,7 @@ export class TrackerSongBank {
     if (!active) return;
     const now = this.audioContext.currentTime;
     // Ensure per-track mono behaviour across instruments on this track
+    this.cutReleasingVoicesForTrack(trackIndex, now);
     this.gateOffOtherInstrumentsForTrack(instrumentId, trackIndex, now);
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, now);
     const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now, {
@@ -1110,6 +1219,7 @@ export class TrackerSongBank {
     this.activeNotes.clear();
     this.lastTrackVoice.clear();
     this.trackVoiceOwner.clear();
+    this.trackReleasingVoices.clear();
     this.resetMasterVolumeToBaseline();
   }
 
@@ -1246,7 +1356,7 @@ export class TrackerSongBank {
             gateTime = Math.max(now, scheduledTime - 0.0005);
           // The channel is switching instrument, so nothing on the old
           // instrument will ever come back to stop this voice.
-          this.cutVoiceForReplacement(
+          this.endVoiceForReplacement(
             owner.instrument,
             existing.voiceIndex,
             gateTime,
@@ -1255,6 +1365,10 @@ export class TrackerSongBank {
         this.trackVoiceOwner.delete(trackIndex as number);
       }
     }
+    // Anything left ringing on this track by an earlier key-off has to go too.
+    // It is not the track's current voice, so neither of the paths above sees
+    // it, and on a module channel it must not survive the new note.
+    this.cutReleasingVoicesForTrack(trackIndex, scheduledTime);
     // Also gate off the previous voice for this instrument/track if known.
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
     const voiceIndex = active.instrument.noteOnAtTime(
@@ -1332,6 +1446,9 @@ export class TrackerSongBank {
     if (midi === undefined) {
       if (voiceIndex !== undefined) {
         active.instrument.gateOffVoiceAtTime(voiceIndex, scheduledTime);
+        // It is no longer the track's *current* voice, but it is still making
+        // sound, and on a module channel the next note has to kill it.
+        this.rememberReleasingVoice(instrumentId, trackIndex, voiceIndex);
         // Remove voice from track tracking
         this.clearLastVoiceForTrack(instrumentId, trackIndex);
         if (Number.isFinite(trackIndex as number)) {
@@ -1359,6 +1476,7 @@ export class TrackerSongBank {
       // parameter that means the *track* index -- harmless only because the
       // callee ignored it.
       active.instrument.gateOffVoiceAtTime(voiceIndex, scheduledTime);
+      this.rememberReleasingVoice(instrumentId, trackIndex, voiceIndex);
       // Remove voice from track tracking
       this.clearLastVoiceForTrack(instrumentId, trackIndex);
       if (Number.isFinite(trackIndex as number)) {

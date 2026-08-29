@@ -361,6 +361,10 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     engine.setLoopCurrentPattern(mode === 'pattern');
     console.log('[PlaybackStore] Loading song into engine...');
     const sequenceIndex = startSequenceIndex ?? resolveStartSequenceIndex(song);
+    // The bank needs the format too: it decides whether a new note on a track
+    // cuts the previous one (a module channel is monophonic) or releases it
+    // (a song authored here may overlap notes on a track).
+    getSongBank().setModuleFormat(song.moduleFormat);
     engine.loadSong(song, sequenceIndex);
     console.log('[PlaybackStore] Preparing instruments...');
     await engine.prepareInstruments();

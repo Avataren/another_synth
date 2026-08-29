@@ -1141,6 +1141,34 @@ failure was *musical rather than structural* -- in tune but sliding the wrong di
 Anything that resolves a value at import and also needs it at playback should be tested
 end to end, at the engine, not at either end.
 
+**D60 — Channel monophony is a format property, and a released voice has to stay killable.**
+Reported as some songs letting a previous instrument's envelope release run on under a
+new note. Two parts.
+
+**The leak.** `dispatchNoteOffAtTime` releases the track's voice and then clears the
+track's voice tracking. Clearing is right in one sense -- the voice is no longer what the
+track is *playing* -- but it also made the voice **unkillable**, because both paths that
+end a previous note on a new note (`trackVoiceOwner` and `gateOffPreviousTrackVoice`) find
+their target through that tracking. So a keyed-off note went on sounding underneath the
+next note for its whole fadeout, which on XM is measured in seconds.
+
+It only bit when the channel changed *instrument*: `ModInstrument.noteOnAtTime` already
+cuts a releasing voice sitting on the slot it is about to reuse (`stopReleasingVoice`), so
+same-instrument retriggers were covered and the fault looked intermittent. Released voices
+are now recorded per track in `trackReleasingVoices` and cut when the next note takes the
+channel.
+
+**The policy.** D41 made a replacing note *cut* the previous one, which is right for a MOD
+or XM channel -- one voice, taken over, nothing survives -- and wrong for a song authored
+here, where overlapping notes on a track are a feature. The bank now knows the song's
+format (`setModuleFormat`, set from `loadSong` alongside the engine's own copy) and
+branches: module formats cut, native releases and lets the note ring.
+
+The default when no song has been loaded is *module*, deliberately, even though
+`DEFAULT_MODULE_FORMAT` is `'native'`. Of the two ways to be wrong here, a note ringing on
+under another is heard as a fault, while cutting one that could have rung is merely drier;
+the default should fail toward the one nobody files a bug about.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1357,6 +1385,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | fix | **A new note on a module channel now kills everything the channel was sounding** (D60). A key-off released the voice and then cleared the track's voice tracking, which made it unkillable — so a released note rang on under the next one for its whole fadeout whenever the channel changed instrument. Released voices are tracked per track and cut by the next note. The bank also learns the song's format: module channels cut on replacement, native songs release and let the note ring. Tests: `src/tests/tracker-channel-monophony.test.ts` (3 of 7 confirmed failing against the old code). 634 green. |
 | 2026-08-29 | fix | **The XM frequency table now reaches the engine** (D59). `xm-import` put `linearFrequency` in a console.log rather than the song data, so `profileForFormat` never selected `XM_AMIGA_PROFILE` and every Amiga-table XM computed its pitch *effects* in linear period space — in tune, but every slide moving the wrong distance. Roughly half of real XM files are Amiga-table. Found via 4-mat's "rose". Tests: `src/tests/xm-amiga-frequency-table.test.ts`. 627 green. |
 | 2026-08-29 | fix | **Instantaneous volume commands step instead of ramping** (D58). A scheduled volume change defaulted to a linear ramp, which runs from the previous automation event — so ECx, Cxx and the fine slides were smeared backwards across the preceding row. Found via 4-mat's "rose", whose pattern 44 is the first in the song to use ECx: track 2's short `G-4 .. EC2` notes faded across their whole length at speed 3. 621 green. |
 | 2026-08-29 | 4 | **XM autovibrato implemented** (D57) — instrument-level vibrato, 13.4% of corpus notes, parsed since the beginning and never consumed. Runs as an OscillatorNode into the source's `detune`, which composes with the channel's `playbackRate` automation instead of fighting it. Tests: `src/tests/xm-autovibrato.test.ts`. 616 green. |
