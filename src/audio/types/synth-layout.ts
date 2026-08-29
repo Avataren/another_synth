@@ -125,6 +125,25 @@ export interface TrackerVolumeEnvelope {
   fadeout: number;
 }
 
+/**
+ * XM instrument-level ("auto") vibrato.
+ *
+ * A property of the instrument rather than the pattern: every note the
+ * instrument plays wobbles, without any 4xy in the song. FastTracker 2 adds it
+ * to the channel period *on top of* whatever the effect column is doing, so it
+ * has to compose with command vibrato and portamento rather than replace them.
+ */
+export interface TrackerAutoVibrato {
+  /** 0 = sine, 1 = square, 2 = ramp down, 3 = ramp up. */
+  type: number;
+  /** Ticks taken to reach full depth from note start; 0 = immediate. */
+  sweepTicks: number;
+  /** 0-15, in the song's period units. */
+  depth: number;
+  /** Position advance per tick, over a 256-step cycle. */
+  rate: number;
+}
+
 export interface SamplerState {
   id: string;
   frequency: number;
@@ -149,6 +168,7 @@ export interface SamplerState {
    * volume that effects automate.
    */
   trackerEnvelope?: TrackerVolumeEnvelope;
+  trackerAutoVibrato?: TrackerAutoVibrato;
 }
 
 /**

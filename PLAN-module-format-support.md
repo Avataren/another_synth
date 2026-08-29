@@ -232,7 +232,7 @@ Each checkbox is intended to be roughly one commit. Tick as they land.
 - [x] Volume envelope (points, sustain, and loop)
 - [ ] Panning envelope
 - [x] `volumeFadeout` on key-off
-- [ ] Autovibrato
+- [x] Autovibrato (D57)
 - [x] Remaining XM effects: Kxx, Rxy, Txy, Xxy, Gxx/Hxy (D48, D51, §6e)
 - [ ] `Lxx` set envelope position — the one XM effect still unhandled; needs to
       reach into a running envelope in `ModInstrument`, and has zero occurrences
@@ -1040,6 +1040,44 @@ import-time resolution has a compensating virtue the playback-time version would
 which is that every pattern is self-describing and so plays correctly when started from
 cold, which is what the pattern-at-a-time UI does.
 
+**D57 — Autovibrato rides on `detune`, so it composes instead of competing.**
+XM instruments carry their own vibrato (type, sweep, depth, rate), applied by FT2 on top
+of whatever the effect column is doing to the period. 20 of the 219 corpus instruments
+declare one and they account for 13.4% of all played notes (§6f), every one of which
+played dead straight. The parser had read the fields since the start; nothing consumed
+them.
+
+Two choices worth recording.
+
+**Where it composes.** Channel pitch is automation on the source's `playbackRate`, written
+by portamento, 4xy and arpeggio. An instrument-level wobble on the same param would have
+to be merged with all of them, in the effect processor, which does not know anything about
+instruments. `AudioBufferSourceNode.detune` is a *separate* AudioParam that combines
+multiplicatively with `playbackRate`, so the instrument's vibrato can be scheduled once at
+note start and simply ride along. This is the same shape as the volume envelope's
+dedicated gain stage (D31): give instrument-level modulation its own parameter rather than
+teaching channel-level code about it.
+
+**An oscillator, not unrolled automation.** FT2 advances the vibrato position by `rate`
+each tick over a 256-step cycle, so a fast rate is only a few ticks per cycle; sampling
+that per tick for the length of a note would mean thousands of automation events per
+voice, as the envelope unrolling already does for its own reasons. An `OscillatorNode`
+into a gain stage expresses the same LFO exactly, at two nodes, with the sweep as a linear
+ramp on the gain. Type maps to the oscillator's own waveforms. The oscillator is given a
+*scheduled* stop with its source as well as being disconnected by the deferred teardown --
+it is connected to an AudioParam rather than to the output, so one that outlived its note
+would be inaudible and accumulate silently.
+
+**Depth calibration, stated because it is the risky part.** Depth is 0-15 in the song's
+period units, converted here to cents at 100/64 per unit -- XM's linear table is
+logarithmic in period, 64 units to a semitone everywhere, so the conversion is a constant
+and depth 15 is about 23 cents. That is roughly an eighth of what the same nibble means to
+a 4xy vibrato, which matches autovibrato being the subtler of the two. The Amiga frequency
+table is *not* logarithmic in period, so there the same offset is a different interval at
+every pitch and the constant is an approximation; worth revisiting against a reference
+player if an Amiga-table module sounds off. Getting a depth scaling wrong is exactly the
+class of bug D48 was, so this one is written down rather than left implicit.
+
 **D5 — Resolved by D31.**
 Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-tick
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
@@ -1254,6 +1292,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-29 | 4 | **XM autovibrato implemented** (D57) — instrument-level vibrato, 13.4% of corpus notes, parsed since the beginning and never consumed. Runs as an OscillatorNode into the source's `detune`, which composes with the channel's `playbackRate` automation instead of fighting it. Tests: `src/tests/xm-autovibrato.test.ts`. 616 green. |
 | 2026-08-29 | fix | **MOD patterns are converted in play order so the channel sample latch survives a pattern boundary** (D56). A note with no sample number in a pattern's opening rows resolved to no instrument — silent when the pattern was played alone, wrong sample when reached in sequence. 320 notes across 13 of 28 corpus modules. Tests: `src/tests/mod-import-sample-latch.test.ts`. 608 green. |
 | 2026-08-29 | fix | **The song builder no longer reads a stamped instrument id as an explicit one** (D55), the second regression from D53 and again caught by ear on GSLINGER.MOD pattern 2's flute echo. It reset any note+instrument row without a volume column to velocity 255, and the importers stamp `entry.instrument` onto every row — so every sample-number-less note played at full scale. Now gated to native songs. Regression tests moved up to engine level, which is where all three of these bugs were actually reachable. 604 green. |
 | 2026-08-29 | fix | **A note-on now carries its own level** (D54), caught by ear as GSLINGER.MOD pattern 2's flute echo blaring. D53 removed the sample volume from the instrument gain but left the note-on velocity hardcoded at 127, and `setVoiceVolumeAtTime` legitimately drops a volume command it cannot resolve to a voice on this track (D13) — so the fallback level went from "roughly right by accident" to full scale. Also fixes a 0-127 vs 0-255 mismatch in `lastTrackNote`. 601 green. |

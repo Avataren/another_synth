@@ -32,6 +32,8 @@ export interface InstrumentSpec {
   keymap?: number[];
   volumeFadeout?: number;
   volumeEnvelope?: { points: Array<[number, number]>; type?: number; sustain?: number };
+  /** Instrument-level vibrato (XM autovibrato). */
+  autoVibrato?: { type?: number; sweep?: number; depth?: number; rate?: number };
 }
 
 export interface XmSpec {
@@ -208,10 +210,10 @@ export function buildXm(spec: XmSpec): Uint8Array {
     w.u8(0); // panning loop end
     w.u8(instrument.volumeEnvelope?.type ?? 0);
     w.u8(0); // panning type
-    w.u8(0); // vibrato type
-    w.u8(0); // vibrato sweep
-    w.u8(0); // vibrato depth
-    w.u8(0); // vibrato rate
+    w.u8(instrument.autoVibrato?.type ?? 0); // vibrato type
+    w.u8(instrument.autoVibrato?.sweep ?? 0); // vibrato sweep
+    w.u8(instrument.autoVibrato?.depth ?? 0); // vibrato depth
+    w.u8(instrument.autoVibrato?.rate ?? 0); // vibrato rate
     w.u16(instrument.volumeFadeout ?? 0);
     w.u16(0); // reserved
     // Pad to the declared instrument header size, measured from where this

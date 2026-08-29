@@ -351,6 +351,11 @@ function normalizeSamplerStateWithDefaults(
     ...(sampler.trackerEnvelope
       ? { trackerEnvelope: sampler.trackerEnvelope }
       : {}),
+    // Same trap as trackerEnvelope above: name it here or it is dropped on the
+    // way to the instrument.
+    ...(sampler.trackerAutoVibrato
+      ? { trackerAutoVibrato: sampler.trackerAutoVibrato }
+      : {}),
   };
 
   return normalizeSamplerState(base);

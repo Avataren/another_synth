@@ -14,6 +14,7 @@ import {
   SamplerLoopMode,
   type SamplerState,
   type TrackerVolumeEnvelope,
+  type TrackerAutoVibrato,
 } from './types/synth-layout';
 import { decodeAudioAssetToFloat32Array } from './serialization/audio-asset-encoder';
 import { AudioAssetType } from './types/preset-types';
@@ -39,6 +40,16 @@ interface ActiveVoice {
    * volume effects schedule there.
    */
   envelopeGain: GainNode | null;
+  /**
+   * Instrument-level ("auto") vibrato, as an LFO driving the source's `detune`.
+   *
+   * `detune` is a separate AudioParam from `playbackRate`, and the two compose
+   * multiplicatively, so the instrument's own wobble rides on top of whatever
+   * the channel is doing to the pitch -- portamento, 4xy vibrato, arpeggio --
+   * without either having to know about the other. That is the same trick the
+   * volume envelope uses with its own gain stage.
+   */
+  autoVibrato: { osc: OscillatorNode; depth: GainNode } | null;
   panNode: StereoPannerNode;
   noteNumber: number;
   startTime: number;
@@ -300,6 +311,113 @@ export default class ModInstrument {
     return Math.max(0, (sampleFrames - 1) / rate);
   }
 
+  /**
+   * Start the instrument's autovibrato on a voice, driving `source.detune`.
+   *
+   * A real oscillator rather than unrolled automation: FT2 advances the
+   * vibrato position by `rate` every tick over a 256-step cycle, which for a
+   * fast rate is only a few ticks per cycle, so sampling it per tick for the
+   * life of a note would mean thousands of automation events per voice. An
+   * OscillatorNode expresses the same LFO exactly and costs two nodes.
+   *
+   * Depth is converted from the format's period units to cents, because
+   * `detune` works in cents and that is what lets it compose with
+   * `playbackRate`. XM's linear frequency table is logarithmic in period --
+   * 64 units to a semitone everywhere -- so the conversion is the constant
+   * below. In the Amiga table the same period offset is a different musical
+   * interval at every pitch; that mode is approximated here with the constant,
+   * which is worth revisiting if an Amiga-table module sounds off.
+   */
+  private startAutoVibrato(
+    source: AudioBufferSourceNode,
+    vibrato: TrackerAutoVibrato,
+    startTime: number,
+    tickSeconds: number,
+  ): { osc: OscillatorNode; depth: GainNode } | null {
+    if (vibrato.depth <= 0 || vibrato.rate <= 0) return null;
+    if (
+      typeof this.audioContext.createOscillator !== 'function' ||
+      !source.detune
+    ) {
+      return null;
+    }
+
+    // 64 XM period units to a semitone, 100 cents to a semitone.
+    const CENTS_PER_PERIOD_UNIT = 100 / 64;
+    // The position advances by `rate` per tick over a 256-step cycle.
+    const AUTO_VIBRATO_CYCLE_STEPS = 256;
+
+    const osc = this.audioContext.createOscillator();
+    osc.type =
+      vibrato.type === 1
+        ? 'square'
+        : vibrato.type === 2 || vibrato.type === 3
+          ? 'sawtooth'
+          : 'sine';
+    osc.frequency.value =
+      vibrato.rate / (AUTO_VIBRATO_CYCLE_STEPS * tickSeconds);
+
+    const depth = this.audioContext.createGain();
+    // A positive period offset lowers the pitch, so the LFO is inverted to
+    // keep the wobble in the same direction FT2 takes it. Ramp-down (type 2)
+    // inverts again relative to ramp-up.
+    const magnitude = vibrato.depth * CENTS_PER_PERIOD_UNIT;
+    const target = vibrato.type === 2 ? magnitude : -magnitude;
+
+    // Sweep: FT2 ramps the depth in from zero over `sweepTicks` ticks.
+    if (vibrato.sweepTicks > 0) {
+      depth.gain.setValueAtTime(0, startTime);
+      depth.gain.linearRampToValueAtTime(
+        target,
+        startTime + vibrato.sweepTicks * tickSeconds,
+      );
+    } else {
+      depth.gain.setValueAtTime(target, startTime);
+    }
+
+    osc.connect(depth);
+    depth.connect(source.detune);
+    osc.start(startTime);
+    return { osc, depth };
+  }
+
+  /**
+   * Stop and release a voice's autovibrato LFO.
+   *
+   * Called everywhere a voice's envelope stage is torn down. An oscillator
+   * left running holds its whole graph alive, and it is connected to an
+   * AudioParam rather than to the output, so a leaked one is silent -- it
+   * would accumulate invisibly rather than announce itself.
+   */
+  /**
+   * Schedule the LFO to stop with its source.
+   *
+   * The teardown that disconnects it runs on a timer after the voice's release
+   * ramp, which is late and, being a timer, not guaranteed to be prompt. The
+   * oscillator has to stop when the note does regardless.
+   */
+  private scheduleAutoVibratoStop(voice: ActiveVoice, when: number): void {
+    if (!voice.autoVibrato) return;
+    try {
+      voice.autoVibrato.osc.stop(when);
+    } catch {
+      // Already stopped, or never started.
+    }
+  }
+
+  private stopAutoVibrato(voice: ActiveVoice): void {
+    const vibrato = voice.autoVibrato;
+    if (!vibrato) return;
+    try {
+      vibrato.osc.stop();
+    } catch {
+      // Already stopped, or never started; nothing to do.
+    }
+    vibrato.osc.disconnect();
+    vibrato.depth.disconnect();
+    voice.autoVibrato = null;
+  }
+
   /** Apply the prepared loop to a freshly created source. */
   private applyLoop(source: AudioBufferSourceNode): void {
     if (!this.loopEnabled) return;
@@ -360,6 +478,7 @@ export default class ModInstrument {
         oldVoice.gainNode.disconnect();
         oldVoice.panNode.disconnect();
         oldVoice.envelopeGain?.disconnect();
+        this.stopAutoVibrato(oldVoice);
         this.activeVoices.delete(voiceIndex);
       }
     }
@@ -403,8 +522,9 @@ export default class ModInstrument {
       source,
       gainNode,
       // The immediate (non-scheduled) path is used for previews, which do not
-      // run tracker envelopes.
+      // run tracker envelopes or the instrument's own vibrato.
       envelopeGain: null,
+      autoVibrato: null,
       panNode,
       tickSeconds: DEFAULT_TICK_SECONDS,
       noteNumber,
@@ -446,6 +566,8 @@ export default class ModInstrument {
       // Stop and disconnect after release
       const stopTime = this.audioContext.currentTime + releaseTime;
       voice.source.stop(stopTime);
+      this.scheduleAutoVibratoStop(voice, stopTime);
+    this.scheduleAutoVibratoStop(voice, stopTime);
 
       // Disconnect nodes after the release completes
       setTimeout(
@@ -455,6 +577,7 @@ export default class ModInstrument {
             voice.gainNode.disconnect();
             voice.panNode.disconnect();
             voice.envelopeGain?.disconnect();
+            this.stopAutoVibrato(voice);
           } catch (e) {
             // Nodes may already be disconnected, ignore
           }
@@ -480,6 +603,9 @@ export default class ModInstrument {
         );
         const stopTime = this.audioContext.currentTime + releaseTime;
         voice.source.stop(stopTime);
+      this.scheduleAutoVibratoStop(voice, stopTime);
+        this.scheduleAutoVibratoStop(voice, stopTime);
+    this.scheduleAutoVibratoStop(voice, stopTime);
 
         // Disconnect nodes after the release completes
         setTimeout(
@@ -489,6 +615,7 @@ export default class ModInstrument {
               voice.gainNode.disconnect();
               voice.panNode.disconnect();
               voice.envelopeGain?.disconnect();
+              this.stopAutoVibrato(voice);
             } catch (e) {
               // Nodes may already be disconnected, ignore
             }
@@ -522,6 +649,7 @@ export default class ModInstrument {
     // Stop and disconnect after release
     const stopTime = this.audioContext.currentTime + releaseTime;
     voice.source.stop(stopTime);
+    this.scheduleAutoVibratoStop(voice, stopTime);
 
     // Disconnect nodes after the release completes
     setTimeout(
@@ -531,6 +659,7 @@ export default class ModInstrument {
           voice.gainNode.disconnect();
           voice.panNode.disconnect();
           voice.envelopeGain?.disconnect();
+          this.stopAutoVibrato(voice);
         } catch (e) {
           // Nodes may already be disconnected, ignore
         }
@@ -626,6 +755,7 @@ export default class ModInstrument {
         voice.gainNode.disconnect();
         voice.panNode.disconnect();
         voice.envelopeGain?.disconnect();
+        this.stopAutoVibrato(voice);
       } catch (e) {
         // Nodes may already be disconnected, ignore
       }
@@ -976,6 +1106,7 @@ export default class ModInstrument {
     if (oldVoice) {
       try {
         oldVoice.source.stop(replaceAt);
+        this.scheduleAutoVibratoStop(oldVoice, replaceAt);
       } catch {
         // Source may have already stopped naturally
       }
@@ -990,6 +1121,7 @@ export default class ModInstrument {
           oldVoice.gainNode.disconnect();
           oldVoice.panNode.disconnect();
           oldVoice.envelopeGain?.disconnect();
+          this.stopAutoVibrato(oldVoice);
         } catch {
           // Already disconnected
         }
@@ -1031,6 +1163,7 @@ export default class ModInstrument {
     // own stage ahead of the channel-volume node.
     const envelope = this.samplerState.trackerEnvelope;
     const tickSeconds = options?.tickSeconds ?? DEFAULT_TICK_SECONDS;
+    const autoVibratoSpec = this.samplerState.trackerAutoVibrato;
     let envelopeGain: GainNode | null = null;
     if (envelope && (envelope.points.length > 0 || envelope.fadeout > 0)) {
       envelopeGain = this.audioContext.createGain();
@@ -1063,11 +1196,18 @@ export default class ModInstrument {
       source.start(startTime);
     }
 
+    // The instrument's own vibrato rides on `detune`, so it survives every
+    // pitch command the channel schedules on `playbackRate`.
+    const autoVibrato = autoVibratoSpec
+      ? this.startAutoVibrato(source, autoVibratoSpec, startTime, tickSeconds)
+      : null;
+
     // Store active voice
     this.activeVoices.set(voiceIndex, {
       source,
       gainNode,
       envelopeGain,
+      autoVibrato,
       panNode,
       tickSeconds,
       noteNumber,
@@ -1155,6 +1295,7 @@ export default class ModInstrument {
     const stopAt = cutAt + rampSeconds;
     try {
       voice.source.stop(stopAt);
+      this.scheduleAutoVibratoStop(voice, stopAt);
     } catch {
       // Already stopped
     }
@@ -1171,6 +1312,7 @@ export default class ModInstrument {
           voice.gainNode.disconnect();
           voice.panNode.disconnect();
           voice.envelopeGain?.disconnect();
+          this.stopAutoVibrato(voice);
         } catch {
           // Already disconnected
         }
@@ -1222,6 +1364,7 @@ export default class ModInstrument {
     // Stop source after release
     const stopTime = scheduledTime + releaseTime;
     voice.source.stop(stopTime);
+    this.scheduleAutoVibratoStop(voice, stopTime);
 
     // Free the slot immediately so allocation can reuse it, but keep hold of
     // the voice while it fades so a later note on this channel can cut it.
@@ -1240,6 +1383,7 @@ export default class ModInstrument {
         voice.gainNode.disconnect();
         voice.panNode.disconnect();
         voice.envelopeGain?.disconnect();
+        this.stopAutoVibrato(voice);
       } catch (e) {
         // Nodes may already be disconnected, ignore
       }
@@ -1268,6 +1412,7 @@ export default class ModInstrument {
     const stopAt = Math.max(atTime ?? now, now);
     try {
       releasing.source.stop(stopAt);
+      this.scheduleAutoVibratoStop(releasing, stopAt);
     } catch {
       // Already stopped
     }
@@ -1279,6 +1424,7 @@ export default class ModInstrument {
         releasing.gainNode.disconnect();
         releasing.panNode.disconnect();
         releasing.envelopeGain?.disconnect();
+        this.stopAutoVibrato(releasing);
       } catch {
         // Already disconnected
       }
