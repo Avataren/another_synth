@@ -530,6 +530,7 @@
             :container-height="patternAreaHeight"
             :is-mouse-selecting="isMouseSelecting"
             :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
+            :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"

@@ -5,7 +5,8 @@
     :style="{
       '--tracker-row-height': rowHeight,
       '--tracker-header-height': headerHeight,
-      '--tracker-accent': accentColor
+      '--tracker-accent': accentColor,
+      '--tracker-side-gutter': sideGutter
     }"
   >
     <div class="pattern-body">
@@ -81,6 +82,8 @@ interface Props {
   containerHeight: number;
   isMouseSelecting: boolean;
   showExtraEffectColumn: boolean;
+  /** Whether the spectrum analyser is on and needs gutters to draw in. */
+  reserveSideGutter: boolean;
 }
 
 const props = defineProps<Props>();
@@ -103,6 +106,26 @@ const trackWidth = computed(
   () => `${trackWidthPx(props.tracks.length, props.showExtraEffectColumn)}px`,
 );
 const trackGap = computed(() => `${trackGapPx(props.tracks.length)}px`);
+
+/**
+ * Width held back on each side of the pattern for the spectrum analyser.
+ *
+ * The analyser draws into the empty gutters beside this panel, measuring them
+ * from the panel's own box. But the panel is a block-level flex container, so
+ * it takes the full width whatever the channel count, and the gutters
+ * collapsed to the few pixels of page padding -- there was nowhere for the
+ * analyser to draw.
+ *
+ * One track column is the reserve: enough to read, and expressed in the same
+ * unit as the thing it sits beside, so it stays proportionate as the columns
+ * tighten. The stylesheet caps it as a share of the width too, so a narrow
+ * window spends most of its space on the pattern rather than the gutters.
+ */
+const sideGutter = computed(() =>
+  props.reserveSideGutter
+    ? `${trackWidthPx(props.tracks.length, props.showExtraEffectColumn)}px`
+    : '0px',
+);
 
 const trackWrapperStyle = computed(() => ({
   '--tracker-track-width': trackWidth.value,
@@ -283,6 +306,11 @@ defineExpose({
 .tracker-pattern {
   display: flex;
   flex-direction: column;
+  /* Leave the spectrum analyser a gutter to draw in on each side, and stay
+     centred between them. Capped as a share of the available width as well,
+     so on a narrow window the pattern keeps most of the space. */
+  max-width: calc(100% - 2 * min(var(--tracker-side-gutter, 180px), 15%));
+  margin-inline: auto;
   gap: 14px;
   background: var(--panel-background, #0c1018);
   border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.06));
@@ -478,6 +506,10 @@ defineExpose({
   .tracks-wrapper {
     order: 1;
     width: 100%;
+  }
+
+  .tracker-pattern {
+    max-width: none;
   }
 }
 </style>
