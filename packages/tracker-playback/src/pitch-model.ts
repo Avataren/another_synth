@@ -177,16 +177,36 @@ const XM_UNITS_PER_OCTAVE = 768; // 12*16*4
 const LINEAR_TO_SYNTH_SCALE = 32;
 
 /**
- * XM's note range is 1-96 (C-0..B-7), giving periods from 7680 (C-0) down to
- * 7680 - 95*64 = 1600 (B-7). Portamento is clamped to that range.
+ * FastTracker 2's own portamento limits, which are *not* the note range.
  *
- * NOTE: this bound is taken from the format's own note range rather than
- * measured against FastTracker 2, and nothing selects this model yet. It wants
- * checking against real XM playback when Phase 3 lands -- particularly whether
- * FT2 lets a slide run past B-7 rather than clamping.
+ * XM's note range is 1-96 (C-0..B-7), i.e. periods 7680 down to 1600, and this
+ * used to clamp slides to it. FT2 does not: `pitchSlideUp` clamps the channel
+ * period at 1 and `pitchSlideDown` at 32000-1, both far outside the note
+ * range, so a slide runs well past B-7 and well below C-0 --
+ *
+ *   static void pitchSlideDown(channel_t *ch, uint8_t param) {
+ *       ...
+ *       ch->realPeriod += param * 4;
+ *       if ((int16_t)ch->realPeriod >= 32000) // FT2 bug, should've been unsigned
+ *           ch->realPeriod = 32000-1;
+ *
+ * (ft2-clone, src/ft2_replayer.c, the reference implementation.)
+ *
+ * The difference is not academic, because a linear period is exponential in
+ * pitch. Clamping at C-0 leaves a runaway `2xx` sounding at 16.33 Hz -- 1/32
+ * of the sample's recorded rate, which is an audible rumble that also takes 32
+ * times as long to play out, so it survives well into the next pattern. FT2's
+ * limit puts the same slide at a rate three orders of magnitude lower, which
+ * is silence. See D80.
+ *
+ * Not emulated: FT2 masks the period to 16 bits in `period2Ft2Delta`, so a
+ * period above 9216 wraps and comes out quieter still (2^-27 rather than
+ * 2^-17 at the case in D80). Both are inaudible, and reproducing the wrap
+ * would make pitch non-monotonic in the period, which the effect processor
+ * relies on -- so this keeps the exponential the wrap is an artefact of.
  */
-const MIN_LINEAR_PERIOD = 1600;
-const MAX_LINEAR_PERIOD = 7680;
+const MIN_LINEAR_PERIOD = 1;
+const MAX_LINEAR_PERIOD = 31999;
 
 export function createLinearPitchModel(): PitchModel {
   const clampPeriod = (period: number): number => {

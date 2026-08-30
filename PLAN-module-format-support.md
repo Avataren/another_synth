@@ -1845,6 +1845,103 @@ scheduled volumes equal the first's. Against the old code that last one reports
 `[1,1,1,1,1,1,1,1,1,1]` where it should read `[1,0,1,0,1,0,…]`, which is the reported symptom
 stated exactly. 917 green.
 
+### D80 — A portamento obeys FT2's period limits, not XM's note range
+
+Reported on "im in love with you.xm": at the transition from order 15 to order 16 a drum that
+is pitched down at the end of the first pattern *keeps rumbling* through the second, whose
+only command on that channel (channel 8, track 9 counting from one) is a `G40` at the top with
+no note. The question asked was whether `Gxx` is handled correctly.
+
+**`Gxx` is correct, and is not the cause.** Checked against the reference implementation:
+
+```c
+static void setGlobalVolume(channel_t *ch, uint8_t param) {
+    if (param > 64) param = 64;
+    song.globalVolume = param;
+```
+(ft2-clone, `src/ft2_replayer.c`.)
+
+FT2's global volume is 0..64, and `G40` is 0x40 = 64 = maximum. The engine does
+`Math.min(64, raw) / 64` → 1.0. The row is a no-op restoring a level that was already there;
+it neither ducks nor un-ducks the drum. (A stale comment claiming "0-128 in FT2" was wrong
+about the range while the code was right.)
+
+**The cause is the pitch clamp.** Channel 8 plays `F-5` and then six rows of `240` — pitch
+slide down, 0x40*4 = 256 period units per tick, five sliding ticks per row at speed 6 — taking
+the period from 3520 to 11200. XM's *note* range is C-0..B-7, i.e. periods 7680..1600, and
+`MIN_LINEAR_PERIOD`/`MAX_LINEAR_PERIOD` clamped slides to it. FT2 does not:
+
+```c
+static void pitchSlideDown(channel_t *ch, uint8_t param) {
+    ...
+    ch->realPeriod += param * 4;
+    if ((int16_t)ch->realPeriod >= 32000) // FT2 bug, should've been unsigned
+        ch->realPeriod = 32000-1;
+```
+
+with `pitchSlideUp` clamping at 1. Both are far outside the note range.
+
+This matters because a linear period is *exponential* in pitch, so the clamp is not a small
+error. What the engine scheduled on that channel:
+
+```
+row 39   697.70 Hz      (the F-5)
+row 3A   219.76
+row 3B    69.22
+row 3C    21.80
+row 3D    16.33   <- clamp
+row 3E    16.33
+order 16  16.33   ... and onward
+```
+
+16.334 Hz is exactly `frequencyFromPeriod(7680)`: 1/43 of the sample's own rate. That is
+audible — and it also makes the sample take 43 times as long to play through, which is why it
+survives well into the next pattern. With FT2's limit the slide keeps going, to 6.87, 2.16 and
+0.681 Hz, i.e. about 1/1000 of the note. Silence, which is what FT2 plays.
+
+Not emulated: `period2Ft2Delta` masks the period to 16 bits, so a period above 9216 wraps and
+comes out quieter still (2^-27 rather than 2^-17 here). Both are inaudible, and reproducing
+the wrap would make pitch non-monotonic in the period — an invariant the effect processor
+relies on — so the model keeps the exponential that the wrap is an artefact of.
+
+The old bounds were guesswork, and the source said so: *"this bound is taken from the format's
+own note range rather than measured against FastTracker 2 ... It wants checking against real
+XM playback when Phase 3 lands — particularly whether FT2 lets a slide run past B-7 rather
+than clamping."* It does. Two unit tests had pinned the guess.
+
+Corpus effect: the old clamps were binding in five of the thirteen linear-table XMs — floor
+143 times in this song across six channels, plus jt_911 (2) and yuki (3); ceiling in DEADLOCK
+(16), an-path (20), "amiga boy" (12) and yuki (1). With FT2's limits, **no module in the
+collection reaches either end**, so nothing is being artificially stopped any more.
+
+Only the linear model is changed. The ProTracker model's 113..856 is a real hardware limit and
+stays. The XM Amiga model's 113..27392 is the same class of guess, but an Amiga period is
+reciprocal rather than exponential, so its floor is 14.0 Hz against the correct 16.3 — a
+difference too small to chase, and no Amiga-table module in the corpus reaches it.
+
+Tests: `src/tests/xm-global-volume-and-period-limits.test.ts` (8, of which 3 confirmed failing
+against the old code — the failure names the symptom exactly: six pitches parked at
+16.333984375 Hz, at 0.0234 of the note) plus the two rewritten in
+`src/tests/pitch-model.test.ts`. 926 green.
+
+**Found and verified on the way, not fixed** (see D81).
+
+### D81 — Open: Hxy global volume slide runs per row, not per tick
+
+FT2 dispatches `Hxy` from `JumpTab_TickNonZero`, so it slides once per tick — five steps per
+row at speed 6. The engine applies it once per row, in the same pass as `Gxx`, so a slide
+takes five times as long to travel. It also lacks FT2's parameter memory (`H00` repeats the
+last speed) and FT2's nibble precedence (`if ((param & 0xF0) == 0)` slides *down*, so a
+both-nibbles `H12` slides up in FT2 where the engine does nothing).
+
+Not fixed here. `Hxy` appears in exactly one of the sixty demo modules — this one, 32 rows of
+`H10` — and every occurrence runs while global volume is already at maximum, so both readings
+clamp to the same value and nothing in the corpus can distinguish them. Moving it to the tick
+loop is a timing change with no case to verify it against, and there is no browser automation
+here to check it by ear. Pinned in
+`src/tests/xm-global-volume-and-period-limits.test.ts` as a labelled known deviation, the same
+treatment D71 gives `EEx`, so that changing it is deliberate.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -2076,6 +2173,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **A portamento now obeys FT2's period limits rather than XM's note range** (D80). Reported as a drum pitched down at the end of order 15 of "im in love with you.xm" rumbling on through the next pattern, whose only command on that channel is a `G40`. `Gxx` turned out to be correct — FT2's global volume is 0..64 and `G40` is its maximum, so the row is a no-op. The cause was `MIN/MAX_LINEAR_PERIOD` clamping slides to C-0..B-7 where FT2 clamps at 1 and 32000-1 (`pitchSlideUp`/`pitchSlideDown` in ft2-clone). A linear period is exponential in pitch, so the clamp parked a runaway `240` at 16.33 Hz — 1/43 of the sample's rate, and 43x as long, hence the rumble — where FT2 takes it to ~1/1000, i.e. silence. The old bounds were guesswork and the source comment said so. Five of the thirteen linear XMs were hitting them; none reaches FT2's. Also verified but not fixed: `Hxy` slides per row where FT2 slides per tick (D81). Tests: `src/tests/xm-global-volume-and-period-limits.test.ts` (3 of 8 confirmed failing against the old code). 926 green. |
 | 2026-08-30 | fix | **A set-volume row survives a pattern that never names an instrument** (D79). radix_-_yuki_satellites.xm's opening bassline lost its `v00` gating in the second pattern and sustained instead — reported as that pattern "almost playing the plain samples". The builder skipped any row resolving no instrument unless it carried a note, macro, tempo, effect or volume-column *command*; a plain set-volume was missing from that list, and the pattern could not name an instrument because its every instrument-bearing row is a tone portamento, which must not stamp one (D55, D77). Same rationale as D64's note-off rescue: the engine holds the per-track instrument across patterns and resolves it there. 22 of 60 demo modules were losing rows. Tests: `src/tests/tracker-volume-row-without-instrument.test.ts` (2 of 3 confirmed failing against the old code). 917 green. |
 | 2026-08-30 | fix | **Per-voice commands address the channel, not the row's instrument** (D78). The rule five earlier fixes each re-derived (D29, D55, D65, D68, D77), now enforced in one resolution path in `TrackerSongBank` instead of per format: on a module channel, pitch/volume/pan/envelope-position/sample-offset/retrigger resolve only through `trackVoiceOwner`; native songs keep the instrument-keyed lookup, because a native track is polyphonic. The `-1` cross-channel fallback is native-only now. The class was still live in 8 of 60 demos — 91, 53, 25 and 18 commands on rose, GSLINGER, addiction and an-path were being *delivered to the wrong voice*, not merely dropped. FT2's instrument latch on tone-porta rows diverges from ours 190× in "amiga boy" but affects zero notes corpus-wide; the residue is the editor's instrument column. Tests: `src/tests/tracker-channel-voice-addressing.test.ts`, `src/tests/tracker-corpus-voice-addressing.test.ts` (11 of 21 confirmed failing against the old code). 914 green. |
 | 2026-08-30 | fix | **A tone portamento row no longer stamps the channel instrument in XM** (D77). `3xx`/`5xy` slide the sounding voice, so the row's instrument number must not become the channel's — stamping it addressed the slide to an instrument with no voice on that channel and it was dropped, leaving the lead where the previous row left it. mod-import has excluded this since D55; the fifth place this rule has had to be re-derived. 893 green. |

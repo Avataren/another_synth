@@ -952,7 +952,9 @@ export class PlaybackEngine {
               rowHasPatDelay = true;
             }
           } else if (step.effect.type === 'setGlobalVol') {
-            // Gxx: Set global volume (0-64 in ProTracker, 0-128 in FT2)
+            // Gxx: Set global volume. FT2's range is 0-64 and it clamps
+            // above that: `if (param > 64) param = 64;` (ft2-clone,
+            // setGlobalVolume). See D80.
             const raw = step.effect.paramX * 16 + step.effect.paramY;
             const clamped = Math.max(0, Math.min(64, raw));
             this.globalVolume = clamped / 64;
@@ -960,7 +962,9 @@ export class PlaybackEngine {
               this.scheduledGlobalVolumeHandler(this.globalVolume, time);
             }
           } else if (step.effect.type === 'globalVolSlide') {
-            // Hxy: Global volume slide (x=up, y=down). Apply as a per-row slide.
+            // Hxy: Global volume slide (x=up, y=down), applied once per row.
+            // FT2 runs it once per *tick*; see D81 for why that is left alone
+            // rather than changed blind.
             const up = step.effect.paramX;
             const down = step.effect.paramY;
             if (up > 0 && down === 0) {

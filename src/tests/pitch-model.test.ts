@@ -132,18 +132,37 @@ describe('LinearPitchModel (XM)', () => {
     }
   });
 
-  it('clamps to XM’s C-0..B-7 note range', () => {
-    expect(linear.clampPeriod(0)).toBe(1600); // above B-7
-    expect(linear.clampPeriod(9000)).toBe(7680); // below C-0
+  it('clamps to FT2’s portamento limits, not to the note range', () => {
+    // FT2 clamps the channel period at 1 and at 32000-1, both far outside
+    // XM's own C-0..B-7 note range (periods 7680..1600), so a slide runs well
+    // past either end -- ft2-clone's pitchSlideUp/pitchSlideDown. Clamping to
+    // the note range instead left a runaway 2xx rumbling at 16.33 Hz where FT2
+    // takes it inaudibly low. See D80.
+    expect(linear.clampPeriod(0)).toBe(1);
+    expect(linear.clampPeriod(40000)).toBe(31999);
     expect(linear.clampPeriod(4608)).toBe(4608);
+    // The note range itself is untouched by the clamp.
+    expect(linear.clampPeriod(1600)).toBe(1600);
+    expect(linear.clampPeriod(7680)).toBe(7680);
+  });
+
+  it('takes a slide past C-0 to silence rather than a rumble', () => {
+    // The reported case: F-5 (period 3520) under six rows of `240` at speed 6
+    // reaches period 11200. Clamped at C-0 that is 1/43 of the sample's rate,
+    // which is an audible rumble that also lasts 43x as long; FT2's limit puts
+    // it at ~1/1000, which is silence.
+    const f5 = linear.frequencyFromPeriod(3520);
+    expect(
+      linear.frequencyFromPeriod(linear.clampPeriod(11200)) / f5,
+    ).toBeLessThan(1 / 500);
   });
 
   it('computes arpeggio arithmetically with no wrap to DC', () => {
     // Unlike ProTracker there is no table to run off, so an overflowing
-    // arpeggio clamps to a real pitch instead of dropping to DC.
+    // arpeggio moves by a real interval instead of dropping to DC.
     expect(linear.arpeggioPeriod(4608, 12)).toBe(4608 - 768);
     expect(linear.arpeggioPeriod(4608, 0)).toBe(4608);
-    expect(linear.arpeggioPeriod(1600, 12)).toBe(1600);
+    expect(linear.arpeggioPeriod(1600, 12)).toBe(1600 - 768);
     expect(linear.arpeggioPeriod(1600, 12)).not.toBe(0);
   });
 
