@@ -1172,9 +1172,17 @@ export default class ModInstrument {
    * short fixed release amounts to -- removes notes that were meant to ring,
    * which is what made parts sound like they had notes missing.
    *
-   * XM decrements a 65536 counter by `fadeout` every tick after key-off and
-   * scales volume by counter/65536, so silence arrives after 65536/fadeout
-   * ticks with a linear decay, which one linear ramp reproduces.
+   * FT2 decrements `fadeoutVol`, which starts at **32768**, by the
+   * instrument's raw fadeout value every tick after key-off, so silence
+   * arrives after 32768/fadeout ticks with a linear decay that one linear ramp
+   * reproduces:
+   *
+   *   ch->fadeoutSpeed = ins->fadeout;  ch->fadeoutVol = 32768;   // trigger
+   *   ch->fadeoutVol -= ch->fadeoutSpeed;                         // each tick
+   *
+   * (ft2-clone, `triggerInstrument` and `updateVolPanAutoVib`; the loader
+   * stores the header field unscaled, `ins->fadeout = ih.fadeout`.) This used
+   * 65536 and so faded every note for twice as long as FT2 does. See D82.
    *
    * Returns how long the release lasts, or null when the note has no defined
    * end -- an envelope with neither a fadeout nor points past its sustain
@@ -1203,8 +1211,29 @@ export default class ModInstrument {
 
     const fadeoutSeconds =
       envelope.fadeout > 0
-        ? (65536 / envelope.fadeout) * tickSeconds
+        ? (32768 / envelope.fadeout) * tickSeconds
         : Infinity;
+
+    // An envelope with no sustain point is not released by a key-off at all.
+    //
+    // FT2 advances `volEnvTick` every tick unconditionally and only *holds* at
+    // the sustain point, and only then while `(volEnvFlags & ENV_SUSTAIN) &&
+    // !keyOff`. With sustain off there is nothing to release from: the
+    // envelope was already running its whole shape and carries on doing so,
+    // and `keyOff` merely starts a fadeout -- which does nothing of its own
+    // when the instrument's fadeout is 0, since `fadeoutVol` is then never
+    // decremented.
+    //
+    // Freezing it here instead stopped the decay dead. "im in love with you"
+    // opens with two triads trading places every 16 rows, all on instrument 08
+    // -- envelope 64 -> 41 -> 20 -> 6 -> 0 over 309 ticks, no sustain, fadeout
+    // 0. At the key-off on row 16 the envelope is at 24/64 and FT2 takes it on
+    // down to 7/64 by the time the channel plays again; holding it left the
+    // released chord ringing at 3.4x the level it should have, for two
+    // seconds, under the chord that replaced it. See D82.
+    if (!hasSustain && envelope.fadeout <= 0) {
+      return null;
+    }
 
     // Freeze wherever the envelope currently is, then release from there.
     const holdable = param as AudioParam & {

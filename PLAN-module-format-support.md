@@ -1942,6 +1942,72 @@ here to check it by ear. Pinned in
 `src/tests/xm-global-volume-and-period-limits.test.ts` as a labelled known deviation, the same
 treatment D71 gives `EEx`, so that changing it is deliberate.
 
+### D82 — Key-off must not freeze an envelope that has no sustain point
+
+Reported on the opening patterns of "im in love with you.xm": two triads trade places between
+channels 0-2 and 3-5 every sixteen rows, each swap keying off the three channels that were
+sounding while the other three start. The released chord rang on far too loudly -- "the
+envelope release ... seems to last too long".
+
+All six channels play instrument 08, whose volume envelope is `64 -> 41 -> 20 -> 6 -> 0` over
+309 ticks, with **sustain disabled** and **fadeout 0**.
+
+For such an instrument FT2's key-off is very nearly a no-op:
+
+```c
+ch->volEnvTick++;                                  // every tick, unconditionally
+...
+if ((ins->volEnvFlags & ENV_SUSTAIN) && !ch->keyOff) { ... hold at sustain ... }
+```
+
+The envelope only *holds* at the sustain point, and only while the instrument has
+`ENV_SUSTAIN` and the note has not been keyed off. With sustain off there is nothing to
+release from -- the envelope was already running its whole shape and simply carries on.
+`keyOff` also starts the fadeout, but `fadeoutSpeed = ins->fadeout` is 0 here, so `fadeoutVol`
+is never decremented and the fade never happens. (ft2-clone, `updateVolPanAutoVib` and
+`keyOff`.)
+
+`scheduleTrackerRelease` called `cancelAndHoldAtTime` on the envelope's gain *before* deciding
+what to do, so the decay stopped dead at the key-off and the note hung at that level until the
+channel played again. At speed 6 a swap is 96 ticks:
+
+| envelope tick | row | FT2 | before this fix |
+|---|---|---|---|
+| 96 (key-off) | 16 | 24.4/64 | 24.4/64 |
+| 144 | 24 | 14.7/64 | 24.4/64 |
+| 192 (next note) | 32 | 7.2/64 | 24.4/64 |
+
+So the released chord sat **3.4x too loud for two seconds**, underneath the chord that had
+replaced it. Fixed by returning early, touching no automation at all, when the envelope has
+no sustain point and the instrument has no fadeout. 23 of the corpus's 890 instruments are
+that shape.
+
+**Second fault, same symptom, found while verifying the first.** The fadeout ran for twice as
+long as FT2's:
+
+```c
+ch->fadeoutSpeed = ins->fadeout;  ch->fadeoutVol = 32768;   // triggerInstrument
+ch->fadeoutVol -= ch->fadeoutSpeed;                         // each tick after key-off
+```
+
+with the loader storing the header field unscaled (`ins->fadeout = ih.fadeout`). Silence
+therefore arrives after **32768/fadeout** ticks; this used 65536. Every XM instrument with a
+fadeout faded for twice as long as it should -- 160 instruments across all 18 XMs in the
+collection, from 1 in sweetdre.xm to 31 in yuki. Two tests had pinned the wrong constant, and
+D63's write-up quotes it (its conclusion is unaffected: 256 ticks is still far too long for
+what FT2 makes an instant cut).
+
+Left alone: with a sustain point *and* no fadeout, FT2 holds at the envelope's last value
+indefinitely where this ramps to 0 across the tail's tick span. Only reachable when an
+instrument's envelope ends on a non-zero value, which nothing in the corpus does.
+
+Tests: `src/tests/xm-volume-envelope.test.ts` (two new, plus two rewritten off the old
+constant -- 4 of the file's 33 confirmed failing against the old code, one of them naming the
+fault outright: `expected [ { kind: 'cancelAndHold', time: 1 } ] to deeply equal []`) and
+`src/tests/xm-keyoff-no-sustain.test.ts`, which pins the reported song's own instrument as
+having no sustain point and no fadeout so the unit test above cannot drift away from the case
+it was written for. 931 green.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -2173,6 +2239,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **A key-off no longer freezes an envelope that has no sustain point** (D82). Reported as the opening chords of "im in love with you.xm" releasing far too slowly. FT2 advances the volume envelope every tick unconditionally and only holds at the sustain point, and only while `ENV_SUSTAIN` is set and the note is not keyed off — so for an instrument with sustain off and fadeout 0, key-off is a no-op and the envelope just keeps decaying. `scheduleTrackerRelease` called `cancelAndHoldAtTime` first, so the decay stopped dead and the released chord sat 3.4x too loud for two seconds under the chord replacing it. 23 of 890 corpus instruments are that shape. Found while verifying it: the fadeout ran twice as long as FT2's, whose `fadeoutVol` starts at **32768**, not 65536 — 160 instruments across all 18 XMs. Tests: `src/tests/xm-volume-envelope.test.ts`, `src/tests/xm-keyoff-no-sustain.test.ts` (4 confirmed failing against the old code). 931 green. |
 | 2026-08-30 | fix | **A portamento now obeys FT2's period limits rather than XM's note range** (D80). Reported as a drum pitched down at the end of order 15 of "im in love with you.xm" rumbling on through the next pattern, whose only command on that channel is a `G40`. `Gxx` turned out to be correct — FT2's global volume is 0..64 and `G40` is its maximum, so the row is a no-op. The cause was `MIN/MAX_LINEAR_PERIOD` clamping slides to C-0..B-7 where FT2 clamps at 1 and 32000-1 (`pitchSlideUp`/`pitchSlideDown` in ft2-clone). A linear period is exponential in pitch, so the clamp parked a runaway `240` at 16.33 Hz — 1/43 of the sample's rate, and 43x as long, hence the rumble — where FT2 takes it to ~1/1000, i.e. silence. The old bounds were guesswork and the source comment said so. Five of the thirteen linear XMs were hitting them; none reaches FT2's. Also verified but not fixed: `Hxy` slides per row where FT2 slides per tick (D81). Tests: `src/tests/xm-global-volume-and-period-limits.test.ts` (3 of 8 confirmed failing against the old code). 926 green. |
 | 2026-08-30 | fix | **A set-volume row survives a pattern that never names an instrument** (D79). radix_-_yuki_satellites.xm's opening bassline lost its `v00` gating in the second pattern and sustained instead — reported as that pattern "almost playing the plain samples". The builder skipped any row resolving no instrument unless it carried a note, macro, tempo, effect or volume-column *command*; a plain set-volume was missing from that list, and the pattern could not name an instrument because its every instrument-bearing row is a tone portamento, which must not stamp one (D55, D77). Same rationale as D64's note-off rescue: the engine holds the per-track instrument across patterns and resolves it there. 22 of 60 demo modules were losing rows. Tests: `src/tests/tracker-volume-row-without-instrument.test.ts` (2 of 3 confirmed failing against the old code). 917 green. |
 | 2026-08-30 | fix | **Per-voice commands address the channel, not the row's instrument** (D78). The rule five earlier fixes each re-derived (D29, D55, D65, D68, D77), now enforced in one resolution path in `TrackerSongBank` instead of per format: on a module channel, pitch/volume/pan/envelope-position/sample-offset/retrigger resolve only through `trackVoiceOwner`; native songs keep the instrument-keyed lookup, because a native track is polyphonic. The `-1` cross-channel fallback is native-only now. The class was still live in 8 of 60 demos — 91, 53, 25 and 18 commands on rose, GSLINGER, addiction and an-path were being *delivered to the wrong voice*, not merely dropped. FT2's instrument latch on tone-porta rows diverges from ours 190× in "amiga boy" but affects zero notes corpus-wide; the residue is the editor's instrument column. Tests: `src/tests/tracker-channel-voice-addressing.test.ts`, `src/tests/tracker-corpus-voice-addressing.test.ts` (11 of 21 confirmed failing against the old code). 914 green. |

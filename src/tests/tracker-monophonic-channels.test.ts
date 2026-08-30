@@ -108,8 +108,8 @@ describe('cutting a voice for replacement', () => {
 
     instrument.cutVoiceAtTime(voice, 1.0);
 
-    // 65536/128 = 512 ticks = 10.24s of fadeout, capped at 10s. A cut must be
-    // a few milliseconds, not that.
+    // 32768/128 = 256 ticks = 5.12s of fadeout. A cut must be a few
+    // milliseconds, not that.
     expect(stops).toHaveLength(1);
     expect(stops[0]!).toBeGreaterThanOrEqual(1.0);
     expect(stops[0]!).toBeLessThan(1.05);

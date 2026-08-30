@@ -425,7 +425,7 @@ function buildInstrumentSlotsAndPatches(xm: XmSong): {
  * Building an envelope out of the fadeout alone therefore turns an instant cut
  * into a long fade. `elw-sick.xm` is where that showed: eleven of the
  * instruments playing into order 10 have the envelope switched off with
- * fadeout 128, which is 65536/128 = 512 ticks, over ten seconds at its tempo.
+ * fadeout 128, which is 32768/128 = 256 ticks, over five seconds at its tempo.
  * The pattern opens with key-offs on six channels meant to clear the way, and
  * instead every one of those notes ran on into the next pattern.
  */

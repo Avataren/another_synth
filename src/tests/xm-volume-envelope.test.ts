@@ -223,7 +223,7 @@ describe('tracker volume envelope', () => {
     expect(envelopeCalls).toHaveLength(0);
   });
 
-  it('fades out over 65536/fadeout ticks on key-off', () => {
+  it('fades out over 32768/fadeout ticks on key-off', () => {
     const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
     setEnvelope({
       points: [{ tick: 0, value: 64 }],
@@ -238,11 +238,14 @@ describe('tracker volume envelope', () => {
     envelopeCalls.length = 0;
     instrument.gateOffVoiceAtTime(voice, 1.0);
 
-    // 65536 / 1024 = 64 ticks, at 0.02s each = 1.28s.
+    // FT2 starts fadeoutVol at 32768 and subtracts the instrument's raw
+    // fadeout each tick (ft2-clone: triggerInstrument, updateVolPanAutoVib),
+    // so 32768 / 1024 = 32 ticks, at 0.02s each = 0.64s. This used 65536 and
+    // faded for twice as long as FT2 does -- see D82.
     expect(envelopeCalls[0]!.kind).toBe('cancelAndHold');
     const ramp = envelopeCalls.find((c) => c.kind === 'linearRamp')!;
     expect(ramp.value).toBe(0);
-    expect(ramp.time).toBeCloseTo(1.0 + 1.28, 6);
+    expect(ramp.time).toBeCloseTo(1.0 + 0.64, 6);
   });
 
   it('sustains rather than cutting when there is no fadeout or release tail', () => {
@@ -266,6 +269,67 @@ describe('tracker volume envelope', () => {
 
     expect(envelopeCalls.some((c) => c.kind === 'linearRamp' && c.value === 0))
       .toBe(false);
+  });
+
+  it('leaves an envelope with no sustain point running through a key-off', () => {
+    // FT2 advances volEnvTick every tick unconditionally, and only holds at
+    // the sustain point while `(volEnvFlags & ENV_SUSTAIN) && !keyOff`. With
+    // sustain off there is nothing to release from: the envelope was already
+    // running its whole shape and carries on, and keyOff only starts a fadeout
+    // -- which does nothing when the instrument's fadeout is 0, because
+    // fadeoutVol is then never decremented.
+    //
+    // Freezing it stopped the decay dead, leaving the note hanging at whatever
+    // level it had reached until the channel played again. See D82.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      // Instrument 08 of "im in love with you.xm", verbatim.
+      points: [
+        { tick: 0, value: 64 },
+        { tick: 43, value: 41 },
+        { tick: 110, value: 20 },
+        { tick: 200, value: 6 },
+        { tick: 309, value: 0 },
+      ],
+      sustainPoint: -1,
+      loopStart: 0,
+      loopEnd: 0,
+      loopEnabled: false,
+      fadeout: 0,
+    });
+
+    const voice = instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 })!;
+    envelopeCalls.length = 0;
+    instrument.gateOffVoiceAtTime(voice, 1.0);
+
+    // The key-off must not touch the envelope's automation in any way.
+    expect(envelopeCalls).toEqual([]);
+  });
+
+  it('still fades a no-sustain envelope when the instrument has a fadeout', () => {
+    // The other half of FT2's key-off: the envelope keeps running, but a
+    // non-zero fadeout does take the note to silence.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      points: [
+        { tick: 0, value: 64 },
+        { tick: 309, value: 0 },
+      ],
+      sustainPoint: -1,
+      loopStart: 0,
+      loopEnd: 0,
+      loopEnabled: false,
+      fadeout: 1024,
+    });
+
+    const voice = instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 })!;
+    envelopeCalls.length = 0;
+    instrument.gateOffVoiceAtTime(voice, 1.0);
+
+    const ramp = envelopeCalls.find((c) => c.kind === 'linearRamp');
+    expect(ramp?.value).toBe(0);
+    // 32768/1024 = 32 ticks at 0.02s.
+    expect(ramp?.time).toBeCloseTo(1.0 + 0.64, 6);
   });
 
   it('follows the envelope’s release segment past the sustain point', () => {
@@ -366,7 +430,7 @@ describe('XM import carries envelopes onto the patch', () => {
     // volume to zero on the spot. Such an instrument's fadeout field is never
     // heard, because the volume is already gone.
     //
-    // Carrying it turned an instant cut into a fade of 65536/fadeout ticks.
+    // Carrying it turned an instant cut into a fade of 32768/fadeout ticks.
     // elw-sick.xm is the case: eleven instruments playing into order 10 have
     // the envelope off with fadeout 128 -- 512 ticks, over ten seconds at its
     // tempo -- and the pattern opens with key-offs on six channels meant to
@@ -622,8 +686,8 @@ describe('note release is scheduled, not dropped', () => {
     instrument.noteOffAtTime(60, 0.8, 3);
 
     expect(stops.length).toBeGreaterThan(0);
-    // 65536/1024 = 64 ticks at 0.02s = 1.28s of fadeout after the release.
-    expect(stops[0]).toBeCloseTo(0.8 + 1.28, 6);
+    // 32768/1024 = 32 ticks at 0.02s = 0.64s of fadeout after the release.
+    expect(stops[0]).toBeCloseTo(0.8 + 0.64, 6);
   });
 
   it('runs the fadeout on release', () => {
