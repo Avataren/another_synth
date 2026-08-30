@@ -1545,6 +1545,51 @@ itself. What made that sound rather than circular is that the two signals are st
 independent — a loop that overruns its sample is wrong under any interpretation, and it
 agreed with a command histogram derived separately.
 
+### D74 — Vibrato ran with an inverted phase, and reset to centre every row
+
+jt_911.xm, reported as *"pattern 21 sounds a bit out of tune... it seems like 400 will
+increase pitch, is that correct? isn't 4 vibrato?"*
+
+`4xy` is vibrato and `400` continues it with the remembered speed and depth — the module
+writes one `41F` and then **2172** `400` rows to hold it. The observation was exactly right,
+and it pointed at two separate faults.
+
+**The phase was inverted.** ProTracker and FT2 both branch on the sign of the vibrato
+position and *add* the delta to the period while it is positive, so the first half of the
+wave bends the pitch **down**. This subtracted instead, raising it. On a fast vibrato that is
+inaudible — it only shifts the phase. But pattern 20 (order 11) holds `41F`: speed 1, depth
+15, a cycle about ten rows long. Inverted, that leaves the channel nearly two semitones sharp
+for five rows while other channels hold the chord.
+
+Worth noting the tremolo directly below it in the same file has always added its offset to
+the volume, which is the same convention. Period being inverted relative to pitch is what
+made the vibrato look right.
+
+**The wave reset to centre once a row.** `processEffectTick0` ends with a fallback that emits
+the base frequency if nothing else emitted a pitch, to keep schedulers in sync. On every
+`400` row that is the bare, un-offset pitch, so tick 0 snapped the vibrato back to centre
+before it resumed on tick 1 — a sawtooth rather than a wave, once per row, at a depth of
+nearly two semitones. Tick 0 now re-states the current vibrato offset. The position only
+advances on later ticks, so this restates the value rather than moving it, and the wave is
+continuous across the boundary.
+
+Measured over sixteen rows, in cents from the base:
+
+```
+before:  0 +18 +36 +54 +71 +88 | 0 +104 +118 ...      (up first; reset each row)
+after:   0 -18 -36 -54 -71 -88 | -88 -104 -118 ...     (down first; continuous)
+```
+
+The depth itself was already right: ±187 cents for depth 15 is what FT2's own formula gives
+(255 x depth / 32 in linear units, 64 units to a semitone).
+
+**Two tests had pinned the inverted sign** — the fourth time in this project that a test
+recorded a real measurement with the wrong conclusion drawn from it (D55, D61, D63). They
+asserted the correct *magnitude*, 15.9375 period units, which is what they were written to
+check; the direction rode along unexamined. Fixing one of them also surfaced that its note,
+C-1, sits on ProTracker's longest period, so bending down from it clamps: it now measures the
+upward half and says why.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -1776,6 +1821,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **Vibrato bends down first, and holds across rows** (D74). Both ProTracker and FT2 add the offset to the period while the position is positive; this subtracted, inverting every vibrato's phase. And tick 0 of a continuing `400` row emitted the bare base pitch, resetting the wave to centre once a row. jt_911.xm holds `41F` (speed 1, depth 15) over a ten-row cycle across 2172 `400` rows, so both were plainly audible. Two tests had pinned the inverted sign. 826 green. |
 | 2026-08-30 | fix | **Ultimate Soundtracker read as its own format** (D73). Arpeggio is command 1 there, not 0, so lepeltheme.mod's `137` minor triad on all 64 rows of a channel played as a runaway portamento; and sample loop starts are byte offsets, so every looped sample looped past its own end. Both detected from the data, with jackdance.mod (command 0 arpeggio, 15 samples) pinning the over-detection boundary. Tests: `src/tests/mod-ultimate-soundtracker.test.ts`. 824 green. |
 | 2026-08-29 | fix | **Song global volume now scales the user's master level** (D72). `setMasterVolume` wrote `Gxx` values absolutely, so D66's restart pushing global volume 1.0 overrode a 50% master setting — sweetdre.xm (24 channels, no `Gxx`) clipped hard on every loop. Latent for any `Gxx` module before that. Tests: `src/tests/tracker-song-bank-master-volume.test.ts`. 702 green. |
 | 2026-08-29 | fix | **Patterns start at row 0 again, and `E6x` actually loops** (D69). The row cursor is folded into a row with `% length` but was carried across pattern boundaries, so a pattern following one of a different length started partway in — after xyce's 96-row pattern, order 37 played row 0 then jumped to row 33 (`97 % 64`). Separately `E6x` counted up toward a target and reset without ever jumping, making pattern loops silent. Both now match ProTracker. Tests: `src/tests/tracker-sequence-walk.test.ts`. 698 green. |

@@ -103,15 +103,28 @@ function vibratoFrequency(state: TrackEffectState, wave: number): number {
   const period = state.currentPeriod;
   if (period === undefined) {
     const semitones = (wave * state.vibratoDepth) / 16;
-    return state.currentFrequency * Math.pow(2, semitones / 12);
+    return state.currentFrequency * Math.pow(2, -semitones / 12);
   }
   const pitch = state.profile.pitch;
   const delta =
     (wave * VIBRATO_TABLE_PEAK * state.vibratoDepth) /
     VIBRATO_DEPTH_DIVISOR *
     state.profile.portamentoUnitScale;
-  // A positive waveform value raises the pitch, so it lowers the period.
-  return pitch.frequencyFromPeriod(pitch.clampPeriod(period - delta));
+  // The offset is *added* to the period, so the first half of the waveform
+  // bends the pitch down and the second half up.
+  //
+  // ProTracker and FT2 both branch on the sign of the vibrato position and
+  // add the delta to the period while it is positive; subtracting instead
+  // inverts the whole waveform. That is inaudible on a fast vibrato -- it only
+  // shifts the phase -- but jt_911.xm holds `41F` (speed 1, depth 15) for a
+  // full cycle of about ten rows, so an inverted phase leaves the channel
+  // nearly two semitones sharp for five rows where it should be flat, against
+  // other channels holding the chord.
+  //
+  // Note the tremolo below has always added its offset to the volume, which is
+  // the same convention; period is inverted relative to pitch, which is what
+  // made this one look right.
+  return pitch.frequencyFromPeriod(pitch.clampPeriod(period + delta));
 }
 
 function applyPortamentoStep(state: TrackEffectState): void {
@@ -1141,9 +1154,28 @@ export function processEffectTick0(
       break;
   }
 
-  // Ensure we emit at least one pitch command to keep schedulers in sync
+  // Ensure we emit at least one pitch command to keep schedulers in sync.
+  //
+  // A running vibrato has to carry its current offset across the row boundary.
+  // Emitting the bare base frequency snaps the pitch back to centre on tick 0
+  // of every row, so a vibrato spanning many rows -- written as one `4xy`
+  // followed by a run of `400` -- comes out as a sawtooth that resets once a
+  // row instead of a continuous wave. The position itself only advances on
+  // ticks after the first, so this re-states the value tick 0 already holds
+  // rather than moving it.
+  const continuesVibrato =
+    (effect?.type === 'vibrato' || effect?.type === 'vibratoVol') &&
+    state.vibratoDepth > 0;
+
   if (!commands.some((cmd) => cmd.kind === 'pitch')) {
-    pushPitch(state.currentFrequency);
+    pushPitch(
+      continuesVibrato
+        ? vibratoFrequency(
+            state,
+            getWaveformValue(state.vibratoPos, state.vibratoWaveform),
+          )
+        : state.currentFrequency,
+    );
   }
 
   return { commands };

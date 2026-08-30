@@ -60,8 +60,10 @@ describe('vibrato depth is measured in period units', () => {
     );
 
     // ProTracker: periodDelta = table(255 at peak) * depth / 128 = 15.9375,
-    // and a positive waveform value raises the pitch, i.e. lowers the period.
-    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 - 15.9375, 4);
+    // *added* to the period while the vibrato position is positive -- so the
+    // first half of the waveform bends the pitch down, not up. This used to
+    // assert the opposite sign, which inverted the phase of every vibrato.
+    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15.9375, 4);
   });
 
   it('covers a wider interval on a lower note, as a period deviation does', () => {
@@ -79,6 +81,11 @@ describe('vibrato depth is measured in period units', () => {
       freqOf(lowPeriod),
       6,
     );
+    // Measure the upward half of the wave. C-1 sits on ProTracker's longest
+    // period, so bending *down* from it clamps at the bottom of the range and
+    // would measure the clamp rather than the swing. Speed 4 advances the
+    // position to 32 on the next tick, where the square wave is negative.
+    low.vibratoPos = 28;
     const { commands } = processEffectTickN(
       low,
       { type: 'vibrato', paramX: 4, paramY: 8 },
@@ -87,6 +94,54 @@ describe('vibrato depth is measured in period units', () => {
     );
 
     expect(periodOfLastPitch(commands)).toBeCloseTo(lowPeriod - 15.9375, 4);
+  });
+
+  it('bends down before it bends up', () => {
+    // The direction matters far more than it looks. On a fast vibrato an
+    // inverted phase is inaudible, but jt_911.xm holds `41F` -- speed 1,
+    // depth 15 -- for a cycle about ten rows long, so the wrong sign leaves
+    // the channel nearly two semitones sharp for five rows against other
+    // channels holding the chord. Both ProTracker and FT2 add the offset to
+    // the period first, exactly as the tremolo below adds to the volume.
+    const state = stateOnC2();
+    startNote(state, { type: 'vibrato', paramX: 4, paramY: 8 });
+
+    const { commands } = processEffectTickN(
+      state,
+      { type: 'vibrato', paramX: 4, paramY: 8 },
+      1,
+      6,
+    );
+
+    // A larger period is a lower pitch.
+    expect(periodOfLastPitch(commands)).toBeGreaterThan(PERIOD_C2);
+  });
+
+  it('carries the offset across a row boundary rather than snapping to centre', () => {
+    // A vibrato spanning many rows is written as one 4xy followed by a run of
+    // 400 -- jt_911.xm has 2172 of them. Tick 0 of each of those rows used to
+    // emit the bare base frequency, resetting the wave to centre once a row:
+    // a sawtooth, not a vibrato, and very audible at depth 15.
+    const state = stateOnC2();
+    state.vibratoWaveform = 2; // square: the offset is the flat peak
+    startNote(state, { type: 'vibrato', paramX: 4, paramY: 8 });
+
+    // Run out the rest of the first row.
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, { type: 'vibrato', paramX: 4, paramY: 8 }, tick, 6);
+    }
+
+    // Tick 0 of the next row, carrying 400 -- continue, no new parameters.
+    const { commands } = processEffectTick0(
+      state,
+      { type: 'vibrato', paramX: 0, paramY: 0 },
+      undefined,
+      undefined,
+      undefined,
+      6,
+    );
+
+    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15.9375, 4);
   });
 
   it('does not disturb the channel pitch itself', () => {
