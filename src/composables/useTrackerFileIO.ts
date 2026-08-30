@@ -191,6 +191,51 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
   }
 
   /**
+   * Turn raw bytes into a song, without touching the tracker.
+   *
+   * Split out from the load so it can run *ahead* of time: the jukebox parses
+   * the next module while the current one is still playing, which takes the
+   * fetch and the parse out of the gap between songs. Nothing here reads or
+   * writes tracker state, so it is safe to run during playback.
+   */
+  async function parseSongBuffer(data: ArrayBuffer): Promise<TrackerSongFile> {
+    const buffer = new Uint8Array(data);
+
+    if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+      // .cmod ZIP container
+      const zip = await JSZip.loadAsync(buffer);
+      const fileNames = Object.keys(zip.files);
+      if (fileNames.length === 0) {
+        throw new Error('Song archive is empty');
+      }
+      const preferredJsonName = fileNames.find((name) =>
+        name.toLowerCase().endsWith('.json')
+      );
+      const jsonName = preferredJsonName ?? fileNames[0];
+      if (!jsonName) {
+        throw new Error('No JSON filename found in song archive');
+      }
+      const zipFile = zip.file(jsonName) as JSZipObject | null;
+      if (!zipFile) {
+        throw new Error('No JSON file found in song archive');
+      }
+      const text = await zipFile.async('string');
+      return JSON.parse(text) as TrackerSongFile;
+    }
+    if (looksLikeMod(buffer)) {
+      // Raw Amiga-style MOD module
+      return importModToTrackerSong(data);
+    }
+    if (looksLikeXm(buffer)) {
+      // FastTracker 2 module
+      return importXmToTrackerSong(data);
+    }
+    // Plain JSON .cmod/.json file
+    const decoder = new TextDecoder('utf-8');
+    return JSON.parse(decoder.decode(buffer)) as TrackerSongFile;
+  }
+
+  /**
    * Load a song from raw bytes, whatever their origin.
    *
    * Shared by the file picker and the demo browser so both take exactly the
@@ -199,110 +244,81 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
    */
   async function loadSongFromBuffer(data: ArrayBuffer) {
     try {
-      const buffer = new Uint8Array(data);
-
-      // Set flag to prevent watcher interference during explicit load
       context.isLoadingSong.value = true;
-
-      let songFile: TrackerSongFile;
-
-      if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
-        // .cmod ZIP container
-        const zip = await JSZip.loadAsync(buffer);
-        const fileNames = Object.keys(zip.files);
-        if (fileNames.length === 0) {
-          throw new Error('Song archive is empty');
-        }
-        const preferredJsonName = fileNames.find((name) =>
-          name.toLowerCase().endsWith('.json')
-        );
-        const jsonName = preferredJsonName ?? fileNames[0];
-        if (!jsonName) {
-          throw new Error('No JSON filename found in song archive');
-        }
-        const zipFile = zip.file(jsonName) as JSZipObject | null;
-        if (!zipFile) {
-          throw new Error('No JSON file found in song archive');
-        }
-        const text = await zipFile.async('string');
-        songFile = JSON.parse(text) as TrackerSongFile;
-      } else if (looksLikeMod(buffer)) {
-        // Raw Amiga-style MOD module
-        songFile = importModToTrackerSong(data);
-      } else if (looksLikeXm(buffer)) {
-        // FastTracker 2 module
-        songFile = importXmToTrackerSong(data);
-      } else {
-        // Plain JSON .cmod/.json file
-        const decoder = new TextDecoder('utf-8');
-        const text = decoder.decode(buffer);
-        songFile = JSON.parse(text) as TrackerSongFile;
-      }
-
-      // Stop playback before loading new song to cleanup audio nodes
-      console.log('[FileIO] Stopping playback before load');
-      context.stopPlayback();
-
-      // Ensure AudioContext is running before loading instruments
-      // This prevents silent playback when loading songs with many instruments
-      console.log('[FileIO] Ensuring AudioContext is running...');
-      const audioCtx = context.songBank.audioContext;
-      if (audioCtx.state !== 'running') {
-        console.log(`[FileIO] AudioContext state is ${audioCtx.state}, attempting to resume...`);
-        try {
-          await audioCtx.resume();
-          // Use string variable to avoid TypeScript's type narrowing issue
-          const currentState: string = audioCtx.state;
-          if (currentState === 'running') {
-            console.log('[FileIO] AudioContext successfully resumed');
-          } else {
-            console.warn(
-              '[FileIO] AudioContext did not resume. Click anywhere on the page to enable audio.',
-              `Current state: ${currentState}`
-            );
-          }
-        } catch (err) {
-          console.error('[FileIO] Failed to resume AudioContext:', err);
-        }
-      } else {
-        console.log('[FileIO] AudioContext already running');
-      }
-
-      // Drop all existing tracker instruments before wiring up the next song
-      context.songBank.resetForNewSong();
-
-      // Load song data and rebuild instruments
-      console.log('[FileIO] Loading song data');
-      context.trackerStore.loadSongFile(songFile);
-      context.ensureActiveInstrument();
-
-      // Reset sequence index to 0 AFTER song is loaded so it operates on new data
-      console.log('[FileIO] Resetting sequence index to 0');
-      context.resetSequenceIndex();
-
-      console.log('[FileIO] Syncing song bank from slots');
-      await context.syncSongBankFromSlots();
-      console.log('[FileIO] Song bank sync complete');
-
-      // Give worklets additional time to fully initialize voice structures
-      // With many instruments (32+), worklets need time to stabilize after batched loading
-      // This prevents "Node not found" errors and ensures audio output to speakers
-      const numSlots = context.trackerStore.instrumentSlots.filter(s => s.patchId).length;
-      const stabilizationDelay = Math.max(100, Math.min(500, numSlots * 10));
-      console.log(`[FileIO] Waiting ${stabilizationDelay}ms for ${numSlots} worklets to stabilize...`);
-      await new Promise((resolve) => setTimeout(resolve, stabilizationDelay));
-
-      // Force re-initialization of playback with the new song
-      console.log('[FileIO] Initializing playback');
-      await context.initializePlayback(context.playbackMode.value, false);
-      console.log('[FileIO] Song loaded successfully');
+      await applySongFile(await parseSongBuffer(data));
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load song', error);
     } finally {
-      // Always clear the flag when done
       context.isLoadingSong.value = false;
     }
+  }
+
+  /**
+   * Put an already-parsed song into the tracker: stop what is playing, rebuild
+   * the instruments, and re-initialise playback.
+   *
+   * The caller owns `isLoadingSong` so that a load which parsed ahead of time
+   * still shows as one continuous load rather than flickering.
+   */
+  async function applySongFile(songFile: TrackerSongFile): Promise<void> {
+    // Stop playback before loading new song to cleanup audio nodes
+    console.log('[FileIO] Stopping playback before load');
+    context.stopPlayback();
+
+    // Ensure AudioContext is running before loading instruments
+    // This prevents silent playback when loading songs with many instruments
+    console.log('[FileIO] Ensuring AudioContext is running...');
+    const audioCtx = context.songBank.audioContext;
+    if (audioCtx.state !== 'running') {
+      console.log(`[FileIO] AudioContext state is ${audioCtx.state}, attempting to resume...`);
+      try {
+        await audioCtx.resume();
+        // Use string variable to avoid TypeScript's type narrowing issue
+        const currentState: string = audioCtx.state;
+        if (currentState === 'running') {
+          console.log('[FileIO] AudioContext successfully resumed');
+        } else {
+          console.warn(
+            '[FileIO] AudioContext did not resume. Click anywhere on the page to enable audio.',
+            `Current state: ${currentState}`
+          );
+        }
+      } catch (err) {
+        console.error('[FileIO] Failed to resume AudioContext:', err);
+      }
+    } else {
+      console.log('[FileIO] AudioContext already running');
+    }
+
+    // Drop all existing tracker instruments before wiring up the next song
+    context.songBank.resetForNewSong();
+
+    // Load song data and rebuild instruments
+    console.log('[FileIO] Loading song data');
+    context.trackerStore.loadSongFile(songFile);
+    context.ensureActiveInstrument();
+
+    // Reset sequence index to 0 AFTER song is loaded so it operates on new data
+    console.log('[FileIO] Resetting sequence index to 0');
+    context.resetSequenceIndex();
+
+    console.log('[FileIO] Syncing song bank from slots');
+    await context.syncSongBankFromSlots();
+    console.log('[FileIO] Song bank sync complete');
+
+    // Give worklets additional time to fully initialize voice structures
+    // With many instruments (32+), worklets need time to stabilize after batched loading
+    // This prevents "Node not found" errors and ensures audio output to speakers
+    const numSlots = context.trackerStore.instrumentSlots.filter(s => s.patchId).length;
+    const stabilizationDelay = Math.max(100, Math.min(500, numSlots * 10));
+    console.log(`[FileIO] Waiting ${stabilizationDelay}ms for ${numSlots} worklets to stabilize...`);
+    await new Promise((resolve) => setTimeout(resolve, stabilizationDelay));
+
+    // Force re-initialization of playback with the new song
+    console.log('[FileIO] Initializing playback');
+    await context.initializePlayback(context.playbackMode.value, false);
+    console.log('[FileIO] Song loaded successfully');
   }
 
   return {
@@ -310,6 +326,8 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     promptOpenFile,
     handleSaveSongFile,
     handleLoadSongFile,
-    loadSongFromUrl
+    loadSongFromUrl,
+    parseSongBuffer,
+    applySongFile
   };
 }
