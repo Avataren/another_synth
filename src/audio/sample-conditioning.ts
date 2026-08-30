@@ -68,28 +68,83 @@ export function buildPolyphaseKernel(factor: number): Float32Array[] {
   return phases;
 }
 
+/** A forward loop, in frames. */
+export interface LoopRegion {
+  start: number;
+  end: number;
+}
+
+/**
+ * How a filter kernel reads past the ends of the sample.
+ *
+ * For a one-shot sample the answer is to clamp: zero-padding would build a
+ * click into a sample that does not start or end at zero, and tracker samples
+ * frequently do not.
+ *
+ * For a *looping* sample clamping is wrong, and audibly so. The true neighbour
+ * of the last frame in the loop is the first frame of the loop, so clamping
+ * flattens the waveform either side of the seam and leaves a step there --
+ * which recurs once per cycle, at the note's own frequency.
+ *
+ * The song that exposed this is built from 66-frame single-cycle waveforms.
+ * Filtering with a 32-tap kernel, clamping distorted a quarter of the
+ * waveform at each end and left a step of 0.17 at the seam, against an error
+ * of 2e-5 through the middle: a buzz at the pitch of every note, on a lead
+ * where there is nothing else to hide it.
+ *
+ * Material before the loop is the attack, which is played once and really does
+ * end at the start of the buffer, so it still clamps -- unless the loop starts
+ * at frame 0, where there is no attack and the loop is the whole sample.
+ */
+function makeIndexResolver(
+  length: number,
+  loop?: LoopRegion | undefined,
+): (index: number) => number {
+  const last = length - 1;
+  const loopLength = loop ? loop.end - loop.start : 0;
+
+  if (!loop || loopLength <= 0) {
+    return (index) => (index < 0 ? 0 : index > last ? last : index);
+  }
+
+  return (index) => {
+    if (index >= loop.end) {
+      return loop.start + ((index - loop.start) % loopLength);
+    }
+    if (index < 0) {
+      return loop.start === 0
+        ? ((index % loopLength) + loopLength) % loopLength
+        : 0;
+    }
+    return index > last ? last : index;
+  };
+}
+
 /**
  * Upsample by an integer factor with a windowed-sinc kernel.
  *
- * Edges are handled by clamping to the first and last frame rather than
- * zero-padding: a sample that does not start at zero would otherwise get a
- * click built into it, and tracker samples frequently do not.
+ * Pass `loop` for a forward loop so the kernel wraps around it instead of
+ * clamping at the buffer's ends -- see makeIndexResolver. Ping-pong loops
+ * should not: they reverse rather than wrap, and the mirrored copy built for
+ * them later is already continuous at its turning points.
  */
-export function oversample(data: Float32Array, factor: number): Float32Array {
+export function oversample(
+  data: Float32Array,
+  factor: number,
+  loop?: LoopRegion | undefined,
+): Float32Array {
   if (factor <= 1 || data.length === 0) return data;
 
   const kernel = buildPolyphaseKernel(factor);
   const out = new Float32Array(data.length * factor);
-  const last = data.length - 1;
+  const resolve = makeIndexResolver(data.length, loop);
 
   for (let n = 0; n < data.length; n++) {
     for (let phase = 0; phase < factor; phase++) {
       const taps = kernel[phase]!;
       let acc = 0;
       for (let i = 0; i < taps.length; i++) {
-        const index = n + i - HALF_TAPS + 1;
-        const clamped = index < 0 ? 0 : index > last ? last : index;
-        acc += data[clamped]! * taps[i]!;
+        acc += data[resolve(n + i - HALF_TAPS + 1)]! * taps[i]!;
       }
       out[n * factor + phase] = acc;
     }
@@ -164,7 +219,11 @@ export function crossfadeLoop(
  * `rate` is the playback ratio: 2 means an octave up. The cutoff is Nyquist
  * divided by that, expressed as a fraction of the buffer's own sample rate.
  */
-export function lowpassForRate(data: Float32Array, rate: number): Float32Array {
+export function lowpassForRate(
+  data: Float32Array,
+  rate: number,
+  loop?: LoopRegion | undefined,
+): Float32Array {
   if (rate <= 1 || data.length === 0) return data;
 
   const cutoff = 0.5 / rate; // cycles per sample
@@ -180,13 +239,11 @@ export function lowpassForRate(data: Float32Array, rate: number): Float32Array {
   if (sum !== 0) for (let i = 0; i < taps; i++) kernel[i]! /= sum;
 
   const out = new Float32Array(data.length);
-  const last = data.length - 1;
+  const resolve = makeIndexResolver(data.length, loop);
   for (let n = 0; n < data.length; n++) {
     let acc = 0;
     for (let i = 0; i < taps; i++) {
-      const index = n + i - HALF_TAPS;
-      const clamped = index < 0 ? 0 : index > last ? last : index;
-      acc += data[clamped]! * kernel[i]!;
+      acc += data[resolve(n + i - HALF_TAPS)]! * kernel[i]!;
     }
     out[n] = acc;
   }

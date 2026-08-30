@@ -107,6 +107,68 @@ describe('oversampling', () => {
   });
 });
 
+describe('oversampling a looping sample', () => {
+  /**
+   * The case that broke a song. Chiptune modules are built from very short
+   * single-cycle waveforms -- 66 frames in the one that exposed this -- looped
+   * end to end. Clamping the kernel at the buffer's edges, which is right for
+   * a one-shot sample, flattens the waveform either side of the loop seam and
+   * leaves a step there. That step recurs once per cycle, which is a buzz at
+   * the pitch of every note played, on a lead with nothing to hide it.
+   */
+  const CYCLE = 66;
+  const cycle = (length: number) => {
+    const out = new Float32Array(length);
+    for (let i = 0; i < length; i++) {
+      out[i] =
+        Math.sin((2 * Math.PI * i) / CYCLE) +
+        0.3 * Math.sin((6 * Math.PI * i) / CYCLE);
+    }
+    return out;
+  };
+  const idealAt = (t: number) =>
+    Math.sin((2 * Math.PI * t) / CYCLE) + 0.3 * Math.sin((6 * Math.PI * t) / CYCLE);
+
+  const worstError = (out: Float32Array, from: number, to: number) => {
+    let worst = 0;
+    for (let i = from; i < to; i++) {
+      worst = Math.max(worst, Math.abs(out[i]! - idealAt(i / 4)));
+    }
+    return worst;
+  };
+
+  it('is as accurate at the seam as in the middle', () => {
+    const out = oversample(cycle(CYCLE), 4, { start: 0, end: CYCLE });
+    const middle = worstError(out, 80, CYCLE * 4 - 80);
+    const ends = Math.max(
+      worstError(out, 0, 64),
+      worstError(out, CYCLE * 4 - 64, CYCLE * 4),
+    );
+
+    expect(middle).toBeLessThan(0.001);
+    // Not merely "small": no worse than the middle, which is the whole point.
+    expect(ends).toBeLessThan(middle * 4);
+  });
+
+  it('is badly wrong at the seam without the loop', () => {
+    // Guards the fix rather than the behaviour: if the loop stops being passed
+    // through, this is the error that comes back.
+    const out = oversample(cycle(CYCLE), 4);
+
+    expect(worstError(out, CYCLE * 4 - 64, CYCLE * 4)).toBeGreaterThan(0.05);
+  });
+
+  it('still clamps the attack of a sample that loops later', () => {
+    // Material before the loop is played once and really does end at frame 0,
+    // so it must not wrap round to the loop's tail.
+    const data = new Float32Array(200).fill(0.5);
+    for (let i = 100; i < 200; i++) data[i] = -0.5;
+    const out = oversample(data, 4, { start: 100, end: 200 });
+
+    expect(out[0]).toBeCloseTo(0.5, 3);
+  });
+});
+
 describe('DC offset removal', () => {
   it('centres a sample that sits off zero', () => {
     const data = sine(512, 0.05, 0.5);

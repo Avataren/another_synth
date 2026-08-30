@@ -25,6 +25,7 @@ import {
   mipLevelForRate,
   oversample,
   removeDcOffset,
+  type LoopRegion,
 } from './sample-conditioning';
 import { getSampleQuality } from './sample-quality';
 
@@ -205,6 +206,8 @@ export default class ModInstrument {
   private oversampleFactor = 1;
   /** Conditioned mono data, kept to build anti-aliased copies on demand. */
   private conditionedMono: Float32Array | null = null;
+  /** The forward loop within `conditionedMono`, so filters can wrap it. */
+  private conditionedLoop: LoopRegion | null = null;
   /** Anti-aliased copies by mip level; index 0 is the plain buffer. */
   private mipBuffers: (AudioBuffer | null)[] = [];
 
@@ -283,6 +286,7 @@ export default class ModInstrument {
     let bufferFrames = frameCount;
     this.oversampleFactor = 1;
     this.conditionedMono = null;
+    this.conditionedLoop = null;
     this.mipBuffers = [];
 
     if (!isEmpty && channels === 1) {
@@ -341,11 +345,10 @@ export default class ModInstrument {
 
     if (quality.removeDcOffset) removeDcOffset(data);
 
-    if (
-      quality.loopCrossfadeFrames > 0 &&
-      state &&
-      state.loopMode === SamplerLoopMode.Loop
-    ) {
+    // Only a *forward* loop, and only in the sample's own frames. Ping-pong
+    // reverses rather than wraps, so the filters must not wrap it either.
+    let loop: LoopRegion | undefined;
+    if (state && state.loopMode === SamplerLoopMode.Loop) {
       const start = Math.max(
         0,
         Math.min(frameCount - 1, Math.round(state.loopStart * frameCount)),
@@ -354,14 +357,22 @@ export default class ModInstrument {
         start + 1,
         Math.min(frameCount, Math.round(state.loopEnd * frameCount)),
       );
-      crossfadeLoop(data, start, end, quality.loopCrossfadeFrames);
+      if (end - start > 1) loop = { start, end };
+    }
+
+    if (quality.loopCrossfadeFrames > 0 && loop) {
+      crossfadeLoop(data, loop.start, loop.end, quality.loopCrossfadeFrames);
     }
 
     const factor = Math.max(1, Math.floor(quality.oversampleFactor));
     if (factor > 1) {
       this.oversampleFactor = factor;
-      return oversample(data, factor);
+      this.conditionedLoop = loop
+        ? { start: loop.start * factor, end: loop.end * factor }
+        : null;
+      return oversample(data, factor, loop);
     }
+    this.conditionedLoop = loop ?? null;
     return data;
   }
 
@@ -392,7 +403,11 @@ export default class ModInstrument {
     // times the oversampling. The worst rate in the level is used, so one copy
     // covers the whole level.
     const worstRate = Math.pow(2, level) * this.oversampleFactor;
-    const filtered = lowpassForRate(this.conditionedMono, worstRate);
+    const filtered = lowpassForRate(
+      this.conditionedMono,
+      worstRate,
+      this.conditionedLoop ?? undefined,
+    );
     const buffer = this.audioContext.createBuffer(
       1,
       filtered.length,
