@@ -90,6 +90,61 @@ export interface FormatProfile {
    * one of those notes a semitone sharp.
    */
   readonly finetuneFromNibble: (nibble: number) => number;
+
+  /**
+   * Which of the three arpeggio notes a given tick of a row plays:
+   * 0 = the base note, 1 = the `x` nibble, 2 = the `y` nibble.
+   *
+   * The two formats disagree, and not subtly. ProTracker counts its tick
+   * *up* from 0 and reads `song->tick % 3` (`arpeggio` in pt2_replayer.c), so
+   * a row plays base, x, y, base, x, y.
+   *
+   * FastTracker 2 counts `song.tick` *down* from `song.speed` --
+   * `if (--song.tick == 0) song.tick = song.speed;` in `tickReplayer` -- and
+   * indexes a table with it: `arpeggioTab[song.tick & 31]`. Row tick `t`
+   * therefore sees `song.tick == speed - t`, and at the common speeds 6 and 3
+   * that runs the table backwards: base, y, x. `x` and `y` are swapped
+   * against ProTracker for the whole row, so a `047` plays root-fifth-third
+   * rather than root-third-fifth.
+   *
+   * The table is only 16 entries long in FT2; the other 16 are bytes that
+   * follow it in the binary, which 8bitbubsy reproduces verbatim (see
+   * `arpeggioTab` in ft2_tables.c) because speeds above 16 read them. They
+   * are large values, so every one of them except the 0 at index 16 selects
+   * `y`. That is faithfully reproduced here rather than smoothed over.
+   */
+  readonly arpeggioStep: (tick: number, ticksPerRow: number) => 0 | 1 | 2;
+}
+
+/**
+ * FT2's `arpeggioTab`, quoted from ft2_tables.c including the sixteen
+ * overflow bytes:
+ *
+ *   const uint8_t arpeggioTab[32] =
+ *   {
+ *       0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,
+ *       0x00,0x18,0x31,0x4A,0x61,0x78,0x8D,0xA1,
+ *       0xB4,0xC5,0xD4,0xE0,0xEB,0xF4,0xFA,0xFD
+ *   };
+ */
+const FT2_ARPEGGIO_TAB = [
+  0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0x00, 0x18, 0x31, 0x4a, 0x61,
+  0x78, 0x8d, 0xa1, 0xb4, 0xc5, 0xd4, 0xe0, 0xeb, 0xf4, 0xfa, 0xfd,
+] as const;
+
+/** ProTracker: `song->tick % 3`, with the tick counting up from 0. */
+function protrackerArpeggioStep(tick: number): 0 | 1 | 2 {
+  return (tick % 3) as 0 | 1 | 2;
+}
+
+/** FT2: `arpeggioTab[song.tick & 31]`, with `song.tick == speed - rowTick`. */
+function ft2ArpeggioStep(tick: number, ticksPerRow: number): 0 | 1 | 2 {
+  const entry = FT2_ARPEGGIO_TAB[(ticksPerRow - tick) & 31]!;
+  // FT2 branches `if (tick == 0) base; else if (tick == 1) x; else y`, so
+  // every overflow byte other than the 0 at index 16 lands on y.
+  if (entry === 0) return 0;
+  if (entry === 1) return 1;
+  return 2;
 }
 
 /**
@@ -105,6 +160,7 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   noteDelayOverflowCarries: true,
   // Signed 4-bit, in eighths of a semitone.
   finetuneFromNibble: (nibble) => (nibble < 8 ? nibble : nibble - 16) / 8,
+  arpeggioStep: protrackerArpeggioStep,
 };
 
 /**
@@ -127,6 +183,7 @@ export const XM_PROFILE: FormatProfile = {
   // Unsigned position in FT2's -128..127 finetune range: finetune = x*16-128,
   // and 128 finetune units is one semitone.
   finetuneFromNibble: (nibble) => (nibble - 8) / 8,
+  arpeggioStep: ft2ArpeggioStep,
 };
 
 /**

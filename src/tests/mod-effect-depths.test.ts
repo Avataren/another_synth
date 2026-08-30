@@ -28,9 +28,7 @@ const freqOf = (period: number) => pitch.frequencyFromPeriod(period);
 /** The period a pitch command lands on, for comparison against ProTracker. */
 function periodOfLastPitch(commands: { kind: string }[]): number {
   const pitches = commands.filter((c) => c.kind === 'pitch');
-  const last = pitches[pitches.length - 1] as
-    | { frequency: number }
-    | undefined;
+  const last = pitches[pitches.length - 1] as { frequency: number } | undefined;
   if (!last) throw new Error('no pitch command emitted');
   return pitch.rawPeriodFromFrequency(last.frequency);
 }
@@ -83,9 +81,11 @@ describe('vibrato depth is measured in period units', () => {
     );
     // Measure the upward half of the wave. C-1 sits on ProTracker's longest
     // period, so bending *down* from it clamps at the bottom of the range and
-    // would measure the clamp rather than the swing. Speed 4 advances the
-    // position to 32 on the next tick, where the square wave is negative.
-    low.vibratoPos = 28;
+    // would measure the clamp rather than the swing. Position 32 is where the
+    // square wave turns negative -- and the position is now read before it is
+    // advanced, matching `vibrato2`, so it is the position set here that the
+    // next tick samples.
+    low.vibratoPos = 32;
     const { commands } = processEffectTickN(
       low,
       { type: 'vibrato', paramX: 4, paramY: 8 },
@@ -106,10 +106,21 @@ describe('vibrato depth is measured in period units', () => {
     const state = stateOnC2();
     startNote(state, { type: 'vibrato', paramX: 4, paramY: 8 });
 
-    const { commands } = processEffectTickN(
+    // Tick 1 samples position 0, which is the table's zero -- the note's own
+    // pitch. Both replayers advance the position only after using it, so the
+    // deviation starts on tick 2. Measure there.
+    const first = processEffectTickN(
       state,
       { type: 'vibrato', paramX: 4, paramY: 8 },
       1,
+      6,
+    );
+    expect(periodOfLastPitch(first.commands)).toBeCloseTo(PERIOD_C2, 6);
+
+    const { commands } = processEffectTickN(
+      state,
+      { type: 'vibrato', paramX: 4, paramY: 8 },
+      2,
       6,
     );
 
@@ -128,7 +139,12 @@ describe('vibrato depth is measured in period units', () => {
 
     // Run out the rest of the first row.
     for (let tick = 1; tick < 6; tick++) {
-      processEffectTickN(state, { type: 'vibrato', paramX: 4, paramY: 8 }, tick, 6);
+      processEffectTickN(
+        state,
+        { type: 'vibrato', paramX: 4, paramY: 8 },
+        tick,
+        6,
+      );
     }
 
     // Tick 0 of the next row, carrying 400 -- continue, no new parameters.
@@ -157,7 +173,12 @@ describe('vibrato depth is measured in period units', () => {
     state.vibratoWaveform = 2;
     startNote(state, { type: 'vibrato', paramX: 4, paramY: 8 });
     for (let tick = 1; tick < 6; tick++) {
-      processEffectTickN(state, { type: 'vibrato', paramX: 4, paramY: 8 }, tick, 6);
+      processEffectTickN(
+        state,
+        { type: 'vibrato', paramX: 4, paramY: 8 },
+        tick,
+        6,
+      );
     }
 
     // The next row is empty: no note, no effect.
@@ -210,7 +231,14 @@ describe('tremolo depth is measured in volume units', () => {
     state.tremoloWaveform = 2;
     state.currentVolume = 0.5;
 
-    processEffectTick0(state, { type: 'tremolo', paramX: 4, paramY: 4 }, 60, undefined, freqOf(PERIOD_C2), 6);
+    processEffectTick0(
+      state,
+      { type: 'tremolo', paramX: 4, paramY: 4 },
+      60,
+      undefined,
+      freqOf(PERIOD_C2),
+      6,
+    );
     const { commands } = processEffectTickN(
       state,
       { type: 'tremolo', paramX: 4, paramY: 4 },
@@ -257,7 +285,12 @@ describe('fine portamento is measured in period units', () => {
 describe('ECx note cut zeroes the volume rather than releasing the note', () => {
   it('emits volume 0 at the cut tick and no note-off', () => {
     const state = stateOnC2();
-    startNote(state, { type: 'noteCut', paramX: 0xc, paramY: 2, extSubtype: 'noteCut' });
+    startNote(state, {
+      type: 'noteCut',
+      paramX: 0xc,
+      paramY: 2,
+      extSubtype: 'noteCut',
+    });
 
     const early = processEffectTickN(
       state,
@@ -367,7 +400,12 @@ describe('instantaneous volume commands do not glide', () => {
 
   it('steps for ECx at the cut tick', () => {
     const state = stateOnC2();
-    startNote(state, { type: 'noteCut', paramX: 0xc, paramY: 2, extSubtype: 'noteCut' });
+    startNote(state, {
+      type: 'noteCut',
+      paramX: 0xc,
+      paramY: 2,
+      extSubtype: 'noteCut',
+    });
     const cut = processEffectTickN(
       state,
       { type: 'noteCut', paramX: 0xc, paramY: 2, extSubtype: 'noteCut' },

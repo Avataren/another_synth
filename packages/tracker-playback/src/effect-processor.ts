@@ -107,8 +107,7 @@ function vibratoFrequency(state: TrackEffectState, wave: number): number {
   }
   const pitch = state.profile.pitch;
   const delta =
-    (wave * VIBRATO_TABLE_PEAK * state.vibratoDepth) /
-    VIBRATO_DEPTH_DIVISOR *
+    ((wave * VIBRATO_TABLE_PEAK * state.vibratoDepth) / VIBRATO_DEPTH_DIVISOR) *
     state.profile.portamentoUnitScale;
   // The offset is *added* to the period, so the first half of the waveform
   // bends the pitch down and the second half up.
@@ -125,6 +124,35 @@ function vibratoFrequency(state: TrackEffectState, wave: number): number {
   // the same convention; period is inverted relative to pitch, which is what
   // made this one look right.
   return pitch.frequencyFromPeriod(pitch.clampPeriod(period + delta));
+}
+
+/**
+ * One tick of vibrato: take the sample at the current position, then advance.
+ *
+ * The order matters and was wrong. Both replayers read the waveform at the
+ * position they already hold and only then move it on -- `doVibrato` in
+ * ft2_replayer.c ends with `ch->vibratoPos += ch->vibratoSpeed;`, and
+ * `vibrato2` in pt2_replayer.c with `ch->n_vibratopos += (ch->n_vibratocmd >> 2)
+ * & 0x3C;`. Neither runs vibrato on tick 0 at all: FT2 has `dummy` at slot 4
+ * of `JumpTab_TickZero`, and ProTracker's tick 0 goes through `setPeriod` ->
+ * `checkMoreEffects`, which handles only 9/B/C/D/E/F. A note trigger zeroes the
+ * position (`if ((ch->n_wavecontrol & 0x04) == 0) ch->n_vibratopos = 0;`).
+ *
+ * So the first vibrato tick of a fresh note reads position 0, whose sample is
+ * zero -- the note's own pitch -- and the deviation only starts on the tick
+ * after. Advancing first, as this used to, made every vibrato start one step
+ * into the wave: at `4x8` (speed 4, depth 8) the very first tick jumped
+ * straight to a 6.1-period offset instead of 0, and the whole wave ran a
+ * 64th of a cycle early for as long as the note lasted. 6880 MOD and 25124 XM
+ * vibrato commands in the corpus, plus every 6xy.
+ */
+function advanceVibrato(state: TrackEffectState): number {
+  const wave = getWaveformValue(state.vibratoPos, state.vibratoWaveform);
+  state.vibratoApplied = true;
+  state.vibratoHeldWave = wave;
+  const frequency = vibratoFrequency(state, wave);
+  state.vibratoPos += state.vibratoSpeed;
+  return frequency;
 }
 
 function applyPortamentoStep(state: TrackEffectState): void {
@@ -183,7 +211,18 @@ export interface TrackEffectState {
    * apart from "no effect, nothing to hold".
    */
   vibratoApplied: boolean;
-  vibratoWaveform: number; // 0=sine, 1=ramp down, 2=square, 3=random
+  /**
+   * The waveform sample of the last vibrato offset actually emitted.
+   *
+   * Both replayers advance the position *after* using it, so once a row has
+   * run, `vibratoPos` already points at the *next* tick's sample rather than
+   * the one currently sounding. Tick 0 of a row that merely holds the offset
+   * (see the `continuesVibrato` note in processEffectTick0) has to re-state
+   * what is sounding, not what comes next, so it reads this instead of
+   * recomputing from the position.
+   */
+  vibratoHeldWave: number;
+  vibratoWaveform: number; // 0=sine, 1=ramp, 2/3=square (the reference has no random)
   /**
    * Whether a new note restarts the vibrato waveform.
    *
@@ -205,7 +244,6 @@ export interface TrackEffectState {
   // Arpeggio state
   arpeggioX: number;
   arpeggioY: number;
-  arpeggioTick: number;
 
   // Volume slide state
   volumeSlide: {
@@ -283,7 +321,11 @@ export interface TrackEffectState {
   lastSampleOffset: number;
 
   // Note delay overflow to next row (ProTracker EDx quirk)
-  carryDelayedNote: { midi: number; velocity: number; frequency?: number } | null;
+  carryDelayedNote: {
+    midi: number;
+    velocity: number;
+    frequency?: number;
+  } | null;
 }
 
 /**
@@ -312,6 +354,7 @@ export function createTrackEffectState(
     vibratoDepth: 0,
     vibratoPos: 0,
     vibratoApplied: false,
+    vibratoHeldWave: 0,
     vibratoWaveform: 0,
     vibratoRetrigger: true,
 
@@ -323,7 +366,6 @@ export function createTrackEffectState(
 
     arpeggioX: 0,
     arpeggioY: 0,
-    arpeggioTick: 0,
 
     volumeSlide: { delta: 0, mode: 'none', source: null },
     panSlideSpeed: 0,
@@ -445,22 +487,60 @@ export function frequencyToMidi(freq: number): number {
 }
 
 /**
- * Get vibrato/tremolo waveform value
+ * ProTracker's and FastTracker 2's shared vibrato/tremolo sine table, byte for
+ * byte -- `vibratoTable` in pt2_tables.c and `vibratoTab` in ft2_tables.c hold
+ * the same 32 values. It is a *half* sine, 255 * sin(pi * i / 32); the second
+ * half of the cycle is the same table read again with the offset subtracted
+ * instead of added.
+ */
+const REFERENCE_SINE_TABLE = [
+  0, 24, 49, 74, 97, 120, 141, 161, 180, 197, 212, 224, 235, 244, 250, 253, 255,
+  253, 250, 244, 235, 224, 212, 197, 180, 161, 141, 120, 97, 74, 49, 24,
+] as const;
+
+/**
+ * One sample of a vibrato/tremolo waveform, normalised to -1..1 against the
+ * tables' peak of 255.
+ *
+ * The reference keeps its position in an 8-bit counter and reads
+ * `(pos >> 2) & 0x1F` out of a 32-entry table, taking the sign from whether
+ * the counter's top bit is set. `pos` here is that counter divided by four,
+ * i.e. 64 steps per cycle with the sign flipping at 32, which is what the
+ * callers advance.
+ *
+ * Two of the four waveforms were wrong before this was checked against the C:
+ *
+ * - The **ramp** was `1 - 2 * phase`, a sawtooth falling from +1 to -1. Both
+ *   replayers build it as `tmpVib = (pos >> 2 & 31) << 3` -- rising 0..248 --
+ *   negated in the second half by `~tmpVib` (FT2) / `255 - tmpVib` (PT), and
+ *   then *subtracted* rather than added there. That is a sawtooth *rising*
+ *   from 0 to +1, jumping to -1 and rising back to 0: the opposite direction
+ *   and a quarter-cycle out of phase.
+ * - **Waveform 3 was random.** Neither replayer has a random waveform. Both
+ *   switch on the two low bits with `default:` covering 2 *and* 3, and both
+ *   defaults set the value to a flat 255 -- a square wave. A random waveform
+ *   also made playback non-deterministic, which no tracker output is.
+ *
+ * (No module in the 61-file corpus selects a waveform at all -- there is not
+ * one E4x or E7x in it -- so this fixes nothing audible today. It is fixed
+ * because it is checkable and was checked.)
  */
 function getWaveformValue(pos: number, waveform: number): number {
-  const phase = (pos & 63) / 64; // 64 positions per cycle
+  const p = pos & 63;
+  const index = p & 31;
+  const negative = p >= 32;
 
+  let value: number;
   switch (waveform & 3) {
-    case 0: // Sine
-      return Math.sin(phase * Math.PI * 2);
-    case 1: // Ramp down (sawtooth)
-      return 1 - 2 * phase;
-    case 2: // Square
-      return phase < 0.5 ? 1 : -1;
-    case 3: // Random
-      return Math.random() * 2 - 1;
-    default:
-      return Math.sin(phase * Math.PI * 2);
+    case 1: // Ramp
+      value = negative ? -(255 - (index << 3)) : index << 3;
+      return value / 255;
+    case 2:
+    case 3: // Square -- the reference's `default:` arm covers both
+      return negative ? -1 : 1;
+    default: // Sine
+      value = REFERENCE_SINE_TABLE[index]!;
+      return (negative ? -value : value) / 255;
   }
 }
 
@@ -494,6 +574,48 @@ function resetVolumeSlide(state: TrackEffectState): void {
   state.volumeSlide = { delta: 0, mode: 'none', source: null };
 }
 
+/**
+ * The per-tick volume change a slide parameter asks for, as a fraction of full
+ * scale, applying the format's parameter memory.
+ *
+ * FT2's `volSlide` is the whole of it:
+ *
+ *   static void volSlide(channel_t *ch, uint8_t param)
+ *   {
+ *       if (param == 0)
+ *           param = ch->volSlideSpeed;
+ *       ch->volSlideSpeed = param;
+ *       uint8_t newVol = ch->realVol;
+ *       if ((param & 0xF0) == 0) { newVol -= param; ... }
+ *       else { param >>= 4; newVol += param; ... }
+ *   }
+ *
+ * Two things follow. The up nibble wins outright -- a `A12` slides *up* by 1
+ * and the 2 is never read -- and the memory is a single per-channel byte.
+ *
+ * ProTracker's `volumeSlide` is the same nibble precedence with no memory: it
+ * reads `ch->n_cmd & 0xFF` directly, so `A00` there is a genuine no-op. That
+ * is what `volumeSlideHasMemory` selects between.
+ */
+function resolveVolumeSlideDelta(
+  state: TrackEffectState,
+  paramX: number,
+  paramY: number,
+): number {
+  let raw = ((paramX & 0x0f) << 4) | (paramY & 0x0f);
+  if (state.profile.volumeSlideHasMemory) {
+    if (raw === 0) raw = state.lastVolSlide;
+    state.lastVolSlide = raw;
+  }
+
+  const scale = state.profile.volumeSlideUnit;
+  const up = (raw >> 4) & 0x0f;
+  const down = raw & 0x0f;
+  if (up) return up * scale;
+  if (down) return -down * scale;
+  return 0;
+}
+
 function primeVolumeSlide(
   state: TrackEffectState,
   effect: EffectCommand | undefined,
@@ -505,69 +627,72 @@ function primeVolumeSlide(
     mode: 'normal' | 'fine',
     source: 'volSlide' | 'tonePortaVol' | 'vibratoVol',
   ) => {
+    if (delta === 0) {
+      resetVolumeSlide(state);
+      return;
+    }
     state.volumeSlide = { delta, mode, source };
   };
 
   switch (effect.type) {
     case 'volSlide': {
+      // EAx / EBx are single-step fine slides that happen to share this
+      // EffectType; they are not the per-tick Axy slide and have no memory.
       if (effect.extSubtype === 'fineVolUp') {
-        setSlide(effect.paramY / 64, 'fine', 'volSlide');
+        setSlide(
+          effect.paramY * state.profile.volumeSlideUnit,
+          'fine',
+          'volSlide',
+        );
         return;
       }
       if (effect.extSubtype === 'fineVolDown') {
-        setSlide(-effect.paramY / 64, 'fine', 'volSlide');
+        setSlide(
+          -effect.paramY * state.profile.volumeSlideUnit,
+          'fine',
+          'volSlide',
+        );
         return;
       }
 
-      let delta = 0;
-      // One volume unit as a fraction of full scale, from the format profile
-      // (1/64 for the 0-64 ranges ProTracker and FT2 both use) -- the same
-      // scale the fine slides (EAx/EBx) above and tonePortaVol/vibratoVol
-      // below already use.
-      //
-      // This was 1/128 ("softer slide ... to better match MOD feel"), which
-      // made every Axy slide run at exactly half the authentic rate: at speed
-      // 6 an A06 row dropped 0.234 instead of ProTracker's 5 x 6/64 = 0.469.
-      // That constant looks like an ear-made compensation for a
-      // double-application bug that has since been fixed independently -- the
-      // slide is now applied once per tick for ticks 1..speed-1, five times at
-      // speed 6, which is exactly what ProTracker does. Its own comment said
-      // 1/256 while the code said 1/128, so it was never a derived value.
-      const scale = state.profile.volumeSlideUnit;
-      if (effect.paramX) delta = effect.paramX * scale;
-      else if (effect.paramY) delta = -effect.paramY * scale;
-      else if (state.profile.volumeSlideHasMemory && state.lastVolSlide) {
-        // FT2 reuses the last non-zero slide for A00. ProTracker has no
-        // volume-slide memory at all -- there A00 means "no volume change" --
-        // so continuing the previous slide would make the volume drift where
-        // ProTracker holds it.
-        const lastX = (state.lastVolSlide >> 4) & 0x0f;
-        const lastY = state.lastVolSlide & 0x0f;
-        if (lastX) delta = lastX * scale;
-        else if (lastY) delta = -lastY * scale;
-      }
-
-      if (delta !== 0) {
-        setSlide(delta, 'normal', 'volSlide');
-        state.lastVolSlide =
-          (effect.paramX << 4) | effect.paramY || state.lastVolSlide;
-      }
+      setSlide(
+        resolveVolumeSlideDelta(state, effect.paramX, effect.paramY),
+        'normal',
+        'volSlide',
+      );
       return;
     }
 
-    case 'tonePortaVol': {
-      if (effect.paramX) setSlide(effect.paramX / 64, 'normal', 'tonePortaVol');
-      else if (effect.paramY)
-        setSlide(-effect.paramY / 64, 'normal', 'tonePortaVol');
+    // 5xy and 6xy carry no volume slide of their own: FT2's
+    // `portamentoPlusVolSlide` and `vibratoPlusVolSlide` each end by calling
+    // the very same `volSlide(ch, param)` that Axy uses, and ProTracker's
+    // `tonePlusVolSlide` / `vibratoPlusVolSlide` likewise call `volumeSlide`.
+    //
+    // On XM that means they share Axy's one parameter memory in both
+    // directions: a `600` *continues* the channel's last slide rather than
+    // doing nothing, and a non-zero 5xy/6xy overwrites what a later `A00`
+    // will repeat. Treating their parameter as private, as this used to,
+    // silently dropped the slide on 1428 `600` cells in the XM corpus (all in
+    // an-path.xm) and let a stale Axy parameter survive across them.
+    //
+    // ProTracker is unaffected either way: `volumeSlideHasMemory` is false
+    // there, so the nibbles are read raw and `600` really is a no-op -- which
+    // is what its 612 `600` cells expect.
+    case 'tonePortaVol':
+      setSlide(
+        resolveVolumeSlideDelta(state, effect.paramX, effect.paramY),
+        'normal',
+        'tonePortaVol',
+      );
       return;
-    }
 
-    case 'vibratoVol': {
-      if (effect.paramX) setSlide(effect.paramX / 64, 'normal', 'vibratoVol');
-      else if (effect.paramY)
-        setSlide(-effect.paramY / 64, 'normal', 'vibratoVol');
+    case 'vibratoVol':
+      setSlide(
+        resolveVolumeSlideDelta(state, effect.paramX, effect.paramY),
+        'normal',
+        'vibratoVol',
+      );
       return;
-    }
 
     default:
       return;
@@ -769,7 +894,8 @@ export function processEffectTick0(
       // (MOD imports provide noteFrequency/currentPeriod). Otherwise keep
       // frequency-based slides for normal tracker notes.
       if (noteFrequency !== undefined || state.currentPeriod !== undefined) {
-        state.targetPeriod = state.profile.pitch.periodFromFrequency(targetFreq);
+        state.targetPeriod =
+          state.profile.pitch.periodFromFrequency(targetFreq);
       } else {
         state.targetPeriod = undefined;
       }
@@ -917,7 +1043,6 @@ export function processEffectTick0(
     case 'arpeggio':
       state.arpeggioX = effect.paramX;
       state.arpeggioY = effect.paramY;
-      state.arpeggioTick = 0;
       state.lastArpeggio = (effect.paramX << 4) | effect.paramY;
       // Tick 0: play base note
       pushPitch(state.currentFrequency);
@@ -1185,19 +1310,14 @@ export function processEffectTick0(
   // re-states the note, which is the conservative reading.
   const continuesVibrato =
     newNote === undefined &&
-    (!effect ||
-      effect.type === 'vibrato' ||
-      effect.type === 'vibratoVol') &&
+    (!effect || effect.type === 'vibrato' || effect.type === 'vibratoVol') &&
     state.vibratoApplied &&
     state.vibratoDepth > 0;
 
   if (!commands.some((cmd) => cmd.kind === 'pitch')) {
     pushPitch(
       continuesVibrato
-        ? vibratoFrequency(
-            state,
-            getWaveformValue(state.vibratoPos, state.vibratoWaveform),
-          )
+        ? vibratoFrequency(state, state.vibratoHeldWave)
         : state.currentFrequency,
     );
   }
@@ -1212,7 +1332,7 @@ export function processEffectTickN(
   state: TrackEffectState,
   effect: EffectCommand | undefined,
   tick: number,
-  _ticksPerRow: number,
+  ticksPerRow: number,
 ): TickCommandBatch {
   const commands: ProcessorCommand[] = [];
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
@@ -1332,27 +1452,12 @@ export function processEffectTickN(
 
     case 'vibrato':
     case 'fineVibrato':
-      // Apply vibrato
-      state.vibratoPos += state.vibratoSpeed;
-      state.vibratoApplied = true;
-      pushPitch(
-        vibratoFrequency(
-          state,
-          getWaveformValue(state.vibratoPos, state.vibratoWaveform),
-        ),
-      );
+      pushPitch(advanceVibrato(state));
       break;
 
     case 'vibratoVol':
       // Vibrato + volume slide
-      state.vibratoPos += state.vibratoSpeed;
-      state.vibratoApplied = true;
-      pushPitch(
-        vibratoFrequency(
-          state,
-          getWaveformValue(state.vibratoPos, state.vibratoWaveform),
-        ),
-      );
+      pushPitch(advanceVibrato(state));
       {
         const slid = applyVolumeSlideIfNeeded(state);
         if (slid !== undefined) {
@@ -1362,8 +1467,10 @@ export function processEffectTickN(
       break;
 
     case 'tremolo':
-      // Apply tremolo (volume oscillation)
-      state.tremoloPos += state.tremoloSpeed;
+      // Apply tremolo (volume oscillation).
+      //
+      // As with vibrato, the position advances *after* the sample is used:
+      // both `tremolo` routines end with `ch->tremoloPos += ch->tremoloSpeed`.
       const tremoloOffset = getWaveformValue(
         state.tremoloPos,
         state.tremoloWaveform,
@@ -1378,17 +1485,18 @@ export function processEffectTickN(
         TREMOLO_DEPTH_DIVISOR /
         64;
       pushVolume(Math.max(0, Math.min(1, state.currentVolume + tremoloAmount)));
+      state.tremoloPos += state.tremoloSpeed;
       break;
 
     case 'arpeggio': {
-      // Cycle through base, +x semitones, +y semitones
-      state.arpeggioTick = (state.arpeggioTick + 1) % 3;
+      // Which of base / x / y this tick plays is format-specific: ProTracker
+      // reads `song->tick % 3` off a tick that counts up, FT2 indexes
+      // `arpeggioTab[song.tick & 31]` off one that counts *down* from the
+      // speed, which swaps x and y at the common speeds. See
+      // FormatProfile.arpeggioStep.
+      const step = state.profile.arpeggioStep(tick, ticksPerRow);
       const offset =
-        state.arpeggioTick === 1
-          ? state.arpeggioX
-          : state.arpeggioTick === 2
-            ? state.arpeggioY
-            : 0;
+        step === 1 ? state.arpeggioX : step === 2 ? state.arpeggioY : 0;
 
       if (state.currentPeriod !== undefined) {
         const period = state.profile.pitch.arpeggioPeriod(
@@ -1451,7 +1559,12 @@ export function processEffectTickN(
               state.currentVolume -= 16 / 64;
               break;
             case 6:
-              state.currentVolume *= 2 / 3;
+              // FT2: `vol = (vol >> 1) + (vol >> 3) + (vol >> 4)`, i.e.
+              // 11/16 of the volume -- not the 2/3 this used to apply. The
+              // shifts are FT2's way of writing "about two thirds"; taking
+              // the description rather than the arithmetic left every x=6
+              // retrigger step 3% quiet, compounding once per retrigger.
+              state.currentVolume *= 11 / 16;
               break;
             case 7:
               state.currentVolume *= 0.5;
@@ -1498,7 +1611,7 @@ export function processEffectTickN(
     case 'tremor': {
       // Txy: sound on for x+1 ticks, off for y+1 ticks, counted continuously
       // across rows rather than from this row's tick index.
-      const raw = ((effect.paramX << 4) | effect.paramY) || state.lastTremor;
+      const raw = (effect.paramX << 4) | effect.paramY || state.lastTremor;
       const onTicks = ((raw >> 4) & 0x0f) + 1;
       const offTicks = (raw & 0x0f) + 1;
       const inOnPhase = state.tremorPos < onTicks;
@@ -1597,12 +1710,16 @@ export function processVolumeColumnTick0(
       break;
 
     case 'fineVolDown':
-      state.currentVolume = clampVolume(state.currentVolume - command.value * unit);
+      state.currentVolume = clampVolume(
+        state.currentVolume - command.value * unit,
+      );
       pushVolume(state.currentVolume, 'step');
       break;
 
     case 'fineVolUp':
-      state.currentVolume = clampVolume(state.currentVolume + command.value * unit);
+      state.currentVolume = clampVolume(
+        state.currentVolume + command.value * unit,
+      );
       pushVolume(state.currentVolume, 'step');
       break;
 
@@ -1621,7 +1738,7 @@ export function processVolumeColumnTick0(
       // FT2 stores this as `pan = x << 4`, so the column reaches 0 (hard left)
       // and 128 (centre) exactly but tops out at 240 rather than 255. That
       // asymmetry is FT2's, not a rounding slip here.
-      state.currentPan = ((command.value << 4) / 128) - 1;
+      state.currentPan = (command.value << 4) / 128 - 1;
       pushPan(state.currentPan);
       break;
 
@@ -1693,11 +1810,7 @@ export function processVolumeColumnTickN(
     }
 
     case 'vibrato': {
-      state.vibratoPos += state.vibratoSpeed;
-      const frequency = vibratoFrequency(
-        state,
-        getWaveformValue(state.vibratoPos, state.vibratoWaveform),
-      );
+      const frequency = advanceVibrato(state);
       commands.push(
         voiceIndex !== undefined
           ? { kind: 'pitch', frequency, voiceIndex }
@@ -1719,8 +1832,8 @@ export function processVolumeColumnTickN(
 export function resetEffectStateForNote(state: TrackEffectState): void {
   if (state.vibratoRetrigger) state.vibratoPos = 0;
   state.vibratoApplied = false;
+  state.vibratoHeldWave = 0;
   if (state.tremoloRetrigger) state.tremoloPos = 0;
-  state.arpeggioTick = 0;
   state.retriggerTick = 0;
   state.noteCutTick = -1;
   state.noteDelayTick = -1;

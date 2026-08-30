@@ -2008,6 +2008,261 @@ fault outright: `expected [ { kind: 'cancelAndHold', time: 1 } ] to deeply equal
 having no sustain point and no fadeout so the unit test above cannot drift away from the case
 it was written for. 931 green.
 
+### D83 — FastTracker 2 walks an arpeggio backwards, and its tick counter is why
+
+`0xy` is the fifth most common effect in the MOD corpus (5846 commands) and the second most
+common in the XM one (12987). It was being played in ProTracker's order in both formats.
+That order is right for MOD and wrong for XM, and the reason is not the arpeggio routine but
+the tick counter it reads.
+
+ProTracker counts its tick **up** from 0 (`song->tick++`, pt2_replayer.c:1369) and reads:
+
+```c
+static void arpeggio(moduleChannel_t *ch)
+{
+    int32_t arpTick = song->tick % 3; // 0, 1, 2
+    if (arpTick == 1)      arpNote = ch->n_cmd >> 4;
+    else if (arpTick == 2) arpNote = ch->n_cmd & 0xF;
+    else /* arpTick 0 */   { paulaWriteWord(voiceAddr + 6, ch->n_period); return; }
+    ...
+}
+```
+
+so a row plays base, x, y, base, x, y.
+
+FastTracker 2 counts **down** from the speed:
+
+```c
+    bool tickZero = false;
+    if (--song.tick == 0)
+    {
+        song.tick = song.speed;
+        tickZero = true;
+    }
+```
+
+which means row tick `t` sees `song.tick == speed - t`. Its arpeggio then indexes a table
+with that:
+
+```c
+static void arpeggio(channel_t *ch, uint8_t param)
+{
+    const uint8_t tick = arpeggioTab[song.tick & 31];
+    if (tick == 0)      ch->outPeriod = ch->realPeriod;
+    else {
+        if (tick == 1) noteOffset = param >> 4;
+        else           noteOffset = param & 0x0F; // tick 2
+        ch->outPeriod = period2NotePeriod(ch->realPeriod, noteOffset, ch);
+    }
+}
+```
+
+`arpeggioTab` is `{0,1,2,0,1,2,...}`, so reading it with a descending index runs the cycle
+backwards. Neither replayer runs arpeggio on tick 0 at all — FT2 has `dummy` at slot 0 of
+`JumpTab_TickZero`, and ProTracker's tick 0 goes through `setPeriod` -> `checkMoreEffects`,
+which handles only 9/B/C/D/E/F — so tick 0 is the base note in both.
+
+**The concrete numbers.** At speed 6 the row's five effect ticks read `arpeggioTab[5,4,3,2,1]`
+= `2,1,0,2,1`, i.e. **y, x, base, y, x**, against ProTracker's x, y, base, x, y. A `047`
+(major triad) that ProTracker arpeggiates root-third-fifth, FT2 arpeggiates
+root-**fifth-third**. The corpus's XM arpeggios are 7608 at speed 6 and 5186 at speed 3
+(where the row is `arpeggioTab[2,1]` = y, x), so 12794 of 12987 are a straight x/y swap.
+
+The remaining 193 are worse than a swap, because the order stops being periodic when the
+speed is not a multiple of 3. Speed 5 — `radix-unreal_superhero.xm`, whose opening row is a
+`047` — reads `arpeggioTab[4,3,2,1]` = `1,0,2,1`: **x, base, y, x**, where ProTracker gives
+x, y, base, x. The two agree on the first tick and diverge on the second, which is what the
+corpus test pins.
+
+`arpeggioTab` is only 16 bytes in FT2 and is indexed with 5 bits, so speeds above 16 read
+sixteen bytes past its end. 8bitbubsy reproduces them verbatim (`0x00,0x18,0x31,0x4A,...`,
+"confirmed to be the same on FT2.08 and FT2.09"), and since every one but the leading zero is
+neither 0 nor 1, they all select `y`. That is reproduced here rather than smoothed over; no
+corpus module uses a speed above 15, so it is faithfulness rather than a fix.
+
+Implemented as a `FormatProfile.arpeggioStep(tick, ticksPerRow)` rather than a branch, per
+D2/D17-D21. `processEffectTickN`'s `ticksPerRow` parameter was previously unused (`_ticksPerRow`)
+and is exactly FT2's `song.speed`, so nothing new had to be threaded through. The per-channel
+`arpeggioTick` counter this replaced is gone: neither replayer keeps arpeggio state on the
+channel, and a counter cannot express a table indexed by the row's speed.
+
+Tests: `src/tests/reference-effect-audit.test.ts` (the tick mapping at speeds 3, 4, 6 and 20)
+and `src/tests/xm-arpeggio-tick-order.test.ts`, which drives `PlaybackEngine` end to end so
+the fix cannot die in a stub the way D11's did — on a synthetic XM, on
+`radix-unreal_superhero.xm`, and on `action1.mod`, whose row 0 carries `037` on channel 0 and
+`F07` on channel 1, so it runs seven ticks and pins the ProTracker side against the speed the
+new code indexes by.
+
+### D84 — 5xy and 6xy are not their own volume slide; on XM they are Axy
+
+Both replayers implement the combined commands by *calling the plain volume slide*:
+
+```c
+static void portamentoPlusVolSlide(channel_t *ch, uint8_t param)
+{ portamento(ch, 0); volSlide(ch, param); }
+
+static void vibratoPlusVolSlide(channel_t *ch, uint8_t param)
+{ doVibrato(ch); volSlide(ch, param); }
+```
+
+and on FT2 `volSlide` is where the parameter memory lives:
+
+```c
+static void volSlide(channel_t *ch, uint8_t param)
+{
+    if (param == 0)
+        param = ch->volSlideSpeed;
+    ch->volSlideSpeed = param;
+    ...
+}
+```
+
+So on XM there is exactly **one** `volSlideSpeed` per channel and `Axy`, `5xy` and `6xy` all
+read and write it. `600` continues the channel's last slide, and a non-zero `5xy`/`6xy`
+overwrites what a following `A00` will repeat. The engine treated the combined commands'
+parameter as private and gave them no memory at all, so a zero parameter did nothing.
+
+**Corpus impact: 1428 `600` cells**, all in `an-path.xm`, every one of which was silently
+dropping the slide it was meant to continue. (`500` does not occur in the XM corpus.)
+
+ProTracker is unaffected and had to stay that way: its `volumeSlide` reads `ch->n_cmd & 0xFF`
+raw with no memory, so `600` there really is a no-op — which is what the MOD corpus's 612
+`600` cells expect. `volumeSlideHasMemory` (D-nothing, added earlier) already carried that
+distinction; it simply was not being consulted on this path.
+
+While making the three commands share one resolver, FT2's nibble precedence was confirmed for
+all of them: `if ((param & 0xF0) == 0) { down } else { param >>= 4; up }` — the up nibble wins
+outright and the down nibble is not even read, which is what the engine already did.
+
+Tests: `src/tests/reference-effect-audit.test.ts`, 4 cases, 2 confirmed failing against the
+old code (the other two are the ProTracker guards, which correctly pass both ways).
+
+### D85 — The vibrato/tremolo oscillator: two waveforms wrong, and a tick of phase error
+
+Three findings in one routine. Between them they cover 6880 MOD and 25124 XM `4xy` commands,
+5275 and 1626 `6xy`, and 546 `7xy` — but only the third is audible in this corpus, for a
+reason worth recording.
+
+**1. The position advances after the sample is read, not before.** `doVibrato` ends with
+`ch->vibratoPos += ch->vibratoSpeed;` and `vibrato2` with
+`ch->n_vibratopos += (ch->n_vibratocmd >> 2) & 0x3C;`. Neither runs on tick 0, and a note
+trigger zeroes the position (`if ((ch->n_wavecontrol & 0x04) == 0) ch->n_vibratopos = 0;`).
+So the first vibrato tick of a fresh note samples position 0, whose table entry is 0 — the
+note's own pitch — and the deviation starts on the tick after. The engine advanced first, so
+every vibrato began one step into the wave and ran a 64th of a cycle early for the whole note.
+At `4x8` that is a 6.1-period jump on the very first tick where the reference has none. This
+is the one of the three that touches real music.
+
+**2. Waveform 1 is a rising ramp, not a falling one.** The engine computed `1 - 2 * phase`,
+a sawtooth falling from +1 to -1. Both replayers build:
+
+```c
+        case 1:
+        {
+            tmpVib <<= 3;
+            if ((int8_t)ch->vibratoPos < 0)
+                tmpVib = ~tmpVib;
+        }
+```
+
+with `tmpVib = (vibratoPos >> 2) & 0x1F` — so the magnitude rises 0..248 across each half —
+and then *subtract* rather than add in the second half. That is a sawtooth rising from 0 to
++1, jumping to -1 and rising back to 0: the opposite direction and a quarter cycle out of
+phase with what was there.
+
+**3. Waveform 3 is a square wave, not noise.** The engine returned `Math.random()`. Neither
+replayer has a random waveform: both switch on the low two bits with `default:` covering 2
+*and* 3, and both defaults are a flat 255.
+
+```c
+        // 2/3: square
+        default: tmpTrem = 255; break;
+```
+
+A random waveform also made playback non-deterministic, which no tracker output is.
+
+**Findings 2 and 3 change nothing audible today, and the measurement is why that is worth
+saying.** There is not a single `E4x` or `E7x` command in the 61-module corpus — the waveform
+selector is never used, so every vibrato and tremolo in it runs waveform 0. That is precisely
+the shape §6e warns about (an effect absent from a corpus is how a bug survives an audit), so
+they are fixed rather than deferred, but the honest claim is "checkable, checked, and
+currently unreachable".
+
+The sine itself was verified and is now taken from the replayers' own table rather than
+`Math.sin`. `vibratoTable` (pt2_tables.c) and `vibratoTab` (ft2_tables.c) are byte-identical
+32-entry half-sines peaking at 255, and the old approximation agreed with them to within
+1/255. The depth arithmetic was already right in both formats: PT's `(data * depth) >> 7`
+against its period scale and FT2's `>> 5` against a four-times-finer one are the same musical
+depth, which `portamentoUnitScale` already expressed, and tremolo's `>> 6` against a 0-64
+volume was correct too.
+
+Tests: `src/tests/reference-effect-audit.test.ts` (5 cases, all confirmed failing against the
+old code). Two existing assertions in `src/tests/mod-effect-depths.test.ts` had pinned the
+pre-advance phase — one set `vibratoPos = 28` expecting the next tick to sample 32, the other
+read tick 1 expecting a non-zero offset — and were updated to the reference's timing with the
+reasoning recorded in place. Their intent (that the swing is a period deviation, and that it
+bends down before it bends up) is unchanged.
+
+### D86 — Rxy's x=6 volume change is 11/16, not two thirds
+
+`doMultiNoteRetrig`'s volume table is written in shifts:
+
+```c
+        case 0x6: vol = (vol >> 1) + (vol >> 3) + (vol >> 4); break;
+        ...
+        case 0xE: vol = (vol >> 1) + vol; break;
+        case 0xF: vol += vol; break;
+```
+
+`1/2 + 1/8 + 1/16` is `11/16` = 0.6875, not the 0.6667 the engine applied. Every other case
+in the table was already right, including `0xE`'s 1.5x and `0xF`'s doubling, and `0x8`
+correctly changes nothing.
+
+Small — 73 `Rxy` commands in the XM corpus, and only those with `x == 6` are affected — and
+the error is 3% per retrigger step, which compounds across a held retrigger. Fixed because it
+costs one line and the arithmetic is unambiguous. Tests:
+`src/tests/reference-effect-audit.test.ts` (1 case, confirmed failing against the old code).
+
+### D87 — Open: three divergences found, measured at zero, and deliberately left
+
+Each of these is a real difference from the reference. Each was measured against the corpus
+first, found to touch nothing, and left rather than changed on reasoning alone — the same
+treatment D81 gives `Hxy`.
+
+**`E3x` glissando snaps the slide itself, not just the output.** Both replayers keep the raw
+sliding period and quantise only what they hand the mixer: FT2's `portamento` ends
+`if (ch->semitonePortaMode) ch->outPeriod = period2NotePeriod(ch->realPeriod, 0, ch); else
+ch->outPeriod = ch->realPeriod;`, and ProTracker's `tonePortNoChange` likewise writes the
+table entry to the Paula register while `ch->n_period` keeps the unsnapped value.
+`applyTonePortaStep` snaps `state.currentPeriod`, which feeds the *next* step, so a glissando
+portamento would quantise cumulatively and creep. Separating channel period from output
+period is a structural change to the effect state, and the corpus contains **zero** `E3x`
+commands in either format, so there is no case to verify it against.
+
+**`EDx` longer than the row carries the note into the next row; neither replayer does.**
+ProTracker's `noteDelay` fires only on `if (song->tick == (ch->n_cmd & 0xF) && ...)` and
+FT2's on `if ((uint8_t)(song.speed - song.tick) == param)`; when the parameter is at or past
+the row's tick count neither condition is ever met and the note is simply dropped.
+`FormatProfile.noteDelayOverflowCarries` implements the opposite for ProTracker. The corpus
+has 140 MOD and 272 XM `EDx` commands and **not one** with a parameter at or beyond the speed
+in force, so the flag is unreachable in practice. Left in place rather than removed, because
+the claim it encodes may well have come from a real module outside this corpus; flagged here
+so that anyone who meets a counter-example knows it is unverified.
+
+**`E9x` does not retrigger on tick 0 of a row that carries no note.** ProTracker's
+`retrigNote` reads `if (song->tick == 0 && (ch->n_note & 0xFFF) > 0) return; if (song->tick %
+(ch->n_cmd & 0xF) == 0) doRetrg(ch);` — the tick-0 guard applies only when the row *has* a
+note, so a bare `E9x` row fires immediately. The engine counts from tick 0 and first fires at
+tick `x`. 55 MOD and 84 XM commands, and the difference is one extra retrigger at the top of
+a note-less row.
+
+**Verified correct and not changed:** `Cxx` (`volumeChange`: `n_volume = cmd & 0xFF` clamped
+to 64), the `Axy`/`5xy`/`6xy` nibble precedence (D84), tremolo's `>> 6` depth against a 0-64
+volume and its position rate, vibrato's depth in both formats (D85), `EAx`/`EBx` as tick-0
+single steps clamped to 0..64, `Txy`'s continuous cross-row cycle and its `x+1`/`y+1` lengths
+(traced through `tremor`'s sign-bit counter), and the rest of `doMultiNoteRetrig`'s volume
+table (D86).
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -2239,6 +2494,11 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **An XM arpeggio walks its notes in FT2's order, not ProTracker's** (D83). FT2 counts `song.tick` *down* from the speed and indexes `arpeggioTab[song.tick & 31]` with it, so a row runs the cycle backwards: at speed 6 it plays base, y, x where ProTracker plays base, x, y, and a `047` comes out root-fifth-third. 12794 of the XM corpus's 12987 arpeggios are at speed 6 or 3 and are a straight x/y swap; the rest are worse, because the order stops being periodic when the speed is not a multiple of 3 (speed 5 gives x, base, y, x against ProTracker's x, y, base, x). Now a `FormatProfile.arpeggioStep`, including the sixteen bytes FT2 reads past the end of its own 16-byte table. Tests: `src/tests/reference-effect-audit.test.ts`, `src/tests/xm-arpeggio-tick-order.test.ts` (the latter drives `PlaybackEngine` end to end on two real modules, so it cannot die in a stub as D11 did). |
+| 2026-08-30 | fix | **`6xy` and `5xy` share Axy's volume-slide memory on XM** (D84). Both replayers implement the combined commands by calling the plain volume slide -- `vibratoPlusVolSlide` is `{ doVibrato(ch); volSlide(ch, param); }` -- and FT2's `volSlide` is where the one per-channel `volSlideSpeed` lives, so `600` continues the channel's last slide and a non-zero `6xy` overwrites what a later `A00` repeats. The engine gave the combined commands a private parameter and no memory, so a zero one did nothing: **1428 `600` cells in an-path.xm** were dropping their slide. ProTracker reads the byte raw with no memory and had to stay that way, which its 612 `600` cells depend on. |
+| 2026-08-30 | fix | **The vibrato/tremolo oscillator matched to the replayers' own** (D85). Three findings. The position advances *after* the sample is read (`ch->vibratoPos += ch->vibratoSpeed` is the last line of `doVibrato`), and neither replayer runs vibrato on tick 0, so a fresh note's first vibrato tick sits at the note's own pitch; advancing first started every vibrato a step into the wave -- a 6.1-period jump at `4x8` where there should be none, across 6880 MOD and 25124 XM commands. Waveform 1 was a falling ramp where both replayers build a rising one, and waveform 3 was `Math.random()` where both have a square wave and no random waveform at all. The last two change nothing audible: there is not one `E4x` or `E7x` in the 61-module corpus, which is exactly the shape §6e warns about. The sine now comes from the replayers' shared 32-entry table. |
+| 2026-08-30 | fix | **`Rxy`'s x=6 volume change is 11/16** (D86). FT2 writes it as `(vol >> 1) + (vol >> 3) + (vol >> 4)`, which is 0.6875, not the 0.6667 the engine applied; the error compounds once per retrigger. Every other case in the table was already correct. |
+| 2026-08-30 | note | **Three divergences found, measured at zero, and left** (D87). `E3x` glissando quantises the slide accumulator where both replayers quantise only the output period (0 `E3x` commands in the corpus); `EDx` longer than the row carries the note into the next row where neither replayer fires it at all (0 of 412 `EDx` commands have a parameter at or past the speed); `E9x` on a note-less row should retrigger on tick 0 (55 MOD / 84 XM commands, one extra retrigger). Each is a real difference, none has a case in the corpus to verify a fix against, so each is recorded rather than guessed at -- the treatment D81 gives `Hxy`. 949 green. |
 | 2026-08-30 | fix | **A key-off no longer freezes an envelope that has no sustain point** (D82). Reported as the opening chords of "im in love with you.xm" releasing far too slowly. FT2 advances the volume envelope every tick unconditionally and only holds at the sustain point, and only while `ENV_SUSTAIN` is set and the note is not keyed off — so for an instrument with sustain off and fadeout 0, key-off is a no-op and the envelope just keeps decaying. `scheduleTrackerRelease` called `cancelAndHoldAtTime` first, so the decay stopped dead and the released chord sat 3.4x too loud for two seconds under the chord replacing it. 23 of 890 corpus instruments are that shape. Found while verifying it: the fadeout ran twice as long as FT2's, whose `fadeoutVol` starts at **32768**, not 65536 — 160 instruments across all 18 XMs. Tests: `src/tests/xm-volume-envelope.test.ts`, `src/tests/xm-keyoff-no-sustain.test.ts` (4 confirmed failing against the old code). 931 green. |
 | 2026-08-30 | fix | **A portamento now obeys FT2's period limits rather than XM's note range** (D80). Reported as a drum pitched down at the end of order 15 of "im in love with you.xm" rumbling on through the next pattern, whose only command on that channel is a `G40`. `Gxx` turned out to be correct — FT2's global volume is 0..64 and `G40` is its maximum, so the row is a no-op. The cause was `MIN/MAX_LINEAR_PERIOD` clamping slides to C-0..B-7 where FT2 clamps at 1 and 32000-1 (`pitchSlideUp`/`pitchSlideDown` in ft2-clone). A linear period is exponential in pitch, so the clamp parked a runaway `240` at 16.33 Hz — 1/43 of the sample's rate, and 43x as long, hence the rumble — where FT2 takes it to ~1/1000, i.e. silence. The old bounds were guesswork and the source comment said so. Five of the thirteen linear XMs were hitting them; none reaches FT2's. Also verified but not fixed: `Hxy` slides per row where FT2 slides per tick (D81). Tests: `src/tests/xm-global-volume-and-period-limits.test.ts` (3 of 8 confirmed failing against the old code). 926 green. |
 | 2026-08-30 | fix | **A set-volume row survives a pattern that never names an instrument** (D79). radix_-_yuki_satellites.xm's opening bassline lost its `v00` gating in the second pattern and sustained instead — reported as that pattern "almost playing the plain samples". The builder skipped any row resolving no instrument unless it carried a note, macro, tempo, effect or volume-column *command*; a plain set-volume was missing from that list, and the pattern could not name an instrument because its every instrument-bearing row is a tone portamento, which must not stamp one (D55, D77). Same rationale as D64's note-off rescue: the engine holds the per-track instrument across patterns and resolves it there. 22 of 61 demo modules were losing rows. Tests: `src/tests/tracker-volume-row-without-instrument.test.ts` (2 of 3 confirmed failing against the old code). 917 green. |
