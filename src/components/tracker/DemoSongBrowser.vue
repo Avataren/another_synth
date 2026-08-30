@@ -2,7 +2,7 @@
   <div v-if="modelValue" class="demo-modal" @click.self="close">
     <div class="demo-dialog">
       <div class="demo-header">
-        <div class="demo-title">Demo songs</div>
+        <div class="demo-title">{{ title }}</div>
         <button type="button" class="demo-close" @click="close">×</button>
       </div>
 
@@ -33,12 +33,15 @@
             :key="song.file"
             type="button"
             class="demo-song"
-            :disabled="busyFile !== null"
-            :class="{ busy: busyFile === song.file }"
+            :disabled="busyFile !== null || (isAddMode && isQueued(song))"
+            :class="{ busy: busyFile === song.file, queued: isQueued(song) }"
             @click="select(song)"
           >
             <span class="demo-song-title">{{ song.title }}</span>
             <span class="demo-song-meta">
+              <span v-if="isAddMode && isQueued(song)" class="demo-song-queued"
+                >queued</span
+              >
               {{ song.format }} · {{ song.channels }}ch ·
               {{ formatSize(song.bytes) }}
             </span>
@@ -51,49 +54,49 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import {
+  useDemoManifest,
+  DEMO_BASE_URL,
+  type DemoSong,
+} from 'src/composables/useDemoManifest';
 
 /**
  * Browser for the demo modules published alongside the app.
  *
- * The manifest is fetched rather than imported, so a missing or unreachable
- * collection stays an expected state rather than a build error -- the modules
- * are third-party music served as plain files, and the app should still come
- * up without them.
+ * Two modes. In `load` it replaces the song in the tracker and closes, which
+ * is what the Demos button has always done. In `add` it stays open and hands
+ * each pick to the jukebox playlist, so a run of songs can be queued without
+ * reopening the dialog once per song.
  */
-export interface DemoSong {
-  /** Path relative to the manifest, e.g. "amiga/song.mod". */
-  file: string;
-  title: string;
-  format: string;
-  channels: number;
-  bytes: number;
-}
+export type DemoBrowserMode = 'load' | 'add';
 
-export interface DemoCollection {
-  id: string;
-  name: string;
-  songs: DemoSong[];
-}
-
-const props = defineProps<{
-  modelValue: boolean;
-  /** Directory the manifest and modules are served from. */
-  baseUrl?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean;
+    /** Directory the manifest and modules are served from. */
+    baseUrl?: string;
+    mode?: DemoBrowserMode;
+    /** In `add` mode, the files already queued, shown as such. */
+    queuedFiles?: ReadonlySet<string>;
+  }>(),
+  { mode: 'load' },
+);
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
   select: [url: string, song: DemoSong];
 }>();
 
-const collections = ref<DemoCollection[]>([]);
-const activeCollectionId = ref<string | null>(null);
-const loading = ref(false);
-const error = ref<string | null>(null);
-const busyFile = ref<string | null>(null);
-let loaded = false;
+const base = computed(() => props.baseUrl ?? DEMO_BASE_URL);
+const { collections, loading, error, load } = useDemoManifest(base.value);
 
-const base = computed(() => props.baseUrl ?? 'demos');
+const activeCollectionId = ref<string | null>(null);
+const busyFile = ref<string | null>(null);
+
+const isAddMode = computed(() => props.mode === 'add');
+const title = computed(() =>
+  isAddMode.value ? 'Add to playlist' : 'Demo songs',
+);
 
 const activeSongs = computed(() => {
   const collection = collections.value.find(
@@ -102,44 +105,28 @@ const activeSongs = computed(() => {
   return collection?.songs ?? [];
 });
 
+function isQueued(song: DemoSong): boolean {
+  return props.queuedFiles?.has(song.file) ?? false;
+}
+
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${Math.round(bytes / 1024)} KB`;
 }
 
 async function loadManifest() {
-  if (loaded) return;
-  loading.value = true;
-  error.value = null;
-  try {
-    const response = await fetch(`${base.value}/index.json`);
-    if (!response.ok) {
-      throw new Error(`${response.status} ${response.statusText}`);
-    }
-    const manifest = (await response.json()) as {
-      collections?: DemoCollection[];
-    };
-    collections.value = manifest.collections ?? [];
-    activeCollectionId.value = collections.value[0]?.id ?? null;
-    if (collections.value.length === 0) {
-      error.value = 'No demo songs are published.';
-    }
-    loaded = true;
-  } catch (err) {
-    // The collection is published separately from the app, so a missing or
-    // unreachable manifest is an expected state rather than a failure.
-    error.value = `Demo songs are unavailable (${(err as Error).message}).`;
-  } finally {
-    loading.value = false;
-  }
+  await load();
+  activeCollectionId.value ??= collections.value[0]?.id ?? null;
 }
 
-async function select(song: DemoSong) {
-  busyFile.value = song.file;
+function select(song: DemoSong) {
+  // In add mode the pick is cheap and the dialog stays open, so nothing is
+  // marked busy -- the queued tick is the feedback instead.
+  if (!isAddMode.value) busyFile.value = song.file;
   try {
     emit('select', `${base.value}/${song.file}`, song);
   } finally {
-    busyFile.value = null;
+    if (!isAddMode.value) busyFile.value = null;
   }
 }
 
@@ -279,6 +266,15 @@ watch(
 .demo-song.busy {
   opacity: 1;
   border-color: rgba(77, 242, 197, 0.5);
+}
+
+.demo-song.queued {
+  opacity: 0.55;
+}
+
+.demo-song-queued {
+  color: rgba(77, 242, 197, 0.9);
+  margin-right: 6px;
 }
 
 .demo-song-title {

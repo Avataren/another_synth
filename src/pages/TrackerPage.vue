@@ -74,10 +74,20 @@
           <button
             type="button"
             class="song-button ghost"
-            @click="showDemoBrowser = true"
+            @click="openDemoBrowser('load')"
             :disabled="isLoadingSong"
           >
             Demos
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
+            :class="{ active: jukebox.active }"
+            :disabled="isLoadingSong"
+            title="Play the demo collection as a shuffled playlist"
+            @click="toggleJukebox"
+          >
+            Jukebox
           </button>
           <label class="toggle toolbar-toggle">
             <input
@@ -115,7 +125,11 @@
         </div>
       </div>
 
-      <div class="top-grid" v-show="!isFullscreen">
+      <div
+        class="top-grid"
+        :class="{ 'with-jukebox': jukebox.active }"
+        v-show="!isFullscreen"
+      >
         <SequenceEditor
           ref="sequenceEditorRef"
           class="top-panel"
@@ -315,6 +329,29 @@
             </div>
           </div>
         </div>
+
+        <JukeboxPanel
+          v-if="jukebox.active"
+          class="top-panel"
+          :entries="jukebox.entries"
+          :current-index="jukebox.currentIndex"
+          :current="jukebox.current"
+          :has-entries="jukebox.hasEntries"
+          :is-playing="isPlaying"
+          :repeat="jukebox.repeat"
+          :busy="jukeboxBusy || isLoadingSong"
+          @next="stepJukebox(1)"
+          @previous="stepJukebox(-1)"
+          @toggle-play="toggleJukeboxPlayback"
+          @shuffle="jukebox.reshuffle()"
+          @play-index="playJukeboxIndex($event)"
+          @remove="handleJukeboxRemove"
+          @add="openDemoBrowser('add')"
+          @refill="handleJukeboxRefill"
+          @clear="handleJukeboxClear"
+          @close="stopJukebox"
+          @update:repeat="jukebox.setRepeat($event)"
+        />
 
         <div class="instrument-panel top-panel">
           <div class="panel-header">
@@ -584,6 +621,8 @@
     </div>
     <DemoSongBrowser
       v-model="showDemoBrowser"
+      :mode="demoBrowserMode"
+      :queued-files="jukeboxQueuedFiles"
       @select="handleDemoSelect"
     />
 
@@ -638,6 +677,16 @@ import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
+import type { DemoBrowserMode } from 'src/components/tracker/DemoSongBrowser.vue';
+import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
+import {
+  useDemoManifest,
+  type DemoSong,
+} from 'src/composables/useDemoManifest';
+import {
+  useJukeboxStore,
+  entryFromDemoSong,
+} from 'src/stores/jukebox-store';
 import StereoLevelMeter from 'src/components/tracker/StereoLevelMeter.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
@@ -1773,14 +1822,172 @@ const fileIOContext: TrackerFileIOContext = {
 
 const showDemoBrowser = ref(false);
 
-/** Load a demo module from the server, then close the browser. */
-async function handleDemoSelect(url: string) {
+/**
+ * What picking a song in the demo browser does: replace the song in the
+ * tracker, or queue it on the jukebox playlist.
+ */
+const demoBrowserMode = ref<DemoBrowserMode>('load');
+
+function openDemoBrowser(mode: DemoBrowserMode) {
+  demoBrowserMode.value = mode;
+  showDemoBrowser.value = true;
+}
+
+async function handleDemoSelect(url: string, song: DemoSong) {
+  if (demoBrowserMode.value === 'add') {
+    // The dialog stays open so a run of songs can be queued in one visit.
+    jukebox.add(song);
+    return;
+  }
   showDemoBrowser.value = false;
+  // Loading a song by hand is not part of the playlist, so stop the jukebox
+  // rather than have it yank the song away again when this one ends.
+  stopJukebox();
   await loadSongFromUrl(url);
 }
 
 const { handleSaveSongFile, handleLoadSongFile, loadSongFromUrl } =
   useTrackerFileIO(fileIOContext);
+
+// ============================================
+// Jukebox
+// ============================================
+
+const jukebox = useJukeboxStore();
+const { load: loadDemoManifest, allSongs: allDemoSongs } = useDemoManifest();
+
+/** A jukebox song is being fetched and its instruments rebuilt. */
+const jukeboxBusy = ref(false);
+
+let teardownSongEnd: (() => void) | null = null;
+
+/** Files already queued, so the browser can show them as such in add mode. */
+const jukeboxQueuedFiles = computed(
+  () => new Set(jukebox.entries.map((entry) => entry.file)),
+);
+
+/**
+ * Load a song from the playlist and start it.
+ *
+ * A module whose bytes are unreachable or unparseable would otherwise stall
+ * the jukebox on a song that never plays, so a failure moves on to the next
+ * one -- but only so many times, or a playlist of nothing but broken files
+ * would spin through itself forever.
+ */
+async function playJukeboxIndex(index: number, attemptsLeft = 3): Promise<void> {
+  if (jukeboxBusy.value) return;
+  jukebox.setCurrentIndex(index);
+  const entry = jukebox.current;
+  if (!entry) return;
+
+  jukeboxBusy.value = true;
+  try {
+    // Set before loading: initializePlayback re-applies this to the engine.
+    playbackStore.setLoopSong(false);
+    await loadSongFromUrl(entry.url);
+    // handlePlaySong starts from the edit cursor, which is still sitting
+    // wherever the previous song left it. A playlist entry starts at the top.
+    activeRow.value = 0;
+    await handlePlaySong();
+  } catch (error) {
+    console.warn(`[Jukebox] Skipping ${entry.file}`, error);
+    if (attemptsLeft <= 1) {
+      stopJukebox();
+      return;
+    }
+    const next = jukebox.indexAfter(1);
+    if (next === null) {
+      stopJukebox();
+      return;
+    }
+    jukeboxBusy.value = false;
+    await playJukeboxIndex(next, attemptsLeft - 1);
+    return;
+  } finally {
+    jukeboxBusy.value = false;
+  }
+}
+
+/** Move `step` places through the playlist and play what is there. */
+async function stepJukebox(step: number): Promise<void> {
+  const next = jukebox.indexAfter(step);
+  if (next === null) {
+    // The end of a playlist that does not repeat.
+    stopJukebox();
+    return;
+  }
+  await playJukeboxIndex(next);
+}
+
+/** Queue every published demo, in random order. */
+async function fillJukeboxFromManifest(pinnedFile?: string): Promise<void> {
+  await loadDemoManifest();
+  jukebox.setEntries(allDemoSongs().map(entryFromDemoSong), true, pinnedFile);
+}
+
+async function startJukebox(): Promise<void> {
+  jukebox.setActive(true);
+  if (!jukebox.hasEntries) {
+    await fillJukeboxFromManifest();
+  }
+  await playJukeboxIndex(Math.max(0, jukebox.currentIndex));
+}
+
+/**
+ * Leave jukebox mode. Playback is left as it is -- the song that is playing
+ * keeps playing -- but it goes back to looping on its own rather than handing
+ * over to the next entry.
+ */
+function stopJukebox(): void {
+  if (!jukebox.active) return;
+  jukebox.setActive(false);
+  playbackStore.setLoopSong(true);
+}
+
+function toggleJukebox(): void {
+  if (jukebox.active) {
+    stopJukebox();
+    return;
+  }
+  void startJukebox();
+}
+
+/** The panel's play/pause button: resume or pause whatever is queued. */
+function toggleJukeboxPlayback(): void {
+  if (isPlaying.value) {
+    handlePause();
+    return;
+  }
+  if (isPaused.value) {
+    void handlePlaySong();
+    return;
+  }
+  void playJukeboxIndex(Math.max(0, jukebox.currentIndex));
+}
+
+function handleJukeboxRemove(index: number): void {
+  const removedPlaying = jukebox.removeAt(index);
+  if (!removedPlaying) return;
+  // The song that was playing is no longer in the playlist. Stop it and pick
+  // up whatever slid into its place.
+  if (!jukebox.hasEntries) {
+    handleStop();
+    return;
+  }
+  if (jukebox.active) void playJukeboxIndex(jukebox.currentIndex);
+}
+
+async function handleJukeboxRefill(): Promise<void> {
+  // Pin whatever is playing so refilling the queue does not interrupt it.
+  await fillJukeboxFromManifest(
+    isPlaying.value ? jukebox.current?.file : undefined,
+  );
+}
+
+function handleJukeboxClear(): void {
+  jukebox.clear();
+  handleStop();
+}
 
 // New Song with confirmation
 function handleNewSong() {
@@ -1970,6 +2177,12 @@ onMounted(async () => {
   keyboardStore.syncMidiSetting(userSettings.value.enableMidi);
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('resize', handleWindowResize);
+  // Advancing the playlist needs this page's song loading and instrument
+  // rebuilding, so the jukebox only runs while the tracker is on screen.
+  teardownSongEnd = playbackStore.onSongEnd(() => {
+    if (!jukebox.active) return;
+    void stepJukebox(1);
+  });
   handleWindowResize();
   visualizerReady.value = false;
   await nextTick();
@@ -2119,6 +2332,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize);
   teardownTrackScrollSync?.();
   teardownTrackWheelScroll?.();
+  teardownSongEnd?.();
+  teardownSongEnd = null;
   // Cancel pending scroll RAF
   if (scrollRafId !== null) {
     cancelAnimationFrame(scrollRafId);
@@ -2294,6 +2509,13 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   width: 100%;
   contain: layout style;
+}
+
+/* The playlist takes a column of its own rather than covering the tracker:
+   the point of the jukebox is that everything else stays where it was. */
+.top-grid.with-jukebox {
+  grid-template-columns: 0.9fr 1.3fr 1fr 1fr;
+  max-width: 1900px;
 }
 
 .top-panel {
@@ -3285,7 +3507,8 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
-  .top-grid {
+  .top-grid,
+  .top-grid.with-jukebox {
     grid-template-columns: 1fr;
   }
 }
