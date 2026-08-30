@@ -332,7 +332,6 @@
 
         <JukeboxPanel
           v-if="jukebox.active"
-          class="top-panel"
           :entries="jukebox.entries"
           :current-index="jukebox.currentIndex"
           :current="jukebox.current"

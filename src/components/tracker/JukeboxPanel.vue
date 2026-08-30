@@ -1,152 +1,154 @@
 <template>
   <div class="jukebox-panel">
-    <div class="panel-header">
-      <div class="panel-title">
-        Jukebox
-        <span class="playlist-count">{{ entries.length }}</span>
-      </div>
-      <button
-        type="button"
-        class="jukebox-close"
-        title="Close the jukebox"
-        @click="$emit('close')"
-      >
-        ×
-      </button>
-    </div>
-
-    <div class="now-playing" :class="{ idle: !current }">
-      <div class="now-playing-label">
-        {{ isPlaying ? 'Now playing' : 'Up next' }}
-      </div>
-      <div class="now-playing-title" :title="current?.title ?? ''">
-        {{ current?.title ?? 'Nothing queued' }}
-      </div>
-      <div v-if="current" class="now-playing-meta">
-        {{ current.format }} · {{ current.channels }}ch ·
-        {{ formatSize(current.bytes) }}
-      </div>
-    </div>
-
-    <div class="jukebox-transport">
-      <button
-        type="button"
-        class="jukebox-btn"
-        title="Previous song"
-        :disabled="!hasEntries || busy"
-        @click="$emit('previous')"
-      >
-        <q-icon name="skip_previous" size="18px" />
-      </button>
-      <button
-        type="button"
-        class="jukebox-btn primary"
-        :title="isPlaying ? 'Pause' : 'Play'"
-        :disabled="!hasEntries || busy"
-        @click="$emit('toggle-play')"
-      >
-        <q-icon :name="isPlaying ? 'pause' : 'play_arrow'" size="18px" />
-      </button>
-      <button
-        type="button"
-        class="jukebox-btn"
-        title="Next song"
-        :disabled="!hasEntries || busy"
-        @click="$emit('next')"
-      >
-        <q-icon name="skip_next" size="18px" />
-      </button>
-      <button
-        type="button"
-        class="jukebox-btn"
-        title="Shuffle the playlist"
-        :disabled="entries.length < 2"
-        @click="$emit('shuffle')"
-      >
-        <q-icon name="shuffle" size="18px" />
-      </button>
-      <button
-        type="button"
-        class="jukebox-btn"
-        :class="{ active: repeat }"
-        :title="repeat ? 'Repeat the playlist' : 'Stop after the last song'"
-        @click="$emit('update:repeat', !repeat)"
-      >
-        <q-icon name="repeat" size="18px" />
-      </button>
-    </div>
-
-    <div v-if="busy" class="jukebox-status">Loading song…</div>
-
-    <div ref="listContainer" class="playlist">
-      <div
-        v-for="(entry, index) in entries"
-        :key="entry.file"
-        :ref="(el) => setRowRef(index, el)"
-        class="playlist-item"
-        :class="{ current: index === currentIndex }"
-        :title="entry.title"
-        @dblclick="$emit('play-index', index)"
-      >
-        <div class="playlist-index">
-          <q-icon
-            v-if="index === currentIndex && isPlaying"
-            name="volume_up"
-            size="13px"
-          />
-          <span v-else>{{ index + 1 }}</span>
+    <div class="jukebox-body">
+      <div class="panel-header">
+        <div class="panel-title">
+          Jukebox
+          <span class="playlist-count">{{ entries.length }}</span>
         </div>
-        <div class="playlist-body">
-          <div class="playlist-title">{{ entry.title }}</div>
-          <div class="playlist-meta">
-            {{ entry.format }} · {{ entry.channels }}ch ·
-            {{ formatSize(entry.bytes) }}
+        <button
+          type="button"
+          class="jukebox-close"
+          title="Close the jukebox"
+          @click="$emit('close')"
+        >
+          ×
+        </button>
+      </div>
+
+      <div class="now-playing" :class="{ idle: !current }">
+        <div class="now-playing-label">
+          {{ isPlaying ? 'Now playing' : 'Up next' }}
+        </div>
+        <div class="now-playing-title" :title="current?.title ?? ''">
+          {{ current?.title ?? 'Nothing queued' }}
+        </div>
+        <div v-if="current" class="now-playing-meta">
+          {{ current.format }} · {{ current.channels }}ch ·
+          {{ formatSize(current.bytes) }}
+        </div>
+      </div>
+
+      <div class="jukebox-transport">
+        <button
+          type="button"
+          class="jukebox-btn"
+          title="Previous song"
+          :disabled="!hasEntries || busy"
+          @click="$emit('previous')"
+        >
+          <q-icon name="skip_previous" size="18px" />
+        </button>
+        <button
+          type="button"
+          class="jukebox-btn primary"
+          :title="isPlaying ? 'Pause' : 'Play'"
+          :disabled="!hasEntries || busy"
+          @click="$emit('toggle-play')"
+        >
+          <q-icon :name="isPlaying ? 'pause' : 'play_arrow'" size="18px" />
+        </button>
+        <button
+          type="button"
+          class="jukebox-btn"
+          title="Next song"
+          :disabled="!hasEntries || busy"
+          @click="$emit('next')"
+        >
+          <q-icon name="skip_next" size="18px" />
+        </button>
+        <button
+          type="button"
+          class="jukebox-btn"
+          title="Shuffle the playlist"
+          :disabled="entries.length < 2"
+          @click="$emit('shuffle')"
+        >
+          <q-icon name="shuffle" size="18px" />
+        </button>
+        <button
+          type="button"
+          class="jukebox-btn"
+          :class="{ active: repeat }"
+          :title="repeat ? 'Repeat the playlist' : 'Stop after the last song'"
+          @click="$emit('update:repeat', !repeat)"
+        >
+          <q-icon name="repeat" size="18px" />
+        </button>
+      </div>
+
+      <div v-if="busy" class="jukebox-status">Loading song…</div>
+
+      <div ref="listContainer" class="playlist">
+        <div
+          v-for="(entry, index) in entries"
+          :key="entry.file"
+          :ref="(el) => setRowRef(index, el)"
+          class="playlist-item"
+          :class="{ current: index === currentIndex }"
+          :title="entry.title"
+          @dblclick="$emit('play-index', index)"
+        >
+          <div class="playlist-index">
+            <q-icon
+              v-if="index === currentIndex && isPlaying"
+              name="volume_up"
+              size="13px"
+            />
+            <span v-else>{{ index + 1 }}</span>
+          </div>
+          <div class="playlist-body">
+            <div class="playlist-title">{{ entry.title }}</div>
+            <div class="playlist-meta">
+              {{ entry.format }} · {{ entry.channels }}ch ·
+              {{ formatSize(entry.bytes) }}
+            </div>
+          </div>
+          <div class="playlist-actions">
+            <button
+              type="button"
+              title="Play this song"
+              :disabled="busy"
+              @click.stop="$emit('play-index', index)"
+            >
+              ▶
+            </button>
+            <button
+              type="button"
+              title="Remove from the playlist"
+              @click.stop="$emit('remove', index)"
+            >
+              ×
+            </button>
           </div>
         </div>
-        <div class="playlist-actions">
-          <button
-            type="button"
-            title="Play this song"
-            :disabled="busy"
-            @click.stop="$emit('play-index', index)"
-          >
-            ▶
-          </button>
-          <button
-            type="button"
-            title="Remove from the playlist"
-            @click.stop="$emit('remove', index)"
-          >
-            ×
-          </button>
+
+        <div v-if="!hasEntries" class="playlist-empty">
+          The playlist is empty. Add some demo songs to get going.
         </div>
       </div>
 
-      <div v-if="!hasEntries" class="playlist-empty">
-        The playlist is empty. Add some demo songs to get going.
+      <div class="jukebox-controls">
+        <button type="button" class="jukebox-text-btn" @click="$emit('add')">
+          + Add songs
+        </button>
+        <button
+          type="button"
+          class="jukebox-text-btn ghost"
+          :disabled="!hasEntries"
+          @click="$emit('refill')"
+        >
+          Refill all
+        </button>
+        <button
+          type="button"
+          class="jukebox-text-btn ghost"
+          :disabled="!hasEntries"
+          @click="$emit('clear')"
+        >
+          Clear
+        </button>
       </div>
-    </div>
-
-    <div class="jukebox-controls">
-      <button type="button" class="jukebox-text-btn" @click="$emit('add')">
-        + Add songs
-      </button>
-      <button
-        type="button"
-        class="jukebox-text-btn ghost"
-        :disabled="!hasEntries"
-        @click="$emit('refill')"
-      >
-        Refill all
-      </button>
-      <button
-        type="button"
-        class="jukebox-text-btn ghost"
-        :disabled="!hasEntries"
-        @click="$emit('clear')"
-      >
-        Clear
-      </button>
     </div>
   </div>
 </template>
@@ -212,7 +214,24 @@ watch(
 </script>
 
 <style scoped>
+/*
+ * The panel must not make the top row any taller than it already was -- every
+ * pixel it adds comes straight off the pattern area below, which is the part
+ * of the screen actually worth looking at.
+ *
+ * So the grid item itself holds nothing: its only child is taken out of flow,
+ * which leaves the item with no content height to contribute. The row goes on
+ * being sized by the panels that were always there, and the body stretches to
+ * fill whatever that turns out to be, with the playlist scrolling inside it.
+ */
 .jukebox-panel {
+  position: relative;
+  min-height: 220px;
+}
+
+.jukebox-body {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -334,8 +353,10 @@ watch(
   flex-direction: column;
   gap: 3px;
   overflow-y: auto;
+  /* The one part that gives: everything else in the panel is a fixed size, so
+     the playlist takes whatever height is left and scrolls past it. */
+  flex: 1 1 0;
   min-height: 0;
-  max-height: 200px;
 }
 
 .playlist::-webkit-scrollbar {
