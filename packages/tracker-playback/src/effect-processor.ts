@@ -174,6 +174,15 @@ export interface TrackEffectState {
   vibratoSpeed: number;
   vibratoDepth: number;
   vibratoPos: number;
+  /**
+   * Whether a vibrato offset is currently bending this channel.
+   *
+   * FT2 leaves the channel period alone on a row whose cell is empty, so a
+   * vibrato holds its current offset there rather than springing back to the
+   * note. Tracking this lets tick 0 tell "no effect, hold what vibrato set"
+   * apart from "no effect, nothing to hold".
+   */
+  vibratoApplied: boolean;
   vibratoWaveform: number; // 0=sine, 1=ramp down, 2=square, 3=random
   /**
    * Whether a new note restarts the vibrato waveform.
@@ -302,6 +311,7 @@ export function createTrackEffectState(
     vibratoSpeed: 0,
     vibratoDepth: 0,
     vibratoPos: 0,
+    vibratoApplied: false,
     vibratoWaveform: 0,
     vibratoRetrigger: true,
 
@@ -1163,8 +1173,22 @@ export function processEffectTick0(
   // row instead of a continuous wave. The position itself only advances on
   // ticks after the first, so this re-states the value tick 0 already holds
   // rather than moving it.
+  // An empty cell counts as well as a `400`. FT2's effect handler returns
+  // early on a row carrying no effect at all, leaving the channel period
+  // untouched, so a vibrato simply holds its offset across those rows.
+  //
+  // jt_911.xm is written that way: `41F` on row 0 and then `400` only every
+  // fourth row, with the rows between empty. Springing back to the note on
+  // each of those turns one slow wave into a wobble that jerks to centre three
+  // rows out of four -- and because the position keeps creeping, the jerk
+  // grows to most of a tone. A cell carrying some *other* effect still
+  // re-states the note, which is the conservative reading.
   const continuesVibrato =
-    (effect?.type === 'vibrato' || effect?.type === 'vibratoVol') &&
+    newNote === undefined &&
+    (!effect ||
+      effect.type === 'vibrato' ||
+      effect.type === 'vibratoVol') &&
+    state.vibratoApplied &&
     state.vibratoDepth > 0;
 
   if (!commands.some((cmd) => cmd.kind === 'pitch')) {
@@ -1310,6 +1334,7 @@ export function processEffectTickN(
     case 'fineVibrato':
       // Apply vibrato
       state.vibratoPos += state.vibratoSpeed;
+      state.vibratoApplied = true;
       pushPitch(
         vibratoFrequency(
           state,
@@ -1321,6 +1346,7 @@ export function processEffectTickN(
     case 'vibratoVol':
       // Vibrato + volume slide
       state.vibratoPos += state.vibratoSpeed;
+      state.vibratoApplied = true;
       pushPitch(
         vibratoFrequency(
           state,
@@ -1692,6 +1718,7 @@ export function processVolumeColumnTickN(
  */
 export function resetEffectStateForNote(state: TrackEffectState): void {
   if (state.vibratoRetrigger) state.vibratoPos = 0;
+  state.vibratoApplied = false;
   if (state.tremoloRetrigger) state.tremoloPos = 0;
   state.arpeggioTick = 0;
   state.retriggerTick = 0;

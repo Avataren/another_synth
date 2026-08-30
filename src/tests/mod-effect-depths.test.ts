@@ -144,6 +144,54 @@ describe('vibrato depth is measured in period units', () => {
     expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15.9375, 4);
   });
 
+  it('holds the offset across rows carrying no effect at all', () => {
+    // FT2's effect handler returns early on an empty cell, leaving the channel
+    // period untouched, so a vibrato simply keeps its offset there.
+    //
+    // jt_911.xm relies on it: `41F` on row 0, then `400` only every fourth
+    // row, with the rows between empty. Springing back to the note on those
+    // turns one slow wave into a wobble that jerks to centre three rows out of
+    // four -- and since the position keeps creeping, the jerk grows to most of
+    // a tone.
+    const state = stateOnC2();
+    state.vibratoWaveform = 2;
+    startNote(state, { type: 'vibrato', paramX: 4, paramY: 8 });
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, { type: 'vibrato', paramX: 4, paramY: 8 }, tick, 6);
+    }
+
+    // The next row is empty: no note, no effect.
+    const { commands } = processEffectTick0(
+      state,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      6,
+    );
+
+    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2 + 15.9375, 4);
+  });
+
+  it('starts a new note from its own pitch, not the held offset', () => {
+    // The hold must not outlive the note it belongs to.
+    const state = stateOnC2();
+    state.vibratoWaveform = 2;
+    startNote(state, { type: 'vibrato', paramX: 4, paramY: 8 });
+    processEffectTickN(state, { type: 'vibrato', paramX: 4, paramY: 8 }, 1, 6);
+
+    const { commands } = processEffectTick0(
+      state,
+      undefined,
+      48,
+      255,
+      freqOf(PERIOD_C2),
+      6,
+    );
+
+    expect(periodOfLastPitch(commands)).toBeCloseTo(PERIOD_C2, 4);
+  });
+
   it('does not disturb the channel pitch itself', () => {
     // Vibrato is a deviation around the note, not a slide: the next tick must
     // swing from the original period, not from the previous tick's.

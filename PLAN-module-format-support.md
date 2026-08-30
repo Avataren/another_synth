@@ -1590,6 +1590,46 @@ check; the direction rode along unexamined. Fixing one of them also surfaced tha
 C-1, sits on ProTracker's longest period, so bending down from it clamps: it now measures the
 upward half and says why.
 
+### D75 — A vibrato holds its offset through empty rows
+
+Follow-up to D74, same song: *"at pattern 16 I have the same pattern with 41f 400 and it goes
+out of tune badly, I think the vibrato is either too slow or too deep."*
+
+**The depth is right, and the XM spec settles it.** The format doc gives
+`Frequency = 8363*1712/Period` for the Amiga table, so XM's Amiga period for C-4 is 1712
+where ProTracker's is 428 — exactly four times. `portamentoUnitScale: 4` is therefore correct
+for the Amiga path, and since FT2 runs one vibrato formula against both tables it is correct
+for the linear path too. The doc's `Period = 10*12*16*4 - Note*16*4` also confirms our 64
+units per semitone. Depth 15 really is about ±187 cents.
+
+**What was wrong is the rows in between.** Pattern 15 (order 7, shown as "Pattern 16") writes
+`41F` on row 0 and then `400` only every *fourth* row, with the rows between completely
+empty. FT2's effect handler returns early on an empty cell and never writes the channel
+period, so the vibrato simply holds its offset there.
+
+`processEffectTickN` already did the right thing — an empty cell emits nothing, so the pitch
+stays. `processEffectTick0` did not: its "emit at least one pitch to keep schedulers in sync"
+fallback wrote the bare note pitch, so every empty row sprang back to centre. D74 fixed that
+for rows carrying `400` but not for rows carrying nothing, which is three rows out of four
+here:
+
+```
+before:   0 -18 -36 -54 -71 -88 | 0 | 0 | 0 | -88 -104 ...
+after:    0 -18 -36 -54 -71 -88 | -88 | -88 | -88 | -88 -104 ...
+```
+
+Because the position keeps creeping while the note holds, the size of that spring-back grows
+with it — by row 12 it was jerking most of a tone, four times a bar, against two other
+channels playing the same note without vibrato. That is the "badly out of tune".
+
+A cell carrying some *other* effect still re-states the note, which is the conservative
+reading, and a new note always starts from its own pitch so the hold cannot outlive it.
+
+**Ruled out while looking**, both worth recording so they are not re-examined: pitch commands
+resolve to a voice per channel via `lastTrackVoice`, so the vibrato on channels 3-4 was never
+reaching the doubled channels 5-6; and the `C4`/`CC` in those cells is the volume column's
+`$c0-$cf` set-panning range, not a volume.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -1821,6 +1861,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **A vibrato holds its offset through empty rows** (D75). FT2 leaves the channel period alone on a cell carrying no effect, so a vibrato keeps its offset; tick 0's sync fallback wrote the bare note pitch instead. jt_911.xm writes `400` only every fourth row, so three rows in four sprang back to centre — by a growing amount, against two channels doubling the same note. The depth itself is confirmed correct against the XM spec's own `8363*1712/Period`. 828 green. |
 | 2026-08-30 | fix | **Vibrato bends down first, and holds across rows** (D74). Both ProTracker and FT2 add the offset to the period while the position is positive; this subtracted, inverting every vibrato's phase. And tick 0 of a continuing `400` row emitted the bare base pitch, resetting the wave to centre once a row. jt_911.xm holds `41F` (speed 1, depth 15) over a ten-row cycle across 2172 `400` rows, so both were plainly audible. Two tests had pinned the inverted sign. 826 green. |
 | 2026-08-30 | fix | **Ultimate Soundtracker read as its own format** (D73). Arpeggio is command 1 there, not 0, so lepeltheme.mod's `137` minor triad on all 64 rows of a channel played as a runaway portamento; and sample loop starts are byte offsets, so every looped sample looped past its own end. Both detected from the data, with jackdance.mod (command 0 arpeggio, 15 samples) pinning the over-detection boundary. Tests: `src/tests/mod-ultimate-soundtracker.test.ts`. 824 green. |
 | 2026-08-29 | fix | **Song global volume now scales the user's master level** (D72). `setMasterVolume` wrote `Gxx` values absolutely, so D66's restart pushing global volume 1.0 overrode a 50% master setting — sweetdre.xm (24 channels, no `Gxx`) clipped hard on every loop. Latent for any `Gxx` module before that. Tests: `src/tests/tracker-song-bank-master-volume.test.ts`. 702 green. |
