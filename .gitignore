@@ -33,3 +33,6 @@ yarn-error.log*
 # local .env files
 .env.local*
 rust-wasm/target
+
+# Local deploy helper -- carries a host password, never commit it.
+/deploy-local.sh
