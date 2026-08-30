@@ -416,10 +416,28 @@
                   <span class="toggle-description">
                     A higher rate gives the engine more room above the audible
                     band, so what does alias lands further out of the way. Costs
-                    CPU across the whole graph, and the browser may decline a
-                    rate the hardware will not run — the console reports the
-                    rate actually in use. <strong>Takes effect on reload.</strong>
+                    CPU across the whole graph. A rate the browser will not run
+                    falls back to 44.1 kHz.
+                    <template v-if="runningSampleRate !== null">
+                      Currently running at
+                      <strong>{{ formatRate(runningSampleRate) }}</strong
+                      >.
+                    </template>
                   </span>
+                  <div v-if="sampleRateNeedsReload" class="reload-notice">
+                    <span>
+                      The engine is still at
+                      {{ formatRate(runningSampleRate ?? 0) }} — the rate is set
+                      when audio starts, so this takes effect on reload.
+                    </span>
+                    <button
+                      type="button"
+                      class="reload-button"
+                      @click="reloadForSampleRate"
+                    >
+                      Reload now
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>
@@ -514,6 +532,7 @@ import {
   type TrackerTheme,
 } from 'src/stores/theme-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { peekSharedAudioSystem } from 'src/audio/shared-audio-system';
 
 const themeStore = useThemeStore();
 const {
@@ -649,6 +668,33 @@ function coerceColor(value: string | undefined): string {
 function onPickColor(key: ColorFieldKey, value: string) {
   themeDraft.value.colors[key] = value;
 }
+/**
+ * The rate the engine is actually running at, or null before audio starts.
+ *
+ * Peeked rather than requested: asking for the singleton would build a context
+ * purely to read this, before any user gesture. Re-read when the setting
+ * changes so the notice below appears as soon as the two disagree.
+ */
+const runningSampleRate = computed(() => {
+  void settings.value.audioSampleRate;
+  return peekSharedAudioSystem()?.audioContext.sampleRate ?? null;
+});
+
+const sampleRateNeedsReload = computed(
+  () =>
+    runningSampleRate.value !== null &&
+    runningSampleRate.value !== settings.value.audioSampleRate,
+);
+
+function formatRate(hz: number): string {
+  const khz = hz / 1000;
+  return `${Number.isInteger(khz) ? khz.toFixed(0) : khz.toFixed(1)} kHz`;
+}
+
+function reloadForSampleRate() {
+  window.location.reload();
+}
+
 </script>
 
 <style scoped>
@@ -697,6 +743,36 @@ function onPickColor(key: ColorFieldKey, value: string) {
 .fade-slide-leave-to {
   opacity: 0;
   transform: translateY(6px);
+}
+
+.reload-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 206, 84, 0.35);
+  background: rgba(255, 206, 84, 0.08);
+  font-size: 12px;
+}
+
+.reload-button {
+  padding: 5px 12px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 206, 84, 0.5);
+  background: rgba(255, 206, 84, 0.16);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reload-button:hover {
+  background: rgba(255, 206, 84, 0.26);
 }
 
 .select-setting {

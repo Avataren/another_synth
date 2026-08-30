@@ -65,7 +65,7 @@ export interface UserSettings {
    * A higher rate raises the graph's Nyquist, so what does fold lands further
    * out and is less audible. The browser resamples to the device rate at the
    * output. Applied when the audio context is created, so a change takes
-   * effect on reload.
+   * effect on reload; a rate the browser refuses falls back to 44.1 kHz.
    */
   audioSampleRate: number;
 }
@@ -100,7 +100,7 @@ export const defaultSettings: UserSettings = {
   sampleRemoveDcOffset: true,
   sampleLoopCrossfadeFrames: 0,
   sampleAntiAliasHighNotes: true,
-  audioSampleRate: 48000,
+  audioSampleRate: 96000,
 };
 
 const STORAGE_KEY = 'synth-user-settings';

@@ -662,12 +662,20 @@ export default class ModInstrument {
       }
     }
 
+    // The rate is worked out first because it selects the buffer: a source
+    // node accepts `buffer` exactly once, so it cannot be assigned a default
+    // and then swapped for the anti-aliased copy.
+    const frequency =
+      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
+    const playbackRate = this.calculatePlaybackRate(frequency);
+
     // Create audio nodes for this voice
     const source = this.audioContext.createBufferSource();
     const gainNode = this.audioContext.createGain();
     const panNode = this.audioContext.createStereoPanner();
 
-    source.buffer = this.audioBuffer;
+    source.buffer = this.bufferForRate(playbackRate / this.oversampleFactor);
+    source.playbackRate.value = playbackRate;
 
     // Configure looping (prepared once at load time; see prepareLoop)
     this.applyLoop(source);
@@ -681,15 +689,6 @@ export default class ModInstrument {
     if (pan !== undefined) {
       panNode.pan.value = (pan - 0.5) * 2;
     }
-
-    // Calculate playback rate from frequency
-    const frequency =
-      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
-    const playbackRate = this.calculatePlaybackRate(frequency);
-    source.playbackRate.value = playbackRate;
-    // Now that the speed-up is known, swap in the copy filtered for it. Still
-    // before start(), and the loop points are in seconds so they carry over.
-    source.buffer = this.bufferForRate(playbackRate / this.oversampleFactor);
 
     // Connect audio graph: source -> gain -> pan -> output
     source.connect(gainNode);
@@ -1353,12 +1352,20 @@ export default class ModInstrument {
       }, delay);
     }
 
+    // The rate is worked out first because it selects the buffer: a source
+    // node accepts `buffer` exactly once, so it cannot be assigned a default
+    // and then swapped for the anti-aliased copy.
+    const frequency =
+      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
+    const playbackRate = this.calculatePlaybackRate(frequency);
+
     // Create audio nodes for this voice
     const source = this.audioContext.createBufferSource();
     const gainNode = this.audioContext.createGain();
     const panNode = this.audioContext.createStereoPanner();
 
-    source.buffer = this.audioBuffer;
+    source.buffer = this.bufferForRate(playbackRate / this.oversampleFactor);
+    source.playbackRate.value = playbackRate;
 
     // Configure looping (prepared once at load time; see prepareLoop)
     this.applyLoop(source);
@@ -1377,15 +1384,6 @@ export default class ModInstrument {
     if (pan !== undefined) {
       panNode.pan.value = (pan - 0.5) * 2;
     }
-
-    // Calculate playback rate from frequency
-    const frequency =
-      options?.frequency ?? this.midiNoteToFrequency(noteNumber);
-    const playbackRate = this.calculatePlaybackRate(frequency);
-    source.playbackRate.value = playbackRate;
-    // Now that the speed-up is known, swap in the copy filtered for it. Still
-    // before start(), and the loop points are in seconds so they carry over.
-    source.buffer = this.bufferForRate(playbackRate / this.oversampleFactor);
 
     // Connect audio graph. The envelope, when the instrument has one, gets its
     // own stage ahead of the channel-volume node.

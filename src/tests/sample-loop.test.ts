@@ -62,11 +62,29 @@ function makeHarness() {
       };
     },
     createBufferSource: () => {
+      // A real AudioBufferSourceNode accepts `buffer` exactly once: assigning
+      // a second non-null buffer throws InvalidStateError. The mock enforces
+      // that, because a version of it that did not let a double assignment
+      // ship -- picking the anti-aliased buffer after setting a default one
+      // threw on the first note of every song.
+      let assigned: unknown = null;
       const source: SourceRecord & Record<string, unknown> = {
         loop: false,
         loopStart: 0,
         loopEnd: 0,
-        buffer: null,
+        get buffer() {
+          return assigned;
+        },
+        set buffer(next: unknown) {
+          if (next !== null && assigned !== null) {
+            throw new Error(
+              "InvalidStateError: Failed to set the 'buffer' property on " +
+                "'AudioBufferSourceNode': Cannot set buffer to non-null after " +
+                'it has been already been set to a non-null buffer',
+            );
+          }
+          assigned = next;
+        },
         playbackRate: {
           value: 1,
           setValueAtTime: vi.fn(),
@@ -264,6 +282,53 @@ describe('sample loops reach the source node', () => {
  * must not move is what you actually hear: the loop's duration in real time,
  * and the pitch.
  */
+/**
+ * Both note-start paths must set the source's buffer exactly once.
+ *
+ * A real AudioBufferSourceNode refuses a second non-null buffer, and choosing
+ * the anti-aliased copy means the choice has to be made *before* the buffer is
+ * assigned rather than by replacing it afterwards. Only noteOnAtTime was
+ * covered when that went in, so the immediate path threw on the first note of
+ * every song and no test noticed.
+ */
+describe('every path that starts a note', () => {
+  it('assigns the buffer once from noteOnAtTime', async () => {
+    const { instrument, sources } = makeHarness();
+    await instrument.loadPatch(
+      normalizedPatchFor({ frames: frames16, loopType: 1, loopStartFrames: 4, loopLengthFrames: 8 }),
+    );
+
+    expect(() =>
+      instrument.noteOnAtTime(60, 127, 0, { trackIndex: 0 }),
+    ).not.toThrow();
+    expect(sources[0]!.loop).toBe(true);
+  });
+
+  it('assigns the buffer once from noteOn', async () => {
+    const { instrument, sources } = makeHarness();
+    await instrument.loadPatch(
+      normalizedPatchFor({ frames: frames16, loopType: 1, loopStartFrames: 4, loopLengthFrames: 8 }),
+    );
+
+    expect(() => instrument.noteOn(60, 127)).not.toThrow();
+    expect(sources[0]!.loop).toBe(true);
+  });
+
+  it('assigns the buffer once for a note pitched into a filtered copy', async () => {
+    // Two octaves up selects a mipmap level, which is the case that made the
+    // buffer choice late enough to collide with the default assignment.
+    setSampleQuality({ oversampleFactor: 4, antiAliasHighNotes: true });
+    const { instrument } = makeHarness();
+    await instrument.loadPatch(
+      normalizedPatchFor({ frames: frames16, loopType: 0 }),
+    );
+
+    expect(() =>
+      instrument.noteOnAtTime(96, 127, 0, { trackIndex: 0 }),
+    ).not.toThrow();
+  });
+});
+
 describe('loop geometry survives oversampling', () => {
   const FACTOR = 4;
 

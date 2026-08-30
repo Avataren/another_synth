@@ -102,8 +102,11 @@ describe('sample quality defaults', () => {
     expect(defaultSettings.sampleLoopCrossfadeFrames).toBe(0);
   });
 
-  it('keeps the engine at 48 kHz by default', () => {
-    expect(defaultSettings.audioSampleRate).toBe(48000);
+  it('asks for 96 kHz by default', () => {
+    // Deliberately above the usual 48: it costs CPU across the whole graph but
+    // moves what aliasing remains further out of the way, and a browser that
+    // will not run it falls back to 44.1 rather than failing.
+    expect(defaultSettings.audioSampleRate).toBe(96000);
   });
 
   it('leaves already-stored choices alone', () => {
