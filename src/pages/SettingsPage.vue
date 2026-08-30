@@ -285,6 +285,144 @@
                 </div>
               </div>
             </section>
+
+            <section class="settings-section">
+              <div class="section-header">
+                <h2>Sample Quality</h2>
+              </div>
+              <div class="settings-content">
+                <p class="section-description">
+                  Web Audio resamples with linear interpolation and gives no say
+                  in it. These condition samples offline instead, before the
+                  browser ever touches them. They apply as samples load, so
+                  reload the song to hear a change on one already playing.
+                </p>
+
+                <div class="select-setting">
+                  <label class="select-label" for="oversample-factor">
+                    Sample oversampling
+                  </label>
+                  <select
+                    id="oversample-factor"
+                    class="setting-select"
+                    :value="String(settings.sampleOversampleFactor)"
+                    @change="
+                      updateSetting(
+                        'sampleOversampleFactor',
+                        Number(($event.target as HTMLSelectElement).value),
+                      )
+                    "
+                  >
+                    <option value="1">Off — as the file is</option>
+                    <option value="2">2x</option>
+                    <option value="4">4x (recommended)</option>
+                    <option value="8">8x — diminishing returns</option>
+                  </select>
+                  <span class="toggle-description">
+                    Reconstructs each sample with a windowed sinc at load, so
+                    the browser's own interpolation has far less to get wrong.
+                    Costs this multiple in sample memory.
+                  </span>
+                </div>
+
+                <div class="toggle-settings">
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.sampleAntiAliasHighNotes"
+                      @change="
+                        updateSetting(
+                          'sampleAntiAliasHighNotes',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Anti-alias high notes</span>
+                      <span class="toggle-description"
+                        >Samples played well above their own pitch push content
+                        past what the output can carry, and it folds back as
+                        inharmonic noise. This plays a pre-filtered copy
+                        instead. Oversampling cannot help here — the folding
+                        happens after the buffer is read.</span
+                      >
+                    </div>
+                  </label>
+
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.sampleRemoveDcOffset"
+                      @change="
+                        updateSetting(
+                          'sampleRemoveDcOffset',
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Remove DC offset</span>
+                      <span class="toggle-description"
+                        >Centres samples that sit off zero, which otherwise
+                        thump on every note and cost headroom for nothing.</span
+                      >
+                    </div>
+                  </label>
+
+                  <label class="toggle-setting">
+                    <input
+                      type="checkbox"
+                      :checked="settings.sampleLoopCrossfadeFrames > 0"
+                      @change="
+                        updateSetting(
+                          'sampleLoopCrossfadeFrames',
+                          ($event.target as HTMLInputElement).checked ? 64 : 0,
+                        )
+                      "
+                    />
+                    <div class="toggle-info">
+                      <span class="toggle-label">Smooth loop seams</span>
+                      <span class="toggle-description"
+                        >Crossfades the joint of a looping sample, removing the
+                        tick when its ends do not meet. Off by default:
+                        FastTracker 2 does not do this, so it changes how a
+                        module sounds rather than only how cleanly it
+                        plays.</span
+                      >
+                    </div>
+                  </label>
+                </div>
+
+                <div class="select-setting">
+                  <label class="select-label" for="audio-sample-rate">
+                    Audio engine sample rate
+                  </label>
+                  <select
+                    id="audio-sample-rate"
+                    class="setting-select"
+                    :value="String(settings.audioSampleRate)"
+                    @change="
+                      updateSetting(
+                        'audioSampleRate',
+                        Number(($event.target as HTMLSelectElement).value),
+                      )
+                    "
+                  >
+                    <option value="44100">44.1 kHz</option>
+                    <option value="48000">48 kHz (default)</option>
+                    <option value="88200">88.2 kHz</option>
+                    <option value="96000">96 kHz</option>
+                  </select>
+                  <span class="toggle-description">
+                    A higher rate gives the engine more room above the audible
+                    band, so what does alias lands further out of the way. Costs
+                    CPU across the whole graph, and the browser may decline a
+                    rate the hardware will not run — the console reports the
+                    rate actually in use. <strong>Takes effect on reload.</strong>
+                  </span>
+                </div>
+              </div>
+            </section>
           </template>
         </div>
       </transition>
@@ -559,6 +697,28 @@ function onPickColor(key: ColorFieldKey, value: string) {
 .fade-slide-leave-to {
   opacity: 0;
   transform: translateY(6px);
+}
+
+.select-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.select-label {
+  font-weight: 600;
+}
+
+.setting-select {
+  align-self: flex-start;
+  min-width: 220px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--input-background, rgba(255, 255, 255, 0.05));
+  color: inherit;
+  font: inherit;
 }
 
 .settings-section {

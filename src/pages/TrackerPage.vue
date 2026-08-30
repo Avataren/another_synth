@@ -630,6 +630,7 @@ import {
   trackWidthPx,
 } from 'src/components/tracker/track-metrics';
 import { visiblePageWindow } from 'src/components/tracker/page-window';
+import { setSampleQuality } from 'src/audio/sample-quality';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
@@ -711,6 +712,33 @@ const columnsPerTrack = computed(() =>
 );
 /** How many page numbers the instrument pager shows at once. */
 const INSTRUMENT_PAGE_WINDOW = 5;
+
+/**
+ * Push the sample-quality settings into the audio layer.
+ *
+ * They are read when a sample is loaded, so a change only reaches samples
+ * loaded afterwards -- reloading the song applies it to the ones already in
+ * memory. The audio context's own rate is separate again and is read when the
+ * context is built, so that one needs a page reload.
+ */
+function applySampleQualitySettings() {
+  setSampleQuality({
+    oversampleFactor: userSettings.value.sampleOversampleFactor,
+    removeDcOffset: userSettings.value.sampleRemoveDcOffset,
+    loopCrossfadeFrames: userSettings.value.sampleLoopCrossfadeFrames,
+    antiAliasHighNotes: userSettings.value.sampleAntiAliasHighNotes,
+  });
+}
+
+watch(
+  () => [
+    userSettings.value.sampleOversampleFactor,
+    userSettings.value.sampleRemoveDcOffset,
+    userSettings.value.sampleLoopCrossfadeFrames,
+    userSettings.value.sampleAntiAliasHighNotes,
+  ],
+  () => applySampleQualitySettings(),
+);
 
 /** The run of page numbers to show, sliding with the current page. */
 const visibleInstrumentPages = computed(() =>
@@ -1905,6 +1933,7 @@ onMounted(async () => {
   ensureActiveInstrument();
   // Apply master volume from user settings
   songBank.setUserMasterVolume(userSettings.value.masterVolume);
+  applySampleQualitySettings();
   // Skip reloading song if playback is already active (returning to page while playing)
   void initializePlayback(playbackMode.value, true);
   keyboardStore.setupGlobalKeyboardListeners();

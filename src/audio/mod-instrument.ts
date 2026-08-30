@@ -19,6 +19,14 @@ import {
 } from './types/synth-layout';
 import { decodeAudioAssetToFloat32Array } from './serialization/audio-asset-encoder';
 import { AudioAssetType } from './types/preset-types';
+import {
+  crossfadeLoop,
+  lowpassForRate,
+  mipLevelForRate,
+  oversample,
+  removeDcOffset,
+} from './sample-conditioning';
+import { getSampleQuality } from './sample-quality';
 
 /**
  * Fallback tick duration when a caller does not supply one: 2.5 / 125 BPM,
@@ -113,6 +121,8 @@ interface ActiveVoice {
   targetGain: number; // Track scheduled gain value (Web Audio param.value doesn't reflect scheduled changes)
 }
 
+const MIP_LEVELS = 4;
+
 export default class ModInstrument {
   /**
    * Voices available to this instrument.
@@ -184,6 +194,20 @@ export default class ModInstrument {
     return this.ready;
   }
 
+  /**
+   * How many buffer frames stand for one frame of the original sample.
+   *
+   * Oversampling lengthens the buffer without changing the rate it is declared
+   * at, so the pitch is corrected by scaling playbackRate instead -- declaring
+   * a higher rate would work too, but browsers reject buffer rates outside a
+   * supported range and 4x of a 44.1k asset is already past some of them.
+   */
+  private oversampleFactor = 1;
+  /** Conditioned mono data, kept to build anti-aliased copies on demand. */
+  private conditionedMono: Float32Array | null = null;
+  /** Anti-aliased copies by mip level; index 0 is the plain buffer. */
+  private mipBuffers: (AudioBuffer | null)[] = [];
+
   constructor(destination: AudioNode, audioContext: AudioContext) {
     this.audioContext = audioContext;
     this.outputNode = audioContext.createGain();
@@ -252,10 +276,25 @@ export default class ModInstrument {
     const frameCount = Math.max(1, Math.floor(data.length / channels));
     const isEmpty = data.length === 0;
 
+    // Offline conditioning. Tracker samples are mono; the interleaved path is
+    // left exactly as it was rather than conditioned channel by channel for a
+    // case that does not arise here.
+    let buffered = data;
+    let bufferFrames = frameCount;
+    this.oversampleFactor = 1;
+    this.conditionedMono = null;
+    this.mipBuffers = [];
+
+    if (!isEmpty && channels === 1) {
+      buffered = this.conditionSample(Float32Array.from(data), frameCount);
+      bufferFrames = buffered.length;
+      this.conditionedMono = buffered;
+    }
+
     // Create AudioBuffer
     this.audioBuffer = this.audioContext.createBuffer(
       channels,
-      frameCount,
+      bufferFrames,
       sampleRate,
     );
 
@@ -264,14 +303,17 @@ export default class ModInstrument {
       for (let ch = 0; ch < channels; ch++) {
         const channelData = this.audioBuffer.getChannelData(ch);
         for (let i = 0; i < channelData.length; i++) {
-          channelData[i] = data[i * channels + ch] ?? 0;
+          channelData[i] = buffered[i * channels + ch] ?? 0;
         }
       }
     }
     // If isEmpty, buffer is already initialized to silence
 
+    // Kept in *original* frames: 9xx offsets are expressed in them, and
+    // offsetSecondsForFrame scales by oversampleFactor when converting.
     this.sampleFrames = frameCount;
-    this.prepareLoop(channels, frameCount, sampleRate);
+    this.mipBuffers = [this.audioBuffer];
+    this.prepareLoop(channels, bufferFrames, sampleRate);
 
     this.ready = true;
     console.log(
@@ -279,6 +321,86 @@ export default class ModInstrument {
       this.audioBuffer.length,
       'frames',
     );
+  }
+
+  /**
+   * Apply the offline conditioning chosen in settings, in the order that keeps
+   * each step meaningful.
+   *
+   * DC first, so the crossfade blends centred material. The crossfade next,
+   * while frame indices still match the sample's own -- and only for a forward
+   * loop, since ping-pong reverses at the ends and is already continuous
+   * there. Oversampling last, because it invalidates those indices.
+   */
+  private conditionSample(
+    data: Float32Array,
+    frameCount: number,
+  ): Float32Array {
+    const quality = getSampleQuality();
+    const state = this.samplerState;
+
+    if (quality.removeDcOffset) removeDcOffset(data);
+
+    if (
+      quality.loopCrossfadeFrames > 0 &&
+      state &&
+      state.loopMode === SamplerLoopMode.Loop
+    ) {
+      const start = Math.max(
+        0,
+        Math.min(frameCount - 1, Math.round(state.loopStart * frameCount)),
+      );
+      const end = Math.max(
+        start + 1,
+        Math.min(frameCount, Math.round(state.loopEnd * frameCount)),
+      );
+      crossfadeLoop(data, start, end, quality.loopCrossfadeFrames);
+    }
+
+    const factor = Math.max(1, Math.floor(quality.oversampleFactor));
+    if (factor > 1) {
+      this.oversampleFactor = factor;
+      return oversample(data, factor);
+    }
+    return data;
+  }
+
+  /**
+   * The buffer to play at a given musical speed-up.
+   *
+   * Levels are built on demand: most samples are never pitched up far enough
+   * to need one, and filtering every sample for every octave at load would
+   * cost far more than it saves.
+   */
+  private bufferForRate(musicalRate: number): AudioBuffer | null {
+    const quality = getSampleQuality();
+    if (!quality.antiAliasHighNotes || !this.conditionedMono) {
+      return this.audioBuffer;
+    }
+
+    const level = mipLevelForRate(musicalRate, MIP_LEVELS);
+    if (level <= 0) return this.audioBuffer;
+
+    const cached = this.mipBuffers[level];
+    if (cached) return cached;
+
+    const base = this.audioBuffer;
+    if (!base) return null;
+
+    // The filter works in the buffer's own units, so the ratio it is given is
+    // the rate this buffer will actually be read at -- the musical speed-up
+    // times the oversampling. The worst rate in the level is used, so one copy
+    // covers the whole level.
+    const worstRate = Math.pow(2, level) * this.oversampleFactor;
+    const filtered = lowpassForRate(this.conditionedMono, worstRate);
+    const buffer = this.audioContext.createBuffer(
+      1,
+      filtered.length,
+      base.sampleRate,
+    );
+    buffer.getChannelData(0).set(filtered);
+    this.mipBuffers[level] = buffer;
+    return buffer;
   }
 
   /**
@@ -356,13 +478,16 @@ export default class ModInstrument {
     const buffer = this.audioBuffer;
     if (!buffer) return 0;
     const rate = buffer.sampleRate;
-    const sampleFrames = this.sampleFrames || buffer.length;
-    if (frames < sampleFrames) return frames / rate;
+    const factor = this.oversampleFactor;
+    const sampleFrames =
+      this.sampleFrames || Math.floor(buffer.length / factor);
+    // `frames` counts original sample frames, which oversampling multiplied.
+    if (frames < sampleFrames) return (frames * factor) / rate;
     if (this.loopEnabled) return this.loopStartSeconds;
     // No loop: start one frame from the end so the voice produces (almost)
     // nothing and still ends normally. Starting exactly at or past the end
     // yields a node that never fires onended, leaking the voice slot.
-    return Math.max(0, (sampleFrames - 1) / rate);
+    return Math.max(0, ((sampleFrames - 1) * factor) / rate);
   }
 
   /**
@@ -562,6 +687,9 @@ export default class ModInstrument {
       options?.frequency ?? this.midiNoteToFrequency(noteNumber);
     const playbackRate = this.calculatePlaybackRate(frequency);
     source.playbackRate.value = playbackRate;
+    // Now that the speed-up is known, swap in the copy filtered for it. Still
+    // before start(), and the loop points are in seconds so they carry over.
+    source.buffer = this.bufferForRate(playbackRate / this.oversampleFactor);
 
     // Connect audio graph: source -> gain -> pan -> output
     source.connect(gainNode);
@@ -885,7 +1013,10 @@ export default class ModInstrument {
     const detuneCents = this.samplerState.detune ?? 0;
     const detuneRatio = Math.pow(2, detuneCents / 1200);
 
-    return (frequency / rootFrequency) * detuneRatio;
+    // Scaled for oversampling: the buffer holds `oversampleFactor` frames per
+    // original frame at an unchanged declared rate, so it must be read that
+    // much faster to sound at the written pitch.
+    return (frequency / rootFrequency) * detuneRatio * this.oversampleFactor;
   }
 
   // Stub methods for compatibility with InstrumentV2 interface
@@ -1252,6 +1383,9 @@ export default class ModInstrument {
       options?.frequency ?? this.midiNoteToFrequency(noteNumber);
     const playbackRate = this.calculatePlaybackRate(frequency);
     source.playbackRate.value = playbackRate;
+    // Now that the speed-up is known, swap in the copy filtered for it. Still
+    // before start(), and the loop points are in seconds so they carry over.
+    source.buffer = this.bufferForRate(playbackRate / this.oversampleFactor);
 
     // Connect audio graph. The envelope, when the instrument has one, gets its
     // own stage ahead of the channel-volume node.

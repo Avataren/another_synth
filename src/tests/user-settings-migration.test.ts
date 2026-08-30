@@ -75,3 +75,45 @@ describe('master volume default', () => {
     expect(migrated.masterVolume).toBe(0.9);
   });
 });
+
+/**
+ * Sample-quality defaults.
+ *
+ * These are on by default because they make playback more faithful to the
+ * source rather than changing it: Web Audio's own interpolation is the thing
+ * being worked around. The loop crossfade is the exception -- it departs from
+ * what FastTracker 2 does, so it is opt-in.
+ *
+ * New fields need no migration: `loadSettings` spreads defaults under whatever
+ * was stored, so an existing blob picks them up.
+ */
+describe('sample quality defaults', () => {
+  it('oversamples by default, at 4x', () => {
+    expect(defaultSettings.sampleOversampleFactor).toBe(4);
+  });
+
+  it('anti-aliases high notes and removes DC by default', () => {
+    expect(defaultSettings.sampleAntiAliasHighNotes).toBe(true);
+    expect(defaultSettings.sampleRemoveDcOffset).toBe(true);
+  });
+
+  it('leaves loop seams alone by default', () => {
+    // A departure from FT2, so it is the user's choice to make.
+    expect(defaultSettings.sampleLoopCrossfadeFrames).toBe(0);
+  });
+
+  it('keeps the engine at 48 kHz by default', () => {
+    expect(defaultSettings.audioSampleRate).toBe(48000);
+  });
+
+  it('leaves already-stored choices alone', () => {
+    const migrated = migrateSettingsVersion({
+      settingsVersion: 0,
+      sampleOversampleFactor: 1,
+      audioSampleRate: 96000,
+    });
+
+    expect(migrated.sampleOversampleFactor).toBe(1);
+    expect(migrated.audioSampleRate).toBe(96000);
+  });
+});

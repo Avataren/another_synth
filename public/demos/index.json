@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-29T22:46:09.158Z",
+  "generated": "2026-08-30T10:07:28.967Z",
   "collections": [
     {
       "id": "amiga",
@@ -109,6 +109,15 @@
           "bytes": 68864
         },
         {
+          "title": "Amiga Boy",
+          "format": "XM",
+          "channels": 30,
+          "patterns": 52,
+          "instruments": 88,
+          "file": "amiga/amiga boy.xm",
+          "bytes": 182479
+        },
+        {
           "title": "black-hole",
           "format": "MOD",
           "channels": 4,
@@ -153,6 +162,15 @@
           "signature": "M.K.",
           "file": "amiga/hymn_to_aurora.mod",
           "bytes": 112590
+        },
+        {
+          "title": "im in love with you",
+          "format": "XM",
+          "channels": 14,
+          "patterns": 52,
+          "instruments": 30,
+          "file": "amiga/im in love with you.xm",
+          "bytes": 71179
         },
         {
           "title": "escapade",

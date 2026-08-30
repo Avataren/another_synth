@@ -1,9 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ModInstrument from 'src/audio/mod-instrument';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 import { SamplerLoopMode } from 'src/audio/types/synth-layout';
 import { buildXm, cell } from './helpers/xm-builder';
+import {
+  resetSampleQuality,
+  setSampleQuality,
+} from 'src/audio/sample-quality';
 
 /**
  * Sample looping, exercised through the real patch pipeline rather than by
@@ -14,12 +18,29 @@ import { buildXm, cell } from './helpers/xm-builder';
  * materialised at load: the loop region is followed by a reversed copy and the
  * loop spans both halves. 27 samples in the local XM corpus use ping-pong, and
  * they previously failed the `loopMode === 1` check and did not loop at all.
+ *
+ * These are about how loop points map from the file to the source node, so
+ * offline conditioning is switched off for them -- it multiplies frame counts
+ * and loop times by the oversampling factor, which would obscure the mapping
+ * rather than test it. The geometry *with* conditioning has its own test at
+ * the end of this file.
  */
 interface SourceRecord {
   loop: boolean;
   loopStart: number;
   loopEnd: number;
 }
+
+beforeEach(() => {
+  setSampleQuality({
+    oversampleFactor: 1,
+    removeDcOffset: false,
+    loopCrossfadeFrames: 0,
+    antiAliasHighNotes: false,
+  });
+});
+
+afterEach(resetSampleQuality);
 
 function makeHarness() {
   const sources: SourceRecord[] = [];
@@ -233,5 +254,85 @@ describe('sample loops reach the source node', () => {
 
     expect(sources[0]!.loopStart).toBeCloseTo(4 / 44100, 9);
     expect(sources[0]!.loopEnd).toBeCloseTo(12 / 44100, 9);
+  });
+});
+
+/**
+ * Oversampling lengthens the buffer without changing the rate it is declared
+ * at, and corrects the pitch by reading it proportionally faster. Everything
+ * measured in buffer time therefore scales with it, and the only thing that
+ * must not move is what you actually hear: the loop's duration in real time,
+ * and the pitch.
+ */
+describe('loop geometry survives oversampling', () => {
+  const FACTOR = 4;
+
+  /**
+   * Load the same sample at a given oversampling factor and report what the
+   * source node ends up playing, in terms that do not depend on the factor:
+   * real time, not buffer time.
+   */
+  async function measure(factor: number) {
+    setSampleQuality({
+      oversampleFactor: factor,
+      removeDcOffset: false,
+      loopCrossfadeFrames: 0,
+      antiAliasHighNotes: false,
+    });
+
+    const { instrument, sources, buffers } = makeHarness();
+    await instrument.loadPatch(
+      normalizedPatchFor({
+        frames: frames16,
+        loopType: 1,
+        loopStartFrames: 4,
+        loopLengthFrames: 8,
+      }),
+    );
+    instrument.noteOnAtTime(60, 127, 0, {
+      trackIndex: 0,
+      sampleOffsetFrames: 8,
+    });
+
+    const source = sources[0]!;
+    const rate = (source as unknown as { playbackRate: { value: number } })
+      .playbackRate.value;
+    const startCall = (
+      source as unknown as { start: { mock: { calls: number[][] } } }
+    ).start.mock.calls[0]!;
+
+    return {
+      bufferFrames: buffers[0]!.length,
+      rate,
+      // Buffer time divided by the rate it is read at is real time, which is
+      // what a listener hears.
+      loopSeconds: (source.loopEnd - source.loopStart) / rate,
+      loopStartSeconds: source.loopStart / rate,
+      offsetSeconds: (startCall[1] ?? 0) / rate,
+    };
+  }
+
+  it('changes nothing that is audible', async () => {
+    const plain = await measure(1);
+    const oversampled = await measure(FACTOR);
+
+    // The buffer really is bigger and really is read faster...
+    expect(oversampled.bufferFrames).toBe(plain.bufferFrames * FACTOR);
+    expect(oversampled.rate).toBeCloseTo(plain.rate * FACTOR, 9);
+
+    // ...and none of that reaches the listener: same loop, in the same place,
+    // for the same length of time, and the same 9xx start point.
+    expect(oversampled.loopSeconds).toBeCloseTo(plain.loopSeconds, 9);
+    expect(oversampled.loopStartSeconds).toBeCloseTo(plain.loopStartSeconds, 9);
+    expect(oversampled.offsetSeconds).toBeCloseTo(plain.offsetSeconds, 9);
+  });
+
+  it('puts the loop where the file asked, in real time', async () => {
+    const { loopSeconds, loopStartSeconds } = await measure(FACTOR);
+    const { rate } = await measure(1);
+
+    // Four frames in, eight frames long, at the rate this note plays.
+    expect(loopStartSeconds).toBeCloseTo(4 / 44100 / rate, 9);
+    expect(loopSeconds).toBeCloseTo(8 / 44100 / rate, 9);
   });
 });

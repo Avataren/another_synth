@@ -27,6 +27,47 @@ export interface UserSettings {
   showTrackerExtraEffectColumn: boolean;
   /** When true, MOD files use lightweight Web Audio playback instead of full WASM synth. Default: true. */
   useSimplifiedModInstruments: boolean;
+
+  /**
+   * Offline oversampling factor for tracker samples, or 1 to disable.
+   *
+   * Web Audio resamples buffer sources with linear interpolation and offers no
+   * say in it. Oversampling with a windowed sinc at load moves the content two
+   * octaves down relative to the buffer, where that interpolation costs about
+   * 0.1 dB instead of 1.8. Costs this multiple in sample memory.
+   */
+  sampleOversampleFactor: number;
+
+  /** Centre samples that sit off zero, so they do not thump on note-on. */
+  sampleRemoveDcOffset: boolean;
+
+  /**
+   * Crossfade length, in frames, for the seam of a forward loop; 0 disables.
+   *
+   * Off by default: it removes the tick from a loop whose ends do not meet,
+   * but FT2 does not do it, so it changes how a module sounds rather than
+   * only how cleanly it is reproduced.
+   */
+  sampleLoopCrossfadeFrames: number;
+
+  /**
+   * Filter samples played above their own pitch, to stop content folding.
+   *
+   * Oversampling cannot help with this -- the fold happens at the output,
+   * after the buffer is read -- so notes played an octave or more up need a
+   * copy with the offending content already removed.
+   */
+  sampleAntiAliasHighNotes: boolean;
+
+  /**
+   * AudioContext sample rate in Hz.
+   *
+   * A higher rate raises the graph's Nyquist, so what does fold lands further
+   * out and is less audible. The browser resamples to the device rate at the
+   * output. Applied when the audio context is created, so a change takes
+   * effect on reload.
+   */
+  audioSampleRate: number;
 }
 
 /**
@@ -54,7 +95,12 @@ export const defaultSettings: UserSettings = {
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
-  useSimplifiedModInstruments: true
+  useSimplifiedModInstruments: true,
+  sampleOversampleFactor: 4,
+  sampleRemoveDcOffset: true,
+  sampleLoopCrossfadeFrames: 0,
+  sampleAntiAliasHighNotes: true,
+  audioSampleRate: 48000,
 };
 
 const STORAGE_KEY = 'synth-user-settings';
