@@ -92,18 +92,38 @@ export interface AmigaPitchModelOptions {
   arpeggioWrapsToDC: boolean;
 }
 
-/** Index into PT_PERIOD_TABLE of the entry closest to the given period. */
+/**
+ * Index into PT_PERIOD_TABLE of the entry closest to the given period.
+ *
+ * The table is strictly descending, so the linear scan this replaces was doing
+ * 36 subtractions and absolute values to find something a binary search finds
+ * in six comparisons -- on a path (arpeggio, glissando snapping) that runs
+ * once per tick per channel. Ties keep the lower index, which is what the scan
+ * did with its strict `<`; since the table descends, the lower index is the
+ * *larger* period, so a period exactly between two entries snaps down in
+ * pitch either way.
+ */
 function nearestPeriodTableIndex(period: number): number {
-  let bestIndex = 0;
-  let bestDelta = Infinity;
-  for (let i = 0; i < PT_PERIOD_TABLE.length; i++) {
-    const delta = Math.abs(PT_PERIOD_TABLE[i]! - period);
-    if (delta < bestDelta) {
-      bestDelta = delta;
-      bestIndex = i;
-    }
+  const last = PT_PERIOD_TABLE.length - 1;
+  // Every delta from a non-finite period is Infinity or NaN, neither of which
+  // beat the scan's initial Infinity -- so it fell out holding index 0.
+  if (!Number.isFinite(period)) return 0;
+  if (period >= PT_PERIOD_TABLE[0]!) return 0;
+  if (period <= PT_PERIOD_TABLE[last]!) return last;
+
+  // Narrow to the neighbouring pair lo/hi with
+  // PT_PERIOD_TABLE[hi] < period < PT_PERIOD_TABLE[lo].
+  let lo = 0;
+  let hi = last;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (PT_PERIOD_TABLE[mid]! > period) lo = mid;
+    else hi = mid;
   }
-  return bestIndex;
+  // `<=` keeps the lower index on an exact tie.
+  return PT_PERIOD_TABLE[lo]! - period <= period - PT_PERIOD_TABLE[hi]!
+    ? lo
+    : hi;
 }
 
 /**

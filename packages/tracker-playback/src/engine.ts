@@ -106,6 +106,40 @@ export function shouldRetriggerLastNote(
   return false;
 }
 
+/**
+ * Effect types whose work continues past tick 0. Hoisted to module scope as a
+ * Set: this is consulted once per step per row, and rebuilding a literal array
+ * and scanning it linearly on every one of those was pure churn.
+ */
+const TICK_BASED_EFFECTS: ReadonlySet<string> = new Set([
+  'portaUp',
+  'portaDown',
+  'tonePorta',
+  'vibrato',
+  'tonePortaVol',
+  'vibratoVol',
+  'tremolo',
+  'arpeggio',
+  'volSlide',
+  'panSlide',
+  'retrigVol',
+  'tremor',
+  'fineVibrato',
+  'noteCut',
+  'noteDelay',
+  'keyOff',
+]);
+
+/**
+ * Effects whose per-tick output is monotone enough to collapse into a single
+ * audio-rate ramp instead of one scheduled command per tick.
+ */
+const RAMPABLE_EFFECTS: ReadonlySet<string> = new Set([
+  'portaUp',
+  'portaDown',
+  'volSlide',
+]);
+
 export class PlaybackEngine {
   private song: Song | null = null;
   /**
@@ -161,6 +195,17 @@ export class PlaybackEngine {
   private readonly positionCommandHandler: PositionCommandHandler | undefined;
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
+  /**
+   * Patterns of the loaded song by id, rebuilt by loadSong.
+   *
+   * loadPattern runs on every pattern boundary during playback and used to
+   * scan `song.patterns` linearly for the id -- 56 patterns on a large XM,
+   * scanned again for each of getPatternLength's callers. The engine never
+   * adds or removes patterns itself (an edit arrives as a fresh loadSong),
+   * so the map cannot go stale behind it. First id wins, matching what
+   * Array.prototype.find did with a duplicated id.
+   */
+  private patternsById: Map<string, Pattern> = new Map();
   private loopCurrentPattern = false;
   private loopSong = true;
 
@@ -185,7 +230,6 @@ export class PlaybackEngine {
   /** Per-track effect state for FT2-style effects */
   private trackEffectStates: Map<number, TrackEffectState> = new Map();
   /** Debug: last row we logged a pitch per track */
-  private pitchLogRow: Map<number, number> = new Map();
 
   /** Position/pattern commands to process (Bxx, Dxx) */
   private pendingPosCommand: {
@@ -320,10 +364,7 @@ export class PlaybackEngine {
     const song = this.song;
 
     // Build quick lookup for patterns by id
-    const patternsById = new Map<string, Pattern>();
-    for (const pattern of song.patterns) {
-      patternsById.set(pattern.id, pattern);
-    }
+    const patternsById = this.patternsById;
 
     // Determine maximum track count across all patterns
     let maxTracks = 0;
@@ -332,6 +373,43 @@ export class PlaybackEngine {
         maxTracks = pattern.tracks.length;
       }
     }
+
+    // Row-ordered steps per (pattern, track), built once.
+    //
+    // The walk below visits every sequence *entry*, so a pattern used ten
+    // times in the order list was copied and sorted ten times over -- per
+    // track. Sorting only ever looks at `step.row`, which nothing here
+    // mutates, so the ordering is identical on every visit and can be shared.
+    // Tracks that are already in row order (which the MOD and XM parsers
+    // always emit) skip the copy entirely.
+    const sortedStepsCache = new Map<
+      Pattern,
+      Array<Pattern['tracks'][number]['steps'] | undefined>
+    >();
+    const sortedStepsFor = (
+      pattern: Pattern,
+      trackIndex: number,
+    ): Pattern['tracks'][number]['steps'] | undefined => {
+      let perTrack = sortedStepsCache.get(pattern);
+      if (!perTrack) {
+        perTrack = new Array(pattern.tracks.length);
+        sortedStepsCache.set(pattern, perTrack);
+      }
+      const cached = perTrack[trackIndex];
+      if (cached) return cached;
+      const track = pattern.tracks[trackIndex];
+      const steps = track?.steps;
+      if (!steps || steps.length === 0) return undefined;
+      let ordered = steps;
+      for (let i = 1; i < steps.length; i++) {
+        if (steps[i]!.row < steps[i - 1]!.row) {
+          ordered = [...steps].sort((a, b) => a.row - b.row);
+          break;
+        }
+      }
+      perTrack[trackIndex] = ordered;
+      return ordered;
+    };
 
     // For each track index, walk forward and let 3xx rows inherit the most recent
     // tone porta target (the last tonePorta/tonePortaVol row that specified a note).
@@ -342,11 +420,10 @@ export class PlaybackEngine {
       for (const patternId of song.sequence) {
         const pattern = patternsById.get(patternId);
         if (!pattern) continue;
-        const track = pattern.tracks[trackIndex];
-        if (!track || !track.steps || track.steps.length === 0) continue;
+        const sortedSteps = sortedStepsFor(pattern, trackIndex);
+        if (!sortedSteps) continue;
 
         // Process rows in order within the pattern
-        const sortedSteps = [...track.steps].sort((a, b) => a.row - b.row);
         for (const step of sortedSteps) {
           if (step.isNoteOff) {
             continue;
@@ -388,6 +465,12 @@ export class PlaybackEngine {
 
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
+    this.patternsById = new Map();
+    for (const pattern of song.patterns) {
+      if (!this.patternsById.has(pattern.id)) {
+        this.patternsById.set(pattern.id, pattern);
+      }
+    }
     this.moduleFormat = song.moduleFormat ?? DEFAULT_MODULE_FORMAT;
     this.scheduledPositions.length = 0;
     this.formatProfile = profileForFormat(this.moduleFormat, {
@@ -443,7 +526,7 @@ export class PlaybackEngine {
     patternId: string,
     options?: { emitPosition?: boolean; updatePosition?: boolean },
   ) {
-    const pattern = this.song?.patterns.find((p) => p.id === patternId);
+    const pattern = this.patternsById.get(patternId);
     if (!pattern) {
       this.emit('error', new Error(`Pattern with id ${patternId} not found.`));
       return;
@@ -461,7 +544,7 @@ export class PlaybackEngine {
 
   private getPatternLength(id: string | undefined): number {
     if (!id) return this.length;
-    const pattern = this.song?.patterns.find((p) => p.id === id);
+    const pattern = this.patternsById.get(id);
     return pattern ? Math.max(1, pattern.length) : this.length;
   }
 
@@ -860,7 +943,6 @@ export class PlaybackEngine {
    */
   private resetEffectStates(): void {
     this.trackEffectStates.clear();
-    this.pitchLogRow.clear();
     this.lastTrackNote.clear();
     this.pendingPosCommand = null;
     this.patternLoopStart = 0;
@@ -1156,10 +1238,9 @@ export class PlaybackEngine {
         // above, and so do the volume column's own 0x8x/0x9x fine slides --
         // both have already folded step.velocity into their result, so
         // applying it again here would undo them.
-        const tick0HasVolumeCommand = [
-          ...tick0Batch.commands,
-          ...volume0Batch.commands,
-        ].some((cmd) => cmd.kind === 'volume');
+        const tick0HasVolumeCommand =
+          hasVolumeCommand(tick0Batch.commands) ||
+          hasVolumeCommand(volume0Batch.commands);
         if (step.velocity !== undefined && !tick0HasVolumeCommand) {
           const gain = clamp(step.velocity / 255);
           if (this.scheduledVolumeHandler) {
@@ -1246,9 +1327,12 @@ export class PlaybackEngine {
           } else {
             // Complex effects (vibrato, tremolo, arpeggio, etc.) still need per-tick processing
             const ticksPerRow = this.timingSystem.getTicksPerRow();
+            // dispatchCommands only reads the context, never retains it, so a
+            // single mutable object is reused across the row's ticks rather
+            // than cloning `context` once per tick.
+            const tickContext = { ...context, time };
             for (let tick = 1; tick < ticksPerRow; tick++) {
-              const tickTime = time + tick * secPerTick;
-              const tickContext = { ...context, time: tickTime };
+              tickContext.time = time + tick * secPerTick;
               if (hasTickEffect && step.effect) {
                 const tickBatch = processEffectTickN(
                   effectState,
@@ -1340,16 +1424,6 @@ export class PlaybackEngine {
           break;
 
         case 'pitch':
-          // Debug: log the first pitch seen for this track on this row
-          {
-            // Debug log only for track index 3 (fourth track)
-            if (context.trackIndex === 3) {
-              const lastRow = this.pitchLogRow.get(context.trackIndex);
-              if (lastRow !== context.row) {
-                this.pitchLogRow.set(context.trackIndex, context.row);
-              }
-            }
-          }
           if (!this.scheduledPitchHandler) break;
           this.scheduledPitchHandler(
             context.instrumentId,
@@ -1431,25 +1505,7 @@ export class PlaybackEngine {
    * Check if an effect type requires per-tick processing
    */
   private isTickBasedEffect(type: string): boolean {
-    const tickEffects = [
-      'portaUp',
-      'portaDown',
-      'tonePorta',
-      'vibrato',
-      'tonePortaVol',
-      'vibratoVol',
-      'tremolo',
-      'arpeggio',
-      'volSlide',
-      'panSlide',
-      'retrigVol',
-      'tremor',
-      'fineVibrato',
-      'noteCut',
-      'noteDelay',
-      'keyOff',
-    ];
-    return tickEffects.includes(type);
+    return TICK_BASED_EFFECTS.has(type);
   }
 
   /**
@@ -1457,8 +1513,7 @@ export class PlaybackEngine {
    * Simple linear/exponential slides can use ramps for better performance and smoother audio.
    */
   private canUseAutomationRamp(type: string): boolean {
-    const rampableEffects = ['portaUp', 'portaDown', 'volSlide'];
-    return rampableEffects.includes(type);
+    return RAMPABLE_EFFECTS.has(type);
   }
 
   /** Note when a scheduled row will actually be heard, for the display. */
@@ -1699,6 +1754,14 @@ export class PlaybackEngine {
 type PlaybackPatternStep = Pattern['tracks'][number]['steps'][number] & {
   trackIndex: number;
 };
+
+/** Whether a command batch carries a volume command, without building one. */
+function hasVolumeCommand(commands: ProcessorCommand[]): boolean {
+  for (let i = 0; i < commands.length; i++) {
+    if (commands[i]!.kind === 'volume') return true;
+  }
+  return false;
+}
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));

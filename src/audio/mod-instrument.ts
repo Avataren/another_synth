@@ -33,6 +33,44 @@ import { getSampleQuality } from './sample-quality';
  * Fallback tick duration when a caller does not supply one: 2.5 / 125 BPM,
  * the tracker default. A tick is 2.5/BPM seconds in both ProTracker and FT2.
  */
+/**
+ * Per-note tracing, off by default.
+ *
+ * Voice allocation used to `console.warn` on every note-on and again whenever
+ * a one-shot ended. A 32-channel module at 125 BPM triggers on the order of a
+ * hundred notes a second, so playing a song buried the console -- and every
+ * one of those lines built a template string and forced the devtools console
+ * to lay out a row, which is real work on the same thread that has to keep the
+ * scheduler ahead of the audio clock.
+ *
+ * The tracing is still there, opt-in from the devtools console with
+ * `__MOD_INSTRUMENT_DEBUG__ = true` (no rebuild, and it can be flipped mid-song
+ * to catch a specific passage).
+ */
+function modInstrumentDebug(): boolean {
+  return (
+    (globalThis as { __MOD_INSTRUMENT_DEBUG__?: boolean })
+      .__MOD_INSTRUMENT_DEBUG__ === true
+  );
+}
+
+/**
+ * Warnings that report a *condition* rather than an event: once a patch is
+ * short of voices, or a volume command cannot find its voice, it is short of
+ * them for every note that follows. Logging each occurrence says nothing the
+ * first one did not, so the rest are counted and reported at a decaying rate.
+ */
+let nextInstrumentKey = 1;
+const warnCounts = new Map<string, number>();
+function warnOccasionally(key: string, message: () => string): void {
+  const count = (warnCounts.get(key) ?? 0) + 1;
+  warnCounts.set(key, count);
+  // 1st, 2nd, ... 10th, then every 100th.
+  if (count <= 10 || count % 100 === 0) {
+    console.warn(`${message()}${count > 1 ? ` (occurrence ${count})` : ''}`);
+  }
+}
+
 const DEFAULT_TICK_SECONDS = 2.5 / 125;
 
 /**
@@ -134,6 +172,8 @@ export default class ModInstrument {
    * instrument, and a fixed four meant the fifth onward stole a voice from a
    * note that was still playing. Audibly: notes simply missing.
    */
+  /** Distinguishes this instance's throttled warnings from another's. */
+  private readonly instrumentKey = nextInstrumentKey++;
   private voiceCount = DEFAULT_VOICE_COUNT;
 
   get num_voices(): number {
@@ -1296,8 +1336,10 @@ export default class ModInstrument {
 
     // More channels than voices: fall back rather than dropping the note, but
     // say so, since it means the patch was sized too small at import.
-    console.warn(
-      `[ModInstrument] No free voice for track ${trackIndex} (limit ${this.voiceCount}); reusing`,
+    warnOccasionally(
+      `no-free-voice:${this.instrumentKey}`,
+      () =>
+        `[ModInstrument] No free voice for track ${trackIndex} (limit ${this.voiceCount}); reusing`,
     );
     const reused = this.allocateAnyVoice();
     this.trackVoices.set(trackIndex, reused);
@@ -1510,12 +1552,20 @@ export default class ModInstrument {
       source.onended = () => {
         if (this.activeVoices.get(voiceIndex)?.source === source) {
           this.activeVoices.delete(voiceIndex);
-          console.warn(`[ModInstrument] Voice ${voiceIndex} auto-freed (one-shot ended), activeVoices now=${this.activeVoices.size}`);
+          if (modInstrumentDebug()) {
+            console.warn(
+              `[ModInstrument] Voice ${voiceIndex} auto-freed (one-shot ended), activeVoices now=${this.activeVoices.size}`,
+            );
+          }
         }
       };
     }
 
-    console.warn(`[ModInstrument] noteOnAtTime allocated voice ${voiceIndex} for note ${noteNumber}, loop=${source.loop}, activeVoices=${this.activeVoices.size}`);
+    if (modInstrumentDebug()) {
+      console.warn(
+        `[ModInstrument] noteOnAtTime allocated voice ${voiceIndex} for note ${noteNumber}, loop=${source.loop}, activeVoices=${this.activeVoices.size}`,
+      );
+    }
 
     return voiceIndex;
   }
@@ -1759,11 +1809,10 @@ export default class ModInstrument {
   ): void {
     const voice = this.activeVoices.get(voiceIndex);
     if (!voice) {
-      console.warn(
-        '[ModInstrument] setVoiceGainAtTime: voice not found:',
-        voiceIndex,
-        'active voices:',
-        Array.from(this.activeVoices.keys()),
+      warnOccasionally(
+        `gain-voice-missing:${this.instrumentKey}`,
+        () =>
+          `[ModInstrument] setVoiceGainAtTime: voice not found: ${voiceIndex} active voices: ${Array.from(this.activeVoices.keys()).join(',')}`,
       );
       return;
     }
