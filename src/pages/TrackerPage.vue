@@ -135,6 +135,9 @@
         <div class="summary-card top-panel">
           <div class="summary-header">
             <div class="eyebrow">Tracker</div>
+            <div class="engine-rate" :title="engineRateTitle">
+              {{ engineRateLabel }}
+            </div>
           </div>
           <div class="song-meta">
             <div class="field">
@@ -739,6 +742,31 @@ watch(
   ],
   () => applySampleQualitySettings(),
 );
+
+/**
+ * The rate the audio engine is actually running at.
+ *
+ * Read from the live context rather than from the setting: a browser may
+ * decline a rate the hardware will not run and fall back, so the setting says
+ * what was asked for and this says what happened.
+ */
+const engineRateLabel = computed(() => {
+  const rate = audioContext.value?.sampleRate;
+  if (!rate) return 'engine idle';
+  // Trailing zeroes are noise at a glance: 48 kHz, but 44.1 kHz.
+  const khz = rate / 1000;
+  const shown = Number.isInteger(khz) ? khz.toFixed(0) : khz.toFixed(1);
+  return `${shown} kHz`;
+});
+
+const engineRateTitle = computed(() => {
+  const rate = audioContext.value?.sampleRate;
+  if (!rate) return 'The audio engine has not started yet.';
+  const requested = userSettings.value.audioSampleRate;
+  return rate === requested
+    ? `Audio engine running at ${rate} Hz.`
+    : `Audio engine running at ${rate} Hz; ${requested} Hz was requested but the browser declined it.`;
+});
 
 /** The run of page numbers to show, sliding with the current page. */
 const visibleInstrumentPages = computed(() =>
@@ -2460,6 +2488,16 @@ onBeforeUnmount(() => {
   background: rgba(255, 80, 80, 0.7);
   border-color: rgba(255, 80, 80, 0.9);
   color: #1a1a1a;
+}
+
+.engine-rate {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, rgba(255, 255, 255, 0.4));
+  margin-bottom: 4px;
+  white-space: nowrap;
+  cursor: default;
 }
 
 .eyebrow {

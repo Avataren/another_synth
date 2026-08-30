@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-30T10:07:28.967Z",
+  "generated": "2026-08-30T10:12:43.687Z",
   "collections": [
     {
       "id": "amiga",
@@ -109,15 +109,6 @@
           "bytes": 68864
         },
         {
-          "title": "Amiga Boy",
-          "format": "XM",
-          "channels": 30,
-          "patterns": 52,
-          "instruments": 88,
-          "file": "amiga/amiga boy.xm",
-          "bytes": 182479
-        },
-        {
           "title": "black-hole",
           "format": "MOD",
           "channels": 4,
@@ -162,15 +153,6 @@
           "signature": "M.K.",
           "file": "amiga/hymn_to_aurora.mod",
           "bytes": 112590
-        },
-        {
-          "title": "im in love with you",
-          "format": "XM",
-          "channels": 14,
-          "patterns": 52,
-          "instruments": 30,
-          "file": "amiga/im in love with you.xm",
-          "bytes": 71179
         },
         {
           "title": "escapade",
@@ -411,6 +393,15 @@
           "bytes": 505489
         },
         {
+          "title": "Amiga Boy",
+          "format": "XM",
+          "channels": 30,
+          "patterns": 52,
+          "instruments": 88,
+          "file": "ft2/amiga boy.xm",
+          "bytes": 182479
+        },
+        {
           "title": "Path to Nowhere",
           "format": "XM",
           "channels": 32,
@@ -445,6 +436,15 @@
           "instruments": 27,
           "file": "ft2/fall.xm",
           "bytes": 620874
+        },
+        {
+          "title": "im in love with you",
+          "format": "XM",
+          "channels": 14,
+          "patterns": 52,
+          "instruments": 30,
+          "file": "ft2/im in love with you.xm",
+          "bytes": 71179
         },
         {
           "title": "Nine One One",
