@@ -243,6 +243,15 @@ export interface PlaybackEventMap {
   position: PlaybackPosition;
   state: TransportState;
   error: Error;
+  /**
+   * The sequence ran off its end and playback stopped there.
+   *
+   * Only fires when song looping is off (`setLoopSong(false)`); a looping
+   * song has no end to report. It fires when the last row has actually been
+   * heard, not when it was scheduled, so a listener that starts the next song
+   * does not cut the tail of this one.
+   */
+  songEnd: void;
 }
 
 export type PlaybackEvent = keyof PlaybackEventMap;

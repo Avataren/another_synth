@@ -162,6 +162,7 @@ export class PlaybackEngine {
     position: new Set(),
     state: new Set(),
     error: new Set(),
+    songEnd: new Set(),
   };
   private readonly resolver: InstrumentResolver | undefined;
   private readonly scheduler: PlaybackScheduler;
@@ -208,6 +209,11 @@ export class PlaybackEngine {
   private patternsById: Map<string, Pattern> = new Map();
   private loopCurrentPattern = false;
   private loopSong = true;
+  /**
+   * Audio-clock time the song ends at, once the sequence has run out and
+   * looping is off. Null whenever an end is not pending.
+   */
+  private pendingEndTime: number | null = null;
 
   /** Last scheduled row (for lookahead scheduling) */
   private lastScheduledRow = -1;
@@ -465,6 +471,7 @@ export class PlaybackEngine {
 
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
+    this.pendingEndTime = null;
     this.patternsById = new Map();
     for (const pattern of song.patterns) {
       if (!this.patternsById.has(pattern.id)) {
@@ -610,6 +617,7 @@ export class PlaybackEngine {
 
   stop() {
     this.state = 'stopped';
+    this.pendingEndTime = null;
     this.stopScheduledPlayback();
     this.scheduler.stop();
     this.resetEffectStates();
@@ -640,6 +648,7 @@ export class PlaybackEngine {
   private startScheduledPlayback() {
     if (!this.audioContext || !this.scheduledNoteHandler) return;
 
+    this.pendingEndTime = null;
     const now = this.audioContext.currentTime;
     // Initialize timing system for current position
     this.timingSystem.start(now, this.currentSequenceIndex, this.position.row);
@@ -663,6 +672,7 @@ export class PlaybackEngine {
     this.playbackClock.stop(); // ensure we start from a clean state
     this.playbackClock.setVisible?.(this.isTabVisible);
     this.playbackClock.start(() => {
+      if (this.finishIfEnded()) return;
       this.updatePosition();
       this.scheduleAhead();
     });
@@ -677,6 +687,8 @@ export class PlaybackEngine {
   private scheduleAhead() {
     if (!this.audioContext || !this.scheduledNoteHandler) return;
     if (this.state !== 'playing') return;
+    // Everything up to the end is already scheduled; there is nothing after it.
+    if (this.pendingEndTime !== null) return;
 
     const now = this.audioContext.currentTime;
     const lookahead = this.getLookaheadSeconds();
@@ -734,14 +746,11 @@ export class PlaybackEngine {
         } else if (cmd.type === 'patBreak') {
           // Dxx: Break to row xx of next pattern
           this.currentSequenceIndex += 1;
-          if (this.currentSequenceIndex >= sequence.length) {
-            if (this.loopSong) {
-              this.currentSequenceIndex = 0;
-              this.restartSong(this.nextRowTime);
-            } else {
-              this.stop();
-              return;
-            }
+          if (
+            this.currentSequenceIndex >= sequence.length &&
+            !this.wrapSequenceOrFinish()
+          ) {
+            return;
           }
           const targetPatternId = sequence[this.currentSequenceIndex];
           if (targetPatternId) {
@@ -782,14 +791,11 @@ export class PlaybackEngine {
         }
 
         this.currentSequenceIndex += 1;
-        if (this.currentSequenceIndex >= sequence.length) {
-          if (this.loopSong) {
-            this.currentSequenceIndex = 0;
-            this.restartSong(this.nextRowTime);
-          } else {
-            this.stop();
-            return;
-          }
+        if (
+          this.currentSequenceIndex >= sequence.length &&
+          !this.wrapSequenceOrFinish()
+        ) {
+          return;
         }
 
         const nextPatternId = sequence[this.currentSequenceIndex];
@@ -929,6 +935,44 @@ export class PlaybackEngine {
    * loop. The cost is that a song which *does* loop seamlessly, holding a note
    * across the boundary, now has that note cut.
    */
+  /**
+   * The sequence index has just run past its last entry. Either wrap it back
+   * to the start, or -- when looping is off -- arrange for the song to end.
+   *
+   * Ending cannot just call stop(). This runs from the *scheduler*, which
+   * works up to a lookahead window (half a second, more when the tab is
+   * hidden) ahead of the audio clock, and stop() cancels everything already
+   * scheduled: the song would lose its final half second. So the end time is
+   * recorded here and the transport stops once the clock reaches it, which is
+   * also when `songEnd` fires -- late enough that a listener starting the next
+   * song does not cut the tail off this one.
+   *
+   * Returns false when the caller must stop scheduling.
+   */
+  private wrapSequenceOrFinish(): boolean {
+    if (this.loopSong) {
+      this.currentSequenceIndex = 0;
+      this.restartSong(this.nextRowTime);
+      return true;
+    }
+    this.pendingEndTime = this.nextRowTime;
+    return false;
+  }
+
+  /**
+   * Stop once the audio clock reaches a pending end time. Returns true when
+   * the song has ended, meaning the caller should not schedule or advance.
+   */
+  private finishIfEnded(): boolean {
+    if (this.pendingEndTime === null) return false;
+    if (!this.audioContext) return false;
+    if (this.audioContext.currentTime < this.pendingEndTime) return false;
+    this.pendingEndTime = null;
+    this.stop();
+    this.emit('songEnd', undefined);
+    return true;
+  }
+
   private restartSong(time: number): void {
     this.scheduledAllNotesOffHandler?.(time);
     this.resetEffectStates();
@@ -1639,13 +1683,15 @@ export class PlaybackEngine {
 
           this.currentSequenceIndex += 1;
           if (this.currentSequenceIndex >= sequence.length) {
-            if (this.loopSong) {
-              this.currentSequenceIndex = 0;
-              this.restartSong(this.nextRowTime);
-            } else {
+            if (!this.loopSong) {
+              // No lookahead on this path -- the row it is deciding about is
+              // the row about to be heard -- so the end is now, not later.
               this.stop();
+              this.emit('songEnd', undefined);
               return;
             }
+            this.currentSequenceIndex = 0;
+            this.restartSong(this.nextRowTime);
           }
 
           const nextPatternId = sequence[this.currentSequenceIndex];

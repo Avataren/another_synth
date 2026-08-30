@@ -20,18 +20,30 @@ export type PositionListener = (row: number, patternId: string | undefined) => v
  */
 export type NoteEventListener = (trackIndex: number, instrumentId: string | undefined) => void;
 
+/**
+ * Called when a non-looping song reaches its end and playback stops.
+ *
+ * Fires when the final row has been heard rather than when it was scheduled,
+ * so a listener that starts the next song does not clip this one's tail.
+ */
+export type SongEndListener = () => void;
+
 // Singleton PlaybackEngine instance - lives outside Pinia to avoid reactivity issues
 let playbackEngineInstance: PlaybackEngine | null = null;
 
 // Event subscription handles
 let positionUnsubscribe: (() => void) | null = null;
 let stateUnsubscribe: (() => void) | null = null;
+let songEndUnsubscribe: (() => void) | null = null;
 
 // Position event listeners (for UI components)
 const positionListeners = new Set<PositionListener>();
 
 // Note event listeners (for visualization)
 const noteEventListeners = new Set<NoteEventListener>();
+
+// Song-end listeners (the jukebox advances its playlist on these)
+const songEndListeners = new Set<SongEndListener>();
 
 // Track audio node setter (injected by TrackerPage for visualization)
 let trackAudioNodeSetter: ((trackIndex: number, instrumentId: string | undefined) => void) | null = null;
@@ -79,6 +91,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
   /** Whether a song has been loaded into the engine */
   const hasSongLoaded = ref(false);
+
+  /** Whether the sequence restarts when it runs out. */
+  const loopSong = ref(true);
 
   /** Flag to suppress position updates during seek/stop operations */
   let suppressPositionUpdates = false;
@@ -320,6 +335,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       });
     }
 
+    if (!songEndUnsubscribe) {
+      songEndUnsubscribe = playbackEngineInstance.on('songEnd', () => {
+        for (const listener of songEndListeners) {
+          listener();
+        }
+      });
+    }
+
     if (!stateUnsubscribe) {
       stateUnsubscribe = playbackEngineInstance.on('state', (state) => {
         isPlaying.value = state === 'playing';
@@ -365,6 +388,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
 
     playbackMode.value = mode;
     engine.setLoopCurrentPattern(mode === 'pattern');
+    // Re-applied on every load: setLoopSong may have been called before this
+    // engine existed, and a fresh engine defaults to looping.
+    engine.setLoopSong(loopSong.value);
     console.log('[PlaybackStore] Loading song into engine...');
     const sequenceIndex = startSequenceIndex ?? resolveStartSequenceIndex(song);
     // The bank needs the format too: it decides whether a new note on a track
@@ -571,6 +597,26 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   }
 
   /**
+   * Subscribe to the end of a non-looping song.
+   */
+  function onSongEnd(listener: SongEndListener): () => void {
+    songEndListeners.add(listener);
+    return () => songEndListeners.delete(listener);
+  }
+
+  /**
+   * Choose whether the sequence restarts when it runs out.
+   *
+   * Off, the engine plays the song once and stops -- which is what makes an
+   * end-of-song event possible at all. The jukebox turns it off so it can
+   * advance its playlist; everything else leaves songs looping.
+   */
+  function setLoopSong(loop: boolean): void {
+    loopSong.value = loop;
+    playbackEngineInstance?.setLoopSong(loop);
+  }
+
+  /**
    * Set the track audio node setter (for visualization)
    */
   function setTrackAudioNodeSetter(setter: ((trackIndex: number, instrumentId: string | undefined) => void) | null): void {
@@ -599,8 +645,14 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       stateUnsubscribe = null;
     }
 
+    if (songEndUnsubscribe) {
+      songEndUnsubscribe();
+      songEndUnsubscribe = null;
+    }
+
     positionListeners.clear();
     noteEventListeners.clear();
+    songEndListeners.clear();
     trackAudioNodeSetter = null;
 
     playbackEngineInstance = null;
@@ -621,6 +673,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     soloedTracks,
     autoScroll,
     hasSongLoaded,
+    loopSong,
 
     // Getters
     engine,
@@ -635,6 +688,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     seek,
     setBpm,
     setPatternLength,
+    setLoopSong,
 
     // Mute/Solo
     toggleMute,
@@ -644,6 +698,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     // Event subscriptions
     onPosition,
     onNoteEvent,
+    onSongEnd,
     setTrackAudioNodeSetter,
 
     // Cleanup
