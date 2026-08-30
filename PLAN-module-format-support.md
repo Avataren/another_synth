@@ -1668,6 +1668,48 @@ shows up as a failure rather than as a wrong sample.
 no instrument in the file uses a multi-sample keymap; and the tone portamento ending the
 previous pattern is cleared by the new note, so it was not sliding across the boundary.
 
+### D77 — A tone portamento row must not stamp the channel's instrument (XM)
+
+"im in love with you", reported as one note in the lead landing off pitch: *"f-5 to g-5 with
+101 and 307 effects, this doesn't land at the correct pitch."*
+
+Driving the engine over the rows shows it, in the instrument the commands are addressed to:
+
+```
+row 0x1E   NOTE noteOn ins=04 midi=77      pitch ins=04 697.70 -> 710.41
+row 0x1F   pitch ins=01 710.41 -> 728.59 -> 747.24 -> 766.37 -> 783.15
+```
+
+The slide is *correct*, note for note, and ends exactly on G-5. It is simply addressed to
+instrument **01** — the number written on the tone-porta row — while the voice belongs to
+**04**. `setVoicePitchAtTime` resolves a voice through `lastTrackVoice` keyed by instrument,
+finds nothing for 01 on that channel, and returns. The lead stays where the preceding `101`
+left it.
+
+`xm-import` stamped `entry.instrument` on any row carrying an instrument number.
+`mod-import` has excluded tone portamento since **D55**, for exactly this reason: `3xx`/`5xy`
+slide the voice already sounding rather than starting a new one, so the row's instrument must
+not become the channel's. FT2 reloads the volume from it and goes on playing the current
+sample. The rule simply never reached the XM path — D68 added the key-off exclusion there
+without the tone-porta one beside it.
+
+Excluded now for `3xx`, `5xy`, and the volume column's own `0xFy` tone portamento.
+
+**Fifth time this rule has been re-derived somewhere else** — D29 (MOD latch), D55 (builder),
+D68 (XM key-off), and now XM tone porta. It is worth stating once as a property of the
+pipeline rather than per format: *only a row that starts a note changes what a channel is
+playing, and every per-voice command must address the voice that is sounding.* The remaining
+gap is that `setVoicePitchAtTime` and `setVoiceVolumeAtTime` still resolve by instrument
+first and fall back to the track, where `dispatchNoteOffAtTime` resolves by track outright
+(D68). Making them all resolve by channel would make this class unrepresentable instead of
+fixable case by case.
+
+**Found and fixed on the way, but not this bug** (recorded because the reporter was right to
+push back): oversampling clamped its kernel at the buffer edges, which is wrong for a looping
+sample and left a step at the loop seam — 0.17 on this song's 66-frame single-cycle
+waveforms, against 2e-5 through the middle, so a buzz at every note's own pitch. Real, and
+worth fixing, but it was *every* note rather than this one.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -1899,6 +1941,8 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **A tone portamento row no longer stamps the channel instrument in XM** (D77). `3xx`/`5xy` slide the sounding voice, so the row's instrument number must not become the channel's — stamping it addressed the slide to an instrument with no voice on that channel and it was dropped, leaving the lead where the previous row left it. mod-import has excluded this since D55; the fifth place this rule has had to be re-derived. 893 green. |
+| 2026-08-30 | fix | **Filter kernels wrap a loop instead of clamping** (D77 aside). Oversampling clamped at the buffer edges, right for a one-shot sample and wrong for a looping one: on 66-frame single-cycle chiptune waveforms it left a 0.17 step at the loop seam against 2e-5 through the middle — a buzz at every note's pitch. |
 | 2026-08-30 | fix | **Instrument slots sized to XM's maximum, not to the corpus** (D76). radix_-_yuki_satellites.xm references 98 instruments against a limit of 65; the import dropped the rest, and notes referencing a dropped instrument carry none at all, so the channel kept playing its previous sample — a wrong sound on a third of the song, with nothing reporting it. Now 130 slots, covering the format's 128, with a test that every XM in the collection fits. 845 green. |
 | 2026-08-30 | fix | **A vibrato holds its offset through empty rows** (D75). FT2 leaves the channel period alone on a cell carrying no effect, so a vibrato keeps its offset; tick 0's sync fallback wrote the bare note pitch instead. jt_911.xm writes `400` only every fourth row, so three rows in four sprang back to centre — by a growing amount, against two channels doubling the same note. The depth itself is confirmed correct against the XM spec's own `8363*1712/Period`. 828 green. |
 | 2026-08-30 | fix | **Vibrato bends down first, and holds across rows** (D74). Both ProTracker and FT2 add the offset to the period while the position is positive; this subtracted, inverting every vibrato's phase. And tick 0 of a continuing `400` row emitted the bare base pitch, resetting the wave to centre once a row. jt_911.xm holds `41F` (speed 1, depth 15) over a ten-row cycle across 2172 `400` rows, so both were plainly audible. Two tests had pinned the inverted sign. 826 green. |

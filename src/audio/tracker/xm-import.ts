@@ -195,6 +195,11 @@ function xmCellToTrackerEntry(
   const hasInstrument = cell.instrument > 0;
   const hasEffect = cell.effectType !== 0 || cell.effectParam !== 0;
   const hasVolumeColumn = cell.volumeColumn > 0;
+  // 3xx and 5xy in the effect column, and the volume column's own 0xFy.
+  const isTonePorta =
+    cell.effectType === 0x3 ||
+    cell.effectType === 0x5 ||
+    (cell.volumeColumn & 0xf0) === 0xf0;
 
   if (!hasNote && !isKeyOff && !hasInstrument && !hasEffect && !hasVolumeColumn) {
     return undefined;
@@ -212,7 +217,19 @@ function xmCellToTrackerEntry(
   // xyce-dans_la_rue.xm is full of `=== <instrument>` rows on channels holding
   // a note from an earlier pattern; the volume slides that follow them were
   // landing on the wrong instrument, so the note carried on at full level.
-  if (hasInstrument && !isKeyOff) {
+  //
+  // Tone portamento is excluded for the same underlying reason, and mod-import
+  // has excluded it since D55: `3xx`/`5xy` slide the voice that is already
+  // sounding rather than starting a new one, so stamping the row's instrument
+  // re-addresses the slide to an instrument with nothing playing and it is
+  // dropped on the floor. FT2 reloads the volume from that instrument but goes
+  // on playing the current sample.
+  //
+  // "im in love with you" is the case that showed it: `F-5 04` then
+  // `G-5 01 307`. The slide was emitted correctly, note for note, against
+  // instrument 01 -- which had no voice on that channel -- so the lead stayed
+  // where the preceding `101` had left it instead of arriving on G-5.
+  if (hasInstrument && !isKeyOff && !isTonePorta) {
     const slot = slotForInstrument.get(cell.instrument);
     if (slot !== undefined) entry.instrument = formatInstrumentId(slot);
   }

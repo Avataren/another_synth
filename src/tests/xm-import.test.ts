@@ -334,3 +334,69 @@ describe('a key-off row does not switch the channel instrument', () => {
     expect(row0?.instrument).toBeDefined();
   });
 });
+
+/**
+ * A tone portamento slides the voice that is already sounding rather than
+ * starting a new one, so the row's instrument number must not become the
+ * channel's instrument. FT2 reloads the volume from it and goes on playing the
+ * current sample.
+ *
+ * Stamping it re-addresses every per-voice command on the row -- the slide
+ * itself above all -- to an instrument with nothing playing on that channel,
+ * where it is silently dropped. mod-import has excluded tone porta since D55;
+ * this is the same rule arriving in the XM path.
+ *
+ * "im in love with you" is the case that showed it: `F-5 04` followed by
+ * `G-5 01 307`. The slide was emitted correctly, note for note, against
+ * instrument 01, so the lead never left F-5.
+ */
+describe('a tone portamento row does not switch the channel instrument', () => {
+  const entriesFor = (effectType: number, effectParam: number, volumeColumn = 0) =>
+    importXmToTrackerSong(
+      buildXm({
+        numChannels: 1,
+        instruments: [
+          { samples: [{ frames: [0, 1, 0, -1] }] },
+          { samples: [{ frames: [0, 1, 0, -1] }] },
+        ],
+        patterns: [
+          {
+            numRows: 4,
+            cells: [
+              [cell(49, { instrument: 1 })],
+              [cell(56, { instrument: 2, effectType, effectParam, volumeColumn })],
+            ],
+          },
+        ],
+      }).buffer as ArrayBuffer,
+    ).data.patterns[0]!.tracks[0]!.entries;
+
+  it('drops the instrument on 3xx', () => {
+    const row1 = entriesFor(0x3, 0x07).find((e) => e.row === 1);
+
+    expect(row1?.note).toBeDefined();
+    expect(row1?.instrument).toBeUndefined();
+  });
+
+  it('drops the instrument on 5xy', () => {
+    // Tone portamento plus a volume slide: still a slide, still no retrigger.
+    const row1 = entriesFor(0x5, 0x04).find((e) => e.row === 1);
+
+    expect(row1?.instrument).toBeUndefined();
+  });
+
+  it('drops the instrument on the volume column tone porta', () => {
+    // 0xF0-0xFF is tone portamento in the volume column.
+    const row1 = entriesFor(0, 0, 0xf5).find((e) => e.row === 1);
+
+    expect(row1?.instrument).toBeUndefined();
+  });
+
+  it('still stamps the instrument on an ordinary note row', () => {
+    // The rule is about tone portamento specifically, not about every row
+    // that happens to carry an effect.
+    const row1 = entriesFor(0x1, 0x07).find((e) => e.row === 1);
+
+    expect(row1?.instrument).toBeDefined();
+  });
+});
