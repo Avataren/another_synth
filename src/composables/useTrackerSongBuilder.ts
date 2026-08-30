@@ -42,6 +42,14 @@ export interface TrackerSongBuilderContext {
   /** XM only: whether the module selected the linear frequency table. */
   linearFrequency?: Ref<boolean>;
   /**
+   * ProTracker only: whether Fxx always sets the speed, never the tempo.
+   *
+   * VBlank-timed modules run off the 50 Hz vertical blank and have no tempo
+   * command at all, so their `F20`-and-above parameters are tick counts.
+   * Detected on import; see `usesVBlankTiming`.
+   */
+  vblankTiming?: Ref<boolean>;
+  /**
    * Which tracker's semantics the song follows. Optional so existing tests
    * and callers keep working; omitted means DEFAULT_MODULE_FORMAT.
    */
@@ -175,8 +183,14 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         if (!cmd) continue;
         if (cmd.type === 'speed' && speedCommand === undefined) {
           speedCommand = cmd.speed;
-        } else if (cmd.type === 'tempo' && tempoCommand === undefined) {
-          tempoCommand = cmd.bpm;
+        } else if (cmd.type === 'tempo') {
+          // A VBlank-timed module has no tempo command: the same parameter
+          // that would be a BPM under CIA timing is a tick count.
+          if (context.vblankTiming?.value) {
+            if (speedCommand === undefined) speedCommand = cmd.bpm;
+          } else if (tempoCommand === undefined) {
+            tempoCommand = cmd.bpm;
+          }
         }
       }
 

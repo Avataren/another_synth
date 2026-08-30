@@ -224,15 +224,20 @@ export class TimingSystem {
   }
 
   /**
-   * Update speed multiplier (clamped 1-31, where 6 is normal).
+   * Update speed multiplier (clamped 1-255, where 6 is normal).
    *
    * This affects all subsequent timing calculations.
    * Called when FT2 speed commands (F01-F1F) are processed.
    *
-   * @param speed - New speed value (will be clamped to 1-31)
+   * The upper bound is 255 rather than 31 because a VBlank-timed ProTracker
+   * module has no tempo command: its whole Fxx range sets the speed, and
+   * values above 31 are the long one-row pauses those modules use between
+   * sections. Under the usual CIA reading nothing above 31 reaches here.
+   *
+   * @param speed - New speed value (will be clamped to 1-255)
    */
   setSpeed(speed: number): void {
-    this.currentSpeed = Math.max(1, Math.min(31, speed));
+    this.currentSpeed = Math.max(1, Math.min(255, speed));
     // In ProTracker/FT2, "speed" (F01-F1F) *is* ticks-per-row -- they're
     // the same parameter, not two independent ones. ticksPerRow used to
     // stay frozen at its constructor default (6) regardless of Fxx speed

@@ -82,6 +82,7 @@ interface TrackerSnapshot {
   moduleFormat: ModuleFormat;
   initialSpeed: number;
   linearFrequency: boolean;
+  vblankTiming: boolean;
   defaultPatternRows: number;
   stepSize: number;
   baseOctave: number;
@@ -114,6 +115,16 @@ interface TrackerStoreState {
    * resolved at import.
    */
   linearFrequency: boolean;
+  /**
+   * ProTracker only: whether every Fxx command sets the speed (ticks per row)
+   * rather than the tempo.
+   *
+   * VBlank-timed modules have no tempo command -- the replayer runs off the
+   * 50 Hz vertical blank -- so an `F20` in one means "48 ticks on this row",
+   * not "32 BPM from here on". The file cannot say which it is, so it is
+   * detected on import (`usesVBlankTiming`) and carried with the song.
+   */
+  vblankTiming: boolean;
   /**
    * Row count applied to newly created patterns. Existing patterns carry
    * their own `rows`; this is only a seed for new ones.
@@ -253,6 +264,8 @@ export interface TrackerSongFile {
     initialSpeed?: number;
     /** XM only; absent means XM's own default, linear. */
     linearFrequency?: boolean;
+    /** ProTracker only; absent means the usual CIA speed/tempo split. */
+    vblankTiming?: boolean;
     /**
      * Pre-v3: the row count for every pattern in the song.
      * v3+: only the default applied to newly created patterns. Per-pattern
@@ -282,6 +295,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       moduleFormat: DEFAULT_MODULE_FORMAT,
       initialSpeed: DEFAULT_SPEED,
       linearFrequency: true,
+      vblankTiming: false,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
       stepSize: 1,
@@ -342,6 +356,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         moduleFormat: this.moduleFormat,
         initialSpeed: this.initialSpeed,
         linearFrequency: this.linearFrequency,
+        vblankTiming: this.vblankTiming,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         baseOctave: this.baseOctave,
@@ -360,6 +375,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.moduleFormat = snapshot.moduleFormat ?? DEFAULT_MODULE_FORMAT;
       this.initialSpeed = snapshot.initialSpeed ?? DEFAULT_SPEED;
       this.linearFrequency = snapshot.linearFrequency ?? true;
+      this.vblankTiming = snapshot.vblankTiming ?? false;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
       this.baseOctave = snapshot.baseOctave;
@@ -407,6 +423,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.moduleFormat = DEFAULT_MODULE_FORMAT;
       this.initialSpeed = DEFAULT_SPEED;
       this.linearFrequency = true;
+      this.vblankTiming = false;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
       this.stepSize = 1;
@@ -701,6 +718,7 @@ export const useTrackerStore = defineStore('trackerStore', {
         moduleFormat: this.moduleFormat,
         initialSpeed: this.initialSpeed,
         linearFrequency: this.linearFrequency,
+        ...(this.vblankTiming ? { vblankTiming: true } : {}),
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
         patterns: JSON.parse(JSON.stringify(this.patterns)),
@@ -732,6 +750,7 @@ export const useTrackerStore = defineStore('trackerStore', {
       // were played with the linear model regardless, so nothing changes for
       // them.
       this.linearFrequency = data.linearFrequency ?? true;
+      this.vblankTiming = data.vblankTiming === true;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;
       this.stepSize = Number.isFinite(data.stepSize) ? data.stepSize : 1;

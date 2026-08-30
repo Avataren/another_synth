@@ -21,6 +21,7 @@ import {
   type ModPatternCell,
   type ModSample,
 } from '../../../packages/tracker-playback/src/mod-parser';
+import { usesVBlankTiming } from '../../../packages/tracker-playback/src/mod-vblank';
 
 const PATTERN_ROWS = 64;
 const DEFAULT_BPM = 125;
@@ -42,6 +43,15 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     numChannels: mod.numChannels,
     numSamples: mod.samples.length,
   });
+
+  // Whether every Fxx on this module sets the speed rather than the tempo.
+  // See `usesVBlankTiming`; carried on the song because the distinction is
+  // per module, not per format, and cannot be recovered from the cells later.
+  const vblankTiming = usesVBlankTiming(mod);
+  if (vblankTiming) {
+    // eslint-disable-next-line no-console
+    console.log('[MOD Import] VBlank timing detected: Fxx sets speed, not tempo');
+  }
 
   const patterns = buildTrackerPatterns(mod);
   // Build song sequence from the MOD order table so repeated
@@ -67,6 +77,7 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
         bpm: DEFAULT_BPM,
       },
       moduleFormat: 'protracker',
+      ...(vblankTiming ? { vblankTiming: true } : {}),
       patternRows: PATTERN_ROWS,
       stepSize: DEFAULT_STEP_SIZE,
       patterns,
