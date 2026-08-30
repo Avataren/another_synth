@@ -1788,6 +1788,63 @@ every mis-addressed command still reaches the sounding voice — with a guard th
 mis-addressed commands stays above zero, so the test cannot quietly stop testing anything.
 914 green, lint clean, `quasar build` clean.
 
+### D79 — A set-volume row is dropped when its pattern never names an instrument
+
+Reported on radix_-_yuki_satellites.xm: the first track's opening two patterns should sound
+alike, and the second "almost plays the plain samples" — as if it caught none of the effects.
+
+The two patterns are near-identical by construction. Track 0 is a gated bassline: a note every
+few rows, and a `v00` row between each pair to cut it to silence.
+
+```
+order 0 -> pattern 2          order 1 -> pattern 3
+00 F-4 01 .. F04              00 F-4 01 .. 300
+04 ... .. 10 000              04 ... .. 10 000
+06 F-4 01 .. 3F0              06 F-4 01 .. 300
+```
+
+The only structural difference is row 0. Pattern 2 opens with a plain note; pattern 3 opens
+with a tone portamento, and *every* instrument-bearing row in pattern 3 is a `3xx`.
+
+What each pattern actually scheduled on track 0:
+
+```
+pattern 2   vol 1.0  vol 0.0  vol 1.0  vol 0.0  ...   (gated, correct)
+pattern 3   vol 1.0  vol 1.0  vol 1.0  vol 1.0  ...   (every v00 row missing)
+```
+
+`useTrackerSongBuilder` skips a row that resolves no instrument and carries no note, macro,
+tempo, effect or volume-column *command*. `hasVolumeData` — a plain set-volume, the volume
+column's 0x10..0x50 range — was not in that list. A `v00` row carries no instrument number of
+its own, so it depends on `ctx.instrumentId`, which remembers only what *this pattern* has
+played. Pattern 3 never sets it, because its only instrument-bearing rows are tone portamentos
+and those must not stamp the channel's instrument (D55, D77). So every volume row in the
+pattern was dropped, the note rows survived on `hasNoteData`, and the line sustained instead
+of gating.
+
+Fixed by adding `hasVolumeData` to that guard, for exactly the reason D64 added `hasNoteData`
+to it: the builder's per-pattern instrument knowledge is narrower than the engine's, which
+keeps a per-track instrument across patterns and resolves these rows there. A row that
+resolves to no instrument even in the engine is still dropped there, so nothing is revived
+that has nowhere to land.
+
+**Not a one-song fix.** 22 of the 60 demo modules were losing rows this way, in both formats —
+yuki 258, butterfly_syndrome 226, DOPE.MOD 206, FOUNTAIN.MOD 122, an-path 89, sweetdre 72,
+DEADLOCK 69, and fifteen more in single figures.
+
+This is the D55/D77 rule meeting the builder rather than a counter-example to it: excluding
+tone portamento from the instrument stamp is correct, and it removed the incidental side
+effect that pattern's volume rows had been relying on. The stamp was doing two jobs — naming
+the voice a command addresses, and telling the builder a row is worth keeping — and only the
+first of those was ever intended.
+
+Tests: `src/tests/tracker-volume-row-without-instrument.test.ts` (3, of which 2 confirmed
+failing against the old code) — a synthetic pair of patterns differing only in whether the
+opening row is a tone portamento, and the reported song itself, asserting the second pattern's
+scheduled volumes equal the first's. Against the old code that last one reports
+`[1,1,1,1,1,1,1,1,1,1]` where it should read `[1,0,1,0,1,0,…]`, which is the reported symptom
+stated exactly. 917 green.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -2019,6 +2076,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **A set-volume row survives a pattern that never names an instrument** (D79). radix_-_yuki_satellites.xm's opening bassline lost its `v00` gating in the second pattern and sustained instead — reported as that pattern "almost playing the plain samples". The builder skipped any row resolving no instrument unless it carried a note, macro, tempo, effect or volume-column *command*; a plain set-volume was missing from that list, and the pattern could not name an instrument because its every instrument-bearing row is a tone portamento, which must not stamp one (D55, D77). Same rationale as D64's note-off rescue: the engine holds the per-track instrument across patterns and resolves it there. 22 of 60 demo modules were losing rows. Tests: `src/tests/tracker-volume-row-without-instrument.test.ts` (2 of 3 confirmed failing against the old code). 917 green. |
 | 2026-08-30 | fix | **Per-voice commands address the channel, not the row's instrument** (D78). The rule five earlier fixes each re-derived (D29, D55, D65, D68, D77), now enforced in one resolution path in `TrackerSongBank` instead of per format: on a module channel, pitch/volume/pan/envelope-position/sample-offset/retrigger resolve only through `trackVoiceOwner`; native songs keep the instrument-keyed lookup, because a native track is polyphonic. The `-1` cross-channel fallback is native-only now. The class was still live in 8 of 60 demos — 91, 53, 25 and 18 commands on rose, GSLINGER, addiction and an-path were being *delivered to the wrong voice*, not merely dropped. FT2's instrument latch on tone-porta rows diverges from ours 190× in "amiga boy" but affects zero notes corpus-wide; the residue is the editor's instrument column. Tests: `src/tests/tracker-channel-voice-addressing.test.ts`, `src/tests/tracker-corpus-voice-addressing.test.ts` (11 of 21 confirmed failing against the old code). 914 green. |
 | 2026-08-30 | fix | **A tone portamento row no longer stamps the channel instrument in XM** (D77). `3xx`/`5xy` slide the sounding voice, so the row's instrument number must not become the channel's — stamping it addressed the slide to an instrument with no voice on that channel and it was dropped, leaving the lead where the previous row left it. mod-import has excluded this since D55; the fifth place this rule has had to be re-derived. 893 green. |
 | 2026-08-30 | fix | **Filter kernels wrap a loop instead of clamping** (D77 aside). Oversampling clamped at the buffer edges, right for a one-shot sample and wrong for a looping one: on 66-frame single-cycle chiptune waveforms it left a 0.17 step at the loop seam against 2e-5 through the middle — a buzz at every note's pitch. |

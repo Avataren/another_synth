@@ -190,16 +190,27 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
 
       // Skip if no instrument and no effect/automation.
       //
-      // A row carrying a note or a note-off is kept even with no instrument
-      // resolved here: `ctx.instrumentId` only remembers what this *pattern*
-      // has played, so a pattern that opens with `###` on a channel before its
-      // first note had the key-off dropped outright. The engine keeps its own
-      // per-track instrument across patterns and resolves it there. elw-sick.xm
-      // is full of patterns that open exactly that way -- key-offs meant to
-      // clear what the previous pattern left ringing.
+      // A row carrying a note, a note-off or a volume is kept even with no
+      // instrument resolved here: `ctx.instrumentId` only remembers what this
+      // *pattern* has played, so a pattern that opens with `###` on a channel
+      // before its first note had the key-off dropped outright. The engine
+      // keeps its own per-track instrument across patterns and resolves it
+      // there. elw-sick.xm is full of patterns that open exactly that way --
+      // key-offs meant to clear what the previous pattern left ringing.
+      //
+      // `hasVolumeData` belongs in that list for the same reason, and its
+      // absence was reported as radix_-_yuki_satellites.xm's bassline losing
+      // its gating in the second pattern (D79). A set-volume row carries no
+      // instrument number of its own, and that pattern's every instrument-
+      // bearing row is a tone portamento -- which must not stamp the channel's
+      // instrument (D55, D77) -- so `ctx.instrumentId` is never set anywhere in
+      // the pattern and all eight `v00` rows were dropped. The note rows
+      // survived on `hasNoteData`, so the line played on at full level instead
+      // of staccato.
       if (
         !instrumentId &&
         !hasNoteData &&
+        !hasVolumeData &&
         !hasMacro &&
         !hasTempoOrSpeed &&
         !hasEffect &&
