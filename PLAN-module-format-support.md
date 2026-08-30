@@ -1710,6 +1710,84 @@ sample and left a step at the loop seam — 0.17 on this song's 66-frame single-
 waveforms, against 2e-5 through the middle, so a buzz at every note's own pitch. Real, and
 worth fixing, but it was *every* note rather than this one.
 
+### D78 — Per-voice commands address the channel, not the row's instrument
+
+The rule D77 asked to be stated once, now enforced in one place instead of re-derived per
+format. It had been found and fixed five times — D29 (MOD sample latch), D55 (the builder),
+D65 (retrigger allocating from the instrument's pool), D68 (XM key-off), D77 (XM tone
+portamento) — each fix correct, each narrow, and the class still open because the addressing
+model underneath was instrument-first.
+
+**The rule:** *only a row that starts a note changes what a channel is playing, and every
+per-voice command must address the voice that is sounding.*
+
+`TrackerSongBank.resolveCommandVoice` is now the single resolution path for pitch, volume,
+pan, envelope position, sample offset and retrigger:
+
+1. An explicit `voiceIndex >= 0` from the effect processor wins. (Nothing in the engine
+   currently sets one — `TrackEffectState.voiceIndex` is never assigned — so in practice this
+   is the direct/test path.)
+2. On a module channel, resolve **only** through `trackVoiceOwner`. The row's instrument is
+   advisory: good for logging, never for lookup. No owner means no voice, and the command is
+   dropped rather than falling back to the instrument.
+3. On a native song, keep the instrument-keyed `lastTrackVoice` lookup. This branch is not
+   optional: a native track is polyphonic, so "the track's voice" is not unique there and
+   `trackVoiceOwner` cannot answer for it. It has its own tests, because nothing in the
+   module corpus exercises it.
+
+Also: the `-1` "global last voice for this instrument" key is now written for native songs
+only. On a module it was a cross-channel leak by construction — a command that failed to
+resolve on its own track landed on whatever that instrument last played, on any channel.
+`dispatchNoteOffAtTime` takes the owner's *voice* as well as its instrument, so the two maps
+cannot disagree about which one to release. `teardownInstrument` clears `trackVoiceOwner` and
+`trackReleasingVoices` of the instrument it drops; now that ownership is the authority, a
+stale entry would have silently swallowed every command on that channel.
+
+`lastTrackVoice` and `trackVoiceOwner` were **not** collapsed. The module case now reads only
+`trackVoiceOwner`, so they can no longer disagree where it matters, and `lastTrackVoice` is
+left doing the note-on and gate-off bookkeeping it is keyed for. Collapsing them is still
+worth doing; it is not worth doing blind, and it is not what this change is for.
+
+**The corpus says the class was still live**, which is the answer to whether five narrow
+fixes had been enough. Replaying all 60 demo modules and comparing the instrument each
+per-voice command is *addressed* to against the instrument actually sounding on that channel:
+
+| Module | Mis-addressed commands |
+|---|---|
+| 4-mat_-_rose.xm (and intro version) | 99 |
+| GSLINGER.MOD | 92 |
+| an-path.xm | 54 |
+| jogeir_liljedahl_-_addiction.mod | 25 |
+| DEADLOCK.XM | 15 |
+| elw-sick.xm | 12 |
+| BUTTERFL.XM, jt_911.xm | 4 each |
+
+And they were not merely dropped. Against the old code the new corpus test reports 91, 53, 25
+and 18 commands respectively *delivered to the wrong voice* — a stale `lastTrackVoice` entry
+for that instrument on that track — so another note's pitch or gain was being rewritten. The
+five reported symptoms were the audible tip of that.
+
+**The FT2 instrument-latch question, settled.** FT2 reloads the channel volume from an
+instrument number on a tone-porta row while going on playing the current sample; it also
+latches that number for the channel's *next* note. The importers deliberately do not stamp
+it (D55, D77), so our channel latch diverges from FT2's — 190 times in "amiga boy.xm", 31 in
+"im in love with you", 18 in xyce, and once or twice in four others. Measured consequence
+across the whole XM corpus: **zero**. A later note that would have used the latched number is
+always written with its own instrument number, on every module in the collection. The
+divergence is unobservable in playback here. What remains is cosmetic and real: `entry.instrument`
+also drives the pattern editor's instrument column, so a tone-porta row that carried a number
+in the original file now displays blank. Fixing that properly means separating the display
+column from the playback addressing, which is a different change and is not made here.
+
+Tests: `src/tests/tracker-channel-voice-addressing.test.ts` (13, of which 7 confirmed failing
+against the old code) pins pitch, volume, pan, envelope position, sample offset and retrigger
+against a channel sounding a different instrument, the dropped cases, and the native
+polyphonic branch. `src/tests/tracker-corpus-voice-addressing.test.ts` (8, of which 4
+confirmed failing) drives four real modules through the engine into a real bank and asserts
+every mis-addressed command still reaches the sounding voice — with a guard that the count of
+mis-addressed commands stays above zero, so the test cannot quietly stop testing anything.
+914 green, lint clean, `quasar build` clean.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -1941,6 +2019,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **Per-voice commands address the channel, not the row's instrument** (D78). The rule five earlier fixes each re-derived (D29, D55, D65, D68, D77), now enforced in one resolution path in `TrackerSongBank` instead of per format: on a module channel, pitch/volume/pan/envelope-position/sample-offset/retrigger resolve only through `trackVoiceOwner`; native songs keep the instrument-keyed lookup, because a native track is polyphonic. The `-1` cross-channel fallback is native-only now. The class was still live in 8 of 60 demos — 91, 53, 25 and 18 commands on rose, GSLINGER, addiction and an-path were being *delivered to the wrong voice*, not merely dropped. FT2's instrument latch on tone-porta rows diverges from ours 190× in "amiga boy" but affects zero notes corpus-wide; the residue is the editor's instrument column. Tests: `src/tests/tracker-channel-voice-addressing.test.ts`, `src/tests/tracker-corpus-voice-addressing.test.ts` (11 of 21 confirmed failing against the old code). 914 green. |
 | 2026-08-30 | fix | **A tone portamento row no longer stamps the channel instrument in XM** (D77). `3xx`/`5xy` slide the sounding voice, so the row's instrument number must not become the channel's — stamping it addressed the slide to an instrument with no voice on that channel and it was dropped, leaving the lead where the previous row left it. mod-import has excluded this since D55; the fifth place this rule has had to be re-derived. 893 green. |
 | 2026-08-30 | fix | **Filter kernels wrap a loop instead of clamping** (D77 aside). Oversampling clamped at the buffer edges, right for a one-shot sample and wrong for a looping one: on 66-frame single-cycle chiptune waveforms it left a 0.17 step at the loop seam against 2e-5 through the middle — a buzz at every note's pitch. |
 | 2026-08-30 | fix | **Instrument slots sized to XM's maximum, not to the corpus** (D76). radix_-_yuki_satellites.xm references 98 instruments against a limit of 65; the import dropped the rest, and notes referencing a dropped instrument carry none at all, so the channel kept playing its previous sample — a wrong sound on a third of the song, with nothing reporting it. Now 130 slots, covering the format's 128, with a test that every XM in the collection fits. 845 green. |

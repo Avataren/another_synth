@@ -688,10 +688,18 @@ export class TrackerSongBank {
     }
 
     byTrack.set(trackKey, voiceIndex);
-    // Also record a global last voice for this instrument (trackKey = -1) so
-    // effect-driven pitch updates without a track index can target the most
-    // recently used voice instead of all voices.
-    byTrack.set(-1, voiceIndex);
+    // Record a global last voice for this instrument (trackKey = -1) so an
+    // effect-driven update with no track index can target the most recently
+    // used voice instead of all voices.
+    //
+    // Native songs only. On a module channel this key is a cross-channel leak
+    // by construction: it lets a command that failed to resolve on its own
+    // track land on whatever that instrument played most recently, on *any*
+    // channel. Module commands resolve through `trackVoiceOwner` instead
+    // (see resolveCommandVoice), which has no such escape hatch.
+    if (!this.channelsAreMonophonic) {
+      byTrack.set(-1, voiceIndex);
+    }
   }
 
   private peekLastVoiceForTrack(
@@ -1566,7 +1574,11 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
     const notes = this.getTrackNotes(instrumentId, trackIndex);
-    const voiceIndex = this.peekLastVoiceForTrack(instrumentId, trackIndex);
+    // When the owner answered, take its voice as well as its instrument. The
+    // two maps can disagree, and the owner is the one that knows what the
+    // channel is actually sounding.
+    const voiceIndex =
+      owner?.voiceIndex ?? this.peekLastVoiceForTrack(instrumentId, trackIndex);
 
     const scheduledTime = Math.max(time, this.audioContext.currentTime);
 
@@ -1616,6 +1628,87 @@ export class TrackerSongBank {
   }
 
   /**
+   * Resolve the voice a per-voice command should address.
+   *
+   * This is the single resolution path for every command that modifies a
+   * *sounding* voice -- pitch, volume, pan, envelope position, sample offset,
+   * retrigger. It exists because the obvious reading of a pattern row is
+   * wrong: the instrument number written on a row says what a *new note*
+   * should use, and is not a name for what the channel is currently playing.
+   * When the two disagree -- an XM tone-portamento row, a MOD sample latch, a
+   * key-off carrying the next note's instrument -- an instrument-first lookup
+   * finds no voice and the command is dropped, having been computed
+   * perfectly. See D29/D55/D65/D68/D77 in PLAN-module-format-support.md.
+   *
+   * The rule, stated once: *only a row that starts a note changes what a
+   * channel is playing, and every per-voice command must address the voice
+   * that is sounding.*
+   *
+   * Order of resolution:
+   *   1. An explicit `voiceIndex >= 0` from the effect processor wins.
+   *   2. On a module channel (monophonic), resolve *only* through
+   *      `trackVoiceOwner`. `requestedInstrumentId` is advisory -- good for
+   *      logging, never for lookup. No owner means no voice: drop the command
+   *      rather than falling back to the instrument.
+   *   3. On a native song a track is polyphonic, so "the track's voice" is not
+   *      unique and `trackVoiceOwner` cannot answer. Keep the historical
+   *      instrument-first lookup there.
+   *
+   * Returns undefined when nothing is sounding for this command to apply to,
+   * which callers must treat as "drop it" -- never as "guess".
+   */
+  private resolveCommandVoice(
+    requestedInstrumentId: string,
+    voiceIndex: number,
+    trackIndex: number | undefined,
+  ):
+    | { instrumentId: string; active: ActiveInstrument; voiceIndex: number }
+    | undefined {
+    const within = (
+      active: ActiveInstrument | undefined,
+      index: number,
+    ): active is ActiveInstrument =>
+      !!active && index >= 0 && index < active.instrument.getVoiceLimit();
+
+    // 1. The effect processor named a voice outright.
+    if (voiceIndex >= 0) {
+      const active = this.instruments.get(requestedInstrumentId);
+      if (!within(active, voiceIndex)) return undefined;
+      return { instrumentId: requestedInstrumentId, active, voiceIndex };
+    }
+
+    // 2. Module channel: the channel owns the voice, whatever the row says.
+    if (this.channelsAreMonophonic) {
+      if (!Number.isFinite(trackIndex as number)) return undefined;
+      const owner = this.trackVoiceOwner.get(trackIndex as number);
+      if (!owner) return undefined;
+      const active = this.instruments.get(owner.instrumentId);
+      if (!within(active, owner.voiceIndex)) return undefined;
+      return {
+        instrumentId: owner.instrumentId,
+        active,
+        voiceIndex: owner.voiceIndex,
+      };
+    }
+
+    // 3. Native song: polyphonic track, so look the instrument's own voice up.
+    const active = this.instruments.get(requestedInstrumentId);
+    if (!active) return undefined;
+    const trackKey = Number.isFinite(trackIndex as number)
+      ? (trackIndex as number)
+      : -1;
+    const resolved = this.lastTrackVoice
+      .get(requestedInstrumentId)
+      ?.get(trackKey);
+    if (resolved === undefined || !within(active, resolved)) return undefined;
+    return {
+      instrumentId: requestedInstrumentId,
+      active,
+      voiceIndex: resolved,
+    };
+  }
+
+  /**
    * Set the pitch (frequency) for a specific voice at a specific time.
    * Used for portamento, vibrato, arpeggio effects.
    */
@@ -1628,31 +1721,14 @@ export class TrackerSongBank {
     rampMode?: 'linear' | 'exponential',
   ) {
     if (!instrumentId) return;
-    const active = this.instruments.get(instrumentId);
-    if (!active) return;
-    let resolvedVoice = voiceIndex;
-    if (resolvedVoice < 0) {
-      const byTrack = this.lastTrackVoice.get(instrumentId);
-      if (byTrack) {
-        const trackKey = Number.isFinite(trackIndex)
-          ? (trackIndex as number)
-          : -1;
-        const trackVoice = byTrack.get(trackKey);
-        if (trackVoice !== undefined) {
-          resolvedVoice = trackVoice;
-        } else if (!Number.isFinite(trackIndex)) {
-          const fallback = byTrack.get(-1);
-          if (fallback !== undefined) {
-            resolvedVoice = fallback;
-          }
-        }
-      }
-    }
-    // Ignore invalid voice indices (tracker effects may emit -1 when no voice is assigned yet).
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
-      return;
-    active.instrument.setVoiceFrequencyAtTime(
-      resolvedVoice,
+    const target = this.resolveCommandVoice(
+      instrumentId,
+      voiceIndex,
+      trackIndex,
+    );
+    if (!target) return;
+    target.active.instrument.setVoiceFrequencyAtTime(
+      target.voiceIndex,
       frequency,
       time,
       rampMode,
@@ -1672,56 +1748,41 @@ export class TrackerSongBank {
     rampMode?: 'linear' | 'exponential' | 'step',
   ) {
     if (!instrumentId) return;
-    const active = this.instruments.get(instrumentId);
-    if (!active) return;
-    let resolvedVoice = voiceIndex;
-    if (resolvedVoice < 0) {
-      const byTrack = this.lastTrackVoice.get(instrumentId);
-      const trackKey = Number.isFinite(trackIndex)
-        ? (trackIndex as number)
-        : -1;
-      if (byTrack) {
-        const trackVoice = byTrack.get(trackKey);
-        if (trackVoice !== undefined) {
-          resolvedVoice = trackVoice;
-        } else if (!Number.isFinite(trackIndex)) {
-          const fallback = byTrack.get(-1);
-          if (fallback !== undefined) {
-            resolvedVoice = fallback;
-          }
-        }
-      }
-      // No fallback to voice 0 here.
-      //
-      // Instruments are per-sample, so two tracks playing the same sample
-      // share one instrument and its voice pool. Defaulting to voice 0 when
-      // *this* track has no voice yet therefore aims the command at whichever
-      // track happens to own voice 0, silently rewriting another channel's
-      // gain. GSLINGER.MOD pattern 2 is the case that exposed it: channels 1
-      // and 3 both play sample 9, and channel 3's row-0 "C00" (volume zero,
-      // no note) landed on channel 1's just-started lead and killed it.
-      //
-      // A volume command on a track with nothing sounding has nothing to
-      // apply to. ProTracker keeps it as the channel's volume and uses it for
-      // that channel's next note, which is exactly what the importer's sticky
-      // volume column already reproduces -- so dropping it here is correct,
-      // not merely safe. A row that starts a note records its voice before
-      // this runs (dispatchCommands precedes the velocity block in the
-      // engine), so genuine note+volume rows still resolve.
-      if (resolvedVoice < 0) {
-        return;
-      }
-    }
-    // Ignore invalid voice indices to avoid affecting all voices inadvertently.
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
-      return;
+    // No fallback to voice 0 when nothing resolves.
+    //
+    // Instruments are per-sample, so two tracks playing the same sample share
+    // one instrument and its voice pool. Defaulting to voice 0 when *this*
+    // track has no voice yet therefore aims the command at whichever track
+    // happens to own voice 0, silently rewriting another channel's gain.
+    // GSLINGER.MOD pattern 2 is the case that exposed it: channels 1 and 3
+    // both play sample 9, and channel 3's row-0 "C00" (volume zero, no note)
+    // landed on channel 1's just-started lead and killed it.
+    //
+    // A volume command on a track with nothing sounding has nothing to apply
+    // to. ProTracker keeps it as the channel's volume and uses it for that
+    // channel's next note, which is exactly what the importer's sticky volume
+    // column already reproduces -- so dropping it here is correct, not merely
+    // safe. A row that starts a note records its voice before this runs
+    // (dispatchCommands precedes the velocity block in the engine), so
+    // genuine note+volume rows still resolve.
+    const target = this.resolveCommandVoice(
+      instrumentId,
+      voiceIndex,
+      trackIndex,
+    );
+    if (!target) return;
     // Default to a linear ramp for smoother gain changes to avoid audible
     // snaps. Instantaneous commands (Cxx, ECx, fine slides, a note's own
     // starting level) ask for 'step' explicitly, because a ramp there runs
     // from the previous automation event and turns an instant change into a
     // glide across the whole preceding row.
     const mode = rampMode ?? 'linear';
-    active.instrument.setVoiceGainAtTime(resolvedVoice, volume, time, mode);
+    target.active.instrument.setVoiceGainAtTime(
+      target.voiceIndex,
+      volume,
+      time,
+      mode,
+    );
   }
 
   /**
@@ -1740,26 +1801,18 @@ export class TrackerSongBank {
     trackIndex: number,
   ) {
     if (!instrumentId) return;
-    const active = this.instruments.get(instrumentId);
-    if (!active) return;
-    let resolvedVoice = voiceIndex;
-    if (resolvedVoice < 0) {
-      const byTrack = this.lastTrackVoice.get(instrumentId);
-      const trackKey = Number.isFinite(trackIndex) ? trackIndex : -1;
-      const trackVoice = byTrack?.get(trackKey);
-      if (trackVoice !== undefined) {
-        resolvedVoice = trackVoice;
-      }
-      // No voice-0 fallback: tracks sharing a sample share this instrument's
-      // voice pool, so that would pan another channel's note. See D13 in
-      // PLAN-module-format-support.md.
-      if (resolvedVoice < 0) return;
-    }
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
-      return;
+    // No voice-0 fallback: tracks sharing a sample share this instrument's
+    // voice pool, so that would pan another channel's note. See D13 in
+    // PLAN-module-format-support.md.
+    const target = this.resolveCommandVoice(
+      instrumentId,
+      voiceIndex,
+      trackIndex,
+    );
+    if (!target) return;
     // Macro index 0 is pan in MOD-imported sampler patches.
-    active.instrument.setVoiceMacroAtTime(
-      resolvedVoice,
+    target.active.instrument.setVoiceMacroAtTime(
+      target.voiceIndex,
       0,
       Math.max(0, Math.min(1, pan)),
       time,
@@ -1782,24 +1835,17 @@ export class TrackerSongBank {
     trackIndex: number,
   ) {
     if (!instrumentId) return;
-    const active = this.instruments.get(instrumentId);
-    if (!active) return;
+    const target = this.resolveCommandVoice(
+      instrumentId,
+      voiceIndex,
+      trackIndex,
+    );
+    if (!target) return;
 
-    let resolvedVoice = voiceIndex;
-    if (resolvedVoice < 0) {
-      const byTrack = this.lastTrackVoice.get(instrumentId);
-      const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
-      const trackVoice = byTrack?.get(trackKey);
-      if (trackVoice === undefined) return;
-      resolvedVoice = trackVoice;
-    }
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
-      return;
-
-    const target = active.instrument as {
+    const envelopes = target.active.instrument as {
       setEnvelopePositionAtTime?: (v: number, t: number, when: number) => void;
     };
-    target.setEnvelopePositionAtTime?.(resolvedVoice, tick, time);
+    envelopes.setEnvelopePositionAtTime?.(target.voiceIndex, tick, time);
   }
 
   /**
@@ -1819,37 +1865,23 @@ export class TrackerSongBank {
     trackIndex: number,
   ) {
     if (!instrumentId) return;
-    const active = this.instruments.get(instrumentId);
-    if (!active) return;
-    let resolvedVoice = voiceIndex;
-    if (resolvedVoice < 0) {
-      const byTrack = this.lastTrackVoice.get(instrumentId);
-      if (byTrack) {
-        const trackKey = Number.isFinite(trackIndex)
-          ? (trackIndex as number)
-          : -1;
-        const trackVoice = byTrack.get(trackKey);
-        if (trackVoice !== undefined) {
-          resolvedVoice = trackVoice;
-        } else if (!Number.isFinite(trackIndex)) {
-          const fallback = byTrack.get(-1);
-          if (fallback !== undefined) {
-            resolvedVoice = fallback;
-          }
-        }
-      }
-      // Same cross-track hazard as setVoiceVolumeAtTime: two tracks sharing a
-      // sample share this instrument's voices, so voice 0 may belong to a
-      // different channel. A 9xx with no sounding voice on this track has
-      // nothing to offset.
-      if (resolvedVoice < 0) {
-        return;
-      }
-    }
-    if (resolvedVoice < 0 || resolvedVoice >= active.instrument.getVoiceLimit())
-      return;
+    // Same cross-track hazard as setVoiceVolumeAtTime: two tracks sharing a
+    // sample share this instrument's voices, so voice 0 may belong to a
+    // different channel. A 9xx with no sounding voice on this track has
+    // nothing to offset.
+    const target = this.resolveCommandVoice(
+      instrumentId,
+      voiceIndex,
+      trackIndex,
+    );
+    if (!target) return;
     // Macro index 1 is reserved for sample offset in MOD-imported sampler patches.
-    active.instrument.setVoiceMacroAtTime(resolvedVoice, 1, offset, time);
+    target.active.instrument.setVoiceMacroAtTime(
+      target.voiceIndex,
+      1,
+      offset,
+      time,
+    );
   }
 
   /**
@@ -1864,7 +1896,16 @@ export class TrackerSongBank {
     frequency?: number,
   ) {
     if (!instrumentId) return;
-    const active = this.instruments.get(instrumentId);
+
+    // A retrigger restarts *what the channel is sounding*, so it addresses the
+    // channel's voice, not the instrument written on the row -- the same rule
+    // every other per-voice command follows (see resolveCommandVoice). On a
+    // module channel a row can name an instrument for the next note while the
+    // retrigger applies to the one already playing; resolving instrument-first
+    // there restarts the wrong sample, or nothing at all.
+    const owner = this.resolveCommandVoice(instrumentId, -1, trackIndex);
+    const targetInstrumentId = owner?.instrumentId ?? instrumentId;
+    const active = this.instruments.get(targetInstrumentId);
     if (!active) return;
 
     // A retrigger is a note-on on the same channel -- E9x and Rxy restart the
@@ -1879,7 +1920,7 @@ export class TrackerSongBank {
     // peacedroid.mod patterns 16 and 17 end their track-1 phrase on
     // `E93 E92 E91`, which is where it was heard.
     this.dispatchNoteOnAtTime(
-      instrumentId,
+      targetInstrumentId,
       midi,
       velocity,
       Math.max(time, this.audioContext.currentTime),
@@ -2701,7 +2742,21 @@ export class TrackerSongBank {
     this.activeNotes.delete(instrumentId);
     this.lastTrackVoice.delete(instrumentId);
     // Clear any per-track voice tracking so stale voice IDs don't linger when
-    // the instrument is rebuilt for a new song/patch.
+    // the instrument is rebuilt for a new song/patch. `trackVoiceOwner` is now
+    // the authority for module playback, so an entry naming a torn-down
+    // instrument would silently swallow every per-voice command on that
+    // channel until the next note replaced it.
+    for (const [track, owner] of Array.from(this.trackVoiceOwner.entries())) {
+      if (owner.instrumentId === instrumentId)
+        this.trackVoiceOwner.delete(track);
+    }
+    for (const [track, list] of Array.from(
+      this.trackReleasingVoices.entries(),
+    )) {
+      const remaining = list.filter((v) => v.instrumentId !== instrumentId);
+      if (remaining.length === 0) this.trackReleasingVoices.delete(track);
+      else this.trackReleasingVoices.set(track, remaining);
+    }
     this.restoredAssets.delete(instrumentId);
   }
 
