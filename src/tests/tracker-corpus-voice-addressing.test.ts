@@ -18,7 +18,7 @@ import type AudioSystem from 'src/audio/AudioSystem';
  *
  * The point of doing it twice is that the unit rig proves the bank *can* route
  * a mis-addressed command, while this proves real modules actually send them.
- * They do, in eight of the sixty demos: a per-voice command whose row carries
+ * They do, in eight of the sixty-one demos: a per-voice command whose row carries
  * an instrument that is not what the channel is sounding. Each of the five
  * previous fixes (D29, D55, D65, D68, D77) closed one row shape on the import
  * side, and the corpus kept producing others, which is why the addressing

@@ -104,7 +104,7 @@ describe('Hxy global volume slide', () => {
    * applies it once per row instead, reaching 33.
    *
    * Nothing in the demo corpus can tell the difference: Hxy appears in exactly
-   * one of the sixty modules ("im in love with you.xm", 32 rows of `H10`), and
+   * one of the sixty-one modules ("im in love with you.xm", 32 rows of `H10`), and
    * there the global volume is already at maximum every time one runs, so both
    * readings clamp to the same value. Left alone rather than changed blind.
    */

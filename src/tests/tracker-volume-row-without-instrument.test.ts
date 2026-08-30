@@ -25,7 +25,7 @@ import { buildXm, cell, emptyCell } from './helpers/xm-builder';
  * is a gated `v00`/note pair every few rows, and the second pattern is the
  * first whose rows are all tone portamento. The gating vanished and the line
  * played on at full level -- reported as the second pattern "almost playing
- * the plain samples" where the first sounded right. 22 of the 60 demo modules
+ * the plain samples" where the first sounded right. 22 of the 61 demo modules
  * were losing rows this way.
  *
  * The engine keeps its own per-track instrument across patterns and resolves
