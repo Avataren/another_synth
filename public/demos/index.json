@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-30T10:12:43.687Z",
+  "generated": "2026-08-30T20:17:36.319Z",
   "collections": [
     {
       "id": "amiga",
@@ -70,6 +70,22 @@
           "bytes": 406354
         },
         {
+          "title": "klisje paa klisje",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/KLISJE.MOD",
+          "bytes": 224288
+        },
+        {
+          "title": "sarcophaser",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/SARCOPHASER.MOD",
+          "bytes": 72418
+        },
+        {
           "title": "a city at night",
           "format": "MOD",
           "channels": 4,
@@ -102,11 +118,27 @@
           "bytes": 32284
         },
         {
+          "title": "ambition2",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/ambition2.mod",
+          "bytes": 92722
+        },
+        {
           "title": "amegas",
           "format": "MOD",
           "channels": 4,
           "file": "amiga/amegas.mod",
           "bytes": 68864
+        },
+        {
+          "title": "beast-title",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/beast-title.mod",
+          "bytes": 56838
         },
         {
           "title": "black-hole",
@@ -115,6 +147,14 @@
           "signature": "M.K.",
           "file": "amiga/black-hole.mod",
           "bytes": 67532
+        },
+        {
+          "title": "blue stars",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/blue_stars.mod",
+          "bytes": 164546
         },
         {
           "title": "blueberry",
@@ -163,6 +203,14 @@
           "bytes": 156768
         },
         {
+          "title": "it's noiseless!",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/it's noiseless!.mod",
+          "bytes": 147504
+        },
+        {
           "title": "jackdance ii",
           "format": "MOD",
           "channels": 4,
@@ -184,6 +232,14 @@
           "signature": "M.K.",
           "file": "amiga/jogeir_liljedahl_-_addiction.mod",
           "bytes": 93758
+        },
+        {
+          "title": "lastv8",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/last v8.mod",
+          "bytes": 37392
         },
         {
           "title": "lepeltheme",
@@ -223,6 +279,22 @@
           "signature": "M.K.",
           "file": "amiga/obarski mega-mix.mod",
           "bytes": 141812
+        },
+        {
+          "title": "oro",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/oro incenso.mod",
+          "bytes": 339546
+        },
+        {
+          "title": "overture",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/overture.mod",
+          "bytes": 151698
         },
         {
           "title": "peace droid",
@@ -340,6 +412,14 @@
           "signature": "M.K.",
           "file": "amiga/toytitle.mod",
           "bytes": 93996
+        },
+        {
+          "title": "we're the devils",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/were_the_devils.mod",
+          "bytes": 110240
         }
       ]
     },
@@ -364,15 +444,6 @@
           "instruments": 32,
           "file": "ft2/4-mat_-_rose.xm",
           "bytes": 57215
-        },
-        {
-          "title": "Rose",
-          "format": "XM",
-          "channels": 4,
-          "patterns": 48,
-          "instruments": 32,
-          "file": "ft2/4-mat_-_rose_intro_version.xm",
-          "bytes": 54555
         },
         {
           "title": "Butterfly Flew Away",

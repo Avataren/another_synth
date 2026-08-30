@@ -3,10 +3,16 @@
 # Build and deploy the app to the web host.
 #
 # The demo modules live in public/demos/, so the Quasar build copies them into
-# dist/spa and this deploy carries them like any other asset. They used to be
-# published separately and excluded from the `--delete` here; that exclusion is
-# gone, and with it the failure mode where deploying with plain rsync -- or
-# forgetting the exclusion -- wiped the whole collection off the server.
+# dist/spa and this deploy carries them like any other asset. `npm run build`
+# re-indexes public/demos/index.json first, so dropping a .mod or .xm into
+# public/demos/<collection>/ is all it takes to publish it -- the manifest used
+# to be regenerated only by hand, and a new module deployed as an unreferenced
+# file the demo browser never listed.
+#
+# The modules used to be published separately and excluded from the `--delete`
+# here; that exclusion is gone, and with it the failure mode where deploying
+# with plain rsync -- or forgetting the exclusion -- wiped the whole collection
+# off the server.
 #
 # The Rust toolchain needs the nightly bin directory on PATH: rust-wasm pins
 # nightly via rust-toolchain.toml, but that file is only honoured by rustup's
