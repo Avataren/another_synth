@@ -318,14 +318,32 @@
             <div class="panel-title">Instruments</div>
             <div class="page-tabs">
               <button
-                v-for="page in TOTAL_PAGES"
+                type="button"
+                class="page-tab page-step"
+                :disabled="currentInstrumentPage === 0"
+                title="Previous page"
+                @click="stepInstrumentPage(-1)"
+              >
+                &lsaquo;
+              </button>
+              <button
+                v-for="page in visibleInstrumentPages"
                 :key="page"
                 type="button"
                 class="page-tab"
-                :class="{ active: currentInstrumentPage === page - 1 }"
-                @click="trackerStore.setInstrumentPage(page - 1)"
+                :class="{ active: currentInstrumentPage === page }"
+                @click="trackerStore.setInstrumentPage(page)"
               >
-                {{ page }}
+                {{ page + 1 }}
+              </button>
+              <button
+                type="button"
+                class="page-tab page-step"
+                :disabled="currentInstrumentPage >= TOTAL_PAGES - 1"
+                title="Next page"
+                @click="stepInstrumentPage(1)"
+              >
+                &rsaquo;
               </button>
             </div>
           </div>
@@ -611,6 +629,7 @@ import {
   trackGapPx,
   trackWidthPx,
 } from 'src/components/tracker/track-metrics';
+import { visiblePageWindow } from 'src/components/tracker/page-window';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
@@ -690,6 +709,22 @@ const isFullscreen = ref(false);
 const columnsPerTrack = computed(() =>
   userSettings.value.showTrackerExtraEffectColumn ? 6 : 5,
 );
+/** How many page numbers the instrument pager shows at once. */
+const INSTRUMENT_PAGE_WINDOW = 5;
+
+/** The run of page numbers to show, sliding with the current page. */
+const visibleInstrumentPages = computed(() =>
+  visiblePageWindow(
+    currentInstrumentPage.value,
+    TOTAL_PAGES,
+    INSTRUMENT_PAGE_WINDOW,
+  ),
+);
+
+function stepInstrumentPage(delta: number) {
+  trackerStore.setInstrumentPage(currentInstrumentPage.value + delta);
+}
+
 /**
  * Column metrics for the waveform row, which must match the pattern grid's
  * exactly or the waveforms drift off the tracks they meter.
@@ -2882,9 +2917,17 @@ onBeforeUnmount(() => {
 .page-tabs {
   display: flex;
   gap: 3px;
-  /* 26 pages of instruments do not fit on one line beside the title. */
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
+}
+
+.page-step {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.page-step:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .page-tab {
