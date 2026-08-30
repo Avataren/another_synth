@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseMod } from '../../packages/tracker-playback/src/mod-parser';
 import { parseXm } from '../../packages/tracker-playback/src/formats/xm';
+import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 
 /**
  * The demo modules are committed and served as-is, so nothing between the
@@ -29,6 +30,46 @@ const manifest = JSON.parse(
 ) as Manifest;
 
 const songs = manifest.collections.flatMap((c) => c.songs);
+
+describe('instrument slots', () => {
+  /**
+   * Running out of slots does not fail an import -- it drops the instrument,
+   * and a note referencing a dropped instrument then carries no instrument at
+   * all, so the channel keeps playing whatever sample it had. The song plays
+   * on with the wrong sound and nothing says so.
+   *
+   * radix_-_yuki_satellites.xm references 98 instruments against a limit of
+   * 65, and a third of its instruments came out as some other sample.
+   */
+  const xms = fs
+    .readdirSync(path.join(DEMOS, 'ft2'))
+    .filter((f) => /\.xm$/i.test(f))
+    .map(
+      (f) =>
+        [
+          f,
+          parseXm(new Uint8Array(fs.readFileSync(path.join(DEMOS, 'ft2', f)))),
+        ] as const,
+    );
+
+  it('holds every instrument the format allows', () => {
+    // Sizing to the corpus is what failed before. XM's own maximum is 128.
+    expect(TOTAL_SLOTS).toBeGreaterThanOrEqual(128);
+  });
+
+  it.each(xms)('has room for every instrument %s references', (_name, xm) => {
+    const referenced = new Set<number>();
+    for (const pattern of xm.patterns) {
+      for (const row of pattern.rows) {
+        for (const cell of row) {
+          if (cell.instrument > 0) referenced.add(cell.instrument);
+        }
+      }
+    }
+
+    expect(referenced.size).toBeLessThanOrEqual(TOTAL_SLOTS);
+  });
+});
 
 describe('the published demo collection', () => {
   it('lists something', () => {

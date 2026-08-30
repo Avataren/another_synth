@@ -1630,6 +1630,44 @@ resolve to a voice per channel via `lastTrackVoice`, so the vibrato on channels 
 reaching the doubled channels 5-6; and the `C4`/`CC` in those cells is the volume column's
 `$c0-$cf` set-panning range, not a volume.
 
+### D76 — Running out of instrument slots plays the wrong sample, silently
+
+radix_-_yuki_satellites.xm, reported at the order 23 -> 24 boundary: *"there are some weird
+sounds on track 2, it sounds like either a completely wrong sample or some misbehaving
+effect"*, then *"it sounds to me like it's simply playing the wrong sample on that track"* —
+which is exactly what it was.
+
+Driving the engine across the boundary and logging track 2:
+
+```
+order 24 row 4:  NOTE trk=1 noteOn ins=01 midi=89 vel=127
+```
+
+The file says `F-6 72`. The note is right (midi 89 is F-6); the instrument is **01**, which is
+what the *previous* pattern was playing.
+
+`TOTAL_SLOTS` was 65. This song references **98** instruments and declares 117. The import
+allocates a slot per referenced instrument and, on running out, logs a warning and drops the
+rest — and a note whose instrument was dropped is emitted with no instrument at all, so the
+channel simply keeps the sample it already had. The song plays on, in tune and in time, with
+the wrong sound on a third of its instruments and nothing to say so.
+
+The 65 came from measuring the corpus: the busiest module then to hand referenced 42. That is
+the trap. **A capacity sized to what has been measured fails silently the first time
+something exceeds it**, and this failure mode is quiet by construction. It is now sized to
+XM's own maximum instead — 26 pages of 5 is 130, which no valid XM can exceed. Empty slots
+cost an object each and audio resources are allocated per *used* instrument, so the headroom
+is close to free. The page selector wraps.
+
+A test asserts both halves: that the capacity covers the format's 128, and that every XM in
+the collection fits inside it — the second so a future module that would have overflowed
+shows up as a failure rather than as a wrong sample.
+
+**Ruled out on the way**, recorded so they are not re-examined: the sample decodes correctly
+(instrument 72 is one of 90 sixteen-bit samples in this song, and comes out as clean audio);
+no instrument in the file uses a multi-sample keymap; and the tone portamento ending the
+previous pattern is cleared by the new note, so it was not sliding across the boundary.
+
 ### D71 — Open: EEx repeats one time short
 
 Turned up while re-pinning `engine-pattern-delay.spec.ts`, which had been asserting on
@@ -1861,6 +1899,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
 | 2026-08-28 | 0 | Tag threaded store → `useTrackerSongBuilder` → `Song.moduleFormat` → `PlaybackEngine` (`getModuleFormat()`). Nothing branches on it yet. Tests: `src/tests/tracker-module-format-plumbing.test.ts`. **Phase 0 complete.** |
+| 2026-08-30 | fix | **Instrument slots sized to XM's maximum, not to the corpus** (D76). radix_-_yuki_satellites.xm references 98 instruments against a limit of 65; the import dropped the rest, and notes referencing a dropped instrument carry none at all, so the channel kept playing its previous sample — a wrong sound on a third of the song, with nothing reporting it. Now 130 slots, covering the format's 128, with a test that every XM in the collection fits. 845 green. |
 | 2026-08-30 | fix | **A vibrato holds its offset through empty rows** (D75). FT2 leaves the channel period alone on a cell carrying no effect, so a vibrato keeps its offset; tick 0's sync fallback wrote the bare note pitch instead. jt_911.xm writes `400` only every fourth row, so three rows in four sprang back to centre — by a growing amount, against two channels doubling the same note. The depth itself is confirmed correct against the XM spec's own `8363*1712/Period`. 828 green. |
 | 2026-08-30 | fix | **Vibrato bends down first, and holds across rows** (D74). Both ProTracker and FT2 add the offset to the period while the position is positive; this subtracted, inverting every vibrato's phase. And tick 0 of a continuing `400` row emitted the bare base pitch, resetting the wave to centre once a row. jt_911.xm holds `41F` (speed 1, depth 15) over a ten-row cycle across 2172 `400` rows, so both were plainly audible. Two tests had pinned the inverted sign. 826 green. |
 | 2026-08-30 | fix | **Ultimate Soundtracker read as its own format** (D73). Arpeggio is command 1 there, not 0, so lepeltheme.mod's `137` minor triad on all 64 rows of a channel played as a runaway portamento; and sample loop starts are byte offsets, so every looped sample looped past its own end. Both detected from the data, with jackdance.mod (command 0 arpeggio, 15 samples) pinning the over-detection boundary. Tests: `src/tests/mod-ultimate-soundtracker.test.ts`. 824 green. |

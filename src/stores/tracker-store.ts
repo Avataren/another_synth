@@ -11,16 +11,26 @@ export type { ModuleFormat };
 
 export const SLOTS_PER_PAGE = 5;
 /**
- * Raised from 7 to 13 (35 -> 65 slots) for XM support.
+ * Sized to XM's own maximum of 128 instruments, rather than to the corpus.
  *
- * XM allows 128 instruments. In practice most are empty: jt_letgo.xm declares
- * 128 but only 9 carry samples. Measured across the local corpus, the highest
- * count of instruments that actually have sample data is 42 (an-path.xm),
- * which 35 slots could not hold. 65 covers that with headroom while leaving
- * the 5-per-page UI layout untouched.
+ * This was 65, chosen because the busiest module then to hand referenced 42.
+ * Sizing to what has been measured is a trap here: an import that runs out of
+ * slots does not fail, it drops the instrument, and a note referencing a
+ * dropped instrument carries no instrument at all -- so the channel keeps
+ * playing whatever sample it had. The song plays on with the wrong sound and
+ * nothing says so.
+ *
+ * radix_-_yuki_satellites.xm references 98 instruments and declares 117. Its
+ * pattern 33 opens with `F-6 72` on channel 2, which came out as the previous
+ * pattern's instrument 01 -- an audibly wrong sample, for a third of the
+ * song's instruments.
+ *
+ * 26 pages of 5 gives 130, which no valid XM can exceed. Empty slots cost an
+ * object each; audio resources are allocated per *used* instrument, so the
+ * headroom is close to free.
  */
-export const TOTAL_PAGES = 13;
-export const TOTAL_SLOTS = SLOTS_PER_PAGE * TOTAL_PAGES; // 65 slots
+export const TOTAL_PAGES = 26;
+export const TOTAL_SLOTS = SLOTS_PER_PAGE * TOTAL_PAGES; // 130 slots
 
 export interface InstrumentSlot {
   slot: number;

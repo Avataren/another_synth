@@ -2882,6 +2882,9 @@ onBeforeUnmount(() => {
 .page-tabs {
   display: flex;
   gap: 3px;
+  /* 26 pages of instruments do not fit on one line beside the title. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .page-tab {
