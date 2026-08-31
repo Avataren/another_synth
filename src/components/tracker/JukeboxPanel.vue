@@ -9,7 +9,7 @@
         <button
           type="button"
           class="jukebox-close"
-          title="Close the jukebox"
+          title="Hide the playlist"
           @click="$emit('close')"
         >
           ×
@@ -161,7 +161,7 @@ import type { JukeboxEntry } from 'src/stores/jukebox-store';
  * The visible playlist.
  *
  * Purely presentational: it renders the queue and reports what the user did.
- * Loading a module needs the tracker page's instrument machinery, so the page
+ * Loading a module needs a loaded tracker to put it in, so the jukebox page
  * owns every one of these actions.
  */
 const props = defineProps<{
@@ -215,14 +215,14 @@ watch(
 
 <style scoped>
 /*
- * The panel must not make the top row any taller than it already was -- every
- * pixel it adds comes straight off the pattern area below, which is the part
- * of the screen actually worth looking at.
+ * The panel takes its height from whatever it is dropped into rather than
+ * asking for any of its own -- on the jukebox page that is the full height of
+ * the dock beside the visualisers.
  *
- * So the grid item itself holds nothing: its only child is taken out of flow,
- * which leaves the item with no content height to contribute. The row goes on
- * being sized by the panels that were always there, and the body stretches to
- * fill whatever that turns out to be, with the playlist scrolling inside it.
+ * So the outer element holds nothing: its only child is taken out of flow,
+ * which leaves it with no content height to contribute. The body then
+ * stretches to fill whatever height the container turns out to have, with the
+ * playlist scrolling inside it.
  */
 .jukebox-panel {
   position: relative;

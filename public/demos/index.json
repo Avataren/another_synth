@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-30T20:17:36.319Z",
+  "generated": "2026-08-31T20:58:37.265Z",
   "collections": [
     {
       "id": "amiga",
@@ -373,6 +373,14 @@
           "signature": "M.K.",
           "file": "amiga/stardstm.mod",
           "bytes": 153676
+        },
+        {
+          "title": "Starlit deception",
+          "format": "MOD",
+          "channels": 8,
+          "signature": "8CHN",
+          "file": "amiga/starlitdeception.mod",
+          "bytes": 280146
         },
         {
           "title": "telephone",

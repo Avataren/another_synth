@@ -74,7 +74,7 @@
           <button
             type="button"
             class="song-button ghost"
-            @click="openDemoBrowser('load')"
+            @click="openDemoBrowser()"
             :disabled="isLoadingSong"
           >
             Demos
@@ -82,10 +82,9 @@
           <button
             type="button"
             class="song-button ghost"
-            :class="{ active: jukebox.active }"
             :disabled="isLoadingSong"
-            title="Play the demo collection as a shuffled playlist"
-            @click="toggleJukebox"
+            title="Play the demo collection on its own page"
+            @click="openJukebox"
           >
             Jukebox
           </button>
@@ -125,11 +124,7 @@
         </div>
       </div>
 
-      <div
-        class="top-grid"
-        :class="{ 'with-jukebox': jukebox.active }"
-        v-show="!isFullscreen"
-      >
+      <div class="top-grid" v-show="!isFullscreen">
         <SequenceEditor
           ref="sequenceEditorRef"
           class="top-panel"
@@ -329,28 +324,6 @@
             </div>
           </div>
         </div>
-
-        <JukeboxPanel
-          v-if="jukebox.active"
-          :entries="jukebox.entries"
-          :current-index="jukebox.currentIndex"
-          :current="jukebox.current"
-          :has-entries="jukebox.hasEntries"
-          :is-playing="isPlaying"
-          :repeat="jukebox.repeat"
-          :busy="jukeboxBusy || isLoadingSong"
-          @next="stepJukebox(1)"
-          @previous="stepJukebox(-1)"
-          @toggle-play="toggleJukeboxPlayback"
-          @shuffle="handleJukeboxShuffle"
-          @play-index="playJukeboxIndex($event)"
-          @remove="handleJukeboxRemove"
-          @add="openDemoBrowser('add')"
-          @refill="handleJukeboxRefill"
-          @clear="handleJukeboxClear"
-          @close="stopJukebox"
-          @update:repeat="jukebox.setRepeat($event)"
-        />
 
         <div class="instrument-panel top-panel">
           <div class="panel-header">
@@ -618,12 +591,7 @@
         </div>
       </div>
     </div>
-    <DemoSongBrowser
-      v-model="showDemoBrowser"
-      :mode="demoBrowserMode"
-      :queued-files="jukeboxQueuedFiles"
-      @select="handleDemoSelect"
-    />
+    <DemoSongBrowser v-model="showDemoBrowser" @select="handleDemoSelect" />
 
     <div v-if="showExportModal" class="export-modal">
       <div class="export-dialog">
@@ -676,16 +644,7 @@ import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
-import type { DemoBrowserMode } from 'src/components/tracker/DemoSongBrowser.vue';
-import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
-import {
-  useDemoManifest,
-  type DemoSong,
-} from 'src/composables/useDemoManifest';
-import {
-  useJukeboxStore,
-  entryFromDemoSong,
-} from 'src/stores/jukebox-store';
+import type { DemoSong } from 'src/composables/useDemoManifest';
 import StereoLevelMeter from 'src/components/tracker/StereoLevelMeter.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
@@ -696,27 +655,21 @@ import {
   TOTAL_PAGES,
   clampPatternRows,
 } from 'src/stores/tracker-store';
-import type { TrackerSongFile } from 'src/stores/tracker-store';
 import { usePatchStore } from 'src/stores/patch-store';
 import { useKeyboardStore } from 'src/stores/keyboard-store';
 import { useTrackerKeyboard } from 'src/composables/keyboard/useTrackerKeyboard';
 import type { TrackerKeyboardContext } from 'src/composables/keyboard/types';
 import { useTrackerExport } from 'src/composables/useTrackerExport';
 import type { TrackerExportContext } from 'src/composables/useTrackerExport';
-import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import { useTrackerSelection } from 'src/composables/useTrackerSelection';
 import type { TrackerSelectionContext } from 'src/composables/useTrackerSelection';
 import { useTrackerEditing } from 'src/composables/useTrackerEditing';
 import type { TrackerEditingContext } from 'src/composables/useTrackerEditing';
-import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
-import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
 import { useTrackerNavigation } from 'src/composables/useTrackerNavigation';
 import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigation';
+import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
-import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
-import type { TrackerSongBuilderContext } from 'src/composables/useTrackerSongBuilder';
-import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { storeToRefs } from 'pinia';
 
@@ -729,11 +682,6 @@ trackerStore.initializeIfNeeded();
 const keyboardStore = useKeyboardStore();
 const {
   currentSong,
-  moduleFormat,
-  initialSpeed,
-  linearFrequency,
-  vblankTiming,
-  defaultPatternRows,
   stepSize,
   patterns,
   sequence,
@@ -754,6 +702,43 @@ const slotSignatures = computed(() =>
 );
 const patchStore = usePatchStore();
 const playbackStore = useTrackerPlaybackStore();
+
+/**
+ * Everything that makes a song play: the song builder, the song bank sync,
+ * the per-track visualiser nodes and the file loading. Shared with the
+ * jukebox page, which needs all of it and none of the editing below.
+ */
+const host = useTrackerSongHost({
+  onSequenceReset: () => {
+    // Scroll the sequence list back to the top and drop its selection, so it
+    // agrees with the index the load just reset.
+    void nextTick(() => {
+      sequenceEditorRef.value?.scrollToTop();
+      sequenceEditorRef.value?.resetSelection();
+    });
+  },
+});
+const {
+  songBank,
+  audioContext,
+  masterOutputNode,
+  trackAudioNodes,
+  spectrumTrackNodes,
+  setTrackAudioNodeForInstrument,
+  updateTrackAudioNodes,
+  clearActiveNoteTracks,
+  claimTrackAudioNodeSetter,
+  releaseTrackAudioNodeSetter,
+  buildPlaybackSong,
+  syncSongBankFromSlots,
+  initializePlayback,
+  isLoadingSong,
+  handleSaveSongFile,
+  handleLoadSongFile,
+  loadSongFromUrl,
+  formatInstrumentId,
+  normalizeInstrumentId,
+} = host;
 const activeRow = ref(0);
 const activeTrack = ref(0);
 const activeColumn = ref(0);
@@ -854,8 +839,6 @@ const patternAreaScrollTop = ref(0);
 const patternAreaHeight = ref(600);
 // Grid/navigation/selection all size against the *current* pattern.
 const rowsCount = computed(() => trackerStore.currentPatternRows);
-const trackerAudioStore = useTrackerAudioStore();
-const songBank = trackerAudioStore.songBank;
 
 // Handle pattern area scroll for virtual scrolling
 // Throttle scroll updates using requestAnimationFrame for better performance
@@ -1082,8 +1065,6 @@ watch(
 
 // Playback functionality will be initialized after all dependencies are set up
 
-const audioContext = computed(() => songBank.audioContext);
-const masterOutputNode = computed(() => songBank.output);
 const DEFAULT_BASE_OCTAVE = trackerStore.baseOctave;
 const baseOctave = ref(trackerStore.baseOctave);
 const trackCount = computed(() => currentPattern.value?.tracks.length ?? 0);
@@ -1386,16 +1367,6 @@ const noteKeyMap: Record<string, number> = {
   BracketRight: 79,
   Backslash: 81,
 };
-const formatInstrumentId = (slotNumber: number) =>
-  slotNumber.toString().padStart(2, '0');
-const normalizeInstrumentId = (instrumentId?: string) => {
-  if (!instrumentId) return undefined;
-  const numeric = Number(instrumentId);
-  if (Number.isFinite(numeric)) {
-    return formatInstrumentId(numeric);
-  }
-  return instrumentId;
-};
 
 function applyBaseOctave(midi: number): number {
   const offset = (baseOctave.value - DEFAULT_BASE_OCTAVE) * 12;
@@ -1455,8 +1426,8 @@ const editingContext: TrackerEditingContext = {
   normalizeMacroChars,
   midiToTrackerNote,
   onNotePreview: (trackIndex: number, instrumentId: string) => {
-    setTrackAudioNodeForInstrumentRef?.(trackIndex, instrumentId);
-    markTrackNotePlayedRef?.(trackIndex);
+    setTrackAudioNodeForInstrument(trackIndex, instrumentId);
+    host.markTrackNotePlayed(trackIndex);
   },
 };
 
@@ -1519,122 +1490,6 @@ function handleGlobalMouseUp() {
 }
 
 // Set up song builder composable (must be before playback)
-const songBuilderContext: TrackerSongBuilderContext = {
-  currentSong,
-  moduleFormat,
-  initialSpeed,
-  linearFrequency,
-  vblankTiming,
-  patterns,
-  sequence,
-  currentPatternId,
-  currentPattern,
-  defaultPatternRows,
-  instrumentSlots,
-  songPatches,
-  songBank,
-  normalizeInstrumentId,
-  formatInstrumentId,
-};
-
-const {
-  buildPlaybackSong,
-  syncSongBankFromSlots: syncSongBankFromSlotsBase,
-  resolveInstrumentForTrack,
-} = useTrackerSongBuilder(songBuilderContext);
-
-// Will be assigned after playback composable is set up
-let updateTrackAudioNodesRef: (() => void) | null = null;
-let markTrackNotePlayedRef: ((trackIndex: number) => void) | null = null;
-let setTrackAudioNodeForInstrumentRef:
-  | ((trackIndex: number, instrumentId?: string) => void)
-  | null = null;
-
-// Wrapper that also updates track audio nodes and applies volumes
-async function syncSongBankFromSlots() {
-  await syncSongBankFromSlotsBase();
-  if (updateTrackAudioNodesRef) {
-    updateTrackAudioNodesRef();
-  }
-  // Apply stored volumes to each instrument in the song bank
-  for (const slot of trackerStore.instrumentSlots) {
-    if (slot.patchId) {
-      const instrumentId = formatInstrumentId(slot.slot);
-      const volume = slot.volume ?? 1.0;
-      songBank.setInstrumentOutputGain(instrumentId, volume);
-    }
-  }
-}
-
-// Track audio nodes for visualization (simplified from old composable)
-const trackAudioNodes = ref<Record<number, AudioNode | null>>({});
-const tracksWithActiveNotes = ref<Set<number>>(new Set());
-
-// Ordered array (by track index) for TrackerSpectrumAnalyzer's per-channel
-// mode, which only applies for the classic 4-channel Amiga layout.
-const spectrumTrackNodes = computed<(AudioNode | null)[]>(() =>
-  Array.from({ length: trackCount.value }, (_, i) => trackAudioNodes.value[i] ?? null),
-);
-
-function setTrackAudioNodeForInstrument(
-  trackIndex: number,
-  instrumentId?: string,
-) {
-  const normalized = normalizeInstrumentId(instrumentId);
-  // Not the instrument's output: one sample is one instrument, shared by every
-  // channel that plays it, so that node carries other tracks too. The bank
-  // hands back a per-track tap where it can.
-  const node = songBank.getTrackVisualizationNode(trackIndex, normalized);
-  if (trackAudioNodes.value[trackIndex] === node) return;
-  trackAudioNodes.value = {
-    ...trackAudioNodes.value,
-    [trackIndex]: node,
-  };
-}
-
-function updateTrackAudioNodes() {
-  const nodes: Record<number, AudioNode | null> = {};
-  const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
-  for (let i = 0; i < tracks.length; i++) {
-    // Only show waveform for tracks that have notes with an instrument in this pattern
-    // During playback, setTrackAudioNodeForInstrument will update nodes when notes play
-    // This allows sound from previous patterns to continue showing on the visualizer
-    const resolvedId = resolveInstrumentForTrack(tracks[i], i);
-    if (resolvedId) {
-      nodes[i] = songBank.getTrackVisualizationNode(i, resolvedId);
-    } else if (isPlaying.value || isPaused.value) {
-      // During playback, preserve existing node assignment (might be from previous pattern)
-      nodes[i] = trackAudioNodes.value[i] ?? null;
-    } else {
-      // When stopped, clear nodes for tracks without notes
-      nodes[i] = null;
-    }
-  }
-  trackAudioNodes.value = nodes;
-}
-
-function clearTrackAudioNodes() {
-  const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
-  const nodes: Record<number, AudioNode | null> = {};
-  for (let i = 0; i < tracks.length; i++) {
-    nodes[i] = null;
-  }
-  trackAudioNodes.value = nodes;
-}
-
-function markTrackNotePlayed(trackIndex: number) {
-  if (!tracksWithActiveNotes.value.has(trackIndex)) {
-    tracksWithActiveNotes.value = new Set([
-      ...tracksWithActiveNotes.value,
-      trackIndex,
-    ]);
-  }
-}
-
-function clearActiveNoteTracks() {
-  tracksWithActiveNotes.value = new Set();
-}
-
 // Reload playback after structural edits (transpose) without forcing a stop/start cycle
 async function restartPlaybackIfActive() {
   // Only hot-reload playback while actively playing; keep stopped/paused idle
@@ -1662,27 +1517,11 @@ function transposePattern(semitones: number) {
 
 // Playback handlers that delegate to the store
 async function handlePlayPattern() {
-  clearActiveNoteTracks();
-  clearTrackAudioNodes();
-  const song = buildPlaybackSong('pattern');
-  await playbackStore.play(
-    song,
-    'pattern',
-    activeRow.value,
-    currentSequenceIndex.value,
-  );
+  await host.play('pattern', activeRow.value);
 }
 
 async function handlePlaySong() {
-  clearActiveNoteTracks();
-  clearTrackAudioNodes();
-  const song = buildPlaybackSong('song');
-  await playbackStore.play(
-    song,
-    'song',
-    activeRow.value,
-    currentSequenceIndex.value,
-  );
+  await host.play('song', activeRow.value);
 }
 
 function handlePause() {
@@ -1716,25 +1555,6 @@ function toggleSolo(trackIndex: number) {
 function sanitizeMuteSoloState(trackTotal = trackCount.value) {
   playbackStore.sanitizeMuteSoloState(trackTotal);
 }
-
-async function initializePlayback(
-  mode: 'pattern' | 'song' = playbackMode.value,
-  skipIfPlaying: boolean = false,
-): Promise<boolean> {
-  updateTrackAudioNodes();
-  const song = buildPlaybackSong(mode);
-  return await playbackStore.loadSong(
-    song,
-    mode,
-    skipIfPlaying,
-    currentSequenceIndex.value,
-  );
-}
-
-// Assign the refs so wrappers can use them
-updateTrackAudioNodesRef = updateTrackAudioNodes;
-markTrackNotePlayedRef = markTrackNotePlayed;
-setTrackAudioNodeForInstrumentRef = setTrackAudioNodeForInstrument;
 
 // Set up instruments composable
 const instrumentsContext: TrackerInstrumentsContext = {
@@ -1793,300 +1613,23 @@ const onMasterVolumeChange = (event: Event) => {
   songBank.setUserMasterVolume(volume);
 };
 
-// Flag to prevent watcher interference during explicit file load
-const isLoadingSong = ref(false);
-
-// Set up file I/O composable
-const fileIOContext: TrackerFileIOContext = {
-  trackerStore,
-  songBank,
-  currentSong,
-  playbackMode,
-  isLoadingSong,
-  ensureActiveInstrument,
-  syncSongBankFromSlots,
-  initializePlayback,
-  stopPlayback: () => {
-    playbackStore.stop();
-    clearTrackAudioNodes();
-  },
-  resetSequenceIndex: () => {
-    playbackStore.setSequenceIndex(0);
-    // Scroll the sequence list to the top and reset selection after setting index to 0
-    nextTick(() => {
-      sequenceEditorRef.value?.scrollToTop();
-      sequenceEditorRef.value?.resetSelection();
-    });
-  },
-};
-
 const showDemoBrowser = ref(false);
 
-/**
- * What picking a song in the demo browser does: replace the song in the
- * tracker, or queue it on the jukebox playlist.
- */
-const demoBrowserMode = ref<DemoBrowserMode>('load');
-
-function openDemoBrowser(mode: DemoBrowserMode) {
-  demoBrowserMode.value = mode;
+function openDemoBrowser() {
   showDemoBrowser.value = true;
 }
 
-async function handleDemoSelect(url: string, song: DemoSong) {
-  if (demoBrowserMode.value === 'add') {
-    // The dialog stays open so a run of songs can be queued in one visit.
-    jukebox.add(song);
-    return;
-  }
+async function handleDemoSelect(url: string, _song: DemoSong) {
   showDemoBrowser.value = false;
-  // Loading a song by hand is not part of the playlist, so stop the jukebox
-  // rather than have it yank the song away again when this one ends.
-  stopJukebox();
   await loadSongFromUrl(url);
 }
 
-const {
-  handleSaveSongFile,
-  handleLoadSongFile,
-  loadSongFromUrl,
-  parseSongBuffer,
-  applySongFile,
-} = useTrackerFileIO(fileIOContext);
-
-// ============================================
-// Jukebox
-// ============================================
-
-const jukebox = useJukeboxStore();
-const { load: loadDemoManifest, allSongs: allDemoSongs } = useDemoManifest();
-
-/** A jukebox song is being fetched and its instruments rebuilt. */
-const jukeboxBusy = ref(false);
-
-let teardownSongEnd: (() => void) | null = null;
-
 /**
- * The next module, fetched and parsed while the current one is still playing.
- *
- * Between songs the tracker has to fetch the file, parse it, and rebuild every
- * instrument. Only the rebuild genuinely has to happen in the gap: the other
- * two touch no tracker state and can run ahead of time. Parsing is 35-75ms of
- * synchronous work for a typical module, comfortably inside the scheduler's
- * half-second lookahead, so it is done while the previous song plays and the
- * switch gets to skip straight to the rebuild.
+ * The jukebox is a page of its own: it plays the demo collection without
+ * touching the song loaded here, and puts this song back on the way out.
  */
-let prefetchedSong: { file: string; songFile: TrackerSongFile } | null = null;
-let prefetchingFile: string | null = null;
-
-/** Run in a quiet moment, so the parse does not land on a busy frame. */
-function whenIdle(run: () => void): void {
-  const idle = (
-    window as unknown as {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
-    }
-  ).requestIdleCallback;
-  if (idle) idle(run, { timeout: 2000 });
-  else setTimeout(run, 250);
-}
-
-/** Warm the entry after the current one, so the switch has nothing to fetch. */
-async function prefetchNextJukeboxEntry(): Promise<void> {
-  const nextIndex = jukebox.indexAfter(1);
-  if (nextIndex === null) return;
-  const entry = jukebox.entries[nextIndex];
-  if (!entry) return;
-  // Already warm, or already on its way.
-  if (prefetchedSong?.file === entry.file || prefetchingFile === entry.file) {
-    return;
-  }
-
-  prefetchingFile = entry.file;
-  try {
-    const response = await fetch(entry.url);
-    if (!response.ok) {
-      throw new Error(`${response.status} ${response.statusText}`);
-    }
-    const data = await response.arrayBuffer();
-    prefetchedSong = {
-      file: entry.file,
-      songFile: await parseSongBuffer(data),
-    };
-  } catch (error) {
-    // A failed warm-up costs nothing: the switch just loads it the slow way.
-    console.warn(`[Jukebox] Could not prefetch ${entry.file}`, error);
-    if (prefetchedSong?.file === entry.file) prefetchedSong = null;
-  } finally {
-    if (prefetchingFile === entry.file) prefetchingFile = null;
-  }
-}
-
-/** Files already queued, so the browser can show them as such in add mode. */
-const jukeboxQueuedFiles = computed(
-  () => new Set(jukebox.entries.map((entry) => entry.file)),
-);
-
-/**
- * Load a song from the playlist and start it.
- *
- * A module whose bytes are unreachable or unparseable would otherwise stall
- * the jukebox on a song that never plays, so a failure moves on to the next
- * one -- but only so many times, or a playlist of nothing but broken files
- * would spin through itself forever.
- */
-async function playJukeboxIndex(index: number, attemptsLeft = 3): Promise<void> {
-  if (jukeboxBusy.value) return;
-  jukebox.setCurrentIndex(index);
-  const entry = jukebox.current;
-  if (!entry) return;
-
-  jukeboxBusy.value = true;
-  try {
-    // Set before loading: initializePlayback re-applies this to the engine.
-    playbackStore.setLoopSong(false);
-
-    // Claim the warmed song, if this is the one that was warmed. Cleared
-    // either way: it is consumed here, and a stale one would be wrong for
-    // whatever entry is asked for next.
-    const warmed =
-      prefetchedSong?.file === entry.file ? prefetchedSong.songFile : null;
-    prefetchedSong = null;
-
-    if (warmed) {
-      isLoadingSong.value = true;
-      try {
-        await applySongFile(warmed);
-      } finally {
-        isLoadingSong.value = false;
-      }
-    } else {
-      await loadSongFromUrl(entry.url);
-    }
-
-    // handlePlaySong starts from the edit cursor, which is still sitting
-    // wherever the previous song left it. A playlist entry starts at the top.
-    activeRow.value = 0;
-    await handlePlaySong();
-
-    // With this song under way, start warming the one after it.
-    whenIdle(() => void prefetchNextJukeboxEntry());
-  } catch (error) {
-    console.warn(`[Jukebox] Skipping ${entry.file}`, error);
-    if (attemptsLeft <= 1) {
-      stopJukebox();
-      return;
-    }
-    const next = jukebox.indexAfter(1);
-    if (next === null) {
-      stopJukebox();
-      return;
-    }
-    jukeboxBusy.value = false;
-    await playJukeboxIndex(next, attemptsLeft - 1);
-    return;
-  } finally {
-    jukeboxBusy.value = false;
-  }
-}
-
-/** Move `step` places through the playlist and play what is there. */
-async function stepJukebox(step: number): Promise<void> {
-  const next = jukebox.indexAfter(step);
-  if (next === null) {
-    // The end of a playlist that does not repeat.
-    stopJukebox();
-    return;
-  }
-  await playJukeboxIndex(next);
-}
-
-/** Queue every published demo, in random order. */
-async function fillJukeboxFromManifest(pinnedFile?: string): Promise<void> {
-  await loadDemoManifest();
-  jukebox.setEntries(allDemoSongs().map(entryFromDemoSong), true, pinnedFile);
-}
-
-async function startJukebox(): Promise<void> {
-  jukebox.setActive(true);
-  if (!jukebox.hasEntries) {
-    await fillJukeboxFromManifest();
-  }
-  await playJukeboxIndex(Math.max(0, jukebox.currentIndex));
-}
-
-/**
- * Leave jukebox mode. Playback is left as it is -- the song that is playing
- * keeps playing -- but it goes back to looping on its own rather than handing
- * over to the next entry.
- */
-function stopJukebox(): void {
-  if (!jukebox.active) return;
-  jukebox.setActive(false);
-  playbackStore.setLoopSong(true);
-  // A parsed module is a big object; nothing is going to ask for it now.
-  prefetchedSong = null;
-}
-
-function toggleJukebox(): void {
-  if (jukebox.active) {
-    stopJukebox();
-    return;
-  }
-  void startJukebox();
-}
-
-/** The panel's play/pause button: resume or pause whatever is queued. */
-function toggleJukeboxPlayback(): void {
-  if (isPlaying.value) {
-    handlePause();
-    return;
-  }
-  if (isPaused.value) {
-    void handlePlaySong();
-    return;
-  }
-  void playJukeboxIndex(Math.max(0, jukebox.currentIndex));
-}
-
-/**
- * Reorder the queue, then warm whatever is next now.
- *
- * A song already warmed for the old order is not thrown away here -- if it
- * happens to still be next it gets used, and if not it is dropped when the
- * switch finds it does not match.
- */
-function handleJukeboxShuffle(): void {
-  jukebox.reshuffle();
-  whenIdle(() => void prefetchNextJukeboxEntry());
-}
-
-function handleJukeboxRemove(index: number): void {
-  const removedPlaying = jukebox.removeAt(index);
-  if (!removedPlaying) {
-    // What comes next may have changed even though this song plays on.
-    whenIdle(() => void prefetchNextJukeboxEntry());
-    return;
-  }
-  // The song that was playing is no longer in the playlist. Stop it and pick
-  // up whatever slid into its place.
-  if (!jukebox.hasEntries) {
-    handleStop();
-    return;
-  }
-  if (jukebox.active) void playJukeboxIndex(jukebox.currentIndex);
-}
-
-async function handleJukeboxRefill(): Promise<void> {
-  // Pin whatever is playing so refilling the queue does not interrupt it.
-  await fillJukeboxFromManifest(
-    isPlaying.value ? jukebox.current?.file : undefined,
-  );
-  whenIdle(() => void prefetchNextJukeboxEntry());
-}
-
-function handleJukeboxClear(): void {
-  jukebox.clear();
-  handleStop();
+function openJukebox() {
+  void router.push('/jukebox');
 }
 
 // New Song with confirmation
@@ -2277,12 +1820,6 @@ onMounted(async () => {
   keyboardStore.syncMidiSetting(userSettings.value.enableMidi);
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('resize', handleWindowResize);
-  // Advancing the playlist needs this page's song loading and instrument
-  // rebuilding, so the jukebox only runs while the tracker is on screen.
-  teardownSongEnd = playbackStore.onSongEnd(() => {
-    if (!jukebox.active) return;
-    void stepJukebox(1);
-  });
   handleWindowResize();
   visualizerReady.value = false;
   await nextTick();
@@ -2314,12 +1851,7 @@ onMounted(async () => {
   );
 
   // Re-register the track audio node setter since it was cleared on unmount
-  playbackStore.setTrackAudioNodeSetter(
-    (trackIndex: number, instrumentId: string | undefined) => {
-      setTrackAudioNodeForInstrument(trackIndex, instrumentId);
-      markTrackNotePlayedRef?.(trackIndex);
-    },
-  );
+  claimTrackAudioNodeSetter();
 });
 
 watch(
@@ -2422,7 +1954,7 @@ watch(slotSignatures, async () => {
 
 onBeforeUnmount(() => {
   // Clear the track audio node setter so the store doesn't try to call into unmounted component
-  playbackStore.setTrackAudioNodeSetter(null);
+  releaseTrackAudioNodeSetter();
   // Don't stop playback - it continues when navigating away
   // Don't dispose the songBank - it's a singleton managed by trackerAudioStore
   keyboardStore.cleanup();
@@ -2432,8 +1964,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize);
   teardownTrackScrollSync?.();
   teardownTrackWheelScroll?.();
-  teardownSongEnd?.();
-  teardownSongEnd = null;
   // Cancel pending scroll RAF
   if (scrollRafId !== null) {
     cancelAnimationFrame(scrollRafId);
@@ -2609,13 +2139,6 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   width: 100%;
   contain: layout style;
-}
-
-/* The playlist takes a column of its own rather than covering the tracker:
-   the point of the jukebox is that everything else stays where it was. */
-.top-grid.with-jukebox {
-  grid-template-columns: 0.9fr 1.3fr 1fr 1fr;
-  max-width: 1900px;
 }
 
 .top-panel {
@@ -3607,8 +3130,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
-  .top-grid,
-  .top-grid.with-jukebox {
+  .top-grid {
     grid-template-columns: 1fr;
   }
 }

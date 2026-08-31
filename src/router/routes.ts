@@ -46,6 +46,11 @@ const routes: RouteRecordRaw[] = [
           return true;
         },
       },
+      {
+        path: 'jukebox',
+        name: 'jukebox',
+        component: () => import('pages/JukeboxPage.vue'),
+      },
       { path: 'help', component: () => import('pages/HelpPage.vue') },
       { path: 'settings', component: () => import('pages/SettingsPage.vue') },
     ],

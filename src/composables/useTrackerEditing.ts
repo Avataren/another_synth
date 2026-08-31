@@ -2,6 +2,7 @@ import { type Ref, type ComputedRef } from 'vue';
 import type { TrackerEntryData } from 'src/components/tracker/tracker-types';
 import type { TrackerPattern, InstrumentSlot } from 'src/stores/tracker-store';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
+import { pickActiveInstrumentId } from 'src/audio/tracker/instrument-ids';
 
 /**
  * Dependencies required by the editing composable
@@ -62,18 +63,10 @@ export function useTrackerEditing(context: TrackerEditingContext) {
    * Ensure there's a valid active instrument, or select the first available one
    */
   function ensureActiveInstrument() {
-    if (context.activeInstrumentId.value) {
-      const exists = context.instrumentSlots.value.some(
-        (slot) =>
-          slot.patchId &&
-          context.formatInstrumentId(slot.slot) === context.activeInstrumentId.value
-      );
-      if (exists) return;
-    }
-    const firstWithPatch = context.instrumentSlots.value.find((slot) => slot.patchId);
-    context.activeInstrumentId.value = firstWithPatch
-      ? context.formatInstrumentId(firstWithPatch.slot)
-      : null;
+    context.activeInstrumentId.value = pickActiveInstrumentId(
+      context.instrumentSlots.value,
+      context.activeInstrumentId.value
+    );
   }
 
   /**
