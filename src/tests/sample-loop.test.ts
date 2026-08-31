@@ -401,3 +401,47 @@ describe('loop geometry survives oversampling', () => {
     expect(loopSeconds).toBeCloseTo(8 / 44100 / rate, 9);
   });
 });
+
+/**
+ * The anti-aliased copies played above the sample's own pitch are filtered
+ * from the conditioned data, so a ping-pong loop has to be materialised there
+ * too. Mirroring only the level-0 buffer left every copy above it shorter than
+ * the loop the source node was told to play; the browser clamps `loopEnd` to
+ * the buffer it is given, so the mirrored half vanished and the note looped
+ * forwards over a hard seam -- audible on exactly the high notes that already
+ * needed the filtering.
+ */
+describe('anti-aliased copies of a ping-pong loop', () => {
+  it('still spans the mirrored region for a note above the root', async () => {
+    setSampleQuality({
+      oversampleFactor: 1,
+      removeDcOffset: false,
+      loopCrossfadeFrames: 0,
+      antiAliasHighNotes: true,
+    });
+
+    const { instrument, sources, buffers } = makeHarness();
+    await instrument.loadPatch(
+      normalizedPatchFor({
+        frames: frames16,
+        loopType: 2,
+        loopStartFrames: 4,
+        loopLengthFrames: 8,
+      }),
+    );
+    // Well above the sample's own pitch (XM roots sit around note 89), which
+    // selects a filtered copy rather than the plain buffer.
+    instrument.noteOnAtTime(108, 127, 0, { trackIndex: 0 });
+
+    const source = sources[0]!;
+    const played = (source as unknown as { buffer: { length: number } }).buffer;
+
+    // A filtered copy really was built and handed to the note...
+    expect(buffers.length).toBeGreaterThan(2);
+    expect(played).not.toBe(buffers[0]!);
+    // ...and it is the mirrored length, so the loop the node was given fits.
+    expect(played.length).toBe(20);
+    expect(source.loopEnd).toBeCloseTo(20 / 44100, 9);
+    expect(source.loopEnd).toBeLessThanOrEqual(played.length / 44100);
+  });
+});

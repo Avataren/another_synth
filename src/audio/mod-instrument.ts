@@ -356,8 +356,10 @@ export default class ModInstrument {
     // Kept in *original* frames: 9xx offsets are expressed in them, and
     // offsetSecondsForFrame scales by oversampleFactor when converting.
     this.sampleFrames = frameCount;
-    this.mipBuffers = [this.audioBuffer];
+    // After prepareLoop, which replaces the buffer when it materialises a
+    // ping-pong loop -- level 0 must be the buffer that is actually played.
     this.prepareLoop(channels, bufferFrames, sampleRate);
+    this.mipBuffers = [this.audioBuffer];
 
     this.ready = true;
     console.log(
@@ -493,21 +495,50 @@ export default class ModInstrument {
     if (loopFrames < 2) return;
 
     if (state.loopMode === SamplerLoopMode.PingPong) {
-      // [0 .. endFrame) then the loop region reversed.
-      const mirrored = this.audioContext.createBuffer(
-        channels,
-        endFrame + loopFrames,
-        sampleRate,
-      );
-      for (let ch = 0; ch < channels; ch++) {
-        const source = this.audioBuffer.getChannelData(ch);
-        const target = mirrored.getChannelData(ch);
-        target.set(source.subarray(0, endFrame), 0);
+      // Mirror the conditioned data, not just the buffer built from it. The
+      // anti-aliased copies are filtered from `conditionedMono`, so mirroring
+      // only the buffer left every copy above level 0 shorter than the loop
+      // this method then declares: the browser clamps `loopEnd` to the buffer
+      // it is given, and a ping-pong sample played above its own pitch lost
+      // the mirrored half and looped forwards over a hard seam instead.
+      if (this.conditionedMono) {
+        const source = this.conditionedMono;
+        const mirrored = new Float32Array(endFrame + loopFrames);
+        mirrored.set(source.subarray(0, endFrame), 0);
         for (let i = 0; i < loopFrames; i++) {
-          target[endFrame + i] = source[endFrame - 1 - i] ?? 0;
+          mirrored[endFrame + i] = source[endFrame - 1 - i] ?? 0;
         }
+        this.conditionedMono = mirrored;
+        // In the mirrored data the bounce *is* a forward loop, and it runs to
+        // the end of the buffer -- so the mip filter has to wrap around it
+        // rather than clamp, exactly as it does for a real forward loop.
+        this.conditionedLoop = { start: startFrame, end: mirrored.length };
+
+        const buffer = this.audioContext.createBuffer(
+          1,
+          mirrored.length,
+          sampleRate,
+        );
+        buffer.getChannelData(0).set(mirrored);
+        this.audioBuffer = buffer;
+      } else {
+        // Interleaved or unconditioned data: mirror the buffer per channel.
+        // [0 .. endFrame) then the loop region reversed.
+        const mirrored = this.audioContext.createBuffer(
+          channels,
+          endFrame + loopFrames,
+          sampleRate,
+        );
+        for (let ch = 0; ch < channels; ch++) {
+          const source = this.audioBuffer.getChannelData(ch);
+          const target = mirrored.getChannelData(ch);
+          target.set(source.subarray(0, endFrame), 0);
+          for (let i = 0; i < loopFrames; i++) {
+            target[endFrame + i] = source[endFrame - 1 - i] ?? 0;
+          }
+        }
+        this.audioBuffer = mirrored;
       }
-      this.audioBuffer = mirrored;
       this.loopStartSeconds = startFrame / sampleRate;
       this.loopEndSeconds = (endFrame + loopFrames) / sampleRate;
     } else {
