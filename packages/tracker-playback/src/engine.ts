@@ -152,6 +152,8 @@ export class PlaybackEngine {
   private formatProfile: FormatProfile = profileForFormat(DEFAULT_MODULE_FORMAT);
   /** Ticks per row the loaded song starts at; the tracker default is 6. */
   private initialSpeed = 6;
+  /** BPM the loaded song starts at, before any Fxx tempo command runs. */
+  private initialBpm = 120;
   private state: TransportState = 'stopped';
   private position: PlaybackPosition = { row: 0 };
   private length = 64;
@@ -492,7 +494,8 @@ export class PlaybackEngine {
     // the same track, even when it lives in the next pattern.
     this.precomputeTonePortaTargets();
     // Set BPM in timing system (will clamp to valid range)
-    this.timingSystem.setBpm(song.bpm);
+    this.initialBpm = song.bpm;
+    this.timingSystem.setBpm(this.initialBpm);
     // Ticks per row is a separate setting from BPM, and songs that declare
     // their own must not be played at the default 6.
     this.initialSpeed = song.initialSpeed ?? 6;
@@ -559,6 +562,10 @@ export class PlaybackEngine {
     if (!Number.isFinite(bpm) || bpm <= 0) return;
     // Clamp to FastTracker 2 limits (matches F command range)
     this.timingSystem.setBpm(bpm);
+    // This is the song's tempo being set from the UI, not an Fxx command, so
+    // it has to survive the next play() -- which restores the song's starting
+    // tempo before scheduling anything.
+    this.initialBpm = bpm;
   }
 
   /**
@@ -602,6 +609,7 @@ export class PlaybackEngine {
       this.startScheduledPlayback();
     } else if (this.noteHandler) {
       // Fall back to tick-based playback
+      this.applyTimingForStartPosition();
       this.dispatchStepsForRow(this.position.row);
       this.scheduler.start((deltaMs) => this.step(deltaMs));
     }
@@ -645,6 +653,63 @@ export class PlaybackEngine {
     return () => set.delete(listener as PlaybackListener<K>);
   }
 
+  /**
+   * Put speed and BPM into the state the song would be in had it played from
+   * the top up to the current position.
+   *
+   * Both halves of `Fxx` are playback state that survives across rows, so
+   * neither may leak from a previous run: pressing play used to reset the
+   * speed to the song's initial value but leave the BPM at whatever the last
+   * row before the stop had set, which is why a song restarted mid-way ran at
+   * a tempo unrelated to anything in it.
+   *
+   * Resetting both to the song's initial pair is only right when starting at
+   * the very top. Start anywhere else and the tempo/speed a tracker would be
+   * at is the last one set by any row before that point, so scan for it --
+   * the same thing ProTracker/FT2 clones do when you start from a pattern.
+   * The scan is linear over the order list and ignores Bxx/Dxx/E6x flow, so a
+   * song that only reaches an Fxx through a jump can still start off; the
+   * common case (Fxx sitting on a row that plays in order) is exact.
+   */
+  private applyTimingForStartPosition(): void {
+    let speed = this.initialSpeed;
+    let bpm = this.initialBpm;
+
+    const sequence = this.song?.sequence ?? [];
+    const endIndex = Math.min(this.currentSequenceIndex, sequence.length - 1);
+    for (let index = 0; index <= endIndex; index += 1) {
+      const pattern = this.patternsById.get(sequence[index] as string);
+      if (!pattern) continue;
+      // Rows at or after the start row have not played yet; the start row's
+      // own Fxx is applied by scheduleRow() when it plays.
+      const rowLimit =
+        index === this.currentSequenceIndex
+          ? this.position.row
+          : Math.max(1, pattern.length);
+
+      // Later rows win, and within a row later tracks win -- the order
+      // scheduleRow() applies them in.
+      let speedRow = -1;
+      let bpmRow = -1;
+      for (const track of pattern.tracks) {
+        for (const step of track.steps) {
+          if (step.row >= rowLimit) continue;
+          if (step.speedCommand !== undefined && step.row >= speedRow) {
+            speed = step.speedCommand;
+            speedRow = step.row;
+          }
+          if (step.tempoCommand !== undefined && step.row >= bpmRow) {
+            bpm = step.tempoCommand;
+            bpmRow = step.row;
+          }
+        }
+      }
+    }
+
+    this.timingSystem.setSpeed(speed);
+    this.timingSystem.setBpm(bpm);
+  }
+
   private startScheduledPlayback() {
     if (!this.audioContext || !this.scheduledNoteHandler) return;
 
@@ -652,9 +717,7 @@ export class PlaybackEngine {
     const now = this.audioContext.currentTime;
     // Initialize timing system for current position
     this.timingSystem.start(now, this.currentSequenceIndex, this.position.row);
-    // Back to the song's own starting speed, not a hardcoded 6: any Fxx
-    // changes from a previous run must not carry into this one.
-    this.timingSystem.setSpeed(this.initialSpeed);
+    this.applyTimingForStartPosition();
 
     this.lastScheduledRow = this.position.row - 1;
     this.scheduledLoops = 0;
