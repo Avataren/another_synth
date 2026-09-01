@@ -786,6 +786,22 @@ export class PlaybackEngine {
             this.stop();
             return;
           }
+          // A jump out of the LAST pattern never runs the sequence past its
+          // end: every valid target from there is at or before the current
+          // position, so a non-looping song would repeat from the jump
+          // forever and a jukebox waiting on songEnd would never advance.
+          // Treat the jump as the song's end instead, deferred the same way
+          // wrapSequenceOrFinish does it so the already-scheduled tail is
+          // still heard. Mid-song backward jumps (pattern loops) keep
+          // jumping, and a looping song keeps looping regardless.
+          if (
+            !this.loopSong &&
+            this.currentSequenceIndex === sequence.length - 1 &&
+            cmd.value <= this.currentSequenceIndex
+          ) {
+            this.pendingEndTime = this.nextRowTime;
+            return;
+          }
           const targetIndex = cmd.value;
           this.currentSequenceIndex = targetIndex;
           const targetPatternId = sequence[targetIndex];

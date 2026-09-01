@@ -605,6 +605,16 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
   }
 
   /**
+   * Fire the song-end listeners directly, for tests: the real event comes
+   * from the playback engine, which needs an audio context tests do not have.
+   */
+  function emitSongEndForTest(): void {
+    for (const listener of songEndListeners) {
+      listener();
+    }
+  }
+
+  /**
    * Choose whether the sequence restarts when it runs out.
    *
    * Off, the engine plays the song once and stops -- which is what makes an
@@ -699,6 +709,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     onPosition,
     onNoteEvent,
     onSongEnd,
+    emitSongEndForTest,
     setTrackAudioNodeSetter,
 
     // Cleanup

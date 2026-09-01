@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useJukeboxStore } from '../../stores/jukebox-store';
+import { useTrackerPlaybackStore } from '../../stores/tracker-playback-store';
 import type { DemoSong } from '../../composables/useDemoManifest';
 
 function song(file: string): DemoSong {
@@ -174,5 +175,47 @@ describe('jukebox playlist', () => {
     expect(store.removeAt(5)).toBe(false);
     expect(store.removeAt(-1)).toBe(false);
     expect(store.entries).toHaveLength(2);
+  });
+
+  it('advances off a song that ends by looping back to its start', () => {
+    // The engine-side half lives in tracker-song-end.test.ts: a module whose
+    // last pattern carries a Bxx back to an earlier order position ends a
+    // non-looping song rather than repeating from the jump, so the engine's
+    // songEnd event fires. This is the store half of the same handover -- the
+    // listener here is the shape of what JukeboxPage wires with
+    // playbackStore.onSongEnd -- which must move the playlist on when it
+    // arrives.
+    setActivePinia(createPinia());
+    const store = useJukeboxStore();
+    fill(store, 2);
+    store.setActive(true);
+    store.setCurrentIndex(0);
+
+    const onSongEnd = () => {
+      if (!store.active) return;
+      const next = store.indexAfter(1);
+      if (next !== null) store.setCurrentIndex(next);
+    };
+    const playbackStore = useTrackerPlaybackStore();
+    const offSongEnd = playbackStore.onSongEnd(onSongEnd);
+
+    // What a songEnd from the engine triggers: the playlist moves on.
+    playbackStore.emitSongEndForTest();
+    expect(store.currentIndex).toBe(1);
+    expect(store.current?.file).toBe('amiga/1.mod');
+
+    // The last song of a non-repeating playlist has nowhere to go.
+    store.setRepeat(false);
+    playbackStore.emitSongEndForTest();
+    expect(store.currentIndex).toBe(1);
+    expect(store.indexAfter(1)).toBeNull();
+
+    // A jukebox that has been left does not advance at all.
+    store.setRepeat(true);
+    store.setActive(false);
+    playbackStore.emitSongEndForTest();
+    expect(store.currentIndex).toBe(1);
+
+    offSongEnd();
   });
 });
