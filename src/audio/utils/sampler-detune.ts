@@ -9,6 +9,12 @@ export const DETUNE_LIMITS = {
   cents: { min: -100, max: 100 },
 } as const;
 
+/**
+ * Clamp `value` to the inclusive range [min, max].
+ *
+ * NaN is treated as `min` so a bad input falls back to a defined bound
+ * instead of propagating.
+ */
 function clamp(value: number, min: number, max: number): number {
   if (Number.isNaN(value)) {
     return min;
