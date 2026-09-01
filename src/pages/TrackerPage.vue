@@ -561,6 +561,7 @@
             :is-mouse-selecting="isMouseSelecting"
             :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
             :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+            :upcoming-pattern="upcomingPattern"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
             @startSelection="onPatternStartSelection"
@@ -693,6 +694,33 @@ const {
 } = storeToRefs(trackerStore);
 const currentPattern = computed(() => trackerStore.currentPattern);
 const currentPageSlots = computed(() => trackerStore.currentPageSlots);
+
+/**
+ * The pattern the sequencer will play after the current one.
+ *
+ * The pattern grid double-buffers it: while playing, the upcoming pattern is
+ * pre-rendered into a hidden grid so the swap paints no blank frame. Guards:
+ * empty sequence -> null; single-entry sequence -> the current pattern (the
+ * sequence wraps to itself); the next id not resolving (deleted mid-play or
+ * jump outside the sequence) -> null so the grid falls back to displaying
+ * whatever the parent hands it.
+ */
+const upcomingPattern = computed(() => {
+  if (!isPlaying.value) return null;
+  const seq = sequence.value;
+  if (seq.length === 0) return null;
+  const idx = currentSequenceIndex.value;
+  if (idx < 0 || idx >= seq.length) return null;
+  const nextId = seq[(idx + 1) % seq.length];
+  if (!nextId) return null;
+  const next = trackerStore.patterns.find((p) => p.id === nextId);
+  if (!next) return null;
+  return {
+    id: next.id,
+    tracks: next.tracks,
+    rows: trackerStore.rowsForPattern(next.id),
+  };
+});
 
 // Signature of instrument slots for audio sync - only watch properties that matter
 const slotSignatures = computed(() =>
