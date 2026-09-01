@@ -36,3 +36,6 @@ rust-wasm/target
 
 # Local deploy helper -- carries a host password, never commit it.
 /deploy-local.sh
+
+# Agent pipeline artifacts (local only)
+.ai/
