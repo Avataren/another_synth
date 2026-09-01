@@ -8,7 +8,7 @@
       <div class="track-entries" :style="entriesOffsetStyle">
         <TrackerEntry
           v-for="row in visibleRows"
-          :key="`${track.id}-${row}`"
+          :key="row"
           :row-index="row"
           :entry="entryLookup[row]"
           :active="selectedRow === row"
