@@ -1578,3 +1578,9 @@ if (canReuse) {
 - Do not reintroduce fire-and-forget node creation: it loses the generated ID and causes UI/engine divergence. The real-worklet regression coverage is in `src/tests/worklet-graph-sync.test.ts`.
 - Pooled tracker slots need a different creation scope: `PooledInstrument.createNode` sends its `instrumentId` and a correlation `messageId`; the worklet must create only in that slot's owning engine, reply with the same `messageId`, and post that slot's refreshed layout. Broadcasting a pooled structural edit to unrelated slot engines corrupts their graph/layout state, while rejecting it leaves the instrument editor's `+` action unusable.
 - Rust nightly 1.97 removed `LaneCount`/`SupportedLaneCount` from the portable SIMD surface. Constrain generic SIMD helpers with `Simd<f32, LANES>: Sized` (or `[f32; LANES]: Sized`) instead of importing the removed types.
+
+### FT2 key-off and tone portamento (2026-09 fix)
+
+- FastTracker 2 tone-portamento notes only continue a note already sounding on the channel; they are not a substitute for retriggering after key-off. In `radix_-_take_on_me.xm`, the fifth pattern order enters pattern 0 on track 7 with `F#5`, then `###`, then legato melody rows using `3xx`/`5xy`. Because those rows suppress ordinary note-on commands, the channel remained silent after the release.
+- `TrackEffectState` now tracks `hasActiveVoice`. Note-on and delayed/carried note-on set it; `###` and `Kxx` key-off clear it. A `tonePorta`/`tonePortaVol` note emits a normal note-on only when `hasActiveVoice` is false, and otherwise continues sliding the existing voice as before.
+- This preserves legato on held channels while matching FT2's post-key-off behavior. Tests: `src/tests/xm-tone-portamento-keyoff.test.ts`.

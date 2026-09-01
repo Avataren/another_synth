@@ -305,6 +305,13 @@ export interface TrackEffectState {
 
   // Voice tracking
   voiceIndex: number;
+  /**
+   * Whether the channel currently owns a sounding voice.
+   *
+   * Key-off releases that voice. A later 3xx note therefore has nothing to
+   * slide, and FT2 starts a new note rather than leaving the channel silent.
+   */
+  hasActiveVoice: boolean;
 
   // Instrument tracking (for "naked" effects without explicit instrument)
   instrumentId: string | undefined;
@@ -385,6 +392,7 @@ export function createTrackEffectState(
     delayedNote: undefined,
 
     voiceIndex: -1,
+    hasActiveVoice: false,
     instrumentId: undefined,
 
     lastPortaUp: 0,
@@ -870,6 +878,7 @@ export function processEffectTick0(
     state.targetPeriod = undefined;
     state.currentVolume = carry.velocity / 255;
     pushNoteOn(carry.midi, velocityFromVolume(state.currentVolume));
+    state.hasActiveVoice = true;
     pushPitch(state.currentFrequency);
     pushVolume(state.currentVolume);
     return { commands };
@@ -902,6 +911,12 @@ export function processEffectTick0(
       state.lastTonePortaTargetFreq = state.targetFrequency;
       state.lastTonePortaTargetPeriod = state.targetPeriod;
       state.tonePortaActive = state.tonePortaSpeed > 0;
+      if (!state.hasActiveVoice) {
+        updatePitchFromFrequency(state, targetFreq);
+        pushNoteOn(newNote, velocityFromVolume(state.currentVolume));
+        state.hasActiveVoice = true;
+        triggeredNote = true;
+      }
     } else {
       if (noteFrequency !== undefined) {
         const rawPeriod =
@@ -918,6 +933,7 @@ export function processEffectTick0(
       // Trigger note immediately unless delayed or a tone portamento continuation
       if (!hasNoteDelay) {
         pushNoteOn(newNote, velocityFromVolume(state.currentVolume));
+        state.hasActiveVoice = true;
         triggeredNote = true;
       }
     }
@@ -1248,6 +1264,7 @@ export function processEffectTick0(
       // Kxx: Key off after xx ticks
       if (effect.paramX * 16 + effect.paramY === 0) {
         commands.push({ kind: 'noteOff' });
+        state.hasActiveVoice = false;
       }
       break;
 
@@ -1393,6 +1410,7 @@ export function processEffectTickN(
     state.targetFrequency = state.currentFrequency;
     state.targetPeriod = undefined;
     state.currentVolume = delayed.velocity / 255;
+    state.hasActiveVoice = true;
     state.delayedNote = undefined;
     state.noteDelayTick = -1;
     pushPitch(state.currentFrequency);
@@ -1624,6 +1642,7 @@ export function processEffectTickN(
       const keyOffTick = effect.paramX * 16 + effect.paramY;
       if (tick === keyOffTick) {
         commands.push({ kind: 'noteOff' });
+        state.hasActiveVoice = false;
       }
       break;
 
@@ -1839,4 +1858,5 @@ export function resetEffectStateForNote(state: TrackEffectState): void {
   state.noteDelayTick = -1;
   state.delayedNote = undefined;
   state.tonePortaActive = false;
+  state.hasActiveVoice = false;
 }

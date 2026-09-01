@@ -1258,6 +1258,7 @@ export class PlaybackEngine {
             event.midi = step.midi;
           }
           this.scheduledNoteHandler(event);
+          effectState.hasActiveVoice = false;
           continue;
         }
 
