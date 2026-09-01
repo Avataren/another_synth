@@ -174,6 +174,7 @@
                 userSettings.showTrackerExtraEffectColumn
               "
               :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+              :upcoming-pattern="upcomingPattern"
             />
           </div>
         </div>
@@ -257,6 +258,28 @@ const { isPlaying, playbackRow, currentSequenceIndex } =
 
 const trackerStore = host.trackerStore;
 const rowsCount = computed(() => trackerStore.currentPatternRows);
+
+/**
+ * The pattern the sequencer plays after the current one, for the grid's
+ * playback double-buffer. Same guards as the tracker page: null when not
+ * playing / empty sequence / index outside the sequence / next id deleted.
+ */
+const upcomingPattern = computed(() => {
+  if (!isPlaying.value) return null;
+  const seq = trackerStore.sequence;
+  if (seq.length === 0) return null;
+  const idx = currentSequenceIndex.value;
+  if (idx < 0 || idx >= seq.length) return null;
+  const nextId = seq[(idx + 1) % seq.length];
+  if (!nextId) return null;
+  const next = trackerStore.patterns.find((p) => p.id === nextId);
+  if (!next) return null;
+  return {
+    id: next.id,
+    tracks: next.tracks,
+    rows: trackerStore.rowsForPattern(next.id),
+  };
+});
 
 const showPlaylist = ref(false);
 const showDemoBrowser = ref(false);
