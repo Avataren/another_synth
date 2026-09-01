@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-08-31T20:58:37.265Z",
+  "generated": "2026-09-01T14:19:21.714Z",
   "collections": [
     {
       "id": "amiga",
@@ -560,6 +560,15 @@
           "instruments": 14,
           "file": "ft2/radix-unreal_superhero.xm",
           "bytes": 28841
+        },
+        {
+          "title": "take on me",
+          "format": "XM",
+          "channels": 20,
+          "patterns": 21,
+          "instruments": 24,
+          "file": "ft2/radix_-_take_on_me.xm",
+          "bytes": 142249
         },
         {
           "title": "yuki satellites",
