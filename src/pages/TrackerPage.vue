@@ -635,6 +635,7 @@ import {
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
+import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering';
 import {
   trackGapPx,
   trackWidthPx,
@@ -699,28 +700,23 @@ const currentPageSlots = computed(() => trackerStore.currentPageSlots);
  * The pattern the sequencer will play after the current one.
  *
  * The pattern grid double-buffers it: while playing, the upcoming pattern is
- * pre-rendered into a hidden grid so the swap paints no blank frame. Guards:
- * empty sequence -> null; single-entry sequence -> the current pattern (the
- * sequence wraps to itself); the next id not resolving (deleted mid-play or
- * jump outside the sequence) -> null so the grid falls back to displaying
- * whatever the parent hands it.
+ * pre-rendered into a hidden grid so the swap paints no blank frame. See
+ * pattern-buffering.ts for the guard rules (empty sequence, deleted pattern,
+ * etc.) -- computed live from the store so edits to the upcoming pattern
+ * reach the pre-render buffer before the flip.
  */
-const upcomingPattern = computed(() => {
-  if (!isPlaying.value) return null;
-  const seq = sequence.value;
-  if (seq.length === 0) return null;
-  const idx = currentSequenceIndex.value;
-  if (idx < 0 || idx >= seq.length) return null;
-  const nextId = seq[(idx + 1) % seq.length];
-  if (!nextId) return null;
-  const next = trackerStore.patterns.find((p) => p.id === nextId);
-  if (!next) return null;
-  return {
-    id: next.id,
-    tracks: next.tracks,
-    rows: trackerStore.rowsForPattern(next.id),
-  };
-});
+const upcomingPattern = computed(() =>
+  selectUpcomingPattern(
+    isPlaying.value,
+    currentSequenceIndex.value,
+    sequence.value,
+    (id) => {
+      const next = trackerStore.patterns.find((p) => p.id === id);
+      if (!next) return null;
+      return { id: next.id, tracks: next.tracks, rows: trackerStore.rowsForPattern(next.id) };
+    },
+  ),
+);
 
 // Signature of instrument slots for audio sync - only watch properties that matter
 const slotSignatures = computed(() =>

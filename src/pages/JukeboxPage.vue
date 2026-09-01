@@ -218,6 +218,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
+import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
@@ -261,25 +262,21 @@ const rowsCount = computed(() => trackerStore.currentPatternRows);
 
 /**
  * The pattern the sequencer plays after the current one, for the grid's
- * playback double-buffer. Same guards as the tracker page: null when not
- * playing / empty sequence / index outside the sequence / next id deleted.
+ * playback double-buffer. Guard rules in pattern-buffering.ts; same feed as
+ * the tracker page so jukebox pattern switches get the same no-blank swap.
  */
-const upcomingPattern = computed(() => {
-  if (!isPlaying.value) return null;
-  const seq = trackerStore.sequence;
-  if (seq.length === 0) return null;
-  const idx = currentSequenceIndex.value;
-  if (idx < 0 || idx >= seq.length) return null;
-  const nextId = seq[(idx + 1) % seq.length];
-  if (!nextId) return null;
-  const next = trackerStore.patterns.find((p) => p.id === nextId);
-  if (!next) return null;
-  return {
-    id: next.id,
-    tracks: next.tracks,
-    rows: trackerStore.rowsForPattern(next.id),
-  };
-});
+const upcomingPattern = computed(() =>
+  selectUpcomingPattern(
+    isPlaying.value,
+    currentSequenceIndex.value,
+    trackerStore.sequence,
+    (id) => {
+      const next = trackerStore.patterns.find((p) => p.id === id);
+      if (!next) return null;
+      return { id: next.id, tracks: next.tracks, rows: trackerStore.rowsForPattern(next.id) };
+    },
+  ),
+);
 
 const showPlaylist = ref(false);
 const showDemoBrowser = ref(false);

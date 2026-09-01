@@ -130,7 +130,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import TrackerTrack from './TrackerTrack.vue';
 import type { TrackerSelectionRect, TrackerTrackData } from './tracker-types';
-import { trackGapPx, trackPitchPx, trackWidthPx } from './track-metrics';
+import { trackGapPx, trackWidthPx } from './track-metrics';
+import { activeRowBarWidthPx } from './pattern-buffering';
 
 /** One ping-pong buffer slot: the rendered grid for one pattern. */
 interface PatternBuffer {
@@ -311,16 +312,15 @@ function bufferSelectionRect(slot: BufferSlot): TrackerSelectionRect | null {
 const patternAreaRef = ref<HTMLElement | null>(null);
 
 /**
- * Bar width is pure math now (track-metrics.ts): the first column's width
- * plus one pitch per additional column. The old nextTick DOM measurement
- * raced the pattern swap and reset the bar to 100% for a frame; this
- * computes reactively, including while a buffer is still hidden.
+ * Bar width is pure math now (pattern-buffering.ts over track-metrics.ts):
+ * the first column's width plus one pitch per additional column. The old
+ * nextTick DOM measurement raced the pattern swap and reset the bar to 100%
+ * for a frame; this computes reactively, including while a buffer is still
+ * hidden.
  */
-const activeBarWidth = computed(() => {
-  const n = props.tracks.length;
-  if (n <= 0) return null;
-  return trackWidthPx(n, props.showExtraEffectColumn) + (n - 1) * trackPitchPx(n, props.showExtraEffectColumn);
-});
+const activeBarWidth = computed(() =>
+  activeRowBarWidthPx(props.tracks.length, props.showExtraEffectColumn),
+);
 
 const activeBarStyle = computed(() => {
   const offset = headerHeightPx + 6 + props.playbackRow * (rowHeightPx + rowGapPx);
