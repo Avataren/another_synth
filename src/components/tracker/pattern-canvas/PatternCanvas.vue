@@ -59,6 +59,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
+  entryBoxRect,
   GUTTER_WIDTH_PX,
   rowHeightPx,
   rowPitchPx,
@@ -72,16 +73,37 @@ import { hitTest, type PatternHit } from './pattern-hit-test';
 import { blitWindow } from './pattern-window';
 import {
   drawActiveRowBar,
+  buildInterpolatedRows,
   drawCursorCell,
+  drawEntryBox,
   drawRowNumbers,
   drawSelectionBar,
   drawStaticGrid,
+  isRowSelected,
   trackAccent,
   type PlaybackBarMode,
 } from './pattern-draw';
 import { getTheme, refresh as refreshTheme } from './pattern-theme';
+import {
+  buildPaintState,
+  diffPaintState,
+  type CellDiff,
+  type PaintState,
+} from './pattern-diff';
+import {
+  canAdoptPreRender,
+  metaFromInfo,
+  paintUpcoming,
+  preRenderExtent,
+  type PreRenderMeta,
+} from './pattern-prerender';
 import { trackPitchPx, trackWidthPx } from '../track-metrics';
-import type { TrackerSelectionRect, TrackerTrackData } from '../tracker-types';
+import type { UpcomingPatternInfo } from '../pattern-buffering';
+import type {
+  TrackerEntryData,
+  TrackerSelectionRect,
+  TrackerTrackData,
+} from '../tracker-types';
 
 interface Props {
   tracks: TrackerTrackData[];
@@ -117,9 +139,11 @@ interface Props {
    */
   enableEditing?: boolean;
   /**
-   * The double-buffered pre-render of the pattern coming next. Not used yet:
-   * the canvas renderer redraws a full pattern in one bitmap paint, which has
-   * so far been fast enough to make the flip invisible.
+   * The pattern coming next, per selectUpcomingPattern's guard rules. While
+   * it is set, it is pre-rendered into a second offscreen bitmap off the
+   * critical path; a playback swap adopts that bitmap with a pointer swap
+   * (one blit, no full repaint). An adoption check by content identity falls
+   * back to the regular static paint when the pre-render is stale or absent.
    */
   upcomingPattern?: { id: string; tracks: TrackerTrackData[]; rows: number } | null;
 }
@@ -245,6 +269,14 @@ let bitmapKey = '';
 /** CSS extent the bitmap was built for; -1 until the first paint. */
 let bitmapCssWidth = -1;
 let bitmapCssHeight = -1;
+/**
+ * Content the static bitmap currently shows (per-track entry references,
+ * layout, selection). The edit watcher diffs the next tracks prop against
+ * this to repair changed cells instead of repainting the whole bitmap.
+ */
+let paintedState: PaintState | null = null;
+/** Device-pixel scale the static bitmap was last built at. */
+let bitmapDpr = 1;
 
 /**
  * Device-pixel ceiling on the full-pattern bitmap's backing store. The
@@ -278,16 +310,89 @@ function ensureBitmap(cssW: number, cssH: number, scale: number): BitmapSurface 
   next.height = h;
   bitmap = next;
   bitmapKey = key;
+  bitmapDpr = scale;
   bitmapCssWidth = cssW;
   bitmapCssHeight = cssH;
   return next;
 }
 
 /**
+ * Paint one changed cell of the static bitmap: clip to the entry box, clear
+ * and repaint it (§3.3). Everything outside the clip is untouched, so the
+ * rest of the bitmap stays valid for the blit.
+ */
+function repaintCell(trackIndex: number, row: number): void {
+  const surface = bitmap;
+  if (!surface) return;
+  const rawCtx = surface.getContext('2d');
+  if (!rawCtx) return;
+  const ctx = rawCtx as unknown as CanvasRenderingContext2D;
+  const theme = getTheme();
+  const l = layout.value;
+  const track = props.tracks[trackIndex];
+  if (!track) return;
+
+  const box = entryBoxRect(trackIndex, row, l);
+  // Repair canvas-space rect, widened by a device pixel per side so no
+  // anti-aliased edge of the neighboring paint bleeds through the clip.
+  const d = dpr.value;
+  const cssX = (Math.floor((box.x + GUTTER_WIDTH_PX) * d) - 1) / d;
+  const cssY = (Math.floor(box.y * d) - 1) / d;
+  const cssW = (Math.ceil(box.width * d) + 2) / d;
+  const cssH = (Math.ceil(box.height * d) + 2) / d;
+
+  // Same CSS-space transform paintStatic uses (dpr-mapped pattern space),
+  // clipped to the one cell; the draw op then runs in paintStatic's exact
+  // coordinate frame (gutter-translated pattern space).
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(cssX, cssY, cssW, cssH);
+  ctx.clip();
+  ctx.clearRect(cssX, cssY, cssW, cssH);
+  ctx.translate(GUTTER_WIDTH_PX, 0);
+  const lookup = new Map<number, TrackerEntryData>();
+  for (const entry of track.entries) lookup.set(entry.row, entry);
+  const interpolations = buildInterpolatedRows(track);
+  drawEntryBox(
+    ctx,
+    trackIndex,
+    row,
+    l,
+    theme,
+    track,
+    lookup.get(row),
+    interpolations[row],
+    isRowSelected(trackIndex, row, props.selectionRect),
+  );
+  ctx.restore();
+}
+
+/**
+ * Apply a cell diff to the static bitmap (clip + repaint per changed cell)
+ * and refresh the paint bookkeeping to the new content. Returns false when
+ * there is no bitmap to repair — the caller falls back to a full paint.
+ */
+function repaintCells(diffs: CellDiff[]): boolean {
+  if (!bitmap) return false;
+  for (const diff of diffs) {
+    for (const row of diff.rows) repaintCell(diff.trackIndex, row);
+  }
+  paintedState = buildPaintState(
+    props.tracks,
+    props.rows,
+    props.showExtraEffectColumn,
+    props.selectionRect,
+  );
+  return true;
+}
+
+/**
  * Paint the whole pattern into the offscreen bitmap: row-number gutter,
  * then the track grid and selection overlay shifted past it. Repainted on
  * track-array identity, pattern size, selection and theme changes — never
- * per playback row (the overlay owns that).
+ * per playback row (the overlay owns that). Cell-level entry edits take the
+ * incremental path (repaintCells) instead of this full paint.
  */
 function paintStatic(): boolean {
   const cssW = contentWidth.value;
@@ -317,7 +422,111 @@ function paintStatic(): boolean {
     drawSelectionBar(ctx, l, theme, { selection: props.selectionRect });
   }
   ctx.restore();
+  paintedState = buildPaintState(
+    props.tracks,
+    props.rows,
+    props.showExtraEffectColumn,
+    props.selectionRect,
+  );
   return true;
+}
+
+// ---------------------------------------------------------------------
+// Upcoming-pattern pre-render (§3.2): ping-pong bitmap swap
+// ---------------------------------------------------------------------
+
+/** The second bitmap of the ping-pong pair, painted off the critical path. */
+let preRenderBitmap: BitmapSurface | null = null;
+/** Content the pre-render bitmap holds (or is being painted to hold). */
+let preRenderMeta: PreRenderMeta | null = null;
+/** The queued off-path paint (requestIdleCallback or rAF), if pending. */
+let preRenderRaf: number | null = null;
+/** The upcoming-pattern prop value the pending paint was queued for. */
+let preRenderTarget: UpcomingPatternInfo | null = null;
+
+type IdleCb = (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void;
+type IdleId = number;
+interface IdleWindow {
+  requestIdleCallback?: (cb: IdleCb) => IdleId;
+  cancelIdleCallback?: (id: IdleId) => void;
+}
+
+/**
+ * Paint the queued upcoming pattern into the second bitmap of the ping-pong
+ * pair. Runs off the critical path (requestIdleCallback, else a low-priority
+ * rAF), never in the swap frame.
+ */
+function paintPreRender(): void {
+  preRenderRaf = null;
+  const upcoming = preRenderTarget;
+  preRenderTarget = null;
+  if (!bitmap || !upcoming || upcoming.rows <= 0 || upcoming.tracks.length === 0) {
+    return;
+  }
+  // Size the ping-pong surface for the upcoming extent, in device pixels
+  // (the same ceil(css × dpr) rule ensureBitmap applies, so a swap renders
+  // 1:1 whatever the fractional DPR).
+  const extent = preRenderExtent(upcoming, props.showExtraEffectColumn);
+  const deviceW = Math.max(1, Math.ceil(extent.width * dpr.value));
+  const deviceH = Math.max(1, Math.ceil(extent.height * dpr.value));
+  let surface = preRenderBitmap;
+  if (!surface || surface.width !== deviceW || surface.height !== deviceH) {
+    surface = null;
+    if (typeof OffscreenCanvas !== 'undefined') {
+      try {
+        surface = new OffscreenCanvas(deviceW, deviceH);
+      } catch {
+        surface = null;
+      }
+    }
+    if (!surface) {
+      const el = document.createElement('canvas');
+      el.width = deviceW;
+      el.height = deviceH;
+      surface = el;
+    }
+    preRenderBitmap = surface;
+  }
+  const rawCtx = surface.getContext('2d');
+  if (!rawCtx) {
+    preRenderMeta = null;
+    return;
+  }
+  rawCtx.setTransform(dpr.value, 0, 0, dpr.value, 0, 0);
+  if (!paintUpcoming(surface, upcoming, props.showExtraEffectColumn, props.selectionRect)) {
+    preRenderMeta = null;
+    return;
+  }
+  preRenderMeta = metaFromInfo(upcoming, props.showExtraEffectColumn, props.selectionRect);
+}
+
+/** Queue the off-path pre-render paint (idle when available, else rAF). */
+function schedulePreRender(info: UpcomingPatternInfo | null): void {
+  const targetChanged = info !== preRenderTarget;
+  preRenderTarget = info;
+  if (!info) {
+    preRenderMeta = null;
+    return;
+  }
+  if (preRenderRaf !== null && !targetChanged) return;
+  cancelPreRenderPaint();
+  const w = window as unknown as IdleWindow;
+  if (typeof w.requestIdleCallback === 'function') {
+    preRenderRaf = w.requestIdleCallback(() => paintPreRender());
+  } else {
+    preRenderRaf = requestAnimationFrame(paintPreRender);
+  }
+}
+
+function cancelPreRenderPaint(): void {
+  if (preRenderRaf === null) return;
+  const w = window as unknown as IdleWindow;
+  if (typeof w.cancelIdleCallback === 'function') {
+    w.cancelIdleCallback(preRenderRaf);
+  } else {
+    cancelAnimationFrame(preRenderRaf);
+  }
+  preRenderRaf = null;
 }
 
 /**
@@ -424,7 +633,76 @@ function runFrame(): void {
   wantStatic = false;
   wantOverlay = false;
   wantBlit = false;
-  if (drawStatic && !paintStatic()) return;
+  if (drawStatic) {
+    // Fast paths before the full repaint: a playback swap adopts the
+    // pre-rendered bitmap (pointer swap, §3.2), and a cell-level edit
+    // repairs only the changed cells (§3.3). Either way the frame still
+    // blits the (updated) bitmap below.
+    let staticPainted = false;
+    if (bitmap && preRenderBitmap && preRenderMeta) {
+      // The bitmap must fit the arriving pattern exactly — its extent was
+      // sized for the pre-render target, and a mismatch would smear the
+      // blit. Painted meta carries that extent.
+      const sizedOk =
+        bitmapCssWidth === preRenderMeta.cssWidth &&
+        bitmapCssHeight === preRenderMeta.cssHeight &&
+        preRenderBitmap.width === Math.max(1, Math.ceil(preRenderMeta.cssWidth * dpr.value)) &&
+        preRenderBitmap.height === Math.max(1, Math.ceil(preRenderMeta.cssHeight * dpr.value));
+      if (
+        sizedOk &&
+        canAdoptPreRender(
+          preRenderMeta,
+          props.tracks,
+          props.rows,
+          props.showExtraEffectColumn,
+          props.selectionRect,
+        )
+      ) {
+        // Ping-pong: the pre-render becomes the static bitmap; the old
+        // static surface is recycled as the next pre-render target.
+        const adopted = bitmap;
+        bitmap = preRenderBitmap;
+        preRenderBitmap = adopted;
+        bitmapKey = `${bitmap.width}x${bitmap.height}`;
+        bitmapDpr = dpr.value;
+        bitmapCssWidth = contentWidth.value;
+        bitmapCssHeight = totalRowsHeight.value;
+        // The cell-repair bookkeeping must describe the bitmap now on screen.
+        paintedState = buildPaintState(
+          props.tracks,
+          props.rows,
+          props.showExtraEffectColumn,
+          props.selectionRect,
+        );
+        preRenderMeta = null;
+        preRenderTarget = null;
+        schedulePreRender(props.upcomingPattern);
+        staticPainted = true;
+      }
+    }
+    if (!staticPainted && paintedState && bitmap) {
+      // The incremental path repairs a bitmap that is still the right shape:
+      // same extent, same DPR. A resize/DPR change must fall through to the
+      // full paint, which rebuilds the backing store.
+      const bitmapValid =
+        bitmapCssWidth === contentWidth.value &&
+        bitmapCssHeight === totalRowsHeight.value &&
+        bitmapDpr === dpr.value;
+      if (bitmapValid) {
+        const diffs = diffPaintState(
+          paintedState,
+          props.tracks,
+          props.rows,
+          props.showExtraEffectColumn,
+          props.selectionRect,
+        );
+        if (diffs !== null) {
+          staticPainted = diffs.length === 0 || repaintCells(diffs);
+        }
+      }
+    }
+    if (!staticPainted && !paintStatic()) return;
+  }
   if (blit && !paintVisible()) return;
   if (drawOverlay && !paintOverlay()) return;
 }
@@ -460,8 +738,11 @@ function applySize(): void {
   }
   // A backing-store reset clears the layer, so both visible layers always
   // repaint; the static bitmap only rebuilds when the pattern's own extent
-  // or the DPR changed (otherwise the blit reuses it as-is).
+  // or the DPR changed (otherwise the blit reuses it as-is). The ping-pong
+  // surface follows the same extent/DPR inputs, so a pending pre-render is
+  // queued again and rebuilt at the new scale.
   schedule(bitmapInputsChanged ? ['static', 'overlay', 'blit'] : ['overlay', 'blit']);
+  if (bitmapInputsChanged) schedulePreRender(props.upcomingPattern);
 }
 
 let resizeRaf: number | null = null;
@@ -593,6 +874,15 @@ watch(
 watch(
   () => [props.tracks, props.rows, props.showExtraEffectColumn, props.selectionRect],
   () => schedule(['static']),
+);
+
+/**
+ * Upcoming-pattern feeds: queue the off-path pre-render of the next pattern
+ * while it plays; a null (stopped, deleted pattern) cancels any pending one.
+ */
+watch(
+  () => props.upcomingPattern,
+  (info) => schedulePreRender(info),
 );
 
 watch(
@@ -749,6 +1039,11 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(frameRaf);
     frameRaf = null;
   }
+  cancelPreRenderPaint();
+  preRenderBitmap = null;
+  preRenderMeta = null;
+  preRenderTarget = null;
+  paintedState = null;
   window.removeEventListener('mousemove', onWindowMouseMove);
   window.removeEventListener('mouseup', onWindowMouseUp);
 });

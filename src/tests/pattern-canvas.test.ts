@@ -336,6 +336,17 @@ function makeTrack(id: string, rowCount = 32, note = 'C-4'): TrackerTrackData {
   };
 }
 
+/**
+ * An edited copy of `track` sharing every entry object except `row`, where
+ * a fresh object replaces the old — exactly what updateEntryAt produces.
+ */
+function editedTrack(track: TrackerTrackData, row: number, note = 'D-5'): TrackerTrackData {
+  return {
+    ...track,
+    entries: track.entries.map((entry) => (entry.row === row ? { ...entry, row, note } : entry)),
+  };
+}
+
 function mountCanvas(opts: {
   tracks?: TrackerTrackData[];
   rows?: number;
@@ -1181,6 +1192,332 @@ describe('bitmap size cap', () => {
     const wrapper = mountCanvas();
     await pumpFrame();
     expect(wrapper.emitted('rendererError')).toBeUndefined();
+    wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Cell-level edit repaint (§3.3): clip + repair, not a full repaint
+// ---------------------------------------------------------------------
+
+/** The number of fillRect ops one full static paint issues. */
+function fullPaintFillCount(tracks: TrackerTrackData[], rows: number): number {
+  // paintStatic: one panel fill + one row-number pill per row + one cell
+  // fill per track × row.
+  return 1 + rows + tracks.length * rows;
+}
+
+/** The recording ctx of one specific canvas element. */
+function ctxForCanvas(canvas: HTMLCanvasElement | OffscreenCanvas): RecordingCtx {
+  const entry = contexts.find((c) => c.canvas === canvas);
+  expect(entry).toBeDefined();
+  return entry!;
+}
+
+/** The static bitmap canvas mounted with the component (first offscreen). */
+function staticBitmapCanvasOf(wrapper: MountedCanvas): HTMLCanvasElement | OffscreenCanvas {
+  const { visible, overlay } = layerCanvases(wrapper);
+  const entry = contexts.find((c) => c.canvas !== visible && c.canvas !== overlay);
+  expect(entry).toBeDefined();
+  return entry!.canvas!;
+}
+
+/** The canvas the visible layer's latest blit read from (= current bitmap). */
+function blittedBitmap(wrapper: MountedCanvas): unknown {
+  const { visible } = layerCanvases(wrapper);
+  const viewCtx = contexts.find((c) => c.canvas === visible)!;
+  const blit = drawImageOn(viewCtx).at(-1);
+  expect(blit).toBeDefined();
+  return blit!.image;
+}
+
+describe('cell-level edit repaint (§3.3)', () => {
+  it('a single entry edit repaints exactly one clipped cell, not the bitmap', async () => {
+    const track = makeTrack('t0');
+    const other = makeTrack('t1');
+    const wrapper = mountCanvas({ tracks: [track, other] });
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmap).length;
+    expect(fillsBefore).toBe(fullPaintFillCount([track, other], 32));
+
+    await wrapper.setProps({ tracks: [editedTrack(track, 5), other] });
+    await nextTick();
+    pumpFrame();
+
+    // Only the one repaired cell's ops were added to the bitmap context:
+    // one fillRect for the cell background (clip bounds the rest).
+    expect(fillsOn(bitmap).length).toBe(fillsBefore + 1);
+    wrapper.unmount();
+  });
+  it('the repaired cell is clipped to its entry box at the track column', async () => {
+    const track = makeTrack('t0');
+    const other = makeTrack('t1');
+    const wrapper = mountCanvas({ tracks: [track, other] });
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmap).length;
+
+    await wrapper.setProps({ tracks: [editedTrack(track, 7), other] });
+    await nextTick();
+    pumpFrame();
+
+    const repairFills = fillsOn(bitmap).slice(fillsBefore);
+    expect(repairFills).toHaveLength(1);
+    // entryBoxRect(0, 7): pattern space + the 78px gutter, no scroll.
+    expect(repairFills[0]!.x).toBeCloseTo(GUTTER_WIDTH_PX, 5);
+    expect(repairFills[0]!.y).toBeCloseTo(7 * rowPitchPx, 5);
+    expect(repairFills[0]!.width).toBeCloseTo(180, 5); // 2-track trackWidth
+    expect(repairFills[0]!.height).toBeCloseTo(rowHeightPx, 5);
+    wrapper.unmount();
+  });
+
+  it('an empty-cell edit (step cleared) repairs that one cell too', async () => {
+    const track = makeTrack('t0');
+    const other = makeTrack('t1');
+    const wrapper = mountCanvas({ tracks: [track, other] });
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmap).length;
+
+    const cleared = {
+      ...track,
+      entries: track.entries.filter((e) => e.row !== 3),
+    };
+    await wrapper.setProps({ tracks: [cleared, other] });
+    await nextTick();
+    pumpFrame();
+
+    expect(fillsOn(bitmap).length).toBe(fillsBefore + 1);
+    wrapper.unmount();
+  });
+
+  it('edits on more than the ratio budget fall back to a full repaint', async () => {
+    // 32 rows × 2 tracks = 64 cells; 17 changed > 25% → full repaint.
+    const track = makeTrack('t0');
+    const other = makeTrack('t1');
+    const wrapper = mountCanvas({ tracks: [track, other] });
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmap).length;
+
+    let edited = track;
+    for (let row = 0; row < 17; row++) {
+      edited = editedTrack(edited, row);
+    }
+    await wrapper.setProps({ tracks: [edited, other] });
+    await nextTick();
+    pumpFrame();
+
+    expect(fillsOn(bitmap).length).toBe(fillsBefore * 2); // full repaint
+    wrapper.unmount();
+  });
+
+  it('edits at or under the ratio stay incremental', async () => {
+    // 32 rows × 2 tracks = 64 cells; 16 changed = exactly 25%.
+    const track = makeTrack('t0');
+    const other = makeTrack('t1');
+    const wrapper = mountCanvas({ tracks: [track, other] });
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmap).length;
+
+    let edited = track;
+    for (let row = 0; row < 16; row++) {
+      edited = editedTrack(edited, row);
+    }
+    await wrapper.setProps({ tracks: [edited, other] });
+    await nextTick();
+    pumpFrame();
+
+    // One fillRect per repaired cell, no full second paint.
+    expect(fillsOn(bitmap).length).toBe(fillsBefore + 16);
+    wrapper.unmount();
+  });
+
+  it('a selection change still repaints the whole bitmap (gutter tints)', async () => {
+    const track = makeTrack('t0');
+    const other = makeTrack('t1');
+    const wrapper = mountCanvas({ tracks: [track, other] });
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmap).length;
+
+    await wrapper.setProps({
+      selectionRect: { rowStart: 0, rowEnd: 1, trackStart: 0, trackEnd: 1 },
+    });
+    await nextTick();
+    pumpFrame();
+
+    // A second full paint, plus the two selected-row overlay bars that are
+    // now part of it.
+    expect(fillsOn(bitmap).length).toBe(fillsBefore * 2 + 2);
+    wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Upcoming-pattern pre-render (§3.2): off-path paint + ping-pong swap
+// ---------------------------------------------------------------------
+
+describe('upcoming-pattern pre-render (§3.2)', () => {
+  it('while playing, the upcoming pattern is painted into a second bitmap', async () => {
+    const upcoming = { id: 'p2', tracks: [makeTrack('u'), makeTrack('v')], rows: 32 };
+    const wrapper = mountCanvas();
+    pumpFrame();
+    const before = contexts.length;
+
+    await wrapper.setProps({ upcomingPattern: upcoming });
+    await nextTick();
+    // The off-path paint queued its own frame (no rAF-based idle callback
+    // in the test env): pump it, then the frame it scheduled after.
+    pumpFrame();
+    pumpFrame();
+
+    // A second bitmap surface was created and painted (fills recorded).
+    const surfaces = contexts.slice(before);
+    expect(surfaces.length).toBeGreaterThan(0);
+    expect(fillsOn(surfaces[0]!).length).toBeGreaterThan(0);
+    wrapper.unmount();
+  });
+
+  it('a pattern swap adopts the pre-render: pointer swap, no full repaint', async () => {
+    const trackA = makeTrack('t0');
+    const trackB = makeTrack('t1');
+    const upcoming = { id: 'p2', tracks: [makeTrack('u'), makeTrack('v')], rows: 32 };
+    const wrapper = mountCanvas({ tracks: [trackA, trackB] });
+    pumpFrame();
+    const originalBitmap = staticBitmapCanvasOf(wrapper);
+    expect(blittedBitmap(wrapper)).toBe(originalBitmap);
+
+    // Pre-render the upcoming pattern, then swap to it.
+    await wrapper.setProps({ upcomingPattern: upcoming });
+    await nextTick();
+    pumpFrame();
+    pumpFrame();
+    const preRendered = bitmapOf(wrapper).canvas!; // newest offscreen surface
+    expect(preRendered).not.toBe(originalBitmap);
+    const preRenderFills = fillsOn(bitmapOf(wrapper)).length;
+    expect(preRenderFills).toBeGreaterThan(0);
+
+    await wrapper.setProps({ tracks: upcoming.tracks, rows: upcoming.rows });
+    await nextTick();
+    pumpFrame();
+
+    // The visible layer now blits from the pre-render bitmap (pointer swap,
+    // §3.2), which was not repainted by the swap.
+    expect(blittedBitmap(wrapper)).toBe(preRendered);
+    expect(fillsOn(bitmapOf(wrapper)).length).toBe(preRenderFills);
+    wrapper.unmount();
+  });
+
+  it('a swap without a usable pre-render repaints the static bitmap', async () => {
+    const trackA = makeTrack('t0');
+    const trackB = makeTrack('t1');
+    const wrapper = mountCanvas({ tracks: [trackA, trackB] });
+    pumpFrame();
+    const originalCanvas = staticBitmapCanvasOf(wrapper);
+    const originalCtx = ctxForCanvas(originalCanvas);
+    const fillsBefore = fillsOn(originalCtx).length;
+
+    // Swap with no upcomingPattern pre-render at all (e.g. the pattern was
+    // never pre-rendered — deleted mid-play, or the paint lost the race).
+    const fresh = [makeTrack('x'), makeTrack('y')];
+    await wrapper.setProps({ tracks: fresh, rows: 32 });
+    await nextTick();
+    pumpFrame();
+
+    // Same bitmap surface, repainted from scratch in place.
+    expect(blittedBitmap(wrapper)).toBe(originalCanvas);
+    expect(fillsOn(originalCtx).length).toBe(fillsBefore * 2);
+    wrapper.unmount();
+  });
+
+  it('a stale pre-render (edited after painting) is not adopted', async () => {
+    const trackA = makeTrack('t0');
+    const trackB = makeTrack('t1');
+    const upcomingTracks = [makeTrack('u'), makeTrack('v')];
+    const upcoming = { id: 'p2', tracks: upcomingTracks, rows: 32 };
+    const wrapper = mountCanvas({ tracks: [trackA, trackB] });
+    pumpFrame();
+    const bitmapBefore = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmapBefore).length;
+
+    await wrapper.setProps({ upcomingPattern: upcoming });
+    await nextTick();
+    pumpFrame();
+    pumpFrame();
+
+    // An edit lands on the upcoming pattern AFTER the pre-render painted
+    // it: the references no longer match, so the swap must repaint.
+    await wrapper.setProps({
+      upcomingPattern: {
+        ...upcoming,
+        tracks: [editedTrack(upcomingTracks[0]!, 2), upcomingTracks[1]!],
+      },
+    });
+    await nextTick();
+    pumpFrame();
+    pumpFrame();
+    await wrapper.setProps({ tracks: upcomingTracks, rows: 32 });
+    await nextTick();
+    pumpFrame();
+
+    // The original bitmap repainted from scratch in place (no swap), and
+    // the visible layer still blits from it.
+    const originalCtx = ctxForCanvas(staticBitmapCanvasOf(wrapper));
+    expect(blittedBitmap(wrapper)).toBe(staticBitmapCanvasOf(wrapper));
+    expect(fillsOn(originalCtx).length).toBe(fillsBefore * 2);
+    wrapper.unmount();
+  });
+
+  it('clearing the upcoming pattern cancels and the swap repaints fully', async () => {
+    const trackA = makeTrack('t0');
+    const trackB = makeTrack('t1');
+    const upcoming = { id: 'p2', tracks: [makeTrack('u'), makeTrack('v')], rows: 32 };
+    const wrapper = mountCanvas({ tracks: [trackA, trackB] });
+    pumpFrame();
+    const bitmapBefore = bitmapOf(wrapper);
+    const fillsBefore = fillsOn(bitmapBefore).length;
+
+    await wrapper.setProps({ upcomingPattern: upcoming });
+    await nextTick();
+    pumpFrame();
+    await wrapper.setProps({ upcomingPattern: null });
+    await nextTick();
+    pumpFrame();
+    pumpFrame();
+    await wrapper.setProps({ tracks: [makeTrack('x'), makeTrack('y')], rows: 32 });
+    await nextTick();
+    pumpFrame();
+
+    // The original bitmap repainted from scratch in place (the cleared
+    // pre-render was not adopted), and the blit still reads it.
+    const originalCtx = ctxForCanvas(staticBitmapCanvasOf(wrapper));
+    expect(blittedBitmap(wrapper)).toBe(staticBitmapCanvasOf(wrapper));
+    expect(fillsOn(originalCtx).length).toBe(fillsBefore * 2);
+    wrapper.unmount();
+  });
+
+  it('the swap still blits (no blank frame) and repaints the overlay', async () => {
+    const trackA = makeTrack('t0');
+    const trackB = makeTrack('t1');
+    const upcoming = { id: 'p2', tracks: [makeTrack('u'), makeTrack('v')], rows: 32 };
+    const wrapper = mountCanvas({ tracks: [trackA, trackB] });
+    pumpFrame();
+    const { visible } = layerCanvases(wrapper);
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+    const blitsBefore = drawImageOn(viewCtx).length;
+
+    await wrapper.setProps({ upcomingPattern: upcoming });
+    await nextTick();
+    pumpFrame();
+    pumpFrame();
+    await wrapper.setProps({ tracks: upcoming.tracks, rows: upcoming.rows });
+    await nextTick();
+    pumpFrame();
+
+    expect(drawImageOn(viewCtx).length).toBe(blitsBefore + 1);
     wrapper.unmount();
   });
 });
