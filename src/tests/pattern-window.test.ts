@@ -83,9 +83,20 @@ describe('content smaller than the viewport', () => {
     const w = blitWindow(-150, -100, 800, 600, 400, 200, 1);
     expect(w.dx).toBe(100);
     expect(w.dy).toBe(150);
-    // The visible slice shrinks by exactly the pinned amount.
-    expect(w.sw).toBe(400 - 100);
-    expect(w.sh).toBe(200 - 150);
+    // The whole content still fits in the remaining viewport, so the source
+    // spans all of it; only the destination offset changes.
+    expect(w.sw).toBe(400);
+    expect(w.sh).toBe(200);
+  });
+
+  it('over-scroll larger than the remaining viewport clips the source', () => {
+    // Pinned so hard the content's far edge runs off-canvas: content starts
+    // at screen x=450 and is 400 wide, so only 350px fit before x=800.
+    const w = blitWindow(-150, -450, 800, 600, 400, 200, 1);
+    expect(w.dx).toBe(450);
+    expect(w.dy).toBe(150);
+    expect(w.sw).toBe(800 - 450);
+    expect(w.sh).toBe(200);
   });
 });
 
