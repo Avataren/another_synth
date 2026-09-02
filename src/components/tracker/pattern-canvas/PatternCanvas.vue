@@ -1048,7 +1048,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', onWindowMouseUp);
 });
 
-defineExpose({ scrollerRef });
+defineExpose({ scrollerRef, hscrollRef });
 </script>
 
 <style scoped>

@@ -560,6 +560,7 @@
           -->
           <PatternCanvas
             v-if="canvasRenderer && !canvasRendererFailed"
+            ref="patternCanvasRef"
             :tracks="currentPattern?.tracks ?? []"
             :rows="rowsCount"
             :selected-row="activeRow"
@@ -687,6 +688,10 @@ import {
   trackGapPx,
   trackWidthPx,
 } from 'src/components/tracker/track-metrics';
+import {
+  canvasVisualizerPadding,
+  domVisualizerPadding,
+} from 'src/components/tracker/visualizer-alignment';
 import { visiblePageWindow } from 'src/components/tracker/page-window';
 import { setSampleQuality } from 'src/audio/sample-quality';
 import SequenceEditor from 'src/components/tracker/SequenceEditor.vue';
@@ -910,6 +915,7 @@ const patternAreaScrollTop = ref(0);
 const patternAreaScrollLeft = ref(0);
 const patternAreaHeight = ref(600);
 const patternAreaWidth = ref(0);
+const patternCanvasRef = ref<InstanceType<typeof PatternCanvas> | null>(null);
 // Grid/navigation/selection all size against the *current* pattern.
 const rowsCount = computed(() => trackerStore.currentPatternRows);
 
@@ -1198,7 +1204,6 @@ const trackScrollbarWidth = ref(0);
 /** Aligns the proxy bar under the tracks rather than the whole pattern panel. */
 const trackScrollbarInset = ref({ left: 0, right: 0 });
 const visualizerPadding = ref({ left: 18, right: 18 });
-const VISUALIZER_PADDING_BIAS = 25;
 let teardownTrackScrollSync: (() => void) | null = null;
 let isSyncingTrackScroll = false;
 let trackScrollbarObserver: ResizeObserver | null = null;
@@ -1233,6 +1238,39 @@ function blurAndRefocusTracker(event?: Event) {
 function resolvePatternTracksWrapper(): HTMLElement | null {
   // tracksWrapperRef is already unwrapped when exposed from child component
   return trackerPatternRef.value?.tracksWrapperRef ?? patternTracksWrapper.value ?? null;
+}
+
+// -----------------------------------------------------------------
+// Canvas renderer's exposed elements
+//
+// defineExpose unwraps refs at runtime, but the generated instance type
+// does not say so; these accessors speak the runtime shape directly.
+// -----------------------------------------------------------------
+
+function canvasScrollerEl(): HTMLElement | null {
+  const exposed = patternCanvasRef.value as unknown as
+    | { scrollerRef?: HTMLElement | null }
+    | null;
+  return exposed?.scrollerRef ?? null;
+}
+
+function canvasHScrollEl(): HTMLElement | null {
+  const exposed = patternCanvasRef.value as unknown as
+    | { hscrollRef?: HTMLElement | null }
+    | null;
+  return exposed?.hscrollRef ?? null;
+}
+
+/**
+ * Element whose box is the bitmap's horizontal viewport, for waveform-row
+ * measurement: the canvas's own hscroll proxy when it is shown (its width
+ * accounts for the scroller's vertical scrollbar, so extents match), else
+ * the scroller itself (pattern fits — nothing scrolls either way).
+ */
+function canvasViewportEl(): HTMLElement | null {
+  const hscroll = canvasHScrollEl();
+  if (hscroll && hscroll.getBoundingClientRect().width > 0) return hscroll;
+  return canvasScrollerEl();
 }
 
 async function scrollActiveTrackIntoView() {
@@ -1288,25 +1326,32 @@ function setupTrackWheelScroll() {
 
 function updateVisualizerPadding() {
   const rowEl = visualizerRowRef.value;
-  const patternEl =
-    (trackerPatternRef.value?.$el as HTMLElement | undefined) ?? null;
-  if (!rowEl || !patternEl) return;
+  if (!rowEl) return;
 
   const rowRect = rowEl.getBoundingClientRect();
-  const patternRect = patternEl.getBoundingClientRect();
-
   if (rowRect.width === 0) return;
 
-  const left = Math.max(
-    0,
-    patternRect.left - rowRect.left + VISUALIZER_PADDING_BIAS,
-  );
-  const right = Math.max(
-    0,
-    rowRect.right - patternRect.right - VISUALIZER_PADDING_BIAS,
-  );
+  if (canvasRendererActive.value) {
+    // The canvas renderer exposes its viewport element; its left edge is the
+    // bitmap's row-number gutter and the tracks start GUTTER_WIDTH_PX into
+    // the bitmap (see visualizer-alignment.ts for the arithmetic, shared
+    // with its tests).
+    const viewport = canvasViewportEl();
+    if (!viewport) return;
+    const viewportLeft = viewport.getBoundingClientRect().left;
+    visualizerPadding.value = canvasVisualizerPadding(
+      rowRect,
+      viewportLeft,
+      viewport.clientWidth,
+    );
+    return;
+  }
 
-  visualizerPadding.value = { left, right };
+  // DOM grid: measure against the DOM panel's border box, as before.
+  const patternEl = (trackerPatternRef.value?.$el as HTMLElement | undefined) ?? null;
+  if (!patternEl) return;
+  const patternRect = patternEl.getBoundingClientRect();
+  visualizerPadding.value = domVisualizerPadding(rowRect, patternRect);
 }
 
 /**
@@ -1377,13 +1422,25 @@ function syncTrackScroll(scrollLeft: number) {
   });
 }
 
-/**
- * Wire whichever horizontal views are currently mounted.
- *
- * The waveform strip is optional (a setting) but the proxy scrollbar is not, so
- * this runs regardless of whether the strip is showing -- an earlier version
- * only ran on the visualizer path and left the bar dead when they were off.
- */
+/** Canvas renderer mounted (and not in its failed-to-DOM-fallback state). */
+const canvasRendererActive = computed(
+  () => canvasRenderer.value && !canvasRendererFailed.value,
+);
+
+function refreshVisualizerAlignment() {
+  if (!userSettings.value.showWaveformVisualizers) {
+    visualizerPadding.value = { left: 18, right: 18 };
+    // Re-wire rather than tear down: the waveform strip is gone but the proxy
+    // scrollbar is not, and it shares this sync.
+    void nextTick(() => setupTrackScrollSync());
+    return;
+  }
+  void nextTick(() => {
+    updateVisualizerPadding();
+    setupTrackScrollSync();
+  });
+}
+
 function setupTrackScrollSync() {
   teardownTrackScrollSync?.();
 
@@ -1391,6 +1448,27 @@ function setupTrackScrollSync() {
   const visualizer = visualizerTracksRef.value;
   const scrollbar = trackScrollbarRef.value;
   patternTracksWrapper.value = patternWrapper;
+
+  if (canvasRendererActive.value) {
+    // The canvas owns horizontal scrolling through its hscroll proxy (or is
+    // unscrollable when the pattern fits). Sync the waveform strip and the
+    // proxy bar from the canvas's reported scroll position.
+    const source = canvasHScrollEl();
+    const handleCanvasScroll = () => {
+      const el = canvasHScrollEl();
+      if (el) syncTrackScroll(el.scrollLeft);
+    };
+    if (source) {
+      source.addEventListener('scroll', handleCanvasScroll, { passive: true });
+    }
+    teardownTrackScrollSync = () => {
+      source?.removeEventListener('scroll', handleCanvasScroll);
+      trackScrollbarObserver?.disconnect();
+      trackScrollbarObserver = null;
+    };
+    syncTrackScroll(patternAreaScrollLeft.value);
+    return;
+  }
 
   if (!patternWrapper) return;
 
@@ -1425,20 +1503,6 @@ function setupTrackScrollSync() {
 
   measureTrackScrollbar();
   syncTrackScroll(patternWrapper.scrollLeft);
-}
-
-function refreshVisualizerAlignment() {
-  if (!userSettings.value.showWaveformVisualizers) {
-    visualizerPadding.value = { left: 18, right: 18 };
-    // Re-wire rather than tear down: the waveform strip is gone but the proxy
-    // scrollbar is not, and it shares this sync.
-    void nextTick(() => setupTrackScrollSync());
-    return;
-  }
-  void nextTick(() => {
-    updateVisualizerPadding();
-    setupTrackScrollSync();
-  });
 }
 
 const visualizerReady = ref(false);
@@ -1961,7 +2025,7 @@ onMounted(async () => {
     () => trackCount.value,
     () => {
       setupTrackWheelScroll();
-      setupTrackScrollSync();
+      refreshVisualizerAlignment();
     },
     { immediate: true, flush: 'post' },
   );
@@ -2043,6 +2107,13 @@ watch(
     scrollActiveTrackIntoView();
   },
 );
+
+// Toggling the canvas renderer swaps the pattern element (and its geometry);
+// the waveform strip must re-measure and re-sync against whichever shows.
+watch(canvasRendererActive, async () => {
+  await nextTick();
+  refreshVisualizerAlignment();
+});
 
 // Watch only the properties that matter for audio sync (slot, patchId, bankId)
 // This prevents unnecessary audio rebuilds when editing instrument names
