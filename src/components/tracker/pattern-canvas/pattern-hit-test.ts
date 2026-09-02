@@ -25,13 +25,14 @@ export interface PatternHit {
 }
 
 /**
- * Point (in pattern content coordinates, before `scrollTop`) → cell, or null
- * when the point is in a gap, the header band, or outside the grid entirely.
+ * Pointer (x, y in viewport/canvas coordinates) → cell, or null when the
+ * point is in a gap, the header band, or outside the grid entirely.
  *
- * `x` is horizontal content offset (track pitch space), `y` is vertical
- * content offset before scrolling; subtracting `scrollTop` maps it to the
- * pattern's own row space. Row gaps hit nothing, mirroring the DOM where the
- * flex gap between entry boxes is dead space.
+ * `scrollTop` is the pattern's current vertical scroll: the bitmap holds the
+ * whole pattern, so a pointer y maps to content y = y + scrollTop, the same
+ * arithmetic as `element.offsetTop + container.scrollTop` in the DOM grid.
+ * Row gaps hit nothing, mirroring the DOM where the flex gap between entry
+ * boxes is dead space.
  */
 export function hitTest(
   x: number,
@@ -39,7 +40,8 @@ export function hitTest(
   layout: PatternLayout,
   scrollTop: number,
 ): PatternHit | null {
-  const localY = y - scrollTop;
+  if (y < 0) return null;
+  const localY = y + scrollTop;
   if (localY < 0 || localY >= layout.rowCount * (rowHeightPx + rowGapPx)) {
     return null;
   }
@@ -87,9 +89,6 @@ function hitColumn(
   const offsets = columnFractionOffsets(boxWidth, showExtraEffectColumn);
   for (let column = 0; column < offsets.length - 1; column++) {
     if (contentX >= offsets[column] && contentX < offsets[column + 1]) {
-      if (showExtraEffectColumn && column >= 5) {
-        return null; // beyond the last grid column
-      }
       if (column === 4 || column === 5) {
         const nibbleWidth = macroNibbleWidth(boxWidth, showExtraEffectColumn);
         const nibble = Math.floor(
