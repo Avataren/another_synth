@@ -351,7 +351,7 @@ function bufferRowBarStyle(slot: BufferSlot) {
   };
 }
 
-function bufferActiveBarStyle(slot: BufferSlot) {
+function bufferActiveBarStyle(_slot: BufferSlot) {
   const offset = headerHeightPx + 6 + props.playbackRow * (rowHeightPx + rowGapPx);
   return {
     transform: `translateY(${offset}px)`,

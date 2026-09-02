@@ -121,7 +121,6 @@ describe('dead space and boundaries', () => {
   });
 
   it('hits nothing in the track gap between columns', () => {
-    const pitch = trackPitchPx(4, false);
     const x = trackWidthPx(4, false) + 5; // inside the 10px gap after track 0
     expect(hitTest(x, 15, layout(), 0)).toBeNull();
   });
