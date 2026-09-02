@@ -17,6 +17,7 @@ import {
   columnFractionOffsets,
   entryBoxRect,
   entryHorizontalInsetPx,
+  GUTTER_WIDTH_PX,
   rowHeightPx,
   rowY,
   type PatternLayout,
@@ -297,7 +298,7 @@ export function drawRowNumbers(
   theme: PatternTheme,
   data: { selection?: TrackerSelectionRect | null; startRow?: number; endRow?: number } = {},
 ): void {
-  const GUTTER_WIDTH = 78;
+  const GUTTER_WIDTH = GUTTER_WIDTH_PX;
   const startRow = Math.max(0, data.startRow ?? 0);
   const endRow = Math.min(layout.rowCount, data.endRow ?? layout.rowCount);
   for (let row = startRow; row < endRow; row++) {
@@ -397,6 +398,52 @@ export function drawActiveRowBar(
   ctx.lineWidth = 2;
   ctx.strokeRect(0, y, width, rowHeightPx);
   ctx.lineWidth = 1;
+}
+
+/**
+ * The cursor cell (the focused track/column/nibble of the editing cursor):
+ * an `activeBg` fill plus a stroke in the track's own accent, on overlay #2
+ * so moving the cursor never repaints the static grid. Column geometry is
+ * the same fraction math the hit test uses, so the highlight lands exactly
+ * on the cell a click would select; effect-column nibbles subdivide into
+ * simple thirds, matching `hitTest`.
+ */
+export interface CursorCellData {
+  trackIndex: number;
+  row: number;
+  column: number;
+  macroNibble: number;
+}
+
+export function drawCursorCell(
+  ctx: CanvasRenderingContext2D,
+  layout: PatternLayout,
+  tracks: TrackerTrackData[],
+  theme: PatternTheme,
+  data: CursorCellData,
+): void {
+  const { trackIndex, row, column, macroNibble } = data;
+  if (trackIndex < 0 || trackIndex >= layout.trackCount) return;
+  if (row < 0 || row >= layout.rowCount) return;
+  const track = tracks[trackIndex];
+  if (!track) return;
+
+  const box = entryBoxRect(trackIndex, row, layout);
+  const offsets = columnFractionOffsets(box.width, layout.showExtraEffectColumn);
+  const col = Math.max(0, Math.min(column, offsets.length - 2));
+  let x = box.x + entryHorizontalInsetPx + offsets[col]!;
+  let width = offsets[col + 1]! - offsets[col]!;
+  if (col === 4 || col === 5) {
+    const nibbleWidth = width / 3;
+    const nibble = Math.min(2, Math.max(0, macroNibble));
+    x += nibble * nibbleWidth;
+    width = nibbleWidth;
+  }
+
+  ctx.fillStyle = theme.activeBg;
+  ctx.fillRect(x, box.y, width, box.height);
+  ctx.strokeStyle = trackAccent(track);
+  ctx.strokeRect(x, box.y, width, box.height);
 }
 
 /** Re-export so draw call sites (and tests) share one import site. */

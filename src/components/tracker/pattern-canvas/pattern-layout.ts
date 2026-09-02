@@ -21,6 +21,15 @@ export const rowGapPx = 6;
 /** Height of the header strip above the first row ("Row" header). */
 export const headerHeightPx = 46;
 
+/**
+ * Width of the row-number gutter column, in pixels.
+ *
+ * Shared by `drawRowNumbers` (which paints it into the static bitmap),
+ * PatternCanvas (which pins it on screen and offsets hit tests by it) and the
+ * DOM header's "Row" cell, so all three agree on where the tracks start.
+ */
+export const GUTTER_WIDTH_PX = 78;
+
 /** Vertical advance from one row to the next. */
 export const rowPitchPx = rowHeightPx + rowGapPx;
 
