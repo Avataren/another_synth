@@ -104,6 +104,14 @@
             />
             <span>Dual FX cols</span>
           </label>
+          <label class="toggle toolbar-toggle">
+            <input
+              v-model="userSettings.canvasPatternRenderer"
+              type="checkbox"
+              @change="blurAndRefocusTracker"
+            />
+            <span>Canvas grid</span>
+          </label>
           <button
             type="button"
             class="edit-mode-toggle toolbar-edit-toggle"
@@ -543,7 +551,45 @@
           class="pattern-area"
           @scroll.passive="onPatternAreaScroll"
         >
+          <!--
+            The canvas renderer swaps in behind its own setting; a page-level
+            failure flag (rendererError) drops it back to the DOM grid, which
+            stays compiled as the escape hatch. The canvas owns its scroll —
+            the state it reports back is the same scrollTop/scrollLeft pair
+            the DOM grid path feeds from this element.
+          -->
+          <PatternCanvas
+            v-if="canvasRenderer && !canvasRendererFailed"
+            :tracks="currentPattern?.tracks ?? []"
+            :rows="rowsCount"
+            :selected-row="activeRow"
+            :playback-row="playbackRow"
+            :active-track="activeTrack"
+            :active-column="activeColumn"
+            :active-macro-nibble="activeMacroNibble"
+            :selection-rect="selectionRect"
+            :auto-scroll="autoScroll"
+            :is-playing="isPlaying"
+            :playback-mode="playbackMode"
+            :scroll-top="patternAreaScrollTop"
+            :scroll-left="patternAreaScrollLeft"
+            :container-width="patternAreaWidth"
+            :container-height="patternAreaHeight"
+            :is-mouse-selecting="isMouseSelecting"
+            :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
+            :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+            :granular-scroll="userSettings.granularPlaybackScroll"
+            :enable-editing="isEditMode"
+            :upcoming-pattern="upcomingPattern"
+            @rowSelected="setActiveRow"
+            @cellSelected="setActiveCell"
+            @startSelection="onPatternStartSelection"
+            @hoverSelection="onPatternHoverSelection"
+            @scroll="onCanvasScroll"
+            @renderer-error="onCanvasRendererError"
+          />
           <TrackerPattern
+            v-else
             ref="trackerPatternRef"
             :tracks="currentPattern?.tracks ?? []"
             :rows="rowsCount"
@@ -635,6 +681,7 @@ import {
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
+import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.vue';
 import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering';
 import {
   trackGapPx,
@@ -860,7 +907,9 @@ const trackerContainer = ref<HTMLDivElement | null>(null);
 const patternAreaRef = ref<HTMLDivElement | null>(null);
 const sequenceEditorRef = ref<InstanceType<typeof SequenceEditor> | null>(null);
 const patternAreaScrollTop = ref(0);
+const patternAreaScrollLeft = ref(0);
 const patternAreaHeight = ref(600);
+const patternAreaWidth = ref(0);
 // Grid/navigation/selection all size against the *current* pattern.
 const rowsCount = computed(() => trackerStore.currentPatternRows);
 
@@ -881,7 +930,50 @@ function onPatternAreaScroll(event: Event) {
 function updatePatternAreaHeight() {
   if (patternAreaRef.value) {
     patternAreaHeight.value = patternAreaRef.value.clientHeight;
+    patternAreaWidth.value = patternAreaRef.value.clientWidth;
   }
+}
+
+// ---------------------------------------------------------------
+// Canvas renderer wiring (mirrors JukeboxPage)
+// ---------------------------------------------------------------
+
+/** Canvas renderer on until this page's own copy proves it cannot run here. */
+const canvasRenderer = computed(() => userSettings.value.canvasPatternRenderer);
+const canvasRendererFailed = ref(false);
+
+/**
+ * Latest scroll position reported by the canvas pattern renderer.
+ *
+ * The rAF callback reads this, not its closure: scroll events arrive in
+ * bursts faster than frames, and a captured payload would keep writing a
+ * stale position over newer ones. Same pattern as JukeboxPage.
+ */
+let pendingCanvasScroll: { top: number; left: number } | null = null;
+
+function onCanvasScroll(payload: { top: number; left: number }): void {
+  pendingCanvasScroll = payload;
+  if (canvasScrollRafId !== null) return;
+  canvasScrollRafId = requestAnimationFrame(() => {
+    const pending = pendingCanvasScroll;
+    pendingCanvasScroll = null;
+    if (pending) {
+      patternAreaScrollTop.value = pending.top;
+      patternAreaScrollLeft.value = pending.left;
+    }
+    canvasScrollRafId = null;
+  });
+}
+
+let canvasScrollRafId: number | null = null;
+
+function onCanvasRendererError(error: Error): void {
+  canvasRendererFailed.value = true;
+  userSettingsStore.updateSetting('canvasPatternRenderer', false);
+  $q.notify({
+    type: 'negative',
+    message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,
+  });
 }
 
 // Set up selection composable
@@ -1992,6 +2084,10 @@ onBeforeUnmount(() => {
   if (scrollRafId !== null) {
     cancelAnimationFrame(scrollRafId);
     scrollRafId = null;
+  }
+  if (canvasScrollRafId !== null) {
+    cancelAnimationFrame(canvasScrollRafId);
+    canvasScrollRafId = null;
   }
 });
 </script>
