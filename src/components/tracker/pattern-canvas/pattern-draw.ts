@@ -305,9 +305,9 @@ export function drawRowNumbers(
     const y = rowY(row);
     const selected =
       data.selection != null && row >= data.selection.rowStart && row <= data.selection.rowEnd;
-    ctx.fillStyle = selected ? theme.rowNumberSelectedBg : theme.entryBase;
+    ctx.fillStyle = selected ? theme.selectedBg : theme.entryBase;
     ctx.fillRect(0, y, GUTTER_WIDTH, rowHeightPx);
-    ctx.strokeStyle = selected ? theme.rowNumberSelectedBorder : theme.borderDefault;
+    ctx.strokeStyle = selected ? theme.selectedBorder : theme.borderDefault;
     ctx.strokeRect(0, y, GUTTER_WIDTH, rowHeightPx);
     const label = row.toString(16).toUpperCase().padStart(2, '0');
     ctx.fillStyle = theme.rowNumberText;
