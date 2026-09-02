@@ -97,16 +97,18 @@ function backgroundFor(
   if (selected) {
     return { bg: theme.selectedBg, border: theme.selectedBorder };
   }
+  // TrackerEntry's CSS cascade: the stripe classes are
+  // `.row-*:not(.active):not(.selected)` — higher specificity than
+  // `.filled` — so on any non-selected row the stripe background wins and
+  // the filled tint only shows through on plain rows, which have no stripe
+  // class at all.
   switch (rowType(row)) {
     case 'bar':
-      return { bg: filled ? theme.entryFilled : theme.rowBar, border: theme.borderBar };
+      return { bg: theme.rowBar, border: theme.borderBar };
     case 'beat':
-      return { bg: filled ? theme.entryFilled : theme.rowBeat, border: theme.borderBeat };
+      return { bg: theme.rowBeat, border: theme.borderBeat };
     case 'sub':
-      return {
-        bg: filled ? theme.entryFilled : theme.rowSub,
-        border: theme.borderDefault,
-      };
+      return { bg: theme.rowSub, border: theme.borderDefault };
     default:
       return { bg: filled ? theme.entryFilled : theme.entryBase, border: theme.borderDefault };
   }
@@ -206,16 +208,17 @@ export function drawEntryBox(
     );
   }
 
-  // Macro nibbles: three digit spans with a 2px gap, centered as a group in
-  // the effect column (same as .macro-digits' inline-flex).
+  // Macro nibbles: laid as even thirds of the effect column — the same
+  // subdivision hitTest and drawCursorCell use — so the digit under the
+  // pointer is the digit the cursor highlights. (Laying them out with the
+  // inline-flex gap of the old DOM markup drifted +2px/+4px per digit and
+  // split the highlight away from the glyph.)
   const nibbleWidth = cellWidth(4) / 3;
-  const groupWidth = nibbleWidth * 3;
-  const nibbleStart = box.x + offsets[4] + Math.max(0, (cellWidth(4) - groupWidth) / 2);
   for (let i = 0; i < cells.macroDigits.length; i++) {
     drawText(
       ctx,
       cells.macroDigits[i]!,
-      nibbleStart + i * (nibbleWidth + 2),
+      cellLeft(4) + i * nibbleWidth,
       contentY,
       theme.effectText,
       theme,
@@ -226,13 +229,11 @@ export function drawEntryBox(
   // Second effect column only exists in dual-effect mode.
   if (layout.showExtraEffectColumn) {
     const nibbleWidth2 = cellWidth(5) / 3;
-    const groupWidth2 = nibbleWidth2 * 3;
-    const nibbleStart2 = box.x + offsets[5] + Math.max(0, (cellWidth(5) - groupWidth2) / 2);
     for (let i = 0; i < cells.macro2Digits.length; i++) {
       drawText(
         ctx,
         cells.macro2Digits[i]!,
-        nibbleStart2 + i * (nibbleWidth2 + 2),
+        cellLeft(5) + i * nibbleWidth2,
         contentY,
         theme.effectText,
         theme,

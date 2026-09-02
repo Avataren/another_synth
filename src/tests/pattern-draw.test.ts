@@ -9,6 +9,12 @@ import {
   rowType,
   trackAccent,
 } from 'src/components/tracker/pattern-canvas/pattern-draw';
+import {
+  columnFractionOffsets,
+  entryHorizontalInsetPx,
+  macroNibbleWidth,
+} from 'src/components/tracker/pattern-canvas/pattern-layout';
+import { trackWidthPx } from 'src/components/tracker/track-metrics';
 import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type {
@@ -192,17 +198,21 @@ describe('drawStaticGrid', () => {
     expect(borderFor(2)).toBe(theme.borderDefault);
   });
 
-  it('filled rows use the filled background; selection overrides striping', () => {
+  it('stripes win over filled on striped rows; filled shows on plain rows; selection overrides both', () => {
+    // TrackerEntry's CSS cascade: `.row-*:not(.active):not(.selected)` beats
+    // `.filled`, so a filled bar row still paints the stripe; the filled
+    // tint only surfaces on plain rows, which have no stripe class.
     const ctx = makeMockCtx();
-    const entry: TrackerEntryData = { row: 0, note: 'C-4' };
+    const entry0: TrackerEntryData = { row: 0, note: 'C-4' };
+    const entry1: TrackerEntryData = { row: 1, note: 'C-4' };
     drawStaticGrid(
       ctx,
       layout(1, false, 2),
       theme,
-      { tracks: [makeTrack([entry])], endRow: 2 },
+      { tracks: [makeTrack([entry0, entry1])], endRow: 2 },
     );
-    expect(fills(ctx).find((c) => c.y === 0)!.fillStyle).toBe(theme.entryFilled);
-    expect(fills(ctx).find((c) => c.y === 36)!.fillStyle).toBe(theme.entryBase);
+    expect(fills(ctx).find((c) => c.y === 0)!.fillStyle).toBe(theme.rowBar);
+    expect(fills(ctx).find((c) => c.y === 36)!.fillStyle).toBe(theme.entryFilled);
 
     const ctxSel = makeMockCtx();
     const selection: TrackerSelectionRect = { rowStart: 0, rowEnd: 0, trackStart: 0, trackEnd: 0 };
@@ -210,7 +220,7 @@ describe('drawStaticGrid', () => {
       ctxSel,
       layout(1, false, 2),
       theme,
-      { tracks: [makeTrack([entry])], endRow: 1, selection },
+      { tracks: [makeTrack([entry0])], endRow: 1, selection },
     );
     expect(fills(ctxSel).find((c) => c.y === 0)!.fillStyle).toBe(theme.selectedBg);
     expect(strokes(ctxSel).find((c) => c.y === 0)!.strokeStyle).toBe(theme.selectedBorder);
@@ -268,6 +278,23 @@ describe('drawStaticGrid', () => {
 });
 
 describe('drawEntryBox', () => {
+  it('lays macro digits on even thirds, matching the hit-test/cursor subdivision', () => {
+    const entry: TrackerEntryData = { row: 0, macro: 'ABC' };
+    const track = makeTrack([entry]);
+    const ctx = makeMockCtx();
+    drawEntryBox(ctx, 0, 0, layout(1, false, 1), theme, track, entry, undefined, false);
+
+    // The cursor cell and the hit test both split the effect column into
+    // plain thirds; the digits must sit on exactly those boundaries so the
+    // digit under the pointer is the digit the cursor highlights.
+    const trackWidth = trackWidthPx(1, false);
+    const offsets = columnFractionOffsets(trackWidth, false);
+    const nibbleWidth = macroNibbleWidth(trackWidth, false);
+    const digitX = (i: number) => entryHorizontalInsetPx + offsets[4]! + i * nibbleWidth;
+    const digits = texts(ctx).filter((c) => ['A', 'B', 'C'].includes(c.text));
+    expect(digits.map((d) => d.x)).toEqual([digitX(0), digitX(1), digitX(2)]);
+  });
+
   it('draws macro2 digits only when showExtraEffectColumn is set', () => {
     const entry: TrackerEntryData = { row: 0, macro: 'ABC', macro2: 'DEF' };
     const track = makeTrack([entry]);
