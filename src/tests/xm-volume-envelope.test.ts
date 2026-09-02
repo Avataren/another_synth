@@ -883,7 +883,16 @@ describe('looping volume envelopes', () => {
   });
 
   it('does not loop when the envelope has a sustain point', () => {
-    // Sustain wins: the envelope waits for key-off instead of looping.
+    // FT2 pins volEnvTick at the sustain point while the key is held, so the
+    // loop, which lives after the sustain point, is never reached: the
+    // envelope waits for key-off instead of looping. The loop only runs after
+    // key-off, from the release segment (see 'loops the release tail after
+    // key-off'). This is the ft2-clone, libxmp (update_envelope_xm) and
+    // libopenmpt (IncrementEnvelopePosition) behaviour, and instrument 9 of
+    // radix_-_take_on_me.xm -- points (0:64, 4:64, 8:64, 14:8, 24:22, 32:8),
+    // sustain point 2, loop 3..5 -- sounds exactly like that reference: a
+    // flat 64 while held. Sustain-before-loop is deliberately NOT the IT
+    // order, which loops while the key is held.
     const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
     setEnvelope({ ...loopingEnvelope, sustainPoint: 1 });
 
@@ -891,6 +900,104 @@ describe('looping volume envelopes', () => {
 
     expect(envelopeCalls).toHaveLength(2);
     expect(envelopeCalls[1]!.time).toBeCloseTo(0.1, 6);
+  });
+
+  it('holds the take-on-me lead at its sustain point while the note is held', () => {
+    // Instrument 9 of radix_-_take_on_me.xm: points (0:64, 4:64, 8:64,
+    // 14:8, 24:22, 32:8), sustain point 2, loop 3..5. FT2 holds it at the
+    // sustain point (64) for as long as the key is down -- the 8 -> 22 -> 8
+    // pulse sits after the sustain point and only the sustain-less
+    // instruments (its 8 and 10) ever reach it. Pinning this so a future
+    // change cannot "fix" the hold into the IT-style pulse, which the
+    // reference replayers all reject.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      points: [
+        { tick: 0, value: 64 },
+        { tick: 4, value: 64 },
+        { tick: 8, value: 64 },
+        { tick: 14, value: 8 },
+        { tick: 24, value: 22 },
+        { tick: 32, value: 8 },
+      ],
+      sustainPoint: 2,
+      loopStart: 3,
+      loopEnd: 5,
+      loopEnabled: true,
+      fadeout: 128,
+    });
+
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 });
+
+    // Attack to the sustain point, then hold: no automation past tick 8,
+    // and in particular nothing at the loop's 8/22 values. Tick 4 holds the
+    // same 64, so the ramps at ticks 4 and 8 both carry the value 1.
+    expect(envelopeCalls).toHaveLength(3);
+    expect(envelopeCalls[0]).toEqual({
+      kind: 'setValueAtTime',
+      value: 1,
+      time: 0,
+    });
+    expect(envelopeCalls[1]).toEqual({
+      kind: 'linearRamp',
+      value: 1,
+      time: 0.08,
+    });
+    expect(envelopeCalls[2]).toEqual({
+      kind: 'linearRamp',
+      value: 1,
+      time: 0.16,
+    });
+    expect(envelopeCalls.filter((c) => c.value < 1)).toHaveLength(0);
+  });
+
+  it('walks the release tail through the loop segment after key-off', () => {
+    // Key-off frees volEnvTick from the sustain point, so FT2 walks on to the
+    // loop end and repeats loopStart..loopEnd from there. Here the whole
+    // loop sits between the sustain point and the envelope end, so the tail
+    // plays through 8 -> 22 -> 8 once and stops at the final point.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      points: [
+        { tick: 0, value: 64 },
+        { tick: 4, value: 64 },
+        { tick: 8, value: 64 },
+        { tick: 14, value: 8 },
+        { tick: 24, value: 22 },
+        { tick: 32, value: 8 },
+      ],
+      sustainPoint: 2,
+      loopStart: 3,
+      loopEnd: 5,
+      loopEnabled: true,
+      fadeout: 128,
+    });
+
+    const voice = instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 })!;
+    envelopeCalls.length = 0;
+    instrument.gateOffVoiceAtTime(voice, 1.0);
+
+    // FT2 walks volEnvTick from the sustain point (tick 8) to the envelope
+    // end (tick 32) in 24 ticks = 0.48s, then the fadeout takes it to
+    // silence; the envelope's own tail reaches 0 first, so that decides the
+    // note's end. The loop never re-fires in the release because volEnvTick
+    // is already past the loop end.
+    const end = envelopeCalls[envelopeCalls.length - 1]!;
+    expect(end.kind).toBe('linearRamp');
+    expect(end.value).toBe(0);
+    expect(end.time).toBeCloseTo(1.0 + 0.48, 6);
+
+    // The release tail is the envelope's own shape from the sustain point:
+    // 64 -> 8 -> 22 -> 0. (The tail's final 8 at tick 32 is dropped: it
+    // coincides with `end`, where the code ramps to 0.) The 8/22 pulse
+    // sounds once on the way down -- volEnvTick never wraps to the loop
+    // start because it is already past the loop end at key-off.
+    const values = envelopeCalls
+      .filter((c) => c.kind === 'linearRamp' && c.value < 1)
+      .map((c) => c.value);
+    expect(values).toEqual([8 / 64, 22 / 64, 0]);
+    expect(values.filter((v) => Math.abs(v - 8 / 64) < 1e-9).length).toBe(1);
+    expect(values.filter((v) => Math.abs(v - 22 / 64) < 1e-9).length).toBe(1);
   });
 
   it('plays a non-looping envelope through to its end', () => {

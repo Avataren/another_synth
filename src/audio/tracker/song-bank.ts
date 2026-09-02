@@ -2099,8 +2099,10 @@ export class TrackerSongBank {
     // instruments through the full WASM synth.
     //
     // NOTE: this is app-global today. Per PLAN-module-format-support.md (D4),
-    // engine choice should move into the per-song FormatProfile once XM lands,
-    // since XM needs envelopes that ModInstrument does not implement.
+    // engine choice should move into the per-song FormatProfile; ModInstrument
+    // does implement XM's tracker volume/pan envelopes, auto-vibrato and
+    // per-channel voice ownership, so this is an architecture cleanup rather
+    // than a functional gap.
     const useSimplified = userSettings.settings.useSimplifiedModInstruments;
 
     // DETAILED DEBUGGING
