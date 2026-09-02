@@ -116,9 +116,11 @@ function backgroundFor(
 
 /**
  * Which rows of `track` the selection rect covers — TrackerTrack.vue's
- * `selectedRows` (track range check + row range).
+ * `selectedRows` (track range check + row range). Exported for the
+ * component's incremental cell repaint, which must apply the same
+ * selected-background rule as the full-grid paint.
  */
-function isRowSelected(
+export function isRowSelected(
   trackIndex: number,
   row: number,
   selection: TrackerSelectionRect | null,
