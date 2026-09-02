@@ -821,7 +821,7 @@ describe('resize scheduling', () => {
     wrapper.unmount();
   });
 
-  it('a DPR change rebuilds the static bitmap', async () => {
+  it('a DPR or pattern-extent change rebuilds the static bitmap', async () => {
     const wrapper = mountCanvas();
     pumpFrame();
     const bitmapBefore = bitmapOf(wrapper);
