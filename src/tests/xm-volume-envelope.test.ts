@@ -952,10 +952,12 @@ describe('looping volume envelopes', () => {
   });
 
   it('walks the release tail through the loop segment after key-off', () => {
-    // Key-off frees volEnvTick from the sustain point, so FT2 walks on to the
-    // loop end and repeats loopStart..loopEnd from there. Here the whole
-    // loop sits between the sustain point and the envelope end, so the tail
-    // plays through 8 -> 22 -> 8 once and stops at the final point.
+    // After key-off, scheduleTrackerRelease walks the envelope's tail -- the
+    // points after the sustain point -- in a single pass and never wraps
+    // back into the loop. At key-off volEnvTick sits at the sustain point
+    // (point 2, tick 8), which is before the loop end (point 5, tick 32);
+    // the loop is not re-fired simply because the tail is played once, not
+    // because the position is past the loop end.
     const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
     setEnvelope({
       points: [
@@ -977,21 +979,25 @@ describe('looping volume envelopes', () => {
     envelopeCalls.length = 0;
     instrument.gateOffVoiceAtTime(voice, 1.0);
 
-    // FT2 walks volEnvTick from the sustain point (tick 8) to the envelope
-    // end (tick 32) in 24 ticks = 0.48s, then the fadeout takes it to
-    // silence; the envelope's own tail reaches 0 first, so that decides the
-    // note's end. The loop never re-fires in the release because volEnvTick
-    // is already past the loop end.
+    // The implementation takes the tail in one pass: 24 ticks = 0.48s from
+    // the sustain point (tick 8) to the envelope end (tick 32). That is
+    // shorter than the fadeout (32768/128 = 256 ticks = 5.12s), so the tail
+    // wins and the note ends with the ramp to 0 that the code synthesizes
+    // at releaseTime + 0.48s. Real FT2 diverges here: it keeps looping
+    // 8 -> 22 -> 8, and the fadeout -- not the tail -- ends the note. Known
+    // limitation -- see the TODO below.
     const end = envelopeCalls[envelopeCalls.length - 1]!;
     expect(end.kind).toBe('linearRamp');
     expect(end.value).toBe(0);
     expect(end.time).toBeCloseTo(1.0 + 0.48, 6);
 
-    // The release tail is the envelope's own shape from the sustain point:
-    // 64 -> 8 -> 22 -> 0. (The tail's final 8 at tick 32 is dropped: it
-    // coincides with `end`, where the code ramps to 0.) The 8/22 pulse
-    // sounds once on the way down -- volEnvTick never wraps to the loop
-    // start because it is already past the loop end at key-off.
+    // One pass over the envelope's own release shape: 64 -> 8 -> 22, then
+    // the synthesized ramp to 0. (Point 5's value is 8, not 0: the loop
+    // breaks at `end` before reaching it and the code emits the final 0
+    // itself.) TODO: real FT2 (ft2-clone, libxmp update_envelope_xm) keeps
+    // looping loopStart..loopEnd -- repeating 8 -> 22 -- until the fadeout
+    // ends the note. Follow up by looping the release tail in
+    // scheduleTrackerRelease instead of this one-pass approximation.
     const values = envelopeCalls
       .filter((c) => c.kind === 'linearRamp' && c.value < 1)
       .map((c) => c.value);
