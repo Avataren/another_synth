@@ -82,6 +82,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { TrackerEntryData } from './tracker-types';
+import { formatEntryCells } from './pattern-canvas/format-entry-cells';
 
 interface Props {
   entry?: TrackerEntryData | undefined;
@@ -139,34 +140,9 @@ const DEFAULT_CELLS = Object.freeze({
 });
 
 // Process cells only when entry exists - optimized to avoid unnecessary string operations
-function processCells(entry: TrackerEntryData) {
-  const volume = entry.volume ?? '..';
-  const volPadded = volume.length >= 2 ? volume : (volume + '..').slice(0, 2);
-  const macro = entry.macro ?? '...';
-  const macroPadded = macro.length >= 3 ? macro : (macro + '...').slice(0, 3);
-  const macro2 = entry.macro2 ?? '...';
-  const macro2Padded = macro2.length >= 3 ? macro2 : (macro2 + '...').slice(0, 3);
-
-  let noteDisplay = '---';
-  if (entry.note) {
-    const normalized = entry.note.trim().toUpperCase();
-    const isRelease = normalized === '--' || normalized === '---' || normalized === '###';
-    noteDisplay = isRelease ? '###' : entry.note;
-  }
-
-  return {
-    note: { display: noteDisplay, className: 'note' },
-    instrument: { display: entry.instrument ?? '..', className: 'instrument' },
-    volumeHi: { display: volPadded[0] ?? '.', className: 'volume volume-high' },
-    volumeLo: { display: volPadded[1] ?? '.', className: 'volume volume-low' },
-    macroDigits: [macroPadded[0] ?? '.', macroPadded[1] ?? '.', macroPadded[2] ?? '.'],
-    macro2Digits: [macro2Padded[0] ?? '.', macro2Padded[1] ?? '.', macro2Padded[2] ?? '.']
-  };
-}
-
 const cells = computed(() => {
   if (!props.entry) return DEFAULT_CELLS;
-  return processCells(props.entry);
+  return formatEntryCells(props.entry);
 });
 
 // Pre-compute active cell states to avoid repeated function calls in template
