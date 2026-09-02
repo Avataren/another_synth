@@ -8,6 +8,7 @@ import {
   rowPitchPx,
   totalTracksWidth,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
+import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import { hitTest } from 'src/components/tracker/pattern-canvas/pattern-hit-test';
 import { blitWindow } from 'src/components/tracker/pattern-canvas/pattern-window';
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
@@ -46,7 +47,15 @@ interface DrawImageCall {
   dx: number;
   dy: number;
 }
-type CtxCall = RectCall | DrawImageCall;
+interface PathCall {
+  op: 'path';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+}
+type CtxCall = RectCall | DrawImageCall | PathCall;
 
 type RecordingCtx = CanvasRenderingContext2D & {
   calls: CtxCall[];
@@ -109,6 +118,17 @@ function makeRecordingCtx(): RecordingCtx {
       tx += dx;
       ty += dy;
     },
+    // Recorded as a path op so tests can assert the rounded playback pill's
+    // geometry (translated into viewport space like fillRect above).
+    roundRect(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      radius: number,
+    ) {
+      calls.push({ op: 'path' as const, x: x + tx, y: y + ty, width, height, radius });
+    },
     scale() {},
     rotate() {},
     beginPath() {},
@@ -116,8 +136,8 @@ function makeRecordingCtx(): RecordingCtx {
     closePath() {},
     moveTo() {},
     lineTo() {},
-    stroke() {},
     fill() {},
+    stroke() {},
     arc() {},
     rect() {},
     isPointInPath() {
@@ -327,6 +347,7 @@ function mountCanvas(opts: {
   isPlaying?: boolean;
   reserveSideGutter?: boolean;
   containerWidth?: number;
+  granularScroll?: boolean;
 } = {}) {
   return mount(PatternCanvas, {
     props: {
@@ -348,6 +369,8 @@ function mountCanvas(opts: {
       isMouseSelecting: false,
       showExtraEffectColumn: false,
       reserveSideGutter: opts.reserveSideGutter ?? false,
+      // exactOptionalPropertyTypes: the key is either absent or a boolean.
+      ...(opts.granularScroll === undefined ? {} : { granularScroll: opts.granularScroll }),
     },
   });
 }
@@ -405,6 +428,8 @@ const fillsOn = (ctx: RecordingCtx) =>
   ctx.calls.filter(
     (call): call is Extract<CtxCall, { op: 'fillRect' }> => call.op === 'fillRect',
   );
+const pathsOn = (ctx: RecordingCtx) =>
+  ctx.calls.filter((call): call is PathCall => call.op === 'path');
 
 function mockCanvasRect(el: HTMLCanvasElement): void {
   vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
@@ -653,6 +678,86 @@ describe('playback follow (row-granular auto-scroll)', () => {
     expect(scrollerOf(wrapper).scrollTop).toBe(before + rowPitchPx);
     wrapper.unmount();
   });
+
+  it('defaults to granular (one row per step) when the prop is unset', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const scroller = scrollerOf(wrapper);
+    const start = scroller.scrollTop as number;
+
+    await wrapper.setProps({ playbackRow: 11 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(start + rowPitchPx);
+    wrapper.unmount();
+  });
+
+  it('with granularScroll=false, pages instead of following every row', async () => {
+    // The granularPlaybackScroll preference off: the view only re-anchors
+    // once the playing row leaves a 3-row margin, then jumps it a third of
+    // the way down — coarse paging that stays silent for small steps.
+    const wrapper = mountCanvas({
+      autoScroll: true,
+      isPlaying: true,
+      playbackRow: 10,
+      granularScroll: false,
+    });
+    pumpFrame();
+    const scroller = scrollerOf(wrapper);
+    const start = scroller.scrollTop as number;
+    expect(start).toBeGreaterThan(0); // centered once on the first frame
+
+    // Rows 11..13 stay inside the margin window: no scroll at all.
+    await wrapper.setProps({ playbackRow: 11 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(start);
+
+    await wrapper.setProps({ playbackRow: 12 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(start);
+
+    await wrapper.setProps({ playbackRow: 13 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(start);
+
+    // Row 14 crosses the bottom margin (start + 3*36 + 30 > start + viewH −
+    // 108), so the view re-anchors — a larger jump, not one pitch.
+    await wrapper.setProps({ playbackRow: 14 });
+    await nextTick();
+    pumpFrame();
+    const jumped = scroller.scrollTop as number;
+    expect(jumped).toBeGreaterThan(start);
+    expect(jumped).not.toBe(start + rowPitchPx);
+    // The jump targets a third from the top, per the paged mode.
+    const expected = 14 * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 3;
+    expect(jumped).toBeCloseTo(expected, 5);
+    wrapper.unmount();
+  });
+
+  it('re-enabling granularScroll resumes one-row-per-step', async () => {
+    const wrapper = mountCanvas({
+      autoScroll: true,
+      isPlaying: true,
+      playbackRow: 10,
+      granularScroll: false,
+    });
+    pumpFrame();
+    const scroller = scrollerOf(wrapper);
+
+    await wrapper.setProps({ granularScroll: true, playbackRow: 11 });
+    await nextTick();
+    pumpFrame();
+    const start = scroller.scrollTop as number;
+
+    await wrapper.setProps({ playbackRow: 12 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(start + rowPitchPx);
+    wrapper.unmount();
+  });
 });
 
 // ---------------------------------------------------------------------
@@ -685,15 +790,16 @@ describe('overlay on playbackRow change', () => {
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
     const staticFillsBefore = fillsOn(bitmap).length;
-    const overlayFillsBefore = fillsOn(overlayCtx).length;
+    const overlayPathsBefore = pathsOn(overlayCtx).length;
+    expect(overlayPathsBefore).toBeGreaterThan(0); // the two playback pills
 
     await wrapper.setProps({ playbackRow: 4 });
     await nextTick();
     pumpFrame();
 
     expect(fillsOn(bitmap).length).toBe(staticFillsBefore);
-    // The playback bar repaint = clear + fill + 2px stroke.
-    expect(fillsOn(overlayCtx).length).toBeGreaterThan(overlayFillsBefore);
+    // The pills were cleared and redrawn on the new row.
+    expect(pathsOn(overlayCtx).length).toBeGreaterThan(overlayPathsBefore);
     wrapper.unmount();
   });
 
@@ -705,9 +811,9 @@ describe('overlay on playbackRow change', () => {
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
 
-    const bar = fillsOn(overlayCtx)
+    const bar = pathsOn(overlayCtx)
       .filter((c) => c.height === rowHeightPx)
-      .at(-1);
+      .find((c) => c.width === activeRowBarWidthPx(2, false));
     expect(bar).toBeDefined();
     // rowY(2) − scrollTop, not rowY(2): the bar lands in viewport space,
     // pinned past the gutter minus the horizontal scroll.
@@ -729,9 +835,11 @@ describe('overlay on playbackRow change', () => {
     pumpFrame();
 
     // Without the overlay in the scroll schedule the bar would still sit at
-    // its pattern-space y and drift off the visible rows.
-    const bar = fillsOn(overlayCtx)
+    // its pattern-space y and drift off the visible rows. (Calls accumulate
+    // across frames — take the newest pill, painted after the scroll.)
+    const bar = pathsOn(overlayCtx)
       .filter((c) => c.height === rowHeightPx)
+      .filter((c) => c.width === activeRowBarWidthPx(2, false))
       .at(-1);
     expect(bar).toBeDefined();
     expect(bar!.y).toBeCloseTo(2 * rowPitchPx - 180, 5);
@@ -911,36 +1019,67 @@ describe('selection drag', () => {
 // ---------------------------------------------------------------------
 
 describe('playback bar accents', () => {
-  it('pattern mode strokes the bar with #4df2c5', async () => {
+  it('paints the pattern-mode pills with #4df2c5 at playbackRow', async () => {
     const wrapper = mountCanvas({ playbackRow: 2, playbackMode: 'pattern' });
     pumpFrame();
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
-    const stroke = overlayCtx.calls.find(
-      (call) =>
-        call.op === 'strokeRect' &&
-        Math.abs(call.y - 2 * rowPitchPx) < 0.5 &&
+    // Two rounded pills at the playback row (tracks + row-number gutter),
+    // translated into viewport space (− scrollTop).
+    const pills = overlayCtx.calls.filter(
+      (call): call is PathCall =>
+        call.op === 'path' &&
+        Math.abs(call.y - (2 * rowPitchPx - 0)) < 0.5 &&
         call.height === rowHeightPx,
     );
-    expect(stroke).toBeDefined();
+    expect(pills).toHaveLength(2);
+    expect(pills.every((p) => p.radius === 10)).toBe(true);
     expect(overlayCtx.props.get('strokeStyle')).toBe('#4df2c5');
+    expect(overlayCtx.props.get('fillStyle')).toBe('rgba(77, 242, 197, 0.12)');
     wrapper.unmount();
   });
 
-  it('song mode strokes the bar with rgb(88, 176, 255)', async () => {
+  it('paints the song-mode pills with rgb(88, 176, 255) at playbackRow', async () => {
     const wrapper = mountCanvas({ playbackRow: 2, playbackMode: 'song' });
     pumpFrame();
     const { overlay } = layerCanvases(wrapper);
     const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
-    const stroke = overlayCtx.calls.find(
-      (call) =>
-        call.op === 'strokeRect' &&
+    const pills = overlayCtx.calls.filter(
+      (call): call is PathCall =>
+        call.op === 'path' &&
         Math.abs(call.y - 2 * rowPitchPx) < 0.5 &&
         call.height === rowHeightPx,
     );
-    expect(stroke).toBeDefined();
+    expect(pills).toHaveLength(2);
     expect(overlayCtx.props.get('strokeStyle')).toBe('rgb(88, 176, 255)');
     expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.14)');
+    wrapper.unmount();
+  });
+
+  it('pins the gutter pill to the viewport edge under horizontal scroll', async () => {
+    // The overlay layer is translated by (gutter − viewLeft); passing
+    // viewLeft back as gutterScrollX must land the gutter pill at screen x 0
+    // while the tracks pill scrolls with the content.
+    const scrollLeft = 30;
+    const wrapper = mountCanvas({ playbackRow: 2, scrollLeft, playbackMode: 'pattern' });
+    pumpFrame();
+    const { overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+    const pills = overlayCtx.calls.filter(
+      (call): call is PathCall =>
+        call.op === 'path' &&
+        Math.abs(call.y - 2 * rowPitchPx) < 0.5 &&
+        call.height === rowHeightPx,
+    );
+    expect(pills).toHaveLength(2);
+    // gutter pill: gutterScrollX(30) − 78 (after the layer's translate of
+    // 78 − 30) = −78+30 … lands at −48+78 = 30? No: the pill's pattern-space
+    // x is −48, translated by +48 → screen x 0. Assert exact screen coords.
+    const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX);
+    expect(gutterPill!.x).toBe(0);
+    // Tracks pill stays at pattern-space 0 → screen 78 − 30 = 48.
+    const tracksPill = pills.find((p) => p.width === activeRowBarWidthPx(2, false));
+    expect(tracksPill!.x).toBe(GUTTER_WIDTH_PX - scrollLeft);
     wrapper.unmount();
   });
 });

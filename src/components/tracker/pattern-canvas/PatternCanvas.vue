@@ -381,6 +381,7 @@ function paintOverlay(): boolean {
       playbackRow: props.playbackRow,
       mode: props.playbackMode as PlaybackBarMode,
       trackCount: l.trackCount,
+      gutterScrollX: viewLeft.value,
     });
   }
   if (props.activeTrack >= 0 && props.activeColumn >= 0) {

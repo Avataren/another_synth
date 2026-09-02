@@ -41,6 +41,18 @@ interface RectCall {
   lineWidth: number;
 }
 
+interface PathCall {
+  op: 'path';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+  fillStyle: string;
+  strokeStyle: string;
+  lineWidth: number;
+}
+
 interface TextCall {
   op: 'fillText';
   text: string;
@@ -50,7 +62,7 @@ interface TextCall {
   font: string;
 }
 
-type CtxCall = RectCall | TextCall;
+type CtxCall = RectCall | PathCall | TextCall;
 
 function makeMockCtx() {
   const calls: CtxCall[] = [];
@@ -63,11 +75,28 @@ function makeMockCtx() {
   const ctx = {
     calls,
     props,
+    fill() {},
+    stroke() {},
     fillRect(x: number, y: number, width: number, height: number) {
       calls.push({ op: 'fillRect' as const, x, y, width, height, ...record() });
     },
     strokeRect(x: number, y: number, width: number, height: number) {
       calls.push({ op: 'strokeRect' as const, x, y, width, height, ...record() });
+    },
+    // The renderer traces pills through roundRect (before fill/stroke), so
+    // the style values at trace time are recorded with the geometry.
+    roundRect(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      radius: number,
+    ) {
+      calls.push({ op: 'path' as const, x, y, width, height, radius, ...record() });
+    },
+    arcTo() {
+      // The rounded-pill fallback traces arcTo corners; the mocked geometry
+      // is asserted via the renderer's beginPath'd roundRect call instead.
     },
     fillText(text: string, x: number, y: number) {
       calls.push({
@@ -146,6 +175,8 @@ function makeTrack(entries: TrackerEntryData[], color?: string): TrackerTrackDat
 
 const fills = (ctx: MockCtx) =>
   ctx.calls.filter((c): c is Extract<CtxCall, { op: 'fillRect' }> => c.op === 'fillRect');
+const paths = (ctx: MockCtx) =>
+  ctx.calls.filter((c): c is PathCall => c.op === 'path');
 const strokes = (ctx: MockCtx) =>
   ctx.calls.filter((c): c is Extract<CtxCall, { op: 'strokeRect' }> => c.op === 'strokeRect');
 const texts = (ctx: MockCtx) =>
@@ -352,26 +383,64 @@ describe('drawSelectionBar', () => {
 describe('drawActiveRowBar', () => {
   const layout4 = layout(4, false, 32);
 
-  it('sits at playbackRow with the pattern-mode color and full-track width', () => {
+  it('paints the tracks pill with the DOM fill/stroke values and 2px border', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 7, mode: 'pattern' });
-    const painted = fills(ctx)[0]!;
-    expect(painted.y).toBe(7 * 36);
-    expect(painted.height).toBe(30);
-    expect(ctx.props.fillStyle).toBe(theme.selectedBg);
-    expect(ctx.props.strokeStyle).toBe(theme.accentPrimary);
-    expect(painted.width).toBe(activeRowBarWidthPx(4, false)!);
-    // Border is 2px per .row-playback-bar.
-    expect(strokes(ctx).at(-1)!.lineWidth).toBe(2);
+    // Two rounded pills (tracks + row-number gutter), both carrying the
+    // DOM's exact values: fill var(--tracker-selected-bg), stroke
+    // var(--tracker-accent-primary) at 2px — .playback-pattern's styles.
+    const pills = paths(ctx);
+    expect(pills).toHaveLength(2);
+    for (const pill of pills) {
+      expect(pill.y).toBe(7 * 36);
+      expect(pill.height).toBe(30);
+      expect(pill.fillStyle).toBe(theme.selectedBg);
+      expect(pill.strokeStyle).toBe(theme.accentPrimary);
+      expect(pill.radius).toBe(10); // the DOM's border-radius
+    }
+    const tracksPill = pills.find((c) => c.width === activeRowBarWidthPx(4, false)!);
+    expect(tracksPill).toBeDefined();
+    // Border is 2px per .row-playback-bar, recorded at trace time.
+    expect(pills.every((p) => p.lineWidth === 2)).toBe(true);
   });
 
-  it('uses the song-mode color rgb(88, 176, 255)', () => {
+  it('uses the song-mode colors the DOM hard-codes for .playback-song', () => {
     const ctx = makeMockCtx();
     drawActiveRowBar(ctx, layout4, theme, { playbackRow: 0, mode: 'song' });
-    expect(ctx.props.strokeStyle).toBe(theme.accentSecondary);
     expect(theme.accentSecondary).toBe('rgb(88, 176, 255)');
-    const painted = fills(ctx)[0]!;
-    expect(painted.y).toBe(0);
+    for (const pill of paths(ctx)) {
+      expect(pill.strokeStyle).toBe(theme.accentSecondary);
+      expect(pill.fillStyle).toBe('rgba(88, 176, 255, 0.14)');
+    }
+  });
+
+  it('adds the row-number gutter pill pinned to the viewport edge (gutterScrollX)', () => {
+    const ctx = makeMockCtx();
+    drawActiveRowBar(ctx, layout4, theme, {
+      playbackRow: 3,
+      mode: 'pattern',
+      gutterScrollX: 120,
+    });
+    // The overlay layer is translated by (GUTTER − viewLeft): passing
+    // viewLeft as gutterScrollX pins the segment to the viewport's left
+    // edge — the DOM's non-scrolling .row-playback-bar behavior.
+    const gutter = paths(ctx).find((c) => c.width === 78);
+    expect(gutter).toBeDefined();
+    expect(gutter!.x).toBe(120 - 78);
+    expect(gutter!.y).toBe(3 * 36);
+    expect(gutter!.height).toBe(30);
+  });
+
+  it('falls back to the full pattern width when trackCount is 0', () => {
+    const ctx = makeMockCtx();
+    drawActiveRowBar(ctx, layout(4, false, 32), theme, {
+      playbackRow: 1,
+      mode: 'pattern',
+      trackCount: 0,
+    });
+    // totalPatternWidth(4 tracks) = 3 pitches + one width, no trailing gap.
+    const tracksPill = paths(ctx).find((c) => c.width === 3 * (180 + 10) + 180);
+    expect(tracksPill).toBeDefined();
   });
 });
 

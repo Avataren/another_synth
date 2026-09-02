@@ -369,14 +369,62 @@ export interface DrawActiveRowBarData {
   mode: PlaybackBarMode;
   /** Track count the bar spans (activeRowBarWidthPx input). */
   trackCount?: number;
+  /**
+   * Pattern-space x the viewport's left edge sits at (the component's
+   * viewLeft). The DOM pins its row-number pill to the page while the tracks
+   * scroll horizontally; the overlay is one translated layer, so the gutter
+   * segment is placed relative to this to stay at the viewport's left edge.
+   * Defaults to 0 (no horizontal scroll).
+   */
+  gutterScrollX?: number;
+}
+
+/** Corner radius of the DOM playback pills (.active-row-bar/.row-playback-bar). */
+export const PLAYBACK_BAR_RADIUS_PX = 10;
+
+/**
+ * Trace a DOM-style rounded rect (`border-radius` pill) at `radius` px.
+ * Uses the native roundRect when the context has one; otherwise the same
+ * four arcTo corners, so pre-roundRect browsers still get the pill.
+ */
+function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): void {
+  ctx.beginPath();
+  const r = Math.min(radius, width / 2, height / 2);
+  const native = (ctx as unknown as { roundRect?: unknown }).roundRect;
+  if (typeof native === 'function') {
+    (ctx as unknown as { roundRect: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect(
+      x,
+      y,
+      width,
+      height,
+      r,
+    );
+    return;
+  }
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
 }
 
 /**
- * The active-row (playback) bar: a 2px-bordered pill across the tracks at
- * `playbackRow`, `rowHeightPx` tall — `.row-playback-bar` in
- * TrackerPattern.vue. Pattern mode uses `--tracker-accent-primary`
- * (#4df2c5), song mode `--tracker-accent-secondary` (rgb(88, 176, 255));
- * `activeRowBarWidthPx` gives the width (null → full width).
+ * The active-row (playback) indicator, matching the DOM grid's two pills:
+ * one across the tracks (`.active-row-bar`, activeRowBarWidthPx wide) and
+ * one over the 78px row-number gutter (`.row-playback-bar`), both 10px
+ * rounded, rowHeightPx tall, with a 2px mode-colored border over a
+ * translucent fill — pattern mode `--tracker-accent-primary` (#4df2c5) on
+ * `--tracker-selected-bg`, song mode `--tracker-accent-secondary`
+ * (rgb(88, 176, 255)) on rgba(88, 176, 255, 0.14). No gradient or shadow in
+ * the DOM styling, so none here either.
  */
 export function drawActiveRowBar(
   ctx: CanvasRenderingContext2D,
@@ -393,11 +441,21 @@ export function drawActiveRowBar(
   const barWidth = activeRowBarWidthPx(trackCount, layout.showExtraEffectColumn);
   const width = barWidth ?? totalPatternWidth(layout);
   const y = rowY(data.playbackRow);
+
   ctx.fillStyle = bgColor;
-  ctx.fillRect(0, y, width, rowHeightPx);
   ctx.strokeStyle = borderColor;
   ctx.lineWidth = 2;
-  ctx.strokeRect(0, y, width, rowHeightPx);
+  // The tracks pill scrolls with the pattern horizontally, exactly like the
+  // DOM's .active-row-bar inside the scrolling tracks-wrapper.
+  roundRectPath(ctx, 0, y, width, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);
+  ctx.fill();
+  ctx.stroke();
+  // The gutter pill: the DOM's row column never scrolls horizontally, so
+  // pin the segment to the viewport's left edge via the current view origin.
+  const gutterX = (data.gutterScrollX ?? 0) - GUTTER_WIDTH_PX;
+  roundRectPath(ctx, gutterX, y, GUTTER_WIDTH_PX, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);
+  ctx.fill();
+  ctx.stroke();
   ctx.lineWidth = 1;
 }
 
