@@ -1135,6 +1135,26 @@ defineExpose({ scrollerRef, hscrollRef });
   min-height: 0;
   overflow: hidden auto;
   scrollbar-width: thin;
+  /* Theme-matched bars (theme-store palette vars, so runtime theme flips
+     repaint them); same look as the DOM grid's .pattern-area scrollbars. */
+  scrollbar-color: var(--button-background, rgba(255, 255, 255, 0.12)) transparent;
+}
+
+.canvas-scroller::-webkit-scrollbar {
+  width: 8px;
+}
+
+.canvas-scroller::-webkit-scrollbar-thumb {
+  background: var(--button-background, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+}
+
+.canvas-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.18));
+}
+
+.canvas-scroller::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .canvas-viewport {
@@ -1165,6 +1185,28 @@ defineExpose({ scrollerRef, hscrollRef });
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+  /* Same theme-matched pill as TrackerPage's .track-scrollbar proxy. */
+  scrollbar-color: var(--button-background, rgba(255, 255, 255, 0.12)) transparent;
+}
+
+.canvas-hscroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.canvas-hscroll::-webkit-scrollbar-thumb {
+  background: var(--button-background, rgba(255, 255, 255, 0.14));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.canvas-hscroll::-webkit-scrollbar-thumb:hover {
+  background: var(--button-background-hover, rgba(255, 255, 255, 0.24));
+  background-clip: content-box;
+}
+
+.canvas-hscroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .canvas-hscroll-extent {
