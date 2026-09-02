@@ -25,6 +25,12 @@ export interface UserSettings {
   enableMidi: boolean;
   /** When true, show a second effect column per tracker track. */
   showTrackerExtraEffectColumn: boolean;
+  /**
+   * When true, the pattern grid renders through the canvas renderer
+   * (PatternCanvas.vue) instead of the DOM grid (TrackerPattern.vue).
+   * Default: true.
+   */
+  canvasPatternRenderer: boolean;
   /** When true, MOD files use lightweight Web Audio playback instead of full WASM synth. Default: true. */
   useSimplifiedModInstruments: boolean;
 
@@ -75,11 +81,16 @@ export interface UserSettings {
  *
  * v1: `useSimplifiedModInstruments` became the default for MOD playback.
  *
+ * v2: `canvasPatternRenderer` became the default for the pattern grid. Same
+ * logic as v1: a stored `false` before this version is almost always the
+ * DOM-only default rather than a deliberate choice, so it is overwritten
+ * once; users who prefer the DOM grid turn it back off and it sticks.
+ *
  * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
  * *not* get a version bump: it is a starting point rather than a correction, so
  * anyone who has already set their own level keeps it.
  */
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
 
 /**
  * Default user settings. Exported so tests can pin the ones that are
@@ -95,6 +106,7 @@ export const defaultSettings: UserSettings = {
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
+  canvasPatternRenderer: true,
   useSimplifiedModInstruments: true,
   sampleOversampleFactor: 4,
   sampleRemoveDcOffset: true,
@@ -151,6 +163,13 @@ export function migrateSettingsVersion(
   // off in Settings, and that choice sticks (this branch never runs again).
   if (version < 1) {
     migrated.useSimplifiedModInstruments = true;
+  }
+
+  // v1 -> v2: the canvas pattern renderer is now the default grid. Same
+  // reasoning as the v1 rewrite above: overwrite once, then respect any
+  // explicit later choice.
+  if (version < 2) {
+    migrated.canvasPatternRenderer = true;
   }
 
   migrated.settingsVersion = SETTINGS_VERSION;

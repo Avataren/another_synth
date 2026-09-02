@@ -113,6 +113,11 @@
         />
       </div>
 
+      <label class="bar-toggle" title="Render the pattern grid on a canvas">
+        <input v-model="userSettings.canvasPatternRenderer" type="checkbox" />
+        <span>Canvas grid</span>
+      </label>
+
       <button
         type="button"
         class="bar-btn"
@@ -155,7 +160,34 @@
             class="pattern-area"
             @scroll.passive="onPatternAreaScroll"
           >
+            <PatternCanvas
+              v-if="canvasRenderer && !canvasRendererFailed"
+              :tracks="currentPattern?.tracks ?? []"
+              :rows="rowsCount"
+              :selected-row="playbackRow"
+              :playback-row="playbackRow"
+              :active-track="-1"
+              :active-column="-1"
+              :active-macro-nibble="0"
+              :selection-rect="null"
+              :auto-scroll="true"
+              :is-playing="isPlaying"
+              playback-mode="song"
+              :scroll-top="patternAreaScrollTop"
+              :scroll-left="patternAreaScrollLeft"
+              :container-width="patternAreaWidth"
+              :container-height="patternAreaHeight"
+              :is-mouse-selecting="false"
+              :show-extra-effect-column="
+                userSettings.showTrackerExtraEffectColumn
+              "
+              :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+              :upcoming-pattern="upcomingPattern"
+              @scroll="onCanvasScroll"
+              @renderer-error="onCanvasRendererError"
+            />
             <TrackerPattern
+              v-else
               :tracks="currentPattern?.tracks ?? []"
               :rows="rowsCount"
               :selected-row="playbackRow"
@@ -217,7 +249,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
+import { useQuasar } from 'quasar';
 import TrackerPattern from 'src/components/tracker/TrackerPattern.vue';
+import PatternCanvas from 'src/components/tracker/pattern-canvas/PatternCanvas.vue';
 import { selectUpcomingPattern } from 'src/components/tracker/pattern-buffering';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
@@ -239,6 +273,7 @@ import type { TrackerSongFile } from 'src/stores/tracker-store';
  */
 
 const router = useRouter();
+const $q = useQuasar();
 const userSettingsStore = useUserSettingsStore();
 const { settings: userSettings } = storeToRefs(userSettingsStore);
 
@@ -369,7 +404,35 @@ function toggleMute(trackIndex: number): void {
 
 const patternAreaRef = ref<HTMLDivElement | null>(null);
 const patternAreaScrollTop = ref(0);
+const patternAreaScrollLeft = ref(0);
+const patternAreaWidth = ref(0);
 const patternAreaHeight = ref(600);
+
+/**
+ * Canvas renderer on until the page's own copy proves it cannot run here:
+ * the setting stays usable everywhere else, and the user is told once.
+ */
+const canvasRenderer = computed(() => userSettings.value.canvasPatternRenderer);
+const canvasRendererFailed = ref(false);
+
+function onCanvasScroll(payload: { top: number; left: number }): void {
+  if (scrollRafId !== null) return;
+  scrollRafId = requestAnimationFrame(() => {
+    patternAreaScrollTop.value = payload.top;
+    patternAreaScrollLeft.value = payload.left;
+    scrollRafId = null;
+  });
+}
+
+function onCanvasRendererError(error: Error): void {
+  canvasRendererFailed.value = true;
+  userSettingsStore.updateSetting('canvasPatternRenderer', false);
+  $q.notify({
+    type: 'negative',
+    message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,
+  });
+}
+
 let scrollRafId: number | null = null;
 
 function onPatternAreaScroll(event: Event): void {
@@ -383,6 +446,7 @@ function onPatternAreaScroll(event: Event): void {
 function updatePatternAreaHeight(): void {
   if (patternAreaRef.value) {
     patternAreaHeight.value = patternAreaRef.value.clientHeight;
+    patternAreaWidth.value = patternAreaRef.value.clientWidth;
   }
 }
 
@@ -477,6 +541,26 @@ onBeforeUnmount(() => {
 .bar-btn.active {
   background: rgba(77, 242, 197, 0.16);
   border-color: rgba(77, 242, 197, 0.5);
+}
+
+.bar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: var(--button-background, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary, #fff);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bar-toggle input {
+  accent-color: var(--tracker-accent-primary, #4df2c5);
 }
 
 .now-playing {

@@ -88,8 +88,8 @@ interface Props {
   activeMacroNibble: number;
   selectionRect: TrackerSelectionRect | null;
   scrollTop: number;
-  scrollLeft: number;
-  containerWidth: number;
+  scrollLeft?: number;
+  containerWidth?: number;
   containerHeight: number;
   isMouseSelecting: boolean;
   showExtraEffectColumn: boolean;
@@ -100,13 +100,13 @@ interface Props {
    * cell events emit regardless, exactly as the DOM grid does, so the page's
    * own edit-mode handlers stay the single gate.
    */
-  enableEditing: boolean;
+  enableEditing?: boolean;
   /**
    * The double-buffered pre-render of the pattern coming next. Not used yet:
    * the canvas renderer redraws a full pattern in one bitmap paint, which has
    * so far been fast enough to make the flip invisible.
    */
-  upcomingPattern: { id: string; tracks: TrackerTrackData[]; rows: number } | null;
+  upcomingPattern?: { id: string; tracks: TrackerTrackData[]; rows: number } | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
