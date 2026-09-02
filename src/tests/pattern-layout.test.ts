@@ -113,16 +113,16 @@ describe('columnFractionOffsets', () => {
 describe('macroNibbleWidth', () => {
   it('is one third of the effect column, either mode', () => {
     const offsets5 = columnFractionOffsets(180, false);
-    expect(macroNibbleWidth(180, false)).toBeCloseTo((offsets5[5] - offsets5[4]) / 3, 6);
+    expect(macroNibbleWidth(180, false)).toBeCloseTo((offsets5[5]! - offsets5[4]!) / 3, 6);
 
     const offsets6 = columnFractionOffsets(240, true);
-    expect(macroNibbleWidth(240, true)).toBeCloseTo((offsets6[5] - offsets6[4]) / 3, 6);
+    expect(macroNibbleWidth(240, true)).toBeCloseTo((offsets6[5]! - offsets6[4]!) / 3, 6);
   });
 
   it('keeps nibbles equal width within their column', () => {
     const w = macroNibbleWidth(180, false);
     // Three nibbles tile the effect column exactly.
-    expect(3 * w).toBeCloseTo(columnFractionOffsets(180, false)[5] - columnFractionOffsets(180, false)[4], 6);
+    expect(3 * w).toBeCloseTo(columnFractionOffsets(180, false)[5]! - columnFractionOffsets(180, false)[4]!, 6);
   });
 });
 

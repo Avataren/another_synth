@@ -69,7 +69,7 @@ export function hitTest(
       row,
       trackIndex,
       column: column.column,
-      macroNibble: column.macroNibble,
+      macroNibble: column.macroNibble!,
     };
   }
   return { row, trackIndex, column: column.column };
@@ -88,11 +88,11 @@ function hitColumn(
   const contentX = withinBox - entryHorizontalInsetPx;
   const offsets = columnFractionOffsets(boxWidth, showExtraEffectColumn);
   for (let column = 0; column < offsets.length - 1; column++) {
-    if (contentX >= offsets[column] && contentX < offsets[column + 1]) {
+    if (contentX >= offsets[column]! && contentX < offsets[column + 1]!) {
       if (column === 4 || column === 5) {
         const nibbleWidth = macroNibbleWidth(boxWidth, showExtraEffectColumn);
         const nibble = Math.floor(
-          (contentX - offsets[column]) / nibbleWidth,
+          (contentX - offsets[column]!) / nibbleWidth,
         );
         return {
           column,

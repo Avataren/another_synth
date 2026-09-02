@@ -179,8 +179,9 @@ export function drawEntryBox(
   const contentX = box.x + entryHorizontalInsetPx;
   const contentY = box.y + box.height / 2;
   const offsets = columnFractionOffsets(box.width, layout.showExtraEffectColumn);
-  const cellLeft = (column: number): number => contentX + offsets[column];
-  const cellWidth = (column: number): number => offsets[column + 1] - offsets[column];
+  const offsetAt = (column: number): number => offsets[column]!;
+  const cellLeft = (column: number): number => contentX + offsetAt(column);
+  const cellWidth = (column: number): number => offsetAt(column + 1) - offsetAt(column);
 
   // .note — left-aligned, 700 weight, white.
   drawText(ctx, cells.note.display, cellLeft(0), contentY, theme.noteText, theme, true);
@@ -195,7 +196,7 @@ export function drawEntryBox(
   if (interpolated === 'linear') {
     ctx.fillStyle = theme.interpolatedLinear;
     ctx.fillRect(
-      box.x + offsets[4],
+      box.x + offsetAt(4),
       box.y,
       cellWidth(4),
       box.height,
@@ -203,7 +204,7 @@ export function drawEntryBox(
   } else if (interpolated === 'exponential') {
     ctx.fillStyle = theme.interpolatedExponential;
     ctx.fillRect(
-      box.x + offsets[4],
+      box.x + offsetAt(4),
       box.y,
       cellWidth(4),
       box.height,

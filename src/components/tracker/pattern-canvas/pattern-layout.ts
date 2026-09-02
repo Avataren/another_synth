@@ -171,7 +171,7 @@ export function macroNibbleWidth(
 ): number {
   const offsets = columnFractionOffsets(trackWidth, showExtraEffectColumn);
   // Effect column (index 4) spans offsets[4]..offsets[5].
-  return (offsets[5] - offsets[4]) / 3;
+  return (offsets[5]! - offsets[4]!) / 3;
 }
 
 /** Everything a hit test or cell renderer needs about one pattern's geometry. */

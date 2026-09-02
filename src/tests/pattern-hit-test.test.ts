@@ -35,7 +35,7 @@ function cellCenter(
   const pitch = trackPitchPx(count, extra);
   const width = trackWidthPx(count, extra);
   const offsets = columnFractionOffsets(width, extra);
-  const x = trackIndex * pitch + entryHorizontalInsetPx + (offsets[column] + offsets[column + 1]) / 2;
+  const x = trackIndex * pitch + entryHorizontalInsetPx + (offsets[column]! + offsets[column + 1]!) / 2;
   const y = row * (rowHeightPx + rowGapPx) + rowHeightPx / 2;
   return { x, y };
 }
@@ -74,8 +74,8 @@ describe('effect columns report macro nibbles', () => {
     const count = 4;
     const width = trackWidthPx(count, false);
     const offsets = columnFractionOffsets(width, false);
-    const colLeft = trackWidthPx(count, false) * 0 + entryHorizontalInsetPx + offsets[4];
-    const nibble = (offsets[5] - offsets[4]) / 3;
+    const colLeft = trackWidthPx(count, false) * 0 + entryHorizontalInsetPx + offsets[4]!;
+    const nibble = (offsets[5]! - offsets[4]!) / 3;
     for (const n of [0, 1, 2]) {
       const x = colLeft + nibble * (n + 0.5);
       const y = rowHeightPx / 2;
@@ -93,8 +93,8 @@ describe('effect columns report macro nibbles', () => {
     const width = trackWidthPx(count, true);
     const offsets = columnFractionOffsets(width, true);
     for (const column of [4, 5]) {
-      const left = entryHorizontalInsetPx + offsets[column];
-      const nibble = (offsets[column + 1] - offsets[column]) / 3;
+      const left = entryHorizontalInsetPx + offsets[column]!;
+      const nibble = (offsets[column + 1]! - offsets[column]!) / 3;
       const x = left + nibble * 1.5;
       const hit = hitTest(x, rowHeightPx / 2, layout(count, true), 0);
       expect(hit).toEqual({ row: 0, trackIndex: 0, column, macroNibble: 1 });
@@ -105,8 +105,8 @@ describe('effect columns report macro nibbles', () => {
     const count = 4;
     const width = trackWidthPx(count, false);
     const offsets = columnFractionOffsets(width, false);
-    const colLeft = entryHorizontalInsetPx + offsets[4];
-    const colRight = entryHorizontalInsetPx + offsets[5];
+    const colLeft = entryHorizontalInsetPx + offsets[4]!;
+    const colRight = entryHorizontalInsetPx + offsets[5]!;
     const hitFirst = hitTest(colLeft + 0.5, 15, layout(count), 0);
     expect(hitFirst?.macroNibble).toBe(0);
     const hitLast = hitTest(colRight - 0.5, 15, layout(count), 0);

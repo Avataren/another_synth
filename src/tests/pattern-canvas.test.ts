@@ -160,12 +160,12 @@ function makeRecordingCtx(): RecordingCtx {
   };
   return new Proxy(ctx as unknown as CanvasRenderingContext2D, {
     get(target, key: string) {
-      if (key in target) return (target as Record<string, unknown>)[key];
+      if (key in target) return (target as unknown as Record<string, unknown>)[key];
       return props.get(key);
     },
     set(target, key: string, value) {
       if (key in target) {
-        (target as Record<string, unknown>)[key] = value;
+        (target as unknown as Record<string, unknown>)[key] = value;
       } else {
         props.set(key, value);
       }
@@ -437,7 +437,7 @@ const drawImageOn = (ctx: RecordingCtx) =>
   ctx.calls.filter((call): call is DrawImageCall => call.op === 'drawImage');
 const fillsOn = (ctx: RecordingCtx) =>
   ctx.calls.filter(
-    (call): call is Extract<CtxCall, { op: 'fillRect' }> => call.op === 'fillRect',
+    (call): call is RectCall => call.op === 'fillRect',
   );
 const pathsOn = (ctx: RecordingCtx) =>
   ctx.calls.filter((call): call is PathCall => call.op === 'path');

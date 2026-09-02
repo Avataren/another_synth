@@ -31,7 +31,7 @@ describe('plain interior blits', () => {
   });
 
   it('never returns a negative or zero-sized rect for interior views', () => {
-    for (const [top, left] of [[0, 0], [10, 10], [1499, 1999]]) {
+    for (const [top, left] of [[0, 0], [10, 10], [1499, 1999]] as const) {
       const w = blitWindow(top, left, 800, 600, 2000, 1500, 2);
       expect(w.sw).toBeGreaterThan(0);
       expect(w.sh).toBeGreaterThan(0);

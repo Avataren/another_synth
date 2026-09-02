@@ -118,13 +118,13 @@ function makeMockCtx() {
     clip() {},
   };
   return new Proxy(ctx as unknown as CanvasRenderingContext2D, {
-    get(target, key) {
-      if (key in target) return (target as Record<string, unknown>)[key];
+    get(target, key: string) {
+      if (key in target) return (target as unknown as Record<string, unknown>)[key];
       return props[key as string];
     },
-    set(target, key, value) {
+    set(target, key: string, value) {
       if (key in target) {
-        (target as Record<string, unknown>)[key] = value;
+        (target as unknown as Record<string, unknown>)[key] = value;
       } else {
         props[key as string] = value;
       }
@@ -170,15 +170,17 @@ const layout = (trackCount = 2, showExtraEffectColumn = false, rowCount = 32) =>
 });
 
 function makeTrack(entries: TrackerEntryData[], color?: string): TrackerTrackData {
-  return { id: 't1', name: 'T1', color, entries };
+  const track: TrackerTrackData = { id: 't1', name: 'T1', entries };
+  if (color !== undefined) track.color = color;
+  return track;
 }
 
 const fills = (ctx: MockCtx) =>
-  ctx.calls.filter((c): c is Extract<CtxCall, { op: 'fillRect' }> => c.op === 'fillRect');
+  ctx.calls.filter((c): c is RectCall => c.op === 'fillRect');
 const paths = (ctx: MockCtx) =>
   ctx.calls.filter((c): c is PathCall => c.op === 'path');
 const strokes = (ctx: MockCtx) =>
-  ctx.calls.filter((c): c is Extract<CtxCall, { op: 'strokeRect' }> => c.op === 'strokeRect');
+  ctx.calls.filter((c): c is RectCall => c.op === 'strokeRect');
 const texts = (ctx: MockCtx) =>
   ctx.calls.filter((c): c is Extract<CtxCall, { op: 'fillText' }> => c.op === 'fillText');
 
@@ -363,7 +365,7 @@ describe('drawRowNumbers', () => {
     expect(gutter).toBeDefined();
     expect(gutter!.height).toBe(30);
     // Row-number text uses the muted color.
-    expect(texts(ctx)[0].fillStyle).toBe(theme.rowNumberText);
+    expect(texts(ctx)[0]!.fillStyle).toBe(theme.rowNumberText);
   });
 });
 
