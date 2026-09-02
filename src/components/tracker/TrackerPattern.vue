@@ -543,10 +543,17 @@ defineExpose({
   grid-template-columns: 78px 1fr;
   gap: 12px;
   min-width: 0;
+  /* Promote to its own compositor layer and keep it rasterized while hidden:
+     the flip is then a compositor-only opacity change -- no paint at flip
+     time, which is what caused a visible blank on dense (24-32ch) grids. */
+  will-change: opacity;
+  transform: translateZ(0);
 }
 
 .buffer-hidden {
-  visibility: hidden;
+  /* opacity:0 (NOT visibility:hidden): hidden content stays painted so the
+     pattern swap shows an already-rasterized layer instantly. */
+  opacity: 0;
   pointer-events: none;
 }
 
