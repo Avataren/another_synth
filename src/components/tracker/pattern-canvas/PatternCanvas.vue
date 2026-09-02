@@ -204,7 +204,10 @@ let bitmapCssHeight = -1;
  * error instead so the page can fall back to the DOM grid.
  *
  * 64M device px ≈ 256MB RGBA, comfortably under the smallest known canvas
- * area limits and enough for every pattern the editor can produce.
+ * area limits. Note this cap is NOT big enough for every pattern: large
+ * patterns (e.g. 32 tracks × 256 rows) exceed it on hi-DPI displays
+ * (DPR ≳ 1.2), and on overflow the renderer deliberately reports an error
+ * so the page falls back to the DOM grid rather than painting nothing.
  */
 const MAX_BITMAP_DEVICE_PX = 64 * 1024 * 1024;
 

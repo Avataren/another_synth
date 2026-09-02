@@ -802,7 +802,11 @@ describe('resize scheduling', () => {
     });
     try {
       fireComponentResize();
+      // Frame 1 runs applySize (scheduling overlay+blit); frame 2 executes
+      // it — without the second pump a wrongly-scheduled static repaint
+      // would never execute and this test would pass vacuously.
       await nextTick();
+      pumpFrame();
       pumpFrame();
 
       // The bitmap was not cleared/repainted; the visible layer was blitted
