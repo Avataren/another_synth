@@ -70,6 +70,43 @@ export function rowY(row: number): number {
 }
 
 /**
+ * PatternCanvas panel chrome: its 18px padding per side plus the 1px border
+ * per side. The panel's natural width is the bitmap's content width plus
+ * this; the panel then centers in the page exactly like the DOM grid's
+ * `inline-flex` tracks wrapper.
+ */
+export const PANEL_CHROME_PX = 38;
+
+/**
+ * Natural width of the canvas panel for a pattern `contentWidth` wide
+ * (GUTTER_WIDTH_PX + totalTracksWidth), before any page-level max-width cap.
+ */
+export function patternPanelWidth(contentWidth: number): number {
+  return contentWidth + PANEL_CHROME_PX;
+}
+
+/**
+ * Width held back on each side of the panel for the spectrum analyser, in
+ * pixels. The DOM grid expresses the same reserve in CSS as
+ * `min(var(--tracker-side-gutter), 15%)` of the pattern area's content box.
+ * One track column is the reserve (`trackWidthPx`), capped at 15% of the
+ * available width so a narrow window spends most of its space on the
+ * pattern.
+ */
+export function reservedSideGutterPx(
+  reserveSideGutter: boolean,
+  trackCount: number,
+  showExtraEffectColumn: boolean,
+  availableWidth: number,
+): number {
+  if (!reserveSideGutter) return 0;
+  return Math.min(
+    trackWidthPx(trackCount, showExtraEffectColumn),
+    0.15 * availableWidth,
+  );
+}
+
+/**
  * Bounding box of one track's entry at `row`, in pattern coordinates.
  *
  * `trackIndex` places the box horizontally (track pitch + gap), `layout`

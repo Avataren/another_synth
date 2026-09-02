@@ -141,8 +141,10 @@ function setupThemeObserver() {
  *  within `.pattern-area-wrapper`) and sizes each side's canvas to exactly
  *  the real empty gutter beside it -- not a guessed percentage, which
  *  either wastes most of a wide monitor's space or overlaps the grid on a
- *  narrower one depending on track count. Falls back to a conservative
- *  fixed share if the grid element can't be found for some reason. */
+ *  narrower one depending on track count. The canvas renderer renders a
+ *  `.pattern-canvas` with the same centered-panel shape, so it is measured
+ *  as a fallback when no DOM grid is mounted. Falls back to a conservative
+ *  fixed share if neither element can be found for some reason. */
 function applyGutterWidths() {
   const wrapper = leftCanvasRef.value?.closest('.pattern-area-wrapper') as HTMLElement | null;
   if (!wrapper) return;
@@ -157,8 +159,15 @@ function applyGutterWidths() {
     leftWidth = Math.max(0, gridRect.left - wrapperRect.left - gap);
     rightWidth = Math.max(0, wrapperRect.right - gridRect.right - gap);
   } else {
-    leftWidth = wrapperRect.width * 0.15;
-    rightWidth = leftWidth;
+    const panel = wrapper.querySelector('.pattern-canvas') as HTMLElement | null;
+    if (panel) {
+      const panelRect = panel.getBoundingClientRect();
+      leftWidth = Math.max(0, panelRect.left - wrapperRect.left - gap);
+      rightWidth = Math.max(0, wrapperRect.right - panelRect.right - gap);
+    } else {
+      leftWidth = wrapperRect.width * 0.15;
+      rightWidth = leftWidth;
+    }
   }
 
   if (leftCanvasRef.value) leftCanvasRef.value.style.width = `${leftWidth}px`;
@@ -459,16 +468,20 @@ onMounted(() => {
     }
   });
 
-  // Re-measure the gutter whenever the wrapper or the grid itself resizes
-  // (e.g. window resize, or tracks added/removed changing the grid's own
-  // width) -- not just when the canvas element's own box changes, since
-  // that's a consequence of this measurement, not an independent trigger.
+  // Re-measure the gutter whenever the wrapper or the pattern panel itself
+  // resizes (e.g. window resize, or tracks added/removed changing the
+  // pattern's own width) -- not just when the canvas element's own box
+  // changes, since that's a consequence of this measurement, not an
+  // independent trigger. Both renderer shells are observed: the DOM grid
+  // (.tracker-pattern) and the canvas renderer (.pattern-canvas).
   if (typeof ResizeObserver !== 'undefined') {
     gridResizeObserver = new ResizeObserver(() => remeasure());
     const wrapper = leftCanvasRef.value?.closest('.pattern-area-wrapper');
     if (wrapper) gridResizeObserver.observe(wrapper);
     const grid = wrapper?.querySelector('.tracker-pattern');
     if (grid) gridResizeObserver.observe(grid);
+    const canvasPanel = wrapper?.querySelector('.pattern-canvas');
+    if (canvasPanel) gridResizeObserver.observe(canvasPanel);
   }
 
   // Wait two animation frames before the first real size measurement --

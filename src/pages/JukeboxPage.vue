@@ -118,6 +118,11 @@
         <span>Canvas grid</span>
       </label>
 
+      <label class="bar-toggle" title="Scroll one row per playback step instead of paging">
+        <input v-model="userSettings.granularPlaybackScroll" type="checkbox" />
+        <span>Row scroll</span>
+      </label>
+
       <button
         type="button"
         class="bar-btn"
@@ -182,6 +187,7 @@
                 userSettings.showTrackerExtraEffectColumn
               "
               :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+              :granular-scroll="userSettings.granularPlaybackScroll"
               :upcoming-pattern="upcomingPattern"
               @scroll="onCanvasScroll"
               @renderer-error="onCanvasRendererError"

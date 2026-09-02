@@ -1,5 +1,8 @@
 <template>
-  <div class="pattern-canvas" :style="{ '--tracker-side-gutter': sideGutter }">
+  <div
+    class="pattern-canvas"
+    :style="{ '--tracker-side-gutter': sideGutter, '--panel-width': `${panelWidth}px` }"
+  >
     <!--
       Sticky header strip: track chips aligned over the bitmap's track
       columns (the same geometry the blit uses), shifted against horizontal
@@ -60,6 +63,8 @@ import {
   rowHeightPx,
   rowPitchPx,
   rowY,
+  patternPanelWidth,
+  reservedSideGutterPx,
   totalTracksWidth,
   type PatternLayout,
 } from './pattern-layout';
@@ -99,6 +104,13 @@ interface Props {
   /** Whether the spectrum analyser is on and needs gutters to draw in. */
   reserveSideGutter: boolean;
   /**
+   * When true (default), playback follow advances exactly one row pitch per
+   * step (the DOM grid's behavior). When false, the view only re-anchors
+   * once the playing row leaves a margin window — coarser paging that some
+   * users prefer on long patterns.
+   */
+  granularScroll?: boolean;
+  /**
    * Reserved for the editing cursor's keyboard wiring: pointer selection and
    * cell events emit regardless, exactly as the DOM grid does, so the page's
    * own edit-mode handlers stay the single gate.
@@ -117,6 +129,7 @@ const props = withDefaults(defineProps<Props>(), {
   containerWidth: 0,
   enableEditing: false,
   upcomingPattern: null,
+  granularScroll: true,
 });
 
 const emit = defineEmits<{
@@ -153,13 +166,51 @@ const contentWidth = computed(
 );
 const totalRowsHeight = computed(() => Math.max(0, props.rows) * rowPitchPx);
 
+/**
+ * The canvas panel's own width. The DOM grid is `inline-flex`, so it is only
+ * as wide as its tracks and centers in the page; a block canvas would fill
+ * the row and leave the spectrum analyser nowhere to draw. Match the DOM:
+ * the panel is the bitmap's content width plus its own padding and border,
+ * centered by `margin-inline: auto`; the stylesheet's max-width cap (the
+ * same one the DOM grid uses) clamps it when the pattern is wider than the
+ * viewport, and the scroller scrolls the overflow.
+ */
+const panelWidth = computed(() => patternPanelWidth(contentWidth.value));
+
+/** .pattern-area's own 18px side padding; containerWidth is its padding box. */
+const PAGE_PADDING_X_PX = 36;
+
+/** Space available to the panel inside the page's pattern area. */
+const availableWidth = computed(() => Math.max(0, props.containerWidth - PAGE_PADDING_X_PX));
+
+/** The analyser gutter the stylesheet holds back on each side of the panel. */
+const reservedGutterPx = computed(() =>
+  reservedSideGutterPx(
+    props.reserveSideGutter,
+    props.tracks.length,
+    props.showExtraEffectColumn,
+    availableWidth.value,
+  ),
+);
+
+/** The cap the stylesheet's max-width applies to the panel. */
+const panelMaxWidth = computed(() =>
+  Math.max(0, availableWidth.value - 2 * reservedGutterPx.value),
+);
+
 const sideGutter = computed(() =>
   props.reserveSideGutter
     ? `${trackWidthPx(props.tracks.length, props.showExtraEffectColumn)}px`
     : '0px',
 );
 
-const hscrollVisible = computed(() => contentWidth.value > viewportW.value);
+/**
+ * The proxy scrollbar is needed exactly when the panel is width-capped:
+ * shrunk-to-fit, the scroller is exactly as wide as the content, so the
+ * old content-vs-viewport comparison would never fire; only the cap can
+ * clip tracks, and then the scroller hides the overflow for the proxy.
+ */
+const hscrollVisible = computed(() => panelWidth.value > panelMaxWidth.value);
 
 const headerShift = computed(() => ({ transform: `translateX(${-viewLeft.value}px)` }));
 
@@ -365,9 +416,10 @@ function schedule(parts: Array<'static' | 'overlay' | 'blit'>): void {
 
 function runFrame(): void {
   frameRaf = null;
+  const followMoved = applyFollow();
   const drawStatic = wantStatic;
   const drawOverlay = wantOverlay;
-  const blit = wantBlit || drawStatic;
+  const blit = wantBlit || drawStatic || followMoved;
   wantStatic = false;
   wantOverlay = false;
   wantBlit = false;
@@ -479,33 +531,56 @@ watch(
 );
 
 /**
- * Follow the playback row while playing: keep it a few rows inside the
- * viewport, jumping to roughly a third from the top when it leaves. The
- * native scroll event lands the state back through onScrollerScroll.
+ * Follow the playback row while playing, with the DOM grid's exact behavior:
+ * every playbackRow change centers the playing row (one row pitch of scroll
+ * per step), so vertical playback scroll advances exactly one row at a
+ * time. The request only flags the follow — the DOM write, the view
+ * adoption and the repaint all happen inside the coalesced rAF frame, never
+ * synchronously on the prop change.
  */
-function followPlayback(): void {
-  if (!props.autoScroll || !props.isPlaying) return;
+let pendingFollow = false;
+
+function requestFollow(): void {
+  pendingFollow = true;
+  schedule([]); // a frame may not be queued yet (e.g. the mount path)
+}
+
+/** Runs at the top of runFrame. Returns whether viewTop moved. */
+function applyFollow(): boolean {
+  if (!pendingFollow) return false;
+  pendingFollow = false;
+  if (!props.autoScroll || !props.isPlaying) return false;
   const row = props.playbackRow;
-  if (row < 0 || row >= props.rows) return;
+  if (row < 0 || row >= props.rows) return false;
   const y = rowY(row);
-  const top = viewTop.value;
   const viewH = viewportH.value || props.containerHeight;
-  const margin = rowPitchPx * 3;
-  if (y >= top + margin && y + rowHeightPx <= top + viewH - margin) return;
-  const target = Math.max(0, y - (viewH - rowHeightPx) / 3);
+  const maxScroll = Math.max(0, totalRowsHeight.value - viewH);
+  let target: number;
+  if (props.granularScroll) {
+    // Row-granular (the DOM grid's behavior): center the playing row every
+    // step, so vertical playback scroll advances exactly one row pitch per
+    // step. Clamped to the scroll extent the spacer defines.
+    target = Math.min(Math.max(0, y - (viewH - rowHeightPx) / 2), maxScroll);
+  } else {
+    // Paged: only re-anchor once the row leaves a 3-row margin, jumping it
+    // roughly a third from the top.
+    const top = viewTop.value;
+    const margin = rowPitchPx * 3;
+    if (y >= top + margin && y + rowHeightPx <= top + viewH - margin) return false;
+    target = Math.min(Math.max(0, y - (viewH - rowHeightPx) / 3), maxScroll);
+  }
   const el = scrollerRef.value;
   if (el) el.scrollTop = target;
-  if (Math.abs(viewTop.value - target) >= 0.5) {
-    viewTop.value = target;
-    emitScroll();
-    schedule(['blit']);
-  }
+  if (Math.abs(viewTop.value - target) < 0.5) return false;
+  viewTop.value = target;
+  emitScroll();
+  return true;
 }
 
 watch(
   () => [props.playbackRow, props.isPlaying, props.autoScroll, viewportH.value],
   () => {
-    followPlayback();
+    requestFollow();
     schedule(['overlay']);
   },
 );
@@ -634,7 +709,7 @@ function onWheel(e: WheelEvent): void {
 onMounted(() => {
   applySize();
   schedule(['static', 'overlay', 'blit']);
-  followPlayback();
+  requestFollow();
   if (typeof ResizeObserver !== 'undefined' && scrollerRef.value) {
     resizeObserver = new ResizeObserver(() => {
       if (resizeRaf !== null) return;
@@ -689,6 +764,9 @@ defineExpose({ scrollerRef });
   gap: 8px;
   /* Same spectrum-analyser gutter reserve as the DOM grid it replaces. */
   max-width: calc(100% - 2 * min(var(--tracker-side-gutter, 0px), 15%));
+  /* Shrink-to-fit the pattern's natural width (the DOM grid is inline-flex),
+     centered; the max-width cap above keeps analyser gutters outside. */
+  width: var(--panel-width, auto);
   margin-inline: auto;
   background: var(--panel-background, #0c1018);
   border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.06));

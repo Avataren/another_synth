@@ -323,6 +323,10 @@ function mountCanvas(opts: {
   scrollLeft?: number;
   playbackRow?: number;
   playbackMode?: 'pattern' | 'song';
+  autoScroll?: boolean;
+  isPlaying?: boolean;
+  reserveSideGutter?: boolean;
+  containerWidth?: number;
 } = {}) {
   return mount(PatternCanvas, {
     props: {
@@ -332,18 +336,18 @@ function mountCanvas(opts: {
       playbackRow: opts.playbackRow ?? 0,
       activeTrack: -1,
       activeColumn: -1,
-      autoScroll: false,
-      isPlaying: false,
+      autoScroll: opts.autoScroll ?? false,
+      isPlaying: opts.isPlaying ?? false,
       playbackMode: opts.playbackMode ?? 'pattern',
       activeMacroNibble: 0,
       selectionRect: null,
       scrollTop: opts.scrollTop ?? 0,
       scrollLeft: opts.scrollLeft ?? 0,
-      containerWidth: VIEWPORT_W,
+      containerWidth: opts.containerWidth ?? VIEWPORT_W,
       containerHeight: VIEWPORT_H,
       isMouseSelecting: false,
       showExtraEffectColumn: false,
-      reserveSideGutter: false,
+      reserveSideGutter: opts.reserveSideGutter ?? false,
     },
   });
 }
@@ -489,6 +493,164 @@ describe('draw scheduling', () => {
     expect(rafQueue.size).toBe(framesBefore); // still the same queued frame
     pumpFrame();
     expect(rafQueue.size).toBe(0);
+    wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Panel width: min-width behavior, centering, scrollbar only on overflow
+// ---------------------------------------------------------------------
+
+describe('panel width (min-width + centered)', () => {
+  it('binds the panel to the pattern content width, not the viewport', () => {
+    const wrapper = mountCanvas({ containerWidth: VIEWPORT_W });
+    const root = wrapper.find('.pattern-canvas');
+    // Two full-width tracks + gap + the 78px row gutter, plus 38px chrome.
+    const expected = GUTTER_WIDTH_PX + totalTracksWidth(2, false) + 38;
+    expect(root.attributes('style')).toContain(`--panel-width: ${expected}px`);
+    // The bug: the panel filled the whole available width. A narrow song in
+    // a wide viewport must stay at its natural width so the page can center
+    // it with spectrum-analyser room around it.
+    expect(expected).toBeLessThan(VIEWPORT_W);
+    wrapper.unmount();
+  });
+
+  it('follows the pattern content width when tracks are added', async () => {
+    const wrapper = mountCanvas({ containerWidth: 4000 });
+    const before = GUTTER_WIDTH_PX + totalTracksWidth(2, false) + 38;
+    expect(wrapper.find('.pattern-canvas').attributes('style')).toContain(
+      `--panel-width: ${before}px`,
+    );
+    const added = [makeTrack('x'), makeTrack('y'), makeTrack('z')];
+    await wrapper.setProps({ tracks: [...(wrapper.props('tracks') as TrackerTrackData[]), ...added] });
+    await nextTick();
+    const after = GUTTER_WIDTH_PX + totalTracksWidth(5, false) + 38;
+    expect(wrapper.find('.pattern-canvas').attributes('style')).toContain(
+      `--panel-width: ${after}px`,
+    );
+    wrapper.unmount();
+  });
+
+  it('reserves the analyser gutter only when the analyser is on', () => {
+    const withGutter = mountCanvas({ reserveSideGutter: true });
+    expect(withGutter.find('.pattern-canvas').attributes('style')).toContain(
+      '--tracker-side-gutter: 180px',
+    );
+    withGutter.unmount();
+
+    const without = mountCanvas({ reserveSideGutter: false });
+    expect(without.find('.pattern-canvas').attributes('style')).toContain(
+      '--tracker-side-gutter: 0px',
+    );
+    without.unmount();
+  });
+
+  it('hides the horizontal scrollbar when the content fits the viewport', () => {
+    // containerWidth 600 → 564 available inside .pattern-area's padding;
+    // the 2-track panel (486px incl. chrome) fits, so no scrollbar.
+    const wrapper = mountCanvas({ containerWidth: 600 });
+    expect(wrapper.find('.canvas-hscroll').isVisible()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('shows the proxy scrollbar only when the capped panel clips tracks', () => {
+    // 24 tightened tracks (160px + 6px gap): panel 4094px ≫ 464 available —
+    // the page caps the panel and the scroller scrolls the overflow.
+    const many = Array.from({ length: 24 }, (_, i) => makeTrack(`t${i}`, 4));
+    const wrapper = mountCanvas({ tracks: many, rows: 4 });
+    expect(wrapper.find('.canvas-hscroll').isVisible()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('shows the scrollbar when the analyser reserve squeezes a narrow viewport', () => {
+    // 2 tracks (486px panel) vs 464 available minus 2×69.6 reserved gutters
+    // (15% cap): the capped panel cannot show all tracks, so scroll.
+    const wrapper = mountCanvas({ reserveSideGutter: true, containerWidth: VIEWPORT_W });
+    expect(wrapper.find('.canvas-hscroll').isVisible()).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Vertical playback scroll: one row per step, DOM-grid parity
+// ---------------------------------------------------------------------
+
+describe('playback follow (row-granular auto-scroll)', () => {
+  /** jsdom stores scrollTop writes verbatim. The follow's DOM write happens
+   *  inside the coalesced rAF frame, so pump one before asserting. */
+  function scrollerOf(wrapper: MountedCanvas): HTMLElement {
+    return wrapper.find('.canvas-scroller').element as HTMLElement;
+  }
+
+  it('centers the playing row in the first frame after mount', () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    // The follow runs inside the rAF frame (never synchronously on mount).
+    pumpFrame();
+    const expected = Math.max(0, 10 * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 2);
+    expect(scrollerOf(wrapper).scrollTop).toBe(expected);
+    // The auto-scroll reports itself to the page state.
+    expect(wrapper.emitted('scroll')).toEqual([[{ top: expected, left: 0 }]]);
+    wrapper.unmount();
+  });
+
+  it('advances exactly one row pitch per playback step', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const scroller = scrollerOf(wrapper);
+    const start = scroller.scrollTop as number;
+    expect(start).toBeGreaterThan(0);
+
+    await wrapper.setProps({ playbackRow: 11 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(start + rowPitchPx);
+
+    await wrapper.setProps({ playbackRow: 12 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(start + 2 * rowPitchPx);
+    wrapper.unmount();
+  });
+
+  it('does not scroll when auto-scroll is off', async () => {
+    const wrapper = mountCanvas({ autoScroll: false, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const scroller = scrollerOf(wrapper);
+    expect(scroller.scrollTop).toBe(0);
+    expect(wrapper.emitted('scroll')).toBeUndefined();
+
+    await wrapper.setProps({ playbackRow: 11 });
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(0);
+    wrapper.unmount();
+  });
+
+  it('starts following only once isPlaying turns on', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: false, playbackRow: 10 });
+    pumpFrame();
+    expect(scrollerOf(wrapper).scrollTop).toBe(0);
+
+    await wrapper.setProps({ isPlaying: true });
+    await nextTick();
+    pumpFrame();
+    const expected = Math.max(0, 10 * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 2);
+    expect(scrollerOf(wrapper).scrollTop).toBe(expected);
+    wrapper.unmount();
+  });
+
+  it('writes scrollTop only inside the rAF frame, never synchronously', async () => {
+    // The playback-row adoption must be rAF-coalesced: after the prop change
+    // but before the frame, the scroller is untouched; the frame applies it.
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const before = scrollerOf(wrapper).scrollTop;
+
+    await wrapper.setProps({ playbackRow: 11 });
+    await nextTick();
+    expect(scrollerOf(wrapper).scrollTop).toBe(before); // no frame ran yet
+    pumpFrame();
+    expect(scrollerOf(wrapper).scrollTop).toBe(before + rowPitchPx);
     wrapper.unmount();
   });
 });

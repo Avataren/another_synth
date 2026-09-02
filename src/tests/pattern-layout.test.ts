@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  GUTTER_WIDTH_PX,
   headerHeightPx,
   entryHorizontalInsetPx,
   macroNibbleWidth,
@@ -10,9 +11,13 @@ import {
   rowHeightPx,
   rowPitchPx,
   rowY,
+  patternPanelWidth,
+  reservedSideGutterPx,
   totalTracksWidth,
+  PANEL_CHROME_PX,
   type PatternLayout,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
+import { trackWidthPx } from 'src/components/tracker/track-metrics';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 /**
@@ -118,6 +123,37 @@ describe('macroNibbleWidth', () => {
     const w = macroNibbleWidth(180, false);
     // Three nibbles tile the effect column exactly.
     expect(3 * w).toBeCloseTo(columnFractionOffsets(180, false)[5] - columnFractionOffsets(180, false)[4], 6);
+  });
+});
+
+describe('panel width and analyser gutter reserve', () => {
+  it('sizes the panel to the content width plus its chrome', () => {
+    // 18px padding per side + 1px border per side.
+    expect(PANEL_CHROME_PX).toBe(38);
+    expect(patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(2, false))).toBe(448 + 38);
+    expect(patternPanelWidth(GUTTER_WIDTH_PX + totalTracksWidth(4, false))).toBe(828 + 38);
+  });
+
+  it('stays at the natural width for a small song (no viewport fill)', () => {
+    // Bug 2: the DOM grid renders a 4ch song as a narrow centered grid. The
+    // panel width must derive from the content, never from the viewport, so
+    // the page centers it with room for the analyser around it.
+    const content = GUTTER_WIDTH_PX + totalTracksWidth(4, false);
+    expect(patternPanelWidth(content)).toBeLessThan(1000);
+  });
+
+  it('reserves one track column per side when the analyser is on', () => {
+    expect(reservedSideGutterPx(true, 4, false, 4000)).toBe(trackWidthPx(4, false));
+    expect(reservedSideGutterPx(true, 2, false, 4000)).toBe(trackWidthPx(2, false));
+  });
+
+  it('caps the reserve at 15% of the available width', () => {
+    expect(reservedSideGutterPx(true, 4, false, 1000)).toBe(150);
+    expect(reservedSideGutterPx(true, 4, false, 100)).toBe(15);
+  });
+
+  it('reserves nothing when the analyser is off', () => {
+    expect(reservedSideGutterPx(false, 4, false, 4000)).toBe(0);
   });
 });
 

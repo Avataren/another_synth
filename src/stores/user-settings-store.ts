@@ -33,6 +33,12 @@ export interface UserSettings {
    * are worked out; the toolbar toggle turns it on for testing.
    */
   canvasPatternRenderer: boolean;
+  /**
+   * When true (default), playback follow scrolls exactly one row per step.
+   * When false, the view re-anchors only when the playing row leaves a
+   * margin window — coarser paging on long patterns.
+   */
+  granularPlaybackScroll: boolean;
   /** When true, MOD files use lightweight Web Audio playback instead of full WASM synth. Default: true. */
   useSimplifiedModInstruments: boolean;
 
@@ -113,6 +119,7 @@ export const defaultSettings: UserSettings = {
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
   canvasPatternRenderer: false,
+  granularPlaybackScroll: true,
   useSimplifiedModInstruments: true,
   sampleOversampleFactor: 4,
   sampleRemoveDcOffset: true,
