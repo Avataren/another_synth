@@ -48,9 +48,9 @@ export function totalTracksWidth(
   showExtraEffectColumn: boolean,
 ): number {
   if (trackCount <= 0) return 0;
-  // Last column has no trailing gap: (count-1) pitches + one width.
+  // Last column has no trailing gap: count widths + (count-1) gaps.
   return (
-    trackWidthPx(trackCount, showExtraEffectColumn) +
+    trackCount * trackWidthPx(trackCount, showExtraEffectColumn) +
     (trackCount - 1) * trackGapPx(trackCount)
   );
 }
