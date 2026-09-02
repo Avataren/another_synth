@@ -57,18 +57,24 @@ type RecordingCtx = CanvasRenderingContext2D & {
 function makeRecordingCtx(): RecordingCtx {
   const calls: CtxCall[] = [];
   const props = new Map<string, unknown>();
+  // Transform tracking: draw ops are recorded in viewport space so tests can
+  // assert screen coordinates even when the component translates the layer
+  // (the overlay paints pattern-space ops through translate()).
+  const transformStack: { tx: number; ty: number }[] = [];
+  let tx = 0;
+  let ty = 0;
   const ctx = {
     canvas: null as HTMLCanvasElement | OffscreenCanvas | null,
     props,
     calls,
     fillRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'fillRect', x, y, width, height });
+      calls.push({ op: 'fillRect', x: x + tx, y: y + ty, width, height });
     },
     strokeRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'strokeRect', x, y, width, height });
+      calls.push({ op: 'strokeRect', x: x + tx, y: y + ty, width, height });
     },
     clearRect(x: number, y: number, width: number, height: number) {
-      calls.push({ op: 'clearRect', x, y, width, height });
+      calls.push({ op: 'clearRect', x: x + tx, y: y + ty, width, height });
     },
     drawImage(
       image: CanvasImageSource,
@@ -85,10 +91,24 @@ function makeRecordingCtx(): RecordingCtx {
     measureText() {
       return { width: 10 };
     },
-    save() {},
-    restore() {},
-    setTransform() {},
-    translate() {},
+    save() {
+      transformStack.push({ tx, ty });
+    },
+    restore() {
+      const top = transformStack.pop();
+      if (top) {
+        tx = top.tx;
+        ty = top.ty;
+      }
+    },
+    setTransform(_a: number, _b: number, _c: number, _d: number, e: number, f: number) {
+      tx = e;
+      ty = f;
+    },
+    translate(dx: number, dy: number) {
+      tx += dx;
+      ty += dy;
+    },
     scale() {},
     rotate() {},
     beginPath() {},
@@ -168,6 +188,9 @@ type FrameCallback = (time: number) => void;
 const rafQueue = new Map<number, FrameCallback>();
 let nextRafId = 1;
 
+type ResizeCallback = (entries: unknown[]) => void;
+const resizeCallbacks: ResizeCallback[] = [];
+
 function installFakeRaf(): void {
   vi.stubGlobal(
     'requestAnimationFrame',
@@ -183,6 +206,29 @@ function installFakeRaf(): void {
       rafQueue.delete(id);
     }),
   );
+}
+
+/** jsdom has no ResizeObserver; a fake lets tests fire the component's. */
+function installFakeResizeObserver(): void {
+  vi.stubGlobal(
+    'ResizeObserver',
+    vi.fn()
+      .mockImplementation((cb: ResizeCallback) => {
+        resizeCallbacks.push(cb);
+        return {
+          observe: vi.fn(),
+          unobserve: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+  );
+}
+
+/** Fire the component's ResizeObserver callback (applySize runs on rAF). */
+function fireComponentResize(): void {
+  const cb = resizeCallbacks.at(-1);
+  expect(cb).toBeDefined();
+  cb!([]);
 }
 
 /** Run every queued frame once; frames scheduled during the pump wait. */
@@ -309,7 +355,9 @@ let contexts: RecordingCtx[] = [];
 beforeEach(() => {
   vi.unstubAllGlobals();
   rafQueue.clear();
+  resizeCallbacks.length = 0;
   installFakeRaf();
+  installFakeResizeObserver();
   installViewport();
   setCache(theme); // skip getComputedStyle entirely
   contexts = stubCanvasContexts();
@@ -334,10 +382,14 @@ function layerCanvases(wrapper: MountedCanvas) {
   };
 }
 
-/** The offscreen full-pattern bitmap: the canvas that is not on screen. */
+/** The offscreen full-pattern bitmap: the newest canvas that is not on screen. */
 function bitmapOf(wrapper: MountedCanvas) {
   const { visible, overlay } = layerCanvases(wrapper);
-  const entry = contexts.find((c) => c.canvas !== visible && c.canvas !== overlay);
+  // Append-only list: a DPR/extent change allocates a new bitmap, which is
+  // the current one — scan from the end.
+  const entry = [...contexts]
+    .reverse()
+    .find((c) => c.canvas !== visible && c.canvas !== overlay);
   expect(entry).toBeDefined();
   expect(entry!.canvas).toBeDefined();
   return entry!;
@@ -482,6 +534,47 @@ describe('overlay on playbackRow change', () => {
     expect(fillsOn(overlayCtx).length).toBeGreaterThan(overlayFillsBefore);
     wrapper.unmount();
   });
+
+  it('translates the overlay by gutter − scrollLeft and −scrollTop', async () => {
+    const scrollTop = 72;
+    const scrollLeft = 30;
+    const wrapper = mountCanvas({ scrollTop, scrollLeft, playbackRow: 2 });
+    pumpFrame();
+    const { overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+
+    const bar = fillsOn(overlayCtx)
+      .filter((c) => c.height === rowHeightPx)
+      .at(-1);
+    expect(bar).toBeDefined();
+    // rowY(2) − scrollTop, not rowY(2): the bar lands in viewport space,
+    // pinned past the gutter minus the horizontal scroll.
+    expect(bar!.y).toBeCloseTo(2 * rowPitchPx - scrollTop, 5);
+    expect(bar!.x).toBeCloseTo(GUTTER_WIDTH_PX - scrollLeft, 5);
+    wrapper.unmount();
+  });
+
+  it('a native scroller scroll repaints the overlay in the new viewport space', async () => {
+    const wrapper = mountCanvas({ playbackRow: 2 });
+    pumpFrame();
+    const { overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    Object.defineProperty(scroller, 'scrollTop', { value: 180, configurable: true });
+    scroller.dispatchEvent(new Event('scroll'));
+    await nextTick();
+    pumpFrame();
+
+    // Without the overlay in the scroll schedule the bar would still sit at
+    // its pattern-space y and drift off the visible rows.
+    const bar = fillsOn(overlayCtx)
+      .filter((c) => c.height === rowHeightPx)
+      .at(-1);
+    expect(bar).toBeDefined();
+    expect(bar!.y).toBeCloseTo(2 * rowPitchPx - 180, 5);
+    wrapper.unmount();
+  });
 });
 
 // ---------------------------------------------------------------------
@@ -542,6 +635,43 @@ describe('scroll prop → blit window', () => {
     expect(drawImageOn(viewCtx).at(-1)!.sy).toBeCloseTo(180, 5);
     // The internal scroll reports itself back to the page.
     expect(wrapper.emitted('scroll')).toEqual([[{ top: 180, left: 0 }]]);
+    wrapper.unmount();
+  });
+
+  it('an echoed prop value equal to the last emission is not forced back into the scroller', async () => {
+    const wrapper = mountCanvas({ scrollTop: 0 });
+    pumpFrame();
+    const { visible } = layerCanvases(wrapper);
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+    const blitsBefore = drawImageOn(viewCtx).length;
+
+    // The user scrolls natively; the component reports 180 to the page.
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    Object.defineProperty(scroller, 'scrollTop', { value: 180, configurable: true });
+    scroller.dispatchEvent(new Event('scroll'));
+    await nextTick();
+    pumpFrame();
+    expect(wrapper.emitted('scroll')).toEqual([[{ top: 180, left: 0 }]]);
+
+    // The page echoes 180 back while the user has already kept scrolling to
+    // 240: the self-echo must be dropped, not forced into the scroller.
+    Object.defineProperty(scroller, 'scrollTop', { value: 240, configurable: true });
+    await wrapper.setProps({ scrollTop: 180 });
+    await nextTick();
+    expect(scroller.scrollTop).toBe(240);
+    expect(drawImageOn(viewCtx).length).toBe(blitsBefore + 1); // no extra blit
+    wrapper.unmount();
+  });
+
+  it('a genuinely external scroll prop still resyncs the scroller', async () => {
+    const wrapper = mountCanvas({ scrollTop: 0 });
+    pumpFrame();
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    Object.defineProperty(scroller, 'scrollTop', { value: 0, writable: true, configurable: true });
+
+    await wrapper.setProps({ scrollTop: 90 });
+    await nextTick();
+    expect(scroller.scrollTop).toBe(90);
     wrapper.unmount();
   });
 });
@@ -649,6 +779,103 @@ describe('playback bar accents', () => {
     expect(stroke).toBeDefined();
     expect(overlayCtx.props.get('strokeStyle')).toBe('rgb(88, 176, 255)');
     expect(overlayCtx.props.get('fillStyle')).toBe('rgba(88, 176, 255, 0.14)');
+    wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Sizing: pure viewport resizes reuse the bitmap; huge patterns fail over
+// ---------------------------------------------------------------------
+
+describe('resize scheduling', () => {
+  it('a pure viewport resize repaints the layers without rebuilding the bitmap', async () => {
+    const wrapper = mountCanvas();
+    pumpFrame();
+    const bitmap = bitmapOf(wrapper);
+    const staticFillsBefore = fillsOn(bitmap).length;
+    expect(staticFillsBefore).toBeGreaterThan(0);
+
+    // The ResizeObserver path: a new viewport size, same pattern, same DPR.
+    Object.defineProperty(Element.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => VIEWPORT_W + 60,
+    });
+    try {
+      fireComponentResize();
+      await nextTick();
+      pumpFrame();
+
+      // The bitmap was not cleared/repainted; the visible layer was blitted
+      // again from the still-valid bitmap.
+      expect(fillsOn(bitmap).length).toBe(staticFillsBefore);
+      const { visible } = layerCanvases(wrapper);
+      const viewCtx = contexts.find((c) => c.canvas === visible)!;
+      expect(drawImageOn(viewCtx).length).toBeGreaterThan(0);
+    } finally {
+      restoreViewport();
+    }
+    wrapper.unmount();
+  });
+
+  it('a DPR change rebuilds the static bitmap', async () => {
+    const wrapper = mountCanvas();
+    pumpFrame();
+    const bitmapBefore = bitmapOf(wrapper);
+    expect(fillsOn(bitmapBefore).length).toBeGreaterThan(0);
+
+    // Stub the property on window itself: the component reads
+    // window.devicePixelRatio at applySize time, and vi.stubGlobal's
+    // globalThis patch does not reliably reach the jsdom window object.
+    const dprDescriptor = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio') ?? {
+      configurable: true,
+      value: 1,
+    };
+    Object.defineProperty(window, 'devicePixelRatio', {
+      configurable: true,
+      value: 2,
+    });
+    try {
+      fireComponentResize();
+      // Frame 1 runs applySize (which schedules the repaint); frame 2 runs it.
+      await nextTick();
+      pumpFrame();
+      pumpFrame();
+
+      // New backing-store size ⇒ a different bitmap canvas was painted.
+      const bitmapAfter = bitmapOf(wrapper);
+      expect(bitmapAfter.canvas).not.toBe(bitmapBefore.canvas);
+      expect(fillsOn(bitmapAfter).length).toBeGreaterThan(0);
+    } finally {
+      Object.defineProperty(window, 'devicePixelRatio', dprDescriptor);
+    }
+    wrapper.unmount();
+  });
+});
+
+describe('bitmap size cap', () => {
+  it('a pattern whose bitmap exceeds the device-px ceiling emits rendererError once', async () => {
+    // 512 tracks × 4096 rows blows far past the 64M device-px cap even at
+    // DPR 1; a real browser would silently fail to allocate this canvas.
+    const manyTracks = Array.from({ length: 512 }, (_, i) => makeTrack(`t${i}`, 4));
+    const wrapper = mountCanvas({ tracks: manyTracks, rows: 4096 });
+    await pumpFrame();
+
+    const errors = wrapper.emitted('rendererError');
+    expect(errors).toHaveLength(1);
+    const error = (errors![0] as unknown[])[0] as Error;
+    expect(error.message).toMatch(/device-pixel cap/i);
+
+    // One-shot: later scrolls must not re-emit.
+    await wrapper.setProps({ scrollTop: 10 });
+    await pumpFrame();
+    expect(wrapper.emitted('rendererError')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('a normal pattern stays under the cap and never emits rendererError', async () => {
+    const wrapper = mountCanvas();
+    await pumpFrame();
+    expect(wrapper.emitted('rendererError')).toBeUndefined();
     wrapper.unmount();
   });
 });

@@ -191,10 +191,27 @@ function failRenderer(message: string): boolean {
 type BitmapSurface = OffscreenCanvas | HTMLCanvasElement;
 let bitmap: BitmapSurface | null = null;
 let bitmapKey = '';
+/** CSS extent the bitmap was built for; -1 until the first paint. */
+let bitmapCssWidth = -1;
+let bitmapCssHeight = -1;
+
+/**
+ * Device-pixel ceiling on the full-pattern bitmap's backing store. The
+ * largest realistic pattern (32 tracks × 256 rows) at DPR 2 would ask for
+ * ~794MB of canvas memory, which browsers silently refuse — the context
+ * comes back null (or the surface silently fails to rasterize) and the
+ * renderer would paint nothing. Above this cap the renderer reports an
+ * error instead so the page can fall back to the DOM grid.
+ *
+ * 64M device px ≈ 256MB RGBA, comfortably under the smallest known canvas
+ * area limits and enough for every pattern the editor can produce.
+ */
+const MAX_BITMAP_DEVICE_PX = 64 * 1024 * 1024;
 
 function ensureBitmap(cssW: number, cssH: number, scale: number): BitmapSurface | null {
   const w = Math.max(1, Math.ceil(cssW * scale));
   const h = Math.max(1, Math.ceil(cssH * scale));
+  if (w * h > MAX_BITMAP_DEVICE_PX) return null;
   const key = `${w}x${h}`;
   if (bitmap && bitmapKey === key) return bitmap;
   let next: BitmapSurface;
@@ -207,6 +224,8 @@ function ensureBitmap(cssW: number, cssH: number, scale: number): BitmapSurface 
   next.height = h;
   bitmap = next;
   bitmapKey = key;
+  bitmapCssWidth = cssW;
+  bitmapCssHeight = cssH;
   return next;
 }
 
@@ -221,7 +240,10 @@ function paintStatic(): boolean {
   const cssH = totalRowsHeight.value;
   if (cssW <= 0 || cssH <= 0) return true;
   const surface = ensureBitmap(cssW, cssH, dpr.value);
-  if (!surface) return failRenderer('pattern-canvas: could not create the offscreen bitmap');
+  if (!surface)
+    return failRenderer(
+      'pattern-canvas: pattern bitmap exceeds the device-pixel cap — falling back to the DOM grid',
+    );
   const rawCtx = surface.getContext('2d');
   if (!rawCtx) return failRenderer('pattern-canvas: offscreen 2D context unavailable');
   // The draw ops are 2D-context calls only, so the offscreen flavor is
@@ -293,6 +315,11 @@ function paintOverlay(): boolean {
   if (!ctx) return failRenderer('pattern-canvas: overlay canvas 2D context unavailable');
   ctx.setTransform(dpr.value, 0, 0, dpr.value, 0, 0);
   ctx.clearRect(0, 0, viewportW.value, viewportH.value);
+  // The bar/cursor draw ops speak pattern space (rowY, entryBoxRect) while
+  // this canvas is viewport-sized: shift the layer so the gutter stays
+  // pinned and the scroll offset lands the ops on the visible rows.
+  ctx.save();
+  ctx.translate(GUTTER_WIDTH_PX - viewLeft.value, -viewTop.value);
   const theme = getTheme();
   const l = layout.value;
   if (props.playbackRow >= 0 && props.playbackRow < l.rowCount) {
@@ -310,6 +337,7 @@ function paintOverlay(): boolean {
       macroNibble: props.activeMacroNibble,
     });
   }
+  ctx.restore();
   return true;
 }
 
@@ -355,7 +383,13 @@ function applySize(): void {
   const w = scroller.clientWidth;
   const h = scroller.clientHeight;
   const nextDpr = window.devicePixelRatio || 1;
-  const changed = w !== viewportW.value || h !== viewportH.value || nextDpr !== dpr.value;
+  // The bitmap depends on the pattern extent and the DPR, not the viewport:
+  // a resize that changes neither leaves it valid and only the visible
+  // layers need painting.
+  const bitmapInputsChanged =
+    nextDpr !== dpr.value ||
+    contentWidth.value !== bitmapCssWidth ||
+    totalRowsHeight.value !== bitmapCssHeight;
   viewportW.value = w;
   viewportH.value = h;
   dpr.value = nextDpr;
@@ -369,8 +403,9 @@ function applySize(): void {
     }
   }
   // A backing-store reset clears the layer, so both visible layers always
-  // repaint; the bitmap only rebuilds when the pattern's own size changed.
-  schedule(changed ? ['static', 'overlay', 'blit'] : ['blit']);
+  // repaint; the static bitmap only rebuilds when the pattern's own extent
+  // or the DPR changed (otherwise the blit reuses it as-is).
+  schedule(bitmapInputsChanged ? ['static', 'overlay', 'blit'] : ['overlay', 'blit']);
 }
 
 let resizeRaf: number | null = null;
@@ -396,7 +431,9 @@ function onScrollerScroll(): void {
   if (Math.abs(el.scrollTop - viewTop.value) < 0.5) return;
   viewTop.value = el.scrollTop;
   emitScroll();
-  schedule(['blit']);
+  // The overlay's pattern→viewport translate reads viewTop/viewLeft, so a
+  // scroll must repaint it alongside the blit.
+  schedule(['blit', 'overlay']);
 }
 
 function onHScroll(): void {
@@ -405,7 +442,7 @@ function onHScroll(): void {
   if (Math.abs(el.scrollLeft - viewLeft.value) < 0.5) return;
   viewLeft.value = el.scrollLeft;
   emitScroll();
-  schedule(['blit']);
+  schedule(['blit', 'overlay']);
 }
 
 /** External scroll (auto-scroll, page state): adopt, sync the scrollers. */
@@ -413,10 +450,16 @@ watch(
   () => props.scrollTop,
   (v) => {
     if (Math.abs(v - viewTop.value) < 0.5) return;
+    // Self-echo: a value we emitted ourselves round-tripping through the
+    // page state. Drop it instead of force-resyncing the scroller — the
+    // user may already have scrolled past it, and snapping back would
+    // revert their scroll. A genuinely external change never equals our
+    // last emission and still resyncs below.
+    if (Math.abs(v - lastEmitted.top) < 0.5) return;
     viewTop.value = v;
     const el = scrollerRef.value;
     if (el && Math.abs(el.scrollTop - v) >= 0.5) el.scrollTop = v;
-    schedule(['blit']);
+    schedule(['blit', 'overlay']);
   },
 );
 
@@ -424,10 +467,11 @@ watch(
   () => props.scrollLeft,
   (v) => {
     if (Math.abs(v - viewLeft.value) < 0.5) return;
+    if (Math.abs(v - lastEmitted.left) < 0.5) return;
     viewLeft.value = v;
     const el = hscrollRef.value;
     if (el && Math.abs(el.scrollLeft - v) >= 0.5) el.scrollLeft = v;
-    schedule(['blit']);
+    schedule(['blit', 'overlay']);
   },
 );
 

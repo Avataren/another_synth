@@ -28,7 +28,9 @@ export interface UserSettings {
   /**
    * When true, the pattern grid renders through the canvas renderer
    * (PatternCanvas.vue) instead of the DOM grid (TrackerPattern.vue).
-   * Default: true.
+   * Default: false — the canvas renderer is opt-in until its remaining
+   * rough edges (per-pattern-swap frame stall, upcoming-pattern pre-render)
+   * are worked out; the toolbar toggle turns it on for testing.
    */
   canvasPatternRenderer: boolean;
   /** When true, MOD files use lightweight Web Audio playback instead of full WASM synth. Default: true. */
@@ -81,10 +83,14 @@ export interface UserSettings {
  *
  * v1: `useSimplifiedModInstruments` became the default for MOD playback.
  *
- * v2: `canvasPatternRenderer` became the default for the pattern grid. Same
- * logic as v1: a stored `false` before this version is almost always the
- * DOM-only default rather than a deliberate choice, so it is overwritten
- * once; users who prefer the DOM grid turn it back off and it sticks.
+ * v2: `canvasPatternRenderer` was version-gated to false. The canvas
+ * renderer is experimental: until the upcoming-pattern pre-render lands,
+ * every pattern swap pays a ~30-100ms full-bitmap paint, so the shipped
+ * default keeps the DOM grid and the toolbar toggle opts in for testing.
+ * The version gate still rewrites the stored value once — see
+ * `migrateSettingsVersion` — so a user who enabled the renderer under the
+ * earlier force-on default is put back on the DOM grid exactly once, and
+ * re-enabling it afterwards sticks.
  *
  * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
  * *not* get a version bump: it is a starting point rather than a correction, so
@@ -106,7 +112,7 @@ export const defaultSettings: UserSettings = {
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
-  canvasPatternRenderer: true,
+  canvasPatternRenderer: false,
   useSimplifiedModInstruments: true,
   sampleOversampleFactor: 4,
   sampleRemoveDcOffset: true,
@@ -165,11 +171,13 @@ export function migrateSettingsVersion(
     migrated.useSimplifiedModInstruments = true;
   }
 
-  // v1 -> v2: the canvas pattern renderer is now the default grid. Same
-  // reasoning as the v1 rewrite above: overwrite once, then respect any
-  // explicit later choice.
+  // v1 -> v2: the canvas pattern renderer goes back to opt-in. Same
+  // version-gated rewrite as the v1 change above: the stored value is
+  // overwritten exactly once (the renderer shipped briefly on by default,
+  // but every pattern swap stalls the frame until the pre-render lands),
+  // and an explicit later choice sticks.
   if (version < 2) {
-    migrated.canvasPatternRenderer = true;
+    migrated.canvasPatternRenderer = false;
   }
 
   migrated.settingsVersion = SETTINGS_VERSION;

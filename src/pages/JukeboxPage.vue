@@ -415,11 +415,26 @@ const patternAreaHeight = ref(600);
 const canvasRenderer = computed(() => userSettings.value.canvasPatternRenderer);
 const canvasRendererFailed = ref(false);
 
+/**
+ * Latest scroll position reported by the canvas pattern renderer.
+ *
+ * The rAF callback reads this, not its closure: scroll events arrive in
+ * bursts faster than frames, and a captured payload would keep writing a
+ * stale position over newer ones. Adopting the newest value per frame is
+ * what keeps the page state where the user actually scrolled.
+ */
+let pendingCanvasScroll: { top: number; left: number } | null = null;
+
 function onCanvasScroll(payload: { top: number; left: number }): void {
+  pendingCanvasScroll = payload;
   if (scrollRafId !== null) return;
   scrollRafId = requestAnimationFrame(() => {
-    patternAreaScrollTop.value = payload.top;
-    patternAreaScrollLeft.value = payload.left;
+    const pending = pendingCanvasScroll;
+    pendingCanvasScroll = null;
+    if (pending) {
+      patternAreaScrollTop.value = pending.top;
+      patternAreaScrollLeft.value = pending.left;
+    }
     scrollRafId = null;
   });
 }
