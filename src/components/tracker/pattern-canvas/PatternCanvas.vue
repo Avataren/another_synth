@@ -30,7 +30,11 @@
     <div ref="scrollerRef" class="canvas-scroller" @scroll="onScrollerScroll">
       <div class="canvas-viewport">
         <canvas ref="visibleCanvasRef" class="canvas-layer"></canvas>
-        <canvas ref="overlayCanvasRef" class="canvas-layer"></canvas>
+        <canvas
+          ref="overlayCanvasRef"
+          class="canvas-layer"
+          @mousedown="onCanvasMouseDown"
+        ></canvas>
       </div>
       <div
         class="canvas-spacer"
@@ -53,7 +57,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   GUTTER_WIDTH_PX,
-  headerHeightPx,
   rowHeightPx,
   rowPitchPx,
   rowY,
