@@ -11,6 +11,13 @@ This file captures key context discovered while debugging patch loading, envelop
   - **Native host**: used by the demo binary (`rust-wasm/src/bin/native_demo.rs`, feature `native-host`).
 - The high-level UI / patch editor is in TypeScript under `src/audio/**` and uses a worklet + WASM module exported from `rust-wasm/pkg/audio_processor.js`.
 
+## TypeScript Correctness Requirement (2026-09, user-mandated)
+
+- Any agent touching TypeScript in this repo MUST deliver code with **zero TypeScript errors and zero warnings** — strict-clean under the repo's tsconfig, including test files.
+- Do not rely on `npm run test:run`/eslint alone: also verify the type-checker (`npx tsc --noEmit` or the quasar build, which surfaces TS18048-style errors eslint misses).
+- Never fix type errors with blanket `!` assertions, `any` casts, or by loosening types — use proper narrowing/guards or explicit existence assertions.
+- Record the type-check output in `.ai/checks-<n>.txt` alongside test/lint output before reporting done.
+
 ## Audio Graph & Global Nodes
 
 - The runtime graph is `rust-wasm/src/graph/graph.rs` (`AudioGraph`).
