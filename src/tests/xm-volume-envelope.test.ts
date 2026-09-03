@@ -948,7 +948,9 @@ describe('looping volume envelopes', () => {
       value: 1,
       time: 0.16,
     });
-    expect(envelopeCalls.filter((c) => c.value < 1)).toHaveLength(0);
+    expect(
+      envelopeCalls.filter((c) => c.value !== undefined && c.value < 1),
+    ).toHaveLength(0);
   });
 
   it('walks the release tail through the loop segment after key-off', () => {
@@ -999,7 +1001,10 @@ describe('looping volume envelopes', () => {
     // ends the note. Follow up by looping the release tail in
     // scheduleTrackerRelease instead of this one-pass approximation.
     const values = envelopeCalls
-      .filter((c) => c.kind === 'linearRamp' && c.value < 1)
+      .filter(
+        (c): c is ParamCall & { value: number } =>
+          c.kind === 'linearRamp' && c.value !== undefined && c.value < 1,
+      )
       .map((c) => c.value);
     expect(values).toEqual([8 / 64, 22 / 64, 0]);
     expect(values.filter((v) => Math.abs(v - 8 / 64) < 1e-9).length).toBe(1);
