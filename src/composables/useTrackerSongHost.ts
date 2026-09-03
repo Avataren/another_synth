@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { useTrackerAudioStore } from 'src/stores/tracker-audio-store';
@@ -13,6 +13,7 @@ import { useTrackerSongBuilder } from 'src/composables/useTrackerSongBuilder';
 import type { TrackerSongBuilderContext } from 'src/composables/useTrackerSongBuilder';
 import { useTrackerFileIO } from 'src/composables/useTrackerFileIO';
 import type { TrackerFileIOContext } from 'src/composables/useTrackerFileIO';
+import { useMobileLayout } from 'src/composables/useMobileLayout';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 
 export interface TrackerSongHostOptions {
@@ -109,6 +110,36 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
   const tracksWithActiveNotes = ref<Set<number>>(new Set());
 
   /**
+   * Whether anything is actually looking at the per-track taps.
+   *
+   * The phone layout draws neither the per-track waveforms nor the spectrum
+   * analyser, and turning them off in settings has the same effect on a
+   * desktop: with no viewer, every tap is a GainNode plus a second
+   * connection from every voice, kept awake by a silent sink, for nothing.
+   * The bank is told to stop building them at all.
+   */
+  const isMobileLayout = useMobileLayout();
+  const trackMonitoringWanted = computed(
+    () =>
+      !isMobileLayout.value &&
+      (userSettingsStore.settings.showWaveformVisualizers ||
+        userSettingsStore.settings.showSpectrumAnalyzer),
+  );
+
+  watch(
+    trackMonitoringWanted,
+    (wanted) => {
+      songBank.setTrackMonitoringEnabled(wanted);
+      // The nodes handed to the visualizers are the taps: stale ones would
+      // keep a disconnected graph alive, and a fresh set is needed the
+      // moment monitoring comes back.
+      if (wanted) updateTrackAudioNodes();
+      else clearTrackAudioNodes();
+    },
+    { immediate: true },
+  );
+
+  /**
    * Ordered by track index, for the spectrum analyzer's per-channel mode --
    * which only applies to the classic 4-channel Amiga layout.
    */
@@ -123,6 +154,7 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
     trackIndex: number,
     instrumentId?: string,
   ): void {
+    if (!trackMonitoringWanted.value) return;
     const normalized = normalizeInstrumentId(instrumentId);
     // Not the instrument's output: one sample is one instrument, shared by
     // every channel that plays it, so that node carries other tracks too. The
@@ -133,6 +165,10 @@ export function useTrackerSongHost(options: TrackerSongHostOptions = {}) {
   }
 
   function updateTrackAudioNodes(): void {
+    if (!trackMonitoringWanted.value) {
+      clearTrackAudioNodes();
+      return;
+    }
     const nodes: Record<number, AudioNode | null> = {};
     const tracks = (currentPattern.value?.tracks ?? []) as TrackerTrackData[];
     for (let i = 0; i < tracks.length; i++) {

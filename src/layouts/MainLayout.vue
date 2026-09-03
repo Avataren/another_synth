@@ -1,7 +1,7 @@
 <template>
   <q-layout view="lHh Lpr lFf" class="app-layout">
     <q-header elevated class="app-header">
-      <q-toolbar class="app-toolbar">
+      <q-toolbar class="app-toolbar" :class="{ 'is-mobile': isMobileLayout }">
         <q-toolbar-title>Synthesizer</q-toolbar-title>
 
         <q-tabs
@@ -61,6 +61,14 @@ import { storeToRefs } from 'pinia';
 import CpuUsageHeader from 'src/components/CpuUsageHeader.vue';
 import { useThemeStore } from 'src/stores/theme-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
+import { useMobileLayout } from 'src/composables/useMobileLayout';
+
+/**
+ * The 44px header has to hold five destinations on a 390px screen. The app
+ * name and the CPU readout are the two things it can lose without losing a
+ * capability, which leaves the tabs the width they need.
+ */
+const isMobileLayout = useMobileLayout();
 
 // Initialize theme store - this will automatically apply the saved theme from localStorage
 useThemeStore();
@@ -186,6 +194,39 @@ function handleStop() {
     width: 100%;
     justify-content: center;
   }
+}
+
+/*
+ * Phone header: name and CPU meter out, tabs given the whole bar.
+ *
+ * Five labels do not fit 390px whatever is done to them, so the tabs keep
+ * their own overflow scrolling (Quasar draws arrows) -- what matters is that
+ * Settings and Help stay *reachable*, which they were not when the toolbar
+ * clipped them behind the CPU readout.
+ */
+.app-toolbar.is-mobile {
+  gap: 4px;
+  padding: 2px 4px;
+}
+
+.app-toolbar.is-mobile :deep(.q-toolbar__title),
+.app-toolbar.is-mobile .cpu {
+  display: none;
+}
+
+.app-toolbar.is-mobile .main-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-toolbar.is-mobile :deep(.q-tab) {
+  padding: 0 8px;
+  min-height: 36px;
+}
+
+/* The transport buttons stay; the word beside them is what the buttons say. */
+.app-toolbar.is-mobile .playback-status {
+  display: none;
 }
 
 .preset-bar {

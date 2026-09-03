@@ -223,6 +223,49 @@ export class TrackerSongBank {
   }
 
   /**
+   * Whether per-track taps are built at all.
+   *
+   * The phone layout shows no per-track waveforms and no spectrum analyser,
+   * and the taps exist only to feed them: one GainNode per channel, a second
+   * connection from every voice, and a live branch of the graph kept awake
+   * by a silent sink -- for 32 channels, on the hardware least able to
+   * afford it. Off, `getTrackMonitor` builds nothing and voices connect to
+   * their instrument alone.
+   */
+  private trackMonitoringEnabled = true;
+
+  setTrackMonitoringEnabled(enabled: boolean): void {
+    if (this.trackMonitoringEnabled === enabled) return;
+    this.trackMonitoringEnabled = enabled;
+    if (enabled) return;
+    // Voices already sounding keep their connection until they end; what is
+    // dropped here is the taps themselves, so nothing new connects and the
+    // sink has nothing left to keep awake.
+    for (const monitor of this.trackMonitors.values()) {
+      try {
+        monitor.disconnect();
+      } catch {
+        // Already disconnected.
+      }
+    }
+    this.trackMonitors.clear();
+    if (this.monitorSink) {
+      try {
+        this.monitorSink.disconnect();
+      } catch {
+        // Already disconnected.
+      }
+      this.monitorSink = null;
+    }
+  }
+
+  /** The tap for a track, or null when per-track monitoring is off. */
+  private maybeTrackMonitor(trackIndex: number): GainNode | null {
+    if (!this.trackMonitoringEnabled) return null;
+    return this.getTrackMonitor(trackIndex);
+  }
+
+  /**
    * Silent terminus for the monitor taps.
    *
    * A branch that ends in nothing is not guaranteed to be processed, so the
@@ -249,6 +292,9 @@ export class TrackerSongBank {
     trackIndex: number,
     instrumentId: string | undefined,
   ): AudioNode | null {
+    // Nothing to visualise with, and asking would build the tap this mode
+    // exists to avoid.
+    if (!this.trackMonitoringEnabled) return null;
     const active = instrumentId ? this.instruments.get(instrumentId) : undefined;
     if (active?.instrument instanceof ModInstrument) {
       return this.getTrackMonitor(trackIndex);
@@ -1237,6 +1283,9 @@ export class TrackerSongBank {
     this.voices.cutReleasingVoicesForTrack(trackIndex, scheduledTime);
     // Also gate off the previous voice for this instrument/track if known.
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
+    const monitorNode = Number.isFinite(trackIndex as number)
+      ? this.maybeTrackMonitor(trackIndex as number)
+      : null;
     const voiceIndex = active.instrument.noteOnAtTime(
       midi,
       velocity,
@@ -1249,10 +1298,9 @@ export class TrackerSongBank {
         ...(tickSeconds !== undefined ? { tickSeconds } : {}),
         // The channel owns a voice, so notes never cut another channel's.
         ...(trackIndex !== undefined ? { trackIndex } : {}),
-        // Per-track visualiser tap; carries this channel alone.
-        ...(Number.isFinite(trackIndex as number)
-          ? { monitorNode: this.getTrackMonitor(trackIndex as number) }
-          : {}),
+        // Per-track visualiser tap; carries this channel alone. Absent when
+        // per-track monitoring is off (the phone layout).
+        ...(monitorNode ? { monitorNode } : {}),
       },
     );
 

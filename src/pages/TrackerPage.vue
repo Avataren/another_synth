@@ -3,7 +3,7 @@
     <div
       ref="trackerContainer"
       class="tracker-container"
-      :class="{ 'edit-mode': isEditMode }"
+      :class="{ 'edit-mode': isEditMode, 'is-mobile': isMobileLayout }"
       tabindex="0"
       @keydown="onKeyDown"
     >
@@ -17,7 +17,132 @@
         </div>
       </div>
 
-      <div class="tracker-toolbar">
+      <!--
+        Phone layout: one horizontal strip instead of three wrapping
+        sections. Everything stays on one line and scrolls sideways, which
+        costs one row of the little vertical space a phone has instead of
+        the four the wrapped desktop toolbar took. Transport lives here too
+        -- on desktop it sits in the song panel, which is collapsed here.
+      -->
+      <div v-if="isMobileLayout" class="tracker-toolbar toolbar-mobile">
+        <div class="toolbar-strip">
+          <button
+            type="button"
+            class="transport-icon-btn"
+            :class="{ active: playbackMode === 'song' && isPlaying }"
+            title="Play song"
+            :disabled="isLoadingSong"
+            @click="handlePlaySong"
+          >
+            <q-icon name="play_arrow" size="20px" />
+          </button>
+          <button
+            type="button"
+            class="transport-icon-btn"
+            :class="{ active: playbackMode === 'pattern' && isPlaying }"
+            title="Play pattern"
+            :disabled="isLoadingSong"
+            @click="handlePlayPattern"
+          >
+            <q-icon name="replay" size="18px" />
+          </button>
+          <button
+            type="button"
+            class="transport-icon-btn"
+            title="Stop"
+            :disabled="isLoadingSong"
+            @click="handleStop"
+          >
+            <q-icon name="stop" size="20px" />
+          </button>
+
+          <span class="strip-divider" aria-hidden="true"></span>
+
+          <button
+            v-for="panel in MOBILE_PANELS"
+            :key="panel.id"
+            type="button"
+            class="panel-chip"
+            :class="{ active: mobilePanel === panel.id }"
+            :aria-expanded="mobilePanel === panel.id"
+            @click="toggleMobilePanel(panel.id)"
+          >
+            {{ panel.label }}
+            <span class="chip-caret" aria-hidden="true">{{
+              mobilePanel === panel.id ? '▾' : '▸'
+            }}</span>
+          </button>
+
+          <span class="strip-divider" aria-hidden="true"></span>
+
+          <button
+            type="button"
+            class="edit-mode-toggle toolbar-edit-toggle"
+            :class="{ active: isEditMode }"
+            @click="toggleEditMode"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            class="toolbar-icon-button"
+            :class="{ active: isFullscreen }"
+            :title="isFullscreen ? 'Exit full screen' : 'Full screen pattern'"
+            @click="toggleFullscreen"
+          >
+            ⛶
+          </button>
+
+          <span class="strip-divider" aria-hidden="true"></span>
+
+          <button
+            type="button"
+            class="song-button ghost"
+            :disabled="isLoadingSong"
+            @click="handleNewSong"
+          >
+            New
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
+            :disabled="isLoadingSong"
+            @click="handleLoadSongFile"
+          >
+            Load
+          </button>
+          <button
+            type="button"
+            class="song-button"
+            :disabled="isLoadingSong"
+            @click="handleSaveSongFile"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
+            :disabled="isLoadingSong"
+            @click="openDemoBrowser()"
+          >
+            Demos
+          </button>
+          <button
+            type="button"
+            class="song-button ghost"
+            :disabled="isLoadingSong"
+            @click="openJukebox"
+          >
+            Jukebox
+          </button>
+          <label class="toggle toolbar-toggle">
+            <input v-model="autoScroll" type="checkbox" />
+            <span>Follow</span>
+          </label>
+        </div>
+      </div>
+
+      <div v-else class="tracker-toolbar">
         <div class="toolbar-section toolbar-left">
           <button
             type="button"
@@ -124,8 +249,18 @@
         </div>
       </div>
 
-      <div class="top-grid" v-show="!isFullscreen">
+      <!--
+        Desktop: three panels side by side, always open. Phone: one sheet
+        over the pattern showing whichever chip is expanded, and nothing at
+        all while none is -- the pattern is what the screen is for.
+      -->
+      <div
+        v-show="!isFullscreen && (!isMobileLayout || mobilePanel !== null)"
+        class="top-grid"
+        :class="{ 'top-grid-sheet': isMobileLayout }"
+      >
         <SequenceEditor
+          v-show="!isMobileLayout || mobilePanel === 'patterns'"
           ref="sequenceEditorRef"
           class="top-panel"
           :sequence="sequence"
@@ -141,7 +276,10 @@
           @rename-pattern="handleRenamePattern"
           @request-refocus="refocusTracker"
         />
-        <div class="summary-card top-panel">
+        <div
+          v-show="!isMobileLayout || mobilePanel === 'song'"
+          class="summary-card top-panel"
+        >
           <div class="summary-header">
             <div class="eyebrow">Tracker</div>
             <div class="engine-rate" :title="engineRateTitle">
@@ -325,7 +463,10 @@
           </div>
         </div>
 
-        <div class="instrument-panel top-panel">
+        <div
+          v-show="!isMobileLayout || mobilePanel === 'instruments'"
+          class="instrument-panel top-panel"
+        >
           <div class="panel-header">
             <div class="panel-title">Instruments</div>
             <div class="page-tabs">
@@ -480,7 +621,7 @@
       </div>
 
       <div
-        v-if="userSettings.showWaveformVisualizers"
+        v-if="waveformVisualizersVisible"
         ref="visualizerRowRef"
         class="visualizer-row"
         :style="{
@@ -533,7 +674,7 @@
 
       <div class="pattern-area-wrapper" ref="patternAreaWrapperRef">
         <TrackerSpectrumAnalyzer
-          v-if="userSettings.showSpectrumAnalyzer"
+          v-if="spectrumAnalyzerVisible"
           :node="masterOutputNode"
           :track-nodes="spectrumTrackNodes"
           :is-playing="isPlaying"
@@ -570,7 +711,7 @@
             :container-height="patternAreaHeight"
             :is-mouse-selecting="isMouseSelecting"
             :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
-            :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+            :reserve-side-gutter="spectrumAnalyzerVisible"
             :granular-scroll="userSettings.granularPlaybackScroll"
             :enable-editing="isEditMode"
             :upcoming-pattern="upcomingPattern"
@@ -599,7 +740,7 @@
             :container-height="patternAreaHeight"
             :is-mouse-selecting="isMouseSelecting"
             :show-extra-effect-column="userSettings.showTrackerExtraEffectColumn"
-            :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+            :reserve-side-gutter="spectrumAnalyzerVisible"
             :upcoming-pattern="upcomingPattern"
             @rowSelected="setActiveRow"
             @cellSelected="setActiveCell"
@@ -717,6 +858,7 @@ import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { useMobileLayout } from 'src/composables/useMobileLayout';
 import { storeToRefs } from 'pinia';
 
 const router = useRouter();
@@ -931,6 +1073,58 @@ function updatePatternAreaHeight() {
     patternAreaWidth.value = patternAreaRef.value.clientWidth;
   }
 }
+
+// ---------------------------------------------------------------
+// Phone layout
+// ---------------------------------------------------------------
+
+/**
+ * On a phone the three top panels collapse to chips in the toolbar and open
+ * one at a time as a sheet over the pattern, so the pattern -- the only part
+ * that cannot be summarised -- gets the screen.
+ */
+const isMobileLayout = useMobileLayout();
+
+const MOBILE_PANELS = [
+  { id: 'song', label: 'Song' },
+  { id: 'patterns', label: 'Patterns' },
+  { id: 'instruments', label: 'Instr' },
+] as const;
+
+type MobilePanelId = (typeof MOBILE_PANELS)[number]['id'];
+
+const mobilePanel = ref<MobilePanelId | null>(null);
+
+function toggleMobilePanel(id: MobilePanelId): void {
+  mobilePanel.value = mobilePanel.value === id ? null : id;
+}
+
+// Leaving the phone layout (a rotate, a resized window) must not leave a
+// sheet pinned over a desktop grid that is showing the same panels anyway.
+watch(isMobileLayout, (mobile) => {
+  if (!mobile) mobilePanel.value = null;
+});
+
+// Full screen means the pattern and nothing else.
+watch(
+  () => isFullscreen.value,
+  (full) => {
+    if (full) mobilePanel.value = null;
+  },
+);
+
+/**
+ * The visualizers are off on a phone whatever the settings say: they are the
+ * most expensive thing on the page (a canvas per channel, plus the taps
+ * feeding them) and the least affordable there. The song host reads the same
+ * condition to stop the bank building per-track taps at all.
+ */
+const spectrumAnalyzerVisible = computed(
+  () => userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value,
+);
+const waveformVisualizersVisible = computed(
+  () => userSettings.value.showWaveformVisualizers && !isMobileLayout.value,
+);
 
 // ---------------------------------------------------------------
 // Canvas renderer wiring (mirrors JukeboxPage)
@@ -1434,7 +1628,7 @@ const canvasRendererActive = computed(
 );
 
 function refreshVisualizerAlignment() {
-  if (!userSettings.value.showWaveformVisualizers) {
+  if (!waveformVisualizersVisible.value) {
     visualizerPadding.value = { left: 18, right: 18 };
     // Re-wire rather than tear down: the waveform strip is gone but the proxy
     // scrollbar is not, and it shares this sync.
@@ -2090,7 +2284,7 @@ watch(
 watch(trackCount, () => refreshVisualizerAlignment());
 
 watch(
-  () => userSettings.value.showWaveformVisualizers,
+  waveformVisualizersVisible,
   async (show) => {
     if (show) {
       visualizerReady.value = false;
@@ -3330,5 +3524,142 @@ onBeforeUnmount(() => {
   .top-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* -------------------------------------------------------------------
+ * Phone layout
+ *
+ * Driven by the `is-mobile` class rather than a media query of its own, so
+ * one definition of "phone" (useMobileLayout) decides both what renders and
+ * how it is laid out -- a sheet positioned by CSS while the JS still thinks
+ * it is on a desktop would be a sheet over nothing.
+ * ------------------------------------------------------------------- */
+
+.tracker-container.is-mobile {
+  gap: 6px;
+  padding: 6px 0 0;
+  /* The panel sheet is absolutely positioned against this. */
+  position: relative;
+}
+
+.tracker-toolbar.toolbar-mobile {
+  padding: 0 8px;
+  flex-wrap: nowrap;
+}
+
+/*
+ * Everything on one line, scrolling sideways.
+ *
+ * The desktop toolbar wraps, which on a 390px screen turned eleven controls
+ * into four stacked rows -- a third of the height of the phone, above the
+ * only part of the page anyone came for. Horizontal overflow costs one row
+ * instead, and the controls most used sit at the head of it.
+ */
+.toolbar-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  /* A horizontal strip inside a surface that pans vertically: claim the
+     horizontal axis and leave the vertical one to the page. */
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.toolbar-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.toolbar-strip > * {
+  flex: 0 0 auto;
+}
+
+.strip-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: var(--panel-border, rgba(255, 255, 255, 0.16));
+}
+
+.panel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.18));
+  background: var(--button-background, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary, #e8f3ff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panel-chip.active {
+  background: var(--tracker-active-bg, rgba(112, 194, 255, 0.25));
+  border-color: var(--tracker-accent-primary, rgba(112, 194, 255, 0.75));
+}
+
+.chip-caret {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+/*
+ * The expanded panel: a sheet over the pattern rather than a block above it.
+ *
+ * Above it, the pattern would start below the fold on any phone; over it,
+ * the pattern keeps its full height and the sheet is dismissed by tapping
+ * the chip again. Capped at 60vh so the rows underneath stay visible --
+ * a panel that covers the pattern entirely loses the context it edits.
+ */
+.top-grid.top-grid-sheet {
+  position: absolute;
+  top: 44px;
+  left: 8px;
+  right: 8px;
+  z-index: 15;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: 1fr;
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.top-grid.top-grid-sheet .top-panel {
+  min-height: 0;
+}
+
+.tracker-container.is-mobile .pattern-area {
+  /* The pattern is the page here: no analyser gutter, no side padding. */
+  padding: 0 4px 4px;
+}
+
+.tracker-container.is-mobile .song-button,
+.tracker-container.is-mobile .transport-button {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+/*
+ * Touch targets. 34px is below the 44px guideline on purpose: the strip is
+ * scrollable and its buttons are spaced, so the miss cost is a scroll rather
+ * than a wrong action, and 44px controls would leave room for four of them.
+ */
+.tracker-container.is-mobile .transport-icon-btn,
+.tracker-container.is-mobile .toolbar-icon-button {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
 }
 </style>
