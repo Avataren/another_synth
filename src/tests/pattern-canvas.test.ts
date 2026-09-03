@@ -328,6 +328,43 @@ const theme: PatternTheme = {
 // Fixtures + mount
 // ---------------------------------------------------------------------
 
+/**
+ * The custom properties the fixture theme resolves to. Installed as a
+ * getComputedStyle stub for every test: the component re-reads :root on
+ * mount (a theme flip may have happened while it was unmounted), so the
+ * "cascade" must serve the fixture palette. Theme-flip tests mutate this
+ * map before mutating :root.
+ */
+const baseFixtureVars: Record<string, string> = {};
+const fixtureVars: Record<string, string> = {
+  '--tracker-entry-base': theme.entryBase,
+  '--tracker-entry-filled': theme.entryFilled,
+  '--tracker-entry-row-sub': theme.rowSub,
+  '--tracker-entry-row-beat': theme.rowBeat,
+  '--tracker-entry-row-bar': theme.rowBar,
+  '--tracker-border-default': theme.borderDefault,
+  '--tracker-border-beat': theme.borderBeat,
+  '--tracker-border-bar': theme.borderBar,
+  '--tracker-selected-bg': theme.selectedBg,
+  '--tracker-selected-border': theme.selectedBorder,
+  '--tracker-active-bg': theme.activeBg,
+  '--tracker-active-border': theme.activeBorder,
+  '--tracker-accent-primary': theme.accentPrimary,
+  '--tracker-accent-secondary': theme.accentSecondary,
+  '--tracker-note-text': theme.noteText,
+  '--tracker-instrument-text': theme.instrumentText,
+  '--tracker-volume-text': theme.volumeText,
+  '--tracker-effect-text': theme.effectText,
+  '--tracker-default-text': theme.defaultText,
+  '--text-muted': theme.rowNumberText,
+  '--tracker-interpolated-linear': theme.interpolatedLinear,
+  '--tracker-interpolated-exponential': theme.interpolatedExponential,
+  '--panel-background': theme.panelBackground,
+  '--font-tracker': theme.fontTracker,
+};
+Object.assign(baseFixtureVars, fixtureVars);
+let computedStub: ReturnType<typeof stubComputedVars> | null = null;
+
 function makeTrack(id: string, rowCount = 32, note = 'C-4'): TrackerTrackData {
   return {
     id,
@@ -398,11 +435,16 @@ beforeEach(() => {
   installFakeRaf();
   installFakeResizeObserver();
   installViewport();
-  setCache(theme); // skip getComputedStyle entirely
+  setCache(theme);
+  computedStub = stubComputedVars(fixtureVars);
   contexts = stubCanvasContexts();
 });
 
 afterEach(() => {
+  computedStub?.mockRestore();
+  computedStub = null;
+  for (const key of Object.keys(fixtureVars)) delete fixtureVars[key];
+  Object.assign(fixtureVars, baseFixtureVars);
   HTMLCanvasElement.prototype.getContext = originalGetContext;
   restoreViewport();
   vi.unstubAllGlobals();
@@ -968,18 +1010,27 @@ const flippedPalette: Record<string, string> = {
   '--tracker-entry-filled': 'rgba(30, 24, 18, 0.95)',
   '--panel-background': '#1a1610',
   '--tracker-accent-primary': 'rgb(255, 180, 80)',
+  '--tracker-effect-text': '#ffa850',
   '--text-muted': '#c8a878',
 };
 
 function stubComputedVars(map: Record<string, string>) {
   // Same object reference is kept: the test mutates `map` after mount and
-  // the stub sees the flip, like a real :root style rewrite would.
-  const style = {
-    getPropertyValue: (name: string) => map[name] ?? '',
-  };
-  return vi
-    .spyOn(window, 'getComputedStyle')
-    .mockImplementation(() => style as unknown as CSSStyleDeclaration);
+  // the stub sees the flip, like a real :root style rewrite would. A proxy
+  // over the real computed style keeps every other accessor (display,
+  // visibility, … used by test-utils' isVisible) working.
+  const real = window.getComputedStyle.bind(window);
+  return vi.spyOn(window, 'getComputedStyle').mockImplementation((el) => {
+    const style = real(el);
+    return new Proxy(style, {
+      get(target, prop) {
+        if (prop === 'getPropertyValue') {
+          return (name: string) => map[name] ?? target.getPropertyValue(name);
+        }
+        return Reflect.get(target, prop);
+      },
+    }) as CSSStyleDeclaration;
+  });
 }
 /** A :root style write — the MutationObserver trigger applyTheme uses. */
 let flipSeq = 0;
@@ -1005,8 +1056,6 @@ async function pumpUntil(pred: () => boolean): Promise<void> {
 
 describe('theme flip repaints', () => {
   it('a theme flip repaints the static bitmap with the new palette', async () => {
-    const vars: Record<string, string> = {};
-    const restore = stubComputedVars(vars);
     try {
       const wrapper = mountCanvas();
       pumpFrame();
@@ -1015,7 +1064,7 @@ describe('theme flip repaints', () => {
       expect(fillsBefore).toBeGreaterThan(0);
 
       // New palette values + the :root style write the observer watches.
-      Object.assign(vars, flippedPalette);
+      Object.assign(fixtureVars, flippedPalette);
       flipTheme();
       await pumpUntil(() => fillsOn(bitmap).length > fillsBefore);
 
@@ -1024,13 +1073,34 @@ describe('theme flip repaints', () => {
       expect(fillsOn(bitmap).length).toBe(fillsBefore * 2);
       wrapper.unmount();
     } finally {
-      restore.mockRestore();
+      // afterEach restores fixtureVars
+    }
+  });
+
+  it('a flip while unmounted is picked up on remount (route navigation)', async () => {
+    try {
+      // Visit the canvas page, leave, flip the theme in settings, come back.
+      const first = mountCanvas();
+      pumpFrame();
+      first.unmount();
+
+      Object.assign(fixtureVars, flippedPalette);
+      flipTheme(); // the flip happens while nothing observes :root
+
+      const wrapper = mountCanvas();
+      pumpFrame();
+      const bitmap = bitmapOf(wrapper);
+      expect(fillsOn(bitmap).length).toBeGreaterThan(0);
+      // The remount painted with the NEW palette: the last cell fill of the
+      // static paint uses the flipped effect text, not the stale cache's.
+      expect(bitmap.props.get('fillStyle')).toBe(flippedPalette['--tracker-effect-text']);
+      wrapper.unmount();
+    } finally {
+      // afterEach restores fixtureVars
     }
   });
 
   it('a theme flip repaints the pre-rendered upcoming pattern too', async () => {
-    const vars: Record<string, string> = {};
-    const restore = stubComputedVars(vars);
     try {
       const upcoming = { id: 'p2', tracks: [makeTrack('u'), makeTrack('v')], rows: 32 };
       const wrapper = mountCanvas();
@@ -1048,7 +1118,7 @@ describe('theme flip repaints', () => {
       expect(prerenderFills).toBeGreaterThan(0);
 
       // New palette values + the :root style write the observer watches.
-      Object.assign(vars, flippedPalette);
+      Object.assign(fixtureVars, flippedPalette);
       flipTheme();
       await pumpUntil(() => fillsOn(prerender[0]!).length > prerenderFills);
 
@@ -1058,7 +1128,7 @@ describe('theme flip repaints', () => {
       expect(fillsOn(prerender[0]!).length).toBeGreaterThan(prerenderFills);
       wrapper.unmount();
     } finally {
-      restore.mockRestore();
+      // afterEach restores fixtureVars
     }
   });
 });
