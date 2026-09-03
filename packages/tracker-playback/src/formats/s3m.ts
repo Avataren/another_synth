@@ -138,8 +138,12 @@ export interface S3mInstrument {
   c2spd: number;
   /**
    * Raw OPL2 register/timbre bytes D00..D0B from an AdLib instrument header,
-   * preserved in file order for the future OPL playback task (Morten,
-   * 2026-09-03): parse and keep, mark inactive, never play here.
+   * preserved in file order exactly as stored for the future OPL playback
+   * task (Morten, 2026-09-03): parse and keep, mark inactive, never play
+   * here. The future consumer is a dedicated WASM OPL core (standalone OPL
+   * emulator, own worklet/voice path -- not the main synth); these raw bytes
+   * are its natural patch format, so no mapping layer is built toward the
+   * existing synth's FM primitives.
    */
   oplRegisters?: number[];
   /** AdLib default volume (0..64), from the AdLib header's own byte. */

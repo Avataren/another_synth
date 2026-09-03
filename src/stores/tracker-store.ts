@@ -48,15 +48,20 @@ export interface InstrumentSlot {
    * Raw OPL2/FM instrument data parsed from an S3M AdLib instrument header,
    * preserved for the future OPL playback task (Morten, 2026-09-03):
    * parse and keep, marked inactive -- the slot carries no patchId, so
-   * nothing plays it. The future OPL instrument type consumes these bytes
-   * so that phase never needs a re-parse.
+   * nothing plays it. The future consumer is a DEDICATED WASM OPL core (a
+   * small standalone OPL emulator with its own worklet/voice path, not the
+   * main WASM synth), and these bytes are kept exactly as the file stores
+   * them -- the natural patch format for that core. No mapping layer toward
+   * the existing synth's FM primitives is designed here or wanted.
    */
   oplData?: OplInstrumentData;
 }
 
 /**
- * The S3M AdLib header's own timbre block, byte-for-byte (see
- * formats/s3m.ts and the ST3.01b format doc's "adlib instrument format").
+ * The S3M AdLib header's own timbre block, byte-for-byte as the file stores
+ * it (see formats/s3m.ts and the ST3.01b format doc's "adlib instrument
+ * format"). This IS the patch format for the future dedicated WASM OPL core
+ * (Morten, 2026-09-03) -- raw, unmapped, inactive until then.
  */
 export interface OplInstrumentData {
   /** 'melody' (type 2) or 'drum' (type 3+). */
