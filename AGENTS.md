@@ -13,9 +13,9 @@ This file captures key context discovered while debugging patch loading, envelop
 
 ## TypeScript Correctness Requirement (2026-09, user-mandated)
 
-- Any agent touching TypeScript in this repo MUST deliver code with **zero TypeScript errors and zero warnings** — strict-clean under the repo's tsconfig, including test files.
-- Do not rely on `npm run test:run`/eslint alone: also verify the type-checker (`npx tsc --noEmit` or the quasar build, which surfaces TS18048-style errors eslint misses).
-- Never fix type errors with blanket `!` assertions, `any` casts, or by loosening types — use proper narrowing/guards or explicit existence assertions.
+- Any agent touching TypeScript in this repo MUST deliver code with **zero TypeScript errors in touched files** — strict-clean under the repo's tsconfig, including test files. Pre-existing baseline errors elsewhere must not be fixed in passing; record their count in the checks file instead.
+- Do not rely on `npm run test:run`/eslint alone: also verify the type-checker. `npx tsc --noEmit` covers `.ts` files only — it cannot see inside `.vue` single-file components (they resolve through the opaque shim). Work touching `.vue` files must be verified with `npx vue-tsc --noEmit` or `npx quasar build`, which surfaces TS18048-style template errors eslint misses.
+- Never fix type errors with blanket `!` assertions, `any` casts, or by loosening types — use proper narrowing/guards instead.
 - Record the type-check output in `.ai/checks-<n>.txt` alongside test/lint output before reporting done.
 
 ## Audio Graph & Global Nodes
