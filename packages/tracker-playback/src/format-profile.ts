@@ -114,6 +114,55 @@ export interface FormatProfile {
    * `y`. That is faithfully reproduced here rather than smoothed over.
    */
   readonly arpeggioStep: (tick: number, ticksPerRow: number) => 0 | 1 | 2;
+
+  /**
+   * Whether the fine, single-step slides remember their parameter and repeat
+   * it on a zero one: E1x/E2x (fine pitch), EAx/EBx (fine volume) and Xxy
+   * (extra-fine pitch).
+   *
+   * Every one of FT2's fine routines opens with the same two lines --
+   *
+   *   static void fineVolSlideUp(channel_t *ch, uint8_t param)
+   *   {
+   *       if (param == 0)
+   *           param = ch->fVolSlideUpSpeed;
+   *       ch->fVolSlideUpSpeed = param;
+   *
+   * (finePitchSlideUp and extraFinePitchSlide in ft2_replayer.c are the
+   * same shape, each with its own memory byte) -- so an `EA0` after `EB2`
+   * slides *down* by 2 again, and a run of `EB0` rows keeps walking the
+   * volume down one step per row. an-path.xm is written exactly that way:
+   * 2322 of its `EBx` commands carry a zero parameter.
+   *
+   * ProTracker's volumeFineUp/Down and finePortaUp/Down read the command
+   * byte raw with no memory -- a zero parameter is a genuine no-op there --
+   * and the native format keeps the no-op reading too, since its songs were
+   * written by ear against the old behaviour.
+   */
+  readonly fineSlideHasMemory: boolean;
+
+  /**
+   * Pan distance one pan-slide parameter unit moves per tick, on the
+   * processor's -1..1 pan scale.
+   *
+   * FT2 keeps pan as one 0..255 byte (128 = centre) and slides it by the raw
+   * parameter -- `newPan += param` per tick in `panningSlide`, and one unit
+   * per tick in the volume column's `v_PanSlideLeft`/`v_PanSlideRight` -- so
+   * a unit is 2/255 of full swing. This used to be 1/64, the volume-slide
+   * unit, which is almost exactly twice as far: a pan slide crossed the
+   * whole stereo field in 64 ticks where FT2 needs 128. The native format
+   * keeps 1/64 as its legacy-by-ear value; ProTracker has no pan slides at
+   * all, so its value is never read.
+   */
+  readonly panSlideUnit: number;
+
+  /**
+   * Whether F00 stops the song, as ProTracker's setSpeed does (`F00 - stop
+   * song; doStopSong = true;`). FT2 instead sets speed 0, which stalls its
+   * own replayer; this engine keeps the pre-existing clamp-to-1 reading for
+   * formats where the flag is false.
+   */
+  readonly f00StopsSong: boolean;
 }
 
 /**
@@ -161,6 +210,12 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   // Signed 4-bit, in eighths of a semitone.
   finetuneFromNibble: (nibble) => (nibble < 8 ? nibble : nibble - 16) / 8,
   arpeggioStep: protrackerArpeggioStep,
+  // ProTracker's fine routines read the command byte raw: a zero parameter
+  // moves nothing and is remembered by nothing.
+  fineSlideHasMemory: false,
+  // Never read: ProTracker has no pan slides. Kept at the legacy unit.
+  panSlideUnit: 1 / 64,
+  f00StopsSong: true,
 };
 
 /**
@@ -184,6 +239,15 @@ export const XM_PROFILE: FormatProfile = {
   // and 128 finetune units is one semitone.
   finetuneFromNibble: (nibble) => (nibble - 8) / 8,
   arpeggioStep: ft2ArpeggioStep,
+  // Every FT2 fine routine remembers its parameter: `if (param == 0)
+  // param = ch->f<...>Speed; ch->f<...>Speed = param;`
+  fineSlideHasMemory: true,
+  // FT2 pan is one 0..255 byte, so one parameter unit is 2/255 of the
+  // processor's -1..1 swing.
+  panSlideUnit: 2 / 255,
+  // FT2's setSpeed with a parameter below 32 sets speed 0, which stalls the
+  // song rather than stopping it cleanly; keep the engine's old clamp.
+  f00StopsSong: false,
 };
 
 /**
@@ -219,6 +283,12 @@ export const NATIVE_PROFILE: FormatProfile = {
   // Songs written against this engine were composed with volume-slide memory
   // in place, so keep it rather than silently altering existing work.
   volumeSlideHasMemory: true,
+  // Same legacy rationale: keep the no-memory fine slides and the old pan
+  // slide unit that native songs were written against, and let F00 keep its
+  // old clamp-to-speed-1 reading rather than stopping the song.
+  fineSlideHasMemory: false,
+  panSlideUnit: 1 / 64,
+  f00StopsSong: false,
 };
 
 const PROFILES: Record<ModuleFormat, FormatProfile> = {

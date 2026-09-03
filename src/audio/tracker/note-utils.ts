@@ -304,7 +304,12 @@ export function parseEffectCommand(macro?: string): EffectCommandResult {
     if (paramValue >= 0x20 && paramValue <= 0xff) {
       return { type: 'tempo', bpm: paramValue };
     }
-    return undefined;
+    // F00: ProTracker's stop song (pt2_replayer.c setSpeed: "F00 - stop
+    // song; doStopSong = true;"). Returned as speed 0 so the engine -- which
+    // knows the format profile -- can decide; returning undefined here (as
+    // this used to) dropped the command and the engine clamped a speed that
+    // never arrived.
+    return { type: 'speed', speed: 0 };
   }
 
   // Handle E command (extended effects)

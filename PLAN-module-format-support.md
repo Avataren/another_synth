@@ -2283,6 +2283,220 @@ Either drive XM envelopes from the JS tick loop (simple, mode-agnostic, but per-
 automation cost × up to 32 channels) or implement them in the WASM sampler (better
 runtime, more work). Decide at the start of Phase 4, informed by measured Phase 3 cost.
 
+### D88 — The XM fine slides remember their parameter; ours treated a zero as a no-op
+
+Every fine slide in FT2 opens with the same two lines. `fineVolSlideUp` (ft2_replayer.c;
+`fineVolSlideDown`, `finePitchSlideUp`/`finePitchSlideDown` and `extraFinePitchSlide` are the
+same shape, each with its own memory byte):
+
+```c
+static void fineVolSlideUp(channel_t *ch, uint8_t param)
+{
+    if (param == 0)
+        param = ch->fVolSlideUpSpeed;
+    ch->fVolSlideUpSpeed = param;
+
+    ch->realVol += param;
+    if (ch->realVol > 64)
+        ch->realVol = 64;
+    ...
+}
+```
+
+So an `EA0` after `EA2` slides up by 2 again, and a run of `EB0` rows keeps walking the
+volume down one step per row. ProTracker's `volumeFineUp`/`volumeFineDown` and
+`finePortaUp`/`finePortaDown` read `ch->n_cmd` raw with no memory -- a zero parameter is a
+genuine no-op there -- so this is per-format and went behind a new
+`FormatProfile.fineSlideHasMemory` (FT2 true; ProTracker and native false, the latter
+because native songs were written by ear against the no-op reading). The processor now keeps
+FT2's six separate memory bytes (`fPitchSlideUpSpeed`... `efPitchSlideDownSpeed`) -- E1x
+does not share with Xxy, which the tests pin.
+
+**Corpus impact:** 2960 zero-parameter fine volume slides in an-path.xm alone (2322 `EB0`,
+638 `EA0`), every one of them a real slide of the previous row's amount that the engine
+dropped; `E1x`/`E2x`/`Xxy` zero-parameters: 0. ProTracker's 775 `EAx` / 2333 `EBx` are
+all non-zero and unaffected either way.
+
+**Tests:** `src/tests/effect-reference-audit-2.test.ts` (the four D88 memory cases fail
+against the old code; the ProTracker and native no-op cases pin the unchanged path).
+
+### D89 — One pan-slide unit is 2/255 of full swing, not 1/64
+
+FT2 keeps pan as a single 0..255 byte (128 = centre) and slides it by the raw parameter:
+`panningSlide` does `newPan += param` per tick, and the volume column's
+`v_PanSlideLeft`/`v_PanSlideRight` move one unit -- `ch->outPan + (ch->volColumnVol & 0x0F)`
+-- per tick, clamped at 0/255 (the left clamp reached through FT2's own underflow-to-zero
+bug). The processor's -1..1 pan is that byte mapped by `(byte - 128) / 128`, so a unit is
+2/255. The code borrowed the volume-slide unit 1/64 -- the only other per-tick unit in the
+file -- which is almost exactly twice as far: a pan slide crossed the whole stereo field in
+64 ticks where FT2 needs 128. Now `FormatProfile.panSlideUnit` (2/255 for XM; native keeps
+1/64 as its legacy-by-ear value; ProTracker has no pan slides, its value is never read).
+
+**Corpus impact:** 144 volume-column pan slides (`0xDx` 0, `0xEy` 144: an-path.xm 124,
+DEADLOCK.XM 20) were each twice as wide as FT2's; effect-column `Pxy` appears 0 times in
+the corpus, so only the volume column was binding. 8xx itself was already correct --
+`(byte - 128) / 128` is exactly FT2's `setPan(param)` against a 0..255 pan byte, in both
+formats (54 MOD uses are multichannel, same convention).
+
+**Tests:** `src/tests/effect-reference-audit-2.test.ts` (three D89 cases fail against the
+old code) -- and `src/tests/xm-volume-column.test.ts` "slides panning per tick", which had
+pinned the old 1/64 unit, now pins 8*2/255 with the quoted routine.
+
+### D90 — Rxy counts tick 0 as its first increment
+
+FT2 reaches `doMultiNoteRetrig` on tick 0 as well as on every later tick
+(`handleEffects_TickZero` -> `multiNoteRetrig` -> `doMultiNoteRetrig`):
+
+```c
+static void doMultiNoteRetrig(channel_t *ch, uint8_t param)
+{
+    uint8_t cnt = ch->noteRetrigCounter + 1;
+    if (cnt < ch->noteRetrigSpeed)
+    {
+        ch->noteRetrigCounter = cnt;
+        return;
+    }
+    ch->noteRetrigCounter = 0;
+    ...
+```
+
+The counter is reset to zero only by `triggerInstrument` (a note trigger), and the
+retrigger fires the moment `cnt` reaches the interval. Starting the count at 0 on tick 0 --
+as the engine did -- put every Rxy retrigger one tick late and dropped the row's last one:
+at speed 6 an `R2` fires on ticks 1/3/5 in FT2 but on 2/4 here (one fewer), and an `R3` at
+speed 3 fired nowhere at all. Now the tick-0 count is 1, and an interval the tick-0 count
+already satisfies re-fires the note immediately, as FT2's tick-0 call does.
+
+Two FT2 quirks around it, both reproduced. A row whose volume column sets a volume does not
+count tick 0 -- `handleEffects_TickZero` passes the volume column *after* the tick-0 volume
+routines have consumed it (`multiNoteRetrig(ch, param, newVolCol)`, under the comment "FT2
+quirk: this one is changed by vol column effects, then used for a Rxy (multiNoteRetrig)
+check"). That needed import to distinguish a volume-column volume from the sample's default,
+which both land in the same velocity byte: `TrackerEntryData.volumeColumnVolume` (set by
+xm-import for 0x10-0x50 with a non-zero value) threads through the builder into
+`processEffectTick0`. And `E9x` still does **not** count tick 0 -- neither replayer reaches
+it there for a note row -- so its first fire stays at offset x.
+
+**Residual, measured at zero:** FT2's counter is *not* reset by a noteless Rxy row, so an
+interval larger than the row's tick count carries a partial count into the next row. The
+engine resets per Rxy row. Corpus: 73 XM `Rxy` cells (amiga boy.xm 1, an-path.xm 8,
+radix_-_yuki_satellites.xm 64), every interval 0-3 against speed 6 -- no row can leave a
+partial count, so the carry never binds here.
+
+**Tests:** `src/tests/effect-reference-audit-2.test.ts` (R2 phase, R1, the volume-column
+quirk, the E9x guard and R00 memory; the R2 and R1 cases fail against the old code).
+
+### D91 — F00 stops a ProTracker song
+
+pt2_replayer.c, `setSpeed`:
+
+```c
+static void setSpeed(moduleChannel_t *ch)
+{
+    if ((ch->n_cmd & 0xFF) > 0) { ... }
+    else
+    {
+        // F00 - stop song
+        doStopSong = true;
+    }
+}
+```
+
+The parser returned `undefined` for F00 (its speed branch starts at 1), so the command was
+dropped and playback ran on; and had it been returned, the engine's `setSpeed` clamp of 1
+would have compressed the rest of the song to six times its tempo. Now F00 parses as speed
+0 and, behind `FormatProfile.f00StopsSong` (ProTracker true; FT2 -- whose `setSpeed` with a
+parameter below 32 sets speed 0 and stalls its own replayer -- and native keep the old
+clamp), ends the song after the row plays out, the same deferred end a jump past the
+sequence gets.
+
+**Corpus impact:** 2 MOD cells, both at the very end of their songs (nexus_seven.mod
+pattern 9 row 63, oro incenso.mod pattern 22 row 62); 0 XM.
+
+**Tests:** `src/tests/effect-reference-audit-2.test.ts` (engine-level, built through
+mod-import and the song builder; both cases fail against the old code).
+
+### D92 — Verified correct: the volume column, 8xx, Cxx, Axy, 3xx, 0xy and the rest
+
+Checked against the replayers and left alone, with the routine each was read against:
+
+- **XM volume column** (`v_SetVolume`: `*volColumnData -= 16`, so 0x10..0x50 is volume
+  0..64; `v_FineVolSlideDown`/`v_FineVolSlideUp` tick-0 only; `v_VolSlideDown`/`Up` per
+  tick at `(col & 0xF)` units on the 0..64 scale; `v_SetVibSpeed` = `(col & 0xF) * 4`,
+  the same scale as 4xy's high nibble; `v_SetPan` = `col << 4`; column `0xFy` arms
+  `portamentoSpeed = (param << 4) * 4` in `getNewNote` while `v_Portamento` on ticks > 0
+  only continues the slide): all as implemented, including the volume column running
+  before the effect column and its slides having no parameter memory.
+- **8xx** -- `(param - 128) / 128` is FT2's `setPan(param)` against a 0..255 pan byte, in
+  both formats (54 MOD uses are multichannel, same convention).
+- **Axy** -- `volSlide`: up-nibble wins outright, per tick from tick 1, 0..64; memory per
+  D16/D20/D84; EAx/EBx as tick-0 single steps (memory now per D88).
+- **3xx** -- FT2 sets `portamentoSpeed = param * 4` on tick 0 (`getNewNote`, guarded
+  `p->efx != 5 && p->efxData != 0`), slides from tick 1, target from the row's note
+  (`preparePortamento`), `300` keeps the remembered speed; ProTracker's
+  `tonePortamento`/`tonePortNoChange` match at unit scale 1.
+- **Cxx** -- ProTracker's `volumeChange` and FT2's `setVol` both clamp the parameter to 64
+  and set (not slide) the volume; 46046 MOD cells, the most used effect in the corpus.
+- **0xy on MOD** -- ProTracker's `arpeggio` reads `song->tick % 3` off an up-counting tick,
+  offset x on tick 1 and y on tick 2, walking the finetuned period table from the channel's
+  current period (the overflow `periods[baseNote+arpNote]` into the padded table is the
+  table-wrapping D83 gave the XM side).
+- **E6x** -- ProTracker's `jumpLoop`: E60 marks the row, E6y loads the counter and jumps,
+  later visits decrement and jump only while above zero, so the section plays y times in
+  total; the engine's countdown matches.
+- **EDx** -- fires at tick x (both replayers compare against the tick count), carries only
+  what `noteDelayOverflowCarries` says (D87).
+- **E9x phase** -- fires at offsets x, 2x, ... from tick 1 in both replayers
+  (`song->tick % param == 0` in ProTracker, `(song.speed - song.tick) % param == 0` in FT2,
+  whose tick counts down); the tick-0 note-less case is D87.
+- **Txy** -- `tremor`'s sign-bit counter works out to x+1 ticks on, y+1 off, starting on,
+  with the cycle position and parameter persisting across rows; the engine's modulo of a
+  continuous position is equivalent. 0 uses in the corpus.
+- **Lxx** -- FT2 handles it on tick 0 only (`setEnvelopePos` in `JumpTab_TickZero`); the
+  engine emits the envelope-position jump on tick 0. 0 uses.
+- **Bxx/Dxx** -- `positionJump`/`patternBreak`: Dxx reads BCD (`(param >> 4) * 10 +
+  (param & 0xF)`) and discards a result above 63 (0 such commands in the corpus; the
+  engine clamps to the pattern length instead of jumping to row 0 -- unreachable, noted
+  for completeness); the F01-F1F speed / F20+ tempo split matches `setSpeed` in both
+  replayers.
+
+**Left as recorded gaps (not re-derived):** D81 (`Hxy`), D71 (`EEx`), D87 (`E3x`, `EDx`
+overflow, `E9x` tick 0).
+
+### D93 — Open: E0x and EFx, and the FT2-only instrument features the import drops
+
+Decided against implementing, with the routines quoted so the decision is reviewable.
+
+**`E0x` -- Amiga LED filter.** pt2-clone's `filterOnOff` is a hardware write, not a mixer
+parameter: `paulaWriteByte(0xBFE001, filterOn << 1); audio.ledFilterEnabled = filterOn;`
+It toggles the Amiga 8364's six-bit lowpass that sits over all four channels at once.
+Reproducing it needs an engine-wide filter model (a fixed lowpass over the whole mix) that
+nothing else in the engine has; 36 `E0x` commands across the 43-module MOD corpus, all in
+modules whose samples were written to be heard through it. Recorded as a gap, not silently
+dropped -- same shape as D81.
+
+**`EFx` -- funk repeat.** pt2-clone's `funkIt`/`updateFunk` mutate the *sample data* in
+place: `updateFunk` adds `funkTable[funkSpeed]` to an offset and on crossing 128 advances
+`n_wavestart` one byte into the loop, inverting that byte (`*ch->n_wavestart = -1 -
+*ch->n_wavestart;`). There is no Web Audio equivalent that does not destructively rewrite a
+shared AudioBuffer mid-playback. 9 `EFx` commands in the corpus. Recorded as a gap.
+
+**FT2 autovibrato and the panning envelope.** Parsed by the XM loader and dropped at
+import (20 instruments / 9683 notes and 20 / 5261). FT2's `updateVolPanAutoVib` runs both
+every tick alongside the volume envelope -- autoVib sweeps `autoVibAmp` from 0 to
+`(depth << 8)` over `sweep` ticks and then wobbles the period like a vibrato with a fixed
+waveform -- and both are per-instrument features the voice layer would need to carry. The
+corpus's 20 instruments with them sit in radix_-_yuki_satellites.xm and
+xyce-dans_la_rue.xm, which play recognisably without them; implementing either is a
+feature, not a correction, and is recorded rather than guessed at.
+
+**`Uxy` -- FT2 ignores it.** `JumpTab_TickNonZero[30]` (U) is `dummy` in ft2_replayer.c;
+the fine-vibrato reading this engine implements (quarter depth) matches the OpenMPT
+documentation, not FT2. 0 uses in either corpus; left as implemented, flagged so the
+divergence from the reference is on record.
+
+---
+
 ---
 
 ## 6b. Effect audit (2026-08-28)
@@ -2490,6 +2704,11 @@ panning one, and it already has a per-voice stage to hang automation on.
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-03 | fix | **The XM fine slides remember their parameter** (D88). Every FT2 fine routine opens `if (param == 0) param = ch->f<...>Speed; ch->f<...>Speed = param;`, so a run of `EB0` rows keeps walking the volume down one step per row; the engine treated each as a no-op. 2960 zero-parameter fine volume slides in an-path.xm alone were real slides being dropped. Behind `FormatProfile.fineSlideHasMemory` with FT2's six separate memory bytes; ProTracker's fine routines are memoryless and stay that way, as does native. Tests: `src/tests/effect-reference-audit-2.test.ts` (4 confirmed failing against the old code). |
+| 2026-09-03 | fix | **A pan slide moves 2/255 of full swing per parameter unit, not 1/64** (D89). FT2 pans on one 0..255 byte (`panningSlide`: `newPan += param`; volume column `v_PanSlideLeft`/`Right`: one unit per tick), so in the processor's -1..1 scale a unit is 2/255 -- the old 1/64 made every pan slide almost exactly twice as wide. 144 volume-column pan slides in an-path.xm and DEADLOCK.XM were affected; `Pxy` has 0 corpus uses. Behind `FormatProfile.panSlideUnit`. Tests: `src/tests/effect-reference-audit-2.test.ts`, and the `xm-volume-column` unit test that had pinned the old constant (3 confirmed failing against the old code). |
+| 2026-09-03 | fix | **`Rxy` counts tick 0 as its first retrigger increment** (D90). FT2 reaches `doMultiNoteRetrig` on tick 0 and fires the moment the count reaches the interval, so at speed 6 an `R2` fires on ticks 1/3/5 where this fired on 2/4 -- one fewer -- and an `R3` at speed 3 fired nowhere. An interval the tick-0 count already satisfies re-fires immediately (R11), and a volume-column volume suppresses the tick-0 count (FT2's `newVolCol` quirk, carried by a new `volumeColumnVolume` import flag). E9x does not count tick 0 in either replayer and is unchanged. 73 XM cells. Tests: `src/tests/effect-reference-audit-2.test.ts` (2 confirmed failing against the old code). |
+| 2026-09-03 | fix | **F00 stops a ProTracker song after its row** (D91). pt2-clone's `setSpeed` turns a zero parameter into `doStopSong = true`; the parser dropped F00 outright and the engine's clamp would have turned it into speed 1 -- six times the tempo. Behind `FormatProfile.f00StopsSong` (ProTracker only; FT2 stalls and native keeps the old reading). 2 corpus cells, both last rows of their songs. Tests: `src/tests/effect-reference-audit-2.test.ts` (2 confirmed failing against the old code). |
+| 2026-09-03 | note | **Systematic reference audit of the remaining effects** (D92/D93). Volume column, 8xx, Cxx, Axy, 3xx, 0xy (MOD), E6x, EDx, E9x phase, Txy, Lxx, Bxx/Dxx verified against the quoted replayer routines and left as they were. E0x (36 MOD cells), EFx (9) and FT2's autovibrato/panning envelope (20 instruments, parsed and dropped at import) decided against and recorded with quoted routines (D93); Uxy flagged as a deliberate FT2 divergence (0 uses). Known-opens D71/D81/D87 left untouched. 1203 green. |
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |

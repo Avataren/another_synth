@@ -216,6 +216,12 @@ export interface Step {
    */
   speedCommand?: number;
   /**
+   * True when this row's velocity came from an XM volume-column set-volume
+   * command (0x10-0x50). FT2's Rxy skips its tick-0 retrigger count on such
+   * rows; see TrackerEntryData.volumeColumnVolume.
+   */
+  volumeColumnVolume?: boolean;
+  /**
    * Tempo command (F20-FF): Sets BPM directly.
    * Value 32-255 represents the new BPM.
    */

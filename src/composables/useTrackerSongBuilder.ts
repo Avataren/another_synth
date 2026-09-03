@@ -339,6 +339,12 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
         step.volumeCommand = volumeCmd;
       }
 
+      // Marks the velocity as an XM volume-column set-volume; FT2's Rxy
+      // tick-0 quirk keys off exactly this (see the type's comment).
+      if (entry?.volumeColumnVolume) {
+        step.volumeColumnVolume = true;
+      }
+
       // Update context after building step
       if (instrumentId) {
         ctx.instrumentId = instrumentId;

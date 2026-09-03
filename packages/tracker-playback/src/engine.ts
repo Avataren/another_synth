@@ -216,6 +216,8 @@ export class PlaybackEngine {
    * looping is off. Null whenever an end is not pending.
    */
   private pendingEndTime: number | null = null;
+  /** Set when a row carried ProTracker's F00; the song ends after that row. */
+  private pendingSongStop = false;
 
   /** Last scheduled row (for lookahead scheduling) */
   private lastScheduledRow = -1;
@@ -474,6 +476,7 @@ export class PlaybackEngine {
   loadSong(song: Song, startSequenceIndex = 0) {
     this.song = song;
     this.pendingEndTime = null;
+    this.pendingSongStop = false;
     this.patternsById = new Map();
     for (const pattern of song.patterns) {
       if (!this.patternsById.has(pattern.id)) {
@@ -626,6 +629,7 @@ export class PlaybackEngine {
   stop() {
     this.state = 'stopped';
     this.pendingEndTime = null;
+    this.pendingSongStop = false;
     this.stopScheduledPlayback();
     this.scheduler.stop();
     this.resetEffectStates();
@@ -714,6 +718,7 @@ export class PlaybackEngine {
     if (!this.audioContext || !this.scheduledNoteHandler) return;
 
     this.pendingEndTime = null;
+    this.pendingSongStop = false;
     const now = this.audioContext.currentTime;
     // Initialize timing system for current position
     this.timingSystem.start(now, this.currentSequenceIndex, this.position.row);
@@ -963,6 +968,13 @@ export class PlaybackEngine {
       this.nextRowTime += secPerRow;
 
       this.lastScheduledRow = currentRow;
+
+      // An F00 row still plays out; the song ends where the next row would
+      // have begun, the same deferred end a jump past the sequence gets.
+      if (this.pendingSongStop) {
+        this.pendingEndTime = this.nextRowTime;
+        return;
+      }
     }
 
     // Jitter/lag instrumentation: track when scheduling approaches the deadline
@@ -1047,6 +1059,7 @@ export class PlaybackEngine {
     if (!this.audioContext) return false;
     if (this.audioContext.currentTime < this.pendingEndTime) return false;
     this.pendingEndTime = null;
+    this.pendingSongStop = false;
     this.stop();
     this.emit('songEnd', undefined);
     return true;
@@ -1095,8 +1108,18 @@ export class PlaybackEngine {
       let rowHasPatDelay = false;
       for (const step of steps) {
         if (step.speedCommand !== undefined) {
-          // F01-F1F: Set speed (1-31, where 6 is normal)
-          this.timingSystem.setSpeed(step.speedCommand);
+          if (step.speedCommand === 0 && this.formatProfile.f00StopsSong) {
+            // F00: ProTracker's setSpeed turns a zero parameter into
+            // doStopSong = true -- the song stops after this row plays out.
+            // Clamping it to speed 1 (as this used to) compressed the rest
+            // of the song to six times its tempo instead. FT2 reads F00 as
+            // speed 0, which stalls its own replayer; the profile keeps the
+            // old clamp there.
+            this.pendingSongStop = true;
+          } else {
+            // F01-F1F: Set speed (1-31, where 6 is normal)
+            this.timingSystem.setSpeed(step.speedCommand);
+          }
         }
         if (step.tempoCommand !== undefined) {
           // F20-FF: Set BPM directly (32-255)
@@ -1328,6 +1351,7 @@ export class PlaybackEngine {
           step.frequency,
           this.timingSystem.getTicksPerRow(),
           step.pan,
+          step.volumeColumnVolume,
         );
 
         // FT2's volume column runs alongside the effect column, after the
