@@ -24,7 +24,7 @@ import {
 } from './pattern-layout';
 import { trackGapPx, trackPitchPx, trackWidthPx } from '../track-metrics';
 import type { PatternTheme } from './pattern-theme';
-import { formatEntryCells, type EntryCells } from './format-entry-cells';
+import { EMPTY_CELLS, formatEntryCells, type EntryCells } from './format-entry-cells';
 import { activeRowBarWidthPx } from '../pattern-buffering';
 import type {
   TrackerEntryData,
@@ -67,9 +67,44 @@ export function buildInterpolatedRows(
  * Font for cell text: 12px (TrackerEntry's font-size) with the tracker font
  * stack from the theme, bold variants matching the DOM (.note 700,
  * .macro-digit 700, default weight 400).
+ *
+ * Memoized on the theme's font stack: a full-grid paint asks for a font
+ * twelve times per cell (~20k times for a 26-track pattern), and each ask
+ * was building a fresh string.
  */
+let fontStackCached = '';
+let fontRegularCached = '';
+let fontBoldCached = '';
+
 export function cellFont(theme: PatternTheme, bold = false): string {
-  return `${bold ? '700 ' : ''}12px ${theme.fontTracker}`;
+  if (theme.fontTracker !== fontStackCached) {
+    fontStackCached = theme.fontTracker;
+    fontRegularCached = `12px ${theme.fontTracker}`;
+    fontBoldCached = `700 12px ${theme.fontTracker}`;
+  }
+  return bold ? fontBoldCached : fontRegularCached;
+}
+
+/**
+ * The text state written so far in the current run, so identical writes can
+ * be skipped. Assigning `ctx.font` costs a font-string parse and a font
+ * lookup, and one cell alternates between exactly two fonts while writing
+ * twelve strings -- so the same value was being parsed nine times over per
+ * cell.
+ *
+ * A run never spans a save/restore or a second context: every entry point
+ * that paints text opens one with `beginTextRun`, and none of them saves,
+ * restores or changes context between its own text writes. That is what
+ * makes the memo safe to believe -- a stale claim would draw a cell in the
+ * wrong weight.
+ */
+let textFont = '';
+let textBaseline: CanvasTextBaseline | '' = '';
+
+/** Open a text run: nothing is known about the context's text state. */
+function beginTextRun(): void {
+  textFont = '';
+  textBaseline = '';
 }
 
 /** Text drawn with the theme's cell text colors (uppercase like the DOM). */
@@ -82,9 +117,16 @@ function drawText(
   theme: PatternTheme,
   bold = false,
 ): void {
+  const font = cellFont(theme, bold);
+  if (textFont !== font) {
+    ctx.font = font;
+    textFont = font;
+  }
+  if (textBaseline !== 'middle') {
+    ctx.textBaseline = 'middle';
+    textBaseline = 'middle';
+  }
   ctx.fillStyle = color;
-  ctx.font = cellFont(theme, bold);
-  ctx.textBaseline = 'middle';
   ctx.fillText(text.toUpperCase(), x, y);
 }
 
@@ -153,6 +195,10 @@ export function drawEntryBox(
   interpolated: 'linear' | 'exponential' | undefined,
   selected: boolean,
 ): void {
+  // The caller may have saved/restored around this cell (the component's
+  // per-cell clip does), so nothing is known about the context's text state.
+  beginTextRun();
+
   const box = entryBoxRect(trackIndex, row, layout);
   const filled = entry !== undefined;
   const { bg, border } = backgroundFor(row, filled, selected, theme);
@@ -162,17 +208,10 @@ export function drawEntryBox(
   ctx.strokeStyle = border;
   ctx.strokeRect(box.x, box.y, box.width, box.height);
 
-  const cells: EntryCells = entry !== undefined
-    ? formatEntryCells(entry)
-    : // TrackerEntry.vue's DEFAULT_CELLS for empty rows.
-      {
-        note: { display: '---', className: 'note' },
-        instrument: { display: '..', className: 'instrument' },
-        volumeHi: { display: '.', className: 'volume volume-high' },
-        volumeLo: { display: '.', className: 'volume volume-low' },
-        macroDigits: ['.', '.', '.'],
-        macro2Digits: ['.', '.', '.'],
-      };
+  // EMPTY_CELLS rather than a literal: empty cells are the common case in
+  // real patterns, and the literal allocated six objects and two arrays for
+  // every one of them on every full-grid paint.
+  const cells: EntryCells = entry !== undefined ? formatEntryCells(entry) : EMPTY_CELLS;
 
   // Cell content box: the fr columns only span inside the entry's
   // `padding: 6px 10px` + 1px border.
@@ -305,6 +344,12 @@ export function drawRowNumbers(
   const GUTTER_WIDTH = GUTTER_WIDTH_PX;
   const startRow = Math.max(0, data.startRow ?? 0);
   const endRow = Math.min(layout.rowCount, data.endRow ?? layout.rowCount);
+  // The gutter writes one font and one alignment for the whole run rather
+  // than re-stating them per row, and tells the cell text memo that it did.
+  beginTextRun();
+  ctx.font = cellFont(theme);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   for (let row = startRow; row < endRow; row++) {
     const y = rowY(row);
     const selected =
@@ -315,12 +360,12 @@ export function drawRowNumbers(
     ctx.strokeRect(0, y, GUTTER_WIDTH, rowHeightPx);
     const label = row.toString(16).toUpperCase().padStart(2, '0');
     ctx.fillStyle = theme.rowNumberText;
-    ctx.font = cellFont(theme);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.fillText(label, GUTTER_WIDTH / 2, y + rowHeightPx / 2);
-    ctx.textAlign = 'left';
   }
+  ctx.textAlign = 'left';
+  // Written outside the memo's knowledge, so it no longer describes the
+  // context.
+  beginTextRun();
 }
 
 export interface DrawSelectionBarData {

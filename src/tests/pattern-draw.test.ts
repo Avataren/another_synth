@@ -352,6 +352,55 @@ describe('drawEntryBox', () => {
   });
 });
 
+/**
+ * The draw ops skip a `ctx.font` write when the value is already set, which
+ * is worth several thousand font parses on a full-grid paint -- and is only
+ * safe while the memo can never claim a font the context does not have. A
+ * stale claim is invisible in the geometry and shows up as a whole column
+ * of cells drawn in the wrong weight, so the weight is asserted per glyph
+ * across a multi-cell paint rather than on one cell.
+ */
+describe('cell text weights survive the font memo', () => {
+  const regular = `12px ${theme.fontTracker}`;
+  const bold = `700 12px ${theme.fontTracker}`;
+
+  it('keeps note and macro digits bold and instrument/volume regular on every cell', () => {
+    const ctx = makeMockCtx();
+    const entry: TrackerEntryData = {
+      row: 1,
+      note: 'C-4',
+      instrument: '01',
+      volume: '40',
+      macro: 'A12',
+    };
+    drawStaticGrid(ctx, layout(2, false, 4), theme, {
+      tracks: [makeTrack([entry]), makeTrack([{ ...entry, row: 2 }])],
+      endRow: 4,
+    });
+
+    const drawn = texts(ctx);
+    // 2 tracks x 4 rows x (note + instrument + 2 volume + 3 macro digits).
+    expect(drawn).toHaveLength(2 * 4 * 7);
+    for (const call of drawn) {
+      expect(call.font).toBe(call.fillStyle === theme.instrumentText || call.fillStyle === theme.volumeText ? regular : bold);
+    }
+  });
+
+  it('does not leak the gutter\'s font into the cells painted after it', () => {
+    // drawRowNumbers writes the context's font itself, outside the memo.
+    const ctx = makeMockCtx();
+    drawRowNumbers(ctx, layout(1, false, 2), theme, {});
+    drawStaticGrid(ctx, layout(1, false, 2), theme, {
+      tracks: [makeTrack([{ row: 0, note: 'C-4' }])],
+      endRow: 2,
+    });
+
+    const notes = texts(ctx).filter((c) => c.fillStyle === theme.noteText);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes.every((c) => c.font === bold)).toBe(true);
+  });
+});
+
 describe('drawRowNumbers', () => {
   it('paints hex labels in a 78px gutter', () => {
     const ctx = makeMockCtx();
