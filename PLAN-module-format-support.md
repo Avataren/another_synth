@@ -2857,7 +2857,7 @@ needed -- nothing extracted was ever exported).
   worklet node, buffer capture, start/stop/dispose. `queryWorkletCpu` did NOT move:
   it probes an arbitrary instrument worklet's CPU, not the recorder; the review's
   §3a table placed it here in error (see split-map corrections below).
-- **`src/audio/tracker/track-voice-registry.ts`** (`TrackVoiceRegistry`, 348 lines):
+- **`src/audio/tracker/track-voice-registry.ts`** (`TrackVoiceRegistry`, 335 lines):
   `lastTrackVoice`, `trackVoiceOwner`, `trackReleasingVoices` and their helpers
   (`getTrackNotes`, set/peek/clear last voice, `rememberReleasingVoice`,
   `cutReleasingVoicesForTrack`, `endVoiceForReplacement`) moved as ONE gated unit with
