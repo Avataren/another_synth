@@ -290,8 +290,9 @@ describe('a hand edit of the macro column drops the raw bytes', () => {
   function editingContext(entries: TrackerEntryData[]) {
     const pattern: TrackerPattern = {
       id: 'p1',
+      name: 'Test pattern',
       rows: 4,
-      tracks: [{ id: 't1', entries }],
+      tracks: [{ id: 't1', name: 'Test track', entries }],
     };
     const currentPattern = computed(() => pattern);
     const context: TrackerEditingContext = {
@@ -317,16 +318,16 @@ describe('a hand edit of the macro column drops the raw bytes', () => {
       normalizeVolumeChars: (vol) => {
         const chars: [string, string] = ['.', '.'];
         const clean = (vol ?? '').toUpperCase();
-        if (/^[0-9A-F]$/.test(clean[0] ?? '')) chars[0] = clean[0];
-        if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1];
+        if (/^[0-9A-F]$/.test(clean[0] ?? '')) chars[0] = clean[0]!;
+        if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1]!;
         return chars;
       },
       normalizeMacroChars: (macro) => {
         const chars: [string, string, string] = ['.', '.', '.'];
         const clean = (macro ?? '').toUpperCase();
-        if (/^[0-9A-Z]$/.test(clean[0] ?? '')) chars[0] = clean[0];
-        if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1];
-        if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2];
+        if (/^[0-9A-Z]$/.test(clean[0] ?? '')) chars[0] = clean[0]!;
+        if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1]!;
+        if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2]!;
         return chars;
       },
       midiToTrackerNote: (midi) => `C-${Math.floor(midi / 12) - 1}`,
