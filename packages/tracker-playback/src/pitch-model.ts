@@ -291,7 +291,10 @@ export function createLinearPitchModel(): PitchModel {
  *
  * so the table is ProTracker's own hand-tuned periods times 32, halved per
  * octave nibble (compare notespd[1] = 25856 = 808*32, the ProTracker C#
- * entry). The `notespd` base row corresponds to S3M note 0x00.
+ * entry). The `notespd` base row corresponds to S3M note 0x00. One quirk:
+ * the B-1 entry is NOT ProTracker's 453 times 32 -- 453*32 = 14496, but
+ * st3play's notespd[11] = 14512 (= 453.5 * 32), a hand-tuned exception and
+ * the reason ST3's high B differs from MOD's.
  *
  * The period-to-rate conversion is quoted from `setspd` (`dig.c`):
  *
@@ -300,7 +303,7 @@ export function createLinearPitchModel(): PitchModel {
  * where tmpspd is the channel period, and from `scalec2spd` (`dig.c`) the
  * per-sample transposition:
  *
- *   uint32_t tmpspd = spd * C2FREQ;  // C2FREQ is 8363 (mixer/sinc.h)
+ *   uint32_t tmpspd = spd * C2FREQ;  // C2FREQ is 8363 (digdata.h)
  *   tmpspd /= ch->ac2spd;
  *
  * i.e. finetune lives in the sample's own c2spd ("C4Spd", 8363 = no
@@ -345,7 +348,7 @@ const MAX_S3M_PERIOD = 32767; // setmasterflags: song.aspdmax
 /**
  * ST3's base period row (S3M note octave 0), quoted verbatim from
  * st3play's `notespd` table (`digdata.c`) -- ProTracker's table entries
- * times 32. Octave k shifts the row right by k bits, so the full playable
+ * times 32 (B-1 excepted: 14512, not 453*32 -- hand-tuned). Octave k shifts the row right by k bits, so the full playable
  * table is this row transposed over S3M's octave nibbles.
  */
 const ST3_NOTESPD: readonly number[] = [

@@ -14,6 +14,7 @@
 
 import type { ModuleFormat } from './types';
 import type { EffectType } from './types';
+import type { ExtendedEffectSubtype } from './types';
 import {
   type PitchModel,
   createAmigaPitchModel,
@@ -202,6 +203,19 @@ export interface FormatProfile {
    * leave this undefined.
    */
   readonly extendedCommandByte: number | undefined;
+
+  /**
+   * Optional per-format table mapping the high parameter nibble of the
+   * extended command byte to an extended-effect subtype. When undefined
+   * the shared MOD/XM Exy numbering applies (see the default map in
+   * parseExtendedEffect, src/audio/tracker/note-utils.ts). Formats whose
+   * extended subcommand numbering differs -- S3M's Sxx, whose table is
+   * st3play's `ssoncejmp` (digcmd.c) rather than MOD/XM's -- carry their
+   * own table here. Subcommands with no format-neutral behaviour yet are
+   * simply absent from the table and decode to nothing (like M/N), never
+   * to a borrowed MOD/XM reading.
+   */
+  readonly extendedSubcommandMap?: Readonly<Record<number, ExtendedEffectSubtype>>;
 }
 
 /**
@@ -418,6 +432,45 @@ export const S3M_PROFILE: FormatProfile = {
   speedTempoCommandByte: 0x01, // 'A' -- set speed (manual: "Set speed to xx")
   tempoCommandByte: 0x14, // 'T' -- tempo = xx (manual: "valid values 20 to FF")
   extendedCommandByte: 0x13, // 'S' -- extended commands
+  // ST3's Sxx subcommand numbering is NOT the shared MOD/XM Exy numbering.
+  // This table is st3play digcmd.c's `ssoncejmp`, quoted verbatim (fetched
+  // 2026-09-03):
+  //
+  //   s_setfilt,     // 0    (dummied in ST3.21 -- the Amiga filter, like MOD's E0x)
+  //   s_setgliss,    // 1
+  //   s_setfinetune, // 2
+  //   s_setvibwave,  // 3
+  //   s_settrewave,  // 4
+  //   s_ret,         // 5
+  //   s_ret,         // 6
+  //   s_ret,         // 7
+  //   s_setpanpos,   // 8
+  //   s_ret,         // 9
+  //   s_stereocntr,  // A
+  //   s_patloop,     // B
+  //   s_notecut,     // C
+  //   s_notedelay,   // D
+  //   s_patterdelay, // E
+  //   s_ret          // F
+  //
+  // Only 0x0/0x8/0xC/0xD/0xE coincide with the MOD/XM Exy reading; S1x/S2x/
+  // S3x/S4x/SBx would silently mis-decode through the shared map (e.g. SBx
+  // pattern loop becomes a fine volume slide). s_ret nibbles -- 0x5/0x6/0x7/
+  // 0x9/0xA/0xF -- are deliberately absent and decode to undefined, like M/N:
+  // they have no format-neutral behaviour yet (SAx stereo control, S9x
+  // unknown, SFx unknown), so no union member is spent on a guess.
+  extendedSubcommandMap: {
+    0x0: 'filterToggle',
+    0x1: 'glissandoCtrl',
+    0x2: 'setFinetune',
+    0x3: 'vibratoWave',
+    0x4: 'tremoloWave',
+    0x8: 'setPan',
+    0xB: 'patLoop',
+    0xC: 'noteCut',
+    0xD: 'noteDelay',
+    0xE: 'patDelay',
+  },
   effectCommands: {
     0x02: 'posJump', // B
     0x03: 'patBreak', // C -- parameter is BCD-decoded at import (P5)
@@ -437,6 +490,10 @@ export const S3M_PROFILE: FormatProfile = {
     0x16: 'setGlobalVol', // V
     0x17: 'globalVolSlide', // W (MPT-era)
     0x18: 'setPan', // X -- 8-bit pan, 0..255 (MPT-era)
+    // Y (panbrello, 0x19) and Z (MIDI, 0x1A) are left unmapped: OpenMPT's
+    // S3MConvert decodes them for every S3M, but ST3's own replayer ignores
+    // Y (sotherjmp: s_ret) and dummies Z (s_zinfo, a variable setter), so
+    // neither has format-neutral behaviour -- same rationale as M/N.
   },
 };
 

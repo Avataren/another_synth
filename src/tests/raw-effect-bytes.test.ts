@@ -553,4 +553,100 @@ describe('S3M letter commands decode via the S3M profile (P3, D96)', () => {
       effect: { type: 'portaUp', paramX: 2, paramY: 0 },
     });
   });
+
+  describe('Sxx subcommand decode uses ST3’s own ssoncejmp numbering, not MOD/XM’s (D97)', () => {
+    /**
+     * st3play digcmd.c `ssoncejmp` (quoted in S3M_PROFILE and D97):
+     * s_setfilt(0) s_setgliss(1) s_setfinetune(2) s_setvibwave(3)
+     * s_settrewave(4) s_ret(5/6/7) s_setpanpos(8) s_ret(9) s_stereocntr(A)
+     * s_patloop(B) s_notecut(C) s_notedelay(D) s_patterdelay(E) s_ret(F).
+     * The shared MOD/XM Exy map would instead decode S1x/S2x as fine pitch
+     * slides, S5x as set-finetune, S6x as pattern loop, S7x as tremolo
+     * waveform, SAx/SFx as fine volume slides -- only 0x0/0x8/0xC/0xD/0xE
+     * coincide. Every value below is pinned from ST3's table, not the
+     * shared one.
+     */
+    it('decodes ST3’s own S-nibbles through the ssoncejmp table', () => {
+      // S1x: "Set Glissando control on/off" (s_setgliss).
+      expect(decodeRawEffect(0x13, 0x10, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'extEffect', paramX: 1, paramY: 0, extSubtype: 'glissandoCtrl' },
+      });
+      // S2x: "Set Finetune" (s_setfinetune, ProTracker's signed table).
+      expect(decodeRawEffect(0x13, 0x2f, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'extEffect', paramX: 2, paramY: 15, extSubtype: 'setFinetune' },
+      });
+      // S3x: "Set Vibrato waveform" (s_setvibwave).
+      expect(decodeRawEffect(0x13, 0x32, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'setVibratoWave', paramX: 3, paramY: 2, extSubtype: 'vibratoWave' },
+      });
+      // S4x: "Set Tremolo waveform" (s_settrewave).
+      expect(decodeRawEffect(0x13, 0x41, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'setTremoloWave', paramX: 4, paramY: 1, extSubtype: 'tremoloWave' },
+      });
+      // SBx: "Pattern loop" (s_patloop). The shared Exy map would have
+      // decoded this as a fine volume slide DOWN -- the mis-decode the
+      // reviewer flagged.
+      expect(decodeRawEffect(0x13, 0xb2, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'extEffect', paramX: 11, paramY: 2, extSubtype: 'patLoop' },
+      });
+      // SCx: note cut (coincides with the shared map -- pinned anyway).
+      expect(decodeRawEffect(0x13, 0xc4, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'noteCut', paramX: 12, paramY: 4, extSubtype: 'noteCut' },
+      });
+      // SDx: note delay (coincides).
+      expect(decodeRawEffect(0x13, 0xd3, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'noteDelay', paramX: 13, paramY: 3, extSubtype: 'noteDelay' },
+      });
+      // SEx: pattern delay (coincides).
+      expect(decodeRawEffect(0x13, 0xe1, S3M_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'patDelay', paramX: 14, paramY: 1, extSubtype: 'patDelay' },
+      });
+    });
+
+    it('leaves the s_ret nibbles undefined rather than borrowing MOD/XM readings', () => {
+      // s_ret in ssoncejmp: S5x/S6x/S7x/S9x/SAx/SFx have no ST3 behaviour,
+      // and SAx (stereo control) / SFx (unknown) have no format-neutral
+      // union member yet -- so they decode to nothing, like M/N, never to
+      // the shared map's finePortaDown/patLoop/tremoloWave/retrigger/
+      // fineVolUp/invertLoop.
+      for (const x of [0x5, 0x6, 0x7, 0x9, 0xa, 0xf]) {
+        expect(decodeRawEffect(0x13, (x << 4) | 0x3, S3M_PROFILE)).toBeUndefined();
+      }
+    });
+
+    it('keeps MOD/XM extended decoding on the shared map byte-identically', () => {
+      // The per-profile table is opt-in: MOD/XM/native leave
+      // extendedSubcommandMap undefined and keep the shared Exy numbering
+      // (pinned against the values that differ from ST3's table).
+      expect(PROTRACKER_PROFILE.extendedSubcommandMap).toBeUndefined();
+      expect(XM_PROFILE.extendedSubcommandMap).toBeUndefined();
+      // E6x is pattern loop on MOD/XM but an s_ret nibble (S6x) on ST3.
+      expect(decodeRawEffect(0x0e, 0x63, PROTRACKER_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'extEffect', paramX: 6, paramY: 3, extSubtype: 'patLoop' },
+      });
+      expect(decodeRawEffect(0x0e, 0x63, XM_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'extEffect', paramX: 6, paramY: 3, extSubtype: 'patLoop' },
+      });
+      // EAx is a fine volume slide up on MOD/XM but s_ret (SAx) on ST3.
+      expect(decodeRawEffect(0x0e, 0xa1, PROTRACKER_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'volSlide', paramX: 10, paramY: 1, extSubtype: 'fineVolUp' },
+      });
+      // E5x is set-finetune on MOD/XM, unmapped (S5x) on ST3.
+      expect(decodeRawEffect(0x0e, 0x54, PROTRACKER_PROFILE)).toEqual({
+        type: 'effect',
+        effect: { type: 'extEffect', paramX: 5, paramY: 4, extSubtype: 'setFinetune' },
+      });
+    });
+  });
 });
