@@ -953,13 +953,14 @@ describe('looping volume envelopes', () => {
     ).toHaveLength(0);
   });
 
-  it('walks the release tail through the loop segment after key-off', () => {
-    // After key-off, scheduleTrackerRelease walks the envelope's tail -- the
-    // points after the sustain point -- in a single pass and never wraps
-    // back into the loop. At key-off volEnvTick sits at the sustain point
-    // (point 2, tick 8), which is before the loop end (point 5, tick 32);
-    // the loop is not re-fired simply because the tail is played once, not
-    // because the position is past the loop end.
+  it('loops the release segment under the fadeout after key-off', () => {
+    // At key-off the volEnvTick is unpinned from the sustain point and runs
+    // on into the loop, wrapping at loopEnd until the fadeout ends the note
+    // (ft2-clone processVolumeEnvelope, libxmp update_envelope_xm). The
+    // old implementation took the tail in one pass -- 24 ticks = 0.48s from
+    // the sustain point (tick 8) to the envelope end (tick 32) -- and cut
+    // the note there, audibly truncating sustain-looped instruments whose
+    // fadeout (32768/128 = 256 ticks = 5.12s here) was meant to carry them.
     const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
     setEnvelope({
       points: [
@@ -981,34 +982,94 @@ describe('looping volume envelopes', () => {
     envelopeCalls.length = 0;
     instrument.gateOffVoiceAtTime(voice, 1.0);
 
-    // The implementation takes the tail in one pass: 24 ticks = 0.48s from
-    // the sustain point (tick 8) to the envelope end (tick 32). That is
-    // shorter than the fadeout (32768/128 = 256 ticks = 5.12s), so the tail
-    // wins and the note ends with the ramp to 0 that the code synthesizes
-    // at releaseTime + 0.48s. Real FT2 diverges here: it keeps looping
-    // 8 -> 22 -> 8, and the fadeout -- not the tail -- ends the note. Known
-    // limitation -- see the TODO below.
+    // The release lasts the fadeout: 256 ticks = 5.12s after key-off.
     const end = envelopeCalls[envelopeCalls.length - 1]!;
     expect(end.kind).toBe('linearRamp');
     expect(end.value).toBe(0);
-    expect(end.time).toBeCloseTo(1.0 + 0.48, 6);
+    expect(end.time).toBeCloseTo(1.0 + 5.12, 6);
 
-    // One pass over the envelope's own release shape: 64 -> 8 -> 22, then
-    // the synthesized ramp to 0. (Point 5's value is 8, not 0: the loop
-    // breaks at `end` before reaching it and the code emits the final 0
-    // itself.) TODO: real FT2 (ft2-clone, libxmp update_envelope_xm) keeps
-    // looping loopStart..loopEnd -- repeating 8 -> 22 -- until the fadeout
-    // ends the note. Follow up by looping the release tail in
-    // scheduleTrackerRelease instead of this one-pass approximation.
+    // The loop repeats: the 8/64 and 22/64 loop values recur once per pass,
+    // scaled by the fade in progress, rather than sounding once.
+    // Each loop pass scales by the fade in progress, so values recur only
+    // approximately: a fadeout of 128 over 256 ticks loses 1/256 of the
+    // amplitude per tick, and a loop pass here spans 10 ticks. Assert the
+    // count of 8-level ramps and the 5% fade decay per pass rather than
+    // exact recurrences.
     const values = envelopeCalls
       .filter(
         (c): c is ParamCall & { value: number } =>
           c.kind === 'linearRamp' && c.value !== undefined && c.value < 1,
       )
       .map((c) => c.value);
-    expect(values).toEqual([8 / 64, 22 / 64, 0]);
-    expect(values.filter((v) => Math.abs(v - 8 / 64) < 1e-9).length).toBe(1);
-    expect(values.filter((v) => Math.abs(v - 22 / 64) < 1e-9).length).toBe(1);
+    // 8/64 ramps: one per pass, from the tail's tick-14 start through the
+    // passes that fit in the 256-tick fadeout.
+    const eighths = values.filter((v) => v * 64 > 7 && v * 64 < 8.5);
+    expect(eighths.length).toBeGreaterThanOrEqual(4);
+    // Each pass sits ~4.5% under the previous one at the same loop point.
+    if (eighths.length >= 2) {
+      const ratio = eighths[1]! / eighths[0]!;
+      expect(ratio).toBeGreaterThan(0.9);
+      expect(ratio).toBeLessThan(1);
+    }
+
+    // The loop still rings at the point the one-pass tail used to cut.
+    const pastOldCut = envelopeCalls.find(
+      (c) =>
+        c.kind === 'linearRamp' && c.time > 1.0 + 0.48 && c.value !== 0,
+    );
+    expect(pastOldCut).toBeDefined();
+  });
+
+  it('lets a sustain loop with no fadeout ring until the channel replays', () => {
+    // FT2 ends a key-off only when fadeoutVol runs out; with fadeout 0 it
+    // never does, so a sustain-looped envelope repeats forever. Cutting the
+    // note instead removes notes that were meant to ring.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      ...loopingEnvelope,
+      sustainPoint: 1,
+    });
+
+    const voice = instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 })!;
+    envelopeCalls.length = 0;
+    instrument.gateOffVoiceAtTime(voice, 1.0);
+
+    // No end-of-note ramp to zero: the note is left where key-off found it
+    // (the release freeze), with no fade and no further automation.
+    expect(envelopeCalls.some((c) => c.kind === 'linearRamp')).toBe(false);
+  });
+
+  it('ends a sustain-loop release at the fadeout, past the envelope end', () => {
+    // The loop, not the envelope running out of points, defines how long a
+    // release lasts: the take-on-me lead shape (last point tick 32) with a
+    // slow fadeout (32768/256 = 128 ticks = 2.56s) must play the loop for
+    // the whole fadeout rather than stopping at tick 32.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      points: [
+        { tick: 0, value: 64 },
+        { tick: 4, value: 64 },
+        { tick: 8, value: 64 },
+        { tick: 14, value: 8 },
+        { tick: 24, value: 22 },
+        { tick: 32, value: 8 },
+      ],
+      sustainPoint: 2,
+      loopStart: 3,
+      loopEnd: 5,
+      loopEnabled: true,
+      fadeout: 256,
+    });
+
+    const voice = instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 })!;
+    envelopeCalls.length = 0;
+    instrument.gateOffVoiceAtTime(voice, 1.0);
+
+    const end = envelopeCalls[envelopeCalls.length - 1]!;
+    expect(end.kind).toBe('linearRamp');
+    expect(end.value).toBe(0);
+    // 32768/256 = 128 ticks at 0.02s = 2.56s, well past the tail's 0.48s.
+    expect(end.time).toBeCloseTo(1.0 + 2.56, 6);
   });
 
   it('plays a non-looping envelope through to its end', () => {

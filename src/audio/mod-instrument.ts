@@ -1245,8 +1245,7 @@ export default class ModInstrument {
    *
    * FT2 decrements `fadeoutVol`, which starts at **32768**, by the
    * instrument's raw fadeout value every tick after key-off, so silence
-   * arrives after 32768/fadeout ticks with a linear decay that one linear ramp
-   * reproduces:
+   * arrives after 32768/fadeout ticks with a linear decay:
    *
    *   ch->fadeoutSpeed = ins->fadeout;  ch->fadeoutVol = 32768;   // trigger
    *   ch->fadeoutVol -= ch->fadeoutSpeed;                         // each tick
@@ -1254,6 +1253,16 @@ export default class ModInstrument {
    * (ft2-clone, `triggerInstrument` and `updateVolPanAutoVib`; the loader
    * stores the header field unscaled, `ins->fadeout = ih.fadeout`.) This used
    * 65536 and so faded every note for twice as long as FT2 does. See D82.
+   *
+   * After key-off the envelope position is no longer pinned at the sustain
+   * point: it advances into the points past it, and a loop that lives at or
+   * after the sustain repeats for as long as the fadeout takes. The loop is
+   * what the release *is* for such instruments -- the note ends when
+   * `fadeoutVol` runs out, not when the envelope runs out of points
+   * (ft2-clone `processVolumeEnvelope`, libxmp `update_envelope_xm`: key-off
+   * clears the sustain hold and the position wraps at loopEnd). The loop is
+   * unrolled here with each pass scaled by the fade progress, approximating
+   * FT2's envelope-value x fadeoutVol product at each envelope point.
    *
    * Returns how long the release lasts, or null when the note has no defined
    * end -- an envelope with neither a fadeout nor points past its sustain
@@ -1266,24 +1275,12 @@ export default class ModInstrument {
     releaseTime: number,
     tickSeconds: number,
   ): number | null {
-    const MAX_RELEASE_SECONDS = 10;
+    const MAX_RELEASE_SECONDS = 30;
     const points = envelope.points;
     const level = (value: number) => Math.max(0, Math.min(1, value / 64));
 
-    // Points after the sustain are the envelope's own release segment.
     const hasSustain =
       envelope.sustainPoint >= 0 && envelope.sustainPoint < points.length;
-    const tailStart = hasSustain ? envelope.sustainPoint : -1;
-    const tailSeconds =
-      tailStart >= 0 && tailStart < points.length - 1
-        ? (points[points.length - 1]!.tick - points[tailStart]!.tick) *
-          tickSeconds
-        : Infinity;
-
-    const fadeoutSeconds =
-      envelope.fadeout > 0
-        ? (32768 / envelope.fadeout) * tickSeconds
-        : Infinity;
 
     // An envelope with no sustain point is not released by a key-off at all.
     //
@@ -1317,6 +1314,95 @@ export default class ModInstrument {
       param.setValueAtTime(param.value, releaseTime);
     }
 
+    // While the key is down the position is pinned at the sustain point, so
+    // that is where the release starts from. With no sustain point there is
+    // nothing to start from: only the fadeout acts (and it multiplies with
+    // nothing, since the envelope was never held).
+    const sustainTick = hasSustain
+      ? points[envelope.sustainPoint]!.tick
+      : 0;
+
+    // A loop that lives at or after the sustain point repeats for as long as
+    // the fadeout takes: FT2's position wraps at loopEnd after key-off, and
+    // the fadeout -- not the envelope running out of points -- ends the note.
+    const releaseLoop =
+      hasSustain &&
+      envelope.loopEnabled &&
+      envelope.loopStart >= 0 &&
+      envelope.loopEnd > envelope.loopStart &&
+      envelope.loopEnd < points.length &&
+      points[envelope.loopEnd]!.tick >= sustainTick;
+
+    if (releaseLoop) {
+      const loopStartTick = points[envelope.loopStart]!.tick;
+      const loopEndTick = points[envelope.loopEnd]!.tick;
+      const loopTicks = loopEndTick - loopStartTick;
+
+      if (envelope.fadeout <= 0 || loopTicks <= 0) {
+        // A loop with no fadeout repeats forever: the note has no defined end
+        // and rings until the channel plays again.
+        return null;
+      }
+
+      const releaseTicks = 32768 / envelope.fadeout;
+      const end = Math.min(releaseTicks * tickSeconds, MAX_RELEASE_SECONDS);
+      const endTicks = end / tickSeconds;
+      // Fade progress at an envelope tick after key-off: fadeoutVol falls
+      // linearly from 32768 to 0 over `releaseTicks` ticks.
+      const fadeAt = (offsetTicks: number) =>
+        Math.max(0, 1 - offsetTicks / releaseTicks);
+
+      // Out of the sustain point and into the loop...
+      for (let i = envelope.sustainPoint + 1; i <= envelope.loopEnd; i++) {
+        const offset = points[i]!.tick - sustainTick;
+        if (offset >= endTicks) break;
+        param.linearRampToValueAtTime(
+          level(points[i]!.value) * fadeAt(offset),
+          releaseTime + offset * tickSeconds,
+        );
+      }
+
+      // ...then the loop itself, unrolled until the fadeout ends the note.
+      const approachTicks = loopEndTick - sustainTick;
+      const passes =
+        approachTicks >= endTicks
+          ? 0
+          : Math.min(
+              4096,
+              Math.ceil((endTicks - approachTicks) / loopTicks),
+            );
+      for (let pass = 0; pass < passes; pass++) {
+        const base = approachTicks + pass * loopTicks;
+        if (base >= endTicks) break;
+        for (let i = envelope.loopStart; i <= envelope.loopEnd; i++) {
+          const offset = base + (points[i]!.tick - loopStartTick);
+          if (offset >= endTicks) break;
+          param.linearRampToValueAtTime(
+            level(points[i]!.value) * fadeAt(offset),
+            releaseTime + offset * tickSeconds,
+          );
+        }
+      }
+
+      param.linearRampToValueAtTime(0, releaseTime + end);
+      return end;
+    }
+
+    // Without such a loop the release is the envelope's own tail, in one
+    // pass, for whichever of it and the fadeout ends first. The cap only
+    // bounds pathological fadeouts (below a fadeout of ~22 the fade would
+    // outlast 30s at the default tick); it is never what ends a musical
+    // note, which is what the old 10s cap did to long fadeouts.
+    const tailSeconds =
+      hasSustain && envelope.sustainPoint < points.length - 1
+        ? (points[points.length - 1]!.tick - sustainTick) * tickSeconds
+        : Infinity;
+
+    const fadeoutSeconds =
+      envelope.fadeout > 0
+        ? (32768 / envelope.fadeout) * tickSeconds
+        : Infinity;
+
     // Whichever of the two release terms ends first decides the note's end.
     // Clamp only after that test, so an envelope with neither term is
     // correctly reported as having no end rather than being cut at the cap.
@@ -1329,10 +1415,9 @@ export default class ModInstrument {
 
     // Follow the envelope's release segment for as long as it runs inside the
     // release window, so a shaped release is heard rather than a plain fade.
-    if (tailStart >= 0) {
-      const tailBaseTick = points[tailStart]!.tick;
-      for (let i = tailStart + 1; i < points.length; i++) {
-        const offset = (points[i]!.tick - tailBaseTick) * tickSeconds;
+    if (hasSustain) {
+      for (let i = envelope.sustainPoint + 1; i < points.length; i++) {
+        const offset = (points[i]!.tick - sustainTick) * tickSeconds;
         if (offset >= end) break;
         param.linearRampToValueAtTime(
           level(points[i]!.value),
