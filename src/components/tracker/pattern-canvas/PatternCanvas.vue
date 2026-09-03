@@ -59,6 +59,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
+  buildEntryLookup,
   entryBoxRect,
   GUTTER_WIDTH_PX,
   rowHeightPx,
@@ -81,9 +82,10 @@ import {
   drawStaticGrid,
   isRowSelected,
   trackAccent,
+  type InterpolatedRows,
   type PlaybackBarMode,
 } from './pattern-draw';
-import { getTheme, refresh as refreshTheme } from './pattern-theme';
+import { getTheme, refresh as refreshTheme, type PatternTheme } from './pattern-theme';
 import {
   buildPaintState,
   diffPaintState,
@@ -320,18 +322,22 @@ function ensureBitmap(cssW: number, cssH: number, scale: number): BitmapSurface 
  * Paint one changed cell of the static bitmap: clip to the entry box, clear
  * and repaint it (§3.3). Everything outside the clip is untouched, so the
  * rest of the bitmap stays valid for the blit.
+ *
+ * The context, theme and the track's row lookups come from the caller: they
+ * are per-track work, and rebuilding them per cell made a multi-cell repair
+ * (a paste, a multi-row delete) re-scan the whole track once for every row
+ * it touched.
  */
-function repaintCell(trackIndex: number, row: number): void {
-  const surface = bitmap;
-  if (!surface) return;
-  const rawCtx = surface.getContext('2d');
-  if (!rawCtx) return;
-  const ctx = rawCtx as unknown as CanvasRenderingContext2D;
-  const theme = getTheme();
+function repaintCell(
+  ctx: CanvasRenderingContext2D,
+  theme: PatternTheme,
+  trackIndex: number,
+  row: number,
+  track: TrackerTrackData,
+  lookup: Map<number, TrackerEntryData>,
+  interpolations: InterpolatedRows,
+): void {
   const l = layout.value;
-  const track = props.tracks[trackIndex];
-  if (!track) return;
-
   const box = entryBoxRect(trackIndex, row, l);
   // Repair canvas-space rect, widened by a device pixel per side so no
   // anti-aliased edge of the neighboring paint bleeds through the clip.
@@ -351,9 +357,6 @@ function repaintCell(trackIndex: number, row: number): void {
   ctx.clip();
   ctx.clearRect(cssX, cssY, cssW, cssH);
   ctx.translate(GUTTER_WIDTH_PX, 0);
-  const lookup = new Map<number, TrackerEntryData>();
-  for (const entry of track.entries) lookup.set(entry.row, entry);
-  const interpolations = buildInterpolatedRows(track);
   drawEntryBox(
     ctx,
     trackIndex,
@@ -374,9 +377,20 @@ function repaintCell(trackIndex: number, row: number): void {
  * there is no bitmap to repair — the caller falls back to a full paint.
  */
 function repaintCells(diffs: CellDiff[]): boolean {
-  if (!bitmap) return false;
+  const surface = bitmap;
+  if (!surface) return false;
+  const rawCtx = surface.getContext('2d');
+  if (!rawCtx) return false;
+  const ctx = rawCtx as unknown as CanvasRenderingContext2D;
+  const theme = getTheme();
   for (const diff of diffs) {
-    for (const row of diff.rows) repaintCell(diff.trackIndex, row);
+    const track = props.tracks[diff.trackIndex];
+    if (!track) continue;
+    const lookup = buildEntryLookup(track);
+    const interpolations = buildInterpolatedRows(track);
+    for (const row of diff.rows) {
+      repaintCell(ctx, theme, diff.trackIndex, row, track, lookup, interpolations);
+    }
   }
   paintedState = buildPaintState(
     props.tracks,

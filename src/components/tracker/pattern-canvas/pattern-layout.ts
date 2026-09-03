@@ -136,13 +136,23 @@ export function entryBoxRect(
  * `[offsets[i], offsets[i+1])`. The entry's own padding/border is subtracted
  * first, so callers pass a full track width and get content-box positions.
  */
-export function columnFractionOffsets(
+/**
+ * One memo slot per column layout.
+ *
+ * Every cell of a full-grid paint asks for the offsets of the same track
+ * width, so this was building an array (and re-running the reduce) once per
+ * cell. Both slots are keyed by the width they were computed for; callers
+ * only ever read the result, so the array is shared rather than copied.
+ */
+let baseOffsetsWidth = Number.NaN;
+let baseOffsets: readonly number[] = [];
+let dualOffsetsWidth = Number.NaN;
+let dualOffsets: readonly number[] = [];
+
+function computeColumnFractionOffsets(
   trackWidth: number,
-  showExtraEffectColumn: boolean,
-): number[] {
-  const fractions = showExtraEffectColumn
-    ? DUAL_FRACTIONS
-    : (BASE_FRACTIONS as unknown as readonly number[]);
+  fractions: readonly number[],
+): readonly number[] {
   const contentWidth = Math.max(
     0,
     trackWidth - 2 * entryHorizontalInsetPx,
@@ -156,6 +166,24 @@ export function columnFractionOffsets(
     offsets.push(acc);
   }
   return offsets;
+}
+
+export function columnFractionOffsets(
+  trackWidth: number,
+  showExtraEffectColumn: boolean,
+): readonly number[] {
+  if (showExtraEffectColumn) {
+    if (dualOffsetsWidth !== trackWidth) {
+      dualOffsets = computeColumnFractionOffsets(trackWidth, DUAL_FRACTIONS);
+      dualOffsetsWidth = trackWidth;
+    }
+    return dualOffsets;
+  }
+  if (baseOffsetsWidth !== trackWidth) {
+    baseOffsets = computeColumnFractionOffsets(trackWidth, BASE_FRACTIONS);
+    baseOffsetsWidth = trackWidth;
+  }
+  return baseOffsets;
 }
 
 /**

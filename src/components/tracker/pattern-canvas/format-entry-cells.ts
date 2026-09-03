@@ -23,6 +23,22 @@ export interface EntryCells {
   macro2Digits: string[];
 }
 
+/**
+ * TrackerEntry.vue's DEFAULT_CELLS: what an empty row draws.
+ *
+ * Shared and frozen rather than built per cell. Most cells of a real pattern
+ * are empty, so a full-grid paint was allocating this object graph thousands
+ * of times over to draw the same six dots. Callers only read it.
+ */
+export const EMPTY_CELLS: EntryCells = Object.freeze({
+  note: Object.freeze({ display: '---', className: 'note' }),
+  instrument: Object.freeze({ display: '..', className: 'instrument' }),
+  volumeHi: Object.freeze({ display: '.', className: 'volume volume-high' }),
+  volumeLo: Object.freeze({ display: '.', className: 'volume volume-low' }),
+  macroDigits: Object.freeze(['.', '.', '.']),
+  macro2Digits: Object.freeze(['.', '.', '.']),
+}) as EntryCells;
+
 /** Process cells only when entry exists - optimized to avoid unnecessary string operations */
 export function formatEntryCells(entry: TrackerEntryData): EntryCells {
   const volume = entry.volume ?? '..';
