@@ -998,6 +998,11 @@ function onWheel(e: WheelEvent): void {
 // ---------------------------------------------------------------------
 
 onMounted(() => {
+  // A theme flip while this component was unmounted (e.g. changed in
+  // settings, then navigating back) rewrote :root with no observer
+  // running — the module cache still holds the old palette, so re-read it
+  // before the first paint.
+  refreshTheme();
   applySize();
   schedule(['static', 'overlay', 'blit']);
   requestFollow();
