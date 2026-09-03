@@ -341,6 +341,10 @@ function normalizeSamplerStateWithDefaults(
     active: toBoolean(sampler.active, true),
     sampleRate: toNumber(sampler.sampleRate, 44100),
     channels: toNumber(sampler.channels, 1),
+    // Patch-level base pan; only named when present, so patches that predate
+    // the field round-trip byte-identically and deserialize stays inverse to
+    // serialize. Absent = centre (0.5) everywhere it is read.
+    ...(sampler.pan !== undefined ? { pan: toNumber(sampler.pan, 0.5) } : {}),
     ...(sampler.fileName ? { fileName: sampler.fileName } : {}),
     // Tracker instruments carry a volume envelope that has no ADSR
     // equivalent. This builder rebuilds SamplerState from an explicit field

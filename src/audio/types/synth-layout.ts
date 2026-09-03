@@ -182,6 +182,13 @@ export interface SamplerState {
   active: boolean;
   sampleRate: number;
   channels: number;
+  /**
+   * Patch-level base pan, 0..1 with 0.5 = centre. Tracker imports carry the
+   * file's per-sample default panning here (FT2's `s->panning`, reset on
+   * every trigger); a panning envelope offsets around it and Cxx/8xx replace
+   * it mid-note via `setPan`. Undefined/0.5 = centre, the old behaviour.
+   */
+  pan?: number;
   fileName?: string;
   /**
    * Volume envelope for tracker instruments that carry one. Applied on its own
