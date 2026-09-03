@@ -223,12 +223,16 @@ export function buildS3m(spec: S3mSpec): BuiltS3m {
     if (isAdlib(instrument)) {
       w.u8(instrument.type ?? 2); // sampleType
       w.ascii('', 12); // dos filename
-      // D00..D0B at 0x0D..0x18, Vol @ 0x19, Dsk @ 0x1A, 2 reserved (ST3.01b
-      // format doc, "adlib instrument format") -- same header size as PCM.
+      // The AdLib header overlays the PCM layout (st3play digdata.h ds_adl,
+      // OpenMPT S3MTools.cpp): 3 reserved bytes at 0x0D..0x0F where PCM keeps
+      // its memseg, then D00..D0B at 0x10..0x1B, Vol @ 0x1C (the byte where
+      // PCM's defaultVolume sits), Dsk @ 0x1D, 2 reserved -- C2Spd at 0x20
+      // like PCM.
+      w.raw([0, 0, 0]); // reserved (PCM memseg position)
       for (let i = 0; i < 12; i++) w.u8((instrument.registers ?? [])[i] ?? 0);
       w.u8(instrument.volume ?? 64); // Vol
       w.u8(0); // Dsk
-      w.raw([0, 0, 0, 0, 0]); // 2 reserved + 3 pad: C2Spd sits at 0x20 like PCM
+      w.raw([0, 0]); // reserved
       w.u32(instrument.c2spd ?? 8363);
       w.raw([0, 0, 0, 0]); // reserved2
       w.u16(0); w.u16(0); w.u32(0); // gus/sb/lastUsed

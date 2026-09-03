@@ -174,6 +174,46 @@ describe('S3M fine portamento (EFx/FFx high parameters)', () => {
     }
   });
 
+  it('E00 after EF3 re-fires the fine step from memory, it does not fast-slide', () => {
+    // The reviewer's case: the fine-slide decision must be made on the
+    // RESOLVED parameter (GET_LAST_NFO runs before the fine branches in
+    // st3play), so an E00 after EF3 is one more 3-unit step -- not a
+    // per-tick slide at the 0xE3 "speed" (227x4 = 908 units/tick).
+    const song = importS3m({
+      channelSettings: ONE_PCM_CHANNEL,
+      orders: [0],
+      patterns: [
+        [
+          [{ note: 0x30, instrument: 1, volume: 64 }],
+          [{ effect: 0x05, param: 0xe3 }],
+          [{ effect: 0x05, param: 0x00 }], // E00: memory says EF3
+          [{}],
+        ],
+      ],
+      instruments: [{ frames: [0, 0.25, -0.25, 0] }],
+    });
+    const log: string[] = [];
+    const engine = makeEngine(log);
+    const builder = makeBuilderContext(song);
+    engine.loadSong(builder.buildPlaybackSong('song'));
+    const pattern = song.data.patterns[0]!;
+    engine.loadPattern(pattern.id);
+    for (let row = 0; row < pattern.rows; row += 1) {
+      (
+        engine as unknown as { scheduleRow: (r: number, t: number) => void }
+      ).scheduleRow(row, row);
+    }
+    const pitches = pitchValues(log);
+    // Rows 1 and 2 each fire exactly one 3-unit fine step: the scheduled
+    // pitches contain the EF3 landing (261.108 Hz at C-4) and the E00
+    // memory re-fire (260.879 Hz, one further step) -- and nothing else. A
+    // 908-unit/tick slide at the raw 0xE3 "speed" would have collapsed the
+    // pitch to ~150 Hz instead.
+    expect(pitches.some((p) => Math.abs(p - 261.108) < 0.01)).toBe(true);
+    expect(pitches.some((p) => Math.abs(p - 260.879) < 0.01)).toBe(true);
+    expect(pitches.every((p) => p > 260)).toBe(true);
+  });
+
   it('FF3 slides four times as far, once', () => {
     const pitches = pitchesFor(0xf3);
     // 3424 + 12 = 3436: 260.5 Hz.

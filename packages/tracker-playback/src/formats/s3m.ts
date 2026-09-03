@@ -87,7 +87,7 @@ export const S3M_MAX_NOTE = 0x5b;
 /** File volume byte meaning "no volume" (st3play's clearnotes sentinel). */
 export const S3M_NO_VOLUME = 0xff;
 
-export type S3mInstrumentKind = 'pcm' | 'adlib';
+export type S3mInstrumentKind = 'none' | 'pcm' | 'adlib';
 
 export interface S3mPatternCell {
   /**
@@ -452,7 +452,11 @@ export function parseS3m(buffer: Uint8Array): S3mSong {
     }
 
     const typeByte = buffer[pointer] ?? 0;
-    const kind: S3mInstrumentKind = typeByte === 1 ? 'pcm' : 'adlib';
+    // OpenMPT S3MTools.h: typeNone = 0, typePCM = 1, typeAdMel = 2 -- and
+    // st3play's doadlib only ever sees type 2. A type-0 slot is an EMPTY
+    // instrument slot (never counted as AdLib, never given OPL data).
+    const kind: S3mInstrumentKind =
+      typeByte === 1 ? 'pcm' : typeByte >= 2 ? 'adlib' : 'none';
     const name = readAscii(buffer, pointer + 48, 28);
     const dosFilename = readAscii(buffer, pointer + 1, 12);
     // length/loopBegin/loopEnd are dwords in FRAMES (the format doc's "32
@@ -474,10 +478,13 @@ export function parseS3m(buffer: Uint8Array): S3mSong {
       ...(kind === 'adlib'
         ? {
             adlibKind: typeByte === 2 ? ('melody' as const) : ('drum' as const),
-            // D00..D0B at offsets 0x0D..0x18, then Vol @0x19, Dsk @0x1A
-            // (ST3.01b format doc, "adlib instrument format").
-            oplRegisters: Array.from({ length: 12 }, (_, i) => buffer[pointer + 13 + i] ?? 0),
-            adlibVolume: buffer[pointer + 25] ?? 0,
+            // D00..D0B at offsets 0x10..0x1B, then Vol @ 0x1C -- the AdLib
+            // header overlays the PCM layout: 3 reserved bytes at 0x0D..0x0F
+            // where PCM keeps its memseg, and the register block starts where
+            // PCM's length field begins (st3play digdata.h `ds_adl`, OpenMPT
+            // S3MTools.cpp memcpy). Dsk @ 0x1D, 2 reserved.
+            oplRegisters: Array.from({ length: 12 }, (_, i) => buffer[pointer + 16 + i] ?? 0),
+            adlibVolume: buffer[pointer + 28] ?? 0,
           }
         : {}),
       length,

@@ -10,8 +10,11 @@
  *   caverns_of_cthulu.s3m  PCM-only, exactly 4 channels
  *   o-79642.s3m            16-channel multi, PCM-only
  *   riverflow.s3m          32 enabled channels (the B2 voice-pressure ceiling)
- *   anguish.s3m            28 AdLib instruments declared (drives the warning)
- *   2nd_reality.s3m        5 AdLib instruments + PCM mix
+ *   sun.s3m                25 GENUINE type-2 AdLib instruments on 7 AdLib
+ *                          channels (the only such file in the 160+-file
+ *                          sweep; drives the warning/OPL-data pins)
+ *   anguish.s3m /          28 and 5 header slots of type 0 (EMPTY) that once
+ *   2nd_reality.s3m        masqueraded as AdLib -- the type-0 regression pin
  *   final_decade.s3m       amiga-limits flag set (flags & 0x10)
  *   return_to_saturn.s3m   amiga-limits flag set, 12 channels
  *   insanity_unnamed.s3m   10 sixteen-bit samples (signed LE, pack 0)
@@ -115,40 +118,63 @@ describe.skipIf(!hasCorpus)('S3M corpus: measured categories', () => {
     expect(song.data.patterns[0]!.tracks).toHaveLength(32);
   });
 
-  it('anguish.s3m + 2nd_reality.s3m: AdLib instruments are counted and warned, PCM intact', () => {
+  it('sun.s3m: the genuine AdLib corpus file -- counted, warned, OPL bytes preserved', () => {
+    // sun.s3m (Ballacr75) is the one file in the whole sweep with REAL
+    // type-2 AdLib instruments: 25 of them, played on 7 AdLib channels
+    // (settings 0x10-0x16). Independently dumped header: instrument 1 is
+    // named 'Decay11', volume 64, registers C0 01 10 05 B4 C3 65 65 01 01
+    // 00 00 -- pinned here to catch any offset regression against a real
+    // header, not just the synthetic builder (which shared the same bug).
+    const raw = parseS3m(new Uint8Array(readModule('sun.s3m')));
+    const adlib = raw.instruments.filter((i) => i.kind === 'adlib');
+    expect(adlib).toHaveLength(25);
+    expect(adlib[0]!.name).toBe('Decay11');
+    expect(adlib[0]!.adlibVolume).toBe(64);
+    expect(adlib[0]!.oplRegisters).toEqual([
+      0xc0, 0xc1, 0x10, 0x05, 0xb4, 0xc3, 0x65, 0x65, 0x01, 0x01, 0x00, 0x00,
+    ]);
+    expect(raw.instruments.filter((i) => i.kind === 'none')).toHaveLength(0);
+
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const anguish = importS3mToTrackerSong(readModule('anguish.s3m'));
-    const second = importS3mToTrackerSong(readModule('2nd_reality.s3m'));
+    const song = importS3mToTrackerSong(readModule('sun.s3m'));
     const warnings = warnSpy.mock.calls.map((args) => args.join(' '));
     warnSpy.mockRestore();
-
-    const raw = parseS3m(new Uint8Array(readModule('anguish.s3m')));
-    const adlibCount = raw.instruments.filter((i) => i.kind === 'adlib').length;
-    expect(adlibCount).toBe(28);
-    const warning = warnings.find((w) => w.includes('28 AdLib instruments ignored'));
+    const warning = warnings.find((w) => w.includes('25 AdLib instruments ignored'));
     expect(warning).toBeDefined();
+    expect(warning).toContain('1764 notes on 7 AdLib channels');
 
-    // The rest of the module still imports: anguish keeps its 12 PCM slots
-    // and its pattern-0 entries; 2nd_reality mixes 22 PCM + 5 AdLib.
+    // FM-only module: 25 inactive OPL slots, zero playable patches -- and
+    // nothing is silently muted (the AdLib channel tracks exist, empty).
+    expect(song.data.instrumentSlots.filter((s) => s.oplData)).toHaveLength(25);
+    expect(song.data.instrumentSlots.filter((s) => s.patchId)).toHaveLength(0);
+    expect(song.data.patterns[0]!.tracks.length).toBeGreaterThan(0);
+  });
+
+  it('anguish.s3m / 2nd_reality.s3m: type-0 slots are empty, never AdLib', () => {
+    // The first corpus sweep mistook these files' type-0 sample slots for
+    // AdLib instruments (the old `typeByte === 1 ? 'pcm' : 'adlib'` branch).
+    // Per OpenMPT S3MTools.h (typeNone=0/typePCM=1/typeAdMel=2) they are
+    // EMPTY slots: not counted, no OPL data, no warning.
+    const anguish = parseS3m(new Uint8Array(readModule('anguish.s3m')));
+    expect(anguish.instruments.filter((i) => i.kind === 'adlib')).toHaveLength(0);
+    expect(anguish.instruments.filter((i) => i.kind === 'none')).toHaveLength(28);
+    expect(anguish.instruments.filter((i) => i.kind === 'pcm')).toHaveLength(12);
+    const second = parseS3m(new Uint8Array(readModule('2nd_reality.s3m')));
+    expect(second.instruments.filter((i) => i.kind === 'adlib')).toHaveLength(0);
+    expect(second.instruments.filter((i) => i.kind === 'none')).toHaveLength(5);
+    expect(second.instruments.filter((i) => i.kind === 'pcm')).toHaveLength(22);
+
+    // No AdLib warning fires for type-0 files, and the PCM side imports
+    // exactly as before (12 PCM slots for anguish).
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const imported = importS3mToTrackerSong(readModule('anguish.s3m'));
+    const warnings = warnSpy.mock.calls.map((args) => args.join(' '));
+    warnSpy.mockRestore();
     expect(
-      anguish.data.instrumentSlots.filter((s) => s.patchId),
-    ).toHaveLength(12);
-    // OPL data lands on inactive slots wherever AdLib instruments are
-    // actually referenced -- riverflow references two.
-    const riverflow = importS3mToTrackerSong(readModule('riverflow.s3m'));
-    expect(
-      riverflow.data.instrumentSlots.filter((s) => s.oplData),
-    ).toHaveLength(2);
-    const secondRaw = parseS3m(new Uint8Array(readModule('2nd_reality.s3m')));
-    expect(
-      secondRaw.instruments.filter((i) => i.kind === 'pcm'),
-    ).toHaveLength(22);
-    expect(
-      secondRaw.instruments.filter((i) => i.kind === 'adlib'),
-    ).toHaveLength(5);
-    expect(
-      second.data.instrumentSlots.filter((s) => s.patchId).length,
-    ).toBeGreaterThan(0);
+      warnings.find((w) => w.includes('AdLib instruments ignored')),
+    ).toBeUndefined();
+    expect(imported.data.instrumentSlots.filter((s) => s.patchId)).toHaveLength(12);
+    expect(imported.data.instrumentSlots.filter((s) => s.oplData)).toHaveLength(0);
   });
 
   it('final_decade.s3m / return_to_saturn.s3m: the amiga-limits flag rides to the song file', () => {

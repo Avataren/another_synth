@@ -1001,42 +1001,44 @@ export function processEffectTick0(
     case 'portaDown': {
       const up = effect.type === 'portaUp';
       const rawParam = effect.paramX * 16 + effect.paramY;
+      // GET_LAST_NFO resolves the channel-wide memory BEFORE anything else
+      // (st3play digcmd.c opens every slide routine with it), so a zero
+      // parameter reuses the last non-zero one and the fine-slide decision
+      // is made on the RESOLVED parameter -- an E00 after an EF3 is another
+      // one-shot fine step, not a per-tick slide at the 0xE3 speed.
+      const resolvedParam =
+        rawParam !== 0 ? rawParam : up ? state.lastPortaUp : state.lastPortaDown;
       // S3M: the E/F commands' high parameters (0xE0-0xFF) are one-shot fine
       // slides, not slide speeds. st3play digcmd.c s_slidedown/s_slideup
-      // (quoted in D101): on tick 0 a parameter 0xE1-0xEF slides once by
-      // `(param & 0x0F)` RAW period units and 0xF1-0xFF by
+      // (quoted in D101): on tick 0 a resolved parameter 0xE1-0xEF slides
+      // once by `(param & 0x0F)` RAW period units and 0xF1-0xFF by
       // `(param & 0x0F) << 2`; during ticks > 0 such a row slides not at all
       // (`if (ch->info >= 0xE0) return; // no fine slides here`). 0xE0/0xF0
       // move nothing. The raw unit (1, not the <<2 slide scale) is why this
       // cannot ride portamentoUnitScale.
-      if (state.profile.finePortaHighParameters === true && rawParam >= 0xe0) {
-        // The parameter still remembers (GET_LAST_NFO fills ch->info before
-        // the fine-slide branches), so an E00/F00 after E03 re-fires the
-        // fine step; but a zero parameter with no memory moves nothing and
-        // is not a fine row at all.
-        const resolved = rawParam !== 0 ? rawParam : up ? state.lastPortaUp : state.lastPortaDown;
-        if (resolved >= 0xe1) {
+      if (
+        state.profile.finePortaHighParameters === true &&
+        resolvedParam >= 0xe0
+      ) {
+        if (resolvedParam >= 0xe1) {
           const units =
-            (resolved & 0x0f) * (resolved >= 0xf1 ? 4 : 1);
+            (resolvedParam & 0x0f) * (resolvedParam >= 0xf1 ? 4 : 1);
           if (units > 0) {
             applyFinePortamento(state, up ? units : -units, 1);
             pushPitch(state.currentFrequency);
           }
-          if (up) state.lastPortaUp = resolved;
-          else state.lastPortaDown = resolved;
+          if (up) state.lastPortaUp = resolvedParam;
+          else state.lastPortaDown = resolvedParam;
         }
         // No persistent slide speed: the fine row is a single step.
         state.portamentoSpeed = 0;
         break;
       }
       if (up) {
-        state.portamentoSpeed =
-          rawParam || state.lastPortaUp;
+        state.portamentoSpeed = resolvedParam;
         state.lastPortaUp = state.portamentoSpeed;
       } else {
-        state.portamentoSpeed = -(
-          rawParam || state.lastPortaDown
-        );
+        state.portamentoSpeed = -resolvedParam;
         state.lastPortaDown = Math.abs(state.portamentoSpeed);
       }
       break;
