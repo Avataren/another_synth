@@ -153,7 +153,9 @@ export interface TrackerVolumeEnvelope extends TrackerEnvelopeShape {
  * has to compose with command vibrato and portamento rather than replace them.
  */
 export interface TrackerAutoVibrato {
-  /** 0 = sine, 1 = square, 2 = ramp down, 3 = ramp up. */
+  /** 0 = sine, 1 = square, 2 = ramp up, 3 = ramp down. Quoted from
+   * updateVolPanAutoVib (ft2-clone ft2_replayer.c): `type == 2` is ramp up
+   * (((pos>>1)+64)&127)-64, `type == 3` ramp down. */
   type: number;
   /** Ticks taken to reach full depth from note start; 0 = immediate. */
   sweepTicks: number;

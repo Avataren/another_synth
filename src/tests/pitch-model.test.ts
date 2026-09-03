@@ -335,3 +335,48 @@ describe('S3mPitchModel (ST3)', () => {
     expect(s3m.snapPeriod(3424)).toBe(3424);
   });
 });
+
+/**
+ * P4: autovibrato depth is a period-unit wobble, and its cents amplitude
+ * depends on the representation. FT2's updateVolPanAutoVib adds the offset to
+ * the channel period and re-derives the frequency, so the conversion belongs
+ * here rather than in a hardcoded cents factor.
+ */
+describe('vibratoDepthCents (P4)', () => {
+  it('is exactly 100/64 cents per unit on the linear table, at any pitch', () => {
+    const linear = createLinearPitchModel();
+    // 64 units to a semitone, uniformly: 1200/768 cents per unit.
+    expect(linear.vibratoDepthCents(261.6, 64)).toBeCloseTo(100, 6);
+    expect(linear.vibratoDepthCents(32.7, 8)).toBeCloseTo(12.5, 6);
+    expect(linear.vibratoDepthCents(880, 8)).toBeCloseTo(12.5, 6);
+  });
+
+  it('widens with pitch on the 1/period models', () => {
+    // Frequency ∝ 1/period, so a depth-unit wobble around period p moves the
+    // pitch by log2((p+d)/p): an octave up, the same depth is twice the
+    // interval. Checked against the closed form, not the implementation.
+    const amiga = createXmAmigaPitchModel();
+    const cents = (frequency: number) => {
+      const p = (8363 * 1712) / (frequency * 32);
+      return 1200 * Math.log2((p + 8) / p);
+    };
+    expect(amiga.vibratoDepthCents(440, 8)).toBeCloseTo(cents(440), 6);
+    expect(amiga.vibratoDepthCents(880, 8)).toBeCloseTo(cents(880), 6);
+    // An octave up the period has halved, so the same depth wobbles wider:
+    // the conversion tracks pitch rather than being a constant.
+    expect(amiga.vibratoDepthCents(880, 8)).toBeGreaterThan(
+      1.9 * amiga.vibratoDepthCents(440, 8),
+    );
+  });
+
+  it('converts S3M periods the same way', () => {
+    // ST3's period→rate is 14317056/period, also 1/period. Corpus-unverified
+    // (no S3M parser yet, P5): implemented per the shared invariants.
+    const s3m = createS3mPitchModel();
+    const p = 14317056 / (440 * 16); // A-4 in ST3's own units
+    expect(s3m.vibratoDepthCents(440, 8)).toBeCloseTo(
+      1200 * Math.log2((p + 8) / p),
+      6,
+    );
+  });
+});

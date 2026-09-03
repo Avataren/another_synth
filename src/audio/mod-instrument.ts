@@ -28,6 +28,10 @@ import {
   type LoopRegion,
 } from './sample-conditioning';
 import { getSampleQuality } from './sample-quality';
+import {
+  createLinearPitchModel,
+  type PitchModel,
+} from '../../packages/tracker-playback/src/pitch-model';
 
 /**
  * Fallback tick duration when a caller does not supply one: 2.5 / 125 BPM,
@@ -251,8 +255,21 @@ export default class ModInstrument {
   /** Anti-aliased copies by mip level; index 0 is the plain buffer. */
   private mipBuffers: (AudioBuffer | null)[] = [];
 
-  constructor(destination: AudioNode, audioContext: AudioContext) {
+  /**
+   * The pitch model the song's format plays in. Autovibrato depth is a
+   * period-unit wobble and its cents amplitude depends on the representation
+   * (P4); module songs supply their format's model, everything else gets the
+   * linear default, which matches the old hardcoded conversion exactly.
+   */
+  private readonly pitchModel: PitchModel;
+
+  constructor(
+    destination: AudioNode,
+    audioContext: AudioContext,
+    options?: { pitchModel?: PitchModel },
+  ) {
     this.audioContext = audioContext;
+    this.pitchModel = options?.pitchModel ?? createLinearPitchModel();
     this.outputNode = audioContext.createGain();
     this.outputNode.gain.value = 1.0;
     this.outputNode.connect(destination);
@@ -585,17 +602,19 @@ export default class ModInstrument {
    * life of a note would mean thousands of automation events per voice. An
    * OscillatorNode expresses the same LFO exactly and costs two nodes.
    *
-   * Depth is converted from the format's period units to cents, because
-   * `detune` works in cents and that is what lets it compose with
-   * `playbackRate`. XM's linear frequency table is logarithmic in period --
-   * 64 units to a semitone everywhere -- so the conversion is the constant
-   * below. In the Amiga table the same period offset is a different musical
-   * interval at every pitch; that mode is approximated here with the constant,
-   * which is worth revisiting if an Amiga-table module sounds off.
+   * Depth is converted from the format's period units to cents by the
+   * song's pitch model, because `detune` works in cents and that is what
+   * lets it compose with `playbackRate`. FT2 adds the vibrato offset to the
+   * channel period and re-derives the frequency from it, so the conversion
+   * belongs to the representation (P4, D18 pattern): XM's linear table is
+   * uniform -- 64 units to a semitone everywhere -- while in the Amiga table
+   * the same period offset is a different musical interval at every pitch,
+   * so the model evaluates it at the voice's own frequency.
    */
   private startAutoVibrato(
     source: AudioBufferSourceNode,
     vibrato: TrackerAutoVibrato,
+    baseFrequency: number,
     startTime: number,
     tickSeconds: number,
   ): { osc: OscillatorNode; depth: GainNode } | null {
@@ -607,8 +626,6 @@ export default class ModInstrument {
       return null;
     }
 
-    // 64 XM period units to a semitone, 100 cents to a semitone.
-    const CENTS_PER_PERIOD_UNIT = 100 / 64;
     // The position advances by `rate` per tick over a 256-step cycle.
     const AUTO_VIBRATO_CYCLE_STEPS = 256;
 
@@ -626,7 +643,10 @@ export default class ModInstrument {
     // A positive period offset lowers the pitch, so the LFO is inverted to
     // keep the wobble in the same direction FT2 takes it. Ramp-down (type 2)
     // inverts again relative to ramp-up.
-    const magnitude = vibrato.depth * CENTS_PER_PERIOD_UNIT;
+    const magnitude = this.pitchModel.vibratoDepthCents(
+      baseFrequency,
+      vibrato.depth,
+    );
     const target = vibrato.type === 2 ? magnitude : -magnitude;
 
     // Sweep: FT2 ramps the depth in from zero over `sweepTicks` ticks.
@@ -1638,7 +1658,13 @@ export default class ModInstrument {
     // The instrument's own vibrato rides on `detune`, so it survives every
     // pitch command the channel schedules on `playbackRate`.
     const autoVibrato = autoVibratoSpec
-      ? this.startAutoVibrato(source, autoVibratoSpec, startTime, tickSeconds)
+      ? this.startAutoVibrato(
+          source,
+          autoVibratoSpec,
+          frequency ?? 440,
+          startTime,
+          tickSeconds,
+        )
       : null;
 
     // The channel's pan, which a panning envelope offsets around.

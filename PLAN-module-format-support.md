@@ -2694,6 +2694,117 @@ SCx/SDx/SEx and the six s_ret nibbles -> undefined, plus MOD/XM unchanged-
 byte guards (E6x/EAx/E5x still decode through the shared map, and neither
 profile carries an extendedSubcommandMap).
 
+### D97 — Autovibrato depth converts through the pitch model (P4)
+
+P4 from ARCH-REVIEW-s3m.md: the hardcoded `100/64` cents-per-period-unit in
+`ModInstrument.startAutoVibrato` (the last hardcoded pitch constant outside the
+pitch model, D18 pattern) moves onto the `PitchModel` interface as
+`vibratoDepthCents(baseFrequency, depthUnits)`. The reason it must be a model
+method and not a constant: FT2's autovibrato adds the vibrato offset to the
+channel *period* and re-derives the frequency from it, so the same depth is a
+different musical interval in every representation. The linear table is uniform
+-- 64 units to a semitone everywhere, 1200/768 cents per unit, exactly the old
+constant -- while a 1/period table (XM Amiga mode, S3M, ProTracker) wobbles by
+log2((p+d)/p) around the voice's own period, which widens with pitch. The model
+evaluates the conversion at the voice's own frequency; the amiga-family models
+share one helper. No-audible-change pin: the linear default is unchanged, so
+native songs and linear-table XMs (the 870 corpus instruments without
+autovibrato, and the linear ones with it) compute the same amplitude as before.
+
+**Reference** (ft2-clone, `src/ft2_replayer.c`, `updateVolPanAutoVib`, quoted
+verbatim in the working notes; semantics verified against the C, not the task
+summary):
+
+```c
+if (ins->autoVibDepth > 0)
+{
+    uint16_t autoVibAmp;
+    if (ch->autoVibSweep > 0)
+    {
+        autoVibAmp = ch->autoVibSweep;
+        if (!ch->keyOff)
+        {
+            autoVibAmp += ch->autoVibAmp;
+            if ((autoVibAmp >> 8) > ins->autoVibDepth)
+            {
+                autoVibAmp = ins->autoVibDepth << 8;
+                ch->autoVibSweep = 0;
+            }
+            ch->autoVibAmp = autoVibAmp;
+        }
+    }
+    else
+        autoVibAmp = ch->autoVibAmp;
+    ch->autoVibPos += ins->autoVibRate;
+    int16_t autoVibVal;
+         if (ins->autoVibType == 1) // square
+        autoVibVal = (ch->autoVibPos > 127) ? 64 : -64;
+    else if (ins->autoVibType == 2) // ramp up
+        autoVibVal = (((ch->autoVibPos >> 1) + 64) & 127) - 64;
+    else if (ins->autoVibType == 3) // ramp down
+        autoVibVal = ((-(ch->autoVibPos >> 1) + 64) & 127) - 64;
+    else // sine
+        autoVibVal = autoVibSineTab[ch->autoVibPos];
+    autoVibVal = (autoVibVal * (int16_t)autoVibAmp) >> (6+8);
+    uint16_t tmpPeriod = ch->outPeriod + autoVibVal;
+    if (tmpPeriod >= 32000) // unsigned comparison!
+        tmpPeriod = 0;
+    ch->finalPeriod = tmpPeriod;
+    ch->status |= CF_UPDATE_PERIOD;
+}
+```
+
+and the trigger-side reset (`triggerInstrument`):
+
+```c
+ch->autoVibPos = 0;
+if (ins->autoVibSweep > 0)
+{
+    ch->autoVibAmp = 0;
+    ch->autoVibSweep = (ins->autoVibDepth << 8) / ins->autoVibSweep;
+}
+else
+{
+    ch->autoVibAmp = ins->autoVibDepth << 8;
+    ch->autoVibSweep = 0;
+}
+```
+
+What the C settles (and where D57 already matched it): sweep is a per-tick amp
+increment of `(depth<<8)/sweep`, i.e. a linear ramp reaching full depth over
+`sweep` ticks -- the LFO's linear ramp matches; waveforms are 0 sine, 1 square
+(positive first half), 2 ramp **up**, 3 ramp **down** (the `TrackerAutoVibrato`
+doc comment had 2/3 swapped; fixed); `pos` advances before the table read, so
+the cycle starts where a sine reads 0 -- the LFO matches. Key-off: vibrato
+itself runs through fadeout (only the sweep ramp freezes), which the LFO does
+by construction; the one divergence is that the scheduled ramp keeps deepening
+past key-off where FT2 freezes the sweep -- sub-audible on the corpus's short
+notes, recorded rather than fixed. Envelope sustain has no effect on
+autovibrato (the routine never reads the sustain state). Not emulated: the
+`tmpPeriod >= 32000` wrap to period 0 (FT2 bug; same family as the D80 clamp
+discussion and inaudible), and the half-cycle phase offset of the ramp waveforms
+against WebAudio's sawtooth.
+
+**Corpus** (throwaway walker over the 18-file XM demo collection, ~470 slot
+instruments, 131,246 played notes; full table in `.ai/p4-corpus-walk.txt`):
+52 instruments carry autovibrato, 22,240 played notes on them (16.9%).
+Distribution: type 0 sine x49, 1 square x2, 3 ramp-down x1 -- **ramp-up (2) is
+corpus-absent and corpus-unverified**, implemented per the C; sweep 0
+(immediate) x13, otherwise 5..71; depth 1..15 (max nibble, ten instruments);
+rate 16..63. Amiga-table modules with autovibrato instruments (BUTTERFL,
+external) are in the corpus, so the pitch-dependent conversion is exercised by
+real files, not only synthetic tests.
+
+Known seam: autovibrato runs on the `ModInstrument` path only (as since D57);
+the PooledInstrument path is unaffected by this change and still has no
+autovibrato.
+
+Tests: `src/tests/xm-autovibrato.test.ts` (3 new, confirmed failing against the
+old code via `git stash`; the linear-table exactness pin passes on both) and
+`src/tests/pitch-model.test.ts` (vibratoDepthCents: linear exactness at any
+pitch, the 1/period closed form, and S3M -- corpus-unverified, model-level
+only).
+
 ---
 
 ## 6b. Effect audit (2026-08-28)
@@ -2945,6 +3056,7 @@ eslint clean on all four touched files; gitleaks clean; `npx quasar build` clean
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-03 | 4 | **Autovibrato depth converts through the pitch model** (P4, D97). The last hardcoded pitch constant outside the pitch model -- `ModInstrument`'s 100/64 cents-per-XM-period-unit -- is replaced by `PitchModel.vibratoDepthCents(baseFrequency, depthUnits)`, supplied by the song's format profile via the song bank. Linear table unchanged (exactness pinned); XM Amiga mode and S3M now get the pitch-dependent log2((p+d)/p) conversion FT2's `updateVolPanAutoVib` implies. Corpus: 52 of ~470 demo-collection instruments carry autovibrato (16.9% of played notes); ramp-up waveform is corpus-absent and implemented per the C. Waveform doc 2/3 swap corrected. Tests: `src/tests/xm-autovibrato.test.ts` (3 confirmed failing against the old code), `src/tests/pitch-model.test.ts`. |
 | 2026-09-03 | refactor | **P2: song-bank god class split** (D95). `song-bank.ts` (2949 -> 2572 lines) split into `scheduled-events.ts` (queue + flush), `recorder.ts` (recording worklet + buffers) and `track-voice-registry.ts` (per-track voice maps + `resolveCommandVoice`, moved as one gated D78 unit). Internal composition only -- public `TrackerSongBank` API identical, callers unchanged, voice-replacement policy untouched (review wait list honored). 1285 tests green unmodified; tsc baseline unchanged; gitleaks clean. |
 | 2026-09-03 | fix | **The XM fine slides remember their parameter** (D88). Every FT2 fine routine opens `if (param == 0) param = ch->f<...>Speed; ch->f<...>Speed = param;`, so a run of `EB0` rows keeps walking the volume down one step per row; the engine treated each as a no-op. 2960 zero-parameter fine volume slides in an-path.xm alone were real slides being dropped. Behind `FormatProfile.fineSlideHasMemory` with FT2's six separate memory bytes; ProTracker's fine routines are memoryless and stay that way, as does native. Tests: `src/tests/effect-reference-audit-2.test.ts` (4 confirmed failing against the old code). |
 | 2026-09-03 | fix | **A pan slide moves 2/255 of full swing per parameter unit, not 1/64** (D89). FT2 pans on one 0..255 byte (`panningSlide`: `newPan += param`; volume column `v_PanSlideLeft`/`Right`: one unit per tick), so in the processor's -1..1 scale a unit is 2/255 -- the old 1/64 made every pan slide almost exactly twice as wide. 144 volume-column pan slides in an-path.xm and DEADLOCK.XM were affected; `Pxy` has 0 corpus uses. Behind `FormatProfile.panSlideUnit`. Tests: `src/tests/effect-reference-audit-2.test.ts`, and the `xm-volume-column` unit test that had pinned the old constant (3 confirmed failing against the old code). |
