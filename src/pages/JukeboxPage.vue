@@ -113,11 +113,6 @@
         />
       </div>
 
-      <label class="bar-toggle" title="Render the pattern grid on a canvas">
-        <input v-model="userSettings.canvasPatternRenderer" type="checkbox" />
-        <span>Canvas grid</span>
-      </label>
-
       <label class="bar-toggle" title="Scroll one row per playback step instead of paging">
         <input v-model="userSettings.granularPlaybackScroll" type="checkbox" />
         <span>Row scroll</span>
@@ -415,8 +410,11 @@ const patternAreaWidth = ref(0);
 const patternAreaHeight = ref(600);
 
 /**
- * Canvas renderer on until the page's own copy proves it cannot run here:
- * the setting stays usable everywhere else, and the user is told once.
+ * Canvas renderer on until the page's own copy proves it cannot run here.
+ *
+ * The setting has no toggle any more -- the canvas grid is the pattern grid
+ * -- but it is still read rather than hardcoded, so the DOM grid remains
+ * reachable by editing the stored settings if it is ever needed again.
  */
 const canvasRenderer = computed(() => userSettings.value.canvasPatternRenderer);
 const canvasRendererFailed = ref(false);
@@ -445,9 +443,16 @@ function onCanvasScroll(payload: { top: number; left: number }): void {
   });
 }
 
+/**
+ * Fall back to the DOM grid for this page's lifetime.
+ *
+ * Deliberately not persisted: the failures this handles belong to a pattern
+ * (one past the bitmap device-pixel cap, chiefly) rather than to the
+ * machine, and with the toggle gone a persisted `false` would strand the
+ * user on the DOM grid for every song afterwards.
+ */
 function onCanvasRendererError(error: Error): void {
   canvasRendererFailed.value = true;
-  userSettingsStore.updateSetting('canvasPatternRenderer', false);
   $q.notify({
     type: 'negative',
     message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,
