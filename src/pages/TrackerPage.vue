@@ -104,14 +104,6 @@
             />
             <span>Dual FX cols</span>
           </label>
-          <label class="toggle toolbar-toggle">
-            <input
-              v-model="userSettings.canvasPatternRenderer"
-              type="checkbox"
-              @change="blurAndRefocusTracker"
-            />
-            <span>Canvas grid</span>
-          </label>
           <button
             type="button"
             class="edit-mode-toggle toolbar-edit-toggle"
@@ -944,7 +936,13 @@ function updatePatternAreaHeight() {
 // Canvas renderer wiring (mirrors JukeboxPage)
 // ---------------------------------------------------------------
 
-/** Canvas renderer on until this page's own copy proves it cannot run here. */
+/**
+ * Canvas renderer on until this page's own copy proves it cannot run here.
+ *
+ * The setting has no toggle any more -- the canvas grid is the pattern grid
+ * -- but it is still read rather than hardcoded, so the DOM grid remains
+ * reachable by editing the stored settings if it is ever needed again.
+ */
 const canvasRenderer = computed(() => userSettings.value.canvasPatternRenderer);
 const canvasRendererFailed = ref(false);
 
@@ -973,9 +971,17 @@ function onCanvasScroll(payload: { top: number; left: number }): void {
 
 let canvasScrollRafId: number | null = null;
 
+/**
+ * Fall back to the DOM grid for this page's lifetime.
+ *
+ * Deliberately not persisted. The failures this handles are properties of a
+ * pattern rather than of the machine -- chiefly one past the bitmap
+ * device-pixel cap -- and with the toggle gone, writing the setting to false
+ * would strand the user on the DOM grid for every song afterwards with no
+ * way back short of clearing their settings.
+ */
 function onCanvasRendererError(error: Error): void {
   canvasRendererFailed.value = true;
-  userSettingsStore.updateSetting('canvasPatternRenderer', false);
   $q.notify({
     type: 'negative',
     message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,

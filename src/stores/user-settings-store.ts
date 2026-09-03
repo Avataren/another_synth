@@ -26,11 +26,15 @@ export interface UserSettings {
   /** When true, show a second effect column per tracker track. */
   showTrackerExtraEffectColumn: boolean;
   /**
-   * When true, the pattern grid renders through the canvas renderer
-   * (PatternCanvas.vue) instead of the DOM grid (TrackerPattern.vue).
-   * Default: false — the canvas renderer is opt-in until its remaining
-   * rough edges (per-pattern-swap frame stall, upcoming-pattern pre-render)
-   * are worked out; the toolbar toggle turns it on for testing.
+   * When true (default), the pattern grid renders through the canvas
+   * renderer (PatternCanvas.vue) instead of the DOM grid
+   * (TrackerPattern.vue).
+   *
+   * No longer surfaced in the UI: the canvas renderer is the pattern grid
+   * now. The setting and the DOM grid stay in place as the fallback a page
+   * drops to when the renderer reports it cannot run (a pattern past the
+   * bitmap cap, a missing 2D context), and so the old renderer can be put
+   * back by hand if it is ever needed.
    */
   canvasPatternRenderer: boolean;
   /**
@@ -90,19 +94,22 @@ export interface UserSettings {
  * v1: `useSimplifiedModInstruments` became the default for MOD playback.
  *
  * v2: `canvasPatternRenderer` was version-gated to false. The canvas
- * renderer is experimental: until the upcoming-pattern pre-render lands,
- * every pattern swap pays a ~30-100ms full-bitmap paint, so the shipped
- * default keeps the DOM grid and the toolbar toggle opts in for testing.
- * The version gate still rewrites the stored value once — see
- * `migrateSettingsVersion` — so a user who enabled the renderer under the
- * earlier force-on default is put back on the DOM grid exactly once, and
- * re-enabling it afterwards sticks.
+ * renderer was experimental: every pattern swap paid a ~30-100ms
+ * full-bitmap paint, so the shipped default kept the DOM grid and a toolbar
+ * toggle opted in for testing.
+ *
+ * v3: and back on, for good. The pre-render landed (a swap is a pointer
+ * swap plus a blit), edits repair cells rather than repainting, and the
+ * per-cell paint costs were cut down; the canvas grid is the pattern grid
+ * now and its toggles are gone from the UI. The rewrite is version-gated
+ * the same way, so the v2 `false` -- which is in every existing user's
+ * stored blob -- is overwritten exactly once.
  *
  * Note that the master-volume default moving from 0.75 to 0.5 deliberately did
  * *not* get a version bump: it is a starting point rather than a correction, so
  * anyone who has already set their own level keeps it.
  */
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 /**
  * Default user settings. Exported so tests can pin the ones that are
@@ -118,7 +125,7 @@ export const defaultSettings: UserSettings = {
   masterVolume: 0.5,
   enableMidi: false,
   showTrackerExtraEffectColumn: false,
-  canvasPatternRenderer: false,
+  canvasPatternRenderer: true,
   granularPlaybackScroll: true,
   useSimplifiedModInstruments: true,
   sampleOversampleFactor: 4,
@@ -178,13 +185,19 @@ export function migrateSettingsVersion(
     migrated.useSimplifiedModInstruments = true;
   }
 
-  // v1 -> v2: the canvas pattern renderer goes back to opt-in. Same
-  // version-gated rewrite as the v1 change above: the stored value is
-  // overwritten exactly once (the renderer shipped briefly on by default,
-  // but every pattern swap stalls the frame until the pre-render lands),
-  // and an explicit later choice sticks.
+  // v1 -> v2: the canvas pattern renderer went back to opt-in while every
+  // pattern swap still stalled the frame.
   if (version < 2) {
     migrated.canvasPatternRenderer = false;
+  }
+
+  // v2 -> v3: and on again, now that it is the only renderer offered. The
+  // v2 rewrite above put a `false` in every stored blob, so without this
+  // nobody would ever see the new default -- and there is no longer a
+  // toggle to turn it on with. Ordering matters: v2 runs first for a blob
+  // old enough to need both, and v3 has the last word.
+  if (version < 3) {
+    migrated.canvasPatternRenderer = true;
   }
 
   migrated.settingsVersion = SETTINGS_VERSION;

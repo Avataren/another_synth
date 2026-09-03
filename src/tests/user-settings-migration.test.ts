@@ -50,6 +50,48 @@ describe('migrateSettingsVersion', () => {
 });
 
 /**
+ * The canvas pattern renderer is the pattern grid.
+ *
+ * It has no toggle any more, which makes the version-gated rewrite the only
+ * way the new default reaches anyone: v2 wrote an explicit `false` into
+ * every stored blob, and `loadSettings` merges stored over defaults, so
+ * without the v3 rewrite every existing user would stay on the DOM grid
+ * with no way to leave it.
+ */
+describe('canvas pattern renderer default', () => {
+  it('ships on', () => {
+    expect(defaultSettings.canvasPatternRenderer).toBe(true);
+  });
+
+  it('turns the v2 opt-out back on', () => {
+    const migrated = migrateSettingsVersion({
+      settingsVersion: 2,
+      canvasPatternRenderer: false,
+    });
+
+    expect(migrated.canvasPatternRenderer).toBe(true);
+    expect(migrated.settingsVersion).toBe(SETTINGS_VERSION);
+  });
+
+  it('turns it on for a blob old enough to need the v2 rewrite too', () => {
+    // v2 sets false and v3 sets true on the same pass; v3 has the last word.
+    const migrated = migrateSettingsVersion({ canvasPatternRenderer: true });
+
+    expect(migrated.canvasPatternRenderer).toBe(true);
+  });
+
+  it('leaves a deliberate opt-out alone once the blob is current', () => {
+    // The DOM grid stays reachable by hand for anyone who needs it back.
+    const migrated = migrateSettingsVersion({
+      settingsVersion: SETTINGS_VERSION,
+      canvasPatternRenderer: false,
+    });
+
+    expect(migrated.canvasPatternRenderer).toBe(false);
+  });
+});
+
+/**
  * The master-volume default is headroom, not taste.
  *
  * Nothing in the tracker path limits -- FT2 sums into an accumulator and
