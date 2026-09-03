@@ -1166,21 +1166,41 @@ function onCanvasScroll(payload: { top: number; left: number }): void {
 let canvasScrollRafId: number | null = null;
 
 /**
- * Fall back to the DOM grid for this page's lifetime.
+ * Fall back to the DOM grid, for this pattern.
  *
- * Deliberately not persisted. The failures this handles are properties of a
- * pattern rather than of the machine -- chiefly one past the bitmap
- * device-pixel cap -- and with the toggle gone, writing the setting to false
- * would strand the user on the DOM grid for every song afterwards with no
- * way back short of clearing their settings.
+ * Deliberately not persisted, and deliberately not permanent. What the
+ * renderer reports is a property of the pattern in front of it -- one whose
+ * bitmap will not fit -- not of the machine, so a failure must not outlive
+ * the pattern that caused it. `retryCanvasRenderer` below puts it back.
  */
 function onCanvasRendererError(error: Error): void {
   canvasRendererFailed.value = true;
-  $q.notify({
-    type: 'negative',
-    message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,
-  });
+  // Once per page. The retry means the same unhappy pattern can report
+  // again on every visit to it, and a notification per visit is noise.
+  if (!canvasFailureNotified) {
+    canvasFailureNotified = true;
+    $q.notify({
+      type: 'negative',
+      message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,
+    });
+  }
 }
+
+let canvasFailureNotified = false;
+
+/**
+ * Give the canvas renderer another go when what it must draw changes.
+ *
+ * A failure is about one pattern's size, so the pattern extent changing --
+ * a different pattern, a resized one, a loaded song -- is exactly when the
+ * answer might differ. Without this a single oversized pattern left the
+ * page on the DOM grid until it was reloaded, which on a phone (where the
+ * cap is easiest to hit) was most of a session.
+ */
+function retryCanvasRenderer(): void {
+  if (canvasRendererFailed.value) canvasRendererFailed.value = false;
+}
+
 
 // Set up selection composable
 const selectionContext: TrackerSelectionContext = {
@@ -2282,6 +2302,15 @@ watch(
 );
 
 watch(trackCount, () => refreshVisualizerAlignment());
+
+// The extent the renderer failed on has changed: let it try again (see
+// retryCanvasRenderer). Declared here rather than beside the handler
+// because `watch` seeds its getters immediately, and `trackCount` is not
+// initialised until further down this setup.
+watch(
+  [trackCount, rowsCount, currentPatternId, isLoadingSong],
+  () => retryCanvasRenderer(),
+);
 
 watch(
   waveformVisualizersVisible,

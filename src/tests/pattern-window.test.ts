@@ -13,12 +13,21 @@ import { blitWindow } from 'src/components/tracker/pattern-canvas/pattern-window
 describe('plain interior blits', () => {
   it('maps the visible slice into both spaces at dpr 1', () => {
     const w = blitWindow(100, 50, 800, 600, 2000, 1500, 1);
-    expect(w).toEqual({ sx: 50, sy: 100, sw: 800, sh: 600, dx: 0, dy: 0 });
+    expect(w).toEqual({ sx: 50, sy: 100, sw: 800, sh: 600, dx: 0, dy: 0, dw: 800, dh: 600 });
   });
 
   it('scales source and destination by dpr', () => {
     const w = blitWindow(100, 50, 800, 600, 2000, 1500, 2);
-    expect(w).toEqual({ sx: 100, sy: 200, sw: 1600, sh: 1200, dx: 0, dy: 0 });
+    expect(w).toEqual({
+      sx: 100,
+      sy: 200,
+      sw: 1600,
+      sh: 1200,
+      dx: 0,
+      dy: 0,
+      dw: 1600,
+      dh: 1200,
+    });
   });
 
   it('clips the source at the bitmap edges', () => {
@@ -70,7 +79,7 @@ describe('over-scroll', () => {
 describe('content smaller than the viewport', () => {
   it('copies the whole bitmap and centers nothing (no stretching)', () => {
     const w = blitWindow(0, 0, 800, 600, 400, 200, 1);
-    expect(w).toEqual({ sx: 0, sy: 0, sw: 400, sh: 200, dx: 0, dy: 0 });
+    expect(w).toEqual({ sx: 0, sy: 0, sw: 400, sh: 200, dx: 0, dy: 0, dw: 400, dh: 200 });
   });
 
   it('still applies dpr to the small content', () => {
@@ -119,5 +128,61 @@ describe('degenerate inputs', () => {
     expect(w.sy).toBe(49.5);
     expect(w.sw).toBe(480);
     expect(w.sh).toBe(360);
+  });
+});
+
+/**
+ * A pattern too big for a full-resolution bitmap is painted at a lower
+ * scale and stretched by the blit (see pattern-bitmap): the source rect is
+ * then in bitmap pixels and the destination in screen device pixels, and
+ * the two no longer agree. Getting this wrong shows as a pattern drawn at a
+ * fraction of its size in the corner of the canvas, or as a source rect
+ * reaching past the end of the bitmap.
+ */
+describe('a bitmap painted below the screen scale', () => {
+  it('reads at the bitmap scale and writes at the device scale', () => {
+    // A 3x screen showing a bitmap painted at scale 1.
+    const w = blitWindow(100, 50, 800, 600, 2000, 1500, 3, 1);
+
+    expect(w).toEqual({
+      sx: 50,
+      sy: 100,
+      sw: 800,
+      sh: 600,
+      dx: 0,
+      dy: 0,
+      dw: 2400,
+      dh: 1800,
+    });
+  });
+
+  it('keeps the source inside the bitmap at its own scale', () => {
+    // Scrolled to the far corner: the source must stop at the bitmap's real
+    // edge (2000x1500 at scale 1), not at the device-scaled one.
+    const w = blitWindow(1400, 1800, 800, 600, 2000, 1500, 3, 1);
+
+    expect(w.sx + w.sw).toBeLessThanOrEqual(2000);
+    expect(w.sy + w.sh).toBeLessThanOrEqual(1500);
+    expect(w.dw).toBe(w.sw * 3);
+    expect(w.dh).toBe(w.sh * 3);
+  });
+
+  it('pins over-scrolled content to the viewport edge in device pixels', () => {
+    const w = blitWindow(-20, -10, 800, 600, 2000, 1500, 3, 1.5);
+
+    expect(w.sx).toBe(0);
+    expect(w.sy).toBe(0);
+    expect(w.dx).toBe(30); // 10 css × dpr 3
+    expect(w.dy).toBe(60);
+    // The slice is the viewport minus the pinned margin, in each space.
+    expect(w.sw).toBe((800 - 10) * 1.5);
+    expect(w.dw).toBe((800 - 10) * 3);
+  });
+
+  it('defaults the bitmap scale to the device scale', () => {
+    const implicit = blitWindow(100, 50, 800, 600, 2000, 1500, 2);
+    const explicit = blitWindow(100, 50, 800, 600, 2000, 1500, 2, 2);
+
+    expect(implicit).toEqual(explicit);
   });
 });
