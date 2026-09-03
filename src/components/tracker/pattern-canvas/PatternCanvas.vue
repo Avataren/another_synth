@@ -77,6 +77,12 @@ import {
 import { hitTest, type PatternHit } from './pattern-hit-test';
 import { blitWindow } from './pattern-window';
 import {
+  bitmapScaleFor,
+  DESKTOP_BITMAP_BUDGET,
+  MOBILE_BITMAP_BUDGET,
+} from './pattern-bitmap';
+import { useMobileLayout } from 'src/composables/useMobileLayout';
+import {
   flingVelocity,
   isTap,
   panTarget,
@@ -193,6 +199,16 @@ const viewportW = ref(Math.max(0, props.containerWidth));
 const viewportH = ref(Math.max(0, props.containerHeight));
 const dpr = ref(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
 
+/**
+ * How much bitmap this device will allocate. A desktop gets what the
+ * renderer always took; a phone, where the allocation actually fails, gets
+ * a budget it can hold (see pattern-bitmap).
+ */
+const isMobileDevice = useMobileLayout();
+const bitmapBudget = computed(() =>
+  isMobileDevice.value ? MOBILE_BITMAP_BUDGET : DESKTOP_BITMAP_BUDGET,
+);
+
 const layout = computed<PatternLayout>(() => ({
   trackCount: props.tracks.length,
   showExtraEffectColumn: props.showExtraEffectColumn,
@@ -294,25 +310,20 @@ let paintedState: PaintState | null = null;
 let bitmapDpr = 1;
 
 /**
- * Device-pixel ceiling on the full-pattern bitmap's backing store. The
- * largest realistic pattern (32 tracks × 256 rows) at DPR 2 would ask for
- * ~794MB of canvas memory, which browsers silently refuse — the context
- * comes back null (or the surface silently fails to rasterize) and the
- * renderer would paint nothing. Above this cap the renderer reports an
- * error instead so the page can fall back to the DOM grid.
+ * Build (or reuse) the full-pattern bitmap, at the best scale it fits at.
  *
- * 64M device px ≈ 256MB RGBA, comfortably under the smallest known canvas
- * area limits. Note this cap is NOT big enough for every pattern: large
- * patterns (e.g. 32 tracks × 256 rows) exceed it on hi-DPI displays
- * (DPR ≳ 1.2), and on overflow the renderer deliberately reports an error
- * so the page falls back to the DOM grid rather than painting nothing.
+ * `scale` is what the screen would like -- its device pixel ratio. A
+ * pattern too big to paint at that (a 26-channel module on a 3x phone is
+ * 91M device pixels) is painted at a lower one and stretched by the blit
+ * rather than refused; see pattern-bitmap for why that beats both giving up
+ * and tiling. Null means even the floor will not fit, and the caller falls
+ * back to the DOM grid.
  */
-const MAX_BITMAP_DEVICE_PX = 64 * 1024 * 1024;
-
 function ensureBitmap(cssW: number, cssH: number, scale: number): BitmapSurface | null {
-  const w = Math.max(1, Math.ceil(cssW * scale));
-  const h = Math.max(1, Math.ceil(cssH * scale));
-  if (w * h > MAX_BITMAP_DEVICE_PX) return null;
+  const fitted = bitmapScaleFor(cssW, cssH, scale, bitmapBudget.value);
+  if (fitted === null) return null;
+  const w = Math.max(1, Math.ceil(cssW * fitted));
+  const h = Math.max(1, Math.ceil(cssH * fitted));
   const key = `${w}x${h}`;
   if (bitmap && bitmapKey === key) return bitmap;
   let next: BitmapSurface;
@@ -325,7 +336,7 @@ function ensureBitmap(cssW: number, cssH: number, scale: number): BitmapSurface 
   next.height = h;
   bitmap = next;
   bitmapKey = key;
-  bitmapDpr = scale;
+  bitmapDpr = fitted;
   bitmapCssWidth = cssW;
   bitmapCssHeight = cssH;
   return next;
@@ -352,9 +363,11 @@ function repaintCell(
 ): void {
   const l = layout.value;
   const box = entryBoxRect(trackIndex, row, l);
-  // Repair canvas-space rect, widened by a device pixel per side so no
+  // Repair canvas-space rect, widened by a bitmap pixel per side so no
   // anti-aliased edge of the neighboring paint bleeds through the clip.
-  const d = dpr.value;
+  // Snapped in the bitmap's own scale, which is not the screen's when the
+  // pattern was too big to paint at full resolution.
+  const d = bitmapDpr;
   const cssX = (Math.floor((box.x + GUTTER_WIDTH_PX) * d) - 1) / d;
   const cssY = (Math.floor(box.y * d) - 1) / d;
   const cssW = (Math.ceil(box.width * d) + 2) / d;
@@ -437,7 +450,8 @@ function paintStatic(): boolean {
   const ctx = rawCtx as unknown as CanvasRenderingContext2D;
   const theme = getTheme();
   const l = layout.value;
-  ctx.setTransform(dpr.value, 0, 0, dpr.value, 0, 0);
+  // bitmapDpr, not dpr: ensureBitmap may have come down a scale to fit.
+  ctx.setTransform(bitmapDpr, 0, 0, bitmapDpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
   ctx.fillStyle = theme.panelBackground;
   ctx.fillRect(0, 0, cssW, cssH);
@@ -490,12 +504,25 @@ function paintPreRender(): void {
   if (!bitmap || !upcoming || upcoming.rows <= 0 || upcoming.tracks.length === 0) {
     return;
   }
-  // Size the ping-pong surface for the upcoming extent, in device pixels
-  // (the same ceil(css × dpr) rule ensureBitmap applies, so a swap renders
-  // 1:1 whatever the fractional DPR).
+  // Size the ping-pong surface for the upcoming extent, at the same scale
+  // ensureBitmap would give that extent -- which is the screen's DPR unless
+  // the pattern is too big to paint at it. A surface sized any other way
+  // could not be adopted, and the swap would repaint from scratch.
   const extent = preRenderExtent(upcoming, props.showExtraEffectColumn);
-  const deviceW = Math.max(1, Math.ceil(extent.width * dpr.value));
-  const deviceH = Math.max(1, Math.ceil(extent.height * dpr.value));
+  const scale = bitmapScaleFor(
+    extent.width,
+    extent.height,
+    dpr.value,
+    bitmapBudget.value,
+  );
+  if (scale === null) {
+    // Beyond this renderer; the swap will take the full-paint path, which
+    // reports the failure and hands over to the DOM grid.
+    preRenderMeta = null;
+    return;
+  }
+  const deviceW = Math.max(1, Math.ceil(extent.width * scale));
+  const deviceH = Math.max(1, Math.ceil(extent.height * scale));
   let surface = preRenderBitmap;
   if (!surface || surface.width !== deviceW || surface.height !== deviceH) {
     surface = null;
@@ -519,7 +546,7 @@ function paintPreRender(): void {
     preRenderMeta = null;
     return;
   }
-  rawCtx.setTransform(dpr.value, 0, 0, dpr.value, 0, 0);
+  rawCtx.setTransform(scale, 0, 0, scale, 0, 0);
   if (!paintUpcoming(surface, upcoming, props.showExtraEffectColumn, props.selectionRect)) {
     preRenderMeta = null;
     return;
@@ -577,6 +604,7 @@ function paintVisible(): boolean {
     contentWidth.value,
     totalRowsHeight.value,
     dpr.value,
+    bitmapDpr,
   );
   if (win.sw <= 0 || win.sh <= 0) return true;
   ctx.drawImage(
@@ -587,8 +615,8 @@ function paintVisible(): boolean {
     win.sh,
     win.dx,
     win.dy,
-    win.sw,
-    win.sh,
+    win.dw,
+    win.dh,
   );
   return true;
 }
@@ -670,11 +698,22 @@ function runFrame(): void {
       // The bitmap must fit the arriving pattern exactly — its extent was
       // sized for the pre-render target, and a mismatch would smear the
       // blit. Painted meta carries that extent.
+      // The scale that extent would be painted at now: a pre-render made
+      // before a DPR change (or for a pattern of a different size) is sized
+      // for a scale this frame would not choose, and adopting it would blit
+      // the wrong number of source pixels.
+      const preScale = bitmapScaleFor(
+        preRenderMeta.cssWidth,
+        preRenderMeta.cssHeight,
+        dpr.value,
+        bitmapBudget.value,
+      );
       const sizedOk =
+        preScale !== null &&
         bitmapCssWidth === preRenderMeta.cssWidth &&
         bitmapCssHeight === preRenderMeta.cssHeight &&
-        preRenderBitmap.width === Math.max(1, Math.ceil(preRenderMeta.cssWidth * dpr.value)) &&
-        preRenderBitmap.height === Math.max(1, Math.ceil(preRenderMeta.cssHeight * dpr.value));
+        preRenderBitmap.width === Math.max(1, Math.ceil(preRenderMeta.cssWidth * preScale)) &&
+        preRenderBitmap.height === Math.max(1, Math.ceil(preRenderMeta.cssHeight * preScale));
       if (
         sizedOk &&
         canAdoptPreRender(
@@ -691,7 +730,7 @@ function runFrame(): void {
         bitmap = preRenderBitmap;
         preRenderBitmap = adopted;
         bitmapKey = `${bitmap.width}x${bitmap.height}`;
-        bitmapDpr = dpr.value;
+        bitmapDpr = preScale as number;
         bitmapCssWidth = contentWidth.value;
         bitmapCssHeight = totalRowsHeight.value;
         // The cell-repair bookkeeping must describe the bitmap now on screen.
@@ -709,12 +748,20 @@ function runFrame(): void {
     }
     if (!staticPainted && paintedState && bitmap) {
       // The incremental path repairs a bitmap that is still the right shape:
-      // same extent, same DPR. A resize/DPR change must fall through to the
-      // full paint, which rebuilds the backing store.
+      // same extent, same scale. A resize or a DPR change must fall through
+      // to the full paint, which rebuilds the backing store -- and the scale
+      // to compare against is the one this extent fits at, which is below
+      // the screen's DPR for a pattern too big to paint at full resolution.
       const bitmapValid =
         bitmapCssWidth === contentWidth.value &&
         bitmapCssHeight === totalRowsHeight.value &&
-        bitmapDpr === dpr.value;
+        bitmapDpr ===
+          bitmapScaleFor(
+            contentWidth.value,
+            totalRowsHeight.value,
+            dpr.value,
+            bitmapBudget.value,
+          );
       if (bitmapValid) {
         const diffs = diffPaintState(
           paintedState,

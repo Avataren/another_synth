@@ -247,7 +247,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
@@ -456,20 +456,30 @@ function onCanvasScroll(payload: { top: number; left: number }): void {
 }
 
 /**
- * Fall back to the DOM grid for this page's lifetime.
+ * Fall back to the DOM grid, for this pattern.
  *
- * Deliberately not persisted: the failures this handles belong to a pattern
- * (one past the bitmap device-pixel cap, chiefly) rather than to the
- * machine, and with the toggle gone a persisted `false` would strand the
- * user on the DOM grid for every song afterwards.
+ * Neither persisted nor permanent: what the renderer reports is a property
+ * of the pattern in front of it (one whose bitmap will not fit) rather than
+ * of the machine, so the jukebox -- which plays a new song every few
+ * minutes -- retries on every pattern change below. The notification is
+ * once per page; the retry would otherwise make it once per pattern.
  */
 function onCanvasRendererError(error: Error): void {
   canvasRendererFailed.value = true;
-  $q.notify({
-    type: 'negative',
-    message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,
-  });
+  if (!canvasFailureNotified) {
+    canvasFailureNotified = true;
+    $q.notify({
+      type: 'negative',
+      message: `Canvas pattern renderer failed — switched to the DOM grid. (${error.message})`,
+    });
+  }
 }
+
+let canvasFailureNotified = false;
+
+watch([trackCount, rowsCount, () => currentPattern.value?.id], () => {
+  if (canvasRendererFailed.value) canvasRendererFailed.value = false;
+});
 
 let scrollRafId: number | null = null;
 

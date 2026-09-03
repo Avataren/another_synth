@@ -11,7 +11,7 @@
  */
 
 export interface BlitWindow {
-  /** Source rectangle in offscreen-bitmap device pixels. */
+  /** Source rectangle in offscreen-bitmap pixels (at the bitmap's scale). */
   sx: number;
   sy: number;
   sw: number;
@@ -19,14 +19,27 @@ export interface BlitWindow {
   /** Destination offset in on-screen-canvas device pixels. */
   dx: number;
   dy: number;
+  /**
+   * Destination size in on-screen-canvas device pixels.
+   *
+   * Equal to sw/sh while the bitmap is painted at the screen's own scale.
+   * They part company when a pattern too big for a full-resolution bitmap is
+   * painted at a lower one (see pattern-bitmap): the same CSS extent is then
+   * fewer source pixels than destination pixels, and drawImage stretches it.
+   */
+  dw: number;
+  dh: number;
 }
 
 /**
  * Rectangle of the pattern visible through the viewport, in both spaces.
  *
- * `bitmapW`/`bitmapH` are the pattern's size in CSS pixels (the bitmap itself
- * is `bitmapW*dpr` × `bitmapH*dpr` device pixels); `viewportW`/`viewportH`
- * are the on-screen canvas's CSS size. All six results are device pixels.
+ * `bitmapW`/`bitmapH` are the pattern's size in CSS pixels; the bitmap
+ * itself is `bitmapW*bitmapScale` × `bitmapH*bitmapScale` pixels, where
+ * `bitmapScale` defaults to `dpr` and is lower for a pattern too big to
+ * paint at full resolution. `viewportW`/`viewportH` are the on-screen
+ * canvas's CSS size. Source results are in bitmap pixels, destination
+ * results in on-screen device pixels.
  *
  * Clamps:
  * - scroll beyond the content edges reads no source pixels (`sx`/`sy` clamp
@@ -43,30 +56,38 @@ export function blitWindow(
   bitmapW: number,
   bitmapH: number,
   dpr: number,
+  bitmapScale: number = dpr,
 ): BlitWindow {
-  const sx = Math.max(0, Math.min(scrollLeft, bitmapW)) * dpr;
-  const sy = Math.max(0, Math.min(scrollTop, bitmapH)) * dpr;
+  // Work the geometry out once in CSS pixels, then convert into each space:
+  // the source and the destination no longer share a scale.
+  const cssSx = Math.max(0, Math.min(scrollLeft, bitmapW));
+  const cssSy = Math.max(0, Math.min(scrollTop, bitmapH));
 
   // Negative scroll means the content's edge sits inside the viewport: shift
   // the destination right/down by the over-scroll amount.
-  const dx = Math.max(0, -scrollLeft) * dpr;
-  const dy = Math.max(0, -scrollTop) * dpr;
+  const cssDx = Math.max(0, -scrollLeft);
+  const cssDy = Math.max(0, -scrollTop);
 
-  const visibleCssW = Math.min(
-    viewportW - dx / dpr, // viewport space left of the pinned edge
-    bitmapW - sx / dpr, // bitmap content left of the source origin
+  const visibleCssW = Math.max(
+    0,
+    Math.min(
+      viewportW - cssDx, // viewport space left of the pinned edge
+      bitmapW - cssSx, // bitmap content left of the source origin
+    ),
   );
-  const visibleCssH = Math.min(
-    viewportH - dy / dpr,
-    bitmapH - sy / dpr,
+  const visibleCssH = Math.max(
+    0,
+    Math.min(viewportH - cssDy, bitmapH - cssSy),
   );
 
   return {
-    sx,
-    sy,
-    sw: Math.max(0, visibleCssW) * dpr,
-    sh: Math.max(0, visibleCssH) * dpr,
-    dx,
-    dy,
+    sx: cssSx * bitmapScale,
+    sy: cssSy * bitmapScale,
+    sw: visibleCssW * bitmapScale,
+    sh: visibleCssH * bitmapScale,
+    dx: cssDx * dpr,
+    dy: cssDy * dpr,
+    dw: visibleCssW * dpr,
+    dh: visibleCssH * dpr,
   };
 }
