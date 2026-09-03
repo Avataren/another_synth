@@ -2544,7 +2544,99 @@ captured): once with raw bytes (the new path) and once with the raw fields strip
 (forcing the pre-P1 `parseEffectCommand` text path). Every log must match line for
 line -- see `src/tests/raw-effect-bytes.test.ts`.
 
----
+### D96 — S3M_PROFILE filled with the sourced ST3 command tables and pitch model (P3)
+
+P3 from ARCH-REVIEW-s3m.md. `S3M_PROFILE` now carries S3M's own command numbering,
+pitch model and semantics; every number is quoted from a reference below. No parser
+(P5), and nothing selects the profile until an S3M song carries the format tag, so
+MOD/XM/native playback is untouched. D95 is reserved for the P2 song-bank split
+running in parallel.
+
+**References.** The ST3.20 replayer is quoted from 8bitbubsy's st3play (a
+line-accurate port of Scream Tracker 3.21's mixer, the same standard pt2-clone set
+for ProTracker): `digdata.c` (`notespd`, `octavediv`, `xfinetune_amiga`),
+`dig.c` (`stnote2herz`, `setspd`, `scalec2spd`, `setmasterflags`),
+`digcmd.c` (the effect routines and `GET_LAST_NFO`), `mixer/sinc.h` (`C2FREQ`
+8363). The command letters and their behaviours are cross-checked against the
+ST3.20 manual's effect list (modland "Scream Tracker v3.20 effects (.s3m).txt",
+whose examples this task's tests reuse) and OpenMPT's `S3MConvert`
+(soundlib/Load_s3m.cpp), which is where the letter-minus-0x40 byte encoding is
+explicit (`switch(command | 0x40)`).
+
+- **Command table** (`effectCommands`, byte = letter - 0x40 per OpenMPT):
+  0x02 B posJump, 0x03 C patBreak (BCD row decode is import work), 0x04 D
+  volSlide, 0x05 E portaDown, 0x06 F portaUp, 0x07 G tonePorta, 0x08 H vibrato,
+  0x09 I tremor, 0x0B K vibratoVol, 0x0C L tonePortaVol, 0x0F O sampleOffset,
+  0x10 P panSlide, 0x11 Q retrigVol, 0x12 R tremolo, 0x15 U fineVibrato, 0x16 V
+  setGlobalVol, 0x17 W globalVolSlide, 0x18 X setPan. ST3.20 itself supports A-L,
+  O, Q, R, S, T, U, V (its replayer dummies M, N, P, W, X -- `sotherjmp` maps them
+  to `s_ret`); the others exist because later trackers write S3M files and OpenMPT
+  decodes them for every S3M. M (0x0D) and N (0x0E), per-channel volume commands,
+  have no format-neutral behaviour in the effect union yet and are deliberately
+  left unmapped rather than mis-decoded; P5 gives them homes with the importer.
+- **Structural bytes**: arpeggio 0x0A ('J' -- not ProTracker's 0x00), extended
+  0x13 ('S', whose subcommand numbering matches the shared Exy subtype map:
+  S1x glissando, S3x/S4x waveforms, S8x pan, SCx/SDx/SEx), speed 0x01 ('A') --
+  the task brief's "0x1F" was wrong (0x1F is not an S3M command byte; letter 0x5F
+  does not exist) -- and a **new optional `tempoCommandByte: 0x14`** ('T'). S3M,
+  unlike ProTracker, has separate speed (A, 01-FF per the manual, so parameters
+  at or above 0x20 are still speeds) and tempo (T, "valid values are 20 to FF")
+  commands, and the combined `speedTempoCommandByte` split cannot express that;
+  `decodeRawEffect` gains one branch behind the optional field, which every other
+  profile leaves undefined (inert -- pinned by test). Axx with a parameter of 0x20
+  or above still decodes as tempo through the combined-byte branch; speeds above
+  0x1F are pathological (the manual itself notes trackers cap at 1F "since speed
+  and tempo are in the same command").
+- **Audit fields.** `volumeSlideHasMemory`/`fineSlideHasMemory` true: st3play's
+  slide routines all open with `GET_LAST_NFO` (`if (ch->info == 0) ch->info =
+  ch->alastnfo;`, digcmd.c) -- ST3's memory is one channel-wide last-parameter
+  byte rather than FT2's per-command bytes, which the boolean field cannot
+  distinguish (recorded as a simplification; FT2-style separate memories stay
+  per-command). `panSlideUnit` 2/255: the S3M pan slide walks a 0..255 byte like
+  FT2's (the command is MPT-era -- ST3 dummies it -- but OpenMPT decodes it for
+  every S3M). `f00StopsSong` false: the task brief is right and the arch review's
+  parenthetical is wrong -- ST3.20's effect list has no stop-song command at all;
+  its 'F' byte (0x06) is portamento up.
+- **Pitch model** (`createS3mPitchModel`, pitch-model.ts). ST3 computes each
+  channel's period from a base table scaled per octave (`stnote2herz`: `notespd
+  [note & 0x0F] >> octavediv[note >> 4]`, `notespd` = ProTracker's hand-tuned
+  periods times 32, 27392 down to 14512), and plays it at `hz = 14317056 / spd`
+  (`setspd`), with finetune in the sample's own c2spd (`scalec2spd`: `spd *
+  C2FREQ / ac2spd`, C2FREQ 8363). OpenMPT reads c2spd as `c5speed` and maps file
+  note 0x40 to C-5, which is exactly where a c2spd 8363 sample plays at its
+  recorded rate (14317056/1712 = 8362.6 Hz), so the musical-Hz scale is 16, not
+  XM Amiga's 32 (ST3's reference note is one octave above XM's). Anchors the
+  tests pin: note 0x00 (C-1) period 27392 -> 32.7 Hz; 0x30 (C-4) period 3424 ->
+  261.3 Hz; 0x39 (A-4) period 2032 -> 440.4 Hz, the well-known ST3 tuning (the
+  table is hand-tuned, not exactly 12-TET). The task brief's "A-4 ... period
+  4595" hint matches nothing in the sourced replayer and is recorded here as
+  not reproducible; the sourced numbers above are what the tests pin. Arpeggio
+  steps whole table entries (`s_arp` re-derives `stnote2herz(octa | note)`) and
+  does NOT wrap to DC -- the slide routines clamp at 32767 -- so this model
+  passes `arpeggioWrapsToDC: false` behaviour by clamping, unlike
+  PROTRACKER's. Clamps: `setmasterflags` gives 64..32767 normally, 453..3424
+  under the per-file amiga-limits flag (header flags & 16) -- the default range
+  is implemented, and the amiga-limits variant is the same per-file
+  profile-selection shape as XM_AMIGA_PROFILE, to be selected when the P5 parser
+  reads the header.
+- **Slides**: `s_slidedown` moves `ch->info << 2` period units per tick, so
+  `portamentoUnitScale` is 4 -- ST3's portamento is four times finer than
+  ProTracker's, like FT2's. Deliberately not modelled: ST3's `fastvolslide`
+  header flag (without it, ST3 3.2 treats non-fine Dxy as illegal on un-counted
+  songs -- `else return; // illegal slide`), which is engine behaviour rather
+  than profile data and binds only on old files; and S3M's fine pitch slides,
+  which live in the porta commands' high parameters (EFx/FFx per the manual)
+  rather than in extended subcommands, so their nibble handling is importer/
+  processor work (P5), not a profile table question.
+- **Task-brief corrections**, so nobody re-follows the guesses: `speedTempo
+  CommandByte` is 0x01, not 0x1F; S3M `0x04` + `0xC0` is a volume slide *up* by
+  C (Dx0), not down (D0y) -- the test pins both directions.
+
+Tests: `src/tests/pitch-model.test.ts` (S3mPitchModel, 11 tests pinning the
+sourced table values, the 16x musical scale, the 64..32767 clamp and the
+no-DC-wrap arpeggio) and `src/tests/raw-effect-bytes.test.ts` (S3M letter
+commands through `decodeRawEffect`, including the manual's J37/QC2/SC4 examples
+and the inertness pins for PROTRACKER/XM).
 
 ---
 
@@ -2759,6 +2851,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-09-03 | fix | **F00 stops a ProTracker song after its row** (D91). pt2-clone's `setSpeed` turns a zero parameter into `doStopSong = true`; the parser dropped F00 outright and the engine's clamp would have turned it into speed 1 -- six times the tempo. Behind `FormatProfile.f00StopsSong` (ProTracker only; FT2 stalls and native keeps the old reading). 2 corpus cells, both last rows of their songs. Tests: `src/tests/effect-reference-audit-2.test.ts` (2 confirmed failing against the old code). |
 | 2026-09-03 | note | **Systematic reference audit of the remaining effects** (D92/D93). Volume column, 8xx, Cxx, Axy, 3xx, 0xy (MOD), E6x, EDx, E9x phase, Txy, Lxx, Bxx/Dxx verified against the quoted replayer routines and left as they were. E0x (36 MOD cells), EFx (9) and FT2's autovibrato/panning envelope (20 instruments, parsed and dropped at import) decided against and recorded with quoted routines (D93); Uxy flagged as a deliberate FT2 divergence (0 uses). Known-opens D71/D81/D87 left untouched. 1203 green. |
 | 2026-09-03 | 2 | **Raw effect bytes on `TrackerEntryData`** (P1, D94). Importers store the module's own `(cmd, param)` bytes; the text macro is derived from them and `parseEffectCommand` remains for hand-authored rows only. Decoding goes through new `FormatProfile` data (`effectCommands`, arpeggio/speed-tempo/extended command bytes) via `decodeRawEffect`, retiring the D52 letter-collision class. Extensibility proven on a hypothetical third format mapped via profile only. Scheduled-command identity proven per corpus module: 18 XM + 54 MOD files, every row of every pattern, raw path vs stripped-text path byte-identical through `PlaybackEngine.scheduleRow`. The exceptions are the D52 collisions themselves: imported XM bytes 0x16-0x19 previously became M/N/O/P macro-shorthand commands (0x19 is FT2's pan slide) and now decode FT2-correctly (0x16-0x18 ignored, 0x19 as `panSlide`); the corpus histogram has zero 0x16-0x19 occurrences, so no corpus playback changes today. No song-file version bump (optional additive fields). Tests: `src/tests/raw-effect-bytes.test.ts` (80 tests), including pins that a hand edit of the macro column drops the raw bytes. |
+| 2026-09-03 | 3 | **S3M_PROFILE filled with the sourced ST3 command tables and pitch model** (P3, D96). The letter-command table (byte = letter - 0x40 per OpenMPT's `S3MConvert`), the ST3.20 manual's speed/tempo split behind a new optional `tempoCommandByte`, and `createS3mPitchModel` (st3play's `notespd` table x32, `hz = 14317056/spd`, c2spd finetune at the C-5 reference, 64..32767 clamps, table-walking arpeggio with no DC wrap) are all quoted from reference in the decision log. The profile stays inert for MOD/XM/native: nothing selects it until an S3M song carries the format tag, and the other profiles are pinned unchanged. Task-brief corrections recorded in D96 (speed byte is 0x01, not 0x1F; 0x04+0xC0 slides up). Tests: `src/tests/pitch-model.test.ts`, `src/tests/raw-effect-bytes.test.ts`. |
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |

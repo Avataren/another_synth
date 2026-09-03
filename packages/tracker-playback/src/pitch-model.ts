@@ -103,27 +103,27 @@ export interface AmigaPitchModelOptions {
  * *larger* period, so a period exactly between two entries snaps down in
  * pitch either way.
  */
-function nearestPeriodTableIndex(period: number): number {
-  const last = PT_PERIOD_TABLE.length - 1;
+function nearestPeriodTableIndex(
+  period: number,
+  table: readonly number[] = PT_PERIOD_TABLE,
+): number {
+  const last = table.length - 1;
   // Every delta from a non-finite period is Infinity or NaN, neither of which
   // beat the scan's initial Infinity -- so it fell out holding index 0.
   if (!Number.isFinite(period)) return 0;
-  if (period >= PT_PERIOD_TABLE[0]!) return 0;
-  if (period <= PT_PERIOD_TABLE[last]!) return last;
+  if (period >= table[0]!) return 0;
+  if (period <= table[last]!) return last;
 
-  // Narrow to the neighbouring pair lo/hi with
-  // PT_PERIOD_TABLE[hi] < period < PT_PERIOD_TABLE[lo].
+  // Narrow to the neighbouring pair lo/hi with table[hi] < period < table[lo].
   let lo = 0;
   let hi = last;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
-    if (PT_PERIOD_TABLE[mid]! > period) lo = mid;
+    if (table[mid]! > period) lo = mid;
     else hi = mid;
   }
   // `<=` keeps the lower index on an exact tie.
-  return PT_PERIOD_TABLE[lo]! - period <= period - PT_PERIOD_TABLE[hi]!
-    ? lo
-    : hi;
+  return table[lo]! - period <= period - table[hi]! ? lo : hi;
 }
 
 /**
@@ -263,6 +263,146 @@ export function createLinearPitchModel(): PitchModel {
       clampPeriod(
         Math.round(period / XM_UNITS_PER_SEMITONE) * XM_UNITS_PER_SEMITONE,
       ),
+  };
+}
+
+/**
+ * Scream Tracker 3 pitch: Amiga periods against ST3's own table.
+ *
+ * ST3 does not carry MOD's note bytes; it computes each channel's "period"
+ * from a base table scaled per octave, then derives the sample playback rate
+ * from it. Quoted from 8bitbubsy's st3play (the faithful ST3 replayer
+ * port), `digdata.c`:
+ *
+ *   const int16_t notespd[12+1+3] =
+ *   {
+ *       //C      C#     D      D#     E      F
+ *       27392, 25856, 24384, 23040, 21696, 20480,
+ *       //F#     G      G#     A      A#     B
+ *       19328, 18240, 17216, 16256, 15360, 14512,
+ *   ...
+ *   const uint8_t octavediv[8+8] = { 0, 1, 2, 3, 4, 5, 6, 7, ... };
+ *
+ * and `stnote2herz` (`dig.c`):
+ *
+ *   uint16_t noteVal = notespd[note & 0x0F];
+ *   const uint8_t shiftVal = octavediv[note >> 4];
+ *   if (shiftVal > 0) noteVal >>= shiftVal & 0x1F;
+ *
+ * so the table is ProTracker's own hand-tuned periods times 32, halved per
+ * octave nibble (compare notespd[1] = 25856 = 808*32, the ProTracker C#
+ * entry). The `notespd` base row corresponds to S3M note 0x00.
+ *
+ * The period-to-rate conversion is quoted from `setspd` (`dig.c`):
+ *
+ *   const uint32_t hz = 14317056 / (uint16_t)tmpspd;
+ *
+ * where tmpspd is the channel period, and from `scalec2spd` (`dig.c`) the
+ * per-sample transposition:
+ *
+ *   uint32_t tmpspd = spd * C2FREQ;  // C2FREQ is 8363 (mixer/sinc.h)
+ *   tmpspd /= ch->ac2spd;
+ *
+ * i.e. finetune lives in the sample's own c2spd ("C4Spd", 8363 = no
+ * finetune per the S2x finetune table in the ST3.20 manual), not in a
+ * note-level nibble. OpenMPT reads this field as `c5speed`, and the file's
+ * note byte 0x40 maps to C-5 (Load_s3m.cpp: `note = (note & 0x0F) +
+ * 12 * (note >> 4) + 12`), which is exactly where a c2spd 8363 sample
+ * plays at its recorded rate: period 27392 >> 4 = 1712,
+ * hz = 14317056 / 1712 = 8362.6 Hz.
+ *
+ * `hz` is a sample playback rate in the Paula convention, not musical
+ * pitch -- the same situation as XM's rate = 8363*1712/period at C-4. The
+ * engine works in musical Hz, so this model divides by 16, not XM's 32:
+ * ST3's reference note is C-5, one octave above XM's C-4. Checks: period
+ * 27392 (note 0x00 = C-1) -> 32.7 Hz; period 3424 (note 0x30 = C-4) ->
+ * 261.3 Hz; period 2032 (note 0x39 = A-4) -> 440.4 Hz, the well-known ST3
+ * tuning (the table is not exactly 12-tone equal temperament).
+ *
+ * The same `<< 2` appears in every slide routine (`s_slidedown`):
+ *
+ *   ch->aspd += ch->info << 2;
+ *
+ * so one portamento parameter moves 4 period units per tick -- the profile
+ * carries that as portamentoUnitScale.
+ *
+ * Clamping: `setmasterflags` (`dig.c`) sets the playable range
+ *
+ *   song.aspdmin = 64; song.aspdmax = 32767;      // default
+ *   song.aspdmin = 453; song.aspdmax = 3424;      // amigalimits flag
+ *
+ * and the slide routines clamp against 32767 (`if ((uint16_t)ch->aspd >
+ * 32767) ch->aspd = 32767;`). The amiga-limits variant is a per-file
+ * master flag (header flags & 16), the same profile-selection shape as
+ * XM's Amiga-mode flag; until the S3M parser exists (P5) this model keeps
+ * the default range, which is what un-flagged modules use.
+ */
+const S3M_REFERENCE_RATE_NUMERATOR = 14317056; // setspd: hz = 14317056 / spd
+const S3M_TO_SYNTH_SCALE = 16;
+const MIN_S3M_PERIOD = 64; // setmasterflags: song.aspdmin
+const MAX_S3M_PERIOD = 32767; // setmasterflags: song.aspdmax
+
+/**
+ * ST3's base period row (S3M note octave 0), quoted verbatim from
+ * st3play's `notespd` table (`digdata.c`) -- ProTracker's table entries
+ * times 32. Octave k shifts the row right by k bits, so the full playable
+ * table is this row transposed over S3M's octave nibbles.
+ */
+const ST3_NOTESPD: readonly number[] = [
+  27392, 25856, 24384, 23040, 21696, 20480, // C..F
+  19328, 18240, 17216, 16256, 15360, 14512, // F#..B
+];
+
+/**
+ * S3M's note byte spans six octave nibbles of twelve semitones each
+ * (0x00..0x5B = C-1..B-6); lo-nibble values 0xC..0xF are octave-overrun
+ * spellings of the next octave's first notes, not extra table rows, so the
+ * table holds 6 x 12 entries.
+ */
+const S3M_PERIOD_TABLE: readonly number[] = Array.from(
+  { length: 72 },
+  (_, i) => ST3_NOTESPD[i % 12]! >> Math.floor(i / 12),
+);
+
+export function createS3mPitchModel(): PitchModel {
+  const clampPeriod = (period: number): number => {
+    if (!Number.isFinite(period)) return period;
+    if (period < MIN_S3M_PERIOD) return MIN_S3M_PERIOD;
+    if (period > MAX_S3M_PERIOD) return MAX_S3M_PERIOD;
+    return period;
+  };
+
+  const frequencyFromPeriod = (period: number): number =>
+    S3M_REFERENCE_RATE_NUMERATOR / period / S3M_TO_SYNTH_SCALE;
+
+  const rawPeriodFromFrequency = (frequency: number): number =>
+    S3M_REFERENCE_RATE_NUMERATOR / (frequency * S3M_TO_SYNTH_SCALE);
+
+  return {
+    kind: 'amiga',
+    clampPeriod,
+    frequencyFromPeriod,
+    rawPeriodFromFrequency,
+    periodFromFrequency: (frequency) =>
+      clampPeriod(rawPeriodFromFrequency(frequency)),
+    // ST3's arpeggio re-derives the period from the note table
+    // (`s_arp`: `stnote2herz(octa | note)`), so it steps whole table
+    // entries. There is no ProTracker-style wrap to DC: the slide and
+    // clamp routines hold the period inside 64..32767, so an arpeggio
+    // past the table edge stays clamped at the edge instead.
+    arpeggioPeriod: (basePeriod, semitoneOffset) => {
+      const shiftedIndex =
+        nearestPeriodTableIndex(basePeriod, S3M_PERIOD_TABLE) + semitoneOffset;
+      const clamped = Math.max(
+        0,
+        Math.min(S3M_PERIOD_TABLE.length - 1, shiftedIndex),
+      );
+      return S3M_PERIOD_TABLE[clamped]!;
+    },
+    snapPeriod: (period) =>
+      S3M_PERIOD_TABLE[
+        nearestPeriodTableIndex(period, S3M_PERIOD_TABLE)
+      ]!,
   };
 }
 

@@ -42,6 +42,7 @@ import {
 import {
   XM_PROFILE,
   PROTRACKER_PROFILE,
+  S3M_PROFILE,
   type FormatProfile,
 } from '../../packages/tracker-playback/src/format-profile';
 import { buildXm, cell } from './helpers/xm-builder';
@@ -424,6 +425,132 @@ describe('a third format maps its command bytes via profile data only', () => {
     expect(decodeRawEffect(0x0f, 0x06, XM_PROFILE)).toEqual({
       type: 'speed',
       speed: 6,
+    });
+  });
+});
+describe('S3M letter commands decode via the S3M profile (P3, D96)', () => {
+  /**
+   * S3M stores each effect letter as letter - 0x40 (OpenMPT's S3MConvert
+   * switches on `command | 0x40`), so the numbering collides with MOD/XM's
+   * by design: byte 0x01 is 'A' (set speed), 0x04 is 'D' (volume slide),
+   * 0x0F is 'O' (sample offset). All values come from the S3M_PROFILE
+   * tables -- the ST3.20 manual's effect list and OpenMPT's Load_s3m.cpp
+   * are the references (see the D96 decision-log entry for the quotes).
+   */
+  it('maps the ST3 speed and tempo commands separately', () => {
+    // Axx sets the speed ("Set speed to xx (the default is 06)").
+    expect(decodeRawEffect(0x01, 0x06, S3M_PROFILE)).toEqual({
+      type: 'speed',
+      speed: 6,
+    });
+    // Txx sets the tempo ("valid values are 20 to FF"; default 7D = 125).
+    expect(decodeRawEffect(0x14, 0x7d, S3M_PROFILE)).toEqual({
+      type: 'tempo',
+      bpm: 0x7d,
+    });
+    // Below 0x20 a tempo parameter has no ST3 meaning.
+    expect(decodeRawEffect(0x14, 0x10, S3M_PROFILE)).toBeUndefined();
+  });
+
+  it('maps the volume-slide dual nibble like the manual documents', () => {
+    // "Dx0 Volume slide up by x" -- 0xC0 slides UP by C (12).
+    expect(decodeRawEffect(0x04, 0xc0, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'volSlide', paramX: 12, paramY: 0 },
+    });
+    // "D0y Volume slide down by y" -- 0x0C slides down by 12.
+    expect(decodeRawEffect(0x04, 0x0c, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'volSlide', paramX: 0, paramY: 12 },
+    });
+  });
+
+  it('decodes the manual’s own examples through the raw-byte path', () => {
+    // Bxx: "Jump to order xx".
+    expect(decodeRawEffect(0x02, 0x05, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'posJump', paramX: 0, paramY: 5 },
+    });
+    // Cxx: "Break pattern to row xx" (the BCD row decode is import work).
+    expect(decodeRawEffect(0x03, 0x12, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'patBreak', paramX: 1, paramY: 2 },
+    });
+    // J37: the manual's C-minor arpeggio ("would play C, D# and G").
+    expect(decodeRawEffect(0x0a, 0x37, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'arpeggio', paramX: 3, paramY: 7 },
+    });
+    // SC4: "cut the note at exactly halfway through the row" at speed 8.
+    expect(decodeRawEffect(0x13, 0xc4, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'noteCut', paramX: 12, paramY: 4, extSubtype: 'noteCut' },
+    });
+    // S8x: set channel pan (0..F, left..right, GUS-only in ST3).
+    expect(decodeRawEffect(0x13, 0x8f, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'setPan', paramX: 8, paramY: 15, extSubtype: 'setPan' },
+    });
+    // QC2: the manual's retrig example ("three retrigs with volumes
+    // 12, 20 and 28").
+    expect(decodeRawEffect(0x11, 0xc2, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'retrigVol', paramX: 12, paramY: 2 },
+    });
+    // Rxy: "Tremolo with speed x and depth y".
+    expect(decodeRawEffect(0x12, 0x83, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'tremolo', paramX: 8, paramY: 3 },
+    });
+    // Uxy: "Fine Vibrato", four times more accurate than Hxx.
+    expect(decodeRawEffect(0x15, 0x83, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'fineVibrato', paramX: 8, paramY: 3 },
+    });
+    // Vxx: "Set global volume" (0x40 = full).
+    expect(decodeRawEffect(0x16, 0x40, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'setGlobalVol', paramX: 4, paramY: 0 },
+    });
+    // Oxy: "Set sample offset".
+    expect(decodeRawEffect(0x0f, 0x10, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'sampleOffset', paramX: 1, paramY: 0 },
+    });
+    // X80: 8-bit pan, centre (MPT-era command).
+    expect(decodeRawEffect(0x18, 0x80, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'setPan', paramX: 8, paramY: 0 },
+    });
+  });
+
+  it('leaves the per-channel volume commands unmapped rather than guessing', () => {
+    // M/N are dummies in ST3's own replayer and have no format-neutral
+    // behaviour in the effect union yet; P5 maps them with the importer.
+    expect(decodeRawEffect(0x0d, 0x20, S3M_PROFILE)).toBeUndefined();
+    expect(decodeRawEffect(0x0e, 0x11, S3M_PROFILE)).toBeUndefined();
+  });
+
+  it('keeps S3M inert for the existing formats', () => {
+    // Filling S3M_PROFILE is a data change; the other profiles must still
+    // read the same bytes they always did.
+    expect(PROTRACKER_PROFILE.tempoCommandByte).toBeUndefined();
+    expect(XM_PROFILE.tempoCommandByte).toBeUndefined();
+    // ProTracker's 0x0F is the speed/tempo command; S3M's is sample offset.
+    expect(decodeRawEffect(0x0f, 0x06, PROTRACKER_PROFILE)).toEqual({
+      type: 'speed',
+      speed: 6,
+    });
+    expect(decodeRawEffect(0x0f, 0x10, S3M_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'sampleOffset', paramX: 1, paramY: 0 },
+    });
+    // ProTracker's 0x01 is portamento up; S3M's is the speed command.
+    expect(PROTRACKER_PROFILE.effectCommands[0x01]).toBe('portaUp');
+    expect(S3M_PROFILE.effectCommands[0x01]).toBeUndefined();
+    expect(decodeRawEffect(0x01, 0x20, PROTRACKER_PROFILE)).toEqual({
+      type: 'effect',
+      effect: { type: 'portaUp', paramX: 2, paramY: 0 },
     });
   });
 });
