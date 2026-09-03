@@ -51,46 +51,25 @@ import {
 } from 'src/audio/utils/sampler-detune';
 import { getSharedAudioSystem } from 'src/audio/shared-audio-system';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import {
+  MIN_SCHEDULE_LEAD_SECONDS,
+  ScheduledEventQueue,
+  type PendingScheduledEvent,
+} from './scheduled-events';
+import { SongBankRecorder } from './recorder';
+import { TrackVoiceRegistry } from './track-voice-registry';
 
 export interface SongBankSlot {
   instrumentId: string;
   patch: Patch;
 }
 
-interface ActiveInstrument {
+export interface ActiveInstrument {
   instrument: InstrumentV2 | ModInstrument | PooledInstrument;
   patchId: string;
   patchReuseKey: string | null;
   hasPortamento: boolean;
 }
-
-type PendingScheduledEvent =
-  | {
-      kind: 'noteOn';
-      instrumentId: string;
-      midi: number;
-      velocity: number;
-      time: number;
-      trackIndex?: number;
-      frequency?: number;
-      pan?: number;
-      /** Normalized 0-1 sample start offset (ProTracker 9xx). */
-      sampleOffsetFrames?: number;
-      /** Tick duration in seconds, for tick-timed instrument envelopes. */
-      tickSeconds?: number;
-      enqueuedAt: number;
-    }
-  | {
-      kind: 'noteOff';
-      instrumentId: string;
-      midi?: number;
-      time: number;
-      trackIndex?: number;
-      enqueuedAt: number;
-    };
-
-const MIN_SCHEDULE_LEAD_SECONDS = 0.01;
-const MAX_PENDING_SCHEDULED_EVENTS = 2048;
 
 export class TrackerSongBank {
   private generation = 0;
@@ -100,28 +79,11 @@ export class TrackerSongBank {
   private readonly instruments: Map<string, ActiveInstrument> = new Map();
   private readonly activeNotes: Map<string, Map<number, Set<number>>> =
     new Map();
-  private readonly lastTrackVoice: Map<string, Map<number, number>> = new Map();
-  /** Track owner voice per track across instruments: trackIndex -> { instrumentId, voiceIndex } */
-  private readonly trackVoiceOwner: Map<
-    number,
-    { instrumentId: string; voiceIndex: number }
-  > = new Map();
-  /**
-   * Voices still sounding out a release on each track, across instruments.
-   *
-   * A key-off releases a voice and stops tracking it as the track's current
-   * voice -- correctly, since it is no longer what the track is playing. But
-   * on a MOD or XM channel the next note has to *kill* it, and something that
-   * is not tracked anywhere cannot be killed: the released note went on
-   * sounding underneath the new one for its whole fadeout, which on XM can be
-   * seconds. `ModInstrument` already cuts a releasing voice occupying the slot
-   * it is about to reuse, so this only ever bit when the channel changed
-   * instrument -- exactly the case the reporter heard.
-   */
-  private readonly trackReleasingVoices: Map<
-    number,
-    Array<{ instrumentId: string; voiceIndex: number }>
-  > = new Map();
+  /** Per-track taps for the visualisers; see getTrackMonitor. */
+  private readonly trackMonitors: Map<number, GainNode> = new Map();
+  private monitorSink: GainNode | null = null;
+  private readonly restoredAssets: Map<string, Set<string>> = new Map();
+  private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
   /**
    * Playback semantics of the loaded song.
    *
@@ -136,18 +98,11 @@ export class TrackerSongBank {
    * module sets this from `loadSong` before a note is scheduled.
    */
   private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
-  /** Per-track taps for the visualisers; see getTrackMonitor. */
-  private readonly trackMonitors: Map<number, GainNode> = new Map();
-  private monitorSink: GainNode | null = null;
-  private readonly restoredAssets: Map<string, Set<string>> = new Map();
-  private readonly pendingInstruments: Map<string, Promise<void>> = new Map();
-  private pendingScheduledEvents: PendingScheduledEvent[] = [];
-  private flushingPendingScheduled = false;
   private wasSuspended = false;
   private needsAudioContextResume = false;
-  private recorderNode: AudioWorkletNode | null = null;
-  private recordedBuffers: Float32Array[] = [];
-  private recording = false;
+  private readonly eventQueue: ScheduledEventQueue;
+  private readonly voices: TrackVoiceRegistry;
+  private readonly recorder: SongBankRecorder;
   private workletPool: WorkletPool | null = null;
   // Feature flag: pooling is re-enabled after fixing instrument-scoped patch loading
   private useWorkletPooling = true;
@@ -185,6 +140,24 @@ export class TrackerSongBank {
 
     // If the AudioContext resumes after we deferred a sync, rebuild instruments
     // using the last requested slot state so playback doesn't stay silent.
+    this.eventQueue = new ScheduledEventQueue({
+      audioContext: this.audioSystem.audioContext,
+      instruments: this.instruments,
+      dispatchNoteOnAtTime: this.dispatchNoteOnAtTime.bind(this),
+      dispatchNoteOffAtTime: this.dispatchNoteOffAtTime.bind(this),
+    });
+    this.voices = new TrackVoiceRegistry({
+      instruments: this.instruments,
+      activeNotes: this.activeNotes,
+      audioContext: this.audioSystem.audioContext,
+      isMonophonicChannel: () => this.channelsAreMonophonic,
+      getGateLeadTime: (instrument) => this.getGateLeadTime(instrument),
+    });
+    this.recorder = new SongBankRecorder(
+      this.audioSystem,
+      this.masterGain,
+    );
+
     this.audioSystem.audioContext.onstatechange = () => {
       if (
         this.audioSystem.audioContext.state === 'running' &&
@@ -563,7 +536,7 @@ export class TrackerSongBank {
       }
 
       // Try to flush any scheduled events that were queued while suspended/loading
-      await this.flushPendingScheduledEvents();
+      await this.eventQueue.flushPendingScheduledEvents();
     } finally {
       this.syncInProgress = false;
     }
@@ -579,8 +552,7 @@ export class TrackerSongBank {
   dispose() {
     this.disposeInstruments();
     this.masterGain.disconnect();
-    this.recorderNode?.disconnect();
-    this.recorderNode = null;
+    this.recorder.dispose();
 
     // Dispose worklet pool and clean up all shared worklets
     if (this.workletPool) {
@@ -595,9 +567,7 @@ export class TrackerSongBank {
       this.teardownInstrument(id);
     }
     this.activeNotes.clear();
-    this.lastTrackVoice.clear();
-    this.trackVoiceOwner.clear();
-    this.trackReleasingVoices.clear();
+    this.voices.clearAll();
     this.restoredAssets.clear();
   }
 
@@ -616,9 +586,7 @@ export class TrackerSongBank {
       // Also send a gate-low in case the set was empty but a gate is stuck
       active.instrument.allNotesOff();
     }
-    this.lastTrackVoice.clear();
-    this.trackVoiceOwner.clear();
-    this.trackReleasingVoices.clear();
+    this.voices.clearAll();
   }
 
   /**
@@ -628,10 +596,13 @@ export class TrackerSongBank {
    */
   notesOffForTrack(trackIndex: number) {
     for (const [instrumentId, active] of this.instruments.entries()) {
-      const voiceIndex = this.peekLastVoiceForTrack(instrumentId, trackIndex);
+      const voiceIndex = this.voices.peekLastVoiceForTrack(
+        instrumentId,
+        trackIndex,
+      );
       if (voiceIndex !== undefined) {
         active.instrument.cancelAndSilenceVoice(voiceIndex);
-        this.clearLastVoiceForTrack(instrumentId, trackIndex);
+        this.voices.clearLastVoiceForTrack(instrumentId, trackIndex);
       }
 
       // Clear the note tracking for this track
@@ -640,158 +611,7 @@ export class TrackerSongBank {
       notes?.clear();
 
       // Clear the last voice tracking for this track
-      this.clearLastVoiceForTrack(instrumentId, trackIndex);
-    }
-  }
-
-  private getTrackNotes(
-    instrumentId: string,
-    trackIndex: number | undefined,
-  ): Set<number> {
-    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
-    let byTrack = this.activeNotes.get(instrumentId);
-    if (!byTrack) {
-      byTrack = new Map();
-      this.activeNotes.set(instrumentId, byTrack);
-    }
-    let notes = byTrack.get(trackKey);
-    if (!notes) {
-      notes = new Set<number>();
-      byTrack.set(trackKey, notes);
-    }
-    return notes;
-  }
-
-  private setLastVoiceForTrack(
-    instrumentId: string,
-    trackIndex: number | undefined,
-    voiceIndex: number,
-  ) {
-    // Ensure this voice isn't marked against other tracks for the same instrument.
-    const existing = this.lastTrackVoice.get(instrumentId);
-    if (existing) {
-      for (const [key, val] of Array.from(existing.entries())) {
-        if (
-          val === voiceIndex &&
-          key !== (Number.isFinite(trackIndex) ? (trackIndex as number) : -1)
-        ) {
-          existing.delete(key);
-        }
-      }
-    }
-
-    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
-    let byTrack = this.lastTrackVoice.get(instrumentId);
-    if (!byTrack) {
-      byTrack = new Map();
-      this.lastTrackVoice.set(instrumentId, byTrack);
-    }
-
-    byTrack.set(trackKey, voiceIndex);
-    // Record a global last voice for this instrument (trackKey = -1) so an
-    // effect-driven update with no track index can target the most recently
-    // used voice instead of all voices.
-    //
-    // Native songs only. On a module channel this key is a cross-channel leak
-    // by construction: it lets a command that failed to resolve on its own
-    // track land on whatever that instrument played most recently, on *any*
-    // channel. Module commands resolve through `trackVoiceOwner` instead
-    // (see resolveCommandVoice), which has no such escape hatch.
-    if (!this.channelsAreMonophonic) {
-      byTrack.set(-1, voiceIndex);
-    }
-  }
-
-  private peekLastVoiceForTrack(
-    instrumentId: string,
-    trackIndex: number | undefined,
-  ): number | undefined {
-    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
-    const byTrack = this.lastTrackVoice.get(instrumentId);
-    return byTrack?.get(trackKey);
-  }
-
-  private clearLastVoiceForTrack(
-    instrumentId: string,
-    trackIndex: number | undefined,
-  ) {
-    const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
-    const byTrack = this.lastTrackVoice.get(instrumentId);
-    byTrack?.delete(trackKey);
-  }
-
-  private enqueueScheduledEvent(event: PendingScheduledEvent) {
-    if (this.pendingScheduledEvents.length >= MAX_PENDING_SCHEDULED_EVENTS) {
-      // Drop the oldest to avoid unbounded growth
-      this.pendingScheduledEvents.shift();
-      console.warn(
-        '[SongBank] Pending scheduled event queue is full; dropping oldest event.',
-      );
-    }
-    this.pendingScheduledEvents.push(event);
-  }
-
-  private getEnqueueTimestamp(): number {
-    if (
-      typeof performance !== 'undefined' &&
-      typeof performance.now === 'function'
-    ) {
-      return performance.now();
-    }
-    return Date.now();
-  }
-
-  private async flushPendingScheduledEvents(
-    instrumentId?: string,
-  ): Promise<void> {
-    if (this.flushingPendingScheduled) return;
-    this.flushingPendingScheduled = true;
-    try {
-      const now = this.audioContext.currentTime;
-      const remaining: PendingScheduledEvent[] = [];
-
-      for (const event of this.pendingScheduledEvents) {
-        if (instrumentId && event.instrumentId !== instrumentId) {
-          remaining.push(event);
-          continue;
-        }
-
-        const active = this.instruments.get(event.instrumentId);
-        const contextReady = this.audioContext.state === 'running';
-        if (!active || !active.instrument.isReady || !contextReady) {
-          remaining.push(event);
-          continue;
-        }
-
-        const scheduledTime = Math.max(
-          event.time,
-          now + MIN_SCHEDULE_LEAD_SECONDS,
-        );
-        if (event.kind === 'noteOn') {
-          this.dispatchNoteOnAtTime(
-            event.instrumentId,
-            event.midi,
-            event.velocity,
-            scheduledTime,
-            event.trackIndex,
-            event.frequency,
-            event.pan,
-            event.sampleOffsetFrames,
-            event.tickSeconds,
-          );
-        } else {
-          this.dispatchNoteOffAtTime(
-            event.instrumentId,
-            event.midi,
-            scheduledTime,
-            event.trackIndex,
-          );
-        }
-      }
-
-      this.pendingScheduledEvents = remaining;
-    } finally {
-      this.flushingPendingScheduled = false;
+      this.voices.clearLastVoiceForTrack(instrumentId, trackIndex);
     }
   }
 
@@ -813,32 +633,20 @@ export class TrackerSongBank {
   }
 
   /**
-   * End a voice because a *new note* is taking over its channel.
-   *
-   * On a module channel this is a cut, not a release: the channel has one
-   * voice and the new note takes it, so the previous note stops making sound
-   * outright. Going through the release path here left it ringing under the
-   * new note for the whole envelope fadeout.
-   *
-   * A song authored in this tracker has no such constraint -- overlapping
-   * notes on a track are allowed -- so there the previous note is released and
-   * allowed to ring out.
+   * Test-visibility seam (D95): the registry owns the voice maps now, but the
+   * existing tests seed `lastTrackVoice` and call `setLastVoiceForTrack` via
+   * reflection. Keep those hooks working unchanged.
    */
-  private endVoiceForReplacement(
-    instrument: ActiveInstrument['instrument'],
+  private get lastTrackVoice(): Map<string, Map<number, number>> {
+    return this.voices.lastVoiceByTrack;
+  }
+
+  private setLastVoiceForTrack(
+    instrumentId: string,
+    trackIndex: number | undefined,
     voiceIndex: number,
-    time: number,
   ) {
-    if (!this.channelsAreMonophonic) {
-      instrument.gateOffVoiceAtTime(voiceIndex, time);
-      return;
-    }
-    const cuttable = instrument as { cutVoiceAtTime?: (v: number, t: number) => void };
-    if (typeof cuttable.cutVoiceAtTime === 'function') {
-      cuttable.cutVoiceAtTime(voiceIndex, time);
-      return;
-    }
-    instrument.gateOffVoiceAtTime(voiceIndex, time);
+    this.voices.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
   }
 
   /**
@@ -857,64 +665,14 @@ export class TrackerSongBank {
     for (const active of this.instruments.values()) {
       const limit = active.instrument.getVoiceLimit();
       for (let voiceIndex = 0; voiceIndex < limit; voiceIndex++) {
-        this.endVoiceForReplacement(active.instrument, voiceIndex, at);
+        this.voices.endVoiceForReplacement(active.instrument, voiceIndex, at);
       }
     }
     this.activeNotes.clear();
-    this.lastTrackVoice.clear();
-    this.trackVoiceOwner.clear();
-    this.trackReleasingVoices.clear();
+    this.voices.clearAll();
   }
 
   /** Remember a voice that a key-off left sounding out its release. */
-  private rememberReleasingVoice(
-    instrumentId: string,
-    trackIndex: number | undefined,
-    voiceIndex: number,
-  ) {
-    if (!Number.isFinite(trackIndex as number)) return;
-    const key = trackIndex as number;
-    const list = this.trackReleasingVoices.get(key) ?? [];
-    if (
-      !list.some(
-        (v) => v.instrumentId === instrumentId && v.voiceIndex === voiceIndex,
-      )
-    ) {
-      list.push({ instrumentId, voiceIndex });
-    }
-    this.trackReleasingVoices.set(key, list);
-  }
-
-  /**
-   * Silence anything still ringing on a track from an earlier key-off, because
-   * a new note is taking the channel.
-   *
-   * Module formats only: on a native song those releases are meant to ring
-   * through the next note.
-   */
-  private cutReleasingVoicesForTrack(
-    trackIndex: number | undefined,
-    time: number,
-  ) {
-    if (!Number.isFinite(trackIndex as number)) return;
-    const key = trackIndex as number;
-    const list = this.trackReleasingVoices.get(key);
-    if (!list || list.length === 0) return;
-    if (!this.channelsAreMonophonic) return;
-
-    const now = this.audioContext.currentTime;
-    for (const { instrumentId, voiceIndex } of list) {
-      const active = this.instruments.get(instrumentId);
-      if (!active) continue;
-      const gateLead = this.getGateLeadTime(active.instrument);
-      let gateTime = time - gateLead;
-      if (gateTime < now) gateTime = now + 0.001;
-      if (gateTime >= time) gateTime = Math.max(now, time - 0.0005);
-      this.endVoiceForReplacement(active.instrument, voiceIndex, gateTime);
-    }
-    this.trackReleasingVoices.delete(key);
-  }
-
   private gateOffPreviousTrackVoice(
     instrumentId: string,
     trackIndex: number | undefined,
@@ -924,7 +682,7 @@ export class TrackerSongBank {
     if (!active) return;
     if (active.hasPortamento && active.instrument.getVoiceLimit() <= 1) return;
     const instrument = active.instrument;
-    const previousVoice = this.peekLastVoiceForTrack(instrumentId, trackIndex);
+    const previousVoice = this.voices.peekLastVoiceForTrack(instrumentId, trackIndex);
     if (previousVoice !== undefined) {
       const gateLead = this.getGateLeadTime(instrument);
       const now = this.audioContext.currentTime;
@@ -954,7 +712,7 @@ export class TrackerSongBank {
         }
       }
 
-      this.endVoiceForReplacement(instrument, previousVoice, gateTime);
+      this.voices.endVoiceForReplacement(instrument, previousVoice, gateTime);
       return;
     }
 
@@ -980,7 +738,7 @@ export class TrackerSongBank {
 
     for (const [instrumentId, active] of this.instruments.entries()) {
       if (instrumentId === excludingInstrumentId) continue;
-      const voiceIndex = this.peekLastVoiceForTrack(instrumentId, trackIndex);
+      const voiceIndex = this.voices.peekLastVoiceForTrack(instrumentId, trackIndex);
       if (voiceIndex === undefined) continue;
 
       const instrument = active.instrument;
@@ -1006,7 +764,7 @@ export class TrackerSongBank {
         }
       }
 
-      this.endVoiceForReplacement(instrument, voiceIndex, gateTime);
+      this.voices.endVoiceForReplacement(instrument, voiceIndex, gateTime);
 
       // Note: We don't clear lastTrackVoice here because the voice tracking
       // will be updated by setLastVoiceForTrack when the new note is allocated.
@@ -1027,7 +785,7 @@ export class TrackerSongBank {
     if (active.instrument.getVoiceLimit() > 1) return; // only needed for mono patches
 
     const trackKey = Number.isFinite(trackIndex) ? (trackIndex as number) : -1;
-    const byTrack = this.lastTrackVoice.get(instrumentId);
+    const byTrack = this.voices.lastVoiceMapFor(instrumentId);
     if (!byTrack) return;
     const now = this.audioContext.currentTime;
     const gateLead = this.getGateLeadTime(active.instrument);
@@ -1047,7 +805,7 @@ export class TrackerSongBank {
         active.instrument.cancelAndSilenceVoice(voiceIndex);
       } else {
         // A mono patch stealing its own voice across tracks is a replacement.
-        this.endVoiceForReplacement(active.instrument, voiceIndex, gateTime);
+        this.voices.endVoiceForReplacement(active.instrument, voiceIndex, gateTime);
       }
 
       // Note: We don't clear lastTrackVoice here because the tracking
@@ -1067,9 +825,7 @@ export class TrackerSongBank {
 
   /** Start capturing stereo audio from the master bus */
   async startRecording(): Promise<void> {
-    await this.ensureRecorderNode();
-    this.recordedBuffers = [];
-    this.recording = true;
+    await this.recorder.startRecording();
   }
 
   /** Stop capture and return interleaved Float32 data */
@@ -1077,41 +833,7 @@ export class TrackerSongBank {
     interleaved: Float32Array;
     sampleRate: number;
   }> {
-    this.recording = false;
-    const totalFrames = this.recordedBuffers.reduce(
-      (sum, buf) => sum + buf.length,
-      0,
-    );
-    const merged = new Float32Array(totalFrames);
-    let offset = 0;
-    for (const buf of this.recordedBuffers) {
-      merged.set(buf, offset);
-      offset += buf.length;
-    }
-    return {
-      interleaved: merged,
-      sampleRate: this.audioSystem.audioContext.sampleRate,
-    };
-  }
-
-  private async ensureRecorderNode(): Promise<void> {
-    if (this.recorderNode) return;
-    await this.audioSystem.audioContext.audioWorklet.addModule(
-      `${import.meta.env.BASE_URL}worklets/recording-worklet.js`,
-    );
-    this.recorderNode = new AudioWorkletNode(
-      this.audioSystem.audioContext,
-      'recording-processor',
-      { numberOfInputs: 1, numberOfOutputs: 0 },
-    );
-    this.masterGain.connect(this.recorderNode);
-    this.recorderNode.port.onmessage = (event: MessageEvent) => {
-      if (!this.recording) return;
-      const data = event.data as Float32Array | undefined;
-      if (!data) return;
-      // Copy to keep buffers alive after transfer
-      this.recordedBuffers.push(new Float32Array(data));
-    };
+    return this.recorder.stopRecording();
   }
 
   noteOn(
@@ -1128,16 +850,16 @@ export class TrackerSongBank {
     if (!active) return;
     const now = this.audioContext.currentTime;
     // Ensure per-track mono behaviour across instruments on this track
-    this.cutReleasingVoicesForTrack(trackIndex, now);
+    this.voices.cutReleasingVoicesForTrack(trackIndex, now);
     this.gateOffOtherInstrumentsForTrack(instrumentId, trackIndex, now);
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, now);
     const voiceIndex = active.instrument.noteOnAtTime(midi, velocity, now, {
       allowDuplicate: true,
     });
 
-    this.getTrackNotes(instrumentId, trackIndex).add(midi);
+    this.voices.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
-      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
+      this.voices.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
     }
   }
 
@@ -1188,8 +910,8 @@ export class TrackerSongBank {
     const active = this.instruments.get(instrumentId);
     if (!active) return;
 
-    const notes = this.getTrackNotes(instrumentId, trackIndex);
-    const voiceIndex = this.peekLastVoiceForTrack(instrumentId, trackIndex);
+    const notes = this.voices.getTrackNotes(instrumentId, trackIndex);
+    const voiceIndex = this.voices.peekLastVoiceForTrack(instrumentId, trackIndex);
     const when = this.audioContext.currentTime;
 
     if (midi === undefined) {
@@ -1260,14 +982,14 @@ export class TrackerSongBank {
         midi,
         velocity,
         time: scheduledTime,
-        enqueuedAt: this.getEnqueueTimestamp(),
+        enqueuedAt: this.eventQueue.getEnqueueTimestamp(),
       };
       if (trackIndex !== undefined) queued.trackIndex = trackIndex;
       if (frequency !== undefined) queued.frequency = frequency;
       if (pan !== undefined) queued.pan = pan;
       if (sampleOffsetFrames !== undefined) queued.sampleOffsetFrames = sampleOffsetFrames;
       if (tickSeconds !== undefined) queued.tickSeconds = tickSeconds;
-      this.enqueueScheduledEvent(queued);
+      this.eventQueue.enqueue(queued);
       this.ensureInstrumentIfDesired(instrumentId);
       return;
     }
@@ -1312,11 +1034,11 @@ export class TrackerSongBank {
         kind: 'noteOff',
         instrumentId,
         time: scheduledTime,
-        enqueuedAt: this.getEnqueueTimestamp(),
+        enqueuedAt: this.eventQueue.getEnqueueTimestamp(),
       };
       if (midi !== undefined) queued.midi = midi;
       if (trackIndex !== undefined) queued.trackIndex = trackIndex;
-      this.enqueueScheduledEvent(queued);
+      this.eventQueue.enqueue(queued);
       this.ensureInstrumentIfDesired(instrumentId);
       return;
     }
@@ -1332,9 +1054,7 @@ export class TrackerSongBank {
       active.instrument.cancelScheduledNotes();
     }
     this.activeNotes.clear();
-    this.lastTrackVoice.clear();
-    this.trackVoiceOwner.clear();
-    this.trackReleasingVoices.clear();
+    this.voices.clearAll();
     this.resetMasterVolumeToBaseline();
   }
 
@@ -1460,7 +1180,7 @@ export class TrackerSongBank {
     const scheduledTime = time < now ? now + MIN_SCHEDULE_LEAD_SECONDS : time;
     // First, clear any lingering voice currently tracked on this track (any instrument).
     if (Number.isFinite(trackIndex as number)) {
-      const existing = this.trackVoiceOwner.get(trackIndex as number);
+      const existing = this.voices.ownerOf(trackIndex as number);
       if (existing) {
         const owner = this.instruments.get(existing.instrumentId);
         if (owner) {
@@ -1471,19 +1191,19 @@ export class TrackerSongBank {
             gateTime = Math.max(now, scheduledTime - 0.0005);
           // The channel is switching instrument, so nothing on the old
           // instrument will ever come back to stop this voice.
-          this.endVoiceForReplacement(
+          this.voices.endVoiceForReplacement(
             owner.instrument,
             existing.voiceIndex,
             gateTime,
           );
         }
-        this.trackVoiceOwner.delete(trackIndex as number);
+        this.voices.deleteOwner(trackIndex as number);
       }
     }
     // Anything left ringing on this track by an earlier key-off has to go too.
     // It is not the track's current voice, so neither of the paths above sees
     // it, and on a module channel it must not survive the new note.
-    this.cutReleasingVoicesForTrack(trackIndex, scheduledTime);
+    this.voices.cutReleasingVoicesForTrack(trackIndex, scheduledTime);
     // Also gate off the previous voice for this instrument/track if known.
     this.gateOffPreviousTrackVoice(instrumentId, trackIndex, scheduledTime);
     const voiceIndex = active.instrument.noteOnAtTime(
@@ -1528,11 +1248,11 @@ export class TrackerSongBank {
       }
     }
 
-    this.getTrackNotes(instrumentId, trackIndex).add(midi);
+    this.voices.getTrackNotes(instrumentId, trackIndex).add(midi);
     if (voiceIndex !== undefined) {
-      this.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
+      this.voices.setLastVoiceForTrack(instrumentId, trackIndex, voiceIndex);
       if (Number.isFinite(trackIndex as number)) {
-        this.trackVoiceOwner.set(trackIndex as number, {
+        this.voices.setOwner(trackIndex as number, {
           instrumentId,
           voiceIndex,
         });
@@ -1567,18 +1287,18 @@ export class TrackerSongBank {
     // `trackVoiceOwner` knows which instrument actually owns the channel's
     // voice, so ask it first and fall back to the row's own instrument.
     const owner = Number.isFinite(trackIndex as number)
-      ? this.trackVoiceOwner.get(trackIndex as number)
+      ? this.voices.ownerOf(trackIndex as number)
       : undefined;
     const instrumentId = owner?.instrumentId ?? requestedInstrumentId;
 
     const active = this.instruments.get(instrumentId);
     if (!active) return;
-    const notes = this.getTrackNotes(instrumentId, trackIndex);
+    const notes = this.voices.getTrackNotes(instrumentId, trackIndex);
     // When the owner answered, take its voice as well as its instrument. The
     // two maps can disagree, and the owner is the one that knows what the
     // channel is actually sounding.
     const voiceIndex =
-      owner?.voiceIndex ?? this.peekLastVoiceForTrack(instrumentId, trackIndex);
+      owner?.voiceIndex ?? this.voices.peekLastVoiceForTrack(instrumentId, trackIndex);
 
     const scheduledTime = Math.max(time, this.audioContext.currentTime);
 
@@ -1587,11 +1307,11 @@ export class TrackerSongBank {
         active.instrument.gateOffVoiceAtTime(voiceIndex, scheduledTime);
         // It is no longer the track's *current* voice, but it is still making
         // sound, and on a module channel the next note has to kill it.
-        this.rememberReleasingVoice(instrumentId, trackIndex, voiceIndex);
+        this.voices.rememberReleasingVoice(instrumentId, trackIndex, voiceIndex);
         // Remove voice from track tracking
-        this.clearLastVoiceForTrack(instrumentId, trackIndex);
+        this.voices.clearLastVoiceForTrack(instrumentId, trackIndex);
         if (Number.isFinite(trackIndex as number)) {
-          this.trackVoiceOwner.delete(trackIndex as number);
+          this.voices.deleteOwner(trackIndex as number);
         }
       } else if (notes && notes.size > 0) {
         for (const note of notes) {
@@ -1602,9 +1322,9 @@ export class TrackerSongBank {
       }
       notes.clear();
       // Clear all voice tracking for this track
-      this.clearLastVoiceForTrack(instrumentId, trackIndex);
+      this.voices.clearLastVoiceForTrack(instrumentId, trackIndex);
       if (Number.isFinite(trackIndex as number)) {
-        this.trackVoiceOwner.delete(trackIndex as number);
+        this.voices.deleteOwner(trackIndex as number);
       }
       return;
     }
@@ -1615,97 +1335,16 @@ export class TrackerSongBank {
       // parameter that means the *track* index -- harmless only because the
       // callee ignored it.
       active.instrument.gateOffVoiceAtTime(voiceIndex, scheduledTime);
-      this.rememberReleasingVoice(instrumentId, trackIndex, voiceIndex);
+      this.voices.rememberReleasingVoice(instrumentId, trackIndex, voiceIndex);
       // Remove voice from track tracking
-      this.clearLastVoiceForTrack(instrumentId, trackIndex);
+      this.voices.clearLastVoiceForTrack(instrumentId, trackIndex);
       if (Number.isFinite(trackIndex as number)) {
-        this.trackVoiceOwner.delete(trackIndex as number);
+        this.voices.deleteOwner(trackIndex as number);
       }
     } else {
       active.instrument.noteOffAtTime(midi, scheduledTime, trackIndex);
     }
     notes.delete(midi);
-  }
-
-  /**
-   * Resolve the voice a per-voice command should address.
-   *
-   * This is the single resolution path for every command that modifies a
-   * *sounding* voice -- pitch, volume, pan, envelope position, sample offset,
-   * retrigger. It exists because the obvious reading of a pattern row is
-   * wrong: the instrument number written on a row says what a *new note*
-   * should use, and is not a name for what the channel is currently playing.
-   * When the two disagree -- an XM tone-portamento row, a MOD sample latch, a
-   * key-off carrying the next note's instrument -- an instrument-first lookup
-   * finds no voice and the command is dropped, having been computed
-   * perfectly. See D29/D55/D65/D68/D77 in PLAN-module-format-support.md.
-   *
-   * The rule, stated once: *only a row that starts a note changes what a
-   * channel is playing, and every per-voice command must address the voice
-   * that is sounding.*
-   *
-   * Order of resolution:
-   *   1. An explicit `voiceIndex >= 0` from the effect processor wins.
-   *   2. On a module channel (monophonic), resolve *only* through
-   *      `trackVoiceOwner`. `requestedInstrumentId` is advisory -- good for
-   *      logging, never for lookup. No owner means no voice: drop the command
-   *      rather than falling back to the instrument.
-   *   3. On a native song a track is polyphonic, so "the track's voice" is not
-   *      unique and `trackVoiceOwner` cannot answer. Keep the historical
-   *      instrument-first lookup there.
-   *
-   * Returns undefined when nothing is sounding for this command to apply to,
-   * which callers must treat as "drop it" -- never as "guess".
-   */
-  private resolveCommandVoice(
-    requestedInstrumentId: string,
-    voiceIndex: number,
-    trackIndex: number | undefined,
-  ):
-    | { instrumentId: string; active: ActiveInstrument; voiceIndex: number }
-    | undefined {
-    const within = (
-      active: ActiveInstrument | undefined,
-      index: number,
-    ): active is ActiveInstrument =>
-      !!active && index >= 0 && index < active.instrument.getVoiceLimit();
-
-    // 1. The effect processor named a voice outright.
-    if (voiceIndex >= 0) {
-      const active = this.instruments.get(requestedInstrumentId);
-      if (!within(active, voiceIndex)) return undefined;
-      return { instrumentId: requestedInstrumentId, active, voiceIndex };
-    }
-
-    // 2. Module channel: the channel owns the voice, whatever the row says.
-    if (this.channelsAreMonophonic) {
-      if (!Number.isFinite(trackIndex as number)) return undefined;
-      const owner = this.trackVoiceOwner.get(trackIndex as number);
-      if (!owner) return undefined;
-      const active = this.instruments.get(owner.instrumentId);
-      if (!within(active, owner.voiceIndex)) return undefined;
-      return {
-        instrumentId: owner.instrumentId,
-        active,
-        voiceIndex: owner.voiceIndex,
-      };
-    }
-
-    // 3. Native song: polyphonic track, so look the instrument's own voice up.
-    const active = this.instruments.get(requestedInstrumentId);
-    if (!active) return undefined;
-    const trackKey = Number.isFinite(trackIndex as number)
-      ? (trackIndex as number)
-      : -1;
-    const resolved = this.lastTrackVoice
-      .get(requestedInstrumentId)
-      ?.get(trackKey);
-    if (resolved === undefined || !within(active, resolved)) return undefined;
-    return {
-      instrumentId: requestedInstrumentId,
-      active,
-      voiceIndex: resolved,
-    };
   }
 
   /**
@@ -1721,7 +1360,7 @@ export class TrackerSongBank {
     rampMode?: 'linear' | 'exponential',
   ) {
     if (!instrumentId) return;
-    const target = this.resolveCommandVoice(
+    const target = this.voices.resolveCommandVoice(
       instrumentId,
       voiceIndex,
       trackIndex,
@@ -1765,7 +1404,7 @@ export class TrackerSongBank {
     // safe. A row that starts a note records its voice before this runs
     // (dispatchCommands precedes the velocity block in the engine), so
     // genuine note+volume rows still resolve.
-    const target = this.resolveCommandVoice(
+    const target = this.voices.resolveCommandVoice(
       instrumentId,
       voiceIndex,
       trackIndex,
@@ -1804,7 +1443,7 @@ export class TrackerSongBank {
     // No voice-0 fallback: tracks sharing a sample share this instrument's
     // voice pool, so that would pan another channel's note. See D13 in
     // PLAN-module-format-support.md.
-    const target = this.resolveCommandVoice(
+    const target = this.voices.resolveCommandVoice(
       instrumentId,
       voiceIndex,
       trackIndex,
@@ -1835,7 +1474,7 @@ export class TrackerSongBank {
     trackIndex: number,
   ) {
     if (!instrumentId) return;
-    const target = this.resolveCommandVoice(
+    const target = this.voices.resolveCommandVoice(
       instrumentId,
       voiceIndex,
       trackIndex,
@@ -1869,7 +1508,7 @@ export class TrackerSongBank {
     // sample share this instrument's voices, so voice 0 may belong to a
     // different channel. A 9xx with no sounding voice on this track has
     // nothing to offset.
-    const target = this.resolveCommandVoice(
+    const target = this.voices.resolveCommandVoice(
       instrumentId,
       voiceIndex,
       trackIndex,
@@ -1903,7 +1542,7 @@ export class TrackerSongBank {
     // module channel a row can name an instrument for the next note while the
     // retrigger applies to the one already playing; resolving instrument-first
     // there restarts the wrong sample, or nothing at all.
-    const owner = this.resolveCommandVoice(instrumentId, -1, trackIndex);
+    const owner = this.voices.resolveCommandVoice(instrumentId, -1, trackIndex);
     const targetInstrumentId = owner?.instrumentId ?? instrumentId;
     const active = this.instruments.get(targetInstrumentId);
     if (!active) return;
@@ -1941,7 +1580,7 @@ export class TrackerSongBank {
     const ctx = this.audioContext;
     if (ctx.state === 'running') {
       this.needsAudioContextResume = false;
-      void this.flushPendingScheduledEvents();
+      void this.eventQueue.flushPendingScheduledEvents();
       return true;
     }
 
@@ -1957,7 +1596,7 @@ export class TrackerSongBank {
       const currentState: string = ctx.state;
       if (currentState === 'running') {
         this.needsAudioContextResume = false;
-        void this.flushPendingScheduledEvents();
+        void this.eventQueue.flushPendingScheduledEvents();
         return true;
       }
     } catch (error) {
@@ -1974,7 +1613,7 @@ export class TrackerSongBank {
       const currentState: string = ctx.state;
       if (currentState === 'running') {
         this.needsAudioContextResume = false;
-        void this.flushPendingScheduledEvents();
+        void this.eventQueue.flushPendingScheduledEvents();
         return true;
       }
 
@@ -2075,7 +1714,7 @@ export class TrackerSongBank {
         );
         existing.instrument.outputNode.connect(this.masterGain);
       }
-      await this.flushPendingScheduledEvents(instrumentId);
+      await this.eventQueue.flushPendingScheduledEvents(instrumentId);
       return;
     }
 
@@ -2260,7 +1899,7 @@ export class TrackerSongBank {
       patchReuseKey,
       hasPortamento,
     });
-    await this.flushPendingScheduledEvents(instrumentId);
+    await this.eventQueue.flushPendingScheduledEvents(instrumentId);
   }
 
   private normalizeVoiceGain(
@@ -2742,23 +2381,7 @@ export class TrackerSongBank {
 
     this.instruments.delete(instrumentId);
     this.activeNotes.delete(instrumentId);
-    this.lastTrackVoice.delete(instrumentId);
-    // Clear any per-track voice tracking so stale voice IDs don't linger when
-    // the instrument is rebuilt for a new song/patch. `trackVoiceOwner` is now
-    // the authority for module playback, so an entry naming a torn-down
-    // instrument would silently swallow every per-voice command on that
-    // channel until the next note replaced it.
-    for (const [track, owner] of Array.from(this.trackVoiceOwner.entries())) {
-      if (owner.instrumentId === instrumentId)
-        this.trackVoiceOwner.delete(track);
-    }
-    for (const [track, list] of Array.from(
-      this.trackReleasingVoices.entries(),
-    )) {
-      const remaining = list.filter((v) => v.instrumentId !== instrumentId);
-      if (remaining.length === 0) this.trackReleasingVoices.delete(track);
-      else this.trackReleasingVoices.set(track, remaining);
-    }
+    this.voices.removeInstrument(instrumentId);
     this.restoredAssets.delete(instrumentId);
   }
 

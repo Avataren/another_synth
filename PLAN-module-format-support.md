@@ -2749,10 +2749,55 @@ panning one, and it already has a per-voice stage to hang automation on.
 
 ---
 
+### D95 — Song-bank split into scheduled-event queue, recorder and voice-registry modules
+
+P2 from ARCH-REVIEW-s3m.md: the three mechanical/behavioural extractions from
+`song-bank.ts` are done as internal composition. `TrackerSongBank`'s public API is
+untouched; callers and all 1285 tests pass unmodified (no import-path changes were
+needed -- nothing extracted was ever exported).
+
+- **`src/audio/tracker/scheduled-events.ts`** (139 lines): `PendingScheduledEvent`,
+  `MIN_SCHEDULE_LEAD_SECONDS`, and `ScheduledEventQueue` (enqueue, enqueue timestamp,
+  flush). The queue replays events through a `ScheduledEventHost` interface (the
+  bank's `instruments` map, `audioContext` and the two dispatch methods), so the
+  flushing loop moved verbatim.
+- **`src/audio/tracker/recorder.ts`** (`SongBankRecorder`, 72 lines): the recording
+  worklet node, buffer capture, start/stop/dispose. `queryWorkletCpu` did NOT move:
+  it probes an arbitrary instrument worklet's CPU, not the recorder; the review's
+  §3a table placed it here in error (see split-map corrections below).
+- **`src/audio/tracker/track-voice-registry.ts`** (`TrackVoiceRegistry`, 348 lines):
+  `lastTrackVoice`, `trackVoiceOwner`, `trackReleasingVoices` and their helpers
+  (`getTrackNotes`, set/peek/clear last voice, `rememberReleasingVoice`,
+  `cutReleasingVoicesForTrack`, `endVoiceForReplacement`) moved as ONE gated unit with
+  `resolveCommandVoice` (D78's single resolution path). The replacement policy stays
+  in the bank and is injected (`isMonophonicChannel`, `getGateLeadTime`) -- no
+  voice-replacement-policy abstraction, per the review's wait list. `channelsAreMonophonic`
+  and the gate-off trio stay in the bank.
+- **Test seam preserved, zero test edits.** Several tests seed `lastTrackVoice` /
+  call `setLastVoiceForTrack` on the bank via reflection. The bank keeps private
+  delegating accessors (`lastTrackVoice` getter, `setLastVoiceForTrack`) so those
+  hooks work unchanged; the registry also exposes the map (`lastVoiceByTrack`) and
+  `lastVoiceMapFor` for `gateOffOtherTracksForInstrument`.
+- **The review's fourth file, `instrument-lifecycle.ts`, was deferred** per the task
+  statement, which scopes P2 to three extractions. `song-bank.ts` is 2949 -> 2572
+  lines (extracted: 139 + 72 + 348, moved code ~560 lines including comments).
+- **Split-map corrections vs ARCH-REVIEW-s3m.md §3a:** (1) `queryWorkletCpu` is not
+  recorder state -- it queries any instrument worklet and stays in the bank. (2) The
+  recorder is ~70 lines, not ~200 (the review counted the 1070-1116 range, much of
+  which is noteOn/previewNoteOn, not recording). (3) `gateOffOtherTracksForInstrument`
+  reads the whole per-instrument `lastTrackVoice` map (not a single track peek), so the
+  registry exposes `lastVoiceMapFor` rather than a peek. (4) `PendingScheduledEvent`
+  and the queue constants were never exported, so no facade or re-export was needed.
+
+**Gates:** 1285/1285 tests pass unmodified; tsc --noEmit matches the 9a2b163 baseline
+exactly (48 errors, all pre-existing in two old test files, none in touched files);
+eslint clean on all four touched files; gitleaks clean; `npx quasar build` clean.
+
 ## 8. Change log
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-03 | refactor | **P2: song-bank god class split** (D95). `song-bank.ts` (2949 -> 2572 lines) split into `scheduled-events.ts` (queue + flush), `recorder.ts` (recording worklet + buffers) and `track-voice-registry.ts` (per-track voice maps + `resolveCommandVoice`, moved as one gated D78 unit). Internal composition only -- public `TrackerSongBank` API identical, callers unchanged, voice-replacement policy untouched (review wait list honored). 1285 tests green unmodified; tsc baseline unchanged; gitleaks clean. |
 | 2026-09-03 | fix | **The XM fine slides remember their parameter** (D88). Every FT2 fine routine opens `if (param == 0) param = ch->f<...>Speed; ch->f<...>Speed = param;`, so a run of `EB0` rows keeps walking the volume down one step per row; the engine treated each as a no-op. 2960 zero-parameter fine volume slides in an-path.xm alone were real slides being dropped. Behind `FormatProfile.fineSlideHasMemory` with FT2's six separate memory bytes; ProTracker's fine routines are memoryless and stay that way, as does native. Tests: `src/tests/effect-reference-audit-2.test.ts` (4 confirmed failing against the old code). |
 | 2026-09-03 | fix | **A pan slide moves 2/255 of full swing per parameter unit, not 1/64** (D89). FT2 pans on one 0..255 byte (`panningSlide`: `newPan += param`; volume column `v_PanSlideLeft`/`Right`: one unit per tick), so in the processor's -1..1 scale a unit is 2/255 -- the old 1/64 made every pan slide almost exactly twice as wide. 144 volume-column pan slides in an-path.xm and DEADLOCK.XM were affected; `Pxy` has 0 corpus uses. Behind `FormatProfile.panSlideUnit`. Tests: `src/tests/effect-reference-audit-2.test.ts`, and the `xm-volume-column` unit test that had pinned the old constant (3 confirmed failing against the old code). |
 | 2026-09-03 | fix | **`Rxy` counts tick 0 as its first retrigger increment** (D90). FT2 reaches `doMultiNoteRetrig` on tick 0 and fires the moment the count reaches the interval, so at speed 6 an `R2` fires on ticks 1/3/5 where this fired on 2/4 -- one fewer -- and an `R3` at speed 3 fired nowhere. An interval the tick-0 count already satisfies re-fires immediately (R11), and a volume-column volume suppresses the tick-0 count (FT2's `newVolCol` quirk, carried by a new `volumeColumnVolume` import flag). E9x does not count tick 0 in either replayer and is unchanged. 73 XM cells. Tests: `src/tests/effect-reference-audit-2.test.ts` (2 confirmed failing against the old code). |
