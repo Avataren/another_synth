@@ -7,6 +7,7 @@ import {
   profileForFormat,
   type FormatProfile,
 } from '../../../packages/tracker-playback/src/format-profile';
+import type { PitchModel } from '../../../packages/tracker-playback/src/pitch-model';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';
@@ -637,6 +638,21 @@ export class TrackerSongBank {
     this.formatProfile = profileForFormat(this.moduleFormat, {
       ...(linearFrequency !== undefined ? { linearFrequency } : {}),
     });
+    // Instruments already built keep whatever model they were constructed
+    // with, and on the real load path they are all built before this is
+    // called: `useTrackerFileIO.applySongFile` runs
+    // `syncSongBankFromSlots()` -- which creates every ModInstrument -- and
+    // only then `initializePlayback()`, whose `playbackStore.loadSong` gets
+    // here. So without this every song's instruments held the *default*
+    // profile's ProTracker model, and XM autovibrato (the only thing that
+    // reads the model here) came out roughly 16x too deep. See
+    // ModInstrument.setPitchModel.
+    for (const active of this.instruments.values()) {
+      const instrument = active.instrument as {
+        setPitchModel?: (model: PitchModel) => void;
+      };
+      instrument.setPitchModel?.(this.formatProfile.pitch);
+    }
   }
 
   /**

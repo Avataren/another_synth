@@ -261,7 +261,7 @@ export default class ModInstrument {
    * (P4); module songs supply their format's model, everything else gets the
    * linear default, which matches the old hardcoded conversion exactly.
    */
-  private readonly pitchModel: PitchModel;
+  private pitchModel: PitchModel;
 
   constructor(
     destination: AudioNode,
@@ -273,6 +273,27 @@ export default class ModInstrument {
     this.outputNode = audioContext.createGain();
     this.outputNode.gain.value = 1.0;
     this.outputNode.connect(destination);
+  }
+
+  /**
+   * Re-point the instrument at the song's pitch model.
+   *
+   * The model is a constructor argument because it is a property of the song,
+   * not of the note -- but the bank builds its instruments from the editor's
+   * slots (`syncSongBankFromSlots`) *before* playback hands it the song's
+   * format, so an instrument created on that path would otherwise keep the
+   * default profile's ProTracker model for the life of the song. In XM's
+   * Amiga periods a depth-unit wobble is a fraction of a cent; in
+   * ProTracker's (which this engine scales down by 128, so A4 sits at period
+   * ~64) the same depth is a sixteenth of the period -- jt_letgo's
+   * instrument 1 came out at ~250 cents instead of ~16. Only autovibrato
+   * reads the model here, so that mis-set profile was audible as nothing but
+   * a wildly overdeep instrument vibrato.
+   *
+   * Read at note-on, so a correction lands on every voice started afterwards.
+   */
+  setPitchModel(pitchModel: PitchModel): void {
+    this.pitchModel = pitchModel;
   }
 
   async loadPatch(patch: Patch): Promise<void> {
