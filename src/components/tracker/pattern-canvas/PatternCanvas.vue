@@ -1015,9 +1015,18 @@ onMounted(() => {
   window.addEventListener('mousemove', onWindowMouseMove);
   window.addEventListener('mouseup', onWindowMouseUp);
   // Theme flips rewrite the CSS custom properties the palette is read from;
-  // same watch as pattern-theme's own observer, plus a repaint.
+  // same watch as pattern-theme's own observer, plus a repaint. Theme
+  // colors are baked into both bitmaps, and the static paint's fast paths
+  // (pre-render adoption, cell-diff repair) key on content only — an
+  // unchanged pattern would keep the old palette. Drop the paint
+  // bookkeeping and the pre-render so the frame falls through to a full
+  // repaint with the refreshed theme, and re-queue the pre-render.
   themeObserver = new MutationObserver(() => {
     refreshTheme();
+    paintedState = null;
+    preRenderMeta = null;
+    preRenderTarget = null;
+    schedulePreRender(props.upcomingPattern);
     schedule(['static', 'overlay']);
   });
   themeObserver.observe(document.documentElement, {

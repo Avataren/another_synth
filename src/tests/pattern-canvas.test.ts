@@ -391,6 +391,7 @@ type MountedCanvas = ReturnType<typeof mountCanvas>;
 let contexts: RecordingCtx[] = [];
 
 beforeEach(() => {
+  document.documentElement.style.removeProperty('--theme-flip-seq');
   vi.unstubAllGlobals();
   rafQueue.clear();
   resizeCallbacks.length = 0;
@@ -954,6 +955,111 @@ describe('scroll prop → blit window', () => {
     await nextTick();
     expect(scroller.scrollTop).toBe(90);
     wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Theme flip: the canvas grid must follow the active style/theme
+// ---------------------------------------------------------------------
+
+/** jsdom resolves no custom props; these are the values a flip produces. */
+const flippedPalette: Record<string, string> = {
+  '--tracker-entry-base': 'rgba(20, 15, 10, 0.85)',
+  '--tracker-entry-filled': 'rgba(30, 24, 18, 0.95)',
+  '--panel-background': '#1a1610',
+  '--tracker-accent-primary': 'rgb(255, 180, 80)',
+  '--text-muted': '#c8a878',
+};
+
+function stubComputedVars(map: Record<string, string>) {
+  // Same object reference is kept: the test mutates `map` after mount and
+  // the stub sees the flip, like a real :root style rewrite would.
+  const style = {
+    getPropertyValue: (name: string) => map[name] ?? '',
+  };
+  return vi
+    .spyOn(window, 'getComputedStyle')
+    .mockImplementation(() => style as unknown as CSSStyleDeclaration);
+}
+/** A :root style write — the MutationObserver trigger applyTheme uses. */
+let flipSeq = 0;
+function flipTheme(): void {
+  // A fresh value every time: an identical setProperty does not change the
+  // style attribute, so it produces no mutation record to observe.
+  flipSeq += 1;
+  document.documentElement.style.setProperty('--theme-flip-seq', String(flipSeq));
+}
+
+/**
+ * Pump frames across a few macrotasks until `pred` holds. jsdom delivers
+ * MutationObserver callbacks on its own schedule (not always before the
+ * next macrotask), so the observed repaint is awaited behaviorally instead
+ * of assuming a delivery tick.
+ */
+async function pumpUntil(pred: () => boolean): Promise<void> {
+  for (let i = 0; i < 10 && !pred(); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    pumpFrame();
+  }
+}
+
+describe('theme flip repaints', () => {
+  it('a theme flip repaints the static bitmap with the new palette', async () => {
+    const vars: Record<string, string> = {};
+    const restore = stubComputedVars(vars);
+    try {
+      const wrapper = mountCanvas();
+      pumpFrame();
+      const bitmap = bitmapOf(wrapper);
+      const fillsBefore = fillsOn(bitmap).length;
+      expect(fillsBefore).toBeGreaterThan(0);
+
+      // New palette values + the :root style write the observer watches.
+      Object.assign(vars, flippedPalette);
+      flipTheme();
+      await pumpUntil(() => fillsOn(bitmap).length > fillsBefore);
+
+      // A full repaint happened (the incremental diff path sees no content
+      // change and would otherwise keep the old palette on the bitmap).
+      expect(fillsOn(bitmap).length).toBe(fillsBefore * 2);
+      wrapper.unmount();
+    } finally {
+      restore.mockRestore();
+    }
+  });
+
+  it('a theme flip repaints the pre-rendered upcoming pattern too', async () => {
+    const vars: Record<string, string> = {};
+    const restore = stubComputedVars(vars);
+    try {
+      const upcoming = { id: 'p2', tracks: [makeTrack('u'), makeTrack('v')], rows: 32 };
+      const wrapper = mountCanvas();
+      pumpFrame();
+      const before = contexts.length;
+      await wrapper.setProps({ upcomingPattern: upcoming });
+      await nextTick();
+      pumpFrame();
+      pumpFrame();
+
+      // The pre-render surface was painted.
+      const prerender = contexts.slice(before);
+      expect(prerender.length).toBeGreaterThan(0);
+      const prerenderFills = fillsOn(prerender[0]!).length;
+      expect(prerenderFills).toBeGreaterThan(0);
+
+      // New palette values + the :root style write the observer watches.
+      Object.assign(vars, flippedPalette);
+      flipTheme();
+      await pumpUntil(() => fillsOn(prerender[0]!).length > prerenderFills);
+
+      // The pre-render was repainted with the new palette, not left stale
+      // (a stale bitmap would be adopted as the static grid on the next
+      // pattern swap, wearing the old theme).
+      expect(fillsOn(prerender[0]!).length).toBeGreaterThan(prerenderFills);
+      wrapper.unmount();
+    } finally {
+      restore.mockRestore();
+    }
   });
 });
 
