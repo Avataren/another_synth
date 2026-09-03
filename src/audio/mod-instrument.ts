@@ -1325,12 +1325,19 @@ export default class ModInstrument {
     // A loop that lives at or after the sustain point repeats for as long as
     // the fadeout takes: FT2's position wraps at loopEnd after key-off, and
     // the fadeout -- not the envelope running out of points -- ends the note.
+    // The one exception is an attack loop whose loopEnd IS the sustain point
+    // (index, not tick: FT2 does wrap when the indices differ but the ticks
+    // are equal). At loopEnd it has just consumed the sustain point and
+    // ft2-clone blocks the wrap -- `!ENV_SUSTAIN || envPos != volEnvSustain
+    // || !keyOff` -- so the envelope walks past the sustain through the tail
+    // once instead of re-looping the attack under the fadeout.
     const releaseLoop =
       hasSustain &&
       envelope.loopEnabled &&
       envelope.loopStart >= 0 &&
       envelope.loopEnd > envelope.loopStart &&
       envelope.loopEnd < points.length &&
+      envelope.loopEnd !== envelope.sustainPoint &&
       points[envelope.loopEnd]!.tick >= sustainTick;
 
     if (releaseLoop) {

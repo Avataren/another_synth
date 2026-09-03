@@ -988,29 +988,33 @@ describe('looping volume envelopes', () => {
     expect(end.value).toBe(0);
     expect(end.time).toBeCloseTo(1.0 + 5.12, 6);
 
-    // The loop repeats: the 8/64 and 22/64 loop values recur once per pass,
-    // scaled by the fade in progress, rather than sounding once.
-    // Each loop pass scales by the fade in progress, so values recur only
-    // approximately: a fadeout of 128 over 256 ticks loses 1/256 of the
-    // amplitude per tick, and a loop pass here spans 10 ticks. Assert the
-    // count of 8-level ramps and the 5% fade decay per pass rather than
-    // exact recurrences.
+    // The loop repeats: each pass re-sounds the loop points scaled by the
+    // fade in progress, rather than playing the tail once.
+    // Each pass sits a fixed 18/256 of the amplitude below the pass before
+    // it (linear fade, 18-tick span): after pass 0 the loop start point
+    // decays from 7.25/64 to 6.69/64 and on down, so the 8-level ramps do
+    // not recur one per pass and their pass-to-pass decay is 18/256 ~=
+    // 7.0%, not ~4.5%. Assert the exact ramp sequence below instead.
     const values = envelopeCalls
       .filter(
         (c): c is ParamCall & { value: number } =>
           c.kind === 'linearRamp' && c.value !== undefined && c.value < 1,
       )
       .map((c) => c.value);
-    // 8/64 ramps: one per pass, from the tail's tick-14 start through the
-    // passes that fit in the 256-tick fadeout.
+    // The window 7 < value x 64 < 8.5 catches exactly 4 ramps: the tail's
+    // three 8-level ramps at 7.81, 7.25 and 7.25 (the loop-end ramp is
+    // scheduled twice -- once as the tail's last point, once as pass 0's
+    // first, both at offset 24), plus one 22-level ramp at 8.25 in pass 7;
+    // by then the fade has eaten 18/256 of the amplitude per 18-tick pass,
+    // so the 8-level ramps fall at 7.25, 6.69, 6.13, 5.56... and drop out
+    // of the window.
     const eighths = values.filter((v) => v * 64 > 7 && v * 64 < 8.5);
-    expect(eighths.length).toBeGreaterThanOrEqual(4);
-    // Each pass sits ~4.5% under the previous one at the same loop point.
-    if (eighths.length >= 2) {
-      const ratio = eighths[1]! / eighths[0]!;
-      expect(ratio).toBeGreaterThan(0.9);
-      expect(ratio).toBeLessThan(1);
-    }
+    expect(eighths).toEqual([
+      7.8125 / 64,
+      7.25 / 64,
+      7.25 / 64,
+      8.25 / 64,
+    ]);
 
     // The loop still rings at the point the one-pass tail used to cut.
     const pastOldCut = envelopeCalls.find(
@@ -1018,6 +1022,54 @@ describe('looping volume envelopes', () => {
         c.kind === 'linearRamp' && c.time > 1.0 + 0.48 && c.value !== 0,
     );
     expect(pastOldCut).toBeDefined();
+  });
+
+  it('takes the one-pass tail for an attack loop whose loopEnd is the sustain point', () => {
+    // An attack loop with loopEnd == sustainPoint must not release-loop the
+    // attack segment under the fadeout: at loopEnd FT2 has just consumed
+    // the sustain point, and key-off blocks the wrap (ft2-clone
+    // updateVolPanAutoVib: `!ENV_SUSTAIN || envPos != volEnvSustain ||
+    // !keyOff` skips the loop wrap), so the envelope walks past the sustain
+    // through the tail to the last point, once. Re-looping the attack (a
+    // tick comparison caught the equal sustainTick here) replayed the
+    // attack shape under the fadeout instead.
+    const { instrument, envelopeCalls, setEnvelope } = makeInstrument();
+    setEnvelope({
+      points: [
+        { tick: 0, value: 16 },
+        { tick: 4, value: 48 },
+        { tick: 8, value: 64 },
+        { tick: 16, value: 32 },
+        { tick: 24, value: 0 },
+      ],
+      sustainPoint: 2,
+      loopStart: 0,
+      loopEnd: 2,
+      loopEnabled: true,
+      fadeout: 128,
+    });
+
+    const voice = instrument.noteOnAtTime(60, 127, 0, { tickSeconds: 0.02 })!;
+    envelopeCalls.length = 0;
+    instrument.gateOffVoiceAtTime(voice, 1.0);
+
+    // One pass through the tail: 16 ticks = 0.32s from the sustain point
+    // (tick 8) to the last point (tick 24). The fadeout (256 ticks =
+    // 5.12s) is longer than the tail, so the envelope's own tail -- not
+    // the fadeout -- ends the note.
+    const end = envelopeCalls[envelopeCalls.length - 1]!;
+    expect(end.kind).toBe('linearRamp');
+    expect(end.value).toBe(0);
+    expect(end.time).toBeCloseTo(1.0 + 0.32, 6);
+
+    // The one-pass tail is the envelope's own release shape, unscaled by
+    // the fade: a hold at 64 (1.0) walks once through 32/64 at tick 16 and
+    // ends at 0, with no loop replay of the attack shape.
+    expect(envelopeCalls).toEqual([
+      { kind: 'cancelAndHold', time: 1.0 },
+      { kind: 'linearRamp', value: 0.5, time: 1.0 + 0.16 },
+      { kind: 'linearRamp', value: 0, time: 1.0 + 0.32 },
+    ]);
   });
 
   it('lets a sustain loop with no fadeout ring until the channel replays', () => {
