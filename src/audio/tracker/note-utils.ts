@@ -4,6 +4,7 @@ import type {
   ExtendedEffectSubtype,
   VolumeColumnCommand,
 } from '../../../packages/tracker-playback/src/types';
+import type { FormatProfile } from '../../../packages/tracker-playback/src/format-profile';
 
 export interface ParsedNote {
   midi?: number;
@@ -133,6 +134,70 @@ function normalizeEffectChars(macro?: string): [string, string, string] {
   if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1] as string;
   if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2] as string;
   return chars;
+}
+
+/**
+ * Decode a raw, format-native effect byte pair using the module format's
+ * profile.
+ *
+ * This is the decoding path for entries that carry raw bytes
+ * (`TrackerEntryData.effectCommand`/`.effectParam`, written by the
+ * importers); `parseEffectCommand` remains for hand-authored rows, whose
+ * text is authoritative because the raw fields were cleared on edit.
+ *
+ * The command *numbers* mean whatever the format's profile says: the
+ * behaviour table and the three structural command bytes (arpeggio,
+ * speed/tempo, extended) all come from the `FormatProfile`, so a format
+ * whose numbering collides with MOD/XM's is a data change, never a parser
+ * fork (D94).
+ */
+export function decodeRawEffect(
+  command: number,
+  param: number,
+  profile: FormatProfile,
+): EffectCommandResult {
+  const cmd = command & 0xff;
+  const value = Math.max(0, Math.min(255, param));
+  const paramX = value >> 4;
+  const paramY = value & 0x0f;
+
+  if (cmd === profile.arpeggioCommandByte) {
+    if (paramX !== 0 || paramY !== 0) {
+      return {
+        type: 'effect',
+        effect: { type: 'arpeggio', paramX, paramY },
+      };
+    }
+    return undefined;
+  }
+
+  if (
+    profile.speedTempoCommandByte !== undefined &&
+    cmd === profile.speedTempoCommandByte
+  ) {
+    // Same split parseEffectCommand applies: 01-1F is speed, 20-FF tempo,
+    // and zero is returned as speed 0 so the engine -- which knows the
+    // profile -- can apply f00StopsSong.
+    if (value >= 0x01 && value <= 0x1f) return { type: 'speed', speed: value };
+    if (value >= 0x20) return { type: 'tempo', bpm: value };
+    return { type: 'speed', speed: 0 };
+  }
+
+  if (profile.extendedCommandByte !== undefined && cmd === profile.extendedCommandByte) {
+    const extEffect = parseExtendedEffect(paramX, paramY);
+    if (extEffect) return { type: 'effect', effect: extEffect };
+    return undefined;
+  }
+
+  const effectType = profile.effectCommands[cmd];
+  if (effectType) {
+    return {
+      type: 'effect',
+      effect: { type: effectType, paramX, paramY },
+    };
+  }
+
+  return undefined;
 }
 
 /**

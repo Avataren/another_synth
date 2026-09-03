@@ -288,10 +288,16 @@ export function useTrackerEditing(context: TrackerEditingContext) {
     updateEntryAt(row, track, (entry) => {
       const chars = context.normalizeMacroChars(isSecondColumn ? entry.macro2 : entry.macro);
       chars[nibbleIndex] = char;
-      return {
-        ...entry,
-        ...(isSecondColumn ? { macro2: chars.join('') } : { macro: chars.join('') })
-      };
+      if (isSecondColumn) {
+        return { ...entry, macro2: chars.join('') };
+      }
+      // A hand edit of the primary macro column makes the text authoritative:
+      // imported raw effect bytes are dropped (D94), since they describe a
+      // command the row no longer carries.
+      const next: TrackerEntryData = { ...entry, macro: chars.join('') };
+      delete next.effectCommand;
+      delete next.effectParam;
+      return next;
     });
 
     if (nibbleIndex < 2) {
@@ -387,10 +393,15 @@ export function useTrackerEditing(context: TrackerEditingContext) {
       const isSecondColumn = context.activeColumn.value === 5;
       const chars = context.normalizeMacroChars(isSecondColumn ? entry.macro2 : entry.macro);
       chars[nibbleIndex] = '.';
-      return {
-        ...entry,
-        ...(isSecondColumn ? { macro2: chars.join('') } : { macro: chars.join('') })
-      };
+      if (isSecondColumn) {
+        return { ...entry, macro2: chars.join('') };
+      }
+      // Same rule as the input handler: an edited primary macro column drops
+      // the imported raw bytes, making the text authoritative (D94).
+      const next: TrackerEntryData = { ...entry, macro: chars.join('') };
+      delete next.effectCommand;
+      delete next.effectParam;
+      return next;
     });
   }
 
@@ -420,6 +431,10 @@ export function useTrackerEditing(context: TrackerEditingContext) {
       // Interpolation ranges are associated with the primary macro column.
       context.clearInterpolationRangeAt(context.activeRow.value, context.activeTrack.value);
       delete updatedEntry.macro;
+      // Clearing the primary macro column also drops its imported raw bytes
+      // (D94): the row no longer carries a command.
+      delete updatedEntry.effectCommand;
+      delete updatedEntry.effectParam;
     } else {
       delete updatedEntry.macro2;
     }

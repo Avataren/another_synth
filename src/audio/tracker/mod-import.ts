@@ -299,10 +299,13 @@ function modCellToTrackerEntry(
   const effectType = effectCmd & 0x0f;
   const isTonePorta = effectType === 0x3;      // 3xx
   const isTonePortaVol = effectType === 0x5;   // 5xy
+  const hasEffect = effectCmd !== 0 || effectParam !== 0;
+  // Raw format-native effect bytes, stored on the entry alongside the text
+  // macro derived from them below (D94): the bytes are what the module said,
+  // the text is how this tracker displays it.
 
   const hasNote = period > 0;
   const hasSample = sampleNumber > 0;
-  const hasEffect = effectCmd !== 0 || effectParam !== 0;
 
   if (!hasNote && !hasSample && !hasEffect) {
     return undefined;
@@ -557,6 +560,8 @@ function modCellToTrackerEntry(
 
   if (effectMacro) {
     entry.macro = effectMacro;
+    entry.effectCommand = effectType;
+    entry.effectParam = effectParam;
   }
   if (panMacro) {
     entry.macro2 = panMacro;

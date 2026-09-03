@@ -13,6 +13,7 @@
  */
 
 import type { ModuleFormat } from './types';
+import type { EffectType } from './types';
 import {
   type PitchModel,
   createAmigaPitchModel,
@@ -163,6 +164,35 @@ export interface FormatProfile {
    * formats where the flag is false.
    */
   readonly f00StopsSong: boolean;
+
+  /**
+   * How a module's raw effect-command bytes decode into the format-neutral
+   * effect behaviours, for entries that carry them (`TrackerEntryData
+   * .effectCommand`/`.effectParam`). The numeric command byte is what the
+   * module format actually stores, so this table -- not a letter heuristic --
+   * is the mapping a new format fills in (D94).
+   */
+  readonly effectCommands: Readonly<Record<number, EffectType>>;
+
+  /**
+   * The command byte whose parameter carries two independent nibbles that
+   * select the arpeggio intervals (ProTracker/XM: 0x00). A zero parameter on
+   * it is a no-op.
+   */
+  readonly arpeggioCommandByte: number;
+
+  /**
+   * The command byte that sets speed (low range) or tempo (high range).
+   * Formats without such a command leave this undefined.
+   */
+  readonly speedTempoCommandByte: number | undefined;
+
+  /**
+   * The command byte whose high parameter nibble selects an extended
+   * subcommand (ProTracker/XM: 0x0E, Exy). Formats without extended effects
+   * leave this undefined.
+   */
+  readonly extendedCommandByte: number | undefined;
 }
 
 /**
@@ -216,6 +246,36 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   // Never read: ProTracker has no pan slides. Kept at the legacy unit.
   panSlideUnit: 1 / 64,
   f00StopsSong: true,
+  // ProTracker's own command numbering; FT2 continues the alphabet past 0x0F
+  // with G(0x10), K(0x14), L(0x15), P(0x19), R(0x1B), T(0x1D), U(0x1E) and
+  // X(0x21) -- the same numbers the XM parser reads from the file.
+  effectCommands: {
+    0x01: 'portaUp',
+    0x02: 'portaDown',
+    0x03: 'tonePorta',
+    0x04: 'vibrato',
+    0x05: 'tonePortaVol',
+    0x06: 'vibratoVol',
+    0x07: 'tremolo',
+    0x08: 'setPan',
+    0x09: 'sampleOffset',
+    0x0a: 'volSlide',
+    0x0b: 'posJump',
+    0x0c: 'setVolume',
+    0x0d: 'patBreak',
+    0x10: 'setGlobalVol',
+    0x11: 'globalVolSlide',
+    0x14: 'keyOff',
+    0x15: 'setEnvelopePos',
+    0x19: 'panSlide',
+    0x1b: 'retrigVol',
+    0x1d: 'tremor',
+    0x1e: 'fineVibrato',
+    0x21: 'extraFinePorta',
+  },
+  arpeggioCommandByte: 0x00,
+  speedTempoCommandByte: 0x0f,
+  extendedCommandByte: 0x0e,
 };
 
 /**
@@ -263,7 +323,12 @@ export const XM_AMIGA_PROFILE: FormatProfile = {
   pitch: createXmAmigaPitchModel(),
 };
 
-/** Scream Tracker 3 semantics. Placeholder, as for XM_PROFILE. */
+/** Scream Tracker 3 semantics. Placeholder, as for XM_PROFILE.
+ *
+ * The command tables still hold the ProTracker/XM values; filling them with
+ * S3M's own numbering (where byte 0x01 is 'A' -- set speed, not portamento
+ * up) is P5 work alongside the S3M parser, not a placeholder fix.
+ */
 export const S3M_PROFILE: FormatProfile = {
   ...PROTRACKER_PROFILE,
   format: 's3m',

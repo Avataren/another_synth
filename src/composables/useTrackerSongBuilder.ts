@@ -17,6 +17,8 @@ import type {
   ModuleFormat
 } from '../../packages/tracker-playback/src/types';
 import { DEFAULT_MODULE_FORMAT } from '../../packages/tracker-playback/src/types';
+import { profileForFormat } from '../../packages/tracker-playback/src/format-profile';
+import { decodeRawEffect } from '../audio/tracker/note-utils';
 
 /**
  * Playback mode type
@@ -122,12 +124,28 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
     const isNativeSong =
       (context.moduleFormat?.value ?? DEFAULT_MODULE_FORMAT) === 'native';
 
+    // Hand-authored (native) rows skip the profile entirely: they carry no
+    // raw bytes, so the profile is never consulted for them.
+    const profile = profileForFormat(
+      context.moduleFormat?.value,
+      context.linearFrequency !== undefined
+        ? { linearFrequency: context.linearFrequency.value }
+        : undefined,
+    );
+
     for (let row = 0; row < patternRows; row += 1) {
       const entry = entryByRow.get(row);
       const instrumentId = context.normalizeInstrumentId(entry?.instrument) ?? ctx.instrumentId;
       const { midi, isNoteOff } = parseTrackerNoteSymbol(entry?.note);
       const volumeValue = parseTrackerVolume(entry?.volume);
-      const effectCmd1 = parseEffectCommand(entry?.macro);
+      // Raw format-native bytes are the source of truth for imported rows;
+      // the text macro is their presentation and may collide with the
+      // hand-authored shorthand dialect (D94). Hand-authored rows carry no
+      // raw bytes and keep the text parse.
+      const effectCmd1 =
+        entry?.effectCommand !== undefined
+          ? decodeRawEffect(entry.effectCommand, entry.effectParam ?? 0, profile)
+          : parseEffectCommand(entry?.macro);
       const effectCmd2 = parseEffectCommand(entry?.macro2);
       // XM volume-column command (0x60-0xFF). Independent of the effect
       // columns: FT2 runs both on the same row.

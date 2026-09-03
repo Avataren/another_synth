@@ -278,6 +278,13 @@ function xmCellToTrackerEntry(
     }
   }
 
+  // Raw bytes are the source of truth (D94); the text macro is derived from
+  // them for display and hand-editing. Both share the same gate: 0x00/00 is
+  // a no-op, not an arpeggio.
+  if (cell.effectType !== 0 || cell.effectParam !== 0) {
+    entry.effectCommand = cell.effectType;
+    entry.effectParam = cell.effectParam;
+  }
   const macro = xmEffectToMacro(cell.effectType, cell.effectParam);
   if (macro) entry.macro = macro;
 

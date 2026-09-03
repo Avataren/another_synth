@@ -32,6 +32,23 @@ export interface TrackerEntryData {
   volumeColumnVolume?: boolean;
   /** Optional exact frequency in Hz (for ProTracker MOD imports) */
   frequency?: number;
+  /**
+   * Raw, format-native effect bytes for the first effect column.
+   *
+   * `effectCommand` is the module's own effect number (MOD/XM: 0x00-0x21,
+   * FT2's extras continuing past 0x0F) and `effectParam` its 0x00-0xFF
+   * parameter. Importers write these first; `macro` is derived from them for
+   * display, making the raw bytes the single source of truth. Decoding goes
+   * through the module format's `FormatProfile` command table, so a format
+   * whose command numbers mean something else (S3M) is a data change, not a
+   * parser fork.
+   *
+   * Optional so hand-authored rows (which have no raw bytes) and song files
+   * saved before this field keep working unchanged; editing the macro column
+   * by hand clears the raw bytes, making the text authoritative again.
+   */
+  effectCommand?: number;
+  effectParam?: number;
 }
 
 export interface TrackerInterpolationRange {
