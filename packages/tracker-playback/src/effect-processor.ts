@@ -1008,6 +1008,15 @@ export function processEffectTick0(
       // one-shot fine step, not a per-tick slide at the 0xE3 speed.
       const resolvedParam =
         rawParam !== 0 ? rawParam : up ? state.lastPortaUp : state.lastPortaDown;
+      // st3play's docmd1 stores the channel-wide memory for EVERY non-zero
+      // raw parameter (`if (ch->info > 0) ch->alastnfo = ch->info;`) --
+      // including 0xE0/0xF0 rows that move nothing -- so the store happens
+      // here, before the fine/speed split, not inside it. With a zero raw
+      // parameter nothing is stored: GET_LAST_NFO resolved it above.
+      if (rawParam !== 0) {
+        if (up) state.lastPortaUp = rawParam;
+        else state.lastPortaDown = rawParam;
+      }
       // S3M: the E/F commands' high parameters (0xE0-0xFF) are one-shot fine
       // slides, not slide speeds. st3play digcmd.c s_slidedown/s_slideup
       // (quoted in D101): on tick 0 a resolved parameter 0xE1-0xEF slides
@@ -1027,8 +1036,6 @@ export function processEffectTick0(
             applyFinePortamento(state, up ? units : -units, 1);
             pushPitch(state.currentFrequency);
           }
-          if (up) state.lastPortaUp = resolvedParam;
-          else state.lastPortaDown = resolvedParam;
         }
         // No persistent slide speed: the fine row is a single step.
         state.portamentoSpeed = 0;

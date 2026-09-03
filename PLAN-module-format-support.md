@@ -3268,11 +3268,12 @@ resolved parameter, matching s_slideup/s_slidedown.
 **Corpus** (~/Downloads/mods/s3m, fetched from modland 2026-09-03, outside the
 repo; tests skip when absent): satellite_one (PCM 8ch), caverns_of_cthulu
 (PCM 4ch), o-79642 (16ch), riverflow (32 enabled channels -- the B2
-voice-pressure ceiling case, imports 1:1), anguish (28 AdLib instruments,
-warned), 2nd_reality (22 PCM + 5 AdLib), final_decade + return_to_saturn
-(amigaLimits flag), insanity_unnamed (16-bit samples), turbulence (the 0x04
-bit). Golden cells were cross-checked against an independent reader, not the
-parser under test.
+voice-pressure ceiling case, imports 1:1), anguish (12 PCM + 28 type-0 empty
+slots), 2nd_reality (22 PCM + 5 type-0 empty slots), sun.s3m (25 genuine
+type-2 AdLib instruments, 7 AdLib channels, 1764 notes), final_decade +
+return_to_saturn (amigaLimits flag), insanity_unnamed (16-bit samples),
+turbulence (the 0x04 bit). Golden cells were cross-checked against an
+independent reader, not the parser under test.
 
 **What did not work (recorded, not hidden).** DP30AD1F-packed 16-bit samples
 (pack byte 1) are detected and *not* decoded: no reference player implements
@@ -3284,15 +3285,15 @@ corpus category is recorded as absent rather than faked, and the importer
 warns if one ever turns up.
 
 Tests: `s3m-parser.test.ts` (19), `s3m-import.test.ts` (14),
-`s3m-corpus.test.ts` (8), `s3m-engine.test.ts` (5), plus pitch-model and
-raw-effect-bytes extensions. Suite 1413 green; tsc at the 48-error baseline
+`s3m-corpus.test.ts` (9), `s3m-engine.test.ts` (6), plus pitch-model and
+raw-effect-bytes extensions. Suite 1415 green; tsc at the 48-error baseline
 (untouched files); eslint clean; gitleaks clean.
 
 ## 8. Change log
 
 | Date | Phase | Change |
 |---|---|---|
-| 2026-09-03 | 5 | **S3M parser + importer land; PCM plays, AdLib parsed-and-preserved** (P5, D101). `formats/s3m.ts` parses the header (settled flag table quoted from OpenMPT S3MTools.h + st3play dig.c: no AMIGASLIDES bit exists; 0x10 amigaLimits, 0x40 fastVolumeSlides, 0x01 st2vibrato), S3M run-length patterns (0xFE note-off / 0xFF instrument-only verified), PCM/AdLib 80-byte headers, unsigned-8/signed-16 sample data. `s3m-import.ts` builds slots/patches (referenced-only, c2spd folded into the root note at the C-5 anchor, D56 latch, BCD Cxx, D53 volume stamping); AdLib instruments get inactive slots carrying their OPL register bytes exactly as the file stores them -- the natural patch format for the future **dedicated WASM OPL core** (standalone emulator, own worklet/voice path, not the main synth; Morten's amendments) -- plus a counted import warning, and no mapping layer toward the existing synth's FM primitives. `amigaLimits` threads the D59 chain into `S3M_AMIGA_PROFILE`; header global volume rides D72. M/N/Y/Z and volume-column panning: zero corpus uses, left unmapped by count. DP30AD1F packing detected, not decoded (no reference implementation; 0 corpus files). Corpus of 20 modland files pinned on decode with independently cross-checked golden cells (sun.s3m the one genuine AdLib file; the first sweep's "AdLib" files were type-0 empty slots, caught by review and corrected). Tests: `s3m-parser/s3m-import/s3m-corpus/s3m-engine.test.ts` (46), pitch-model + raw-effect-bytes extensions; 1413 green; tsc 48-error baseline; eslint/gitleaks clean; quasar build clean. |
+| 2026-09-03 | 5 | **S3M parser + importer land; PCM plays, AdLib parsed-and-preserved** (P5, D101). `formats/s3m.ts` parses the header (settled flag table quoted from OpenMPT S3MTools.h + st3play dig.c: no AMIGASLIDES bit exists; 0x10 amigaLimits, 0x40 fastVolumeSlides, 0x01 st2vibrato), S3M run-length patterns (0xFE note-off / 0xFF instrument-only verified), PCM/AdLib 80-byte headers, unsigned-8/signed-16 sample data. `s3m-import.ts` builds slots/patches (referenced-only, c2spd folded into the root note at the C-5 anchor, D56 latch, BCD Cxx, D53 volume stamping); AdLib instruments get inactive slots carrying their OPL register bytes exactly as the file stores them -- the natural patch format for the future **dedicated WASM OPL core** (standalone emulator, own worklet/voice path, not the main synth; Morten's amendments) -- plus a counted import warning, and no mapping layer toward the existing synth's FM primitives. `amigaLimits` threads the D59 chain into `S3M_AMIGA_PROFILE`; header global volume rides D72. M/N/Y/Z and volume-column panning: zero corpus uses, left unmapped by count. DP30AD1F packing detected, not decoded (no reference implementation; 0 corpus files). Corpus of 20 modland files pinned on decode with independently cross-checked golden cells (sun.s3m the one genuine AdLib file; the first sweep's "AdLib" files were type-0 empty slots, caught by review and corrected). Tests: `s3m-parser/s3m-import/s3m-corpus/s3m-engine.test.ts` (48, 9 of them corpus), pitch-model + raw-effect-bytes extensions; 1415 green; tsc 48-error baseline; eslint/gitleaks clean; quasar build clean. |
 | 2026-09-03 | 4 | **Autovibrato depth converts through the pitch model** (P4, D97). The last hardcoded pitch constant outside the pitch model -- `ModInstrument`'s 100/64 cents-per-XM-period-unit -- is replaced by `PitchModel.vibratoDepthCents(baseFrequency, depthUnits)`, supplied by the song's format profile via the song bank. Linear table unchanged (exactness pinned); XM Amiga mode and S3M now get the pitch-dependent log2((p+d)/p) conversion FT2's `updateVolPanAutoVib` implies. Corpus: 52 of ~470 demo-collection instruments carry autovibrato (16.9% of played notes); ramp-up waveform is corpus-absent and implemented per the C. Waveform doc 2/3 swap corrected. Tests: `src/tests/xm-autovibrato.test.ts` (3 confirmed failing against the old code), `src/tests/pitch-model.test.ts`. |
 | 2026-09-03 | refactor | **P2: song-bank god class split** (D95). `song-bank.ts` (2949 -> 2572 lines) split into `scheduled-events.ts` (queue + flush), `recorder.ts` (recording worklet + buffers) and `track-voice-registry.ts` (per-track voice maps + `resolveCommandVoice`, moved as one gated D78 unit). Internal composition only -- public `TrackerSongBank` API identical, callers unchanged, voice-replacement policy untouched (review wait list honored). 1285 tests green unmodified; tsc baseline unchanged; gitleaks clean. |
 | 2026-09-03 | fix | **The XM fine slides remember their parameter** (D88). Every FT2 fine routine opens `if (param == 0) param = ch->f<...>Speed; ch->f<...>Speed = param;`, so a run of `EB0` rows keeps walking the volume down one step per row; the engine treated each as a no-op. 2960 zero-parameter fine volume slides in an-path.xm alone were real slides being dropped. Behind `FormatProfile.fineSlideHasMemory` with FT2's six separate memory bytes; ProTracker's fine routines are memoryless and stay that way, as does native. Tests: `src/tests/effect-reference-audit-2.test.ts` (4 confirmed failing against the old code). |
