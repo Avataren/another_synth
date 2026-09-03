@@ -18,7 +18,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import {
@@ -30,6 +30,12 @@ import {
   type TrackerSongBuilderContext,
 } from 'src/composables/useTrackerSongBuilder';
 import type { TrackerEntryData } from 'src/components/tracker/tracker-types';
+import type { TrackerPattern } from 'src/stores/tracker-store';
+import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
+import {
+  useTrackerEditing,
+  type TrackerEditingContext,
+} from 'src/composables/useTrackerEditing';
 import {
   PlaybackEngine,
 } from '../../packages/tracker-playback/src/engine';
@@ -254,8 +260,6 @@ describe('scheduled-command identity: raw-byte path vs text path', () => {
       const textLog = scheduleEverything(
         useTrackerSongBuilder(builderContext(textFile)).buildPlaybackSong('song'),
       );
-
-console.log('LEN', name, textLog.length, JSON.stringify(rawLog)===JSON.stringify(textLog));
       expect(rawLog).toEqual(textLog);
     });
   }
@@ -272,11 +276,99 @@ console.log('LEN', name, textLog.length, JSON.stringify(rawLog)===JSON.stringify
       const textLog = scheduleEverything(
         useTrackerSongBuilder(builderContext(textFile)).buildPlaybackSong('song'),
       );
-
-console.log('LEN', name, textLog.length, JSON.stringify(rawLog)===JSON.stringify(textLog));
       expect(rawLog).toEqual(textLog);
     });
   }
+});
+
+describe('a hand edit of the macro column drops the raw bytes', () => {
+  /**
+   * Pins the text-authority path (D94): editing the primary macro column of
+   * an imported row must delete effectCommand/effectParam, so the row plays
+   * from the text the user typed, not from the command the module shipped.
+   */
+  function editingContext(entries: TrackerEntryData[]) {
+    const pattern: TrackerPattern = {
+      id: 'p1',
+      rows: 4,
+      tracks: [{ id: 't1', entries }],
+    };
+    const currentPattern = computed(() => pattern);
+    const context: TrackerEditingContext = {
+      activeRow: ref(0),
+      activeTrack: ref(0),
+      activeColumn: ref(4),
+      activeMacroNibble: ref(0),
+      isEditMode: ref(true),
+      stepSize: ref(1),
+      baseOctave: ref(4),
+      defaultBaseOctave: 4,
+      activeInstrumentId: ref(null),
+      rowsCount: ref(pattern.rows),
+      currentPattern,
+      instrumentSlots: ref([]),
+      songBank: {} as TrackerSongBank,
+      toggleInterpolationRange: () => {},
+      clearInterpolationRangeAt: () => {},
+      pushHistory: () => {},
+      moveRow: () => {},
+      formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
+      normalizeInstrumentId: (id) => (id ? id : undefined),
+      normalizeVolumeChars: (vol) => {
+        const chars: [string, string] = ['.', '.'];
+        const clean = (vol ?? '').toUpperCase();
+        if (/^[0-9A-F]$/.test(clean[0] ?? '')) chars[0] = clean[0];
+        if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1];
+        return chars;
+      },
+      normalizeMacroChars: (macro) => {
+        const chars: [string, string, string] = ['.', '.', '.'];
+        const clean = (macro ?? '').toUpperCase();
+        if (/^[0-9A-Z]$/.test(clean[0] ?? '')) chars[0] = clean[0];
+        if (/^[0-9A-F]$/.test(clean[1] ?? '')) chars[1] = clean[1];
+        if (/^[0-9A-F]$/.test(clean[2] ?? '')) chars[2] = clean[2];
+        return chars;
+      },
+      midiToTrackerNote: (midi) => `C-${Math.floor(midi / 12) - 1}`,
+    };
+    return { editing: useTrackerEditing(context), pattern };
+  }
+
+  it('handleMacroInput clears effectCommand/effectParam', () => {
+    const entry: TrackerEntryData = {
+      row: 0,
+      macro: 'P40',
+      effectCommand: 0x19,
+      effectParam: 0x40,
+    };
+    const { editing, pattern } = editingContext([entry]);
+
+    editing.handleMacroInput('4');
+    editing.handleMacroInput('3');
+    editing.handleMacroInput('7');
+
+    const edited = pattern.tracks[0]!.entries[0]!;
+    expect(edited.macro).toBe('437');
+    expect(edited.effectCommand).toBeUndefined();
+    expect(edited.effectParam).toBeUndefined();
+  });
+
+  it('clearMacroField clears them too', () => {
+    const entry: TrackerEntryData = {
+      row: 0,
+      macro: '437',
+      effectCommand: 0x04,
+      effectParam: 0x37,
+    };
+    const { editing, pattern } = editingContext([entry]);
+
+    editing.clearMacroField();
+
+    const edited = pattern.tracks[0]!.entries[0]!;
+    expect(edited.macro).toBeUndefined();
+    expect(edited.effectCommand).toBeUndefined();
+    expect(edited.effectParam).toBeUndefined();
+  });
 });
 
 describe('a third format maps its command bytes via profile data only', () => {

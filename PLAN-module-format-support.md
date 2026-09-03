@@ -2524,17 +2524,20 @@ display and hand-editing; `parseEffectCommand` remains only for hand-authored ro
   S3M's real numbering is P5 work alongside its parser, not a placeholder fix.
 - **Behaviour note (honest deviation from "zero behaviour change").** For every
   command byte where the text dialect was unambiguous, the raw path schedules
-  identically -- proven per corpus module below. The one exception is the D52
-  collision itself: XM `Pxy` (effectType 0x19) derived the text `P40`, which
-  `parseEffectCommand` reads as the macro-3 shorthand, silently turning pan slides
-  into macro commands. The raw path decodes 0x19 as `panSlide` correctly. This is the
-  bug P1 exists to fix, not a regression; FT2's own 0x19 is the only collision-bearing
-  byte the XM corpus exercises.
+  identically -- proven per corpus module below. The exceptions are the D52
+  collisions themselves: XM effectTypes 0x16-0x18 derive the text `Mxx`/`Nxx`/`Oxx`,
+  which `parseEffectCommand` reads as the macro-1/2/3 shorthands, and 0x19 derives
+  `Pxx` which reads as macro 3. The raw path decodes 0x16-0x18 as nothing (FT2 does
+  not define those bytes and ignores them) and 0x19 as `panSlide` correctly. The
+  text path was wrong on all four; the raw path is FT2-correct on all four. The
+  corpus histogram shows **zero occurrences of 0x16-0x19** across all 18 XM files,
+  so this fix binds on no corpus file today -- the divergence is pinned by a
+  synthetic test, not by corpus playback.
 - **No song-file version bump.** The new fields are optional and additive; v3 files
   saved by older builds read them as unknown JSON keys and ignore them, and the writer
   still emits v3.
 
-**Scheduled-command identity proof.** For each of the 18 corpus XM files and the 51
+**Scheduled-command identity proof.** For each of the 18 corpus XM files and the 54
 accepted corpus MOD files, the same import is scheduled twice through
 `PlaybackEngine.scheduleRow` (every row of every pattern, all scheduled handlers
 captured): once with raw bytes (the new path) and once with the raw fields stripped
@@ -2755,7 +2758,7 @@ panning one, and it already has a per-voice stage to hang automation on.
 | 2026-09-03 | fix | **`Rxy` counts tick 0 as its first retrigger increment** (D90). FT2 reaches `doMultiNoteRetrig` on tick 0 and fires the moment the count reaches the interval, so at speed 6 an `R2` fires on ticks 1/3/5 where this fired on 2/4 -- one fewer -- and an `R3` at speed 3 fired nowhere. An interval the tick-0 count already satisfies re-fires immediately (R11), and a volume-column volume suppresses the tick-0 count (FT2's `newVolCol` quirk, carried by a new `volumeColumnVolume` import flag). E9x does not count tick 0 in either replayer and is unchanged. 73 XM cells. Tests: `src/tests/effect-reference-audit-2.test.ts` (2 confirmed failing against the old code). |
 | 2026-09-03 | fix | **F00 stops a ProTracker song after its row** (D91). pt2-clone's `setSpeed` turns a zero parameter into `doStopSong = true`; the parser dropped F00 outright and the engine's clamp would have turned it into speed 1 -- six times the tempo. Behind `FormatProfile.f00StopsSong` (ProTracker only; FT2 stalls and native keeps the old reading). 2 corpus cells, both last rows of their songs. Tests: `src/tests/effect-reference-audit-2.test.ts` (2 confirmed failing against the old code). |
 | 2026-09-03 | note | **Systematic reference audit of the remaining effects** (D92/D93). Volume column, 8xx, Cxx, Axy, 3xx, 0xy (MOD), E6x, EDx, E9x phase, Txy, Lxx, Bxx/Dxx verified against the quoted replayer routines and left as they were. E0x (36 MOD cells), EFx (9) and FT2's autovibrato/panning envelope (20 instruments, parsed and dropped at import) decided against and recorded with quoted routines (D93); Uxy flagged as a deliberate FT2 divergence (0 uses). Known-opens D71/D81/D87 left untouched. 1203 green. |
-| 2026-09-03 | 2 | **Raw effect bytes on `TrackerEntryData`** (P1, D94). Importers store the module's own `(cmd, param)` bytes; the text macro is derived from them and `parseEffectCommand` remains for hand-authored rows only. Decoding goes through new `FormatProfile` data (`effectCommands`, arpeggio/speed-tempo/extended command bytes) via `decodeRawEffect`, retiring the D52 letter-collision class. Extensibility proven on a hypothetical third format mapped via profile only. Scheduled-command identity proven per corpus module: 18 XM + 51 MOD files, every row of every pattern, raw path vs stripped-text path byte-identical through `PlaybackEngine.scheduleRow` — the sole behavioural exception is the D52 collision itself: imported XM `Pxy` (0x19) previously became macro-3 text and now correctly decodes as `panSlide`. No song-file version bump (optional additive fields). Tests: `src/tests/raw-effect-bytes.test.ts` (78 tests). |
+| 2026-09-03 | 2 | **Raw effect bytes on `TrackerEntryData`** (P1, D94). Importers store the module's own `(cmd, param)` bytes; the text macro is derived from them and `parseEffectCommand` remains for hand-authored rows only. Decoding goes through new `FormatProfile` data (`effectCommands`, arpeggio/speed-tempo/extended command bytes) via `decodeRawEffect`, retiring the D52 letter-collision class. Extensibility proven on a hypothetical third format mapped via profile only. Scheduled-command identity proven per corpus module: 18 XM + 54 MOD files, every row of every pattern, raw path vs stripped-text path byte-identical through `PlaybackEngine.scheduleRow`. The exceptions are the D52 collisions themselves: imported XM bytes 0x16-0x19 previously became M/N/O/P macro-shorthand commands (0x19 is FT2's pan slide) and now decode FT2-correctly (0x16-0x18 ignored, 0x19 as `panSlide`); the corpus histogram has zero 0x16-0x19 occurrences, so no corpus playback changes today. No song-file version bump (optional additive fields). Tests: `src/tests/raw-effect-bytes.test.ts` (80 tests), including pins that a hand edit of the macro column drops the raw bytes. |
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |
