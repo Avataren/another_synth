@@ -3,7 +3,12 @@ import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 import ModInstrument from 'src/audio/mod-instrument';
 import { buildXm, cell } from './helpers/xm-builder';
-import { createXmAmigaPitchModel, type PitchModel } from '../../packages/tracker-playback/src/pitch-model';
+import {
+  createAmigaPitchModel,
+  createLinearPitchModel,
+  createXmAmigaPitchModel,
+  type PitchModel,
+} from '../../packages/tracker-playback/src/pitch-model';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type AudioSystem from 'src/audio/AudioSystem';
 
@@ -469,5 +474,88 @@ describe('jt_letgo.xm instrument-1 wobble matches ft2-clone (regression pin)', (
     // with exactly this excursion at exactly this rate.
     expect(expectedCents).toBeCloseTo(15.625, 6);
     expect(expectedHz).toBeCloseTo(4.8, 6);
+  });
+});
+
+/**
+ * The pitch model has to reach instruments that were built before the song's
+ * format did (the psycho-vibrato bug this file's pin above could not catch).
+ *
+ * The audit above tested ModInstrument in isolation, where the model defaults
+ * to XM's linear table -- the right answer by accident. On the real load path
+ * the bank builds every instrument from the editor's slots first
+ * (`useTrackerFileIO.applySongFile` -> `syncSongBankFromSlots`) and only then
+ * loads the song for playback (`initializePlayback` ->
+ * `playbackStore.loadSong` -> `songBank.setModuleFormat`). Every instrument
+ * therefore carried the *default* profile's model, which is ProTracker's:
+ * this engine scales Paula periods down by 128, so A4 sits at period ~64 and
+ * a 10-unit autovibrato wobbles a sixth of the period -- ~347 cents on
+ * jt_letgo's instrument 1 where FT2 plays 15.6. Autovibrato is the only thing
+ * the bank's pitch model feeds, which is why nothing else in the song sounded
+ * wrong.
+ */
+describe('the song format reaches instruments built before it (regression)', () => {
+  const JT_LETGO_E4 = 621.5875;
+
+  it('shows how far off the default ProTracker model is', () => {
+    // Not a design choice being pinned -- the size of the bug. ProTracker's
+    // model is correct for MODs; it is simply not XM's.
+    const protracker = createAmigaPitchModel({ arpeggioWrapsToDC: true });
+    expect(protracker.vibratoDepthCents(JT_LETGO_E4, 10)).toBeGreaterThan(300);
+    expect(createLinearPitchModel().vibratoDepthCents(JT_LETGO_E4, 10))
+      .toBeCloseTo(15.625, 6);
+  });
+
+  it('re-points a ModInstrument at the song\'s model', () => {
+    const { instrument, gains } = makeInstrument(
+      { type: 0, sweepTicks: 0, depth: 10, rate: 24 },
+      { pitchModel: createAmigaPitchModel({ arpeggioWrapsToDC: true }) },
+    );
+
+    instrument.setPitchModel(createLinearPitchModel());
+    instrument.noteOnAtTime(60, 127, 0, {
+      tickSeconds: TICK,
+      frequency: JT_LETGO_E4,
+    });
+
+    const [magnitude] =
+      gains[gains.length - 1]!.gain.setValueAtTime.mock.calls.at(-1)!;
+    expect(Math.abs(magnitude as number)).toBeCloseTo(15.625, 6);
+  });
+
+  it('pushes the model to instruments the bank already holds', () => {
+    const bank = new TrackerSongBank(
+      {
+        audioContext: {
+          sampleRate: 48000,
+          currentTime: 0,
+          state: 'running' as const,
+          createGain: () => ({ gain: { value: 1 }, connect: vi.fn() }),
+          destination: { connect: vi.fn() },
+        },
+        destinationNode: { connect: vi.fn() },
+      } as unknown as AudioSystem,
+    );
+
+    // An instrument that already exists when the song's format arrives, as
+    // every instrument does on the real load path.
+    const setPitchModel = vi.fn();
+    const instruments = Reflect.get(bank as object, 'instruments') as Map<
+      string,
+      unknown
+    >;
+    instruments.set('01', {
+      instrument: { setPitchModel },
+      patchId: 'p',
+      patchReuseKey: null,
+      hasPortamento: false,
+    });
+
+    bank.setModuleFormat('xm', true);
+
+    expect(setPitchModel).toHaveBeenCalledTimes(1);
+    const [model] = setPitchModel.mock.calls[0]! as [PitchModel];
+    expect(model.kind).toBe('linear');
+    expect(model.vibratoDepthCents(JT_LETGO_E4, 10)).toBeCloseTo(15.625, 6);
   });
 });
