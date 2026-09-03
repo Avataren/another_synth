@@ -553,9 +553,9 @@ function createSamplerPatchForXmSample(
     detuneCents: (sample.finetune / FINETUNE_UNITS_PER_SEMITONE) * 100,
     // The sample header's default panning (byte 15), FT2's `s->panning`:
     // reset on every trigger, offset around by the panning envelope while it
-    // runs, replaced outright by Cxx/8xx. 0..255 -> 0..1, so 128 lands a
-    // hair right of centre exactly as FT2's sqrt(i/255) pan table does.
-    // Centre (128) is left unset, the engine's historical default.
+    // runs, replaced outright by Cxx/8xx. 0..255 -> 0..1; FT2's pan table
+    // (L=sqrt((256-p)/256), R=sqrt(p/256), 0..256) centres byte 128 exactly,
+    // so centre (128) is left unset -- the engine's historical default.
     ...(sample.panning !== 128 ? { pan: sample.panning / 255 } : {}),
     // Unity -- the sample's default volume reaches playback through the volume
     // column, which stamps it on every note carrying an instrument. Baking it

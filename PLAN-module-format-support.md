@@ -3081,11 +3081,18 @@ around it) and the preview path (`noteOn`). The panning envelope is unaffected:
 a static base plus envelope already yields FT2's behaviour, because the
 envelope's 32-value is "no offset" and the base is what it swings around.
 
-**Scale:** 0..255 -> 0..1 as `panning / 255`, matching FT2's `sqrt(i/255)` pan
-table (symmetric about 128, so centre lands a hair right of exact centre --
-FT2-exact). A centre byte (128) is left unset so the engine's historical
-default (0.5, exact centre) is preserved for the 379 centre-panned samples and
-for MOD/native imports, which never set the field.
+**Scale:** 0..255 -> 0..1 as `panning / 255`. FT2's law is
+`L = vol*sqrt((256-pan)/256), R = vol*sqrt(pan/256)` -- the table is indexed
+0..256 and **byte 128 is exactly centred**. We leave a centre byte (128) unset
+so the engine's historical default (0.5, exact centre) is preserved for the
+379 centre-panned samples and for MOD/native imports, which never set the
+field. Known approximation (D24 class): the engine's StereoPannerNode uses
+sin/cos equal-power curves, FT2 uses sqrt -- identical at endpoints and centre,
+worst case ~2.3 dB on the far channel at quarter-pan; a cheap future emulation
+is an arcsin pre-warp at the AudioParam boundary. Known deviation: FT2 gates
+the pan reset on rows that *mention an instrument* (E9x/Rxy retriggers do not
+reset pan), so a Cxx pan survives a retrigger in FT2 but not here; strictly
+better than the prior behaviour, which wiped every pan command to centre.
 
 **Tests:** `src/tests/xm-sample-panning.test.ts` -- non-centre pan survives the
 normalizer (51 -> 51/255), identity pins for a centre byte and a header-default
