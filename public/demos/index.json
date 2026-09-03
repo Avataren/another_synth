@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-03T14:44:03.673Z",
+  "generated": "2026-09-03T20:00:41.954Z",
   "collections": [
     {
       "id": "amiga",
@@ -604,6 +604,192 @@
           "instruments": 11,
           "file": "ft2/xyce-dans_la_rue.xm",
           "bytes": 87100
+        }
+      ]
+    },
+    {
+      "id": "s3m",
+      "name": "Scream Tracker 3",
+      "songs": [
+        {
+          "title": "2nd Reality <Skaven>",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 73,
+          "instruments": 27,
+          "file": "s3m/2nd_reality.s3m",
+          "bytes": 389616
+        },
+        {
+          "title": "Anguish",
+          "format": "S3M",
+          "channels": 11,
+          "patterns": 20,
+          "instruments": 40,
+          "file": "s3m/anguish.s3m",
+          "bytes": 166708
+        },
+        {
+          "title": "\"Ascent of the Cloud Eagle\"",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 55,
+          "instruments": 29,
+          "file": "s3m/ascent_of_the_cloud_eagle.s3m",
+          "bytes": 819762
+        },
+        {
+          "title": "Average Chip Funk",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 8,
+          "instruments": 10,
+          "file": "s3m/average_chip_funk.s3m",
+          "bytes": 20760
+        },
+        {
+          "title": "babylon",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 53,
+          "instruments": 33,
+          "file": "s3m/babylon.s3m",
+          "bytes": 547320
+        },
+        {
+          "title": "BuBBleZ",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 23,
+          "instruments": 35,
+          "file": "s3m/bubblez.s3m",
+          "bytes": 195446
+        },
+        {
+          "title": "Catch that goblin!!",
+          "format": "S3M",
+          "channels": 12,
+          "patterns": 31,
+          "instruments": 99,
+          "file": "s3m/catch_that_goblin.s3m",
+          "bytes": 481939
+        },
+        {
+          "title": "caverns of cthulu",
+          "format": "S3M",
+          "channels": 4,
+          "patterns": 10,
+          "instruments": 5,
+          "file": "s3m/caverns_of_cthulu.s3m",
+          "bytes": 48720
+        },
+        {
+          "title": "Final Decade",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 26,
+          "instruments": 29,
+          "file": "s3m/final_decade.s3m",
+          "bytes": 505146
+        },
+        {
+          "title": "FunTro",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 10,
+          "instruments": 8,
+          "file": "s3m/funtro.s3m",
+          "bytes": 20192
+        },
+        {
+          "title": "Image of Variance",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 33,
+          "instruments": 14,
+          "file": "s3m/image_of_variance.s3m",
+          "bytes": 140898
+        },
+        {
+          "title": "(2)Unnamed - Insanity :)",
+          "format": "S3M",
+          "channels": 32,
+          "patterns": 2,
+          "instruments": 10,
+          "file": "s3m/insanity_unnamed.s3m",
+          "bytes": 968702
+        },
+        {
+          "title": "kraaap",
+          "format": "S3M",
+          "channels": 6,
+          "patterns": 21,
+          "instruments": 13,
+          "file": "s3m/kraaap.s3m",
+          "bytes": 32848
+        },
+        {
+          "title": "o-79642",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 15,
+          "instruments": 13,
+          "file": "s3m/o-79642.s3m",
+          "bytes": 305184
+        },
+        {
+          "title": "Return to Saturn",
+          "format": "S3M",
+          "channels": 12,
+          "patterns": 32,
+          "instruments": 32,
+          "file": "s3m/return_to_saturn.s3m",
+          "bytes": 228734
+        },
+        {
+          "title": "Riverflow",
+          "format": "S3M",
+          "channels": 32,
+          "patterns": 68,
+          "instruments": 36,
+          "file": "s3m/riverflow.s3m",
+          "bytes": 356922
+        },
+        {
+          "title": "demo",
+          "format": "S3M",
+          "channels": 4,
+          "patterns": 14,
+          "instruments": 20,
+          "file": "s3m/samplemind_demo.s3m",
+          "bytes": 239406
+        },
+        {
+          "title": "Satellite one.",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 99,
+          "instruments": 8,
+          "file": "s3m/satellite_one.s3m",
+          "bytes": 39778
+        },
+        {
+          "title": "sun",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 15,
+          "instruments": 25,
+          "file": "s3m/sun.s3m",
+          "bytes": 10032
+        },
+        {
+          "title": "Turbulence",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 42,
+          "instruments": 17,
+          "file": "s3m/turbulence.s3m",
+          "bytes": 176360
         }
       ]
     }
