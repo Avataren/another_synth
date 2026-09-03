@@ -17,10 +17,13 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { ref, computed } from 'vue';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
+import { importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
+import { buildS3m } from './helpers/s3m-builder';
 import {
   parseEffectCommand,
   decodeRawEffect,
@@ -48,6 +51,7 @@ import {
 import { buildXm, cell } from './helpers/xm-builder';
 
 const DEMOS = path.resolve(__dirname, '../../public/demos');
+const CORPUS_DIR = path.join(os.homedir(), 'Downloads', 'mods', 's3m');
 
 /**
  * Read a module file as an exact ArrayBuffer.
@@ -648,5 +652,109 @@ describe('S3M letter commands decode via the S3M profile (P3, D96)', () => {
         effect: { type: 'extEffect', paramX: 5, paramY: 4, extSubtype: 'setFinetune' },
       });
     });
+  });
+});
+
+describe('S3M builder decodes through the profile, not the text dialect (P5)', () => {
+  /**
+   * The D94 identity proof compares the raw path against the text path --
+   * meaningful for MOD/XM, whose letter dialects agree. S3M's dialects
+   * COLLIDE by design (its 'A' is speed where PT's A is a volume slide), so
+   * the invariant to pin here is the opposite one: the builder must decode
+   * the raw bytes through S3M_PROFILE, and the scheduled commands must show
+   * ST3 semantics for the colliding bytes.
+   */
+  function scheduleSynthetic(spec: Parameters<typeof buildS3m>[0]): string[] {
+    const built = buildS3m(spec);
+    const file = importS3mToTrackerSong(
+      built.buffer.slice(0) as ArrayBuffer,
+    );
+    const context: TrackerSongBuilderContext = {
+      currentSong: ref(file.data.currentSong),
+      moduleFormat: ref(file.data.moduleFormat!),
+      initialSpeed: ref(file.data.initialSpeed ?? 6),
+      linearFrequency: ref(true),
+      amigaLimits: ref(file.data.amigaLimits ?? false),
+      patterns: ref(file.data.patterns),
+      sequence: ref(file.data.sequence),
+      currentPatternId: ref(file.data.currentPatternId ?? ''),
+      currentPattern: ref(file.data.patterns[0]),
+      defaultPatternRows: ref(64),
+      instrumentSlots: ref(file.data.instrumentSlots),
+      songPatches: ref(file.data.songPatches ?? {}),
+      songBank: {} as TrackerSongBuilderContext['songBank'],
+      normalizeInstrumentId: (id) => (id ? id : undefined),
+      formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
+    };
+    const song = useTrackerSongBuilder(context).buildPlaybackSong('song');
+    const log: string[] = [];
+    const engine = new PlaybackEngine({
+      scheduler: { start: vi.fn(), stop: vi.fn() },
+      audioContext: { currentTime: 0 } as unknown as AudioContext,
+      scheduledNoteHandler: (e: unknown) => log.push(`note:${JSON.stringify(e)}`),
+      scheduledPitchHandler: () => {},
+      scheduledVolumeHandler: () => {},
+      scheduledPanHandler: () => {},
+      scheduledSampleOffsetHandler: () => {},
+      scheduledEnvelopePositionHandler: () => {},
+      scheduledAllNotesOffHandler: () => {},
+      scheduledGlobalVolumeHandler: (gain: number) => log.push(`globalvol:${gain}`),
+      scheduledRetriggerHandler: () => {},
+      scheduledMacroHandler: () => {},
+      scheduledAutomationHandler: (e: unknown) => log.push(`auto:${JSON.stringify(e)}`),
+      positionCommandHandler: (e: unknown) => log.push(`pos:${JSON.stringify(e)}`),
+    } as unknown as ConstructorParameters<typeof PlaybackEngine>[0]);
+    engine.loadSong(song);
+    const pattern = file.data.patterns[0]!;
+    engine.loadPattern(pattern.id);
+    for (let row = 0; row < pattern.rows; row += 1) {
+      (
+        engine as unknown as { scheduleRow: (r: number, t: number) => void }
+      ).scheduleRow(row, row);
+    }
+    return log;
+  }
+
+  it('schedules A03 as speed 3, not ProTracker portamento up', () => {
+    const log = scheduleSynthetic({
+      channelSettings: [0x00],
+      orders: [0],
+      patterns: [
+        [
+          [{ note: 0x30, instrument: 1, volume: 64 }],
+          [{ effect: 0x01, param: 0x03 }], // A03: ST3 speed command
+          [{}],
+        ],
+      ],
+      instruments: [{ frames: [0, 0.25, -0.25, 0] }],
+    });
+    // The raw path schedules ST3 semantics: no pitch automation (ProTracker
+    // would have run A03 as a volume-slide... no -- as portamento UP, a
+    // pitch effect) and the raw bytes survive on the entry.
+    expect(log.some((l) => l.startsWith('pitch:'))).toBe(false);
+    const file = importS3mToTrackerSong(
+      buildS3m({
+        channelSettings: [0x00],
+        orders: [0],
+        patterns: [[[{ effect: 0x01, param: 0x03 }]]],
+        instruments: [],
+      }).buffer.slice(0) as ArrayBuffer,
+    );
+    const steps = file.data.patterns[0]!.tracks[0]!.entries;
+    expect(steps[0]!.effectCommand).toBe(0x01);
+    expect(steps[0]!.macro).toBe('A03');
+  });
+
+  it('corpus: every scheduled command for an A-byte row is the header speed', () => {
+    if (!fs.existsSync(CORPUS_DIR)) return; // corpus is not checked in
+    // final_decade.s3m pattern 0 row 0 channel 4 carries A05 (independently
+    // cross-checked); the builder must resolve it through S3M_PROFILE.
+    const view = fs.readFileSync(path.join(CORPUS_DIR, 'final_decade.s3m'));
+    const file = importS3mToTrackerSong(
+      view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer,
+    );
+    const entry = file.data.patterns[0]!.tracks[4]!.entries.find((e) => e.row === 0);
+    expect(entry?.effectCommand).toBe(0x01);
+    expect(entry?.effectParam).toBe(0x05);
   });
 });

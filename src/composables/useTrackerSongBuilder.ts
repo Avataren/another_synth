@@ -43,6 +43,13 @@ export interface TrackerSongBuilderContext {
   initialSpeed?: Ref<number>;
   /** XM only: whether the module selected the linear frequency table. */
   linearFrequency?: Ref<boolean>;
+  /** S3M only: the per-file amiga-limits header flag (flags & 0x10). */
+  amigaLimits?: Ref<boolean>;
+  /**
+   * The song's initial global volume 0..1 (S3M's header globalVol / 64);
+   * absent means full.
+   */
+  initialGlobalVolume?: Ref<number>;
   /**
    * ProTracker only: whether Fxx always sets the speed, never the tempo.
    *
@@ -128,8 +135,13 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
     // raw bytes, so the profile is never consulted for them.
     const profile = profileForFormat(
       context.moduleFormat?.value,
-      context.linearFrequency !== undefined
-        ? { linearFrequency: context.linearFrequency.value }
+      context.linearFrequency !== undefined || context.amigaLimits !== undefined
+        ? {
+            ...(context.linearFrequency !== undefined
+              ? { linearFrequency: context.linearFrequency.value }
+              : {}),
+            ...(context.amigaLimits?.value ? { amigaLimits: true } : {}),
+          }
         : undefined,
     );
 
@@ -421,6 +433,11 @@ export function useTrackerSongBuilder(context: TrackerSongBuilderContext) {
       ...(context.initialSpeed ? { initialSpeed: context.initialSpeed.value } : {}),
       ...(context.linearFrequency
         ? { linearFrequency: context.linearFrequency.value }
+        : {}),
+      ...(context.amigaLimits?.value ? { amigaLimits: true } : {}),
+      ...(context.initialGlobalVolume !== undefined &&
+        context.initialGlobalVolume.value !== 1.0
+        ? { initialGlobalVolume: context.initialGlobalVolume.value }
         : {})
     };
   }

@@ -259,6 +259,15 @@ export class PlaybackEngine {
   private globalVolume = 1.0;
 
   /**
+   * The loaded song's initial global volume (S3M's header `globalVol`).
+   * Gxx/Hxy resets (loop restart, stop) restore THIS, not full -- a song
+   * that declares a quieter header level comes back to it after looping,
+   * exactly as ST3's `setglobalvol(song.header.globalvol)` does on restart.
+   * Absent means full, which is what every other format declares.
+   */
+  private initialGlobalVolume = 1.0;
+
+  /**
    * Audio-time timeline of rows the scheduler has queued, used to drive the
    * position display.
    *
@@ -489,7 +498,24 @@ export class PlaybackEngine {
       ...(song.linearFrequency !== undefined
         ? { linearFrequency: song.linearFrequency }
         : {}),
+      ...(song.amigaLimits !== undefined ? { amigaLimits: song.amigaLimits } : {}),
     });
+    // The song's own initial global volume (S3M's header byte, 0..64 ->
+    // 0..1). Recorded for loop restarts, applied to the live state now, and
+    // pushed through the same handler the Gxx/Hxy effects use so the song
+    // bank's master gain starts at the header level (D72 machinery).
+    if (song.initialGlobalVolume !== undefined) {
+      this.initialGlobalVolume = Math.max(0, Math.min(1, song.initialGlobalVolume));
+      this.globalVolume = this.initialGlobalVolume;
+      if (this.scheduledGlobalVolumeHandler && this.audioContext) {
+        this.scheduledGlobalVolumeHandler(
+          this.globalVolume,
+          this.audioContext.currentTime,
+        );
+      }
+    } else {
+      this.initialGlobalVolume = 1.0;
+    }
     // Track states cache the profile, so drop any built for the previous song.
     this.trackEffectStates.clear();
     // Precompute tone portamento targets (3xx) across the full sequence so
@@ -1068,7 +1094,7 @@ export class PlaybackEngine {
   private restartSong(time: number): void {
     this.scheduledAllNotesOffHandler?.(time);
     this.resetEffectStates();
-    this.globalVolume = 1.0;
+    this.globalVolume = this.initialGlobalVolume;
     if (this.scheduledGlobalVolumeHandler) {
       this.scheduledGlobalVolumeHandler(this.globalVolume, time);
     }
@@ -1087,8 +1113,10 @@ export class PlaybackEngine {
     this.patternDelayCount = 0;
     // Gxx/Hxy are effect state too. Leaving this behind meant a song stopped
     // partway through a fade started the next time at whatever volume the fade
-    // had reached, with nothing to restore it until the next Gxx.
-    this.globalVolume = 1.0;
+    // had reached, with nothing to restore it until the next Gxx. The restore
+    // target is the song's own initial level (S3M's header global volume),
+    // which defaults to full for formats that declare none.
+    this.globalVolume = this.initialGlobalVolume;
   }
 
   /**

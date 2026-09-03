@@ -387,6 +387,22 @@ const S3M_REFERENCE_RATE_NUMERATOR = 14317056; // setspd: hz = 14317056 / spd
 const S3M_TO_SYNTH_SCALE = 16;
 const MIN_S3M_PERIOD = 64; // setmasterflags: song.aspdmin
 const MAX_S3M_PERIOD = 32767; // setmasterflags: song.aspdmax
+/** setmasterflags under the per-file amiga-limits flag (header flags & 16). */
+const MIN_S3M_AMIGA_PERIOD = 453;
+const MAX_S3M_AMIGA_PERIOD = 3424;
+
+export interface S3mPitchModelOptions {
+  /**
+   * The per-file amiga-limits header flag (flags & 0x10): ST3's
+   * `setmasterflags` then sets `song.aspdmin = 453; song.aspdmax = 3424`
+   * (dig.c, quoted in formats/s3m.ts) instead of the default 64..32767, so
+   * note periods AND slides clamp inside the MOD-period range. This is
+   * per-file song data (D59 discipline), never a format-level constant --
+   * hence an option on the model and a variant profile, not a change to
+   * S3M_PROFILE.
+   */
+  amigaLimits?: boolean;
+}
 
 /**
  * ST3's base period row (S3M note octave 0), quoted verbatim from
@@ -410,11 +426,34 @@ const S3M_PERIOD_TABLE: readonly number[] = Array.from(
   (_, i) => ST3_NOTESPD[i % 12]! >> Math.floor(i / 12),
 );
 
-export function createS3mPitchModel(): PitchModel {
+/**
+ * The period for an S3M file note byte, from the model's own table.
+ *
+ * Exported for the importer (which must convert each written note to a
+ * musical frequency through the model, never re-deriving periods -- D96).
+ * The table is this module's S3M_PERIOD_TABLE; lo-nibble values 0xC..0xF
+ * index linearly (0x0C is the chromatic continuation of the octave, the
+ * same spelling OpenMPT's `(note & 0x0F) + 12 * (note >> 4) + 12` reads),
+ * clamped to the table's edge.
+ */
+export function s3mPeriodForNote(note: number): number | undefined {
+  // 0x5B = B-6, the last of the table's six octaves. Index by octave nibble
+  // and semitone (lo nibbles 0xC..0xF continue the scale chromatically, the
+  // spelling OpenMPT's `(note & 0x0F) + 12 * (note >> 4) + 12` reads),
+  // clamped to the table's edge.
+  if (note < 0 || note > 0x5b) return undefined;
+  const index = Math.min((note >> 4) * 12 + (note & 0x0f), S3M_PERIOD_TABLE.length - 1);
+  return S3M_PERIOD_TABLE[index]!;
+}
+
+export function createS3mPitchModel(options?: S3mPitchModelOptions): PitchModel {
+  const minPeriod = options?.amigaLimits ? MIN_S3M_AMIGA_PERIOD : MIN_S3M_PERIOD;
+  const maxPeriod = options?.amigaLimits ? MAX_S3M_AMIGA_PERIOD : MAX_S3M_PERIOD;
+
   const clampPeriod = (period: number): number => {
     if (!Number.isFinite(period)) return period;
-    if (period < MIN_S3M_PERIOD) return MIN_S3M_PERIOD;
-    if (period > MAX_S3M_PERIOD) return MAX_S3M_PERIOD;
+    if (period < minPeriod) return minPeriod;
+    if (period > maxPeriod) return maxPeriod;
     return period;
   };
 

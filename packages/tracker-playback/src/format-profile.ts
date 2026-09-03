@@ -216,6 +216,18 @@ export interface FormatProfile {
    * to a borrowed MOD/XM reading.
    */
   readonly extendedSubcommandMap?: Readonly<Record<number, ExtendedEffectSubtype>>;
+
+  /**
+   * S3M only: the E and F portamento commands' high parameters are fine
+   * slides, not slide speeds. st3play digcmd.c (quoted in D101): on tick 0,
+   * a parameter 0xE1-0xEF slides once by `(param & 0x0F)` raw period units
+   * and 0xF1-0xFF by `(param & 0x0F) << 2`; during ticks > 0 such a row
+   * slides not at all (`if (ch->info >= 0xE0) return; // no fine slides
+   * here`). ProTracker/XM never see parameters that high on 1xx/2xx, so the
+   * field is deliberately absent from every other profile and the ordinary
+   * per-tick slide path is untouched.
+   */
+  readonly finePortaHighParameters?: boolean;
 }
 
 /**
@@ -428,6 +440,11 @@ export const S3M_PROFILE: FormatProfile = {
   // (xfinetune_amiga in st3play's digdata.c: 8363..8757 then 7895..8280),
   // which is the signed-eighth-semitone reading ProTracker_PROFILE
   // already encodes.
+  // They also run *alongside* an effect-column command on the same row
+  // rather than replacing it, so a row can slide volume from the volume
+  // column while sliding pitch from the effect column.
+  // S3M's E/F high parameters are fine slides (EFx/FFx), one-shot on tick 0.
+  finePortaHighParameters: true,
   arpeggioCommandByte: 0x0a, // 'J'
   speedTempoCommandByte: 0x01, // 'A' -- set speed (manual: "Set speed to xx")
   tempoCommandByte: 0x14, // 'T' -- tempo = xx (manual: "valid values 20 to FF")
@@ -497,6 +514,17 @@ export const S3M_PROFILE: FormatProfile = {
   },
 };
 
+export const S3M_AMIGA_PROFILE: FormatProfile = {
+  ...S3M_PROFILE,
+  // The per-file amiga-limits header flag (flags & 0x10) selects this
+  // profile through the same chain as XM's Amiga mode (D59 discipline):
+  // identical to S3M_PROFILE except the pitch model's clamp set, per
+  // st3play's setmasterflags (dig.c): aspdmin 453, aspdmax 3424 instead of
+  // 64..32767. Note frequencies are the same either way -- only how far a
+  // slide can run changes.
+  pitch: createS3mPitchModel({ amigaLimits: true }),
+};
+
 /**
  * Songs authored in this tracker.
  *
@@ -533,6 +561,13 @@ export interface ProfileOptions {
    * Defaults to linear, XM's own default.
    */
   linearFrequency?: boolean;
+  /**
+   * S3M only: the per-file amiga-limits header flag (flags & 0x10), selecting
+   * S3M_AMIGA_PROFILE. Same shape as `linearFrequency` -- a file-level flag
+   * masquerading as nothing else (D1/D24) -- and threaded the same way so it
+   * reaches the engine's effect arithmetic (D59).
+   */
+  amigaLimits?: boolean;
 }
 
 /** The playback semantics to apply for a given module format. */
@@ -543,6 +578,9 @@ export function profileForFormat(
   if (!format) return PROTRACKER_PROFILE;
   if (format === 'xm' && options?.linearFrequency === false) {
     return XM_AMIGA_PROFILE;
+  }
+  if (format === 's3m' && options?.amigaLimits === true) {
+    return S3M_AMIGA_PROFILE;
   }
   return PROFILES[format] ?? PROTRACKER_PROFILE;
 }

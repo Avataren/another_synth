@@ -49,6 +49,19 @@ export interface Song {
    * Absent means XM's own default, linear.
    */
   linearFrequency?: boolean;
+  /**
+   * S3M only: the per-file amiga-limits header flag (flags & 0x10), which
+   * selects S3M_AMIGA_PROFILE. Same per-file-flag shape as
+   * `linearFrequency`; absent means the default 64..32767 period range.
+   */
+  amigaLimits?: boolean;
+  /**
+   * The song's initial global volume, 0..1 (S3M's header `globalVol`, 0..64,
+   * divided by 64). Absent means full volume, what every other format does
+   * and what the engine resets to. Feeds the same `songGlobalVolume`
+   * machinery the Gxx/Hxy commands drive (D72).
+   */
+  initialGlobalVolume?: number;
 }
 
 export interface Pattern {

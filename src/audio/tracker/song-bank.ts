@@ -679,10 +679,12 @@ export class TrackerSongBank {
   setModuleFormat(
     format: ModuleFormat | undefined,
     linearFrequency?: boolean,
+    amigaLimits?: boolean,
   ) {
     this.moduleFormat = format ?? DEFAULT_MODULE_FORMAT;
     this.formatProfile = profileForFormat(this.moduleFormat, {
       ...(linearFrequency !== undefined ? { linearFrequency } : {}),
+      ...(amigaLimits !== undefined ? { amigaLimits } : {}),
     });
     // Instruments already built keep whatever model they were constructed
     // with, and on the real load path they are all built before this is

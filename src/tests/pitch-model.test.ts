@@ -4,6 +4,7 @@ import {
   createLinearPitchModel,
   createS3mPitchModel,
   createXmAmigaPitchModel,
+  s3mPeriodForNote,
 } from '../../packages/tracker-playback/src/pitch-model';
 
 /**
@@ -333,6 +334,34 @@ describe('S3mPitchModel (ST3)', () => {
     expect(s3m.snapPeriod(4500)).toBe(4560);
     expect(s3m.snapPeriod(4400)).toBe(4304);
     expect(s3m.snapPeriod(3424)).toBe(3424);
+  });
+
+  it('maps file notes to table periods, including the overrun lo nibbles', () => {
+    // Exported for the importer, reading the model's own table: 0x40 = C-5
+    // and 0x0C (the chromatic continuation of octave 0) land on the same
+    // entry, 27392 >> 1.
+    expect(s3mPeriodForNote(0x40)).toBe(1712);
+    expect(s3mPeriodForNote(0x00)).toBe(27392);
+    expect(s3mPeriodForNote(0x0c)).toBe(13696);
+    expect(s3mPeriodForNote(0x5b)).toBe(453); // B-6, the table's edge
+    expect(s3mPeriodForNote(0x5c)).toBeUndefined();
+  });
+
+  it('clamps to the amiga-limits range under the per-file flag', () => {
+    // st3play setmasterflags (dig.c, quoted in formats/s3m.ts):
+    //   if (song.masterflags & 16) { aspdmin = 453; aspdmax = 3424; }
+    // The default model keeps 64..32767; the variant is a per-file profile
+    // selection (D59), not a change to S3M_PROFILE.
+    const limited = createS3mPitchModel({ amigaLimits: true });
+    expect(limited.clampPeriod(64)).toBe(453);
+    expect(limited.clampPeriod(40000)).toBe(3424);
+    expect(limited.clampPeriod(3424)).toBe(3424);
+    expect(limited.clampPeriod(2032)).toBe(2032);
+    // Note frequencies are identical in the shared range -- only how far a
+    // slide can run changes.
+    expect(limited.frequencyFromPeriod(2032)).toBe(
+      s3m.frequencyFromPeriod(2032),
+    );
   });
 });
 

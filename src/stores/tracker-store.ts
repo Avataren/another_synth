@@ -44,6 +44,29 @@ export interface InstrumentSlot {
   volume?: number;
   /** Type of instrument: synth uses full WASM engine, mod uses lightweight Web Audio playback */
   instrumentType?: 'synth' | 'mod' | undefined;
+  /**
+   * Raw OPL2/FM instrument data parsed from an S3M AdLib instrument header,
+   * preserved for the future OPL playback task (Morten, 2026-09-03):
+   * parse and keep, marked inactive -- the slot carries no patchId, so
+   * nothing plays it. The future OPL instrument type consumes these bytes
+   * so that phase never needs a re-parse.
+   */
+  oplData?: OplInstrumentData;
+}
+
+/**
+ * The S3M AdLib header's own timbre block, byte-for-byte (see
+ * formats/s3m.ts and the ST3.01b format doc's "adlib instrument format").
+ */
+export interface OplInstrumentData {
+  /** 'melody' (type 2) or 'drum' (type 3+). */
+  kind: 'melody' | 'drum';
+  /** D00..D0B operator/level/feedback register bytes, file order. */
+  registers: number[];
+  /** Default volume 0..64 from the AdLib header. */
+  volume: number;
+  /** Middle-C frequency scaling value (the header c2spd, low 16 bits). */
+  c2spd: number;
 }
 
 interface SongMeta {
@@ -82,6 +105,8 @@ interface TrackerSnapshot {
   moduleFormat: ModuleFormat;
   initialSpeed: number;
   linearFrequency: boolean;
+  amigaLimits: boolean;
+  initialGlobalVolume: number;
   vblankTiming: boolean;
   defaultPatternRows: number;
   stepSize: number;
@@ -115,6 +140,18 @@ interface TrackerStoreState {
    * resolved at import.
    */
   linearFrequency: boolean;
+  /**
+   * S3M only: the per-file amiga-limits header flag (flags & 0x10), which
+   * selects S3M_AMIGA_PROFILE. Same per-file-flag shape as
+   * `linearFrequency` and threaded through the same chain (D59); absent
+   * means the default 64..32767 period range.
+   */
+  amigaLimits: boolean;
+  /**
+   * The song's initial global volume 0..1 (S3M's header globalVol / 64).
+   * Absent/default means full volume.
+   */
+  initialGlobalVolume: number;
   /**
    * ProTracker only: whether every Fxx command sets the speed (ticks per row)
    * rather than the tempo.
@@ -264,6 +301,13 @@ export interface TrackerSongFile {
     initialSpeed?: number;
     /** XM only; absent means XM's own default, linear. */
     linearFrequency?: boolean;
+    /** S3M only; absent means the default 64..32767 period range. */
+    amigaLimits?: boolean;
+    /**
+     * The song's initial global volume 0..1 (S3M's header globalVol / 64).
+     * Absent means full, what every other format declares.
+     */
+    initialGlobalVolume?: number;
     /** ProTracker only; absent means the usual CIA speed/tempo split. */
     vblankTiming?: boolean;
     /**
@@ -295,6 +339,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       moduleFormat: DEFAULT_MODULE_FORMAT,
       initialSpeed: DEFAULT_SPEED,
       linearFrequency: true,
+      amigaLimits: false,
+      initialGlobalVolume: 1.0,
       vblankTiming: false,
       baseOctave: 4,
       defaultPatternRows: DEFAULT_PATTERN_ROWS,
@@ -356,6 +402,8 @@ export const useTrackerStore = defineStore('trackerStore', {
         moduleFormat: this.moduleFormat,
         initialSpeed: this.initialSpeed,
         linearFrequency: this.linearFrequency,
+        amigaLimits: this.amigaLimits,
+        initialGlobalVolume: this.initialGlobalVolume,
         vblankTiming: this.vblankTiming,
         defaultPatternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
@@ -375,6 +423,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.moduleFormat = snapshot.moduleFormat ?? DEFAULT_MODULE_FORMAT;
       this.initialSpeed = snapshot.initialSpeed ?? DEFAULT_SPEED;
       this.linearFrequency = snapshot.linearFrequency ?? true;
+      this.amigaLimits = snapshot.amigaLimits ?? false;
+      this.initialGlobalVolume = snapshot.initialGlobalVolume ?? 1.0;
       this.vblankTiming = snapshot.vblankTiming ?? false;
       this.defaultPatternRows = clampPatternRows(snapshot.defaultPatternRows);
       this.stepSize = snapshot.stepSize;
@@ -423,6 +473,8 @@ export const useTrackerStore = defineStore('trackerStore', {
       this.moduleFormat = DEFAULT_MODULE_FORMAT;
       this.initialSpeed = DEFAULT_SPEED;
       this.linearFrequency = true;
+      this.amigaLimits = false;
+      this.initialGlobalVolume = 1.0;
       this.vblankTiming = false;
       this.baseOctave = 4;
       this.defaultPatternRows = DEFAULT_PATTERN_ROWS;
@@ -718,6 +770,10 @@ export const useTrackerStore = defineStore('trackerStore', {
         moduleFormat: this.moduleFormat,
         initialSpeed: this.initialSpeed,
         linearFrequency: this.linearFrequency,
+        ...(this.moduleFormat === 's3m' && this.amigaLimits ? { amigaLimits: true } : {}),
+        ...(this.moduleFormat === 's3m' && this.initialGlobalVolume !== 1.0
+          ? { initialGlobalVolume: this.initialGlobalVolume }
+          : {}),
         ...(this.vblankTiming ? { vblankTiming: true } : {}),
         patternRows: this.defaultPatternRows,
         stepSize: this.stepSize,
@@ -750,6 +806,13 @@ export const useTrackerStore = defineStore('trackerStore', {
       // were played with the linear model regardless, so nothing changes for
       // them.
       this.linearFrequency = data.linearFrequency ?? true;
+      // S3M's per-file flag and header global volume; absent means the
+      // defaults (no amiga limits, full volume), which is what every song
+      // saved before these fields existed was played with.
+      this.amigaLimits = data.amigaLimits === true;
+      this.initialGlobalVolume = Number.isFinite(data.initialGlobalVolume)
+        ? Math.max(0, Math.min(1, data.initialGlobalVolume as number))
+        : 1.0;
       this.vblankTiming = data.vblankTiming === true;
       const legacySongRows = clampPatternRows(data.patternRows);
       this.defaultPatternRows = legacySongRows;

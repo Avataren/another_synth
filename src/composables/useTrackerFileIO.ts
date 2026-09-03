@@ -5,6 +5,7 @@ import type { TrackerSongFile, useTrackerStore } from 'src/stores/tracker-store'
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
+import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
 
 /**
  * File picker types for File System Access API
@@ -126,7 +127,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     return await new Promise<ArrayBuffer | null>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.cmod,application/json,.json,.mod,.xm';
+      input.accept = '.cmod,application/json,.json,.mod,.xm,.s3m';
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) {
@@ -230,6 +231,10 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       // FastTracker 2 module
       return importXmToTrackerSong(data);
     }
+    if (looksLikeS3m(buffer)) {
+      // Scream Tracker 3 module
+      return importS3mToTrackerSong(data);
+    }
     // Plain JSON .cmod/.json file
     const decoder = new TextDecoder('utf-8');
     return JSON.parse(decoder.decode(buffer)) as TrackerSongFile;
@@ -313,6 +318,7 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     context.songBank.setModuleFormat(
       context.trackerStore.moduleFormat,
       context.trackerStore.linearFrequency,
+      context.trackerStore.amigaLimits,
     );
 
     console.log('[FileIO] Syncing song bank from slots');

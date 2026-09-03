@@ -23,9 +23,10 @@ import path from 'node:path';
 const COLLECTION_LABELS = {
   amiga: 'Amiga / ProTracker',
   ft2: 'FastTracker 2',
+  s3m: 'Scream Tracker 3',
 };
 
-const EXTENSIONS = new Set(['.mod', '.xm']);
+const EXTENSIONS = new Set(['.mod', '.xm', '.s3m']);
 
 /** Read a fixed-length, NUL-terminated ASCII string. */
 function readAscii(buf, offset, length) {
@@ -67,6 +68,20 @@ function describeModule(buf, file) {
       channels: view.getUint16(68, true),
       patterns: view.getUint16(70, true),
       instruments: view.getUint16(72, true),
+    };
+  }
+
+  if (ext === '.s3m') {
+    if (readAscii(buf, 0x2c, 4) !== 'SCRM' || buf[0x1d] !== 0x10) {
+      return null;
+    }
+    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return {
+      title: readAscii(buf, 0, 28),
+      format: 'S3M',
+      channels: buf.slice(0x40, 0x60).filter((c) => c !== 0xff).length,
+      patterns: view.getUint16(0x24, true),
+      instruments: view.getUint16(0x22, true),
     };
   }
 
