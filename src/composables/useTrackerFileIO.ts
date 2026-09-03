@@ -303,6 +303,18 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     console.log('[FileIO] Resetting sequence index to 0');
     context.resetSequenceIndex();
 
+    // Before the instruments, not after: syncSongBankFromSlots builds every
+    // ModInstrument, and each one takes the bank's current pitch model at
+    // construction. Playback sets the format too (loadSong ->
+    // setModuleFormat, which re-points instruments that already exist), so
+    // this is the belt to that fix's braces -- it means the instruments are
+    // born with the song's model rather than corrected into it.
+    console.log('[FileIO] Setting module format on the song bank');
+    context.songBank.setModuleFormat(
+      context.trackerStore.moduleFormat,
+      context.trackerStore.linearFrequency,
+    );
+
     console.log('[FileIO] Syncing song bank from slots');
     await context.syncSongBankFromSlots();
     console.log('[FileIO] Song bank sync complete');
