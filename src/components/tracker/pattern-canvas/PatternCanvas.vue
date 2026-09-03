@@ -37,6 +37,10 @@
           ref="overlayCanvasRef"
           class="canvas-layer"
           @mousedown="onCanvasMouseDown"
+          @touchstart="onTouchStart"
+          @touchmove="onTouchMove"
+          @touchend="onTouchEnd"
+          @touchcancel="onTouchCancel"
         ></canvas>
       </div>
       <div
@@ -72,6 +76,15 @@ import {
 } from './pattern-layout';
 import { hitTest, type PatternHit } from './pattern-hit-test';
 import { blitWindow } from './pattern-window';
+import {
+  flingVelocity,
+  isTap,
+  panTarget,
+  FLING_DECAY,
+  FLING_STOP_VELOCITY,
+  type FlingSample,
+  type TouchPanOrigin,
+} from './pattern-touch';
 import {
   drawActiveRowBar,
   buildInterpolatedRows,
@@ -933,8 +946,17 @@ function rowAtPoint(point: { x: number; y: number } | null): number | null {
   return row;
 }
 
+/**
+ * A tap emits a synthetic mousedown/mouseup pair a moment later. Ours has
+ * already selected the cell by then, and letting the mouse path run as well
+ * would open a selection drag from it.
+ */
+const SYNTHETIC_MOUSE_WINDOW_MS = 700;
+let lastTouchAt = -Infinity;
+
 function onCanvasMouseDown(e: MouseEvent): void {
   if (e.button !== 0) return;
+  if (e.timeStamp - lastTouchAt < SYNTHETIC_MOUSE_WINDOW_MS) return;
   const point = eventPoint(e);
   const contentX = point ? point.x + viewLeft.value : 0;
   if (contentX < GUTTER_WIDTH_PX) {
@@ -1008,6 +1030,166 @@ function onWheel(e: WheelEvent): void {
 }
 
 // ---------------------------------------------------------------------
+// Touch: one finger pans both axes; a tap still picks a cell
+// ---------------------------------------------------------------------
+
+/**
+ * The scroller only scrolls vertically -- horizontal lives on the proxy
+ * scrollbar -- so a finger dragged across the grid could reach half the
+ * pattern at best, and on a phone the half it could not reach is most of it.
+ * This drives both from one gesture.
+ *
+ * Any number of fingers pans, using the first: one finger is the obvious
+ * gesture for a surface you drag, and two is the habit a scrollable pane
+ * teaches, so both work rather than one of them doing nothing. What a pan
+ * costs is dragging out a selection by touch, which is why a tap (little
+ * movement, quickly released) still falls through to the cell pick the
+ * mouse path does.
+ */
+let touchOrigin: TouchPanOrigin | null = null;
+let touchSamples: FlingSample[] = [];
+let flingRaf: number | null = null;
+
+function maxScrollTop(): number {
+  const el = scrollerRef.value;
+  return el ? Math.max(0, el.scrollHeight - el.clientHeight) : 0;
+}
+
+function maxScrollLeft(): number {
+  const el = hscrollRef.value;
+  return el ? Math.max(0, el.scrollWidth - el.clientWidth) : 0;
+}
+
+function scrollTo(target: { scrollTop: number; scrollLeft: number }): void {
+  // Both writes fire scroll events, which run the blit pipeline.
+  if (scrollerRef.value) scrollerRef.value.scrollTop = target.scrollTop;
+  if (hscrollRef.value) hscrollRef.value.scrollLeft = target.scrollLeft;
+}
+
+function stopFling(): void {
+  if (flingRaf === null) return;
+  cancelAnimationFrame(flingRaf);
+  flingRaf = null;
+}
+
+function onTouchStart(e: TouchEvent): void {
+  lastTouchAt = e.timeStamp;
+  const touch = e.touches[0];
+  if (!touch) return;
+  // A touch during a fling stops it where it is, as every scrollable
+  // surface does -- otherwise the grid keeps sliding under the finger.
+  stopFling();
+  touchOrigin = {
+    x: touch.clientX,
+    y: touch.clientY,
+    scrollTop: scrollerRef.value?.scrollTop ?? 0,
+    scrollLeft: hscrollRef.value?.scrollLeft ?? 0,
+    time: e.timeStamp,
+  };
+  touchSamples = [{ x: touch.clientX, y: touch.clientY, time: e.timeStamp }];
+}
+
+function onTouchMove(e: TouchEvent): void {
+  const origin = touchOrigin;
+  const touch = e.touches[0];
+  if (!origin || !touch) return;
+  // The gesture owns both axes now; letting the browser also scroll the
+  // page (or this scroller) would double every vertical drag.
+  if (e.cancelable) e.preventDefault();
+  touchSamples.push({ x: touch.clientX, y: touch.clientY, time: e.timeStamp });
+  if (touchSamples.length > 8) touchSamples.shift();
+  scrollTo(
+    panTarget(origin, touch.clientX, touch.clientY, maxScrollTop(), maxScrollLeft()),
+  );
+}
+
+function onTouchEnd(e: TouchEvent): void {
+  lastTouchAt = e.timeStamp;
+  const origin = touchOrigin;
+  touchOrigin = null;
+  if (!origin) return;
+  const touch = e.changedTouches[0];
+  if (touch && isTap(origin, touch.clientX, touch.clientY, e.timeStamp)) {
+    touchSamples = [];
+    selectAtClientPoint(touch.clientX, touch.clientY);
+    return;
+  }
+  const velocity = flingVelocity(touchSamples, e.timeStamp);
+  touchSamples = [];
+  if (!velocity) return;
+  startFling(velocity.vx, velocity.vy);
+}
+
+function onTouchCancel(): void {
+  touchOrigin = null;
+  touchSamples = [];
+}
+
+/** Coast to a stop after the finger leaves, in scroll-space px/ms. */
+function startFling(vx: number, vy: number): void {
+  let velocityX = vx;
+  let velocityY = vy;
+  let last = performance.now();
+  const step = (now: number) => {
+    flingRaf = null;
+    // Clamped: a frame the tab spent in the background must not teleport
+    // the pattern by a second's worth of momentum.
+    const dt = Math.max(1, Math.min(64, now - last));
+    last = now;
+    scrollTo({
+      scrollTop: clampScroll(
+        (scrollerRef.value?.scrollTop ?? 0) + velocityY * dt,
+        0,
+        maxScrollTop(),
+      ),
+      scrollLeft: clampScroll(
+        (hscrollRef.value?.scrollLeft ?? 0) + velocityX * dt,
+        0,
+        maxScrollLeft(),
+      ),
+    });
+    // The decay is quoted per 60fps frame, so a slower frame decays more.
+    const decay = Math.pow(FLING_DECAY, dt / (1000 / 60));
+    velocityX *= decay;
+    velocityY *= decay;
+    if (Math.hypot(velocityX, velocityY) < FLING_STOP_VELOCITY) return;
+    flingRaf = requestAnimationFrame(step);
+  };
+  flingRaf = requestAnimationFrame(step);
+}
+
+function clampScroll(value: number, min: number, max: number): number {
+  if (!(max > min)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+/** The tap path: the same row/cell selection a click makes. */
+function selectAtClientPoint(clientX: number, clientY: number): void {
+  const canvas = overlayCanvasRef.value;
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const point = { x: clientX - rect.left, y: clientY - rect.top };
+  if (point.x + viewLeft.value < GUTTER_WIDTH_PX) {
+    const row = rowAtPoint(point);
+    if (row !== null) emit('rowSelected', row);
+    return;
+  }
+  const hit = hitAtPoint(point);
+  if (!hit) return;
+  emit(
+    'cellSelected',
+    hit.macroNibble === undefined
+      ? { row: hit.row, column: hit.column, trackIndex: hit.trackIndex }
+      : {
+          row: hit.row,
+          column: hit.column,
+          trackIndex: hit.trackIndex,
+          macroNibble: hit.macroNibble,
+        },
+  );
+}
+
+// ---------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------
 
@@ -1068,6 +1250,7 @@ onBeforeUnmount(() => {
     frameRaf = null;
   }
   cancelPreRenderPaint();
+  stopFling();
   preRenderBitmap = null;
   preRenderMeta = null;
   preRenderTarget = null;
@@ -1157,6 +1340,22 @@ defineExpose({ scrollerRef, hscrollRef });
   white-space: nowrap;
 }
 
+/*
+ * Phone layout: the panel chrome is most of the width at 390px, and every
+ * pixel it keeps is a pixel of pattern nobody can see. Matches
+ * useMobileLayout's query, so the page and the panel agree on what a phone
+ * is; this one is cosmetic, hence a media query rather than a prop.
+ */
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1180px) {
+  .pattern-canvas {
+    padding: 6px 6px 4px;
+    border-radius: 10px;
+    gap: 4px;
+    box-shadow: none;
+    max-width: 100%;
+  }
+}
+
 .canvas-scroller {
   position: relative;
   flex: 1;
@@ -1196,6 +1395,9 @@ defineExpose({ scrollerRef, hscrollRef });
   position: absolute;
   inset: 0;
   display: block;
+  /* The touch gesture drives both scroll axes itself (see onTouchMove), so
+     the browser must not also pan, zoom or double-tap-zoom the surface. */
+  touch-action: none;
   width: 100%;
   height: 100%;
 }
