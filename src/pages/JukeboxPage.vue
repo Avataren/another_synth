@@ -1,5 +1,5 @@
 <template>
-  <q-page class="jukebox-page">
+  <q-page class="jukebox-page" :class="{ 'is-mobile': isMobileLayout }">
     <div v-if="restoring" class="jukebox-overlay">
       <div class="jukebox-overlay-card">
         <div class="spinner" aria-hidden="true"></div>
@@ -131,7 +131,7 @@
 
     <div class="jukebox-body">
       <div class="stage">
-        <div v-if="trackCount > 0" class="scope-row">
+        <div v-if="trackCount > 0 && !isMobileLayout" class="scope-row">
           <div
             v-for="index in trackCount"
             :key="`scope-${index - 1}`"
@@ -150,7 +150,7 @@
 
         <div class="pattern-area-wrapper">
           <TrackerSpectrumAnalyzer
-            v-if="userSettings.showSpectrumAnalyzer"
+            v-if="spectrumAnalyzerVisible"
             :node="masterOutputNode"
             :track-nodes="spectrumTrackNodes"
             :is-playing="isPlaying"
@@ -181,7 +181,7 @@
               :show-extra-effect-column="
                 userSettings.showTrackerExtraEffectColumn
               "
-              :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+              :reserve-side-gutter="spectrumAnalyzerVisible"
               :granular-scroll="userSettings.granularPlaybackScroll"
               :upcoming-pattern="upcomingPattern"
               @scroll="onCanvasScroll"
@@ -206,7 +206,7 @@
               :show-extra-effect-column="
                 userSettings.showTrackerExtraEffectColumn
               "
-              :reserve-side-gutter="userSettings.showSpectrumAnalyzer"
+              :reserve-side-gutter="spectrumAnalyzerVisible"
               :upcoming-pattern="upcomingPattern"
             />
           </div>
@@ -261,6 +261,7 @@ import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import { useJukeboxPlayer } from 'src/composables/useJukeboxPlayer';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { useMobileLayout } from 'src/composables/useMobileLayout';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
 /**
@@ -408,6 +409,17 @@ const patternAreaScrollTop = ref(0);
 const patternAreaScrollLeft = ref(0);
 const patternAreaWidth = ref(0);
 const patternAreaHeight = ref(600);
+
+/**
+ * The phone layout: no per-channel scopes and no analyser (they are the
+ * page's whole GPU budget, and the song host stops the bank building the
+ * per-track taps that feed them), the control bar on one scrolling line,
+ * and the playlist as a full-screen sheet rather than a 300px dock.
+ */
+const isMobileLayout = useMobileLayout();
+const spectrumAnalyzerVisible = computed(
+  () => userSettings.value.showSpectrumAnalyzer && !isMobileLayout.value,
+);
 
 /**
  * Canvas renderer on until the page's own copy proves it cannot run here.
@@ -770,6 +782,71 @@ onBeforeUnmount(() => {
   flex: 0 0 300px;
   min-height: 0;
   padding: 0 10px 10px 0;
+}
+
+/* -------------------------------------------------------------------
+ * Phone layout (class-driven, from useMobileLayout -- see TrackerPage)
+ * ------------------------------------------------------------------- */
+
+/*
+ * The bar keeps its one-row promise on a phone by scrolling sideways
+ * instead of wrapping: eight controls plus the now-playing text and the
+ * position readout became five stacked rows at 390px, which is more of the
+ * screen than the pattern got.
+ */
+.jukebox-page.is-mobile .jukebox-bar {
+  gap: 8px;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.jukebox-page.is-mobile .jukebox-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.jukebox-page.is-mobile .jukebox-bar > * {
+  flex: 0 0 auto;
+}
+
+/*
+ * What is playing still earns its place -- it is the one thing the page is
+ * for -- but it stops being elastic and its second line goes: the title
+ * alone answers "what is this", and the meta line repeats what the position
+ * readout already shows.
+ */
+.jukebox-page.is-mobile .now-playing {
+  max-width: 42vw;
+  min-width: 0;
+}
+
+.jukebox-page.is-mobile .now-playing-meta {
+  display: none;
+}
+
+.jukebox-page.is-mobile .jukebox-body {
+  padding: 6px 0 0;
+}
+
+.jukebox-page.is-mobile .pattern-area {
+  padding: 0 4px 4px;
+}
+
+/*
+ * The playlist takes the screen rather than a 300px column of it: at 390px
+ * a dock leaves neither itself nor the pattern usable, and the playlist is
+ * a thing you open, act on and dismiss.
+ */
+.jukebox-page.is-mobile .playlist-dock {
+  position: fixed;
+  inset: 44px 0 0;
+  z-index: 2500;
+  flex: none;
+  padding: 8px;
+  background: var(--app-background, #0b111a);
 }
 
 /* The panel sizes itself to its container, which here is the full dock. */
