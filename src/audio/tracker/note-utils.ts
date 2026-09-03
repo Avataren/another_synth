@@ -192,7 +192,7 @@ export function decodeRawEffect(
   }
 
   if (profile.extendedCommandByte !== undefined && cmd === profile.extendedCommandByte) {
-    const extEffect = parseExtendedEffect(paramX, paramY);
+    const extEffect = parseExtendedEffect(paramX, paramY, profile.extendedSubcommandMap);
     if (extEffect) return { type: 'effect', effect: extEffect };
     return undefined;
   }
@@ -209,28 +209,40 @@ export function decodeRawEffect(
 }
 
 /**
+ * The shared MOD/XM Exy subtype map: the default when a profile's
+ * extendedSubcommandMap is undefined, so MOD/XM/native decode exactly as
+ * they always did. Formats whose extended subcommand numbering differs
+ * (S3M's Sxx, per st3play's `ssoncejmp`) carry their own table on the
+ * profile instead; subcommands absent from a table decode to undefined
+ * rather than a borrowed reading.
+ */
+const DEFAULT_EXTENDED_SUBTYPE_MAP: Record<number, ExtendedEffectSubtype> = {
+  0x0: 'filterToggle',
+  0x1: 'finePortaUp',
+  0x2: 'finePortaDown',
+  0x3: 'glissandoCtrl',
+  0x4: 'vibratoWave',
+  0x5: 'setFinetune',
+  0x6: 'patLoop',
+  0x7: 'tremoloWave',
+  0x8: 'setPan',
+  0x9: 'retrigger',
+  0xA: 'fineVolUp',
+  0xB: 'fineVolDown',
+  0xC: 'noteCut',
+  0xD: 'noteDelay',
+  0xE: 'patDelay',
+  0xF: 'invertLoop'
+};
+
+/**
  * Parse extended effects (Exy)
  */
-function parseExtendedEffect(x: number, y: number): EffectCommand | undefined {
-  const subtypeMap: Record<number, ExtendedEffectSubtype> = {
-    0x0: 'filterToggle',
-    0x1: 'finePortaUp',
-    0x2: 'finePortaDown',
-    0x3: 'glissandoCtrl',
-    0x4: 'vibratoWave',
-    0x5: 'setFinetune',
-    0x6: 'patLoop',
-    0x7: 'tremoloWave',
-    0x8: 'setPan',
-    0x9: 'retrigger',
-    0xA: 'fineVolUp',
-    0xB: 'fineVolDown',
-    0xC: 'noteCut',
-    0xD: 'noteDelay',
-    0xE: 'patDelay',
-    0xF: 'invertLoop'
-  };
-
+function parseExtendedEffect(
+  x: number,
+  y: number,
+  subtypeMap: Readonly<Record<number, ExtendedEffectSubtype>> = DEFAULT_EXTENDED_SUBTYPE_MAP,
+): EffectCommand | undefined {
   const subtype = subtypeMap[x];
   if (!subtype) return undefined;
 

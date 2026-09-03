@@ -2556,8 +2556,9 @@ running in parallel.
 line-accurate port of Scream Tracker 3.21's mixer, the same standard pt2-clone set
 for ProTracker): `digdata.c` (`notespd`, `octavediv`, `xfinetune_amiga`),
 `dig.c` (`stnote2herz`, `setspd`, `scalec2spd`, `setmasterflags`),
-`digcmd.c` (the effect routines and `GET_LAST_NFO`), `mixer/sinc.h` (`C2FREQ`
-8363). The command letters and their behaviours are cross-checked against the
+`digcmd.c` (the effect routines and `GET_LAST_NFO`), `digdata.h` (`C2FREQ`
+8363; a pre-fix draft cited mixer/sinc.h, which holds only SINC resampling
+constants -- corrected per the independent review, 2026-09-03). The command letters and their behaviours are cross-checked against the
 ST3.20 manual's effect list (modland "Scream Tracker v3.20 effects (.s3m).txt",
 whose examples this task's tests reuse) and OpenMPT's `S3MConvert`
 (soundlib/Load_s3m.cpp), which is where the letter-minus-0x40 byte encoding is
@@ -2574,9 +2575,12 @@ explicit (`switch(command | 0x40)`).
   decodes them for every S3M. M (0x0D) and N (0x0E), per-channel volume commands,
   have no format-neutral behaviour in the effect union yet and are deliberately
   left unmapped rather than mis-decoded; P5 gives them homes with the importer.
+  Y (panbrello, 0x19) and Z (MIDI, 0x1A) get the same treatment: OpenMPT's
+  S3MConvert decodes them for every S3M file, but ST3's own replayer ignores Y
+  (sotherjmp: `s_ret`) and dummies Z (`s_zinfo`, a variable setter), so neither
+  has format-neutral behaviour either -- unmapped, not guessed.
 - **Structural bytes**: arpeggio 0x0A ('J' -- not ProTracker's 0x00), extended
-  0x13 ('S', whose subcommand numbering matches the shared Exy subtype map:
-  S1x glissando, S3x/S4x waveforms, S8x pan, SCx/SDx/SEx), speed 0x01 ('A') --
+  0x13 ('S'), speed 0x01 ('A') --
   the task brief's "0x1F" was wrong (0x1F is not an S3M command byte; letter 0x5F
   does not exist) -- and a **new optional `tempoCommandByte: 0x14`** ('T'). S3M,
   unlike ProTracker, has separate speed (A, 01-FF per the manual, so parameters
@@ -2600,7 +2604,9 @@ explicit (`switch(command | 0x40)`).
 - **Pitch model** (`createS3mPitchModel`, pitch-model.ts). ST3 computes each
   channel's period from a base table scaled per octave (`stnote2herz`: `notespd
   [note & 0x0F] >> octavediv[note >> 4]`, `notespd` = ProTracker's hand-tuned
-  periods times 32, 27392 down to 14512), and plays it at `hz = 14317056 / spd`
+  periods times 32, 27392 down to 14512 -- one hand-tuned quirk: the B-1 entry
+  is 14512 = 453.5*32, not ProTracker's 453*32 = 14496, which is why ST3's high
+  B differs from MOD's), and plays it at `hz = 14317056 / spd`
   (`setspd`), with finetune in the sample's own c2spd (`scalec2spd`: `spd *
   C2FREQ / ac2spd`, C2FREQ 8363). OpenMPT reads c2spd as `c5speed` and maps file
   note 0x40 to C-5, which is exactly where a c2spd 8363 sample plays at its
@@ -2636,7 +2642,57 @@ Tests: `src/tests/pitch-model.test.ts` (S3mPitchModel, 11 tests pinning the
 sourced table values, the 16x musical scale, the 64..32767 clamp and the
 no-DC-wrap arpeggio) and `src/tests/raw-effect-bytes.test.ts` (S3M letter
 commands through `decodeRawEffect`, including the manual's J37/QC2/SC4 examples
-and the inertness pins for PROTRACKER/XM).
+and the inertness pins for PROTRACKER/XM). Note: D96 originally claimed S3M's
+extended 'S' byte "whose subcommand numbering matches the shared Exy subtype
+map" -- that parenthetical was false (the examples it listed are ST3's real
+numbering and do not match the shared map) and is corrected in D97 below.
+
+---
+
+### D97 — S3M Sxx subcommands get their own table per st3play's `ssoncejmp` (reviewer FAIL blocker, P3-fix)
+
+The independent P3 review (`.ai/review-p3.json`, run 2026-09-03) blocked on the
+latent mis-decode D96's parenthetical had papered over: `S3M_PROFILE` routed
+byte 0x13 ('S') into the shared MOD/XM `parseExtendedEffect` map, whose Exy
+numbering is not ST3's S-numbering. Verified verbatim against st3play digcmd.c
+`ssoncejmp` (fetched 2026-09-03 from 8bitbubsy/st3play @ main):
+
+    s_setfilt(0) s_setgliss(1) s_setfinetune(2) s_setvibwave(3) s_settrewave(4)
+    s_ret(5) s_ret(6) s_ret(7) s_setpanpos(8) s_ret(9) s_stereocntr(A)
+    s_patloop(B) s_notecut(C) s_notedelay(D) s_patterdelay(E) s_ret(F)
+
+Only 0x0/0x8/0xC/0xD/0xE coincide with the shared map. Through the old path,
+S1x/S2x became fine pitch slides, S5x set-finetune, S6x pattern loop, S7x
+tremolo waveform, SAx/SFx fine volume slides; SBx pattern loop would silently
+have decoded as a fine volume slide *down* once P5 opened the path. The
+existing tests pinned only the coincidentally-correct nibbles (S8x, SCx), so
+the suite green-lit the wrong table.
+
+**Fix** (data change in the D94 spirit): new optional
+`FormatProfile.extendedSubcommandMap`, mapping the extended command byte's
+high nibble to `ExtendedEffectSubtype`. When undefined -- MOD, XM, native,
+all of them -- the shared Exy map applies exactly as before, so MOD/XM/native
+decode is byte-identical (pinned by test). `S3M_PROFILE` carries its own
+table per `ssoncejmp`: 0x0 filterToggle (dummied in ST3.21, like MOD's E0x),
+0x1 glissandoCtrl, 0x2 setFinetune, 0x3 vibratoWave, 0x4 tremoloWave, 0x8
+setPan, 0xB patLoop, 0xC noteCut, 0xD noteDelay, 0xE patDelay. The s_ret
+nibbles (0x5/0x6/0x7/0x9/0xA/0xF) are deliberately absent -- SAx stereo
+control and the rest have no format-neutral behaviour yet -- and decode to
+`undefined`, like M/N, never to a borrowed MOD/XM reading. No new union
+members needed; engine untouched.
+
+Also folded in (the review's documentation minors): the false D96
+parenthetical corrected; C2FREQ attributed to `digdata.h` (was
+`mixer/sinc.h`); the B-1 `notespd` quirk recorded (14512 = 453.5x32, not
+453x32 = 14496); Y/Z unmapped rationale recorded alongside M/N's; and the
+P5 audit list of unsourced inherited fields (`noteDelayOverflowCarries`,
+`volumeSlideUnit` nuances, J00/A00 memory nuances, the arpeggio 7th-octave
+carry) added to D96.
+
+Tests: `src/tests/raw-effect-bytes.test.ts` -- pins for S1x/S2x/S3x/S4x/SBx/
+SCx/SDx/SEx and the six s_ret nibbles -> undefined, plus MOD/XM unchanged-
+byte guards (E6x/EAx/E5x still decode through the shared map, and neither
+profile carries an extendedSubcommandMap).
 
 ---
 
@@ -2897,6 +2953,7 @@ eslint clean on all four touched files; gitleaks clean; `npx quasar build` clean
 | 2026-09-03 | note | **Systematic reference audit of the remaining effects** (D92/D93). Volume column, 8xx, Cxx, Axy, 3xx, 0xy (MOD), E6x, EDx, E9x phase, Txy, Lxx, Bxx/Dxx verified against the quoted replayer routines and left as they were. E0x (36 MOD cells), EFx (9) and FT2's autovibrato/panning envelope (20 instruments, parsed and dropped at import) decided against and recorded with quoted routines (D93); Uxy flagged as a deliberate FT2 divergence (0 uses). Known-opens D71/D81/D87 left untouched. 1203 green. |
 | 2026-09-03 | 2 | **Raw effect bytes on `TrackerEntryData`** (P1, D94). Importers store the module's own `(cmd, param)` bytes; the text macro is derived from them and `parseEffectCommand` remains for hand-authored rows only. Decoding goes through new `FormatProfile` data (`effectCommands`, arpeggio/speed-tempo/extended command bytes) via `decodeRawEffect`, retiring the D52 letter-collision class. Extensibility proven on a hypothetical third format mapped via profile only. Scheduled-command identity proven per corpus module: 18 XM + 54 MOD files, every row of every pattern, raw path vs stripped-text path byte-identical through `PlaybackEngine.scheduleRow`. The exceptions are the D52 collisions themselves: imported XM bytes 0x16-0x19 previously became M/N/O/P macro-shorthand commands (0x19 is FT2's pan slide) and now decode FT2-correctly (0x16-0x18 ignored, 0x19 as `panSlide`); the corpus histogram has zero 0x16-0x19 occurrences, so no corpus playback changes today. No song-file version bump (optional additive fields). Tests: `src/tests/raw-effect-bytes.test.ts` (80 tests), including pins that a hand edit of the macro column drops the raw bytes. |
 | 2026-09-03 | 3 | **S3M_PROFILE filled with the sourced ST3 command tables and pitch model** (P3, D96). The letter-command table (byte = letter - 0x40 per OpenMPT's `S3MConvert`), the ST3.20 manual's speed/tempo split behind a new optional `tempoCommandByte`, and `createS3mPitchModel` (st3play's `notespd` table x32, `hz = 14317056/spd`, c2spd finetune at the C-5 reference, 64..32767 clamps, table-walking arpeggio with no DC wrap) are all quoted from reference in the decision log. The profile stays inert for MOD/XM/native: nothing selects it until an S3M song carries the format tag, and the other profiles are pinned unchanged. Task-brief corrections recorded in D96 (speed byte is 0x01, not 0x1F; 0x04+0xC0 slides up). Tests: `src/tests/pitch-model.test.ts`, `src/tests/raw-effect-bytes.test.ts`. |
+| 2026-09-03 | fix | **S3M Sxx subcommands decode through ST3's own `ssoncejmp` table, not MOD/XM's Exy map** (P3-fix, D97). The independent P3 review's blocker: `S3M_PROFILE` routed 'S' into the shared extended map, so S1x/S2x/S5x/S6x/S7x/SAx/SFx mis-decoded and SBx pattern loop would have become a fine volume slide (only 0x0/0x8/0xC/0xD/0xE coincide). New optional `FormatProfile.extendedSubcommandMap` (default = the shared map, so MOD/XM/native are byte-identical -- pinned by test); S3M carries its own table per st3play digcmd.c `ssoncejmp`; s_ret nibbles decode to undefined like M/N. Reviewer documentation minors folded in (D96 parenthetical, C2FREQ -> digdata.h, B-1 notespd quirk, Y/Z rationale, P5 audit list). Tests: `src/tests/raw-effect-bytes.test.ts`. |
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |

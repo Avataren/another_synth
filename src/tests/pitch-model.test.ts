@@ -241,7 +241,8 @@ describe('XmAmigaPitchModel', () => {
 /**
  * Scream Tracker 3 (P3, D96). The values are quoted from 8bitbubsy's
  * st3play, the faithful ST3 replayer port: the `notespd` period table
- * (digdata.c -- ProTracker's hand-tuned periods times 32), `setspd`'s
+ * (digdata.c -- ProTracker's hand-tuned periods times 32, except the B-1
+ * entry which is 14512, not 453*32 = 14496 -- a hand-tuned quirk), `setspd`'s
  * hz = 14317056 / spd conversion, and `setmasterflags`' 64..32767 range.
  * These assertions state the ST3 numbers directly rather than deriving
  * them from the implementation.
