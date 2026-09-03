@@ -11,6 +11,7 @@ import {
 import { activeRowBarWidthPx } from 'src/components/tracker/pattern-buffering';
 import { hitTest } from 'src/components/tracker/pattern-canvas/pattern-hit-test';
 import { blitWindow } from 'src/components/tracker/pattern-canvas/pattern-window';
+import { BAND_PAD_PX } from 'src/components/tracker/pattern-canvas/pattern-bands';
 import { setCache } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { PatternTheme } from 'src/components/tracker/pattern-canvas/pattern-theme';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
@@ -1694,6 +1695,188 @@ describe('upcoming-pattern pre-render (§3.2)', () => {
     pumpFrame();
 
     expect(drawImageOn(viewCtx).length).toBe(blitsBefore + 1);
+    wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Touch-pan robustness: band repaint + single-frame view state
+//
+// The mobile flicker/drift report: the overlay used to be FULL-cleared
+// and fully redrawn every pan frame, and the indicator could be painted
+// against a different scroll state than the grid blit. These tests pin
+// the band-repaint contract: pan frames clear only row bands, every
+// cleared band covers the bar band the previous frame painted (no
+// trails), and the blit + pills of one frame agree on the view origin.
+// ---------------------------------------------------------------------
+
+/** Band coverage with the pill-stroke pad: does `band` overlap the row? */
+function bandOverlapsRow(
+  band: { y: number; height: number },
+  screenRowY: number,
+): boolean {
+  return (
+    band.y < screenRowY + rowHeightPx + BAND_PAD_PX &&
+    band.y + band.height > screenRowY - BAND_PAD_PX
+  );
+}
+
+/** The two playback pills of the newest paint, newest first. */
+function newestPills(ctx: RecordingCtx, from: number): PathCall[] {
+  return pathsOn(ctx)
+    .slice()
+    .reverse()
+    .filter((p) => p.height === rowHeightPx)
+    .filter((p) => ctx.calls.indexOf(p) >= from);
+}
+
+describe('touch-pan band repaint (pan-jitter)', () => {
+  it('rapid alternating pans clear only row bands, never the whole overlay', async () => {
+    const wrapper = mountCanvas({ playbackRow: 2, scrollLeft: 0 });
+    pumpFrame(); // mount frame: the one legitimate full paint
+    const { visible, overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+    const opsBeforeJitter = overlayCtx.calls.length;
+
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const hscroll = wrapper.find('.canvas-hscroll').element as HTMLElement;
+    const jitter = [
+      { top: 100, left: 40 },
+      { top: 60, left: 70 },
+      { top: 140, left: 10 },
+      { top: 90, left: 55 },
+      { top: 30, left: 80 },
+      { top: 110, left: 25 },
+    ];
+    let prevBarY = 2 * rowPitchPx - 0; // mount frame: view (0, 0)
+    for (const view of jitter) {
+      Object.defineProperty(scroller, 'scrollTop', {
+        value: view.top,
+        configurable: true,
+      });
+      Object.defineProperty(hscroll, 'scrollLeft', {
+        value: view.left,
+        configurable: true,
+      });
+      scroller.dispatchEvent(new Event('scroll'));
+      hscroll.dispatchEvent(new Event('scroll'));
+      await nextTick();
+      const frameStart = overlayCtx.calls.length;
+      pumpFrame();
+      const frameOps = overlayCtx.calls.slice(frameStart);
+      const clears = frameOps.filter(
+        (call): call is RectCall => call.op === 'clearRect',
+      );
+
+      // Band repaint: no full-layer clear after the mount frame.
+      expect(clears.length).toBeGreaterThan(0);
+      for (const clear of clears) {
+        expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAND_PAD_PX + 0.5);
+      }
+      // No trail: when the bar was on screen last frame, some cleared
+      // band overlaps where it WAS. (A bar band entirely off-viewport
+      // leaves nothing to clear and asserts nothing.)
+      const barWasVisible =
+        prevBarY + rowHeightPx + BAND_PAD_PX > 0 && prevBarY - BAND_PAD_PX < VIEWPORT_H;
+      if (barWasVisible) {
+        expect(clears.some((clear) => bandOverlapsRow(clear, prevBarY))).toBe(true);
+      }
+
+      // Single-frame composition: the blit and the pills of this frame
+      // speak the same view state.
+      const blit = drawImageOn(viewCtx).at(-1)!;
+      expect(blit.sy).toBeCloseTo(view.top, 5);
+      const pills = newestPills(overlayCtx, frameStart);
+      expect(pills).toHaveLength(2);
+      const barY = 2 * rowPitchPx - view.top;
+      for (const pill of pills) expect(pill.y).toBeCloseTo(barY, 5);
+      const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX)!;
+      expect(gutterPill.x).toBe(0);
+      const tracksPill = pills.find(
+        (p) => p.width === activeRowBarWidthPx(2, false),
+      )!;
+      expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
+
+      prevBarY = barY;
+    }
+    // Sanity: the jitter actually exercised multiple frames.
+    expect(overlayCtx.calls.length).toBeGreaterThan(opsBeforeJitter);
+    wrapper.unmount();
+  });
+
+  it('a stopped bar (playbackRow out of range) still clears its old band', async () => {
+    const wrapper = mountCanvas({ playbackRow: 4 });
+    pumpFrame();
+    const { overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+
+    // The component's setProps typing is the known TS2353 baseline class
+    // every setProps({...}) call in this file trips; the cast keeps this
+    // new call out of the tsc count without changing what is asserted.
+    await wrapper.setProps({ playbackRow: -1 } as never);
+    await nextTick();
+    const frameStart = overlayCtx.calls.length;
+    pumpFrame();
+
+    const clears = overlayCtx.calls
+      .slice(frameStart)
+      .filter((call): call is RectCall => call.op === 'clearRect');
+    expect(clears.length).toBeGreaterThan(0);
+    expect(clears.some((clear) => bandOverlapsRow(clear, 4 * rowPitchPx))).toBe(true);
+    // And nothing was redrawn: no new pill ops.
+    expect(newestPills(overlayCtx, frameStart)).toHaveLength(0);
+    wrapper.unmount();
+  });
+});
+
+describe('gutter pill pin under programmatic pan', () => {
+  it('stays glued to the gutter column in every pan direction, including beyond-origin values', async () => {
+    const wrapper = mountCanvas({ playbackRow: 3, scrollLeft: 0 });
+    pumpFrame();
+    const { overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const hscroll = wrapper.find('.canvas-hscroll').element as HTMLElement;
+
+    // Right/down, left/up, and past both origin and extent — the pin must
+    // hold everywhere, never drifting toward the screen edge or over the
+    // tracks pill's column. (No identity state first: an unchanged scroll
+    // early-returns and runs no frame.)
+    const views = [
+      { top: 180, left: 45 },
+      { top: 360, left: 120 },
+      { top: -40, left: -60 }, // beyond origin
+      { top: 99999, left: 9999 }, // far beyond the scroll extent
+      { top: 90, left: 30 },
+    ];
+    for (const view of views) {
+      Object.defineProperty(scroller, 'scrollTop', {
+        value: view.top,
+        configurable: true,
+      });
+      Object.defineProperty(hscroll, 'scrollLeft', {
+        value: view.left,
+        configurable: true,
+      });
+      scroller.dispatchEvent(new Event('scroll'));
+      hscroll.dispatchEvent(new Event('scroll'));
+      await nextTick();
+      const frameStart = overlayCtx.calls.length;
+      pumpFrame();
+
+      const pills = newestPills(overlayCtx, frameStart);
+      expect(pills).toHaveLength(2);
+      const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX)!;
+      // Pinned at screen x 0 — the gutter column's left edge — regardless
+      // of the view origin, including out-of-range scroll values.
+      expect(gutterPill.x).toBe(0);
+      expect(gutterPill.y).toBeCloseTo(3 * rowPitchPx - view.top, 5);
+      const tracksPill = pills.find(
+        (p) => p.width === activeRowBarWidthPx(2, false),
+      )!;
+      expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
+    }
     wrapper.unmount();
   });
 });

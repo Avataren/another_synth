@@ -94,6 +94,7 @@ import {
 import {
   drawActiveRowBar,
   buildInterpolatedRows,
+  cursorCellRect,
   drawCursorCell,
   drawEntryBox,
   drawRowNumbers,
@@ -104,6 +105,10 @@ import {
   type InterpolatedRows,
   type PlaybackBarMode,
 } from './pattern-draw';
+import {
+  overlayClearBands,
+  type OverlayFootprint,
+} from './pattern-bands';
 import { getTheme, refresh as refreshTheme, type PatternTheme } from './pattern-theme';
 import {
   buildPaintState,
@@ -586,9 +591,12 @@ function cancelPreRenderPaint(): void {
 /**
  * Blit the visible slice of the bitmap onto the screen. Runs with an
  * identity transform: blitWindow already speaks device pixels on both
- * sides, so no scaling is applied here.
+ * sides, so no scaling is applied here. The view origin is passed in —
+ * runFrame reads it once per frame and both paint passes use that one
+ * value, so the grid and the indicator layer can never disagree about
+ * where the view is.
  */
-function paintVisible(): boolean {
+function paintVisible(vt: number, vl: number): boolean {
   const canvas = visibleCanvasRef.value;
   if (!canvas || viewportW.value <= 0 || viewportH.value <= 0) return true;
   const ctx = canvas.getContext('2d');
@@ -597,8 +605,8 @@ function paintVisible(): boolean {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!bitmap || contentWidth.value <= 0 || totalRowsHeight.value <= 0) return true;
   const win = blitWindow(
-    viewTop.value,
-    viewLeft.value,
+    vt,
+    vl,
     viewportW.value,
     viewportH.value,
     contentWidth.value,
@@ -622,33 +630,85 @@ function paintVisible(): boolean {
 }
 
 /**
- * The playback bar and editing cursor: everything that moves with the song
- * or the cursor and must not repaint the static bitmap. Cleared and redrawn
- * on playbackRow / active-cell / mode changes only.
+ * What the overlay currently shows, so an indicator-only repaint knows
+ * which viewport bands to clear (pattern-bands).
  */
-function paintOverlay(): boolean {
+let overlayPainted: OverlayFootprint | null = null;
+/**
+ * Structural changes (mount, resize, theme flip) force one full overlay
+ * paint; indicator/scroll frames repaint bands only.
+ */
+let overlayFullPaint = true;
+
+/**
+ * The playback bar and editing cursor: everything that moves with the song
+ * or the cursor and must not repaint the static bitmap.
+ *
+ * Band repaint, not full clear: each frame clears ONLY the viewport bands
+ * the previous paint's indicators occupied (at that paint's own view
+ * origin) and the current ones occupy. The pristine background a cleared
+ * band reveals is the static bitmap slice the visible layer blits beneath
+ * this overlay — never a snapshot of a live canvas, which could go stale
+ * (cell edits during playback, theme flips) and silently restore wrong
+ * pixels. Structural changes set `overlayFullPaint` and take the whole-
+ * layer clear instead.
+ *
+ * The view origin arrives as the frame's single snapshot (runFrame reads
+ * viewTop/viewLeft once), so the translate, the gutter pin and the blit
+ * beneath all speak the same scroll state.
+ */
+function paintOverlay(vt: number, vl: number): boolean {
   const canvas = overlayCanvasRef.value;
   if (!canvas) return true;
   const ctx = canvas.getContext('2d');
   if (!ctx) return failRenderer('pattern-canvas: overlay canvas 2D context unavailable');
+  const l = layout.value;
+  const barRow =
+    props.playbackRow >= 0 && props.playbackRow < l.rowCount ? props.playbackRow : -1;
+  const cursorRect =
+    props.activeTrack >= 0 && props.activeColumn >= 0
+      ? cursorCellRect(l, props.tracks, {
+          trackIndex: props.activeTrack,
+          row: props.selectedRow,
+          column: props.activeColumn,
+          macroNibble: props.activeMacroNibble,
+        })
+      : null;
+  const next: OverlayFootprint = { barRow, cursor: cursorRect, viewTop: vt, viewLeft: vl };
+
   ctx.setTransform(dpr.value, 0, 0, dpr.value, 0, 0);
-  ctx.clearRect(0, 0, viewportW.value, viewportH.value);
+  const full = overlayFullPaint || overlayPainted === null;
+  if (full) {
+    ctx.clearRect(0, 0, viewportW.value, viewportH.value);
+  } else {
+    for (const band of overlayClearBands(
+      overlayPainted,
+      next,
+      viewportW.value,
+      viewportH.value,
+    )) {
+      ctx.clearRect(band.x, band.y, band.width, band.height);
+    }
+  }
   // The bar/cursor draw ops speak pattern space (rowY, entryBoxRect) while
   // this canvas is viewport-sized: shift the layer so the gutter stays
-  // pinned and the scroll offset lands the ops on the visible rows.
+  // pinned and the scroll offset lands the ops on the visible rows. Both
+  // offsets derive from the same frame's vt/vl the band math above used.
   ctx.save();
-  ctx.translate(GUTTER_WIDTH_PX - viewLeft.value, -viewTop.value);
+  ctx.translate(GUTTER_WIDTH_PX - vl, -vt);
   const theme = getTheme();
-  const l = layout.value;
-  if (props.playbackRow >= 0 && props.playbackRow < l.rowCount) {
+  if (barRow >= 0) {
     drawActiveRowBar(ctx, l, theme, {
-      playbackRow: props.playbackRow,
+      playbackRow: barRow,
       mode: props.playbackMode as PlaybackBarMode,
       trackCount: l.trackCount,
-      gutterScrollX: viewLeft.value,
+      // Same-frame viewLeft: the gutter pill pins to the viewport edge
+      // the grid was blitted at in this exact frame, never a stale or
+      // separately-tracked scroll value.
+      gutterScrollX: vl,
     });
   }
-  if (props.activeTrack >= 0 && props.activeColumn >= 0) {
+  if (cursorRect) {
     drawCursorCell(ctx, l, props.tracks, theme, {
       trackIndex: props.activeTrack,
       row: props.selectedRow,
@@ -657,6 +717,8 @@ function paintOverlay(): boolean {
     });
   }
   ctx.restore();
+  overlayPainted = next;
+  overlayFullPaint = false;
   return true;
 }
 
@@ -682,6 +744,11 @@ function schedule(parts: Array<'static' | 'overlay' | 'blit'>): void {
 function runFrame(): void {
   frameRaf = null;
   const followMoved = applyFollow();
+  // One frame, one composition: the view origin is read exactly once, after
+  // the follow applied, and the same values drive the blit and the overlay
+  // paint. No pass can observe a mid-frame scroll write the other missed.
+  const viewTopFrame = viewTop.value;
+  const viewLeftFrame = viewLeft.value;
   const drawStatic = wantStatic;
   const drawOverlay = wantOverlay;
   const blit = wantBlit || drawStatic || followMoved;
@@ -777,8 +844,8 @@ function runFrame(): void {
     }
     if (!staticPainted && !paintStatic()) return;
   }
-  if (blit && !paintVisible()) return;
-  if (drawOverlay && !paintOverlay()) return;
+  if (blit && !paintVisible(viewTopFrame, viewLeftFrame)) return;
+  if (drawOverlay && !paintOverlay(viewTopFrame, viewLeftFrame)) return;
 }
 
 // ---------------------------------------------------------------------
@@ -801,6 +868,9 @@ function applySize(): void {
   viewportW.value = w;
   viewportH.value = h;
   dpr.value = nextDpr;
+  // The band bookkeeping describes screen positions the resized viewport
+  // may have shifted; the next overlay paint repaints the whole layer.
+  overlayFullPaint = true;
   for (const canvas of [visibleCanvasRef.value, overlayCanvasRef.value]) {
     if (!canvas) continue;
     const backingW = Math.max(1, Math.floor(w * nextDpr));
@@ -1274,6 +1344,7 @@ onMounted(() => {
     paintedState = null;
     preRenderMeta = null;
     preRenderTarget = null;
+    overlayFullPaint = true;
     schedulePreRender(props.upcomingPattern);
     schedule(['static', 'overlay']);
   });
@@ -1302,6 +1373,8 @@ onBeforeUnmount(() => {
   preRenderMeta = null;
   preRenderTarget = null;
   paintedState = null;
+  overlayPainted = null;
+  overlayFullPaint = true;
   window.removeEventListener('mousemove', onWindowMouseMove);
   window.removeEventListener('mouseup', onWindowMouseUp);
 });

@@ -522,18 +522,22 @@ export interface CursorCellData {
   macroNibble: number;
 }
 
-export function drawCursorCell(
-  ctx: CanvasRenderingContext2D,
+/**
+ * The cursor cell's pattern-space rect — the same geometry `drawCursorCell`
+ * paints, factored out so the component can compute the overlay band the
+ * cell occupies without re-deriving the fraction math (a divergence here
+ * would clear a band the highlight is not actually in).
+ */
+export function cursorCellRect(
   layout: PatternLayout,
   tracks: TrackerTrackData[],
-  theme: PatternTheme,
   data: CursorCellData,
-): void {
+): { x: number; y: number; width: number; height: number } | null {
   const { trackIndex, row, column, macroNibble } = data;
-  if (trackIndex < 0 || trackIndex >= layout.trackCount) return;
-  if (row < 0 || row >= layout.rowCount) return;
+  if (trackIndex < 0 || trackIndex >= layout.trackCount) return null;
+  if (row < 0 || row >= layout.rowCount) return null;
   const track = tracks[trackIndex];
-  if (!track) return;
+  if (!track) return null;
 
   const box = entryBoxRect(trackIndex, row, layout);
   const offsets = columnFractionOffsets(box.width, layout.showExtraEffectColumn);
@@ -546,11 +550,24 @@ export function drawCursorCell(
     x += nibble * nibbleWidth;
     width = nibbleWidth;
   }
+  return { x, y: box.y, width, height: box.height };
+}
+
+export function drawCursorCell(
+  ctx: CanvasRenderingContext2D,
+  layout: PatternLayout,
+  tracks: TrackerTrackData[],
+  theme: PatternTheme,
+  data: CursorCellData,
+): void {
+  const rect = cursorCellRect(layout, tracks, data);
+  if (!rect) return;
+  const track = tracks[data.trackIndex]!;
 
   ctx.fillStyle = theme.activeBg;
-  ctx.fillRect(x, box.y, width, box.height);
+  ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
   ctx.strokeStyle = trackAccent(track);
-  ctx.strokeRect(x, box.y, width, box.height);
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 }
 
 /** Re-export so draw call sites (and tests) share one import site. */
