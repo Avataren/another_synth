@@ -177,7 +177,11 @@ describe('volume-column playback', () => {
     processVolumeColumnTick0(state, command);
     processVolumeColumnTickN(state, command);
 
-    expect(state.currentPan).toBeCloseTo(8 / 64, 6);
+    // FT2 pans in units of its own 0..255 byte (v_PanSlideRight:
+    // `ch->outPan + (ch->volColumnVol & 0x0F)`), so one unit is 2/255 of the
+    // processor's -1..1 swing -- not the volume-slide 1/64 this asserted
+    // before it was checked against the C (D89).
+    expect(state.currentPan).toBeCloseTo((8 * 2) / 255, 6);
   });
 
   it('vibrato takes its depth from the column and its speed from the channel', () => {

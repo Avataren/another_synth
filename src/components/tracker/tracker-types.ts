@@ -17,6 +17,19 @@ export interface TrackerEntryData {
    * already be using.
    */
   volumeCommand?: string;
+  /**
+   * True when this row's velocity came from an XM volume-column set-volume
+   * command (0x10-0x50) rather than the sample's default volume.
+   *
+   * FT2 runs Rxy's tick-0 retrigger count through the volume column *after*
+   * its volume handling, and skips the count when that handling consumed the
+   * byte -- so an Rxy row that also carries a volume-column volume does not
+   * count tick 0 toward its first retrigger. The engine needs to know which
+   * kind of volume a row carries to reproduce that, and an imported velocity
+   * byte alone cannot: a note with an instrument and no volume column also
+   * imports a volume (the sample's default).
+   */
+  volumeColumnVolume?: boolean;
   /** Optional exact frequency in Hz (for ProTracker MOD imports) */
   frequency?: number;
 }

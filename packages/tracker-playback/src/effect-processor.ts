@@ -327,6 +327,20 @@ export interface TrackEffectState {
   /** 9xx offset memory (ProTracker reuses the last value for a bare 900). */
   lastSampleOffset: number;
 
+  /**
+   * FT2's fine-slide memories: `fPitchSlideUpSpeed` / `fPitchSlideDownSpeed`
+   * (E1x/E2x), `fVolSlideUpSpeed` / `fVolSlideDownSpeed` (EAx/EBx) and
+   * `efPitchSlideUpSpeed` / `efPitchSlideDownSpeed` (Xxy). Each is its own
+   * byte -- E1x does not share with Xxy -- and each is only consulted when
+   * the profile's fineSlideHasMemory is set.
+   */
+  lastFinePortaUp: number;
+  lastFinePortaDown: number;
+  lastFineVolUp: number;
+  lastFineVolDown: number;
+  lastExtraFinePortaUp: number;
+  lastExtraFinePortaDown: number;
+
   // Note delay overflow to next row (ProTracker EDx quirk)
   carryDelayedNote: {
     midi: number;
@@ -403,6 +417,12 @@ export function createTrackEffectState(
     lastVolSlide: 0,
     lastArpeggio: 0,
     lastSampleOffset: 0,
+    lastFinePortaUp: 0,
+    lastFinePortaDown: 0,
+    lastFineVolUp: 0,
+    lastFineVolDown: 0,
+    lastExtraFinePortaUp: 0,
+    lastExtraFinePortaDown: 0,
     carryDelayedNote: null,
   };
 }
@@ -646,20 +666,26 @@ function primeVolumeSlide(
     case 'volSlide': {
       // EAx / EBx are single-step fine slides that happen to share this
       // EffectType; they are not the per-tick Axy slide and have no memory.
+      // Where the format has fine-slide memory (FT2), a zero parameter
+      // repeats the last fine slide in the same direction:
+      // `if (param == 0) param = ch->fVolSlideUpSpeed; ch->fVolSlideUpSpeed
+      // = param;` (fineVolSlideUp/fineVolFineDown, ft2_replayer.c).
       if (effect.extSubtype === 'fineVolUp') {
-        setSlide(
-          effect.paramY * state.profile.volumeSlideUnit,
-          'fine',
-          'volSlide',
-        );
+        let param = effect.paramY;
+        if (state.profile.fineSlideHasMemory) {
+          if (param === 0) param = state.lastFineVolUp;
+          state.lastFineVolUp = param;
+        }
+        setSlide(param * state.profile.volumeSlideUnit, 'fine', 'volSlide');
         return;
       }
       if (effect.extSubtype === 'fineVolDown') {
-        setSlide(
-          -effect.paramY * state.profile.volumeSlideUnit,
-          'fine',
-          'volSlide',
-        );
+        let param = effect.paramY;
+        if (state.profile.fineSlideHasMemory) {
+          if (param === 0) param = state.lastFineVolDown;
+          state.lastFineVolDown = param;
+        }
+        setSlide(-param * state.profile.volumeSlideUnit, 'fine', 'volSlide');
         return;
       }
 
@@ -791,6 +817,15 @@ export function processEffectTick0(
   noteFrequency?: number,
   ticksPerRow?: number,
   pan?: number,
+  /**
+   * True when this row's XM volume column carries a set-volume command
+   * (0x10-0x50). FT2's Rxy quirk reads the volume column *after* its tick-0
+   * volume handling and skips the tick-0 retrigger count when that handling
+   * consumed it -- `multiNoteRetrig(ch, param, newVolCol)` with the comment
+   * "FT2 quirk: this one is changed by vol column effects, then used for a
+   * Rxy (multiNoteRetrig) check" (ft2_replayer.c, handleEffects_TickZero).
+   */
+  volumeColumnVolume?: boolean,
 ): TickCommandBatch {
   const commands: ProcessorCommand[] = [];
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
@@ -1148,17 +1183,31 @@ export function processEffectTick0(
       pushPan(state.currentPan);
       break;
 
-    case 'finePortaUp':
-      // E1x: Fine portamento up (applied once on tick 0)
-      applyFinePortamento(state, effect.paramY);
+    case 'finePortaUp': {
+      // E1x: Fine portamento up (applied once on tick 0). FT2's
+      // finePitchSlideUp remembers its parameter for a zero one.
+      let upParam = effect.paramY;
+      if (state.profile.fineSlideHasMemory) {
+        if (upParam === 0) upParam = state.lastFinePortaUp;
+        state.lastFinePortaUp = upParam;
+      }
+      applyFinePortamento(state, upParam);
       pushPitch(state.currentFrequency);
       break;
+    }
 
-    case 'finePortaDown':
-      // E2x: Fine portamento down (applied once on tick 0)
-      applyFinePortamento(state, -effect.paramY);
+    case 'finePortaDown': {
+      // E2x: Fine portamento down (applied once on tick 0), with FT2's
+      // fPitchSlideDownSpeed memory.
+      let downParam = effect.paramY;
+      if (state.profile.fineSlideHasMemory) {
+        if (downParam === 0) downParam = state.lastFinePortaDown;
+        state.lastFinePortaDown = downParam;
+      }
+      applyFinePortamento(state, -downParam);
       pushPitch(state.currentFrequency);
       break;
+    }
 
     case 'setEnvelopePos': {
       // Lxx (XM 0x15): move the envelopes to tick xx. The note keeps playing
@@ -1172,17 +1221,29 @@ export function processEffectTick0(
       break;
     }
 
-    case 'extraFinePorta':
+    case 'extraFinePorta': {
       // Xxy (XM 0x21): x=1 up, x=2 down, by y period units -- a quarter of
-      // E1x/E2x's step, so it passes an explicit unit scale of 1.
+      // E1x/E2x's step, so it passes an explicit unit scale of 1. FT2 keeps
+      // this effect's memory (efPitchSlideUpSpeed/efPitchSlideDownSpeed)
+      // separate from E1x/E2x's.
+      let extraParam = effect.paramY;
       if (effect.paramX === 1) {
-        applyFinePortamento(state, effect.paramY, 1);
+        if (state.profile.fineSlideHasMemory) {
+          if (extraParam === 0) extraParam = state.lastExtraFinePortaUp;
+          state.lastExtraFinePortaUp = extraParam;
+        }
+        applyFinePortamento(state, extraParam, 1);
         pushPitch(state.currentFrequency);
       } else if (effect.paramX === 2) {
-        applyFinePortamento(state, -effect.paramY, 1);
+        if (state.profile.fineSlideHasMemory) {
+          if (extraParam === 0) extraParam = state.lastExtraFinePortaDown;
+          state.lastExtraFinePortaDown = extraParam;
+        }
+        applyFinePortamento(state, -extraParam, 1);
         pushPitch(state.currentFrequency);
       }
       break;
+    }
 
     case 'setVibratoWave':
       // Bit 2 means "do not restart the waveform on a new note".
@@ -1255,8 +1316,40 @@ export function processEffectTick0(
         state.lastRetrigger = (volChange << 4) | interval;
       }
       state.retriggerInterval = interval;
-      state.retriggerTick = 0;
       state.retriggerVolChange = volChange;
+
+      if (isExtended) {
+        // E9x does not count tick 0: ProTracker's retrigNote and FT2's are
+        // only reached on ticks > 0 (a note row returns before them), so a
+        // param of x retriggers at offsets x, 2x, ... of the row.
+        state.retriggerTick = 0;
+        break;
+      }
+
+      // Rxy's counter, though, counts tick 0 as its first increment. FT2's
+      // tick-0 path reaches doMultiNoteRetrig like any other tick: `cnt =
+      // ch->noteRetrigCounter + 1; if (cnt < ch->noteRetrigSpeed) {
+      // ch->noteRetrigCounter = cnt; return; }` -- the counter is reset to 0
+      // only by triggerInstrument (a note trigger), and the retrigger fires
+      // the moment cnt reaches the interval. Counting from 0 at tick 0, as
+      // this used to, put every Rxy retrigger one tick late and dropped the
+      // row's last one: at speed 6, an R2 fires on ticks 1/3/5 in FT2 and on
+      // 2/4 -- one fewer -- here, and an R3 at speed 3 fired nowhere at all.
+      //
+      // The one exception is FT2's volume-column quirk above: a row whose
+      // volume column sets a volume does not count tick 0.
+      state.retriggerTick = volumeColumnVolume ? 0 : 1;
+      if (state.retriggerInterval > 0 && state.retriggerTick >= state.retriggerInterval) {
+        // An interval the tick-0 count already satisfies (R11) re-fires the
+        // note here, exactly as FT2's tick-0 call does.
+        state.retriggerTick = 0;
+        commands.push({
+          kind: 'retrigger',
+          midi: state.currentMidi,
+          velocity: velocityFromVolume(state.currentVolume),
+          frequency: state.currentFrequency,
+        });
+      }
       break;
     }
 
@@ -1274,10 +1367,16 @@ export function processEffectTick0(
       if (effect.paramY) state.vibratoDepth = effect.paramY / 4; // Quarter depth
       break;
 
-    case 'panSlide':
-      if (effect.paramX) state.panSlideSpeed = effect.paramX / 64;
-      else if (effect.paramY) state.panSlideSpeed = -effect.paramY / 64;
+    case 'panSlide': {
+      // Pxy: pan slide, in profile.panSlideUnit steps per tick -- FT2 adds
+      // the raw parameter to its 0..255 pan byte each tick (panningSlide),
+      // so a unit is 2/255 of full swing, not the volume-slide 1/64 this
+      // used to borrow. Up-nibble precedence and parameter memory are FT2's
+      // (a bare P00 repeats the channel's last pan slide).
+      if (effect.paramX) state.panSlideSpeed = effect.paramX * state.profile.panSlideUnit;
+      else if (effect.paramY) state.panSlideSpeed = -effect.paramY * state.profile.panSlideUnit;
       break;
+    }
 
     case 'tremor': {
       // Txy: the on/off lengths, with FT2's parameter memory. The cycle
@@ -1762,11 +1861,11 @@ export function processVolumeColumnTick0(
       break;
 
     case 'panSlideLeft':
-      state.volumeColumnPanSlide = -command.value / 64;
+      state.volumeColumnPanSlide = -command.value * state.profile.panSlideUnit;
       break;
 
     case 'panSlideRight':
-      state.volumeColumnPanSlide = command.value / 64;
+      state.volumeColumnPanSlide = command.value * state.profile.panSlideUnit;
       break;
 
     case 'tonePorta':

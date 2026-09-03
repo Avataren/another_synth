@@ -261,6 +261,11 @@ function xmCellToTrackerEntry(
       .toString(16)
       .toUpperCase()
       .padStart(2, '0');
+    // Distinguishes a volume-column volume from the sample's default (the
+    // other thing that lands in entry.volume below); see volumeColumnVolume.
+    // FT2's Rxy quirk only suppresses the tick-0 count when the volume
+    // handling left a non-zero byte, so volume 0 does not count as one.
+    if (volume > 0) entry.volumeColumnVolume = true;
   } else if (hasNote && hasInstrument) {
     // A note with an instrument and no explicit volume plays at the sample's
     // default, as in ProTracker.
