@@ -3052,6 +3052,70 @@ needed -- nothing extracted was ever exported).
 exactly (48 errors, all pre-existing in two old test files, none in touched files);
 eslint clean on all four touched files; gitleaks clean; `npx quasar build` clean.
 
+### D98 — XM sample default panning becomes the patch's base pan (P4-adjacent, FT2 gaps)
+
+The XM sample header's byte 15 (default panning, 0..255, 128 = centre) was parsed
+in `packages/tracker-playback/src/formats/xm.ts` and dropped by `xm-import.ts` --
+only the panning *envelope* reached the patch. Corpus: 121 of 500 samples (24%),
+in 14 of 18 demo files, have panning != 128, and all of them played dead-centre.
+
+**Reference** (ft2-clone `ft2_replayer.c`, fetched 2026-09-03): on trigger
+`ch->oldPan = s->panning` (triggerInstrument, ~line 578); `resetVolumes()` then
+sets `outPan = ch->oldPan` (lines 339..347) -- a per-trigger reset, the same
+pattern as the sample default volume (D-volume note in xm-import.ts:274). The
+panning envelope then offsets *around* that base while it runs, and Cxx/8xx
+write `outPan` outright (replace, like the volume column).
+
+**Decision -- envelope interaction:** the patch pan is the *base* the envelope
+deviates from, not a value summed with it. This maps exactly onto the existing
+machinery: `combinePan(base, envelope)` in `mod-instrument.ts` already offsets
+the envelope around a base pan with FT2's headroom scaling, and `setPan` (the
+Cxx/8xx path) already replaces the base and re-derives the remaining envelope
+around it. The only missing piece was the resting value. It is carried as
+`SamplerState.pan` (0..1, 0.5 = centre, mirroring how `detuneCents`/`rootNote`
+flow through `createSamplerPatch`), named in the patch serializer's explicit
+field list (the D34/D57 silent-drop trap), and used by `ModInstrument` as the
+fallback when a note-on carries no pan of its own -- in both the scheduled path
+(`noteOnAtTime`, where `basePan` now starts from it so the envelope offsets
+around it) and the preview path (`noteOn`). The panning envelope is unaffected:
+a static base plus envelope already yields FT2's behaviour, because the
+envelope's 32-value is "no offset" and the base is what it swings around.
+
+**Scale:** 0..255 -> 0..1 as `panning / 255`, matching FT2's `sqrt(i/255)` pan
+table (symmetric about 128, so centre lands a hair right of exact centre --
+FT2-exact). A centre byte (128) is left unset so the engine's historical
+default (0.5, exact centre) is preserved for the 379 centre-panned samples and
+for MOD/native imports, which never set the field.
+
+**Tests:** `src/tests/xm-sample-panning.test.ts` -- non-centre pan survives the
+normalizer (51 -> 51/255), identity pins for a centre byte and a header-default
+byte (both -> 0.5), and engine-level pins via a fake `AudioContext`: a note with
+no pan starts at the patch pan, the panning envelope's 32-point rests at the
+patch pan (not centre), and a `setPan` replaces it.
+
+### D99 — XM note-to-sample keymap is parsed, honored only as far as the patch model allows (P4-adjacent, FT2 gaps)
+
+The 96-entry note-to-sample table has been parsed into `XmInstrument.keymap`
+all along (xm.ts offsets 33..128 of the instrument header) -- the gap was only
+in the importer. FT2 resolves each played note to a sample through this table;
+6 of 882 corpus instruments are multi-sample.
+
+**Decision -- parse-only, with a warning:** the patch model is one sample per
+instrument. Notes route to a patch by instrument number alone (the scheduler
+and song bank have no per-note patch selection), so honouring splits means
+either one patch per (instrument, sample) range plus per-note routing in the
+engine, or a new per-note sample-select mechanism on the sampler -- both a
+refactor out of proportion to 0.7% of instruments. The importer therefore
+keeps its existing first-audible-sample choice (`firstSampleOf`), unchanged,
+and `warnIfMultiSample` logs once per import naming the instrument and the
+decision (D99), so a wrongly-sounding split is diagnosable rather than
+silent. No hack was forced into the engine, per the task statement.
+
+**Tests:** `src/tests/xm-sample-panning.test.ts` -- the keymap round-trips
+through `parseXm` (48/48 split across two samples detected as 2 distinct
+targets), and the import still selects the first sample ('low' patch name pin)
+while warning about the split.
+
 ## 8. Change log
 
 | Date | Phase | Change |
@@ -3066,6 +3130,8 @@ eslint clean on all four touched files; gitleaks clean; `npx quasar build` clean
 | 2026-09-03 | 2 | **Raw effect bytes on `TrackerEntryData`** (P1, D94). Importers store the module's own `(cmd, param)` bytes; the text macro is derived from them and `parseEffectCommand` remains for hand-authored rows only. Decoding goes through new `FormatProfile` data (`effectCommands`, arpeggio/speed-tempo/extended command bytes) via `decodeRawEffect`, retiring the D52 letter-collision class. Extensibility proven on a hypothetical third format mapped via profile only. Scheduled-command identity proven per corpus module: 18 XM + 54 MOD files, every row of every pattern, raw path vs stripped-text path byte-identical through `PlaybackEngine.scheduleRow`. The exceptions are the D52 collisions themselves: imported XM bytes 0x16-0x19 previously became M/N/O/P macro-shorthand commands (0x19 is FT2's pan slide) and now decode FT2-correctly (0x16-0x18 ignored, 0x19 as `panSlide`); the corpus histogram has zero 0x16-0x19 occurrences, so no corpus playback changes today. No song-file version bump (optional additive fields). Tests: `src/tests/raw-effect-bytes.test.ts` (80 tests), including pins that a hand edit of the macro column drops the raw bytes. |
 | 2026-09-03 | 3 | **S3M_PROFILE filled with the sourced ST3 command tables and pitch model** (P3, D96). The letter-command table (byte = letter - 0x40 per OpenMPT's `S3MConvert`), the ST3.20 manual's speed/tempo split behind a new optional `tempoCommandByte`, and `createS3mPitchModel` (st3play's `notespd` table x32, `hz = 14317056/spd`, c2spd finetune at the C-5 reference, 64..32767 clamps, table-walking arpeggio with no DC wrap) are all quoted from reference in the decision log. The profile stays inert for MOD/XM/native: nothing selects it until an S3M song carries the format tag, and the other profiles are pinned unchanged. Task-brief corrections recorded in D96 (speed byte is 0x01, not 0x1F; 0x04+0xC0 slides up). Tests: `src/tests/pitch-model.test.ts`, `src/tests/raw-effect-bytes.test.ts`. |
 | 2026-09-03 | fix | **S3M Sxx subcommands decode through ST3's own `ssoncejmp` table, not MOD/XM's Exy map** (P3-fix, D97). The independent P3 review's blocker: `S3M_PROFILE` routed 'S' into the shared extended map, so S1x/S2x/S5x/S6x/S7x/SAx/SFx mis-decoded and SBx pattern loop would have become a fine volume slide (only 0x0/0x8/0xC/0xD/0xE coincide). New optional `FormatProfile.extendedSubcommandMap` (default = the shared map, so MOD/XM/native are byte-identical -- pinned by test); S3M carries its own table per st3play digcmd.c `ssoncejmp`; s_ret nibbles decode to undefined like M/N. Reviewer documentation minors folded in (D96 parenthetical, C2FREQ -> digdata.h, B-1 notespd quirk, Y/Z rationale, P5 audit list). Tests: `src/tests/raw-effect-bytes.test.ts`. |
+| 2026-09-03 | fix | **XM sample default panning reaches playback** (D98). Sample-header byte 15 was parsed and dropped; 121/500 corpus samples (14/18 files) played dead-centre. Now carried as `SamplerState.pan` (0..1) -- the per-trigger base pan FT2 resets to (`outPan = s->panning`), which the panning envelope offsets around and Cxx/8xx replace. Centre (128) left at the engine default. Tests: `src/tests/xm-sample-panning.test.ts`. |
+| 2026-09-03 | note | **XM note-to-sample keymap: parsed, import stays first-sample** (D99). The 96-entry table was already parsed; honoring it needs per-note patch routing the engine does not have, unjustified at 6/882 multi-sample instruments. Import unchanged, one warning per multi-sample instrument naming D99. Tests: `src/tests/xm-sample-panning.test.ts`. |
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |

@@ -82,6 +82,8 @@ export function importXmToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     linearFrequency: xm.linearFrequency,
   });
 
+  warnIfMultiSample(xm);
+
   const pitch: PitchModel = xm.linearFrequency
     ? createLinearPitchModel()
     : createXmAmigaPitchModel();
@@ -323,6 +325,29 @@ function firstSampleOf(instrument: XmInstrument | undefined): XmSample | undefin
 }
 
 /**
+ * How many of the instrument's 96 keymap entries point at a *different*
+ * sample than the one we import. XM's keymap (note-to-sample table) is
+ * parsed into `XmInstrument.keymap`, but the patch model is one sample per
+ * instrument (D99): the scheduler routes notes to a patch by instrument
+ * number only, so honouring splits would need per-note patch selection --
+ * a bigger refactor than 6/882 corpus instruments justify. We import the
+ * first audible sample, exactly as before, and say so once per song.
+ */
+function warnIfMultiSample(xm: XmSong): void {
+  for (const [index, instrument] of xm.instruments.entries()) {
+    if (!instrument || instrument.samples.length < 2) continue;
+    const used = new Set(instrument.keymap);
+    if (used.size <= 1) continue;
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[XM Import] Instrument ${index + 1} is multi-sample (keymap covers ` +
+        `${used.size} samples); importing only its first audible sample ` +
+        '(D99 -- per-note sample selection needs patch-per-range routing).',
+    );
+  }
+}
+
+/**
  * How many distinct channels ever play each instrument.
  *
  * A tracker channel is monophonic and owns a voice of its own, so an
@@ -526,6 +551,12 @@ function createSamplerPatchForXmSample(
     // of per-sample tuning.
     rootNote: XM_ROOT_NOTE - sample.relativeNote,
     detuneCents: (sample.finetune / FINETUNE_UNITS_PER_SEMITONE) * 100,
+    // The sample header's default panning (byte 15), FT2's `s->panning`:
+    // reset on every trigger, offset around by the panning envelope while it
+    // runs, replaced outright by Cxx/8xx. 0..255 -> 0..1, so 128 lands a
+    // hair right of centre exactly as FT2's sqrt(i/255) pan table does.
+    // Centre (128) is left unset, the engine's historical default.
+    ...(sample.panning !== 128 ? { pan: sample.panning / 255 } : {}),
     // Unity -- the sample's default volume reaches playback through the volume
     // column, which stamps it on every note carrying an instrument. Baking it
     // in here too left quiet-headered samples permanently attenuated; see the

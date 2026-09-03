@@ -60,6 +60,12 @@ export interface SamplerPatchSpec {
   loopLengthFrames: number;
   /** Voices allocated to this instrument. */
   voiceCount: number;
+  /**
+   * Patch-level base pan, 0..1, 0.5 = centre. Tracker imports carry the
+   * file's per-sample default panning here; it is the resting value the
+   * panning envelope deviates from, not a value summed with it.
+   */
+  pan?: number;
   /** Optional tracker volume envelope (XM/IT style). */
   trackerEnvelope?: TrackerVolumeEnvelope;
   /** Optional XM panning envelope. */
@@ -141,6 +147,9 @@ export function createSamplerPatch(spec: SamplerPatchSpec): Patch {
   if (spec.autoVibrato) {
     samplerState.trackerAutoVibrato = spec.autoVibrato;
   }
+  // Named in SamplerState, so it survives serialization; the normalizer keeps
+  // it with a 0.5 (centre) default for patches that predate the field.
+  samplerState.pan = spec.pan ?? 0.5;
 
   const canonicalVoice: VoiceLayout = {
     id: 0,

@@ -790,8 +790,9 @@ export default class ModInstrument {
     const noteGain = (velocity / 127) * this.samplerState.gain;
     gainNode.gain.value = noteGain;
 
-    // Set panning (0-1 maps to -1 to 1)
-    const pan = options?.pan;
+    // Set panning (0-1 maps to -1 to 1). Falls back to the patch's base pan
+    // (FT2's per-trigger `outPan = s->panning` reset); centre when unset.
+    const pan = options?.pan ?? this.samplerState.pan ?? 0.5;
     if (pan !== undefined) {
       panNode.pan.value = (pan - 0.5) * 2;
     }
@@ -812,7 +813,7 @@ export default class ModInstrument {
       // run tracker envelopes or the instrument's own vibrato.
       envelopeGain: null,
       autoVibrato: null,
-      basePan: 0,
+      basePan: (pan - 0.5) * 2,
       panNode,
       tickSeconds: DEFAULT_TICK_SECONDS,
       noteNumber,
@@ -1608,8 +1609,11 @@ export default class ModInstrument {
 
     gainNode.gain.value = noteGain;
 
-    // Set panning
-    const pan = options?.pan;
+    // Set panning. Falls back to the patch's base pan -- FT2 resets
+    // `outPan = s->panning` on every trigger (resetVolumes), so the sample's
+    // default panning is the resting position each new note starts from; a
+    // row that carries Cxx/8xx still replaces it via `setPan`.
+    const pan = options?.pan ?? this.samplerState.pan ?? 0.5;
     if (pan !== undefined) {
       panNode.pan.value = (pan - 0.5) * 2;
     }
@@ -1667,8 +1671,9 @@ export default class ModInstrument {
         )
       : null;
 
-    // The channel's pan, which a panning envelope offsets around.
-    const basePan = pan !== undefined ? (pan - 0.5) * 2 : 0;
+    // The channel's pan, which a panning envelope offsets around. A note that
+    // carries no pan of its own starts from the patch's base pan.
+    const basePan = (pan - 0.5) * 2;
     const panEnvelope = this.samplerState.trackerPanEnvelope;
     if (panEnvelope) {
       this.scheduleTrackerEnvelope(
