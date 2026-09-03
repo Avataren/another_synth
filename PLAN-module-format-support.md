@@ -3123,6 +3123,57 @@ through `parseXm` (48/48 split across two samples detected as 2 distinct
 targets), and the import still selects the first sample ('low' patch name pin)
 while warning about the split.
 
+### D100 -- jt_letgo.xm "psycho vibrato" audited against ft2-clone: the vibrato is FT2-authentic (P4 hotfix, no code defect)
+
+Regression report 2026-09-03 16:48: jt_letgo.xm's first pattern plays
+"psycho vibrato on almost every track"; P4 (867ae5b) suspected. Audited on
+branch `agent/p4-hotfix` from a5b21a9, every suspect from the task brief,
+with a tick-by-tick re-derivation from ft2-clone `src/ft2_replayer.c`
+(`triggerInstrument` reset block, `updateVolPanAutoVib`, `autoVibSineTab`)
+and the module's own data:
+
+- **Magnitude**: the C's `autoVibVal = (wave * amp) >> 14` with the sine
+  table's ±64 peak keeps the peak offset at exactly `depth` period units; on
+  the linear table that is `depth * 1200/768` cents, uniform in pitch -- the
+  D97 conversion is exact, re-derived and confirmed. jt_letgo instr 1
+  (sine, sweep 25, depth 10, rate 24): FT2 sim peaks at 10.0 units =
+  **15.625 cents**; our LFO amplitude = **15.625 cents**.
+- **Rate**: the C advances `autoVibPos` by `rate` per 256-step cycle per
+  tick; on FT2's tick clock (2500/BPM ms, independent of speed) that is
+  24/(256·19.531 ms) = **4.8 Hz**; our oscillator = rate/(256·tickSeconds) =
+  **4.8 Hz**. Sweep matches to one tick (amp step `(depth<<8)/sweep` vs our
+  linearRamp over `sweep` ticks).
+- **Path/gating**: the C recomputes from `autoVibPos` every tick (no
+  accumulation); ours is a continuous LFO -- no drift possible. Gating is
+  per-instrument (`autoVibDepth > 0`) in both; 6 of the 8 instruments used
+  in pattern 0 carry one (depths 7-15, rates 24-63), and the two square
+  instruments (depth 15, rate 63) are ±23.4 cents at 12.6 Hz by design.
+- **4xy** (`x7y2` on 46% of pattern-0 cells): ours matches
+  `doVibrato`'s per-tick offsets within one period unit (max 15.9 units =
+  24.9 cents at 1.87 Hz both; FT2's `speed = x<<2` over a 256-cycle equals
+  our `x` over the 64-step wave).
+- **Timing**: F03 on row 0 at 128 BPM gives a 19.531 ms tick in both.
+- **Deployed build**: the live bundle's `startAutoVibrato`, pitch models,
+  timing system and XM parser are byte-equivalent to HEAD in every region
+  extracted (main + the tracker-playback chunks).
+
+**Verdict:** the vibrato arithmetic is FT2-faithful; the module simply
+authors heavy vibrato (its own instruments plus 4xy), and autovibrato has
+played since 2a5d78c (2026-08-29) -- P4 changed nothing audible for this
+linear-table file (same conversion `100/64` before and after, pinned by the
+existing linear-exactness tests). A regression pin now locks the
+instrument-1 wobble to the C's arithmetic
+(`src/tests/xm-autovibrato.test.ts`), so a future magnitude/rate/sweep
+regression fails here first. Recommended follow-up for the ear report:
+compare against ft2-clone playing the same file before any further code
+change; if the two disagree by ear, the divergence is outside the vibrato
+path this pin covers.
+
+**Tests:** `src/tests/xm-autovibrato.test.ts` -- jt_letgo instrument-1 pin
+(FT2 sim vs LFO amplitude and frequency), passing on main's arithmetic (the
+pin guards the invariants; there is no old-code failure to flip by design,
+verified via `git stash`).
+
 ## 8. Change log
 
 | Date | Phase | Change |
@@ -3139,6 +3190,7 @@ while warning about the split.
 | 2026-09-03 | fix | **S3M Sxx subcommands decode through ST3's own `ssoncejmp` table, not MOD/XM's Exy map** (P3-fix, D97). The independent P3 review's blocker: `S3M_PROFILE` routed 'S' into the shared extended map, so S1x/S2x/S5x/S6x/S7x/SAx/SFx mis-decoded and SBx pattern loop would have become a fine volume slide (only 0x0/0x8/0xC/0xD/0xE coincide). New optional `FormatProfile.extendedSubcommandMap` (default = the shared map, so MOD/XM/native are byte-identical -- pinned by test); S3M carries its own table per st3play digcmd.c `ssoncejmp`; s_ret nibbles decode to undefined like M/N. Reviewer documentation minors folded in (D96 parenthetical, C2FREQ -> digdata.h, B-1 notespd quirk, Y/Z rationale, P5 audit list). Tests: `src/tests/raw-effect-bytes.test.ts`. |
 | 2026-09-03 | fix | **XM sample default panning reaches playback** (D98). Sample-header byte 15 was parsed and dropped; 121/500 corpus samples (14/18 files) played dead-centre. Now carried as `SamplerState.pan` (0..1) -- the per-trigger base pan FT2 resets to (`outPan = s->panning`), which the panning envelope offsets around and Cxx/8xx replace. Centre (128) left at the engine default. Tests: `src/tests/xm-sample-panning.test.ts`. |
 | 2026-09-03 | note | **XM note-to-sample keymap: parsed, import stays first-sample** (D99). The 96-entry table was already parsed; honoring it needs per-note patch routing the engine does not have, unjustified at 6/882 multi-sample instruments. Import unchanged, one warning per multi-sample instrument naming D99. Tests: `src/tests/xm-sample-panning.test.ts`. |
+| 2026-09-03 | hotfix-audit | **jt_letgo.xm "psycho vibrato" audited against ft2-clone -- vibrato is FT2-authentic, no code defect** (D100). Every suspect from the report re-derived from the C: magnitude (instr 1: FT2 10.0 units = 15.625 cents == ours), rate (4.8 Hz both), sweep, gating, per-tick 4xy (±24.9 cents at 1.87 Hz both), tick timing (19.531 ms); deployed bundle byte-equivalent to HEAD on the vibrato paths. Autovibrato has played since 2a5d78c (Aug 29); P4 is inaudible for this linear-table file. Regression pin locks instrument-1's wobble to the C's arithmetic. Tests: `src/tests/xm-autovibrato.test.ts`. |
 | 2026-08-28 | — | Investigation complete; this document created. No code changes yet. |
 | 2026-08-28 | 0 | `useSimplifiedModInstruments` now defaults on, via a new `settingsVersion` field + `migrateSettingsVersion` (v0→v1 rewrite) so existing localStorage blobs actually pick it up. Test: `src/tests/user-settings-migration.test.ts`. |
 | 2026-08-28 | 0 | `ModuleFormat` added to `packages/tracker-playback/src/types.ts`; song file bumped to v2 with `data.moduleFormat`; reader accepts v1 and v2; MOD import stamps `'protracker'`; v1 files inferred (D6). Tests: `src/tests/stores/tracker-store-module-format.test.ts`. |

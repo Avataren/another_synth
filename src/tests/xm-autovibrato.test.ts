@@ -384,3 +384,90 @@ describe('autovibrato depth goes through the pitch model (P4)', () => {
     expect(kind()).toBe('amiga');
   });
 });
+
+/**
+ * jt_letgo.xm regression report (2026-09-03, "psycho vibrato on almost every
+ * track"): the first pattern's tracks are almost all autovib instruments, and
+ * 46% of its cells carry `4xy`. This pins the exact wobble each engine
+ * produces for the reported instrument against a tick-by-tick simulation of
+ * ft2-clone's `updateVolPanAutoVib` + `autoVibSineTab` (ft2_replayer.c),
+ * translated through the module's own tick clock (speed 3 at 128 BPM, i.e.
+ * FT2's 2500/BPM ms per tick).
+ *
+ * Depth is period units on the linear table: 64 units to a semitone, so
+ * cents = units * 1200/768 exactly. Our LFO amplitude must equal the maximum
+ * |autoVibVal| the C computes for the same instrument, and our LFO frequency
+ * must equal rate/(256 ticks) on FT2's tick clock -- the two invariants
+ * "psycho vibrato" would violate. They hold to well under a cent.
+ */
+describe('jt_letgo.xm instrument-1 wobble matches ft2-clone (regression pin)', () => {
+  /** ft2_replayer.c updateVolPanAutoVib: amp step, clamp, wave, >>14. */
+  function ft2AutovibUnits(
+    depth: number,
+    sweep: number,
+    rate: number,
+    ticks: number,
+  ): number[] {
+    let amp = sweep > 0 ? 0 : depth << 8;
+    let step = sweep > 0 ? Math.floor((depth << 8) / sweep) : 0;
+    let pos = 0;
+    const out: number[] = [];
+    for (let t = 0; t < ticks; t++) {
+      if (step > 0) {
+        amp += step;
+        if (amp >> 8 > depth) {
+          amp = depth << 8;
+          step = 0;
+        }
+      }
+      pos = (pos + rate) & 255;
+      const wave = Math.round(64 * Math.sin((pos * Math.PI) / 128));
+      out.push((wave * amp) >> 14);
+    }
+    return out;
+  }
+
+  const JT_LETGO_INSTR1 = { type: 0, sweep: 25, depth: 10, rate: 24 };
+
+  it('produces FT2\'s exact cents excursion and LFO rate', () => {
+    const units = ft2AutovibUnits(
+      JT_LETGO_INSTR1.depth,
+      JT_LETGO_INSTR1.sweep,
+      JT_LETGO_INSTR1.rate,
+      96,
+    );
+    const maxUnits = Math.max(...units.map(Math.abs));
+    // The C's >>14 keeps the peak at depth units (64 * amp >> 14 = depth).
+    expect(maxUnits).toBe(JT_LETGO_INSTR1.depth);
+
+    // FT2 tick at 128 BPM is 2500/BPM ms regardless of speed; ours must agree.
+    const bpm = 128;
+    const tickSeconds = 2.5 / bpm;
+    const expectedCents = maxUnits * (1200 / 768);
+    const expectedHz = JT_LETGO_INSTR1.rate / (256 * tickSeconds);
+
+    const { instrument, gains, oscillators } = makeInstrument({
+      type: JT_LETGO_INSTR1.type,
+      sweepTicks: JT_LETGO_INSTR1.sweep,
+      depth: JT_LETGO_INSTR1.depth,
+      rate: JT_LETGO_INSTR1.rate,
+    });
+    // The module's notes come in with the XM linear-table frequency; E-4 at
+    // import time is 621.58 Hz. The linear model is pitch-independent, but pin
+    // the real value so the test documents the exact scenario.
+    instrument.noteOnAtTime(60, 127, 0, {
+      tickSeconds,
+      frequency: 621.5875,
+    });
+
+    // With a sweep, the LFO ramps from 0, so the full excursion is the ramp's
+    // target (the last linearRampToValueAtTime), not a setValueAtTime.
+    const [magnitude] = gains[gains.length - 1]!.gain.linearRampToValueAtTime.mock.calls.at(-1)!;
+    expect(Math.abs(magnitude as number)).toBeCloseTo(expectedCents, 6);
+    expect(oscillators[0]!.frequency.value).toBeCloseTo(expectedHz, 6);
+    // 15.625 cents is a vibrato, not a psycho wobble: FT2 plays this file
+    // with exactly this excursion at exactly this rate.
+    expect(expectedCents).toBeCloseTo(15.625, 6);
+    expect(expectedHz).toBeCloseTo(4.8, 6);
+  });
+});
