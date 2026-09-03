@@ -3,6 +3,10 @@ import {
   DEFAULT_MODULE_FORMAT,
   type ModuleFormat,
 } from '../../../packages/tracker-playback/src/types';
+import {
+  profileForFormat,
+  type FormatProfile,
+} from '../../../packages/tracker-playback/src/format-profile';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';
@@ -98,6 +102,8 @@ export class TrackerSongBank {
    * module sets this from `loadSong` before a note is scheduled.
    */
   private moduleFormat: ModuleFormat = DEFAULT_MODULE_FORMAT;
+  /** The loaded song's playback semantics; see `setModuleFormat` (P4). */
+  private formatProfile: FormatProfile = profileForFormat(DEFAULT_MODULE_FORMAT);
   private wasSuspended = false;
   private needsAudioContextResume = false;
   private readonly eventQueue: ScheduledEventQueue;
@@ -618,10 +624,19 @@ export class TrackerSongBank {
   /**
    * Tell the bank which playback semantics the loaded song follows.
    *
-   * Only the channel-replacement policy depends on it: see `moduleFormat`.
+   * The channel-replacement policy depends on the format (see
+   * `moduleFormat`), and the pitch model the format's instruments use for
+   * autovibrato depth comes from the format's profile (P4). `linearFrequency`
+   * selects XM's Amiga table; absent means XM's own default, linear.
    */
-  setModuleFormat(format: ModuleFormat | undefined) {
+  setModuleFormat(
+    format: ModuleFormat | undefined,
+    linearFrequency?: boolean,
+  ) {
     this.moduleFormat = format ?? DEFAULT_MODULE_FORMAT;
+    this.formatProfile = profileForFormat(this.moduleFormat, {
+      ...(linearFrequency !== undefined ? { linearFrequency } : {}),
+    });
   }
 
   /**
@@ -1774,6 +1789,7 @@ export class TrackerSongBank {
       instrument = new ModInstrument(
         this.masterGain,
         this.audioSystem.audioContext,
+        { pitchModel: this.formatProfile.pitch },
       );
 
       await instrument.loadPatch(normalizedPatch);

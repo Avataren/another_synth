@@ -80,6 +80,23 @@ export interface PitchModel {
 
   /** The nearest in-tune period, for E3x glissando control. */
   snapPeriod(period: number): number;
+
+  /**
+   * Autovibrato depth in the format's period units, expressed as the detune
+   * amplitude in cents for a voice sounding at `baseFrequency`.
+   *
+   * FT2's autovibrato adds the vibrato offset to the channel *period* and
+   * re-derives the frequency from it (updateVolPanAutoVib: `tmpPeriod =
+   * outPeriod + autoVibVal`), so the same depth is a different musical
+   * interval in every representation. The linear table is uniform -- 64 units
+   * to a semitone everywhere -- while a 1/period table wobbles by
+   * log2((p+d)/p), which varies with pitch. This is the conversion the
+   * hardcoded cents factor in ModInstrument could not do (P4, D18 pattern).
+   *
+   * Returns the magnitude; a positive period offset lowers the pitch, and the
+   * caller decides direction.
+   */
+  vibratoDepthCents(baseFrequency: number, depthUnits: number): number;
 }
 
 export interface AmigaPitchModelOptions {
@@ -90,6 +107,26 @@ export interface AmigaPitchModelOptions {
    * clamp to the table's edge instead.
    */
   arpeggioWrapsToDC: boolean;
+}
+
+/**
+ * Autovibrato depth for a 1/period representation (Amiga periods): the same
+ * depth-unit period wobble around the voice's base period is a different
+ * musical interval at every pitch, so the conversion is evaluated at the
+ * voice's own frequency. Frequency is proportional to 1/period, so a depth of
+ * `d` units moves the pitch by log2((p+d)/p) octaves around period p.
+ */
+function amigaVibratoDepthCents(
+  rawPeriodFromFrequency: (frequency: number) => number,
+  baseFrequency: number,
+  depthUnits: number,
+): number {
+  if (!(depthUnits > 0)) return 0;
+  const basePeriod = rawPeriodFromFrequency(baseFrequency);
+  // A frequency outside the model's range maps to a non-positive or
+  // non-finite period; there is no pitch to wobble around, so no amplitude.
+  if (!(basePeriod > 0) || !Number.isFinite(basePeriod)) return 0;
+  return 1200 * Math.log2((basePeriod + depthUnits) / basePeriod);
 }
 
 /**
@@ -165,6 +202,8 @@ export function createAmigaPitchModel(
       return PT_PERIOD_TABLE[shiftedIndex]!;
     },
     snapPeriod: (period) => PT_PERIOD_TABLE[nearestPeriodTableIndex(period)]!,
+    vibratoDepthCents: (baseFrequency, depthUnits) =>
+      amigaVibratoDepthCents(rawPeriodFromFrequency, baseFrequency, depthUnits),
   };
 }
 
@@ -263,6 +302,10 @@ export function createLinearPitchModel(): PitchModel {
       clampPeriod(
         Math.round(period / XM_UNITS_PER_SEMITONE) * XM_UNITS_PER_SEMITONE,
       ),
+    // Uniform: the linear table moves exactly 64 units per semitone at every
+    // pitch, so 1200/768 cents per unit is exact everywhere.
+    vibratoDepthCents: (_baseFrequency, depthUnits) =>
+      depthUnits * (1200 / XM_UNITS_PER_OCTAVE),
   };
 }
 
@@ -403,6 +446,8 @@ export function createS3mPitchModel(): PitchModel {
       S3M_PERIOD_TABLE[
         nearestPeriodTableIndex(period, S3M_PERIOD_TABLE)
       ]!,
+    vibratoDepthCents: (baseFrequency, depthUnits) =>
+      amigaVibratoDepthCents(rawPeriodFromFrequency, baseFrequency, depthUnits),
   };
 }
 
@@ -481,5 +526,7 @@ export function createXmAmigaPitchModel(): PitchModel {
       clampPeriod(basePeriod * Math.pow(2, -semitoneOffset / 12)),
     snapPeriod: (period) =>
       clampPeriod(periodFromNote(Math.round(noteFromPeriod(period)))),
+    vibratoDepthCents: (baseFrequency, depthUnits) =>
+      amigaVibratoDepthCents(rawPeriodFromFrequency, baseFrequency, depthUnits),
   };
 }

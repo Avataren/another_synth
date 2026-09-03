@@ -3,6 +3,9 @@ import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 import ModInstrument from 'src/audio/mod-instrument';
 import { buildXm, cell } from './helpers/xm-builder';
+import { createXmAmigaPitchModel, type PitchModel } from '../../packages/tracker-playback/src/pitch-model';
+import { TrackerSongBank } from 'src/audio/tracker/song-bank';
+import type AudioSystem from 'src/audio/AudioSystem';
 
 /**
  * XM instrument-level ("auto") vibrato.
@@ -79,12 +82,15 @@ function makeParam(value = 0): FakeParam {
 }
 
 /** A ModInstrument whose graph is observable, with `sampleRate` Hz of buffer. */
-function makeInstrument(autoVibrato?: {
-  type: number;
-  sweepTicks: number;
-  depth: number;
-  rate: number;
-}) {
+function makeInstrument(
+  autoVibrato?: {
+    type: number;
+    sweepTicks: number;
+    depth: number;
+    rate: number;
+  },
+  options?: { pitchModel?: PitchModel },
+) {
   const oscillators: Array<{
     type: string;
     frequency: FakeParam;
@@ -142,6 +148,7 @@ function makeInstrument(autoVibrato?: {
   const instrument = new ModInstrument(
     { connect: vi.fn() } as unknown as AudioNode,
     audioContext,
+    options,
   );
   Reflect.set(instrument as object, 'audioBuffer', {
     duration: 1,
@@ -261,5 +268,119 @@ describe('autovibrato runs as an LFO on detune', () => {
     instrument.cutVoiceAtTime(voice, 0);
 
     expect(oscillators[0]!.stop).toHaveBeenCalled();
+  });
+});
+
+/**
+ * P4: the depth conversion belongs to the song's pitch model.
+ *
+ * FT2 adds the vibrato offset to the channel *period* and re-derives the
+ * frequency from it (updateVolPanAutoVib, ft2-clone ft2_replayer.c):
+ *
+ *     autoVibVal = (autoVibVal * (int16_t)autoVibAmp) >> (6+8);
+ *     uint16_t tmpPeriod = ch->outPeriod + autoVibVal;
+ *     ch->finalPeriod = tmpPeriod;
+ *
+ * so a depth of N period units is a different musical interval in every
+ * representation. The old code multiplied by a hardcoded 100/64 cents-per-unit
+ * -- exact for XM's linear table, and roughly 30x too deep for an Amiga-table
+ * XM, whose periods near the low notes sit in the tens of thousands. The
+ * conversion now lives on the pitch model (D18 pattern) and is evaluated at
+ * the voice's own frequency.
+ */
+describe('autovibrato depth goes through the pitch model (P4)', () => {
+  it('stays exactly 100/64 cents per unit on the linear table', () => {
+    // The linear default must be unchanged: XM's linear table moves 64 units
+    // to a semitone at every pitch, so the old constant was already exact.
+    const { instrument, gains } = makeInstrument({
+      type: 0,
+      sweepTicks: 0,
+      depth: 8,
+      rate: 32,
+    });
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: TICK });
+    const depthGain = gains[gains.length - 1]!;
+    const [magnitude] = depthGain.gain.setValueAtTime.mock.calls.at(-1)!;
+    expect(Math.abs(magnitude as number)).toBeCloseTo(8 * (100 / 64), 6);
+  });
+
+  it('is a pitch-dependent interval on the Amiga table', () => {
+    // In FT2's Amiga table the frequency is proportional to 1/period, so a
+    // depth-unit wobble around a low note's huge period is a fraction of a
+    // cent -- while the hardcoded constant made it 12.5 cents regardless.
+    const amiga = createXmAmigaPitchModel();
+    const expectedAt = (frequency: number) => {
+      // rate = 8363 * 1712 / period, so period = numerator / (frequency * 32).
+      const period = (8363 * 1712) / (frequency * 32);
+      return 1200 * Math.log2((period + 8) / period);
+    };
+
+    const { instrument: low, gains: lowGains } = makeInstrument(
+      { type: 0, sweepTicks: 0, depth: 8, rate: 32 },
+      { pitchModel: amiga },
+    );
+    low.noteOnAtTime(60, 127, 0, { tickSeconds: TICK, frequency: 440 });
+    const [lowMagnitude] =
+      lowGains[lowGains.length - 1]!.gain.setValueAtTime.mock.calls.at(-1)!;
+    expect(Math.abs(lowMagnitude as number)).toBeCloseTo(expectedAt(440), 6);
+
+    const { instrument: high, gains: highGains } = makeInstrument(
+      { type: 0, sweepTicks: 0, depth: 8, rate: 32 },
+      { pitchModel: amiga },
+    );
+    high.noteOnAtTime(72, 127, 0, { tickSeconds: TICK, frequency: 880 });
+    const [highMagnitude] =
+      highGains[highGains.length - 1]!.gain.setValueAtTime.mock.calls.at(-1)!;
+    expect(Math.abs(highMagnitude as number)).toBeCloseTo(expectedAt(880), 6);
+    // The same depth wobbles twice the interval an octave up: the conversion
+    // is evaluated at the voice's own pitch, not a constant.
+    expect(
+      Math.abs(highMagnitude as number) / Math.abs(lowMagnitude as number),
+    ).toBeCloseTo(2, 1);
+  });
+
+  it('does not apply the old linear constant on the Amiga table', () => {
+    // The regression this test exists for: on FT2's Amiga table the period
+    // halves every octave, so the same depth wobbles a wider interval the
+    // higher the note. Around A4 (period ~1017) depth 8 is ~13.6 cents, not
+    // the hardcoded 12.5; the error compounds with pitch, which is what the
+    // hardcoded constant could never track.
+    const amiga = createXmAmigaPitchModel();
+    const { instrument, gains } = makeInstrument(
+      { type: 0, sweepTicks: 0, depth: 8, rate: 32 },
+      { pitchModel: amiga },
+    );
+    instrument.noteOnAtTime(60, 127, 0, { tickSeconds: TICK, frequency: 440 });
+    const [magnitude] =
+      gains[gains.length - 1]!.gain.setValueAtTime.mock.calls.at(-1)!;
+    expect(Math.abs(magnitude as number)).toBeCloseTo(13.566, 2);
+    expect(Math.abs(magnitude as number)).not.toBeCloseTo(8 * (100 / 64), 1);
+  });
+
+  it('reaches the bank per format, so module songs get their model', () => {
+    const bank = new TrackerSongBank(
+      {
+        audioContext: {
+          sampleRate: 48000,
+          currentTime: 0,
+          state: 'running' as const,
+          createGain: () => ({ gain: { value: 1 }, connect: vi.fn() }),
+          destination: { connect: vi.fn() },
+        },
+        destinationNode: { connect: vi.fn() },
+      } as unknown as AudioSystem,
+    );
+
+    const kind = () =>
+      (
+        Reflect.get(bank as object, 'formatProfile') as {
+          pitch: { kind: string };
+        }
+      ).pitch.kind;
+
+    bank.setModuleFormat('xm', true);
+    expect(kind()).toBe('linear');
+    bank.setModuleFormat('xm', false);
+    expect(kind()).toBe('amiga');
   });
 });
