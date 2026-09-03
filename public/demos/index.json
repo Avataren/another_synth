@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-03T13:35:59.437Z",
+  "generated": "2026-09-03T14:38:12.465Z",
   "collections": [
     {
       "id": "amiga",
@@ -412,6 +412,14 @@
           "signature": "M.K.",
           "file": "amiga/think_twice_iii.mod",
           "bytes": 81414
+        },
+        {
+          "title": "to the beach",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M!K!",
+          "file": "amiga/to the beach.mod",
+          "bytes": 305176
         },
         {
           "title": "toy story",
