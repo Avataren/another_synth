@@ -122,7 +122,7 @@ describe.skipIf(!hasCorpus)('S3M corpus: measured categories', () => {
     // sun.s3m (Ballacr75) is the one file in the whole sweep with REAL
     // type-2 AdLib instruments: 25 of them, played on 7 AdLib channels
     // (settings 0x10-0x16). Independently dumped header: instrument 1 is
-    // named 'Decay11', volume 64, registers C0 01 10 05 B4 C3 65 65 01 01
+    // named 'Decay11', volume 64, registers C0 C1 10 05 B4 C3 65 65 01 01
     // 00 00 -- pinned here to catch any offset regression against a real
     // header, not just the synthetic builder (which shared the same bug).
     const raw = parseS3m(new Uint8Array(readModule('sun.s3m')));
