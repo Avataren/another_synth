@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createAmigaPitchModel,
   createLinearPitchModel,
+  createS3mPitchModel,
   createXmAmigaPitchModel,
 } from '../../packages/tracker-playback/src/pitch-model';
 
@@ -234,5 +235,102 @@ describe('XmAmigaPitchModel', () => {
   it('snaps glissando to the nearest semitone', () => {
     expect(amiga.snapPeriod(1700)).toBeCloseTo(1712, 4);
     expect(amiga.snapPeriod(870)).toBeCloseTo(856, 4);
+  });
+});
+
+/**
+ * Scream Tracker 3 (P3, D96). The values are quoted from 8bitbubsy's
+ * st3play, the faithful ST3 replayer port: the `notespd` period table
+ * (digdata.c -- ProTracker's hand-tuned periods times 32), `setspd`'s
+ * hz = 14317056 / spd conversion, and `setmasterflags`' 64..32767 range.
+ * These assertions state the ST3 numbers directly rather than deriving
+ * them from the implementation.
+ */
+describe('S3mPitchModel (ST3)', () => {
+  const s3m = createS3mPitchModel();
+
+  /** ST3 period for a file note byte (0x40 = C-5, the c2spd reference). */
+  const periodForNote = (note: number) =>
+    [27392, 25856, 24384, 23040, 21696, 20480, 19328, 18240, 17216, 16256, 15360, 14512][
+      note & 0xf
+    ]! >> (note >> 4);
+
+  it('identifies itself as the amiga model', () => {
+    expect(s3m.kind).toBe('amiga');
+  });
+
+  it('puts C-5 at the c2spd reference rate, scaled to musical Hz', () => {
+    // File note 0x40 = C-5, period 1712: hz = 14317056/1712 = 8362.6, the
+    // rate where a c2spd 8363 sample plays at its recorded rate. Musical
+    // domain divides by 16 (ST3's reference is C-5, XM's is C-4).
+    expect(periodForNote(0x40)).toBe(1712);
+    expect(s3m.frequencyFromPeriod(1712)).toBeCloseTo(14317056 / 1712 / 16, 6);
+    expect(s3m.frequencyFromPeriod(1712)).toBeGreaterThan(515);
+    expect(s3m.frequencyFromPeriod(1712)).toBeLessThan(530);
+  });
+
+  it('puts file note 0x00 at C-1 and 0x30 at C-4', () => {
+    expect(periodForNote(0x00)).toBe(27392);
+    expect(s3m.frequencyFromPeriod(27392)).toBeCloseTo(32.7, 1);
+    expect(periodForNote(0x30)).toBe(3424);
+    expect(s3m.frequencyFromPeriod(3424)).toBeCloseTo(261.3, 1);
+  });
+
+  it('tunes A-4 to ST3’s known 440.4 Hz, not exactly 440', () => {
+    // File note 0x39 = A-4, period 2032. The table is hand-tuned, not
+    // exactly 12-tone equal temperament -- the well-known ST3 tuning.
+    expect(periodForNote(0x39)).toBe(2032);
+    expect(s3m.frequencyFromPeriod(2032)).toBeGreaterThan(440.0);
+    expect(s3m.frequencyFromPeriod(2032)).toBeLessThan(440.6);
+  });
+
+  it('round-trips period -> frequency -> period', () => {
+    for (const period of [2032, 3424, 1712, 27392, 5000]) {
+      expect(
+        s3m.rawPeriodFromFrequency(s3m.frequencyFromPeriod(period)),
+      ).toBeCloseTo(period, 4);
+    }
+  });
+
+  it('clamps to ST3’s own playable range', () => {
+    // setmasterflags: aspdmin = 64, aspdmax = 32767 (the amiga-limits
+    // variant, 453..3424, is a per-file flag and stays open for P5).
+    expect(s3m.clampPeriod(10)).toBe(64);
+    expect(s3m.clampPeriod(40000)).toBe(32767);
+    expect(s3m.clampPeriod(2032)).toBe(2032);
+  });
+
+  it('leaves rawPeriodFromFrequency unclamped', () => {
+    const highFrequency = s3m.frequencyFromPeriod(50);
+    expect(s3m.rawPeriodFromFrequency(highFrequency)).toBeCloseTo(50, 4);
+    expect(s3m.periodFromFrequency(highFrequency)).toBe(64);
+  });
+
+  it('steps arpeggio through the real period table', () => {
+    // File note 0x30 (C-4) + 12 halfnotes is 0x40 (C-5): exactly one
+    // octave, period halved.
+    expect(s3m.arpeggioPeriod(3424, 12)).toBe(1712);
+    expect(s3m.arpeggioPeriod(3424, 0)).toBe(3424);
+    // +2 from 0x30 is 0x32 (D-4) = 24384 >> 3, a table entry -- not the
+    // exponential 3424 * 2^(-2/12) = 3040.7.
+    expect(s3m.arpeggioPeriod(3424, 2)).toBe(3048);
+    // +1 from 0x39 (A-4) is 0x3A (A#-4) = 15360 >> 3.
+    expect(s3m.arpeggioPeriod(2032, 1)).toBe(1920);
+  });
+
+  it('clamps an arpeggio past the table edge instead of wrapping to DC', () => {
+    // st3play's slide routines hold the period inside 64..32767; unlike
+    // ProTracker there is no wrap-to-DC artefact.
+    const lowest = periodForNote(0x5b); // B-6, 14512 >> 5 = 453
+    expect(s3m.arpeggioPeriod(lowest, 1)).toBe(lowest);
+    expect(s3m.arpeggioPeriod(lowest, 1)).not.toBe(0);
+  });
+
+  it('snaps glissando to the nearest table entry', () => {
+    // Adjacent entries around 4500: 0x27 (G-3, 18240 >> 2 = 4560) and
+    // 0x28 (G#-3, 17216 >> 2 = 4304); 4560 is nearer.
+    expect(s3m.snapPeriod(4500)).toBe(4560);
+    expect(s3m.snapPeriod(4400)).toBe(4304);
+    expect(s3m.snapPeriod(3424)).toBe(3424);
   });
 });

@@ -18,6 +18,7 @@ import {
   type PitchModel,
   createAmigaPitchModel,
   createLinearPitchModel,
+  createS3mPitchModel,
   createXmAmigaPitchModel,
 } from './pitch-model';
 
@@ -188,6 +189,14 @@ export interface FormatProfile {
   readonly speedTempoCommandByte: number | undefined;
 
   /**
+   * The command byte that sets tempo outright. ProTracker folds speed and
+   * tempo into one byte (Fxx: 01-1F speed, 20-FF tempo), so it leaves this
+   * undefined; Scream Tracker 3 has separate commands -- A (0x01) sets the
+   * speed, T (0x14) the tempo -- so its tempo byte lives here.
+   */
+  readonly tempoCommandByte?: number;
+
+  /**
    * The command byte whose high parameter nibble selects an extended
    * subcommand (ProTracker/XM: 0x0E, Exy). Formats without extended effects
    * leave this undefined.
@@ -323,15 +332,112 @@ export const XM_AMIGA_PROFILE: FormatProfile = {
   pitch: createXmAmigaPitchModel(),
 };
 
-/** Scream Tracker 3 semantics. Placeholder, as for XM_PROFILE.
+/**
+ * Scream Tracker 3 semantics.
  *
- * The command tables still hold the ProTracker/XM values; filling them with
- * S3M's own numbering (where byte 0x01 is 'A' -- set speed, not portamento
- * up) is P5 work alongside the S3M parser, not a placeholder fix.
+ * Every value below is quoted from a reference in the decision log (D96).
+ * The command table is S3M's own numbering -- the file stores the letter
+ * minus 0x40 (OpenMPT's S3MConvert switches on `command | 0x40`), so byte
+ * 0x01 is 'A' (set speed), not ProTracker's portamento up, and 0x0F is 'O'
+ * (sample offset), not the speed command:
+ *
+ *   case 'A': m.command = CMD_SPEED;          // byte 0x01
+ *   case 'B': m.command = CMD_POSITIONJUMP;   // 0x02
+ *   case 'C': m.command = CMD_PATTERNBREAK;   // 0x03
+ *   case 'D': m.command = CMD_VOLUMESLIDE;    // 0x04
+ *   case 'E': m.command = CMD_PORTAMENTODOWN; // 0x05
+ *   case 'F': m.command = CMD_PORTAMENTOUP;   // 0x06
+ *   case 'G': m.command = CMD_TONEPORTAMENTO; // 0x07
+ *   case 'H': m.command = CMD_VIBRATO;        // 0x08
+ *   case 'I': m.command = CMD_TREMOR;         // 0x09
+ *   case 'J': m.command = CMD_ARPEGGIO;       // 0x0A
+ *   case 'K': m.command = CMD_VIBRATOVOL;     // 0x0B
+ *   case 'L': m.command = CMD_TONEPORTAVOL;   // 0x0C
+ *   case 'M': m.command = CMD_CHANNELVOLUME;  // 0x0D
+ *   case 'N': m.command = CMD_CHANNELVOLSLIDE;// 0x0E
+ *   case 'O': m.command = CMD_OFFSET;         // 0x0F
+ *   case 'P': m.command = CMD_PANNINGSLIDE;   // 0x10
+ *   case 'Q': m.command = CMD_RETRIG;         // 0x11
+ *   case 'R': m.command = CMD_TREMOLO;        // 0x12
+ *   case 'S': m.command = CMD_S3MCMDEX;       // 0x13
+ *   case 'T': m.command = CMD_TEMPO;          // 0x14
+ *   case 'U': m.command = CMD_FINEVIBRATO;    // 0x15
+ *   case 'V': m.command = CMD_GLOBALVOLUME;   // 0x16
+ *   case 'W': m.command = CMD_GLOBALVOLSLIDE; // 0x17
+ *   case 'X': m.command = CMD_PANNING8;       // 0x18
+ *
+ * (OpenMPT soundlib/Load_s3m.cpp.) ST3.20 itself supports A-L, O, Q, R, S,
+ * T, U and V ("a list of all the effects" in the ST3.20 manual); M, N, P,
+ * W and X are dummies in ST3's own replayer (st3play's `sotherjmp` maps
+ * them to `s_ret`) but were added by later trackers writing S3M files, and
+ * OpenMPT decodes them for every S3M file, so the table carries them too.
+ * M and N (per-channel volume commands) have no format-neutral behaviour in
+ * the effect union yet, so they are deliberately left unmapped rather than
+ * mis-decoded -- P5 gives them homes when the S3M importer lands.
+ *
+ * The ST3 replayer's semantics the profile fields encode, quoted from
+ * 8bitbubsy's st3play (see pitch-model.ts for the full quotes): slides
+ * move `info << 2` period units per tick (`s_slidedown`), so ST3 slides
+ * are four times finer than ProTracker's; `GET_LAST_NFO`
+ * (`if (ch->info == 0) ch->info = ch->alastnfo;`) reuses the last non-zero
+ * parameter on every slide command, so volume and fine slides both
+ * remember (the ProTracker contrast is its raw-byte-reading fine
+ * routines); and pan slides operate on a 0..255 byte exactly like FT2's.
+ *
+ * Nothing selects this profile until an S3M song carries the format tag,
+ * so MOD/XM/native playback is untouched.
  */
 export const S3M_PROFILE: FormatProfile = {
   ...PROTRACKER_PROFILE,
   format: 's3m',
+  pitch: createS3mPitchModel(),
+  // st3play's s_volslide opens with GET_LAST_NFO: a zero parameter
+  // reuses the channel's last non-zero slide info.
+  volumeSlideHasMemory: true,
+  // Every ST3 slide routine moves `info << 2` period units per tick
+  // (s_slidedown: `ch->aspd += ch->info << 2`).
+  portamentoUnitScale: 4,
+  // Same GET_LAST_NFO memory in the fine-slide paths (EFx/FFx fine
+  // slides arrive through the porta commands' high parameters).
+  fineSlideHasMemory: true,
+  // S3M pan is one 0..255 byte like FT2's (OpenMPT's S3M pan slide walks
+  // nPan 0..255 by the raw parameter), so one unit is 2/255 of the
+  // processor's -1..1 swing. (ST3.20's own replayer dummies the P
+  // command; the value is for the MPT-era files that use it.)
+  panSlideUnit: 2 / 255,
+  // S3M has no song-stop command: its 'F' byte (0x06) is portamento up,
+  // not speed (the ST3.20 manual's effect list has no stop reading).
+  f00StopsSong: false,
+  // S3M's finetune is the sample's own c2spd ("C4Spd", 8363 = no
+  // finetune), not a nibble; the one nibble-shaped surface, the S2x
+  // set-finetune command, uses ProTracker's signed 16-value table
+  // (xfinetune_amiga in st3play's digdata.c: 8363..8757 then 7895..8280),
+  // which is the signed-eighth-semitone reading ProTracker_PROFILE
+  // already encodes.
+  arpeggioCommandByte: 0x0a, // 'J'
+  speedTempoCommandByte: 0x01, // 'A' -- set speed (manual: "Set speed to xx")
+  tempoCommandByte: 0x14, // 'T' -- tempo = xx (manual: "valid values 20 to FF")
+  extendedCommandByte: 0x13, // 'S' -- extended commands
+  effectCommands: {
+    0x02: 'posJump', // B
+    0x03: 'patBreak', // C -- parameter is BCD-decoded at import (P5)
+    0x04: 'volSlide', // D
+    0x05: 'portaDown', // E
+    0x06: 'portaUp', // F
+    0x07: 'tonePorta', // G
+    0x08: 'vibrato', // H
+    0x09: 'tremor', // I
+    0x0b: 'vibratoVol', // K
+    0x0c: 'tonePortaVol', // L
+    0x0f: 'sampleOffset', // O
+    0x10: 'panSlide', // P (MPT-era; dummied in ST3's own replayer)
+    0x11: 'retrigVol', // Q
+    0x12: 'tremolo', // R
+    0x15: 'fineVibrato', // U
+    0x16: 'setGlobalVol', // V
+    0x17: 'globalVolSlide', // W (MPT-era)
+    0x18: 'setPan', // X -- 8-bit pan, 0..255 (MPT-era)
+  },
 };
 
 /**

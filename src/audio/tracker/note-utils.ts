@@ -183,6 +183,14 @@ export function decodeRawEffect(
     return { type: 'speed', speed: 0 };
   }
 
+  if (profile.tempoCommandByte !== undefined && cmd === profile.tempoCommandByte) {
+    // Formats with a dedicated tempo command (S3M's Txx). ST3's manual
+    // gives tempo the range 20-FF; smaller parameters have no meaning and
+    // decode to nothing rather than a bogus BPM.
+    if (value >= 0x20) return { type: 'tempo', bpm: value };
+    return undefined;
+  }
+
   if (profile.extendedCommandByte !== undefined && cmd === profile.extendedCommandByte) {
     const extEffect = parseExtendedEffect(paramX, paramY);
     if (extEffect) return { type: 'effect', effect: extEffect };
