@@ -1461,11 +1461,16 @@ export class PlaybackEngine {
           }
         }
 
-        // Reset effect state on new note (unless tone portamento)
+        // Reset effect state on new note (unless tone portamento). The
+        // volume column's Mx is one too: resetting here would clear
+        // hasActiveVoice and so retrigger the sample the note is meant to
+        // bend towards.
+        const volumeColumnTonePorta = step.volumeCommand?.type === 'tonePorta';
         if (
           newNote !== undefined &&
           step.effect?.type !== 'tonePorta' &&
-          step.effect?.type !== 'tonePortaVol'
+          step.effect?.type !== 'tonePortaVol' &&
+          !volumeColumnTonePorta
         ) {
           resetEffectStateForNote(effectState);
         }
@@ -1480,6 +1485,7 @@ export class PlaybackEngine {
           this.timingSystem.getTicksPerRow(),
           step.pan,
           step.volumeColumnVolume,
+          volumeColumnTonePorta,
         );
 
         // FT2's volume column runs alongside the effect column, after the

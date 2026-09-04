@@ -199,12 +199,112 @@ describe('volume-column playback', () => {
 
   it('arms tone portamento without needing a 3xx in the effect column', () => {
     const state = xmState();
-    // The note sets the target; the volume column supplies only the speed.
+    // A note is already playing...
     processEffectTick0(state, undefined, 60, 255, 261.63, 6);
+    // ...and the row's note is the target, with the column supplying the speed.
+    // The ninth argument is how the note handling is told the volume column
+    // carries an Mx, since the column itself is processed after it.
+    processEffectTick0(
+      state,
+      undefined,
+      67,
+      255,
+      392.0,
+      6,
+      undefined,
+      undefined,
+      true,
+    );
     processVolumeColumnTick0(state, { type: 'tonePorta', value: 0x30 });
 
     expect(state.tonePortaSpeed).toBe(0x30);
     expect(state.tonePortaActive).toBe(true);
+    // The note set the target and left the playing pitch alone.
+    expect(state.targetFrequency).toBeCloseTo(392.0, 6);
+    expect(state.currentFrequency).toBeCloseTo(261.63, 6);
+  });
+
+  /**
+   * Mx is a tone portamento in every respect the note cares about: FT2 reads
+   * the volume column while setting the note up, so the row's note becomes the
+   * slide's target rather than retriggering the sample. Because the column is
+   * processed after the note here, processEffectTick0 has to be told about it
+   * separately -- without that it saw an empty effect column, retriggered the
+   * note at its own pitch, and left the slide with nothing to travel: target
+   * and current were the same frequency, so nothing ever moved.
+   */
+  it('does not retrigger the note it is meant to bend towards', () => {
+    const state = xmState();
+    const first = processEffectTick0(state, undefined, 60, 255, 261.63, 6);
+    expect(first.commands.some((c) => c.kind === 'noteOn')).toBe(true);
+
+    const second = processEffectTick0(
+      state,
+      undefined,
+      67,
+      255,
+      392.0,
+      6,
+      undefined,
+      undefined,
+      true,
+    );
+    expect(second.commands.some((c) => c.kind === 'noteOn')).toBe(false);
+    processVolumeColumnTick0(state, { type: 'tonePorta', value: 0x30 });
+
+    // And the slide actually travels: each tick moves the pitch up towards
+    // G4, and it never overshoots.
+    let previous = state.currentFrequency;
+    for (let tick = 1; tick < 6 && previous < 392.0; tick++) {
+      const batch = processVolumeColumnTickN(state, {
+        type: 'tonePorta',
+        value: 0x30,
+      });
+      const pitch = batch.commands.find((c) => c.kind === 'pitch');
+      expect(pitch).toBeDefined();
+      expect(pitch!.frequency).toBeGreaterThan(previous);
+      expect(pitch!.frequency).toBeLessThanOrEqual(392.0 + 1e-9);
+      previous = pitch!.frequency;
+    }
+    expect(previous).toBeGreaterThan(261.63);
+    expect(previous).toBeLessThanOrEqual(392.0 + 1e-9);
+  });
+
+  /**
+   * A following row with an Mx but no note keeps sliding towards the target
+   * the last note set, exactly as a bare 3xx row does.
+   */
+  it('keeps sliding on a later row that carries no note', () => {
+    const state = xmState();
+    processEffectTick0(state, undefined, 60, 255, 261.63, 6);
+    processEffectTick0(
+      state,
+      undefined,
+      67,
+      255,
+      392.0,
+      6,
+      undefined,
+      undefined,
+      true,
+    );
+    processVolumeColumnTick0(state, { type: 'tonePorta', value: 0x30 });
+    processVolumeColumnTickN(state, { type: 'tonePorta', value: 0x30 });
+
+    // Next row: no note, and F0 (speed 0) reuses the remembered speed.
+    processEffectTick0(state, undefined, undefined, undefined, undefined, 6);
+    processVolumeColumnTick0(state, { type: 'tonePorta', value: 0 });
+    expect(state.tonePortaSpeed).toBe(0x30);
+    expect(state.targetFrequency).toBeCloseTo(392.0, 6);
+
+    const before = state.currentFrequency;
+    const batch = processVolumeColumnTickN(state, {
+      type: 'tonePorta',
+      value: 0,
+    });
+    const pitch = batch.commands.find((c) => c.kind === 'pitch');
+    expect(pitch).toBeDefined();
+    expect(pitch!.frequency).toBeGreaterThan(before);
   });
 
   it('re-arms its slides each row rather than remembering them', () => {

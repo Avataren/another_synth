@@ -826,6 +826,16 @@ export function processEffectTick0(
    * Rxy (multiNoteRetrig) check" (ft2_replayer.c, handleEffects_TickZero).
    */
   volumeColumnVolume?: boolean,
+  /**
+   * True when this row's XM volume column carries a tone portamento (Mx).
+   * FT2 reads the volume column while the note is being set up, and its Mx is
+   * a tone portamento in every respect the note cares about: the row's note
+   * becomes the slide's target instead of retriggering the sample. The flag
+   * has to arrive separately because the volume column is processed after
+   * this function (processVolumeColumnTick0), by which point the note has
+   * already been dealt with.
+   */
+  volumeColumnTonePorta?: boolean,
 ): TickCommandBatch {
   const commands: ProcessorCommand[] = [];
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
@@ -929,8 +939,14 @@ export function processEffectTick0(
 
   // Update current note if we have a new one
   if (newNote !== undefined) {
-    // For tone portamento, new note sets target, not current
-    if (effect?.type === 'tonePorta' || effect?.type === 'tonePortaVol') {
+    // For tone portamento, new note sets target, not current. The volume
+    // column's Mx counts: FT2 treats it as a tone portamento here even when
+    // the effect column is empty.
+    if (
+      effect?.type === 'tonePorta' ||
+      effect?.type === 'tonePortaVol' ||
+      volumeColumnTonePorta === true
+    ) {
       state.targetMidi = newNote;
       const targetFreq = noteFrequency ?? midiToFrequency(newNote);
       state.targetFrequency = targetFreq;
@@ -1974,13 +1990,23 @@ export function processVolumeColumnTick0(
 
     case 'tonePorta':
       // Sets the speed only; the target is whatever note the row supplied,
-      // which processEffectTick0 has already resolved. A zero parameter keeps
-      // the remembered speed, as 300 does.
+      // which processEffectTick0 has already resolved (it is told about this
+      // command through its `volumeColumnTonePorta` flag, so the note set a
+      // target rather than retriggering). A zero parameter keeps the
+      // remembered speed, as 300 does.
       if (command.value > 0) {
         state.tonePortaSpeed = command.value;
         state.lastTonePorta = command.value;
       } else if (state.lastTonePorta > 0) {
         state.tonePortaSpeed = state.lastTonePorta;
+      }
+      // And, as with 3xx, a row that carries no note keeps sliding towards
+      // the target the last one set.
+      if (state.lastTonePortaTargetFreq !== undefined) {
+        state.targetFrequency = state.lastTonePortaTargetFreq;
+      }
+      if (state.lastTonePortaTargetPeriod !== undefined) {
+        state.targetPeriod = state.lastTonePortaTargetPeriod;
       }
       state.tonePortaActive = state.tonePortaSpeed > 0;
       break;
