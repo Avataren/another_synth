@@ -216,6 +216,8 @@
       <div v-if="showPlaylist" class="playlist-dock">
         <JukeboxPanel
           :entries="jukebox.entries"
+          :visible-entries="jukebox.filteredEntries"
+          v-model:filter="jukebox.filter"
           :current-index="jukebox.currentIndex"
           :current="jukebox.current"
           :has-entries="jukebox.hasEntries"

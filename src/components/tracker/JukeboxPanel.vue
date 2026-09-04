@@ -79,29 +79,53 @@
 
       <div v-if="busy" class="jukebox-status">Loading song…</div>
 
+      <div v-if="hasEntries" class="playlist-filter">
+        <input
+          class="playlist-filter-input"
+          type="text"
+          :value="filter"
+          placeholder="Filter songs…"
+          enterkeyhint="search"
+          autocomplete="off"
+          @input="$emit('update:filter', ($event.target as HTMLInputElement).value)"
+        />
+        <span v-if="filter" class="playlist-filter-count">
+          {{ visibleEntries.length }} / {{ entries.length }}
+        </span>
+        <button
+          v-if="filter"
+          type="button"
+          class="playlist-filter-clear"
+          title="Clear the filter"
+          @click="$emit('update:filter', '')"
+        >
+          ×
+        </button>
+      </div>
+
       <div ref="listContainer" class="playlist">
         <div
-          v-for="(entry, index) in entries"
-          :key="entry.file"
-          :ref="(el) => setRowRef(index, el)"
+          v-for="row in visibleEntries"
+          :key="row.entry.file"
+          :ref="(el) => setRowRef(row.index, el)"
           class="playlist-item"
-          :class="{ current: index === currentIndex }"
-          :title="entry.title"
-          @dblclick="$emit('play-index', index)"
+          :class="{ current: row.index === currentIndex }"
+          :title="row.entry.title"
+          @dblclick="$emit('play-index', row.index)"
         >
           <div class="playlist-index">
             <q-icon
-              v-if="index === currentIndex && isPlaying"
+              v-if="row.index === currentIndex && isPlaying"
               name="volume_up"
               size="13px"
             />
-            <span v-else>{{ index + 1 }}</span>
+            <span v-else>{{ row.index + 1 }}</span>
           </div>
           <div class="playlist-body">
-            <div class="playlist-title">{{ entry.title }}</div>
+            <div class="playlist-title">{{ row.entry.title }}</div>
             <div class="playlist-meta">
-              {{ entry.format }} · {{ entry.channels }}ch ·
-              {{ formatSize(entry.bytes) }}
+              {{ row.entry.format }} · {{ row.entry.channels }}ch ·
+              {{ formatSize(row.entry.bytes) }}
             </div>
           </div>
           <div class="playlist-actions">
@@ -109,14 +133,14 @@
               type="button"
               title="Play this song"
               :disabled="busy"
-              @click.stop="$emit('play-index', index)"
+              @click.stop="$emit('play-index', row.index)"
             >
               ▶
             </button>
             <button
               type="button"
               title="Remove from the playlist"
-              @click.stop="$emit('remove', index)"
+              @click.stop="$emit('remove', row.index)"
             >
               ×
             </button>
@@ -125,6 +149,9 @@
 
         <div v-if="!hasEntries" class="playlist-empty">
           The playlist is empty. Add some demo songs to get going.
+        </div>
+        <div v-else-if="filter && visibleEntries.length === 0" class="playlist-empty">
+          No songs match “{{ filter.trim() }}”.
         </div>
       </div>
 
@@ -166,6 +193,9 @@ import type { JukeboxEntry } from 'src/stores/jukebox-store';
  */
 const props = defineProps<{
   entries: JukeboxEntry[];
+  /** The playlist narrowed by the filter, paired with real queue indices. */
+  visibleEntries: { entry: JukeboxEntry; index: number }[];
+  filter: string;
   currentIndex: number;
   current: JukeboxEntry | null;
   hasEntries: boolean;
@@ -187,6 +217,7 @@ defineEmits<{
   clear: [];
   close: [];
   'update:repeat': [value: boolean];
+  'update:filter': [value: string];
 }>();
 
 const listContainer = ref<HTMLElement | null>(null);
@@ -346,6 +377,54 @@ watch(
 .jukebox-status {
   font-size: 11px;
   color: var(--tracker-accent-primary, #4df2c5);
+}
+
+.playlist-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.playlist-filter-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: var(--text-primary, #fff);
+  font-size: 16px; /* 16px+: mobile browsers zoom smaller inputs */
+  padding: 4px 8px;
+}
+
+.playlist-filter-input::placeholder {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.45));
+}
+
+.playlist-filter-input:focus {
+  outline: none;
+  border-color: var(--tracker-accent-primary, #4df2c5);
+}
+
+.playlist-filter-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+.playlist-filter-clear {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.playlist-filter-clear:hover {
+  color: var(--text-primary, #fff);
 }
 
 .playlist {

@@ -4,6 +4,7 @@ import {
   demoSongUrl,
   type DemoSong,
 } from '../composables/useDemoManifest';
+import { filterSongsIndexed } from '../composables/song-filter';
 
 /**
  * One song queued for playback.
@@ -69,6 +70,30 @@ export const useJukeboxStore = defineStore('jukebox', () => {
 
   /** Whether the playlist restarts after its last entry. */
   const repeat = ref(true);
+
+  /** Session-scoped search text narrowing the visible playlist. */
+  const filter = ref('');
+
+  function setFilter(value: string): void {
+    filter.value = value;
+  }
+
+  /**
+   * The playlist narrowed by `filter`, view-only.
+   *
+   * Pairs each match with its index in the real `entries` list, so the panel
+   * can render the subset while play/remove/current still act on the whole
+   * queue -- filtering must never reorder or stop what is playing.
+   */
+  const filteredEntries = computed<{ entry: JukeboxEntry; index: number }[]>(
+    () =>
+      filterSongsIndexed(
+        entries.value,
+        filter.value,
+        (entry) => entry.title,
+        (entry) => entry.file,
+      ).map(({ item, index }) => ({ entry: item, index })),
+  );
 
   const current = computed<JukeboxEntry | null>(
     () => entries.value[currentIndex.value] ?? null,
@@ -194,5 +219,8 @@ export const useJukeboxStore = defineStore('jukebox', () => {
     clear,
     setActive,
     setRepeat,
+    filter,
+    setFilter,
+    filteredEntries,
   };
 });

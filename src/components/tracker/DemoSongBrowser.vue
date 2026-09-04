@@ -27,9 +27,32 @@
           </button>
         </div>
 
+        <div class="demo-filter">
+          <input
+            v-model="filterText"
+            class="demo-filter-input"
+            type="text"
+            placeholder="Filter songs…"
+            enterkeyhint="search"
+            autocomplete="off"
+          />
+          <span v-if="filterText" class="demo-filter-count">
+            {{ visibleSongs.length }} / {{ activeSongs.length }}
+          </span>
+          <button
+            v-if="filterText"
+            type="button"
+            class="demo-filter-clear"
+            title="Clear the filter"
+            @click="filterText = ''"
+          >
+            ×
+          </button>
+        </div>
+
         <div class="demo-list">
           <button
-            v-for="song in activeSongs"
+            v-for="song in visibleSongs"
             :key="song.file"
             type="button"
             class="demo-song"
@@ -46,6 +69,13 @@
               {{ formatSize(song.bytes) }}
             </span>
           </button>
+
+          <div
+            v-if="filterText && visibleSongs.length === 0"
+            class="demo-status demo-no-match"
+          >
+            No songs match “{{ filterText.trim() }}”.
+          </div>
         </div>
       </template>
     </div>
@@ -59,6 +89,7 @@ import {
   DEMO_BASE_URL,
   type DemoSong,
 } from 'src/composables/useDemoManifest';
+import { filterSongsIndexed } from 'src/composables/song-filter';
 
 /**
  * Browser for the demo modules published alongside the app.
@@ -104,6 +135,18 @@ const activeSongs = computed(() => {
   );
   return collection?.songs ?? [];
 });
+
+/** Session-scoped search text; narrows the active collection, view-only. */
+const filterText = ref('');
+
+const visibleSongs = computed(() =>
+  filterSongsIndexed(
+    activeSongs.value,
+    filterText.value,
+    (song) => song.title,
+    (song) => song.file,
+  ).map(({ item }) => item),
+);
 
 function isQueued(song: DemoSong): boolean {
   return props.queuedFiles?.has(song.file) ?? false;
@@ -229,6 +272,60 @@ watch(
   opacity: 0.6;
   margin-left: 6px;
   font-size: 11px;
+}
+
+.demo-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.demo-filter-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  color: var(--text-primary, #fff);
+  font-size: 16px; /* 16px+: mobile browsers zoom smaller inputs */
+  padding: 7px 10px;
+}
+
+.demo-filter-input::placeholder {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.45));
+}
+
+.demo-filter-input:focus {
+  outline: none;
+  border-color: rgba(77, 242, 197, 0.5);
+}
+
+.demo-filter-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  white-space: nowrap;
+}
+
+.demo-filter-clear {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.demo-filter-clear:hover {
+  color: var(--text-primary, #fff);
+}
+
+.demo-no-match {
+  text-align: center;
 }
 
 .demo-list {
