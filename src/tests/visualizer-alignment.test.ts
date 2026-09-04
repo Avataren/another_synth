@@ -14,6 +14,7 @@ import {
   VISUALIZER_ROW_GAP_PX,
   VISUALIZER_SPACER_PX,
   VISUALIZER_PADDING_BIAS,
+  trackScrollMaxima,
 } from 'src/components/tracker/visualizer-alignment';
 
 /**
@@ -132,5 +133,38 @@ describe('canvas renderer padding', () => {
       // columnStart(n) — with the scroller at 60, these must coincide.
       expect(stripColumnN).toBe(60 + GUTTER_WIDTH_PX + columnStart(3, count, extra));
     }
+  });
+});
+
+describe('which element owns the horizontal scroll extent', () => {
+  /**
+   * The waveform strip is synced from one scroll position, and the sync used
+   * the DOM grid's tracks wrapper both as the extent and as the gate. The
+   * canvas renderer has no such wrapper -- it paints the tracks into a bitmap
+   * and drives horizontal position from its own hscroll proxy -- so under the
+   * canvas the gate was permanently shut and the strip never moved with the
+   * pattern (Morten, 2026-09-04).
+   */
+  const wrapper = { scrollWidth: 2000, clientWidth: 800 };
+  const hscroll = { scrollWidth: 1600, clientWidth: 600 };
+
+  it('the DOM grid wrapper wins when it exists', () => {
+    expect(trackScrollMaxima(wrapper, hscroll)).toBe(1200);
+    expect(trackScrollMaxima(wrapper, null)).toBe(1200);
+  });
+
+  it('the canvas hscroll proxy answers when there is no wrapper', () => {
+    // The case that was returning "nothing to sync".
+    expect(trackScrollMaxima(null, hscroll)).toBe(1000);
+  });
+
+  it('only a genuine absence of both reports nothing to sync', () => {
+    expect(trackScrollMaxima(null, null)).toBeNull();
+  });
+
+  it('a pattern that fits has no scroll, but is still not "nothing"', () => {
+    // Zero is a real extent -- it clamps the strip to 0 -- and must not be
+    // confused with the null that skips the sync.
+    expect(trackScrollMaxima(null, { scrollWidth: 500, clientWidth: 800 })).toBe(0);
   });
 });

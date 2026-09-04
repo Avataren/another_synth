@@ -824,6 +824,7 @@ import {
 import {
   canvasVisualizerPadding,
   domVisualizerPadding,
+  trackScrollMaxima,
 } from 'src/components/tracker/visualizer-alignment';
 import { visiblePageWindow } from 'src/components/tracker/page-window';
 import { setSampleQuality } from 'src/audio/sample-quality';
@@ -1611,20 +1612,28 @@ function measureTrackScrollbar() {
  */
 function syncTrackScroll(scrollLeft: number) {
   const patternWrapper = resolvePatternTracksWrapper();
-  if (!patternWrapper) return;
+  // The canvas renderer has no DOM tracks wrapper -- it paints the tracks
+  // into a bitmap and drives horizontal position from its own hscroll proxy.
+  // Requiring the wrapper here made this whole function a no-op under the
+  // canvas, so the waveform strip never followed a horizontal scroll.
+  const canvasHScroll = canvasRendererActive.value ? canvasHScrollEl() : null;
+  const maxScroll = trackScrollMaxima(patternWrapper, canvasHScroll);
+  if (maxScroll === null) return;
 
   patternTracksWrapper.value = patternWrapper;
-  const maxScroll = Math.max(
-    0,
-    patternWrapper.scrollWidth - patternWrapper.clientWidth,
-  );
   const clamped = Math.min(scrollLeft, maxScroll);
 
   if (isSyncingTrackScroll) return;
   isSyncingTrackScroll = true;
 
-  if (patternWrapper.scrollLeft !== clamped) {
+  if (patternWrapper && patternWrapper.scrollLeft !== clamped) {
     patternWrapper.scrollLeft = clamped;
+  }
+
+  // Writing this back matters only when the value was clamped; the guard
+  // above absorbs the scroll event it fires.
+  if (canvasHScroll && canvasHScroll.scrollLeft !== clamped) {
+    canvasHScroll.scrollLeft = clamped;
   }
 
   const visualizer = visualizerTracksRef.value;

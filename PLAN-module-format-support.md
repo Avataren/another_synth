@@ -3529,6 +3529,39 @@ inherits responsibility for every behaviour the old one got from the DOM — her
 focused element into view. The playback follow was ported because it was visibly a feature;
 the cursor follow was invisible until someone pressed a key.
 
+### D111 — The waveform strip never followed a horizontal scroll under the canvas
+
+Morten, 2026-09-04: "on desktop, the waveform visualizers on top of each track doesn't follow
+when scrolling the pattern horizontally."
+
+`visualizer-alignment.ts` already does the hard part correctly -- `canvasVisualizerPadding`
+matches the strip's scroll extent to the bitmap's so "every scroll offset then maps 1:1 and
+each waveform stays over its track at every position, not just at 0". The alignment was right;
+the sync that was supposed to drive it never ran.
+
+`syncTrackScroll` opens with:
+
+```
+const patternWrapper = resolvePatternTracksWrapper();
+if (!patternWrapper) return;
+```
+
+and `resolvePatternTracksWrapper` reads `trackerPatternRef` -- the **DOM grid**, which the
+canvas renders `v-else` to and which therefore does not exist. Its only other source,
+`patternTracksWrapper`, is assigned nothing but that same function's own result, so it stays
+null forever. Under the canvas renderer the function returned on its first line every single
+time, and the strip (and the proxy scrollbar) were never synced to anything.
+
+The wrapper was standing in for two different things: *the element that owns the scroll
+extent* and *whether there is anything to sync at all*. With the DOM grid one element is both;
+with the canvas the extent lives on its hscroll proxy and the gate should never have been shut.
+Split out as `trackScrollMaxima`, which asks the wrapper first and the canvas proxy second, and
+reports null only when neither exists.
+
+**Same shape as D110, one layer up**: the canvas renderer inherited a behaviour the DOM grid
+got from having a real scrolling element, and the inheritance was silent because the code that
+needed it failed closed rather than loudly.
+
 ### D106 — Notes above B-6 kept their period domain (S3M)
 
 satellite_one.s3m's lead on channels 4/5, reported as "muffled, the different notes don't
@@ -3656,6 +3689,7 @@ Tests: `pattern-canvas.test.ts` playback-follow frame pin (new). Suite 1448
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-04 | fix | **The waveform strip follows horizontal scroll again** (D111). `syncTrackScroll` gated on the DOM grid's tracks wrapper, which the canvas renderer does not have (it renders `v-else` to it) and which nothing else ever assigns -- so under the canvas the function returned on its first line every time and the strip above the tracks never moved with the pattern. The wrapper was standing in for both "who owns the scroll extent" and "is there anything to sync"; split out as `trackScrollMaxima`, which falls back to the canvas's hscroll proxy. Alignment itself was already correct (`canvasVisualizerPadding`). Tests: `visualizer-alignment.test.ts` +4. |
 | 2026-09-04 | fix | **A sample number reloads the channel volume, retrigger or not** (D108). satellite_one.s3m's lead still sat ~10 dB low on Pattern 4 after D106/D107: its notes carry an instrument number and no volume byte against volume rows that pump the channel down, and every one is a tone portamento, so the reload never fired. The predicate keyed off `entry.instrument`, which D77 deliberately clears on porta rows and D56 deliberately sets on bare notes -- so it withheld the volume where ST3 resets it and stamped one where ST3 preserves it, D55's rule wrong in both directions at once. Keyed off the instrument number itself now, matching mod-import (which documents this for nexus_seven.mod) and xm-import. 14 of 20 corpus modules change. Tests: `s3m-import.test.ts` +3 (2 confirmed failing against the old code). |
 | 2026-09-04 | fix | **The S3M corpus and demo pins were not running.** `s3m-corpus`/`raw-effect-bytes` read `~/Downloads/mods/s3m` behind an `existsSync(dir)` guard; the directory outlived the files in it, so the guard passed and all 10 pins ENOENTed instead of skipping -- a guard on the directory cannot answer for the modules. The corpus is vendored at `public/demos/s3m`, so they now read that and guard on nothing. `tracker-initial-speed` likewise hardcoded an absolute path under a home directory and silently `return`ed. Separately, `demo-collection` -- the guard against a truncated download or a duplicate being published unreachable -- still filtered `\.(mod|xm)$` and parsed everything non-XM as MOD, so the 20 S3M demos were listed in `index.json` (correctly) and covered by nothing. Suite is fully green for the first time: 1460 tests, 0 skipped-by-accident. |
 | 2026-09-04 | fix | **Starting mid-song primes the per-track instrument latch** (D107). Selecting satellite_one.s3m's third pattern and pressing play dropped the lead's first three rows whole -- no note, no pitch, no volume -- because they are tone portamentos, which must not stamp an instrument (D55/D77/D78), and the engine latch that carries it (D79) is empty when playback starts in the middle. `primeTrackInstrumentLatches()` replays just the latch along the order list up to the start position, reading only instrument-bearing (i.e. note-starting) rows and never overwriting a live one. The playback-time twin of D56's import-time fix. Tests: `src/tests/tracker-midsong-instrument-latch.test.ts` (1 of 3 confirmed failing against the old code). |
