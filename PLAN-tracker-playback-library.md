@@ -4,9 +4,13 @@
 to play MOD, XM, S3M and this app's own native songs, without dragging in
 Quasar, Pinia, Vue, the Rust/WASM synth, or the pattern editor.
 
-**Status.** Layers 1 and 3 done (2026-09-04). Layer 2 not started; layer 4
-not started. Layer 3 is done except for physically moving the file into the
-package, which is blocked on an open decision — see §6.
+**Status.** Layers 1 and 3 done (2026-09-04). Layer 2 not started; layer 4 not
+started.
+
+Layer 3 stopped short of moving its file into the package, pending the question
+in §6. **That question is now answered** (see §6, "Resolved") and the move is
+unblocked. §8 is the recommended next action and is where to start reading if
+you are picking this up cold.
 
 This document is written to be picked up cold, in a new session, by someone (or
 some model) with no memory of the work. It records what was measured, what was
@@ -314,8 +318,11 @@ Estimates assume familiarity with the code.
 
 ### Layer 2 — importers (~1 day)
 
-Move `mod-import.ts`, `xm-import.ts`, `s3m-import.ts`, `sampler-patch-builder.ts`
-and `note-utils.ts` into the package.
+Move `mod-import.ts`, `xm-import.ts`, `s3m-import.ts` and `note-utils.ts` into
+the package. `sampler-patch-builder.ts` stays in the app under the §6
+recommendation, as the adapter from a lean sample descriptor to a `Patch`.
+
+§8 gives the order to do these in, and why this layer rather than layer 4.
 
 1. Replace `uid()` from quasar with `crypto.randomUUID()`.
 2. Move `TOTAL_SLOTS` and `CURRENT_SONG_FILE_VERSION` out of the Pinia store
@@ -380,40 +387,63 @@ import('@another-synth/tracker-playback').then(async (lib) => {
 
 ---
 
-## 6. Open decisions
+## 6. Decisions
 
-Not blockers, but they shape the API and are better settled early than
-retrofitted.
+### Resolved: the library owns the row model
 
-**What shape do the importers emit?** Today they build the app's `Patch` — a
-full synth preset with modulation routing, envelopes and macro assignments,
-because in this app a MOD sample _is_ a sampler patch. A standalone consumer
-almost certainly wants something leaner: sample data, loop points, finetune,
-default volume, root note. Options: (a) emit the lean descriptor and let the app
-adapt it into a `Patch`; (b) emit `Patch` and make consumers ignore most of it;
-(c) emit both behind a flag. (a) is the honest boundary but is the most work,
-because `sampler-patch-builder.ts` (440 lines) is entirely about building
-`Patch`es.
+**Question.** Should the importers emit the app's editor model
+(`TrackerEntryData` and friends), or emit `PlaybackSong` directly and leave the
+editor model in the app? The second reading would have kept
+`playback-song-builder.ts` app-side permanently and made layer 2 much smaller.
 
-**Does the library own the editor model at all?** This is now the decision that
-gates the rest, because layer 3 stopped on it.
+**Answer: the importers emit the row model, and it moves into the library.**
 
-Layer 2 as sketched moves `TrackerEntryData` and friends into the package. That
-makes the library opinionated about how a _song_ is represented, not just how
-one is _played_ — and it is what would let `playback-song-builder.ts` move in
-too. The alternative is for importers to emit `PlaybackSong` directly and leave
-the editor model in the app; then `playback-song-builder.ts` is an app-side
-adapter that stays put, and the library's story is "bytes in, scheduled events
-out".
+The evidence is in the two types. `Step` (the engine's input) carries
+`effect?: EffectCommand` — a _decoded_ effect. `TrackerEntryData` carries
+`effectCommand` and `effectParam`, the raw format-native bytes. Those bytes are
+the source of truth for imported rows: it is the whole subject of
+`src/tests/raw-effect-bytes.test.ts`, and `buildPlaybackStepsForTrack` prefers
+them over the text macro precisely because the text is presentation and can
+collide with the hand-authored dialect (D94).
 
-Cheapness is not the tiebreaker — the move itself is small. `note-utils.ts` (457
-lines) imports only types from `tracker-types` plus `FormatProfile` from the
-package; `tracker-types.ts` is 76 lines of pure interfaces; `TrackerPattern` is
-an 11-line interface; and `InstrumentSlot` is only needed by
-`syncSongBankFromSlots`, which stays in the app regardless. Leaving the app-side
-files as re-export shims would make the blast radius zero. The question is
-whether owning an editor model is the library's job, not whether it is
-affordable.
+So `PlaybackSong` cannot round-trip back to a row. An importer that emitted only
+`PlaybackSong` would leave the app unable to show an imported module in the
+pattern editor or re-export it, and the app would have to keep a second copy of
+the importers to get the rows back. That settles it.
+
+Consequence: `tracker-types.ts`, `note-utils.ts`, the three importers and
+`playback-song-builder.ts` all belong in the package. The app keeps re-export
+shims so no import site has to change.
+
+### Still open: what shape do the _samples_ take?
+
+This is the smaller half of the same question, and the only part still undecided.
+
+`sampler-patch-builder.ts` (440 lines) emits the app's `Patch` — a full synth
+preset with modulation routing, envelopes and macro assignments, because in this
+app a MOD sample _is_ a sampler patch. A standalone consumer wants far less:
+sample data, loop points, finetune, default volume, root note.
+
+Recommendation (not yet acted on): have the library emit a lean `TrackerSample`
+descriptor and keep `sampler-patch-builder.ts` in the app as the adapter that
+turns one into a `Patch`. That is the honest boundary, and it also takes the
+last `app/public/wasm/audio_processor` type import out of the library path.
+
+The alternatives are (b) emit `Patch` and make consumers ignore most of it, or
+(c) emit both behind a flag. Both are worse; (b) exports the app's synth model
+to people who did not ask for a synth.
+
+Note this fork only touches the _instrument_ half of layer 2. The pattern half
+is settled by the section above and can proceed without waiting on it.
+
+### How much the move costs
+
+Measured, so nobody re-derives it: `note-utils.ts` (457 lines) imports only types
+from `tracker-types` plus `FormatProfile` from the package; `tracker-types.ts` is
+76 lines of pure interfaces with no imports at all; `TrackerPattern` is an
+11-line interface; `InstrumentSlot` is needed only by `syncSongBankFromSlots`,
+which stays in the app regardless. With re-export shims left behind, the blast
+radius is zero.
 
 **Native-format support.** `NATIVE_PROFILE` and the app's own song format are in
 the library already. Whether an external consumer cares is unclear, but it costs
@@ -445,7 +475,47 @@ Small things that cost time if you meet them cold.
 
 ---
 
-## 8. Related documents
+## 8. Recommended next action
+
+**Layer 2, pattern half first.** Rationale, in case it needs re-arguing:
+
+- It is unblocked as of the §6 resolution above.
+- It is independently useful. Bytes → `PlaybackSong` means someone can write
+  their own audio backend against the library today; layer 4 without it produces
+  nothing usable, because a consumer could not load a file in the first place.
+- It is the smaller job (~1 day against layer 4's 2–3).
+- It de-risks layer 4. Designing the sink interface is much easier against a
+  library that can already produce songs to feed it.
+- It completes layer 3 by letting `playback-song-builder.ts` move in.
+
+Order of operations:
+
+1. `tracker-types.ts` → package. Leave `src/components/tracker/tracker-types.ts`
+   as a re-export shim.
+2. `note-utils.ts` → package (it imports only types plus `FormatProfile`).
+3. `TOTAL_SLOTS` / `CURRENT_SONG_FILE_VERSION` out of the Pinia store into a
+   plain constants module the store re-exports.
+4. `uid()` from quasar → `crypto.randomUUID()`.
+5. The three importers → package, minus the sample half if the `TrackerSample`
+   question in §6 is still open; `sampler-patch-builder.ts` stays in the app
+   either way.
+6. `playback-song-builder.ts` → package. This is the layer-3 leftover.
+
+Run the §5 checks after each step, not at the end. The corpus suite is what
+makes this safe.
+
+### Two smaller things worth queuing after
+
+- **The package has no README.** For "use it in other apps" that becomes the
+  actual barrier the moment the code works. It should show the three-line
+  parse-and-play path and say plainly which exports touch the DOM (§2).
+- **The standalone check in §5 should be a checked-in script**, not something
+  run by hand. The app resolves the package to source, so nothing in CI
+  exercises `dist` at all — the one artifact external consumers actually get.
+
+---
+
+## 9. Related documents
 
 - `PLAN-module-format-support.md` — the D-numbered log of format-accuracy fixes.
   Every `Dnn` reference in the replay code points there. Read it before changing
