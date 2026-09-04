@@ -522,6 +522,7 @@ function dispatchTouch(
   x: number,
   y: number,
   timeStamp: number,
+  remaining = 0,
 ): void {
   const event = new Event(type, {
     bubbles: true,
@@ -529,7 +530,12 @@ function dispatchTouch(
   }) as unknown as TouchEvent;
   const point = { clientX: x, clientY: y, identifier: 0 };
   const ended = type === 'touchend' || type === 'touchcancel';
-  Object.defineProperty(event, 'touches', { value: ended ? [] : [point] });
+  // On end events e.touches holds the fingers still on the screen; handlers
+  // read only its length there, so placeholder points stand in for them.
+  const stillDown = ended
+    ? Array.from({ length: remaining }, (_, i) => ({ ...point, identifier: i }))
+    : [point];
+  Object.defineProperty(event, 'touches', { value: stillDown });
   Object.defineProperty(event, 'changedTouches', { value: [point] });
   Object.defineProperty(event, 'timeStamp', { value: timeStamp });
   target.dispatchEvent(event);
@@ -1098,6 +1104,74 @@ describe('follow vs. pan (the user owns the view mid-gesture)', () => {
 
     // Once the grace is gone, the NEXT row change re-centers — the DOM
     // grid's follow rule (center on every row change while playing).
+    nowMs += 500;
+    await wrapper.setProps({ playbackRow: 12 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(centerOf(12));
+    wrapper.unmount();
+  });
+
+  it('catching a coasting fling keeps ownership past the grace while the finger holds', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const canvas = wrapper.findAll('canvas.canvas-layer')[1]!.element;
+    const { visible } = layerCanvases(wrapper);
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+    const followTarget = centerOf(11);
+    installScrollExtents(wrapper);
+
+    // Launch a throw (two moves 16ms apart, released mid-motion).
+    dispatchTouch(canvas, 'touchstart', 100, 200, nowMs);
+    dispatchTouch(canvas, 'touchmove', 100, 230, nowMs + 16);
+    dispatchTouch(canvas, 'touchmove', 100, 260, nowMs + 32);
+    fireScroll(scroller);
+    nowMs += 40;
+    dispatchTouch(canvas, 'touchend', 100, 260, nowMs); // vy ≈ −1.875 px/ms
+
+    // Catch the coast: a finger lands while it runs, then HOLDS still far
+    // past the 350ms grace. The view stays the user's the whole time.
+    nowMs += 100;
+    dispatchTouch(canvas, 'touchstart', 100, 260, nowMs);
+    nowMs += 1000;
+    await wrapper.setProps({ playbackRow: 11 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).not.toBe(followTarget);
+    expect(drawImageOn(viewCtx).at(-1)!.sy).not.toBeCloseTo(followTarget, 5);
+    wrapper.unmount();
+  });
+
+  it('a second finger lifting while the first stays down keeps ownership', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const canvas = wrapper.findAll('canvas.canvas-layer')[1]!.element;
+    const panTop = centerOf(10) - 60;
+    installScrollExtents(wrapper);
+
+    dispatchTouch(canvas, 'touchstart', 100, 200, nowMs);
+    nowMs += 50;
+    dispatchTouch(canvas, 'touchmove', 100, 260, nowMs);
+    fireScroll(scroller);
+    await nextTick();
+    pumpFrame();
+
+    // The second finger lifts well after the last move (a stop, not a
+    // throw -- the component reads any touchend's samples as a release);
+    // the first finger stays on the glass.
+    nowMs += 300;
+    dispatchTouch(canvas, 'touchend', 100, 260, nowMs, 1);
+    nowMs += 1000; // well past the grace, first finger still down
+    await wrapper.setProps({ playbackRow: 11 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(panTop); // no center write under the finger
+
+    // The last finger lifts: grace runs, then the next row change re-centers.
+    nowMs += 100;
+    dispatchTouch(canvas, 'touchend', 100, 260, nowMs);
     nowMs += 500;
     await wrapper.setProps({ playbackRow: 12 } as never);
     await nextTick();

@@ -1221,21 +1221,26 @@ function stopFling(): void {
   if (flingRaf === null) return;
   cancelAnimationFrame(flingRaf);
   flingRaf = null;
-  gestureActive = false;
-  markGestureActivity();
+  // Ownership flags are NOT touched here: the coast-stop branch in
+  // startFling releases them when the decay finishes, and the only other
+  // callers are onTouchStart (which re-asserts ownership for the catching
+  // finger right after) and onBeforeUnmount (the component is going away).
+  // Clearing here made a caught fling drop ownership while the finger was
+  // still down -- after the grace, a held finger lost the view and the next
+  // row advance re-centered under it (review finding on 9ff8abf).
 }
 
 function onTouchStart(e: TouchEvent): void {
   lastTouchAt = e.timeStamp;
   const touch = e.touches[0];
   if (!touch) return;
-  // The finger owns the view from the moment it lands: a row advance under
-  // it must not yank the grid to center mid-gesture.
+  // Catching a coasting fling with a finger is the standard idiom: stop the
+  // coast FIRST (stopFling manages no ownership flags of its own), then take
+  // ownership -- the finger owns the view from the moment it lands, however
+  // long it then holds still.
+  stopFling();
   gestureActive = true;
   markGestureActivity();
-  // A touch during a fling stops it where it is, as every scrollable
-  // surface does -- otherwise the grid keeps sliding under the finger.
-  stopFling();
   touchOrigin = {
     x: touch.clientX,
     y: touch.clientY,
@@ -1267,8 +1272,14 @@ function onTouchEnd(e: TouchEvent): void {
   lastTouchAt = e.timeStamp;
   const origin = touchOrigin;
   touchOrigin = null;
-  gestureActive = false;
-  markGestureActivity();
+  if (e.touches.length > 0) {
+    // A second finger lifted while another stays down: the gesture is not
+    // over, the remaining finger still owns the view.
+    markGestureActivity();
+  } else {
+    gestureActive = false;
+    markGestureActivity();
+  }
   if (!origin) return;
   const touch = e.changedTouches[0];
   if (touch && isTap(origin, touch.clientX, touch.clientY, e.timeStamp)) {
@@ -1285,6 +1296,8 @@ function onTouchEnd(e: TouchEvent): void {
 function onTouchCancel(): void {
   touchOrigin = null;
   touchSamples = [];
+  // touchcancel fires only when the whole gesture is aborted by the system,
+  // so no e.touches check: every finger is gone.
   gestureActive = false;
   markGestureActivity();
 }
