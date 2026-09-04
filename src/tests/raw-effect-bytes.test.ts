@@ -672,7 +672,12 @@ describe('S3M builder decodes through the profile, not the text dialect (P5)', (
       currentSong: ref(file.data.currentSong),
       moduleFormat: ref(file.data.moduleFormat!),
       initialSpeed: ref(file.data.initialSpeed ?? 6),
-      linearFrequency: ref(true),
+      // The file's own frequency table, not a hardcoded `true`. Pinning it
+      // meant the five corpus XMs that select the Amiga table --
+      // 4-mat_-_rose, BUTTERFL, external, jt_strng, radix_-_take_on_me --
+      // were compared under XM_PROFILE, so the raw-vs-text identity this
+      // file exists to assert was never checked under XM_AMIGA_PROFILE.
+      linearFrequency: ref(file.data.linearFrequency ?? true),
       amigaLimits: ref(file.data.amigaLimits ?? false),
       patterns: ref(file.data.patterns),
       sequence: ref(file.data.sequence),

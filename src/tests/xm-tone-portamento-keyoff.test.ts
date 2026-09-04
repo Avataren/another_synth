@@ -40,7 +40,7 @@ function noteEventsFor(cells: XmPatternCell[][]): ScheduledNoteEvent[] {
     instrumentSlots: ref(imported.data.instrumentSlots),
     songPatches: ref(imported.data.songPatches ?? {}),
     songBank: {} as TrackerSongBuilderContext['songBank'],
-    normalizeInstrumentId: (id) => id,
+    normalizeInstrumentId: (id) => (id ? id : undefined),
     formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
   };
   const song = useTrackerSongBuilder(context).buildPlaybackSong('song');

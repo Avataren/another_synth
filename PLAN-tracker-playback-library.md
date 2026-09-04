@@ -250,15 +250,39 @@ song bank.
 `songFromImport`. Six test files had each spelled out an identical ref context;
 they now call this and import no Vue at all. Net −556/+90 lines.
 
-Six _other_ test files were deliberately left alone. Their contexts differ in
-ways that are the point of the test: `s3m-engine` passes `initialGlobalVolume`,
-`raw-effect-bytes` pins `linearFrequency` to true regardless of the file,
-`mod-channel-volume-carry` supplies neither speed nor frequency table,
-`xm-tone-portamento-keyoff` keeps an empty instrument id instead of mapping it
-to `undefined`, `xm-amiga-frequency-table` builds from a single pattern, and
+Six _other_ test files were left alone, but not all for the same reason, and
+the difference matters if you are tempted to tidy them.
+
+Three diverge deliberately, and collapsing them onto the shared helper would
+change what they cover: `s3m-engine` passes `initialGlobalVolume` (an S3M header
+field the others have no use for), `xm-amiga-frequency-table` builds from a
+single pattern because that is the unit under test, and
 `tracker-module-format-plumbing` builds a hand-made song rather than importing
-one. Collapsing those onto the shared helper would quietly change what they
-test.
+one.
+
+Two had simply drifted, and were fixed rather than preserved:
+
+- **`raw-effect-bytes` pinned `linearFrequency` to `true`** regardless of what
+  the file said. It runs over _every_ XM in `public/demos/ft2`, five of which
+  select the Amiga frequency table — `4-mat_-_rose`, `BUTTERFL`, `external`,
+  `jt_strng`, `radix_-_take_on_me`. `profileForFormat` returns
+  `XM_AMIGA_PROFILE` only on `linearFrequency === false`, so those five were
+  scheduled through `XM_PROFILE`, and the raw-vs-text identity this file exists
+  to assert was never checked under the Amiga pitch model at all. It now reads
+  `file.data.linearFrequency ?? true` like every other test. All 108 cases still
+  pass, so nothing was hiding behind it — but the coverage is real: `pitch` is
+  the _only_ field that differs between the two profiles, so those five files
+  previously exercised the wrong pitch model end to end.
+- **`xm-tone-portamento-keyoff` used `normalizeInstrumentId: (id) => id`** where
+  everything else maps a falsy id to `undefined`. The two differ only on
+  `instrument === ''`, and across the 271,467 entries the XM corpus imports
+  there are none, so it was equivalent — but gratuitously different in a way
+  that reads as deliberate. Now consistent.
+
+`mod-channel-volume-carry` supplies neither speed nor frequency table, which is
+also drift rather than intent — `profileForFormat` reads neither for `mod`, so
+it is inert. It is left as it is because it builds a hand-made single pattern
+and would not fit the shared helper anyway.
 
 ### What is left of layer 3
 
