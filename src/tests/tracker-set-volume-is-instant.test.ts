@@ -1,13 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ref } from 'vue';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
-import {
-  useTrackerSongBuilder,
-  type TrackerSongBuilderContext,
-} from 'src/composables/useTrackerSongBuilder';
 import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { Song as PlaybackSong } from '@another-synth/tracker-playback';
+import { songFromImport } from './helpers/imported-song';
 
 /**
  * A row's own volume is set instantly, not ramped into.
@@ -88,27 +85,6 @@ function createModBuffer(cells: CellSpec[]): ArrayBuffer {
   return buf.buffer as ArrayBuffer;
 }
 
-function buildFrom(file: ReturnType<typeof importModToTrackerSong>) {
-  const patterns = file.data.patterns;
-  const ctx: TrackerSongBuilderContext = {
-    currentSong: ref(file.data.currentSong),
-    moduleFormat: ref(file.data.moduleFormat!),
-    initialSpeed: ref(file.data.initialSpeed ?? 6),
-    linearFrequency: ref(file.data.linearFrequency ?? true),
-    patterns: ref(patterns),
-    sequence: ref(file.data.sequence ?? patterns.map((p) => p.id)),
-    currentPatternId: ref(patterns[0]!.id),
-    currentPattern: ref(patterns[0]!),
-    defaultPatternRows: ref(ROWS),
-    instrumentSlots: ref(file.data.instrumentSlots),
-    songPatches: ref(file.data.songPatches ?? {}),
-    songBank: {} as TrackerSongBuilderContext['songBank'],
-    normalizeInstrumentId: (id) => (id ? id : undefined),
-    formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
-  };
-  return useTrackerSongBuilder(ctx).buildPlaybackSong('song');
-}
-
 interface Scheduled {
   row: number;
   volume: number;
@@ -120,7 +96,7 @@ interface Scheduled {
  * tagged with the row it was scheduled from.
  */
 function volumesFor(
-  song: ReturnType<typeof buildFrom>,
+  song: PlaybackSong,
   order: number,
   track: number,
   rows: number,
@@ -148,7 +124,7 @@ function volumesFor(
 
 describe('a bare Cxx row cuts, rather than fading across the row before it', () => {
   it('schedules the volume as a step', () => {
-    const song = buildFrom(
+    const song = songFromImport(
       importModToTrackerSong(
         createModBuffer([
           { row: 0, period: PERIOD, sampleNumber: 1 },
@@ -169,7 +145,7 @@ describe('a bare Cxx row cuts, rather than fading across the row before it', () 
   it('still lets a volume slide ramp', () => {
     // A50: five rows' worth of per-tick slide. This one *must* ramp -- the
     // ramp is the cheap stand-in for stepping every tick.
-    const song = buildFrom(
+    const song = songFromImport(
       importModToTrackerSong(
         createModBuffer([
           {
@@ -198,7 +174,7 @@ describe('jaguar_xj220_title.mod keeps its staccato lead', () => {
         '../../public/demos/amiga/jaguar_xj220_title.mod',
       ),
     );
-    return buildFrom(
+    return songFromImport(
       importModToTrackerSong(
         buf.buffer.slice(
           buf.byteOffset,

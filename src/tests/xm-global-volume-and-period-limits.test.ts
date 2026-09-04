@@ -1,14 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ref } from 'vue';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
-import {
-  useTrackerSongBuilder,
-  type TrackerSongBuilderContext,
-} from 'src/composables/useTrackerSongBuilder';
 import { PlaybackEngine } from '@another-synth/tracker-playback';
 import { buildXm, cell, emptyCell } from './helpers/xm-builder';
+import { songFromImport } from './helpers/imported-song';
 
 /**
  * FT2's global volume, and the period limits a portamento actually obeys.
@@ -20,27 +16,6 @@ import { buildXm, cell, emptyCell } from './helpers/xm-builder';
  * and the cause was the pitch clamp. See D80.
  */
 
-function buildFrom(file: ReturnType<typeof importXmToTrackerSong>) {
-  const patterns = file.data.patterns;
-  const ctx: TrackerSongBuilderContext = {
-    currentSong: ref(file.data.currentSong),
-    moduleFormat: ref(file.data.moduleFormat!),
-    initialSpeed: ref(file.data.initialSpeed ?? 6),
-    linearFrequency: ref(file.data.linearFrequency ?? true),
-    patterns: ref(patterns),
-    sequence: ref(file.data.sequence ?? patterns.map((p) => p.id)),
-    currentPatternId: ref(patterns[0]!.id),
-    currentPattern: ref(patterns[0]!),
-    defaultPatternRows: ref(64),
-    instrumentSlots: ref(file.data.instrumentSlots),
-    songPatches: ref(file.data.songPatches ?? {}),
-    songBank: {} as TrackerSongBuilderContext['songBank'],
-    normalizeInstrumentId: (id) => (id ? id : undefined),
-    formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
-  };
-  return useTrackerSongBuilder(ctx).buildPlaybackSong('song');
-}
-
 /** Drive one synthetic pattern and report the global volumes it scheduled. */
 function globalVolumesFor(cells: ReturnType<typeof cell>[][]) {
   const xm = buildXm({
@@ -50,7 +25,7 @@ function globalVolumesFor(cells: ReturnType<typeof cell>[][]) {
     instruments: [{ samples: [{ frames: [0, 1, 0, -1] }] }],
     patterns: [{ numRows: cells.length, cells }],
   });
-  const song = buildFrom(
+  const song = songFromImport(
     importXmToTrackerSong(xm.buffer.slice(0) as ArrayBuffer),
   );
   const volumes: number[] = [];
@@ -135,7 +110,7 @@ describe('a runaway 2xx follows FT2 past the note range', () => {
     const buf = fs.readFileSync(
       path.resolve(__dirname, '../../public/demos/ft2/im in love with you.xm'),
     );
-    const song = buildFrom(
+    const song = songFromImport(
       importXmToTrackerSong(
         buf.buffer.slice(
           buf.byteOffset,

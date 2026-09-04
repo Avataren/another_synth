@@ -1,14 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ref } from 'vue';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
-import {
-  useTrackerSongBuilder,
-  type TrackerSongBuilderContext,
-} from 'src/composables/useTrackerSongBuilder';
 import { PlaybackEngine } from '@another-synth/tracker-playback';
 import { buildXm, cell, emptyCell } from './helpers/xm-builder';
+import { songFromImport } from './helpers/imported-song';
 
 /**
  * A set-volume row survives even when no row in the pattern names an
@@ -31,27 +27,6 @@ import { buildXm, cell, emptyCell } from './helpers/xm-builder';
  * The engine keeps its own per-track instrument across patterns and resolves
  * these rows there, which is the same reason note-offs are kept (D64).
  */
-
-function buildFrom(file: ReturnType<typeof importXmToTrackerSong>) {
-  const patterns = file.data.patterns;
-  const ctx: TrackerSongBuilderContext = {
-    currentSong: ref(file.data.currentSong),
-    moduleFormat: ref(file.data.moduleFormat!),
-    initialSpeed: ref(file.data.initialSpeed ?? 6),
-    linearFrequency: ref(file.data.linearFrequency ?? true),
-    patterns: ref(patterns),
-    sequence: ref(file.data.sequence ?? patterns.map((p) => p.id)),
-    currentPatternId: ref(patterns[0]!.id),
-    currentPattern: ref(patterns[0]!),
-    defaultPatternRows: ref(64),
-    instrumentSlots: ref(file.data.instrumentSlots),
-    songPatches: ref(file.data.songPatches ?? {}),
-    songBank: {} as TrackerSongBuilderContext['songBank'],
-    normalizeInstrumentId: (id) => (id ? id : undefined),
-    formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
-  };
-  return useTrackerSongBuilder(ctx).buildPlaybackSong('song');
-}
 
 describe('a volume row in a pattern that never names an instrument', () => {
   /**
@@ -85,7 +60,9 @@ describe('a volume row in a pattern that never names an instrument', () => {
         { numRows: 4, cells: rows(true) },
       ],
     });
-    return buildFrom(importXmToTrackerSong(xm.buffer.slice(0) as ArrayBuffer));
+    return songFromImport(
+      importXmToTrackerSong(xm.buffer.slice(0) as ArrayBuffer),
+    );
   };
 
   it('is kept when an earlier row in the pattern named the instrument', () => {
@@ -113,7 +90,7 @@ describe('radix_-_yuki_satellites.xm plays its second pattern like its first', (
         '../../public/demos/ft2/radix_-_yuki_satellites.xm',
       ),
     );
-    const built = buildFrom(
+    const built = songFromImport(
       importXmToTrackerSong(
         buf.buffer.slice(
           buf.byteOffset,

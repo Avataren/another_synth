@@ -4,7 +4,9 @@
 to play MOD, XM, S3M and this app's own native songs, without dragging in
 Quasar, Pinia, Vue, the Rust/WASM synth, or the pattern editor.
 
-**Status.** Layer 1 done (2026-09-04). Layers 2–4 not started.
+**Status.** Layers 1 and 3 done (2026-09-04). Layer 2 not started; layer 4
+not started. Layer 3 is done except for physically moving the file into the
+package, which is blocked on an open decision — see §6.
 
 This document is written to be picked up cold, in a new session, by someone (or
 some model) with no memory of the work. It records what was measured, what was
@@ -31,7 +33,8 @@ parsed module  (samples, patterns, orders, raw effect bytes)
 TrackerSong  (the app's editor model: patterns of TrackerEntryData,
    |          instrument slots, one sampler Patch per sample)
    |
-   |  buildPlaybackSong                        src/composables/useTrackerSongBuilder.ts
+   |  buildPlaybackSong                        src/audio/tracker/playback-song-builder.ts
+   |    (useTrackerSongBuilder is the Vue wrapper around it)
    v
 PlaybackSong  (the engine's input: patterns of Step)
    |
@@ -100,17 +103,17 @@ looksLikeS3m(buffer: Uint8Array): boolean      parseS3m(buffer: Uint8Array): S3m
 So the _mechanical_ coupling is two constants and one `uid`. The real question is
 a design one — see §6.
 
-### The song builder is a pure function in Vue clothing
+### The song builder was a pure function in Vue clothing (resolved, layer 3)
 
-`src/composables/useTrackerSongBuilder.ts`, 490 lines. Contains **no**
-`computed`, **no** `watch`, **no** internal `ref()`. It reads `.value` off
-injected refs 24 times and that is the whole of its reactivity. `songBank` is
-referenced on exactly two lines, both inside `syncSlots` — not inside
-`buildPlaybackSong`, which is the function the engine path needs.
+`src/composables/useTrackerSongBuilder.ts` was 490 lines containing **no**
+`computed`, **no** `watch` and **no** internal `ref()` — it read `.value` off
+injected refs 24 times and that was the whole of its reactivity. `songBank` was
+referenced on exactly two lines, both inside `syncSlots`, never inside
+`buildPlaybackSong`.
 
-Corroborating evidence: every test that exercises it has to wrap plain values in
-`ref()` purely to satisfy the signature. See `buildFrom` in
-`src/tests/tracker-note-delay-without-volume.test.ts`.
+The conversion now lives in `src/audio/tracker/playback-song-builder.ts` and
+takes plain values. The composable is a 175-line wrapper that snapshots the refs
+and delegates.
 
 ### ModInstrument is pure Web Audio
 
@@ -217,10 +220,73 @@ by the root vitest run; keep it that way.
 
 ---
 
-## 4. Layers 2–4 — TODO
+## 3b. Layer 3 — DONE (except the move)
 
-Estimates assume familiarity with the code; roughly a week in total for
-something publishable.
+Committed 2026-09-04. The conversion from the app's song model to the engine's
+`PlaybackSong` is now a plain function.
+
+**`src/audio/tracker/playback-song-builder.ts`** (new) — `buildPlaybackSong`,
+`buildPlaybackPatterns`, `buildPlaybackStepsForTrack`, `resolveSequenceForMode`
+and `resolveInstrumentForTrack`, all taking a `PlaybackSongSource`: a plain
+snapshot of what used to arrive as a dozen refs. Logic and comments moved
+verbatim; the only edits were `ref.value` reads becoming field reads.
+
+Two of those reads needed care, and the same trap waits anywhere else this
+pattern is unwound. `context.linearFrequency !== undefined` used to ask "was a
+ref supplied", and `context.initialSpeed ? … : …` tested the truthiness of a ref
+_object_, which is always true when present. As plain values they became
+`source.linearFrequency !== undefined` and `source.initialSpeed !== undefined` —
+equivalent for every caller, but `!== undefined` rather than truthiness matters:
+`initialSpeed: 0` would otherwise change meaning.
+
+**`src/composables/useTrackerSongBuilder.ts`** — now 175 lines (was 490). Same
+exported API, same context type, so no caller changed. It snapshots the refs
+**per call**, not once at construction: a snapshot taken when the composable is
+created would build every subsequent song from whatever was loaded first.
+`syncSongBankFromSlots` keeps its body, being the only part that touches the
+song bank.
+
+**`src/tests/helpers/imported-song.ts`** (new) — `sourceFromImport` /
+`songFromImport`. Six test files had each spelled out an identical ref context;
+they now call this and import no Vue at all. Net −556/+90 lines.
+
+Six _other_ test files were deliberately left alone. Their contexts differ in
+ways that are the point of the test: `s3m-engine` passes `initialGlobalVolume`,
+`raw-effect-bytes` pins `linearFrequency` to true regardless of the file,
+`mod-channel-volume-carry` supplies neither speed nor frequency table,
+`xm-tone-portamento-keyoff` keeps an empty instrument id instead of mapping it
+to `undefined`, `xm-amiga-frequency-table` builds from a single pattern, and
+`tracker-module-format-plumbing` builds a hand-made song rather than importing
+one. Collapsing those onto the shared helper would quietly change what they
+test.
+
+### What is left of layer 3
+
+Moving `playback-song-builder.ts` into the package. That is blocked, not
+forgotten: it converts _the app's editor model_ into `PlaybackSong`, so it only
+belongs in the library if the library owns that model — which is exactly the
+open question in §6. Under the alternative (importers emit `PlaybackSong`
+directly), this file is an app-side adapter and should stay where it is.
+
+Everything of value in layer 3 — the function being callable without Vue — is
+already delivered either way.
+
+### Verification performed
+
+| Check                                   | Result                          |
+| --------------------------------------- | ------------------------------- |
+| `npm test`                              | 109 files, 1598 tests, all pass |
+| `npx vue-tsc --noEmit -p tsconfig.json` | clean                           |
+| `npm run lint`                          | clean                           |
+
+No behaviour changed, so no new tests: the existing 1598 passing unchanged _is_
+the assertion. The six migrated files exercise the new plain-value path.
+
+---
+
+## 4. Layers 2 and 4 — TODO
+
+Estimates assume familiarity with the code.
 
 ### Layer 2 — importers (~1 day)
 
@@ -239,16 +305,6 @@ and `note-utils.ts` into the package.
 
 Nothing here is hard; the risk is doing it without running the corpus tests
 after each step.
-
-### Layer 3 — song builder (hours)
-
-Change `TrackerSongBuilderContext` from refs to plain values, move
-`buildPlaybackSong` into the package as a free function, and have the composable
-in `src/composables/` become a thin wrapper that unwraps `.value` and calls it.
-`syncSlots` stays in the app — it is the only part that touches `songBank`.
-
-Do this one _before_ layer 2 if you want an early win: it is small, it is
-self-contained, and it deletes a lot of `ref()` noise from the tests.
 
 ### Layer 4 — the sound source (2–3 days)
 
@@ -315,12 +371,25 @@ adapt it into a `Patch`; (b) emit `Patch` and make consumers ignore most of it;
 because `sampler-patch-builder.ts` (440 lines) is entirely about building
 `Patch`es.
 
-**Does the library own the editor model at all?** Layer 2 as sketched moves
-`TrackerEntryData` and friends into the package. That makes the library
-opinionated about how a _song_ is represented, not just how one is _played_. The
-alternative is for importers to emit `PlaybackSong` directly and leave the
-editor model in the app — which would make layer 3 disappear, but would lose the
-round-trip the pattern editor and exporter depend on.
+**Does the library own the editor model at all?** This is now the decision that
+gates the rest, because layer 3 stopped on it.
+
+Layer 2 as sketched moves `TrackerEntryData` and friends into the package. That
+makes the library opinionated about how a _song_ is represented, not just how
+one is _played_ — and it is what would let `playback-song-builder.ts` move in
+too. The alternative is for importers to emit `PlaybackSong` directly and leave
+the editor model in the app; then `playback-song-builder.ts` is an app-side
+adapter that stays put, and the library's story is "bytes in, scheduled events
+out".
+
+Cheapness is not the tiebreaker — the move itself is small. `note-utils.ts` (457
+lines) imports only types from `tracker-types` plus `FormatProfile` from the
+package; `tracker-types.ts` is 76 lines of pure interfaces; `TrackerPattern` is
+an 11-line interface; and `InstrumentSlot` is only needed by
+`syncSongBankFromSlots`, which stays in the app regardless. Leaving the app-side
+files as re-export shims would make the blast radius zero. The question is
+whether owning an editor model is the library's job, not whether it is
+affordable.
 
 **Native-format support.** `NATIVE_PROFILE` and the app's own song format are in
 the library already. Whether an external consumer cares is unclear, but it costs

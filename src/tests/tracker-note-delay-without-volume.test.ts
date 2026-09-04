@@ -1,13 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ref } from 'vue';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
-import {
-  useTrackerSongBuilder,
-  type TrackerSongBuilderContext,
-} from 'src/composables/useTrackerSongBuilder';
 import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { Song as PlaybackSong } from '@another-synth/tracker-playback';
+import { songFromImport } from './helpers/imported-song';
 
 /**
  * EDx delays a note; it does not drop it, and it does not bend the note the
@@ -95,27 +92,6 @@ function createModBuffer(cells: CellSpec[]): ArrayBuffer {
   return buf.buffer as ArrayBuffer;
 }
 
-function buildFrom(file: ReturnType<typeof importModToTrackerSong>) {
-  const patterns = file.data.patterns;
-  const ctx: TrackerSongBuilderContext = {
-    currentSong: ref(file.data.currentSong),
-    moduleFormat: ref(file.data.moduleFormat!),
-    initialSpeed: ref(file.data.initialSpeed ?? 6),
-    linearFrequency: ref(file.data.linearFrequency ?? true),
-    patterns: ref(patterns),
-    sequence: ref(file.data.sequence ?? patterns.map((p) => p.id)),
-    currentPatternId: ref(patterns[0]!.id),
-    currentPattern: ref(patterns[0]!),
-    defaultPatternRows: ref(ROWS),
-    instrumentSlots: ref(file.data.instrumentSlots),
-    songPatches: ref(file.data.songPatches ?? {}),
-    songBank: {} as TrackerSongBuilderContext['songBank'],
-    normalizeInstrumentId: (id) => (id ? id : undefined),
-    formatInstrumentId: (slot) => String(slot).padStart(2, '0'),
-  };
-  return useTrackerSongBuilder(ctx).buildPlaybackSong('song');
-}
-
 interface Played {
   row: number;
   midi: number | undefined;
@@ -132,12 +108,7 @@ interface Bent {
 const ROW_SECONDS = 0.1;
 
 /** Every note-on and pitch command scheduled on one track of one order. */
-function play(
-  song: ReturnType<typeof buildFrom>,
-  order: number,
-  track: number,
-  rows: number,
-) {
+function play(song: PlaybackSong, order: number, track: number, rows: number) {
   const notes: Played[] = [];
   const pitches: Bent[] = [];
   let row = 0;
@@ -167,7 +138,7 @@ describe('a delayed note on a row with no volume of its own', () => {
    * nothing else. The importer stamps no volume there, which is correct.
    */
   const song = () =>
-    buildFrom(
+    songFromImport(
       importModToTrackerSong(
         createModBuffer([
           { row: 0, period: PERIOD_C, sampleNumber: 1 },
@@ -214,7 +185,7 @@ describe('GSLINGER.MOD retriggers its flute phrase on every note', () => {
     const buf = fs.readFileSync(
       path.resolve(__dirname, '../../public/demos/amiga/GSLINGER.MOD'),
     );
-    return buildFrom(
+    return songFromImport(
       importModToTrackerSong(
         buf.buffer.slice(
           buf.byteOffset,
