@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-04T21:38:31.451Z",
+  "generated": "2026-09-04T22:43:57.961Z",
   "collections": [
     {
       "id": "amiga",
@@ -227,6 +227,14 @@
           "bytes": 147898
         },
         {
+          "title": "gods17",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/gods_ingame.mod",
+          "bytes": 320044
+        },
+        {
           "title": "hymn to aurora",
           "format": "MOD",
           "channels": 4,
@@ -319,6 +327,27 @@
           "channels": 4,
           "file": "amiga/lepeltheme.mod",
           "bytes": 76412
+        },
+        {
+          "title": "death1",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/lost_patrol_death1.mod",
+          "bytes": 47182
+        },
+        {
+          "title": "m03",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/lost_patrol_m03.mod",
+          "bytes": 20548
+        },
+        {
+          "title": "tunev1",
+          "format": "MOD",
+          "channels": 4,
+          "file": "amiga/lost_patrol_tunev1.mod",
+          "bytes": 54476
         },
         {
           "title": "jingle1",
@@ -556,6 +585,38 @@
           "signature": "M.K.",
           "file": "amiga/toytitle.mod",
           "bytes": 93996
+        },
+        {
+          "title": "utopia ingame1",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/utopia_ingame1.mod",
+          "bytes": 103956
+        },
+        {
+          "title": "utopia ingame2",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/utopia_ingame2.mod",
+          "bytes": 159822
+        },
+        {
+          "title": "utopia ingame3",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/utopia_ingame3.mod",
+          "bytes": 160028
+        },
+        {
+          "title": "utopia...",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/utopia_title.mod",
+          "bytes": 160170
         },
         {
           "title": "we're the devils",
