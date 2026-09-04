@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-04T10:28:02.601Z",
+  "generated": "2026-09-04T11:04:19.061Z",
   "collections": [
     {
       "id": "amiga",
@@ -266,6 +266,30 @@
           "bytes": 63364
         },
         {
+          "title": "jag funk",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/jaguar_xj220_jag_funk.mod",
+          "bytes": 54560
+        },
+        {
+          "title": "moody breeze",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/jaguar_xj220_moody_breeze.mod",
+          "bytes": 53044
+        },
+        {
+          "title": "jagtitle",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/jaguar_xj220_title.mod",
+          "bytes": 71778
+        },
+        {
           "title": "addiction",
           "format": "MOD",
           "channels": 4,
@@ -295,6 +319,38 @@
           "channels": 4,
           "file": "amiga/lepeltheme.mod",
           "bytes": 76412
+        },
+        {
+          "title": "jingle1",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/lotus_2_forest_course.mod",
+          "bytes": 37992
+        },
+        {
+          "title": "jingle2",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/lotus_2_motorway_course.mod",
+          "bytes": 40964
+        },
+        {
+          "title": "jingle6",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/lotus_2_night_course.mod",
+          "bytes": 39662
+        },
+        {
+          "title": "bootup",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/lotus_2_title.mod",
+          "bytes": 83302
         },
         {
           "title": "musiklinjen",
