@@ -1609,12 +1609,23 @@ export function processEffectTickN(
   }
 
   if (!effect) {
-    // Continue an active tone portamento when no effect is present (e.g., across pattern boundaries).
-    if (state.tonePortaActive && state.tonePortaSpeed > 0) {
+    // A row that carries no tone portamento does not slide, even when the
+    // previous row's slide never reached its target: ProTracker and FT2
+    // re-read the effect column every row, and a blank cell is command 0,
+    // which does nothing. So a 3xx run stops where its last 3xx row left it.
+    // Continuing the slide through blank cells walks the pitch arbitrarily
+    // far past where the module means it to stop -- in space_debris.mod the
+    // C-2 slide at the end of order 1 kept falling through order 2's blank
+    // cells and landed nowhere near the note. Only S3M still continues here;
+    // see `tonePortaContinuesThroughEmptyRows`.
+    if (
+      state.profile.tonePortaContinuesThroughEmptyRows === true &&
+      state.tonePortaActive &&
+      state.tonePortaSpeed > 0
+    ) {
       const beforeFreq = state.currentFrequency;
       const freq = applyTonePortaStep(state);
-      const moved = Math.abs(freq - beforeFreq) > 1e-9;
-      if (moved) {
+      if (Math.abs(freq - beforeFreq) > 1e-9) {
         pushPitch(freq);
       }
       if (state.targetFrequency === state.currentFrequency) {
@@ -1857,6 +1868,7 @@ export function volumeCommandIsTickBased(
     case 'panSlideLeft':
     case 'panSlideRight':
     case 'vibrato':
+    case 'tonePorta':
       return true;
     default:
       return false;
@@ -2026,6 +2038,26 @@ export function processVolumeColumnTickN(
           ? { kind: 'pitch', frequency, voiceIndex }
           : { kind: 'pitch', frequency },
       );
+      break;
+    }
+
+    case 'tonePorta': {
+      // Mx slides on ticks 1..n-1 exactly like the effect column's 3xx. This
+      // has to live here: the effect column is usually empty on these rows,
+      // and processEffectTickN deliberately does nothing when it is.
+      if (!state.tonePortaActive || state.tonePortaSpeed <= 0) break;
+      const before = state.currentFrequency;
+      const frequency = applyTonePortaStep(state);
+      if (state.targetFrequency === state.currentFrequency) {
+        state.tonePortaActive = false;
+      }
+      if (Math.abs(frequency - before) > 1e-9) {
+        commands.push(
+          voiceIndex !== undefined
+            ? { kind: 'pitch', frequency, voiceIndex }
+            : { kind: 'pitch', frequency },
+        );
+      }
       break;
     }
 

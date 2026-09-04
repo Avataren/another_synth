@@ -248,6 +248,25 @@ export interface FormatProfile {
    * per-tick slide path is untouched.
    */
   readonly finePortaHighParameters?: boolean;
+
+  /**
+   * Whether an unfinished tone portamento keeps sliding through rows that
+   * carry no tone portamento of their own.
+   *
+   * ProTracker and FT2 re-read the effect column every row, and an empty cell
+   * is command 0 -- so a 3xx run stops dead where its last 3xx row left it,
+   * however far short of the target that is. space_debris.mod depends on it:
+   * channel 4 ends order 1 mid-slide towards C-2, and order 2 opens with A10
+   * and blank cells. Sliding on through them walks the pitch far below any
+   * note in the song.
+   *
+   * S3M is left with the older continue-through-blanks behaviour, which was
+   * added for 2nd Reality's order 45 (G03/G00 on channels 6 and 7, whose
+   * command rows run out before the slide reaches its written C-5) and
+   * verified there by ear. It has not been checked against st3play, so it is
+   * scoped to the format that motivated it rather than applied to all three.
+   */
+  readonly tonePortaContinuesThroughEmptyRows?: boolean;
 }
 
 /**
@@ -481,6 +500,9 @@ export const S3M_PROFILE: FormatProfile = {
   // column while sliding pitch from the effect column.
   // S3M's E/F high parameters are fine slides (EFx/FFx), one-shot on tick 0.
   finePortaHighParameters: true,
+  // See the field's docs: kept for 2nd Reality's order 45, and deliberately
+  // not extended to ProTracker/FT2.
+  tonePortaContinuesThroughEmptyRows: true,
   arpeggioCommandByte: 0x0a, // 'J'
   speedTempoCommandByte: 0x01, // 'A' -- set speed (manual: "Set speed to xx")
   tempoCommandByte: 0x14, // 'T' -- tempo = xx (manual: "valid values 20 to FF")

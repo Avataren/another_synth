@@ -132,6 +132,49 @@ describe('effect-processor command batches', () => {
   });
 
   /**
+   * space_debris.mod, order 1 -> order 2 on channel 4: a 304/300 run slides
+   * towards C-2 but runs out of pattern long before it arrives, and order 2
+   * opens with A10 and then blank cells. ProTracker re-reads the effect
+   * column every row, so the slide simply stops where the last 300 row left
+   * it. The engine used to keep stepping it through rows that carry no tone
+   * portamento, which walked the pitch far past the target.
+   */
+  it('stops a tone portamento on rows that carry no tone portamento', () => {
+    const state = createTrackEffectState();
+    const AMIGA_CLOCK = 7159090.5;
+    const PAULA_TO_SYNTH_SCALE = 128;
+    const freqForPeriod = (period: number) =>
+      AMIGA_CLOCK / (2 * period * PAULA_TO_SYNTH_SCALE);
+
+    // A high note, then a slow slide down towards period 856 (C-2).
+    processEffectTick0(state, undefined, 53, 200, freqForPeriod(214));
+    const tonePorta: EffectCommand = { type: 'tonePorta', paramX: 0, paramY: 4 };
+    processEffectTick0(state, tonePorta, 24, 200, freqForPeriod(856));
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, tonePorta, tick, 6);
+    }
+    const periodAfterSlide = state.currentPeriod;
+    expect(periodAfterSlide).toBeGreaterThan(214);
+    expect(periodAfterSlide).toBeLessThan(856); // nowhere near the target yet
+
+    // Next row: a volume slide, no tone portamento.
+    const volSlide: EffectCommand = { type: 'volSlide', paramX: 1, paramY: 0 };
+    processEffectTick0(state, volSlide);
+    for (let tick = 1; tick < 6; tick++) {
+      processEffectTickN(state, volSlide, tick, 6);
+    }
+    expect(state.currentPeriod).toBe(periodAfterSlide);
+
+    // And a blank row: no effect at all.
+    processEffectTick0(state, undefined);
+    for (let tick = 1; tick < 6; tick++) {
+      const batch = processEffectTickN(state, undefined, tick, 6);
+      expect(batch.commands.filter((cmd) => cmd.kind === 'pitch')).toEqual([]);
+    }
+    expect(state.currentPeriod).toBe(periodAfterSlide);
+  });
+
+  /**
    * Regression coverage found while auditing all effect commands: E8y
    * (extended/coarse set-pan) shares the 'setPan' EffectType with the
    * full-byte 8xx command, but encodes its value completely differently
