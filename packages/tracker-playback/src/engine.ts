@@ -437,13 +437,18 @@ export class PlaybackEngine {
   /**
    * Precompute tone portamento targets (3xx) across the full song sequence.
    *
-   * For rows that have a 3xx effect but no note, ProTracker players often
-   * slide towards the next note in the same track, even when that note
-   * lives in the next pattern. To approximate this, we scan forward along
-   * the song's sequence and, for such rows, fill in `step.midi` with the
-   * MIDI value of the next note-on in that track. The playback engine then
-   * treats that MIDI value as the portamento target without retriggering
-   * the note (since tonePorta rows never schedule a new note-on).
+   * A 3xx row with no note of its own continues towards the target the
+   * channel already has, which may have been named in an earlier pattern. The
+   * walk below carries that target along the order list -- backwards in the
+   * sense that it remembers the last note stated, not the next one -- and
+   * fills it into `step.midi` for those rows. The playback engine then treats
+   * that MIDI value as the portamento target without retriggering the note
+   * (since tonePorta rows never schedule a new note-on).
+   *
+   * "The last note stated" means any row that states one, not only tone-porta
+   * rows: a plain note *arrives* at its pitch, so it is the channel's target
+   * from then on. See the note on the assignment below for what treating the
+   * two differently cost.
    */
   private precomputeTonePortaTargets(): void {
     if (!this.song) return;
@@ -497,8 +502,8 @@ export class PlaybackEngine {
       return ordered;
     };
 
-    // For each track index, walk forward and let 3xx rows inherit the most recent
-    // tone porta target (the last tonePorta/tonePortaVol row that specified a note).
+    // For each track index, walk forward and let 3xx rows inherit the most
+    // recent slide target -- the last row of any kind that stated a note.
     for (let trackIndex = 0; trackIndex < maxTracks; trackIndex += 1) {
       let lastTargetMidi: number | undefined;
       let lastTargetFrequency: number | undefined;
@@ -519,15 +524,22 @@ export class PlaybackEngine {
             step.effect?.type === 'tonePorta' ||
             step.effect?.type === 'tonePortaVol';
 
-          if (isTonePorta && step.midi !== undefined) {
-            // Tone porta with an explicit note: update the target.
+          if (step.midi !== undefined) {
+            // Any row that states a note states the channel's slide target:
+            // a tone portamento names where it is heading, and a plain note
+            // *arrives* there, so a later bare Gxx has nothing left to slide
+            // towards and holds.
+            //
+            // Only tone-porta rows used to update this, so a target set on
+            // one could outlive every plain note after it and still be
+            // inherited patterns later. ascent_of_the_cloud_eagle.s3m is the
+            // case: channel 8 plays note 114 at pattern 28 row 0x23 and then
+            // swells on bare G02/G00 rows, which inherited note 101 from
+            // pattern 17 -- nine semitones below the note actually sounding,
+            // so the swell slid away downwards and out of tune.
             lastTargetMidi = step.midi;
             lastTargetFrequency = step.frequency;
-          } else if (
-            isTonePorta &&
-            step.midi === undefined &&
-            lastTargetMidi !== undefined
-          ) {
+          } else if (isTonePorta && lastTargetMidi !== undefined) {
             // Tone porta continuation without a note: inherit the last target so we keep sliding.
             step.midi = lastTargetMidi;
             if (lastTargetFrequency !== undefined) {

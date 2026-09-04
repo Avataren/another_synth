@@ -3562,6 +3562,38 @@ reports null only when neither exists.
 got from having a real scrolling element, and the inheritance was silent because the code that
 needed it failed closed rather than loudly.
 
+### D112 — A plain note is a slide target too
+
+Morten, 2026-09-04, on ascent_of_the_cloud_eagle.s3m, order 10 (file pattern 28), track 9:
+"there is a pitch-slide down.. this goes too far down and ends up out of tune".
+
+The rows are a held note with a volume swell:
+
+```
+0x23   note 114 (D-8), ins 07, vol 14      <- plain note, no effect
+0x24   ---              vol 18   G02
+0x25.. ---              vol 18/20/21  G00  <- bare portas, no note
+```
+
+`precomputeTonePortaTargets` carries a slide target along the order list so a bare `Gxx` can
+continue towards a note named in an earlier pattern -- correct, and the reason it exists. But
+only *tone-porta* rows updated the carried value. A plain note did not, so a target could
+outlive every note played after it. Channel 8's last porta-with-note is back at **order 6,
+pattern 17, row 0x2 -- note 101**, and that is what these rows inherited: nine semitones below
+the note actually sounding. Traced, the swell slid 4709.6 Hz down to 2796.3 Hz instead of
+holding.
+
+A plain note *arrives* at its pitch, so it is the channel's target from then on and leaves a
+following bare `Gxx` nothing to slide towards. The carry now updates on any row that states a
+note, and the trace holds flat at 4709.6 Hz across the swell.
+
+**The pattern to notice**: the same confusion as D108, in the opposite layer. There, a
+tone-porta row was denied something a plain note got (the volume reload); here, a plain note
+was denied something a tone-porta row got (setting the target). Both came from treating "is
+this a tone portamento?" as the question when the actual question was "does this row state a
+note / name an instrument?". The effect column says how the channel *gets* somewhere; the note
+and instrument columns say *where* and *with what*, and they answer for themselves.
+
 ### D106 — Notes above B-6 kept their period domain (S3M)
 
 satellite_one.s3m's lead on channels 4/5, reported as "muffled, the different notes don't
@@ -3689,6 +3721,7 @@ Tests: `pattern-canvas.test.ts` playback-follow frame pin (new). Suite 1448
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-04 | fix | **A plain note is a slide target too** (D112). ascent_of_the_cloud_eagle.s3m pattern 28 track 9: a held note with a volume swell on bare G02/G00 rows slid nine semitones down and out of tune. `precomputeTonePortaTargets` carries a slide target along the order list for bare portas, but only tone-porta rows updated it -- so these rows inherited note 101 from pattern 17, ignoring the note 114 actually playing two rows above. Traced: 4709.6 Hz sliding to 2796.3 instead of holding. Any row that states a note now sets the carry. The mirror image of D108: there a porta row was denied what a plain note got, here a plain note was denied what a porta row got, both from asking "is this a tone portamento?" instead of "does this row state a note?". Tests: `tracker-porta-target-carry.test.ts` (1 of 4 confirmed failing against the old code). |
 | 2026-09-04 | fix | **The waveform strip follows horizontal scroll again** (D111). `syncTrackScroll` gated on the DOM grid's tracks wrapper, which the canvas renderer does not have (it renders `v-else` to it) and which nothing else ever assigns -- so under the canvas the function returned on its first line every time and the strip above the tracks never moved with the pattern. The wrapper was standing in for both "who owns the scroll extent" and "is there anything to sync"; split out as `trackScrollMaxima`, which falls back to the canvas's hscroll proxy. Alignment itself was already correct (`canvasVisualizerPadding`). Tests: `visualizer-alignment.test.ts` +4. |
 | 2026-09-04 | fix | **A sample number reloads the channel volume, retrigger or not** (D108). satellite_one.s3m's lead still sat ~10 dB low on Pattern 4 after D106/D107: its notes carry an instrument number and no volume byte against volume rows that pump the channel down, and every one is a tone portamento, so the reload never fired. The predicate keyed off `entry.instrument`, which D77 deliberately clears on porta rows and D56 deliberately sets on bare notes -- so it withheld the volume where ST3 resets it and stamped one where ST3 preserves it, D55's rule wrong in both directions at once. Keyed off the instrument number itself now, matching mod-import (which documents this for nexus_seven.mod) and xm-import. 14 of 20 corpus modules change. Tests: `s3m-import.test.ts` +3 (2 confirmed failing against the old code). |
 | 2026-09-04 | fix | **The S3M corpus and demo pins were not running.** `s3m-corpus`/`raw-effect-bytes` read `~/Downloads/mods/s3m` behind an `existsSync(dir)` guard; the directory outlived the files in it, so the guard passed and all 10 pins ENOENTed instead of skipping -- a guard on the directory cannot answer for the modules. The corpus is vendored at `public/demos/s3m`, so they now read that and guard on nothing. `tracker-initial-speed` likewise hardcoded an absolute path under a home directory and silently `return`ed. Separately, `demo-collection` -- the guard against a truncated download or a duplicate being published unreachable -- still filtered `\.(mod|xm)$` and parsed everything non-XM as MOD, so the 20 S3M demos were listed in `index.json` (correctly) and covered by nothing. Suite is fully green for the first time: 1460 tests, 0 skipped-by-accident. |
