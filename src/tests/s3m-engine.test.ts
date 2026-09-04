@@ -340,3 +340,49 @@ describe('notes above B-6 stay in the period domain', () => {
     }
   });
 });
+
+describe('S3M tone portamento through empty cells', () => {
+  it('keeps G03 moving across omitted rows until it reaches the written target', () => {
+    // 2nd Reality <Skaven>, order 45, channels 6 and 7: B-4 -> C-5 with
+    // G03 followed by G00. Seven command rows are not enough to cover the
+    // 568-period-unit gap, so the following empty cells must continue the
+    // active slide. The real pattern then applies vibrato before another
+    // blank cell, which is where the slide finally reaches C-5.
+    const song = importS3m({
+      channelSettings: ONE_PCM_CHANNEL,
+      speed: 6,
+      orders: [0],
+      patterns: [[
+        [{ note: 0x37, instrument: 1, volume: 64 }],
+        [{ note: 0x40, effect: 0x07, param: 0x03 }],
+        [{ effect: 0x07, param: 0x00 }],
+        [{ effect: 0x07, param: 0x00 }],
+        [{ effect: 0x07, param: 0x00 }],
+        [{ effect: 0x07, param: 0x00 }],
+        [{ effect: 0x07, param: 0x00 }],
+        [{ effect: 0x07, param: 0x00 }],
+        [],
+        [],
+        [{ effect: 0x08, param: 0x82 }],
+        [],
+      ]],
+      instruments: [{ frames: [0, 0.25, -0.25, 0] }],
+    });
+    const log: string[] = [];
+    const engine = makeEngine(log);
+    const builder = makeBuilderContext(song);
+    engine.loadSong(builder.buildPlaybackSong('song'));
+    const pattern = song.data.patterns[0]!;
+    engine.loadPattern(pattern.id);
+    for (let row = 0; row < 12; row += 1) {
+      (
+        engine as unknown as { scheduleRow: (r: number, t: number) => void }
+      ).scheduleRow(row, row);
+    }
+
+    const target = createS3mPitchModel().frequencyFromPeriod(
+      s3mPeriodForNote(0x40)!,
+    );
+    expect(pitchValues(log)).toContainEqual(expect.closeTo(target, 5));
+  });
+});

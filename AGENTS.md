@@ -235,6 +235,11 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 - Tone portamento targets (2025-12 fix): `PlaybackEngine::precomputeTonePortaTargets` had been left as a stub, so 3xx rows without an explicit note never inherited a target and tone portamento appeared broken. The helper now walks each track across the song sequence, backfills `step.midi`/`frequency` for `tonePorta`/`tonePortaVol` rows using the next note in that track (skipping note-offs) so slides have a destination even across pattern boundaries. File: `packages/tracker-playback/src/engine.ts`.
 - Tracker volume column scaling (2025-12): Note-on events now always fire with full MIDI velocity (127); the per-row volume column continues to drive gain via automation. This avoids double-attenuating quiet rows (e.g., A10 slides after a low volume like `09`) where the MIDI velocity and channel volume were both reducing amplitude. File: `packages/tracker-playback/src/engine.ts`.
 
+### Tracker tone-portamento through blank cells (2026-09)
+
+- `PlaybackEngine` only enters its normal per-tick loop for tracks that have a `Step` at the current row. Since imported tracker patterns omit empty cells, the `processEffectTickN(..., undefined, ...)` continuation path was otherwise unreachable for a silent track.
+- Keep an active tone portamento moving on rows with no step for that track. This matters for `2nd_reality.s3m` (SHA-256 `033c935e3310f1c499f38f79908ff04c11a9ae26d4338378642bd75c0fce4592`), order 45 channels 6/7: `G03`/`G00` leaves the source period 2280 short of its 1712 target until subsequent empty cells advance it. Without the scheduler pass, the leads remain noticeably flat.
+
 ### Tracker waveforms
 
 - Track waveform visualizations now always use a single accent color and attach to the instrument actually referenced by that track (latest instrument ID found when building playback steps). This keeps each track’s waveform aligned to its own instrument output even when multiple tracks share a multi-voice patch.

@@ -1327,6 +1327,8 @@ export class PlaybackEngine {
     const secPerTick = msPerTick / 1000;
     const secPerRow = msPerRow / 1000;
 
+    const tracksWithSteps = new Set(steps?.map((step) => step.trackIndex));
+
     // Second pass: Process each step with effects
     if (steps) {
       for (const step of steps) {
@@ -1615,6 +1617,46 @@ export class PlaybackEngine {
             }
           }
         }
+      }
+    }
+
+    // Tracker patterns omit empty cells altogether, so a track with no step
+    // on this row otherwise receives no tick processing. A tone portamento
+    // remains active until it reaches its target; advance it across those
+    // omitted cells while preserving any effect carried by another track.
+    //
+    // 2nd Reality's order 45 uses G03/G00 runs on channels 6 and 7, followed
+    // by blank cells before the slide reaches its written note. Without this
+    // pass both leads stop below their targets.
+    for (const [trackIndex, effectState] of this.trackEffectStates) {
+      if (
+        tracksWithSteps.has(trackIndex) ||
+        !effectState.tonePortaActive ||
+        effectState.tonePortaSpeed <= 0 ||
+        !effectState.hasActiveVoice ||
+        !effectState.instrumentId
+      ) {
+        continue;
+      }
+
+      const context = {
+        instrumentId: effectState.instrumentId,
+        row,
+        trackIndex,
+        time,
+        voiceIndex: effectState.voiceIndex,
+      };
+      const ticksPerRow = this.timingSystem.getTicksPerRow();
+      const tickContext = { ...context, time };
+      for (let tick = 1; tick < ticksPerRow; tick++) {
+        tickContext.time = time + tick * secPerTick;
+        const tickBatch = processEffectTickN(
+          effectState,
+          undefined,
+          tick,
+          ticksPerRow,
+        );
+        this.dispatchCommands(tickBatch.commands, tickContext);
       }
     }
 
