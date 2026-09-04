@@ -1340,10 +1340,29 @@ export function processEffectTick0(
     case 'noteDelay': {
       // EDx: Note delay by x ticks
       state.noteDelayTick = effect.paramY;
-      if (newNote !== undefined && newVelocity !== undefined) {
+      if (newNote !== undefined) {
         state.delayedNote = {
           midi: newNote,
-          velocity: newVelocity,
+          // The channel's volume, not the row's -- a delayed note is an
+          // ordinary note that happens later, and an ordinary note with no
+          // volume of its own starts at whatever the channel has reached.
+          //
+          // Requiring a row volume here dropped the note outright, because a
+          // note carrying no sample number deliberately has none: ProTracker
+          // leaves the channel volume alone on those rows, so mod-import
+          // stamps nothing (see mod-channel-volume-carry). The row then
+          // triggered nothing at all, while tick 0 had already moved the
+          // channel to the new note's pitch -- so instead of retriggering,
+          // the note still sounding bent to the delayed note's pitch and
+          // stayed there.
+          //
+          // GSLINGER.MOD order 37 channel 4 is the case that exposed it. Its
+          // flute (sample 27) is a whole melodic phrase, and the part
+          // alternates B-2 and C#3 with every C# written as a bare "C#3 ED3":
+          // no sample number, hence no volume. None of them retriggered, so
+          // the phrase never restarted on the C# -- it bent mid-phrase and
+          // played on, which is heard as the melody not landing on its notes.
+          velocity: Math.round(clampVolume(state.currentVolume) * 255),
           ...(noteFrequency !== undefined ? { frequency: noteFrequency } : {}),
         };
         // If delay exceeds or equals the current speed, ProTracker spills to the next row.
@@ -1491,7 +1510,19 @@ export function processEffectTick0(
     state.vibratoApplied &&
     state.vibratoDepth > 0;
 
-  if (!commands.some((cmd) => cmd.kind === 'pitch')) {
+  // A delayed note does not move the channel's pitch on tick 0. ProTracker
+  // stores the new period but only writes it to the hardware when the delay
+  // fires (mt_NoteDelay), so whatever is still sounding keeps its own pitch
+  // until then -- and the delayed trigger re-states the pitch itself when it
+  // arrives. Emitting it here instead bent the previous note to the new one's
+  // pitch for the length of the delay, a few ticks of glide onto the front of
+  // every EDx row.
+  const holdsPitchForDelayedNote = hasNoteDelay && newNote !== undefined;
+
+  if (
+    !holdsPitchForDelayedNote &&
+    !commands.some((cmd) => cmd.kind === 'pitch')
+  ) {
     pushPitch(
       continuesVibrato
         ? vibratoFrequency(state, state.vibratoHeldWave)

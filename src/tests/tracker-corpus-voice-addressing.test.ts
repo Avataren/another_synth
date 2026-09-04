@@ -231,8 +231,13 @@ describe.each([
   // Channels 1 and 3 share sample 9, and rows latch a sample number without
   // starting a note -- the D29 shape.
   ['amiga', 'GSLINGER.MOD'],
-  ['amiga', 'jogeir_liljedahl_-_addiction.mod'],
   ['ft2', 'an-path.xm'],
+  // jogeir_liljedahl_-_addiction.mod used to sit here with 25 cases. Every
+  // one of them was a tick-0 pitch command on an EDx row, which the engine no
+  // longer emits at all -- a delayed note leaves the channel's pitch where it
+  // is until it fires -- so the module now has none and cannot guard anything.
+  // DEADLOCK.XM's cases are untouched by that change.
+  ['ft2', 'DEADLOCK.XM'],
 ])('%s/%s', (dir, name) => {
   const stats = play(dir, name);
 
