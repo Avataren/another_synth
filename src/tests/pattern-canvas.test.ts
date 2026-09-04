@@ -1244,10 +1244,16 @@ describe('playback bar accents', () => {
     wrapper.unmount();
   });
 
-  it('pins the gutter pill to the viewport edge under horizontal scroll', async () => {
-    // The overlay layer is translated by (gutter − viewLeft); passing
-    // viewLeft back as gutterScrollX must land the gutter pill at screen x 0
-    // while the tracks pill scrolls with the content.
+  it('keeps the gutter pill on the row-number labels under horizontal scroll', async () => {
+    // Regression for the 2026-09-04 phone report (round 2): the old pin
+    // glued the gutter pill to the viewport's left edge while the static
+    // bitmap's row-number labels panned away with the content, so the pill
+    // clung over scrolled-away track content and slid under the tracks
+    // pill. The pill must share the labels' screen x at every pan
+    // position: the blit pans the bitmap by −viewLeft (drawImage sx =
+    // viewLeft·scale), and the overlay layer translates by (gutter −
+    // viewLeft), so the pill drawn at pattern x −78 must land at screen x
+    // −viewLeft — exactly the labels' rect.
     const scrollLeft = 30;
     const wrapper = mountCanvas({ playbackRow: 2, scrollLeft, playbackMode: 'pattern' });
     pumpFrame();
@@ -1260,14 +1266,15 @@ describe('playback bar accents', () => {
         call.height === rowHeightPx,
     );
     expect(pills).toHaveLength(2);
-    // gutter pill: gutterScrollX(30) − 78 (after the layer's translate of
-    // 78 − 30) = −78+30 … lands at −48+78 = 30? No: the pill's pattern-space
-    // x is −48, translated by +48 → screen x 0. Assert exact screen coords.
+    // Gutter pill: drawn at pattern x −78, layer translate 78 − 30 →
+    // screen x −30 — where the blit just put the bitmap's x-[0,78) labels.
     const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX);
-    expect(gutterPill!.x).toBe(0);
-    // Tracks pill stays at pattern-space 0 → screen 78 − 30 = 48.
+    expect(gutterPill!.x).toBe(-scrollLeft);
+    // Tracks pill stays at pattern-space 0 → screen 78 − 30. Edge-adjacent
+    // to the gutter pill (78 − 30 = −30 + 78), never overlapping it.
     const tracksPill = pills.find((p) => p.width === activeRowBarWidthPx(2, false));
     expect(tracksPill!.x).toBe(GUTTER_WIDTH_PX - scrollLeft);
+    expect(gutterPill!.x + GUTTER_WIDTH_PX).toBe(tracksPill!.x);
     wrapper.unmount();
   });
 });
@@ -1792,11 +1799,16 @@ describe('touch-pan band repaint (pan-jitter)', () => {
       const barY = 2 * rowPitchPx - view.top;
       for (const pill of pills) expect(pill.y).toBeCloseTo(barY, 5);
       const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX)!;
-      expect(gutterPill.x).toBe(0);
+      // The pill rides the row-number labels: the blit pans the bitmap by
+      // −view.left and the pill shares that origin, so it is NEVER glued to
+      // the viewport edge (the 2026-09-04 drift report).
+      expect(gutterPill.x + view.left).toBe(0);
       const tracksPill = pills.find(
         (p) => p.width === activeRowBarWidthPx(2, false),
       )!;
       expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
+      // Edge-adjacent to the tracks pill — never sliding under it.
+      expect(gutterPill.x + GUTTER_WIDTH_PX).toBeCloseTo(tracksPill.x, 5);
 
       prevBarY = barY;
     }
@@ -1830,8 +1842,8 @@ describe('touch-pan band repaint (pan-jitter)', () => {
   });
 });
 
-describe('gutter pill pin under programmatic pan', () => {
-  it('stays glued to the gutter column in every pan direction, including beyond-origin values', async () => {
+describe('gutter pill tracks the gutter under programmatic pan', () => {
+  it('stays on the row-number labels in every pan direction, including beyond-origin values', async () => {
     const wrapper = mountCanvas({ playbackRow: 3, scrollLeft: 0 });
     pumpFrame();
     const { overlay } = layerCanvases(wrapper);
@@ -1839,10 +1851,10 @@ describe('gutter pill pin under programmatic pan', () => {
     const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
     const hscroll = wrapper.find('.canvas-hscroll').element as HTMLElement;
 
-    // Right/down, left/up, and past both origin and extent — the pin must
-    // hold everywhere, never drifting toward the screen edge or over the
-    // tracks pill's column. (No identity state first: an unchanged scroll
-    // early-returns and runs no frame.)
+    // Right/down, left/up, and past both origin and extent — the pill must
+    // stay on the gutter labels everywhere, never drifting toward the
+    // screen edge or under the tracks pill. (No identity state first: an
+    // unchanged scroll early-returns and runs no frame.)
     const views = [
       { top: 180, left: 45 },
       { top: 360, left: 120 },
@@ -1868,14 +1880,18 @@ describe('gutter pill pin under programmatic pan', () => {
       const pills = newestPills(overlayCtx, frameStart);
       expect(pills).toHaveLength(2);
       const gutterPill = pills.find((p) => p.width === GUTTER_WIDTH_PX)!;
-      // Pinned at screen x 0 — the gutter column's left edge — regardless
-      // of the view origin, including out-of-range scroll values.
-      expect(gutterPill.x).toBe(0);
+      // On the labels' screen rect — x −view.left — at every origin,
+      // including out-of-range scroll values (over-scroll shifts the blit's
+      // destination and the pill by the same dx). The old viewport-edge pin
+      // (screen x 0) is the bug this asserts against.
+      expect(gutterPill.x + view.left).toBe(0);
       expect(gutterPill.y).toBeCloseTo(3 * rowPitchPx - view.top, 5);
       const tracksPill = pills.find(
         (p) => p.width === activeRowBarWidthPx(2, false),
       )!;
       expect(tracksPill.x).toBeCloseTo(GUTTER_WIDTH_PX - view.left, 5);
+      // Edge-adjacent, never overlapping, at any origin.
+      expect(gutterPill.x + GUTTER_WIDTH_PX).toBeCloseTo(tracksPill.x, 5);
     }
     wrapper.unmount();
   });

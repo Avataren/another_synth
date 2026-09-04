@@ -76,9 +76,9 @@ function footprintBands(
 ): BandRect[] {
   const bands: BandRect[] = [];
   if (f.barRow >= 0) {
-    // The bar spans the full width (gutter pill pinned at 0 + tracks pill
-    // scrolled by viewLeft), so its band is the whole row: one rect covers
-    // both pills whatever the horizontal origin.
+    // Both pills scroll with the content (the gutter pill rides the same
+    // −viewLeft translate as the tracks pill), so the band is still the
+    // whole row: one rect covers whatever remains visible at any origin.
     const band = clampBand(
       {
         x: 0,

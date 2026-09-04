@@ -12,6 +12,7 @@ import {
 import {
   columnFractionOffsets,
   entryHorizontalInsetPx,
+  GUTTER_WIDTH_PX,
   macroNibbleWidth,
 } from 'src/components/tracker/pattern-canvas/pattern-layout';
 import { trackWidthPx } from 'src/components/tracker/track-metrics';
@@ -465,21 +466,49 @@ describe('drawActiveRowBar', () => {
     }
   });
 
-  it('adds the row-number gutter pill pinned to the viewport edge (gutterScrollX)', () => {
+  it('draws the gutter pill on the row-number column, scrolling with the pattern', () => {
     const ctx = makeMockCtx();
-    drawActiveRowBar(ctx, layout4, theme, {
-      playbackRow: 3,
-      mode: 'pattern',
-      gutterScrollX: 120,
-    });
-    // The overlay layer is translated by (GUTTER − viewLeft): passing
-    // viewLeft as gutterScrollX pins the segment to the viewport's left
-    // edge — the DOM's non-scrolling .row-playback-bar behavior.
+    drawActiveRowBar(ctx, layout4, theme, { playbackRow: 3, mode: 'pattern' });
+    // The pill rides the row-number column's own pattern-space rect
+    // [-78, 0): the overlay layer's translate (GUTTER − viewLeft) then puts
+    // it exactly over the labels the static bitmap paints at x [0, 78),
+    // which the blit pans by −viewLeft. The DOM grid scrolls its row column
+    // with the tracks on the phone layout (TrackerPattern.vue's ≤900px
+    // media query), so the pill must pan away with them — a viewport-edge
+    // pin parked it over track content the gutter had scrolled past
+    // (Morten, 2026-09-04).
     const gutter = paths(ctx).find((c) => c.width === 78);
     expect(gutter).toBeDefined();
-    expect(gutter!.x).toBe(120 - 78);
+    expect(gutter!.x).toBe(-78);
     expect(gutter!.y).toBe(3 * 36);
     expect(gutter!.height).toBe(30);
+  });
+
+  it('keeps the two pills edge-adjacent at every pan position (gutter drift report)', () => {
+    // Regression for the 2026-09-04 phone report: panning right used to pin
+    // the gutter pill to the viewport edge while the tracks pill slid left
+    // under it, so the pills overlapped and the pill clung over content the
+    // labels had scrolled away from. The pill and the labels share one x at
+    // every pan position, and the pills never overlap.
+    for (const viewLeft of [0, 200, 2480]) {
+      const ctx = makeMockCtx();
+      drawActiveRowBar(ctx, layout(16, false, 64), theme, {
+        playbackRow: 3,
+        mode: 'pattern',
+      });
+      const translateX = GUTTER_WIDTH_PX - viewLeft; // paintOverlay's shift
+      const pills = paths(ctx).filter((c) => c.y === 3 * 36);
+      const gutter = pills.find((c) => c.width === GUTTER_WIDTH_PX);
+      const tracks = pills.find((c) => c.width === activeRowBarWidthPx(16, false));
+      expect(gutter).toBeDefined();
+      expect(tracks).toBeDefined();
+      // Static-bitmap labels live at bitmap x [0, 78) → screen x [-viewLeft,
+      // 78 − viewLeft). The gutter pill must land on exactly that rect.
+      expect(gutter!.x + translateX).toBe(0 - viewLeft);
+      // Edge-adjacent to the tracks pill (pattern x 0), like the DOM's two
+      // grid columns — adjacent, never overlapping, at any scroll origin.
+      expect(gutter!.x + GUTTER_WIDTH_PX).toBe(tracks!.x);
+    }
   });
 
   it('falls back to the full pattern width when trackCount is 0', () => {

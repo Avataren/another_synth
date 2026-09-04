@@ -3345,10 +3345,84 @@ untracked demo corpus on disk vs the committed index, not this branch);
 tsc at the 48-error baseline (identical multiset); eslint clean; gitleaks
 clean; quasar build clean.
 
+### D103 — The gutter pill scrolls with the pattern; D102's viewport-edge
+pin was the drift, not the fix (phone report, round 2)
+
+Morten, on his phone, 2026-09-04 05:09 — with the D102 band-repaint fix
+deployed and live: "Index indicator still clings to the left side of screen
+when I pan pattern right, and end up moving into the second pattern row
+indicator." D102's flicker fix was real but its gutter-pin component was
+**incomplete for the phone geometry, and the pin itself was the reported
+drift**. Traced before coding, end to end through the path a phone actually
+runs (`TrackerPage.vue` renders `PatternCanvas` when `canvasPatternRenderer`
+is on; `useMobileLayout` only picks the bitmap budget there):
+
+- **The DOM grid is the spec, and it scrolls its row column on the phone.**
+  `TrackerPattern.vue`'s `@media (max-width: 900px)` rebuilds `.pattern-body`
+  as one column: `.tracks-wrapper` on grid-row 1 and `.row-column` on
+  grid-row 2 with `flex-direction: row; overflow-x: auto` — the row numbers
+  become a horizontal strip that pans WITH the tracks, and
+  `.row-playback-bar` (absolute inside `.row-numbers-container`) pans away
+  with them. Only the desktop grid pins the row column (`grid-template-
+columns: 78px 1fr`, only `.tracks-wrapper` scrolls).
+- **The canvas's static bitmap already scrolls its labels on every
+  viewport.** `drawRowNumbers` bakes the hex labels into the bitmap at x
+  [0, 78); `paintVisible` blits that bitmap translated by −viewLeft
+  (`blitWindow`: source x = viewLeft). The component's own header strip
+  pans its "Row" label too, and the hit test already treated the gutter as
+  scrolling content (`contentX < GUTTER_WIDTH_PX` in pattern space).
+- **`drawActiveRowBar`'s pin was the single element that disagreed.**
+  `gutterScrollX − GUTTER_WIDTH_PX` under the overlay's
+  `(GUTTER − viewLeft)` translate put the pill at screen x 0 regardless of
+  the origin. Numbers for a 390px phone, 16 tracks, no extra effect column:
+  `trackWidthPx(16) = 168`, gap 6, pitch 174, `activeRowBarWidthPx = 2778`,
+  `contentWidth = 78 + 2688 + 90 = 2856`, viewport ≈ 376px inside the
+  panel, max scrollLeft = 2856 − 376 = 2480. At viewLeft = 200: labels at
+  screen [−200, −122) — off-screen; pinned pill at [0, 78) sitting over
+  bitmap [200, 278), i.e. the right edge of track 1 and the left edge of
+  track 2; tracks pill at [−122, 2656) covering the whole viewport,
+  including the pill's rect — the pills merged, and the gutter pill looked
+  like a lump on the wrong content ("moving into the … indicator"). At
+  viewLeft = 2480 the pill still sat at [0, 78) over bitmap [2480, 2558),
+  deep inside tracks 15–16.
+- **Why the round-1 pins were blind (the jt_letgo shape, again).**
+  `pattern-draw.test.ts` asserted the pin from the draw op's own contract
+  (`gutterScrollX: 120 → pill at 42`) and `pattern-canvas.test.ts` asserted
+  `gutterPill.x === 0` under scroll — each test verified its half of the
+  geometry against the same wrong assumption the code encoded (the DOM's
+  DESKTOP pin), and no test ever compared the pill's screen x with the
+  static labels' screen x, which the adjacent blit test asserted scroll.
+  The mock never exercised blit + overlay against one another.
+- **The fix: the pin is gone.** `drawActiveRowBar` draws the gutter pill at
+  the row-number column's own pattern-space rect [−78, 0); the overlay's
+  translate then lands it at screen x −viewLeft — exactly the labels' rect,
+  at every pan position, on every viewport — edge-adjacent to the tracks
+  pill at pattern x 0, the same adjacency the DOM's two grid columns paint,
+  so the pills can never overlap. Over-scroll is covered for free: the
+  blit's over-scroll dx and the pill's translate shift by the same amount
+  (`gutterPill.x + view.left === 0` holds at negative and beyond-extent
+  origins too). The band math is unchanged (the bar band was already the
+  whole row); `gutterScrollX` is deleted from the API. Desktop note,
+  honestly: the canvas's desktop labels already scrolled (unlike the DOM
+  desktop's pinned column), so the pill now matches what the canvas
+  actually renders there; making the desktop canvas pin the labels like the
+  DOM desktop would need a pinned re-blit of the gutter band and is
+  deliberately not built in this round.
+
+Tests: `pattern-draw.test.ts` (pill at pattern x −78; the two pills
+edge-adjacent at viewLeft 0/200/2480), `pattern-canvas.test.ts` (pill on
+the labels' screen rect under programmatic pan in every direction including
+beyond-origin, jitter suite kept), all three confirmed failing against
+b408293's code and passing with the fix. Suite 1447 green minus the same
+21 pre-existing demo-collection failures (untracked demo corpus vs the
+committed index); tsc at the 48-error baseline (identical multiset);
+eslint clean; gitleaks clean; quasar build clean.
+
 ## 8. Change log
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-04 | fix | **Gutter pill scrolls with the pattern — D102's viewport-edge pin was the drift itself** (D103). Morten's round-2 phone report: the indicator still clings to the screen's left edge while panning right and slides into the tracks pill. Trace: the DOM grid (the spec) scrolls its row column with the tracks on the phone layout (`TrackerPattern.vue` ≤900px media query), the canvas's static bitmap pans its labels on every viewport, and the hit test already treated the gutter as scrolling content — only `drawActiveRowBar`'s `gutterScrollX` pin disagreed, parking the pill at screen x 0 over scrolled-away content. The pin is deleted: the pill now rides the row-number column's pattern-space rect [−78, 0) and lands at screen x −viewLeft — on the labels at every pan position, edge-adjacent to the tracks pill, never overlapping. Three rewritten/new tests confirmed failing against b408293 before the fix; the round-1 pins were blind because each asserted one half of the geometry against the same wrong desktop assumption, and no test compared pill x with label x. Suite 1447 (21 pre-existing demo-corpus failures unchanged); tsc 48-error baseline; eslint/gitleaks/quasar build clean. |
 | 2026-09-03 | fix | **Pattern-canvas indicator flicker/drift on mobile: overlay repaints in bands from the pristine static bitmap** (D102). Trace first: the DOM-pill theory is refuted (the canvas is v-if/v-else against the DOM grid on both pages — no pills over the canvas to desync) and the gutter pin was never stale (same-frame `viewLeft`); the flicker path was the indicator layer's full-clear + full redraw on every pan frame. Now only the previous/current bar row and cursor bands are cleared, the background restored from the pristine static bitmap (never a live-canvas snapshot), one frame reads the view origin once for blit + translate + gutter pin, and `drawCursorCell`'s geometry is shared with the band math (`cursorCellRect`). Tests: `pattern-bands.test.ts`, pan-jitter + gutter-pin suites in `pattern-canvas.test.ts`. Offscreen band compositing (option 5) deliberately unbuilt pending Morten's phone check. |
 | 2026-09-03 | 5 | **S3M parser + importer land; PCM plays, AdLib parsed-and-preserved** (P5, D101). `formats/s3m.ts` parses the header (settled flag table quoted from OpenMPT S3MTools.h + st3play dig.c: no AMIGASLIDES bit exists; 0x10 amigaLimits, 0x40 fastVolumeSlides, 0x01 st2vibrato), S3M run-length patterns (0xFE note-off / 0xFF instrument-only verified), PCM/AdLib 80-byte headers, unsigned-8/signed-16 sample data. `s3m-import.ts` builds slots/patches (referenced-only, c2spd folded into the root note at the C-5 anchor, D56 latch, BCD Cxx, D53 volume stamping); AdLib instruments get inactive slots carrying their OPL register bytes exactly as the file stores them -- the natural patch format for the future **dedicated WASM OPL core** (standalone emulator, own worklet/voice path, not the main synth; Morten's amendments) -- plus a counted import warning, and no mapping layer toward the existing synth's FM primitives. `amigaLimits` threads the D59 chain into `S3M_AMIGA_PROFILE`; header global volume rides D72. M/N/Y/Z and volume-column panning: zero corpus uses, left unmapped by count. DP30AD1F packing detected, not decoded (no reference implementation; 0 corpus files). Corpus of 20 modland files pinned on decode with independently cross-checked golden cells (sun.s3m the one genuine AdLib file; the first sweep's "AdLib" files were type-0 empty slots, caught by review and corrected). Tests: `s3m-parser/s3m-import/s3m-corpus/s3m-engine.test.ts` (48, 9 of them corpus), pitch-model + raw-effect-bytes extensions; 1415 green; tsc 48-error baseline; eslint/gitleaks clean; quasar build clean. |
 | 2026-09-03 | 4 | **Autovibrato depth converts through the pitch model** (P4, D97). The last hardcoded pitch constant outside the pitch model -- `ModInstrument`'s 100/64 cents-per-XM-period-unit -- is replaced by `PitchModel.vibratoDepthCents(baseFrequency, depthUnits)`, supplied by the song's format profile via the song bank. Linear table unchanged (exactness pinned); XM Amiga mode and S3M now get the pitch-dependent log2((p+d)/p) conversion FT2's `updateVolPanAutoVib` implies. Corpus: 52 of ~470 demo-collection instruments carry autovibrato (16.9% of played notes); ramp-up waveform is corpus-absent and implemented per the C. Waveform doc 2/3 swap corrected. Tests: `src/tests/xm-autovibrato.test.ts` (3 confirmed failing against the old code), `src/tests/pitch-model.test.ts`. |

@@ -417,14 +417,6 @@ export interface DrawActiveRowBarData {
   mode: PlaybackBarMode;
   /** Track count the bar spans (activeRowBarWidthPx input). */
   trackCount?: number;
-  /**
-   * Pattern-space x the viewport's left edge sits at (the component's
-   * viewLeft). The DOM pins its row-number pill to the page while the tracks
-   * scroll horizontally; the overlay is one translated layer, so the gutter
-   * segment is placed relative to this to stay at the viewport's left edge.
-   * Defaults to 0 (no horizontal scroll).
-   */
-  gutterScrollX?: number;
 }
 
 /** Corner radius of the DOM playback pills (.active-row-bar/.row-playback-bar). */
@@ -498,10 +490,18 @@ export function drawActiveRowBar(
   roundRectPath(ctx, 0, y, width, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);
   ctx.fill();
   ctx.stroke();
-  // The gutter pill: the DOM's row column never scrolls horizontally, so
-  // pin the segment to the viewport's left edge via the current view origin.
-  const gutterX = (data.gutterScrollX ?? 0) - GUTTER_WIDTH_PX;
-  roundRectPath(ctx, gutterX, y, GUTTER_WIDTH_PX, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);
+  // The gutter pill scrolls with the pattern too, drawn at the row-number
+  // column's own pattern-space rect [-GUTTER_WIDTH_PX, 0) so it stays on the
+  // labels the static bitmap paints there. The DOM grid is the spec, and it
+  // scrolls its row column with the tracks on exactly the surface where this
+  // renderer is most used (TrackerPattern.vue's ≤900px media query turns
+  // .row-column into an overflow-x:auto strip), so the pill must pan away
+  // with them — pinning it to the viewport edge parked it over track content
+  // the gutter had already scrolled past (Morten, 2026-09-04: the indicator
+  // "clings to the left side of screen" while panning right). Edge-adjacent
+  // to the tracks pill at pattern x 0, the same adjacency the DOM's two grid
+  // columns paint, so the pills can never overlap at any scroll origin.
+  roundRectPath(ctx, -GUTTER_WIDTH_PX, y, GUTTER_WIDTH_PX, rowHeightPx, PLAYBACK_BAR_RADIUS_PX);
   ctx.fill();
   ctx.stroke();
   ctx.lineWidth = 1;

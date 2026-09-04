@@ -654,8 +654,8 @@ let overlayFullPaint = true;
  * layer clear instead.
  *
  * The view origin arrives as the frame's single snapshot (runFrame reads
- * viewTop/viewLeft once), so the translate, the gutter pin and the blit
- * beneath all speak the same scroll state.
+ * viewTop/viewLeft once), so the translate and the blit beneath all speak
+ * the same scroll state.
  */
 function paintOverlay(vt: number, vl: number): boolean {
   const canvas = overlayCanvasRef.value;
@@ -691,9 +691,9 @@ function paintOverlay(vt: number, vl: number): boolean {
     }
   }
   // The bar/cursor draw ops speak pattern space (rowY, entryBoxRect) while
-  // this canvas is viewport-sized: shift the layer so the gutter stays
-  // pinned and the scroll offset lands the ops on the visible rows. Both
-  // offsets derive from the same frame's vt/vl the band math above used.
+  // this canvas is viewport-sized: shift the layer so the ops land on the
+  // visible rows. Both offsets derive from the same frame's vt/vl the band
+  // math above used.
   ctx.save();
   ctx.translate(GUTTER_WIDTH_PX - vl, -vt);
   const theme = getTheme();
@@ -702,10 +702,12 @@ function paintOverlay(vt: number, vl: number): boolean {
       playbackRow: barRow,
       mode: props.playbackMode as PlaybackBarMode,
       trackCount: l.trackCount,
-      // Same-frame viewLeft: the gutter pill pins to the viewport edge
-      // the grid was blitted at in this exact frame, never a stale or
-      // separately-tracked scroll value.
-      gutterScrollX: vl,
+      // No gutter pin: the gutter pill scrolls with the pattern, staying on
+      // the row-number labels the static bitmap paints at its x [0, 78) —
+      // labels this same frame's blit pans by −vl. The DOM grid scrolls its
+      // row column with the tracks on the phone layout this renderer mostly
+      // serves, and Morten's phone check confirmed the old viewport-edge pin
+      // clung over scrolled-away content.
     });
   }
   if (cursorRect) {
