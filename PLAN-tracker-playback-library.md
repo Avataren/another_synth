@@ -494,41 +494,29 @@ npm run build:tracker-playback
 npx quasar build                  # uses prebuilt public/wasm; no Rust needed
 ```
 
-And the standalone check — the only thing that proves the _built_ artifact works
+And the standalone check -- the only thing that proves the _built_ artifact works
 outside the app, since the app resolves to source:
 
 ```sh
-# in a scratch dir with a package.json containing {"type":"module"}
-# and node_modules/@another-synth/tracker-playback = a copy of the package
-#                                                    (dist + package.json only)
-node -e "
-import('@another-synth/tracker-playback').then(async (lib) => {
-  const fs = await import('node:fs');
-  const b = new Uint8Array(fs.readFileSync('public/demos/amiga/GSLINGER.MOD'));
-  const patterns = lib.buildModTrackerPatterns(lib.parseMod(b));
-  const song = lib.buildPlaybackSong({
-    currentSong: { title: '', author: '', bpm: 125 },
-    moduleFormat: 'protracker',
-    patterns,
-    sequence: patterns.map((p) => p.id),
-    currentPatternId: patterns[0].id,
-    playbackMode: 'song',
-    stepSize: 1,
-    defaultPatternRows: 64,
-    resolveInstrumentId: lib.formatInstrumentId,
-    normalizeInstrumentId: lib.normalizeInstrumentId,
-  });
-  console.log(song.patterns.length, 'patterns');
-});
-"
+npm run check:tracker-playback-dist
 ```
 
-Since §3c this goes the whole way — bytes to a schedulable `PlaybackSong` — so
-it is worth running for XM and S3M too. Those need two more arguments each (a
-pitch model and an instrument-to-slot `Map`); §3c has the expected output for
-all three. `PlaybackSongSource` requires both `resolveInstrumentId` and
-`normalizeInstrumentId`; omitting the latter fails at runtime, not at the type
-level, if you write the check in plain JS.
+That builds the package and runs `scripts/check-tracker-playback-dist.mjs`,
+which imports `@another-synth/tracker-playback` by name under plain Node. The
+npm-workspace symlink plus the package's own `exports` map send that to `dist/`,
+so it really does load the build rather than the source -- no scratch directory
+or hand-copied package needed, which is how this used to be done.
+
+It checks four things: that both the ESM and CJS entries load; that 26 named
+public exports are actually present (an `export *` collision in `index.ts`
+silently drops a name, and nothing else would notice); that MOD, XM and S3M each
+go bytes -> rows -> `PlaybackSong` with real notes in the steps; and that
+`PlaybackEngine` and `createVisibilityClock` construct with no DOM. It exits
+non-zero on any failure -- verified by deleting an export, rebuilding and
+watching it fail, not just by watching it pass.
+
+It picks the first demo of each format rather than naming files, so it survives
+the demo set changing, and asserts shape rather than exact counts.
 
 ---
 
@@ -674,9 +662,11 @@ typecheck caught two real errors, so run that after every step too.
 - **The package has no README.** For "use it in other apps" that becomes the
   actual barrier the moment the code works. It should show the three-line
   parse-and-play path and say plainly which exports touch the DOM (§2).
-- **The standalone check in §5 should be a checked-in script**, not something
-  run by hand. The app resolves the package to source, so nothing in CI
-  exercises `dist` at all — the one artifact external consumers actually get.
+- ~~**The standalone check in §5 should be a checked-in script.**~~ Done
+  2026-09-04: `scripts/check-tracker-playback-dist.mjs`, wired as
+  `npm run check:tracker-playback-dist`. It is not part of `npm test` — it needs
+  a build first, so it belongs in CI as its own step. Add it there when there is
+  a CI pipeline to add it to.
 
 ---
 

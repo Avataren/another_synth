@@ -17,6 +17,7 @@
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
     "build:tracker-playback": "npm run build --workspace @another-synth/tracker-playback",
+    "check:tracker-playback-dist": "npm run build:tracker-playback && node scripts/check-tracker-playback-dist.mjs",
     "demos:refresh": "node scripts/build-demo-manifest.mjs public/demos public/demos",
     "dev": "npm run demos:refresh && concurrently \"npm:dev:wasm\" \"npm:dev:worklets\" \"quasar dev\"",
     "dev:wasm": "node build-wasm.cjs --watch",
