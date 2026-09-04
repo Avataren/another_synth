@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-04T05:26:35.327Z",
+  "generated": "2026-09-04T07:39:55.204Z",
   "collections": [
     {
       "id": "amiga",
@@ -13,6 +13,14 @@
           "signature": "M.K.",
           "file": "amiga/12TH.MOD",
           "bytes": 143039
+        },
+        {
+          "title": "1989-a number",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/1989-a_number.mod",
+          "bytes": 178776
         },
         {
           "title": "anarchymenu12",
@@ -94,6 +102,14 @@
           "bytes": 203278
         },
         {
+          "title": "aciiiiiid",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/aciiiiiid.mod",
+          "bytes": 263598
+        },
+        {
           "title": "action1",
           "format": "MOD",
           "channels": 4,
@@ -172,6 +188,14 @@
           "bytes": 276712
         },
         {
+          "title": "crackerjournal(r.k)",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/crackerjournal_r_k.mod",
+          "bytes": 109756
+        },
+        {
           "title": "crystalhammer",
           "format": "MOD",
           "channels": 4,
@@ -185,6 +209,22 @@
           "signature": "M.K.",
           "file": "amiga/dear_rob.mod",
           "bytes": 66236
+        },
+        {
+          "title": "dungeonquest",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/dungeonquest.mod",
+          "bytes": 206118
+        },
+        {
+          "title": "eat my dead hog",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/eat_my_dead_hog.mod",
+          "bytes": 147898
         },
         {
           "title": "hymn to aurora",
@@ -232,6 +272,14 @@
           "signature": "M.K.",
           "file": "amiga/jogeir_liljedahl_-_addiction.mod",
           "bytes": 93758
+        },
+        {
+          "title": "knight-dance",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/knight-dance.mod",
+          "bytes": 131602
         },
         {
           "title": "lastv8",
@@ -289,6 +337,14 @@
           "bytes": 339546
         },
         {
+          "title": "outa city lamer",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/outa_city_lamer.mod",
+          "bytes": 187502
+        },
+        {
           "title": "overture",
           "format": "MOD",
           "channels": 4,
@@ -342,6 +398,14 @@
           "signature": "M.K.",
           "file": "amiga/resii.mod",
           "bytes": 188416
+        },
+        {
+          "title": "rsi-intro",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/rsi-intro.mod",
+          "bytes": 54586
         },
         {
           "title": "sleepwalk",
@@ -406,6 +470,14 @@
           "bytes": 108798
         },
         {
+          "title": "the cosmic dog ii",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/the_cosmic_dog_ii.mod",
+          "bytes": 312352
+        },
+        {
           "title": "Think Twice III",
           "format": "MOD",
           "channels": 4,
@@ -436,6 +508,14 @@
           "signature": "M.K.",
           "file": "amiga/were_the_devils.mod",
           "bytes": 110240
+        },
+        {
+          "title": "you must learn",
+          "format": "MOD",
+          "channels": 4,
+          "signature": "M.K.",
+          "file": "amiga/you_must_learn.mod",
+          "bytes": 191252
         }
       ]
     },
@@ -639,6 +719,15 @@
           "bytes": 819762
         },
         {
+          "title": "Astraying Voyages",
+          "format": "S3M",
+          "channels": 25,
+          "patterns": 99,
+          "instruments": 41,
+          "file": "s3m/astraying_voyages.s3m",
+          "bytes": 719904
+        },
+        {
           "title": "Average Chip Funk",
           "format": "S3M",
           "channels": 8,
@@ -684,6 +773,69 @@
           "bytes": 48720
         },
         {
+          "title": "Citylights - Citytrack",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 37,
+          "instruments": 22,
+          "file": "s3m/citylights_citytrack.s3m",
+          "bytes": 373158
+        },
+        {
+          "title": "cloud city",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 26,
+          "instruments": 31,
+          "file": "s3m/cloud_city.s3m",
+          "bytes": 146531
+        },
+        {
+          "title": "\"Collage\"",
+          "format": "S3M",
+          "channels": 12,
+          "patterns": 62,
+          "instruments": 31,
+          "file": "s3m/collage.s3m",
+          "bytes": 544527
+        },
+        {
+          "title": "Cool City - volume 1.2",
+          "format": "S3M",
+          "channels": 25,
+          "patterns": 99,
+          "instruments": 16,
+          "file": "s3m/cool_city_volume_1_2.s3m",
+          "bytes": 257846
+        },
+        {
+          "title": "distant lullaby",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 11,
+          "instruments": 31,
+          "file": "s3m/distant_lullaby.s3m",
+          "bytes": 36151
+        },
+        {
+          "title": "\"energia\" - necros / fm",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 79,
+          "instruments": 30,
+          "file": "s3m/energia.s3m",
+          "bytes": 441264
+        },
+        {
+          "title": "Escape from Pori",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 39,
+          "instruments": 36,
+          "file": "s3m/escape_from_pori.s3m",
+          "bytes": 891008
+        },
+        {
           "title": "Final Decade",
           "format": "S3M",
           "channels": 8,
@@ -700,6 +852,24 @@
           "instruments": 8,
           "file": "s3m/funtro.s3m",
           "bytes": 20192
+        },
+        {
+          "title": "Global Motion vol.1",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 47,
+          "instruments": 24,
+          "file": "s3m/global_motion_vol_1.s3m",
+          "bytes": 241088
+        },
+        {
+          "title": "Helpless AuToMaTOn",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 21,
+          "instruments": 25,
+          "file": "s3m/helpless_automaton.s3m",
+          "bytes": 478312
         },
         {
           "title": "Image of Variance",
@@ -720,6 +890,15 @@
           "bytes": 968702
         },
         {
+          "title": "isotoxin - necros / fm",
+          "format": "S3M",
+          "channels": 15,
+          "patterns": 76,
+          "instruments": 37,
+          "file": "s3m/isotoxin.s3m",
+          "bytes": 469848
+        },
+        {
           "title": "kraaap",
           "format": "S3M",
           "channels": 6,
@@ -729,6 +908,15 @@
           "bytes": 32848
         },
         {
+          "title": "mechanism eight - necros/fm",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 94,
+          "instruments": 31,
+          "file": "s3m/mechanism_eight.s3m",
+          "bytes": 745436
+        },
+        {
           "title": "o-79642",
           "format": "S3M",
           "channels": 16,
@@ -736,6 +924,24 @@
           "instruments": 13,
           "file": "s3m/o-79642.s3m",
           "bytes": 305184
+        },
+        {
+          "title": "Pentagonal Dreams",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 16,
+          "instruments": 15,
+          "file": "s3m/pentagonal_dreams.s3m",
+          "bytes": 117746
+        },
+        {
+          "title": "\"Point of Departure\"",
+          "format": "S3M",
+          "channels": 16,
+          "patterns": 32,
+          "instruments": 28,
+          "file": "s3m/point_of_departure.s3m",
+          "bytes": 443136
         },
         {
           "title": "Return to Saturn",
@@ -774,6 +980,33 @@
           "bytes": 39778
         },
         {
+          "title": "Seaside hotel",
+          "format": "S3M",
+          "channels": 12,
+          "patterns": 32,
+          "instruments": 21,
+          "file": "s3m/seaside_hotel.s3m",
+          "bytes": 550720
+        },
+        {
+          "title": "- --Skyrider-- -",
+          "format": "S3M",
+          "channels": 8,
+          "patterns": 99,
+          "instruments": 30,
+          "file": "s3m/skyrider.s3m",
+          "bytes": 204282
+        },
+        {
+          "title": "Starshine - PM",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 40,
+          "instruments": 19,
+          "file": "s3m/starshine.s3m",
+          "bytes": 299411
+        },
+        {
           "title": "sun",
           "format": "S3M",
           "channels": 16,
@@ -783,6 +1016,15 @@
           "bytes": 10032
         },
         {
+          "title": "The Probe (maintheme)",
+          "format": "S3M",
+          "channels": 12,
+          "patterns": 61,
+          "instruments": 23,
+          "file": "s3m/the_probe_maintheme.s3m",
+          "bytes": 831178
+        },
+        {
           "title": "Turbulence",
           "format": "S3M",
           "channels": 8,
@@ -790,6 +1032,24 @@
           "instruments": 17,
           "file": "s3m/turbulence.s3m",
           "bytes": 176360
+        },
+        {
+          "title": "\"Vocalization\"",
+          "format": "S3M",
+          "channels": 9,
+          "patterns": 12,
+          "instruments": 21,
+          "file": "s3m/vocalization.s3m",
+          "bytes": 161951
+        },
+        {
+          "title": "When the heavens fall",
+          "format": "S3M",
+          "channels": 13,
+          "patterns": 56,
+          "instruments": 26,
+          "file": "s3m/when_the_heavens_fall.s3m",
+          "bytes": 846302
         }
       ]
     }
