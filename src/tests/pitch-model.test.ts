@@ -323,9 +323,17 @@ describe('S3mPitchModel (ST3)', () => {
   it('clamps an arpeggio past the table edge instead of wrapping to DC', () => {
     // st3play's slide routines hold the period inside 64..32767; unlike
     // ProTracker there is no wrap-to-DC artefact.
-    const lowest = periodForNote(0x5b); // B-6, 14512 >> 5 = 453
+    const lowest = periodForNote(0x7b); // B-8, the table's edge, 14512 >> 7
     expect(s3m.arpeggioPeriod(lowest, 1)).toBe(lowest);
     expect(s3m.arpeggioPeriod(lowest, 1)).not.toBe(0);
+  });
+
+  it('arpeggiates across the old six-octave edge instead of stalling', () => {
+    // B-6 is no longer where the table stops, so +1 from it is the real
+    // next semitone (C-7, 27392 >> 6) rather than a clamp onto itself.
+    // Truncating at six octaves froze arpeggio, glissando and portamento
+    // for every note above B-6 -- 8.4% of satellite_one's notes.
+    expect(s3m.arpeggioPeriod(periodForNote(0x5b), 1)).toBe(428);
   });
 
   it('snaps glissando to the nearest table entry', () => {
@@ -343,8 +351,15 @@ describe('S3mPitchModel (ST3)', () => {
     expect(s3mPeriodForNote(0x40)).toBe(1712);
     expect(s3mPeriodForNote(0x00)).toBe(27392);
     expect(s3mPeriodForNote(0x0c)).toBe(13696);
-    expect(s3mPeriodForNote(0x5b)).toBe(453); // B-6, the table's edge
-    expect(s3mPeriodForNote(0x5c)).toBeUndefined();
+    expect(s3mPeriodForNote(0x5b)).toBe(453); // B-6
+    // 0x5C is the overrun spelling of C-7, which the note byte's octave
+    // nibble reaches: st3play shifts `notespd` by the whole nibble, so the
+    // table runs to B-8 (0x7B) and only the sentinels fall outside.
+    expect(s3mPeriodForNote(0x5c)).toBe(428);
+    expect(s3mPeriodForNote(0x60)).toBe(428); // C-7, the same entry
+    expect(s3mPeriodForNote(0x7b)).toBe(113); // B-8, 14512 >> 7
+    expect(s3mPeriodForNote(0xfe)).toBeUndefined(); // key off
+    expect(s3mPeriodForNote(0xff)).toBeUndefined(); // empty
   });
 
   it('clamps to the amiga-limits range under the per-file flag', () => {

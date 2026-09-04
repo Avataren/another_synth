@@ -17,6 +17,10 @@ import {
 import {
   PlaybackEngine,
 } from '../../packages/tracker-playback/src/engine';
+import {
+  createS3mPitchModel,
+  s3mPeriodForNote,
+} from '../../packages/tracker-playback/src/pitch-model';
 
 /** The same rig raw-effect-bytes.test.ts uses, trimmed to what S3M needs. */
 function makeBuilderContext(file: ReturnType<typeof importS3mToTrackerSong>) {
@@ -237,5 +241,102 @@ describe('S3M header global volume reaches the engine', () => {
     const builder = makeBuilderContext(song);
     engine.loadSong(builder.buildPlaybackSong('song'));
     expect(log.filter((l) => l.startsWith('globalvol:'))).toContain('globalvol:0.5');
+  });
+});
+
+describe('notes above B-6 stay in the period domain', () => {
+  /**
+   * The reported symptom (Morten, 2026-09-04): the satellite_one.s3m lead on
+   * channels 4/5 sounded muffled, with the notes failing to separate and the
+   * level sagging. Those channels play in octaves 6 and 7, and the S3M period
+   * table stopped at B-6 -- so `frequencyForNote` returned undefined, the
+   * note-on cleared `currentPeriod`, and every later tone portamento on the
+   * channel fell into the frequency-ratio fallback, which slides several
+   * times slower and glided across the following rows instead of landing.
+   *
+   * Pinned at the engine, because the importer resolves the note either way:
+   * only the effect arithmetic downstream was wrong (the D59 lesson).
+   */
+  function slideFor(note: number): number[] {
+    const song = importS3m({
+      channelSettings: ONE_PCM_CHANNEL,
+      orders: [0],
+      patterns: [
+        [
+          // A plain note-on, then a G02 tone portamento a semitone above it.
+          [{ note, instrument: 1, volume: 64 }],
+          [{ note: note + 1, effect: 0x07, param: 0x02 }],
+          [{}],
+          [{}],
+        ],
+      ],
+      instruments: [{ frames: [0, 0.25, -0.25, 0] }],
+    });
+    const log: string[] = [];
+    const engine = makeEngine(log);
+    const builder = makeBuilderContext(song);
+    engine.loadSong(builder.buildPlaybackSong('song'));
+    const pattern = song.data.patterns[0]!;
+    engine.loadPattern(pattern.id);
+    for (let row = 0; row < pattern.rows; row += 1) {
+      (
+        engine as unknown as { scheduleRow: (r: number, t: number) => void }
+      ).scheduleRow(row, row);
+    }
+    return pitchValues(log);
+  }
+
+  /** Ticks the slide needs before it settles on its target. */
+  function ticksToSettle(pitches: number[]): number {
+    const target = pitches[pitches.length - 1]!;
+    let settled = pitches.length;
+    while (settled > 0 && Math.abs(pitches[settled - 1]! - target) < 1e-6) {
+      settled -= 1;
+    }
+    return settled;
+  }
+
+  it('the top octaves resolve to a table period, not undefined', () => {
+    // 0x60 = C-7 and 0x70 = C-8: both are spellings the octave nibble
+    // reaches, and both were undefined while the table held six octaves.
+    expect(s3mPeriodForNote(0x60)).toBeDefined();
+    expect(s3mPeriodForNote(0x70)).toBeDefined();
+  });
+
+  it('a G02 above B-6 lands inside its row, on the table pitch', () => {
+    // C-7 (0x60) is one semitone below C#-7 (0x61) and past the old table
+    // edge. A period-domain G02 moves 8 period units a tick, so the 24 units
+    // between those two entries are covered in 3 ticks -- inside the row's
+    // six. The ratio fallback needed nine, gliding a row and a half into the
+    // notes that followed, which is what "the notes don't separate" was.
+    const pitches = slideFor(0x60);
+    expect(ticksToSettle(pitches)).toBeLessThan(6);
+
+    // ...and it settles on the table entry for C#-7, not the equal-tempered
+    // frequency the fallback targeted.
+    const model = createS3mPitchModel();
+    const target = model.frequencyFromPeriod(s3mPeriodForNote(0x61)!);
+    expect(pitches[pitches.length - 1]!).toBeCloseTo(target, 4);
+  });
+
+  it('G02 moves 8 period units a tick in either octave', () => {
+    // The invariant behind both of the above: a period-domain slide steps
+    // `param * portamentoUnitScale` = 8 units a tick whatever the octave. It
+    // is the *musical* size of that step that differs -- a semitone is 192
+    // units at C-4 and only 24 at C-7, which is why the low note is still
+    // moving when the row ends and the high one has arrived. The ratio
+    // fallback had no such unit at all.
+    const model = createS3mPitchModel();
+    for (const note of [0x30, 0x60]) {
+      const periods = slideFor(note).map((f) =>
+        model.rawPeriodFromFrequency(f),
+      );
+      const steps = periods
+        .slice(1)
+        .map((p, i) => periods[i]! - p)
+        .filter((d) => d > 1e-6); // drop the held ticks after it settles
+      expect(steps.length).toBeGreaterThan(0);
+      for (const d of steps) expect(d).toBeCloseTo(8, 6);
+    }
   });
 });

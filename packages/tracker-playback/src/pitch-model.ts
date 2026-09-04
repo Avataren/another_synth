@@ -416,13 +416,23 @@ const ST3_NOTESPD: readonly number[] = [
 ];
 
 /**
- * S3M's note byte spans six octave nibbles of twelve semitones each
- * (0x00..0x5B = C-1..B-6); lo-nibble values 0xC..0xF are octave-overrun
- * spellings of the next octave's first notes, not extra table rows, so the
- * table holds 6 x 12 entries.
+ * S3M's note byte is `(octave << 4) | semitone`, and st3play's
+ * `stnote2herz` shifts the base row right by the octave *nibble* --
+ * `notespd[note & 0x0F] >> (note >> 4)` -- so every one of the nibble's
+ * eight values is playable, not six. The table therefore holds 8 x 12
+ * entries, C-1..B-8. (Lo-nibble values 0xC..0xF are octave-overrun
+ * spellings of the next octave's first notes, not extra table rows, and
+ * clamp at the edge in `s3mPeriodForNote`.)
+ *
+ * The corpus needs the top two octaves: 8.4% of satellite_one's notes and
+ * 18% of ascent_of_the_cloud_eagle's sit above B-6. Truncating at six
+ * octaves made those notes fall out of the period domain entirely --
+ * `currentPeriod` went undefined on the channel, and every later
+ * portamento, vibrato and arpeggio on it silently switched to the
+ * frequency-ratio fallback, which slides several times slower.
  */
 const S3M_PERIOD_TABLE: readonly number[] = Array.from(
-  { length: 72 },
+  { length: 96 },
   (_, i) => ST3_NOTESPD[i % 12]! >> Math.floor(i / 12),
 );
 
@@ -431,17 +441,20 @@ const S3M_PERIOD_TABLE: readonly number[] = Array.from(
  *
  * Exported for the importer (which must convert each written note to a
  * musical frequency through the model, never re-deriving periods -- D96).
- * The table is this module's S3M_PERIOD_TABLE; lo-nibble values 0xC..0xF
- * index linearly (0x0C is the chromatic continuation of the octave, the
- * same spelling OpenMPT's `(note & 0x0F) + 12 * (note >> 4) + 12` reads),
- * clamped to the table's edge.
+ * The table is this module's S3M_PERIOD_TABLE, covering the note byte's
+ * full eight-octave nibble; lo-nibble values 0xC..0xF index linearly (0x0C
+ * is the chromatic continuation of the octave, the same spelling OpenMPT's
+ * `(note & 0x0F) + 12 * (note >> 4) + 12` reads), clamped to the table's
+ * edge.
  */
 export function s3mPeriodForNote(note: number): number | undefined {
-  // 0x5B = B-6, the last of the table's six octaves. Index by octave nibble
-  // and semitone (lo nibbles 0xC..0xF continue the scale chromatically, the
-  // spelling OpenMPT's `(note & 0x0F) + 12 * (note >> 4) + 12` reads),
-  // clamped to the table's edge.
-  if (note < 0 || note > 0x5b) return undefined;
+  // 0x7F is the largest byte the octave/semitone nibbles can spell. Index by
+  // octave nibble and semitone (lo nibbles 0xC..0xF continue the scale
+  // chromatically, the spelling OpenMPT's
+  // `(note & 0x0F) + 12 * (note >> 4) + 12` reads), clamped to the table's
+  // edge. The sentinels (0xFE key-off, 0xFF empty) fall outside and still
+  // return undefined.
+  if (note < 0 || note > 0x7f) return undefined;
   const index = Math.min((note >> 4) * 12 + (note & 0x0f), S3M_PERIOD_TABLE.length - 1);
   return S3M_PERIOD_TABLE[index]!;
 }

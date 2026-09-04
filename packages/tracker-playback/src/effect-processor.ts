@@ -934,10 +934,18 @@ export function processEffectTick0(
       state.targetMidi = newNote;
       const targetFreq = noteFrequency ?? midiToFrequency(newNote);
       state.targetFrequency = targetFreq;
-      // Only use ProTracker-style periods when we have period context
-      // (MOD imports provide noteFrequency/currentPeriod). Otherwise keep
-      // frequency-based slides for normal tracker notes.
-      if (noteFrequency !== undefined || state.currentPeriod !== undefined) {
+      // Only use ProTracker-style periods when we have period context.
+      // A period-domain format (MOD/S3M/XM-Amiga) always has it: its slides
+      // are defined in periods, so the target is derived from the frequency
+      // even when the row carried no explicit one. Deciding this on
+      // `noteFrequency` alone let a single note whose frequency failed to
+      // resolve drop the channel into the frequency-ratio fallback -- which
+      // slides several times slower -- for the rest of the song.
+      if (
+        state.profile.pitch.kind === 'amiga' ||
+        noteFrequency !== undefined ||
+        state.currentPeriod !== undefined
+      ) {
         state.targetPeriod =
           state.profile.pitch.periodFromFrequency(targetFreq);
       } else {
@@ -957,6 +965,18 @@ export function processEffectTick0(
         const rawPeriod =
           state.profile.pitch.rawPeriodFromFrequency(noteFrequency);
         updatePitchFromPeriod(state, rawPeriod);
+      } else if (state.profile.pitch.kind === 'amiga') {
+        // Same reasoning as the tone-portamento branch above: on a
+        // period-domain format the channel must stay in the period domain,
+        // so derive the period from the note's frequency rather than
+        // abandoning it. Clearing `currentPeriod` here was sticky -- nothing
+        // downstream restores it -- so one unresolved note disabled
+        // period-accurate portamento, vibrato and arpeggio on that channel
+        // until the next note that did resolve.
+        updatePitchFromPeriod(
+          state,
+          state.profile.pitch.rawPeriodFromFrequency(midiToFrequency(newNote)),
+        );
       } else {
         state.currentPeriod = undefined;
         updatePitchFromFrequency(state, midiToFrequency(newNote));
