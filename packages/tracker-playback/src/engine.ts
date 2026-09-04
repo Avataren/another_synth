@@ -911,19 +911,15 @@ export class PlaybackEngine {
             this.stop();
             return;
           }
+          // Preload for scheduling without flipping the visible position --
+          // see the natural pattern-end path below, and D109.
           this.loadPattern(targetPatternId, {
-            emitPosition: true,
-            updatePosition: true,
+            emitPosition: false,
+            updatePosition: false,
           });
           // Reset to start of target pattern
           this.lastScheduledRow = -1;
           this.resetPositionReference(this.currentSequenceIndex, 0, now);
-          this.position = {
-            row: 0,
-            patternId: targetPatternId,
-            sequenceIndex: this.currentSequenceIndex,
-          };
-          this.emit('position', this.position);
         } else if (cmd.type === 'patBreak') {
           // Dxx: Break to row xx of next pattern
           this.currentSequenceIndex += 1;
@@ -935,9 +931,11 @@ export class PlaybackEngine {
           }
           const targetPatternId = sequence[this.currentSequenceIndex];
           if (targetPatternId) {
+            // Preload for scheduling without flipping the visible position --
+            // see the natural pattern-end path below, and D109.
             this.loadPattern(targetPatternId, {
-              emitPosition: true,
-              updatePosition: true,
+              emitPosition: false,
+              updatePosition: false,
             });
             // Jump to specified row in next pattern (clamped to pattern length)
             const targetRow = Math.max(0, Math.min(cmd.value, this.length - 1));
@@ -947,12 +945,6 @@ export class PlaybackEngine {
               targetRow,
               now,
             );
-            this.position = {
-              row: targetRow,
-              patternId: targetPatternId,
-              sequenceIndex: this.currentSequenceIndex,
-            };
-            this.emit('position', this.position);
           } else {
             this.stop();
             return;

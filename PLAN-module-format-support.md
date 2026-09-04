@@ -3469,6 +3469,66 @@ and must be asked separately: *which sample does a new note use* (latched, D56) 
 channel volume reload* (the number itself). 14 of the 20 corpus modules change, in both
 directions; satellite_one gains 188 volume stamps and caverns_of_cthulu loses 20.
 
+### D109 — Bxx/Cxx moved the display ahead of the audio (one-frame jump to the top)
+
+Morten, 2026-09-04, on caverns_of_cthulu.s3m's second sequence entry: "the whole pattern jumps
+for a frame, looks like it jumps to the top, and then continues like normal", around row 0x1A.
+Also seen on many MODs.
+
+That entry carries a `C00` pattern break at row **0x1F**. The engine schedules about half a
+second ahead of the audio clock — four or five rows at this tempo — so the reported row is
+exactly where the *scheduler* crosses the break while the *audio* is still five rows short of
+it.
+
+The engine already separates the two clocks properly. `recordScheduledPosition` queues every
+scheduled row with the time it will be heard, and `updatePosition` promotes one to `position`
+only once `audioContext.currentTime` reaches it. The natural pattern-end path uses it, and
+says so: *"Preload next pattern for scheduling without flipping the visible position yet."*
+
+Bxx and Cxx did not. Both called `loadPattern(..., { emitPosition: true, updatePosition: true })`
+and then assigned `this.position` and emitted it **there and then**, at schedule time. So the
+grid jumped to row 0 of the incoming pattern five rows early, and the queue then dragged it
+back to the outgoing pattern for those five rows before it legitimately arrived — one frame at
+the top, mid-pattern.
+
+Both paths now preload without flipping, like the natural end. `resetPositionReference` and
+`lastScheduledRow` still run at schedule time, because those align the *timing system*, which
+is scheduler-side; only the display flip moves.
+
+**The general shape**: three ways out of a pattern (run off the end, Cxx, Bxx), one of which
+had been taught the lookahead and two of which had not. When a class of transition has
+multiple entry points, the one that got the fix is not evidence that the others did.
+
+### D110 — The canvas grid never carried over the DOM grid's cursor follow
+
+Reported in the same message: "I'm also not able to use arrow keys to move around in the
+pattern anymore or use page up + page down to scroll like I used to before canvas pattern."
+
+The keys were never broken — `useTrackerKeyboard` is bound above the grid and `moveRow` was
+setting `activeRow` the whole time. What was missing is that nothing scrolled to it, so the
+cursor walked out of the viewport and the pattern looked frozen.
+
+`TrackerPattern` resolves one target for both jobs:
+
+```
+if (!autoScroll) return null;
+if (isPlaying) return playbackRow;
+if (isMouseSelecting) return null;   // let the drag own the view
+return selectedRow;
+```
+
+`PatternCanvas` ported only the `playbackRow` branch. `selectedRow` reached it as something to
+*draw* — the cursor cell — and never as something to scroll to.
+
+Added as `applyCursorFollow`, running in the same coalesced frame as the playback follow and
+deferring to it, with the same centering, the same clamp, the same `isMouseSelecting` rule,
+and D105's gesture-ownership rule on top.
+
+**Worth stating about the port**: a renderer swap re-implements the *drawing* and quietly
+inherits responsibility for every behaviour the old one got from the DOM — here, scrolling a
+focused element into view. The playback follow was ported because it was visibly a feature;
+the cursor follow was invisible until someone pressed a key.
+
 ### D106 — Notes above B-6 kept their period domain (S3M)
 
 satellite_one.s3m's lead on channels 4/5, reported as "muffled, the different notes don't
