@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
+import nodePath from 'node:path';
 import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
 import type { Song, PlaybackScheduler } from '../../packages/tracker-playback/src/types';
 import { importXmToTrackerSong, looksLikeXm } from 'src/audio/tracker/xm-import';
@@ -61,11 +62,13 @@ describe('initial speed', () => {
 
 describe('XM import carries the header speed', () => {
   it('reads defaultSpeed from real modules', () => {
-    const path = '/home/avataren/Downloads/mods/ft2/4-mat_-_rose.xm';
-    if (!fs.existsSync(path)) return; // corpus is not checked in
-    const b = fs.readFileSync(path);
+    const modulePath = nodePath.resolve(
+      __dirname,
+      '../../public/demos/ft2/4-mat_-_rose.xm',
+    );
+    const b = fs.readFileSync(modulePath);
     const buf = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
-    if (!looksLikeXm(buf)) return;
+    expect(looksLikeXm(buf)).toBe(true);
 
     const xm = parseXm(buf);
     const song = importXmToTrackerSong(

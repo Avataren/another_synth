@@ -17,7 +17,6 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { ref, computed } from 'vue';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
@@ -51,7 +50,7 @@ import {
 import { buildXm, cell } from './helpers/xm-builder';
 
 const DEMOS = path.resolve(__dirname, '../../public/demos');
-const CORPUS_DIR = path.join(os.homedir(), 'Downloads', 'mods', 's3m');
+const CORPUS_DIR = path.join(DEMOS, 's3m');
 
 /**
  * Read a module file as an exact ArrayBuffer.
@@ -746,7 +745,6 @@ describe('S3M builder decodes through the profile, not the text dialect (P5)', (
   });
 
   it('corpus: every scheduled command for an A-byte row is the header speed', () => {
-    if (!fs.existsSync(CORPUS_DIR)) return; // corpus is not checked in
     // final_decade.s3m pattern 0 row 0 channel 4 carries A05 (independently
     // cross-checked); the builder must resolve it through S3M_PROFILE.
     const view = fs.readFileSync(path.join(CORPUS_DIR, 'final_decade.s3m'));

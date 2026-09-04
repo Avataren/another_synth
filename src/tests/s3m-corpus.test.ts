@@ -1,10 +1,13 @@
 /**
  * P5 -- S3M corpus pins on decode, not just parse.
  *
- * The corpus lives outside the repo (~/Downloads/mods/s3m, fetched from
- * modland.com/pub/modules/Screamtracker 3/ on 2026-09-03); the tests skip
- * when it is absent, like the XM corpus tests do. Selected by measured
- * property, not filename -- the category table in PLAN Phase 5:
+ * The corpus is vendored at public/demos/s3m (fetched from
+ * modland.com/pub/modules/Screamtracker 3/ on 2026-09-03), so these pins run
+ * everywhere. They used to read ~/Downloads/mods/s3m behind an
+ * `existsSync(dir)` guard, which is why they had stopped running: the
+ * directory outlived the files in it, so the guard passed and every read
+ * ENOENTed. Guard on nothing -- the modules are in the repo. Selected by
+ * measured property, not filename -- the category table in PLAN Phase 5:
  *
  *   satellite_one.s3m      PCM-only, 8 channels (classic Purple Motion)
  *   caverns_of_cthulu.s3m  PCM-only, exactly 4 channels
@@ -30,13 +33,11 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { parseS3m } from '../../packages/tracker-playback/src/formats/s3m';
 import { importS3mToTrackerSong } from '../audio/tracker/s3m-import';
 
-const CORPUS_DIR = path.join(os.homedir(), 'Downloads', 'mods', 's3m');
-const hasCorpus = fs.existsSync(CORPUS_DIR);
+const CORPUS_DIR = path.resolve(__dirname, '../../public/demos/s3m');
 
 /** Read a module as an exact ArrayBuffer (never a pooled view). */
 function readModule(name: string): ArrayBuffer {
@@ -58,7 +59,7 @@ function entryAt(
   );
 }
 
-describe.skipIf(!hasCorpus)('S3M corpus: measured categories', () => {
+describe('S3M corpus: measured categories', () => {
   it('satellite_one.s3m: PCM-only 8-channel; golden cells on pattern 0', () => {
     const raw = new Uint8Array(readModule('satellite_one.s3m'));
     const s = parseS3m(raw);

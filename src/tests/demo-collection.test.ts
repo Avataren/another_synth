@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseMod } from '../../packages/tracker-playback/src/mod-parser';
 import { parseXm } from '../../packages/tracker-playback/src/formats/xm';
+import { parseS3m } from '../../packages/tracker-playback/src/formats/s3m';
 import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 
 /**
@@ -83,7 +84,7 @@ describe('the published demo collection', () => {
       for (const file of fs.readdirSync(path.join(DEMOS, collection.id))) {
         // Only the formats the importer reads. Anything else is deliberately
         // left out of the manifest rather than published unreachable.
-        if (!/\.(mod|xm)$/i.test(file)) continue;
+        if (!/\.(mod|xm|s3m)$/i.test(file)) continue;
         onDisk.add(`${collection.id}/${file}`);
       }
     }
@@ -120,6 +121,11 @@ describe('the published demo collection', () => {
         expect(xm.patterns.length).toBeGreaterThan(0);
         expect(xm.numChannels).toBeGreaterThan(0);
         expect(xm.songLength).toBeGreaterThan(0);
+      } else if (song.format === 'S3M') {
+        const s3m = parseS3m(new Uint8Array(bytes));
+        expect(s3m.patterns.length).toBeGreaterThan(0);
+        expect(s3m.channelSettings.length).toBeGreaterThan(0);
+        expect(s3m.orders.length).toBeGreaterThan(0);
       } else {
         const mod = parseMod(new Uint8Array(bytes));
         expect(mod.patterns.length).toBeGreaterThan(0);
