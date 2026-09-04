@@ -1,5 +1,8 @@
 /* eslint-disable */
 
+declare const __APP_VERSION__: string;
+declare const __APP_GIT_HASH__: string;
+
 declare namespace NodeJS {
   interface ProcessEnv {
     NODE_ENV: string;

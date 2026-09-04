@@ -444,6 +444,10 @@
           </template>
         </div>
       </transition>
+
+      <div class="about-line">
+        <AppVersion />
+      </div>
     </div>
   </q-page>
 
@@ -533,6 +537,7 @@ import {
 } from 'src/stores/theme-store';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { peekSharedAudioSystem } from 'src/audio/shared-audio-system';
+import AppVersion from 'src/components/AppVersion.vue';
 
 const themeStore = useThemeStore();
 const {
@@ -718,6 +723,11 @@ function reloadForSampleRate() {
   overflow: hidden;
   background: var(--panel-background-alt, rgba(255, 255, 255, 0.03));
   align-self: flex-start;
+}
+
+.about-line {
+  margin-top: 8px;
+  text-align: center;
 }
 
 .tab-button {

@@ -4,9 +4,38 @@
 // https://v2.quasar.dev/quasar-cli-vite/quasar-config-js
 
 import { defineConfig } from '#q-app/wrappers';
-//import { exec } from 'child_process';
-//import path from 'path';
-//import fs from 'fs';
+import { execSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+
+/**
+ * Build identity injected into the bundle as __APP_VERSION__ / __APP_GIT_HASH__.
+ * deploy-pi.sh bumps package.json and commits before building, so these always
+ * describe the exact tree that was deployed.
+ */
+function readBuildIdentity(): { version: string; hash: string } {
+  let version = '0.0.0';
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'),
+    ) as { version?: string };
+    if (pkg.version) version = pkg.version;
+  } catch {
+    // leave fallback -- a wrong version is better than a failed build
+  }
+  let hash = 'unknown';
+  try {
+    hash = execSync('git rev-parse --short HEAD', {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    }).trim();
+  } catch {
+    // e.g. built outside a git checkout
+  }
+  return { version, hash };
+}
+
+const buildIdentity = readBuildIdentity();
 
 export default defineConfig((/* ctx */) => {
   return {
@@ -61,6 +90,11 @@ export default defineConfig((/* ctx */) => {
       // rawDefine: {}
       // ignorePublicFolder: true,
       minify: true,
+      // Injected build identity (see readBuildIdentity above).
+      rawDefine: {
+        __APP_VERSION__: JSON.stringify(buildIdentity.version),
+        __APP_GIT_HASH__: JSON.stringify(buildIdentity.hash),
+      },
       // polyfillModulePreload: true,
       // distDir
 
