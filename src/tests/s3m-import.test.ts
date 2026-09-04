@@ -333,3 +333,78 @@ describe('S3M import: the AdLib policy', () => {
     expect(adlibTrack.entries).toHaveLength(0);
   });
 });
+
+describe('a sample number reloads the channel volume, retrigger or not', () => {
+  /**
+   * Reported (Morten, 2026-09-04) as satellite_one.s3m's lead sounding "too
+   * low volume and a bit muffled" on its Pattern 4. Channel 5 there is the
+   * classic pumped lead: a note carrying instrument 4 and no volume byte,
+   * against volume rows that walk the channel down between notes. Every one
+   * of those notes is a tone portamento, so the reload never happened and the
+   * lead sat 10 dB under where it was written.
+   *
+   * D55's rule, re-derived wrongly in both directions: `entry.instrument` is
+   * deliberately absent on a tone-portamento row (D77) and deliberately
+   * present on a bare note via the channel latch (D56), so it cannot stand in
+   * for "the row named an instrument". mod-import and xm-import both key off
+   * the instrument number itself.
+   */
+  const SAMPLE_VOLUME = 32; // 32/64 -> 0x80 of 255
+
+  it('a tone portamento carrying a sample number reloads its volume', () => {
+    const { song } = importS3m({
+      channelSettings: [0x00],
+      orders: [0],
+      patterns: [
+        [
+          [{ note: 0x30, instrument: 1, volume: 64 }],
+          [{ volume: 8 }], // the channel is walked down
+          // ...and the next note reloads the sample's own volume, even though
+          // a tone portamento starts no note.
+          [{ note: 0x34, instrument: 1, effect: 0x07, param: 0x20 }],
+        ],
+      ],
+      instruments: [{ frames: [0, 0.25, -0.25, 0], volume: SAMPLE_VOLUME }],
+    });
+
+    const porta = entryAt(song, 0, 0, 2)!;
+    expect(porta.volume).toBe('80');
+    // ...but it still must not become the channel's instrument (D77).
+    expect(porta.instrument).toBeUndefined();
+  });
+
+  it('a note with no sample number keeps the channel volume', () => {
+    const { song } = importS3m({
+      channelSettings: [0x00],
+      orders: [0],
+      patterns: [
+        [
+          [{ note: 0x30, instrument: 1, volume: 64 }],
+          [{ volume: 8 }],
+          [{ note: 0x34 }], // bare note: nothing reloads
+        ],
+      ],
+      instruments: [{ frames: [0, 0.25, -0.25, 0], volume: SAMPLE_VOLUME }],
+    });
+
+    // The channel latch still resolves which instrument plays it (D56)...
+    const bare = entryAt(song, 0, 0, 2)!;
+    expect(bare.instrument).toBeDefined();
+    // ...but that is not the row naming one, so no volume is stamped and the
+    // channel keeps the 8 the previous row left it at.
+    expect(bare.volume).toBeUndefined();
+  });
+
+  it('an explicit volume byte still wins over the sample default', () => {
+    const { song } = importS3m({
+      channelSettings: [0x00],
+      orders: [0],
+      patterns: [
+        [[{ note: 0x30, instrument: 1, volume: 16 }]],
+      ],
+      instruments: [{ frames: [0, 0.25, -0.25, 0], volume: SAMPLE_VOLUME }],
+    });
+
+    expect(entryAt(song, 0, 0, 0)!.volume).toBe('40'); // 16/64, not 32/64
+  });
+});

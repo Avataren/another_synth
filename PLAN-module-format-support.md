@@ -3431,6 +3431,44 @@ blit (~1.92× upscale at fractional scroll origins) — with device-pixel
 snapping proposed but deliberately not built blind.
 
 
+### D108 — A sample number reloads the channel volume, retrigger or not (S3M)
+
+Morten, 2026-09-04, on satellite_one.s3m's Pattern 4 after D106/D107 landed: the lead on
+channels 4/5 was still "too low volume and a bit muffled".
+
+Channel 5 there is the classic pumped lead — a note carrying instrument 4 and no volume byte,
+against volume rows that walk the channel down between the notes:
+
+```
+row 0   B-6 04       H81      -> reloads sample 4's volume (64)  ... we did this
+row 2         50              -> channel walked down to 0x50
+row 3   C-7 04       G12      -> reloads 64 in ST3;  we kept 0x50
+row 6   E-6 04       G00      -> reloads 64 in ST3;  we kept 0x50
+```
+
+Every one of those notes is a tone portamento, so the reload never happened and the lead sat
+about 10 dB under where it was written, for most of the pattern.
+
+The predicate was `hasNote && entry.instrument !== undefined`. That is **D55's rule
+re-derived wrongly, in both directions at once**: `entry.instrument` is deliberately *absent*
+on a tone-portamento row (D77) and deliberately *present* on a bare note through the channel
+latch (D56), so it cannot stand in for "the row named an instrument". It therefore withheld
+the volume exactly where ST3 resets it, and stamped one exactly where ST3 preserves the
+channel's.
+
+The rule, which mod-import already states at length and xm-import already keys off: **a
+sample number loads that sample's volume into the channel whether or not anything
+retriggers.** The tone-porta check only decides whether the sample restarts. Keyed off
+`hasInstrument` now, matching both.
+
+**Fourth re-derivation of this rule** (D53 for the MOD stamp, D55 for the builder, mod-import's
+nexus_seven.mod comment for tone portamento, now S3M). All four are the same confusion —
+between the instrument a row *names* and the instrument a channel *is playing* — which is
+also what D77/D78 are about. The two questions a row's instrument number answers are separate
+and must be asked separately: *which sample does a new note use* (latched, D56) and *does the
+channel volume reload* (the number itself). 14 of the 20 corpus modules change, in both
+directions; satellite_one gains 188 volume stamps and caverns_of_cthulu loses 20.
+
 ### D106 — Notes above B-6 kept their period domain (S3M)
 
 satellite_one.s3m's lead on channels 4/5, reported as "muffled, the different notes don't
@@ -3558,6 +3596,7 @@ Tests: `pattern-canvas.test.ts` playback-follow frame pin (new). Suite 1448
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-04 | fix | **A sample number reloads the channel volume, retrigger or not** (D108). satellite_one.s3m's lead still sat ~10 dB low on Pattern 4 after D106/D107: its notes carry an instrument number and no volume byte against volume rows that pump the channel down, and every one is a tone portamento, so the reload never fired. The predicate keyed off `entry.instrument`, which D77 deliberately clears on porta rows and D56 deliberately sets on bare notes -- so it withheld the volume where ST3 resets it and stamped one where ST3 preserves it, D55's rule wrong in both directions at once. Keyed off the instrument number itself now, matching mod-import (which documents this for nexus_seven.mod) and xm-import. 14 of 20 corpus modules change. Tests: `s3m-import.test.ts` +3 (2 confirmed failing against the old code). |
 | 2026-09-04 | fix | **The S3M corpus and demo pins were not running.** `s3m-corpus`/`raw-effect-bytes` read `~/Downloads/mods/s3m` behind an `existsSync(dir)` guard; the directory outlived the files in it, so the guard passed and all 10 pins ENOENTed instead of skipping -- a guard on the directory cannot answer for the modules. The corpus is vendored at `public/demos/s3m`, so they now read that and guard on nothing. `tracker-initial-speed` likewise hardcoded an absolute path under a home directory and silently `return`ed. Separately, `demo-collection` -- the guard against a truncated download or a duplicate being published unreachable -- still filtered `\.(mod|xm)$` and parsed everything non-XM as MOD, so the 20 S3M demos were listed in `index.json` (correctly) and covered by nothing. Suite is fully green for the first time: 1460 tests, 0 skipped-by-accident. |
 | 2026-09-04 | fix | **Starting mid-song primes the per-track instrument latch** (D107). Selecting satellite_one.s3m's third pattern and pressing play dropped the lead's first three rows whole -- no note, no pitch, no volume -- because they are tone portamentos, which must not stamp an instrument (D55/D77/D78), and the engine latch that carries it (D79) is empty when playback starts in the middle. `primeTrackInstrumentLatches()` replays just the latch along the order list up to the start position, reading only instrument-bearing (i.e. note-starting) rows and never overwriting a live one. The playback-time twin of D56's import-time fix. Tests: `src/tests/tracker-midsong-instrument-latch.test.ts` (1 of 3 confirmed failing against the old code). |
 | 2026-09-04 | fix | **Notes above B-6 kept their period domain** (D106). satellite_one.s3m's lead reported as muffled, the notes not separating, the level sagging -- and the notes were in fact still gliding into each other. `S3M_PERIOD_TABLE` stopped at six octaves, but st3play shifts `notespd` by the whole octave nibble, so C-7 and up resolved to `undefined`; the note-on then cleared `currentPeriod` *stickily*, dropping the channel into the frequency-ratio fallback for every later portamento, vibrato and arpeggio -- 3.08 period units a tick against ST3's 8, so a three-tick slide took nine and ran over the following notes. Table extended to C-1..B-8; an amiga-kind profile now derives the period instead of abandoning it. 8.4% of satellite_one's notes are affected, 18% of ascent_of_the_cloud_eagle's, plus 11 other demo modules. D59's lesson again: import resolved these notes either way, only the effect arithmetic was wrong. Tests: `s3m-engine.test.ts` +3, `pitch-model.test.ts` pins updated (all confirmed failing against the old code). |

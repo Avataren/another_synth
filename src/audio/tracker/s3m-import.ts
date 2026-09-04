@@ -535,12 +535,26 @@ function s3mCellToTrackerEntry(
       .toString(16)
       .toUpperCase()
       .padStart(2, '0');
-  } else if (hasNote && entry.instrument !== undefined) {
+  } else if (hasNote && hasInstrument) {
     // A note with an instrument and no explicit volume plays at the sample's
     // default, as in ProTracker (the D53/D54 semantics: the effect processor
     // states currentVolume on triggers).
-    const instrumentNumber = hasInstrument ? cell.instrument : latchedInstrument;
-    const sample = s3m.instruments[instrumentNumber - 1];
+    //
+    // The predicate is the row's own instrument *number*, not `entry.instrument`
+    // -- D55's rule ("has an instrument id does not mean named an instrument"),
+    // which this had re-derived wrongly in both directions. `entry.instrument`
+    // is deliberately absent on a tone-portamento row (D77) and deliberately
+    // present on a bare note via the channel latch (D56), so keying off it
+    // stamped a volume where ST3 preserves the channel's and withheld one
+    // where ST3 resets it.
+    //
+    // A sample number loads that sample's volume into the channel whether or
+    // not anything retriggers; the tone-porta check only decides whether the
+    // sample restarts. mod-import states this at length (nexus_seven.mod,
+    // where withholding it let the volume slides walk the channel to zero and
+    // silence the rest of the pattern) and xm-import already keys off
+    // `hasInstrument` too. Fourth time this rule has had to be re-derived.
+    const sample = s3m.instruments[cell.instrument - 1];
     if (sample && sample.kind === 'pcm') {
       entry.volume = Math.round((sample.volume / 64) * 255)
         .toString(16)
