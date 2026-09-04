@@ -1,9 +1,10 @@
 # Project Guidelines for Claude
 
 ## Build Commands
-- Build all: `npm run build`  
+- Build all: `npm run build`
 - WASM: `npm run build:wasm`
 - Worklets: `npm run build:worklets`
+- Playback library: `npm run build:tracker-playback`
 - Development: `npm run dev`
 
 ## Lint & Test Commands
@@ -28,6 +29,25 @@
 - Rust-compiled WebAssembly for audio processing
 - DSP algorithms in TS and Rust
 - Audio worklets for real-time processing
+
+## Tracker Playback Library
+- `packages/tracker-playback` is an npm workspace published as
+  `@another-synth/tracker-playback` — the standalone replay core, with no Vue,
+  Pinia, Quasar or WASM dependency.
+- It owns the whole pattern path: parsers (MOD/XM/S3M), the row model
+  (`tracker-types.ts`), note/effect parsing (`note-utils.ts`), the pattern half
+  of each importer (`import/*-patterns.ts`), the `PlaybackSong` builder, the
+  engine and the effect processor.
+- The app resolves the package to **source**, not `dist` — aliased in
+  `vitest.config.ts`, `quasar.config.ts` and `tsconfig.json`. So nothing has to
+  be built before `quasar dev`, and nothing in CI exercises `dist`.
+- Import it by package name (`@another-synth/tracker-playback`), never by a
+  relative path into `packages/`. Add new modules to its `index.ts`; it uses
+  `export *`, so exported names must stay globally unique across the package.
+- What stays app-side: the **instrument** half of each importer
+  (`buildInstrumentSlotsAndPatches`, `sampler-patch-builder.ts`) because it
+  emits the app's `Patch`, plus `song-bank.ts` and `mod-instrument.ts`.
+  See `PLAN-tracker-playback-library.md`.
 
 ## Audio Worklet Configuration
 - Multi-engine architecture: Multiple AudioEngine instances per worklet

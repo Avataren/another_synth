@@ -3,6 +3,15 @@
 Branch: `agent/arch-review-s3m` · Base: `main` (`0b33571`) · 2026-09-03
 Scope: analysis only, no production code changes. Grounded in the code as of this commit.
 
+*Path note (2026-09-04):* the tracker replay core was extracted into
+`packages/tracker-playback` after this review was written. Every citation below
+still names the file it was written against; the pattern-side ones have since
+moved into the package — `tracker-types.ts`, `note-utils.ts` and the
+`buildTrackerPatterns`/cell-decoding half of `xm-import.ts` and `s3m-import.ts`
+(now `import/{xm,s3m}-patterns.ts`). Line numbers are stale either way. The
+findings are unaffected: nothing about the split changed effect decoding. See
+`PLAN-tracker-playback-library.md` §3c.
+
 *Rebase note (2026-09-03):* this review was first written against `d27521b`; it was
 rebased onto `0b33571` after the effect-reference audit (ee73a19, merge 5a975c3) landed in
 between, touching exactly the files assessed here (`effect-processor.ts` +151 lines,

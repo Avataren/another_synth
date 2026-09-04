@@ -68,7 +68,12 @@ Both are 8bitbubsy's cycle-accurate clones and are the authority here. `WebFetch
   MOD and XM disagree, add a profile field; don't branch on the format inline (D17–D21).
 - `packages/tracker-playback/src/mod-parser.ts`, `.../formats/xm.ts` — parsers; they report
   the file and interpret nothing (D23).
-- `src/audio/tracker/mod-import.ts`, `xm-import.ts` — file → song, including envelopes.
+- `packages/tracker-playback/src/note-utils.ts` — note, volume and effect *text* parsing,
+  plus `decodeRawEffect` for the raw format-native bytes.
+- `packages/tracker-playback/src/import/{mod,xm,s3m}-patterns.ts` — cells → tracker rows,
+  where a format's effect bytes become an entry's `effectCommand`/`effectParam`.
+- `src/audio/tracker/mod-import.ts`, `xm-import.ts`, `s3m-import.ts` — the instrument half
+  only: samples → slots and sampler patches, including envelopes.
 - `src/audio/mod-instrument.ts` — voices, volume/panning envelopes, fadeout, autovibrato.
 - `src/audio/tracker/song-bank.ts` — voice allocation and per-voice command routing.
 

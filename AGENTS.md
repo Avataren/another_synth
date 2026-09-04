@@ -267,7 +267,8 @@ This means the **port ID in the patch (`target`) is authoritative** for where th
 ### ProTracker MOD frequency scaling (2025-12)
 
 - MOD import now converts Amiga periods into **synth-domain** frequencies instead of raw Paula hardware rates. The tracker engine and sampler expect “musical Hz” (~C-1 ≈ 32.7 Hz), but ProTracker’s playback frequencies are ~128× higher (e.g. period 856 → ~4181 Hz, while C-1 in our tuning is ~32.7 Hz).
-- `periodToFrequency` in `src/audio/tracker/mod-import.ts` therefore uses:
+- `periodToFrequency` (now `packages/tracker-playback/src/import/mod-patterns.ts`;
+  it was in `src/audio/tracker/mod-import.ts` when this was written) therefore uses:
   - `f_synth = AMIGA_CLOCK / (2 * period * 128)` (with `AMIGA_CLOCK = 7159090.5`), effectively dividing Paula’s rate by `2^7`. This keeps MOD rows mapped to the expected MIDI notes (C-1..B-3) without driving the sampler at 128× speed and turning playback into noise.
 - Period-based portamento in the playback core (`packages/tracker-playback/src/effect-processor.ts`) still operates on true Amiga periods:
   - On tick 0, when a MOD row supplies a frequency override, `currentPeriod` is recovered as `AMIGA_CLOCK / (2 * noteFrequency * 128)`, undoing the synth scaling to get back to the original MOD period.
@@ -1565,7 +1566,7 @@ if (canReuse) {
     - Macro 1 → per-note sample offset (`targetId = samplerNodeId`, `targetPort = PortId.SampleOffset`).
   - `macros.values` is `[0.5, 0.0]` so pan defaults center and offset defaults to the start of the sample.
 - Engine and SongBank handling for 9xx:
-  - 9xx is still parsed as `EffectType.sampleOffset` by `parseEffectCommand` (`src/audio/tracker/note-utils.ts`).
+  - 9xx is still parsed as `EffectType.sampleOffset` by `parseEffectCommand` (now `packages/tracker-playback/src/note-utils.ts`).
   - `PlaybackEngine.scheduleRow` (`packages/tracker-playback/src/engine.ts`) now recognizes `effect.type === 'sampleOffset'` on tick 0 and computes `offsetNorm = (paramX * 16 + paramY) / 255`, clamped 0..1.
   - A new `ScheduledSampleOffsetHandler` in `packages/tracker-playback/src/types.ts` carries `(instrumentId, voiceIndex, offsetNorm, time, trackIndex)` into the host; the tracker playback store (`src/stores/tracker-playback-store.ts`) maps this to `TrackerSongBank.setVoiceSampleOffsetAtTime`.
 - `TrackerSongBank.setVoiceSampleOffsetAtTime` resolves `voiceIndex` via `lastTrackVoice` (per instrument + track, with global `-1` fallback) and calls `InstrumentV2.setVoiceMacroAtTime(resolvedVoice, 1, offsetNorm, time)`, so macro index 1 drives `SampleOffset` for the correct voice at the correct time.
@@ -1596,3 +1597,62 @@ if (canReuse) {
 - FastTracker 2 tone-portamento notes only continue a note already sounding on the channel; they are not a substitute for retriggering after key-off. In `radix_-_take_on_me.xm`, the fifth pattern order enters pattern 0 on track 7 with `F#5`, then `###`, then legato melody rows using `3xx`/`5xy`. Because those rows suppress ordinary note-on commands, the channel remained silent after the release.
 - `TrackEffectState` now tracks `hasActiveVoice`. Note-on and delayed/carried note-on set it; `###` and `Kxx` key-off clear it. A `tonePorta`/`tonePortaVol` note emits a normal note-on only when `hasActiveVoice` is false, and otherwise continues sliding the existing voice as before.
 - This preserves legato on held channels while matching FT2's post-key-off behavior. Tests: `src/tests/xm-tone-portamento-keyoff.test.ts`.
+
+## Tracker replay library: where the tracker code lives (2026-09-04)
+
+The replay core was extracted into `packages/tracker-playback`, an npm workspace
+published as `@another-synth/tracker-playback`. **Older notes in this file name
+pre-extraction paths.** This table resolves them; `PLAN-tracker-playback-library.md`
+has the full account.
+
+| What                                                         | Lives in                                                    |
+| ------------------------------------------------------------ | ----------------------------------------------------------- |
+| Parsers (`parseMod`/`parseXm`/`parseS3m`)                    | `pkg/mod-parser.ts`, `pkg/formats/*.ts`                     |
+| Row model (`TrackerEntryData`, `TrackerTrackData`, `TrackerPattern`) | `pkg/tracker-types.ts`                            |
+| Note/volume/effect parsing (`parseEffectCommand`, `decodeRawEffect`, `parseTrackerNoteSymbol`, `midiToTrackerNote`) | `pkg/note-utils.ts` |
+| Cells → rows (`build{Mod,Xm,S3m}TrackerPatterns`)            | `pkg/import/{mod,xm,s3m}-patterns.ts`                       |
+| Rows → `PlaybackSong` (`buildPlaybackSong`)                  | `pkg/playback-song-builder.ts`                              |
+| `TOTAL_SLOTS`, `CURRENT_SONG_FILE_VERSION`, `clampPatternRows`, `DEFAULT_SPEED`, row limits | `pkg/song-constants.ts` (the store re-exports them) |
+| `formatInstrumentId`, `normalizeInstrumentId`                | `pkg/instrument-ids.ts`                                     |
+| Engine, effect processor, pitch models, format profiles      | `pkg/engine.ts`, `pkg/effect-processor.ts`, `pkg/pitch-model.ts`, `pkg/format-profile.ts` |
+| Samples → slots + `Patch` (`buildInstrumentSlotsAndPatches`, `createSamplerPatchFor*`) | still `src/audio/tracker/{mod,xm,s3m}-import.ts` |
+| `sampler-patch-builder.ts`, `song-bank.ts`, `mod-instrument.ts`, `track-voice-registry.ts` | still `src/audio/**`                    |
+| `pickActiveInstrumentId`, `TrackerSelectionRect`             | still app-side (both read editor-only types)                |
+
+(`pkg/` = `packages/tracker-playback/src/`.)
+
+Things to know before touching any of it:
+
+- **Every old path is a re-export shim.** `src/audio/tracker/note-utils.ts`,
+  `src/audio/tracker/playback-song-builder.ts` and
+  `src/components/tracker/tracker-types.ts` still resolve, so no import site
+  changed. Prefer the package name in new code.
+- **The app resolves the package to source, not `dist`.** Aliased in
+  `vitest.config.ts`, `quasar.config.ts` and `tsconfig.json`. Nothing needs
+  building before `quasar dev` — but nothing in CI exercises `dist` either, so
+  a `dist`-only breakage is invisible to the suite. `PLAN-tracker-playback-library.md`
+  §5 has the standalone Node check that covers it.
+- **`index.ts` uses `export *`**, so every exported name must be unique across
+  the whole package. This is why each importer's `buildTrackerPatterns` had to
+  be renamed per format. Check for collisions before adding a module.
+- **The package is not DOM-free**, so its tsconfig needs `"lib": [..., "dom"]`.
+  `engine.ts` attaches a `visibilitychange` listener (guarded by `typeof
+  document === 'undefined'`, so it is inert under Node); `scheduler.ts` and
+  `engine.ts` reference `AudioContext`; `clock.ts` uses `requestAnimationFrame`
+  via `RafClock`. Everything else — parsers, importers, effect processor, song
+  builder — runs headless, which is what the standalone check exercises. A Node
+  consumer must not call `createAudioContextScheduler`, and gets the interval
+  clock rather than the raf one.
+- **The importers split in half.** The pattern half (cells → rows) is in the
+  library; the instrument half (samples → slots and `Patch`) is not, because a
+  `Patch` is the app's synth preset. The two halves share nothing: no pattern
+  half references `Patch`, `SamplerLoopMode`, `InstrumentSlot` or
+  `createSamplerPatch`. Keep it that way.
+- **`TOTAL_PAGES` now derives from `TOTAL_SLOTS`**, not the other way round —
+  `Math.ceil(TOTAL_SLOTS / SLOTS_PER_PAGE)`, still 26. The slot count is a song-model
+  fact (XM's 128-instrument maximum); the 5-per-page paging is instrument-panel UI.
+- **When splitting a file, the constants are the trap, not the functions.** Both
+  errors made during the extraction were a `const` between two functions that the
+  *other* half also used, and both surfaced only under `vue-tsc` — never in the
+  1599-test corpus suite. Grep each constant across both halves before cutting,
+  and remember a doc comment belongs to the function *below* it.

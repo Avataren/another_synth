@@ -7,7 +7,7 @@ dropped at import. Phase 1 still has one open item — per-channel voice allocat
 deferred as speculative until a high-channel module needs it; see D13 for why it also
 matters. Multi-sample keymaps (D26) are **not** the priority this document previously
 claimed: 0 of 219 corpus instruments use one (§6f).
-**Last updated:** 2026-08-29
+**Last updated:** 2026-09-04
 **Owner doc for:** extending the tracker from ProTracker-only `.mod` playback to a
 mode-driven player that also handles FastTracker 2 `.xm` and (later) Scream Tracker `.s3m`.
 
@@ -37,25 +37,45 @@ wrong and should be revisited before pressing on.
 
 ```
 .mod bytes
-  → mod-parser.ts        parse to ModSong (raw periods, cells, samples)
-  → mod-import.ts        flatten to TrackerSongFile (text-encoded entries + sampler patches)
-  → tracker-store.ts     song state (patterns, tracks, instrument slots)
-  → useTrackerSongBuilder.ts   TrackerEntryData → playback Step
-  → engine.ts            row/tick scheduling
-  → effect-processor.ts  per-tick effect state machine
-  → song-bank.ts         instrument instantiation + audio-time scheduling
+  → mod-parser.ts             parse to ModSong (raw periods, cells, samples)
+  → mod-patterns.ts           cells → TrackerPattern[] (the pattern half)      [lib]
+  → mod-import.ts             + instrument slots/patches → TrackerSongFile     [app]
+  → tracker-store.ts          song state (patterns, tracks, instrument slots)  [app]
+  → playback-song-builder.ts  TrackerEntryData → playback Step                 [lib]
+  → engine.ts                 row/tick scheduling                              [lib]
+  → effect-processor.ts       per-tick effect state machine                    [lib]
+  → song-bank.ts              instrument instantiation + audio-time scheduling [app]
 ```
+
+**Paths moved on 2026-09-04.** The whole pattern path now lives in
+`packages/tracker-playback/src/`; only the instrument half of each importer and
+the sound source stayed in `src/`. Re-export shims sit at every old path, so
+imports still resolve, but a file reference in the D-log below may name a
+location that has since moved. The current homes:
+
+| Symbol / file                                        | Now in                                              |
+| ---------------------------------------------------- | --------------------------------------------------- |
+| `TrackerEntryData`, `TrackerTrackData`, `TrackerPattern` | `packages/tracker-playback/src/tracker-types.ts`    |
+| `parseEffectCommand`, `decodeRawEffect`, note/volume parsing | `packages/tracker-playback/src/note-utils.ts` |
+| `buildTrackerPatterns`, cell decoding, `periodToFrequency` | `packages/tracker-playback/src/import/{mod,xm,s3m}-patterns.ts` (renamed `build{Mod,Xm,S3m}TrackerPatterns`) |
+| `buildPlaybackSong` and friends                      | `packages/tracker-playback/src/playback-song-builder.ts` |
+| `TOTAL_SLOTS`, `CURRENT_SONG_FILE_VERSION`, `clampPatternRows`, row limits | `packages/tracker-playback/src/song-constants.ts` (store re-exports) |
+| `formatInstrumentId`, `normalizeInstrumentId`        | `packages/tracker-playback/src/instrument-ids.ts`   |
+| `buildInstrumentSlotsAndPatches`, `createSamplerPatchFor*` | unchanged: `src/audio/tracker/{mod,xm,s3m}-import.ts` |
+
+See `PLAN-tracker-playback-library.md` §3c for why the split falls there.
 
 ### 2.2 Format assumptions currently baked in
 
 | Layer | File | Assumption |
 |---|---|---|
 | Parser | `packages/tracker-playback/src/mod-parser.ts` | ~~4 channels only~~ (resolved: up to 32 via `channelsForSignature`), 64 rows fixed, 15/31-sample layouts |
-| Import | `src/audio/tracker/mod-import.ts` | ~~`MAX_TRACKS = 4`~~ (resolved), `PATTERN_ROWS = 64`, one sample → one slot patch |
+| Import (patterns) | `packages/tracker-playback/src/import/mod-patterns.ts` | ~~`MAX_TRACKS = 4`~~ (resolved), `MOD_PATTERN_ROWS = 64` |
+| Import (instruments) | `src/audio/tracker/mod-import.ts` | one sample → one slot patch |
 | Song state | `src/stores/tracker-store.ts` | ~~`patternRows` is song-level~~ (resolved: `TrackerPattern.rows`) |
 | Engine | `packages/tracker-playback/src/engine.ts` | ~~`setLength` flattens all pattern lengths~~ (resolved: `setPatternLength`) |
 | Effects | `packages/tracker-playback/src/effect-processor.ts` | Amiga periods throughout: `PT_PERIOD_TABLE` (`:30`), clamp 113–856 (`:11-12`), Paula/128 scaling (`:9`) |
-| Entries | `src/components/tracker/tracker-types.ts` | `volume` is a plain 00–FF gain string (XM's volume-column *commands* now ride alongside on `volumeCommand` — D50); effects are still 3-char text macros, with the `Pxy` collision D52 records |
+| Entries | `packages/tracker-playback/src/tracker-types.ts` | `volume` is a plain 00–FF gain string (XM's volume-column *commands* now ride alongside on `volumeCommand` — D50); effects are still 3-char text macros, with the `Pxy` collision D52 records |
 | Dispatch | `src/audio/tracker/song-bank.ts:1634-1670` | `instrumentType === 'mod'` + **global** `useSimplifiedModInstruments` setting |
 
 ### 2.3 What already works in our favour

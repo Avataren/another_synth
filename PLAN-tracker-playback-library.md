@@ -83,13 +83,20 @@ Facts worth not re-deriving. All of these were checked directly, not assumed.
 itself — no `src/`, no npm runtime dependency. Verified by listing every import
 specifier in the package: they are all relative, plus `vitest` in the specs.
 
-It is **not** DOM-free, though. `clock.ts` uses `document` (visibilitychange),
-`scheduler.ts` and `engine.ts` reference `AudioContext` and
-`setTimeout`/`setInterval`. So its tsconfig needs `"lib": [..., "dom"]`. That is
-fine for a browser audio library, but it is the reason a Node consumer must not
-touch `createVisibilityClock` / `createAudioContextScheduler`. Everything else —
-parsers, effect processor, engine construction — runs headless. Proven by
+It is **not** DOM-free, though. `engine.ts` attaches a `visibilitychange`
+listener; `scheduler.ts` and `engine.ts` reference `AudioContext` and
+`setTimeout`/`setInterval`; `clock.ts` uses `requestAnimationFrame` in
+`RafClock`. So its tsconfig needs `"lib": [..., "dom"]`. That is fine for a
+browser audio library, but it is the reason a Node consumer must not touch
+`createAudioContextScheduler`. Everything else — parsers, importers, effect
+processor, song builder, engine construction — runs headless. Proven by
 importing the built `dist` from a plain Node script (see §5).
+
+(Corrected 2026-09-04: this used to say `clock.ts` uses `document`. It does not
+— the `visibilitychange` listener is `engine.ts`'s `setupVisibilityHandling`,
+and it returns early when `typeof document === 'undefined'`, which is why
+constructing an engine under Node works at all. `createVisibilityClock` is
+safe headless; it just stays in interval mode.)
 
 ### The parsers are already inside the library
 
