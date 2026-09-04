@@ -745,7 +745,7 @@ function schedule(parts: Array<'static' | 'overlay' | 'blit'>): void {
 
 function runFrame(): void {
   frameRaf = null;
-  const followMoved = applyFollow();
+  const followMoved = applyFollow() || applyCursorFollow();
   // One frame, one composition: the view origin is read exactly once, after
   // the follow applied, and the same values drive the blit and the overlay
   // paint. No pass can observe a mid-frame scroll write the other missed.
@@ -1041,6 +1041,63 @@ watch(
   () => [props.playbackRow, props.isPlaying, props.autoScroll, viewportH.value],
   () => {
     requestFollow();
+    schedule(['overlay']);
+  },
+);
+
+/**
+ * Follow the *editing cursor* while stopped — the other half of the DOM
+ * grid's scroll target, which the canvas never carried over.
+ *
+ * TrackerPattern resolves one target for both jobs:
+ *
+ *   if (!autoScroll) return null;
+ *   if (isPlaying) return playbackRow;
+ *   if (isMouseSelecting) return null;   // let the drag own the view
+ *   return selectedRow;
+ *
+ * Only the `playbackRow` branch was ported, so `selectedRow` reached the
+ * canvas as something to *draw* and never as something to scroll to. The
+ * arrow keys and PageUp/PageDown still moved the cursor — the keyboard layer
+ * was never involved — but the view stayed put, so once the cursor left the
+ * viewport the pattern appeared frozen and unnavigable (Morten, 2026-09-04).
+ *
+ * Same centering and the same clamp as the playback follow, and the same
+ * gesture-ownership rule (D105): a pan in flight owns the view.
+ */
+let pendingCursorFollow = false;
+
+function applyCursorFollow(): boolean {
+  if (!pendingCursorFollow) return false;
+  pendingCursorFollow = false;
+  if (!props.autoScroll) return false;
+  // Playback owns the view while it runs; applyFollow has already had its
+  // turn this frame.
+  if (props.isPlaying) return false;
+  // Don't fight a selection drag or a touch pan.
+  if (props.isMouseSelecting) return false;
+  if (gestureOwnsView()) return false;
+  const row = props.selectedRow;
+  if (row < 0 || row >= props.rows) return false;
+  const viewH = viewportH.value || props.containerHeight;
+  if (viewH <= 0) return false;
+  const maxScroll = Math.max(0, totalRowsHeight.value - viewH);
+  const target = Math.min(
+    Math.max(0, rowY(row) - (viewH - rowHeightPx) / 2),
+    maxScroll,
+  );
+  if (Math.abs(viewTop.value - target) < 0.5) return false;
+  const el = scrollerRef.value;
+  if (el) el.scrollTop = target;
+  viewTop.value = target;
+  emitScroll();
+  return true;
+}
+
+watch(
+  () => [props.selectedRow, props.isPlaying, props.autoScroll],
+  () => {
+    pendingCursorFollow = true;
     schedule(['overlay']);
   },
 );

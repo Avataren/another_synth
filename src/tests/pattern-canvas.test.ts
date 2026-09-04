@@ -708,6 +708,97 @@ describe('panel width (min-width + centered)', () => {
 // Vertical playback scroll: one row per step, DOM-grid parity
 // ---------------------------------------------------------------------
 
+/**
+ * `setProps` types its argument against the VNode's props rather than the
+ * component's own, so a partial update of a real prop is rejected. Cast in
+ * one place instead of at every call site.
+ */
+function setCanvasProps(
+  wrapper: MountedCanvas,
+  props: Record<string, unknown>,
+): Promise<void> {
+  return (wrapper.setProps as (p: Record<string, unknown>) => Promise<void>)(
+    props,
+  );
+}
+
+describe('cursor follow (keyboard navigation while stopped)', () => {
+  /**
+   * The other half of TrackerPattern's scroll target, which the canvas never
+   * carried over: `selectedRow` arrived as something to draw and never as
+   * something to scroll to. Arrow keys and PageUp/PageDown still moved the
+   * cursor -- the keyboard layer was never involved -- but the view stayed
+   * put, so the pattern looked frozen once the cursor left the viewport
+   * (Morten, 2026-09-04).
+   */
+  function scrollerOf(wrapper: MountedCanvas): HTMLElement {
+    return wrapper.find('.canvas-scroller').element as HTMLElement;
+  }
+
+  it('centers the selected row when the cursor moves', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: false, rows: 64 });
+    pumpFrame();
+    expect(scrollerOf(wrapper).scrollTop).toBe(0);
+
+    await setCanvasProps(wrapper, { selectedRow: 40 });
+    await nextTick();
+    pumpFrame();
+    const expected = Math.max(0, 40 * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 2);
+    expect(scrollerOf(wrapper).scrollTop).toBe(expected);
+    wrapper.unmount();
+  });
+
+  it('a PageDown-sized jump lands in one step', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: false, rows: 64 });
+    pumpFrame();
+    await setCanvasProps(wrapper, { selectedRow: 16 });
+    await nextTick();
+    pumpFrame();
+    const expected = Math.max(0, 16 * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 2);
+    expect(scrollerOf(wrapper).scrollTop).toBe(expected);
+    wrapper.unmount();
+  });
+
+  it('playback owns the view: the cursor does not scroll while playing', async () => {
+    const wrapper = mountCanvas({
+      autoScroll: true,
+      isPlaying: true,
+      playbackRow: 10,
+      rows: 64,
+    });
+    pumpFrame();
+    const at10 = scrollerOf(wrapper).scrollTop as number;
+
+    // A selection change during playback must not move the view -- the
+    // playing row keeps it.
+    await setCanvasProps(wrapper, { selectedRow: 60 });
+    await nextTick();
+    pumpFrame();
+    expect(scrollerOf(wrapper).scrollTop).toBe(at10);
+    wrapper.unmount();
+  });
+
+  it('does not scroll when auto-scroll is off', async () => {
+    const wrapper = mountCanvas({ autoScroll: false, isPlaying: false, rows: 64 });
+    pumpFrame();
+    await setCanvasProps(wrapper, { selectedRow: 40 });
+    await nextTick();
+    pumpFrame();
+    expect(scrollerOf(wrapper).scrollTop).toBe(0);
+    wrapper.unmount();
+  });
+
+  it('does not fight a selection drag', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: false, rows: 64 });
+    pumpFrame();
+    await setCanvasProps(wrapper, { isMouseSelecting: true, selectedRow: 40 });
+    await nextTick();
+    pumpFrame();
+    expect(scrollerOf(wrapper).scrollTop).toBe(0);
+    wrapper.unmount();
+  });
+});
+
 describe('playback follow (row-granular auto-scroll)', () => {
   /** jsdom stores scrollTop writes verbatim. The follow's DOM write happens
    *  inside the coalesced rAF frame, so pump one before asserting. */
