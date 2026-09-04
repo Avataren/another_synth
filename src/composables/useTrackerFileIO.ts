@@ -6,6 +6,7 @@ import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
+import { recordLoadedSongHash } from 'src/composables/song-identity';
 
 /**
  * File picker types for File System Access API
@@ -171,6 +172,8 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
   async function handleLoadSongFile() {
     const data = await promptOpenFile();
     if (!data) return;
+    // The report tool hashes the bytes as loaded, never by re-fetching.
+    recordLoadedSongHash(data);
     await loadSongFromBuffer(data);
   }
 
@@ -183,7 +186,10 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
       if (!response.ok) {
         throw new Error(`${response.status} ${response.statusText}`);
       }
-      await loadSongFromBuffer(await response.arrayBuffer());
+      const data = await response.arrayBuffer();
+      // The report tool hashes the bytes as loaded, never by re-fetching.
+      recordLoadedSongHash(data);
+      await loadSongFromBuffer(data);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Failed to load song from ${url}`, error);

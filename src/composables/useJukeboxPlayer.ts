@@ -4,6 +4,7 @@ import {
   entryFromDemoSong,
 } from 'src/stores/jukebox-store';
 import { useDemoManifest, type DemoSong } from 'src/composables/useDemoManifest';
+import { recordLoadedSongHash } from 'src/composables/song-identity';
 import type { TrackerSongHost } from 'src/composables/useTrackerSongHost';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
@@ -43,7 +44,12 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
    * scheduler's half-second lookahead, so it is done while the previous song
    * plays and the switch gets to skip straight to the rebuild.
    */
-  let prefetchedSong: { file: string; songFile: TrackerSongFile } | null = null;
+  let prefetchedSong: {
+    file: string;
+    songFile: TrackerSongFile;
+    /** Raw module bytes, retained so the bug-report tool can hash the file as loaded. */
+    bytes: ArrayBuffer;
+  } | null = null;
   let prefetchingFile: string | null = null;
 
   /** Run in a quiet moment, so the parse does not land on a busy frame. */
@@ -81,6 +87,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
       prefetchedSong = {
         file: entry.file,
         songFile: await host.parseSongBuffer(data),
+        bytes: data,
       };
     } catch (error) {
       // A failed warm-up costs nothing: the switch just loads it the slow way.
@@ -117,15 +124,19 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
 
       // Claim the warmed song, if this is the one that was warmed. Cleared
       // either way: it is consumed here, and a stale one would be wrong for
-      // whatever entry is asked for next.
-      const warmed =
-        prefetchedSong?.file === entry.file ? prefetchedSong.songFile : null;
+      // whatever entry is asked for next. The whole object is claimed, not
+      // just the parsed song: the retained bytes are what the report tool
+      // hashes for this load.
+      const warmed = prefetchedSong?.file === entry.file ? prefetchedSong : null;
       prefetchedSong = null;
 
       if (warmed) {
         host.isLoadingSong.value = true;
         try {
-          await host.applySongFile(warmed);
+          // Hash the retained bytes: this is the load for the warmed file,
+          // and the report tool must not re-fetch anything.
+          recordLoadedSongHash(warmed.bytes);
+          await host.applySongFile(warmed.songFile);
         } finally {
           host.isLoadingSong.value = false;
         }

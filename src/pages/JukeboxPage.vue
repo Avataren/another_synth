@@ -121,6 +121,16 @@
       <button
         type="button"
         class="bar-btn"
+        :class="{ active: showBugReport }"
+        title="Report a song bug: mark a section and copy a report"
+        @click="showBugReport = !showBugReport"
+      >
+        <q-icon name="bug_report" size="18px" />
+      </button>
+
+      <button
+        type="button"
+        class="bar-btn"
         :class="{ active: showPlaylist }"
         title="Show the playlist"
         @click="showPlaylist = !showPlaylist"
@@ -128,6 +138,12 @@
         <q-icon name="queue_music" size="20px" />
       </button>
     </div>
+
+    <BugReportPanel
+      v-if="showBugReport"
+      class="bug-report-card"
+      @close="showBugReport = false"
+    />
 
     <div class="jukebox-body">
       <div class="stage">
@@ -260,10 +276,12 @@ import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnaly
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
+import BugReportPanel from 'src/components/tracker/BugReportPanel.vue';
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import { useJukeboxPlayer } from 'src/composables/useJukeboxPlayer';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
+import { clearLoadedSongHash } from 'src/composables/song-identity';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
 /**
@@ -319,6 +337,7 @@ const upcomingPattern = computed(() =>
 
 const showPlaylist = ref(false);
 const showDemoBrowser = ref(false);
+const showBugReport = ref(false);
 const restoring = ref(false);
 
 // ---------------------------------------------------------------
@@ -346,6 +365,9 @@ async function restoreEditorSong(): Promise<void> {
     // Wait out any song still loading, so it cannot land on top of this one.
     await player.dispose();
     playbackStore.stop();
+    // The editor's song is restored from a snapshot, not raw module bytes:
+    // no file hash can be claimed for it any more.
+    clearLoadedSongHash();
     await host.applySongFile(editorSong);
     trackerStore.undoStack = editorUndo;
     trackerStore.redoStack = editorRedo;
@@ -545,6 +567,21 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   color: var(--text-primary, #e8f3ff);
+  position: relative;
+}
+
+/*
+ * The bug-report tool floats over the pattern: it is a moment's work —
+ * mark, describe, copy — and it must not push the pattern around.
+ */
+.bug-report-card {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  z-index: 2400;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100% - 64px);
+  overflow-y: auto;
 }
 
 /* One slim row. Nothing here is allowed to grow taller than the buttons. */

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { uid } from 'quasar';
 import type { TrackerTrackData } from 'src/components/tracker/tracker-types';
 import type { Patch } from 'src/audio/types/preset-types';
+import { clearLoadedSongHash } from 'src/composables/song-identity';
 import {
   DEFAULT_MODULE_FORMAT,
   type ModuleFormat,
@@ -469,6 +470,8 @@ export const useTrackerStore = defineStore('trackerStore', {
 
     /** Reset to a new empty song */
     resetToNewSong() {
+      // A native song: no module bytes were loaded, so no file hash stands.
+      clearLoadedSongHash();
       const defaultPattern = createDefaultPattern();
       this.currentSong = {
         title: 'Untitled song',
