@@ -208,7 +208,7 @@ export interface FormatProfile {
    * Optional per-format table mapping the high parameter nibble of the
    * extended command byte to an extended-effect subtype. When undefined
    * the shared MOD/XM Exy numbering applies (see the default map in
-   * parseExtendedEffect, src/audio/tracker/note-utils.ts). Formats whose
+   * parseExtendedEffect, ./note-utils.ts). Formats whose
    * extended subcommand numbering differs -- S3M's Sxx, whose table is
    * st3play's `ssoncejmp` (digcmd.c) rather than MOD/XM's -- carry their
    * own table here. Subcommands with no format-neutral behaviour yet are

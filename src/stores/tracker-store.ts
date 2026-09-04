@@ -5,33 +5,37 @@ import type { Patch } from 'src/audio/types/preset-types';
 import { clearLoadedSongHash } from 'src/composables/song-identity';
 import {
   DEFAULT_MODULE_FORMAT,
+  TOTAL_SLOTS,
+  CURRENT_SONG_FILE_VERSION,
+  DEFAULT_SPEED,
+  DEFAULT_PATTERN_ROWS,
+  MIN_PATTERN_ROWS,
+  MAX_PATTERN_ROWS,
+  clampPatternRows,
   type ModuleFormat,
+  type TrackerSongFileVersion,
+  type TrackerPattern,
 } from '@another-synth/tracker-playback';
 
-export type { ModuleFormat };
+export type { ModuleFormat, TrackerSongFileVersion, TrackerPattern };
+export {
+  TOTAL_SLOTS,
+  CURRENT_SONG_FILE_VERSION,
+  DEFAULT_SPEED,
+  DEFAULT_PATTERN_ROWS,
+  MIN_PATTERN_ROWS,
+  MAX_PATTERN_ROWS,
+  clampPatternRows,
+};
 
-export const SLOTS_PER_PAGE = 5;
 /**
- * Sized to XM's own maximum of 128 instruments, rather than to the corpus.
- *
- * This was 65, chosen because the busiest module then to hand referenced 42.
- * Sizing to what has been measured is a trap here: an import that runs out of
- * slots does not fail, it drops the instrument, and a note referencing a
- * dropped instrument carries no instrument at all -- so the channel keeps
- * playing whatever sample it had. The song plays on with the wrong sound and
- * nothing says so.
- *
- * radix_-_yuki_satellites.xm references 98 instruments and declares 117. Its
- * pattern 33 opens with `F-6 72` on channel 2, which came out as the previous
- * pattern's instrument 01 -- an audibly wrong sample, for a third of the
- * song's instruments.
- *
- * 26 pages of 5 gives 130, which no valid XM can exceed. Empty slots cost an
- * object each; audio resources are allocated per *used* instrument, so the
- * headroom is close to free.
+ * How the instrument panel pages through the slots. Purely a UI concern --
+ * the slot count itself is a property of the song model and now lives in
+ * the library (see `TOTAL_SLOTS`), so the page count derives from it rather
+ * than defining it.
  */
-export const TOTAL_PAGES = 26;
-export const TOTAL_SLOTS = SLOTS_PER_PAGE * TOTAL_PAGES; // 130 slots
+export const SLOTS_PER_PAGE = 5;
+export const TOTAL_PAGES = Math.ceil(TOTAL_SLOTS / SLOTS_PER_PAGE); // 26 pages
 
 export interface InstrumentSlot {
   slot: number;
@@ -81,30 +85,10 @@ interface SongMeta {
   bpm: number;
 }
 
-/** Tracker default ticks per row. */
-export const DEFAULT_SPEED = 6;
+// Row-count limits and the default speed are re-exported from the library;
+// see the import above.
 
-export const DEFAULT_PATTERN_ROWS = 64;
-export const MIN_PATTERN_ROWS = 1;
-/** FastTracker 2's per-pattern maximum. */
-export const MAX_PATTERN_ROWS = 256;
-
-export function clampPatternRows(rows: number | undefined | null): number {
-  if (!Number.isFinite(rows as number)) return DEFAULT_PATTERN_ROWS;
-  return Math.max(MIN_PATTERN_ROWS, Math.min(MAX_PATTERN_ROWS, Math.round(rows as number)));
-}
-
-export interface TrackerPattern {
-  id: string;
-  name: string;
-  /**
-   * Row count for this pattern. XM (and IT) allow this to vary per pattern,
-   * so it lives here rather than on the song. Songs saved before v3 have it
-   * backfilled from the old song-level `patternRows` on load.
-   */
-  rows: number;
-  tracks: TrackerTrackData[];
-}
+// `TrackerPattern` is re-exported from the library; see the import above.
 
 interface TrackerSnapshot {
   currentSong: SongMeta;
@@ -279,19 +263,7 @@ function normalizePatternRows(
   }));
 }
 
-/**
- * Song-file schema versions.
- *
- * v1: original format, no `moduleFormat` field.
- * v2: adds `data.moduleFormat`.
- * v3: row count moves onto each pattern (`patterns[].rows`); the song-level
- *     `patternRows` is retained only as the seed for newly created patterns.
- *
- * The reader accepts every version in this range; the writer always emits
- * `CURRENT_SONG_FILE_VERSION`.
- */
-export type TrackerSongFileVersion = 1 | 2 | 3;
-export const CURRENT_SONG_FILE_VERSION = 3;
+// Both re-exported from the library; see the import at the top of this file.
 
 export interface TrackerSongFile {
   version: TrackerSongFileVersion;

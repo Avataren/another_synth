@@ -1,32 +1,14 @@
 import type { InstrumentSlot } from 'src/stores/tracker-store';
+import { formatInstrumentId } from '@another-synth/tracker-playback';
 
 /**
- * Instrument identity, in one place.
- *
- * A tracker instrument is addressed by its slot number, but everything that
- * carries one around -- pattern entries, the song bank, the playback engine --
- * uses the zero-padded string form. Keeping the conversion here means the
- * tracker page, the jukebox and the editing composable cannot drift on what
- * "instrument 7" is called.
+ * `formatInstrumentId` and `normalizeInstrumentId` moved into
+ * `@another-synth/tracker-playback`: the importers there produce these ids and
+ * the engine consumes them, so the convention belongs with them. Only
+ * `pickActiveInstrumentId` stays, because it reads `InstrumentSlot` -- an
+ * editor concept, tied to the app's patches.
  */
-export function formatInstrumentId(slotNumber: number): string {
-  return slotNumber.toString().padStart(2, '0');
-}
-
-/**
- * Bring an instrument reference into the canonical form.
- *
- * Pattern data may carry `7`, `07` or a name; only the numeric forms are the
- * same instrument and have to agree on their padding.
- */
-export function normalizeInstrumentId(
-  instrumentId?: string,
-): string | undefined {
-  if (!instrumentId) return undefined;
-  const numeric = Number(instrumentId);
-  if (Number.isFinite(numeric)) return formatInstrumentId(numeric);
-  return instrumentId;
-}
+export { formatInstrumentId, normalizeInstrumentId } from '@another-synth/tracker-playback';
 
 /**
  * The instrument that should be selected: the current one while it still has
