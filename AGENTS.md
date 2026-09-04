@@ -1611,12 +1611,15 @@ has the full account.
 | Row model (`TrackerEntryData`, `TrackerTrackData`, `TrackerPattern`) | `pkg/tracker-types.ts`                            |
 | Note/volume/effect parsing (`parseEffectCommand`, `decodeRawEffect`, `parseTrackerNoteSymbol`, `midiToTrackerNote`) | `pkg/note-utils.ts` |
 | Cells → rows (`build{Mod,Xm,S3m}TrackerPatterns`)            | `pkg/import/{mod,xm,s3m}-patterns.ts`                       |
+| Samples → instruments (`build{Mod,Xm,S3m}TrackerSamples`)    | `pkg/import/{mod,xm,s3m}-samples.ts`                        |
+| `TrackerSample`, tracker envelopes, `OplInstrumentData`      | `pkg/tracker-sample.ts`                                     |
 | Rows → `PlaybackSong` (`buildPlaybackSong`)                  | `pkg/playback-song-builder.ts`                              |
 | `TOTAL_SLOTS`, `CURRENT_SONG_FILE_VERSION`, `clampPatternRows`, `DEFAULT_SPEED`, row limits | `pkg/song-constants.ts` (the store re-exports them) |
 | `formatInstrumentId`, `normalizeInstrumentId`                | `pkg/instrument-ids.ts`                                     |
 | Engine, effect processor, pitch models, format profiles      | `pkg/engine.ts`, `pkg/effect-processor.ts`, `pkg/pitch-model.ts`, `pkg/format-profile.ts` |
-| Samples → slots + `Patch` (`buildInstrumentSlotsAndPatches`, `createSamplerPatchFor*`) | still `src/audio/tracker/{mod,xm,s3m}-import.ts` |
-| `sampler-patch-builder.ts`, `song-bank.ts`, `mod-instrument.ts`, `track-voice-registry.ts` | still `src/audio/**`                    |
+| `TrackerSample` → `Patch` (the adapter)                      | still `src/audio/tracker/sampler-patch-builder.ts`          |
+| `TrackerSample` → `InstrumentSlot` + patches                 | still `src/audio/tracker/instrument-slots.ts`               |
+| `song-bank.ts`, `mod-instrument.ts`, `track-voice-registry.ts` | still `src/audio/**`                                      |
 | `pickActiveInstrumentId`, `TrackerSelectionRect`             | still app-side (both read editor-only types)                |
 
 (`pkg/` = `packages/tracker-playback/src/`.)
@@ -1643,11 +1646,18 @@ Things to know before touching any of it:
   builder — runs headless, which is what the standalone check exercises. A Node
   consumer must not call `createAudioContextScheduler`, and gets the interval
   clock rather than the raf one.
-- **The importers split in half.** The pattern half (cells → rows) is in the
-  library; the instrument half (samples → slots and `Patch`) is not, because a
-  `Patch` is the app's synth preset. The two halves share nothing: no pattern
-  half references `Patch`, `SamplerLoopMode`, `InstrumentSlot` or
-  `createSamplerPatch`. Keep it that way.
+- **The importers are both halves in the library now**, emitting rows and
+  `TrackerSample`s. `src/audio/tracker/*-import.ts` are assembly only, 116-151
+  lines each. The boundary is `sampler-patch-builder.ts`: it turns a
+  `TrackerSample` into this app's `Patch` and it stays app-side. Nothing in the
+  library may reference `Patch`, `SamplerLoopMode` or `InstrumentSlot` — keep
+  it that way, or the package starts exporting the synth model.
+- **Loop mode crosses that boundary as a string**, `'off' | 'forward' |
+  'pingpong'`, not the app's `SamplerLoopMode`. Those enum numbers are
+  serialised into saved patches; the adapter maps between them.
+- **A `TrackerSample` carries both `slot` and `sourceIndex`.** They differ when
+  XM/S3M pack referenced instruments into consecutive slots. Patch names use
+  `sourceIndex` — the composer's own numbering.
 - **`TOTAL_PAGES` now derives from `TOTAL_SLOTS`**, not the other way round —
   `Math.ceil(TOTAL_SLOTS / SLOTS_PER_PAGE)`, still 26. The slot count is a song-model
   fact (XM's 128-instrument maximum); the 5-per-page paging is instrument-panel UI.

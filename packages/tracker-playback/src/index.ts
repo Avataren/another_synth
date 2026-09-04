@@ -25,6 +25,7 @@ export * from './pitch-model';
 
 // The song model's own constants: slot count and file version.
 export * from './song-constants';
+export * from './tracker-sample';
 
 // The row model the importers emit and the pattern editor edits, and the
 // parsing of a row's note, volume and effect text into decoded commands.
@@ -35,8 +36,11 @@ export * from './note-utils';
 // sample half of each importer stays with its host, since a sample becomes
 // whatever that host's instrument is.
 export * from './import/mod-patterns';
+export * from './import/mod-samples';
 export * from './import/xm-patterns';
+export * from './import/xm-samples';
 export * from './import/s3m-patterns';
+export * from './import/s3m-samples';
 
 // The conversion from that row model into a schedulable `Song`.
 export * from './playback-song-builder';

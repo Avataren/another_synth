@@ -38,8 +38,10 @@ wrong and should be revisited before pressing on.
 ```
 .mod bytes
   → mod-parser.ts             parse to ModSong (raw periods, cells, samples)
-  → mod-patterns.ts           cells → TrackerPattern[] (the pattern half)      [lib]
-  → mod-import.ts             + instrument slots/patches → TrackerSongFile     [app]
+  → mod-patterns.ts           cells → TrackerPattern[]                        [lib]
+  → mod-samples.ts            samples → TrackerSample[]                       [lib]
+  → sampler-patch-builder.ts  TrackerSample → Patch (the adapter)             [app]
+  → mod-import.ts             assembles both into a TrackerSongFile           [app]
   → tracker-store.ts          song state (patterns, tracks, instrument slots)  [app]
   → playback-song-builder.ts  TrackerEntryData → playback Step                 [lib]
   → engine.ts                 row/tick scheduling                              [lib]
@@ -58,10 +60,12 @@ location that has since moved. The current homes:
 | `TrackerEntryData`, `TrackerTrackData`, `TrackerPattern` | `packages/tracker-playback/src/tracker-types.ts`    |
 | `parseEffectCommand`, `decodeRawEffect`, note/volume parsing | `packages/tracker-playback/src/note-utils.ts` |
 | `buildTrackerPatterns`, cell decoding, `periodToFrequency` | `packages/tracker-playback/src/import/{mod,xm,s3m}-patterns.ts` (renamed `build{Mod,Xm,S3m}TrackerPatterns`) |
+| `buildInstrumentSlotsAndPatches`, `createSamplerPatchFor*` | `packages/tracker-playback/src/import/{mod,xm,s3m}-samples.ts` (now `build{Mod,Xm,S3m}TrackerSamples`, emitting `TrackerSample`) |
 | `buildPlaybackSong` and friends                      | `packages/tracker-playback/src/playback-song-builder.ts` |
 | `TOTAL_SLOTS`, `CURRENT_SONG_FILE_VERSION`, `clampPatternRows`, row limits | `packages/tracker-playback/src/song-constants.ts` (store re-exports) |
 | `formatInstrumentId`, `normalizeInstrumentId`        | `packages/tracker-playback/src/instrument-ids.ts`   |
-| `buildInstrumentSlotsAndPatches`, `createSamplerPatchFor*` | unchanged: `src/audio/tracker/{mod,xm,s3m}-import.ts` |
+| `TrackerSample` -> `Patch` (the adapter)             | unchanged: `src/audio/tracker/sampler-patch-builder.ts` |
+| Slot filling (`buildSlotsAndPatches`)               | `src/audio/tracker/instrument-slots.ts` (new; was three copies inside the importers) |
 
 See `PLAN-tracker-playback-library.md` §3c for why the split falls there.
 

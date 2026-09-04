@@ -34,9 +34,10 @@
 - `packages/tracker-playback` is an npm workspace published as
   `@another-synth/tracker-playback` — the standalone replay core, with no Vue,
   Pinia, Quasar or WASM dependency.
-- It owns the whole pattern path: parsers (MOD/XM/S3M), the row model
-  (`tracker-types.ts`), note/effect parsing (`note-utils.ts`), the pattern half
-  of each importer (`import/*-patterns.ts`), the `PlaybackSong` builder, the
+- It owns the whole import path: parsers (MOD/XM/S3M), the row model
+  (`tracker-types.ts`), note/effect parsing (`note-utils.ts`), both halves of
+  each importer (`import/*-patterns.ts` and `import/*-samples.ts`), the
+  instrument descriptor (`tracker-sample.ts`), the `PlaybackSong` builder, the
   engine and the effect processor.
 - The app resolves the package to **source**, not `dist` — aliased in
   `vitest.config.ts`, `quasar.config.ts` and `tsconfig.json`. So nothing has to
@@ -44,10 +45,14 @@
 - Import it by package name (`@another-synth/tracker-playback`), never by a
   relative path into `packages/`. Add new modules to its `index.ts`; it uses
   `export *`, so exported names must stay globally unique across the package.
-- What stays app-side: the **instrument** half of each importer
-  (`buildInstrumentSlotsAndPatches`, `sampler-patch-builder.ts`) because it
-  emits the app's `Patch`, plus `song-bank.ts` and `mod-instrument.ts`.
-  See `PLAN-tracker-playback-library.md`.
+- What stays app-side: `sampler-patch-builder.ts`, the adapter from the
+  library's `TrackerSample` to this app's `Patch`; `instrument-slots.ts`, which
+  fills the editor's instrument slots from it; and the sound source
+  (`song-bank.ts`, `mod-instrument.ts`). The `*-import.ts` files are now
+  assembly only. See `PLAN-tracker-playback-library.md`.
+- Do not widen the library to emit a `Patch`. That boundary is deliberate: a
+  `Patch` is the app's synth preset, and a consumer wanting a module player
+  should never see one.
 
 ## Audio Worklet Configuration
 - Multi-engine architecture: Multiple AudioEngine instances per worklet

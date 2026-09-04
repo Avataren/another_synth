@@ -4,6 +4,12 @@ import {
   WasmModulationType,
 } from 'app/public/wasm/audio_processor';
 import { PortId } from './generated/port-ids';
+import type {
+  TrackerEnvelopeShape,
+  TrackerPanningEnvelope,
+  TrackerVolumeEnvelope,
+  TrackerAutoVibrato,
+} from '@another-synth/tracker-playback';
 
 // Define the types of nodes we can have in a voice
 export enum VoiceNodeType {
@@ -100,70 +106,17 @@ export enum SamplerTriggerMode {
 }
 
 /**
- * A tracker volume envelope, as XM (and IT) define them: an arbitrary point
- * list rather than an ADSR, with an optional sustain point the envelope holds
- * at until key-off and an optional loop.
- *
- * Positions are in *ticks*, the tracker's own time unit, since that is how the
- * file expresses them and a tick's wall-clock duration depends on the song's
- * BPM at the moment the note plays.
+ * The tracker envelope and auto-vibrato shapes moved into
+ * `@another-synth/tracker-playback`: they are XM/IT format concepts the
+ * importers produce and `ModInstrument` consumes, not synth-layout types.
+ * Re-exported here so existing imports keep working.
  */
-/**
- * The point/sustain/loop shape XM's volume and panning envelopes share.
- *
- * They differ only in what the value means and what it drives: volume also
- * carries a fadeout, panning does not.
- */
-export interface TrackerEnvelopeShape {
-  /** Envelope points; `value` is 0..64. */
-  points: Array<{ tick: number; value: number }>;
-  /** Index of the point to hold at until key-off, or -1 for none. */
-  sustainPoint: number;
-  /** Loop point indices; only meaningful when `loopEnabled`. */
-  loopStart: number;
-  loopEnd: number;
-  loopEnabled: boolean;
-}
-
-/**
- * XM panning envelope. 32 is centre; 0 and 64 are the extremes.
- *
- * FastTracker 2 does not use it as an absolute position -- it is an *offset*
- * around the channel's own pan, scaled by how much room that pan leaves, so
- * the envelope can never push a channel past the edge of the field. See
- * ModInstrument.combinePan.
- */
-export type TrackerPanningEnvelope = TrackerEnvelopeShape;
-
-export interface TrackerVolumeEnvelope extends TrackerEnvelopeShape {
-  /**
-   * Fadeout rate, subtracted from a 65536 counter each tick after key-off.
-   * 0 means the note does not fade. Time to silence is
-   * (65536 / fadeout) ticks.
-   */
-  fadeout: number;
-}
-
-/**
- * XM instrument-level ("auto") vibrato.
- *
- * A property of the instrument rather than the pattern: every note the
- * instrument plays wobbles, without any 4xy in the song. FastTracker 2 adds it
- * to the channel period *on top of* whatever the effect column is doing, so it
- * has to compose with command vibrato and portamento rather than replace them.
- */
-export interface TrackerAutoVibrato {
-  /** 0 = sine, 1 = square, 2 = ramp up, 3 = ramp down. Quoted from
-   * updateVolPanAutoVib (ft2-clone ft2_replayer.c): `type == 2` is ramp up
-   * (((pos>>1)+64)&127)-64, `type == 3` ramp down. */
-  type: number;
-  /** Ticks taken to reach full depth from note start; 0 = immediate. */
-  sweepTicks: number;
-  /** 0-15, in the song's period units. */
-  depth: number;
-  /** Position advance per tick, over a 256-step cycle. */
-  rate: number;
-}
+export type {
+  TrackerEnvelopeShape,
+  TrackerPanningEnvelope,
+  TrackerVolumeEnvelope,
+  TrackerAutoVibrato,
+};
 
 export interface SamplerState {
   id: string;

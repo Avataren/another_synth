@@ -1,10 +1,16 @@
 /**
- * Builds the sampler patch used by imported tracker instruments.
+ * Turns a library `TrackerSample` into this app's sampler `Patch`.
  *
- * This is the node-graph construction shared by every sample-based importer:
- * a sampler feeding a mixer, an amp envelope, the standard effect nodes, and
- * the two macro routes tracker playback depends on (macro 0 = stereo pan,
- * macro 1 = per-voice sample offset).
+ * This is the adapter the library extraction stops at. `TrackerSample` says
+ * what an imported instrument *is* -- PCM, loop points, root note, the
+ * envelopes the format attaches; a `Patch` says how *this* app sounds one: a
+ * sampler feeding a mixer, an amp envelope, the standard effect nodes, and the
+ * two macro routes tracker playback depends on (macro 0 = stereo pan, macro 1
+ * = per-voice sample offset).
+ *
+ * Keeping that here is what stops the package exporting the app's synth model
+ * to consumers who asked for a module player. A different host writes its own
+ * adapter and never sees a `Patch`.
  *
  * None of it is format-specific -- only the numbers going in are -- so it is
  * shared rather than duplicated per format. Extracted from mod-import.ts,
@@ -21,9 +27,6 @@ import {
   SamplerTriggerMode,
   VoiceNodeType,
   type SamplerState,
-  type TrackerVolumeEnvelope,
-  type TrackerPanningEnvelope,
-  type TrackerAutoVibrato,
   type VoiceLayout,
   type PatchLayout,
   type EnvelopeConfig,
@@ -35,43 +38,35 @@ import type {
   WasmModulationType,
 } from 'app/public/wasm/audio_processor';
 import { encodeFloat32ArrayToBase64 } from 'src/audio/serialization/audio-asset-encoder';
+import type {
+  TrackerSample,
+  TrackerSampleLoop,
+} from '@another-synth/tracker-playback';
 
-export interface SamplerPatchSpec {
-  /** Sample name from the file; may be empty. */
-  name: string;
-  /** Used when `name` is empty. */
+/** What the app adds on top of a `TrackerSample` to make a patch. */
+export interface SamplerPatchOptions {
+  /** Used when the sample has no name of its own. */
   fallbackName: string;
   /** Patch metadata category, e.g. 'Imported/MOD'. */
   category: string;
-  /** Decoded PCM, normalised to -1..1. */
-  data: Float32Array;
-  sampleRate: number;
-  /**
-   * MIDI note at which the sample plays back untransposed. MOD uses an
-   * empirically calibrated 65; XM derives it from the sample's relative note.
-   */
-  rootNote: number;
-  /** Tuning offset in cents, applied as sampler detune. */
-  detuneCents: number;
-  /** Base gain 0..1. */
-  gain: number;
-  loopMode: SamplerLoopMode;
-  loopStartFrames: number;
-  loopLengthFrames: number;
-  /** Voices allocated to this instrument. */
-  voiceCount: number;
-  /**
-   * Patch-level base pan, 0..1, 0.5 = centre. Tracker imports carry the
-   * file's per-sample default panning here; it is the resting value the
-   * panning envelope deviates from, not a value summed with it.
-   */
-  pan?: number;
-  /** Optional tracker volume envelope (XM/IT style). */
-  trackerEnvelope?: TrackerVolumeEnvelope;
-  /** Optional XM panning envelope. */
-  panEnvelope?: TrackerPanningEnvelope;
-  /** Optional XM instrument-level vibrato. */
-  autoVibrato?: TrackerAutoVibrato;
+}
+
+/**
+ * The library's format-native loop vocabulary, as the sampler node's enum.
+ *
+ * These two are deliberately not the same type: `SamplerLoopMode`'s numbers
+ * are serialised into saved patches, so the library describes loops in words
+ * and this adapter is where the app's numbering is applied.
+ */
+function toSamplerLoopMode(loop: TrackerSampleLoop): SamplerLoopMode {
+  switch (loop) {
+    case 'pingpong':
+      return SamplerLoopMode.PingPong;
+    case 'forward':
+      return SamplerLoopMode.Loop;
+    case 'off':
+      return SamplerLoopMode.Off;
+  }
 }
 
 function generateNodeId(prefix: string): string {
@@ -81,7 +76,11 @@ function generateNodeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-export function createSamplerPatch(spec: SamplerPatchSpec): Patch {
+export function createSamplerPatch(
+  sample: TrackerSample,
+  options: SamplerPatchOptions,
+): Patch {
+  const loopMode = toSamplerLoopMode(sample.loop);
   const samplerNodeId = generateNodeId('sampler');
   const mixerNodeId = generateNodeId('mixer');
   const envelopeNodeId = generateNodeId('envelope');
@@ -94,62 +93,62 @@ export function createSamplerPatch(spec: SamplerPatchSpec): Patch {
   const compressorNodeId = '10005';
   const saturationNodeId = '10006';
   const bitcrusherNodeId = '10007';
-  const patchName = spec.name || spec.fallbackName;
-  const metadata = createDefaultPatchMetadata(patchName, spec.category);
+  const patchName = sample.name || options.fallbackName;
+  const metadata = createDefaultPatchMetadata(patchName, options.category);
   metadata.instrumentType = 'mod';
 
   const audioAsset = encodeFloat32ArrayToBase64(
-    spec.data,
-    spec.sampleRate,
+    sample.data,
+    sample.sampleRate,
     1,
     AudioAssetType.Sample,
     samplerNodeId,
-    spec.name || undefined,
+    sample.name || undefined,
     60,
   );
 
-  const sampleLengthFrames = Math.max(1, spec.data.length);
-  const loopEnabled = spec.loopMode !== SamplerLoopMode.Off;
-  const loopStartFrames = Math.min(spec.loopStartFrames, sampleLengthFrames - 1);
+  const sampleLengthFrames = Math.max(1, sample.data.length);
+  const loopEnabled = loopMode !== SamplerLoopMode.Off;
+  const loopStartFrames = Math.min(sample.loopStartFrames, sampleLengthFrames - 1);
   const loopEndFrames = Math.min(
-    loopStartFrames + spec.loopLengthFrames,
+    loopStartFrames + sample.loopLengthFrames,
     sampleLengthFrames,
   );
-  const finetuneCents = spec.detuneCents;
+  const finetuneCents = sample.detuneCents;
 
   const samplerState: SamplerState = {
     id: samplerNodeId,
     frequency: 440,
-    gain: spec.gain,
+    gain: sample.gain,
     detune_oct: 0,
     detune_semi: 0,
     detune_cents: finetuneCents,
     detune: finetuneCents,
-    loopMode: spec.loopMode,
+    loopMode: loopMode,
     loopStart: loopEnabled ? loopStartFrames / sampleLengthFrames : 0,
     loopEnd: loopEnabled ? loopEndFrames / sampleLengthFrames : 1,
     sampleLength: sampleLengthFrames,
-    rootNote: spec.rootNote,
+    rootNote: sample.rootNote,
     triggerMode: SamplerTriggerMode.Gate,
     active: true,
-    sampleRate: spec.sampleRate,
+    sampleRate: sample.sampleRate,
     channels: 1,
   };
-  if (spec.name) {
-    samplerState.fileName = spec.name;
+  if (sample.name) {
+    samplerState.fileName = sample.name;
   }
-  if (spec.trackerEnvelope) {
-    samplerState.trackerEnvelope = spec.trackerEnvelope;
+  if (sample.volumeEnvelope) {
+    samplerState.trackerEnvelope = sample.volumeEnvelope;
   }
-  if (spec.panEnvelope) {
-    samplerState.trackerPanEnvelope = spec.panEnvelope;
+  if (sample.panEnvelope) {
+    samplerState.trackerPanEnvelope = sample.panEnvelope;
   }
-  if (spec.autoVibrato) {
-    samplerState.trackerAutoVibrato = spec.autoVibrato;
+  if (sample.autoVibrato) {
+    samplerState.trackerAutoVibrato = sample.autoVibrato;
   }
   // Named in SamplerState, so it survives serialization; the normalizer keeps
   // it with a 0.5 (centre) default for patches that predate the field.
-  samplerState.pan = spec.pan ?? 0.5;
+  samplerState.pan = sample.pan ?? 0.5;
 
   const canonicalVoice: VoiceLayout = {
     id: 0,
@@ -183,7 +182,7 @@ export function createSamplerPatch(spec: SamplerPatchSpec): Patch {
         {
           id: samplerNodeId,
           type: VoiceNodeType.Sampler,
-          name: spec.name || 'Sampler',
+          name: sample.name || 'Sampler',
         },
       ],
       [VoiceNodeType.Glide]: [],
@@ -287,7 +286,7 @@ export function createSamplerPatch(spec: SamplerPatchSpec): Patch {
   };
 
   const layout: PatchLayout = {
-    voiceCount: spec.voiceCount,
+    voiceCount: sample.voiceCount,
     canonicalVoice,
     globalNodes: {},
   };

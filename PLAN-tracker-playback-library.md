@@ -4,19 +4,24 @@
 to play MOD, XM, S3M and this app's own native songs, without dragging in
 Quasar, Pinia, Vue, the Rust/WASM synth, or the pattern editor.
 
-**Status.** Layers 1 and 3 done (2026-09-04). Layer 2's **pattern half done**
-(2026-09-04); its instrument half is blocked on the open question in §6. Layer 4
-not started.
+**Status.** Layers 1, 2 and 3 done (2026-09-04). Layer 4 not started.
 
 Bytes now reach a schedulable song entirely inside the library: `parseMod` /
 `parseXm` / `parseS3m` → `build*TrackerPatterns` → `buildPlaybackSong`, with no
 app present. That was the point of doing layer 2 before layer 4 (§8), and it is
 verified against the built `dist`, not just the source (§5).
 
-What is left of layer 2 is the *instrument* half — the three importers'
-`buildInstrumentSlotsAndPatches` and `sampler-patch-builder.ts` — which waits on
-the `TrackerSample` question in §6. §8 is the recommended next action and is
-where to start reading if you are picking this up cold.
+Instruments go the same way: `build*TrackerSamples` produces a lean
+`TrackerSample` — PCM, loop points, root note, envelopes — and the app's
+`sampler-patch-builder.ts` is the adapter that turns one into this app's
+`Patch`. That was §6's last open question, resolved in favour of the lean
+descriptor.
+
+Layer 4, the sound source, is all that remains. §8 is the recommended next
+action and is where to start reading if you are picking this up cold.
+
+The split now stands at ~11,200 lines in the package against ~4,300 left under
+`src/audio/tracker/`, of which `song-bank.ts` is 2,654 and stays.
 
 This document is written to be picked up cold, in a new session, by someone (or
 some model) with no memory of the work. It records what was measured, what was
@@ -39,15 +44,17 @@ file bytes
    v
 parsed module  (samples, patterns, orders, raw effect bytes)
    |
-   |  buildModTrackerPatterns / Xm / S3m       pkg/import/*-patterns.ts
-   |     the pattern half                        <- library
-   |  buildInstrumentSlotsAndPatches           src/audio/tracker/*-import.ts
-   |     the instrument half                     <- app, blocked on §6
-   |  importModToTrackerSong / Xm / S3m        src/audio/tracker/*-import.ts
-   |     assembles the two into a song file
+   |  build{Mod,Xm,S3m}TrackerPatterns         pkg/import/*-patterns.ts
+   |  build{Mod,Xm,S3m}TrackerSamples          pkg/import/*-samples.ts
    v
-TrackerSong  (rows: patterns of TrackerEntryData  <- library, pkg/tracker-types.ts
-   |          instruments: slots + one sampler Patch per sample  <- app)
+rows + TrackerSamples                          pkg/tracker-types.ts,
+   |                                           pkg/tracker-sample.ts
+   |  createSamplerPatch  (the adapter)        src/audio/tracker/sampler-patch-builder.ts
+   |  buildSlotsAndPatches                     src/audio/tracker/instrument-slots.ts
+   |  import{Mod,Xm,S3m}ToTrackerSong          src/audio/tracker/*-import.ts
+   |    assembles rows + patches into a song file
+   v
+TrackerSong  (the app's song file: rows, instrument slots, one Patch per sample)
    |
    |  buildPlaybackSong                        pkg/playback-song-builder.ts
    |    (useTrackerSongBuilder is the Vue wrapper around it)
@@ -64,9 +71,10 @@ scheduled events  ("note on, track 3, at t=1.2s", "volume 0, step, at t=1.3s")
 TrackerSongBank -> ModInstrument -> Web Audio   src/audio/mod-instrument.ts
 ```
 
-Stages 1 to 4 are now entirely inside the library for the *pattern* path: bytes
-to a schedulable `PlaybackSong` with no app present. The remaining app-side
-pieces are the instrument half of stage 2 and the whole of stage 5.
+Everything above the last stage is in the library. A host supplies two things:
+an adapter from `TrackerSample` to whatever it plays (this app's is
+`sampler-patch-builder.ts`), and a sink for the scheduled events. Bytes to a
+schedulable `PlaybackSong` needs neither, and runs with no app present.
 
 The library boundary for *sound* still sits between stage 4 and stage 5: the
 engine emits events and knows nothing about how they are sounded.
@@ -130,13 +138,13 @@ looksLikeS3m(buffer: Uint8Array): boolean      parseS3m(buffer: Uint8Array): S3m
 So the _mechanical_ coupling is two constants and one `uid`. The real question is
 a design one — see §6.
 
-**As of the layer-2 pattern half this table is history for the rows.** `uid` is
-gone (`crypto.randomUUID()`), the two constants live in the library's
-`song-constants.ts` and the store re-exports them, and the four row types moved
-into `tracker-types.ts`. What is still app-side, and still coupled exactly as
-the table says, is the instrument half: `Patch`, `SamplerLoopMode` and the
-`audio_processor` types are reached only from `buildInstrumentSlotsAndPatches`
-and `sampler-patch-builder.ts`.
+**This table is now entirely history.** `uid` is gone
+(`crypto.randomUUID()`), the two constants live in the library's
+`song-constants.ts` with the store re-exporting them, the four row types moved
+into `tracker-types.ts`, and the instrument types into `tracker-sample.ts`.
+`Patch`, `SamplerLoopMode` and the `audio_processor` types are reached only from
+`sampler-patch-builder.ts`, which is app-side on purpose and staying there. The
+importers under `src/audio/tracker/` are now assembly only, 116-151 lines each.
 
 ### The song builder was a pure function in Vue clothing (resolved, layer 3)
 
@@ -440,27 +448,96 @@ unlock, and the reason it went before layer 4.
 
 ---
 
-## 4. Layer 2's instrument half, and layer 4 — TODO
+## 3d. Layer 2, instrument half — DONE
+
+Committed 2026-09-04, once §6 resolved in favour of a lean descriptor. Layer 2
+is now complete: both halves of all three importers are in the library.
+
+**The type was already there.** `SamplerPatchSpec`, the input to
+`createSamplerPatch`, was the lean descriptor §6 asked for and had been since
+the patch builder was extracted — format-neutral, carrying data, loop points,
+root note, detune, gain, pan and the XM envelopes. Only two of its fields were
+app presentation rather than format fact: `category` (`'Imported/MOD'`) and
+`fallbackName`. So `TrackerSample` was not a type to design; it was
+`SamplerPatchSpec` minus those two, moved. `sampler-patch-builder.ts` was
+already the adapter the plan wanted to keep app-side.
+
+**Moved into the package**
+
+| File                              | Was                                        |
+| --------------------------------- | ------------------------------------------ |
+| `tracker-sample.ts`               | `SamplerPatchSpec` + the tracker types in `synth-layout.ts` + `OplInstrumentData` in the store |
+| `import/{mod,xm,s3m}-samples.ts`  | `buildInstrumentSlotsAndPatches` and `createSamplerPatchFor*` in each `*-import.ts` |
+
+**Stayed in the app**, and always will: `sampler-patch-builder.ts`, now
+`createSamplerPatch(sample: TrackerSample, { fallbackName, category })`. It is
+the whole boundary — what a sample *is* on one side, how this app sounds one on
+the other. A different host writes its own adapter and never sees a `Patch`.
+
+**New app-side: `src/audio/tracker/instrument-slots.ts`.** All three importers
+had their own copy of the same loop — make a patch, fill an `InstrumentSlot`,
+record it in `songPatches` — differing only in the bank and category strings.
+One `buildSlotsAndPatches(samples, options)` now serves all three.
+
+**Loop mode is a string union, not the app's enum.** `TrackerSampleLoop` is
+`'off' | 'forward' | 'pingpong'`; the adapter maps it to `SamplerLoopMode`.
+§6 left this open ("moves or gets mirrored") and neither turned out right:
+`SamplerLoopMode`'s *numbers* are serialised into saved patches, so a library
+type pinned to them would make the app's file format part of this package's
+API. It is also used across the app's synth side — `SamplerComponent.vue`,
+`node-state-store.ts`, `patch-serializer.ts`, `instrument.ts`, `instrument-v2.ts`
+— which would all then be importing an enum from a tracker playback library.
+XM's parser already reports loop type in words, so the union costs nothing.
+
+**`sourceIndex` alongside `slot`.** A `TrackerSample` carries both the slot the
+importer allocated and the module's own instrument number. They differ whenever
+packing happens: XM and S3M pack referenced instruments down into consecutive
+slots, so instrument 40 might land in slot 3. The fallback patch name
+("Instrument 40") must use the file's number — the composer's numbering is what
+that name refers to. Dropping `sourceIndex` would silently rename every patch
+in a sparse XM.
+
+**AdLib instruments come through as samples with no data.** An S3M AdLib
+instrument gets `opl` set and an empty `data`; it occupies a slot, because it is
+part of the song's instrument numbering, but never enters `slotForInstrument`
+because nothing can play it. That is the same "inactive slot carrying its
+register bytes" the previous code expressed by filling a slot with no `patchId`.
+
+**Slot allocation moved with it, and had to.** `buildXmTrackerPatterns` and
+`buildS3mTrackerPatterns` take a `slotForInstrument` map to resolve a cell's
+instrument byte — so the pattern half already depended on the instrument half's
+packing. Both now live in the library and `TrackerSampleSet` carries the map
+between them, which is why a standalone consumer gets the app's exact slot
+numbering rather than an identity map that happens to work.
+
+### Verification performed
+
+| Check                                   | Result                          |
+| --------------------------------------- | ------------------------------- |
+| `npm test`                              | 109 files, 1599 tests, all pass |
+| `npx vue-tsc --noEmit -p tsconfig.json` | clean                           |
+| `npm run lint`                          | clean                           |
+| `npx quasar build`                      | Build succeeded                 |
+| `npm run check:tracker-playback-dist`   | all checks pass                 |
+
+No behaviour changed. Two things did change that are worth knowing: MOD import
+lost two per-slot `console.log` lines the other two formats never had, and the
+three importers shrank to assembly — `mod-import.ts` 255 → 116 lines,
+`xm-import.ts` 387 → 123, `s3m-import.ts` 338 → 151.
+
+**Process note.** Three of the errors in this step were the same mistake as
+§3c's, worse: cutting a file by line number takes the *next* declaration's doc
+comment with it, or strands its own. Doing it by hand cost more time than the
+rest of the step. The fix, if this is ever needed again, is to anchor on the
+declaration and walk *backwards* over its comment rather than slicing line
+ranges — and to scan the result for a line matching `^ \* ` immediately after a
+blank line, which is exactly what a stranded comment looks like.
+
+---
+
+## 4. Layer 4 — TODO
 
 Estimates assume familiarity with the code.
-
-### Layer 2 — the instrument half (blocked on §6)
-
-What remains is `buildInstrumentSlotsAndPatches` in each importer, plus
-`sampler-patch-builder.ts`. All of it is blocked on the `TrackerSample`
-question in §6, and none of it should move until that is answered: the three
-functions return `Record<string, Patch>`, and `TrackerSongFile.data.songPatches`
-is typed the same way, so moving them as they stand would export the app's whole
-synth preset model — modulation routing, envelopes, macro assignments and the
-`app/public/wasm/audio_processor` type imports — to consumers who asked for a
-module player.
-
-`SamplerLoopMode` (a runtime enum) is part of the same decision, not a separate
-one: it appears only in the patch-building path.
-
-`TrackerSongFile` itself is entangled the same way and stays in the store for
-now. The library's `TrackerSongFileVersion` and `CURRENT_SONG_FILE_VERSION`
-moved; the file *shape* did not.
 
 ### Layer 4 — the sound source (2–3 days)
 
@@ -551,34 +628,36 @@ shims so no import site has to change.
 **Acted on (2026-09-04, see §3c)** for everything except the importers'
 instrument half, which the next section still blocks.
 
-### Still open: what shape do the _samples_ take?
+### Resolved: the library emits a lean `TrackerSample`
 
-This is the smaller half of the same question, and the only part still undecided.
+Decided by Morten, 2026-09-04, in favour of the recommendation below. Acted on
+the same day; see §3d.
 
 `sampler-patch-builder.ts` (440 lines) emits the app's `Patch` — a full synth
 preset with modulation routing, envelopes and macro assignments, because in this
 app a MOD sample _is_ a sampler patch. A standalone consumer wants far less:
 sample data, loop points, finetune, default volume, root note.
 
-Recommendation (not yet acted on): have the library emit a lean `TrackerSample`
-descriptor and keep `sampler-patch-builder.ts` in the app as the adapter that
-turns one into a `Patch`. That is the honest boundary, and it also takes the
-last `app/public/wasm/audio_processor` type import out of the library path.
+**Answer: the library emits a lean `TrackerSample` descriptor and
+`sampler-patch-builder.ts` stays in the app as the adapter that turns one into a
+`Patch`.** That is the honest boundary, and it also takes the last
+`app/public/wasm/audio_processor` type import out of the library path.
+
+What made it cheap, discovered while acting on it: the descriptor already
+existed. `SamplerPatchSpec` — `createSamplerPatch`'s input, format-neutral since
+the patch builder was extracted — was this type minus a rename, carrying PCM,
+loop points, root note, detune, gain, pan and the XM envelopes. Only `category`
+and `fallbackName` were app presentation. §3d has what actually moved.
 
 The alternatives are (b) emit `Patch` and make consumers ignore most of it, or
 (c) emit both behind a flag. Both are worse; (b) exports the app's synth model
 to people who did not ask for a synth.
 
-Note this fork only touches the _instrument_ half of layer 2. The pattern half
-was settled by the section above and is now done (§3c), so this question is all
-that stands between the current state and a complete layer 2.
-
-One extra data point from doing the pattern half: the seam is real and clean.
-Neither `buildTrackerPatterns` nor anything it calls, in any of the three
-importers, touched `Patch`, `SamplerLoopMode`, `InstrumentSlot` or
-`createSamplerPatch`. So `buildInstrumentSlotsAndPatches` can be swapped for a
-`TrackerSample`-emitting version without disturbing the row path at all — which
-makes the recommended option cheaper than it looked when this was written.
+The `SamplerLoopMode` sub-question ("moves or gets mirrored") turned out to have
+a third answer, which is what shipped: neither. The library describes loops in
+words (`'off' | 'forward' | 'pingpong'`) and the adapter maps to the app's enum,
+because that enum's *numbers* are serialised into saved patches and it is used
+across the app's synth side as well. See §3d.
 
 ### How much the move cost — settled
 
@@ -633,29 +712,39 @@ Small things that cost time if you meet them cold.
 
 ## 8. Recommended next action
 
-**Answer the `TrackerSample` question in §6, then move the instrument half.**
+**Layer 4, the sound source.** It is all that is left, and it is now unblocked
+in both directions: the library can produce a song to feed a sink, and
+`TrackerSample` gives a standalone instrument something to load that is not a
+`Patch`.
 
-That is now the only thing standing between the current state and a complete
-layer 2, and it is a decision rather than a refactor — the refactor after it is
-the same shape as §3c, which took an afternoon. The recommendation in §6 (emit a
-lean `TrackerSample`, keep `sampler-patch-builder.ts` app-side as the adapter)
-has not changed, and doing the pattern half made it look cheaper rather than
-dearer: the two halves never touched.
+The shape, from §4:
 
-Deciding it also removes the last `app/public/wasm/audio_processor` type import
-from the library path, which is worth having before layer 4 rather than after.
+1. Declare the sink interface in the package, next to the `Scheduled*Handler`
+   types it complements.
+2. Make `TrackerSongBank` implement it — mostly a `satisfies` and a rename or
+   two.
+3. Write the lean second implementation over `ModInstrument` +
+   `track-voice-registry`, with no worklet pool, `AudioSystem`, user settings or
+   recorder.
 
-**If you would rather do layer 4 first, you can.** The argument for doing the
-pattern half before layer 4 was that a consumer could not otherwise load a file
-at all; that no longer holds. Layer 4's sink interface can now be designed
-against a library that already produces songs to feed it — the de-risking this
-section previously predicted, now available. The only cost of going out of
-order is that a standalone player will have no instruments to play until the §6
-question is answered.
+Three corrections to §2 and §4, measured 2026-09-04 rather than at `417094f`:
 
-Whichever you pick: run the §5 checks after each step, not at the end. The
-corpus suite is what makes this safe, and it caught nothing in §3c — but
-typecheck caught two real errors, so run that after every step too.
+- **The sink is 21 members, not ~14.** The list in §2 missed the lifecycle and
+  non-scheduled ones: `audioContext`, `needsResume`, `ensureAudioContextRunning`,
+  `cancelAllScheduled`, `allNotesOff`, `noteOn`, `noteOff`.
+- **`sample-conditioning.ts` and `sample-quality.ts` come free.** §4 says to
+  check before assuming; checked — both have *zero* imports.
+  `audio-asset-encoder.ts` (377 lines) needs one type from `preset-types`.
+- **`ModInstrument`'s only `Patch` coupling is `loadPatch`.** `Patch` appears
+  four times in its 2,157 lines, all in that one method. With `TrackerSample`
+  now in the library, that becomes `loadSample(sample: TrackerSample)` and the
+  instrument can move as-is.
+
+`song-bank.ts` (2,654 lines) stays in the app permanently — it needs the mixer,
+live patch editing, recording and visualisation. Two implementations of one
+interface is the intended end state, not a compromise.
+
+Run the §5 checks after each step, not at the end.
 
 ### Two smaller things worth queuing after
 

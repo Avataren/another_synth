@@ -74,7 +74,7 @@ check('ESM entry resolves to dist', () => {
   assert(
     resolved.includes('/dist/'),
     `resolved to ${resolved}, expected something under dist/ -- the exports ` +
-      `map may be wrong, or a stale alias is in play`,
+      'map may be wrong, or a stale alias is in play',
   );
   return resolved.slice(resolved.indexOf('packages/'));
 });
@@ -117,7 +117,7 @@ check(`${required.length} expected exports present`, () => {
   assert(
     missing.length === 0,
     `missing from dist: ${missing.join(', ')}. An \`export *\` collision in ` +
-      `index.ts silently drops a name -- check for duplicate export names.`,
+      'index.ts silently drops a name -- check for duplicate export names.',
   );
   return `${Object.keys(lib).length} exported in total`;
 });

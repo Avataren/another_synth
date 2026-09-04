@@ -15,9 +15,15 @@ import {
   type ModuleFormat,
   type TrackerSongFileVersion,
   type TrackerPattern,
+  type OplInstrumentData,
 } from '@another-synth/tracker-playback';
 
-export type { ModuleFormat, TrackerSongFileVersion, TrackerPattern };
+export type {
+  ModuleFormat,
+  TrackerSongFileVersion,
+  TrackerPattern,
+  OplInstrumentData,
+};
 export {
   TOTAL_SLOTS,
   CURRENT_SONG_FILE_VERSION,
@@ -62,22 +68,7 @@ export interface InstrumentSlot {
   oplData?: OplInstrumentData;
 }
 
-/**
- * The S3M AdLib header's own timbre block, byte-for-byte as the file stores
- * it (see formats/s3m.ts and the ST3.01b format doc's "adlib instrument
- * format"). This IS the patch format for the future dedicated WASM OPL core
- * (Morten, 2026-09-03) -- raw, unmapped, inactive until then.
- */
-export interface OplInstrumentData {
-  /** 'melody' (type 2) or 'drum' (type 3+). */
-  kind: 'melody' | 'drum';
-  /** D00..D0B operator/level/feedback register bytes, file order. */
-  registers: number[];
-  /** Default volume 0..64 from the AdLib header. */
-  volume: number;
-  /** Middle-C frequency scaling value (the header c2spd, low 16 bits). */
-  c2spd: number;
-}
+// `OplInstrumentData` is re-exported from the library; see the import above.
 
 interface SongMeta {
   title: string;
