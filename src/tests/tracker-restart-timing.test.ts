@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   Song,
   PlaybackScheduler,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 
 /**
  * Speed and BPM are both playback state that Fxx mutates as a song runs, so

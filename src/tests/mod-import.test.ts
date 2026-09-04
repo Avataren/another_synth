@@ -4,7 +4,7 @@ import { CURRENT_SONG_FILE_VERSION } from 'src/stores/tracker-store';
 import {
   looksLikeMod,
   parseMod,
-} from '../../packages/tracker-playback/src/mod-parser';
+} from '@another-synth/tracker-playback';
 import { AudioAssetType } from 'src/audio/types/preset-types';
 import { PortId } from 'app/public/wasm/audio_processor';
 import fs from 'node:fs';

@@ -4,7 +4,7 @@ import {
   parseXm,
   XM_KEY_OFF,
   type XmPatternCell,
-} from '../../packages/tracker-playback/src/formats/xm';
+} from '@another-synth/tracker-playback';
 import { buildXm, emptyCell } from './helpers/xm-builder';
 
 describe('looksLikeXm', () => {

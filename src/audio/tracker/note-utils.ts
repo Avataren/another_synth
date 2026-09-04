@@ -3,8 +3,8 @@ import type {
   EffectType,
   ExtendedEffectSubtype,
   VolumeColumnCommand,
-} from '../../../packages/tracker-playback/src/types';
-import type { FormatProfile } from '../../../packages/tracker-playback/src/format-profile';
+} from '@another-synth/tracker-playback';
+import type { FormatProfile } from '@another-synth/tracker-playback';
 
 export interface ParsedNote {
   midi?: number;

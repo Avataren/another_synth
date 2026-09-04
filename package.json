@@ -6,6 +6,9 @@
   "author": "Morten Andersson <morten.andersson@gmail.com>",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "lint": "eslint --ext .js,.ts,.vue ./",
     "format": "prettier --write \"**/*.{js,ts,vue,scss,html,md,json}\" --ignore-path .gitignore",
@@ -13,6 +16,7 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
+    "build:tracker-playback": "npm run build --workspace @another-synth/tracker-playback",
     "demos:refresh": "node scripts/build-demo-manifest.mjs public/demos public/demos",
     "dev": "npm run demos:refresh && concurrently \"npm:dev:wasm\" \"npm:dev:worklets\" \"quasar dev\"",
     "dev:wasm": "node build-wasm.cjs --watch",

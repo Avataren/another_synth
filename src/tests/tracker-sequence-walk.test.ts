@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { Song, Step } from '../../packages/tracker-playback/src/types';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { Song, Step } from '@another-synth/tracker-playback';
 
 /**
  * How the engine walks the order list.

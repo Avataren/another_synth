@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { Song, Step } from '../../packages/tracker-playback/src/types';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { Song, Step } from '@another-synth/tracker-playback';
 
 /**
  * Regression coverage for 8xx / E8x / Pxy panning.

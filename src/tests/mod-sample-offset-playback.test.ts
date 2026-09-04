@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   createTrackEffectState,
   processEffectTick0,
-} from '../../packages/tracker-playback/src/effect-processor';
-import type { EffectCommand } from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
+import type { EffectCommand } from '@another-synth/tracker-playback';
 
 /**
  * Regression coverage for 9xx sample offset.

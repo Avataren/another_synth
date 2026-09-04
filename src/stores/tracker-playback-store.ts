@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   Song as PlaybackSong,
   ScheduledNoteEvent,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 import { useTrackerAudioStore } from './tracker-audio-store';
 import { useTrackerStore } from './tracker-store';
 

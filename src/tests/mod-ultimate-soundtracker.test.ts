@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseMod } from '../../packages/tracker-playback/src/mod-parser';
+import { parseMod } from '@another-synth/tracker-playback';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import { buildSoundtrackerMod, cellAt } from './helpers/mod-builder';
 

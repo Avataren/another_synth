@@ -6,13 +6,13 @@ import {
   resetEffectStateForNote,
   type ProcessorCommand,
   type TrackEffectState,
-} from '../../packages/tracker-playback/src/effect-processor';
+} from '@another-synth/tracker-playback';
 import {
   PROTRACKER_PROFILE,
   XM_PROFILE,
-} from '../../packages/tracker-playback/src/format-profile';
+} from '@another-synth/tracker-playback';
 import { parseEffectCommand } from 'src/audio/tracker/note-utils';
-import type { EffectCommand } from '../../packages/tracker-playback/src/types';
+import type { EffectCommand } from '@another-synth/tracker-playback';
 
 /**
  * The smaller FastTracker 2 behaviours: parameter memories, the waveform

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 import ModInstrument from 'src/audio/mod-instrument';
-import { parseXm } from '../../packages/tracker-playback/src/formats/xm';
+import { parseXm } from '@another-synth/tracker-playback';
 import { buildXm, cell } from './helpers/xm-builder';
 
 /**

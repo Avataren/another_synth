@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseMod,
   type ModSample,
-} from '../../packages/tracker-playback/src/mod-parser';
+} from '@another-synth/tracker-playback';
 import { convertSampleToFloat32 } from 'src/audio/tracker/mod-import';
 import {
   encodeFloat32ArrayToBase64,

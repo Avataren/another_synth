@@ -19,6 +19,13 @@ export default defineConfig({
     alias: {
       'app/public/wasm/audio_processor': audioProcessorMock,
       'app/public/wasm/audio_processor.js': audioProcessorMock,
+      // Resolve the tracker replay library to its TypeScript source rather
+      // than to the `dist` its package.json points at, so tests run against
+      // what is on disk and need no build step first.
+      '@another-synth/tracker-playback': path.resolve(
+        __dirname,
+        './packages/tracker-playback/src/index.ts',
+      ),
       src: path.resolve(__dirname, './src'),
     },
   },

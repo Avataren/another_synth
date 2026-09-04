@@ -8,7 +8,7 @@ import {
   createLinearPitchModel,
   createXmAmigaPitchModel,
   type PitchModel,
-} from '../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type AudioSystem from 'src/audio/AudioSystem';
 

@@ -18,13 +18,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   PlaybackClock,
   PlaybackScheduler,
   Song,
   Step,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 
 /**
  * Two 8-row patterns. The first breaks to the next pattern at row 2, which is

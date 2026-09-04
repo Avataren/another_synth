@@ -9,8 +9,8 @@ import {
   volumeCommandIsTickBased,
   type ProcessorCommand,
   type TrackEffectState,
-} from '../../packages/tracker-playback/src/effect-processor';
-import { XM_PROFILE } from '../../packages/tracker-playback/src/format-profile';
+} from '@another-synth/tracker-playback';
+import { XM_PROFILE } from '@another-synth/tracker-playback';
 import { buildXm, cell } from './helpers/xm-builder';
 
 /**

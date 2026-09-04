@@ -4,8 +4,8 @@ import {
   useTrackerSongBuilder,
   type TrackerSongBuilderContext,
 } from 'src/composables/useTrackerSongBuilder';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { ModuleFormat } from '../../packages/tracker-playback/src/types';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { ModuleFormat } from '@another-synth/tracker-playback';
 import { createPinia, setActivePinia } from 'pinia';
 import { useTrackerStore } from 'src/stores/tracker-store';
 import { importXmToTrackerSong } from 'src/audio/tracker/xm-import';

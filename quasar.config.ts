@@ -202,6 +202,20 @@ export default defineConfig((/* ctx */) => {
       extendViteConf(viteConf) {
         viteConf.assetsInclude = ['**/*.wasm'];
 
+        // Resolve the tracker replay library to its TypeScript source rather
+        // than to the `dist` its package.json points at. The app is the
+        // library's first consumer and builds it from source, so `dist` only
+        // ever has to be current for *other* consumers -- there is no build
+        // step to forget before `quasar dev`.
+        viteConf.resolve = viteConf.resolve ?? {};
+        viteConf.resolve.alias = {
+          ...(viteConf.resolve.alias as Record<string, string> | undefined),
+          '@another-synth/tracker-playback': path.resolve(
+            process.cwd(),
+            'packages/tracker-playback/src/index.ts',
+          ),
+        };
+
         // Add build configuration for worklets
         // viteConf.build = viteConf.build || {};
         // viteConf.build.rollupOptions = {

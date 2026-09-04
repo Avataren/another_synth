@@ -8,7 +8,7 @@ import {
   useTrackerSongBuilder,
   type TrackerSongBuilderContext,
 } from 'src/composables/useTrackerSongBuilder';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import type AudioSystem from 'src/audio/AudioSystem';
 

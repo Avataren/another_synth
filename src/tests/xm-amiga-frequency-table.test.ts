@@ -7,8 +7,8 @@ import {
   useTrackerSongBuilder,
   type TrackerSongBuilderContext,
 } from 'src/composables/useTrackerSongBuilder';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import { createXmAmigaPitchModel } from '../../packages/tracker-playback/src/pitch-model';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import { createXmAmigaPitchModel } from '@another-synth/tracker-playback';
 import { buildXm, cell, emptyCell } from './helpers/xm-builder';
 
 /**

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseMod } from '../../packages/tracker-playback/src/mod-parser';
-import { parseXm } from '../../packages/tracker-playback/src/formats/xm';
-import { parseS3m } from '../../packages/tracker-playback/src/formats/s3m';
+import { parseMod } from '@another-synth/tracker-playback';
+import { parseXm } from '@another-synth/tracker-playback';
+import { parseS3m } from '@another-synth/tracker-playback';
 import { TOTAL_SLOTS } from 'src/stores/tracker-store';
 
 /**

@@ -15,9 +15,9 @@ import type {
   Song as PlaybackSong,
   Step as PlaybackStep,
   ModuleFormat
-} from '../../packages/tracker-playback/src/types';
-import { DEFAULT_MODULE_FORMAT } from '../../packages/tracker-playback/src/types';
-import { profileForFormat } from '../../packages/tracker-playback/src/format-profile';
+} from '@another-synth/tracker-playback';
+import { DEFAULT_MODULE_FORMAT } from '@another-synth/tracker-playback';
+import { profileForFormat } from '@another-synth/tracker-playback';
 import { decodeRawEffect } from '../audio/tracker/note-utils';
 
 /**

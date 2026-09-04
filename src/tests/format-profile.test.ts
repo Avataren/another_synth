@@ -5,15 +5,15 @@ import {
   NATIVE_PROFILE,
   profileForFormat,
   type FormatProfile,
-} from '../../packages/tracker-playback/src/format-profile';
-import { createAmigaPitchModel } from '../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
+import { createAmigaPitchModel } from '@another-synth/tracker-playback';
 import {
   createTrackEffectState,
   processEffectTick0,
   processEffectTickN,
-} from '../../packages/tracker-playback/src/effect-processor';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { EffectCommand, Song } from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { EffectCommand, Song } from '@another-synth/tracker-playback';
 
 /**
  * The FormatProfile is the mechanism the rest of Phase 2 hangs off: format

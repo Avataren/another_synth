@@ -4,12 +4,12 @@ import {
   processEffectTick0,
   processEffectTickN,
   type TrackEffectState,
-} from '../../packages/tracker-playback/src/effect-processor';
+} from '@another-synth/tracker-playback';
 import {
   PROTRACKER_PROFILE,
   XM_PROFILE,
-} from '../../packages/tracker-playback/src/format-profile';
-import type { EffectCommand } from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
+import type { EffectCommand } from '@another-synth/tracker-playback';
 
 /**
  * Depth and unit calibration for the effects ProTracker defines in *period*

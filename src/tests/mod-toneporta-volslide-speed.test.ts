@@ -4,8 +4,8 @@ import {
   processEffectTick0,
   processEffectTickN,
   type TrackEffectState,
-} from '../../packages/tracker-playback/src/effect-processor';
-import type { EffectCommand } from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
+import type { EffectCommand } from '@another-synth/tracker-playback';
 
 /**
  * Regression coverage for 5xy (tone portamento + volume slide).

@@ -20,7 +20,7 @@ import {
   useTrackerSongBuilder,
   type TrackerSongBuilderContext,
 } from 'src/composables/useTrackerSongBuilder';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import { buildXm, cell, emptyCell } from './helpers/xm-builder';
 
 const DEMOS = path.resolve(__dirname, '../../public/demos');

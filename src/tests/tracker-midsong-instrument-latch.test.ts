@@ -16,13 +16,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   PlaybackClock,
   PlaybackScheduler,
   ScheduledNoteEvent,
   Song,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 
 /**
  * Two patterns on one channel. The first starts a note with instrument 01;

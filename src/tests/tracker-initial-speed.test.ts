@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import nodePath from 'node:path';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { Song, PlaybackScheduler } from '../../packages/tracker-playback/src/types';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { Song, PlaybackScheduler } from '@another-synth/tracker-playback';
 import { importXmToTrackerSong, looksLikeXm } from 'src/audio/tracker/xm-import';
-import { parseXm } from '../../packages/tracker-playback/src/formats/xm';
+import { parseXm } from '@another-synth/tracker-playback';
 
 /**
  * Ticks per row ("speed", the Fxx 01-1F parameter) is separate from BPM, and

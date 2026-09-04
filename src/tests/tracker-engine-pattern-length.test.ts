@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { Song } from '../../packages/tracker-playback/src/types';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { Song } from '@another-synth/tracker-playback';
 
 function makeSong(): Song {
   return {

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   looksLikeMod,
   parseMod,
-} from '../../packages/tracker-playback/src/mod-parser';
+} from '@another-synth/tracker-playback';
 
 function createMinimalModBuffer(): Uint8Array {
   const NUM_CHANNELS = 4;

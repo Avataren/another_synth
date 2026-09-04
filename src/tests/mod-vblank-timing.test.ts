@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ref } from 'vue';
-import { parseMod } from '../../packages/tracker-playback/src/mod-parser';
-import { usesVBlankTiming } from '../../packages/tracker-playback/src/mod-vblank';
+import { parseMod } from '@another-synth/tracker-playback';
+import { usesVBlankTiming } from '@another-synth/tracker-playback';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import {
   useTrackerSongBuilder,

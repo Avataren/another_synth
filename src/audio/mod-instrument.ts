@@ -31,7 +31,7 @@ import { getSampleQuality } from './sample-quality';
 import {
   createLinearPitchModel,
   type PitchModel,
-} from '../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
 
 /**
  * Fallback tick duration when a caller does not supply one: 2.5 / 125 BPM,

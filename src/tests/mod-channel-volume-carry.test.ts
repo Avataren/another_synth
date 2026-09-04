@@ -4,15 +4,15 @@ import {
   useTrackerSongBuilder,
   type TrackerSongBuilderContext,
 } from 'src/composables/useTrackerSongBuilder';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import {
   createTrackEffectState,
   processEffectTick0,
   processEffectTickN,
   type ProcessorCommand,
-} from '../../packages/tracker-playback/src/effect-processor';
-import { PROTRACKER_PROFILE } from '../../packages/tracker-playback/src/format-profile';
+} from '@another-synth/tracker-playback';
+import { PROTRACKER_PROFILE } from '@another-synth/tracker-playback';
 import { deserializePatch } from 'src/audio/serialization/patch-serializer';
 
 /**

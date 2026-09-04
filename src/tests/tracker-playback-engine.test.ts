@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   PlaybackPosition,
   PlaybackScheduler,
   Song,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 
 describe('PlaybackEngine sequence start offset', () => {
   it('keeps the selected sequence index when starting mid-sequence', () => {

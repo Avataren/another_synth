@@ -27,12 +27,12 @@ import {
   type S3mSong,
   type S3mInstrument,
   type S3mPatternCell,
-} from '../../../packages/tracker-playback/src/formats/s3m';
+} from '@another-synth/tracker-playback';
 import {
   createS3mPitchModel,
   s3mPeriodForNote,
   type PitchModel,
-} from '../../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
 
 export const looksLikeS3m = looksLikeS3mInternal;
 

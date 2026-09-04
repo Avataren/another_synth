@@ -34,7 +34,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseS3m } from '../../packages/tracker-playback/src/formats/s3m';
+import { parseS3m } from '@another-synth/tracker-playback';
 import { importS3mToTrackerSong } from '../audio/tracker/s3m-import';
 
 const CORPUS_DIR = path.resolve(__dirname, '../../public/demos/s3m');

@@ -4,7 +4,7 @@ import {
   parseMod,
   channelsForSignature,
   MAX_MOD_CHANNELS,
-} from '../../packages/tracker-playback/src/mod-parser';
+} from '@another-synth/tracker-playback';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 
 const HEADER_SIZE = 1084;

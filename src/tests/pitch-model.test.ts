@@ -5,7 +5,7 @@ import {
   createS3mPitchModel,
   createXmAmigaPitchModel,
   s3mPeriodForNote,
-} from '../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
 
 /**
  * The Amiga model has to reproduce the exact numbers the effect processor

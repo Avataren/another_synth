@@ -6,7 +6,7 @@ import { clearLoadedSongHash } from 'src/composables/song-identity';
 import {
   DEFAULT_MODULE_FORMAT,
   type ModuleFormat,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 
 export type { ModuleFormat };
 

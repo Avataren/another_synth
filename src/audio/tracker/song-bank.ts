@@ -2,12 +2,12 @@ import type AudioSystem from 'src/audio/AudioSystem';
 import {
   DEFAULT_MODULE_FORMAT,
   type ModuleFormat,
-} from '../../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 import {
   profileForFormat,
   type FormatProfile,
-} from '../../../packages/tracker-playback/src/format-profile';
-import type { PitchModel } from '../../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
+import type { PitchModel } from '@another-synth/tracker-playback';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';

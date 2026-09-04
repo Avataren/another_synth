@@ -1,5 +1,5 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue';
-import type { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import type { PlaybackEngine } from '@another-synth/tracker-playback';
 import type { TrackerSongBank } from 'src/audio/tracker/song-bank';
 import { encodeRecordingToMp3 } from 'src/audio/tracker/exporter';
 import type { TrackerPattern } from 'src/stores/tracker-store';

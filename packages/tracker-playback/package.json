@@ -1,31 +1,40 @@
 {
   "name": "@another-synth/tracker-playback",
   "version": "0.0.1",
-  "description": "Lightweight tracker playback core (transport + timing) for reuse in apps or standalone.",
+  "description": "Standalone tracker replay core: parses MOD/XM/S3M and schedules them, leaving the sound to the host.",
   "type": "module",
+  "sideEffects": false,
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts"
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "keywords": [
     "tracker",
     "playback",
     "audio",
-    "sequencer"
+    "sequencer",
+    "mod",
+    "xm",
+    "s3m",
+    "protracker",
+    "fasttracker",
+    "scream-tracker",
+    "amiga"
   ],
-  "author": "Your Name",
+  "author": "Morten Andersson <morten.andersson@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "tsup": "^8.0.0",

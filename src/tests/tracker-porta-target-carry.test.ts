@@ -19,12 +19,12 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   PlaybackScheduler,
   Song,
   Step,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 
 const porta = (row: number, midi?: number): Step => ({
   row,

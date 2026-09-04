@@ -7,7 +7,7 @@
  * earlier version computed the instrument header as 241 bytes when it is 243,
  * which silently pushed every sample header two bytes late.
  */
-import type { XmPatternCell } from '../../../packages/tracker-playback/src/formats/xm';
+import type { XmPatternCell } from '@another-synth/tracker-playback';
 
 const XM_SIGNATURE = 'Extended Module: ';
 

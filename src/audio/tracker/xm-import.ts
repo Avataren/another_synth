@@ -29,12 +29,12 @@ import {
   type XmInstrument,
   type XmPatternCell,
   type XmSample,
-} from '../../../packages/tracker-playback/src/formats/xm';
+} from '@another-synth/tracker-playback';
 import {
   createLinearPitchModel,
   createXmAmigaPitchModel,
   type PitchModel,
-} from '../../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
 
 export const looksLikeXm = looksLikeXmInternal;
 

@@ -5,10 +5,10 @@ import {
   useTrackerSongBuilder,
   type TrackerSongBuilderContext,
 } from 'src/composables/useTrackerSongBuilder';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
-import type { ScheduledNoteEvent } from '../../packages/tracker-playback/src/types';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
+import type { ScheduledNoteEvent } from '@another-synth/tracker-playback';
 import { buildXm, cell } from './helpers/xm-builder';
-import type { XmPatternCell } from '../../packages/tracker-playback/src/formats/xm';
+import type { XmPatternCell } from '@another-synth/tracker-playback';
 
 /**
  * FT2 key-off followed by a tone-portamento note.

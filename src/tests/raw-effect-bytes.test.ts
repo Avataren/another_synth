@@ -40,13 +40,13 @@ import {
 } from 'src/composables/useTrackerEditing';
 import {
   PlaybackEngine,
-} from '../../packages/tracker-playback/src/engine';
+} from '@another-synth/tracker-playback';
 import {
   XM_PROFILE,
   PROTRACKER_PROFILE,
   S3M_PROFILE,
   type FormatProfile,
-} from '../../packages/tracker-playback/src/format-profile';
+} from '@another-synth/tracker-playback';
 import { buildXm, cell } from './helpers/xm-builder';
 
 const DEMOS = path.resolve(__dirname, '../../public/demos');

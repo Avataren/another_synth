@@ -18,14 +18,14 @@ import {
   processVolumeColumnTick0,
   processVolumeColumnTickN,
   type TrackEffectState,
-} from '../../packages/tracker-playback/src/effect-processor';
+} from '@another-synth/tracker-playback';
 import {
   PROTRACKER_PROFILE,
   XM_PROFILE,
   type FormatProfile,
-} from '../../packages/tracker-playback/src/format-profile';
-import type { EffectCommand, VolumeColumnCommand } from '../../packages/tracker-playback/src/types';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+} from '@another-synth/tracker-playback';
+import type { EffectCommand, VolumeColumnCommand } from '@another-synth/tracker-playback';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import { buildSoundtrackerMod } from './helpers/mod-builder';
 import { importModToTrackerSong } from 'src/audio/tracker/mod-import';
 import {

@@ -16,11 +16,11 @@ import {
 } from 'src/composables/useTrackerSongBuilder';
 import {
   PlaybackEngine,
-} from '../../packages/tracker-playback/src/engine';
+} from '@another-synth/tracker-playback';
 import {
   createS3mPitchModel,
   s3mPeriodForNote,
-} from '../../packages/tracker-playback/src/pitch-model';
+} from '@another-synth/tracker-playback';
 
 /** The same rig raw-effect-bytes.test.ts uses, trimmed to what S3M needs. */
 function makeBuilderContext(file: ReturnType<typeof importS3mToTrackerSong>) {

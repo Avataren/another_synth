@@ -16,7 +16,7 @@ import {
   parseS3m,
   S3M_KEY_OFF,
   S3M_NO_NOTE,
-} from '../../packages/tracker-playback/src/formats/s3m';
+} from '@another-synth/tracker-playback';
 import { buildS3m, type S3mSpec } from './helpers/s3m-builder';
 
 function build(spec: S3mSpec) {

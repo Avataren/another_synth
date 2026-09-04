@@ -4,6 +4,9 @@
   "compilerOptions": {
     "types": ["vitest/globals"],
     "paths": {
+      "@another-synth/tracker-playback": [
+        "./packages/tracker-playback/src/index.ts"
+      ],
       "src": ["./src"],
       "src/*": ["./src/*"],
       "app": ["./"],

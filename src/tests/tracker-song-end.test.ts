@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { PlaybackEngine } from '../../packages/tracker-playback/src/engine';
+import { PlaybackEngine } from '@another-synth/tracker-playback';
 import type {
   PlaybackClock,
   PlaybackScheduler,
   Pattern,
   Song,
-} from '../../packages/tracker-playback/src/types';
+} from '@another-synth/tracker-playback';
 
 /**
  * The end of a non-looping song, which is what the jukebox advances on.

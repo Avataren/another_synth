@@ -20,8 +20,8 @@ import {
   type ModSong,
   type ModPatternCell,
   type ModSample,
-} from '../../../packages/tracker-playback/src/mod-parser';
-import { usesVBlankTiming } from '../../../packages/tracker-playback/src/mod-vblank';
+} from '@another-synth/tracker-playback';
+import { usesVBlankTiming } from '@another-synth/tracker-playback';
 
 const PATTERN_ROWS = 64;
 const DEFAULT_BPM = 125;
