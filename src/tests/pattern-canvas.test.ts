@@ -902,6 +902,58 @@ describe('overlay on playbackRow change', () => {
   });
 });
 
+describe('playback follow: one coalesced frame per row advance', () => {
+  it('a row advance blits once and repaints the overlay in bands only — no full-layer clear, no double paint', async () => {
+    // The 2026-09-04 round-2 report: flicker during PLAYBACK, not just pan.
+    // This pins the frame plumbing the follow path actually runs: the row
+    // watcher's ['overlay'] schedule and the follow's view move coalesce
+    // into ONE rAF frame (runFrame reads the view origin once, after
+    // applyFollow), and the follow's own scrollTop write self-echoes
+    // through the scroller's scroll event without scheduling a second
+    // frame. So per row advance: exactly one blit, band-only overlay
+    // clears. If this ever double-paints or full-clears, playback flicker
+    // has a code-level cause again; as of D103 it does not.
+    const wrapper = mountCanvas({ playbackRow: 10, isPlaying: true, autoScroll: true });
+    pumpFrame(); // mount frame: the one legitimate full paint
+    const { visible, overlay } = layerCanvases(wrapper);
+    const overlayCtx = contexts.find((c) => c.canvas === overlay)!;
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+
+    for (const row of [11, 12]) {
+      const blitsBefore = viewCtx.calls.filter((c) => c.op === 'drawImage').length;
+      await wrapper.setProps({ playbackRow: row } as never);
+      await nextTick();
+      const overlayFrameStart = overlayCtx.calls.length;
+      pumpFrame();
+
+      // Exactly one blit: the follow moved the view (row 11 target =
+      // 11·36 − (400−30)/2 = 211, inside the 752px scroll extent), and the
+      // scroll event self-echo scheduled nothing.
+      expect(viewCtx.calls.filter((c) => c.op === 'drawImage').length).toBe(blitsBefore + 1);
+      // The new blit reads the row-advanced view (row 11 centers at 211),
+      // from the same frame that repainted the overlay — single-frame
+      // composition holds on the playback path too.
+      const newestBlit = viewCtx.calls
+        .filter((c) => c.op === 'drawImage')
+        .at(-1) as unknown as { sy: number };
+      expect(newestBlit.sy).toBeCloseTo(row * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 2, 5);
+
+      // Overlay: bands only — every clear is one row-band tall, never the
+      // whole layer (VIEWPORT_H = 400 would be a full clear).
+      const clears = overlayCtx.calls
+        .slice(overlayFrameStart)
+        .filter((call): call is RectCall => call.op === 'clearRect');
+      expect(clears.length).toBeGreaterThan(0);
+      for (const clear of clears) {
+        expect(clear.height).toBeLessThanOrEqual(rowHeightPx + 2 * BAND_PAD_PX + 0.5);
+      }
+      // And the pills were repainted on the new row, once.
+      expect(newestPills(overlayCtx, overlayFrameStart)).toHaveLength(2);
+    }
+    wrapper.unmount();
+  });
+});
+
 // ---------------------------------------------------------------------
 // Scroll → blit parity with blitWindow
 // ---------------------------------------------------------------------

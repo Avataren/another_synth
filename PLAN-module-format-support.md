@@ -3418,11 +3418,61 @@ b408293's code and passing with the fix. Suite 1447 green minus the same
 committed index); tsc at the 48-error baseline (identical multiset);
 eslint clean; gitleaks clean; quasar build clean.
 
+### D104 — Round-2 verification: the drift is real on a fresh load; the
+playback-flicker path does not full-clear or double-paint — the remaining
+candidate is the resampled blit
+
+The stale-cache hypothesis is dead: Morten re-tested in an incognito tab
+(fresh load, no site data) and saw the SAME flicker and the SAME drift, so
+b408293's deployed bundle genuinely reproduces both symptoms. What each
+symptom traces to, honestly:
+
+- **The drift was D102's own pin** (D103): the pin kept the gutter pill at
+  screen x 0 while the labels panned away. Fixed on
+  `agent/gutter-drift` @ 3ae582b; three tests confirmed failing against
+  b408293's exact code before the fix.
+- **The playback-flicker path does NOT full-clear or double-paint the
+  indicator layer.** Traced frame by frame with a recording harness: per
+  playback-row advance, the row watcher's `['overlay']` schedule and the
+  follow's view move coalesce into ONE rAF frame (runFrame reads the view
+  origin once, after applyFollow), the follow's scrollTop write
+  self-echoes through the scroller's scroll event into the equality guard
+  (no second frame), the overlay clears only the bar/cursor bands (34px
+  rects, never the layer), and exactly one blit runs, reading the
+  row-advanced view. Pinned by `pattern-canvas.test.ts`'s "a row advance
+  blits once and repaints the overlay in bands only" — the diagnostic that
+  wrote it first miscounted across the mount-frame boundary and the pin
+  now counts per-frame deltas.
+- **What D102 left open, and the remaining flicker candidate.** Every
+  frame still full-clears and re-blits the VISIBLE layer
+  (`paintVisible`: whole-canvas clearRect + one drawImage), and on a phone
+  that drawImage resamples: a 16-track/64-row pattern is 2856×2304 CSS px
+  = 59M device px at DPR 3, past the 16M mobile budget, so
+  `bitmapScaleFor` paints the bitmap at ≈1.56 and every blit upscales
+  ≈1.92× — with a scroll origin that is fractional (the follow target is
+  row·36 − (viewH−30)/2, a half-pixel offset whenever viewH is odd; touch
+  pans are fractional throughout), so the resample PHASE changes every
+  frame and the whole grid shimmers. This is D102's own declared residual
+  ("fractional scroll positions … shimmer subpixel; not addressed"), now
+  implicated for the entire grid during playback and panning, not just the
+  pill. The concrete next round, if Morten confirms the artifact is
+  shimmer rather than blanking: snap the frame's view origin to device
+  pixels ONCE in runFrame so the blit source, the overlay translate and
+  the band math share the snapped origin — every blit becomes a 1:1 texel
+  copy and the phase stops moving. Deliberately NOT built blind in this
+  round: the round-1 lesson is that off-device certainty about what a
+  phone "flicker" is has been wrong twice.
+
+Tests: `pattern-canvas.test.ts` playback-follow frame pin (new). Suite 1448
+(21 pre-existing demo-corpus failures unchanged); tsc 48-error baseline
+(identical error kinds); eslint clean; gitleaks clean.
+
 ## 8. Change log
 
 | Date | Phase | Change |
 |---|---|---|
 | 2026-09-04 | fix | **Gutter pill scrolls with the pattern — D102's viewport-edge pin was the drift itself** (D103). Morten's round-2 phone report: the indicator still clings to the screen's left edge while panning right and slides into the tracks pill. Trace: the DOM grid (the spec) scrolls its row column with the tracks on the phone layout (`TrackerPattern.vue` ≤900px media query), the canvas's static bitmap pans its labels on every viewport, and the hit test already treated the gutter as scrolling content — only `drawActiveRowBar`'s `gutterScrollX` pin disagreed, parking the pill at screen x 0 over scrolled-away content. The pin is deleted: the pill now rides the row-number column's pattern-space rect [−78, 0) and lands at screen x −viewLeft — on the labels at every pan position, edge-adjacent to the tracks pill, never overlapping. Three rewritten/new tests confirmed failing against b408293 before the fix; the round-1 pins were blind because each asserted one half of the geometry against the same wrong desktop assumption, and no test compared pill x with label x. Suite 1447 (21 pre-existing demo-corpus failures unchanged); tsc 48-error baseline; eslint/gitleaks/quasar build clean. |
+| 2026-09-04 | note | **Round-2 verification: drift confirmed on fresh load; playback-flicker path exonerated of full-clear/double-paint; resampled-blit shimmer named the remaining candidate** (D104). Cache hypothesis dead (Morten, incognito re-test: same flicker, same drift — b408293 reproduces both). Frame-by-frame trace with a recording harness: per playback-row advance, ONE coalesced frame (watcher schedule + follow coalesce; the scroll self-echo hits the equality guard), band-only overlay clears, exactly one blit reading the advanced view — now pinned by test. The remaining flicker candidate is `paintVisible`'s per-frame full-layer blit resampled ≈1.92× (phone bitmap painted at ≈1.56 under the 16M budget) at a fractional scroll origin (follow target's half-pixel offsets, fractional touch pans) — D102's declared-unaddressed residual, grid-wide. Proposed next round pending Morten's read of the artifact: device-pixel snapping of the frame's view origin so the blit is a 1:1 texel copy. |
 | 2026-09-03 | fix | **Pattern-canvas indicator flicker/drift on mobile: overlay repaints in bands from the pristine static bitmap** (D102). Trace first: the DOM-pill theory is refuted (the canvas is v-if/v-else against the DOM grid on both pages — no pills over the canvas to desync) and the gutter pin was never stale (same-frame `viewLeft`); the flicker path was the indicator layer's full-clear + full redraw on every pan frame. Now only the previous/current bar row and cursor bands are cleared, the background restored from the pristine static bitmap (never a live-canvas snapshot), one frame reads the view origin once for blit + translate + gutter pin, and `drawCursorCell`'s geometry is shared with the band math (`cursorCellRect`). Tests: `pattern-bands.test.ts`, pan-jitter + gutter-pin suites in `pattern-canvas.test.ts`. Offscreen band compositing (option 5) deliberately unbuilt pending Morten's phone check. |
 | 2026-09-03 | 5 | **S3M parser + importer land; PCM plays, AdLib parsed-and-preserved** (P5, D101). `formats/s3m.ts` parses the header (settled flag table quoted from OpenMPT S3MTools.h + st3play dig.c: no AMIGASLIDES bit exists; 0x10 amigaLimits, 0x40 fastVolumeSlides, 0x01 st2vibrato), S3M run-length patterns (0xFE note-off / 0xFF instrument-only verified), PCM/AdLib 80-byte headers, unsigned-8/signed-16 sample data. `s3m-import.ts` builds slots/patches (referenced-only, c2spd folded into the root note at the C-5 anchor, D56 latch, BCD Cxx, D53 volume stamping); AdLib instruments get inactive slots carrying their OPL register bytes exactly as the file stores them -- the natural patch format for the future **dedicated WASM OPL core** (standalone emulator, own worklet/voice path, not the main synth; Morten's amendments) -- plus a counted import warning, and no mapping layer toward the existing synth's FM primitives. `amigaLimits` threads the D59 chain into `S3M_AMIGA_PROFILE`; header global volume rides D72. M/N/Y/Z and volume-column panning: zero corpus uses, left unmapped by count. DP30AD1F packing detected, not decoded (no reference implementation; 0 corpus files). Corpus of 20 modland files pinned on decode with independently cross-checked golden cells (sun.s3m the one genuine AdLib file; the first sweep's "AdLib" files were type-0 empty slots, caught by review and corrected). Tests: `s3m-parser/s3m-import/s3m-corpus/s3m-engine.test.ts` (48, 9 of them corpus), pitch-model + raw-effect-bytes extensions; 1415 green; tsc 48-error baseline; eslint/gitleaks clean; quasar build clean. |
 | 2026-09-03 | 4 | **Autovibrato depth converts through the pitch model** (P4, D97). The last hardcoded pitch constant outside the pitch model -- `ModInstrument`'s 100/64 cents-per-XM-period-unit -- is replaced by `PitchModel.vibratoDepthCents(baseFrequency, depthUnits)`, supplied by the song's format profile via the song bank. Linear table unchanged (exactness pinned); XM Amiga mode and S3M now get the pitch-dependent log2((p+d)/p) conversion FT2's `updateVolPanAutoVib` implies. Corpus: 52 of ~470 demo-collection instruments carry autovibrato (16.9% of played notes); ramp-up waveform is corpus-absent and implemented per the C. Waveform doc 2/3 swap corrected. Tests: `src/tests/xm-autovibrato.test.ts` (3 confirmed failing against the old code), `src/tests/pitch-model.test.ts`. |
