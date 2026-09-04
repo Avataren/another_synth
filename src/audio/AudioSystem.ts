@@ -32,6 +32,38 @@ function readPreferredSampleRate(): number {
 }
 
 /**
+ * Which latency the context should be built for.
+ *
+ * `interactive` asks for the smallest buffer the device will give, which is
+ * what a synth being played from a keyboard needs. Phones and tablets do not
+ * have the headroom for it: the same request there produces buffer underruns,
+ * heard as clicks and dropouts, and the tracker is being *played back* on
+ * those devices far more often than it is being played *on*. `playback` asks
+ * for a larger buffer and trades input latency nobody is using for output
+ * that does not glitch.
+ *
+ * Deliberately not `useMobileLayout`. That signal follows the *window*, by
+ * design -- narrow a desktop browser and it reports mobile -- and this
+ * decision is fixed for the life of the context, so a desktop user who
+ * happened to start with a narrow window would be stuck with playback latency
+ * until they reloaded. A coarse pointer with no hover is the device itself:
+ * phones and tablets match, and a touchscreen laptop does not, because it
+ * also has a mouse.
+ *
+ * Unknown means desktop. jsdom and SSR have no `matchMedia`, and guessing
+ * mobile there would give the tests and the dev server a latency the app
+ * never uses.
+ */
+export function preferredLatencyHint(): AudioContextLatencyCategory {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+        return 'interactive';
+    }
+    return window.matchMedia('(pointer: coarse) and (hover: none)').matches
+        ? 'playback'
+        : 'interactive';
+}
+
+/**
  * Build the context at the best rate the browser will accept.
  *
  * A rate an implementation will not run throws NotSupportedError from the
@@ -46,13 +78,16 @@ function createAudioContext(preferred: number): AudioContext {
         undefined,
     ];
 
+    const latencyHint = preferredLatencyHint();
+    console.log(`[AudioSystem] latencyHint: ${latencyHint}`);
+
     let lastError: unknown = null;
     for (const sampleRate of candidates) {
         try {
             const options: AudioContextOptions =
                 sampleRate === undefined
-                    ? { latencyHint: 'interactive' }
-                    : { latencyHint: 'interactive', sampleRate };
+                    ? { latencyHint }
+                    : { latencyHint, sampleRate };
             return new AudioContext(options);
         } catch (error) {
             lastError = error;
