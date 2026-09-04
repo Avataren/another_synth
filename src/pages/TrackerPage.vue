@@ -176,26 +176,29 @@
           <button
             type="button"
             class="song-button ghost"
+            title="Start a new song"
             @click="handleNewSong"
             :disabled="isLoadingSong"
           >
-            New Song
+            New
           </button>
           <button
             type="button"
             class="song-button ghost"
+            title="Load a song file"
             @click="handleLoadSongFile"
             :disabled="isLoadingSong"
           >
-            Load Song
+            Load
           </button>
           <button
             type="button"
             class="song-button"
+            title="Save the song to a file"
             @click="handleSaveSongFile"
             :disabled="isLoadingSong"
           >
-            Save Song
+            Save
           </button>
           <button
             type="button"
@@ -2595,7 +2598,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px 8px;
   padding: 0 18px 4px;
   flex-wrap: wrap;
 }
@@ -2603,12 +2606,17 @@ onBeforeUnmount(() => {
 .toolbar-section {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
+/*
+  One desktop row: no section may stretch (flex: 2 on the left used to eat
+  the width the controls need) and every control stays tight -- the row only
+  wraps when the viewport genuinely cannot hold it.
+ */
 .toolbar-left {
-  flex: 2;
+  flex: 0 0 auto;
 }
 
 .toolbar-middle {
@@ -2616,7 +2624,7 @@ onBeforeUnmount(() => {
 }
 
 .toolbar-right {
-  flex: 1;
+  flex: 0 1 auto;
   justify-content: flex-end;
 }
 
@@ -2633,15 +2641,16 @@ onBeforeUnmount(() => {
 
 .tracker-toolbar .song-button {
   flex: 0 0 auto;
-  padding: 6px 10px;
+  padding: 4px 8px;
 }
 
 .toolbar-toggle {
-  font-size: 11px;
+  font-size: 10px;
+  gap: 4px;
 }
 
 .toolbar-edit-toggle {
-  padding: 4px 10px;
+  padding: 4px 8px;
 }
 
 .toolbar-icon-button {

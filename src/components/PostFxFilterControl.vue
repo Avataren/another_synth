@@ -230,10 +230,15 @@ function onLedRes(event: Event): void {
 </script>
 
 <style scoped>
+/*
+  Toolbar-sized: the control shares the tracker's single desktop toolbar
+  row, so it stays LED + tight segment + tune icon and yields vertical
+  space to the row's other controls.
+ */
 .post-fx-control {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .post-fx-led {
@@ -264,10 +269,10 @@ function onLedRes(event: Event): void {
   border: none;
   background: transparent;
   color: var(--text-secondary, rgba(255, 255, 255, 0.7));
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  padding: 3px 8px;
+  padding: 2px 5px;
   cursor: pointer;
 }
 
