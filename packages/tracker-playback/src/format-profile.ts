@@ -78,6 +78,26 @@ export interface FormatProfile {
   readonly noteDelayOverflowCarries: boolean;
 
   /**
+   * Whether this format's E0x-class "set filter" command reaches the post-fx
+   * rack in AUTO mode (D114/D115).
+   *
+   * The decode side always decodes the bytes (MOD E0x and S3M S00 both decode
+   * to `extEffect/filterToggle` -- decode and dispatch are deliberately
+   * decoupled, D94 discipline); this flag alone gates dispatch:
+   *
+   * - ProTracker: yes. libopenmpt `Snd_fx.cpp` `ExtendedMODCommands` case
+   *   0x00 sets `CHN_AMIGAFILTER = !(param & 1)` on every channel.
+   * - XM: no. ft2-clone's `EJumpTab_TickZero[0]` is `dummy`.
+   * - S3M: no. ST3.21 dummies S0x (`s_setfilt, 0` in st3play's `ssoncejmp`);
+   *   libopenmpt's `ExtendedS3MCommands` has no case 0x00 either.
+   * - native: yes -- in-app songs may hand-type E0x and it should work.
+   *
+   * Set explicitly on every profile that spreads PROTRACKER_PROFILE;
+   * inheritance never carries it implicitly (plan review M1).
+   */
+  readonly filterToggleCommand: boolean;
+
+  /**
    * The finetune offset an E5x nibble asks for, in semitones.
    *
    * The two formats read the same nibble completely differently. ProTracker
@@ -311,6 +331,9 @@ export const PROTRACKER_PROFILE: FormatProfile = {
   arpeggioCommandByte: 0x00,
   speedTempoCommandByte: 0x0f,
   extendedCommandByte: 0x0e,
+  // E0x "set filter" drives the post-fx LED filter in AUTO (D115: E00 = on,
+  // E01 = off, per libopenmpt's `!(param & 1)`).
+  filterToggleCommand: true,
 };
 
 /**
@@ -343,6 +366,9 @@ export const XM_PROFILE: FormatProfile = {
   // FT2's setSpeed with a parameter below 32 sets speed 0, which stalls the
   // song rather than stopping it cleanly; keep the engine's old clamp.
   f00StopsSong: false,
+  // FT2 dummies E0x (EJumpTab_TickZero[0] = dummy, ft2_replayer.c): set
+  // explicitly -- the spread would otherwise inherit ProTracker's true.
+  filterToggleCommand: false,
 };
 
 /**
@@ -356,6 +382,10 @@ export const XM_PROFILE: FormatProfile = {
 export const XM_AMIGA_PROFILE: FormatProfile = {
   ...XM_PROFILE,
   pitch: createXmAmigaPitchModel(),
+  // Explicit per the M1 rule, even though XM_PROFILE already carries false:
+  // inheritance from a spread must never be the reason a dispatch gate is
+  // what it is.
+  filterToggleCommand: false,
 };
 
 /**
@@ -434,6 +464,12 @@ export const S3M_PROFILE: FormatProfile = {
   // S3M has no song-stop command: its 'F' byte (0x06) is portamento up,
   // not speed (the ST3.20 manual's effect list has no stop reading).
   f00StopsSong: false,
+  // S00 decodes to `filterToggle` below (the ssoncejmp table keeps ST3's own
+  // numbering), but ST3.21 dummies the command ("s_setfilt, 0"), so dispatch
+  // is gated off here -- decode and dispatch stay decoupled (D94/D115).
+  // Explicit: the spread from PROTRACKER_PROFILE would otherwise inherit
+  // ProTracker's true and make S00 toggle the post-fx LED filter.
+  filterToggleCommand: false,
   // S3M's finetune is the sample's own c2spd ("C4Spd", 8363 = no
   // finetune), not a nibble; the one nibble-shaped surface, the S2x
   // set-finetune command, uses ProTracker's signed 16-value table
@@ -523,6 +559,8 @@ export const S3M_AMIGA_PROFILE: FormatProfile = {
   // 64..32767. Note frequencies are the same either way -- only how far a
   // slide can run changes.
   pitch: createS3mPitchModel({ amigaLimits: true }),
+  // Explicit per the M1 rule (see XM_AMIGA_PROFILE).
+  filterToggleCommand: false,
 };
 
 /**
@@ -545,6 +583,11 @@ export const NATIVE_PROFILE: FormatProfile = {
   fineSlideHasMemory: false,
   panSlideUnit: 1 / 64,
   f00StopsSong: false,
+  // In-app songs can hand-type E00/E01 into the effect column
+  // (parseEffectCommand decodes it through the same DEFAULT map), so the
+  // command works in native songs too -- settled in the task's resolved
+  // decisions. Explicit, never inherited (M1).
+  filterToggleCommand: true,
 };
 
 const PROFILES: Record<ModuleFormat, FormatProfile> = {

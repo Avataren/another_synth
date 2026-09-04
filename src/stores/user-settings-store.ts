@@ -86,6 +86,23 @@ export interface UserSettings {
    * effect on reload; a rate the browser refuses falls back to 44.1 kHz.
    */
   audioSampleRate: number;
+
+  /**
+   * Post-fx rack master mode (D114/D116): full bypass, full cascade, or AUTO
+   * (LED filter driven by the song's E0x events, resetting to OFF on load).
+   */
+  postFxFilterMode: 'off' | 'on' | 'auto';
+
+  /**
+   * Post-fx Amiga LPF parameters. Defaults are the Amiga's values (D114);
+   * persisted so a tweak survives reloads, with the UI reset button as the
+   * escape hatch.
+   */
+  postFxFilterParams: {
+    staticCutoffHz: number;
+    ledCutoffHz: number;
+    ledResDb: number;
+  };
 }
 
 /**
@@ -133,6 +150,12 @@ export const defaultSettings: UserSettings = {
   sampleLoopCrossfadeFrames: 0,
   sampleAntiAliasHighNotes: true,
   audioSampleRate: 96000,
+  postFxFilterMode: 'auto',
+  postFxFilterParams: {
+    staticCutoffHz: 4900,
+    ledCutoffHz: 3275,
+    ledResDb: -0.7,
+  },
 };
 
 const STORAGE_KEY = 'synth-user-settings';

@@ -1,4 +1,10 @@
 
+import {
+  AmigaLpfStage,
+  PostFxRack,
+  registerPostFxRack,
+} from '@another-synth/tracker-playback';
+
 const DEFAULT_SAMPLE_RATE = 96000;
 /**
  * Where to go when the preferred rate is refused.
@@ -108,6 +114,14 @@ export default class AudioSystem {
     audioContext: AudioContext;
     destinationNode: AudioNode;
     workletNode: AudioWorkletNode | null = null;
+    /**
+     * The post-fx rack every speaker-bound signal passes through, and the
+     * stage id the UI addresses (D114/D117). Built here because this is the
+     * app's only speaker feed; recorder taps use `postFxOutput` so captures
+     * are what-you-hear.
+     */
+    postFxRack: PostFxRack;
+    postFxLpfStage: AmigaLpfStage;
     constructor() {
         console.log('creating audio context');
         // Read straight from storage rather than from the settings store: this
@@ -117,8 +131,21 @@ export default class AudioSystem {
         console.log('audio context rate:', this.audioContext.sampleRate);
         this.destinationNode = this.audioContext.createGain();
         (this.destinationNode as GainNode).gain.value = 1.0;
-        this.destinationNode.connect(this.audioContext.destination);
+        // destinationNode -> rack -> speakers. Everything that ever connects
+        // to destinationNode (tracker bank master gain, patch editor
+        // instruments) therefore plays through the rack.
+        this.postFxRack = new PostFxRack(this.audioContext);
+        this.postFxLpfStage = new AmigaLpfStage(this.audioContext);
+        this.postFxRack.registerStage(this.postFxLpfStage);
+        this.destinationNode.connect(this.postFxRack.input);
+        this.postFxRack.output.connect(this.audioContext.destination);
+        registerPostFxRack({ rack: this.postFxRack, amigaLpf: this.postFxLpfStage });
         this.resumeOnUserInteraction();
+    }
+
+    /** What playback really sounds like through -- the rack output. */
+    get postFxOutput(): AudioNode {
+        return this.postFxRack.output;
     }
 
     private resumeOnUserInteraction() {

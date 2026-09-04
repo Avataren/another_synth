@@ -7,6 +7,7 @@ import type {
 } from '@another-synth/tracker-playback';
 import { useTrackerAudioStore } from './tracker-audio-store';
 import { useTrackerStore } from './tracker-store';
+import { usePostFxStore } from 'src/stores/post-fx-store';
 
 export type PlaybackMode = 'pattern' | 'song';
 
@@ -199,6 +200,7 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
    */
   function createEngine(): PlaybackEngine {
     const songBank = getSongBank();
+    const postFxStore = usePostFxStore();
 
     const engine = new PlaybackEngine({
       instrumentResolver: (instrumentId) => songBank.prepareInstrument(instrumentId),
@@ -249,6 +251,12 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
       },
       scheduledGlobalVolumeHandler: (gain, time) => {
         songBank.setMasterVolume(gain, time);
+      },
+      scheduledFilterHandler: (active, time) => {
+        // E0x reaches the post-fx store, which owns the mode decision: AUTO
+        // toggles the LED filter, manual on/off swallows the event there (the
+        // single choke point, plan review M7).
+        postFxStore.applyEngineEvent(active, time);
       },
       scheduledRetriggerHandler: (instrumentId, midi, velocity, time, trackIndex, frequency) => {
         songBank.retriggerNoteAtTime(instrumentId, midi, velocity, time, trackIndex, frequency);
@@ -489,6 +497,9 @@ export const useTrackerPlaybackStore = defineStore('trackerPlayback', () => {
     playbackRow.value = 0;
     getSongBank().cancelAllScheduled();
     getSongBank().allNotesOff();
+    // Drop queued E0x toggles with the song; the applied LED state persists
+    // (review S4).
+    usePostFxStore().onPlaybackStopped();
     isPlaying.value = false;
     isPaused.value = false;
     audioStore.setPlaybackState(false);

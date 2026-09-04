@@ -7,6 +7,7 @@ import { looksLikeMod, importModToTrackerSong } from 'src/audio/tracker/mod-impo
 import { looksLikeXm, importXmToTrackerSong } from 'src/audio/tracker/xm-import';
 import { looksLikeS3m, importS3mToTrackerSong } from 'src/audio/tracker/s3m-import';
 import { recordLoadedSongHash } from 'src/composables/song-identity';
+import { usePostFxStore } from 'src/stores/post-fx-store';
 
 /**
  * File picker types for File System Access API
@@ -304,6 +305,11 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
 
     // Drop all existing tracker instruments before wiring up the next song
     context.songBank.resetForNewSong();
+    // AUTO resets its LED-filter state on every song replacement -- this path
+    // covers file open, the demo browser, URL loads and the jukebox (all
+    // funnel through applySongFile). The New Song path hooks the same event
+    // in TrackerPage's handleNewSong. Manual on/off modes persist (D116).
+    usePostFxStore().onSongLoad();
 
     // Load song data and rebuild instruments
     console.log('[FileIO] Loading song data');

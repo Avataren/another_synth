@@ -135,6 +135,7 @@
           >
             Jukebox
           </button>
+          <PostFxFilterControl compact />
           <label class="toggle toolbar-toggle">
             <input v-model="autoScroll" type="checkbox" />
             <span>Follow</span>
@@ -213,6 +214,7 @@
           >
             Jukebox
           </button>
+          <PostFxFilterControl />
           <label class="toggle toolbar-toggle">
             <input
               v-model="autoScroll"
@@ -897,6 +899,8 @@ import { getLoadedSongHash } from 'src/composables/song-identity';
 import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import { usePostFxStore } from 'src/stores/post-fx-store';
+import PostFxFilterControl from 'src/components/PostFxFilterControl.vue';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
 import { storeToRefs } from 'pinia';
 
@@ -2165,6 +2169,9 @@ function handleNewSong() {
     trackerStore.resetToNewSong();
     // Resync the song bank with empty instruments
     syncSongBankFromSlots();
+    // New Song replaces the song without going through applySongFile, so the
+    // AUTO load-reset must be hooked here too (plan review M6).
+    usePostFxStore().onSongLoad();
   });
 }
 

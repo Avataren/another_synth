@@ -306,6 +306,8 @@ export interface PlaybackOptions {
   scheduledAllNotesOffHandler?: ScheduledAllNotesOffHandler;
   /** Handler for scheduling global volume changes (Gxx/Hxy) */
   scheduledGlobalVolumeHandler?: ScheduledGlobalVolumeHandler;
+  /** Handler for the ProTracker E0x set-filter command (profile-gated) */
+  scheduledFilterHandler?: ScheduledFilterHandler;
   /** Handler for scheduling note retriggers */
   scheduledRetriggerHandler?: ScheduledRetriggerHandler;
   /** Handler for position commands (Bxx jump, Dxx break) */
@@ -502,6 +504,23 @@ export type ScheduledSampleOffsetHandler = (
 export type ScheduledGlobalVolumeHandler = (
   /** Normalized global gain 0-1 */
   gain: number,
+  /** Audio context time */
+  time: number
+) => void;
+
+/**
+ * Handler for the ProTracker E0x "set filter" command.
+ *
+ * `active` follows libopenmpt's polarity (`!(param & 1)`, Snd_fx.cpp):
+ * E00 (even parameter) = filter ON, E01 (odd) = filter OFF. The event is
+ * global -- the C sets the flag on every channel -- so there is no track or
+ * voice argument. Whether a song's format dispatches at all is a
+ * `FormatProfile.filterToggleCommand` decision (MOD and native: yes; XM and
+ * S3M: no -- FT2 dummies E0x and ST3.21 dummies S0x).
+ */
+export type ScheduledFilterHandler = (
+  /** Whether the filter is toggled on */
+  active: boolean,
   /** Audio context time */
   time: number
 ) => void;

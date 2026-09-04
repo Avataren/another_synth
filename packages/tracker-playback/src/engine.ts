@@ -24,6 +24,7 @@ import {
   type ScheduledEnvelopePositionHandler,
   type ScheduledAllNotesOffHandler,
   type ScheduledGlobalVolumeHandler,
+  type ScheduledFilterHandler,
   type ScheduledRetriggerHandler,
   type PositionCommandHandler,
   type PlaybackClock,
@@ -192,6 +193,7 @@ export class PlaybackEngine {
   private readonly scheduledGlobalVolumeHandler:
     | ScheduledGlobalVolumeHandler
     | undefined;
+  private readonly scheduledFilterHandler: ScheduledFilterHandler | undefined;
   private readonly scheduledRetriggerHandler:
     | ScheduledRetriggerHandler
     | undefined;
@@ -316,6 +318,7 @@ export class PlaybackEngine {
       options.scheduledEnvelopePositionHandler;
     this.scheduledAllNotesOffHandler = options.scheduledAllNotesOffHandler;
     this.scheduledGlobalVolumeHandler = options.scheduledGlobalVolumeHandler;
+    this.scheduledFilterHandler = options.scheduledFilterHandler;
     this.scheduledRetriggerHandler = options.scheduledRetriggerHandler;
     this.positionCommandHandler = options.positionCommandHandler;
     this.audioContext = options.audioContext;
@@ -1305,6 +1308,28 @@ export class PlaybackEngine {
             }
             if (this.scheduledGlobalVolumeHandler) {
               this.scheduledGlobalVolumeHandler(this.globalVolume, time);
+            }
+          } else if (
+            step.effect.type === 'extEffect' &&
+            step.effect.extSubtype === 'filterToggle'
+          ) {
+            // E0x "Set filter" (ProTracker numbering; S3M's S00 decodes to
+            // the same subtype). libopenmpt `Snd_fx.cpp` `ExtendedMODCommands`
+            // case 0x00, fetched 2026-09-04 (D115):
+            //
+            //   m_PlayState.Chn[channel].dwFlags.set(CHN_AMIGAFILTER, !(param & 1));
+            //
+            // inside a loop over every channel -- so the polarity is
+            // `!(param & 1)` (E00 = filter ON, E01 = filter OFF; the LED
+            // filter is on while the power LED is lit) and the command is
+            // global, not per-track. Dispatch is gated per format by
+            // `FormatProfile.filterToggleCommand`: MOD and native dispatch,
+            // XM (FT2 dummies E0x) and S3M (ST3.21 dummies S0x) do not.
+            if (this.formatProfile.filterToggleCommand) {
+              this.scheduledFilterHandler?.(
+                (step.effect.paramY & 1) === 0,
+                time,
+              );
             }
           }
         }

@@ -172,7 +172,9 @@ export class TrackerSongBank implements TrackerSink {
     });
     this.recorder = new SongBankRecorder(
       this.audioSystem,
-      this.masterGain,
+      // Tap the post-fx rack output, not the pre-rack master bus: recordings
+      // and Export MP3 must capture what-you-hear (D117).
+      this.audioSystem.postFxOutput,
     );
 
     this.audioSystem.audioContext.onstatechange = () => {

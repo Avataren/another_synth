@@ -2,10 +2,13 @@
  * A standalone tracker replay core: parse a MOD, XM or S3M, schedule it, and
  * hand the scheduled events to whatever makes the sound.
  *
- * The package has no runtime dependencies and knows nothing about Web Audio.
- * It stops at "play this note, on this track, at this time" -- see the
+ * The package has no runtime dependencies. Its replay core is node-agnostic:
+ * it stops at "play this note, on this track, at this time" -- see the
  * `Scheduled*Handler` types in ./types for the whole surface a host has to
- * implement.
+ * implement. The one Web-Audio-touching piece ships here too as an optional
+ * extra for hosts that build their graph on Web Audio: the post-fx rack
+ * (./postfx) of master-bus effect stages, ending in the Amiga-style low-pass
+ * filter. It is plain node code -- no engine core depends on it.
  */
 
 // Transport: the engine, the clocks that drive it, and the shared vocabulary.
@@ -17,6 +20,15 @@ export * from './clock';
 export * from './instrument-resolver';
 export * from './instrument-ids';
 export * from './sink';
+
+// Post-fx: master-bus effect stages a host wires between its mix bus and its
+// speakers. The rack and stages construct Web Audio nodes; the engine core
+// above stays node-agnostic and only calls the injected `Scheduled*Handler`s.
+export * from './postfx/post-fx-stage';
+export * from './postfx/amiga-filter-math';
+export * from './postfx/amiga-lpf-stage';
+export * from './postfx/post-fx-rack';
+export * from './postfx/registry';
 
 // Sample conditioning and the quality settings that drive it.
 export * from './sample-conditioning';

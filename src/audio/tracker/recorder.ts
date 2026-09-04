@@ -13,7 +13,12 @@ export class SongBankRecorder {
 
   constructor(
     private readonly audioSystem: AudioSystem,
-    private readonly masterGain: GainNode,
+    /**
+     * Where capture taps. The post-fx rack output (what-you-hear) rather
+     * than the pre-rack master bus, so recordings and Export MP3 include the
+     * post-fx chain -- see D117.
+     */
+    private readonly tapNode: AudioNode,
   ) {}
 
   /** Start capturing stereo audio from the master bus */
@@ -60,7 +65,7 @@ export class SongBankRecorder {
       'recording-processor',
       { numberOfInputs: 1, numberOfOutputs: 0 },
     );
-    this.masterGain.connect(this.recorderNode);
+    this.tapNode.connect(this.recorderNode);
     this.recorderNode.port.onmessage = (event: MessageEvent) => {
       if (!this.recording) return;
       const data = event.data as Float32Array | undefined;

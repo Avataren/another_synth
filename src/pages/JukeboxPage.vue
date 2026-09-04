@@ -113,6 +113,8 @@
         />
       </div>
 
+      <PostFxFilterControl />
+
       <label class="bar-toggle" title="Scroll one row per playback step instead of paging">
         <input v-model="userSettings.granularPlaybackScroll" type="checkbox" />
         <span>Row scroll</span>
@@ -282,6 +284,7 @@ import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import { useJukeboxPlayer } from 'src/composables/useJukeboxPlayer';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
+import PostFxFilterControl from 'src/components/PostFxFilterControl.vue';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
 import {
   clearLoadedSongHash,
