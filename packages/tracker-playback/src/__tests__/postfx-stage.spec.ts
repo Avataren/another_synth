@@ -225,6 +225,75 @@ describe('AmigaLpfStage topology (mock seam)', () => {
     stage.dispose();
   });
 
+  it('stop between two queued toggles keeps the t1 state applied (F4)', () => {
+    const { nodes, factory } = createMockFactory();
+    const stage = new AmigaLpfStage(mockContext(0), undefined, factory);
+    const gains = nodes.filter((n) => !n.iir);
+    const [rcBypass, wet] = [gains[3]!, gains[4]!];
+
+    stage.setLedActive(true, 1.0);
+    stage.setLedActive(false, 2.0);
+    // The audio clock now sits between the two events: t1 has audibly fired,
+    // t2 is still queued. Cancelling here (stop / song load) must keep the
+    // t1 state applied -- the old single-slot bookkeeping re-asserted the
+    // state preceding both events.
+    stage.cancelPending(1.5);
+    expect(wet.gain.events).toContainEqual({
+      type: 'setValueAtTime', args: [1, 1.5],
+    });
+    expect(rcBypass.gain.events).toContainEqual({
+      type: 'setValueAtTime', args: [0, 1.5],
+    });
+    expect(stage.getLedActive()).toBe(true);
+    stage.dispose();
+  });
+
+  it('a mode switch mid-queue cancels both queued toggles (F4)', () => {
+    const { nodes, factory } = createMockFactory();
+    const stage = new AmigaLpfStage(mockContext(0), undefined, factory);
+    const gains = nodes.filter((n) => !n.iir);
+    const [dry, rcBypass, wet] = [gains[2]!, gains[3]!, gains[4]!];
+
+    stage.setLedActive(true, 1.0);
+    stage.setLedActive(false, 2.0);
+    expect(stage.getLedActive()).toBe(false);
+    stage.cancelPending(0.5); // what the store's mode switch does at now=0.5
+    // The whole queue is gone; the resolved state re-asserts at now.
+    for (const fader of [dry, rcBypass, wet]) {
+      expect(fader.gain.events).toContainEqual({
+        type: 'cancelScheduledValues', args: [0.5],
+      });
+    }
+    expect(stage.getLedActive()).toBe(false);
+    stage.dispose();
+  });
+
+  it('immediate transitions crossfade instead of jumping (F5-click)', () => {
+    const { nodes, factory } = createMockFactory();
+    const stage = new AmigaLpfStage(mockContext(2), undefined, factory);
+    const gains = nodes.filter((n) => !n.iir);
+    const [dry, rcBypass, wet] = [gains[2]!, gains[3]!, gains[4]!];
+
+    // A mode switch at the current time: ramp from the effective values, no
+    // bare jump.
+    stage.setBypassed(true, 2.0);
+    expect(dry.gain.events).toContainEqual({
+      type: 'setValueAtTime', args: [0, 2.0],
+    });
+    expect(dry.gain.events).toContainEqual({
+      type: 'linearRampToValueAtTime', args: [1, 2.005],
+    });
+    expect(rcBypass.gain.events).toContainEqual({
+      type: 'linearRampToValueAtTime', args: [0, 2.005],
+    });
+    // wet stays at its effective 0; an equal-value fader asserts, no ramp.
+    expect(wet.gain.events).toContainEqual({
+      type: 'setValueAtTime', args: [0, 2.0],
+    });
+    expect(stage.isBypassed()).toBe(true);
+    stage.dispose();
+  });
+
   it('setParams rebuilds the IIR nodes with the new coefficients', () => {
     const { nodes, factory } = createMockFactory();
     const stage = new AmigaLpfStage(
@@ -245,6 +314,27 @@ describe('AmigaLpfStage topology (mock seam)', () => {
     const newLed = newLedNode.iir!;
     expect(newRc.ff[0]).toBeCloseTo(stage.getCoefficients().rc.b0, 15);
     expect(newLed.ff[0]).toBeCloseTo(stage.getCoefficients().led.b0, 15);
+    stage.dispose();
+  });
+
+  it('setParams leaves the old IIR nodes with no edges in either direction (F1)', () => {
+    const { nodes, factory } = createMockFactory();
+    const stage = new AmigaLpfStage(mockContext(), undefined, factory);
+    const input = stage.input as unknown as MockNode;
+    const [oldRc, oldLed] = nodes.filter((n) => n.iir);
+
+    stage.setParams({ staticCutoffHz: 2000, ledCutoffHz: 1500, ledResDb: 0 });
+
+    // No outgoing edges may survive on the old nodes: disconnect() with no
+    // target clears every edge the node itself owns.
+    expect(oldRc!.connections).toEqual([]);
+    expect(oldLed!.connections).toEqual([]);
+    // And the input -> oldRc edge is an outgoing edge of `input`, so it
+    // needs its own `input.disconnect(oldRc)` -- without it, every setParams
+    // call strands a live IIRFilterNode as a destination of input's fan-out
+    // (review F1/B1).
+    expect(input.connections).not.toContain(oldRc);
+    expect(input.disconnected).toContain(oldRc);
     stage.dispose();
   });
 });

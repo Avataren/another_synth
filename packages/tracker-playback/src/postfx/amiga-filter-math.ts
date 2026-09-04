@@ -48,15 +48,15 @@ export const AMIGA_LPF_DEFAULT_PARAMS: AmigaLpfParams = {
 
 /**
  * Derived damping of the default LED stage, for documentation only:
- * `res = 10^(-res_dB/20) ~= 1.0839`, s-domain `a1 = sqrt(2)*res ~= 1.5326`,
- * so zeta = a1/2 ~= 0.7663 and Q = 1/a1 ~= 0.6525. `a1 > sqrt(2)` means more
+ * `res = 10^(-res_dB/20) ~= 1.08393`, s-domain `a1 = sqrt(2)*res ~= 1.53290`,
+ * so zeta = a1/2 ~= 0.76645 and Q = 1/a1 ~= 0.65236. `a1 > sqrt(2)` means more
  * damping than Butterworth: the magnitude is monotone -- there is no peak --
  * and |H(fc)| ~= -5.25 dB. These are consequences of the defaults above,
  * never inputs.
  */
 export const AMIGA_LPF_DERIVED_NOTES = {
-  zeta: 0.7663,
-  q: 0.6525,
+  zeta: 0.76645,
+  q: 0.65236,
 } as const;
 
 /** First-order coefficients (b2 = a2 = 0). */

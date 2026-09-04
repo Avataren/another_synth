@@ -71,13 +71,21 @@ export class AmigaLpfStage implements PostFxStage {
   private params: AmigaLpfParams;
   private coefficients: AmigaLpfCoefficients;
 
-  /** The state in effect right now (or at the last applied transition). */
+  /** The state in effect right now (after folding fired queue entries). */
   private currentBypassed = false;
   private currentLedActive = false;
 
-  /** The one pending future transition, if any. */
-  private pending: { time: number; bypassed: boolean; led: boolean } | null =
-    null;
+  /**
+   * Ordered queue of future transitions, ascending by time. The engine
+   * schedules 0.5-1 s ahead, so several E0x toggles are commonly pending at
+   * once (D93: 36 E0x cells across the 43-module MOD corpus); entries whose
+   * time has passed are folded into current* in order (see foldPending).
+   */
+  private pendingQueue: Array<{
+    time: number;
+    bypassed: boolean;
+    led: boolean;
+  }> = [];
 
   constructor(
     context: BaseAudioContext,
@@ -157,6 +165,22 @@ export class AmigaLpfStage implements PostFxStage {
   }
 
   /**
+   * Move every queued transition the audio clock has already passed into the
+   * current state, in order. This is the bookkeeping mirror of the fader
+   * automation that has audibly fired.
+   */
+  private foldPending(now: number): void {
+    while (
+      this.pendingQueue.length > 0 &&
+      this.pendingQueue[0]!.time <= now
+    ) {
+      const fired = this.pendingQueue.shift()!;
+      this.currentBypassed = fired.bypassed;
+      this.currentLedActive = fired.led;
+    }
+  }
+
+  /**
    * Write a transition into the fader AudioParams.
    *
    * Each fader is pinned to its pre-transition value at `time` and ramps to
@@ -169,34 +193,53 @@ export class AmigaLpfStage implements PostFxStage {
     time: number,
   ): void {
     const now = this.now();
+    this.foldPending(now);
     const at = Math.max(time, now);
 
-    // The faders must start each ramp from the value the *previous* scheduled
-    // transition leaves them at, so back-to-back E0x events chain correctly
-    // even when both are still in the future.
-    let previousTargets: BranchTargets;
-    if (this.pending && this.pending.time <= at) {
-      if (this.pending.time <= now) {
-        // The pending transition has already fired on the audio clock.
-        this.currentBypassed = this.pending.bypassed;
-        this.currentLedActive = this.pending.led;
-        this.pending = null;
-        previousTargets = this.currentTargets();
-      } else {
-        previousTargets = targetsFor(this.pending.bypassed, this.pending.led);
-      }
-    } else {
-      previousTargets = this.currentTargets();
-    }
-
     if (at <= now) {
-      // Immediate: the state is now; drop any pending automation and assert.
+      // Immediate (manual mode switch, song load, an E0x whose time already
+      // passed): crossfade from the currently-effective fader values over
+      // RAMP_SECONDS rather than jumping -- the mode-switch click is exactly
+      // the case a user tries first.
+      const from = this.currentTargets();
+      this.pendingQueue = [];
       this.currentBypassed = bypassed;
       this.currentLedActive = ledActive;
-      this.pending = null;
-      this.cancelPending(now);
+      const to = this.currentTargets();
+      const faders: Array<[GainNode, number, number]> = [
+        [this.dryGain, from.dry, to.dry],
+        [this.rcBypassGain, from.rcBypass, to.rcBypass],
+        [this.wetGain, from.wet, to.wet],
+      ];
+      for (const [fader, fromValue, toValue] of faders) {
+        fader.gain.cancelScheduledValues(now);
+        if (fromValue === toValue) {
+          fader.gain.setValueAtTime(toValue, now);
+        } else {
+          fader.gain.setValueAtTime(fromValue, now);
+          fader.gain.linearRampToValueAtTime(toValue, now + RAMP_SECONDS);
+        }
+      }
       return;
     }
+
+    // Insert in time order (the engine schedules rows in ascending time, so
+    // this is normally an append) and ramp from the value the preceding
+    // transition leaves the faders at.
+    let insertIndex = this.pendingQueue.length;
+    while (
+      insertIndex > 0 &&
+      this.pendingQueue[insertIndex - 1]!.time > at
+    ) {
+      insertIndex -= 1;
+    }
+    const previousTargets =
+      insertIndex > 0
+        ? targetsFor(
+            this.pendingQueue[insertIndex - 1]!.bypassed,
+            this.pendingQueue[insertIndex - 1]!.led,
+          )
+        : this.currentTargets();
 
     const targets = targetsFor(bypassed, ledActive);
     const faders: Array<[GainNode, number, number]> = [
@@ -208,10 +251,13 @@ export class AmigaLpfStage implements PostFxStage {
       fader.gain.setValueAtTime(from, at);
       fader.gain.linearRampToValueAtTime(to, at + RAMP_SECONDS);
     }
-    this.pending = { time: at, bypassed, led: ledActive };
+    this.pendingQueue.splice(insertIndex, 0, {
+      time: at,
+      bypassed,
+      led: ledActive,
+    });
   }
 
-  /**
   /**
    * Toggle the LED filter (stage B) at audio time `time`.
    *
@@ -219,8 +265,8 @@ export class AmigaLpfStage implements PostFxStage {
    * lookahead window.
    */
   setLedActive(active: boolean, time: number): void {
-    // Resolve against the pending state, not the lagging `current*` fields:
-    // an un-bypass at t3 after a scheduled LED toggle at t2 must keep the
+    // Resolve against the queue, not the lagging `current*` fields: an
+    // un-bypass at t3 after a scheduled LED toggle at t2 must keep the
     // toggled state.
     this.scheduleTransition(this.isBypassed(), active, time);
   }
@@ -234,16 +280,15 @@ export class AmigaLpfStage implements PostFxStage {
    * Drop every not-yet-fired transition and re-assert the current resolved
    * state at `now`. Invoked on mode switch, song load and playback stop so an
    * already-scheduled E0x cannot fire after the override (D116).
+   *
+   * Transitions the clock has already passed are folded into the current
+   * state first (in order), so the *applied* state persists -- on stop
+   * between two queued E0x rows the faders re-assert what was actually
+   * audible, not what preceded both events (review S4 / fix-cycle F4).
    */
   cancelPending(now: number): void {
-    if (this.pending && this.pending.time > now) {
-      this.pending = null;
-    } else if (this.pending) {
-      // Its time has passed: it *is* the current state now.
-      this.currentBypassed = this.pending.bypassed;
-      this.currentLedActive = this.pending.led;
-      this.pending = null;
-    }
+    this.foldPending(now);
+    this.pendingQueue = [];
     for (const fader of [this.dryGain, this.rcBypassGain, this.wetGain]) {
       fader.gain.cancelScheduledValues(now);
     }
@@ -255,13 +300,15 @@ export class AmigaLpfStage implements PostFxStage {
 
   /** The LED state this stage will be in once pending transitions resolve. */
   getLedActive(): boolean {
-    if (this.pending) return this.pending.led;
-    return this.currentLedActive;
+    this.foldPending(this.now());
+    const last = this.pendingQueue[this.pendingQueue.length - 1];
+    return last ? last.led : this.currentLedActive;
   }
 
   isBypassed(): boolean {
-    if (this.pending) return this.pending.bypassed;
-    return this.currentBypassed;
+    this.foldPending(this.now());
+    const last = this.pendingQueue[this.pendingQueue.length - 1];
+    return last ? last.bypassed : this.currentBypassed;
   }
 
   /**
@@ -286,7 +333,14 @@ export class AmigaLpfStage implements PostFxStage {
     this.rcFilter = this.buildRcNode();
     this.ledFilter = this.buildLedNode();
 
+    // Full disconnect of the old nodes, in BOTH directions: disconnect()
+    // clears only the outgoing edges of the node it is called on, so
+    // `oldRc.disconnect()` removes oldRc -> rcBypassGain / oldRc -> oldLed,
+    // while the input -> oldRc edge needs `this.input.disconnect(oldRc)`.
+    // Missing either one strands a live IIRFilterNode in the graph on every
+    // setParams call (review F1/B1).
     this.input.disconnect(oldRc);
+    oldRc.disconnect();
     oldLed.disconnect();
     this.ownedNodes = this.ownedNodes.filter(
       (n) => n !== oldRc && n !== oldLed,

@@ -75,18 +75,48 @@ describe('engine events in AUTO', () => {
     const { stage } = registerMocks();
     const store = usePostFxStore();
 
+    // An event whose time is already behind the rack clock (10) is applied
+    // immediately.
     store.applyEngineEvent(true, 5.0);
     expect(store.engineActive).toBe(true);
     expect(stage.setLedActive).toHaveBeenCalledWith(true, 5.0);
-    // Before the scheduled time the LED shows the previous state (off).
-    expect(store.resolveLedAt(4.99)).toBe(false);
-    // At the scheduled time it flips.
-    expect(store.resolveLedAt(5.0)).toBe(true);
+    expect(store.resolveLedAt(10)).toBe(true);
 
-    store.applyEngineEvent(false, 6.0);
-    expect(store.engineActive).toBe(false);
-    expect(store.resolveLedAt(5.5)).toBe(true);
-    expect(store.resolveLedAt(6.0)).toBe(false);
+    // A future toggle keeps the applied state until its time arrives.
+    store.applyEngineEvent(false, 12.0);
+    expect(store.resolveLedAt(11.99)).toBe(true);
+    expect(store.resolveLedAt(12.0)).toBe(false);
+    expect(store.resolveLedAt(15)).toBe(false);
+  });
+
+  it('two queued future toggles keep the LED truthful at every moment', () => {
+    registerMocks();
+    const store = usePostFxStore();
+
+    // Both events are ahead of the rack clock (10). Before any of them fires
+    // the LED shows the pre-event state; between t1 and t2 the t1 state; at
+    // t2 the t2 state. The old single-slot bookkeeping lit the LED early.
+    store.applyEngineEvent(true, 12.0);
+    store.applyEngineEvent(false, 14.0);
+    expect(store.resolveLedAt(11.99)).toBe(false);
+    expect(store.resolveLedAt(12.0)).toBe(true);
+    expect(store.resolveLedAt(13.5)).toBe(true);
+    expect(store.resolveLedAt(14.0)).toBe(false);
+    expect(store.resolveLedAt(20)).toBe(false);
+  });
+
+  it('stop between two queued toggles keeps the t1 state applied', () => {
+    const { stage, rack } = registerMocks();
+    const store = usePostFxStore();
+
+    store.applyEngineEvent(true, 8.0); // already past the rack clock (10)
+    store.applyEngineEvent(false, 15.0); // still queued
+    rack.contextTime.mockReturnValue(10);
+    store.onPlaybackStopped();
+    // The applied state is the last transition the clock passed (t1: ON),
+    // not the state preceding both events.
+    expect(store.resolveLedAt(10)).toBe(true);
+    expect(stage.cancelPending).toHaveBeenCalledWith(10);
   });
 
   it('song load in AUTO resets the LED to OFF, cancelling queued toggles', () => {
@@ -112,6 +142,21 @@ describe('engine events in AUTO', () => {
     store.setMode('on');
     expect(stage.cancelPending).toHaveBeenCalledWith(10);
     // Manual ON: full cascade, LED lit regardless of the queued toggle.
+    expect(stage.setBypassed).toHaveBeenLastCalledWith(false, 10);
+    expect(stage.setLedActive).toHaveBeenLastCalledWith(true, 10);
+  });
+  it('a mode switch mid-queue cancels both queued toggles', () => {
+    const { stage } = registerMocks();
+    const store = usePostFxStore();
+
+    store.applyEngineEvent(true, 12.0);
+    store.applyEngineEvent(false, 14.0);
+    store.setMode('on');
+    // Both queued toggles are dropped at the single choke point; the manual
+    // mode shows the LED lit regardless of either.
+    expect(store.resolveLedAt(12.5)).toBe(true);
+    expect(store.resolveLedAt(15)).toBe(true);
+    expect(stage.cancelPending).toHaveBeenCalledWith(10);
     expect(stage.setBypassed).toHaveBeenLastCalledWith(false, 10);
     expect(stage.setLedActive).toHaveBeenLastCalledWith(true, 10);
   });

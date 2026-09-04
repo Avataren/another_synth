@@ -44,14 +44,25 @@ export const usePostFxStore = defineStore('postFx', () => {
   );
 
   /**
-   * The LED state the engine last commanded (in AUTO). `activeFrom` is the
-   * audio time that command takes effect; `activeBefore` is what was in
-   * effect until then, so the LED can be resolved "right now" against
-   * `audioContext.currentTime` even though scheduling runs ahead.
+   * The LED state in effect right now (in AUTO), plus the ordered queue of
+   * engine-commanded transitions still in the future. The engine schedules
+   * 0.5-1 s ahead and a song can carry adjacent E0x rows, so several toggles
+   * are commonly pending at once; `resolveLedAt` folds entries the audio
+   * clock has passed, in order, before answering -- the LED shows the state
+   * that is actually in effect at `now`, never a state scheduled ahead of it
+   * (fix-cycle F4).
    */
   const engineActive = ref(false);
-  const activeFrom = ref(0);
-  const activeBefore = ref(false);
+  const pendingTransitions: Array<{ time: number; active: boolean }> = [];
+
+  function foldPendingTransitions(now: number): void {
+    while (
+      pendingTransitions.length > 0 &&
+      pendingTransitions[0]!.time <= now
+    ) {
+      engineActive.value = pendingTransitions.shift()!.active;
+    }
+  }
 
   function pushParamsToStage(): void {
     const registration = getPostFxRack();
@@ -94,6 +105,11 @@ export const usePostFxStore = defineStore('postFx', () => {
     if (mode.value === next) return;
     mode.value = next;
     settingsStore.updateSetting('postFxFilterMode', next);
+    // Fold first so `engineActive` is what is actually applied at now, then
+    // drop the whole queue: a mode switch mid-lookahead must not let any
+    // already-scheduled E0x fire after the override (fix-cycle F4).
+    foldPendingTransitions(currentAudioTime());
+    pendingTransitions.length = 0;
     const now = currentAudioTime();
     const registration = getPostFxRack();
     if (registration) {
@@ -105,9 +121,15 @@ export const usePostFxStore = defineStore('postFx', () => {
   /** Apply engine (E0x) activity. Ignored unless the mode is auto. */
   function applyEngineEvent(active: boolean, time: number): void {
     if (mode.value !== 'auto') return;
-    activeBefore.value = engineActive.value;
-    engineActive.value = active;
-    activeFrom.value = time;
+    // Queue the event, then fold anything the clock has already passed (the
+    // event itself included, if its time has passed), so `engineActive`
+    // always reads as the state in effect right now.
+    let index = pendingTransitions.length;
+    while (index > 0 && pendingTransitions[index - 1]!.time > time) {
+      index -= 1;
+    }
+    pendingTransitions.splice(index, 0, { time, active });
+    foldPendingTransitions(currentAudioTime());
     const registration = getPostFxRack();
     if (registration) {
       registration.amigaLpf.setLedActive(active, time);
@@ -122,9 +144,8 @@ export const usePostFxStore = defineStore('postFx', () => {
   function onSongLoad(): void {
     if (mode.value !== 'auto') return;
     const now = currentAudioTime();
+    pendingTransitions.length = 0;
     engineActive.value = false;
-    activeBefore.value = false;
-    activeFrom.value = now;
     const registration = getPostFxRack();
     if (registration) {
       registration.amigaLpf.cancelPending(now);
@@ -135,11 +156,16 @@ export const usePostFxStore = defineStore('postFx', () => {
   /**
    * Playback stopped: drop queued toggles (they belong to the stopped song)
    * while the applied LED state persists, like the hardware's (review S4).
+   * Folding first means the applied state is the last transition the audio
+   * clock actually passed (fix-cycle F4).
    */
   function onPlaybackStopped(): void {
     const registration = getPostFxRack();
     if (!registration) return;
-    registration.amigaLpf.cancelPending(registration.rack.contextTime());
+    const now = registration.rack.contextTime();
+    foldPendingTransitions(now);
+    pendingTransitions.length = 0;
+    registration.amigaLpf.cancelPending(now);
   }
 
   /** User tweaked the parameters. Both channels share the one set. */
@@ -155,19 +181,20 @@ export const usePostFxStore = defineStore('postFx', () => {
 
   /**
    * The LED state at audio time `now`. In AUTO, a scheduled E0x flips the
-   * display only when the audio clock reaches its scheduled time.
+   * display only when the audio clock reaches its scheduled time; with
+   * several toggles queued, entries the clock has passed fold in order.
    */
   function resolveLedAt(now: number): boolean {
     if (mode.value === 'off') return false;
     if (mode.value === 'on') return true;
-    return now >= activeFrom.value ? engineActive.value : activeBefore.value;
+    foldPendingTransitions(now);
+    return engineActive.value;
   }
 
   return {
     mode,
     params,
     engineActive,
-    activeFrom,
     resolveLedAt,
     setMode,
     setParams,
