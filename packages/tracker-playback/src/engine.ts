@@ -1502,7 +1502,19 @@ export class PlaybackEngine {
               gain,
               time,
               step.trackIndex,
-              undefined,
+              // Instantaneous, because that is what a set-volume is. A row's
+              // velocity is a Cxx, an XM volume-column set-volume or a sample
+              // number's default -- never a slide, which arrives as a command
+              // from the batches above and keeps its own ramp.
+              //
+              // Left unqualified it ramped linearly from the *previous*
+              // automation event, i.e. across the whole preceding row. The
+              // staccato lead in jaguar_xj220_title.mod (order 6, channel 2)
+              // is the case that exposed it: every note is silenced by a bare
+              // "C00" a row or two later, and each of those faded the note out
+              // over a full row instead of cutting it, turning a clipped
+              // melody into a legato one.
+              'step',
             );
           } else if (this.scheduledAutomationHandler) {
             // Fallback: legacy global gain path
