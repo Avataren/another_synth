@@ -12,47 +12,61 @@
       </button>
     </div>
 
-    <div class="br-row">
-      <button
-        type="button"
-        class="br-btn"
-        :class="{ marked: startPosition !== null }"
-        title="Capture the playback position where the problem starts"
-        @click="markStart"
-      >
-        Mark start
-      </button>
-      <button
-        type="button"
-        class="br-btn"
-        :class="{ marked: endPosition !== null }"
-        title="Capture the playback position where the problem ends"
-        @click="markEnd"
-      >
-        Mark end
-      </button>
-      <button
-        v-if="startPosition !== null || endPosition !== null"
-        type="button"
-        class="br-btn ghost"
-        title="Forget both marks"
-        @click="clearMarks"
-      >
-        Clear marks
-      </button>
+    <!--
+      A caller-fixed range (e.g. mapped from a pattern selection) replaces
+      the mark buttons: the range came from a selection, not from the clock.
+    -->
+    <div v-if="presetStart" class="br-marks br-marks-preset">
+      <div class="br-mark-line">
+        start: order {{ presetStart.order }} row {{ presetStart.row }} (0-based)
+      </div>
+      <div v-if="presetEnd" class="br-mark-line">
+        end: order {{ presetEnd.order }} row {{ presetEnd.row }} (0-based)
+      </div>
     </div>
+    <template v-else>
+      <div class="br-row">
+        <button
+          type="button"
+          class="br-btn"
+          :class="{ marked: startPosition !== null }"
+          title="Capture the playback position where the problem starts"
+          @click="markStart"
+        >
+          Mark start
+        </button>
+        <button
+          type="button"
+          class="br-btn"
+          :class="{ marked: endPosition !== null }"
+          title="Capture the playback position where the problem ends"
+          @click="markEnd"
+        >
+          Mark end
+        </button>
+        <button
+          v-if="startPosition !== null || endPosition !== null"
+          type="button"
+          class="br-btn ghost"
+          title="Forget both marks"
+          @click="clearMarks"
+        >
+          Clear marks
+        </button>
+      </div>
 
-    <div class="br-marks">
-      <div v-if="startPosition" class="br-mark-line">
-        start: order {{ startPosition.order }} row {{ startPosition.row }} (0-based)
+      <div class="br-marks">
+        <div v-if="startPosition" class="br-mark-line">
+          start: order {{ startPosition.order }} row {{ startPosition.row }} (0-based)
+        </div>
+        <div v-if="endPosition" class="br-mark-line">
+          end: order {{ endPosition.order }} row {{ endPosition.row }} (0-based)
+        </div>
+        <div v-if="!startPosition && !endPosition" class="br-marks-empty">
+          No marks — the report will use the current position as a single point.
+        </div>
       </div>
-      <div v-if="endPosition" class="br-mark-line">
-        end: order {{ endPosition.order }} row {{ endPosition.row }} (0-based)
-      </div>
-      <div v-if="!startPosition && !endPosition" class="br-marks-empty">
-        No marks — the report will use the current position as a single point.
-      </div>
-    </div>
+    </template>
 
     <label class="br-label" for="bug-report-heard">What you hear</label>
     <textarea
@@ -96,16 +110,19 @@ import {
   type BugReportInstrument,
   type BugReportPosition,
 } from 'src/composables/bug-report';
+import type { BugReportPreset } from 'src/composables/bug-report-context';
+import type { BugReportSongIdentity } from 'src/composables/bug-report';
 import { getLoadedSongHash } from 'src/composables/song-identity';
 import { useJukeboxStore } from 'src/stores/jukebox-store';
 import { useTrackerPlaybackStore } from 'src/stores/tracker-playback-store';
 import { useTrackerStore } from 'src/stores/tracker-store';
 
 /**
- * The bug-report tool: mark a song section, say what is wrong, copy a
- * structured report for LLM review. Nothing is sent anywhere — the report is
- * text for the clipboard, and all state lives in this component.
+ * Everything a caller can pre-fill before the dialog opens; the shape is
+ * owned by bug-report-context so every entry point shares it.
  */
+const props = defineProps<{ preset?: BugReportPreset | null }>();
+
 defineEmits<{ close: [] }>();
 
 const jukebox = useJukeboxStore();
@@ -119,7 +136,13 @@ const expected = ref('');
 const copied = ref(false);
 const copyError = ref('');
 
-const hasSong = computed(() => jukebox.current !== null);
+const hasSong = computed(
+  () => props.preset?.songIdentity != null || jukebox.current !== null,
+);
+
+/** A caller-fixed range start; its presence swaps the mark buttons out. */
+const presetStart = computed(() => props.preset?.startPosition ?? null);
+const presetEnd = computed(() => props.preset?.endPosition ?? null);
 
 /**
  * The latest playback position, fed by the playback store's position
@@ -194,33 +217,41 @@ function instrumentForRange(instrumentIds: string[]): BugReportInstrument {
 async function copyReport(): Promise<void> {
   copied.value = false;
   copyError.value = '';
-  const entry = jukebox.current;
-  if (!entry) return;
 
-  const start = startPosition.value ?? currentPosition();
-  const end = endPosition.value ?? undefined;
+  // The fixed range wins; without one the marks (or the live position) do.
+  const start = presetStart.value ?? startPosition.value ?? currentPosition();
+  const end = presetStart.value
+    ? props.preset?.endPosition
+    : endPosition.value ?? undefined;
   const scan = scanRangeForReport(
     trackerStore.sequence,
     trackerStore.patterns,
     start,
     end,
   );
-  const sha256 = getLoadedSongHash();
+
+  // Preset identity wins; the fallback is the v1 jukebox wiring: with no
+  // file hash the loaded song is not a module file, so its filename is
+  // unknown — the jukebox entry would be a stale leftover. The song's own
+  // title is what identifies it then.
+  const sha256 = props.preset?.songIdentity?.sha256 ?? getLoadedSongHash();
+  const fallbackIdentity: BugReportSongIdentity = {
+    name: sha256 !== null ? jukebox.current?.file ?? '' : trackerStore.currentSong.title,
+    ...(jukebox.current?.format ? { formatLabel: jukebox.current.format } : {}),
+    ...(sha256 !== null ? { sha256 } : {}),
+  };
+  const songIdentity = props.preset?.songIdentity ?? fallbackIdentity;
+
+  // The caller's channels (e.g. the selected columns) override the scan.
+  const channels = props.preset?.channels ?? scan.channels;
 
   const report = buildBugReport({
-    // With no file hash the loaded song is not a module file, so its
-    // filename is unknown — the jukebox entry would be a stale leftover.
-    // The song's own title is what identifies it then.
-    songIdentity: {
-      name: sha256 !== null ? entry.file : trackerStore.currentSong.title,
-      formatLabel: entry.format,
-      ...(sha256 !== null ? { sha256 } : {}),
-    },
+    songIdentity,
     title: trackerStore.currentSong.title,
     build: `v${__APP_VERSION__} (${__APP_GIT_HASH__})`,
     startPosition: start,
     ...(end !== undefined ? { endPosition: end } : {}),
-    ...(scan.channels.length > 0 ? { channels: scan.channels } : {}),
+    ...(channels.length > 0 ? { channels } : {}),
     ...(scan.instrumentIds.length === 1
       ? { instrument: instrumentForRange(scan.instrumentIds) }
       : {}),

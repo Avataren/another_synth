@@ -113,6 +113,30 @@
           :title="row.entry.title"
           @dblclick="$emit('play-index', row.index)"
         >
+          <!--
+            Right-click menu for this entry. Anchored on the row itself, so
+            Quasar positions it at the pointer. Reporting another entry than
+            the loaded one is disabled in the panel: the hash wiring keeps
+            exactly one digest — the loaded file's — and a menu item that
+            cannot say which bytes it reports must not open a report at all.
+          -->
+          <q-menu context-menu>
+            <q-list dense style="min-width: 200px">
+              <q-item
+                clickable
+                v-close-popup
+                :disable="row.index !== currentIndex || busy"
+                :title="
+                  row.index === currentIndex && !busy
+                    ? 'Open a bug report pre-filled for this song'
+                    : 'Play this song first — the report hashes the loaded file'
+                "
+                @click="$emit('bug-report-entry', row.index)"
+              >
+                <q-item-section>Bug report…</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
           <div class="playlist-index">
             <q-icon
               v-if="row.index === currentIndex && isPlaying"
@@ -212,6 +236,8 @@ defineEmits<{
   shuffle: [];
   'play-index': [index: number];
   remove: [index: number];
+  /** The user asked for a bug report of the entry at this index. */
+  'bug-report-entry': [index: number];
   add: [];
   refill: [];
   clear: [];

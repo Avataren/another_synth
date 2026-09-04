@@ -685,6 +685,33 @@
           @scroll.passive="onPatternAreaScroll"
         >
           <!--
+            Right-click anywhere in the pattern editor offers a pre-filled
+            bug report. Anchored on this element, so Quasar positions it at
+            the pointer and keeps the native menu away. The item is disabled
+            unless a selection exists AND the edited pattern sits in the
+            song's sequence — the report's range is never guessed.
+          -->
+          <q-menu context-menu>
+            <q-list dense style="min-width: 200px">
+              <q-item
+                clickable
+                v-close-popup
+                :disable="!selectionMapsToSong"
+                :title="
+                  selectionMapsToSong
+                    ? 'Open a bug report pre-filled with the selection'
+                    : selectionRect
+                      ? 'This pattern is not placed in the song sequence'
+                      : 'Select part of the pattern first'
+                "
+                @click="openBugReportFromSelection"
+              >
+                <q-item-section>Bug report…</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+
+          <!--
             The canvas renderer swaps in behind its own setting; a page-level
             failure flag (rendererError) drops it back to the DOM grid, which
             stays compiled as the escape hatch. The canvas owns its scroll —
@@ -774,6 +801,10 @@
     </div>
     <DemoSongBrowser v-model="showDemoBrowser" @select="handleDemoSelect" />
 
+    <div v-if="showBugReport" class="bug-report-float">
+      <BugReportDialog :preset="bugReportPreset" @close="closeBugReport" />
+    </div>
+
     <div v-if="showExportModal" class="export-modal">
       <div class="export-dialog">
         <div class="export-title">Exporting song</div>
@@ -856,6 +887,13 @@ import type { TrackerEditingContext } from 'src/composables/useTrackerEditing';
 import { useTrackerNavigation } from 'src/composables/useTrackerNavigation';
 import type { TrackerNavigationContext } from 'src/composables/useTrackerNavigation';
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
+import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
+import {
+  channelsFromSelection,
+  selectionToReportRange,
+  type BugReportPreset,
+} from 'src/composables/bug-report-context';
+import { getLoadedSongHash } from 'src/composables/song-identity';
 import { useTrackerInstruments } from 'src/composables/useTrackerInstruments';
 import type { TrackerInstrumentsContext } from 'src/composables/useTrackerInstruments';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
@@ -2024,6 +2062,70 @@ const onMasterVolumeChange = (event: Event) => {
 
 const showDemoBrowser = ref(false);
 
+// ---------------------------------------------------------------
+// Bug report via pattern selection (right-click)
+// ---------------------------------------------------------------
+
+const showBugReport = ref(false);
+const bugReportPreset = ref<BugReportPreset | null>(null);
+
+/**
+ * The honest pairing between what is edited and what plays: on this page
+ * they are the same song — one shared tracker store, which playback even
+ * retargets pattern-by-pattern while running. A selection therefore maps
+ * into the sequence of the song that is loaded here, preferring the order
+ * actually playing when playback is live on the edited pattern, else the
+ * pattern's first sequence occurrence.
+ */
+const selectionMapsToSong = computed(() => {
+  const rect = selectionRect.value;
+  if (!rect) return false;
+  const playing = isPlaying.value || isPaused.value ? currentSequenceIndex.value : null;
+  return (
+    selectionToReportRange({
+      selectionRect: rect,
+      patternId: currentPatternId.value,
+      sequence: sequence.value,
+      playingOrder: playing,
+    }) !== null
+  );
+});
+
+function openBugReportFromSelection(): void {
+  const rect = selectionRect.value;
+  if (!rect) return;
+  // The playing order only counts when playback is live or paused mid-play;
+  // a stale index from a finished run is not what the user is hearing.
+  const playing = isPlaying.value || isPaused.value ? currentSequenceIndex.value : null;
+  const range = selectionToReportRange({
+    selectionRect: rect,
+    patternId: currentPatternId.value,
+    sequence: sequence.value,
+    playingOrder: playing,
+  });
+  // An unplaced pattern has no honest order+row position — no report.
+  if (!range) return;
+  const sha256 = getLoadedSongHash();
+  bugReportPreset.value = {
+    songIdentity: {
+      // The edited song's own title; the hash (when a module file was
+      // loaded) is what anchors it to the exact bytes.
+      name: currentSong.value.title,
+      ...(sha256 !== null ? { sha256 } : {}),
+    },
+    startPosition: range.startPosition,
+    endPosition: range.endPosition,
+    // The selected columns, 1-based like the report's channel numbering.
+    channels: channelsFromSelection(rect),
+  };
+  showBugReport.value = true;
+}
+
+function closeBugReport(): void {
+  showBugReport.value = false;
+  bugReportPreset.value = null;
+}
+
 function openDemoBrowser() {
   showDemoBrowser.value = true;
 }
@@ -2403,6 +2505,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .tracker-page {
+  /* Floating bug-report dialog anchors to the page. */
+  position: relative;
   height: var(--q-page-container-height, 100vh);
   background: var(--app-background, #0b111a);
   box-sizing: border-box;
@@ -3478,6 +3582,21 @@ onBeforeUnmount(() => {
 
 .patch-select option {
   color: var(--tracker-cell-active-text, #0c1624);
+}
+
+/*
+ * The bug-report dialog opened from a pattern selection: floats over the
+ * editor like the jukebox page's card, without stealing the page's own
+ * layout space.
+ */
+.bug-report-float {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  z-index: 2400;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100% - 64px);
+  overflow-y: auto;
 }
 
 .export-modal {

@@ -123,7 +123,7 @@
         class="bar-btn"
         :class="{ active: showBugReport }"
         title="Report a song bug: mark a section and copy a report"
-        @click="showBugReport = !showBugReport"
+        @click="toggleBugReport"
       >
         <q-icon name="bug_report" size="18px" />
       </button>
@@ -139,10 +139,11 @@
       </button>
     </div>
 
-    <BugReportPanel
+    <BugReportDialog
       v-if="showBugReport"
       class="bug-report-card"
-      @close="showBugReport = false"
+      :preset="bugReportPreset"
+      @close="closeBugReport"
     />
 
     <div class="jukebox-body">
@@ -251,6 +252,7 @@
           @clear="player.clear()"
           @close="showPlaylist = false"
           @update:repeat="jukebox.setRepeat($event)"
+          @bug-report-entry="openBugReportForEntry"
         />
       </div>
     </div>
@@ -276,12 +278,17 @@ import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnaly
 import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import JukeboxPanel from 'src/components/tracker/JukeboxPanel.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
-import BugReportPanel from 'src/components/tracker/BugReportPanel.vue';
+import BugReportDialog from 'src/components/tracker/BugReportDialog.vue';
 import { useTrackerSongHost } from 'src/composables/useTrackerSongHost';
 import { useJukeboxPlayer } from 'src/composables/useJukeboxPlayer';
 import { useUserSettingsStore } from 'src/stores/user-settings-store';
 import { useMobileLayout } from 'src/composables/useMobileLayout';
-import { clearLoadedSongHash } from 'src/composables/song-identity';
+import {
+  clearLoadedSongHash,
+  getLoadedSongHash,
+} from 'src/composables/song-identity';
+import type { BugReportPreset } from 'src/composables/bug-report-context';
+import type { BugReportPosition } from 'src/composables/bug-report';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
 /**
@@ -339,6 +346,65 @@ const showPlaylist = ref(false);
 const showDemoBrowser = ref(false);
 const showBugReport = ref(false);
 const restoring = ref(false);
+
+// ---------------------------------------------------------------
+// Bug report entry points
+// ---------------------------------------------------------------
+
+/**
+ * What a right-clicked playlist entry hands the dialog. Null while the
+ * dialog runs in the v1 fallback mode (toolbar button: mark on the loaded
+ * song by hand).
+ */
+const bugReportPreset = ref<BugReportPreset | null>(null);
+
+/**
+ * Only the loaded song may be reported: the hash wiring keeps exactly one
+ * retained digest — the loaded file's — and attaching it to another
+ * entry's name would be a wrong-song report. While a switch is busy there
+ * is no honest identity either. The menu item is disabled for anything
+ * else, so no report can silently carry another song's hash.
+ */
+function openBugReportForEntry(index: number): void {
+  if (isBusy.value) return;
+  const entry = jukebox.entries[index];
+  if (!entry || jukebox.current?.file !== entry.file) return;
+  const sha256 = getLoadedSongHash();
+  const preset: BugReportPreset = {
+    songIdentity: {
+      name: entry.file,
+      formatLabel: entry.format,
+      ...(sha256 !== null ? { sha256 } : {}),
+    },
+  };
+  // A position belongs to whatever is sounding, so only the playing entry
+  // gets one prefilled; otherwise the dialog starts unmarked and the
+  // report uses the position at copy time (or the user's own marks).
+  if (isPlaying.value) preset.startPosition = bugReportPositionNow();
+  bugReportPreset.value = preset;
+  showBugReport.value = true;
+}
+
+/** The playback position as the report states it: order + row, 0-based. */
+function bugReportPositionNow(): BugReportPosition {
+  const order = Math.max(0, playbackStore.currentSequenceIndex);
+  const patternId = trackerStore.sequence[order];
+  return {
+    order,
+    row: playbackStore.playbackRow,
+    ...(patternId !== undefined ? { patternId } : {}),
+  };
+}
+
+function toggleBugReport(): void {
+  showBugReport.value = !showBugReport.value;
+  if (!showBugReport.value) bugReportPreset.value = null;
+}
+
+function closeBugReport(): void {
+  showBugReport.value = false;
+  bugReportPreset.value = null;
+}
 
 // ---------------------------------------------------------------
 // The editor's song, kept safe for the duration
