@@ -45,11 +45,16 @@
 - Import it by package name (`@another-synth/tracker-playback`), never by a
   relative path into `packages/`. Add new modules to its `index.ts`; it uses
   `export *`, so exported names must stay globally unique across the package.
+- Sound too: `TrackerSink` (the 21-member interface a sound source provides),
+  `TrackerSamplerInstrument` (the Web Audio voice) and `StandaloneTrackerSink`
+  (a lean player over them).
 - What stays app-side: `sampler-patch-builder.ts`, the adapter from the
   library's `TrackerSample` to this app's `Patch`; `instrument-slots.ts`, which
-  fills the editor's instrument slots from it; and the sound source
-  (`song-bank.ts`, `mod-instrument.ts`). The `*-import.ts` files are now
-  assembly only. See `PLAN-tracker-playback-library.md`.
+  fills the editor's instrument slots from it; `song-bank.ts`, which implements
+  `TrackerSink` with the mixer, recording and live patch editing the editor
+  needs; and `mod-instrument.ts`, now a 109-line subclass that adds `loadPatch`.
+  The `*-import.ts` files are assembly only. See
+  `PLAN-tracker-playback-library.md`.
 - Do not widen the library to emit a `Patch`. That boundary is deliberate: a
   `Patch` is the app's synth preset, and a consumer wanting a module player
   should never see one.

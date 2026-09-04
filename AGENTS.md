@@ -1619,7 +1619,12 @@ has the full account.
 | Engine, effect processor, pitch models, format profiles      | `pkg/engine.ts`, `pkg/effect-processor.ts`, `pkg/pitch-model.ts`, `pkg/format-profile.ts` |
 | `TrackerSample` → `Patch` (the adapter)                      | still `src/audio/tracker/sampler-patch-builder.ts`          |
 | `TrackerSample` → `InstrumentSlot` + patches                 | still `src/audio/tracker/instrument-slots.ts`               |
-| `song-bank.ts`, `mod-instrument.ts`, `track-voice-registry.ts` | still `src/audio/**`                                      |
+| The sink interface (`TrackerSink`)                           | `pkg/sink.ts`                                               |
+| The Web Audio voice (`TrackerSamplerInstrument`)             | `pkg/sampler-instrument.ts` (was `src/audio/mod-instrument.ts`) |
+| A lean player (`StandaloneTrackerSink`)                      | `pkg/standalone-sink.ts`                                    |
+| Sample conditioning + quality settings                       | `pkg/sample-conditioning.ts`, `pkg/sample-quality.ts`       |
+| `song-bank.ts` (implements `TrackerSink`), `track-voice-registry.ts` | still `src/audio/**`                                 |
+| `mod-instrument.ts` — now only `loadPatch`, over the library class | still `src/audio/mod-instrument.ts`                    |
 | `pickActiveInstrumentId`, `TrackerSelectionRect`             | still app-side (both read editor-only types)                |
 
 (`pkg/` = `packages/tracker-playback/src/`.)
@@ -1658,6 +1663,15 @@ Things to know before touching any of it:
 - **A `TrackerSample` carries both `slot` and `sourceIndex`.** They differ when
   XM/S3M pack referenced instruments into consecutive slots. Patch names use
   `sourceIndex` — the composer's own numbering.
+- **All the sample DSP is in the library now.** `ModInstrument` is a 109-line
+  subclass of `TrackerSamplerInstrument` adding `loadPatch`; the voices,
+  envelopes, loops and conditioning are `pkg/sampler-instrument.ts`. Edit the
+  DSP there, not in `src/audio/`.
+- **A per-voice command addresses (instrumentId, trackIndex), not voiceIndex.**
+  Two channels can share an instrument, so the voice a command means is the one
+  that channel started its note on. `TrackerSongBank` resolves this through
+  `track-voice-registry.ts` (D78's single path); `StandaloneTrackerSink` keeps
+  its own per-track map, which is all it needs.
 - **`TOTAL_PAGES` now derives from `TOTAL_SLOTS`**, not the other way round —
   `Math.ceil(TOTAL_SLOTS / SLOTS_PER_PAGE)`, still 26. The slot count is a song-model
   fact (XM's 128-instrument maximum); the 5-per-page paging is instrument-panel UI.

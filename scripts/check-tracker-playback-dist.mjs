@@ -100,8 +100,12 @@ console.log('\npublic surface');
 const required = [
   // parsers
   'looksLikeMod', 'parseMod', 'looksLikeXm', 'parseXm', 'looksLikeS3m', 'parseS3m',
-  // pattern importers
+  // importers, both halves
   'buildModTrackerPatterns', 'buildXmTrackerPatterns', 'buildS3mTrackerPatterns',
+  'buildModTrackerSamples', 'buildXmTrackerSamples', 'buildS3mTrackerSamples',
+  // the sound source
+  'TrackerSamplerInstrument', 'StandaloneTrackerSink', 'sampleToConfig',
+  'instrumentResolverFor', 'getSampleQuality', 'setSampleQuality',
   // row model -> song
   'buildPlaybackSong', 'buildPlaybackPatterns',
   // parsing, ids, constants

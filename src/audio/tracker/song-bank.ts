@@ -8,6 +8,7 @@ import {
   type FormatProfile,
 } from '@another-synth/tracker-playback';
 import type { PitchModel } from '@another-synth/tracker-playback';
+import type { TrackerSink } from '@another-synth/tracker-playback';
 import InstrumentV2 from 'src/audio/instrument-v2';
 import ModInstrument from 'src/audio/mod-instrument';
 import { WorkletPool } from 'src/audio/worklet-pool';
@@ -76,7 +77,16 @@ export interface ActiveInstrument {
   hasPortamento: boolean;
 }
 
-export class TrackerSongBank {
+/**
+ * The app's sound source: implements the library's `TrackerSink`, and then a
+ * great deal more that only the editor needs -- the mixer, live patch editing,
+ * recording, visualisation.
+ *
+ * The `implements` is the point. Everything playback can reach is the 21
+ * members of `TrackerSink`; the other public methods here are the editor's. A
+ * standalone player implements the interface and none of the rest.
+ */
+export class TrackerSongBank implements TrackerSink {
   private generation = 0;
   private readonly audioSystem: AudioSystem;
   private readonly masterGain: GainNode;

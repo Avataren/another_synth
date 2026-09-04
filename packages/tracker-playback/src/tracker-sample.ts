@@ -176,3 +176,82 @@ export interface TrackerSampleSet {
    */
   slotForInstrument: Map<number, number>;
 }
+
+/**
+ * A `TrackerSample` as the instrument actually consumes it.
+ *
+ * Two things differ from `TrackerSample`, both because this is the playback
+ * side rather than the import side. Loop points are *normalised* 0..1 rather
+ * than frames, since the buffer they index may have been oversampled by
+ * conditioning; and the PCM travels separately, because a host that stores its
+ * instruments some other way (this app keeps them as sampler patches) decodes
+ * the audio itself and supplies it alongside.
+ *
+ * `sampleToConfig` builds one from a `TrackerSample`; a host with its own
+ * instrument format builds one directly.
+ */
+export interface TrackerSamplerConfig {
+  /** Identifier for logging; not used for addressing. */
+  id: string;
+  /** MIDI note at which the sample plays untransposed. */
+  rootNote: number;
+  /** Tuning offset in cents. */
+  detune: number;
+  gain: number;
+  /** Resting pan 0..1, 0.5 = centre. Absent means centre. */
+  pan?: number;
+  loopMode: TrackerSampleLoop;
+  /** Loop start as a fraction of the buffer, 0..1. */
+  loopStart: number;
+  /** Loop end as a fraction of the buffer, 0..1. */
+  loopEnd: number;
+  trackerEnvelope?: TrackerVolumeEnvelope;
+  trackerPanEnvelope?: TrackerPanningEnvelope;
+  trackerAutoVibrato?: TrackerAutoVibrato;
+}
+
+/**
+ * A `TrackerSample` as instrument config plus its PCM.
+ *
+ * The loop-point normalisation here is the same arithmetic
+ * `sampler-patch-builder.ts` applies on the app's path, kept in one place so
+ * the two cannot drift: clamp the start inside the sample, clamp the end to
+ * its length, and express both as fractions.
+ */
+export function sampleToConfig(sample: TrackerSample): {
+  config: TrackerSamplerConfig;
+  data: Float32Array;
+  sampleRate: number;
+  channels: number;
+  voiceCount: number;
+} {
+  const lengthFrames = Math.max(1, sample.data.length);
+  const looping = sample.loop !== 'off';
+  const loopStartFrames = Math.min(sample.loopStartFrames, lengthFrames - 1);
+  const loopEndFrames = Math.min(
+    loopStartFrames + sample.loopLengthFrames,
+    lengthFrames,
+  );
+
+  return {
+    config: {
+      id: `slot-${sample.slot}`,
+      rootNote: sample.rootNote,
+      detune: sample.detuneCents,
+      gain: sample.gain,
+      ...(sample.pan !== undefined ? { pan: sample.pan } : {}),
+      loopMode: sample.loop,
+      loopStart: looping ? loopStartFrames / lengthFrames : 0,
+      loopEnd: looping ? loopEndFrames / lengthFrames : 1,
+      ...(sample.volumeEnvelope
+        ? { trackerEnvelope: sample.volumeEnvelope }
+        : {}),
+      ...(sample.panEnvelope ? { trackerPanEnvelope: sample.panEnvelope } : {}),
+      ...(sample.autoVibrato ? { trackerAutoVibrato: sample.autoVibrato } : {}),
+    },
+    data: sample.data,
+    sampleRate: sample.sampleRate,
+    channels: 1,
+    voiceCount: sample.voiceCount,
+  };
+}

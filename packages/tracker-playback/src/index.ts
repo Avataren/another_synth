@@ -16,6 +16,13 @@ export * from './scheduler';
 export * from './clock';
 export * from './instrument-resolver';
 export * from './instrument-ids';
+export * from './sink';
+
+// Sample conditioning and the quality settings that drive it.
+export * from './sample-conditioning';
+export * from './sample-quality';
+export * from './sampler-instrument';
+export * from './standalone-sink';
 
 // Replay behaviour: per-tick effect processing, the pitch domain each format
 // slides in, and the dialect differences between trackers.

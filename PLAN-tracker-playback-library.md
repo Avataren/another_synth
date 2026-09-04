@@ -4,7 +4,7 @@
 to play MOD, XM, S3M and this app's own native songs, without dragging in
 Quasar, Pinia, Vue, the Rust/WASM synth, or the pattern editor.
 
-**Status.** Layers 1, 2 and 3 done (2026-09-04). Layer 4 not started.
+**Status.** All four layers done (2026-09-04). The extraction is complete.
 
 Bytes now reach a schedulable song entirely inside the library: `parseMod` /
 `parseXm` / `parseS3m` → `build*TrackerPatterns` → `buildPlaybackSong`, with no
@@ -17,11 +17,16 @@ Instruments go the same way: `build*TrackerSamples` produces a lean
 `Patch`. That was §6's last open question, resolved in favour of the lean
 descriptor.
 
-Layer 4, the sound source, is all that remains. §8 is the recommended next
-action and is where to start reading if you are picking this up cold.
+Sound too: `TrackerSink` names the 21-member surface a sound source must
+provide, `TrackerSamplerInstrument` is the Web Audio voice, and
+`StandaloneTrackerSink` is a 452-line player over them. This app's
+`TrackerSongBank` implements the same interface with the mixer, recording and
+live patch editing the editor needs. Two implementations of one interface, as
+intended.
 
-The split now stands at ~11,200 lines in the package against ~4,300 left under
-`src/audio/tracker/`, of which `song-bank.ts` is 2,654 and stays.
+The split now stands at ~14,400 lines in the package against ~4,400 under
+`src/audio/`, of which `song-bank.ts` is 2,664 and stays. §8 is what is worth
+doing next, and §3e is where to start reading if you are picking this up cold.
 
 This document is written to be picked up cold, in a new session, by someone (or
 some model) with no memory of the work. It records what was measured, what was
@@ -535,25 +540,99 @@ blank line, which is exactly what a stranded comment looks like.
 
 ---
 
-## 4. Layer 4 — TODO
+## 3e. Layer 4, the sound source — DONE
+
+Committed 2026-09-04. The extraction is complete: a consumer can now load a
+module and hear it without the app.
+
+**`sink.ts` — the interface.** 21 members, named from what
+`tracker-playback-store.ts` actually wires into `TrackerSongBank`. `TrackerSongBank
+implements TrackerSink` compiled with **no changes at all**, which is the
+evidence that the interface describes the real surface rather than a wished-for
+one. Its doc comment carries the three conventions a second implementer needs:
+`instrumentId` may be undefined and is a no-op then, a `time` in the past means
+"now" rather than "skip", and (instrumentId, trackIndex) is what actually
+addresses a voice — `voiceIndex` alone is not enough when two channels share an
+instrument.
+
+**`sampler-instrument.ts` — the voice.** `ModInstrument` moved almost verbatim
+(2,157 lines) as `TrackerSamplerInstrument`. The DSP was not touched: only the
+imports, the `SamplerState` type, the loop-mode comparisons, and `loadPatch`.
+
+`loadPatch(patch: Patch)` split in two. The library gets `load(config, data,
+sampleRate, channels, voiceCount)` and `loadSample(sample: TrackerSample)`; the
+app keeps a 109-line `ModInstrument extends TrackerSamplerInstrument` whose only
+job is `loadPatch` — decode the patch's sample asset, map its `SamplerState`,
+call `load`. That subclass exists because `song-bank.ts` calls `loadPatch`
+polymorphically across `InstrumentV2 | ModInstrument | PooledInstrument` and
+does `instanceof ModInstrument`; a subclass satisfies both.
+
+`sample-conditioning.ts` and `sample-quality.ts` moved with it, unchanged — as
+§4 predicted, both had zero imports.
+
+**`standalone-sink.ts` — the second implementation.** 452 lines against
+`TrackerSongBank`'s 2,664: one `TrackerSamplerInstrument` per instrument, a
+master gain, and a per-track voice map. No worklet pool, no `AudioSystem`, no
+user settings, no recorder, no mixer, no visualisation.
+
+```ts
+const { samples } = buildModTrackerSamples(parseMod(bytes));
+const sink = new StandaloneTrackerSink({ audioContext });
+await sink.loadSamples(samples);
+```
+
+**`track-voice-registry.ts` deliberately did not move.** §4 assumed it would.
+It imports `ActiveInstrument` from `song-bank.ts` and takes the bank's
+voice-replacement policy by injection (`isMonophonicChannel`,
+`getGateLeadTime`) — and its own header records D78's decision not to abstract
+that policy yet. The standalone sink needs far less: because
+`TrackerSamplerInstrument.noteOnAtTime` already takes a `trackIndex` and returns
+the voice it chose, remembering that per track is the whole of the addressing.
+Moving the registry would have meant abstracting a policy the code says to leave
+alone, to serve an implementation that does not need it.
+
+### Verification performed
+
+| Check                                   | Result                                         |
+| --------------------------------------- | ---------------------------------------------- |
+| `npm test`                              | 110 files, 1611 tests, all pass                |
+| `npx vue-tsc --noEmit -p tsconfig.json` | clean                                          |
+| `npm run lint`                          | clean                                          |
+| `npx quasar build`                      | Build succeeded                                |
+| `npm run check:tracker-playback-dist`   | 35 expected exports, all checks pass           |
+
+The 11 existing `ModInstrument` test files — loops, autovibrato, panning
+envelopes, pitch automation, sample offset, monophony — all pass unchanged
+against the moved class, which is what makes the move safe to believe.
+
+New: `packages/tracker-playback/src/__tests__/standalone-sink.spec.ts`, 12 tests.
+The app's suite covers `TrackerSongBank` heavily and the standalone sink not at
+all, so these cover what is specific to it: instrument addressing by slot id,
+OPL slots getting no instrument, per-voice routing through the track map and its
+fallback, clamping a past `time` to now, `notesOffForTrack` cutting only its own
+track, retrigger cutting before restarting, and master-volume clamping. Verified
+they fail as well as pass: breaking the voice lookup and the time clamp fails
+exactly two of them.
+
+### What is left
+
+Nothing, for the extraction. Two things a *consumer* would still want, neither
+blocking:
+
+- **A README.** Still the actual barrier to "use it in other apps".
+- **A worked end-to-end example** — bytes to sound in one file. The standalone
+  check gets to `PlaybackSong`; nothing yet shows wiring the engine's handlers
+  into a sink, which is the last thing a consumer has to work out for themselves.
+
+---
+
+## 4. Layer 4 — DONE (see §3e)
 
 Estimates assume familiarity with the code.
 
-### Layer 4 — the sound source (2–3 days)
-
-1. Declare the ~14-method interface listed in §2 as a `TrackerSink` (or similar)
-   type in the package, next to the `Scheduled*Handler` types it complements.
-2. Make the app's `TrackerSongBank` implement it (it already does structurally —
-   this is mostly a `satisfies` and a rename or two).
-3. Write a lean second implementation over `ModInstrument` + `track-voice-registry`
-   for standalone use: no worklet pool, no `AudioSystem`, no user settings, no
-   recorder. `ModInstrument` moves as-is; it is plain Web Audio.
-4. `sample-conditioning.ts` and `sample-quality.ts` are `ModInstrument`'s only
-   non-type dependencies — check them before assuming they come free.
-
-The app keeps `SongBank` (it needs the mixer, live patch editing, recording and
-visualisation the standalone sink will not have). Two implementations of one
-interface is the intended end state, not a temporary compromise.
+The plan for it is superseded by what was actually done; see §3e. Two of its
+assumptions turned out wrong and are worth recording: the sink is 21 members
+rather than ~14, and `track-voice-registry.ts` did not move (§3e says why).
 
 ---
 
@@ -712,45 +791,35 @@ Small things that cost time if you meet them cold.
 
 ## 8. Recommended next action
 
-**Layer 4, the sound source.** It is all that is left, and it is now unblocked
-in both directions: the library can produce a song to feed a sink, and
-`TrackerSample` gives a standalone instrument something to load that is not a
-`Patch`.
+**The extraction is done.** What is left is not more extraction; it is the
+things a first outside consumer would hit.
 
-The shape, from §4:
+1. **A README for the package.** It has been the top of this list since layer 1
+   and it is now the only real barrier: the code works, and nothing tells anyone
+   how to use it. It should show bytes-to-sound in one screen, say plainly which
+   exports touch the DOM (§2), and name the two sink implementations.
+2. **A worked example.** `scripts/check-tracker-playback-dist.mjs` proves the
+   library gets to a `PlaybackSong`; nothing yet shows the last hop — wiring the
+   engine's `Scheduled*Handler`s into a `TrackerSink` and starting the transport.
+   That is the one part a consumer still has to reverse-engineer from
+   `src/stores/tracker-playback-store.ts`.
+3. **Version and publish**, if it is ever meant to leave this repo. It is
+   `0.0.1` and unpublished; `files: ["dist"]` and the `exports` map are already
+   right for it.
 
-1. Declare the sink interface in the package, next to the `Scheduled*Handler`
-   types it complements.
-2. Make `TrackerSongBank` implement it — mostly a `satisfies` and a rename or
-   two.
-3. Write the lean second implementation over `ModInstrument` +
-   `track-voice-registry`, with no worklet pool, `AudioSystem`, user settings or
-   recorder.
+Optional, and only if something asks for it:
 
-Three corrections to §2 and §4, measured 2026-09-04 rather than at `417094f`:
+- **`track-voice-registry.ts`** could move if the app's voice-replacement policy
+  is ever abstracted (D78 says not yet). The standalone sink does not need it.
+- **`song-bank.ts`** stays in the app permanently. It is 2,664 lines of mixer,
+  live patch editing, recording and visualisation, and none of that belongs to
+  a module player.
 
-- **The sink is 21 members, not ~14.** The list in §2 missed the lifecycle and
-  non-scheduled ones: `audioContext`, `needsResume`, `ensureAudioContextRunning`,
-  `cancelAllScheduled`, `allNotesOff`, `noteOn`, `noteOff`.
-- **`sample-conditioning.ts` and `sample-quality.ts` come free.** §4 says to
-  check before assuming; checked — both have *zero* imports.
-  `audio-asset-encoder.ts` (377 lines) needs one type from `preset-types`.
-- **`ModInstrument`'s only `Patch` coupling is `loadPatch`.** `Patch` appears
-  four times in its 2,157 lines, all in that one method. With `TrackerSample`
-  now in the library, that becomes `loadSample(sample: TrackerSample)` and the
-  instrument can move as-is.
+### Where those queued items ended up
 
-`song-bank.ts` (2,654 lines) stays in the app permanently — it needs the mixer,
-live patch editing, recording and visualisation. Two implementations of one
-interface is the intended end state, not a compromise.
-
-Run the §5 checks after each step, not at the end.
-
-### Two smaller things worth queuing after
-
-- **The package has no README.** For "use it in other apps" that becomes the
-  actual barrier the moment the code works. It should show the three-line
-  parse-and-play path and say plainly which exports touch the DOM (§2).
+- **The package still has no README.** Promoted to §8 item 1 — it is now the
+  top of the list rather than a footnote, because the code it would document
+  finally does the whole job.
 - ~~**The standalone check in §5 should be a checked-in script.**~~ Done
   2026-09-04: `scripts/check-tracker-playback-dist.mjs`, wired as
   `npm run check:tracker-playback-dist`. It is not part of `npm test` — it needs
