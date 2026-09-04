@@ -3430,6 +3430,81 @@ per row advance) and names the remaining candidate — the per-frame resampled
 blit (~1.92× upscale at fractional scroll origins) — with device-pixel
 snapping proposed but deliberately not built blind.
 
+
+### D106 — Notes above B-6 kept their period domain (S3M)
+
+satellite_one.s3m's lead on channels 4/5, reported as "muffled, the different notes don't
+seem to separate properly, and volume is sometimes lower than it's supposed to be", and heard
+on XM and MOD too. Not a timbre problem: the notes were still gliding into each other.
+
+Those channels play a tone-portamento lead in octaves 6 and 7. `S3M_PERIOD_TABLE` held 72
+entries on the claim that "S3M's note byte spans six octave nibbles" — but st3play's
+`stnote2herz` shifts the base row by the *whole* octave nibble
+(`notespd[note & 0x0F] >> (note >> 4)`), so all eight values are playable. C-7 and up
+returned `undefined` from `s3mPeriodForNote`, and the importer wrote no `frequency`.
+
+The damage was downstream, not at import. A note-on with no resolved frequency did
+`state.currentPeriod = undefined` and fell back to equal temperament — and *nothing restores
+it*, so from that note on, every portamento, vibrato and arpeggio on the channel took the
+frequency-ratio fallback instead of period arithmetic. Measured on track 5's `G02`, the
+fallback moved **3.08 period units a tick where ST3 specifies 8**:
+
+```
+before   2349 -> 2366 -> 2383 -> 2400 -> 2418 -> 2435 -> 2453 -> 2471 -> 2489
+after    2349 -> 2399 -> 2452 -> 2486
+```
+
+Nine ticks instead of three: the slide was still moving a row and a half later, over the
+notes that followed. That is the whole of "the notes don't separate".
+
+Corpus-wide, not one file: 8.4% of satellite_one's notes sit above B-6, 18% of
+ascent_of_the_cloud_eagle's, and 11 other demo modules carry them.
+
+Two fixes, because the truncation and the sticky demotion are separate faults:
+
+- The table runs C-1..B-8 (96 entries) and `s3mPeriodForNote` accepts the note byte's full
+  nibble range. This also repairs glissando and arpeggio up there, and makes the function
+  agree with its own doc comment, which already said lo-nibbles `0xC..0xF` continue the scale
+  chromatically while the code returned `undefined` for them.
+- On an `amiga`-kind profile (MOD, S3M, XM-Amiga) a note-on now *derives* the period rather
+  than abandoning it. A period-domain format's slides are defined in periods; there is no
+  case where dropping out of that domain is right. XM-linear is untouched.
+
+**The general lesson, and it is D59's again**: the importer resolved these notes either way —
+the pitch was inaudibly close in both paths. Only the effect arithmetic downstream was wrong.
+Pin per-file and per-note pitch data *at the engine*, never at import, because import is
+where this class of bug is invisible.
+
+### D107 — Starting mid-song must prime the per-track instrument latch
+
+The same report's second cause, and independent of D106. Starting playback *on* pattern 3 —
+what the tracker does every time a pattern is selected and played — the lead emitted nothing
+at all on rows 0-2: no note, no pitch, no volume. Its first sound was row 3.
+
+D55/D77/D78 settled that *only a row that starts a note changes what a channel is playing*,
+so a tone-portamento row must not stamp its instrument number. D79 then recorded what carries
+the instrument instead: "the engine holds the per-track instrument across patterns and
+resolves it there." Both are right, and together they leave a hole — the engine's latch is
+only correct for a song played *through*. Start in the middle and it is empty, so
+`scheduleRow`'s `if (!instrumentId) continue;` drops every row until a plain note arrives.
+satellite_one's lead enters on three tone-portamento rows, so all three were lost.
+
+The fix belongs at neither end of the rule. Stamping the instrument at import would re-open
+D77 (the sixth re-derivation), and dropping the engine's guard would send commands to no
+voice. Instead `primeTrackInstrumentLatches()` replays *just the latch* along the order list
+up to the start position, reading only rows that carry an instrument — which by the rule above
+are exactly the note-starting rows. Existing latches are never overwritten, so resuming from
+pause is unaffected.
+
+Linear in the order list like `precomputeTonePortaTargets`, and approximate in the same way:
+a real play could have reached this pattern through a Bxx/Cxx jump. The last instrument to
+start a note on a channel is overwhelmingly the same either way, and it beats having none.
+
+**Worth noting for the next format**: D56 solved this identical problem at *import* time for
+MOD ("patterns are converted in play order so the channel sample latch survives a pattern
+boundary"). This is the playback-time twin, and the third context in which "replay the latch
+in play order" has been the answer.
+
 ### D104 — Round-2 verification: the drift is real on a fresh load; the
 playback-flicker path does not full-clear or double-paint — the remaining
 candidate is the resampled blit
@@ -3483,6 +3558,8 @@ Tests: `pattern-canvas.test.ts` playback-follow frame pin (new). Suite 1448
 
 | Date | Phase | Change |
 |---|---|---|
+| 2026-09-04 | fix | **Starting mid-song primes the per-track instrument latch** (D107). Selecting satellite_one.s3m's third pattern and pressing play dropped the lead's first three rows whole -- no note, no pitch, no volume -- because they are tone portamentos, which must not stamp an instrument (D55/D77/D78), and the engine latch that carries it (D79) is empty when playback starts in the middle. `primeTrackInstrumentLatches()` replays just the latch along the order list up to the start position, reading only instrument-bearing (i.e. note-starting) rows and never overwriting a live one. The playback-time twin of D56's import-time fix. Tests: `src/tests/tracker-midsong-instrument-latch.test.ts` (1 of 3 confirmed failing against the old code). |
+| 2026-09-04 | fix | **Notes above B-6 kept their period domain** (D106). satellite_one.s3m's lead reported as muffled, the notes not separating, the level sagging -- and the notes were in fact still gliding into each other. `S3M_PERIOD_TABLE` stopped at six octaves, but st3play shifts `notespd` by the whole octave nibble, so C-7 and up resolved to `undefined`; the note-on then cleared `currentPeriod` *stickily*, dropping the channel into the frequency-ratio fallback for every later portamento, vibrato and arpeggio -- 3.08 period units a tick against ST3's 8, so a three-tick slide took nine and ran over the following notes. Table extended to C-1..B-8; an amiga-kind profile now derives the period instead of abandoning it. 8.4% of satellite_one's notes are affected, 18% of ascent_of_the_cloud_eagle's, plus 11 other demo modules. D59's lesson again: import resolved these notes either way, only the effect arithmetic was wrong. Tests: `s3m-engine.test.ts` +3, `pitch-model.test.ts` pins updated (all confirmed failing against the old code). |
 | 2026-09-04 | fix | **D105 review round on 9ff8abf: two ownership-guard bugs found by review, both fixed.** (1) MEDIUM — `stopFling` cleared the gesture-ownership flags, so catching a coasting fling with a finger dropped ownership while the finger was still down; after the 350ms grace the next row advance re-centered under a held finger (a persistent yank, worse than the original flash). `stopFling` now only cancels the rAF: the coast-stop branch in `startFling` releases ownership when the decay finishes, `onTouchEnd`/`onTouchCancel` manage their own transitions, and `onTouchStart` re-asserts ownership for the catching finger right after stopping the coast. (2) LOW — `onTouchEnd` released ownership on ANY touchend; it now checks `e.touches.length` and only releases when the last finger is gone — a second finger lifting while the first stays down keeps ownership (a remaining finger's lift event still extends the grace). `touchcancel` keeps no check: the system aborts the whole gesture, every finger is gone. Tests: "catching a coasting fling keeps ownership past the grace while the finger holds" and "a second finger lifting while the first stays down keeps ownership" — both fail on 9ff8abf, pass with the fix. |
 | 2026-09-04 | fix | **Center-snap vs. pan: follow-playback and the touch pan fought over the view, painting one frame at the center-wrong position (D105).** Morten's round-3 ground truth: the flicker during panning-while-playing is the row indicator "always tries to draw itself at center of screen" while he has panned elsewhere. Trace: every playbackRow change flags `pendingFollow` (PatternCanvas.vue watch), and the next rAF's `applyFollow()` — which had no touch awareness — wrote `el.scrollTop = center` AND `viewTop = center`, and that SAME frame painted the grid + indicator at the center-wrong position; the next touchmove restored the pan (`panTarget` computes an absolute target from the touchstart origin, so it overwrites the follow write wholesale). One frame at center, then back — exactly the reported flash. The DOM grid's spec was read: its `scrollTarget` has no playback-vs-user guard (it re-centers on every row change while playing) but does declare the anti-fight principle "Avoid fighting with mouse selection; let user control scroll while selecting" — extended here to touch, because in the canvas's rAF paint pipeline a follow write interleaving between pan frames is visible as a full-frame flash. Fix: while a touch pan or its fling owns the view (and for a 350ms grace after the last gesture event), `applyFollow` does not write; a follow requested during the gesture is dropped, and the NEXT playbackRow change after the gesture re-centers (the DOM grid's follow rule). Paused panning has no center-writer (`applyFollow` returns on `!isPlaying`), so the flash needs playback. **D104's resampled-blit shimmer is superseded as the explanation of the reported flicker** — it remains an unverified residual candidate for any remaining grid-wide shimmer and was NOT claimed fixed. Tests (all fail on 706f73f, pass with the fix): `pattern-canvas.test.ts` "follow vs. pan" — active-pan row advance never paints the follow-center view (main fails: `expected 211 to be 115`), post-gesture grace then resume at the next row change, active fling holds follow off until the coast stops (the scrollTop-only pin passed on main by callback-order luck; the honest pin asserts the painted blit sy). Suite 1451 (21 pre-existing demo-corpus failures unchanged); tsc 48-error baseline; eslint/gitleaks clean. Behavior decision for Morten: after he lifts his finger, the view STAYS where he panned through the gesture + a 350ms grace, then re-centers on the next row step — say the word if it should stay put until playback is restarted instead. |
 | 2026-09-04 | fix | **Gutter pill scrolls with the pattern — D102's viewport-edge pin was the drift itself** (D103). Morten's round-2 phone report: the indicator still clings to the screen's left edge while panning right and slides into the tracks pill. Trace: the DOM grid (the spec) scrolls its row column with the tracks on the phone layout (`TrackerPattern.vue` ≤900px media query), the canvas's static bitmap pans its labels on every viewport, and the hit test already treated the gutter as scrolling content — only `drawActiveRowBar`'s `gutterScrollX` pin disagreed, parking the pill at screen x 0 over scrolled-away content. The pin is deleted: the pill now rides the row-number column's pattern-space rect [−78, 0) and lands at screen x −viewLeft — on the labels at every pan position, edge-adjacent to the tracks pill, never overlapping. Three rewritten/new tests confirmed failing against b408293 before the fix; the round-1 pins were blind because each asserted one half of the geometry against the same wrong desktop assumption, and no test compared pill x with label x. The pill drift is fixed and test-verified; **the phone flicker (playback + panning) is NOT fixed — OPEN issue persisting after D102/D103, round-3 investigation of the playback auto-scroll repaint path required** (D104 traces the frame plumbing and names the resampled-blit candidate). Suite 1447 (21 pre-existing demo-corpus failures unchanged); tsc 48-error baseline; eslint/gitleaks/quasar build clean. |

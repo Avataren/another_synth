@@ -368,6 +368,73 @@ export class PlaybackEngine {
   }
 
   /**
+   * Give each channel the instrument it would be holding if the song had been
+   * played from the top up to the current start position.
+   *
+   * D55/D77/D78 settled that *only a row that starts a note changes what a
+   * channel is playing*, so a tone portamento row must not stamp its
+   * instrument number: the row's number says what a new note would use, and
+   * these rows start no note. D79 recorded what carries the instrument
+   * instead -- "the engine holds the per-track instrument across patterns and
+   * resolves it there" -- and that is true while the song plays through.
+   *
+   * It is not true when playback *starts* partway in, which is what the
+   * tracker does every time a pattern is selected and played. The latch is
+   * empty, so `scheduleRow` finds no instrument for those rows and drops them
+   * whole: no note, no pitch, no volume. satellite_one.s3m's lead enters on
+   * three tone-portamento rows, and starting on its third pattern lost all
+   * three -- the melody came in late and quiet, which is what a channel with
+   * nothing latched sounds like.
+   *
+   * So walk the order list up to the start position and replay just the
+   * latch. Only rows carrying an instrument are read, which by the rule above
+   * are exactly the note-starting rows. Existing latches are never
+   * overwritten, so resuming from pause (which keeps its effect states) is
+   * unaffected.
+   *
+   * Linear in the order list, like `precomputeTonePortaTargets`, and
+   * approximate in the same way: Bxx/Cxx jumps taken during a real play could
+   * have reached this pattern by another route. The last instrument to start
+   * a note on a channel is overwhelmingly the same either way, and it beats
+   * having none.
+   */
+  private primeTrackInstrumentLatches(): void {
+    if (!this.song) return;
+    const sequence = this.song.sequence;
+    const upTo = Math.min(this.currentSequenceIndex, sequence.length - 1);
+    if (upTo < 0) return;
+
+    const latched = new Map<number, string>();
+    for (let index = 0; index <= upTo; index += 1) {
+      const pattern = this.patternsById.get(sequence[index] as string);
+      if (!pattern) continue;
+      // Rows at or after the start row have not been played yet.
+      const rowLimit =
+        index === upTo ? this.position.row : Number.POSITIVE_INFINITY;
+      pattern.tracks.forEach((track, trackIndex) => {
+        let bestRow = -1;
+        let bestId: string | undefined;
+        for (const step of track.steps) {
+          if (!step.instrumentId) continue;
+          if (step.row >= rowLimit) continue;
+          // `steps` is not guaranteed to be row-ordered, so take the latest
+          // qualifying row rather than the last one visited.
+          if (step.row > bestRow) {
+            bestRow = step.row;
+            bestId = step.instrumentId;
+          }
+        }
+        if (bestId !== undefined) latched.set(trackIndex, bestId);
+      });
+    }
+
+    for (const [trackIndex, instrumentId] of latched) {
+      const state = this.getTrackEffectState(trackIndex);
+      state.instrumentId ??= instrumentId;
+    }
+  }
+
+  /**
    * Precompute tone portamento targets (3xx) across the full song sequence.
    *
    * For rows that have a 3xx effect but no note, ProTracker players often
@@ -639,6 +706,7 @@ export class PlaybackEngine {
     } else if (this.noteHandler) {
       // Fall back to tick-based playback
       this.applyTimingForStartPosition();
+      this.primeTrackInstrumentLatches();
       this.dispatchStepsForRow(this.position.row);
       this.scheduler.start((deltaMs) => this.step(deltaMs));
     }
@@ -756,6 +824,9 @@ export class PlaybackEngine {
     this.nextRowTime = now;
     // Reset effect states for clean playback start
     this.resetEffectStates();
+    // ...then give each channel back the instrument it would be holding had
+    // the song been played from the top to here (D79's carrier).
+    this.primeTrackInstrumentLatches();
     // Discard any rows queued for display by a previous run.
     this.scheduledPositions.length = 0;
 
