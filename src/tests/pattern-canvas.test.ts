@@ -511,6 +511,53 @@ function dispatchMouse(
   );
 }
 
+/**
+ * jsdom has no TouchEvent; the handlers only read touches[0],
+ * changedTouches[0], cancelable and timeStamp, so a plain Event with those
+ * pinned on stands in for one.
+ */
+function dispatchTouch(
+  target: EventTarget,
+  type: 'touchstart' | 'touchmove' | 'touchend' | 'touchcancel',
+  x: number,
+  y: number,
+  timeStamp: number,
+): void {
+  const event = new Event(type, {
+    bubbles: true,
+    cancelable: true,
+  }) as unknown as TouchEvent;
+  const point = { clientX: x, clientY: y, identifier: 0 };
+  const ended = type === 'touchend' || type === 'touchcancel';
+  Object.defineProperty(event, 'touches', { value: ended ? [] : [point] });
+  Object.defineProperty(event, 'changedTouches', { value: [point] });
+  Object.defineProperty(event, 'timeStamp', { value: timeStamp });
+  target.dispatchEvent(event);
+}
+
+/** jsdom does not fire scroll on scrollTop writes; the test plays the browser. */
+function fireScroll(el: HTMLElement): void {
+  el.dispatchEvent(new Event('scroll'));
+}
+
+/**
+ * jsdom does no layout: scrollHeight/scrollWidth are 0, so maxScrollTop()
+ * and maxScrollLeft() would clamp every pan to 0. Pin the extents the
+ * spacer and the hscroll extent define in a real browser.
+ */
+function installScrollExtents(wrapper: MountedCanvas): void {
+  const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+  const hscroll = wrapper.find('.canvas-hscroll').element as HTMLElement;
+  Object.defineProperty(scroller, 'scrollHeight', {
+    value: 32 * rowPitchPx,
+    configurable: true,
+  });
+  Object.defineProperty(hscroll, 'scrollWidth', {
+    value: GUTTER_WIDTH_PX + totalTracksWidth(2, false),
+    configurable: true,
+  });
+}
+
 // ---------------------------------------------------------------------
 // Mount / DOM structure
 // ---------------------------------------------------------------------
@@ -950,6 +997,154 @@ describe('playback follow: one coalesced frame per row advance', () => {
       // And the pills were repainted on the new row, once.
       expect(newestPills(overlayCtx, overlayFrameStart)).toHaveLength(2);
     }
+    wrapper.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Follow vs. pan: the user owns the view during a touch gesture
+// ---------------------------------------------------------------------
+
+/**
+ * The 2026-09-04 round-3 report: while playing and panning, one frame (or
+ * so) painted the indicator/grid at the CENTER-wrong position. Trace: the
+ * row watcher flags pendingFollow; the next rAF's applyFollow() had no
+ * touch awareness and wrote el.scrollTop = center + viewTop = center, and
+ * that SAME frame painted it; the next touchmove restored the pan (panTarget
+ * computes from the touchstart origin, so it overwrites the follow write
+ * wholesale). Fix: while a touch pan or fling owns the view — and for a
+ * grace period after — follow does not write; the next playbackRow change
+ * after the gesture re-centers (the DOM grid's follow rule).
+ */
+describe('follow vs. pan (the user owns the view mid-gesture)', () => {
+  /** Follow center target for a row at VIEWPORT_H = 400. */
+  const centerOf = (row: number) =>
+    Math.min(Math.max(0, row * rowPitchPx - (VIEWPORT_H - rowHeightPx) / 2), 32 * rowPitchPx - VIEWPORT_H);
+
+  let nowMs: number;
+  let nowSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    nowMs = 1000;
+    nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+  });
+
+  afterEach(() => {
+    nowSpy.mockRestore();
+  });
+
+  function panView(wrapper: MountedCanvas, fromTop: number, dy: number): number {
+    installScrollExtents(wrapper);
+    const canvas = wrapper.findAll('canvas.canvas-layer')[1]!.element;
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    dispatchTouch(canvas, 'touchstart', 100, 200, nowMs);
+    nowMs += 50;
+    dispatchTouch(canvas, 'touchmove', 100, 200 + dy, nowMs);
+    fireScroll(scroller);
+    return fromTop - dy;
+  }
+
+  it('a row advance during an active pan never paints the follow-center view', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame(); // mount: follow centers row 10
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const { visible } = layerCanvases(wrapper);
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+    expect(scroller.scrollTop).toBe(centerOf(10)); // sanity: follow ran
+
+    // Finger lands and pans 60px: the view is the user's now.
+    const panTop = panView(wrapper, centerOf(10), 60);
+    await nextTick();
+    pumpFrame(); // paints the pan view
+    expect(scroller.scrollTop).toBe(panTop);
+
+    // Playback advances a row WHILE the finger is still down. The follow
+    // must not write — and the frame must not paint — the center position.
+    await wrapper.setProps({ playbackRow: 11 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(panTop);
+    expect(drawImageOn(viewCtx).at(-1)!.sy).toBeCloseTo(panTop, 5);
+
+    // The pan continues; the next frame paints the pan view, not a snap-back.
+    const canvas = wrapper.findAll('canvas.canvas-layer')[1]!.element;
+    nowMs += 50;
+    dispatchTouch(canvas, 'touchmove', 100, 270, nowMs);
+    fireScroll(scroller);
+    await nextTick();
+    pumpFrame();
+    expect(drawImageOn(viewCtx).at(-1)!.sy).toBeCloseTo(panTop - 10, 5);
+    wrapper.unmount();
+  });
+
+  it('follow stays off through the post-gesture grace, then resumes at the next row change', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const panTop = panView(wrapper, centerOf(10), 60);
+    await nextTick();
+    pumpFrame();
+
+    // Lift without a throw: the release is long after the last move, so no
+    // fling — but the grace period still owns the view briefly.
+    const canvas = wrapper.findAll('canvas.canvas-layer')[1]!.element;
+    nowMs += 300; // 300ms after the move: inside the 350ms grace
+    dispatchTouch(canvas, 'touchend', 100, 260, nowMs);
+
+    await wrapper.setProps({ playbackRow: 11 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(panTop); // grace: no snap
+
+    // Once the grace is gone, the NEXT row change re-centers — the DOM
+    // grid's follow rule (center on every row change while playing).
+    nowMs += 500;
+    await wrapper.setProps({ playbackRow: 12 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(centerOf(12));
+    wrapper.unmount();
+  });
+
+  it('an active fling holds follow off until the coast stops', async () => {
+    const wrapper = mountCanvas({ autoScroll: true, isPlaying: true, playbackRow: 10 });
+    pumpFrame();
+    const scroller = wrapper.find('.canvas-scroller').element as HTMLElement;
+    const canvas = wrapper.findAll('canvas.canvas-layer')[1]!.element;
+    const { visible } = layerCanvases(wrapper);
+    const viewCtx = contexts.find((c) => c.canvas === visible)!;
+    const followTarget = centerOf(11);
+    installScrollExtents(wrapper);
+
+    // A fast upward throw: two moves 16ms apart, released mid-motion.
+    dispatchTouch(canvas, 'touchstart', 100, 200, nowMs);
+    dispatchTouch(canvas, 'touchmove', 100, 230, nowMs + 16);
+    dispatchTouch(canvas, 'touchmove', 100, 260, nowMs + 32);
+    fireScroll(scroller);
+    nowMs += 40;
+    dispatchTouch(canvas, 'touchend', 100, 260, nowMs); // vy ≈ −1.875 px/ms
+
+    // Row advance while the coast is running: the follow must not write —
+    // neither the scroller NOR the paint. (The scrollTop assertion alone is
+    // blind on main: the fling step queued after the follow frame overwrites
+    // the write; the PAINTED view is what flashed for Morten.)
+    await wrapper.setProps({ playbackRow: 11 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).not.toBe(followTarget);
+    expect(drawImageOn(viewCtx).at(-1)!.sy).not.toBeCloseTo(followTarget, 5);
+
+    // Coast to a stop (decay 0.94/frame from ≈1.875 needs ~75 frames), let
+    // the grace pass, and the next row change re-centers.
+    for (let i = 0; i < 120; i++) {
+      nowMs += 16;
+      pumpFrame();
+    }
+    nowMs += 500;
+    await wrapper.setProps({ playbackRow: 12 } as never);
+    await nextTick();
+    pumpFrame();
+    expect(scroller.scrollTop).toBe(centerOf(12));
     wrapper.unmount();
   });
 });

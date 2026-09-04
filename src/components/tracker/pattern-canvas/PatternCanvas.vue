@@ -968,6 +968,35 @@ watch(
  */
 let pendingFollow = false;
 
+/**
+ * Gesture ownership of the view. While a touch pan or its fling owns the
+ * scrollers — and for a short grace period after the last gesture event —
+ * follow-playback must not write the view: the user owns it. The DOM grid's
+ * own anti-fight rule (TrackerPattern: "Avoid fighting with mouse selection;
+ * let user control scroll while selecting") extended to touch, because here
+ * the fight is visible as paint: a follow write interleaves between pan
+ * frames and the same rAF paints one full frame at the center-wrong position
+ * before the next touchmove restores the pan (the 2026-09-04 round-3
+ * report). Like the DOM grid, follow resumes at the NEXT playbackRow change
+ * once the gesture (and the grace period) is over — it never re-centers on
+ * its own mid-playback. A follow requested during the gesture is dropped,
+ * not queued: applying a center computed for a row the user scrolled away
+ * from would be the same snap we are suppressing.
+ */
+const FOLLOW_GRACE_AFTER_GESTURE_MS = 350;
+/** True while a finger is down or a fling is coasting. */
+let gestureActive = false;
+/** performance.now() deadline that outlives the gesture briefly. */
+let gestureOwnedUntil = -1;
+
+function markGestureActivity(): void {
+  gestureOwnedUntil = performance.now() + FOLLOW_GRACE_AFTER_GESTURE_MS;
+}
+
+function gestureOwnsView(): boolean {
+  return gestureActive || performance.now() < gestureOwnedUntil;
+}
+
 function requestFollow(): void {
   pendingFollow = true;
   schedule([]); // a frame may not be queued yet (e.g. the mount path)
@@ -978,6 +1007,9 @@ function applyFollow(): boolean {
   if (!pendingFollow) return false;
   pendingFollow = false;
   if (!props.autoScroll || !props.isPlaying) return false;
+  // A pan or fling in flight (or just finished) owns the view: no write, no
+  // paint at the follow target. The next playbackRow change re-requests.
+  if (gestureOwnsView()) return false;
   const row = props.playbackRow;
   if (row < 0 || row >= props.rows) return false;
   const y = rowY(row);
@@ -1189,12 +1221,18 @@ function stopFling(): void {
   if (flingRaf === null) return;
   cancelAnimationFrame(flingRaf);
   flingRaf = null;
+  gestureActive = false;
+  markGestureActivity();
 }
 
 function onTouchStart(e: TouchEvent): void {
   lastTouchAt = e.timeStamp;
   const touch = e.touches[0];
   if (!touch) return;
+  // The finger owns the view from the moment it lands: a row advance under
+  // it must not yank the grid to center mid-gesture.
+  gestureActive = true;
+  markGestureActivity();
   // A touch during a fling stops it where it is, as every scrollable
   // surface does -- otherwise the grid keeps sliding under the finger.
   stopFling();
@@ -1215,6 +1253,9 @@ function onTouchMove(e: TouchEvent): void {
   // The gesture owns both axes now; letting the browser also scroll the
   // page (or this scroller) would double every vertical drag.
   if (e.cancelable) e.preventDefault();
+  // Every move re-arms the ownership deadline, so a pan that pauses between
+  // two fingers' worth of frames is still covered.
+  markGestureActivity();
   touchSamples.push({ x: touch.clientX, y: touch.clientY, time: e.timeStamp });
   if (touchSamples.length > 8) touchSamples.shift();
   scrollTo(
@@ -1226,6 +1267,8 @@ function onTouchEnd(e: TouchEvent): void {
   lastTouchAt = e.timeStamp;
   const origin = touchOrigin;
   touchOrigin = null;
+  gestureActive = false;
+  markGestureActivity();
   if (!origin) return;
   const touch = e.changedTouches[0];
   if (touch && isTap(origin, touch.clientX, touch.clientY, e.timeStamp)) {
@@ -1242,12 +1285,17 @@ function onTouchEnd(e: TouchEvent): void {
 function onTouchCancel(): void {
   touchOrigin = null;
   touchSamples = [];
+  gestureActive = false;
+  markGestureActivity();
 }
 
 /** Coast to a stop after the finger leaves, in scroll-space px/ms. */
 function startFling(vx: number, vy: number): void {
   let velocityX = vx;
   let velocityY = vy;
+  // The coast is still the user's gesture: follow stays suppressed until it
+  // stops (or a new touch cancels it), however long the decay runs.
+  gestureActive = true;
   let last = performance.now();
   const step = (now: number) => {
     flingRaf = null;
@@ -1271,7 +1319,14 @@ function startFling(vx: number, vy: number): void {
     const decay = Math.pow(FLING_DECAY, dt / (1000 / 60));
     velocityX *= decay;
     velocityY *= decay;
-    if (Math.hypot(velocityX, velocityY) < FLING_STOP_VELOCITY) return;
+    if (Math.hypot(velocityX, velocityY) < FLING_STOP_VELOCITY) {
+      // Coast finished: the ownership grace starts here, so the first row
+      // change after the pattern settles re-centers (the DOM-grid rule).
+      flingRaf = null;
+      gestureActive = false;
+      markGestureActivity();
+      return;
+    }
     flingRaf = requestAnimationFrame(step);
   };
   flingRaf = requestAnimationFrame(step);
