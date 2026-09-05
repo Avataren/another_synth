@@ -1,10 +1,20 @@
 import { defineBoot } from '#q-app/wrappers';
+import { useUserSettingsStore } from 'stores/user-settings-store';
 import { useInstrumentStore } from 'stores/instrument-store';
 import { usePatchStore } from 'stores/patch-store';
 import { useNodeStateStore } from 'stores/node-state-store';
 import { useMacroStore } from 'stores/macro-store';
 
 export default defineBoot(async () => {
+    // Settings first, and before the AudioSystem exists: loading them runs
+    // any pending migration and writes it back, and `AudioSystem` reads the
+    // sample rate straight out of localStorage (it is built before Pinia is
+    // necessarily available, and the rate is fixed for the life of the
+    // context). Constructing the context first would read the pre-migration
+    // rate, and the new one would not arrive until the reload after this
+    // one.
+    useUserSettingsStore();
+
     const instrumentStore = useInstrumentStore();
     const patchStore = usePatchStore();
     const nodeStateStore = useNodeStateStore();

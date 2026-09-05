@@ -295,6 +295,19 @@ function saveSettings(settings: UserSettings): void {
 export const useUserSettingsStore = defineStore('userSettings', () => {
   const settings = ref<UserSettings>(loadSettings());
 
+  // Write the loaded blob straight back, so a migration reaches storage.
+  //
+  // `loadSettings` migrates in memory and the watcher below only fires on a
+  // *change*, so a migration used to survive exactly as long as the tab: the
+  // stored blob kept its old version and its old values, and the migration
+  // re-ran, identically, on every load. That was invisible while migrated
+  // values were only ever read back through this store -- and stopped being
+  // invisible when `AudioSystem` began reading `audioSampleRate` from
+  // localStorage directly. It builds the context before Pinia exists, so it
+  // read the pre-migration rate every time, and a handheld stayed at 96 kHz
+  // no matter how often it was reloaded.
+  saveSettings(settings.value);
+
   /**
    * Push the sample-quality settings into the audio layer.
    *

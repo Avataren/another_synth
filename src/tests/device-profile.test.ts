@@ -118,3 +118,35 @@ describe('settings migration v3 -> v4', () => {
     expect(migrated.sampleOversampleFactor).toBe(4);
   });
 });
+
+describe('migration persistence', () => {
+  /**
+   * A migration that only lives in memory is not a migration.
+   *
+   * `AudioSystem` reads `audioSampleRate` out of localStorage directly -- it
+   * builds the context before Pinia is necessarily available, and the rate is
+   * fixed for the life of that context. So a migrated value that never
+   * reaches storage never reaches the engine: the handheld default was
+   * computed on every load, and every load still built a 96 kHz context.
+   */
+  it('writes the migrated blob back to storage on load', async () => {
+    asTouchDevice();
+    localStorage.setItem(
+      'synth-user-settings',
+      JSON.stringify({ settingsVersion: 3, audioSampleRate: 96000 }),
+    );
+
+    const { createPinia, setActivePinia } = await import('pinia');
+    setActivePinia(createPinia());
+    const { useUserSettingsStore } = await import(
+      'src/stores/user-settings-store'
+    );
+    useUserSettingsStore();
+
+    const stored = JSON.parse(
+      localStorage.getItem('synth-user-settings') ?? '{}',
+    ) as { audioSampleRate?: number; settingsVersion?: number };
+    expect(stored.audioSampleRate).toBe(48000);
+    expect(stored.settingsVersion).toBe(4);
+  });
+});
