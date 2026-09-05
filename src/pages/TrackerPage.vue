@@ -869,6 +869,14 @@ import TrackWaveform from 'src/components/tracker/TrackWaveform.vue';
 import TrackerSpectrumAnalyzer from 'src/components/tracker/TrackerSpectrumAnalyzer.vue';
 import DemoSongBrowser from 'src/components/tracker/DemoSongBrowser.vue';
 import type { DemoSong } from 'src/composables/useDemoManifest';
+import {
+  useDemoManifest,
+  demoSongUrl,
+} from 'src/composables/useDemoManifest';
+import {
+  findDemoSongByFile,
+  readDemoLinkParam,
+} from 'src/composables/demo-deep-link';
 import StereoLevelMeter from 'src/components/tracker/StereoLevelMeter.vue';
 import AudioKnobComponent from 'src/components/AudioKnobComponent.vue';
 import PatchPicker from 'src/components/PatchPicker.vue';
@@ -2143,6 +2151,47 @@ async function handleDemoSelect(url: string, _song: DemoSong) {
 }
 
 /**
+ * A demo deep link (`?demo=<manifest path>`) loads that song once the page
+ * is up. It loads but does not auto-start: browsers refuse playback without
+ * a user gesture, and a link that silently fails to start is worse than
+ * one that waits for the play button.
+ */
+async function loadDemoDeepLink(): Promise<void> {
+  const file = readDemoLinkParam(window.location.search);
+  if (!file) return;
+  // Coming back to the tracker with something already playing (returning
+  // from the instrument editor, a running jukebox) must not clobber it: the
+  // deep link is for a fresh arrival.
+  if (isPlaying.value || isPaused.value) return;
+  const { collections, load } = useDemoManifest();
+  try {
+    await load();
+    const song = findDemoSongByFile(collections.value, file);
+    if (!song) {
+      $q.notify({
+        type: 'warning',
+        message: 'The linked song is no longer in the demo list.',
+        timeout: 4000,
+      });
+      return;
+    }
+    await loadSongFromUrl(demoSongUrl(song));
+    $q.notify({
+      type: 'positive',
+      message: `Loaded “${song.title}” from the link.`,
+      timeout: 3000,
+    });
+  } catch (error) {
+    console.error('[Demo deep link] could not load the linked song', error);
+    $q.notify({
+      type: 'negative',
+      message: 'Could not load the linked demo song.',
+      timeout: 4000,
+    });
+  }
+}
+
+/**
  * The jukebox is a page of its own: it plays the demo collection without
  * touching the song loaded here, and puts this song back on the way out.
  */
@@ -2373,6 +2422,10 @@ onMounted(async () => {
 
   // Re-register the track audio node setter since it was cleared on unmount
   claimTrackAudioNodeSetter();
+
+  // Last, and not awaited: a slow manifest or module must not hold up the
+  // page's own keyboard/visualiser setup above.
+  void loadDemoDeepLink();
 });
 
 watch(
