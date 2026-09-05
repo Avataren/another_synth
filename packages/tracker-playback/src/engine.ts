@@ -264,8 +264,20 @@ export class PlaybackEngine {
   /** Track worst lead deficit observed while scheduling late */
   private maxLeadDeficit = 0;
 
-  /** Per-track effect state for FT2-style effects */
-  private trackEffectStates: Map<number, TrackEffectState> = new Map();
+  /** Per-track effect state for FT2-style effects.
+   *
+   *  A dense array indexed by trackIndex (tracks <= 32), replacing the Map
+   *  this used to be: the per-step lookup was a Map.get where a plain index
+   *  suffices, and the sparse iteration below only ever walks track indices.
+   *  Holes are `undefined` entries, skipped on iteration.
+   */
+  private trackEffectStates: (TrackEffectState | undefined)[] = [];
+  /**
+   * Scratch set of track indices that have a step on the row currently
+   * being scheduled. Cleared and refilled per row, never retained across
+   * calls, so one instance is reused instead of a fresh Set per row.
+   */
+  private tracksWithStepsScratch: Set<number> = new Set();
   /** Debug: last row we logged a pitch per track */
 
   /** Position/pattern commands to process (Bxx, Dxx) */
@@ -627,7 +639,7 @@ export class PlaybackEngine {
       this.initialGlobalVolume = 1.0;
     }
     // Track states cache the profile, so drop any built for the previous song.
-    this.trackEffectStates.clear();
+    this.trackEffectStates.length = 0;
     // Precompute tone portamento targets (3xx) across the full sequence so
     // rows with 3xx but no note can still slide towards the next note in
     // the same track, even when it lives in the next pattern.
@@ -1129,11 +1141,10 @@ export class PlaybackEngine {
    * Get or create effect state for a track
    */
   private getTrackEffectState(trackIndex: number): TrackEffectState {
-    let state = this.trackEffectStates.get(trackIndex);
-    if (!state) {
-      state = createTrackEffectState(this.formatProfile);
-      this.trackEffectStates.set(trackIndex, state);
-    }
+    const existing = this.trackEffectStates[trackIndex];
+    if (existing) return existing;
+    const state = createTrackEffectState(this.formatProfile);
+    this.trackEffectStates[trackIndex] = state;
     return state;
   }
 
@@ -1210,7 +1221,7 @@ export class PlaybackEngine {
    * Reset all effect states (called on stop/load)
    */
   private resetEffectStates(): void {
-    this.trackEffectStates.clear();
+    this.trackEffectStates.length = 0;
     this.lastTrackNote.clear();
     this.pendingPosCommand = null;
     this.patternLoopStart = 0;
@@ -1381,6 +1392,26 @@ export class PlaybackEngine {
     const secPerRow = msPerRow / 1000;
 
     // Second pass: Process each step with effects
+    //
+    // dispatchCommands only reads the context, never retains it (see its
+    // body: every handler call gets a freshly built event object holding
+    // copied scalar fields), so one mutable context object is reused across
+    // the row's steps, and one across the row's ticks, rather than a fresh
+    // allocation per step.
+    const context: {
+      instrumentId: string;
+      row: number;
+      trackIndex: number;
+      time: number;
+      voiceIndex: number;
+    } = { instrumentId: '', row, trackIndex: 0, time, voiceIndex: 0 };
+    const tickContext: {
+      instrumentId: string;
+      row: number;
+      trackIndex: number;
+      time: number;
+      voiceIndex: number;
+    } = { instrumentId: '', row, trackIndex: 0, time, voiceIndex: 0 };
     if (steps) {
       for (const step of steps) {
         const trackIndex = step.trackIndex;
@@ -1432,13 +1463,10 @@ export class PlaybackEngine {
           }
         }
 
-        const context = {
-          instrumentId,
-          row,
-          trackIndex: step.trackIndex,
-          time,
-          voiceIndex: effectState.voiceIndex,
-        };
+        context.instrumentId = instrumentId;
+        context.trackIndex = step.trackIndex;
+        context.voiceIndex = effectState.voiceIndex;
+        context.time = time;
 
         // Handle note-off
         if (step.isNoteOff) {
@@ -1649,10 +1677,10 @@ export class PlaybackEngine {
           } else {
             // Complex effects (vibrato, tremolo, arpeggio, etc.) still need per-tick processing
             const ticksPerRow = this.timingSystem.getTicksPerRow();
-            // dispatchCommands only reads the context, never retains it, so a
-            // single mutable object is reused across the row's ticks rather
-            // than cloning `context` once per tick.
-            const tickContext = { ...context, time };
+            tickContext.instrumentId = context.instrumentId;
+            tickContext.trackIndex = context.trackIndex;
+            tickContext.voiceIndex = context.voiceIndex;
+            tickContext.time = time;
             for (let tick = 1; tick < ticksPerRow; tick++) {
               tickContext.time = time + tick * secPerTick;
               if (hasTickEffect && step.effect) {
@@ -1685,9 +1713,21 @@ export class PlaybackEngine {
     // slide falling far past its target through order 2. S3M keeps the
     // continue-through-blanks behaviour for 2nd Reality's order 45; see
     // `tonePortaContinuesThroughEmptyRows` in format-profile.ts.
-    const tracksWithSteps = new Set(steps?.map((step) => step.trackIndex));
-    for (const [trackIndex, effectState] of this.trackEffectStates) {
+    const tracksWithSteps = this.tracksWithStepsScratch;
+    tracksWithSteps.clear();
+    if (steps) {
+      for (const step of steps) {
+        tracksWithSteps.add(step.trackIndex);
+      }
+    }
+    for (
+      let trackIndex = 0;
+      trackIndex < this.trackEffectStates.length;
+      trackIndex++
+    ) {
+      const effectState = this.trackEffectStates[trackIndex];
       if (
+        !effectState ||
         effectState.profile.tonePortaContinuesThroughEmptyRows !== true ||
         tracksWithSteps.has(trackIndex) ||
         !effectState.tonePortaActive ||
@@ -1698,15 +1738,15 @@ export class PlaybackEngine {
         continue;
       }
 
-      const context = {
-        instrumentId: effectState.instrumentId,
-        row,
-        trackIndex,
-        time,
-        voiceIndex: effectState.voiceIndex,
-      };
+      context.instrumentId = effectState.instrumentId;
+      context.trackIndex = trackIndex;
+      context.voiceIndex = effectState.voiceIndex;
+      context.time = time;
       const ticksPerRow = this.timingSystem.getTicksPerRow();
-      const tickContext = { ...context, time };
+      tickContext.instrumentId = context.instrumentId;
+      tickContext.trackIndex = trackIndex;
+      tickContext.voiceIndex = context.voiceIndex;
+      tickContext.time = time;
       for (let tick = 1; tick < ticksPerRow; tick++) {
         tickContext.time = time + tick * secPerTick;
         const tickBatch = processEffectTickN(
