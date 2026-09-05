@@ -278,26 +278,31 @@ export function useTrackerFileIO(context: TrackerFileIOContext) {
     console.log('[FileIO] Stopping playback before load');
     context.stopPlayback();
 
-    // Ensure AudioContext is running before loading instruments
-    // This prevents silent playback when loading songs with many instruments
-    console.log('[FileIO] Ensuring AudioContext is running...');
+    // Best-effort, bounded resume attempt. Without a user gesture the
+    // browser keeps the context suspended and leaves `resume()`'s promise
+    // pending indefinitely (fresh-tab deep links: ?demo=<file>), so awaiting
+    // it unconditionally would hang the whole song load. The song must load
+    // fully while suspended; only playback needs the running context. Keep
+    // the "click anywhere to enable audio" warning.
+    console.log('[FileIO] Ensuring AudioContext is running (best effort)...');
     const audioCtx = context.songBank.audioContext;
     if (audioCtx.state !== 'running') {
-      console.log(`[FileIO] AudioContext state is ${audioCtx.state}, attempting to resume...`);
+      console.log(`[FileIO] AudioContext state is ${audioCtx.state}, attempting bounded resume...`);
       try {
-        await audioCtx.resume();
-        // Use string variable to avoid TypeScript's type narrowing issue
-        const currentState: string = audioCtx.state;
-        if (currentState === 'running') {
-          console.log('[FileIO] AudioContext successfully resumed');
-        } else {
-          console.warn(
-            '[FileIO] AudioContext did not resume. Click anywhere on the page to enable audio.',
-            `Current state: ${currentState}`
-          );
-        }
+        await Promise.race([
+          audioCtx.resume(),
+          new Promise((resolve) => setTimeout(resolve, 300)),
+        ]);
       } catch (err) {
         console.error('[FileIO] Failed to resume AudioContext:', err);
+      }
+      // Use string variable to avoid TypeScript's type narrowing issue
+      const currentState: string = audioCtx.state;
+      if (currentState !== 'running') {
+        console.warn(
+          '[FileIO] AudioContext did not resume. Loading the song anyway; click anywhere on the page to enable audio.',
+          `Current state: ${currentState}`
+        );
       }
     } else {
       console.log('[FileIO] AudioContext already running');

@@ -70,6 +70,14 @@ export interface SongBankSlot {
   patch: Patch;
 }
 
+/**
+ * Bounded best-effort resume wait for song-load paths: a fresh-tab deep link
+ * has no user gesture, so the context stays suspended and resume()'s promise
+ * may never settle. Song loading must never wait longer than this for audio;
+ * instruments are built while suspended and rebuilt on first gesture.
+ */
+const SYNC_SLOTS_RESUME_WAIT_MS = 500;
+
 export interface ActiveInstrument {
   instrument: InstrumentV2 | ModInstrument | PooledInstrument;
   patchId: string;
@@ -501,20 +509,23 @@ export class TrackerSongBank implements TrackerSink {
         }
       }
 
-      // Resume context if suspended, and set flag so we rebuild instruments
-      let contextRunning = true;
+      // Bounded, best-effort resume attempt. The sync itself must not depend
+      // on a running context: fresh-tab deep links load songs while the
+      // context is still suspended, so instruments are built either way. If
+      // the context is still suspended afterwards, needsAudioContextResume
+      // stays armed and the onstatechange handler rebuilds instruments via
+      // syncSlots on the first user gesture.
       if (this.audioContext.state === 'suspended') {
         this.wasSuspended = true;
-        contextRunning = await this.ensureAudioContextRunning();
-      } else {
-        contextRunning = await this.ensureAudioContextRunning();
       }
+      const contextRunning = await this.ensureAudioContextRunning(
+        SYNC_SLOTS_RESUME_WAIT_MS,
+      );
 
-      if (!contextRunning || this.audioContext.state !== 'running') {
+      if (!contextRunning) {
         console.warn(
-          `[SongBank] AudioContext not running after resume attempt (state=${this.audioContext.state}). Deferring syncSlots and flagging needsResume.`,
+          `[SongBank] AudioContext still ${this.audioContext.state} after bounded resume attempt; building instruments while suspended (rebuild-on-resume is armed).`,
         );
-        return;
       }
 
       if (this.wasSuspended && this.audioContext.state === 'running') {
@@ -1661,15 +1672,20 @@ export class TrackerSongBank implements TrackerSink {
     );
   }
 
-  /** Ensure the audio context is running (resume if suspended) */
   /**
    * Ensure the audio context is running (resume if suspended).
    * Returns true if the context is running after this call (whether it was already running or successfully resumed).
    *
    * IMPORTANT: This will wait and poll for the context to become running,
    * which might require user interaction on the page.
+   *
+   * Every await on `resume()` is bounded: without a user gesture the browser
+   * can leave the promise pending indefinitely (fresh-tab deep links), and an
+   * unbounded await here would stall song loading, not just playback. Pass
+   * `maxWaitMs` to shorten the wait on load paths; playback keeps the 10s
+   * default.
    */
-  async ensureAudioContextRunning(): Promise<boolean> {
+  async ensureAudioContextRunning(maxWaitMs = 10000): Promise<boolean> {
     const ctx = this.audioContext;
     if (ctx.state === 'running') {
       this.needsAudioContextResume = false;
@@ -1682,46 +1698,40 @@ export class TrackerSongBank implements TrackerSink {
       `[SongBank] AudioContext state=${ctx.state}; attempting to resume.`,
     );
 
-    // Try to resume - might fail if no user interaction yet
-    try {
-      await ctx.resume();
-      // Use string variable to avoid TypeScript's type narrowing issue
-      const currentState: string = ctx.state;
-      if (currentState === 'running') {
-        this.needsAudioContextResume = false;
-        void this.eventQueue.flushPendingScheduledEvents();
-        return true;
-      }
-    } catch (error) {
-      // Initial resume failed - will poll below
-    }
+    // resume() itself may never settle (no user gesture yet), so race it
+    // against a timeout instead of awaiting it directly.
+    const resumeBounded = (ms: number): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), ms);
+        void ctx.resume().then(
+          () => {
+            clearTimeout(timer);
+            resolve(ctx.state === 'running');
+          },
+          () => {
+            clearTimeout(timer);
+            resolve(false);
+          },
+        );
+      });
 
-    // If resume failed or context still not running, wait for it with timeout
-    const maxWaitMs = 10000; // 10 seconds
+    const deadline = Date.now() + maxWaitMs;
     const pollMs = 100;
-    const startTime = Date.now();
 
-    // Poll until running or timeout
-    while (Date.now() - startTime < maxWaitMs) {
+    while (true) {
       const currentState: string = ctx.state;
       if (currentState === 'running') {
         this.needsAudioContextResume = false;
         void this.eventQueue.flushPendingScheduledEvents();
         return true;
       }
+      if (Date.now() >= deadline) break;
 
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
-
-      // Try resuming again
-      try {
-        await ctx.resume();
-        const stateAfterResume: string = ctx.state;
-        if (stateAfterResume === 'running') {
-          this.needsAudioContextResume = false;
-          return true;
-        }
-      } catch (e) {
-        // Ignore - will keep polling
+      const resumed = await resumeBounded(
+        Math.min(300, deadline - Date.now()),
+      );
+      if (!resumed) {
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
       }
     }
 
@@ -1769,13 +1779,26 @@ export class TrackerSongBank implements TrackerSink {
     patch: Patch,
     generation: number,
   ): Promise<void> {
-    const contextRunning = await this.ensureAudioContextRunning();
-    if (!contextRunning || this.audioContext.state !== 'running') {
+    // A created-but-suspended context is enough for instrument/worklet
+    // construction (fresh-tab deep links); only playback needs 'running'.
+    // Only a closed context genuinely blocks construction. If still
+    // suspended, needsAudioContextResume is armed (set by the bounded resume
+    // attempt in syncSlots or here) and the onstatechange handler rebuilds
+    // instruments built this way when the context becomes running.
+    const contextState = this.audioContext.state;
+    if (contextState === 'closed') {
       console.warn(
-        `[SongBank] Skipping ensureInstrument for ${instrumentId} because AudioContext is not running (state=${this.audioContext.state}). needsResume=${this.needsAudioContextResume}`,
+        `[SongBank] Skipping ensureInstrument for ${instrumentId} because AudioContext is closed. needsResume=${this.needsAudioContextResume}`,
       );
 
       return;
+    }
+    if (contextState !== 'running') {
+      this.wasSuspended = true;
+      this.needsAudioContextResume = true;
+      console.warn(
+        `[SongBank] Building instrument ${instrumentId} while AudioContext is ${contextState}; it will be rebuilt when the context resumes.`,
+      );
     }
     const normalizedPatch = this.normalizePatch(patch);
     const deserialized = deserializePatch(normalizedPatch);
