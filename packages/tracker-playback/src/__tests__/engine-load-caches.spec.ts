@@ -154,3 +154,66 @@ describe('pattern index cache invalidation (P4)', () => {
     expect(midis).not.toContain(60);
   });
 });
+
+describe('instrument-id collection moved to loadSong (P8)', () => {
+  it('resolves the instruments of the freshly loaded song', async () => {
+    const resolved: string[] = [];
+    const engine = new PlaybackEngine({
+      instrumentResolver: (id) => {
+        if (id !== undefined) resolved.push(id);
+      },
+    } as ConstructorParameters<typeof PlaybackEngine>[0]);
+
+    engine.loadSong(
+      buildSong([
+        { row: 0, instrumentId: '01', midi: 60 },
+        { row: 1, instrumentId: '02', midi: 62 },
+      ]),
+      0,
+    );
+    await engine.prepareInstruments();
+    expect([...resolved].sort()).toEqual(['01', '02']);
+
+    // A fresh loadSong with different patterns must invalidate: the new
+    // song's instruments are resolved, the old ones are not re-resolved.
+    resolved.length = 0;
+    engine.loadSong(
+      buildSong([{ row: 0, instrumentId: '03', midi: 64 }]),
+      0,
+    );
+    await engine.prepareInstruments();
+    expect(resolved).toEqual(['03']);
+  });
+
+  it('tracks with a sticky instrument but no explicit step instrument are resolved too', async () => {
+    const resolved: string[] = [];
+    const engine = new PlaybackEngine({
+      instrumentResolver: (id) => {
+        if (id !== undefined) resolved.push(id);
+      },
+    } as ConstructorParameters<typeof PlaybackEngine>[0]);
+
+    const song: Song = {
+      title: 'track-level instrument',
+      author: '',
+      bpm: 125,
+      sequence: ['p0'],
+      patterns: [
+        {
+          id: 'p0',
+          length: 2,
+          tracks: [
+            {
+              id: 't0',
+              instrumentId: '07',
+              steps: [{ row: 0, midi: 60 }],
+            },
+          ],
+        },
+      ],
+    };
+    engine.loadSong(song, 0);
+    await engine.prepareInstruments();
+    expect(resolved).toEqual(['07']);
+  });
+});

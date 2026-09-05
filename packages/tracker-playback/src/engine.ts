@@ -230,6 +230,15 @@ export class PlaybackEngine {
   private loopCurrentPattern = false;
   private loopSong = true;
   /**
+   * Instrument ids referenced anywhere in the loaded song's patterns,
+   * collected once by loadSong. Patterns are immutable between loadSong
+   * calls (same invariant as patternsById), and setPatternLength replaces
+   * pattern objects without touching steps, so the set cannot go stale.
+   * prepareInstruments used to re-walk every pattern x track x step on
+   * every play press -- a full-song scan on the interaction path.
+   */
+  private instrumentIdsCache: Set<string> | null = null;
+  /**
    * Audio-clock time the song ends at, once the sequence has run out and
    * looping is off. Null whenever an end is not pending.
    */
@@ -591,6 +600,9 @@ export class PlaybackEngine {
       }
     }
     this.moduleFormat = song.moduleFormat ?? DEFAULT_MODULE_FORMAT;
+    // Patterns just changed wholesale (fresh loadSong); collect the
+    // instrument ids prepareInstruments will need before anything plays.
+    this.instrumentIdsCache = this.collectInstrumentIds();
     this.scheduledPositions.length = 0;
     this.formatProfile = profileForFormat(this.moduleFormat, {
       ...(song.linearFrequency !== undefined
@@ -1940,19 +1952,8 @@ export class PlaybackEngine {
 
   async prepareInstruments() {
     if (!this.resolver || !this.song) return;
-    const instrumentIds = new Set<string>();
-    for (const pattern of this.song.patterns) {
-      for (const track of pattern.tracks) {
-        if (track.instrumentId) {
-          instrumentIds.add(track.instrumentId);
-        }
-        for (const step of track.steps) {
-          if (step.instrumentId) {
-            instrumentIds.add(step.instrumentId);
-          }
-        }
-      }
-    }
+    const instrumentIds =
+      this.instrumentIdsCache ?? this.collectInstrumentIds();
 
     const resolverTasks: Promise<void>[] = [];
     for (const id of instrumentIds) {
@@ -1966,6 +1967,29 @@ export class PlaybackEngine {
       }
     }
     await Promise.all(resolverTasks);
+  }
+
+  /**
+   * Walk every pattern x track x step of the loaded song and collect the
+   * instrument ids that need resolving. Called by loadSong so play() does
+   * not have to repeat the full-song scan on every play press.
+   */
+  private collectInstrumentIds(): Set<string> {
+    const instrumentIds = new Set<string>();
+    if (!this.song) return instrumentIds;
+    for (const pattern of this.song.patterns) {
+      for (const track of pattern.tracks) {
+        if (track.instrumentId) {
+          instrumentIds.add(track.instrumentId);
+        }
+        for (const step of track.steps) {
+          if (step.instrumentId) {
+            instrumentIds.add(step.instrumentId);
+          }
+        }
+      }
+    }
+    return instrumentIds;
   }
 
   /** Legacy tick-based step function (fallback when no scheduledNoteHandler) */
