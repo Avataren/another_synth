@@ -47,8 +47,17 @@ function sinc(x: number): number {
  * the branch sums to one. Without that normalisation the interpolated samples
  * sit at a slightly different level from the ones that land on an input frame,
  * which reads as a periodic buzz at the oversampling frequency.
+ *
+ * The kernel depends only on `factor`, so it is memoised: every sample load
+ * rebuilt the identical 4x kernel from scratch. Callers only ever read the
+ * returned taps.
  */
+const kernelCache = new Map<number, Float32Array[]>();
+
 export function buildPolyphaseKernel(factor: number): Float32Array[] {
+  const cached = kernelCache.get(factor);
+  if (cached) return cached;
+
   const phases: Float32Array[] = [];
   for (let phase = 0; phase < factor; phase++) {
     const taps = new Float32Array(HALF_TAPS * 2);
@@ -65,6 +74,7 @@ export function buildPolyphaseKernel(factor: number): Float32Array[] {
     }
     phases.push(taps);
   }
+  kernelCache.set(factor, phases);
   return phases;
 }
 
@@ -138,13 +148,35 @@ export function oversample(
   const kernel = buildPolyphaseKernel(factor);
   const out = new Float32Array(data.length * factor);
   const resolve = makeIndexResolver(data.length, loop);
+  const length = data.length;
+  const last = length - 1;
 
-  for (let n = 0; n < data.length; n++) {
+  // Frames whose whole tap window [n - HALF_TAPS + 1, n + HALF_TAPS] stays
+  // inside the buffer and clear of the loop's end read `data` directly; only
+  // the edge and loop-wrap frames need the resolver. Per-tap closure calls
+  // across a 656k-frame sample measured at over 1.5x the cost of the
+  // multiply-accumulates they accompany. The resolver is the identity for
+  // every in-range interior index, so the two paths read the same elements in
+  // the same order and the output is bit-identical.
+  const firstInterior = HALF_TAPS - 1;
+  const lastInterior = loop
+    ? Math.min(last - HALF_TAPS, loop.end - 1 - HALF_TAPS)
+    : last - HALF_TAPS;
+
+  for (let n = 0; n < length; n++) {
+    const base = n - HALF_TAPS + 1;
+    const interior = n >= firstInterior && n <= lastInterior;
     for (let phase = 0; phase < factor; phase++) {
       const taps = kernel[phase]!;
       let acc = 0;
-      for (let i = 0; i < taps.length; i++) {
-        acc += data[resolve(n + i - HALF_TAPS + 1)]! * taps[i]!;
+      if (interior) {
+        for (let i = 0; i < taps.length; i++) {
+          acc += data[base + i]! * taps[i]!;
+        }
+      } else {
+        for (let i = 0; i < taps.length; i++) {
+          acc += data[resolve(base + i)]! * taps[i]!;
+        }
       }
       out[n * factor + phase] = acc;
     }
@@ -240,10 +272,30 @@ export function lowpassForRate(
 
   const out = new Float32Array(data.length);
   const resolve = makeIndexResolver(data.length, loop);
-  for (let n = 0; n < data.length; n++) {
+  const length = data.length;
+  const last = length - 1;
+
+  // Same interior fast path as oversample: the tap window is
+  // [n - HALF_TAPS, n + HALF_TAPS], so frames clear of the edges and of the
+  // loop's end index `data` directly and the rest go through the resolver.
+  // The resolver is the identity for in-range interior indices, so the output
+  // is bit-identical either way.
+  const firstInterior = HALF_TAPS;
+  const lastInterior = loop
+    ? Math.min(last - HALF_TAPS, loop.end - 1 - HALF_TAPS)
+    : last - HALF_TAPS;
+
+  for (let n = 0; n < length; n++) {
+    const base = n - HALF_TAPS;
     let acc = 0;
-    for (let i = 0; i < taps; i++) {
-      acc += data[resolve(n + i - HALF_TAPS)]! * kernel[i]!;
+    if (n >= firstInterior && n <= lastInterior) {
+      for (let i = 0; i < taps; i++) {
+        acc += data[base + i]! * kernel[i]!;
+      }
+    } else {
+      for (let i = 0; i < taps; i++) {
+        acc += data[resolve(base + i)]! * kernel[i]!;
+      }
     }
     out[n] = acc;
   }
