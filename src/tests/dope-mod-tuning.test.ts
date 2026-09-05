@@ -127,7 +127,10 @@ describe('DOPE.MOD tuning', () => {
         frequency: note.frequency as number,
         cents:
           1200 *
-          Math.log2((note.frequency as number) / midiToFrequency(note.midi)),
+          Math.log2(
+            (note.frequency as number) /
+              midiToFrequency(note.midi as number),
+          ),
       }))
       // The importer rounds the period-derived MIDI number, so a note can sit
       // up to half a semitone from equal temperament and still be right.
