@@ -353,7 +353,20 @@ export class TrackerSamplerInstrument {
     this.mipBuffers = [];
 
     if (!isEmpty && channels === 1) {
-      buffered = this.conditionSample(Float32Array.from(data), frameCount);
+      // conditionSample mutates its input only through removeDcOffset and
+      // crossfadeLoop; when neither can apply, the caller's array is passed
+      // straight through and the defensive copy is skipped. When either can,
+      // the copy stays: the caller's `data` may be retained by the host and
+      // must not be re-centred or crossfaded in place.
+      const quality = getSampleQuality();
+      const mayMutate =
+        quality.removeDcOffset ||
+        (quality.loopCrossfadeFrames > 0 &&
+          this.samplerState?.loopMode === 'forward');
+      buffered = this.conditionSample(
+        mayMutate ? Float32Array.from(data) : data,
+        frameCount,
+      );
       bufferFrames = buffered.length;
       this.conditionedMono = buffered;
     }
@@ -369,8 +382,15 @@ export class TrackerSamplerInstrument {
     if (!isEmpty) {
       for (let ch = 0; ch < channels; ch++) {
         const channelData = this.audioBuffer.getChannelData(ch);
-        for (let i = 0; i < channelData.length; i++) {
-          channelData[i] = buffered[i * channels + ch] ?? 0;
+        if (channels === 1) {
+          // Mono -- every tracker sample: a straight block copy instead of a
+          // per-frame de-interleave loop that multiplied and branch-checked
+          // for a channel that is not there.
+          channelData.set(buffered);
+        } else {
+          for (let i = 0; i < channelData.length; i++) {
+            channelData[i] = buffered[i * channels + ch] ?? 0;
+          }
         }
       }
     }
