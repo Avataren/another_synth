@@ -251,7 +251,7 @@ describe('voice teardown rides onended instead of setTimeout', () => {
     instrument.noteOnAtTime(60, 100, now.t, { trackIndex: 0 });
     const voiceIndex = instrument.noteOnAtTime(62, 100, now.t, {
       trackIndex: 1,
-    });
+      }) as number;
     const { active, releasing } = mapsOf(instrument);
 
     instrument.gateOffVoiceAtTime(voiceIndex, now.t);
@@ -272,7 +272,7 @@ describe('voice teardown rides onended instead of setTimeout', () => {
     const { instrument, sources, now } = await loadInstrument(envelopeConfig());
     const voiceIndex = instrument.noteOnAtTime(60, 100, now.t, {
       trackIndex: 0,
-    });
+      }) as number;
     instrument.gateOffVoiceAtTime(voiceIndex, now.t);
     const { releasing } = mapsOf(instrument);
     expect(releasing.size).toBe(1);
@@ -307,7 +307,7 @@ describe('voice teardown rides onended instead of setTimeout', () => {
     const { instrument, sources, now } = await loadInstrument(envelopeConfig());
     const voiceIndex = instrument.noteOnAtTime(60, 100, now.t, {
       trackIndex: 0,
-    });
+      }) as number;
     instrument.gateOffVoiceAtTime(voiceIndex, now.t);
 
     // The fade runs out before anyone touches the voice again: the source has

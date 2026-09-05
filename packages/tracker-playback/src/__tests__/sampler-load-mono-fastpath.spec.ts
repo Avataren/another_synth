@@ -44,7 +44,9 @@ function makeAudioContext() {
   const buffers: Array<{
     length: number;
     sampleRate: number;
+    duration: number;
     channels: Float32Array[];
+    getChannelData: (ch: number) => Float32Array;
   }> = [];
   const ctx = {
     currentTime: 10,
@@ -60,9 +62,9 @@ function makeAudioContext() {
         length,
         sampleRate: rate,
         duration: length / rate,
+        channels: chans,
         getChannelData: (ch: number) => chans[ch]!,
       };
-      (buffer as { channels?: Float32Array[] }).channels = chans;
       buffers.push(buffer);
       return buffer;
     },
