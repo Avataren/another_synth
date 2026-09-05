@@ -374,6 +374,13 @@ export class TrackerSamplerInstrument {
     // ping-pong loop -- level 0 must be the buffer that is actually played.
     this.prepareLoop(channels, bufferFrames, sampleRate);
     this.mipBuffers = [this.audioBuffer];
+    // Anti-alias (mip) levels are built here, at load, rather than lazily in
+    // bufferForRate: the first note pitched high enough to need one used to
+    // run a 33-tap filter over the entire oversampled copy synchronously in
+    // the note-on path -- a measured ~130 ms scheduling-thread stall on the
+    // largest corpus sample, exactly when the engine's lookahead can least
+    // afford it. Same filtered buffers, built earlier; nothing audible moves.
+    this.buildMipLevels();
 
     this.ready = true;
   }
@@ -430,9 +437,9 @@ export class TrackerSamplerInstrument {
   /**
    * The buffer to play at a given musical speed-up.
    *
-   * Levels are built on demand: most samples are never pitched up far enough
-   * to need one, and filtering every sample for every octave at load would
-   * cost far more than it saves.
+   * Levels are built at load (see buildMipLevels); this only selects. The
+   * lazy build remains as a fallback for a level that was not prebuilt --
+   * quality settings read at load time can differ from those read here.
    */
   private bufferForRate(musicalRate: number): AudioBuffer | null {
     const quality = getSampleQuality();
@@ -446,13 +453,22 @@ export class TrackerSamplerInstrument {
     const cached = this.mipBuffers[level];
     if (cached) return cached;
 
-    const base = this.audioBuffer;
-    if (!base) return null;
+    return this.buildMipLevel(level);
+  }
 
-    // The filter works in the buffer's own units, so the ratio it is given is
-    // the rate this buffer will actually be read at -- the musical speed-up
-    // times the oversampling. The worst rate in the level is used, so one copy
-    // covers the whole level.
+  /**
+   * Filter and cache one anti-aliased copy, or return null when there is
+   * nothing to filter from.
+   *
+   * The filter works in the buffer's own units, so the ratio it is given is
+   * the rate this buffer will actually be read at -- the musical speed-up
+   * times the oversampling. The worst rate in the level is used, so one copy
+   * covers the whole level.
+   */
+  private buildMipLevel(level: number): AudioBuffer | null {
+    const base = this.audioBuffer;
+    if (!base || !this.conditionedMono) return null;
+
     const worstRate = Math.pow(2, level) * this.oversampleFactor;
     const filtered = lowpassForRate(
       this.conditionedMono,
@@ -467,6 +483,21 @@ export class TrackerSamplerInstrument {
     buffer.getChannelData(0).set(filtered);
     this.mipBuffers[level] = buffer;
     return buffer;
+  }
+
+  /**
+   * Build every anti-alias level eagerly, once, at load time.
+   *
+   * Memory is unchanged from the on-demand scheme: each level was built at
+   * most once and retained for the instrument's life either way; only *when*
+   * it is built moves, off the audio scheduling thread onto load.
+   */
+  private buildMipLevels(): void {
+    const quality = getSampleQuality();
+    if (!quality.antiAliasHighNotes || !this.conditionedMono) return;
+    for (let level = 1; level < MIP_LEVELS; level++) {
+      if (!this.mipBuffers[level]) this.buildMipLevel(level);
+    }
   }
 
   /**
