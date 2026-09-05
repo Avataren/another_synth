@@ -201,6 +201,22 @@ export class PlaybackEngine {
   private readonly audioContext: AudioContext | undefined;
   private stepIndex: Map<number, PlaybackPatternStep[]> = new Map();
   /**
+   * Built per-pattern step indexes, keyed by pattern-object identity.
+   *
+   * indexPattern runs at every pattern boundary during playback (plus every
+   * seek/jump and loadSong) and used to rebuild a fresh Map + bucket arrays
+   * + one spread-copied step object per step each time -- up to ~2k objects
+   * on a dense 32x64 pattern, on the scheduling thread. Patterns are
+   * immutable between loadSong calls (the same invariant patternsById above
+   * relies on: an edit arrives as a fresh loadSong), and setPatternLength
+   * replaces the edited pattern object, so identity keying invalidates
+   * naturally with no explicit bookkeeping.
+   */
+  private patternIndexCache: WeakMap<
+    Pattern,
+    Map<number, PlaybackPatternStep[]>
+  > = new WeakMap();
+  /**
    * Patterns of the loaded song by id, rebuilt by loadSong.
    *
    * loadPattern runs on every pattern boundary during playback and used to
@@ -2075,6 +2091,11 @@ export class PlaybackEngine {
   }
 
   private indexPattern(pattern: Pattern) {
+    const cached = this.patternIndexCache.get(pattern);
+    if (cached) {
+      this.stepIndex = cached;
+      return;
+    }
     const index: Map<number, PlaybackPatternStep[]> = new Map();
     for (let trackIndex = 0; trackIndex < pattern.tracks.length; trackIndex++) {
       const track = pattern.tracks[trackIndex];
@@ -2085,6 +2106,7 @@ export class PlaybackEngine {
         index.set(step.row, bucket);
       }
     }
+    this.patternIndexCache.set(pattern, index);
     this.stepIndex = index;
   }
 }
