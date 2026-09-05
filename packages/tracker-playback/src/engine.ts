@@ -209,8 +209,9 @@ export class PlaybackEngine {
    * on a dense 32x64 pattern, on the scheduling thread. Patterns are
    * immutable between loadSong calls (the same invariant patternsById above
    * relies on: an edit arrives as a fresh loadSong), and setPatternLength
-   * replaces the edited pattern object, so identity keying invalidates
-   * naturally with no explicit bookkeeping.
+   * replaces the edited pattern object (keeping patternsById pointed at the
+   * replacement), so identity keying invalidates naturally with no explicit
+   * bookkeeping.
    */
   private patternIndexCache: WeakMap<
     Pattern,
@@ -223,7 +224,11 @@ export class PlaybackEngine {
    * scan `song.patterns` linearly for the id -- 56 patterns on a large XM,
    * scanned again for each of getPatternLength's callers. The engine never
    * adds or removes patterns itself (an edit arrives as a fresh loadSong),
-   * so the map cannot go stale behind it. First id wins, matching what
+   * so the map's KEYS cannot go stale behind it -- but setPatternLength
+   * replaces the edited pattern's object and MUST update the entry here:
+   * loadPattern re-reads geometry through this map at every pattern
+   * boundary, so a stale value reverts a live length edit after the next
+   * wrap. First id wins, matching what
    * Array.prototype.find did with a duplicated id.
    */
   private patternsById: Map<string, Pattern> = new Map();
@@ -736,13 +741,20 @@ export class PlaybackEngine {
     if (!this.song) return;
     const clamped = Math.max(1, Math.round(rows));
     let found = false;
+    let updated: Pattern | undefined;
     const patterns = this.song.patterns.map((pattern) => {
       if (pattern.id !== patternId) return pattern;
       found = true;
-      return { ...pattern, length: clamped };
+      updated = { ...pattern, length: clamped };
+      return updated;
     });
     if (!found) return;
     this.song = { ...this.song, patterns };
+    // Keep patternsById on the replacement object: loadPattern() re-reads
+    // the pattern through this map at every pattern boundary (jumps and
+    // sequence wraps), so a stale entry here reverts the edit to the
+    // pre-edit row count on the next pass through the pattern.
+    if (updated) this.patternsById.set(patternId, updated);
     // Keep the active pattern's scheduling length in step with the edit.
     if (this.position.patternId === patternId) {
       this.length = clamped;
