@@ -164,6 +164,15 @@ interface ActiveVoice {
   tickSeconds: number;
   frequency: number;
   targetGain: number; // Track scheduled gain value (Web Audio param.value doesn't reflect scheduled changes)
+  /**
+   * The stop time currently scheduled on the source, or null when none is.
+   *
+   * Lets teardown tell "already stopped" (the scheduled stop has passed) from
+   * "still sounding": a source that already stopped will not fire `onended`
+   * again, so its nodes must be disconnected directly instead of waiting for
+   * an event that never comes.
+   */
+  scheduledStopAt: number | null;
 }
 
 const MIP_LEVELS = 4;
@@ -713,6 +722,46 @@ export class TrackerSamplerInstrument {
     }
   }
 
+  /**
+   * Tear a voice's nodes down once its source has actually stopped.
+   *
+   * `onended` fires at the *scheduled* stop time, so this replaces the
+   * setTimeout disconnects the teardown paths used — deterministic against
+   * the audio clock instead of timer jitter, and one timer + closure fewer
+   * per note-off. Two cases never fire the event, and disconnect straight
+   * away instead: a source stopped before it ever starts (the known Web
+   * Audio caveat — stop() before start() ⇒ no `onended`), and a source whose
+   * previously scheduled stop time has already passed, which will not fire
+   * `onended` again.
+   */
+  private teardownVoiceWhenStopped(
+    voice: ActiveVoice,
+    stopAt: number,
+    beforeDisconnect?: () => void,
+  ): void {
+    const teardown = () => {
+      beforeDisconnect?.();
+      try {
+        voice.source.disconnect();
+        voice.gainNode.disconnect();
+        voice.panNode.disconnect();
+        voice.envelopeGain?.disconnect();
+        this.stopAutoVibrato(voice);
+      } catch {
+        // Already disconnected
+      }
+    };
+
+    const now = this.audioContext.currentTime;
+    const priorStop = voice.scheduledStopAt;
+    voice.scheduledStopAt = stopAt;
+    if (stopAt < voice.startTime || (priorStop !== null && now >= priorStop)) {
+      teardown();
+      return;
+    }
+    voice.source.onended = teardown;
+  }
+
   private stopAutoVibrato(voice: ActiveVoice): void {
     const vibrato = voice.autoVibrato;
     if (!vibrato) return;
@@ -843,6 +892,7 @@ export class TrackerSamplerInstrument {
       startTime: this.audioContext.currentTime,
       frequency: frequency ?? 440,
       targetGain: noteGain, // Track scheduled gain
+      scheduledStopAt: null,
     });
 
     // Clean up activeVoices when the sample finishes playing naturally
@@ -879,23 +929,7 @@ export class TrackerSamplerInstrument {
       const stopTime = this.audioContext.currentTime + releaseTime;
       voice.source.stop(stopTime);
       this.scheduleAutoVibratoStop(voice, stopTime);
-    this.scheduleAutoVibratoStop(voice, stopTime);
-
-      // Disconnect nodes after the release completes
-      setTimeout(
-        () => {
-          try {
-            voice.source.disconnect();
-            voice.gainNode.disconnect();
-            voice.panNode.disconnect();
-            voice.envelopeGain?.disconnect();
-            this.stopAutoVibrato(voice);
-          } catch (e) {
-            // Nodes may already be disconnected, ignore
-          }
-        },
-        releaseTime * 1000 + 10,
-      );
+      this.teardownVoiceWhenStopped(voice, stopTime);
 
       this.activeVoices.delete(voiceIndex);
       return;
@@ -915,25 +949,8 @@ export class TrackerSamplerInstrument {
         );
         const stopTime = this.audioContext.currentTime + releaseTime;
         voice.source.stop(stopTime);
-      this.scheduleAutoVibratoStop(voice, stopTime);
         this.scheduleAutoVibratoStop(voice, stopTime);
-    this.scheduleAutoVibratoStop(voice, stopTime);
-
-        // Disconnect nodes after the release completes
-        setTimeout(
-          () => {
-            try {
-              voice.source.disconnect();
-              voice.gainNode.disconnect();
-              voice.panNode.disconnect();
-              voice.envelopeGain?.disconnect();
-              this.stopAutoVibrato(voice);
-            } catch (e) {
-              // Nodes may already be disconnected, ignore
-            }
-          },
-          releaseTime * 1000 + 10,
-        );
+        this.teardownVoiceWhenStopped(voice, stopTime);
 
         this.activeVoices.delete(vIdx);
       }
@@ -962,22 +979,7 @@ export class TrackerSamplerInstrument {
     const stopTime = this.audioContext.currentTime + releaseTime;
     voice.source.stop(stopTime);
     this.scheduleAutoVibratoStop(voice, stopTime);
-
-    // Disconnect nodes after the release completes
-    setTimeout(
-      () => {
-        try {
-          voice.source.disconnect();
-          voice.gainNode.disconnect();
-          voice.panNode.disconnect();
-          voice.envelopeGain?.disconnect();
-          this.stopAutoVibrato(voice);
-        } catch (e) {
-          // Nodes may already be disconnected, ignore
-        }
-      },
-      releaseTime * 1000 + 10,
-    );
+    this.teardownVoiceWhenStopped(voice, stopTime);
 
     this.activeVoices.delete(voiceIndex);
   }
@@ -1588,21 +1590,7 @@ export class TrackerSamplerInstrument {
         // Source may have already stopped naturally
       }
       this.activeVoices.delete(voiceIndex);
-      const delay = Math.max(
-        0,
-        (replaceAt - this.audioContext.currentTime) * 1000 + 10,
-      );
-      setTimeout(() => {
-        try {
-          oldVoice.source.disconnect();
-          oldVoice.gainNode.disconnect();
-          oldVoice.panNode.disconnect();
-          oldVoice.envelopeGain?.disconnect();
-          this.stopAutoVibrato(oldVoice);
-        } catch {
-          // Already disconnected
-        }
-      }, delay);
+      this.teardownVoiceWhenStopped(oldVoice, replaceAt);
     }
 
     // The rate is worked out first because it selects the buffer: a source
@@ -1721,6 +1709,7 @@ export class TrackerSamplerInstrument {
       startTime: startTime,
       frequency: frequency ?? 440,
       targetGain: noteGain, // Track scheduled gain
+      scheduledStopAt: null,
     });
 
     // Clean up activeVoices when the sample finishes playing naturally
@@ -1820,20 +1809,7 @@ export class TrackerSamplerInstrument {
       this.releasingVoices.delete(voiceIndex);
     }
 
-    setTimeout(
-      () => {
-        try {
-          voice.source.disconnect();
-          voice.gainNode.disconnect();
-          voice.panNode.disconnect();
-          voice.envelopeGain?.disconnect();
-          this.stopAutoVibrato(voice);
-        } catch {
-          // Already disconnected
-        }
-      },
-      Math.max(0, (stopAt - now) * 1000 + 10),
-    );
+    this.teardownVoiceWhenStopped(voice, stopAt);
   }
 
   gateOffVoiceAtTime(voiceIndex: number, time: number): void {
@@ -1887,22 +1863,14 @@ export class TrackerSamplerInstrument {
     this.stopReleasingVoice(voiceIndex);
     this.releasingVoices.set(voiceIndex, voice);
 
-    // Disconnect nodes after the release completes
-    const disconnectDelay = Math.max(0, (stopTime - now) * 1000 + 10);
-    setTimeout(() => {
+    // Tear the nodes down when the release actually completes; the releasing
+    // slot is freed at the same moment, so a later note on this channel can
+    // still cut this voice until then.
+    this.teardownVoiceWhenStopped(voice, stopTime, () => {
       if (this.releasingVoices.get(voiceIndex) === voice) {
         this.releasingVoices.delete(voiceIndex);
       }
-      try {
-        voice.source.disconnect();
-        voice.gainNode.disconnect();
-        voice.panNode.disconnect();
-        voice.envelopeGain?.disconnect();
-        this.stopAutoVibrato(voice);
-      } catch (e) {
-        // Nodes may already be disconnected, ignore
-      }
-    }, disconnectDelay);
+    });
   }
 
   /**
@@ -1932,18 +1900,7 @@ export class TrackerSamplerInstrument {
       // Already stopped
     }
 
-    const disconnectDelay = Math.max(0, (stopAt - now) * 1000 + 10);
-    setTimeout(() => {
-      try {
-        releasing.source.disconnect();
-        releasing.gainNode.disconnect();
-        releasing.panNode.disconnect();
-        releasing.envelopeGain?.disconnect();
-        this.stopAutoVibrato(releasing);
-      } catch {
-        // Already disconnected
-      }
-    }, disconnectDelay);
+    this.teardownVoiceWhenStopped(releasing, stopAt);
   }
 
   setVoiceFrequencyAtTime(
