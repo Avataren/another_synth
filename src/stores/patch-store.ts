@@ -614,8 +614,19 @@ export const usePatchStore = defineStore('patchStore', {
      *
      * Mobile: boot calls this without awaiting while the context is
      * suspended; it re-kicks from the resume hook in pinia-audio-system and
-     * from restoreDefaultInstrument. Skips and failures re-arm the guard so
-     * those triggers can retry; a successful run stays exactly-once.
+     * from restoreDefaultInstrument. Skips, readiness burn-outs and
+     * not-applied outcomes re-arm the guard so those triggers can retry; a
+     * run that actually applied a patch stays exactly-once.
+     *
+     * "Attempted" is never conflated with "applied": a first attempt whose
+     * readiness window burned out (context never ran within ~8 s) bails
+     * BEFORE the load chain, and after the chain the body verifies a patch
+     * actually landed (currentPatchId) — loadSystemBankIfPresent returns
+     * true even when its apply failed, so without this check a re-armed
+     * retry would loop through the bank-present early-return without ever
+     * applying. Consuming the guard on a failed attempt would make the
+     * resume re-kick a permanent no-op: mounted app, self-healed
+     * instrument, no patch ever applied (review F1, 2026-09-06).
      *
      * Known low-severity residual race (mobile only): the
      * `usingExternalInstrument` check below and `applyPatchObject`'s
@@ -645,7 +656,18 @@ export const usePatchStore = defineStore('patchStore', {
             );
             return 'skipped';
           }
-          await instrumentStore.waitForInstrumentReady();
+          const ready = await instrumentStore.waitForInstrumentReady();
+          if (!ready) {
+            // The readiness window burned out (context never ran / the
+            // handshake never finished). Continuing into the load chain
+            // would only re-fail inside applyPatchObject — and settling
+            // 'done' here would consume the exactly-once guard, turning
+            // the resume re-kick into a permanent no-op. Bail and re-arm.
+            console.warn(
+              '[PatchStore] Session init: instrument not ready in time; re-armed for a later retry',
+            );
+            return 'failed';
+          }
           if (instrumentStore.usingExternalInstrument) {
             console.info(
               '[PatchStore] Session init skipped after wait: external instrument is active',
@@ -655,6 +677,30 @@ export const usePatchStore = defineStore('patchStore', {
           const loaded = await this.loadSystemBankIfPresent();
           if (!loaded) {
             await this.initializeNewPatchSession();
+          }
+          // Applied-vs-attempted (review F1): loadSystemBankIfPresent
+          // returns true once the bank is in memory even when its own
+          // apply failed, and initializeNewPatchSession only logs a
+          // template failure. Without this check a re-armed retry would
+          // loop through the bank-present early-return without ever
+          // applying anything.
+          if (!this.currentPatchId) {
+            if (instrumentStore.usingExternalInstrument) {
+              console.info(
+                '[PatchStore] Session init skipped after load: external instrument is active',
+              );
+              return 'skipped';
+            }
+            const fallbackPatch = this.currentBank?.patches[0];
+            const applied = fallbackPatch
+              ? await this.applyPatchObject(fallbackPatch)
+              : false;
+            if (!applied) {
+              console.warn(
+                '[PatchStore] Session init: no patch was applied; re-armed for a later retry',
+              );
+              return 'failed';
+            }
           }
           return 'done';
         } catch (error) {

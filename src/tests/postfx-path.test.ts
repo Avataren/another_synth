@@ -38,6 +38,15 @@ class FakeAudioContext {
   currentTime = 0;
   state = 'running';
   readonly destination = new FakeGainNode();
+  private readonly stateListeners = new Set<() => void>();
+  // AudioContext is an EventTarget; AudioSystem subscribes to `statechange`
+  // in its constructor (whenRunning cache invalidation on re-suspension).
+  addEventListener(type: string, fn: () => void): void {
+    if (type === 'statechange') this.stateListeners.add(fn);
+  }
+  removeEventListener(type: string, fn: () => void): void {
+    this.stateListeners.delete(fn);
+  }
   readonly audioWorklet = { addModule: vi.fn(async () => undefined) };
   createGain(): FakeGainNode {
     return new FakeGainNode();

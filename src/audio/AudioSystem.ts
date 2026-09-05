@@ -148,6 +148,16 @@ export default class AudioSystem {
         this.destinationNode.connect(this.postFxRack.input);
         this.postFxRack.output.connect(this.audioContext.destination);
         registerPostFxRack({ rack: this.postFxRack, amigaLpf: this.postFxLpfStage });
+        // A re-suspension (iOS interruption, Safari auto-suspend) must not
+        // leave a settled whenRunning() promise cached: the next caller
+        // would be told "running now" against a suspended context. Drop
+        // the cache whenever the context is not running; a live waiter
+        // still settles through its own statechange listener.
+        this.audioContext.addEventListener('statechange', () => {
+            if (this.audioContext.state !== 'running') {
+                this.whenRunningPromise = null;
+            }
+        });
         this.resumeOnUserInteraction();
     }
 

@@ -387,6 +387,51 @@ describe('boot with a suspended AudioContext (mobile boot-stall fix)', () => {
     expect(loadPatchSpy).toHaveBeenCalledTimes(1);
     expect(patchStore.currentPatchId).toBe(systemBankFirstPatch.metadata.id);
   });
+
+  it('E: a first attempt burned by the readiness window still applies the patch on a late resume', async () => {
+    // F1 regression (review 34a26b76): the old body ignored
+    // waitForInstrumentReady's false result and loadSystemBankIfPresent's
+    // bank-present early-return, so a first attempt that never applied
+    // still settled 'done' and consumed the exactly-once guard. The
+    // late resume re-kick then hit the cached promise: app mounted,
+    // instrument self-healed, but NO patch was ever applied.
+    const patchStore = usePatchStore();
+    const instrumentStore = useInstrumentStore();
+
+    await runBootFn();
+    const instrument = instrumentStore.currentInstrument as InstrumentV2;
+    const loadPatchSpy = vi.spyOn(instrument, 'loadPatch');
+
+    // No gesture at all: burn well past the full double 8 s window (the
+    // awaited readiness check, then — on the unfixed code —
+    // applyPatchObject's own wait inside loadSystemBankIfPresent).
+    await vi.advanceTimersByTimeAsync(17000);
+    expect(patchStore.currentPatchId).toBeNull();
+
+    // First gesture arrives late: the boot resume hook fires
+    // (whenRunning → ensureInitialized → initializeSessionOnce).
+    fakeContext.setState('running');
+    await vi.advanceTimersByTimeAsync(1);
+
+    // Render thread now runs: handshake as in B.
+    const node = fakeNodes[0]!;
+    node.port.deliver({ type: 'ready' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(node.port.sent.some((m) => m.type === 'wasm-binary')).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+
+    // WASM init done: the processor broadcasts its initial state.
+    node.port.deliver({ type: 'initialState', state: {} });
+    expect(instrument.isReady).toBe(true);
+
+    // Flush the resume hook chain, the readiness poll, and the system
+    // bank application (incl. the convolver regeneration's 2 s wait).
+    await vi.advanceTimersByTimeAsync(6000);
+
+    // The resume re-kick must actually apply the bank's first patch.
+    expect(patchStore.currentPatchId).toBe(systemBankFirstPatch.metadata.id);
+    expect(loadPatchSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
