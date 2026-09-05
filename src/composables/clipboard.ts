@@ -25,7 +25,16 @@ function copyViaExecCommand(text: string): boolean {
   textarea.style.position = 'fixed';
   textarea.style.opacity = '0';
   document.body.appendChild(textarea);
+  // select() alone is unreliable on iOS Safari; the explicit range pins
+  // what gets copied there too.
   textarea.select();
+  textarea.setSelectionRange(0, text.length);
+  // Whatever the user had selected is not ours to destroy.
+  const selection = document.getSelection();
+  const restore =
+    selection && selection.rangeCount > 0
+      ? selection.getRangeAt(0).cloneRange()
+      : null;
   let copied = false;
   try {
     copied = document.execCommand('copy');
@@ -33,6 +42,10 @@ function copyViaExecCommand(text: string): boolean {
     copied = false;
   } finally {
     textarea.remove();
+    if (restore && selection) {
+      selection.removeAllRanges();
+      selection.addRange(restore);
+    }
   }
   return copied;
 }

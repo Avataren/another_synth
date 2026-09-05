@@ -59,7 +59,6 @@
             :disabled="busyFile !== null || (isAddMode && isQueued(song))"
             :class="{ busy: busyFile === song.file, queued: isQueued(song) }"
             @click="select(song)"
-            @contextmenu.prevent="openSongMenu(song, $event)"
           >
             <span class="demo-song-title">{{ song.title }}</span>
             <span class="demo-song-meta">
@@ -69,6 +68,25 @@
               {{ song.format }} · {{ song.channels }}ch ·
               {{ formatSize(song.bytes) }}
             </span>
+
+            <!--
+              Right-click menu for this song, anchored on the row so Quasar
+              positions it at the pointer. The panel's playlist rows use the
+              same pattern; q-menu brings what a hand-rolled menu cannot:
+              long-press on touch (iOS never fires contextmenu), keyboard
+              open, focus handling and scroll dismissal.
+            -->
+            <q-menu context-menu auto-close>
+              <q-list dense style="min-width: 160px">
+                <q-item
+                  clickable
+                  :title="`Copy a link that loads ${song.title} on open`"
+                  @click="copySongLink(song)"
+                >
+                  <q-item-section>Copy link</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
           </button>
 
           <div
@@ -78,32 +96,13 @@
             No songs match “{{ filterText.trim() }}”.
           </div>
         </div>
-
-        <!--
-          Right-click menu for the song under the pointer. Lives inside the
-          dialog so it dies with it; sits above everything else in it.
-        -->
-        <div
-          v-if="menuSong"
-          class="demo-song-menu"
-          :style="{ left: `${menuPosition.x}px`, top: `${menuPosition.y}px` }"
-          @contextmenu.prevent
-        >
-          <button
-            type="button"
-            class="demo-song-menu-item"
-            @click="copySongLink"
-          >
-            Copy link
-          </button>
-        </div>
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import {
   useDemoManifest,
@@ -206,58 +205,7 @@ function close() {
 
 const $q = useQuasar();
 
-const menuSong = ref<DemoSong | null>(null);
-const menuPosition = ref({ x: 0, y: 0 });
-
-/** Rough box of the menu, for keeping it inside the viewport. */
-const MENU_SIZE = { width: 160, height: 40 };
-
-function openSongMenu(song: DemoSong, event: MouseEvent): void {
-  menuPosition.value = {
-    x: Math.min(event.clientX, window.innerWidth - MENU_SIZE.width - 8),
-    y: Math.min(event.clientY, window.innerHeight - MENU_SIZE.height - 8),
-  };
-  menuSong.value = song;
-}
-
-function closeSongMenu(): void {
-  menuSong.value = null;
-}
-
-function onGlobalPointerDown(event: PointerEvent): void {
-  // A press anywhere but the menu itself dismisses it, including the press
-  // that opens the browser or picks a song.
-  const target = event.target as Element | null;
-  if (!target?.closest('.demo-song-menu')) closeSongMenu();
-}
-
-function onGlobalKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') closeSongMenu();
-}
-
-onMounted(() => {
-  window.addEventListener('pointerdown', onGlobalPointerDown, true);
-  window.addEventListener('keydown', onGlobalKeydown);
-  window.addEventListener('resize', closeSongMenu);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener('pointerdown', onGlobalPointerDown, true);
-  window.removeEventListener('keydown', onGlobalKeydown);
-  window.removeEventListener('resize', closeSongMenu);
-});
-
-watch(
-  () => props.modelValue,
-  (open) => {
-    if (!open) closeSongMenu();
-  },
-);
-
-async function copySongLink(): Promise<void> {
-  const song = menuSong.value;
-  closeSongMenu();
-  if (!song) return;
+async function copySongLink(song: DemoSong): Promise<void> {
   const copied = await copyTextToClipboard(buildDemoLink(song.file));
   if (copied) {
     $q.notify({
@@ -482,33 +430,5 @@ watch(
   font-size: 11px;
   color: var(--text-secondary, rgba(255, 255, 255, 0.55));
   white-space: nowrap;
-}
-
-.demo-song-menu {
-  position: fixed;
-  z-index: 30;
-  min-width: 160px;
-  background: var(--panel-background, #101823);
-  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
-  border-radius: 8px;
-  padding: 4px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-}
-
-.demo-song-menu-item {
-  display: block;
-  width: 100%;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 10px;
-  text-align: left;
-  font-size: 13px;
-  color: var(--text-primary, #fff);
-  cursor: pointer;
-}
-
-.demo-song-menu-item:hover {
-  background: rgba(77, 242, 197, 0.16);
 }
 </style>

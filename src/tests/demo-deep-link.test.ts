@@ -44,13 +44,13 @@ const collections: DemoCollection[] = [
 ];
 
 describe('buildDemoLink', () => {
-  it('points at the tracker route on the given origin and base', () => {
+  it('points at the base document on the given origin and base', () => {
     const link = buildDemoLink('amiga/12TH.MOD', {
       origin: 'https://another-synth.example',
       base: '/synth/',
     });
     expect(link).toBe(
-      'https://another-synth.example/synth/tracker?demo=amiga%2F12TH.MOD',
+      'https://another-synth.example/synth/?demo=amiga%2F12TH.MOD',
     );
   });
 
@@ -59,7 +59,9 @@ describe('buildDemoLink', () => {
       origin: 'https://x.example',
       base: '/synth',
     });
-    expect(link).toBe('https://x.example/synth/tracker?demo=s3m%2F2nd_reality.s3m');
+    expect(link).toBe(
+      'https://x.example/synth/?demo=s3m%2F2nd_reality.s3m',
+    );
   });
 
   it('encodes characters a query string cannot carry raw', () => {
@@ -67,10 +69,18 @@ describe('buildDemoLink', () => {
       origin: 'https://x.example',
       base: '/',
     });
-    expect(link).toBe('https://x.example/tracker?demo=amiga%2Fa+%26+b.mod');
+    expect(link).toBe('https://x.example/?demo=amiga%2Fa+%26+b.mod');
     expect(readDemoLinkParam(link.slice(link.indexOf('?')))).toBe(
       'amiga/a & b.mod',
     );
+  });
+
+  it('never emits a path-style URL the hash router cannot serve', () => {
+    const link = buildDemoLink('amiga/12TH.MOD', {
+      origin: 'https://x.example',
+      base: '/synth/',
+    });
+    expect(new URL(link).pathname).toBe('/synth/');
   });
 });
 

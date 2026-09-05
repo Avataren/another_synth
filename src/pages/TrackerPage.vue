@@ -874,6 +874,7 @@ import {
   demoSongUrl,
 } from 'src/composables/useDemoManifest';
 import {
+  DEMO_LINK_QUERY_KEY,
   findDemoSongByFile,
   readDemoLinkParam,
 } from 'src/composables/demo-deep-link';
@@ -2161,34 +2162,62 @@ async function loadDemoDeepLink(): Promise<void> {
   if (!file) return;
   // Coming back to the tracker with something already playing (returning
   // from the instrument editor, a running jukebox) must not clobber it: the
-  // deep link is for a fresh arrival.
-  if (isPlaying.value || isPaused.value) return;
-  const { collections, load } = useDemoManifest();
+  // deep link is for a fresh arrival. The param goes with it — the URL must
+  // not promise a song this session is not going to load.
+  if (isPlaying.value || isPaused.value) {
+    stripDemoLinkParam();
+    return;
+  }
+  const { collections, error, load } = useDemoManifest();
+  // `load` never rejects: a failed manifest lands in `error` (and is not
+  // cached, so a later retry can succeed).
+  await load();
+  if (error.value) {
+    // The manifest is how a link resolves to a song; without it the link
+    // says nothing about whether the song still exists.
+    console.error('[Demo deep link] could not resolve the linked song', error.value);
+    $q.notify({
+      type: 'negative',
+      message: `Could not load the linked demo song (${error.value}).`,
+      timeout: 4000,
+    });
+    return;
+  }
+  const song = findDemoSongByFile(collections.value, file);
+  if (!song) {
+    $q.notify({
+      type: 'warning',
+      message: 'The linked song is no longer in the demo list.',
+      timeout: 4000,
+    });
+    return;
+  }
   try {
-    await load();
-    const song = findDemoSongByFile(collections.value, file);
-    if (!song) {
-      $q.notify({
-        type: 'warning',
-        message: 'The linked song is no longer in the demo list.',
-        timeout: 4000,
-      });
-      return;
-    }
     await loadSongFromUrl(demoSongUrl(song));
     $q.notify({
       type: 'positive',
       message: `Loaded “${song.title}” from the link.`,
       timeout: 3000,
     });
-  } catch (error) {
-    console.error('[Demo deep link] could not load the linked song', error);
+  } catch (err) {
+    console.error('[Demo deep link] could not load the linked song', err);
     $q.notify({
       type: 'negative',
       message: 'Could not load the linked demo song.',
       timeout: 4000,
     });
   }
+}
+
+/** Remove the demo param from the address bar without disturbing the route. */
+function stripDemoLinkParam(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(DEMO_LINK_QUERY_KEY);
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${url.pathname}${url.search}${url.hash}`,
+  );
 }
 
 /**
