@@ -65,6 +65,74 @@ export interface ModSong {
   signature: string;
   /** Heuristic tracker flavor derived from layout/signature */
   trackerFlavor: ModTrackerFlavor;
+  /**
+   * Whether ProTracker's three-octave Amiga period range applies to this
+   * module. See `modUsesAmigaLimits`.
+   */
+  amigaLimits: boolean;
+}
+
+/**
+ * The lowest and highest period ProTracker itself can play: C-1 and B-3 of
+ * its 36-entry table. A note outside them cannot have been written by, or
+ * for, ProTracker.
+ */
+const MAX_AMIGA_PERIOD = 856;
+const MIN_AMIGA_PERIOD = 113;
+
+/**
+ * Whether the module should be played inside ProTracker's Amiga period
+ * limits, reproducing OpenMPT's test in `ReadMOD` (Load_mod.cpp, fetched
+ * 2026-09-05):
+ *
+ *   if(onlyAmigaNotes && !hasRepLen0 && (IsMagic(magic, "M.K.")
+ *      || IsMagic(magic, "M!K!") || IsMagic(magic, "PATT")))
+ *   {
+ *       // M.K. files that don't exceed the Amiga note limit (fixes
+ *       // mod.mothergoose)
+ *       m_SongFlags.set(SONG_AMIGALIMITS);
+ *
+ * with `onlyAmigaNotes` collected while scanning the patterns
+ * (`if(!m.IsAmigaNote()) isNoiseTracker = onlyAmigaNotes = false;`) and
+ *
+ *   // A loop length of zero will freeze ProTracker, so assume that modules
+ *   // having such a value were not meant to be played on Amiga.
+ *   // Fixes LHS_MI.MOD
+ *   if(sampleHeader.length && !sampleHeader.loopLength)
+ *       hasRepLen0 = true;
+ *
+ * All three clauses are evidence about the same thing -- whether the file was
+ * ever meant to run on a Paula. A module that says no gets the seven-octave
+ * range every PC tracker writes (`m_nMinPeriod = 14 * 4; m_nMaxPeriod =
+ * 3424 * 4;`, applied to every MOD before this test narrows it).
+ *
+ * Note what this is *not*: a channel-count test. A 4-channel M.K. module that
+ * reaches outside ProTracker's octaves gets the wide range too, and a
+ * multi-channel module that stays inside it is unaffected either way, since
+ * the two ranges only differ where a period leaves the narrow one.
+ */
+function modUsesAmigaLimits(
+  signature: string,
+  samples: ReadonlyArray<{ length: number; loopLength: number }>,
+  patterns: readonly ModPattern[],
+): boolean {
+  if (signature !== 'M.K.' && signature !== 'M!K!' && signature !== 'PATT') {
+    return false;
+  }
+  for (const sample of samples) {
+    if (sample.length > 0 && sample.loopLength === 0) return false;
+  }
+  for (const pattern of patterns) {
+    for (const row of pattern.rows) {
+      for (const cell of row) {
+        if (cell.period === 0) continue;
+        if (cell.period > MAX_AMIGA_PERIOD || cell.period < MIN_AMIGA_PERIOD) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 /**
@@ -462,6 +530,11 @@ export function parseMod(buffer: Uint8Array): ModSong {
     samples: samplesWithData,
     signature,
     trackerFlavor,
+    // Soundtracker's 15-sample layout has no signature at all, so it never
+    // passes OpenMPT's magic test -- but those modules are Amiga-native by
+    // construction and their periods stay inside the range regardless, which
+    // is the only thing the flag decides.
+    amigaLimits: modUsesAmigaLimits(signature, samples, patterns),
   };
 }
 

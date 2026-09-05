@@ -139,7 +139,9 @@ export function buildPlaybackStepsForTrack(
           ...(source.linearFrequency !== undefined
             ? { linearFrequency: source.linearFrequency }
             : {}),
-          ...(source.amigaLimits ? { amigaLimits: true } : {}),
+          ...(source.amigaLimits !== undefined
+            ? { amigaLimits: source.amigaLimits }
+            : {}),
         }
       : undefined,
   );
@@ -455,7 +457,12 @@ export function buildPlaybackSong(
     ...(source.linearFrequency !== undefined
       ? { linearFrequency: source.linearFrequency }
       : {}),
-    ...(source.amigaLimits ? { amigaLimits: true } : {}),
+    // Carried when present rather than only when true: MOD reads an explicit
+    // `false` as "not ProTracker-limited" (D-note in ProfileOptions), so
+    // dropping it would silently re-narrow a seven-octave module.
+    ...(source.amigaLimits !== undefined
+      ? { amigaLimits: source.amigaLimits }
+      : {}),
     ...(source.initialGlobalVolume !== undefined &&
     source.initialGlobalVolume !== 1.0
       ? { initialGlobalVolume: source.initialGlobalVolume }

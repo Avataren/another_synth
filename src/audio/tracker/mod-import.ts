@@ -41,6 +41,7 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
     trackerFlavor: mod.trackerFlavor,
     numChannels: mod.numChannels,
     numSamples: mod.samples.length,
+    amigaLimits: mod.amigaLimits,
   });
 
   // Whether every Fxx on this module sets the speed rather than the tempo.
@@ -80,6 +81,10 @@ export function importModToTrackerSong(buffer: ArrayBuffer): TrackerSongFile {
         bpm: DEFAULT_BPM,
       },
       moduleFormat: 'protracker',
+      // Per-file, never per-format (D59): whether ProTracker's three-octave
+      // period range applies. Written unconditionally, because for MOD it is
+      // the `false` that carries information -- absent means the narrow range.
+      amigaLimits: mod.amigaLimits,
       ...(vblankTiming ? { vblankTiming: true } : {}),
       patternRows: MOD_PATTERN_ROWS,
       stepSize: DEFAULT_STEP_SIZE,

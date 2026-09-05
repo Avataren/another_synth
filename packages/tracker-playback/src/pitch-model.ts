@@ -31,6 +31,24 @@ const MIN_PROTRACKER_PERIOD = 113; // ~B-3
 const MAX_PROTRACKER_PERIOD = 856; // C-1
 
 /**
+ * The period range a MOD gets when ProTracker's Amiga limits do *not* apply.
+ *
+ * OpenMPT's `ReadMOD` gives every MOD file
+ *
+ *   m_nMinPeriod = 14 * 4;
+ *   m_nMaxPeriod = 3424 * 4;
+ *
+ * (the *4 is OpenMPT's internal quarter-period resolution) and only then
+ * narrows it, per `SONG_AMIGALIMITS`, for files that are actually
+ * ProTracker-shaped -- see `modUsesAmigaLimits` in mod-parser.ts for the
+ * exact condition. 3424 and 28 are the first and last entries of the
+ * seven-octave table below; 14 is one octave beyond its top, which slides
+ * may reach even though no note is written there.
+ */
+const MIN_EXTENDED_MOD_PERIOD = 14;
+const MAX_EXTENDED_MOD_PERIOD = 3424;
+
+/**
  * The real ProTracker note-period table (finetune 0), C-1 through B-3.
  *
  * ProTracker's table is *not* a clean formula, so a continuous
@@ -49,6 +67,39 @@ const PT_PERIOD_TABLE: readonly number[] = [
   856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, // C-1..B-1
   428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226, // C-2..B-2
   214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113, // C-3..B-3
+];
+
+/**
+ * The seven-octave ProTracker period table, quoted verbatim from OpenMPT's
+ * `Tables.cpp`:
+ *
+ *   // Period table for ProTracker octaves (1-7 in FastTracker 2, also used
+ *   // for file I/O):
+ *   const uint16 ProTrackerPeriodTable[7*12] =
+ *   {
+ *       2*1712,2*1616,2*1524,2*1440,2*1356,2*1280,2*1208,2*1140,2*1076,2*1016,2*960,2*906,
+ *       1712,1616,1524,1440,1356,1280,1208,1140,1076,1016,960,907,
+ *       856,808,762,720,678,640,604,570,538,508,480,453,
+ *       428,404,381,360,339,320,302,285,269,254,240,226,
+ *       214,202,190,180,170,160,151,143,135,127,120,113,
+ *       107,101,95,90,85,80,75,71,67,63,60,56,
+ *       53,50,47,45,42,40,37,35,33,31,30,28
+ *   };
+ *
+ * The middle three rows are PT_PERIOD_TABLE above; the two rows either side
+ * are what a MOD written outside ProTracker's own note range uses. This is
+ * not a corner case in files that reach for it: 3137 of DOPE.MOD's 6589
+ * notes sit above B-3 and 29 below C-1, so 48% of the module was being
+ * pinned to a single clamped pitch by the three-octave table.
+ */
+const MOD_EXTENDED_PERIOD_TABLE: readonly number[] = [
+  3424, 3232, 3048, 2880, 2712, 2560, 2416, 2280, 2152, 2032, 1920, 1812, // C-(-1)..B-(-1)
+  1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016, 960, 907, // C-0..B-0
+  856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, // C-1..B-1
+  428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226, // C-2..B-2
+  214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113, // C-3..B-3
+  107, 101, 95, 90, 85, 80, 75, 71, 67, 63, 60, 56, // C-4..B-4
+  53, 50, 47, 45, 42, 40, 37, 35, 33, 31, 30, 28, // C-5..B-5
 ];
 
 export interface PitchModel {
@@ -107,6 +158,20 @@ export interface AmigaPitchModelOptions {
    * clamp to the table's edge instead.
    */
   arpeggioWrapsToDC: boolean;
+
+  /**
+   * Whether ProTracker's own three-octave range applies (the default), or the
+   * seven-octave range every other MOD-writing tracker uses.
+   *
+   * A MOD's channel count says nothing about which notes it contains, so this
+   * is per-file data (D59 discipline), decided by `modUsesAmigaLimits` in
+   * mod-parser.ts and threaded through as `ProfileOptions.amigaLimits` --
+   * never a format-level constant. Both the clamp *and* the table the
+   * arpeggio and glissando paths step through change with it: a period the
+   * clamp allows but the table cannot name would snap a glissando straight
+   * back into the old three octaves.
+   */
+  amigaLimits?: boolean;
 }
 
 /**
@@ -169,10 +234,21 @@ function nearestPeriodTableIndex(
 export function createAmigaPitchModel(
   options: AmigaPitchModelOptions,
 ): PitchModel {
+  // Absent means ProTracker's own limits: the model predates the option, and
+  // every caller that does not pass it wants the behaviour it had.
+  const amigaLimits = options.amigaLimits !== false;
+  const table = amigaLimits ? PT_PERIOD_TABLE : MOD_EXTENDED_PERIOD_TABLE;
+  const minPeriod = amigaLimits
+    ? MIN_PROTRACKER_PERIOD
+    : MIN_EXTENDED_MOD_PERIOD;
+  const maxPeriod = amigaLimits
+    ? MAX_PROTRACKER_PERIOD
+    : MAX_EXTENDED_MOD_PERIOD;
+
   const clampPeriod = (period: number): number => {
     if (!Number.isFinite(period)) return period;
-    if (period < MIN_PROTRACKER_PERIOD) return MIN_PROTRACKER_PERIOD;
-    if (period > MAX_PROTRACKER_PERIOD) return MAX_PROTRACKER_PERIOD;
+    if (period < minPeriod) return minPeriod;
+    if (period > maxPeriod) return maxPeriod;
     return period;
   };
 
@@ -190,18 +266,16 @@ export function createAmigaPitchModel(
     arpeggioPeriod: (basePeriod, semitoneOffset) => {
       // Step by whole table entries rather than scaling by 2^(n/12), which is
       // what ProTracker actually does.
-      const shiftedIndex = nearestPeriodTableIndex(basePeriod) + semitoneOffset;
-      if (shiftedIndex < 0 || shiftedIndex >= PT_PERIOD_TABLE.length) {
+      const shiftedIndex =
+        nearestPeriodTableIndex(basePeriod, table) + semitoneOffset;
+      if (shiftedIndex < 0 || shiftedIndex >= table.length) {
         if (options.arpeggioWrapsToDC) return 0;
-        const clamped = Math.max(
-          0,
-          Math.min(PT_PERIOD_TABLE.length - 1, shiftedIndex),
-        );
-        return PT_PERIOD_TABLE[clamped]!;
+        const clamped = Math.max(0, Math.min(table.length - 1, shiftedIndex));
+        return table[clamped]!;
       }
-      return PT_PERIOD_TABLE[shiftedIndex]!;
+      return table[shiftedIndex]!;
     },
-    snapPeriod: (period) => PT_PERIOD_TABLE[nearestPeriodTableIndex(period)]!,
+    snapPeriod: (period) => table[nearestPeriodTableIndex(period, table)]!,
     vibratoDepthCents: (baseFrequency, depthUnits) =>
       amigaVibratoDepthCents(rawPeriodFromFrequency, baseFrequency, depthUnits),
   };

@@ -270,7 +270,12 @@ export interface TrackerSongFile {
     initialSpeed?: number;
     /** XM only; absent means XM's own default, linear. */
     linearFrequency?: boolean;
-    /** S3M only; absent means the default 64..32767 period range. */
+    /**
+     * Whether the module's periods are confined to ProTracker's Amiga range.
+     * S3M: absent means ST3's wide default. MOD: absent means ProTracker's
+     * own three octaves, so an imported multi-octave module writes `false`
+     * here explicitly. See `ProfileOptions.amigaLimits` in the library.
+     */
     amigaLimits?: boolean;
     /**
      * The song's initial global volume 0..1 (S3M's header globalVol / 64).
@@ -741,7 +746,14 @@ export const useTrackerStore = defineStore('trackerStore', {
         moduleFormat: this.moduleFormat,
         initialSpeed: this.initialSpeed,
         linearFrequency: this.linearFrequency,
-        ...(this.moduleFormat === 's3m' && this.amigaLimits ? { amigaLimits: true } : {}),
+        ...(this.moduleFormat === 's3m' && this.amigaLimits
+          ? { amigaLimits: true }
+          : {}),
+        // MOD's default is the opposite of S3M's, so it is the `false` that
+        // has to survive a save/load round trip.
+        ...(this.moduleFormat === 'protracker'
+          ? { amigaLimits: this.amigaLimits }
+          : {}),
         ...(this.moduleFormat === 's3m' && this.initialGlobalVolume !== 1.0
           ? { initialGlobalVolume: this.initialGlobalVolume }
           : {}),
@@ -777,10 +789,12 @@ export const useTrackerStore = defineStore('trackerStore', {
       // were played with the linear model regardless, so nothing changes for
       // them.
       this.linearFrequency = data.linearFrequency ?? true;
-      // S3M's per-file flag and header global volume; absent means the
-      // defaults (no amiga limits, full volume), which is what every song
-      // saved before these fields existed was played with.
-      this.amigaLimits = data.amigaLimits === true;
+      // Absent means each format's own default: ST3's wide range for S3M
+      // (false), ProTracker's three octaves for MOD (true) -- which is what
+      // every song saved before this field existed was played with. The
+      // header global volume below defaults the same way.
+      this.amigaLimits =
+        data.amigaLimits ?? this.moduleFormat === 'protracker';
       this.initialGlobalVolume = Number.isFinite(data.initialGlobalVolume)
         ? Math.max(0, Math.min(1, data.initialGlobalVolume as number))
         : 1.0;

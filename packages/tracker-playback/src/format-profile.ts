@@ -356,6 +356,38 @@ export const PROTRACKER_PROFILE: FormatProfile = {
 };
 
 /**
+ * MOD semantics without ProTracker's three-octave Amiga clamp.
+ *
+ * ProTracker could only play the 36 periods 856..113 its own table names, so
+ * a module written *for* ProTracker never leaves that range. Every other
+ * tracker that writes the MOD format -- FastTracker 2, TakeTracker, OpenMPT --
+ * uses the seven-octave extension of the same table (3424..28), and OpenMPT
+ * loads all MODs with `m_nMinPeriod = 14 * 4; m_nMaxPeriod = 3424 * 4;`,
+ * narrowing to the Amiga limits only for files that pass the ProTracker-shape
+ * test `modUsesAmigaLimits` reproduces (Load_mod.cpp, quoted there).
+ *
+ * Selected by `profileForFormat('protracker', { amigaLimits: false })`, so a
+ * module that never leaves ProTracker's range is untouched by its existence.
+ * Only the pitch model differs: everything else about how a MOD plays is the
+ * same file format either way, and guessing at further FT2-isms from a
+ * channel count would be exactly the D44 mistake.
+ */
+export const PROTRACKER_EXTENDED_PROFILE: FormatProfile = {
+  ...PROTRACKER_PROFILE,
+  pitch: createAmigaPitchModel({
+    // ProTracker's arpeggio-off-the-end-of-the-table artefact is a property
+    // of *its* 36-entry table and its own replayer; a module written in a
+    // tracker that never had that table should not inherit the DC glitch.
+    arpeggioWrapsToDC: false,
+    amigaLimits: false,
+  }),
+  // Explicit per the M1 rule: a dispatch gate is never what it is by
+  // inheritance. E0x still drives the LED filter -- this profile changes the
+  // note range, not what the commands mean.
+  filterToggleCommand: true,
+};
+
+/**
  * FastTracker 2 semantics, using XM's default linear frequency table.
  *
  * XM can also be flagged into Amiga mode, which needs its own profile with an
@@ -627,10 +659,21 @@ export interface ProfileOptions {
    */
   linearFrequency?: boolean;
   /**
-   * S3M only: the per-file amiga-limits header flag (flags & 0x10), selecting
-   * S3M_AMIGA_PROFILE. Same shape as `linearFrequency` -- a file-level flag
-   * masquerading as nothing else (D1/D24) -- and threaded the same way so it
-   * reaches the engine's effect arithmetic (D59).
+   * Whether the module's periods are confined to ProTracker's Amiga range.
+   *
+   * Two formats read it, with opposite defaults, because their own formats
+   * default the other way:
+   *
+   * - S3M: the header flag (flags & 0x10). Absent means ST3's wide default
+   *   range, so only an explicit `true` selects S3M_AMIGA_PROFILE.
+   * - MOD: `ModSong.amigaLimits`, OpenMPT's ProTracker-shape test. Absent
+   *   means ProTracker's own three octaves -- the range this engine has
+   *   always used, and the right reading for a hand-authored song that
+   *   carries no file to test -- so only an explicit `false` selects
+   *   PROTRACKER_EXTENDED_PROFILE.
+   *
+   * Same file-level-flag shape as `linearFrequency` (D1/D24), threaded the
+   * same way so it reaches the engine's effect arithmetic (D59).
    */
   amigaLimits?: boolean;
 }
@@ -646,6 +689,9 @@ export function profileForFormat(
   }
   if (format === 's3m' && options?.amigaLimits === true) {
     return S3M_AMIGA_PROFILE;
+  }
+  if (format === 'protracker' && options?.amigaLimits === false) {
+    return PROTRACKER_EXTENDED_PROFILE;
   }
   return PROFILES[format] ?? PROTRACKER_PROFILE;
 }
