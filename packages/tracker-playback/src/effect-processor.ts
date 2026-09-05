@@ -347,6 +347,22 @@ export interface TrackEffectState {
     velocity: number;
     frequency?: number;
   } | null;
+
+  /**
+   * Reusable command buffers for the batch-producing processors.
+   *
+   * One per column because the engine produces the effect-column tick-0 batch
+   * and then the volume-column tick-0 batch on the same state, and only after
+   * both does it dispatch them and test `hasVolumeCommand(tick0Batch.commands)`
+   * -- sharing one buffer would wipe the effect batch before it was read.
+   *
+   * Both are reset (`length = 0`) at the top of every processor call and the
+   * dispatched arrays are never retained past dispatch (engine.ts:
+   * "dispatchCommands only reads the context"), so reuse is safe there. See
+   * the `TickCommandBatch` doc for the consumer contract.
+   */
+  effectCommandBuffer: ProcessorCommand[];
+  volumeCommandBuffer: ProcessorCommand[];
 }
 
 /**
@@ -424,6 +440,8 @@ export function createTrackEffectState(
     lastExtraFinePortaUp: 0,
     lastExtraFinePortaDown: 0,
     carryDelayedNote: null,
+    effectCommandBuffer: [],
+    volumeCommandBuffer: [],
   };
 }
 
@@ -801,8 +819,86 @@ export type ProcessorCommand =
     }
   | { kind: 'retrigger'; midi: number; velocity: number; frequency?: number };
 
+/**
+ * A batch of commands for one processor call.
+ *
+ * The `commands` array is a reusable buffer owned by the batch-producing
+ * `TrackEffectState` (one buffer for the effect column, one for the volume
+ * column), reset at the top of every call. Consumers must finish reading a
+ * batch -- dispatch it -- before the next processor call on the same state:
+ * the engine does exactly that (`dispatchCommands` only reads the context and
+ * never retains the array). Anything that needs the commands to outlive the
+ * call must copy them.
+ */
 export interface TickCommandBatch {
   commands: ProcessorCommand[];
+}
+
+/**
+ * Module-scope command pushers, shared by every processor entry point.
+ *
+ * They replace the per-call `pushPitch`/`pushVolume`/`pushPan`/`pushNoteOn`
+ * closures that each processor call used to allocate (a busy 32-track row
+ * allocates a closure set per processor call, several thousand closures per
+ * second on a busy module). Fields are assigned conditionally after the
+ * literal is built so no conditional-spread temporaries are created.
+ */
+function pushPitch(
+  commands: ProcessorCommand[],
+  voiceIndex: number | undefined,
+  frequency: number,
+): void {
+  const cmd: Extract<ProcessorCommand, { kind: 'pitch' }> = {
+    kind: 'pitch',
+    frequency,
+  };
+  if (voiceIndex !== undefined) cmd.voiceIndex = voiceIndex;
+  commands.push(cmd);
+}
+
+function pushVolume(
+  commands: ProcessorCommand[],
+  voiceIndex: number | undefined,
+  volume: number,
+  ramp?: 'linear' | 'exponential' | 'step',
+): void {
+  const cmd: Extract<ProcessorCommand, { kind: 'volume' }> = {
+    kind: 'volume',
+    volume,
+  };
+  if (voiceIndex !== undefined) cmd.voiceIndex = voiceIndex;
+  if (ramp !== undefined) cmd.ramp = ramp;
+  commands.push(cmd);
+}
+
+function pushPan(
+  commands: ProcessorCommand[],
+  voiceIndex: number | undefined,
+  pan: number,
+): void {
+  const cmd: Extract<ProcessorCommand, { kind: 'pan' }> = { kind: 'pan', pan };
+  if (voiceIndex !== undefined) cmd.voiceIndex = voiceIndex;
+  commands.push(cmd);
+}
+
+function pushNoteOn(
+  commands: ProcessorCommand[],
+  midi: number,
+  velocity: number,
+  frequency: number,
+  pan: number | undefined,
+  sampleOffsetFrames: number | undefined,
+): void {
+  const cmd: Extract<ProcessorCommand, { kind: 'noteOn' }> = {
+    kind: 'noteOn',
+    midi,
+    velocity,
+    frequency,
+  };
+  if (pan !== undefined) cmd.pan = pan;
+  if (sampleOffsetFrames !== undefined)
+    cmd.sampleOffsetFrames = sampleOffsetFrames;
+  commands.push(cmd);
 }
 
 /**
@@ -837,38 +933,12 @@ export function processEffectTick0(
    */
   volumeColumnTonePorta?: boolean,
 ): TickCommandBatch {
-  const commands: ProcessorCommand[] = [];
+  const commands = state.effectCommandBuffer;
+  commands.length = 0;
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
   const hasNoteDelay =
     effect?.type === 'noteDelay' ||
     (effect?.type === 'extEffect' && effect.extSubtype === 'noteDelay');
-
-  const pushPitch = (frequency: number) => {
-    const cmd: ProcessorCommand =
-      voiceIndex !== undefined
-        ? { kind: 'pitch', frequency, voiceIndex }
-        : { kind: 'pitch', frequency };
-    commands.push(cmd);
-  };
-
-  const pushVolume = (
-    volume: number,
-    ramp?: 'linear' | 'exponential' | 'step',
-  ) => {
-    const cmd: ProcessorCommand =
-      voiceIndex !== undefined
-        ? { kind: 'volume', volume, voiceIndex, ...(ramp ? { ramp } : {}) }
-        : { kind: 'volume', volume, ...(ramp ? { ramp } : {}) };
-    commands.push(cmd);
-  };
-
-  const pushPan = (value: number) => {
-    const cmd: ProcessorCommand =
-      voiceIndex !== undefined
-        ? { kind: 'pan', pan: value, voiceIndex }
-        : { kind: 'pan', pan: value };
-    commands.push(cmd);
-  };
 
   // ProTracker 9xx sets where in the sample a note starts, so it has to be
   // resolved before the note-trigger block below rather than in the effect
@@ -880,19 +950,6 @@ export function processEffectTick0(
     state.lastSampleOffset = raw;
     pendingSampleOffsetFrames = raw * SAMPLE_OFFSET_FRAMES_PER_UNIT;
   }
-
-  const pushNoteOn = (midi: number, velocity: number) => {
-    commands.push({
-      kind: 'noteOn',
-      midi,
-      velocity,
-      frequency: state.currentFrequency,
-      ...(pan !== undefined ? { pan } : {}),
-      ...(pendingSampleOffsetFrames !== undefined
-        ? { sampleOffsetFrames: pendingSampleOffsetFrames }
-        : {}),
-    });
-  };
 
   // Reset per-row volume slide accumulator (effect memory stored separately)
   resetVolumeSlide(state);
@@ -922,10 +979,17 @@ export function processEffectTick0(
     state.targetFrequency = state.currentFrequency;
     state.targetPeriod = undefined;
     state.currentVolume = carry.velocity / 255;
-    pushNoteOn(carry.midi, velocityFromVolume(state.currentVolume));
+    pushNoteOn(
+      commands,
+      carry.midi,
+      velocityFromVolume(state.currentVolume),
+      state.currentFrequency,
+      pan,
+      pendingSampleOffsetFrames,
+    );
     state.hasActiveVoice = true;
-    pushPitch(state.currentFrequency);
-    pushVolume(state.currentVolume);
+    pushPitch(commands, voiceIndex, state.currentFrequency);
+    pushVolume(commands, voiceIndex, state.currentVolume);
     return { commands };
   }
 
@@ -972,7 +1036,14 @@ export function processEffectTick0(
       state.tonePortaActive = state.tonePortaSpeed > 0;
       if (!state.hasActiveVoice) {
         updatePitchFromFrequency(state, targetFreq);
-        pushNoteOn(newNote, velocityFromVolume(state.currentVolume));
+        pushNoteOn(
+          commands,
+          newNote,
+          velocityFromVolume(state.currentVolume),
+          state.currentFrequency,
+          pan,
+          pendingSampleOffsetFrames,
+        );
         state.hasActiveVoice = true;
         triggeredNote = true;
       }
@@ -1003,7 +1074,14 @@ export function processEffectTick0(
 
       // Trigger note immediately unless delayed or a tone portamento continuation
       if (!hasNoteDelay) {
-        pushNoteOn(newNote, velocityFromVolume(state.currentVolume));
+        pushNoteOn(
+          commands,
+          newNote,
+          velocityFromVolume(state.currentVolume),
+          state.currentFrequency,
+          pan,
+          pendingSampleOffsetFrames,
+        );
         state.hasActiveVoice = true;
         triggeredNote = true;
       }
@@ -1028,7 +1106,7 @@ export function processEffectTick0(
   // -- a plain note with no sample number -- reset it to the sample's default
   // 8 and threw the swell away.
   if (triggeredNote) {
-    pushVolume(state.currentVolume, 'step');
+    pushVolume(commands, voiceIndex, state.currentVolume, 'step');
   }
 
   // Handle effect parameters (use memory if param is 0 where applicable)
@@ -1043,7 +1121,11 @@ export function processEffectTick0(
       // is made on the RESOLVED parameter -- an E00 after an EF3 is another
       // one-shot fine step, not a per-tick slide at the 0xE3 speed.
       const resolvedParam =
-        rawParam !== 0 ? rawParam : up ? state.lastPortaUp : state.lastPortaDown;
+        rawParam !== 0
+          ? rawParam
+          : up
+            ? state.lastPortaUp
+            : state.lastPortaDown;
       // st3play's docmd1 stores the channel-wide memory for EVERY non-zero
       // raw parameter (`if (ch->info > 0) ch->alastnfo = ch->info;`) --
       // including 0xE0/0xF0 rows that move nothing -- so the store happens
@@ -1070,7 +1152,7 @@ export function processEffectTick0(
             (resolvedParam & 0x0f) * (resolvedParam >= 0xf1 ? 4 : 1);
           if (units > 0) {
             applyFinePortamento(state, up ? units : -units, 1);
-            pushPitch(state.currentFrequency);
+            pushPitch(commands, voiceIndex, state.currentFrequency);
           }
         }
         // No persistent slide speed: the fine row is a single step.
@@ -1146,7 +1228,7 @@ export function processEffectTick0(
         state.volumeSlide.mode === 'normal' &&
         state.volumeSlide.delta !== 0
       ) {
-        pushVolume(state.currentVolume);
+        pushVolume(commands, voiceIndex, state.currentVolume);
       }
       // No slide on tick 0 -- see the 'tonePorta' case above for why.
       break;
@@ -1158,7 +1240,7 @@ export function processEffectTick0(
         state.volumeSlide.mode === 'normal' &&
         state.volumeSlide.delta !== 0
       ) {
-        pushVolume(state.currentVolume);
+        pushVolume(commands, voiceIndex, state.currentVolume);
       }
       break;
 
@@ -1173,7 +1255,7 @@ export function processEffectTick0(
       state.arpeggioY = effect.paramY;
       state.lastArpeggio = (effect.paramX << 4) | effect.paramY;
       // Tick 0: play base note
-      pushPitch(state.currentFrequency);
+      pushPitch(commands, voiceIndex, state.currentFrequency);
       break;
 
     case 'volSlide': {
@@ -1184,14 +1266,14 @@ export function processEffectTick0(
         state.volumeSlide.delta !== 0
       ) {
         // Emit current volume so schedulers have a starting point before per-tick slides.
-        pushVolume(state.currentVolume);
+        pushVolume(commands, voiceIndex, state.currentVolume);
       }
       if (state.volumeSlide.mode === 'fine' && state.volumeSlide.delta !== 0) {
         state.currentVolume = clampVolume(
           state.currentVolume + state.volumeSlide.delta,
         );
         // A *fine* slide is a single instantaneous step, not a slide.
-        pushVolume(state.currentVolume, 'step');
+        pushVolume(commands, voiceIndex, state.currentVolume, 'step');
         resetVolumeSlide(state);
       }
       break;
@@ -1227,7 +1309,7 @@ export function processEffectTick0(
           state.targetFrequency,
         );
         updatePitchFromFrequency(state, state.currentFrequency * ratio);
-        pushPitch(state.currentFrequency);
+        pushPitch(commands, voiceIndex, state.currentFrequency);
       }
       break;
 
@@ -1238,7 +1320,7 @@ export function processEffectTick0(
         (effect.paramX * 16 + effect.paramY) / 64,
       );
       // Cxx sets the volume, it does not slide to it.
-      pushVolume(state.currentVolume, 'step');
+      pushVolume(commands, voiceIndex, state.currentVolume, 'step');
       break;
 
     case 'setPan':
@@ -1257,7 +1339,7 @@ export function processEffectTick0(
         // 8xx: Set panning (00=left, 80=center, FF=right)
         state.currentPan = (effect.paramX * 16 + effect.paramY - 128) / 128;
       }
-      pushPan(state.currentPan);
+      pushPan(commands, voiceIndex, state.currentPan);
       break;
 
     case 'finePortaUp': {
@@ -1269,7 +1351,7 @@ export function processEffectTick0(
         state.lastFinePortaUp = upParam;
       }
       applyFinePortamento(state, upParam);
-      pushPitch(state.currentFrequency);
+      pushPitch(commands, voiceIndex, state.currentFrequency);
       break;
     }
 
@@ -1282,7 +1364,7 @@ export function processEffectTick0(
         state.lastFinePortaDown = downParam;
       }
       applyFinePortamento(state, -downParam);
-      pushPitch(state.currentFrequency);
+      pushPitch(commands, voiceIndex, state.currentFrequency);
       break;
     }
 
@@ -1310,14 +1392,14 @@ export function processEffectTick0(
           state.lastExtraFinePortaUp = extraParam;
         }
         applyFinePortamento(state, extraParam, 1);
-        pushPitch(state.currentFrequency);
+        pushPitch(commands, voiceIndex, state.currentFrequency);
       } else if (effect.paramX === 2) {
         if (state.profile.fineSlideHasMemory) {
           if (extraParam === 0) extraParam = state.lastExtraFinePortaDown;
           state.lastExtraFinePortaDown = extraParam;
         }
         applyFinePortamento(state, -extraParam, 1);
-        pushPitch(state.currentFrequency);
+        pushPitch(commands, voiceIndex, state.currentFrequency);
       }
       break;
     }
@@ -1348,7 +1430,7 @@ export function processEffectTick0(
         state.currentVolume = 0;
         // Instant: a cut that ramps is a fade, and at speed 3 that is the
         // whole note. See the 'step' note on ScheduledVolumeHandler.
-        pushVolume(0, 'step');
+        pushVolume(commands, voiceIndex, 0, 'step');
         state.noteCutTick = -1;
       }
       break;
@@ -1435,7 +1517,10 @@ export function processEffectTick0(
       // The one exception is FT2's volume-column quirk above: a row whose
       // volume column sets a volume does not count tick 0.
       state.retriggerTick = volumeColumnVolume ? 0 : 1;
-      if (state.retriggerInterval > 0 && state.retriggerTick >= state.retriggerInterval) {
+      if (
+        state.retriggerInterval > 0 &&
+        state.retriggerTick >= state.retriggerInterval
+      ) {
         // An interval the tick-0 count already satisfies (R11) re-fires the
         // note here, exactly as FT2's tick-0 call does.
         state.retriggerTick = 0;
@@ -1469,8 +1554,10 @@ export function processEffectTick0(
       // so a unit is 2/255 of full swing, not the volume-slide 1/64 this
       // used to borrow. Up-nibble precedence and parameter memory are FT2's
       // (a bare P00 repeats the channel's last pan slide).
-      if (effect.paramX) state.panSlideSpeed = effect.paramX * state.profile.panSlideUnit;
-      else if (effect.paramY) state.panSlideSpeed = -effect.paramY * state.profile.panSlideUnit;
+      if (effect.paramX)
+        state.panSlideSpeed = effect.paramX * state.profile.panSlideUnit;
+      else if (effect.paramY)
+        state.panSlideSpeed = -effect.paramY * state.profile.panSlideUnit;
       break;
     }
 
@@ -1540,6 +1627,8 @@ export function processEffectTick0(
     !commands.some((cmd) => cmd.kind === 'pitch')
   ) {
     pushPitch(
+      commands,
+      voiceIndex,
       continuesVibrato
         ? vibratoFrequency(state, state.vibratoHeldWave)
         : state.currentFrequency,
@@ -1558,37 +1647,15 @@ export function processEffectTickN(
   tick: number,
   ticksPerRow: number,
 ): TickCommandBatch {
-  const commands: ProcessorCommand[] = [];
+  const commands = state.effectCommandBuffer;
+  commands.length = 0;
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
-
-  const pushPitch = (frequency: number) => {
-    const cmd: ProcessorCommand =
-      voiceIndex !== undefined
-        ? { kind: 'pitch', frequency, voiceIndex }
-        : { kind: 'pitch', frequency };
-    commands.push(cmd);
-  };
-
-  const pushVolume = (
-    volume: number,
-    ramp?: 'linear' | 'exponential' | 'step',
-  ) => {
-    const cmd: ProcessorCommand =
-      voiceIndex !== undefined
-        ? { kind: 'volume', volume, voiceIndex, ...(ramp ? { ramp } : {}) }
-        : { kind: 'volume', volume, ...(ramp ? { ramp } : {}) };
-    commands.push(cmd);
-  };
-
-  const pushPan = (pan: number) => {
-    commands.push({ kind: 'pan', pan });
-  };
 
   // Check for note cut. ECx zeroes the channel volume rather than releasing
   // the note -- see the 'noteCut' case in processEffectTick0.
   if (state.noteCutTick === tick) {
     state.currentVolume = 0;
-    pushVolume(0, 'step');
+    pushVolume(commands, voiceIndex, 0, 'step');
     state.noteCutTick = -1;
   }
 
@@ -1620,8 +1687,8 @@ export function processEffectTickN(
     state.hasActiveVoice = true;
     state.delayedNote = undefined;
     state.noteDelayTick = -1;
-    pushPitch(state.currentFrequency);
-    pushVolume(state.currentVolume);
+    pushPitch(commands, voiceIndex, state.currentFrequency);
+    pushVolume(commands, voiceIndex, state.currentVolume);
   }
 
   if (!effect) {
@@ -1642,7 +1709,7 @@ export function processEffectTickN(
       const beforeFreq = state.currentFrequency;
       const freq = applyTonePortaStep(state);
       if (Math.abs(freq - beforeFreq) > 1e-9) {
-        pushPitch(freq);
+        pushPitch(commands, voiceIndex, freq);
       }
       if (state.targetFrequency === state.currentFrequency) {
         state.tonePortaActive = false;
@@ -1655,13 +1722,13 @@ export function processEffectTickN(
     case 'portaUp':
       // Slide pitch up
       applyPortamentoStep(state);
-      pushPitch(state.currentFrequency);
+      pushPitch(commands, voiceIndex, state.currentFrequency);
       break;
 
     case 'portaDown':
       // Slide pitch down
       applyPortamentoStep(state);
-      pushPitch(state.currentFrequency);
+      pushPitch(commands, voiceIndex, state.currentFrequency);
       break;
 
     case 'tonePorta':
@@ -1670,7 +1737,7 @@ export function processEffectTickN(
       const freq = applyTonePortaStep(state);
       const moved = Math.abs(freq - beforeFreq) > 1e-9;
       if (moved) {
-        pushPitch(freq);
+        pushPitch(commands, voiceIndex, freq);
       }
       if (state.targetFrequency === state.currentFrequency) {
         state.tonePortaActive = false;
@@ -1680,7 +1747,7 @@ export function processEffectTickN(
       if (effect.type === 'tonePortaVol') {
         const slid = applyVolumeSlideIfNeeded(state);
         if (slid !== undefined) {
-          pushVolume(slid);
+          pushVolume(commands, voiceIndex, slid);
         }
       }
       break;
@@ -1688,16 +1755,16 @@ export function processEffectTickN(
 
     case 'vibrato':
     case 'fineVibrato':
-      pushPitch(advanceVibrato(state));
+      pushPitch(commands, voiceIndex, advanceVibrato(state));
       break;
 
     case 'vibratoVol':
       // Vibrato + volume slide
-      pushPitch(advanceVibrato(state));
+      pushPitch(commands, voiceIndex, advanceVibrato(state));
       {
         const slid = applyVolumeSlideIfNeeded(state);
         if (slid !== undefined) {
-          pushVolume(slid);
+          pushVolume(commands, voiceIndex, slid);
         }
       }
       break;
@@ -1720,7 +1787,11 @@ export function processEffectTickN(
         (tremoloOffset * VIBRATO_TABLE_PEAK * state.tremoloDepth) /
         TREMOLO_DEPTH_DIVISOR /
         64;
-      pushVolume(Math.max(0, Math.min(1, state.currentVolume + tremoloAmount)));
+      pushVolume(
+        commands,
+        voiceIndex,
+        Math.max(0, Math.min(1, state.currentVolume + tremoloAmount)),
+      );
       state.tremoloPos += state.tremoloSpeed;
       break;
 
@@ -1740,12 +1811,14 @@ export function processEffectTickN(
           offset,
         );
         pushPitch(
+          commands,
+          voiceIndex,
           period === 0 ? 0 : state.profile.pitch.frequencyFromPeriod(period),
         );
       } else {
         let arpeggioNote = state.currentMidi;
         arpeggioNote += offset;
-        pushPitch(midiToFrequency(arpeggioNote));
+        pushPitch(commands, voiceIndex, midiToFrequency(arpeggioNote));
       }
       break;
     }
@@ -1754,7 +1827,7 @@ export function processEffectTickN(
       if (state.volumeSlide.mode === 'normal') {
         const slid = applyVolumeSlideIfNeeded(state);
         if (slid !== undefined) {
-          pushVolume(slid);
+          pushVolume(commands, voiceIndex, slid);
         }
       }
       break;
@@ -1764,7 +1837,7 @@ export function processEffectTickN(
         -1,
         Math.min(1, state.currentPan + state.panSlideSpeed),
       );
-      pushPan(state.currentPan);
+      pushPan(commands, voiceIndex, state.currentPan);
       break;
 
     case 'retrigVol':
@@ -1852,7 +1925,7 @@ export function processEffectTickN(
       const offTicks = (raw & 0x0f) + 1;
       const inOnPhase = state.tremorPos < onTicks;
       state.tremorPos = (state.tremorPos + 1) % (onTicks + offTicks);
-      pushVolume(inOnPhase ? state.currentVolume : 0);
+      pushVolume(commands, voiceIndex, inOnPhase ? state.currentVolume : 0);
       break;
     }
 
@@ -1906,25 +1979,9 @@ export function processVolumeColumnTick0(
   state: TrackEffectState,
   command: VolumeColumnCommand | undefined,
 ): TickCommandBatch {
-  const commands: ProcessorCommand[] = [];
+  const commands = state.volumeCommandBuffer;
+  commands.length = 0;
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
-
-  const push = (cmd: ProcessorCommand) => commands.push(cmd);
-  const pushVolume = (
-    volume: number,
-    ramp?: 'linear' | 'exponential' | 'step',
-  ) =>
-    push(
-      voiceIndex !== undefined
-        ? { kind: 'volume', volume, voiceIndex, ...(ramp ? { ramp } : {}) }
-        : { kind: 'volume', volume, ...(ramp ? { ramp } : {}) },
-    );
-  const pushPan = (pan: number) =>
-    push(
-      voiceIndex !== undefined
-        ? { kind: 'pan', pan, voiceIndex }
-        : { kind: 'pan', pan },
-    );
 
   // A new row re-arms the column's own slides from scratch; unlike the effect
   // column's Axy, FT2's volume-column slides have no parameter memory.
@@ -1939,26 +1996,28 @@ export function processVolumeColumnTick0(
     case 'volSlideDown':
       state.volumeColumnSlide = -command.value * unit;
       // Emit the starting point so a scheduler has something to slide from.
-      if (state.volumeColumnSlide !== 0) pushVolume(state.currentVolume);
+      if (state.volumeColumnSlide !== 0)
+        pushVolume(commands, voiceIndex, state.currentVolume);
       break;
 
     case 'volSlideUp':
       state.volumeColumnSlide = command.value * unit;
-      if (state.volumeColumnSlide !== 0) pushVolume(state.currentVolume);
+      if (state.volumeColumnSlide !== 0)
+        pushVolume(commands, voiceIndex, state.currentVolume);
       break;
 
     case 'fineVolDown':
       state.currentVolume = clampVolume(
         state.currentVolume - command.value * unit,
       );
-      pushVolume(state.currentVolume, 'step');
+      pushVolume(commands, voiceIndex, state.currentVolume, 'step');
       break;
 
     case 'fineVolUp':
       state.currentVolume = clampVolume(
         state.currentVolume + command.value * unit,
       );
-      pushVolume(state.currentVolume, 'step');
+      pushVolume(commands, voiceIndex, state.currentVolume, 'step');
       break;
 
     case 'vibratoSpeed':
@@ -1977,7 +2036,7 @@ export function processVolumeColumnTick0(
       // and 128 (centre) exactly but tops out at 240 rather than 255. That
       // asymmetry is FT2's, not a rounding slip here.
       state.currentPan = (command.value << 4) / 128 - 1;
-      pushPan(state.currentPan);
+      pushPan(commands, voiceIndex, state.currentPan);
       break;
 
     case 'panSlideLeft':
@@ -2022,7 +2081,8 @@ export function processVolumeColumnTickN(
   state: TrackEffectState,
   command: VolumeColumnCommand | undefined,
 ): TickCommandBatch {
-  const commands: ProcessorCommand[] = [];
+  const commands = state.volumeCommandBuffer;
+  commands.length = 0;
   if (!command) return { commands };
 
   const voiceIndex = state.voiceIndex >= 0 ? state.voiceIndex : undefined;
@@ -2034,11 +2094,7 @@ export function processVolumeColumnTickN(
       state.currentVolume = clampVolume(
         state.currentVolume + state.volumeColumnSlide,
       );
-      commands.push(
-        voiceIndex !== undefined
-          ? { kind: 'volume', volume: state.currentVolume, voiceIndex }
-          : { kind: 'volume', volume: state.currentVolume },
-      );
+      pushVolume(commands, voiceIndex, state.currentVolume);
       break;
     }
 
@@ -2049,21 +2105,13 @@ export function processVolumeColumnTickN(
         -1,
         Math.min(1, state.currentPan + state.volumeColumnPanSlide),
       );
-      commands.push(
-        voiceIndex !== undefined
-          ? { kind: 'pan', pan: state.currentPan, voiceIndex }
-          : { kind: 'pan', pan: state.currentPan },
-      );
+      pushPan(commands, voiceIndex, state.currentPan);
       break;
     }
 
     case 'vibrato': {
       const frequency = advanceVibrato(state);
-      commands.push(
-        voiceIndex !== undefined
-          ? { kind: 'pitch', frequency, voiceIndex }
-          : { kind: 'pitch', frequency },
-      );
+      pushPitch(commands, voiceIndex, frequency);
       break;
     }
 
@@ -2078,11 +2126,7 @@ export function processVolumeColumnTickN(
         state.tonePortaActive = false;
       }
       if (Math.abs(frequency - before) > 1e-9) {
-        commands.push(
-          voiceIndex !== undefined
-            ? { kind: 'pitch', frequency, voiceIndex }
-            : { kind: 'pitch', frequency },
-        );
+        pushPitch(commands, voiceIndex, frequency);
       }
       break;
     }

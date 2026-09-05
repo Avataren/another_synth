@@ -3,17 +3,29 @@ import { describe, expect, it } from 'vitest';
 import {
   createTrackEffectState,
   processEffectTick0,
-  processEffectTickN
+  processEffectTickN,
+  processVolumeColumnTick0,
 } from '../effect-processor';
-import type { EffectCommand } from '../types';
+import type { EffectCommand, VolumeColumnCommand } from '../types';
 
 describe('effect-processor command batches', () => {
   it('delays note-on until the configured tick', () => {
     const state = createTrackEffectState();
     const ticksPerRow = 6;
-    const delayEffect: EffectCommand = { type: 'noteDelay', paramX: 0, paramY: 1 };
+    const delayEffect: EffectCommand = {
+      type: 'noteDelay',
+      paramX: 0,
+      paramY: 1,
+    };
 
-    const tick0 = processEffectTick0(state, delayEffect, 60, 200, undefined, ticksPerRow);
+    const tick0 = processEffectTick0(
+      state,
+      delayEffect,
+      60,
+      200,
+      undefined,
+      ticksPerRow,
+    );
     expect(tick0.commands.find((cmd) => cmd.kind === 'noteOn')).toBeUndefined();
 
     const tick1 = processEffectTickN(state, delayEffect, 1, ticksPerRow);
@@ -38,12 +50,23 @@ describe('effect-processor command batches', () => {
   it('preserves the exact MOD period-derived frequency for a delayed note, not a MIDI-rounded one', () => {
     const state = createTrackEffectState();
     const ticksPerRow = 6;
-    const delayEffect: EffectCommand = { type: 'noteDelay', paramX: 0, paramY: 1 };
+    const delayEffect: EffectCommand = {
+      type: 'noteDelay',
+      paramX: 0,
+      paramY: 1,
+    };
     // Period 320 -> ~87.395Hz, which does not land exactly on a 12-TET
     // semitone (nearest MIDI note 41 is ~87.12Hz -- a ~5 cent difference).
     const preciseFrequency = 87.394822438;
 
-    processEffectTick0(state, delayEffect, 41, 200, preciseFrequency, ticksPerRow);
+    processEffectTick0(
+      state,
+      delayEffect,
+      41,
+      200,
+      preciseFrequency,
+      ticksPerRow,
+    );
     const tick1 = processEffectTickN(state, delayEffect, 1, ticksPerRow);
     const noteOn = tick1.commands.find((cmd) => cmd.kind === 'noteOn');
     expect(noteOn).toBeDefined();
@@ -116,7 +139,11 @@ describe('effect-processor command batches', () => {
     // Real ProTracker never slides on tick 0 (tick 0 only triggers/targets
     // the row); the slide starts on tick 1, landing at exactly period 826
     // (856 - 30) before snapping -- not on a table entry.
-    const tonePorta: EffectCommand = { type: 'tonePorta', paramX: 0, paramY: 30 };
+    const tonePorta: EffectCommand = {
+      type: 'tonePorta',
+      paramX: 0,
+      paramY: 30,
+    };
     processEffectTick0(state, tonePorta, 12, 200, freqForPeriod(400));
     const tick1 = processEffectTickN(state, tonePorta, 1, 6);
     const pitchCmd = tick1.commands.find((cmd) => cmd.kind === 'pitch');
@@ -148,7 +175,11 @@ describe('effect-processor command batches', () => {
 
     // A high note, then a slow slide down towards period 856 (C-2).
     processEffectTick0(state, undefined, 53, 200, freqForPeriod(214));
-    const tonePorta: EffectCommand = { type: 'tonePorta', paramX: 0, paramY: 4 };
+    const tonePorta: EffectCommand = {
+      type: 'tonePorta',
+      paramX: 0,
+      paramY: 4,
+    };
     processEffectTick0(state, tonePorta, 24, 200, freqForPeriod(856));
     for (let tick = 1; tick < 6; tick++) {
       processEffectTickN(state, tonePorta, tick, 6);
@@ -246,10 +277,13 @@ describe('effect-processor command batches', () => {
     // Prime tick 0 to capture volume slide delta
     processEffectTick0(state, volSlide, 60, 255);
 
-    const tick1 = processEffectTickN(state, volSlide, 1, 6);
+    // The commands array is a per-state reusable buffer reset on every call
+    // (TickCommandBatch contract: read the batch before the next call on the
+    // same state), so capture tick 1's command before calling tick 2.
+    const vol1 = processEffectTickN(state, volSlide, 1, 6).commands.find(
+      (cmd) => cmd.kind === 'volume',
+    );
     const tick2 = processEffectTickN(state, volSlide, 2, 6);
-
-    const vol1 = tick1.commands.find((cmd) => cmd.kind === 'volume');
     const vol2 = tick2.commands.find((cmd) => cmd.kind === 'volume');
 
     // One ProTracker volume unit is 1/64 of full scale (PT volume is 0-64,
@@ -259,8 +293,14 @@ describe('effect-processor command batches', () => {
     // "matches vol slide scaling in effect-processor", which made the test
     // agree with a halved slide rate instead of checking it.
     const step = 1 / 64;
-    expect(vol1 && 'volume' in vol1 ? vol1.volume : undefined).toBeCloseTo(1 - 2 * step, 5);
-    expect(vol2 && 'volume' in vol2 ? vol2.volume : undefined).toBeCloseTo(1 - 4 * step, 5);
+    expect(vol1 && 'volume' in vol1 ? vol1.volume : undefined).toBeCloseTo(
+      1 - 2 * step,
+      5,
+    );
+    expect(vol2 && 'volume' in vol2 ? vol2.volume : undefined).toBeCloseTo(
+      1 - 4 * step,
+      5,
+    );
   });
 
   it('slides a full row at the authentic ProTracker rate', () => {
@@ -340,5 +380,62 @@ describe('effect-processor command batches', () => {
     // "record with sample 0" convention), so this must NOT reset.
     processEffectTick0(state, undefined, 64, undefined);
     expect(state.currentVolume).toBeCloseTo(decayedVolume, 5);
+  });
+});
+
+describe('effect-processor reusable command buffers', () => {
+  it('gives two consecutive processEffectTickN calls independent, correctly-scoped sequences', () => {
+    const state = createTrackEffectState();
+    const volSlide: EffectCommand = { type: 'volSlide', paramX: 0, paramY: 2 };
+
+    // Prime tick 0 so the slides are armed, then take two consecutive
+    // tick batches from the same state.
+    processEffectTick0(state, volSlide, 60, 255);
+
+    const batch1 = processEffectTickN(state, volSlide, 1, 6);
+    // Snapshot call 1's sequence before call 2 (the buffer contract allows
+    // reading a batch until the next call on the same state).
+    const snapshot1 = batch1.commands.map((cmd) => ({ ...cmd }));
+
+    const batch2 = processEffectTickN(state, volSlide, 2, 6);
+
+    // Call 1 produced its own correctly-scoped sequence: exactly one volume
+    // command for tick 1 (2/64 down from full scale), nothing else.
+    expect(snapshot1).toHaveLength(1);
+    expect(snapshot1[0]).toMatchObject({ kind: 'volume', volume: 62 / 64 });
+
+    // The reset must give call 2 a sequence scoped to tick 2 alone -- no
+    // leftovers carried over from call 1 (a missed `length = 0` reset would
+    // grow the buffer across calls instead).
+    expect(batch2.commands).not.toHaveLength(0);
+    expect(batch2.commands).toHaveLength(1);
+    expect(batch2.commands[0]).toMatchObject({
+      kind: 'volume',
+      volume: 60 / 64,
+    });
+
+    // Buffer reuse, not fresh arrays: the two batches share the underlying
+    // per-state buffer, which is what removes the per-call allocation.
+    expect(batch1.commands).toBe(batch2.commands);
+  });
+
+  it('keeps the effect-column and volume-column tick-0 batches separate', () => {
+    const state = createTrackEffectState();
+    const volSlide: EffectCommand = { type: 'volSlide', paramX: 0, paramY: 2 };
+    const volCol: VolumeColumnCommand = { type: 'fineVolUp', value: 8 };
+
+    // The engine produces the effect batch, then the volume batch on the
+    // same state, and only afterwards reads BOTH (dispatch +
+    // hasVolumeCommand). The earlier batch must survive the later call.
+    const tick0 = processEffectTick0(state, volSlide, 60, 255);
+    const volume0 = processVolumeColumnTick0(state, volCol);
+
+    // The earlier batch survives the later call: each column's commands are
+    // intact, and they are distinct buffers.
+    expect(tick0.commands.length).toBeGreaterThan(0);
+    expect(tick0.commands.some((cmd) => cmd.kind === 'volume')).toBe(true);
+    expect(volume0.commands).toHaveLength(1);
+    expect(volume0.commands[0]).toMatchObject({ kind: 'volume' });
+    expect(tick0.commands).not.toBe(volume0.commands);
   });
 });
