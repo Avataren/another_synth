@@ -9,6 +9,62 @@ import type { TrackerSongHost } from 'src/composables/useTrackerSongHost';
 import type { TrackerSongFile } from 'src/stores/tracker-store';
 
 /**
+ * A load that failed for a reason that may not be true a moment from now.
+ *
+ * Told apart from an ordinary failure because the two deserve opposite
+ * answers: a module that will not parse will never parse, so the playlist has
+ * to move past it, while a phone that lost its signal between two songs wants
+ * the jukebox waiting where it was rather than skipping three entries and
+ * switching itself off.
+ */
+class TransientLoadError extends Error {
+  constructor(message: string, options?: { cause: unknown }) {
+    super(message, options);
+    this.name = 'TransientLoadError';
+  }
+}
+
+/** Backoff between retries of a transient failure: 1s, doubling, capped. */
+const RETRY_MIN_MS = 1000;
+const RETRY_MAX_MS = 30_000;
+
+/**
+ * Fetch a module's bytes, classifying what went wrong if anything did.
+ *
+ * Done here rather than through the host's `loadSongFromUrl` so the caller can
+ * tell a network failure from a broken file: that one swallows parse errors
+ * and reports everything else the same way.
+ */
+async function fetchModuleBytes(url: string): Promise<ArrayBuffer> {
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    // `fetch` rejects only below HTTP: offline, DNS, a dropped connection.
+    // Every real response, 404 included, resolves.
+    throw new TransientLoadError(`network error fetching ${url}`, {
+      cause: error,
+    });
+  }
+  if (!response.ok) {
+    const status = `${response.status} ${response.statusText}`;
+    // 408 and 429 are the server asking for a moment; 5xx is it having one.
+    if (response.status === 408 || response.status === 429 || response.status >= 500) {
+      throw new TransientLoadError(`${status} for ${url}`);
+    }
+    throw new Error(`${status} for ${url}`);
+  }
+  try {
+    return await response.arrayBuffer();
+  } catch (error) {
+    // The headers arrived and the body did not finish.
+    throw new TransientLoadError(`truncated response for ${url}`, {
+      cause: error,
+    });
+  }
+}
+
+/**
  * Drives the jukebox playlist: which module plays, what comes next, and the
  * fetching and instrument rebuilding in between.
  *
@@ -29,6 +85,46 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
    * module on top of whatever replaced it.
    */
   let disposed = false;
+
+  /**
+   * A retry armed after a transient load failure, and how long the next wait
+   * is. The timer is cancellable so that a user command -- next, previous,
+   * leaving jukebox mode -- takes precedence over a wait already ticking.
+   */
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryDelayMs = 0;
+
+  function cancelRetry(): void {
+    if (retryTimer === null) return;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+
+  /**
+   * Wait, then try the same entry again.
+   *
+   * The entry is not skipped and the skip budget is not spent: the file is
+   * presumed fine and the network is not, so the jukebox sits on it and picks
+   * up where it was once the fetch succeeds. What is left ringing from the
+   * song that just ended has to be cut first -- nothing else is going to,
+   * since the `play()` that normally does it is not going to run.
+   */
+  function armRetry(index: number, file: string, error: unknown): void {
+    cancelRetry();
+    host.stopPlayback();
+    retryDelayMs = Math.min(
+      retryDelayMs === 0 ? RETRY_MIN_MS : retryDelayMs * 2,
+      RETRY_MAX_MS,
+    );
+    console.warn(
+      `[Jukebox] Could not fetch ${file}; retrying in ${retryDelayMs}ms`,
+      error,
+    );
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void playIndex(index);
+    }, retryDelayMs);
+  }
 
   /** Either of the two ways this is not ready for another command yet. */
   const isBusy = computed(() => busy.value || host.isLoadingSong.value);
@@ -79,11 +175,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
 
     prefetchingFile = entry.file;
     try {
-      const response = await fetch(entry.url);
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-      const data = await response.arrayBuffer();
+      const data = await fetchModuleBytes(entry.url);
       prefetchedSong = {
         file: entry.file,
         songFile: await host.parseSongBuffer(data),
@@ -113,6 +205,8 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
    */
   async function playIndex(index: number, attemptsLeft = 3): Promise<void> {
     if (busy.value || disposed) return;
+    // An explicit load supersedes whatever a backoff was going to do next.
+    cancelRetry();
     jukebox.setCurrentIndex(index);
     const entry = jukebox.current;
     if (!entry) return;
@@ -130,34 +224,60 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
       const warmed = prefetchedSong?.file === entry.file ? prefetchedSong : null;
       prefetchedSong = null;
 
+      let bytes: ArrayBuffer;
+      let songFile: TrackerSongFile;
       if (warmed) {
-        host.isLoadingSong.value = true;
-        try {
-          // Hash the retained bytes: this is the load for the warmed file,
-          // and the report tool must not re-fetch anything.
-          recordLoadedSongHash(warmed.bytes);
-          await host.applySongFile(warmed.songFile);
-        } finally {
-          host.isLoadingSong.value = false;
-        }
+        bytes = warmed.bytes;
+        songFile = warmed.songFile;
       } else {
-        await host.loadSongFromUrl(entry.url);
+        try {
+          bytes = await fetchModuleBytes(entry.url);
+        } catch (error) {
+          // Nothing is wrong with the playlist, only with the connection.
+          // Wait it out on this entry instead of spending the skip budget.
+          if (error instanceof TransientLoadError) {
+            armRetry(index, entry.file, error);
+            return;
+          }
+          throw error;
+        }
+        songFile = await host.parseSongBuffer(bytes);
+      }
+
+      host.isLoadingSong.value = true;
+      try {
+        // Hash the retained bytes: this is the load for this file, and the
+        // report tool must not re-fetch anything.
+        recordLoadedSongHash(bytes);
+        await host.applySongFile(songFile);
+      } finally {
+        host.isLoadingSong.value = false;
       }
 
       // A playlist entry always starts at the top of the song.
       await host.play('song', 0);
 
+      // Something played, so the next hiccup starts the backoff over.
+      retryDelayMs = 0;
+
       // With this song under way, start warming the one after it.
       whenIdle(() => void prefetchNext());
     } catch (error) {
       console.warn(`[Jukebox] Skipping ${entry.file}`, error);
+      // The handover failed, so nothing is going to cut the voices the last
+      // song left ringing: the engine's own end-of-song stop() does not
+      // silence anything (a release tail has to be allowed to finish), and
+      // the `play()` that normally does it is exactly what just threw. A
+      // looped sampler voice left over that way drones for the life of the
+      // page, so it is cut here before anything else is tried.
+      host.stopPlayback();
       if (attemptsLeft <= 1) {
-        stop();
+        halt();
         return;
       }
       const next = jukebox.indexAfter(1);
       if (next === null) {
-        stop();
+        halt();
         return;
       }
       busy.value = false;
@@ -174,7 +294,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
     const next = jukebox.indexAfter(delta);
     if (next === null) {
       // The end of a playlist that does not repeat.
-      stop();
+      halt();
       return;
     }
     await playIndex(next);
@@ -200,11 +320,28 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
    * handing over to the next entry.
    */
   function stop(): void {
+    cancelRetry();
     if (!jukebox.active) return;
     jukebox.setActive(false);
     host.playbackStore.setLoopSong(true);
     // A parsed module is a big object; nothing is going to ask for it now.
     prefetchedSong = null;
+  }
+
+  /**
+   * Leave jukebox mode because there is nothing left to play -- the playlist
+   * ran out, or too many entries in a row failed to load.
+   *
+   * Unlike `stop()`, this also stops the transport. It is reached at a moment
+   * when a song has just *ended*: the engine has stopped scheduling but has
+   * deliberately not silenced anything, so the last rows' voices are still
+   * sounding and would normally be cut by the next entry's `play()`. With no
+   * next entry there is nothing to cut them, and a looped sampler voice left
+   * that way sounds forever.
+   */
+  function halt(): void {
+    stop();
+    host.stopPlayback();
   }
 
   /** The transport's play/pause button: resume or pause whatever is queued. */
@@ -277,6 +414,7 @@ export function useJukeboxPlayer(host: TrackerSongHost) {
    */
   async function dispose(): Promise<void> {
     disposed = true;
+    cancelRetry();
     prefetchedSong = null;
     prefetchingFile = null;
     // A load in flight owns the tracker until it is done. Bounded, so a load
