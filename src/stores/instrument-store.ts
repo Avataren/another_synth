@@ -17,7 +17,7 @@ interface InstrumentStoreState {
   destinationNode: AudioNode | null;
   currentInstrument: InstrumentV2 | PooledInstrument | null;
   /** The original/default instrument for standalone patch editing */
-  defaultInstrument: InstrumentV2 | null;
+  defaultInstrument: InstrumentV2 | PooledInstrument | null;
   /** Whether we're currently using an external instrument (from song bank) */
   usingExternalInstrument: boolean;
   syncManager: AudioSyncManager | null;
@@ -111,10 +111,31 @@ export const useInstrumentStore = defineStore<
     },
     async waitForInstrumentReady(timeoutMs = 8000): Promise<boolean> {
       const pollInterval = 50;
-      const start = Date.now();
+      const deadline = Date.now() + timeoutMs;
+
+      // While the context is suspended the render thread never runs, so
+      // polling isReady is pure burn. Wait for the context to reach
+      // `running` first -- bounded by the SAME overall cap, never reset:
+      // other callers (prepareStateForNewPatch, every applyPatchObject)
+      // must keep a hard bound even when the context never resumes. Once
+      // running, the remaining budget applies to the original poll loop.
+      const audioSystem = this.audioSystem;
+      const context = audioSystem?.audioContext;
+      if (context && context.state === 'closed') {
+        console.warn('AudioContext is closed; instrument cannot become ready');
+        return false;
+      }
+      if (audioSystem && context && context.state !== 'running') {
+        await Promise.race([
+          audioSystem.whenRunning(),
+          new Promise<void>((resolve) =>
+            setTimeout(resolve, Math.max(0, deadline - Date.now())),
+          ),
+        ]);
+      }
 
       while (!this.currentInstrument || !this.currentInstrument.isReady) {
-        if (Date.now() - start > timeoutMs) {
+        if (Date.now() > deadline) {
           console.warn('Timed out waiting for instrument readiness');
           return false;
         }
@@ -199,6 +220,11 @@ export const useInstrumentStore = defineStore<
         this.currentInstrument = this.defaultInstrument;
         this.usingExternalInstrument = false;
         this.destinationNode = this.defaultInstrument.outputNode;
+        // Re-kick the deferred boot-time session init: on a suspended-context
+        // boot it may have skipped (an external song instrument was active)
+        // or failed. Already-initialized sessions converge on the same
+        // exactly-once promise, so this is a no-op after a successful init.
+        void usePatchStore().initializeSessionOnce();
       }
     },
   },

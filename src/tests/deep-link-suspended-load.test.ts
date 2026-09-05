@@ -133,4 +133,35 @@ describe('song load with a suspended AudioContext (deep-link fix)', () => {
         .needsAudioContextResume,
     ).toBe(true);
   });
+
+  it('a failing load clears isLoadingSong (overlay never sticks)', async () => {
+    const ctx = makeFileIOContext(makeSuspendedAudioContext());
+    const fileIO = useTrackerFileIO(ctx);
+    // Bytes that are not a PK-zip, MOD, XM or S3M: parseSongBuffer throws
+    // inside loadSongFromBuffer (reached via loadSongFromUrl — the exported
+    // entry point), and its finally must still clear the overlay flag —
+    // otherwise the song-loading overlay absorbs taps forever (the mobile
+    // boot-stall symptom).
+    const garbage = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05]).buffer;
+    const fetchStub = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      arrayBuffer: async () => garbage,
+    }));
+    vi.stubGlobal('fetch', fetchStub);
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    try {
+      await fileIO.loadSongFromUrl('garbage.bin');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(errorSpy).toHaveBeenCalled(); // the load really did fail
+    expect(ctx.isLoadingSong.value).toBe(false);
+    errorSpy.mockRestore();
+  });
 });

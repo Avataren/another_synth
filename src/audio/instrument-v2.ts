@@ -79,6 +79,10 @@ export default class InstrumentV2 {
   private glideStates: Map<string, GlideState> = new Map();
   private quantumFrames = 128;
   private defaultOperationTimeoutMs = 5000;
+  /** In-flight init attempt; concurrent ensureInitialized calls share it. */
+  private initPromise: Promise<void> | null = null;
+  /** Whether the wire stage (attach + blockSize listener) already ran. */
+  private wired = false;
 
   public get isReady(): boolean {
     return this.messageHandler.isInitialized();
@@ -112,7 +116,7 @@ export default class InstrumentV2 {
   constructor(
     destination: AudioNode,
     private audioContext: AudioContext,
-    memory: WebAssembly.Memory,
+    _memory: WebAssembly.Memory,
   ) {
     this.outputNode = audioContext.createGain();
     (this.outputNode as GainNode).gain.value = 1.0;
@@ -129,28 +133,88 @@ export default class InstrumentV2 {
       maxQueueSize: 50, // Reduced from 200 to reduce memory overhead and improve latency
     });
 
-    this.setupAudio(memory);
+    this.ensureInitialized();
   }
 
-  private async setupAudio(_memory: WebAssembly.Memory) {
+  /**
+   * Recovery entry point for a failed or incomplete init attempt.
+   *
+   * The first attempt runs in the constructor. It can fail while the
+   * AudioContext is suspended (the worklet handshake cannot complete) or on
+   * a real handshake failure; the error is recorded on the instance, not
+   * rethrown into the void. A later call -- typically from the
+   * resume-triggered path in boot -- retries:
+   *
+   * - `workletNode === null` (create never resolved, i.e. the stall path):
+   *   full re-create + wire on a fresh node. The failed attempt's node was
+   *   abandoned by the loader (listeners removed, port closed), so no zombie
+   *   processor can re-initialize itself.
+   * - node exists but wiring/handshake incomplete: wire-only retry, guarded
+   *   by `wired` so `attachToWorklet` and the blockSize listener are never
+   *   double-registered.
+   *
+   * Concurrent calls share one attempt through `initPromise`.
+   */
+  public ensureInitialized(): Promise<void> {
+    if (this.isReady) {
+      return Promise.resolve();
+    }
+    if (!this.initPromise) {
+      this.initPromise = this.runInitAttempt().then(() => {
+        // Keep the settled attempt visible to concurrent callers, but allow
+        // a later trigger to start a fresh attempt when this one did not
+        // reach readiness (e.g. the context was still suspended).
+        if (!this.isReady) {
+          this.initPromise = null;
+        }
+      });
+    }
+    return this.initPromise;
+  }
+
+  private async runInitAttempt(): Promise<void> {
+    if (this.isReady) {
+      return;
+    }
     try {
-      this.workletNode = await createStandardAudioWorklet(this.audioContext);
-
-      // Validate worklet has expected parameter names (multi-engine format)
-      // This ensures worklet code is up-to-date after parameter name changes
-      const testParam = this.workletNode.parameters.get(
-        this.getParamName('gate', 0),
-      );
-      if (!testParam) {
-        throw new Error(
-          'Worklet parameter validation failed: Expected parameter "' +
-            this.getParamName('gate', 0) +
-            '" not found. Please do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R) to reload the worklet code.',
-        );
+      if (!this.workletNode) {
+        this.workletNode = await createStandardAudioWorklet(this.audioContext);
       }
+      this.wireWorkletNode();
+    } catch (error) {
+      console.error('[InstrumentV2] Failed to set up audio:', error);
+    }
+  }
 
-      // Attach message handler to worklet
-      this.messageHandler.attachToWorklet(this.workletNode);
+  /**
+   * Wire an existing (this.workletNode) node: parameter validation, message
+   * handler attach, blockSize listener, per-voice defaults, output connect.
+   * Idempotent for the pieces that cannot run twice (`wired` guard).
+   */
+  private wireWorkletNode(): void {
+    const workletNode = this.workletNode;
+    if (!workletNode) {
+      throw new Error('Cannot wire instrument: no worklet node');
+    }
+
+    // Validate worklet has expected parameter names (multi-engine format)
+    // This ensures worklet code is up-to-date after parameter name changes
+    const testParam = workletNode.parameters.get(
+      this.getParamName('gate', 0),
+    );
+    if (!testParam) {
+      throw new Error(
+        'Worklet parameter validation failed: Expected parameter "' +
+          this.getParamName('gate', 0) +
+          '" not found. Please do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R) to reload the worklet code.',
+      );
+    }
+
+    // Attach message handler to worklet + blockSize listener: exactly once
+    // (attachToWorklet throws on re-attach, and a second blockSize listener
+    // would double-handle every message).
+    if (!this.wired) {
+      this.messageHandler.attachToWorklet(workletNode);
 
       // Listen for broadcast messages (e.g., worklet block size)
       this.workletBlockSizeListener = (event: MessageEvent) => {
@@ -162,34 +226,32 @@ export default class InstrumentV2 {
           }
         }
       };
-      this.workletNode.port.addEventListener(
+      workletNode.port.addEventListener(
         'message',
         this.workletBlockSizeListener,
       );
-
-      // Set up parameters for each voice
-      for (let i = 0; i < this.num_voices; i++) {
-        const gateParam = this.workletNode.parameters.get(
-          this.getParamName('gate', i),
-        );
-        if (gateParam) gateParam.value = 0;
-
-        const freqParam = this.workletNode.parameters.get(
-          this.getParamName('frequency', i),
-        );
-        if (freqParam) freqParam.value = 440;
-
-        const gainParam = this.workletNode.parameters.get(
-          this.getParamName('gain', i),
-        );
-        if (gainParam) gainParam.value = 1;
-      }
-
-      this.workletNode.connect(this.outputNode);
-    } catch (error) {
-      console.error('[InstrumentV2] Failed to set up audio:', error);
-      throw error;
+      this.wired = true;
     }
+
+    // Set up parameters for each voice (plain value writes: safe to re-run)
+    for (let i = 0; i < this.num_voices; i++) {
+      const gateParam = workletNode.parameters.get(
+        this.getParamName('gate', i),
+      );
+      if (gateParam) gateParam.value = 0;
+
+      const freqParam = workletNode.parameters.get(
+        this.getParamName('frequency', i),
+      );
+      if (freqParam) freqParam.value = 440;
+
+      const gainParam = workletNode.parameters.get(
+        this.getParamName('gain', i),
+      );
+      if (gainParam) gainParam.value = 1;
+    }
+
+    workletNode.connect(this.outputNode);
   }
 
   // ========================================================================

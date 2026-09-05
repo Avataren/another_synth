@@ -126,6 +126,10 @@ export default class AudioSystem {
      */
     postFxRack: PostFxRack;
     postFxLpfStage: AmigaLpfStage;
+    /** Waiters released when the context reaches `running`. */
+    private runningWaiters = new Set<() => void>();
+    /** Cached `whenRunning()` promise (idempotent while it is still waiting). */
+    private whenRunningPromise: Promise<void> | null = null;
     constructor() {
         console.log('creating audio context');
         // Read straight from storage rather than from the settings store: this
@@ -152,6 +156,78 @@ export default class AudioSystem {
         return this.postFxRack.output;
     }
 
+    /**
+     * Resolves once the audio context reaches `running`.
+     *
+     * Resolves immediately when the context is already running (desktop, or
+     * anything after the first gesture); otherwise it resolves on
+     * `statechange` reporting `running` or when the gesture-driven
+     * `resume()` succeeds. Never awaits a bare `resume()` call: on a fresh
+     * iOS/Safari tab that promise stays pending forever without a gesture
+     * (see useTrackerFileIO.applySongFile's comment). A `closed` context
+     * bails out too -- callers treat resolution as "stop waiting", not as a
+     * guarantee of audio.
+     */
+    whenRunning(): Promise<void> {
+        if (this.audioContext.state === 'running') {
+            return Promise.resolve();
+        }
+        if (!this.whenRunningPromise) {
+            this.whenRunningPromise = this.createWhenRunningPromise();
+        }
+        return this.whenRunningPromise;
+    }
+
+    private createWhenRunningPromise(): Promise<void> {
+        return new Promise<void>((resolve) => {
+            let settled = false;
+            const settle = () => {
+                if (settled) return;
+                settled = true;
+                this.runningWaiters.delete(settle);
+                this.audioContext.removeEventListener(
+                    'statechange',
+                    onStateChange
+                );
+                // A bail-out (closed context, or resolved through the resume
+                // hook while state reads non-running) must not pin the cache:
+                // a later call should re-evaluate the live state.
+                if (this.audioContext.state !== 'running') {
+                    this.whenRunningPromise = null;
+                }
+                resolve();
+            };
+            const onStateChange = () => {
+                const state = this.audioContext.state;
+                if (state === 'running' || state === 'closed') {
+                    this.notifyRunning();
+                }
+            };
+            // Check-then-subscribe with a re-check: a resume between the
+            // first state read and the listener attach must not strand us.
+            if (this.audioContext.state === 'running') {
+                resolve();
+                return;
+            }
+            this.audioContext.addEventListener('statechange', onStateChange);
+            this.runningWaiters.add(settle);
+            // Fresh read through a full-union helper: the narrowed union from
+            // the first check must not leak into the re-check.
+            const readState = (): AudioContextState => this.audioContext.state;
+            if (readState() === 'running') {
+                this.notifyRunning();
+            }
+        });
+    }
+
+    /** Release every `whenRunning()` waiter. Called on resume success. */
+    private notifyRunning(): void {
+        for (const waiter of [...this.runningWaiters]) {
+            waiter();
+        }
+        this.runningWaiters.clear();
+    }
+
     private resumeOnUserInteraction() {
         const resumeAudio = () => {
             if (this.audioContext.state !== 'running') {
@@ -161,8 +237,14 @@ export default class AudioSystem {
                         console.log('AudioContext resumed');
                         // Remove event listeners once resumed
                         this.removeInteractionListeners(resumeAudio);
+                        this.notifyRunning();
                     })
                     .catch((err) => console.error('AudioContext failed to resume:', err));
+            } else {
+                // Something else resumed the context before this gesture
+                // landed; release waiters and drop the now-useless listeners.
+                this.removeInteractionListeners(resumeAudio);
+                this.notifyRunning();
             }
         };
 

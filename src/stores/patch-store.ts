@@ -53,6 +53,12 @@ import {
 import { normalizePatchCategory } from 'src/utils/patch-category';
 
 /**
+ * Exactly-once guard for boot-time session initialization, keyed by store
+ * instance (not module-global) so fresh Pinia instances get a fresh guard.
+ */
+const sessionInitPromises = new WeakMap<object, Promise<void>>();
+
+/**
  * Deep clones a patch WITHOUT changing its ID
  * Used for applying templates and restoring patches
  */
@@ -599,6 +605,77 @@ export const usePatchStore = defineStore('patchStore', {
         console.error('Failed to create initial patch during startup');
         return;
       }
+    },
+    /**
+     * Boot-time session initialization: apply the system bank (or a fresh
+     * default patch). Exactly-once per store instance — boot and any
+     * resume-path trigger converge on one promise, so the default patch can
+     * never be applied twice.
+     *
+     * Mobile: boot calls this without awaiting while the context is
+     * suspended; it re-kicks from the resume hook in pinia-audio-system and
+     * from restoreDefaultInstrument. Skips and failures re-arm the guard so
+     * those triggers can retry; a successful run stays exactly-once.
+     *
+     * Known low-severity residual race (mobile only): the
+     * `usingExternalInstrument` check below and `applyPatchObject`'s
+     * `currentInstrument` read are not atomic — a useExternalInstrument
+     * toggle inside that window could apply the default patch to the
+     * external instrument. Desktop boot was atomic because it blocked; on
+     * mobile the window is a few awaits wide and the consequence is one
+     * overwritten default patch on a live-edit instrument. Accepted per plan
+     * review (low severity, noted, not blocking).
+     */
+    async initializeSessionOnce(): Promise<void> {
+      const instrumentStore = useInstrumentStore();
+      const existing = sessionInitPromises.get(this);
+      if (existing) {
+        return existing;
+      }
+
+      const body = (async (): Promise<'done' | 'skipped' | 'failed'> => {
+        try {
+          // Never yank an external (song-bank) instrument out from under a
+          // live-edit session: skip and re-arm; the re-kick lives in
+          // restoreDefaultInstrument, which fires when the user returns to
+          // the default instrument.
+          if (instrumentStore.usingExternalInstrument) {
+            console.info(
+              '[PatchStore] Session init skipped: external instrument is active',
+            );
+            return 'skipped';
+          }
+          await instrumentStore.waitForInstrumentReady();
+          if (instrumentStore.usingExternalInstrument) {
+            console.info(
+              '[PatchStore] Session init skipped after wait: external instrument is active',
+            );
+            return 'skipped';
+          }
+          const loaded = await this.loadSystemBankIfPresent();
+          if (!loaded) {
+            await this.initializeNewPatchSession();
+          }
+          return 'done';
+        } catch (error) {
+          console.error(
+            '[PatchStore] Session initialization failed; re-armed for a later retry:',
+            error,
+          );
+          return 'failed';
+        }
+      })();
+
+      const tracked = body.then((outcome) => {
+        // Skip and failure re-arm the guard so a later trigger (context
+        // resume, restoreDefaultInstrument) can retry; success stays
+        // exactly-once for the life of the store.
+        if (outcome !== 'done') {
+          sessionInitPromises.delete(this);
+        }
+      });
+      sessionInitPromises.set(this, tracked);
+      return tracked;
     },
     /** Serialize the current patch state without saving to a bank */
     async serializePatch(
